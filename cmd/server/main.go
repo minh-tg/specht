@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +18,17 @@ import (
 )
 
 func main() {
+	level := slog.LevelInfo
+	switch os.Getenv("LOG_LEVEL") {
+	case "debug":
+		level = slog.LevelDebug
+	case "warn":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	}
+	slog.SetDefault(slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: level})))
+
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
 		addr = ":8080"
@@ -30,34 +41,40 @@ func main() {
 		switch os.Args[1] {
 		case "migrate":
 			if dbURL == "" {
-				log.Fatal("DATABASE_URL is required")
+				slog.Error("DATABASE_URL is required")
+				os.Exit(1)
 			}
 			if err := db.RunMigrations(dbURL, "migrations"); err != nil {
-				log.Fatalf("migration failed: %v", err)
+				slog.Error("migration failed", "error", err)
+				os.Exit(1)
 			}
-			log.Println("migrations complete")
+			slog.Info("migrations complete")
 			return
 		case "migrate-down":
 			if dbURL == "" {
-				log.Fatal("DATABASE_URL is required")
+				slog.Error("DATABASE_URL is required")
+				os.Exit(1)
 			}
 			if err := db.RollbackMigrations(dbURL, "migrations"); err != nil {
-				log.Fatalf("rollback failed: %v", err)
+				slog.Error("rollback failed", "error", err)
+				os.Exit(1)
 			}
-			log.Println("rollback complete")
+			slog.Info("rollback complete")
 			return
 		}
 	}
 
 	if migrate == "true" && dbURL != "" {
 		if err := db.RunMigrations(dbURL, "migrations"); err != nil {
-			log.Fatalf("startup migration failed: %v", err)
+			slog.Error("startup migration failed", "error", err)
+			os.Exit(1)
 		}
 	}
 
 	pool, err := db.ConnectPool(context.Background(), dbURL)
 	if err != nil {
-		log.Fatalf("connect db: %v", err)
+		slog.Error("connect db", "error", err)
+		os.Exit(1)
 	}
 	defer pool.Close()
 
@@ -87,19 +104,20 @@ func main() {
 	defer stop()
 
 	go func() {
-		log.Printf("server starting on %s", addr)
+		slog.Info("server starting", "addr", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server error: %v", err)
+			slog.Error("server error", "error", err)
+			os.Exit(1)
 		}
 	}()
 
 	<-ctx.Done()
-	log.Println("shutting down...")
+	slog.Info("shutting down...")
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("shutdown error: %v", err)
+		slog.Error("shutdown error", "error", err)
 	}
 }

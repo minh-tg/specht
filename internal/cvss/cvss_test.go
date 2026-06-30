@@ -3,34 +3,30 @@ package cvss_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/vulnserve/vulnserve/internal/cvss"
 )
 
 func TestCalculate_V3_Unknown(t *testing.T) {
 	_, err := cvss.Calculate("")
-	if err == nil {
-		t.Fatal("expected error for empty string")
-	}
+	require.Error(t, err)
 }
 
 func TestCalculate_V3_Malformed(t *testing.T) {
 	_, err := cvss.Calculate("CVSS:3.1")
-	if err == nil {
-		t.Fatal("expected error for bare version string")
-	}
+	require.Error(t, err)
 }
 
 func TestCalculate_V3_UnknownVersion(t *testing.T) {
 	_, err := cvss.Calculate("CVSS:9.9/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H")
-	if err == nil {
-		t.Fatal("expected error for unknown version")
-	}
+	require.Error(t, err)
 }
 
 func TestCalculate_V3_NVDExamples(t *testing.T) {
 	tests := []struct {
-		vector  string
-		want    float64
+		vector string
+		want   float64
 	}{
 		{"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", 9.8},
 		{"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N", 9.1},
@@ -44,12 +40,8 @@ func TestCalculate_V3_NVDExamples(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.vector, func(t *testing.T) {
 			got, err := cvss.Calculate(tt.vector)
-			if err != nil {
-				t.Fatalf("Calculate(%q) error: %v", tt.vector, err)
-			}
-			if got != tt.want {
-				t.Errorf("Calculate(%q) = %f, want %f", tt.vector, got, tt.want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -67,12 +59,8 @@ func TestCalculate_V3_ScopeChanged(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.vector, func(t *testing.T) {
 			got, err := cvss.Calculate(tt.vector)
-			if err != nil {
-				t.Fatalf("Calculate(%q) error: %v", tt.vector, err)
-			}
-			if got != tt.want {
-				t.Errorf("Calculate(%q) = %f, want %f", tt.vector, got, tt.want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -82,7 +70,6 @@ func TestCalculate_V4_Examples(t *testing.T) {
 		vector string
 		want   float64
 	}{
-		// go-cvss computed scores — authoritative for CVSS 4.0
 		{"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N", 9.3},
 		{"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:N/SC:N/SI:N/SA:N", 9.3},
 		{"CVSS:4.0/AV:N/AC:H/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N/SC:N/SI:N/SA:N", 6.3},
@@ -94,21 +81,15 @@ func TestCalculate_V4_Examples(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.vector, func(t *testing.T) {
 			got, err := cvss.Calculate(tt.vector)
-			if err != nil {
-				t.Fatalf("Calculate(%q) error: %v", tt.vector, err)
-			}
-			if got != tt.want {
-				t.Errorf("Calculate(%q) = %f, want %f", tt.vector, got, tt.want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestCalculate_V4_RejectsV3MetricKeys(t *testing.T) {
 	_, err := cvss.Calculate("CVSS:4.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H")
-	if err == nil {
-		t.Fatal("expected error for 3.x-style metric keys in 4.0 vector")
-	}
+	require.Error(t, err)
 }
 
 func TestCalculate_V2_Examples(t *testing.T) {
@@ -128,12 +109,8 @@ func TestCalculate_V2_Examples(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.vector, func(t *testing.T) {
 			got, err := cvss.Calculate(tt.vector)
-			if err != nil {
-				t.Fatalf("Calculate(%q) error: %v", tt.vector, err)
-			}
-			if got != tt.want {
-				t.Errorf("Calculate(%q) = %f, want %f", tt.vector, got, tt.want)
-			}
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }

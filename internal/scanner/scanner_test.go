@@ -5,7 +5,8 @@ import (
 	"io"
 	"testing"
 
-	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/vulnserve/vulnserve/internal/scanner"
 )
 
@@ -40,9 +41,7 @@ func TestSeverityValues(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if int(tt.severity) != tt.want {
-				t.Errorf("%s = %d, want %d", tt.name, tt.severity, tt.want)
-			}
+			assert.Equal(t, tt.want, int(tt.severity))
 		})
 	}
 }
@@ -63,18 +62,14 @@ func TestSCAFingerprint(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := scanner.SCAFingerprint(tt.vulnID, tt.purl)
-			if got != tt.want {
-				t.Errorf("SCAFingerprint(%q, %q) = %q, want %q", tt.vulnID, tt.purl, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestNewRegistry(t *testing.T) {
 	r := scanner.NewRegistry()
-	if r == nil {
-		t.Fatal("NewRegistry() returned nil")
-	}
+	require.NotNil(t, r)
 }
 
 func TestRegistryRegisterGet(t *testing.T) {
@@ -83,25 +78,15 @@ func TestRegistryRegisterGet(t *testing.T) {
 	r.Register(p)
 
 	got, ok := r.Get("test-parser")
-	if !ok {
-		t.Fatal("Get('test-parser') returned false")
-	}
-	if got.Name() != "test-parser" {
-		t.Errorf("Get().Name() = %q, want 'test-parser'", got.Name())
-	}
-
-	scanTypes := got.ScanTypes()
-	if diff := cmp.Diff(scanTypes, []scanner.ScanType{scanner.ScanTypeImage}); diff != "" {
-		t.Errorf("ScanTypes() diff (-got +want):\n%s", diff)
-	}
+	require.True(t, ok)
+	assert.Equal(t, "test-parser", got.Name())
+	assert.Equal(t, []scanner.ScanType{scanner.ScanTypeImage}, got.ScanTypes())
 }
 
 func TestRegistryGetUnknown(t *testing.T) {
 	r := scanner.NewRegistry()
 	_, ok := r.Get("nonexistent")
-	if ok {
-		t.Error("Get('nonexistent') returned true, want false")
-	}
+	assert.False(t, ok)
 }
 
 func TestRegistryDetect(t *testing.T) {
@@ -110,29 +95,21 @@ func TestRegistryDetect(t *testing.T) {
 	r.Register(p)
 
 	matched, ok := r.Detect([]byte("hello"))
-	if !ok {
-		t.Error("Detect() returned false, want true for non-empty data")
-	}
-	if matched.Name() != "detect-parser" {
-		t.Errorf("Detect().Name() = %q, want 'detect-parser'", matched.Name())
-	}
+	require.True(t, ok)
+	assert.Equal(t, "detect-parser", matched.Name())
 }
 
 func TestRegistryDetectNoMatch(t *testing.T) {
 	r := scanner.NewRegistry()
 	_, ok := r.Detect([]byte("data"))
-	if ok {
-		t.Error("Detect() returned true, want false with empty registry")
-	}
+	assert.False(t, ok)
 }
 
 func TestRegistryDetectEmptyData(t *testing.T) {
 	r := scanner.NewRegistry()
 	r.Register(&testParser{name: "p"})
 	_, ok := r.Detect([]byte{})
-	if ok {
-		t.Error("Detect() returned true for empty data, want false")
-	}
+	assert.False(t, ok)
 }
 
 func TestScanTypeConstants(t *testing.T) {
@@ -150,9 +127,7 @@ func TestScanTypeConstants(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if string(tt.scanType) != tt.want {
-				t.Errorf("ScanType(%s) = %q, want %q", tt.name, string(tt.scanType), tt.want)
-			}
+			assert.Equal(t, tt.want, string(tt.scanType))
 		})
 	}
 }

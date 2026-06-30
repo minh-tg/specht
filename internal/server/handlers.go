@@ -3,10 +3,31 @@ package server
 import (
 	"encoding/json"
 	"log"
+	"log/slog"
 	"net/http"
 
+	"github.com/vulnserve/vulnserve/internal/auth"
 	"github.com/vulnserve/vulnserve/internal/usecase"
 )
+
+func AuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ident := &auth.Identity{UserID: "anonymous"}
+		ctx := auth.ContextWithIdentity(r.Context(), ident)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func LoggerMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		slog.Info("request",
+			"method", r.Method,
+			"path", r.URL.Path,
+			"remote", r.RemoteAddr,
+		)
+		next.ServeHTTP(w, r)
+	})
+}
 
 type Handler struct {
 	uc *usecase.Usecases

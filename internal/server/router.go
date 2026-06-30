@@ -15,10 +15,11 @@ type RouterConfig struct {
 
 func NewRouter(cfg RouterConfig) http.Handler {
 	r := chi.NewRouter()
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
+	r.Use(LoggerMiddleware)
+	r.Use(middleware.Recoverer)
+	r.Use(AuthMiddleware)
 	r.Use(middleware.Timeout(30 * time.Second))
 
 	h := NewHandler(cfg.Usecases)

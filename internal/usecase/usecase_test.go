@@ -1,14 +1,14 @@
 package usecase
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"io"
 	"math/big"
 	"testing"
 
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/vulnserve/vulnserve/internal/scanner"
 )
 
@@ -27,9 +27,7 @@ func TestSeverityStr(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
 			got := severityStr(tt.input)
-			if got != tt.want {
-				t.Errorf("severityStr(%d) = %q, want %q", tt.input, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -49,9 +47,7 @@ func TestSeverityRank(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := severityRank(tt.input)
-			if got != tt.want {
-				t.Errorf("severityRank(%d) = %d, want %d", tt.input, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -59,52 +55,33 @@ func TestSeverityRank(t *testing.T) {
 func TestScoreToNumeric(t *testing.T) {
 	t.Run("positive score", func(t *testing.T) {
 		n := scoreToNumeric(7.5)
-		if !n.Valid {
-			t.Fatal("expected valid numeric")
-		}
-		if n.Int.Cmp(big.NewInt(75)) != 0 || n.Exp != -1 {
-			t.Errorf("unexpected numeric: Int=%s Exp=%d", n.Int.String(), n.Exp)
-		}
+		require.True(t, n.Valid)
+		assert.Equal(t, 0, n.Int.Cmp(big.NewInt(75)))
+		assert.Equal(t, int32(-1), n.Exp)
 	})
 
 	t.Run("zero score returns null", func(t *testing.T) {
 		n := scoreToNumeric(0)
-		if n.Valid {
-			t.Error("expected invalid numeric for zero score")
-		}
+		assert.False(t, n.Valid)
 	})
 
 	t.Run("negative score returns null", func(t *testing.T) {
 		n := scoreToNumeric(-1)
-		if n.Valid {
-			t.Error("expected invalid numeric for negative score")
-		}
+		assert.False(t, n.Valid)
 	})
 }
 
 func TestTextPtr(t *testing.T) {
 	t.Run("non-empty text", func(t *testing.T) {
 		tt := textPtr("hello")
-		if !tt.Valid || tt.String != "hello" {
-			t.Errorf("unexpected text: Valid=%v String=%q", tt.Valid, tt.String)
-		}
+		assert.True(t, tt.Valid)
+		assert.Equal(t, "hello", tt.String)
 	})
 
 	t.Run("empty text returns null", func(t *testing.T) {
 		tt := textPtr("")
-		if tt.Valid {
-			t.Error("expected invalid text for empty string")
-		}
+		assert.False(t, tt.Valid)
 	})
-}
-
-func TestUUIDToString(t *testing.T) {
-	id := pgtype.UUID{Bytes: [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}, Valid: true}
-	got := uuidToString(id)
-	expected := "00010203-0405-0607-0809-0a0b0c0d0e0f"
-	if got != expected {
-		t.Errorf("uuidToString = %q, want %q", got, expected)
-	}
 }
 
 type mockParser struct {
@@ -136,28 +113,18 @@ func TestIngestReport_ValidationErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			_, err := uc.IngestReport(context.Background(), tt.input)
-			if err == nil {
-				t.Error("expected error for invalid input")
-			}
+			assert.Error(t, err)
 		})
 	}
 }
 
 func TestNow(t *testing.T) {
 	n := now()
-	if !n.Valid {
-		t.Error("expected valid timestamp")
-	}
-	if n.Time.IsZero() {
-		t.Error("expected non-zero time")
-	}
+	assert.True(t, n.Valid)
+	assert.False(t, n.Time.IsZero())
 }
 
 func TestMustMarshal(t *testing.T) {
 	data := mustMarshal(map[string]string{"key": "value"})
-	if !bytes.Contains(data, []byte("key")) {
-		t.Errorf("mustMarshal = %q, want containing 'key'", data)
-	}
+	assert.Contains(t, string(data), "key")
 }
-
-

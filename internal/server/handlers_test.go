@@ -6,6 +6,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestHealthHandler(t *testing.T) {
@@ -15,61 +18,42 @@ func TestHealthHandler(t *testing.T) {
 	router := NewRouter(RouterConfig{Usecases: nil})
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
-	}
+	assert.Equal(t, http.StatusOK, w.Code)
 
 	var body map[string]string
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatalf("unmarshal body: %v", err)
-	}
-	if body["status"] != "ok" {
-		t.Errorf(`body["status"] = %q, want "ok"`, body["status"])
-	}
+	err := json.Unmarshal(w.Body.Bytes(), &body)
+	require.NoError(t, err)
+	assert.Equal(t, "ok", body["status"])
 }
 
 func TestRespondJSON(t *testing.T) {
 	w := httptest.NewRecorder()
 	respondJSON(w, http.StatusCreated, map[string]string{"hello": "world"})
 
-	if w.Code != http.StatusCreated {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusCreated)
-	}
-	ct := w.Header().Get("Content-Type")
-	if ct != "application/json" {
-		t.Errorf("Content-Type = %q, want 'application/json'", ct)
-	}
+	assert.Equal(t, http.StatusCreated, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+
 	var body map[string]string
-	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if body["hello"] != "world" {
-		t.Errorf(`body["hello"] = %q, want "world"`, body["hello"])
-	}
+	err := json.Unmarshal(w.Body.Bytes(), &body)
+	require.NoError(t, err)
+	assert.Equal(t, "world", body["hello"])
 }
 
 func TestRespondError(t *testing.T) {
 	w := httptest.NewRecorder()
 	respondError(w, http.StatusBadRequest, "missing_field", "project is required")
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
-	}
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 	var resp struct {
 		Error struct {
 			Code    string `json:"code"`
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if resp.Error.Code != "missing_field" {
-		t.Errorf("code = %q, want 'missing_field'", resp.Error.Code)
-	}
-	if resp.Error.Message != "project is required" {
-		t.Errorf("message = %q, want 'project is required'", resp.Error.Message)
-	}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "missing_field", resp.Error.Code)
+	assert.Equal(t, "project is required", resp.Error.Message)
 }
 
 func TestIngestReport_InvalidJSON(t *testing.T) {
@@ -81,9 +65,7 @@ func TestIngestReport_InvalidJSON(t *testing.T) {
 
 	handler.IngestReport(w, req)
 
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("status = %d, want %d", w.Code, http.StatusBadRequest)
-	}
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 
 	var resp struct {
 		Error struct {
@@ -91,12 +73,9 @@ func TestIngestReport_InvalidJSON(t *testing.T) {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if resp.Error.Code != "invalid_json" {
-		t.Errorf("code = %q, want 'invalid_json'", resp.Error.Code)
-	}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "invalid_json", resp.Error.Code)
 }
 
 func TestIngestReport_MissingFields(t *testing.T) {
@@ -121,9 +100,7 @@ func TestIngestReport_MissingFields(t *testing.T) {
 
 			handler.IngestReport(w, req)
 
-			if w.Code != tt.wantStatus {
-				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)
-			}
+			assert.Equal(t, tt.wantStatus, w.Code)
 
 			var resp struct {
 				Error struct {
@@ -131,29 +108,22 @@ func TestIngestReport_MissingFields(t *testing.T) {
 					Message string `json:"message"`
 				} `json:"error"`
 			}
-			if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-				t.Fatalf("unmarshal: %v", err)
-			}
-			if resp.Error.Code != tt.wantCode {
-				t.Errorf("code = %q, want %q", resp.Error.Code, tt.wantCode)
-			}
+			err := json.Unmarshal(w.Body.Bytes(), &resp)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantCode, resp.Error.Code)
 		})
 	}
 }
 
 func TestNewRouterRoutes(t *testing.T) {
 	router := NewRouter(RouterConfig{Usecases: nil})
-	if router == nil {
-		t.Fatal("NewRouter returned nil")
-	}
+	require.NotNil(t, router)
 
 	t.Run("health endpoint exists", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/v1/health", nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
-		if w.Code != http.StatusOK {
-			t.Errorf("health status = %d, want %d", w.Code, http.StatusOK)
-		}
+		assert.Equal(t, http.StatusOK, w.Code)
 	})
 
 	t.Run("reports POST endpoint exists", func(t *testing.T) {
@@ -161,17 +131,13 @@ func TestNewRouterRoutes(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
-		if w.Code == http.StatusNotFound {
-			t.Error("POST /api/v1/reports returned 404")
-		}
+		assert.NotEqual(t, http.StatusNotFound, w.Code)
 	})
 
 	t.Run("unknown route returns 404", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/v1/nonexistent", nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
-		if w.Code != http.StatusNotFound {
-			t.Errorf("status = %d, want %d", w.Code, http.StatusNotFound)
-		}
+		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
 }

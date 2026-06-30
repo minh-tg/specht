@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vulnserve/vulnserve/internal/repo"
 	"github.com/vulnserve/vulnserve/internal/scanner"
@@ -182,7 +183,7 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, fmt.Errorf("update report status: %w", err)
 	}
 
-	reportID := uuidToString(report.ID)
+	reportID := uuid.UUID(report.ID.Bytes).String()
 	return &IngestReportOutput{
 		ReportID:      reportID,
 		TotalFindings: total,
@@ -197,6 +198,4 @@ func mustMarshal(v any) []byte {
 	return data
 }
 
-func uuidToString(id pgtype.UUID) string {
-	return fmt.Sprintf("%x-%x-%x-%x-%x", id.Bytes[0:4], id.Bytes[4:6], id.Bytes[6:8], id.Bytes[8:10], id.Bytes[10:16])
-}
+

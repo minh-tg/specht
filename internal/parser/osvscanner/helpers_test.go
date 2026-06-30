@@ -3,6 +3,7 @@ package osvscanner
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/vulnserve/vulnserve/internal/scanner"
 )
 
@@ -25,9 +26,7 @@ func TestSeverityFromScore(t *testing.T) {
 	for _, tt := range tests {
 		t.Run("", func(t *testing.T) {
 			got := severityFromScore(tt.score)
-			if got != tt.want {
-				t.Errorf("severityFromScore(%f) = %d, want %d", tt.score, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -51,19 +50,17 @@ func TestNormalizeOSVSeverity(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			got := normalizeOSVSeverity(tt.input)
-			if got != tt.want {
-				t.Errorf("normalizeOSVSeverity(%q) = %d, want %d", tt.input, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestParseCVSSScore(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		wantOk   bool
-		wantMin  float64
+		name    string
+		input   string
+		wantOk  bool
+		wantMin float64
 	}{
 		{"full v4 vector", "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N", true, 9.0},
 		{"full v3 vector", "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", true, 9.0},
@@ -78,11 +75,9 @@ func TestParseCVSSScore(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got, _, ok := parseCVSSScore(tt.input)
-			if ok != tt.wantOk {
-				t.Errorf("parseCVSSScore(%q) ok = %v, want %v", tt.input, ok, tt.wantOk)
-			}
-			if tt.wantOk && got < tt.wantMin {
-				t.Errorf("parseCVSSScore(%q) = %f, want >= %f", tt.input, got, tt.wantMin)
+			assert.Equal(t, tt.wantOk, ok)
+			if tt.wantOk {
+				assert.GreaterOrEqual(t, got, tt.wantMin)
 			}
 		})
 	}
@@ -105,9 +100,7 @@ func TestLooksLikeCVSSv2Vector(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
 			got := looksLikeCVSSv2Vector(tt.input)
-			if got != tt.want {
-				t.Errorf("looksLikeCVSSv2Vector(%q) = %v, want %v", tt.input, got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -140,9 +133,7 @@ func TestExtractSeverity(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := extractSeverity(tt.vuln)
-			if got != tt.want {
-				t.Errorf("extractSeverity() = %d, want %d", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
@@ -169,9 +160,7 @@ func TestExtractScore(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := extractScore(tt.vuln)
-			if got != tt.want {
-				t.Errorf("extractScore() = %f, want %f", got, tt.want)
-			}
+			assert.Equal(t, tt.want, got)
 		})
 	}
 }
