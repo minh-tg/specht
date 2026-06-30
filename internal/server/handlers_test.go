@@ -236,6 +236,30 @@ func TestIngestReport_MissingFields(t *testing.T) {
 	}
 }
 
+func TestIngestReport_Success(t *testing.T) {
+	mock := &mockUsecases{
+		ingestReportFn: func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
+			return &usecase.IngestReportOutput{ReportID: "rep-1", TotalFindings: 3}, nil
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"project":"my-app","scanner":"trivy","raw_data":{"image":"myapp:latest"}}`)
+	req := httptest.NewRequest("POST", "/api/v1/reports", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	var resp struct {
+		ReportID      string `json:"report_id"`
+		TotalFindings int    `json:"total_findings"`
+	}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "rep-1", resp.ReportID)
+	assert.Equal(t, 3, resp.TotalFindings)
+}
+
 func testRouter(mock *mockUsecases) http.Handler {
 	r := chi.NewRouter()
 	h := NewHandler(mock)
@@ -244,6 +268,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/projects/{slug}/findings", h.ListFindings)
 	r.Get("/api/v1/projects/{slug}/reports", h.ListReports)
 	r.Get("/api/v1/reports/{id}", h.GetReport)
+	r.Post("/api/v1/reports", h.IngestReport)
 	r.Post("/api/v1/auth/register", h.Register)
 	r.Post("/api/v1/auth/login", h.Login)
 	r.Post("/api/v1/auth/apikeys", h.CreateAPIKey)
