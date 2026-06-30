@@ -78,7 +78,7 @@ func TestParse_GoScan(t *testing.T) {
 		t.Errorf("fingerprint = %q, want %q", finding.Fingerprint, expectedFP)
 	}
 
-	if finding.FindingKind != "sca_vulnerability" {
+	if finding.FindingKind != "sca" {
 		t.Errorf("findingKind = %q, want 'sca_vulnerability'", finding.FindingKind)
 	}
 
@@ -86,8 +86,8 @@ func TestParse_GoScan(t *testing.T) {
 		t.Errorf("severity = %d, want %d (HIGH)", finding.Severity, scanner.SeverityHigh)
 	}
 
-	if finding.Score <= 0 {
-		t.Error("expected a CVSS score > 0")
+	if finding.Score != 9.3 {
+		t.Errorf("score = %f, want 9.3 (CVSS 4.0)", finding.Score)
 	}
 
 	reachable, ok := finding.Display["reachable"]
