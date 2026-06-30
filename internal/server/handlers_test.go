@@ -420,6 +420,56 @@ func TestGetReport_InvalidID(t *testing.T) {
 	assert.Equal(t, "invalid_id", resp.Error.Code)
 }
 
+var corsMock = &mockUsecases{}
+
+func TestCORS_DefaultOrigin(t *testing.T) {
+	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: ""})
+	req := httptest.NewRequest("OPTIONS", "/api/v1/health", nil)
+	req.Header.Set("Origin", "http://localhost:5173")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "http://localhost:5173", w.Header().Get("Access-Control-Allow-Origin"))
+	assert.NotEmpty(t, w.Header().Get("Access-Control-Allow-Methods"))
+}
+
+func TestCORS_CustomOrigins(t *testing.T) {
+	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: "https://app.example.com,https://admin.example.com"})
+	req := httptest.NewRequest("OPTIONS", "/api/v1/health", nil)
+	req.Header.Set("Origin", "https://app.example.com")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "https://app.example.com", w.Header().Get("Access-Control-Allow-Origin"))
+}
+
+func TestCORS_DisallowedOrigin(t *testing.T) {
+	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: "http://localhost:5173"})
+	req := httptest.NewRequest("OPTIONS", "/api/v1/health", nil)
+	req.Header.Set("Origin", "https://evil.com")
+	req.Header.Set("Access-Control-Request-Method", "GET")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Empty(t, w.Header().Get("Access-Control-Allow-Origin"))
+}
+
+func TestCORS_HeadersOnGET(t *testing.T) {
+	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: ""})
+	req := httptest.NewRequest("GET", "/api/v1/health", nil)
+	req.Header.Set("Origin", "http://localhost:5173")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "http://localhost:5173", w.Header().Get("Access-Control-Allow-Origin"))
+}
+
 func TestNewRouterRoutes(t *testing.T) {
 	mock := &mockUsecases{
 		listProjectsFn: func(ctx context.Context) ([]usecase.ProjectResponse, error) { return nil, nil },

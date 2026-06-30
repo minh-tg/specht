@@ -36,6 +36,7 @@ func main() {
 
 	dbURL := os.Getenv("DATABASE_URL")
 	migrate := os.Getenv("DB_MIGRATE")
+	corsOrigins := os.Getenv("CORS_ORIGINS")
 
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -89,7 +90,8 @@ func main() {
 	})
 
 	handler := server.NewRouter(server.RouterConfig{
-		Usecases: uc,
+		Usecases:    uc,
+		CORSOrigins: corsOrigins,
 	})
 
 	srv := &http.Server{

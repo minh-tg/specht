@@ -2,18 +2,35 @@ package server
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 )
 
 type RouterConfig struct {
-	Usecases usecaseInterface
+	Usecases    usecaseInterface
+	CORSOrigins string
 }
 
 func NewRouter(cfg RouterConfig) http.Handler {
 	r := chi.NewRouter()
+
+	origins := strings.FieldsFunc(cfg.CORSOrigins, func(c rune) bool { return c == ',' || c == ' ' })
+	if len(origins) == 0 {
+		origins = []string{"http://localhost:5173"}
+	}
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   origins,
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		ExposedHeaders:   []string{"Link"},
+		AllowCredentials: true,
+		MaxAge:           300,
+	}))
+
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(LoggerMiddleware)
