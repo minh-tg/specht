@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vulnserve/vulnserve/internal/db/sqlc"
@@ -42,6 +43,7 @@ func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc
 		ParserVersion:   arg.ParserVersion,
 		ScanCompleteness: "unknown",
 		Status:          "processing",
+		StartedAt:       pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	})
 }
 

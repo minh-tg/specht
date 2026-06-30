@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vulnserve/vulnserve/internal/db/sqlc"
@@ -84,6 +85,7 @@ func (r *pgFindingRepo) CreateOccurrence(ctx context.Context, arg CreateOccurren
 		LocationSummary: arg.LocationSummary,
 		Display:        arg.Display,
 		Metadata:       arg.Metadata,
+		ObservedAt:     pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	})
 }
 

@@ -28,6 +28,7 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 }
 
 type ProjectRepo interface {
+	Create(ctx context.Context, arg sqlc.CreateProjectParams) (sqlc.Project, error)
 	List(ctx context.Context) ([]sqlc.Project, error)
 	GetBySlug(ctx context.Context, slug string) (sqlc.Project, error)
 }
