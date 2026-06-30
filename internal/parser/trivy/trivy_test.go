@@ -86,16 +86,16 @@ func TestParse_AlpineScan(t *testing.T) {
 			name:          "first finding should be CVE-2024-9143",
 			fingerprint:   "CVE-2024-9143:pkg:apk/alpine/libcrypto3@3.3.2-r0?arch=aarch64&distro=3.20.3",
 			severity:      scanner.SeverityLow,
-			score:         3.7,
-			findingKind:   "sca_vulnerability",
+			score:         4.0,
+			findingKind:   "sca",
 			fixedVersion:  "3.3.2-r1",
 		},
 		{
 			name:          "second finding should be CVE-2024-8888",
 			fingerprint:   "CVE-2024-8888:pkg:apk/alpine/libssl3@3.3.2-r0?arch=aarch64&distro=3.20.3",
 			severity:      scanner.SeverityHigh,
-			score:         7.5,
-			findingKind:   "sca_vulnerability",
+			score:         6.0,
+			findingKind:   "sca",
 			fixedVersion:  "3.3.2-r1",
 		},
 	}
@@ -165,8 +165,8 @@ func TestParse_MultiTypeScan(t *testing.T) {
 		kinds[f.FindingKind]++
 	}
 
-	if kinds["sca_vulnerability"] != 2 {
-		t.Errorf("expected 2 sca_vulnerability, got %d", kinds["sca_vulnerability"])
+	if kinds["sca"] != 2 {
+		t.Errorf("expected 2 sca, got %d", kinds["sca"])
 	}
 	if kinds["iac"] != 1 {
 		t.Errorf("expected 1 iac, got %d", kinds["iac"])

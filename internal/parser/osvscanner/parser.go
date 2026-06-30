@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"strings"
 
+	"github.com/vulnserve/vulnserve/internal/cvss"
 	"github.com/vulnserve/vulnserve/internal/scanner"
 )
 
@@ -214,7 +214,7 @@ func convert(report osvReport) *scanner.NormalizedReport {
 
 				nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
 					Fingerprint: fingerprint,
-					FindingKind: "sca_vulnerability",
+					FindingKind: "sca",
 					Title:       title,
 					Description: desc,
 					Severity:    severity,
@@ -236,7 +236,7 @@ func extractSeverity(v osvVuln) scanner.Severity {
 		return normalizeOSVSeverity(v.DatabaseSpecific.Severity)
 	}
 	for _, s := range v.Severity {
-		if s.Type == "CVSS_V3" || s.Type == "CVSS_V2" {
+		if s.Type == "CVSS_V4" || s.Type == "CVSS_V3" || s.Type == "CVSS_V2" {
 			score, _, ok := parseCVSSScore(s.Score)
 			if ok {
 				return severityFromScore(score)
@@ -247,6 +247,14 @@ func extractSeverity(v osvVuln) scanner.Severity {
 }
 
 func extractScore(v osvVuln) float64 {
+	for _, s := range v.Severity {
+		if s.Type == "CVSS_V4" {
+			score, _, ok := parseCVSSScore(s.Score)
+			if ok {
+				return score
+			}
+		}
+	}
 	for _, s := range v.Severity {
 		if s.Type == "CVSS_V3" {
 			score, _, ok := parseCVSSScore(s.Score)
@@ -270,13 +278,23 @@ func parseCVSSScore(s string) (float64, string, bool) {
 	if s == "" {
 		return 0, "", false
 	}
+
 	if strings.HasPrefix(s, "CVSS:") {
-		score := cvss31BaseScore(s)
-		if score > 0 {
+		score, err := cvss.Calculate(s)
+		if err == nil && score > 0 {
 			return score, s, true
 		}
 		return 0, s, false
 	}
+
+	if looksLikeCVSSv2Vector(s) {
+		full := "CVSS:2.0/" + s
+		score, err := cvss.Calculate(full)
+		if err == nil && score > 0 {
+			return score, full, true
+		}
+	}
+
 	var score float64
 	if _, err := fmt.Sscanf(s, "%f", &score); err == nil {
 		return score, s, true
@@ -284,90 +302,8 @@ func parseCVSSScore(s string) (float64, string, bool) {
 	return 0, s, false
 }
 
-func cvss31BaseScore(vector string) float64 {
-	metrics := make(map[string]string)
-	parts := strings.Split(vector, "/")
-	for _, p := range parts {
-		if idx := strings.Index(p, ":"); idx >= 0 {
-			key := strings.TrimSpace(p[idx+1:])
-			if idx2 := strings.Index(key, ":"); idx2 >= 0 {
-				key = key[:idx2]
-			}
-			if key != "" {
-				lastKey := p[:idx]
-				if _, ok := metrics[lastKey]; !ok {
-					metrics[lastKey] = key
-				}
-			}
-		}
-	}
-
-	av := metricVal(metrics, "AV", map[string]float64{"N": 0.85, "A": 0.62, "L": 0.55, "P": 0.2})
-	ac := metricVal(metrics, "AC", map[string]float64{"L": 0.77, "H": 0.44})
-	scope := metrics["S"]
-
-	prUnchanged := map[string]float64{"N": 0.85, "L": 0.62, "H": 0.27}
-	prChanged := map[string]float64{"N": 0.85, "L": 0.68, "H": 0.5}
-	pr := metricVal(metrics, "PR", prUnchanged)
-	if scope == "C" {
-		pr = metricVal(metrics, "PR", prChanged)
-	}
-
-	ui := metricVal(metrics, "UI", map[string]float64{"N": 0.85, "R": 0.62})
-
-	c := metricVal(metrics, "C", impactVals)
-	i := metricVal(metrics, "I", impactVals)
-	a := metricVal(metrics, "A", impactVals)
-
-	iss := 1.0 - (1.0-c)*(1.0-i)*(1.0-a)
-	var impact float64
-	if scope == "C" {
-		impact = 7.52 * (iss - 0.029) - 3.25 * pow(iss-0.02, 15)
-	} else {
-		impact = 6.42 * iss
-	}
-
-	exploitability := 8.22 * av * ac * pr * ui
-
-	if impact <= 0 {
-		return 0
-	}
-
-	var base float64
-	if scope == "C" {
-		base = 1.08 * (impact + exploitability)
-	} else {
-		base = impact + exploitability
-	}
-
-	if base > 10 {
-		base = 10
-	}
-
-	base = roundup(base)
-	return base
-}
-
-func metricVal(metrics map[string]string, key string, vals map[string]float64) float64 {
-	v, ok := metrics[key]
-	if !ok {
-		return 0
-	}
-	return vals[v]
-}
-
-var impactVals = map[string]float64{"H": 0.56, "L": 0.22, "N": 0}
-
-func pow(x float64, n int) float64 {
-	r := 1.0
-	for i := 0; i < n; i++ {
-		r *= x
-	}
-	return r
-}
-
-func roundup(x float64) float64 {
-	return math.Ceil(x*10) / 10
+func looksLikeCVSSv2Vector(s string) bool {
+	return strings.HasPrefix(s, "AV:") || strings.HasPrefix(s, "AC:") || strings.HasPrefix(s, "Au:")
 }
 
 func severityFromScore(score float64) scanner.Severity {

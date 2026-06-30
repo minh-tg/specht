@@ -51,6 +51,8 @@ type trivyLayer struct {
 }
 
 type trivyCVSS struct {
+	V4Score  float64 `json:"V4Score"`
+	V4Vector string  `json:"V4Vector"`
 	V3Score  float64 `json:"V3Score"`
 	V3Vector string  `json:"V3Vector"`
 	V2Score  float64 `json:"V2Score"`
@@ -149,13 +151,28 @@ func convert(report trivyReport) *scanner.NormalizedReport {
 		for _, v := range result.Vulnerabilities {
 			severity := normalizeSeverity(v.Severity)
 			var score float64
-			if cvss, ok := v.CVSS["nvd"]; ok && cvss.V3Score > 0 {
-				score = cvss.V3Score
-			} else if cvss, ok := v.CVSS["redhat"]; ok && cvss.V3Score > 0 {
-				score = cvss.V3Score
-			} else {
+			if cvss, ok := v.CVSS["nvd"]; ok {
+				if cvss.V4Score > 0 {
+					score = cvss.V4Score
+				} else if cvss.V3Score > 0 {
+					score = cvss.V3Score
+				}
+			}
+			if score == 0 {
+				if cvss, ok := v.CVSS["redhat"]; ok {
+					if cvss.V4Score > 0 {
+						score = cvss.V4Score
+					} else if cvss.V3Score > 0 {
+						score = cvss.V3Score
+					}
+				}
+			}
+			if score == 0 {
 				for _, c := range v.CVSS {
-					if c.V3Score > 0 {
+					if c.V4Score > 0 {
+						score = c.V4Score
+						break
+					} else if c.V3Score > 0 {
 						score = c.V3Score
 						break
 					} else if c.V2Score > 0 {
@@ -212,7 +229,7 @@ func convert(report trivyReport) *scanner.NormalizedReport {
 
 			nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
 				Fingerprint: fingerprint,
-				FindingKind: "sca_vulnerability",
+				FindingKind: "sca",
 				Title:       v.Title,
 				Description: v.Description,
 				Severity:    severity,

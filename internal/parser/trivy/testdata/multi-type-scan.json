@@ -17,6 +17,8 @@
         "Severity": "CRITICAL",
         "CVSS": {
           "nvd": {
+            "V4Score": 8.4,
+            "V4Vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:N",
             "V3Score": 9.1,
             "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N"
           }

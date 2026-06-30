@@ -10,7 +10,11 @@ import (
 	"time"
 
 	"github.com/vulnserve/vulnserve/internal/db"
+	"github.com/vulnserve/vulnserve/internal/parser"
+	"github.com/vulnserve/vulnserve/internal/repo"
+	"github.com/vulnserve/vulnserve/internal/scanner"
 	"github.com/vulnserve/vulnserve/internal/server"
+	"github.com/vulnserve/vulnserve/internal/usecase"
 )
 
 func main() {
@@ -51,13 +55,31 @@ func main() {
 		}
 	}
 
-	handler := server.NewRouter()
+	pool, err := db.ConnectPool(context.Background(), dbURL)
+	if err != nil {
+		log.Fatalf("connect db: %v", err)
+	}
+	defer pool.Close()
+
+	reg := scanner.NewRegistry()
+	parser.RegisterAll(reg)
+
+	repos := repo.NewRepos(pool)
+
+	uc := usecase.New(usecase.Deps{
+		Repos:    repos,
+		Registry: reg,
+	})
+
+	handler := server.NewRouter(server.RouterConfig{
+		Usecases: uc,
+	})
 
 	srv := &http.Server{
 		Addr:         addr,
 		Handler:      handler,
 		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 15 * time.Second,
+		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  60 * time.Second,
 	}
 

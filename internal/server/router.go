@@ -6,9 +6,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/vulnserve/vulnserve/internal/usecase"
 )
 
-func NewRouter() http.Handler {
+type RouterConfig struct {
+	Usecases *usecase.Usecases
+}
+
+func NewRouter(cfg RouterConfig) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -16,7 +21,10 @@ func NewRouter() http.Handler {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Timeout(30 * time.Second))
 
+	h := NewHandler(cfg.Usecases)
+
 	r.Get("/api/v1/health", healthHandler)
+	r.Post("/api/v1/reports", h.IngestReport)
 
 	return r
 }

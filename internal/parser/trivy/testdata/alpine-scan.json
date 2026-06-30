@@ -22,6 +22,8 @@
         "CweIDs": ["CWE-200"],
         "CVSS": {
           "nvd": {
+            "V4Score": 4.0,
+            "V4Vector": "CVSS:4.0/AV:N/AC:H/AT:N/PR:N/UI:N/VC:L/VI:N/VA:N",
             "V3Score": 3.7,
             "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N"
           }
@@ -55,6 +57,8 @@
         "CweIDs": ["CWE-20"],
         "CVSS": {
           "nvd": {
+            "V4Score": 6.0,
+            "V4Vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H",
             "V3Score": 7.5,
             "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
           }
