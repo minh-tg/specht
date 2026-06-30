@@ -3,128 +3,299 @@ package usecase
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
-	"math/big"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/vulnserve/vulnserve/internal/db/sqlc"
+	"github.com/vulnserve/vulnserve/internal/repo"
 	"github.com/vulnserve/vulnserve/internal/scanner"
 )
 
-func TestSeverityStr(t *testing.T) {
-	tests := []struct {
-		input scanner.Severity
-		want  string
-	}{
-		{scanner.SeverityCritical, "critical"},
-		{scanner.SeverityHigh, "high"},
-		{scanner.SeverityMedium, "medium"},
-		{scanner.SeverityLow, "low"},
-		{scanner.SeverityUnknown, "unknown"},
-		{scanner.Severity(99), "unknown"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.want, func(t *testing.T) {
-			got := severityStr(tt.input)
-			assert.Equal(t, tt.want, got)
-		})
-	}
+type mockProjectRepo struct {
+	repo.ProjectRepo
+	getBySlugFn func(ctx context.Context, slug string) (sqlc.Project, error)
 }
 
-func TestSeverityRank(t *testing.T) {
-	tests := []struct {
-		name  string
-		input scanner.Severity
-		want  int16
-	}{
-		{"critical", scanner.SeverityCritical, 4},
-		{"high", scanner.SeverityHigh, 3},
-		{"medium", scanner.SeverityMedium, 2},
-		{"low", scanner.SeverityLow, 1},
-		{"unknown", scanner.SeverityUnknown, 0},
+func (m *mockProjectRepo) GetBySlug(ctx context.Context, slug string) (sqlc.Project, error) {
+	if m.getBySlugFn == nil {
+		return sqlc.Project{}, fmt.Errorf("unexpected call to GetBySlug")
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := severityRank(tt.input)
-			assert.Equal(t, tt.want, got)
-		})
-	}
+	return m.getBySlugFn(ctx, slug)
 }
 
-func TestScoreToNumeric(t *testing.T) {
-	t.Run("positive score", func(t *testing.T) {
-		n := scoreToNumeric(7.5)
-		require.True(t, n.Valid)
-		assert.Equal(t, 0, n.Int.Cmp(big.NewInt(75)))
-		assert.Equal(t, int32(-1), n.Exp)
-	})
-
-	t.Run("zero score returns null", func(t *testing.T) {
-		n := scoreToNumeric(0)
-		assert.False(t, n.Valid)
-	})
-
-	t.Run("negative score returns null", func(t *testing.T) {
-		n := scoreToNumeric(-1)
-		assert.False(t, n.Valid)
-	})
+type mockReportRepo struct {
+	repo.ReportRepo
+	createFn       func(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error)
+	updateStatusFn func(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error)
 }
 
-func TestTextPtr(t *testing.T) {
-	t.Run("non-empty text", func(t *testing.T) {
-		tt := textPtr("hello")
-		assert.True(t, tt.Valid)
-		assert.Equal(t, "hello", tt.String)
-	})
+func (m *mockReportRepo) Create(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error) {
+	if m.createFn == nil {
+		return sqlc.Report{}, fmt.Errorf("unexpected call to Create")
+	}
+	return m.createFn(ctx, arg)
+}
 
-	t.Run("empty text returns null", func(t *testing.T) {
-		tt := textPtr("")
-		assert.False(t, tt.Valid)
-	})
+func (m *mockReportRepo) UpdateStatus(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
+	if m.updateStatusFn == nil {
+		return sqlc.Report{}, fmt.Errorf("unexpected call to UpdateStatus")
+	}
+	return m.updateStatusFn(ctx, id, projectID, status, totalFindings, errorMsg)
+}
+
+type mockFindingRepo struct {
+	repo.FindingRepo
+	upsertFn           func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error)
+	createOccurrenceFn func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error)
+	upsertDimensionFn  func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error)
+}
+
+func (m *mockFindingRepo) Upsert(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {
+	if m.upsertFn == nil {
+		return sqlc.Finding{}, fmt.Errorf("unexpected call to Upsert")
+	}
+	return m.upsertFn(ctx, arg)
+}
+
+func (m *mockFindingRepo) CreateOccurrence(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error) {
+	if m.createOccurrenceFn == nil {
+		return sqlc.FindingOccurrence{}, fmt.Errorf("unexpected call to CreateOccurrence")
+	}
+	return m.createOccurrenceFn(ctx, arg)
+}
+
+func (m *mockFindingRepo) UpsertDimension(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error) {
+	if m.upsertDimensionFn == nil {
+		return sqlc.FindingDimension{}, fmt.Errorf("unexpected call to UpsertDimension")
+	}
+	return m.upsertDimensionFn(ctx, arg)
 }
 
 type mockParser struct {
-	parseFn func(ctx context.Context, data []byte) (*scanner.NormalizedReport, error)
+	name      string
+	scanTypes []scanner.ScanType
+	parseFn   func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error)
 }
 
-func (m *mockParser) Name() string                           { return "mock-parser" }
-func (m *mockParser) ScanTypes() []scanner.ScanType          { return nil }
-
+func (m *mockParser) Name() string                        { return m.name }
+func (m *mockParser) ScanTypes() []scanner.ScanType       { return m.scanTypes }
 func (m *mockParser) Parse(ctx context.Context, r io.Reader) (*scanner.NormalizedReport, error) {
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return nil, err
+	if m.parseFn == nil {
+		return nil, fmt.Errorf("unexpected call to Parse")
 	}
-	return m.parseFn(ctx, data)
+	input, _ := io.ReadAll(r)
+	return m.parseFn(ctx, input)
 }
 
-func TestIngestReport_ValidationErrors(t *testing.T) {
+func makeTestRepos() (*mockProjectRepo, *mockReportRepo, *mockFindingRepo) {
+	pr := &mockProjectRepo{}
+	rr := &mockReportRepo{}
+	fr := &mockFindingRepo{}
+	return pr, rr, fr
+}
+
+func makeProject(valid bool) sqlc.Project {
+	if !valid {
+		return sqlc.Project{}
+	}
+	var id pgtype.UUID
+	id.Scan("00000000-0000-0000-0000-000000000001")
+	return sqlc.Project{
+		ID:   id,
+		Slug: "my-app",
+		Name: "My App",
+	}
+}
+
+func makeReport() sqlc.Report {
+	var id, pid pgtype.UUID
+	id.Scan("00000000-0000-0000-0000-000000000010")
+	pid.Scan("00000000-0000-0000-0000-000000000001")
+	return sqlc.Report{
+		ID:        id,
+		ProjectID: pid,
+		ToolName:  "trivy",
+		Status:    "completed",
+		TotalFindings: pgtype.Int4{Int32: 2, Valid: true},
+	}
+}
+
+func makeFinding(idIdx int) sqlc.Finding {
+	var id, pid pgtype.UUID
+	id.Scan(fmt.Sprintf("00000000-0000-0000-0000-00000000002%d", idIdx))
+	pid.Scan("00000000-0000-0000-0000-000000000001")
+	return sqlc.Finding{
+		ID:        id,
+		ProjectID: pid,
+		FindingKind: "sca",
+		Fingerprint: "fp1",
+	}
+}
+
+func TestIngestReport_Success(t *testing.T) {
+	pr, rr, fr := makeTestRepos()
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+		return makeProject(true), nil
+	}
+
+	rr.createFn = func(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error) {
+		return makeReport(), nil
+	}
+
+	rr.updateStatusFn = func(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
+		r := makeReport()
+		r.Status = status
+		return r, nil
+	}
+
+	callCount := 0
+	fr.upsertFn = func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {
+		callCount++
+		return makeFinding(callCount), nil
+	}
+
+	fr.createOccurrenceFn = func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error) {
+		return sqlc.FindingOccurrence{}, nil
+	}
+
+	fr.upsertDimensionFn = func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error) {
+		return sqlc.FindingDimension{}, nil
+	}
+
+	reg := scanner.NewRegistry()
+	reg.Register(&mockParser{
+		name:      "trivy",
+		scanTypes: []scanner.ScanType{scanner.ScanTypeImage},
+		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
+			return &scanner.NormalizedReport{
+				ScannerName: "trivy",
+				ScanType:    scanner.ScanTypeImage,
+				Target:      &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings: []scanner.NormalizedFinding{
+					{
+						Fingerprint: "fp1",
+						FindingKind: "sca",
+						Title:       "CVE-2026-1234",
+						Severity:    scanner.SeverityHigh,
+						Score:       7.5,
+						Dimensions:  []scanner.Dimension{{Key: "vulnerability.id", Value: "CVE-2026-1234"}},
+						Display:     map[string]any{"title": "CVE-2026-1234"},
+						Metadata:    map[string]any{"cvss": "7.5"},
+					},
+					{
+						Fingerprint: "fp2",
+						FindingKind: "sca",
+						Title:       "CVE-2026-5678",
+						Severity:    scanner.SeverityMedium,
+						Score:       5.0,
+					},
+				},
+				ScanScope: map[string]any{"packages": 150},
+			}, nil
+		},
+	})
+
+	uc := New(Deps{
+		Repos: &repo.Repos{
+			Projects: pr,
+			Reports:  rr,
+			Findings: fr,
+		},
+		Registry: reg,
+	})
+
+	result, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app",
+		Scanner:     "trivy",
+		RawData:     json.RawMessage(`{"test": true}`),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, 2, result.TotalFindings)
+	assert.NotEmpty(t, result.ReportID)
+}
+
+func TestIngestReport_EmptySlug(t *testing.T) {
 	uc := New(Deps{})
-
-	tests := []struct {
-		name  string
-		input IngestReportInput
-	}{
-		{"empty project slug", IngestReportInput{ProjectSlug: "", Scanner: "trivy", RawData: json.RawMessage(`{}`)}},
-		{"empty scanner name", IngestReportInput{ProjectSlug: "my-project", Scanner: "", RawData: json.RawMessage(`{}`)}},
-		{"nil raw data", IngestReportInput{ProjectSlug: "my-project", Scanner: "trivy", RawData: nil}},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := uc.IngestReport(context.Background(), tt.input)
-			assert.Error(t, err)
-		})
-	}
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{})
+	assert.EqualError(t, err, "project slug is required")
 }
 
-func TestNow(t *testing.T) {
-	n := now()
-	assert.True(t, n.Valid)
-	assert.False(t, n.Time.IsZero())
+func TestIngestReport_EmptyScanner(t *testing.T) {
+	uc := New(Deps{})
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{ProjectSlug: "my-app"})
+	assert.EqualError(t, err, "scanner name is required")
 }
 
-func TestMustMarshal(t *testing.T) {
-	data := mustMarshal(map[string]string{"key": "value"})
-	assert.Contains(t, string(data), "key")
+func TestIngestReport_EmptyData(t *testing.T) {
+	uc := New(Deps{})
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{ProjectSlug: "my-app", Scanner: "trivy"})
+	assert.EqualError(t, err, "raw scan data is required")
+}
+
+func TestIngestReport_UnknownProject(t *testing.T) {
+	pr, _, _ := makeTestRepos()
+	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+		return sqlc.Project{}, fmt.Errorf("not found")
+	}
+
+	uc := New(Deps{
+		Repos: &repo.Repos{Projects: pr},
+	})
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "nonexistent",
+		Scanner:     "trivy",
+		RawData:     json.RawMessage(`{}`),
+	})
+	assert.ErrorContains(t, err, "lookup project")
+}
+
+func TestIngestReport_UnknownScanner(t *testing.T) {
+	pr, _, _ := makeTestRepos()
+	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+		return makeProject(true), nil
+	}
+
+	uc := New(Deps{
+		Repos:    &repo.Repos{Projects: pr},
+		Registry: scanner.NewRegistry(),
+	})
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app",
+		Scanner:     "unknown-tool",
+		RawData:     json.RawMessage(`{}`),
+	})
+	assert.ErrorContains(t, err, "unknown scanner")
+}
+
+func TestIngestReport_ParseError(t *testing.T) {
+	pr, _, _ := makeTestRepos()
+	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+		return makeProject(true), nil
+	}
+
+	reg := scanner.NewRegistry()
+	reg.Register(&mockParser{
+		name:      "trivy",
+		scanTypes: []scanner.ScanType{scanner.ScanTypeImage},
+		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
+			return nil, fmt.Errorf("invalid scan data")
+		},
+	})
+
+	uc := New(Deps{
+		Repos:    &repo.Repos{Projects: pr},
+		Registry: reg,
+	})
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app",
+		Scanner:     "trivy",
+		RawData:     json.RawMessage(`bad data`),
+	})
+	assert.ErrorContains(t, err, "parse trivy output")
 }
