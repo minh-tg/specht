@@ -1,0 +1,75 @@
+[
+  {
+    "Target": "alpine:3.20 (alpine 3.20.3)",
+    "Class": "os-pkgs",
+    "Type": "alpine",
+    "Vulnerabilities": [
+      {
+        "VulnerabilityID": "CVE-2024-9143",
+        "PkgID": "libcrypto3@3.3.2-r0",
+        "PkgName": "libcrypto3",
+        "PkgIdentifier": {
+          "PURL": "pkg:apk/alpine/libcrypto3@3.3.2-r0?arch=aarch64&distro=3.20.3",
+          "UID": "f705555b49cd2259"
+        },
+        "InstalledVersion": "3.3.2-r0",
+        "FixedVersion": "3.3.2-r1",
+        "Status": "fixed",
+        "Layer": {
+          "DiffID": "sha256:651d9022c23486dfbd396c13db293af6845731cbd098a5f5606db4bc9f5573e8"
+        },
+        "Severity": "LOW",
+        "CweIDs": ["CWE-200"],
+        "CVSS": {
+          "nvd": {
+            "V3Score": 3.7,
+            "V3Vector": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:N/A:N"
+          }
+        },
+        "Title": "openssl: Low-level GF(2^m) parameters lead to OOB memory access",
+        "Description": "Use of the low-level GF(2^m) elliptic curve APIs...",
+        "PublishedDate": "2024-11-15T00:00:00Z",
+        "LastModifiedDate": "2024-12-01T00:00:00Z",
+        "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-9143",
+        "DataSource": {
+          "ID": "alpine",
+          "Name": "Alpine Secdb",
+          "URL": "https://secdb.alpinelinux.org/"
+        }
+      },
+      {
+        "VulnerabilityID": "CVE-2024-8888",
+        "PkgID": "libssl3@3.3.2-r0",
+        "PkgName": "libssl3",
+        "PkgIdentifier": {
+          "PURL": "pkg:apk/alpine/libssl3@3.3.2-r0?arch=aarch64&distro=3.20.3",
+          "UID": "a805555b49cd2260"
+        },
+        "InstalledVersion": "3.3.2-r0",
+        "FixedVersion": "3.3.2-r1",
+        "Status": "fixed",
+        "Layer": {
+          "DiffID": "sha256:651d9022c23486dfbd396c13db293af6845731cbd098a5f5606db4bc9f5573e8"
+        },
+        "Severity": "HIGH",
+        "CweIDs": ["CWE-20"],
+        "CVSS": {
+          "nvd": {
+            "V3Score": 7.5,
+            "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          }
+        },
+        "Title": "libssl3: Denial of service via crafted certificate",
+        "Description": "A denial of service vulnerability in libssl3...",
+        "PublishedDate": "2024-10-01T00:00:00Z",
+        "LastModifiedDate": "2024-10-15T00:00:00Z",
+        "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-8888",
+        "DataSource": {
+          "ID": "alpine",
+          "Name": "Alpine Secdb",
+          "URL": "https://secdb.alpinelinux.org/"
+        }
+      }
+    ]
+  }
+]
