@@ -1,0 +1,24 @@
+# Go
+go.sum
+*.exe
+*.test
+*.out
+vendor/
+
+# Node
+node_modules/
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db

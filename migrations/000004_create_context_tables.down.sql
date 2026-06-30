@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS artifacts;
+DROP TABLE IF EXISTS targets;
+DROP TABLE IF EXISTS environments;
