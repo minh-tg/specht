@@ -7,12 +7,12 @@ import (
 	"github.com/vulnserve/vulnserve/internal/db/sqlc"
 )
 
-type ReportRepo struct {
+type pgReportRepo struct {
 	q *sqlc.Queries
 }
 
-func NewReportRepo(q *sqlc.Queries) *ReportRepo {
-	return &ReportRepo{q: q}
+func newReportRepo(q *sqlc.Queries) *pgReportRepo {
+	return &pgReportRepo{q: q}
 }
 
 type CreateReportParams struct {
@@ -28,7 +28,7 @@ type CreateReportParams struct {
 	ParserVersion   pgtype.Text
 }
 
-func (r *ReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc.Report, error) {
+func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc.Report, error) {
 	return r.q.CreateReport(ctx, sqlc.CreateReportParams{
 		ProjectID:       arg.ProjectID,
 		ToolName:        arg.ToolName,
@@ -45,11 +45,11 @@ func (r *ReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc.R
 	})
 }
 
-func (r *ReportRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Report, error) {
+func (r *pgReportRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Report, error) {
 	return r.q.GetReportByID(ctx, id)
 }
 
-func (r *ReportRepo) UpdateStatus(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
+func (r *pgReportRepo) UpdateStatus(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
 	return r.q.UpdateReportStatus(ctx, sqlc.UpdateReportStatusParams{
 		ID:            id,
 		ProjectID:     projectID,

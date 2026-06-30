@@ -7,12 +7,12 @@ import (
 	"github.com/vulnserve/vulnserve/internal/db/sqlc"
 )
 
-type FindingRepo struct {
+type pgFindingRepo struct {
 	q *sqlc.Queries
 }
 
-func NewFindingRepo(q *sqlc.Queries) *FindingRepo {
-	return &FindingRepo{q: q}
+func newFindingRepo(q *sqlc.Queries) *pgFindingRepo {
+	return &pgFindingRepo{q: q}
 }
 
 type UpsertFindingParams struct {
@@ -27,7 +27,7 @@ type UpsertFindingParams struct {
 	LastSeenAt       pgtype.Timestamptz
 }
 
-func (r *FindingRepo) Upsert(ctx context.Context, arg UpsertFindingParams) (sqlc.Finding, error) {
+func (r *pgFindingRepo) Upsert(ctx context.Context, arg UpsertFindingParams) (sqlc.Finding, error) {
 	return r.q.UpsertFinding(ctx, sqlc.UpsertFindingParams{
 		ProjectID:           arg.ProjectID,
 		FindingKind:         arg.FindingKind,
@@ -59,7 +59,7 @@ type CreateOccurrenceParams struct {
 	Metadata       []byte
 }
 
-func (r *FindingRepo) CreateOccurrence(ctx context.Context, arg CreateOccurrenceParams) (sqlc.FindingOccurrence, error) {
+func (r *pgFindingRepo) CreateOccurrence(ctx context.Context, arg CreateOccurrenceParams) (sqlc.FindingOccurrence, error) {
 	return r.q.CreateOccurrence(ctx, sqlc.CreateOccurrenceParams{
 		FindingID:      arg.FindingID,
 		ReportID:       arg.ReportID,
@@ -84,7 +84,7 @@ type UpsertDimensionParams struct {
 	Source    pgtype.Text
 }
 
-func (r *FindingRepo) UpsertDimension(ctx context.Context, arg UpsertDimensionParams) (sqlc.FindingDimension, error) {
+func (r *pgFindingRepo) UpsertDimension(ctx context.Context, arg UpsertDimensionParams) (sqlc.FindingDimension, error) {
 	return r.q.UpsertDimension(ctx, sqlc.UpsertDimensionParams{
 		FindingID: arg.FindingID,
 		DimKey:    arg.Key,

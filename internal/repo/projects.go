@@ -6,14 +6,14 @@ import (
 	"github.com/vulnserve/vulnserve/internal/db/sqlc"
 )
 
-type ProjectRepo struct {
+type pgProjectRepo struct {
 	q *sqlc.Queries
 }
 
-func NewProjectRepo(q *sqlc.Queries) *ProjectRepo {
-	return &ProjectRepo{q: q}
+func newProjectRepo(q *sqlc.Queries) *pgProjectRepo {
+	return &pgProjectRepo{q: q}
 }
 
-func (r *ProjectRepo) GetBySlug(ctx context.Context, slug string) (sqlc.Project, error) {
+func (r *pgProjectRepo) GetBySlug(ctx context.Context, slug string) (sqlc.Project, error) {
 	return r.q.GetProjectBySlug(ctx, slug)
 }
