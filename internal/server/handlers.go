@@ -15,12 +15,40 @@ import (
 	"github.com/vulnserve/vulnserve/internal/usecase"
 )
 
-func AuthMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ident := &auth.Identity{UserID: "anonymous"}
-		ctx := auth.ContextWithIdentity(r.Context(), ident)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+func AuthMiddleware(jwtAuth *auth.JWTAuthenticator, apiKeyAuth *auth.APIKeyAuthenticator) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path == "/api/v1/health" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			header := r.Header.Get("Authorization")
+			if !strings.HasPrefix(header, "Bearer ") {
+				respondError(w, http.StatusUnauthorized, "missing_token", "authorization header required")
+				return
+			}
+			token := strings.TrimPrefix(header, "Bearer ")
+
+			ident, err := jwtAuth.Authenticate(r.Context(), token)
+			if err == nil {
+				ctx := auth.ContextWithIdentity(r.Context(), ident)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+
+			if apiKeyAuth != nil {
+				ident, err = apiKeyAuth.Authenticate(r.Context(), token)
+				if err == nil {
+					ctx := auth.ContextWithIdentity(r.Context(), ident)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
+			}
+
+			respondError(w, http.StatusUnauthorized, "invalid_token", "invalid or expired token")
+		})
+	}
 }
 
 func LoggerMiddleware(next http.Handler) http.Handler {
@@ -41,6 +69,11 @@ type usecaseInterface interface {
 	ListFindings(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error)
 	ListReports(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
 	GetReport(ctx context.Context, reportID pgtype.UUID) (*usecase.ReportResponse, error)
+	Register(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
+	Login(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
+	CreateAPIKey(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error)
+	ListAPIKeys(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
+	RevokeAPIKey(ctx context.Context, projectSlug, keyID string) error
 }
 
 type Handler struct {
@@ -170,6 +203,94 @@ func (h *Handler) GetReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, report)
+}
+
+func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+		return
+	}
+
+	result, err := h.uc.Register(r.Context(), req.Email, req.Password)
+	if err != nil {
+		respondError(w, http.StatusUnprocessableEntity, "registration_failed", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusCreated, result)
+}
+
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+		return
+	}
+
+	result, err := h.uc.Login(r.Context(), req.Email, req.Password)
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, "login_failed", "invalid email or password")
+		return
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Project string `json:"project"`
+		Name    string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+		return
+	}
+	if req.Project == "" || req.Name == "" {
+		respondError(w, http.StatusBadRequest, "missing_field", "project and name are required")
+		return
+	}
+
+	result, err := h.uc.CreateAPIKey(r.Context(), req.Project, req.Name)
+	if err != nil {
+		respondError(w, http.StatusUnprocessableEntity, "create_failed", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusCreated, result)
+}
+
+func (h *Handler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
+	project := r.URL.Query().Get("project")
+	if project == "" {
+		respondError(w, http.StatusBadRequest, "missing_field", "project query param is required")
+		return
+	}
+
+	keys, err := h.uc.ListAPIKeys(r.Context(), project)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "not_found", "project not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, keys)
+}
+
+func (h *Handler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
+	project := r.URL.Query().Get("project")
+	keyID := chi.URLParam(r, "id")
+	if project == "" || keyID == "" {
+		respondError(w, http.StatusBadRequest, "missing_field", "project and key id are required")
+		return
+	}
+
+	if err := h.uc.RevokeAPIKey(r.Context(), project, keyID); err != nil {
+		respondError(w, http.StatusUnprocessableEntity, "revoke_failed", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {

@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
+	"github.com/vulnserve/vulnserve/internal/auth"
 	"github.com/stretchr/testify/require"
 	"github.com/vulnserve/vulnserve/internal/usecase"
 )
@@ -24,6 +25,11 @@ type mockUsecases struct {
 	listReportsFn  func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
 	getReportFn    func(ctx context.Context, reportID pgtype.UUID) (*usecase.ReportResponse, error)
 	ingestReportFn func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
+	registerFn     func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
+	loginFn        func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
+	createAPIKeyFn func(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error)
+	listAPIKeysFn  func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
+	revokeAPIKeyFn func(ctx context.Context, projectSlug, keyID string) error
 }
 
 func (m *mockUsecases) ListProjects(ctx context.Context) ([]usecase.ProjectResponse, error) {
@@ -68,6 +74,41 @@ func (m *mockUsecases) IngestReport(ctx context.Context, input usecase.IngestRep
 	return m.ingestReportFn(ctx, input)
 }
 
+func (m *mockUsecases) Register(ctx context.Context, email, password string) (*usecase.AuthResponse, error) {
+	if m.registerFn == nil {
+		return nil, fmt.Errorf("unexpected call to Register")
+	}
+	return m.registerFn(ctx, email, password)
+}
+
+func (m *mockUsecases) Login(ctx context.Context, email, password string) (*usecase.AuthResponse, error) {
+	if m.loginFn == nil {
+		return nil, fmt.Errorf("unexpected call to Login")
+	}
+	return m.loginFn(ctx, email, password)
+}
+
+func (m *mockUsecases) CreateAPIKey(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error) {
+	if m.createAPIKeyFn == nil {
+		return nil, fmt.Errorf("unexpected call to CreateAPIKey")
+	}
+	return m.createAPIKeyFn(ctx, projectSlug, name)
+}
+
+func (m *mockUsecases) ListAPIKeys(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error) {
+	if m.listAPIKeysFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListAPIKeys")
+	}
+	return m.listAPIKeysFn(ctx, projectSlug)
+}
+
+func (m *mockUsecases) RevokeAPIKey(ctx context.Context, projectSlug, keyID string) error {
+	if m.revokeAPIKeyFn == nil {
+		return fmt.Errorf("unexpected call to RevokeAPIKey")
+	}
+	return m.revokeAPIKeyFn(ctx, projectSlug, keyID)
+}
+
 var now = time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
 
 func sampleProjects() []usecase.ProjectResponse {
@@ -95,7 +136,7 @@ func TestHealthHandler(t *testing.T) {
 	req := httptest.NewRequest("GET", "/api/v1/health", nil)
 	w := httptest.NewRecorder()
 
-	router := NewRouter(RouterConfig{Usecases: nil})
+	router := NewRouter(RouterConfig{Usecases: nil, JWTAuth: testJWTAuth})
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -203,6 +244,11 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/projects/{slug}/findings", h.ListFindings)
 	r.Get("/api/v1/projects/{slug}/reports", h.ListReports)
 	r.Get("/api/v1/reports/{id}", h.GetReport)
+	r.Post("/api/v1/auth/register", h.Register)
+	r.Post("/api/v1/auth/login", h.Login)
+	r.Post("/api/v1/auth/apikeys", h.CreateAPIKey)
+	r.Get("/api/v1/auth/apikeys", h.ListAPIKeys)
+	r.Delete("/api/v1/auth/apikeys/{id}", h.RevokeAPIKey)
 	return r
 }
 
@@ -422,8 +468,27 @@ func TestGetReport_InvalidID(t *testing.T) {
 
 var corsMock = &mockUsecases{}
 
+const testJWTSecret = "test-secret-not-for-production-use"
+
+var testJWTAuth = func() *auth.JWTAuthenticator {
+	a, err := auth.NewJWTAuthenticator(testJWTSecret)
+	if err != nil {
+		panic(err)
+	}
+	return a
+}()
+
+func testToken(t *testing.T) string {
+	t.Helper()
+	a, err := auth.NewJWTAuthenticator(testJWTSecret)
+	require.NoError(t, err)
+	tok, err := a.CreateToken("test-user", "test@example.com")
+	require.NoError(t, err)
+	return tok
+}
+
 func TestCORS_DefaultOrigin(t *testing.T) {
-	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: ""})
+	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: "", JWTAuth: testJWTAuth})
 	req := httptest.NewRequest("OPTIONS", "/api/v1/health", nil)
 	req.Header.Set("Origin", "http://localhost:5173")
 	req.Header.Set("Access-Control-Request-Method", "GET")
@@ -436,7 +501,7 @@ func TestCORS_DefaultOrigin(t *testing.T) {
 }
 
 func TestCORS_CustomOrigins(t *testing.T) {
-	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: "https://app.example.com,https://admin.example.com"})
+	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: "https://app.example.com,https://admin.example.com", JWTAuth: testJWTAuth})
 	req := httptest.NewRequest("OPTIONS", "/api/v1/health", nil)
 	req.Header.Set("Origin", "https://app.example.com")
 	req.Header.Set("Access-Control-Request-Method", "GET")
@@ -448,7 +513,7 @@ func TestCORS_CustomOrigins(t *testing.T) {
 }
 
 func TestCORS_DisallowedOrigin(t *testing.T) {
-	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: "http://localhost:5173"})
+	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: "http://localhost:5173", JWTAuth: testJWTAuth})
 	req := httptest.NewRequest("OPTIONS", "/api/v1/health", nil)
 	req.Header.Set("Origin", "https://evil.com")
 	req.Header.Set("Access-Control-Request-Method", "GET")
@@ -460,7 +525,7 @@ func TestCORS_DisallowedOrigin(t *testing.T) {
 }
 
 func TestCORS_HeadersOnGET(t *testing.T) {
-	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: ""})
+	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: "", JWTAuth: testJWTAuth})
 	req := httptest.NewRequest("GET", "/api/v1/health", nil)
 	req.Header.Set("Origin", "http://localhost:5173")
 	w := httptest.NewRecorder()
@@ -477,8 +542,13 @@ func TestNewRouterRoutes(t *testing.T) {
 		listFindingsFn: func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error) { return nil, nil },
 		listReportsFn:  func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error) { return nil, nil },
 		getReportFn:    func(ctx context.Context, id pgtype.UUID) (*usecase.ReportResponse, error) { return nil, nil },
+		registerFn:     func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) { return nil, nil },
+		loginFn:        func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) { return nil, nil },
+		createAPIKeyFn: func(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error) { return nil, nil },
+		listAPIKeysFn:  func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error) { return nil, nil },
+		revokeAPIKeyFn: func(ctx context.Context, projectSlug, keyID string) error { return nil },
 	}
-	router := NewRouter(RouterConfig{Usecases: mock})
+	router := NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth})
 	require.NotNil(t, router)
 
 	t.Run("health endpoint exists", func(t *testing.T) {
@@ -531,10 +601,175 @@ func TestNewRouterRoutes(t *testing.T) {
 		assert.NotEqual(t, http.StatusNotFound, w.Code)
 	})
 
-	t.Run("unknown route returns 404", func(t *testing.T) {
+	t.Run("unauthenticated request returns 401", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/v1/projects", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+	})
+
+	t.Run("unknown route with auth returns 404", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/v1/nonexistent", nil)
+		req.Header.Set("Authorization", "Bearer "+testToken(t))
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusNotFound, w.Code)
 	})
+
+	t.Run("auth register endpoint exists", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/v1/auth/register", strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.NotEqual(t, http.StatusNotFound, w.Code)
+	})
+
+	t.Run("auth login endpoint exists", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.NotEqual(t, http.StatusNotFound, w.Code)
+	})
+
+	t.Run("auth apikeys endpoint exists", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/v1/auth/apikeys", strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.NotEqual(t, http.StatusNotFound, w.Code)
+	})
+}
+
+func TestRegister_Success(t *testing.T) {
+	mock := &mockUsecases{
+		registerFn: func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) {
+			return &usecase.AuthResponse{Token: "tok", UserID: "u1", Email: email}, nil
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"email":"a@b.com","password":"secret"}`)
+	req := httptest.NewRequest("POST", "/api/v1/auth/register", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	var resp usecase.AuthResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "a@b.com", resp.Email)
+}
+
+func TestRegister_InvalidBody(t *testing.T) {
+	router := testRouter(nil)
+	req := httptest.NewRequest("POST", "/api/v1/auth/register", strings.NewReader(`not json`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestLogin_Success(t *testing.T) {
+	mock := &mockUsecases{
+		loginFn: func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) {
+			return &usecase.AuthResponse{Token: "tok", UserID: "u1", Email: email}, nil
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"email":"a@b.com","password":"secret"}`)
+	req := httptest.NewRequest("POST", "/api/v1/auth/login", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.AuthResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "a@b.com", resp.Email)
+}
+
+func TestLogin_Failure(t *testing.T) {
+	mock := &mockUsecases{
+		loginFn: func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) {
+			return nil, fmt.Errorf("invalid email or password")
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"email":"a@b.com","password":"wrong"}`)
+	req := httptest.NewRequest("POST", "/api/v1/auth/login", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestCreateAPIKey_Success(t *testing.T) {
+	mock := &mockUsecases{
+		createAPIKeyFn: func(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error) {
+			return &usecase.APIKeyResponse{ID: "k1", Name: name, KeyPrefix: "vuln_abc", RawKey: "vuln_abc...", CreatedAt: "2026-06-30T12:00:00Z"}, nil
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"project":"my-app","name":"ci-key"}`)
+	req := httptest.NewRequest("POST", "/api/v1/auth/apikeys", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	var resp usecase.APIKeyResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "vuln_abc...", resp.RawKey)
+}
+
+func TestCreateAPIKey_MissingFields(t *testing.T) {
+	router := testRouter(nil)
+	body := strings.NewReader(`{}`)
+	req := httptest.NewRequest("POST", "/api/v1/auth/apikeys", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestListAPIKeys_Success(t *testing.T) {
+	mock := &mockUsecases{
+		listAPIKeysFn: func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error) {
+			return []usecase.APIKeyResponse{{ID: "k1", Name: "ci-key", KeyPrefix: "vuln_abc"}}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/auth/apikeys?project=my-app", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp []usecase.APIKeyResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Len(t, resp, 1)
+}
+
+func TestListAPIKeys_MissingProject(t *testing.T) {
+	router := testRouter(nil)
+	req := httptest.NewRequest("GET", "/api/v1/auth/apikeys", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestRevokeAPIKey_Success(t *testing.T) {
+	mock := &mockUsecases{
+		revokeAPIKeyFn: func(ctx context.Context, projectSlug, keyID string) error { return nil },
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("DELETE", "/api/v1/auth/apikeys/k1?project=my-app", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
 }

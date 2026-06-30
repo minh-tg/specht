@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -9,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/vulnserve/vulnserve/internal/auth"
 	"github.com/vulnserve/vulnserve/internal/db"
 	"github.com/vulnserve/vulnserve/internal/parser"
 	"github.com/vulnserve/vulnserve/internal/repo"
@@ -82,16 +85,36 @@ func main() {
 	reg := scanner.NewRegistry()
 	parser.RegisterAll(reg)
 
+	jwtSecret := os.Getenv("JWT_SECRET")
+
+	jwtAuth, err := auth.NewJWTAuthenticator(jwtSecret)
+	if err != nil {
+		slog.Error("auth setup", "error", err)
+		os.Exit(1)
+	}
+
 	repos := repo.NewRepos(pool)
 
 	uc := usecase.New(usecase.Deps{
 		Repos:    repos,
 		Registry: reg,
+		JWTAuth:  jwtAuth,
 	})
 
 	handler := server.NewRouter(server.RouterConfig{
 		Usecases:    uc,
 		CORSOrigins: corsOrigins,
+		JWTAuth:     jwtAuth,
+		APIKeyLookup: func(ctx context.Context, keyHash string) (string, string, error) {
+			key, err := repos.APIKeys.GetByHash(ctx, keyHash)
+			if err != nil {
+				return "", "", fmt.Errorf("key not found")
+			}
+			if key.RevokedAt.Valid {
+				return "", "", fmt.Errorf("key revoked")
+			}
+			return uuid.UUID(key.ID.Bytes).String(), uuid.UUID(key.ProjectID.Bytes).String(), nil
+		},
 	})
 
 	srv := &http.Server{

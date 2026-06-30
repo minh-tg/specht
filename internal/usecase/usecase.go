@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/vulnserve/vulnserve/internal/auth"
 	"github.com/vulnserve/vulnserve/internal/repo"
 	"github.com/vulnserve/vulnserve/internal/scanner"
 )
@@ -34,6 +35,7 @@ type IngestReportOutput struct {
 type Deps struct {
 	Repos    *repo.Repos
 	Registry *scanner.Registry
+	JWTAuth  *auth.JWTAuthenticator
 }
 
 type Usecases struct {

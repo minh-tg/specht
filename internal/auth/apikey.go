@@ -2,56 +2,48 @@ package auth
 
 import (
 	"context"
-	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
-	"os"
-	"strings"
 )
 
 type APIKeyAuthenticator struct {
-	apiKeys map[string]*Identity
+	lookup func(ctx context.Context, keyHash string) (userID, projectID string, err error)
 }
 
-func NewAPIKeyAuthenticator() (*APIKeyAuthenticator, error) {
-	raw := os.Getenv("API_KEYS")
-	a := &APIKeyAuthenticator{apiKeys: make(map[string]*Identity)}
-	if raw == "" {
-		return a, nil
-	}
-	for _, entry := range strings.Split(raw, ",") {
-		entry = strings.TrimSpace(entry)
-		if entry == "" {
-			continue
-		}
-		parts := strings.SplitN(entry, ":", 2)
-		if len(parts) != 2 {
-			continue
-		}
-		key := strings.TrimSpace(parts[0])
-		userID := strings.TrimSpace(parts[1])
-		if key != "" && userID != "" {
-			a.apiKeys[key] = &Identity{UserID: userID}
-		}
-	}
-	return a, nil
+func NewAPIKeyAuthenticator(lookup func(ctx context.Context, keyHash string) (userID, projectID string, err error)) *APIKeyAuthenticator {
+	return &APIKeyAuthenticator{lookup: lookup}
 }
 
 func (a *APIKeyAuthenticator) Authenticate(ctx context.Context, token string) (*Identity, error) {
-	if ident, ok := a.apiKeys[token]; ok {
-		return ident, nil
-	}
-	// Fallback: HMAC verification using shared secret
-	secret := os.Getenv("API_KEY_SECRET")
-	if secret == "" {
+	hash := sha256.Sum256([]byte(token))
+	keyHash := hex.EncodeToString(hash[:])
+
+	userID, projectID, err := a.lookup(ctx, keyHash)
+	if err != nil {
 		return nil, fmt.Errorf("invalid API key")
 	}
-	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write([]byte(token))
-	expected := hex.EncodeToString(mac.Sum(nil))
-	if ident, ok := a.apiKeys[expected]; ok {
-		return ident, nil
+
+	return &Identity{UserID: userID, ProjectID: projectID, IsAPIKey: true}, nil
+}
+
+func GenerateAPIKey() (rawKey, prefix, hash, lastFour string, err error) {
+	raw := make([]byte, 32)
+	if _, err := rand.Read(raw); err != nil {
+		return "", "", "", "", fmt.Errorf("generate key: %w", err)
 	}
-	return nil, fmt.Errorf("invalid API key")
+	rawKey = "vuln_" + hex.EncodeToString(raw)
+
+	h := sha256.Sum256([]byte(rawKey))
+	hash = hex.EncodeToString(h[:])
+
+	if len(rawKey) > 4 {
+		lastFour = rawKey[len(rawKey)-4:]
+	}
+	if len(rawKey) > 12 {
+		prefix = rawKey[:12]
+	}
+
+	return rawKey, prefix, hash, lastFour, nil
 }

@@ -5,8 +5,10 @@ import (
 )
 
 type Identity struct {
-	UserID string
-	Email  string
+	UserID    string
+	Email     string
+	ProjectID string
+	IsAPIKey  bool
 }
 
 type Authenticator interface {
