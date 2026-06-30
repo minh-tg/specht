@@ -1,11 +1,16 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/vulnserve/vulnserve/internal/auth"
 	"github.com/vulnserve/vulnserve/internal/usecase"
 )
@@ -29,11 +34,20 @@ func LoggerMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-type Handler struct {
-	uc *usecase.Usecases
+type usecaseInterface interface {
+	IngestReport(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
+	ListProjects(ctx context.Context) ([]usecase.ProjectResponse, error)
+	GetProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
+	ListFindings(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error)
+	ListReports(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
+	GetReport(ctx context.Context, reportID pgtype.UUID) (*usecase.ReportResponse, error)
 }
 
-func NewHandler(uc *usecase.Usecases) *Handler {
+type Handler struct {
+	uc usecaseInterface
+}
+
+func NewHandler(uc usecaseInterface) *Handler {
 	return &Handler{uc: uc}
 }
 
@@ -72,6 +86,90 @@ func respondError(w http.ResponseWriter, status int, code, message string) {
 	e.Error.Code = code
 	e.Error.Message = message
 	respondJSON(w, status, e)
+}
+
+func parseIntParam(r *http.Request, name string, defaultVal int32) int32 {
+	val := r.URL.Query().Get(name)
+	if val == "" {
+		return defaultVal
+	}
+	n, err := strconv.Atoi(val)
+	if err != nil || n < 0 {
+		return defaultVal
+	}
+	return int32(n)
+}
+
+func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
+	projects, err := h.uc.ListProjects(r.Context())
+	if err != nil {
+		log.Printf("list projects: %v", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "failed to list projects")
+		return
+	}
+	respondJSON(w, http.StatusOK, projects)
+}
+
+func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	project, err := h.uc.GetProject(r.Context(), slug)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "not_found", "project not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, project)
+}
+
+func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	limit := parseIntParam(r, "limit", 20)
+	offset := parseIntParam(r, "offset", 0)
+
+	var severities, states []string
+	if s := r.URL.Query().Get("severity"); s != "" {
+		severities = strings.Split(s, ",")
+	}
+	if s := r.URL.Query().Get("status"); s != "" {
+		states = strings.Split(s, ",")
+	}
+
+	findings, err := h.uc.ListFindings(r.Context(), slug, severities, states, limit, offset)
+	if err != nil {
+		log.Printf("list findings: %v", err)
+		respondError(w, http.StatusNotFound, "not_found", "project not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, findings)
+}
+
+func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	limit := parseIntParam(r, "limit", 20)
+	offset := parseIntParam(r, "offset", 0)
+
+	reports, err := h.uc.ListReports(r.Context(), slug, limit, offset)
+	if err != nil {
+		log.Printf("list reports: %v", err)
+		respondError(w, http.StatusNotFound, "not_found", "project not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, reports)
+}
+
+func (h *Handler) GetReport(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	var id pgtype.UUID
+	if err := id.Scan(idStr); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_id", "invalid report id")
+		return
+	}
+
+	report, err := h.uc.GetReport(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "not_found", "report not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, report)
 }
 
 func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {

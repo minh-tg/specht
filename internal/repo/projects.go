@@ -14,6 +14,10 @@ func newProjectRepo(q *sqlc.Queries) *pgProjectRepo {
 	return &pgProjectRepo{q: q}
 }
 
+func (r *pgProjectRepo) List(ctx context.Context) ([]sqlc.Project, error) {
+	return r.q.ListProjects(ctx)
+}
+
 func (r *pgProjectRepo) GetBySlug(ctx context.Context, slug string) (sqlc.Project, error) {
 	return r.q.GetProjectBySlug(ctx, slug)
 }

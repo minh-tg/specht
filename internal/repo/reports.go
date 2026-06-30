@@ -49,6 +49,14 @@ func (r *pgReportRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Report
 	return r.q.GetReportByID(ctx, id)
 }
 
+func (r *pgReportRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, limit, offset int32) ([]sqlc.Report, error) {
+	return r.q.ListReportsByProject(ctx, sqlc.ListReportsByProjectParams{
+		ProjectID: projectID,
+		Limit:     limit,
+		Offset:    offset,
+	})
+}
+
 func (r *pgReportRepo) UpdateStatus(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
 	return r.q.UpdateReportStatus(ctx, sqlc.UpdateReportStatusParams{
 		ID:            id,

@@ -89,6 +89,66 @@ func (q *Queries) CreateOccurrence(ctx context.Context, arg CreateOccurrencePara
 	return i, err
 }
 
+const listFindingsByProject = `-- name: ListFindingsByProject :many
+SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at FROM findings
+WHERE project_id = $1
+  AND (array_length($2::text[], 1) IS NULL OR current_severity = ANY($2))
+  AND (array_length($3::text[], 1) IS NULL OR state = ANY($3))
+ORDER BY current_severity_rank DESC, created_at DESC
+LIMIT $4 OFFSET $5
+`
+
+type ListFindingsByProjectParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	Column2   []string    `json:"column_2"`
+	Column3   []string    `json:"column_3"`
+	Limit     int32       `json:"limit"`
+	Offset    int32       `json:"offset"`
+}
+
+func (q *Queries) ListFindingsByProject(ctx context.Context, arg ListFindingsByProjectParams) ([]Finding, error) {
+	rows, err := q.db.Query(ctx, listFindingsByProject,
+		arg.ProjectID,
+		arg.Column2,
+		arg.Column3,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Finding
+	for rows.Next() {
+		var i Finding
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.FindingKind,
+			&i.Fingerprint,
+			&i.CurrentTitle,
+			&i.CurrentSeverity,
+			&i.CurrentSeverityRank,
+			&i.CurrentScore,
+			&i.State,
+			&i.TriageStatus,
+			&i.AssigneeID,
+			&i.FirstSeenAt,
+			&i.LastSeenAt,
+			&i.FixedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertDimension = `-- name: UpsertDimension :one
 INSERT INTO finding_dimensions (
     finding_id, dim_key, dim_value, source

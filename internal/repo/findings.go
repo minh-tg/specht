@@ -27,6 +27,16 @@ type UpsertFindingParams struct {
 	LastSeenAt       pgtype.Timestamptz
 }
 
+func (r *pgFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, severities, states []string, limit, offset int32) ([]sqlc.Finding, error) {
+	return r.q.ListFindingsByProject(ctx, sqlc.ListFindingsByProjectParams{
+		ProjectID: projectID,
+		Column2:   severities,
+		Column3:   states,
+		Limit:     limit,
+		Offset:    offset,
+	})
+}
+
 func (r *pgFindingRepo) Upsert(ctx context.Context, arg UpsertFindingParams) (sqlc.Finding, error) {
 	return r.q.UpsertFinding(ctx, sqlc.UpsertFindingParams{
 		ProjectID:           arg.ProjectID,

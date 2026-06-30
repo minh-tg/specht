@@ -20,6 +20,12 @@ INSERT INTO reports (
 -- name: GetReportByID :one
 SELECT * FROM reports WHERE id = $1;
 
+-- name: ListReportsByProject :many
+SELECT * FROM reports
+WHERE project_id = $1
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3;
+
 -- name: UpdateReportStatus :one
 UPDATE reports SET
     status = $2,

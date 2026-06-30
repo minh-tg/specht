@@ -141,6 +141,63 @@ func (q *Queries) GetReportByID(ctx context.Context, id pgtype.UUID) (Report, er
 	return i, err
 }
 
+const listReportsByProject = `-- name: ListReportsByProject :many
+SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at FROM reports
+WHERE project_id = $1
+ORDER BY created_at DESC
+LIMIT $2 OFFSET $3
+`
+
+type ListReportsByProjectParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	Limit     int32       `json:"limit"`
+	Offset    int32       `json:"offset"`
+}
+
+func (q *Queries) ListReportsByProject(ctx context.Context, arg ListReportsByProjectParams) ([]Report, error) {
+	rows, err := q.db.Query(ctx, listReportsByProject, arg.ProjectID, arg.Limit, arg.Offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Report
+	for rows.Next() {
+		var i Report
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.ToolName,
+			&i.ToolVersion,
+			&i.ScanType,
+			&i.TargetID,
+			&i.ArtifactID,
+			&i.EnvironmentID,
+			&i.ScanTarget,
+			&i.ScanScope,
+			&i.ScanScopeHash,
+			&i.ScanCompleteness,
+			&i.ScannerConfigHash,
+			&i.Branch,
+			&i.CommitSha,
+			&i.Status,
+			&i.TotalFindings,
+			&i.ParserVersion,
+			&i.StartedAt,
+			&i.CompletedAt,
+			&i.ErrorMessage,
+			&i.RawReportHash,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateReportStatus = `-- name: UpdateReportStatus :one
 UPDATE reports SET
     status = $2,

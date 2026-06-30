@@ -38,6 +38,14 @@ INSERT INTO finding_occurrences (
 ) ON CONFLICT (finding_id, report_id) DO NOTHING
 RETURNING *;
 
+-- name: ListFindingsByProject :many
+SELECT * FROM findings
+WHERE project_id = $1
+  AND (array_length($2::text[], 1) IS NULL OR current_severity = ANY($2))
+  AND (array_length($3::text[], 1) IS NULL OR state = ANY($3))
+ORDER BY current_severity_rank DESC, created_at DESC
+LIMIT $4 OFFSET $5;
+
 -- name: UpsertDimension :one
 INSERT INTO finding_dimensions (
     finding_id, dim_key, dim_value, source

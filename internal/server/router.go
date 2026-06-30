@@ -6,11 +6,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/vulnserve/vulnserve/internal/usecase"
 )
 
 type RouterConfig struct {
-	Usecases *usecase.Usecases
+	Usecases usecaseInterface
 }
 
 func NewRouter(cfg RouterConfig) http.Handler {
@@ -25,6 +24,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	h := NewHandler(cfg.Usecases)
 
 	r.Get("/api/v1/health", healthHandler)
+	r.Get("/api/v1/projects", h.ListProjects)
+	r.Get("/api/v1/projects/{slug}", h.GetProject)
+	r.Get("/api/v1/projects/{slug}/findings", h.ListFindings)
+	r.Get("/api/v1/projects/{slug}/reports", h.ListReports)
+	r.Get("/api/v1/reports/{id}", h.GetReport)
 	r.Post("/api/v1/reports", h.IngestReport)
 
 	return r
