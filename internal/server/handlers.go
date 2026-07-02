@@ -11,8 +11,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/vulnserve/vulnserve/internal/auth"
-	"github.com/vulnserve/vulnserve/internal/usecase"
+	"github.com/xMinhx/specht/internal/auth"
+	"github.com/xMinhx/specht/internal/usecase"
 )
 
 func AuthMiddleware(jwtAuth *auth.JWTAuthenticator, apiKeyAuth *auth.APIKeyAuthenticator) func(http.Handler) http.Handler {
@@ -92,11 +92,14 @@ type ingestRequest struct {
 	RawData       json.RawMessage `json:"raw_data"`
 	Branch        string          `json:"branch,omitempty"`
 	CommitSha     string          `json:"commit_sha,omitempty"`
+	GateSeverity  string          `json:"gate_severity,omitempty"`
+	GateStatus    string          `json:"gate_status,omitempty"`
 }
 
 type ingestResponse struct {
-	ReportID      string `json:"report_id"`
-	TotalFindings int    `json:"total_findings"`
+	ReportID          string `json:"report_id"`
+	TotalFindings     int    `json:"total_findings"`
+	ThresholdBreached bool   `json:"threshold_breached"`
 }
 
 type apiError struct {
@@ -313,6 +316,14 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var gateSeverity, gateStatus []string
+	if req.GateSeverity != "" {
+		gateSeverity = strings.Split(req.GateSeverity, ",")
+	}
+	if req.GateStatus != "" {
+		gateStatus = strings.Split(req.GateStatus, ",")
+	}
+
 	result, err := h.uc.IngestReport(r.Context(), usecase.IngestReportInput{
 		ProjectSlug:    req.Project,
 		Scanner:        req.Scanner,
@@ -321,6 +332,8 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		RawData:        req.RawData,
 		Branch:         req.Branch,
 		CommitSha:      req.CommitSha,
+		GateSeverity:   gateSeverity,
+		GateStatus:     gateStatus,
 	})
 	if err != nil {
 		log.Printf("ingest report: %v", err)
@@ -329,7 +342,8 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusCreated, ingestResponse{
-		ReportID:      result.ReportID,
-		TotalFindings: result.TotalFindings,
+		ReportID:          result.ReportID,
+		TotalFindings:     result.TotalFindings,
+		ThresholdBreached: result.ThresholdBreached,
 	})
 }

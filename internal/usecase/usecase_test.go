@@ -10,9 +10,9 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vulnserve/vulnserve/internal/db/sqlc"
-	"github.com/vulnserve/vulnserve/internal/repo"
-	"github.com/vulnserve/vulnserve/internal/scanner"
+	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/repo"
+	"github.com/xMinhx/specht/internal/scanner"
 )
 
 type mockProjectRepo struct {
@@ -52,6 +52,7 @@ type mockFindingRepo struct {
 	upsertFn           func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error)
 	createOccurrenceFn func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error)
 	upsertDimensionFn  func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error)
+	listByProjectFn    func(ctx context.Context, projectID pgtype.UUID, severities, states []string, limit, offset int32) ([]sqlc.Finding, error)
 }
 
 func (m *mockFindingRepo) Upsert(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {
@@ -73,6 +74,13 @@ func (m *mockFindingRepo) UpsertDimension(ctx context.Context, arg repo.UpsertDi
 		return sqlc.FindingDimension{}, fmt.Errorf("unexpected call to UpsertDimension")
 	}
 	return m.upsertDimensionFn(ctx, arg)
+}
+
+func (m *mockFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, severities, states []string, limit, offset int32) ([]sqlc.Finding, error) {
+	if m.listByProjectFn == nil {
+		return []sqlc.Finding{}, nil
+	}
+	return m.listByProjectFn(ctx, projectID, severities, states, limit, offset)
 }
 
 type mockParser struct {
@@ -218,6 +226,7 @@ func TestIngestReport_Success(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Equal(t, 2, result.TotalFindings)
 	assert.NotEmpty(t, result.ReportID)
+	assert.False(t, result.ThresholdBreached)
 }
 
 func TestIngestReport_EmptySlug(t *testing.T) {
@@ -298,4 +307,68 @@ func TestIngestReport_ParseError(t *testing.T) {
 		RawData:     json.RawMessage(`bad data`),
 	})
 	assert.ErrorContains(t, err, "parse trivy output")
+}
+
+func TestIngestReport_ThresholdBreached(t *testing.T) {
+	pr, rr, fr := makeTestRepos()
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+		return makeProject(true), nil
+	}
+
+	rr.createFn = func(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error) {
+		return makeReport(), nil
+	}
+
+	rr.updateStatusFn = func(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
+		r := makeReport()
+		r.Status = status
+		return r, nil
+	}
+
+	fr.upsertFn = func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {
+		return makeFinding(1), nil
+	}
+
+	fr.createOccurrenceFn = func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error) {
+		return sqlc.FindingOccurrence{}, nil
+	}
+
+	fr.upsertDimensionFn = func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error) {
+		return sqlc.FindingDimension{}, nil
+	}
+
+	fr.listByProjectFn = func(ctx context.Context, projectID pgtype.UUID, severities, states []string, limit, offset int32) ([]sqlc.Finding, error) {
+		return []sqlc.Finding{makeFinding(1)}, nil
+	}
+
+	reg := scanner.NewRegistry()
+	reg.Register(&mockParser{
+		name:      "trivy",
+		scanTypes: []scanner.ScanType{scanner.ScanTypeImage},
+		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
+			return &scanner.NormalizedReport{
+				ScannerName: "trivy",
+				ScanType:    scanner.ScanTypeImage,
+				Target:      &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings: []scanner.NormalizedFinding{
+					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2026-1234", Severity: scanner.SeverityCritical, Score: 9.5},
+				},
+				ScanScope: map[string]any{},
+			}, nil
+		},
+	})
+
+	uc := New(Deps{
+		Repos:    &repo.Repos{Projects: pr, Reports: rr, Findings: fr},
+		Registry: reg,
+	})
+
+	result, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app",
+		Scanner:     "trivy",
+		RawData:     json.RawMessage(`{"test": true}`),
+	})
+	require.NoError(t, err)
+	assert.True(t, result.ThresholdBreached)
 }

@@ -12,9 +12,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/vulnserve/vulnserve/internal/auth"
-	"github.com/vulnserve/vulnserve/internal/repo"
-	"github.com/vulnserve/vulnserve/internal/scanner"
+	"github.com/xMinhx/specht/internal/auth"
+	"github.com/xMinhx/specht/internal/repo"
+	"github.com/xMinhx/specht/internal/scanner"
 )
 
 type IngestReportInput struct {
@@ -25,11 +25,14 @@ type IngestReportInput struct {
 	RawData       json.RawMessage
 	Branch        string
 	CommitSha     string
+	GateSeverity  []string
+	GateStatus    []string
 }
 
 type IngestReportOutput struct {
-	ReportID      string
-	TotalFindings int
+	ReportID         string
+	TotalFindings    int
+	ThresholdBreached bool
 }
 
 type Deps struct {
@@ -81,6 +84,16 @@ func textPtr(s string) pgtype.Text {
 
 func now() pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: time.Now(), Valid: true}
+}
+
+func defaultGateParams(severities, statuses []string) ([]string, []string) {
+	if len(severities) == 0 {
+		severities = []string{"high", "critical"}
+	}
+	if len(statuses) == 0 {
+		statuses = []string{"open"}
+	}
+	return severities, statuses
 }
 
 func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*IngestReportOutput, error) {
@@ -185,10 +198,17 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, fmt.Errorf("update report status: %w", err)
 	}
 
+	severities, statuses := defaultGateParams(input.GateSeverity, input.GateStatus)
+	gateFindings, err := u.deps.Repos.Findings.ListByProject(ctx, project.ID, severities, statuses, 1, 0)
+	if err != nil {
+		return nil, fmt.Errorf("gate check: %w", err)
+	}
+
 	reportID := uuid.UUID(report.ID.Bytes).String()
 	return &IngestReportOutput{
-		ReportID:      reportID,
-		TotalFindings: total,
+		ReportID:          reportID,
+		TotalFindings:     total,
+		ThresholdBreached: len(gateFindings) > 0,
 	}, nil
 }
 

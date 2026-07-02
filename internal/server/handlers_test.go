@@ -13,9 +13,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
-	"github.com/vulnserve/vulnserve/internal/auth"
+	"github.com/xMinhx/specht/internal/auth"
 	"github.com/stretchr/testify/require"
-	"github.com/vulnserve/vulnserve/internal/usecase"
+	"github.com/xMinhx/specht/internal/usecase"
 )
 
 type mockUsecases struct {
@@ -239,7 +239,7 @@ func TestIngestReport_MissingFields(t *testing.T) {
 func TestIngestReport_Success(t *testing.T) {
 	mock := &mockUsecases{
 		ingestReportFn: func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
-			return &usecase.IngestReportOutput{ReportID: "rep-1", TotalFindings: 3}, nil
+			return &usecase.IngestReportOutput{ReportID: "rep-1", TotalFindings: 3, ThresholdBreached: true}, nil
 		},
 	}
 	router := testRouter(mock)
@@ -251,13 +251,15 @@ func TestIngestReport_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 	var resp struct {
-		ReportID      string `json:"report_id"`
-		TotalFindings int    `json:"total_findings"`
+		ReportID          string `json:"report_id"`
+		TotalFindings     int    `json:"total_findings"`
+		ThresholdBreached bool   `json:"threshold_breached"`
 	}
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
 	assert.Equal(t, "rep-1", resp.ReportID)
 	assert.Equal(t, 3, resp.TotalFindings)
+	assert.True(t, resp.ThresholdBreached)
 }
 
 func testRouter(mock *mockUsecases) http.Handler {

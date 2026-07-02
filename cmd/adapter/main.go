@@ -12,9 +12,17 @@ import (
 )
 
 type ingestPayload struct {
-	Project string          `json:"project"`
-	Scanner string          `json:"scanner"`
-	RawData json.RawMessage `json:"raw_data"`
+	Project      string          `json:"project"`
+	Scanner      string          `json:"scanner"`
+	RawData      json.RawMessage `json:"raw_data"`
+	GateSeverity string          `json:"gate_severity,omitempty"`
+	GateStatus   string          `json:"gate_status,omitempty"`
+}
+
+type ingestResponse struct {
+	ReportID          string `json:"report_id"`
+	TotalFindings     int    `json:"total_findings"`
+	ThresholdBreached bool   `json:"threshold_breached"`
 }
 
 type apiError struct {
@@ -25,9 +33,8 @@ type apiError struct {
 }
 
 func main() {
-	severity := flag.String("severity", "high,critical", "Severity threshold (comma-separated)")
-	status := flag.String("status", "open", "Finding status filter")
-	tool := flag.String("tool", "", "Scanner tool name filter (optional)")
+	severity := flag.String("severity", "", "Severity threshold (comma-separated, default: high,critical)")
+	status := flag.String("status", "", "Finding status filter (default: open)")
 	project := flag.String("project", "", "Project slug (overrides stdin)")
 	help := flag.Bool("help", false, "Show usage")
 	flag.Parse()
@@ -74,25 +81,23 @@ func main() {
 		os.Exit(2)
 	}
 
-	reportID, err := ingestReport(apiURL, apiKey, payload)
+	if *severity != "" {
+		payload.GateSeverity = *severity
+	}
+	if *status != "" {
+		payload.GateStatus = *status
+	}
+
+	resp, err := ingestReport(apiURL, apiKey, payload)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: ingest failed: %v\n", err)
 		os.Exit(2)
 	}
 
-	fmt.Fprintf(os.Stderr, "report %s ingested, checking findings...\n", reportID)
+	fmt.Fprintf(os.Stderr, "report %s ingested, %d finding(s)\n", resp.ReportID, resp.TotalFindings)
 
-	findings, err := checkFindings(apiURL, apiKey, payload.Project, *severity, *status, *tool)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: check failed: %v\n", err)
-		os.Exit(2)
-	}
-
-	if len(findings) > 0 {
-		fmt.Fprintf(os.Stderr, "gate FAILED: %d finding(s) at or above threshold (%s)\n", len(findings), *severity)
-		for _, f := range findings {
-			fmt.Fprintf(os.Stderr, "  - %s [%s] %s\n", f.Fingerprint, f.CurrentSeverity, f.CurrentTitle)
-		}
+	if resp.ThresholdBreached {
+		fmt.Fprintln(os.Stderr, "gate FAILED: findings at or above threshold")
 		os.Exit(1)
 	}
 
@@ -104,24 +109,22 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, `Usage: specht-adapter [flags]
 
 CI/CD gate-check adapter for Specht. Reads a scan result from stdin,
-ingests it into Specht, and checks whether any findings meet or exceed
-the severity threshold.
+ingests it, and exits based on server-side gating evaluation.
 
 Flags:
-  -project string    Project slug (overrides project in stdin payload)
-  -severity string   Severity threshold, comma-separated (default "high,critical")
-  -status string     Finding status filter (default "open")
-  -tool string       Scanner tool name filter (optional, e.g. "trivy")
-  -help              Show this usage message
+  -project string   Project slug (overrides project in stdin payload)
+  -severity string  Severity threshold, comma-separated (default: high,critical)
+  -status string    Finding status filter (default: open)
+  -help             Show this usage message
 
 Environment:
-  API_URL    Specht API base URL (default "http://localhost:8080")
-  API_KEY    API key for authentication (required)
+  API_URL   Specht API base URL (default "http://localhost:8080")
+  API_KEY   API key for authentication (required)
 
 Exit codes:
-  0  Pass — no findings at or above threshold
-  1  Fail — findings at or above threshold exist
-  2  Error — API unreachable, invalid input, or configuration error
+  0  Pass - no findings at or above threshold
+  1  Fail - findings at or above threshold exist
+  2  Error - API unreachable, invalid input, or configuration error
 
 Examples:
   trivy image --format json myapp:latest | specht-adapter -project=my-app
@@ -129,22 +132,22 @@ Examples:
 `)
 }
 
-func ingestReport(apiURL, apiKey string, payload ingestPayload) (string, error) {
+func ingestReport(apiURL, apiKey string, payload ingestPayload) (*ingestResponse, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return "", fmt.Errorf("marshal payload: %w", err)
+		return nil, fmt.Errorf("marshal payload: %w", err)
 	}
 
 	req, err := http.NewRequest("POST", apiURL+"/api/v1/reports", bytes.NewReader(body))
 	if err != nil {
-		return "", fmt.Errorf("create request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("http post: %w", err)
+		return nil, fmt.Errorf("http post: %w", err)
 	}
 	defer resp.Body.Close()
 
@@ -152,55 +155,14 @@ func ingestReport(apiURL, apiKey string, payload ingestPayload) (string, error) 
 		respBody, _ := io.ReadAll(resp.Body)
 		var ae apiError
 		if json.Unmarshal(respBody, &ae) == nil && ae.Error.Message != "" {
-			return "", fmt.Errorf("%s: %s", resp.Status, ae.Error.Message)
+			return nil, fmt.Errorf("%s: %s", resp.Status, ae.Error.Message)
 		}
-		return "", fmt.Errorf("%s: %s", resp.Status, string(respBody))
-	}
-
-	var result struct {
-		ReportID string `json:"report_id"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("decode response: %w", err)
-	}
-	return result.ReportID, nil
-}
-
-type finding struct {
-	Fingerprint     string `json:"fingerprint"`
-	CurrentTitle    string `json:"current_title"`
-	CurrentSeverity string `json:"current_severity"`
-}
-
-func checkFindings(apiURL, apiKey, project, severity, status, tool string) ([]finding, error) {
-	path := fmt.Sprintf("/api/v1/projects/%s/findings?severity=%s&status=%s", project, severity, status)
-	if tool != "" {
-		path += "&tool=" + tool
-	}
-
-	req, err := http.NewRequest("GET", apiURL+path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("http get: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("project %q not found", project)
-	}
-	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("%s: %s", resp.Status, string(respBody))
 	}
 
-	var findings []finding
-	if err := json.NewDecoder(resp.Body).Decode(&findings); err != nil {
-		return nil, fmt.Errorf("decode findings: %w", err)
+	var result ingestResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
 	}
-	return findings, nil
+	return &result, nil
 }
