@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "vulnserve.fullname" . }}
+  labels:
+    app.kubernetes.io/name: {{ include "vulnserve.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "vulnserve.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "vulnserve.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vulnserve.fullname" . }}
+                  key: database-url
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "vulnserve.fullname" . }}
+                  key: jwt-secret
+            - name: SERVER_ADDR
+              value: {{ .Values.env.SERVER_ADDR | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.env.LOG_LEVEL | quote }}
+            - name: DB_MIGRATE
+              value: {{ .Values.env.DB_MIGRATE | quote }}
+            - name: CORS_ORIGINS
+              value: {{ .Values.env.CORS_ORIGINS | quote }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

@@ -3,7 +3,7 @@ services:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: vulnserve
-      POSTGRES_PASSWORD: vulnserve
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vulnserve}
       POSTGRES_DB: vulnserve
     ports:
       - "5432:5432"
@@ -14,6 +14,25 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    restart: unless-stopped
+
+  server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    environment:
+      DATABASE_URL: postgres://vulnserve:${POSTGRES_PASSWORD:-vulnserve}@db:5432/vulnserve?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET}
+      SERVER_ADDR: :8080
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DB_MIGRATE: "true"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   pgdata:

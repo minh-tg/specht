@@ -1,0 +1,28 @@
+replicaCount: 1
+
+image:
+  repository: vulnserve/server
+  tag: latest
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8080
+
+ingress:
+  enabled: false
+  host: vulnserve.example.com
+
+postgresql:
+  enabled: true
+  image: postgres:17-alpine
+  database: vulnserve
+  user: vulnserve
+  password: ""  # must be set via --set or secret
+
+env:
+  LOG_LEVEL: info
+  CORS_ORIGINS: ""
+  DB_MIGRATE: "true"
+  SERVER_ADDR: ":8080"
+
+resources: {}
