@@ -101,10 +101,10 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, `Usage: vulnserve-adapter [flags]
+	fmt.Fprintf(os.Stderr, `Usage: specht-adapter [flags]
 
-CI/CD gate-check adapter for VulnServe. Reads a scan result from stdin,
-ingests it into VulnServe, and checks whether any findings meet or exceed
+CI/CD gate-check adapter for Specht. Reads a scan result from stdin,
+ingests it into Specht, and checks whether any findings meet or exceed
 the severity threshold.
 
 Flags:
@@ -115,7 +115,7 @@ Flags:
   -help              Show this usage message
 
 Environment:
-  API_URL    VulnServe API base URL (default "http://localhost:8080")
+  API_URL    Specht API base URL (default "http://localhost:8080")
   API_KEY    API key for authentication (required)
 
 Exit codes:
@@ -124,8 +124,8 @@ Exit codes:
   2  Error — API unreachable, invalid input, or configuration error
 
 Examples:
-  trivy image --format json myapp:latest | vulnserve-adapter -project=my-app
-  cat scan.json | vulnserve-adapter -severity=critical
+  trivy image --format json myapp:latest | specht-adapter -project=my-app
+  cat scan.json | specht-adapter -severity=critical
 `)
 }
 

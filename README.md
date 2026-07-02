@@ -1,6 +1,6 @@
-# VulnServe
+# Specht 🐦
 
-Unified vulnerability management platform. Ingest scan results from Trivy, OSV-Scanner, Semgrep, Checkov, and more into a single PostgreSQL-backed API. Gate CI/CD pipelines on findings with dimension-based filtering and waiver support.
+Small, watchful vulnerability management platform. Ingest scan results from Trivy, OSV-Scanner, Semgrep, Checkov, and more into a single PostgreSQL-backed API. Gate CI/CD pipelines on findings with dimension-based filtering and waiver support.
 
 ## Quick Start
 
@@ -18,13 +18,13 @@ See [docs/](docs/) for architecture, data model, API reference, roadmap, and dev
 ## Project Layout
 
 ```
-cmd/server/     API server
-cmd/adapter/    CI/CD gate-check CLI
-internal/       Go packages (handlers, usecases, repos, auth, scanners)
-frontend/       React SPA (Vite, shadcn/ui)
-migrations/     SQL migrations (golang-migrate)
-sqlc/           Type-safe SQL queries
-deploy/         Docker Compose + Helm chart
+cmd/specht/      API server
+cmd/adapter/     CI/CD gate-check CLI (specht-adapter)
+internal/        Go packages (handlers, usecases, repos, auth, scanners)
+frontend/        React SPA (Vite, shadcn/ui)
+migrations/      SQL migrations (golang-migrate)
+sqlc/            Type-safe SQL queries
+deploy/          Docker Compose + Helm chart
 ```
 
 ## License
