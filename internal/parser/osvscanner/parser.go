@@ -7,8 +7,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/vulnserve/vulnserve/internal/cvss"
-	"github.com/vulnserve/vulnserve/internal/scanner"
+	"github.com/xMinhx/specht/internal/cvss"
+	"github.com/xMinhx/specht/internal/scanner"
 )
 
 type osvReport struct {

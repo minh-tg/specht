@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vulnserve/vulnserve/internal/parser/trivy"
-	"github.com/vulnserve/vulnserve/internal/scanner"
+	"github.com/xMinhx/specht/internal/parser/trivy"
+	"github.com/xMinhx/specht/internal/scanner"
 )
 
 func TestName(t *testing.T) {

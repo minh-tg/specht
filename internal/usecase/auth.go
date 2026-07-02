@@ -7,8 +7,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/vulnserve/vulnserve/internal/auth"
-	"github.com/vulnserve/vulnserve/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/auth"
+	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
 type AuthResponse struct {

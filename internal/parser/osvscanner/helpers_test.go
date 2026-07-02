@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/vulnserve/vulnserve/internal/scanner"
+	"github.com/xMinhx/specht/internal/scanner"
 )
 
 func TestSeverityFromScore(t *testing.T) {

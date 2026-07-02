@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vulnserve/vulnserve/internal/cvss"
+	"github.com/xMinhx/specht/internal/cvss"
 )
 
 func TestCalculate_V3_Unknown(t *testing.T) {

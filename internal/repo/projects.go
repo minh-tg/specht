@@ -3,7 +3,7 @@ package repo
 import (
 	"context"
 
-	"github.com/vulnserve/vulnserve/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
 type pgProjectRepo struct {

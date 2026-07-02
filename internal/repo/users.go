@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/vulnserve/vulnserve/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
 type pgUserRepo struct {

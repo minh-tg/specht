@@ -7,7 +7,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/vulnserve/vulnserve/internal/scanner"
+	"github.com/xMinhx/specht/internal/scanner"
 )
 
 type trivyReport []trivyResult

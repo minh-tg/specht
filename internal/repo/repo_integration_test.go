@@ -14,8 +14,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
-	"github.com/vulnserve/vulnserve/internal/db"
-	"github.com/vulnserve/vulnserve/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/db"
+	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
 func setupTestDB(t *testing.T) (*Repos, func()) {

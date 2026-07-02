@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/vulnserve/vulnserve/internal/auth"
-	"github.com/vulnserve/vulnserve/internal/db"
-	"github.com/vulnserve/vulnserve/internal/parser"
-	"github.com/vulnserve/vulnserve/internal/repo"
-	"github.com/vulnserve/vulnserve/internal/scanner"
-	"github.com/vulnserve/vulnserve/internal/server"
-	"github.com/vulnserve/vulnserve/internal/usecase"
+	"github.com/xMinhx/specht/internal/auth"
+	"github.com/xMinhx/specht/internal/db"
+	"github.com/xMinhx/specht/internal/parser"
+	"github.com/xMinhx/specht/internal/repo"
+	"github.com/xMinhx/specht/internal/scanner"
+	"github.com/xMinhx/specht/internal/server"
+	"github.com/xMinhx/specht/internal/usecase"
 )
 
 func main() {

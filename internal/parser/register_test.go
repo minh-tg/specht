@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/vulnserve/vulnserve/internal/parser"
-	"github.com/vulnserve/vulnserve/internal/scanner"
+	"github.com/xMinhx/specht/internal/parser"
+	"github.com/xMinhx/specht/internal/scanner"
 )
 
 func TestRegisterAllRegistersExpectedParsers(t *testing.T) {

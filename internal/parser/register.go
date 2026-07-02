@@ -1,9 +1,9 @@
 package parser
 
 import (
-	"github.com/vulnserve/vulnserve/internal/parser/osvscanner"
-	"github.com/vulnserve/vulnserve/internal/parser/trivy"
-	"github.com/vulnserve/vulnserve/internal/scanner"
+	"github.com/xMinhx/specht/internal/parser/osvscanner"
+	"github.com/xMinhx/specht/internal/parser/trivy"
+	"github.com/xMinhx/specht/internal/scanner"
 )
 
 func RegisterAll(reg *scanner.Registry) {
