@@ -11,6 +11,165 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const bulkUpdateFindingAnalysis = `-- name: BulkUpdateFindingAnalysis :many
+UPDATE findings SET
+    analysis_state = $2,
+    gate_effect = $3,
+    analysis_expires_at = $4,
+    analysis_reason = $5,
+    analysis_source = $6,
+    manual_override = $7,
+    review_required = $8,
+    analysis_updated_at = NOW(),
+    analysis_updated_by = $9,
+    updated_at = NOW()
+WHERE id = ANY($1::uuid[])
+RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version
+`
+
+type BulkUpdateFindingAnalysisParams struct {
+	Column1           []pgtype.UUID      `json:"column_1"`
+	AnalysisState     string             `json:"analysis_state"`
+	GateEffect        string             `json:"gate_effect"`
+	AnalysisExpiresAt pgtype.Timestamptz `json:"analysis_expires_at"`
+	AnalysisReason    pgtype.Text        `json:"analysis_reason"`
+	AnalysisSource    string             `json:"analysis_source"`
+	ManualOverride    bool               `json:"manual_override"`
+	ReviewRequired    bool               `json:"review_required"`
+	AnalysisUpdatedBy pgtype.UUID        `json:"analysis_updated_by"`
+}
+
+func (q *Queries) BulkUpdateFindingAnalysis(ctx context.Context, arg BulkUpdateFindingAnalysisParams) ([]Finding, error) {
+	rows, err := q.db.Query(ctx, bulkUpdateFindingAnalysis,
+		arg.Column1,
+		arg.AnalysisState,
+		arg.GateEffect,
+		arg.AnalysisExpiresAt,
+		arg.AnalysisReason,
+		arg.AnalysisSource,
+		arg.ManualOverride,
+		arg.ReviewRequired,
+		arg.AnalysisUpdatedBy,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Finding
+	for rows.Next() {
+		var i Finding
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.FindingKind,
+			&i.Fingerprint,
+			&i.CurrentTitle,
+			&i.CurrentSeverity,
+			&i.CurrentSeverityRank,
+			&i.CurrentScore,
+			&i.State,
+			&i.TriageStatus,
+			&i.AssigneeID,
+			&i.FirstSeenAt,
+			&i.LastSeenAt,
+			&i.FixedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AnalysisState,
+			&i.GateEffect,
+			&i.AnalysisExpiresAt,
+			&i.AnalysisReason,
+			&i.AnalysisSource,
+			&i.AnalysisUpdatedAt,
+			&i.AnalysisUpdatedBy,
+			&i.ManualOverride,
+			&i.ReviewRequired,
+			&i.ApprovalStatus,
+			&i.ApprovedBy,
+			&i.ApprovedAt,
+			&i.FingerprintVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const countBlockingFindings = `-- name: CountBlockingFindings :one
+SELECT COUNT(*) FROM findings
+WHERE project_id = $1
+  AND state IN ('open', 'reopened')
+  AND current_severity_rank >= $2
+  AND (
+      gate_effect = 'block'
+      OR review_required = true
+      OR (
+          gate_effect = 'ignore'
+          AND analysis_expires_at IS NOT NULL
+          AND analysis_expires_at <= NOW()
+      )
+  )
+`
+
+type CountBlockingFindingsParams struct {
+	ProjectID           pgtype.UUID `json:"project_id"`
+	CurrentSeverityRank int16       `json:"current_severity_rank"`
+}
+
+func (q *Queries) CountBlockingFindings(ctx context.Context, arg CountBlockingFindingsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countBlockingFindings, arg.ProjectID, arg.CurrentSeverityRank)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const createFindingEvent = `-- name: CreateFindingEvent :one
+INSERT INTO finding_events (
+    finding_id, user_id, event_type, old_value, new_value, comment, changes
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7
+) RETURNING id, finding_id, user_id, event_type, old_value, new_value, comment, changes, created_at
+`
+
+type CreateFindingEventParams struct {
+	FindingID pgtype.UUID `json:"finding_id"`
+	UserID    pgtype.UUID `json:"user_id"`
+	EventType string      `json:"event_type"`
+	OldValue  pgtype.Text `json:"old_value"`
+	NewValue  pgtype.Text `json:"new_value"`
+	Comment   pgtype.Text `json:"comment"`
+	Changes   []byte      `json:"changes"`
+}
+
+func (q *Queries) CreateFindingEvent(ctx context.Context, arg CreateFindingEventParams) (FindingEvent, error) {
+	row := q.db.QueryRow(ctx, createFindingEvent,
+		arg.FindingID,
+		arg.UserID,
+		arg.EventType,
+		arg.OldValue,
+		arg.NewValue,
+		arg.Comment,
+		arg.Changes,
+	)
+	var i FindingEvent
+	err := row.Scan(
+		&i.ID,
+		&i.FindingID,
+		&i.UserID,
+		&i.EventType,
+		&i.OldValue,
+		&i.NewValue,
+		&i.Comment,
+		&i.Changes,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const createOccurrence = `-- name: CreateOccurrence :one
 INSERT INTO finding_occurrences (
     finding_id, report_id, title, description,
@@ -89,6 +248,230 @@ func (q *Queries) CreateOccurrence(ctx context.Context, arg CreateOccurrencePara
 	return i, err
 }
 
+const gateEval = `-- name: GateEval :one
+SELECT EXISTS (
+    SELECT 1 FROM findings
+    WHERE project_id = $1
+      AND state IN ('open', 'reopened')
+      AND current_severity_rank >= $2
+      AND (
+          gate_effect = 'block'
+          OR review_required = true
+          OR (
+              gate_effect = 'ignore'
+              AND analysis_expires_at IS NOT NULL
+              AND analysis_expires_at <= NOW()
+          )
+      )
+) AS threshold_breached
+`
+
+type GateEvalParams struct {
+	ProjectID           pgtype.UUID `json:"project_id"`
+	CurrentSeverityRank int16       `json:"current_severity_rank"`
+}
+
+func (q *Queries) GateEval(ctx context.Context, arg GateEvalParams) (bool, error) {
+	row := q.db.QueryRow(ctx, gateEval, arg.ProjectID, arg.CurrentSeverityRank)
+	var threshold_breached bool
+	err := row.Scan(&threshold_breached)
+	return threshold_breached, err
+}
+
+const getFindingByFingerprint = `-- name: GetFindingByFingerprint :one
+SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version FROM findings
+WHERE project_id = $1 AND finding_kind = $2 AND fingerprint = $3
+FOR UPDATE
+`
+
+type GetFindingByFingerprintParams struct {
+	ProjectID   pgtype.UUID `json:"project_id"`
+	FindingKind string      `json:"finding_kind"`
+	Fingerprint string      `json:"fingerprint"`
+}
+
+func (q *Queries) GetFindingByFingerprint(ctx context.Context, arg GetFindingByFingerprintParams) (Finding, error) {
+	row := q.db.QueryRow(ctx, getFindingByFingerprint, arg.ProjectID, arg.FindingKind, arg.Fingerprint)
+	var i Finding
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.FindingKind,
+		&i.Fingerprint,
+		&i.CurrentTitle,
+		&i.CurrentSeverity,
+		&i.CurrentSeverityRank,
+		&i.CurrentScore,
+		&i.State,
+		&i.TriageStatus,
+		&i.AssigneeID,
+		&i.FirstSeenAt,
+		&i.LastSeenAt,
+		&i.FixedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AnalysisState,
+		&i.GateEffect,
+		&i.AnalysisExpiresAt,
+		&i.AnalysisReason,
+		&i.AnalysisSource,
+		&i.AnalysisUpdatedAt,
+		&i.AnalysisUpdatedBy,
+		&i.ManualOverride,
+		&i.ReviewRequired,
+		&i.ApprovalStatus,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
+		&i.FingerprintVersion,
+	)
+	return i, err
+}
+
+const getFindingByID = `-- name: GetFindingByID :one
+SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version FROM findings WHERE id = $1
+`
+
+func (q *Queries) GetFindingByID(ctx context.Context, id pgtype.UUID) (Finding, error) {
+	row := q.db.QueryRow(ctx, getFindingByID, id)
+	var i Finding
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.FindingKind,
+		&i.Fingerprint,
+		&i.CurrentTitle,
+		&i.CurrentSeverity,
+		&i.CurrentSeverityRank,
+		&i.CurrentScore,
+		&i.State,
+		&i.TriageStatus,
+		&i.AssigneeID,
+		&i.FirstSeenAt,
+		&i.LastSeenAt,
+		&i.FixedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AnalysisState,
+		&i.GateEffect,
+		&i.AnalysisExpiresAt,
+		&i.AnalysisReason,
+		&i.AnalysisSource,
+		&i.AnalysisUpdatedAt,
+		&i.AnalysisUpdatedBy,
+		&i.ManualOverride,
+		&i.ReviewRequired,
+		&i.ApprovalStatus,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
+		&i.FingerprintVersion,
+	)
+	return i, err
+}
+
+const listFindingEvents = `-- name: ListFindingEvents :many
+SELECT id, finding_id, user_id, event_type, old_value, new_value, comment, changes, created_at FROM finding_events
+WHERE finding_id = $1
+  AND (array_length($2::text[], 1) IS NULL OR event_type = ANY($2))
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $4
+`
+
+type ListFindingEventsParams struct {
+	FindingID pgtype.UUID `json:"finding_id"`
+	Column2   []string    `json:"column_2"`
+	Limit     int32       `json:"limit"`
+	Offset    int32       `json:"offset"`
+}
+
+func (q *Queries) ListFindingEvents(ctx context.Context, arg ListFindingEventsParams) ([]FindingEvent, error) {
+	rows, err := q.db.Query(ctx, listFindingEvents,
+		arg.FindingID,
+		arg.Column2,
+		arg.Limit,
+		arg.Offset,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []FindingEvent
+	for rows.Next() {
+		var i FindingEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.FindingID,
+			&i.UserID,
+			&i.EventType,
+			&i.OldValue,
+			&i.NewValue,
+			&i.Comment,
+			&i.Changes,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFindingsByIDs = `-- name: ListFindingsByIDs :many
+SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version FROM findings WHERE id = ANY($1::uuid[])
+`
+
+func (q *Queries) ListFindingsByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Finding, error) {
+	rows, err := q.db.Query(ctx, listFindingsByIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Finding
+	for rows.Next() {
+		var i Finding
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.FindingKind,
+			&i.Fingerprint,
+			&i.CurrentTitle,
+			&i.CurrentSeverity,
+			&i.CurrentSeverityRank,
+			&i.CurrentScore,
+			&i.State,
+			&i.TriageStatus,
+			&i.AssigneeID,
+			&i.FirstSeenAt,
+			&i.LastSeenAt,
+			&i.FixedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AnalysisState,
+			&i.GateEffect,
+			&i.AnalysisExpiresAt,
+			&i.AnalysisReason,
+			&i.AnalysisSource,
+			&i.AnalysisUpdatedAt,
+			&i.AnalysisUpdatedBy,
+			&i.ManualOverride,
+			&i.ReviewRequired,
+			&i.ApprovalStatus,
+			&i.ApprovedBy,
+			&i.ApprovedAt,
+			&i.FingerprintVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFindingsByProject = `-- name: ListFindingsByProject :many
 SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version FROM findings
 WHERE project_id = $1
@@ -160,6 +543,81 @@ func (q *Queries) ListFindingsByProject(ctx context.Context, arg ListFindingsByP
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateFindingAnalysis = `-- name: UpdateFindingAnalysis :one
+UPDATE findings SET
+    analysis_state = $2,
+    gate_effect = $3,
+    analysis_expires_at = $4,
+    analysis_reason = $5,
+    analysis_source = $6,
+    manual_override = $7,
+    review_required = $8,
+    analysis_updated_at = NOW(),
+    analysis_updated_by = $9,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version
+`
+
+type UpdateFindingAnalysisParams struct {
+	ID                pgtype.UUID        `json:"id"`
+	AnalysisState     string             `json:"analysis_state"`
+	GateEffect        string             `json:"gate_effect"`
+	AnalysisExpiresAt pgtype.Timestamptz `json:"analysis_expires_at"`
+	AnalysisReason    pgtype.Text        `json:"analysis_reason"`
+	AnalysisSource    string             `json:"analysis_source"`
+	ManualOverride    bool               `json:"manual_override"`
+	ReviewRequired    bool               `json:"review_required"`
+	AnalysisUpdatedBy pgtype.UUID        `json:"analysis_updated_by"`
+}
+
+func (q *Queries) UpdateFindingAnalysis(ctx context.Context, arg UpdateFindingAnalysisParams) (Finding, error) {
+	row := q.db.QueryRow(ctx, updateFindingAnalysis,
+		arg.ID,
+		arg.AnalysisState,
+		arg.GateEffect,
+		arg.AnalysisExpiresAt,
+		arg.AnalysisReason,
+		arg.AnalysisSource,
+		arg.ManualOverride,
+		arg.ReviewRequired,
+		arg.AnalysisUpdatedBy,
+	)
+	var i Finding
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.FindingKind,
+		&i.Fingerprint,
+		&i.CurrentTitle,
+		&i.CurrentSeverity,
+		&i.CurrentSeverityRank,
+		&i.CurrentScore,
+		&i.State,
+		&i.TriageStatus,
+		&i.AssigneeID,
+		&i.FirstSeenAt,
+		&i.LastSeenAt,
+		&i.FixedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AnalysisState,
+		&i.GateEffect,
+		&i.AnalysisExpiresAt,
+		&i.AnalysisReason,
+		&i.AnalysisSource,
+		&i.AnalysisUpdatedAt,
+		&i.AnalysisUpdatedBy,
+		&i.ManualOverride,
+		&i.ReviewRequired,
+		&i.ApprovalStatus,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
+		&i.FingerprintVersion,
+	)
+	return i, err
 }
 
 const upsertDimension = `-- name: UpsertDimension :one

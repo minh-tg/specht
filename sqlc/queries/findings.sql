@@ -46,6 +46,93 @@ WHERE project_id = $1
 ORDER BY current_severity_rank DESC, created_at DESC
 LIMIT $4 OFFSET $5;
 
+-- name: GetFindingByID :one
+SELECT * FROM findings WHERE id = $1;
+
+-- name: GetFindingByFingerprint :one
+SELECT * FROM findings
+WHERE project_id = $1 AND finding_kind = $2 AND fingerprint = $3
+FOR UPDATE;
+
+-- name: ListFindingsByIDs :many
+SELECT * FROM findings WHERE id = ANY($1::uuid[]);
+
+-- name: UpdateFindingAnalysis :one
+UPDATE findings SET
+    analysis_state = $2,
+    gate_effect = $3,
+    analysis_expires_at = $4,
+    analysis_reason = $5,
+    analysis_source = $6,
+    manual_override = $7,
+    review_required = $8,
+    analysis_updated_at = NOW(),
+    analysis_updated_by = $9,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
+-- name: BulkUpdateFindingAnalysis :many
+UPDATE findings SET
+    analysis_state = $2,
+    gate_effect = $3,
+    analysis_expires_at = $4,
+    analysis_reason = $5,
+    analysis_source = $6,
+    manual_override = $7,
+    review_required = $8,
+    analysis_updated_at = NOW(),
+    analysis_updated_by = $9,
+    updated_at = NOW()
+WHERE id = ANY($1::uuid[])
+RETURNING *;
+
+-- name: GateEval :one
+SELECT EXISTS (
+    SELECT 1 FROM findings
+    WHERE project_id = $1
+      AND state IN ('open', 'reopened')
+      AND current_severity_rank >= $2
+      AND (
+          gate_effect = 'block'
+          OR review_required = true
+          OR (
+              gate_effect = 'ignore'
+              AND analysis_expires_at IS NOT NULL
+              AND analysis_expires_at <= NOW()
+          )
+      )
+) AS threshold_breached;
+
+-- name: CountBlockingFindings :one
+SELECT COUNT(*) FROM findings
+WHERE project_id = $1
+  AND state IN ('open', 'reopened')
+  AND current_severity_rank >= $2
+  AND (
+      gate_effect = 'block'
+      OR review_required = true
+      OR (
+          gate_effect = 'ignore'
+          AND analysis_expires_at IS NOT NULL
+          AND analysis_expires_at <= NOW()
+      )
+  );
+
+-- name: CreateFindingEvent :one
+INSERT INTO finding_events (
+    finding_id, user_id, event_type, old_value, new_value, comment, changes
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7
+) RETURNING *;
+
+-- name: ListFindingEvents :many
+SELECT * FROM finding_events
+WHERE finding_id = $1
+  AND (array_length($2::text[], 1) IS NULL OR event_type = ANY($2))
+ORDER BY created_at DESC
+LIMIT $3 OFFSET $4;
+
 -- name: UpsertDimension :one
 INSERT INTO finding_dimensions (
     finding_id, dim_key, dim_value, source
