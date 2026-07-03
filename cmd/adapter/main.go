@@ -25,6 +25,11 @@ type ingestResponse struct {
 	ThresholdBreached bool   `json:"threshold_breached"`
 }
 
+type gateResponse struct {
+	ThresholdBreached bool  `json:"threshold_breached"`
+	BlockingCount     int64 `json:"blocking_count"`
+}
+
 type apiError struct {
 	Error struct {
 		Code    string `json:"code"`
@@ -96,12 +101,18 @@ func main() {
 
 	fmt.Fprintf(os.Stderr, "report %s ingested, %d finding(s)\n", resp.ReportID, resp.TotalFindings)
 
-	if resp.ThresholdBreached {
-		fmt.Fprintln(os.Stderr, "gate FAILED: findings at or above threshold")
+	gate, err := checkGate(apiURL, apiKey, payload.Project, *severity)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "error: gate check failed: %v\n", err)
+		os.Exit(2)
+	}
+
+	if gate.ThresholdBreached {
+		fmt.Fprintf(os.Stderr, "gate FAILED: %d blocking finding(s)\n", gate.BlockingCount)
 		os.Exit(1)
 	}
 
-	fmt.Fprintln(os.Stderr, "gate PASSED: no findings at or above threshold")
+	fmt.Fprintln(os.Stderr, "gate PASSED: no blocking findings")
 	os.Exit(0)
 }
 
@@ -109,7 +120,7 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, `Usage: specht-adapter [flags]
 
 CI/CD gate-check adapter for Specht. Reads a scan result from stdin,
-ingests it, and exits based on server-side gating evaluation.
+ingests it, then checks project gate status and exits based on result.
 
 Flags:
   -project string   Project slug (overrides project in stdin payload)
@@ -122,8 +133,8 @@ Environment:
   API_KEY   API key for authentication (required)
 
 Exit codes:
-  0  Pass - no findings at or above threshold
-  1  Fail - findings at or above threshold exist
+  0  Pass - no blocking findings
+  1  Fail - blocking findings exist (review required, expired waiver, etc.)
   2  Error - API unreachable, invalid input, or configuration error
 
 Examples:
@@ -161,6 +172,39 @@ func ingestReport(apiURL, apiKey string, payload ingestPayload) (*ingestResponse
 	}
 
 	var result ingestResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode response: %w", err)
+	}
+	return &result, nil
+}
+
+func checkGate(apiURL, apiKey, project, severity string) (*gateResponse, error) {
+	path := apiURL + "/api/v1/projects/" + project + "/gate"
+	if severity != "" {
+		path += "?severity=" + severity
+	}
+	req, err := http.NewRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("http get: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(resp.Body)
+		var ae apiError
+		if json.Unmarshal(respBody, &ae) == nil && ae.Error.Message != "" {
+			return nil, fmt.Errorf("%s: %s", resp.Status, ae.Error.Message)
+		}
+		return nil, fmt.Errorf("%s: %s", resp.Status, string(respBody))
+	}
+
+	var result gateResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
