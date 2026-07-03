@@ -122,6 +122,25 @@ func (p *Parser) Parse(ctx context.Context, r io.Reader) (*scanner.NormalizedRep
 	return convert(report), nil
 }
 
+func convertToScanType(s string) scanner.ScanType {
+	switch s {
+	case "lockfile":
+		return scanner.ScanTypeLockfile
+	case "sbom":
+		return scanner.ScanTypeSBOM
+	case "repository", "git":
+		return scanner.ScanTypeRepository
+	case "image":
+		return scanner.ScanTypeImage
+	case "filesystem":
+		return scanner.ScanTypeFilesystem
+	case "iac":
+		return scanner.ScanTypeIaC
+	default:
+		return scanner.ScanTypeLockfile
+	}
+}
+
 func convert(report osvReport) *scanner.NormalizedReport {
 	nr := &scanner.NormalizedReport{
 		ScannerName: "osv-scanner",
@@ -130,6 +149,9 @@ func convert(report osvReport) *scanner.NormalizedReport {
 	}
 
 	for _, result := range report.Results {
+		if nr.ScanType == "" {
+			nr.ScanType = convertToScanType(result.Source.Type)
+		}
 		nr.Target = &scanner.TargetInfo{
 			Kind:       result.Source.Type,
 			Identifier: result.Source.Path,

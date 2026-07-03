@@ -19,17 +19,25 @@ import (
 )
 
 type mockUsecases struct {
-	listProjectsFn func(ctx context.Context) ([]usecase.ProjectResponse, error)
-	getProjectFn   func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
-	listFindingsFn func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error)
-	listReportsFn  func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
-	getReportFn    func(ctx context.Context, reportID pgtype.UUID) (*usecase.ReportResponse, error)
-	ingestReportFn func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
-	registerFn     func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
-	loginFn        func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
-	createAPIKeyFn func(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error)
-	listAPIKeysFn  func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
-	revokeAPIKeyFn func(ctx context.Context, projectSlug, keyID string) error
+	createProjectFn func(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error)
+	listProjectsFn  func(ctx context.Context) ([]usecase.ProjectResponse, error)
+	getProjectFn    func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
+	listFindingsFn  func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error)
+	listReportsFn   func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
+	getReportFn     func(ctx context.Context, reportID pgtype.UUID) (*usecase.ReportResponse, error)
+	ingestReportFn  func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
+	registerFn      func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
+	loginFn         func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
+	createAPIKeyFn  func(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error)
+	listAPIKeysFn   func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
+	revokeAPIKeyFn  func(ctx context.Context, projectSlug, keyID string) error
+}
+
+func (m *mockUsecases) CreateProject(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error) {
+	if m.createProjectFn == nil {
+		return nil, fmt.Errorf("unexpected call to CreateProject")
+	}
+	return m.createProjectFn(ctx, name, slug, description)
 }
 
 func (m *mockUsecases) ListProjects(ctx context.Context) ([]usecase.ProjectResponse, error) {
@@ -262,10 +270,35 @@ func TestIngestReport_Success(t *testing.T) {
 	assert.True(t, resp.ThresholdBreached)
 }
 
+func TestIngestReport_Duplicate(t *testing.T) {
+	mock := &mockUsecases{
+		ingestReportFn: func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
+			return nil, usecase.ErrDuplicateReport
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"project":"my-app","scanner":"trivy","raw_data":{"image":"myapp:latest"}}`)
+	req := httptest.NewRequest("POST", "/api/v1/reports", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+	var resp struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "duplicate_report", resp.Error.Code)
+}
+
 func testRouter(mock *mockUsecases) http.Handler {
 	r := chi.NewRouter()
 	h := NewHandler(mock)
 	r.Get("/api/v1/projects", h.ListProjects)
+	r.Post("/api/v1/projects", h.CreateProject)
 	r.Get("/api/v1/projects/{slug}", h.GetProject)
 	r.Get("/api/v1/projects/{slug}/findings", h.ListFindings)
 	r.Get("/api/v1/projects/{slug}/reports", h.ListReports)
@@ -352,6 +385,42 @@ func TestGetProject_NotFound(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestCreateProject_Success(t *testing.T) {
+	mock := &mockUsecases{
+		createProjectFn: func(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error) {
+			return &usecase.ProjectResponse{
+				ID:   "proj-1",
+				Slug: slug,
+				Name: name,
+			}, nil
+		},
+	}
+	router := testRouter(mock)
+	body := `{"name":"My App","slug":"my-app","description":"test"}`
+	req := httptest.NewRequest("POST", "/api/v1/projects", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	var resp usecase.ProjectResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "my-app", resp.Slug)
+	assert.Equal(t, "My App", resp.Name)
+}
+
+func TestCreateProject_MissingFields(t *testing.T) {
+	mock := &mockUsecases{}
+	h := &Handler{uc: mock}
+	req := httptest.NewRequest("POST", "/api/v1/projects", strings.NewReader(`{"slug":"my-app"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.CreateProject(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestListFindings_Success(t *testing.T) {

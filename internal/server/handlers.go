@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"log/slog"
 	"net/http"
@@ -18,11 +19,6 @@ import (
 func AuthMiddleware(jwtAuth *auth.JWTAuthenticator, apiKeyAuth *auth.APIKeyAuthenticator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path == "/api/v1/health" {
-				next.ServeHTTP(w, r)
-				return
-			}
-
 			header := r.Header.Get("Authorization")
 			if !strings.HasPrefix(header, "Bearer ") {
 				respondError(w, http.StatusUnauthorized, "missing_token", "authorization header required")
@@ -63,6 +59,7 @@ func LoggerMiddleware(next http.Handler) http.Handler {
 }
 
 type usecaseInterface interface {
+	CreateProject(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error)
 	IngestReport(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
 	ListProjects(ctx context.Context) ([]usecase.ProjectResponse, error)
 	GetProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
@@ -134,6 +131,29 @@ func parseIntParam(r *http.Request, name string, defaultVal int32) int32 {
 		return defaultVal
 	}
 	return int32(n)
+}
+
+func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name        string `json:"name"`
+		Slug        string `json:"slug"`
+		Description string `json:"description,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+		return
+	}
+	if req.Name == "" || req.Slug == "" {
+		respondError(w, http.StatusBadRequest, "missing_field", "name and slug are required")
+		return
+	}
+
+	result, err := h.uc.CreateProject(r.Context(), req.Name, req.Slug, req.Description)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "creation_failed", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusCreated, result)
 }
 
 func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
@@ -337,6 +357,10 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("ingest report: %v", err)
+		if errors.Is(err, usecase.ErrDuplicateReport) {
+			respondError(w, http.StatusConflict, "duplicate_report", "report already exists for this project and data")
+			return
+		}
 		respondError(w, http.StatusUnprocessableEntity, "ingest_failed", err.Error())
 		return
 	}

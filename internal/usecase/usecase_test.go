@@ -7,6 +7,7 @@ import (
 	"io"
 	"testing"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -17,7 +18,15 @@ import (
 
 type mockProjectRepo struct {
 	repo.ProjectRepo
+	createFn    func(ctx context.Context, arg sqlc.CreateProjectParams) (sqlc.Project, error)
 	getBySlugFn func(ctx context.Context, slug string) (sqlc.Project, error)
+}
+
+func (m *mockProjectRepo) Create(ctx context.Context, arg sqlc.CreateProjectParams) (sqlc.Project, error) {
+	if m.createFn == nil {
+		return sqlc.Project{}, fmt.Errorf("unexpected call to Create")
+	}
+	return m.createFn(ctx, arg)
 }
 
 func (m *mockProjectRepo) GetBySlug(ctx context.Context, slug string) (sqlc.Project, error) {
@@ -104,6 +113,24 @@ func makeTestRepos() (*mockProjectRepo, *mockReportRepo, *mockFindingRepo) {
 	rr := &mockReportRepo{}
 	fr := &mockFindingRepo{}
 	return pr, rr, fr
+}
+
+func TestCreateProject_Success(t *testing.T) {
+	pr, _, _ := makeTestRepos()
+
+	pr.createFn = func(ctx context.Context, arg sqlc.CreateProjectParams) (sqlc.Project, error) {
+		return makeProject(true), nil
+	}
+
+	uc := New(Deps{
+		Repos: &repo.Repos{Projects: pr},
+	})
+
+	result, err := uc.CreateProject(context.Background(), "My App", "my-app", "test description")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "my-app", result.Slug)
+	assert.Equal(t, "My App", result.Name)
 }
 
 func makeProject(valid bool) sqlc.Project {
@@ -307,6 +334,45 @@ func TestIngestReport_ParseError(t *testing.T) {
 		RawData:     json.RawMessage(`bad data`),
 	})
 	assert.ErrorContains(t, err, "parse trivy output")
+}
+
+func TestIngestReport_Duplicate(t *testing.T) {
+	pr, rr, _ := makeTestRepos()
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+		return makeProject(true), nil
+	}
+
+	rr.createFn = func(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error) {
+		return sqlc.Report{}, &pgconn.PgError{Code: "23505"}
+	}
+
+	reg := scanner.NewRegistry()
+	reg.Register(&mockParser{
+		name:      "trivy",
+		scanTypes: []scanner.ScanType{scanner.ScanTypeImage},
+		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
+			return &scanner.NormalizedReport{
+				ScannerName: "trivy",
+				ScanType:    scanner.ScanTypeImage,
+				Target:      &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings:    []scanner.NormalizedFinding{},
+				ScanScope:   map[string]any{},
+			}, nil
+		},
+	})
+
+	uc := New(Deps{
+		Repos:    &repo.Repos{Projects: pr, Reports: rr},
+		Registry: reg,
+	})
+
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app",
+		Scanner:     "trivy",
+		RawData:     json.RawMessage(`{"test": true}`),
+	})
+	assert.ErrorIs(t, err, ErrDuplicateReport)
 }
 
 func TestIngestReport_ThresholdBreached(t *testing.T) {

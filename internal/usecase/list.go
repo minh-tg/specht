@@ -139,6 +139,21 @@ func toReport(r sqlc.Report) ReportResponse {
 	}
 }
 
+func (u *Usecases) CreateProject(ctx context.Context, name, slug, description string) (*ProjectResponse, error) {
+	p, err := u.deps.Repos.Projects.Create(ctx, sqlc.CreateProjectParams{
+		Slug:                slug,
+		Name:                name,
+		Description:         pgtype.Text{String: description, Valid: description != ""},
+		DeploymentThreshold: "high",
+		Settings:            []byte("{}"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create project %q: %w", slug, err)
+	}
+	resp := toProject(p)
+	return &resp, nil
+}
+
 func (u *Usecases) ListProjects(ctx context.Context) ([]ProjectResponse, error) {
 	projects, err := u.deps.Repos.Projects.List(ctx)
 	if err != nil {

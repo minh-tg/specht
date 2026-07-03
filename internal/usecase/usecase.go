@@ -6,16 +6,20 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/repo"
 	"github.com/xMinhx/specht/internal/scanner"
 )
+
+var ErrDuplicateReport = errors.New("duplicate report")
 
 type IngestReportInput struct {
 	ProjectSlug   string
@@ -137,6 +141,10 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		ParserVersion: textPtr(input.ParserVersion),
 	})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, ErrDuplicateReport
+		}
 		return nil, fmt.Errorf("create report: %w", err)
 	}
 
@@ -195,6 +203,10 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 
 	_, err = u.deps.Repos.Reports.UpdateStatus(ctx, report.ID, project.ID, "completed", total, pgtype.Text{Valid: false})
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return nil, ErrDuplicateReport
+		}
 		return nil, fmt.Errorf("update report status: %w", err)
 	}
 
