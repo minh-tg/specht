@@ -90,7 +90,7 @@ func (q *Queries) CreateOccurrence(ctx context.Context, arg CreateOccurrencePara
 }
 
 const listFindingsByProject = `-- name: ListFindingsByProject :many
-SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at FROM findings
+SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version FROM findings
 WHERE project_id = $1
   AND (array_length($2::text[], 1) IS NULL OR current_severity = ANY($2))
   AND (array_length($3::text[], 1) IS NULL OR state = ANY($3))
@@ -138,6 +138,19 @@ func (q *Queries) ListFindingsByProject(ctx context.Context, arg ListFindingsByP
 			&i.FixedAt,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.AnalysisState,
+			&i.GateEffect,
+			&i.AnalysisExpiresAt,
+			&i.AnalysisReason,
+			&i.AnalysisSource,
+			&i.AnalysisUpdatedAt,
+			&i.AnalysisUpdatedBy,
+			&i.ManualOverride,
+			&i.ReviewRequired,
+			&i.ApprovalStatus,
+			&i.ApprovedBy,
+			&i.ApprovedAt,
+			&i.FingerprintVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -207,7 +220,7 @@ INSERT INTO findings (
         ELSE findings.state
     END,
     updated_at = NOW()
-RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at
+RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version
 `
 
 type UpsertFindingParams struct {
@@ -256,6 +269,19 @@ func (q *Queries) UpsertFinding(ctx context.Context, arg UpsertFindingParams) (F
 		&i.FixedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.AnalysisState,
+		&i.GateEffect,
+		&i.AnalysisExpiresAt,
+		&i.AnalysisReason,
+		&i.AnalysisSource,
+		&i.AnalysisUpdatedAt,
+		&i.AnalysisUpdatedBy,
+		&i.ManualOverride,
+		&i.ReviewRequired,
+		&i.ApprovalStatus,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
+		&i.FingerprintVersion,
 	)
 	return i, err
 }

@@ -62,6 +62,19 @@ type Finding struct {
 	FixedAt             pgtype.Timestamptz `json:"fixed_at"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	AnalysisState       string             `json:"analysis_state"`
+	GateEffect          string             `json:"gate_effect"`
+	AnalysisExpiresAt   pgtype.Timestamptz `json:"analysis_expires_at"`
+	AnalysisReason      pgtype.Text        `json:"analysis_reason"`
+	AnalysisSource      string             `json:"analysis_source"`
+	AnalysisUpdatedAt   pgtype.Timestamptz `json:"analysis_updated_at"`
+	AnalysisUpdatedBy   pgtype.UUID        `json:"analysis_updated_by"`
+	ManualOverride      bool               `json:"manual_override"`
+	ReviewRequired      bool               `json:"review_required"`
+	ApprovalStatus      string             `json:"approval_status"`
+	ApprovedBy          pgtype.UUID        `json:"approved_by"`
+	ApprovedAt          pgtype.Timestamptz `json:"approved_at"`
+	FingerprintVersion  int32              `json:"fingerprint_version"`
 }
 
 type FindingDimension struct {
