@@ -4,7 +4,7 @@ CREATE TABLE reports (
     tool_name TEXT NOT NULL,
     tool_version TEXT,
     scan_type TEXT NOT NULL CHECK (scan_type IN (
-        'image', 'filesystem', 'repository', 'sbom', 'sarif', 'iac'
+        'image', 'filesystem', 'repository', 'sbom', 'sarif', 'iac', 'lockfile'
     )),
     target_id UUID REFERENCES targets(id),
     artifact_id UUID REFERENCES artifacts(id),
