@@ -1,0 +1,91 @@
+import { render, screen, waitFor, fireEvent } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
+import { MemoryRouter } from "react-router-dom"
+import { Ingest } from "./Ingest"
+import { vi } from "vitest"
+
+function renderIngest() {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        <Ingest />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  )
+}
+
+function createJsonFile(content: string, name = "report.json") {
+  return new File([content], name, { type: "application/json" })
+}
+
+let fetchCalls: { url: string; method: string; body?: string }[] = []
+
+describe("Ingest", () => {
+  beforeEach(() => {
+    fetchCalls = []
+    globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
+      const u = String(url)
+      const method = ((opts as RequestInit)?.method ?? "GET").toUpperCase()
+      fetchCalls.push({ url: u, method, body: (opts as RequestInit)?.body as string | undefined })
+
+      if (u === "/api/v1/reports" && method === "POST") {
+        return {
+          ok: true,
+          json: () => Promise.resolve({ id: "r1", project_id: "p1", tool_name: "trivy", status: "completed", scan_target: null, total_findings: null, created_at: "", updated_at: "" }),
+        } as Response
+      }
+      return {
+        ok: true,
+        json: () =>
+          Promise.resolve([
+            { id: "p1", slug: "test-project", name: "Test Project", description: null, created_at: "", updated_at: "" },
+          ]),
+      } as Response
+    })
+  })
+
+  it("shows validation error for non-json files", async () => {
+    renderIngest()
+
+    const file = new File(["test"], "report.txt", { type: "text/plain" })
+    const input = screen.getByLabelText(/scan file/i) as HTMLInputElement
+
+    fireEvent.change(input, { target: { files: [file] } })
+
+    await waitFor(() => {
+      expect(screen.getByText("Unsupported file format")).toBeInTheDocument()
+    })
+  })
+
+  it("shows upload button disabled until all fields filled", async () => {
+    renderIngest()
+    const btn = screen.getByRole("button", { name: /upload/i })
+    expect(btn).toBeDisabled()
+  })
+
+  it("submits JSON body on valid form", async () => {
+    renderIngest()
+    const user = userEvent.setup()
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Project")).toBeInTheDocument()
+    })
+
+    await user.selectOptions(screen.getByRole("combobox", { name: /project/i }), "test-project")
+    await user.upload(screen.getByLabelText(/scan file/i), createJsonFile('{"vuln":true}'))
+    await user.click(screen.getByRole("button", { name: /upload/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText(/Report submitted/)).toBeInTheDocument()
+    })
+
+    const postCall = fetchCalls.find((c) => c.url === "/api/v1/reports" && c.method === "POST")
+    expect(postCall).toBeDefined()
+    const body = JSON.parse(postCall!.body!)
+    expect(body.project).toBe("test-project")
+    expect(body.scanner).toBe("trivy")
+    expect(body.raw_data).toBe('{"vuln":true}')
+  })
+})

@@ -15,12 +15,31 @@ export interface Finding {
   current_title: string
   current_severity: string
   current_score: number | null
+  current_description: string | null
+  current_remediation: string | null
+  current_cvss: string | null
+  cve_id: string | null
   state: string
   triage_status: string
   first_seen_at: string
   last_seen_at: string
   created_at: string
   updated_at: string
+}
+
+export interface LoginResponse {
+  token: string
+  refresh_token: string
+  user_id: string
+  email: string
+}
+
+export interface ApiKey {
+  id: string
+  name: string
+  key_prefix: string
+  project_id: string
+  created_at: string
 }
 
 export interface Report {

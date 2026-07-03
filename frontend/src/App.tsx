@@ -1,7 +1,13 @@
 import { BrowserRouter, Routes, Route, Navigate, Link, useParams, useLocation } from "react-router-dom"
+import { AuthProvider } from "@/auth/AuthContext"
+import { ProtectedRoute } from "@/auth/ProtectedRoute"
+import { Navbar } from "@/components/Navbar"
 import { ProjectList } from "@/pages/ProjectList"
 import { FindingsDashboard } from "@/pages/FindingsDashboard"
 import { ReportHistory } from "@/pages/ReportHistory"
+import { Login } from "@/pages/Login"
+import { Ingest } from "@/pages/Ingest"
+import { ApiKeys } from "@/pages/ApiKeys"
 
 function ProjectLayout() {
   const { slug } = useParams<{ slug: string }>()
@@ -41,15 +47,62 @@ function HomePage() {
   )
 }
 
+function AppLayout() {
+  return (
+    <AuthProvider>
+      <Navbar />
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <HomePage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/:slug/findings"
+          element={
+            <ProtectedRoute>
+              <ProjectLayout />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/:slug/reports"
+          element={
+            <ProtectedRoute>
+              <ProjectLayout />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/ingest"
+          element={
+            <ProtectedRoute>
+              <Ingest />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/api-keys"
+          element={
+            <ProtectedRoute>
+              <ApiKeys />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </AuthProvider>
+  )
+}
+
 export default function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/:slug/findings" element={<ProjectLayout />} />
-        <Route path="/:slug/reports" element={<ProjectLayout />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <AppLayout />
     </BrowserRouter>
   )
 }
