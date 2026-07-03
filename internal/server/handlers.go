@@ -9,10 +9,12 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/auth"
+	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
@@ -71,6 +73,10 @@ type usecaseInterface interface {
 	CreateAPIKey(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error)
 	ListAPIKeys(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
 	RevokeAPIKey(ctx context.Context, projectSlug, keyID string) error
+	TriageFinding(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
+	BulkTriage(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
+	GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*usecase.GateStatusOutput, error)
+	GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error)
 }
 
 type Handler struct {
@@ -370,4 +376,166 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		TotalFindings:     result.TotalFindings,
 		ThresholdBreached: result.ThresholdBreached,
 	})
+}
+
+func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		return
+	}
+
+	var req struct {
+		AnalysisState     string     `json:"analysis_state"`
+		Reason            string     `json:"reason"`
+		AnalysisExpiresAt *time.Time `json:"analysis_expires_at,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+		return
+	}
+	if req.AnalysisState == "" {
+		respondError(w, http.StatusBadRequest, "missing_field", "analysis_state is required")
+		return
+	}
+
+	userID := auth.ContextIdentity(r.Context()).UserID
+
+	result, err := h.uc.TriageFinding(r.Context(), usecase.TriageInput{
+		FindingID:         id,
+		AnalysisState:     req.AnalysisState,
+		Reason:            req.Reason,
+		AnalysisExpiresAt: req.AnalysisExpiresAt,
+		UserID:            userID,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrFindingNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+		case errors.Is(err, usecase.ErrReasonRequired):
+			respondError(w, http.StatusUnprocessableEntity, "reason_required", err.Error())
+		case errors.Is(err, usecase.ErrExpiryRequired):
+			respondError(w, http.StatusUnprocessableEntity, "expiry_required", err.Error())
+		default:
+			respondError(w, http.StatusInternalServerError, "triage_failed", err.Error())
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		FindingIDs        []string   `json:"finding_ids"`
+		AnalysisState     string     `json:"analysis_state"`
+		Reason            string     `json:"reason"`
+		AnalysisExpiresAt *time.Time `json:"analysis_expires_at,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+		return
+	}
+	if len(req.FindingIDs) == 0 {
+		respondError(w, http.StatusBadRequest, "missing_field", "finding_ids is required")
+		return
+	}
+	if req.AnalysisState == "" {
+		respondError(w, http.StatusBadRequest, "missing_field", "analysis_state is required")
+		return
+	}
+
+	userID := auth.ContextIdentity(r.Context()).UserID
+
+	results, err := h.uc.BulkTriage(r.Context(), usecase.BulkTriageInput{
+		FindingIDs:        req.FindingIDs,
+		AnalysisState:     req.AnalysisState,
+		Reason:            req.Reason,
+		AnalysisExpiresAt: req.AnalysisExpiresAt,
+		UserID:            userID,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrFindingNotFound):
+			respondError(w, http.StatusNotFound, "not_found", err.Error())
+		case errors.Is(err, usecase.ErrReasonRequired):
+			respondError(w, http.StatusUnprocessableEntity, "reason_required", err.Error())
+		case errors.Is(err, usecase.ErrExpiryRequired):
+			respondError(w, http.StatusUnprocessableEntity, "expiry_required", err.Error())
+		default:
+			respondError(w, http.StatusInternalServerError, "bulk_triage_failed", err.Error())
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{"results": results})
+}
+
+func (h *Handler) GetGateStatus(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if slug == "" {
+		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		return
+	}
+
+	minRank := parseMinSeverityRank(r.URL.Query().Get("severity"))
+
+	result, err := h.uc.GetGateStatus(r.Context(), slug, minRank)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "gate_failed", err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		return
+	}
+
+	limit := parseIntParam(r, "limit", 50)
+	offset := parseIntParam(r, "offset", 0)
+
+	events, err := h.uc.GetFindingEvents(r.Context(), id, nil, limit, offset)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "events_failed", err.Error())
+		return
+	}
+
+	respondJSON(w, http.StatusOK, events)
+}
+
+func parseMinSeverityRank(severities string) int16 {
+	if severities == "" {
+		return 7 // default: high+
+	}
+	parts := strings.Split(severities, ",")
+	minRank := int16(0)
+	for _, p := range parts {
+		switch strings.TrimSpace(p) {
+		case "critical":
+			if 9 > minRank {
+				minRank = 9
+			}
+		case "high":
+			if 7 > minRank {
+				minRank = 7
+			}
+		case "medium":
+			if 4 > minRank {
+				minRank = 4
+			}
+		case "low":
+			if 1 > minRank {
+				minRank = 1
+			}
+		}
+	}
+	if minRank == 0 {
+		return 7
+	}
+	return minRank
 }

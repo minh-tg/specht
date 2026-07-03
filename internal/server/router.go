@@ -65,6 +65,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Post("/api/v1/auth/apikeys", h.CreateAPIKey)
 		r.Get("/api/v1/auth/apikeys", h.ListAPIKeys)
 		r.Delete("/api/v1/auth/apikeys/{id}", h.RevokeAPIKey)
+		r.Patch("/api/v1/findings/{id}", h.TriageFinding)
+		r.Post("/api/v1/findings/bulk-analysis", h.BulkTriage)
+		r.Get("/api/v1/findings/{id}/events", h.ListFindingEvents)
+		r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
 	})
 
 	return r

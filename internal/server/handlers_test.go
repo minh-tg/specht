@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/stretchr/testify/require"
+	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
@@ -30,7 +31,11 @@ type mockUsecases struct {
 	loginFn         func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
 	createAPIKeyFn  func(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error)
 	listAPIKeysFn   func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
-	revokeAPIKeyFn  func(ctx context.Context, projectSlug, keyID string) error
+	revokeAPIKeyFn     func(ctx context.Context, projectSlug, keyID string) error
+	triageFindingFn    func(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
+	bulkTriageFn       func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
+	getGateStatusFn    func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error)
+	getFindingEventsFn func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]any, error)
 }
 
 func (m *mockUsecases) CreateProject(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error) {
@@ -115,6 +120,44 @@ func (m *mockUsecases) RevokeAPIKey(ctx context.Context, projectSlug, keyID stri
 		return fmt.Errorf("unexpected call to RevokeAPIKey")
 	}
 	return m.revokeAPIKeyFn(ctx, projectSlug, keyID)
+}
+
+func (m *mockUsecases) TriageFinding(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error) {
+	if m.triageFindingFn == nil {
+		return nil, fmt.Errorf("unexpected call to TriageFinding")
+	}
+	return m.triageFindingFn(ctx, input)
+}
+
+func (m *mockUsecases) BulkTriage(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error) {
+	if m.bulkTriageFn == nil {
+		return nil, fmt.Errorf("unexpected call to BulkTriage")
+	}
+	return m.bulkTriageFn(ctx, input)
+}
+
+func (m *mockUsecases) GetGateStatus(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error) {
+	if m.getGateStatusFn == nil {
+		return nil, fmt.Errorf("unexpected call to GetGateStatus")
+	}
+	return m.getGateStatusFn(ctx, slug, minRank)
+}
+
+func (m *mockUsecases) GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error) {
+	if m.getFindingEventsFn == nil {
+		return nil, nil
+	}
+	results, err := m.getFindingEventsFn(ctx, findingID, eventTypes, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	events := make([]sqlc.FindingEvent, len(results))
+	for i, r := range results {
+		if e, ok := r.(sqlc.FindingEvent); ok {
+			events[i] = e
+		}
+	}
+	return events, nil
 }
 
 var now = time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
@@ -309,6 +352,10 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Post("/api/v1/auth/apikeys", h.CreateAPIKey)
 	r.Get("/api/v1/auth/apikeys", h.ListAPIKeys)
 	r.Delete("/api/v1/auth/apikeys/{id}", h.RevokeAPIKey)
+	r.Patch("/api/v1/findings/{id}", h.TriageFinding)
+	r.Post("/api/v1/findings/bulk-analysis", h.BulkTriage)
+	r.Get("/api/v1/findings/{id}/events", h.ListFindingEvents)
+	r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
 	return r
 }
 
@@ -868,4 +915,120 @@ func TestRevokeAPIKey_Success(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func authRequest(method, path, body string) *http.Request {
+	r := httptest.NewRequest(method, path, strings.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	ctx := auth.ContextWithIdentity(r.Context(), &auth.Identity{UserID: "test-user"})
+	return r.WithContext(ctx)
+}
+
+func TestTriageFinding_Success(t *testing.T) {
+	mock := &mockUsecases{
+		triageFindingFn: func(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error) {
+			return &usecase.TriageOutput{FindingID: "abc-123", AnalysisState: "false_positive", GateEffect: "ignore"}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := authRequest("PATCH", "/api/v1/findings/abc-123", `{"analysis_state":"false_positive","reason":"test code only"}`)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.TriageOutput
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, "false_positive", resp.AnalysisState)
+}
+
+func TestTriageFinding_MissingReason(t *testing.T) {
+	mock := &mockUsecases{
+		triageFindingFn: func(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error) {
+			return nil, usecase.ErrReasonRequired
+		},
+	}
+	router := testRouter(mock)
+	req := authRequest("PATCH", "/api/v1/findings/abc-123", `{"analysis_state":"false_positive"}`)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+}
+
+func TestTriageFinding_MissingExpiry(t *testing.T) {
+	mock := &mockUsecases{
+		triageFindingFn: func(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error) {
+			return nil, usecase.ErrExpiryRequired
+		},
+	}
+	router := testRouter(mock)
+	req := authRequest("PATCH", "/api/v1/findings/abc-123", `{"analysis_state":"accepted_risk","reason":"ok for now"}`)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+}
+
+func TestBulkTriage_Success(t *testing.T) {
+	mock := &mockUsecases{
+		bulkTriageFn: func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error) {
+			return []usecase.TriageOutput{
+				{FindingID: "abc-123", AnalysisState: "false_positive", GateEffect: "ignore"},
+				{FindingID: "def-456", AnalysisState: "false_positive", GateEffect: "ignore"},
+			}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := authRequest("POST", "/api/v1/findings/bulk-analysis", `{"finding_ids":["abc-123","def-456"],"analysis_state":"false_positive","reason":"test code"}`)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGateStatus_Success(t *testing.T) {
+	mock := &mockUsecases{
+		getGateStatusFn: func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error) {
+			return &usecase.GateStatusOutput{ThresholdBreached: false, BlockingCount: 0}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/gate", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.GateStatusOutput
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.False(t, resp.ThresholdBreached)
+}
+
+func TestGateStatus_Breached(t *testing.T) {
+	mock := &mockUsecases{
+		getGateStatusFn: func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error) {
+			return &usecase.GateStatusOutput{ThresholdBreached: true, BlockingCount: 3}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/gate", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestListFindingEvents_Success(t *testing.T) {
+	mock := &mockUsecases{
+		getFindingEventsFn: func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]any, error) {
+			return []any{
+				map[string]any{"event_type": "analysis_changed"},
+			}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/findings/abc-123/events", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
 }
