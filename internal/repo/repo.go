@@ -58,4 +58,13 @@ type FindingRepo interface {
 	CreateOccurrence(ctx context.Context, arg CreateOccurrenceParams) (sqlc.FindingOccurrence, error)
 	UpsertDimension(ctx context.Context, arg UpsertDimensionParams) (sqlc.FindingDimension, error)
 	ListByProject(ctx context.Context, projectID pgtype.UUID, severities, states []string, limit, offset int32) ([]sqlc.Finding, error)
+	GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error)
+	GetByFingerprint(ctx context.Context, arg GetByFingerprintParams) (sqlc.Finding, error)
+	ListByIDs(ctx context.Context, ids []pgtype.UUID) ([]sqlc.Finding, error)
+	UpdateAnalysis(ctx context.Context, arg UpdateAnalysisParams) (sqlc.Finding, error)
+	BulkUpdateAnalysis(ctx context.Context, arg BulkUpdateAnalysisParams) ([]sqlc.Finding, error)
+	GateEval(ctx context.Context, arg GateEvalParams) (bool, error)
+	CountBlocking(ctx context.Context, arg GateEvalParams) (int64, error)
+	CreateEvent(ctx context.Context, arg CreateEventParams) (sqlc.FindingEvent, error)
+	ListEvents(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error)
 }

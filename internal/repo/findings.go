@@ -104,3 +104,127 @@ func (r *pgFindingRepo) UpsertDimension(ctx context.Context, arg UpsertDimension
 		Source:    arg.Source,
 	})
 }
+
+type GetByFingerprintParams struct {
+	ProjectID    pgtype.UUID
+	FindingKind  string
+	Fingerprint  string
+}
+
+func (r *pgFindingRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+	return r.q.GetFindingByID(ctx, id)
+}
+
+func (r *pgFindingRepo) GetByFingerprint(ctx context.Context, arg GetByFingerprintParams) (sqlc.Finding, error) {
+	return r.q.GetFindingByFingerprint(ctx, sqlc.GetFindingByFingerprintParams{
+		ProjectID:   arg.ProjectID,
+		FindingKind: arg.FindingKind,
+		Fingerprint: arg.Fingerprint,
+	})
+}
+
+func (r *pgFindingRepo) ListByIDs(ctx context.Context, ids []pgtype.UUID) ([]sqlc.Finding, error) {
+	return r.q.ListFindingsByIDs(ctx, ids)
+}
+
+type UpdateAnalysisParams struct {
+	ID                pgtype.UUID
+	AnalysisState     string
+	GateEffect        string
+	AnalysisExpiresAt pgtype.Timestamptz
+	AnalysisReason    pgtype.Text
+	AnalysisSource    string
+	ManualOverride    bool
+	ReviewRequired    bool
+	AnalysisUpdatedBy pgtype.UUID
+}
+
+func (r *pgFindingRepo) UpdateAnalysis(ctx context.Context, arg UpdateAnalysisParams) (sqlc.Finding, error) {
+	return r.q.UpdateFindingAnalysis(ctx, sqlc.UpdateFindingAnalysisParams{
+		ID:                arg.ID,
+		AnalysisState:     arg.AnalysisState,
+		GateEffect:        arg.GateEffect,
+		AnalysisExpiresAt: arg.AnalysisExpiresAt,
+		AnalysisReason:    arg.AnalysisReason,
+		AnalysisSource:    arg.AnalysisSource,
+		ManualOverride:    arg.ManualOverride,
+		ReviewRequired:    arg.ReviewRequired,
+		AnalysisUpdatedBy: arg.AnalysisUpdatedBy,
+	})
+}
+
+type BulkUpdateAnalysisParams struct {
+	IDs               []pgtype.UUID
+	AnalysisState     string
+	GateEffect        string
+	AnalysisExpiresAt pgtype.Timestamptz
+	AnalysisReason    pgtype.Text
+	AnalysisSource    string
+	ManualOverride    bool
+	ReviewRequired    bool
+	AnalysisUpdatedBy pgtype.UUID
+}
+
+func (r *pgFindingRepo) BulkUpdateAnalysis(ctx context.Context, arg BulkUpdateAnalysisParams) ([]sqlc.Finding, error) {
+	return r.q.BulkUpdateFindingAnalysis(ctx, sqlc.BulkUpdateFindingAnalysisParams{
+		Column1:           arg.IDs,
+		AnalysisState:     arg.AnalysisState,
+		GateEffect:        arg.GateEffect,
+		AnalysisExpiresAt: arg.AnalysisExpiresAt,
+		AnalysisReason:    arg.AnalysisReason,
+		AnalysisSource:    arg.AnalysisSource,
+		ManualOverride:    arg.ManualOverride,
+		ReviewRequired:    arg.ReviewRequired,
+		AnalysisUpdatedBy: arg.AnalysisUpdatedBy,
+	})
+}
+
+type GateEvalParams struct {
+	ProjectID        pgtype.UUID
+	MinSeverityRank  int16
+}
+
+func (r *pgFindingRepo) GateEval(ctx context.Context, arg GateEvalParams) (bool, error) {
+	return r.q.GateEval(ctx, sqlc.GateEvalParams{
+		ProjectID:           arg.ProjectID,
+		CurrentSeverityRank: arg.MinSeverityRank,
+	})
+}
+
+func (r *pgFindingRepo) CountBlocking(ctx context.Context, arg GateEvalParams) (int64, error) {
+	return r.q.CountBlockingFindings(ctx, sqlc.CountBlockingFindingsParams{
+		ProjectID:           arg.ProjectID,
+		CurrentSeverityRank: arg.MinSeverityRank,
+	})
+}
+
+type CreateEventParams struct {
+	FindingID pgtype.UUID
+	UserID    pgtype.UUID
+	EventType string
+	OldValue  pgtype.Text
+	NewValue  pgtype.Text
+	Comment   pgtype.Text
+	Changes   []byte
+}
+
+func (r *pgFindingRepo) CreateEvent(ctx context.Context, arg CreateEventParams) (sqlc.FindingEvent, error) {
+	return r.q.CreateFindingEvent(ctx, sqlc.CreateFindingEventParams{
+		FindingID: arg.FindingID,
+		UserID:    arg.UserID,
+		EventType: arg.EventType,
+		OldValue:  arg.OldValue,
+		NewValue:  arg.NewValue,
+		Comment:   arg.Comment,
+		Changes:   arg.Changes,
+	})
+}
+
+func (r *pgFindingRepo) ListEvents(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error) {
+	return r.q.ListFindingEvents(ctx, sqlc.ListFindingEventsParams{
+		FindingID: findingID,
+		Column2:   eventTypes,
+		Limit:     limit,
+		Offset:    offset,
+	})
+}
