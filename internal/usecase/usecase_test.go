@@ -58,10 +58,14 @@ func (m *mockReportRepo) UpdateStatus(ctx context.Context, id, projectID pgtype.
 
 type mockFindingRepo struct {
 	repo.FindingRepo
-	upsertFn           func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error)
-	createOccurrenceFn func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error)
-	upsertDimensionFn  func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error)
-	listByProjectFn    func(ctx context.Context, projectID pgtype.UUID, severities, states []string, limit, offset int32) ([]sqlc.Finding, error)
+	upsertFn             func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error)
+	createOccurrenceFn   func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error)
+	upsertDimensionFn    func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error)
+	listByProjectFn      func(ctx context.Context, projectID pgtype.UUID, severities, states []string, limit, offset int32) ([]sqlc.Finding, error)
+	getByFingerprintFn   func(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error)
+	hasDimensionFn       func(ctx context.Context, findingID pgtype.UUID, key string) (bool, error)
+	updateAnalysisFn     func(ctx context.Context, arg repo.UpdateAnalysisParams) (sqlc.Finding, error)
+	createEventFn        func(ctx context.Context, arg repo.CreateEventParams) (sqlc.FindingEvent, error)
 }
 
 func (m *mockFindingRepo) Upsert(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {
@@ -90,6 +94,34 @@ func (m *mockFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UU
 		return []sqlc.Finding{}, nil
 	}
 	return m.listByProjectFn(ctx, projectID, severities, states, limit, offset)
+}
+
+func (m *mockFindingRepo) GetByFingerprint(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error) {
+	if m.getByFingerprintFn == nil {
+		return sqlc.Finding{}, fmt.Errorf("unexpected call to GetByFingerprint")
+	}
+	return m.getByFingerprintFn(ctx, arg)
+}
+
+func (m *mockFindingRepo) HasDimension(ctx context.Context, findingID pgtype.UUID, key string) (bool, error) {
+	if m.hasDimensionFn == nil {
+		return false, nil
+	}
+	return m.hasDimensionFn(ctx, findingID, key)
+}
+
+func (m *mockFindingRepo) UpdateAnalysis(ctx context.Context, arg repo.UpdateAnalysisParams) (sqlc.Finding, error) {
+	if m.updateAnalysisFn == nil {
+		return sqlc.Finding{}, fmt.Errorf("unexpected call to UpdateAnalysis")
+	}
+	return m.updateAnalysisFn(ctx, arg)
+}
+
+func (m *mockFindingRepo) CreateEvent(ctx context.Context, arg repo.CreateEventParams) (sqlc.FindingEvent, error) {
+	if m.createEventFn == nil {
+		return sqlc.FindingEvent{}, nil
+	}
+	return m.createEventFn(ctx, arg)
 }
 
 type mockParser struct {
@@ -189,6 +221,9 @@ func TestIngestReport_Success(t *testing.T) {
 	}
 
 	callCount := 0
+	fr.getByFingerprintFn = func(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error) {
+		return sqlc.Finding{}, fmt.Errorf("not found")
+	}
 	fr.upsertFn = func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {
 		callCount++
 		return makeFinding(callCount), nil
@@ -390,6 +425,10 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 		r := makeReport()
 		r.Status = status
 		return r, nil
+	}
+
+	fr.getByFingerprintFn = func(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error) {
+		return sqlc.Finding{}, fmt.Errorf("not found")
 	}
 
 	fr.upsertFn = func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {

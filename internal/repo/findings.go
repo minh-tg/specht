@@ -228,3 +228,10 @@ func (r *pgFindingRepo) ListEvents(ctx context.Context, findingID pgtype.UUID, e
 		Offset:    offset,
 	})
 }
+
+func (r *pgFindingRepo) HasDimension(ctx context.Context, findingID pgtype.UUID, key string) (bool, error) {
+	return r.q.HasDimension(ctx, sqlc.HasDimensionParams{
+		FindingID: findingID,
+		DimKey:    key,
+	})
+}

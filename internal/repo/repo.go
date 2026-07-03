@@ -67,4 +67,5 @@ type FindingRepo interface {
 	CountBlocking(ctx context.Context, arg GateEvalParams) (int64, error)
 	CreateEvent(ctx context.Context, arg CreateEventParams) (sqlc.FindingEvent, error)
 	ListEvents(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error)
+	HasDimension(ctx context.Context, findingID pgtype.UUID, key string) (bool, error)
 }

@@ -152,13 +152,33 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 
 	var total int
 	for _, f := range nr.Findings {
+		newRank := severityRank(f.Severity)
+
+		var oldRank int16
+		var oldGateEffect string
+		var oldAnalysisState string
+
+		existing, lookupErr := u.deps.Repos.Findings.GetByFingerprint(ctx, repo.GetByFingerprintParams{
+			ProjectID:   project.ID,
+			FindingKind: f.FindingKind,
+			Fingerprint: f.Fingerprint,
+		})
+		if lookupErr != nil {
+			// New finding — no existing state to compare.
+		}
+		if lookupErr == nil {
+			oldRank = existing.CurrentSeverityRank
+			oldGateEffect = existing.GateEffect
+			oldAnalysisState = existing.AnalysisState
+		}
+
 		upserted, err := u.deps.Repos.Findings.Upsert(ctx, repo.UpsertFindingParams{
 			ProjectID:    project.ID,
 			FindingKind:  f.FindingKind,
 			Fingerprint:  f.Fingerprint,
 			CurrentTitle: f.Title,
 			Severity:     severityStr(f.Severity),
-			SeverityRank: severityRank(f.Severity),
+			SeverityRank: newRank,
 			Score:        scoreToNumeric(f.Score),
 			FirstSeenAt:  nowTime,
 			LastSeenAt:   nowTime,
@@ -195,6 +215,61 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 			})
 			if err != nil {
 				return nil, fmt.Errorf("upsert dimension for %q: %w", f.Fingerprint, err)
+			}
+		}
+
+		// Material change detection: only for existing triaged findings
+		if lookupErr == nil && (oldAnalysisState != "unanalyzed" || oldGateEffect == "ignore") {
+			reviewRequired := false
+			eventType := ""
+
+			// Trigger 1: severity increase
+			if newRank > oldRank {
+				reviewRequired = true
+				eventType = "reopened_severity_change"
+			}
+
+			// Trigger 2: fix just became available
+			if !reviewRequired {
+				hasNewFix := false
+				for _, d := range f.Dimensions {
+					if d.Key == "fixed_version" && d.Value != "" {
+						hasNewFix = true
+						break
+					}
+				}
+				if hasNewFix {
+					hadOldFix, fixErr := u.deps.Repos.Findings.HasDimension(ctx, upserted.ID, "fixed_version")
+					if fixErr == nil && !hadOldFix {
+						reviewRequired = true
+						eventType = "reopened_fix_available"
+					}
+				}
+			}
+
+			if reviewRequired {
+				_, err = u.deps.Repos.Findings.UpdateAnalysis(ctx, repo.UpdateAnalysisParams{
+					ID:             upserted.ID,
+					AnalysisState:  upserted.AnalysisState,
+					GateEffect:     upserted.GateEffect,
+					ReviewRequired: true,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("set review_required for finding %q: %w", f.Fingerprint, err)
+				}
+
+				changes, _ := json.Marshal(map[string]any{
+					"old_severity_rank": oldRank,
+					"new_severity_rank": newRank,
+				})
+				_, err = u.deps.Repos.Findings.CreateEvent(ctx, repo.CreateEventParams{
+					FindingID: upserted.ID,
+					EventType: eventType,
+					Changes:   changes,
+				})
+				if err != nil {
+					return nil, fmt.Errorf("log material change event: %w", err)
+				}
 			}
 		}
 

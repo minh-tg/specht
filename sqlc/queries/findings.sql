@@ -133,6 +133,12 @@ WHERE finding_id = $1
 ORDER BY created_at DESC
 LIMIT $3 OFFSET $4;
 
+-- name: HasDimension :one
+SELECT EXISTS (
+    SELECT 1 FROM finding_dimensions
+    WHERE finding_id = $1 AND dim_key = $2 AND dim_value != ''
+) AS exists;
+
 -- name: UpsertDimension :one
 INSERT INTO finding_dimensions (
     finding_id, dim_key, dim_value, source
