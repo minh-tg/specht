@@ -29,8 +29,9 @@ test-race:
 
 build:
 	cd frontend && npm run build
+	cp -r frontend/dist cmd/server/dist
 	go build -o bin/server ./cmd/server
 	go build -o bin/adapter ./cmd/adapter
 
 clean:
-	rm -rf bin/ frontend/dist/
+	rm -rf bin/ frontend/dist/ cmd/server/dist/

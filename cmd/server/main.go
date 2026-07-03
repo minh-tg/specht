@@ -119,7 +119,7 @@ func main() {
 
 	srv := &http.Server{
 		Addr:         addr,
-		Handler:      handler,
+		Handler:      spaHandler(handler),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  60 * time.Second,
