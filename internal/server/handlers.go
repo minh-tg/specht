@@ -510,23 +510,23 @@ func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
 
 func parseMinSeverityRank(severities string) int16 {
 	if severities == "" {
-		return 7 // default: high+
+		return 3 // default: high+
 	}
 	parts := strings.Split(severities, ",")
 	minRank := int16(0)
 	for _, p := range parts {
 		switch strings.TrimSpace(p) {
 		case "critical":
-			if 9 > minRank {
-				minRank = 9
-			}
-		case "high":
-			if 7 > minRank {
-				minRank = 7
-			}
-		case "medium":
 			if 4 > minRank {
 				minRank = 4
+			}
+		case "high":
+			if 3 > minRank {
+				minRank = 3
+			}
+		case "medium":
+			if 2 > minRank {
+				minRank = 2
 			}
 		case "low":
 			if 1 > minRank {
@@ -535,7 +535,7 @@ func parseMinSeverityRank(severities string) int16 {
 		}
 	}
 	if minRank == 0 {
-		return 7
+		return 3
 	}
 	return minRank
 }

@@ -252,6 +252,7 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 					ID:             upserted.ID,
 					AnalysisState:  upserted.AnalysisState,
 					GateEffect:     upserted.GateEffect,
+					AnalysisSource: upserted.AnalysisSource,
 					ReviewRequired: true,
 				})
 				if err != nil {
