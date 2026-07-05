@@ -85,6 +85,14 @@ type usecaseInterface interface {
 	ListEnvironments(ctx context.Context, projectSlug string) ([]usecase.EnvironmentResponse, error)
 	ListTargets(ctx context.Context, projectSlug string) ([]usecase.TargetResponse, error)
 	ListArtifacts(ctx context.Context, projectSlug string) ([]usecase.ArtifactResponse, error)
+	CreateWaiver(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error)
+	ListWaivers(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error)
+	GetWaiver(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverDetailResponse, error)
+	UpdateWaiver(ctx context.Context, input usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error)
+	DeleteWaiver(ctx context.Context, projectSlug, waiverID string) error
+	ToggleWaiver(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverResponse, error)
+	ListWaiverEvents(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
+	CheckWaiverMatch(ctx context.Context, projectSlug, findingID string) (bool, error)
 }
 
 type Handler struct {
@@ -663,4 +671,142 @@ func parseMinSeverityRank(severities string) int16 {
 		return 3
 	}
 	return minRank
+}
+
+func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	var req struct {
+		Name        string                             `json:"name"`
+		Description string                             `json:"description"`
+		Conditions  []usecase.CreateWaiverConditionInput `json:"conditions,omitempty"`
+		Contexts    []usecase.CreateWaiverContextInput    `json:"contexts,omitempty"`
+		TargetIDs   []string                            `json:"target_ids,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_body", "invalid request body")
+		return
+	}
+	if req.Name == "" {
+		respondError(w, http.StatusBadRequest, "invalid_body", "name is required")
+		return
+	}
+
+	result, err := h.uc.CreateWaiver(r.Context(), usecase.CreateWaiverInput{
+		ProjectSlug: slug,
+		Name:        req.Name,
+		Description: req.Description,
+		Conditions:  req.Conditions,
+		Contexts:    req.Contexts,
+		TargetIDs:   req.TargetIDs,
+	})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusCreated, result)
+}
+
+func (h *Handler) ListWaivers(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	waivers, err := h.uc.ListWaivers(r.Context(), slug)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, waivers)
+}
+
+func (h *Handler) GetWaiver(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	id := chi.URLParam(r, "id")
+	waiver, err := h.uc.GetWaiver(r.Context(), slug, id)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "not_found", "waiver not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, waiver)
+}
+
+func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Name        string                              `json:"name"`
+		Description string                              `json:"description"`
+		Conditions  []usecase.CreateWaiverConditionInput `json:"conditions,omitempty"`
+		Contexts    []usecase.CreateWaiverContextInput   `json:"contexts,omitempty"`
+		TargetIDs   []string                             `json:"target_ids,omitempty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_body", "invalid request body")
+		return
+	}
+
+	result, err := h.uc.UpdateWaiver(r.Context(), usecase.UpdateWaiverInput{
+		WaiverID:    id,
+		ProjectSlug: slug,
+		Name:        req.Name,
+		Description: req.Description,
+		Conditions:  req.Conditions,
+		Contexts:    req.Contexts,
+		TargetIDs:   req.TargetIDs,
+	})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	id := chi.URLParam(r, "id")
+	if err := h.uc.DeleteWaiver(r.Context(), slug, id); err != nil {
+		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	id := chi.URLParam(r, "id")
+	result, err := h.uc.ToggleWaiver(r.Context(), slug, id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) ListWaiverEvents(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	id := chi.URLParam(r, "id")
+	events, err := h.uc.ListWaiverEvents(r.Context(), slug, id)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "not_found", "waiver not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, events)
+}
+
+func (h *Handler) CheckWaiverMatch(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	var req struct {
+		FindingID string `json:"finding_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_body", "invalid request body")
+		return
+	}
+	if req.FindingID == "" {
+		respondError(w, http.StatusBadRequest, "invalid_body", "finding_id is required")
+		return
+	}
+	matched, err := h.uc.CheckWaiverMatch(r.Context(), slug, req.FindingID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]bool{"matched": matched})
 }

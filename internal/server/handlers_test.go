@@ -43,6 +43,14 @@ type mockUsecases struct {
 	listEnvironmentsFn  func(ctx context.Context, slug string) ([]usecase.EnvironmentResponse, error)
 	listTargetsFn       func(ctx context.Context, slug string) ([]usecase.TargetResponse, error)
 	listArtifactsFn     func(ctx context.Context, slug string) ([]usecase.ArtifactResponse, error)
+	createWaiverFn        func(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error)
+	listWaiversFn         func(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error)
+	getWaiverFn           func(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverDetailResponse, error)
+	updateWaiverFn        func(ctx context.Context, input usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error)
+	deleteWaiverFn        func(ctx context.Context, projectSlug, waiverID string) error
+	toggleWaiverFn        func(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverResponse, error)
+	listWaiverEventsFn    func(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
+	checkWaiverMatchFn    func(ctx context.Context, projectSlug, findingID string) (bool, error)
 }
 
 func (m *mockUsecases) CreateProject(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error) {
@@ -214,6 +222,62 @@ func (m *mockUsecases) ListArtifacts(ctx context.Context, slug string) ([]usecas
 		return nil, fmt.Errorf("unexpected call to ListArtifacts")
 	}
 	return m.listArtifactsFn(ctx, slug)
+}
+
+func (m *mockUsecases) CreateWaiver(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error) {
+	if m.createWaiverFn == nil {
+		return nil, fmt.Errorf("unexpected call to CreateWaiver")
+	}
+	return m.createWaiverFn(ctx, input)
+}
+
+func (m *mockUsecases) ListWaivers(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error) {
+	if m.listWaiversFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListWaivers")
+	}
+	return m.listWaiversFn(ctx, projectSlug)
+}
+
+func (m *mockUsecases) GetWaiver(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverDetailResponse, error) {
+	if m.getWaiverFn == nil {
+		return nil, fmt.Errorf("unexpected call to GetWaiver")
+	}
+	return m.getWaiverFn(ctx, projectSlug, waiverID)
+}
+
+func (m *mockUsecases) UpdateWaiver(ctx context.Context, input usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error) {
+	if m.updateWaiverFn == nil {
+		return nil, fmt.Errorf("unexpected call to UpdateWaiver")
+	}
+	return m.updateWaiverFn(ctx, input)
+}
+
+func (m *mockUsecases) DeleteWaiver(ctx context.Context, projectSlug, waiverID string) error {
+	if m.deleteWaiverFn == nil {
+		return fmt.Errorf("unexpected call to DeleteWaiver")
+	}
+	return m.deleteWaiverFn(ctx, projectSlug, waiverID)
+}
+
+func (m *mockUsecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverResponse, error) {
+	if m.toggleWaiverFn == nil {
+		return nil, fmt.Errorf("unexpected call to ToggleWaiver")
+	}
+	return m.toggleWaiverFn(ctx, projectSlug, waiverID)
+}
+
+func (m *mockUsecases) ListWaiverEvents(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error) {
+	if m.listWaiverEventsFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListWaiverEvents")
+	}
+	return m.listWaiverEventsFn(ctx, projectSlug, waiverID)
+}
+
+func (m *mockUsecases) CheckWaiverMatch(ctx context.Context, projectSlug, findingID string) (bool, error) {
+	if m.checkWaiverMatchFn == nil {
+		return false, fmt.Errorf("unexpected call to CheckWaiverMatch")
+	}
+	return m.checkWaiverMatchFn(ctx, projectSlug, findingID)
 }
 
 var now = time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
