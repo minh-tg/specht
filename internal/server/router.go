@@ -17,6 +17,7 @@ type RouterConfig struct {
 	CORSOrigins  string
 	JWTAuth      *auth.JWTAuthenticator
 	APIKeyLookup func(ctx context.Context, keyHash string) (userID, projectID string, err error)
+	RateLimiter  *RateLimiter
 }
 
 func NewRouter(cfg RouterConfig) http.Handler {
@@ -45,6 +46,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	r.Use(LoggerMiddleware)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
+
+	if cfg.RateLimiter != nil {
+		r.Use(cfg.RateLimiter.Middleware)
+	}
 
 	h := NewHandler(cfg.Usecases)
 

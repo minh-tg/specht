@@ -101,10 +101,26 @@ func main() {
 		JWTAuth:  jwtAuth,
 	})
 
+	rateLimitCfg := server.NewRateLimiterConfig()
+	if v := os.Getenv("RATE_LIMIT_ENABLED"); v == "true" {
+		rateLimitCfg.Enabled = true
+	}
+	if v := os.Getenv("RATE_LIMIT_RPS"); v != "" {
+		if rps, err := fmt.Sscanf(v, "%d", &rateLimitCfg.RPS); err != nil || rps != 1 {
+			slog.Warn("invalid RATE_LIMIT_RPS, using default", "value", v)
+		}
+	}
+	if v := os.Getenv("RATE_LIMIT_BURST"); v != "" {
+		if burst, err := fmt.Sscanf(v, "%d", &rateLimitCfg.Burst); err != nil || burst != 1 {
+			slog.Warn("invalid RATE_LIMIT_BURST, using default", "value", v)
+		}
+	}
+
 	handler := server.NewRouter(server.RouterConfig{
 		Usecases:    uc,
 		CORSOrigins: corsOrigins,
 		JWTAuth:     jwtAuth,
+		RateLimiter: server.NewRateLimiter(rateLimitCfg),
 		APIKeyLookup: func(ctx context.Context, keyHash string) (string, string, error) {
 			key, err := repos.APIKeys.GetByHash(ctx, keyHash)
 			if err != nil {
