@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/auth"
+	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/repo"
 	"github.com/xMinhx/specht/internal/scanner"
 )
@@ -22,15 +23,19 @@ import (
 var ErrDuplicateReport = errors.New("duplicate report")
 
 type IngestReportInput struct {
-	ProjectSlug   string
-	Scanner       string
+	ProjectSlug    string
+	Scanner        string
 	ScannerVersion string
-	ParserVersion string
-	RawData       json.RawMessage
-	Branch        string
-	CommitSha     string
-	GateSeverity  []string
-	GateStatus    []string
+	ParserVersion  string
+	RawData        json.RawMessage
+	Branch         string
+	CommitSha      string
+	GateSeverity   []string
+	GateStatus     []string
+	Environment    string
+	ArtifactName   string
+	ArtifactVersion string
+	ArtifactType   string
 }
 
 type IngestReportOutput struct {
@@ -128,12 +133,81 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 
 	rawHash := sha256.Sum256(input.RawData)
 
+	var targetID pgtype.UUID
+	if nr.Target != nil && nr.Target.Identifier != "" {
+		kind := nr.Target.Kind
+		if kind == "" {
+			kind = string(nr.ScanType)
+		}
+		t, err := u.deps.Repos.Targets.Upsert(ctx, sqlc.UpsertTargetParams{
+			ProjectID: project.ID,
+			Name:      nr.Target.Identifier,
+			Kind:      kind,
+			Locator:   pgtype.Text{String: nr.Target.Identifier, Valid: true},
+		})
+		if err == nil {
+			targetID = t.ID
+		}
+	}
+
+	var artifactID pgtype.UUID
+	artifactName := input.ArtifactName
+	if artifactName == "" && nr.Artifact != nil {
+		artifactName = nr.Artifact.Identifier
+	}
+	if artifactName != "" {
+		artifactType := input.ArtifactType
+		if artifactType == "" && nr.Artifact != nil {
+			artifactType = nr.Artifact.Kind
+		}
+		if artifactType == "" {
+			artifactType = string(nr.ScanType)
+		}
+		var metadata []byte
+		if nr.Artifact != nil {
+			metadata = mustMarshal(nr.Artifact.Metadata)
+		}
+		if metadata == nil {
+			metadata = []byte("{}")
+		}
+		a, err := u.deps.Repos.Artifacts.Upsert(ctx, sqlc.UpsertArtifactParams{
+			ProjectID:    project.ID,
+			TargetID:     targetID,
+			ArtifactType: artifactType,
+			Name:         artifactName,
+			Version:      textPtr(input.ArtifactVersion),
+			Digest:       pgtype.Text{Valid: false},
+			Locator:      pgtype.Text{Valid: false},
+			Metadata:     metadata,
+		})
+		if err == nil {
+			artifactID = a.ID
+		}
+	}
+
+	var environmentID pgtype.UUID
+	if input.Environment != "" {
+		e, err := u.deps.Repos.Environments.Upsert(ctx, sqlc.UpsertEnvironmentParams{
+			ProjectID:       project.ID,
+			Name:            input.Environment,
+			Tier:            "development",
+			InternetFacing:  false,
+			DataSensitivity: "internal",
+		})
+		if err == nil {
+			environmentID = e.ID
+		}
+	}
+
 	report, err := u.deps.Repos.Reports.Create(ctx, repo.CreateReportParams{
 		ProjectID:    project.ID,
 		ToolName:     input.Scanner,
 		ToolVersion:  textPtr(input.ScannerVersion),
 		ScanType:     string(nr.ScanType),
 		ScanTarget:   textPtr(nr.Target.Identifier),
+		TargetID:     targetID,
+		ArtifactID:   artifactID,
+		EnvironmentID: environmentID,
 		ScanScope:    mustMarshal(nr.ScanScope),
 		Branch:       textPtr(input.Branch),
 		CommitSha:    textPtr(input.CommitSha),

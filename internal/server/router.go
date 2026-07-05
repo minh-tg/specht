@@ -42,7 +42,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
+	r.Use(realIPMiddleware)
 	r.Use(LoggerMiddleware)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
@@ -56,12 +56,12 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	r.Get("/api/v1/health", healthHandler)
 	r.Post("/api/v1/auth/register", h.Register)
 	r.Post("/api/v1/auth/login", h.Login)
+	r.Post("/api/v1/auth/refresh", h.Refresh)
+	r.Post("/api/v1/auth/logout", h.Logout)
 
 	r.Group(func(r chi.Router) {
 		r.Use(AuthMiddleware(cfg.JWTAuth, apiKeyAuth))
 
-		r.Post("/api/v1/auth/refresh", h.Refresh)
-		r.Post("/api/v1/auth/logout", h.Logout)
 		r.Get("/api/v1/me", h.Me)
 
 		r.Get("/api/v1/projects", h.ListProjects)
@@ -79,9 +79,25 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Post("/api/v1/findings/bulk-analysis", h.BulkTriage)
 		r.Get("/api/v1/findings/{id}/events", h.ListFindingEvents)
 		r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
+		r.Get("/api/v1/projects/{slug}/environments", h.ListEnvironments)
+		r.Get("/api/v1/projects/{slug}/targets", h.ListTargets)
+		r.Get("/api/v1/projects/{slug}/artifacts", h.ListArtifacts)
 	})
 
 	return r
+}
+
+func realIPMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+			if ip := strings.Split(fwd, ",")[0]; ip != "" {
+				r.RemoteAddr = strings.TrimSpace(ip)
+			}
+		} else if rip := r.Header.Get("X-Real-IP"); rip != "" {
+			r.RemoteAddr = rip
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {

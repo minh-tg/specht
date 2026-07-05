@@ -12,16 +12,15 @@ type pgReportRepo struct {
 	q *sqlc.Queries
 }
 
-func newReportRepo(q *sqlc.Queries) *pgReportRepo {
-	return &pgReportRepo{q: q}
-}
-
 type CreateReportParams struct {
 	ProjectID       pgtype.UUID
 	ToolName        string
 	ToolVersion     pgtype.Text
 	ScanType        string
 	ScanTarget      pgtype.Text
+	TargetID        pgtype.UUID
+	ArtifactID      pgtype.UUID
+	EnvironmentID   pgtype.UUID
 	Branch          pgtype.Text
 	CommitSha       pgtype.Text
 	ScanScope       []byte
@@ -31,19 +30,22 @@ type CreateReportParams struct {
 
 func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc.Report, error) {
 	return r.q.CreateReport(ctx, sqlc.CreateReportParams{
-		ProjectID:       arg.ProjectID,
-		ToolName:        arg.ToolName,
-		ToolVersion:     arg.ToolVersion,
-		ScanType:        arg.ScanType,
-		ScanTarget:      arg.ScanTarget,
-		ScanScope:       arg.ScanScope,
-		Branch:          arg.Branch,
-		CommitSha:       arg.CommitSha,
-		RawReportHash:   arg.RawReportHash,
-		ParserVersion:   arg.ParserVersion,
+		ProjectID:        arg.ProjectID,
+		ToolName:         arg.ToolName,
+		ToolVersion:      arg.ToolVersion,
+		ScanType:         arg.ScanType,
+		ScanTarget:       arg.ScanTarget,
+		TargetID:         arg.TargetID,
+		ArtifactID:       arg.ArtifactID,
+		EnvironmentID:    arg.EnvironmentID,
+		ScanScope:        arg.ScanScope,
+		Branch:           arg.Branch,
+		CommitSha:        arg.CommitSha,
+		RawReportHash:    arg.RawReportHash,
+		ParserVersion:    arg.ParserVersion,
 		ScanCompleteness: "unknown",
-		Status:          "processing",
-		StartedAt:       pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		Status:           "processing",
+		StartedAt:        pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	})
 }
 

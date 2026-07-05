@@ -37,9 +37,12 @@ type mockUsecases struct {
 	getGateStatusFn    func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error)
 	getFindingFn        func(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
 	getFindingEventsFn func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]any, error)
-	refreshFn          func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
-	logoutFn        func(ctx context.Context, refreshToken string) error
-	getProfileFn    func(ctx context.Context, userID string) (*usecase.UserProfile, error)
+	refreshFn           func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
+	logoutFn            func(ctx context.Context, refreshToken string) error
+	getProfileFn        func(ctx context.Context, userID string) (*usecase.UserProfile, error)
+	listEnvironmentsFn  func(ctx context.Context, slug string) ([]usecase.EnvironmentResponse, error)
+	listTargetsFn       func(ctx context.Context, slug string) ([]usecase.TargetResponse, error)
+	listArtifactsFn     func(ctx context.Context, slug string) ([]usecase.ArtifactResponse, error)
 }
 
 func (m *mockUsecases) CreateProject(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error) {
@@ -190,6 +193,27 @@ func (m *mockUsecases) GetProfile(ctx context.Context, userID string) (*usecase.
 		return nil, fmt.Errorf("unexpected call to GetProfile")
 	}
 	return m.getProfileFn(ctx, userID)
+}
+
+func (m *mockUsecases) ListEnvironments(ctx context.Context, slug string) ([]usecase.EnvironmentResponse, error) {
+	if m.listEnvironmentsFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListEnvironments")
+	}
+	return m.listEnvironmentsFn(ctx, slug)
+}
+
+func (m *mockUsecases) ListTargets(ctx context.Context, slug string) ([]usecase.TargetResponse, error) {
+	if m.listTargetsFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListTargets")
+	}
+	return m.listTargetsFn(ctx, slug)
+}
+
+func (m *mockUsecases) ListArtifacts(ctx context.Context, slug string) ([]usecase.ArtifactResponse, error) {
+	if m.listArtifactsFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListArtifacts")
+	}
+	return m.listArtifactsFn(ctx, slug)
 }
 
 var now = time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
@@ -387,6 +411,10 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Patch("/api/v1/findings/{id}", h.TriageFinding)
 	r.Post("/api/v1/findings/bulk-analysis", h.BulkTriage)
 	r.Get("/api/v1/findings/{id}/events", h.ListFindingEvents)
+	r.Get("/api/v1/findings/{id}", h.GetFinding)
+	r.Post("/api/v1/auth/refresh", h.Refresh)
+	r.Post("/api/v1/auth/logout", h.Logout)
+	r.Get("/api/v1/me", h.Me)
 	r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
 	return r
 }
@@ -1064,4 +1092,324 @@ func TestListFindingEvents_Success(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// ----- GetFinding Handler Tests -----
+
+func TestGetFinding_Success(t *testing.T) {
+	mock := &mockUsecases{
+		getFindingFn: func(ctx context.Context, findingID string) (*usecase.FindingResponse, error) {
+			return &usecase.FindingResponse{ID: findingID, FindingKind: "sca", CurrentTitle: "CVE-2026-0001"}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/findings/550e8400-e29b-41d4-a716-446655440000", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.FindingResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "sca", resp.FindingKind)
+}
+
+func TestGetFinding_InvalidID(t *testing.T) {
+	mock := &mockUsecases{
+		getFindingFn: func(ctx context.Context, findingID string) (*usecase.FindingResponse, error) {
+			return nil, fmt.Errorf("invalid finding id")
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/findings/not-a-uuid", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestGetFinding_NotFound(t *testing.T) {
+	mock := &mockUsecases{
+		getFindingFn: func(ctx context.Context, findingID string) (*usecase.FindingResponse, error) {
+			return nil, fmt.Errorf("get finding: not found")
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/findings/550e8400-e29b-41d4-a716-446655440000", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// ----- Refresh Handler Tests -----
+
+func TestRefresh_Success(t *testing.T) {
+	mock := &mockUsecases{
+		refreshFn: func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error) {
+			return &usecase.AuthResponse{Token: "new-token", RefreshToken: "new-refresh", UserID: "u1", Email: "test@example.com"}, nil
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"refresh_token":"valid-token"}`)
+	req := httptest.NewRequest("POST", "/api/v1/auth/refresh", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.AuthResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.NotEmpty(t, resp.Token)
+}
+
+func TestRefresh_InvalidBody(t *testing.T) {
+	router := testRouter(nil)
+	req := httptest.NewRequest("POST", "/api/v1/auth/refresh", strings.NewReader(`not json`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestRefresh_Error(t *testing.T) {
+	mock := &mockUsecases{
+		refreshFn: func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error) {
+			return nil, fmt.Errorf("invalid refresh token")
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"refresh_token":"bad-token"}`)
+	req := httptest.NewRequest("POST", "/api/v1/auth/refresh", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// ----- Logout Handler Tests -----
+
+func TestLogout_Success(t *testing.T) {
+	mock := &mockUsecases{
+		logoutFn: func(ctx context.Context, refreshToken string) error { return nil },
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"refresh_token":"valid-token"}`)
+	req := httptest.NewRequest("POST", "/api/v1/auth/logout", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestLogout_WithError(t *testing.T) {
+	mock := &mockUsecases{
+		logoutFn: func(ctx context.Context, refreshToken string) error {
+			return fmt.Errorf("db error")
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"refresh_token":"some-token"}`)
+	req := httptest.NewRequest("POST", "/api/v1/auth/logout", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+// ----- Me Handler Tests -----
+
+func TestMe_Success(t *testing.T) {
+	mock := &mockUsecases{
+		getProfileFn: func(ctx context.Context, userID string) (*usecase.UserProfile, error) {
+			return &usecase.UserProfile{ID: userID, Email: "test@example.com", Role: "user"}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/me", nil)
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "test-user"}))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.UserProfile
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "test@example.com", resp.Email)
+}
+
+func TestMe_NoIdentity(t *testing.T) {
+	router := testRouter(nil)
+	req := httptest.NewRequest("GET", "/api/v1/me", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestMe_UserNotFound(t *testing.T) {
+	mock := &mockUsecases{
+		getProfileFn: func(ctx context.Context, userID string) (*usecase.UserProfile, error) {
+			return nil, fmt.Errorf("user not found")
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/me", nil)
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "nonexistent"}))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+// ----- AuthMiddleware Tests -----
+
+func TestAuthMiddleware_NoHeader(t *testing.T) {
+	mw := AuthMiddleware(testJWTAuth, nil)
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest("GET", "/api/v1/projects", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestAuthMiddleware_InvalidToken(t *testing.T) {
+	mw := AuthMiddleware(testJWTAuth, nil)
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest("GET", "/api/v1/projects", nil)
+	req.Header.Set("Authorization", "Bearer invalid-jwt-token")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestAuthMiddleware_APIKeyAuth(t *testing.T) {
+	apiKeyAuth := auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, error) {
+		return "user-1", "project-1", nil
+	})
+	mw := AuthMiddleware(testJWTAuth, apiKeyAuth)
+	var capturedID string
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ident := auth.ContextIdentity(r.Context())
+		capturedID = ident.UserID
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest("GET", "/api/v1/projects", nil)
+	req.Header.Set("Authorization", "Bearer some-api-key")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "user-1", capturedID)
+}
+
+// ----- NewRouter endpoint connectivity -----
+
+func TestNewRouter_RefreshLogoutOutsideAuth(t *testing.T) {
+	mock := &mockUsecases{
+		refreshFn: func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error) {
+			return &usecase.AuthResponse{Token: "new-tok", RefreshToken: "new-ref", UserID: "u1", Email: "a@b.com"}, nil
+		},
+		logoutFn: func(ctx context.Context, refreshToken string) error { return nil },
+	}
+	router := NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth})
+
+	t.Run("refresh without auth header succeeds", func(t *testing.T) {
+		body := strings.NewReader(`{"refresh_token":"x"}`)
+		req := httptest.NewRequest("POST", "/api/v1/auth/refresh", body)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+	})
+
+	t.Run("logout without auth header succeeds", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/v1/auth/logout", strings.NewReader(`{}`))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusNoContent, w.Code)
+	})
+
+	t.Run("me without token returns 401", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/v1/me", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusUnauthorized, w.Code)
+	})
+}
+
+func TestNewRouter_MeWithValidToken(t *testing.T) {
+	mock := &mockUsecases{
+		getProfileFn: func(ctx context.Context, userID string) (*usecase.UserProfile, error) {
+			return &usecase.UserProfile{ID: userID, Email: "test@example.com", Role: "user"}, nil
+		},
+	}
+	router := NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth})
+
+	req := httptest.NewRequest("GET", "/api/v1/me", nil)
+	req.Header.Set("Authorization", "Bearer "+testToken(t))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+// ----- parseMinSeverityRank Tests -----
+
+func TestParseMinSeverityRank(t *testing.T) {
+	tests := []struct {
+		input string
+		want  int16
+	}{
+		{"", 3},
+		{"high", 3},
+		{"critical", 4},
+		{"medium", 2},
+		{"low", 1},
+		{"high,critical", 4},
+		{"low,medium", 2},
+		{"unknown", 3},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := parseMinSeverityRank(tt.input)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
+// ----- parseIntParam Tests -----
+
+func TestParseIntParam(t *testing.T) {
+	tests := []struct {
+		name      string
+		query     string
+		defaultVal int32
+		want      int32
+	}{
+		{"no param", "/test", 20, 20},
+		{"valid param", "/test?limit=50", 20, 50},
+		{"negative param", "/test?limit=-1", 20, 20},
+		{"non-numeric", "/test?limit=abc", 20, 20},
+		{"zero", "/test?limit=0", 20, 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest("GET", tt.query, nil)
+			got := parseIntParam(r, "limit", tt.defaultVal)
+			assert.Equal(t, tt.want, got)
+		})
+	}
 }

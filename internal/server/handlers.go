@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/db/sqlc"
@@ -81,6 +82,9 @@ type usecaseInterface interface {
 	Refresh(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
 	Logout(ctx context.Context, refreshToken string) error
 	GetProfile(ctx context.Context, userID string) (*usecase.UserProfile, error)
+	ListEnvironments(ctx context.Context, projectSlug string) ([]usecase.EnvironmentResponse, error)
+	ListTargets(ctx context.Context, projectSlug string) ([]usecase.TargetResponse, error)
+	ListArtifacts(ctx context.Context, projectSlug string) ([]usecase.ArtifactResponse, error)
 }
 
 type Handler struct {
@@ -92,15 +96,19 @@ func NewHandler(uc usecaseInterface) *Handler {
 }
 
 type ingestRequest struct {
-	Project       string          `json:"project"`
-	Scanner       string          `json:"scanner"`
-	ScannerVersion string         `json:"scanner_version,omitempty"`
-	ParserVersion  string         `json:"parser_version,omitempty"`
-	RawData       json.RawMessage `json:"raw_data"`
-	Branch        string          `json:"branch,omitempty"`
-	CommitSha     string          `json:"commit_sha,omitempty"`
-	GateSeverity  string          `json:"gate_severity,omitempty"`
-	GateStatus    string          `json:"gate_status,omitempty"`
+	Project         string          `json:"project"`
+	Scanner         string          `json:"scanner"`
+	ScannerVersion  string          `json:"scanner_version,omitempty"`
+	ParserVersion   string          `json:"parser_version,omitempty"`
+	RawData         json.RawMessage `json:"raw_data"`
+	Branch          string          `json:"branch,omitempty"`
+	CommitSha       string          `json:"commit_sha,omitempty"`
+	GateSeverity    string          `json:"gate_severity,omitempty"`
+	GateStatus      string          `json:"gate_status,omitempty"`
+	Environment     string          `json:"environment,omitempty"`
+	ArtifactName    string          `json:"artifact_name,omitempty"`
+	ArtifactVersion string          `json:"artifact_version,omitempty"`
+	ArtifactType    string          `json:"artifact_type,omitempty"`
 }
 
 type ingestResponse struct {
@@ -382,7 +390,11 @@ func (h *Handler) GetFinding(w http.ResponseWriter, r *http.Request) {
 
 	finding, err := h.uc.GetFinding(r.Context(), id)
 	if err != nil {
-		respondError(w, http.StatusNotFound, "not_found", "finding not found")
+		if _, parseErr := uuid.Parse(id); parseErr != nil {
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
+		} else {
+			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+		}
 		return
 	}
 
@@ -427,6 +439,10 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		CommitSha:      req.CommitSha,
 		GateSeverity:   gateSeverity,
 		GateStatus:     gateStatus,
+		Environment:    req.Environment,
+		ArtifactName:   req.ArtifactName,
+		ArtifactVersion: req.ArtifactVersion,
+		ArtifactType:   req.ArtifactType,
 	})
 	if err != nil {
 		log.Printf("ingest report: %v", err)
@@ -573,6 +589,48 @@ func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, events)
+}
+
+func (h *Handler) ListEnvironments(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if slug == "" {
+		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		return
+	}
+	envs, err := h.uc.ListEnvironments(r.Context(), slug)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "environments_failed", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, envs)
+}
+
+func (h *Handler) ListTargets(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if slug == "" {
+		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		return
+	}
+	targets, err := h.uc.ListTargets(r.Context(), slug)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "targets_failed", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, targets)
+}
+
+func (h *Handler) ListArtifacts(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if slug == "" {
+		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		return
+	}
+	artifacts, err := h.uc.ListArtifacts(r.Context(), slug)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "artifacts_failed", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, artifacts)
 }
 
 func parseMinSeverityRank(severities string) int16 {

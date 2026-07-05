@@ -15,6 +15,9 @@ type Repos struct {
 	Users         UserRepo
 	APIKeys       APIKeyRepo
 	RefreshTokens RefreshTokenRepo
+	Environments  EnvironmentRepo
+	Targets       TargetRepo
+	Artifacts     ArtifactRepo
 }
 
 func NewRepos(pool *pgxpool.Pool) *Repos {
@@ -26,6 +29,9 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 		Users:         &pgUserRepo{q: q},
 		APIKeys:       &pgAPIKeyRepo{q: q},
 		RefreshTokens: &pgRefreshTokenRepo{q: q},
+		Environments:  &pgEnvironmentRepo{q: q},
+		Targets:       &pgTargetRepo{q: q},
+		Artifacts:     &pgArtifactRepo{q: q},
 	}
 }
 
@@ -53,6 +59,28 @@ type APIKeyRepo interface {
 	ListByProject(ctx context.Context, projectID pgtype.UUID) ([]sqlc.ListAPIKeysByProjectRow, error)
 	GetByHash(ctx context.Context, keyHash string) (sqlc.ApiKey, error)
 	Revoke(ctx context.Context, id, projectID pgtype.UUID) (sqlc.ApiKey, error)
+}
+
+type EnvironmentRepo interface {
+	Upsert(ctx context.Context, arg sqlc.UpsertEnvironmentParams) (sqlc.Environment, error)
+	List(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Environment, error)
+	GetByID(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Environment, error)
+	Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Environment, error)
+}
+
+type TargetRepo interface {
+	Upsert(ctx context.Context, arg sqlc.UpsertTargetParams) (sqlc.Target, error)
+	List(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Target, error)
+	GetByID(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Target, error)
+	Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Target, error)
+}
+
+type ArtifactRepo interface {
+	Upsert(ctx context.Context, arg sqlc.UpsertArtifactParams) (sqlc.Artifact, error)
+	List(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Artifact, error)
+	ListByTarget(ctx context.Context, targetID pgtype.UUID) ([]sqlc.Artifact, error)
+	GetByID(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Artifact, error)
+	Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Artifact, error)
 }
 
 type FindingRepo interface {

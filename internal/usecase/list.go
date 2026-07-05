@@ -236,3 +236,119 @@ func (u *Usecases) GetReport(ctx context.Context, reportID pgtype.UUID) (*Report
 	resp := toReport(r)
 	return &resp, nil
 }
+
+type EnvironmentResponse struct {
+	ID              string `json:"id"`
+	ProjectID       string `json:"project_id"`
+	Name            string `json:"name"`
+	Tier            string `json:"tier"`
+	InternetFacing  bool   `json:"internet_facing"`
+	DataSensitivity string `json:"data_sensitivity"`
+	CreatedAt       string `json:"created_at"`
+}
+
+type TargetResponse struct {
+	ID        string `json:"id"`
+	ProjectID string `json:"project_id"`
+	Name      string `json:"name"`
+	Kind      string `json:"kind"`
+	Locator   string `json:"locator,omitempty"`
+	CreatedAt string `json:"created_at"`
+}
+
+type ArtifactResponse struct {
+	ID           string `json:"id"`
+	ProjectID    string `json:"project_id"`
+	TargetID     string `json:"target_id,omitempty"`
+	ArtifactType string `json:"artifact_type"`
+	Name         string `json:"name"`
+	Version      string `json:"version,omitempty"`
+	Digest       string `json:"digest,omitempty"`
+	Locator      string `json:"locator,omitempty"`
+	CreatedAt    string `json:"created_at"`
+}
+
+func toEnvironment(e sqlc.Environment) EnvironmentResponse {
+	return EnvironmentResponse{
+		ID:              uuidStr(e.ID),
+		ProjectID:       uuidStr(e.ProjectID),
+		Name:            e.Name,
+		Tier:            e.Tier,
+		InternetFacing:  e.InternetFacing,
+		DataSensitivity: e.DataSensitivity,
+		CreatedAt:       e.CreatedAt.Time.Format(time.RFC3339),
+	}
+}
+
+func toTarget(t sqlc.Target) TargetResponse {
+	return TargetResponse{
+		ID:        uuidStr(t.ID),
+		ProjectID: uuidStr(t.ProjectID),
+		Name:      t.Name,
+		Kind:      t.Kind,
+		Locator:   t.Locator.String,
+		CreatedAt: t.CreatedAt.Time.Format(time.RFC3339),
+	}
+}
+
+func toArtifact(a sqlc.Artifact) ArtifactResponse {
+	return ArtifactResponse{
+		ID:           uuidStr(a.ID),
+		ProjectID:    uuidStr(a.ProjectID),
+		TargetID:     uuidStr(a.TargetID),
+		ArtifactType: a.ArtifactType,
+		Name:         a.Name,
+		Version:      a.Version.String,
+		Digest:       a.Digest.String,
+		Locator:      a.Locator.String,
+		CreatedAt:    a.CreatedAt.Time.Format(time.RFC3339),
+	}
+}
+
+func (u *Usecases) ListEnvironments(ctx context.Context, projectSlug string) ([]EnvironmentResponse, error) {
+	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	if err != nil {
+		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+	}
+	envs, err := u.deps.Repos.Environments.List(ctx, project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list environments: %w", err)
+	}
+	resp := make([]EnvironmentResponse, len(envs))
+	for i, e := range envs {
+		resp[i] = toEnvironment(e)
+	}
+	return resp, nil
+}
+
+func (u *Usecases) ListTargets(ctx context.Context, projectSlug string) ([]TargetResponse, error) {
+	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	if err != nil {
+		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+	}
+	targets, err := u.deps.Repos.Targets.List(ctx, project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list targets: %w", err)
+	}
+	resp := make([]TargetResponse, len(targets))
+	for i, t := range targets {
+		resp[i] = toTarget(t)
+	}
+	return resp, nil
+}
+
+func (u *Usecases) ListArtifacts(ctx context.Context, projectSlug string) ([]ArtifactResponse, error) {
+	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	if err != nil {
+		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+	}
+	artifacts, err := u.deps.Repos.Artifacts.List(ctx, project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("list artifacts: %w", err)
+	}
+	resp := make([]ArtifactResponse, len(artifacts))
+	for i, a := range artifacts {
+		resp[i] = toArtifact(a)
+	}
+	return resp, nil
+}
