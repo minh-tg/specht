@@ -197,3 +197,47 @@ type User struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
+
+type Waiver struct {
+	ID          pgtype.UUID        `json:"id"`
+	ProjectID   pgtype.UUID        `json:"project_id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	Enabled     bool               `json:"enabled"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type WaiverCondition struct {
+	ID        pgtype.UUID        `json:"id"`
+	WaiverID  pgtype.UUID        `json:"waiver_id"`
+	Field     string             `json:"field"`
+	Operator  string             `json:"operator"`
+	Value     string             `json:"value"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type WaiverContext struct {
+	ID            pgtype.UUID        `json:"id"`
+	WaiverID      pgtype.UUID        `json:"waiver_id"`
+	EnvironmentID pgtype.UUID        `json:"environment_id"`
+	TargetID      pgtype.UUID        `json:"target_id"`
+	ArtifactID    pgtype.UUID        `json:"artifact_id"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+}
+
+type WaiverEvent struct {
+	ID        pgtype.UUID        `json:"id"`
+	WaiverID  pgtype.UUID        `json:"waiver_id"`
+	EventType string             `json:"event_type"`
+	ActorID   pgtype.UUID        `json:"actor_id"`
+	Metadata  []byte             `json:"metadata"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type WaiverFindingTarget struct {
+	ID        pgtype.UUID        `json:"id"`
+	WaiverID  pgtype.UUID        `json:"waiver_id"`
+	FindingID pgtype.UUID        `json:"finding_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
