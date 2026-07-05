@@ -41,6 +41,9 @@ func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthR
 	if email == "" || password == "" {
 		return nil, fmt.Errorf("email and password are required")
 	}
+	if len(password) < 8 {
+		return nil, fmt.Errorf("password must be at least 8 characters")
+	}
 
 	existing, err := u.deps.Repos.Users.GetByEmail(ctx, email)
 	if err == nil && existing.Email != "" {
