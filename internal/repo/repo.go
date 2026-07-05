@@ -18,6 +18,7 @@ type Repos struct {
 	Environments  EnvironmentRepo
 	Targets       TargetRepo
 	Artifacts     ArtifactRepo
+	Waivers       WaiverRepo
 }
 
 func NewRepos(pool *pgxpool.Pool) *Repos {
@@ -32,6 +33,7 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 		Environments:  &pgEnvironmentRepo{q: q},
 		Targets:       &pgTargetRepo{q: q},
 		Artifacts:     &pgArtifactRepo{q: q},
+		Waivers:       &pgWaiverRepo{q: q},
 	}
 }
 
@@ -73,6 +75,27 @@ type TargetRepo interface {
 	List(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Target, error)
 	GetByID(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Target, error)
 	Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Target, error)
+}
+
+type WaiverRepo interface {
+	Create(ctx context.Context, arg sqlc.CreateWaiverParams) (sqlc.Waiver, error)
+	List(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Waiver, error)
+	GetByID(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Waiver, error)
+	Update(ctx context.Context, arg sqlc.UpdateWaiverParams) (sqlc.Waiver, error)
+	Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Waiver, error)
+	Toggle(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Waiver, error)
+	ListActive(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Waiver, error)
+	ListConditions(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverCondition, error)
+	CreateCondition(ctx context.Context, arg sqlc.CreateWaiverConditionParams) (sqlc.WaiverCondition, error)
+	DeleteConditions(ctx context.Context, waiverID pgtype.UUID) error
+	ListContexts(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverContext, error)
+	CreateContext(ctx context.Context, arg sqlc.CreateWaiverContextParams) (sqlc.WaiverContext, error)
+	DeleteContexts(ctx context.Context, waiverID pgtype.UUID) error
+	ListFindingTargets(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverFindingTarget, error)
+	CreateFindingTarget(ctx context.Context, arg sqlc.CreateWaiverFindingTargetParams) (sqlc.WaiverFindingTarget, error)
+	DeleteFindingTargets(ctx context.Context, waiverID pgtype.UUID) error
+	CreateEvent(ctx context.Context, arg sqlc.CreateWaiverEventParams) (sqlc.WaiverEvent, error)
+	ListEvents(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverEvent, error)
 }
 
 type ArtifactRepo interface {
