@@ -77,6 +77,9 @@ type usecaseInterface interface {
 	BulkTriage(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
 	GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*usecase.GateStatusOutput, error)
 	GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error)
+	Refresh(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
+	Logout(ctx context.Context, refreshToken string) error
+	GetProfile(ctx context.Context, userID string) (*usecase.UserProfile, error)
 }
 
 type Handler struct {
@@ -268,6 +271,53 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+		return
+	}
+
+	result, err := h.uc.Refresh(r.Context(), req.RefreshToken)
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, "refresh_failed", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if r.Body != nil {
+		json.NewDecoder(r.Body).Decode(&req)
+	}
+
+	if err := h.uc.Logout(r.Context(), req.RefreshToken); err != nil {
+		respondError(w, http.StatusInternalServerError, "logout_failed", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
+	ident := auth.ContextIdentity(r.Context())
+	if ident == nil {
+		respondError(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+
+	profile, err := h.uc.GetProfile(r.Context(), ident.UserID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "not_found", "user not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, profile)
 }
 
 func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {

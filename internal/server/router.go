@@ -60,6 +60,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(AuthMiddleware(cfg.JWTAuth, apiKeyAuth))
 
+		r.Post("/api/v1/auth/refresh", h.Refresh)
+		r.Post("/api/v1/auth/logout", h.Logout)
+		r.Get("/api/v1/me", h.Me)
+
 		r.Get("/api/v1/projects", h.ListProjects)
 		r.Post("/api/v1/projects", h.CreateProject)
 		r.Get("/api/v1/projects/{slug}", h.GetProject)

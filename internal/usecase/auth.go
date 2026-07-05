@@ -2,6 +2,8 @@ package usecase
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -10,6 +12,14 @@ import (
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/db/sqlc"
 )
+
+type UserProfile struct {
+	ID          string `json:"id"`
+	Email       string `json:"email"`
+	DisplayName string `json:"display_name,omitempty"`
+	Role        string `json:"role"`
+	CreatedAt   string `json:"created_at"`
+}
 
 type AuthResponse struct {
 	Token        string `json:"token"`
@@ -52,17 +62,13 @@ func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthR
 	if err != nil {
 		return nil, fmt.Errorf("create token: %w", err)
 	}
-	refreshToken, err := u.deps.JWTAuth.CreateRefreshToken(userID)
-	if err != nil {
-		return nil, fmt.Errorf("create refresh token: %w", err)
-	}
 
-	return &AuthResponse{
-		Token:        token,
-		RefreshToken: refreshToken,
-		UserID:       userID,
-		Email:        user.Email,
-	}, nil
+	resp, err := u.createSession(ctx, userID, user.Email)
+	if err != nil {
+		return nil, err
+	}
+	resp.Token = token
+	return resp, nil
 }
 
 func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResponse, error) {
@@ -88,17 +94,13 @@ func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResp
 	if err != nil {
 		return nil, fmt.Errorf("create token: %w", err)
 	}
-	refreshToken, err := u.deps.JWTAuth.CreateRefreshToken(userID)
-	if err != nil {
-		return nil, fmt.Errorf("create refresh token: %w", err)
-	}
 
-	return &AuthResponse{
-		Token:        token,
-		RefreshToken: refreshToken,
-		UserID:       userID,
-		Email:        user.Email,
-	}, nil
+	resp, err := u.createSession(ctx, userID, user.Email)
+	if err != nil {
+		return nil, err
+	}
+	resp.Token = token
+	return resp, nil
 }
 
 func (u *Usecases) CreateAPIKey(ctx context.Context, projectSlug, name string) (*APIKeyResponse, error) {
@@ -178,6 +180,117 @@ func (u *Usecases) RevokeAPIKey(ctx context.Context, projectSlug, keyID string) 
 		return fmt.Errorf("revoke key: %w", err)
 	}
 	return nil
+}
+
+func (u *Usecases) createSession(ctx context.Context, userID, email string) (*AuthResponse, error) {
+	rawRefresh, err := u.deps.JWTAuth.CreateRefreshToken(userID)
+	if err != nil {
+		return nil, fmt.Errorf("create refresh token: %w", err)
+	}
+
+	hash := sha256.Sum256([]byte(rawRefresh))
+	hashStr := hex.EncodeToString(hash[:])
+
+	var uid pgtype.UUID
+	if err := uid.Scan(userID); err != nil {
+		return nil, fmt.Errorf("invalid user id: %w", err)
+	}
+
+	if _, err := u.deps.Repos.RefreshTokens.Create(ctx, uid, hashStr, time.Now().Add(7*24*time.Hour)); err != nil {
+		return nil, fmt.Errorf("store refresh token: %w", err)
+	}
+
+	return &AuthResponse{
+		RefreshToken: rawRefresh,
+		UserID:       userID,
+		Email:        email,
+	}, nil
+}
+
+func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthResponse, error) {
+	if refreshToken == "" {
+		return nil, fmt.Errorf("refresh_token is required")
+	}
+
+	hash := sha256.Sum256([]byte(refreshToken))
+	hashStr := hex.EncodeToString(hash[:])
+
+	stored, err := u.deps.Repos.RefreshTokens.GetByHash(ctx, hashStr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid refresh token")
+	}
+
+	if stored.RevokedAt.Valid {
+		return nil, fmt.Errorf("refresh token has been revoked")
+	}
+
+	if stored.ExpiresAt.Time.Before(time.Now()) {
+		return nil, fmt.Errorf("refresh token has expired")
+	}
+
+	if _, err := u.deps.Repos.RefreshTokens.Revoke(ctx, stored.ID); err != nil {
+		return nil, fmt.Errorf("revoke old token: %w", err)
+	}
+
+	userID := uuid.UUID(stored.UserID.Bytes).String()
+	user, err := u.deps.Repos.Users.GetByID(ctx, stored.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	token, err := u.deps.JWTAuth.CreateToken(userID, user.Email)
+	if err != nil {
+		return nil, fmt.Errorf("create token: %w", err)
+	}
+
+	resp, err := u.createSession(ctx, userID, user.Email)
+	if err != nil {
+		return nil, err
+	}
+	resp.Token = token
+	return resp, nil
+}
+
+func (u *Usecases) Logout(ctx context.Context, refreshToken string) error {
+	if refreshToken == "" {
+		return nil
+	}
+
+	hash := sha256.Sum256([]byte(refreshToken))
+	hashStr := hex.EncodeToString(hash[:])
+
+	stored, err := u.deps.Repos.RefreshTokens.GetByHash(ctx, hashStr)
+	if err != nil {
+		return nil
+	}
+
+	_, err = u.deps.Repos.RefreshTokens.Revoke(ctx, stored.ID)
+	return err
+}
+
+func (u *Usecases) GetProfile(ctx context.Context, userID string) (*UserProfile, error) {
+	var uid pgtype.UUID
+	if err := uid.Scan(userID); err != nil {
+		return nil, fmt.Errorf("invalid user id: %w", err)
+	}
+
+	user, err := u.deps.Repos.Users.GetByID(ctx, uid)
+	if err != nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	name := ""
+	if user.DisplayName.Valid {
+		name = user.DisplayName.String
+	}
+
+	return &UserProfile{
+		ID:          uuid.UUID(user.ID.Bytes).String(),
+		Email:       user.Email,
+		DisplayName: name,
+		Role:        user.Role,
+		CreatedAt:   user.CreatedAt.Time.Format(time.RFC3339),
+	}, nil
 }
 
 func strPtr(s string) *string { return &s }

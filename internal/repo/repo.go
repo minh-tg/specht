@@ -9,21 +9,23 @@ import (
 )
 
 type Repos struct {
-	Projects ProjectRepo
-	Reports  ReportRepo
-	Findings FindingRepo
-	Users    UserRepo
-	APIKeys  APIKeyRepo
+	Projects      ProjectRepo
+	Reports       ReportRepo
+	Findings      FindingRepo
+	Users         UserRepo
+	APIKeys       APIKeyRepo
+	RefreshTokens RefreshTokenRepo
 }
 
 func NewRepos(pool *pgxpool.Pool) *Repos {
 	q := sqlc.New(pool)
 	return &Repos{
-		Projects: &pgProjectRepo{q: q},
-		Reports:  &pgReportRepo{q: q},
-		Findings: &pgFindingRepo{q: q},
-		Users:    &pgUserRepo{q: q},
-		APIKeys:  &pgAPIKeyRepo{q: q},
+		Projects:      &pgProjectRepo{q: q},
+		Reports:       &pgReportRepo{q: q},
+		Findings:      &pgFindingRepo{q: q},
+		Users:         &pgUserRepo{q: q},
+		APIKeys:       &pgAPIKeyRepo{q: q},
+		RefreshTokens: &pgRefreshTokenRepo{q: q},
 	}
 }
 

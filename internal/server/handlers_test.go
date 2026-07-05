@@ -36,6 +36,9 @@ type mockUsecases struct {
 	bulkTriageFn       func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
 	getGateStatusFn    func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error)
 	getFindingEventsFn func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]any, error)
+	refreshFn       func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
+	logoutFn        func(ctx context.Context, refreshToken string) error
+	getProfileFn    func(ctx context.Context, userID string) (*usecase.UserProfile, error)
 }
 
 func (m *mockUsecases) CreateProject(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error) {
@@ -158,6 +161,27 @@ func (m *mockUsecases) GetFindingEvents(ctx context.Context, findingID string, e
 		}
 	}
 	return events, nil
+}
+
+func (m *mockUsecases) Refresh(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error) {
+	if m.refreshFn == nil {
+		return nil, fmt.Errorf("unexpected call to Refresh")
+	}
+	return m.refreshFn(ctx, refreshToken)
+}
+
+func (m *mockUsecases) Logout(ctx context.Context, refreshToken string) error {
+	if m.logoutFn == nil {
+		return fmt.Errorf("unexpected call to Logout")
+	}
+	return m.logoutFn(ctx, refreshToken)
+}
+
+func (m *mockUsecases) GetProfile(ctx context.Context, userID string) (*usecase.UserProfile, error) {
+	if m.getProfileFn == nil {
+		return nil, fmt.Errorf("unexpected call to GetProfile")
+	}
+	return m.getProfileFn(ctx, userID)
 }
 
 var now = time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
