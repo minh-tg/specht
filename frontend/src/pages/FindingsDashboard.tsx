@@ -129,9 +129,8 @@ export function FindingsDashboard() {
         >
           <option value="">All statuses</option>
           <option value="open">Open</option>
-          <option value="confirmed">Confirmed</option>
-          <option value="false_positive">False Positive</option>
-          <option value="wont_fix">Won't Fix</option>
+          <option value="fixed">Fixed</option>
+          <option value="reopened">Reopened</option>
         </select>
       </div>
 
