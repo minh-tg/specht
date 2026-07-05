@@ -1,9 +1,8 @@
 import { useNavigate } from "react-router-dom"
-import { useProjects } from "@/api/hooks"
+import { useProjects, useGateStatus } from "@/api/hooks"
 
 export function ProjectList() {
   const { data: projects, isLoading, isError, error, refetch } = useProjects()
-  const navigate = useNavigate()
 
   if (isLoading) {
     return (
@@ -43,17 +42,35 @@ export function ProjectList() {
   return (
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {projects.map((p) => (
-        <button
-          key={p.id}
-          onClick={() => navigate(`/${p.slug}/findings`)}
-          className="bg-card hover:bg-muted/50 dark:bg-muted/10 cursor-pointer rounded-lg border p-4 text-left transition-colors"
-        >
-          <h3 className="font-medium">{p.name}</h3>
-          {p.description && (
-            <p className="text-muted-foreground mt-1 text-xs">{p.description}</p>
-          )}
-        </button>
+        <ProjectCard key={p.id} slug={p.slug} name={p.name} description={p.description} />
       ))}
     </div>
+  )
+}
+
+function ProjectCard({ slug, name, description }: { slug: string; name: string; description: string | null }) {
+  const navigate = useNavigate()
+  const { data: gate } = useGateStatus(slug)
+
+  return (
+    <button
+      onClick={() => navigate(`/${slug}/findings`)}
+      className="bg-card hover:bg-muted/50 dark:bg-muted/10 relative cursor-pointer rounded-lg border p-4 text-left transition-colors"
+    >
+      {gate && gate.threshold_breached && (
+        <span className="bg-destructive text-destructive-foreground absolute right-2 top-2 rounded px-1.5 py-0.5 text-[10px] font-medium">
+          BLOCKING
+        </span>
+      )}
+      {gate && !gate.threshold_breached && gate.blocking_count > 0 && (
+        <span className="bg-muted-foreground/20 text-muted-foreground absolute right-2 top-2 rounded px-1.5 py-0.5 text-[10px] font-medium">
+          {gate.blocking_count} blocking
+        </span>
+      )}
+      <h3 className="font-medium">{name}</h3>
+      {description && (
+        <p className="text-muted-foreground mt-1 text-xs">{description}</p>
+      )}
+    </button>
   )
 }

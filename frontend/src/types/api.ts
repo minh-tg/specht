@@ -15,16 +15,32 @@ export interface Finding {
   current_title: string
   current_severity: string
   current_score: number | null
-  current_description: string | null
-  current_remediation: string | null
-  current_cvss: string | null
-  cve_id: string | null
   state: string
   triage_status: string
+  analysis_state: string
+  gate_effect: string
   first_seen_at: string
   last_seen_at: string
   created_at: string
   updated_at: string
+}
+
+export interface GateStatus {
+  threshold_breached: boolean
+  blocking_count: number
+}
+
+export interface RegisterResponse {
+  token: string
+  refresh_token: string
+  user_id: string
+  email: string
+}
+
+export interface TriageResponse {
+  finding_id: string
+  analysis_state: string
+  gate_effect: string
 }
 
 export interface LoginResponse {

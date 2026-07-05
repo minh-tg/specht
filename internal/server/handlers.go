@@ -66,6 +66,7 @@ type usecaseInterface interface {
 	ListProjects(ctx context.Context) ([]usecase.ProjectResponse, error)
 	GetProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
 	ListFindings(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error)
+	GetFinding(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
 	ListReports(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
 	GetReport(ctx context.Context, reportID pgtype.UUID) (*usecase.ReportResponse, error)
 	Register(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
@@ -370,6 +371,22 @@ func (h *Handler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) GetFinding(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		return
+	}
+
+	finding, err := h.uc.GetFinding(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "not_found", "finding not found")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, finding)
 }
 
 func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {

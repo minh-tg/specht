@@ -6,13 +6,20 @@ import { ProjectList } from "@/pages/ProjectList"
 import { FindingsDashboard } from "@/pages/FindingsDashboard"
 import { ReportHistory } from "@/pages/ReportHistory"
 import { Login } from "@/pages/Login"
+import { Register } from "@/pages/Register"
+import { FindingDetail } from "@/pages/FindingDetail"
 import { Ingest } from "@/pages/Ingest"
 import { ApiKeys } from "@/pages/ApiKeys"
 
 function ProjectLayout() {
   const { slug } = useParams<{ slug: string }>()
   const location = useLocation()
-  const currentTab = location.pathname.endsWith("/reports") ? "reports" : "findings"
+  const path = location.pathname
+  const currentTab = path.endsWith("/reports") ? "reports" : "findings"
+
+  if (path.includes("/findings/") && !path.endsWith("/findings")) {
+    return <FindingDetail />
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -53,6 +60,7 @@ function AppLayout() {
       <Navbar />
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/register" element={<Register />} />
         <Route
           path="/"
           element={

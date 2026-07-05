@@ -35,9 +35,14 @@ export function Navbar() {
               </button>
             </>
           ) : (
-            <Link to="/login" className="text-muted-foreground hover:text-foreground text-sm">
-              Sign in
-            </Link>
+            <>
+              <Link to="/register" className="text-muted-foreground hover:text-foreground text-sm">
+                Register
+              </Link>
+              <Link to="/login" className="text-muted-foreground hover:text-foreground text-sm">
+                Sign in
+              </Link>
+            </>
           )}
         </div>
       </div>

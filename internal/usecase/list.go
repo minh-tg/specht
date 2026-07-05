@@ -29,6 +29,8 @@ type FindingResponse struct {
 	CurrentScore    *float64  `json:"current_score"`
 	State           string    `json:"state"`
 	TriageStatus    string    `json:"triage_status"`
+	AnalysisState   string    `json:"analysis_state"`
+	GateEffect      string    `json:"gate_effect"`
 	FirstSeenAt     time.Time `json:"first_seen_at"`
 	LastSeenAt      time.Time `json:"last_seen_at"`
 	CreatedAt       time.Time `json:"created_at"`
@@ -115,6 +117,8 @@ func toFinding(f sqlc.Finding) FindingResponse {
 		CurrentScore:    scoreOpt(f.CurrentScore),
 		State:           f.State,
 		TriageStatus:    f.TriageStatus,
+		AnalysisState:   f.AnalysisState,
+		GateEffect:      f.GateEffect,
 		FirstSeenAt:     timePtr(f.FirstSeenAt),
 		LastSeenAt:      timePtr(f.LastSeenAt),
 		CreatedAt:       timePtr(f.CreatedAt),
@@ -191,6 +195,19 @@ func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, severit
 		resp[i] = toFinding(f)
 	}
 	return resp, nil
+}
+
+func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingResponse, error) {
+	id, err := uuid.Parse(findingID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid finding id: %w", err)
+	}
+	f, err := u.deps.Repos.Findings.GetByID(ctx, pgtype.UUID{Bytes: id, Valid: true})
+	if err != nil {
+		return nil, fmt.Errorf("get finding: %w", err)
+	}
+	resp := toFinding(f)
+	return &resp, nil
 }
 
 func (u *Usecases) ListReports(ctx context.Context, projectSlug string, limit, offset int32) ([]ReportResponse, error) {

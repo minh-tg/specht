@@ -35,8 +35,9 @@ type mockUsecases struct {
 	triageFindingFn    func(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
 	bulkTriageFn       func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
 	getGateStatusFn    func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error)
+	getFindingFn        func(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
 	getFindingEventsFn func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]any, error)
-	refreshFn       func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
+	refreshFn          func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
 	logoutFn        func(ctx context.Context, refreshToken string) error
 	getProfileFn    func(ctx context.Context, userID string) (*usecase.UserProfile, error)
 }
@@ -67,6 +68,13 @@ func (m *mockUsecases) ListFindings(ctx context.Context, projectSlug string, sev
 		return nil, fmt.Errorf("unexpected call to ListFindings")
 	}
 	return m.listFindingsFn(ctx, projectSlug, severities, states, limit, offset)
+}
+
+func (m *mockUsecases) GetFinding(ctx context.Context, findingID string) (*usecase.FindingResponse, error) {
+	if m.getFindingFn == nil {
+		return nil, fmt.Errorf("unexpected call to GetFinding")
+	}
+	return m.getFindingFn(ctx, findingID)
 }
 
 func (m *mockUsecases) ListReports(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error) {
@@ -714,6 +722,7 @@ func TestNewRouterRoutes(t *testing.T) {
 		createAPIKeyFn: func(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error) { return nil, nil },
 		listAPIKeysFn:  func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error) { return nil, nil },
 		revokeAPIKeyFn: func(ctx context.Context, projectSlug, keyID string) error { return nil },
+		getFindingFn:   func(ctx context.Context, findingID string) (*usecase.FindingResponse, error) { return nil, nil },
 	}
 	router := NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth})
 	require.NotNil(t, router)

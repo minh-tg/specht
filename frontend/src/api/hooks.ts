@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { apiFetch } from "./client"
-import type { Project, Finding, Report } from "@/types/api"
+import type { Project, Finding, Report, GateStatus, TriageResponse } from "@/types/api"
 
 export function useProjects() {
   return useQuery({
@@ -27,9 +27,55 @@ export function useFindings(
   })
 }
 
+export function useFinding(findingId: string) {
+  return useQuery({
+    queryKey: ["finding", findingId],
+    queryFn: () => apiFetch<Finding>(`/api/v1/findings/${findingId}`),
+    enabled: !!findingId,
+  })
+}
+
 export function useReports(projectSlug: string) {
   return useQuery({
     queryKey: ["reports", projectSlug],
     queryFn: () => apiFetch<Report[]>(`/api/v1/projects/${projectSlug}/reports`),
+  })
+}
+
+export function useGateStatus(projectSlug: string) {
+  return useQuery({
+    queryKey: ["gate", projectSlug],
+    queryFn: () => apiFetch<GateStatus>(`/api/v1/projects/${projectSlug}/gate`),
+    enabled: !!projectSlug,
+  })
+}
+
+export function useTriageFinding() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      findingId,
+      analysisState,
+      reason,
+      analysisExpiresAt,
+    }: {
+      findingId: string
+      analysisState: string
+      reason?: string
+      analysisExpiresAt?: string
+    }) =>
+      apiFetch<TriageResponse>(`/api/v1/findings/${findingId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          analysis_state: analysisState,
+          reason: reason ?? "",
+          analysis_expires_at: analysisExpiresAt ?? null,
+        }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["findings"] })
+      queryClient.invalidateQueries({ queryKey: ["finding"] })
+      queryClient.invalidateQueries({ queryKey: ["gate"] })
+    },
   })
 }

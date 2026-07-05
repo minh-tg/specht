@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { useParams, useSearchParams } from "react-router-dom"
+import { useParams, useSearchParams, useNavigate } from "react-router-dom"
 import { useFindings } from "@/api/hooks"
 import { SeverityBadge } from "@/components/ui/severity-badge"
 import type { Finding } from "@/types/api"
@@ -30,6 +30,7 @@ function sortFindings(findings: Finding[], by: string, dir: "asc" | "desc") {
 export function FindingsDashboard() {
   const { slug } = useParams<{ slug: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
 
   const severity = searchParams.get("severity") ?? ""
   const status = searchParams.get("status") ?? ""
@@ -151,7 +152,8 @@ export function FindingsDashboard() {
               >
                 Title{sortIndicator("title")}
               </th>
-              <th className="px-3 py-2 font-medium">Status</th>
+              <th className="px-3 py-2 font-medium">State</th>
+              <th className="px-3 py-2 font-medium">Analysis</th>
               <th
                 className="cursor-pointer px-3 py-2 font-medium"
                 onClick={() => toggleSort("last_seen")}
@@ -162,13 +164,24 @@ export function FindingsDashboard() {
           </thead>
           <tbody>
             {sorted.map((f) => (
-              <tr key={f.id} className="border-border hover:bg-muted/50 border-b">
+              <tr
+                key={f.id}
+                className="border-border hover:bg-muted/50 cursor-pointer border-b"
+                onClick={() => navigate(`/${slug}/findings/${f.id}`)}
+              >
                 <td className="px-3 py-2">
                   <SeverityBadge severity={f.current_severity} />
                 </td>
                 <td className="text-muted-foreground px-3 py-2">{f.finding_kind}</td>
                 <td className="px-3 py-2">{f.current_title}</td>
-                <td className="px-3 py-2 capitalize">{f.triage_status}</td>
+                <td className="px-3 py-2 capitalize">{f.state}</td>
+                <td className="px-3 py-2 text-xs">
+                  {f.analysis_state ? (
+                    <span className="bg-muted rounded px-1.5 py-0.5 capitalize">{f.analysis_state}</span>
+                  ) : (
+                    <span className="text-muted-foreground">–</span>
+                  )}
+                </td>
                 <td className="text-muted-foreground px-3 py-2">
                   {new Date(f.last_seen_at).toLocaleDateString()}
                 </td>
