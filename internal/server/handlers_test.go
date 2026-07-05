@@ -48,7 +48,7 @@ type mockUsecases struct {
 	getWaiverFn           func(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverDetailResponse, error)
 	updateWaiverFn        func(ctx context.Context, input usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error)
 	deleteWaiverFn        func(ctx context.Context, projectSlug, waiverID string) error
-	toggleWaiverFn        func(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverResponse, error)
+	toggleWaiverFn        func(ctx context.Context, projectSlug, waiverID, actorID string) (*usecase.WaiverResponse, error)
 	listWaiverEventsFn    func(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
 	checkWaiverMatchFn    func(ctx context.Context, projectSlug, findingID string) (bool, error)
 }
@@ -259,11 +259,11 @@ func (m *mockUsecases) DeleteWaiver(ctx context.Context, projectSlug, waiverID s
 	return m.deleteWaiverFn(ctx, projectSlug, waiverID)
 }
 
-func (m *mockUsecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverResponse, error) {
+func (m *mockUsecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID, actorID string) (*usecase.WaiverResponse, error) {
 	if m.toggleWaiverFn == nil {
 		return nil, fmt.Errorf("unexpected call to ToggleWaiver")
 	}
-	return m.toggleWaiverFn(ctx, projectSlug, waiverID)
+	return m.toggleWaiverFn(ctx, projectSlug, waiverID, actorID)
 }
 
 func (m *mockUsecases) ListWaiverEvents(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error) {
@@ -1476,4 +1476,188 @@ func TestParseIntParam(t *testing.T) {
 			assert.Equal(t, tt.want, got)
 		})
 	}
+}
+
+func sampleWaiverResponse() usecase.WaiverResponse {
+	return usecase.WaiverResponse{
+		ID:          "wvr-1",
+		ProjectID:   "proj-1",
+		Name:        "test-waiver",
+		Description: "test description",
+		Enabled:     true,
+		Conditions:  []usecase.WaiverConditionResp{},
+		Contexts:    []usecase.WaiverContextResp{},
+		Targets:     []usecase.WaiverFindingTargetResp{},
+		CreatedAt:   now.Format(time.RFC3339),
+		UpdatedAt:   now.Format(time.RFC3339),
+	}
+}
+
+func authRouter(h *Handler) http.Handler {
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := auth.ContextWithIdentity(r.Context(), &auth.Identity{UserID: "test-user"})
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
+	r.Route("/api/v1/projects/{slug}/waivers", func(r chi.Router) {
+		r.Get("/", h.ListWaivers)
+		r.Post("/", h.CreateWaiver)
+		r.Get("/{id}", h.GetWaiver)
+		r.Put("/{id}", h.UpdateWaiver)
+		r.Delete("/{id}", h.DeleteWaiver)
+		r.Post("/{id}/toggle", h.ToggleWaiver)
+		r.Get("/{id}/events", h.ListWaiverEvents)
+		r.Post("/check-match", h.CheckWaiverMatch)
+	})
+	return r
+}
+
+func TestCreateWaiver_Success(t *testing.T) {
+	mock := &mockUsecases{
+		createWaiverFn: func(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error) {
+			assert.Equal(t, "my-app", input.ProjectSlug)
+			assert.Equal(t, "test-waiver", input.Name)
+			assert.Equal(t, "test-user", input.ActorID)
+			r := sampleWaiverResponse()
+			return &r, nil
+		},
+	}
+	h := NewHandler(mock)
+	router := authRouter(h)
+	body := strings.NewReader(`{"name":"test-waiver","description":"test description"}`)
+	req := httptest.NewRequest("POST", "/api/v1/projects/my-app/waivers", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	var resp usecase.WaiverResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "test-waiver", resp.Name)
+}
+
+func TestCreateWaiver_MissingName(t *testing.T) {
+	handler := &Handler{uc: nil}
+	body := strings.NewReader(`{"name":""}`)
+	req := httptest.NewRequest("POST", "/api/v1/projects/my-app/waivers", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.CreateWaiver(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestListWaivers_Success(t *testing.T) {
+	mock := &mockUsecases{
+		listWaiversFn: func(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error) {
+			assert.Equal(t, "my-app", projectSlug)
+			return []usecase.WaiverResponse{sampleWaiverResponse()}, nil
+		},
+	}
+	h := NewHandler(mock)
+	router := authRouter(h)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/waivers", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp []usecase.WaiverResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Len(t, resp, 1)
+}
+
+func TestGetWaiver_Success(t *testing.T) {
+	mock := &mockUsecases{
+		getWaiverFn: func(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverDetailResponse, error) {
+			assert.Equal(t, "my-app", projectSlug)
+			assert.Equal(t, "wvr-1", waiverID)
+			return &usecase.WaiverDetailResponse{WaiverResponse: sampleWaiverResponse()}, nil
+		},
+	}
+	h := NewHandler(mock)
+	router := authRouter(h)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/waivers/wvr-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestDeleteWaiver_Success(t *testing.T) {
+	mock := &mockUsecases{
+		deleteWaiverFn: func(ctx context.Context, projectSlug, waiverID string) error {
+			assert.Equal(t, "my-app", projectSlug)
+			assert.Equal(t, "wvr-1", waiverID)
+			return nil
+		},
+	}
+	h := NewHandler(mock)
+	router := authRouter(h)
+	req := httptest.NewRequest("DELETE", "/api/v1/projects/my-app/waivers/wvr-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestToggleWaiver_Success(t *testing.T) {
+	mock := &mockUsecases{
+		toggleWaiverFn: func(ctx context.Context, projectSlug, waiverID, actorID string) (*usecase.WaiverResponse, error) {
+			assert.Equal(t, "my-app", projectSlug)
+			assert.Equal(t, "wvr-1", waiverID)
+			assert.Equal(t, "test-user", actorID)
+			r := sampleWaiverResponse()
+			r.Enabled = false
+			return &r, nil
+		},
+	}
+	h := NewHandler(mock)
+	router := authRouter(h)
+	req := httptest.NewRequest("POST", "/api/v1/projects/my-app/waivers/wvr-1/toggle", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.WaiverResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.False(t, resp.Enabled)
+}
+
+func TestCheckWaiverMatch_Success(t *testing.T) {
+	mock := &mockUsecases{
+		checkWaiverMatchFn: func(ctx context.Context, projectSlug, findingID string) (bool, error) {
+			assert.Equal(t, "my-app", projectSlug)
+			assert.Equal(t, "find-1", findingID)
+			return true, nil
+		},
+	}
+	h := NewHandler(mock)
+	router := authRouter(h)
+	body := strings.NewReader(`{"finding_id":"find-1"}`)
+	req := httptest.NewRequest("POST", "/api/v1/projects/my-app/waivers/check-match", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp map[string]bool
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.True(t, resp["matched"])
+}
+
+func TestCheckWaiverMatch_MissingFindingID(t *testing.T) {
+	handler := &Handler{uc: nil}
+	body := strings.NewReader(`{}`)
+	req := httptest.NewRequest("POST", "/api/v1/projects/my-app/waivers/check-match", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.CheckWaiverMatch(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

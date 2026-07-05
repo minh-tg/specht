@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,6 +20,7 @@ type Repos struct {
 	Targets       TargetRepo
 	Artifacts     ArtifactRepo
 	Waivers       WaiverRepo
+	pool          *pgxpool.Pool
 }
 
 func NewRepos(pool *pgxpool.Pool) *Repos {
@@ -34,7 +36,24 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 		Targets:       &pgTargetRepo{q: q},
 		Artifacts:     &pgArtifactRepo{q: q},
 		Waivers:       &pgWaiverRepo{q: q},
+		pool:          pool,
 	}
+}
+
+// WithTx executes fn within a database transaction.
+func (r *Repos) WithTx(ctx context.Context, fn func(q *sqlc.Queries) error) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	q := sqlc.New(tx)
+	if err := fn(q); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 type ProjectRepo interface {

@@ -3,6 +3,9 @@ package usecase
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -58,6 +61,7 @@ type CreateWaiverInput struct {
 	Conditions  []CreateWaiverConditionInput
 	Contexts    []CreateWaiverContextInput
 	TargetIDs   []string
+	ActorID     string
 }
 
 type CreateWaiverConditionInput struct {
@@ -80,6 +84,7 @@ type UpdateWaiverInput struct {
 	Conditions  []CreateWaiverConditionInput
 	Contexts    []CreateWaiverContextInput
 	TargetIDs   []string
+	ActorID     string
 }
 
 type WaiverDetailResponse struct {
@@ -161,92 +166,121 @@ func toWaiverDetail(w sqlc.Waiver, conditions []sqlc.WaiverCondition, contexts [
 
 var waiverCreatedEvent = []byte("{}")
 
+func actorUUID(actorID string) pgtype.UUID {
+	if actorID == "" {
+		return pgtype.UUID{Valid: false}
+	}
+	id, err := uuid.Parse(actorID)
+	if err != nil {
+		return pgtype.UUID{Valid: false}
+	}
+	return pgtype.UUID{Bytes: id, Valid: true}
+}
+
 func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*WaiverResponse, error) {
 	project, err := u.deps.Repos.Projects.GetBySlug(ctx, input.ProjectSlug)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("lookup project %q: %w", input.ProjectSlug, err)
 	}
 
-	w, err := u.deps.Repos.Waivers.Create(ctx, sqlc.CreateWaiverParams{
-		ProjectID:   project.ID,
-		Name:        input.Name,
-		Description: input.Description,
-		Enabled:     true,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	for _, c := range input.Conditions {
-		_, err = u.deps.Repos.Waivers.CreateCondition(ctx, sqlc.CreateWaiverConditionParams{
-			WaiverID: w.ID,
-			Field:    c.Field,
-			Operator: c.Operator,
-			Value:    c.Value,
+	var resp *WaiverResponse
+	err = u.deps.Repos.WithTx(ctx, func(q *sqlc.Queries) error {
+		w, err := q.CreateWaiver(ctx, sqlc.CreateWaiverParams{
+			ProjectID:   project.ID,
+			Name:        input.Name,
+			Description: input.Description,
+			Enabled:     true,
 		})
 		if err != nil {
-			return nil, err
+			return fmt.Errorf("create waiver: %w", err)
 		}
-	}
 
-	for _, c := range input.Contexts {
-		envID := pgtype.UUID{Valid: false}
-		if c.EnvironmentID != "" {
-			id, _ := uuid.Parse(c.EnvironmentID)
-			envID = pgtype.UUID{Bytes: id, Valid: true}
+		for _, c := range input.Conditions {
+			_, err = q.CreateWaiverCondition(ctx, sqlc.CreateWaiverConditionParams{
+				WaiverID: w.ID,
+				Field:    c.Field,
+				Operator: c.Operator,
+				Value:    c.Value,
+			})
+			if err != nil {
+				return fmt.Errorf("create condition: %w", err)
+			}
 		}
-		tgtID := pgtype.UUID{Valid: false}
-		if c.TargetID != "" {
-			id, _ := uuid.Parse(c.TargetID)
-			tgtID = pgtype.UUID{Bytes: id, Valid: true}
-		}
-		artID := pgtype.UUID{Valid: false}
-		if c.ArtifactID != "" {
-			id, _ := uuid.Parse(c.ArtifactID)
-			artID = pgtype.UUID{Bytes: id, Valid: true}
-		}
-		_, err = u.deps.Repos.Waivers.CreateContext(ctx, sqlc.CreateWaiverContextParams{
-			WaiverID:      w.ID,
-			EnvironmentID: envID,
-			TargetID:      tgtID,
-			ArtifactID:    artID,
-		})
-		if err != nil {
-			return nil, err
-		}
-	}
 
-	for _, targetID := range input.TargetIDs {
-		id, _ := uuid.Parse(targetID)
-		_, err = u.deps.Repos.Waivers.CreateFindingTarget(ctx, sqlc.CreateWaiverFindingTargetParams{
+		for _, c := range input.Contexts {
+			envID := pgtype.UUID{Valid: false}
+			if c.EnvironmentID != "" {
+				id, err := uuid.Parse(c.EnvironmentID)
+				if err != nil {
+					return fmt.Errorf("invalid environment_id %q: %w", c.EnvironmentID, err)
+				}
+				envID = pgtype.UUID{Bytes: id, Valid: true}
+			}
+			tgtID := pgtype.UUID{Valid: false}
+			if c.TargetID != "" {
+				id, err := uuid.Parse(c.TargetID)
+				if err != nil {
+					return fmt.Errorf("invalid target_id %q: %w", c.TargetID, err)
+				}
+				tgtID = pgtype.UUID{Bytes: id, Valid: true}
+			}
+			artID := pgtype.UUID{Valid: false}
+			if c.ArtifactID != "" {
+				id, err := uuid.Parse(c.ArtifactID)
+				if err != nil {
+					return fmt.Errorf("invalid artifact_id %q: %w", c.ArtifactID, err)
+				}
+				artID = pgtype.UUID{Bytes: id, Valid: true}
+			}
+			_, err = q.CreateWaiverContext(ctx, sqlc.CreateWaiverContextParams{
+				WaiverID:      w.ID,
+				EnvironmentID: envID,
+				TargetID:      tgtID,
+				ArtifactID:    artID,
+			})
+			if err != nil {
+				return fmt.Errorf("create context: %w", err)
+			}
+		}
+
+		for _, targetID := range input.TargetIDs {
+			id, err := uuid.Parse(targetID)
+			if err != nil {
+				return fmt.Errorf("invalid target finding id %q: %w", targetID, err)
+			}
+			_, err = q.CreateWaiverFindingTarget(ctx, sqlc.CreateWaiverFindingTargetParams{
+				WaiverID:  w.ID,
+				FindingID: pgtype.UUID{Bytes: id, Valid: true},
+			})
+			if err != nil {
+				return fmt.Errorf("create finding target: %w", err)
+			}
+		}
+
+		q.CreateWaiverEvent(ctx, sqlc.CreateWaiverEventParams{
 			WaiverID:  w.ID,
-			FindingID: pgtype.UUID{Bytes: id, Valid: true},
+			EventType: "created",
+			ActorID:   actorUUID(input.ActorID),
+			Metadata:  waiverCreatedEvent,
 		})
-		if err != nil {
-			return nil, err
-		}
-	}
 
-	u.deps.Repos.Waivers.CreateEvent(ctx, sqlc.CreateWaiverEventParams{
-		WaiverID:  w.ID,
-		EventType: "created",
-		ActorID:   pgtype.UUID{Valid: false},
-		Metadata:  waiverCreatedEvent,
+		r := toWaiver(w)
+		resp = &r
+		return nil
 	})
 
-	resp := toWaiver(w)
-	return &resp, nil
+	return resp, err
 }
 
 func (u *Usecases) ListWaivers(ctx context.Context, projectSlug string) ([]WaiverResponse, error) {
 	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 
 	waivers, err := u.deps.Repos.Waivers.List(ctx, project.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list waivers: %w", err)
 	}
 
 	resp := make([]WaiverResponse, len(waivers))
@@ -259,27 +293,32 @@ func (u *Usecases) ListWaivers(ctx context.Context, projectSlug string) ([]Waive
 func (u *Usecases) GetWaiver(ctx context.Context, projectSlug, waiverID string) (*WaiverDetailResponse, error) {
 	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 
-	w, err := u.deps.Repos.Waivers.GetByID(ctx, pgtype.UUID{}, project.ID)
+	id, err := uuid.Parse(waiverID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid waiver id: %w", err)
+	}
+
+	w, err := u.deps.Repos.Waivers.GetByID(ctx, pgtype.UUID{Bytes: id, Valid: true}, project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get waiver: %w", err)
 	}
 
 	conditions, err := u.deps.Repos.Waivers.ListConditions(ctx, w.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list conditions: %w", err)
 	}
 
 	contexts, err := u.deps.Repos.Waivers.ListContexts(ctx, w.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list contexts: %w", err)
 	}
 
 	targets, err := u.deps.Repos.Waivers.ListFindingTargets(ctx, w.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("list finding targets: %w", err)
 	}
 
 	resp := toWaiverDetail(w, conditions, contexts, targets)
@@ -289,102 +328,152 @@ func (u *Usecases) GetWaiver(ctx context.Context, projectSlug, waiverID string) 
 func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*WaiverResponse, error) {
 	project, err := u.deps.Repos.Projects.GetBySlug(ctx, input.ProjectSlug)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("lookup project %q: %w", input.ProjectSlug, err)
 	}
 
-	w, err := u.deps.Repos.Waivers.Update(ctx, sqlc.UpdateWaiverParams{
-		ID:          pgtype.UUID{},
-		ProjectID:   project.ID,
-		Name:        pgtype.Text{String: input.Name, Valid: input.Name != ""},
-		Description: pgtype.Text{String: input.Description, Valid: input.Description != ""},
-	})
+	id, err := uuid.Parse(input.WaiverID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid waiver id: %w", err)
 	}
 
-	if input.Conditions != nil {
-		u.deps.Repos.Waivers.DeleteConditions(ctx, w.ID)
-		for _, c := range input.Conditions {
-			u.deps.Repos.Waivers.CreateCondition(ctx, sqlc.CreateWaiverConditionParams{
-				WaiverID: w.ID,
-				Field:    c.Field,
-				Operator: c.Operator,
-				Value:    c.Value,
-			})
+	pid := pgtype.UUID{Bytes: id, Valid: true}
+
+	var resp *WaiverResponse
+	err = u.deps.Repos.WithTx(ctx, func(q *sqlc.Queries) error {
+		w, err := q.UpdateWaiver(ctx, sqlc.UpdateWaiverParams{
+			ID:          pid,
+			ProjectID:   project.ID,
+			Name:        pgtype.Text{String: input.Name, Valid: input.Name != ""},
+			Description: pgtype.Text{String: input.Description, Valid: input.Description != ""},
+		})
+		if err != nil {
+			return fmt.Errorf("update waiver: %w", err)
 		}
-	}
 
-	if input.Contexts != nil {
-		u.deps.Repos.Waivers.DeleteContexts(ctx, w.ID)
-		for _, c := range input.Contexts {
-			envID := pgtype.UUID{Valid: false}
-			if c.EnvironmentID != "" {
-				id, _ := uuid.Parse(c.EnvironmentID)
-				envID = pgtype.UUID{Bytes: id, Valid: true}
+		if input.Conditions != nil {
+			if err := q.DeleteWaiverConditions(ctx, w.ID); err != nil {
+				return fmt.Errorf("delete conditions: %w", err)
 			}
-			tgtID := pgtype.UUID{Valid: false}
-			if c.TargetID != "" {
-				id, _ := uuid.Parse(c.TargetID)
-				tgtID = pgtype.UUID{Bytes: id, Valid: true}
+			for _, c := range input.Conditions {
+				_, err = q.CreateWaiverCondition(ctx, sqlc.CreateWaiverConditionParams{
+					WaiverID: w.ID,
+					Field:    c.Field,
+					Operator: c.Operator,
+					Value:    c.Value,
+				})
+				if err != nil {
+					return fmt.Errorf("create condition: %w", err)
+				}
 			}
-			artID := pgtype.UUID{Valid: false}
-			if c.ArtifactID != "" {
-				id, _ := uuid.Parse(c.ArtifactID)
-				artID = pgtype.UUID{Bytes: id, Valid: true}
-			}
-			u.deps.Repos.Waivers.CreateContext(ctx, sqlc.CreateWaiverContextParams{
-				WaiverID:      w.ID,
-				EnvironmentID: envID,
-				TargetID:      tgtID,
-				ArtifactID:    artID,
-			})
 		}
-	}
 
-	if input.TargetIDs != nil {
-		u.deps.Repos.Waivers.DeleteFindingTargets(ctx, w.ID)
-		for _, targetID := range input.TargetIDs {
-			id, _ := uuid.Parse(targetID)
-			u.deps.Repos.Waivers.CreateFindingTarget(ctx, sqlc.CreateWaiverFindingTargetParams{
-				WaiverID:  w.ID,
-				FindingID: pgtype.UUID{Bytes: id, Valid: true},
-			})
+		if input.Contexts != nil {
+			if err := q.DeleteWaiverContexts(ctx, w.ID); err != nil {
+				return fmt.Errorf("delete contexts: %w", err)
+			}
+			for _, c := range input.Contexts {
+				envID := pgtype.UUID{Valid: false}
+				if c.EnvironmentID != "" {
+					uid, err := uuid.Parse(c.EnvironmentID)
+					if err != nil {
+						return fmt.Errorf("invalid environment_id %q: %w", c.EnvironmentID, err)
+					}
+					envID = pgtype.UUID{Bytes: uid, Valid: true}
+				}
+				tgtID := pgtype.UUID{Valid: false}
+				if c.TargetID != "" {
+					uid, err := uuid.Parse(c.TargetID)
+					if err != nil {
+						return fmt.Errorf("invalid target_id %q: %w", c.TargetID, err)
+					}
+					tgtID = pgtype.UUID{Bytes: uid, Valid: true}
+				}
+				artID := pgtype.UUID{Valid: false}
+				if c.ArtifactID != "" {
+					uid, err := uuid.Parse(c.ArtifactID)
+					if err != nil {
+						return fmt.Errorf("invalid artifact_id %q: %w", c.ArtifactID, err)
+					}
+					artID = pgtype.UUID{Bytes: uid, Valid: true}
+				}
+				_, err = q.CreateWaiverContext(ctx, sqlc.CreateWaiverContextParams{
+					WaiverID:      w.ID,
+					EnvironmentID: envID,
+					TargetID:      tgtID,
+					ArtifactID:    artID,
+				})
+				if err != nil {
+					return fmt.Errorf("create context: %w", err)
+				}
+			}
 		}
-	}
 
-	u.deps.Repos.Waivers.CreateEvent(ctx, sqlc.CreateWaiverEventParams{
-		WaiverID:  w.ID,
-		EventType: "updated",
-		ActorID:   pgtype.UUID{Valid: false},
-		Metadata:  waiverCreatedEvent,
+		if input.TargetIDs != nil {
+			if err := q.DeleteWaiverFindingTargets(ctx, w.ID); err != nil {
+				return fmt.Errorf("delete targets: %w", err)
+			}
+			for _, targetID := range input.TargetIDs {
+				uid, err := uuid.Parse(targetID)
+				if err != nil {
+					return fmt.Errorf("invalid target finding id %q: %w", targetID, err)
+				}
+				_, err = q.CreateWaiverFindingTarget(ctx, sqlc.CreateWaiverFindingTargetParams{
+					WaiverID:  w.ID,
+					FindingID: pgtype.UUID{Bytes: uid, Valid: true},
+				})
+				if err != nil {
+					return fmt.Errorf("create finding target: %w", err)
+				}
+			}
+		}
+
+		q.CreateWaiverEvent(ctx, sqlc.CreateWaiverEventParams{
+			WaiverID:  w.ID,
+			EventType: "updated",
+			ActorID:   actorUUID(input.ActorID),
+			Metadata:  waiverCreatedEvent,
+		})
+
+		r := toWaiver(w)
+		resp = &r
+		return nil
 	})
 
-	resp := toWaiver(w)
-	return &resp, nil
+	return resp, err
 }
 
 func (u *Usecases) DeleteWaiver(ctx context.Context, projectSlug, waiverID string) error {
 	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return err
+		return fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 
-	_, err = u.deps.Repos.Waivers.Delete(ctx, pgtype.UUID{}, project.ID)
+	id, err := uuid.Parse(waiverID)
 	if err != nil {
-		return err
+		return fmt.Errorf("invalid waiver id: %w", err)
+	}
+
+	_, err = u.deps.Repos.Waivers.Delete(ctx, pgtype.UUID{Bytes: id, Valid: true}, project.ID)
+	if err != nil {
+		return fmt.Errorf("delete waiver: %w", err)
 	}
 	return nil
 }
 
-func (u *Usecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID string) (*WaiverResponse, error) {
+func (u *Usecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID, actorID string) (*WaiverResponse, error) {
 	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 
-	w, err := u.deps.Repos.Waivers.Toggle(ctx, pgtype.UUID{}, project.ID)
+	id, err := uuid.Parse(waiverID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid waiver id: %w", err)
+	}
+
+	w, err := u.deps.Repos.Waivers.Toggle(ctx, pgtype.UUID{Bytes: id, Valid: true}, project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("toggle waiver: %w", err)
 	}
 
 	eventType := "enabled"
@@ -394,7 +483,7 @@ func (u *Usecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID strin
 	u.deps.Repos.Waivers.CreateEvent(ctx, sqlc.CreateWaiverEventParams{
 		WaiverID:  w.ID,
 		EventType: eventType,
-		ActorID:   pgtype.UUID{Valid: false},
+		ActorID:   actorUUID(actorID),
 		Metadata:  waiverCreatedEvent,
 	})
 
@@ -405,17 +494,22 @@ func (u *Usecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID strin
 func (u *Usecases) ListWaiverEvents(ctx context.Context, projectSlug, waiverID string) ([]WaiverEventResp, error) {
 	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 
-	w, err := u.deps.Repos.Waivers.GetByID(ctx, pgtype.UUID{}, project.ID)
+	id, err := uuid.Parse(waiverID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("invalid waiver id: %w", err)
 	}
 
-	events, err := u.deps.Repos.Waivers.ListEvents(ctx, w.ID)
+	_, err = u.deps.Repos.Waivers.GetByID(ctx, pgtype.UUID{Bytes: id, Valid: true}, project.ID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get waiver: %w", err)
+	}
+
+	events, err := u.deps.Repos.Waivers.ListEvents(ctx, pgtype.UUID{Bytes: id, Valid: true})
+	if err != nil {
+		return nil, fmt.Errorf("list events: %w", err)
 	}
 
 	resp := make([]WaiverEventResp, len(events))
@@ -426,5 +520,128 @@ func (u *Usecases) ListWaiverEvents(ctx context.Context, projectSlug, waiverID s
 }
 
 func (u *Usecases) CheckWaiverMatch(ctx context.Context, projectSlug, findingID string) (bool, error) {
+	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	if err != nil {
+		return false, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+	}
+
+	fid, err := uuid.Parse(findingID)
+	if err != nil {
+		return false, fmt.Errorf("invalid finding id: %w", err)
+	}
+
+	waivers, err := u.deps.Repos.Waivers.ListActive(ctx, project.ID)
+	if err != nil {
+		return false, fmt.Errorf("list active waivers: %w", err)
+	}
+
+	finding, err := u.deps.Repos.Findings.GetByID(ctx, pgtype.UUID{Bytes: fid, Valid: true})
+	if err != nil {
+		return false, fmt.Errorf("get finding: %w", err)
+	}
+
+	for _, w := range waivers {
+		conditions, err := u.deps.Repos.Waivers.ListConditions(ctx, w.ID)
+		if err != nil {
+			return false, fmt.Errorf("list conditions for waiver %s: %w", uuidStr(w.ID), err)
+		}
+
+		contexts, err := u.deps.Repos.Waivers.ListContexts(ctx, w.ID)
+		if err != nil {
+			return false, fmt.Errorf("list contexts for waiver %s: %w", uuidStr(w.ID), err)
+		}
+
+		targets, err := u.deps.Repos.Waivers.ListFindingTargets(ctx, w.ID)
+		if err != nil {
+			return false, fmt.Errorf("list targets for waiver %s: %w", uuidStr(w.ID), err)
+		}
+
+		if len(contexts) > 0 && !matchContexts(finding, contexts) {
+			continue
+		}
+
+		if len(targets) > 0 && !matchTargets(finding, targets) {
+			continue
+		}
+
+		matched := true
+		for _, c := range conditions {
+			if !matchCondition(finding, c) {
+				matched = false
+				break
+			}
+		}
+
+		if matched {
+			return true, nil
+		}
+	}
+
 	return false, nil
+}
+
+func matchCondition(finding sqlc.Finding, cond sqlc.WaiverCondition) bool {
+	switch cond.Field {
+	case "severity_rank":
+		threshold, err := strconv.Atoi(cond.Value)
+		if err != nil {
+			return false
+		}
+		switch cond.Operator {
+		case "eq":
+			return int(finding.CurrentSeverityRank) == threshold
+		case "neq":
+			return int(finding.CurrentSeverityRank) != threshold
+		case "lt":
+			return int(finding.CurrentSeverityRank) < threshold
+		case "lte":
+			return int(finding.CurrentSeverityRank) <= threshold
+		case "gt":
+			return int(finding.CurrentSeverityRank) > threshold
+		case "gte":
+			return int(finding.CurrentSeverityRank) >= threshold
+		}
+	case "finding_kind":
+		if cond.Operator == "eq" {
+			return finding.FindingKind == cond.Value
+		}
+		if cond.Operator == "neq" {
+			return finding.FindingKind != cond.Value
+		}
+	case "fingerprint":
+		if cond.Operator == "eq" {
+			return finding.Fingerprint == cond.Value
+		}
+		if cond.Operator == "neq" {
+			return finding.Fingerprint != cond.Value
+		}
+	case "title_pattern":
+		if cond.Operator == "contains" {
+			return strings.Contains(finding.CurrentTitle, cond.Value)
+		}
+		if cond.Operator == "matches" {
+			return finding.CurrentTitle == cond.Value
+		}
+	case "cve_id":
+		if cond.Operator == "contains" {
+			return strings.Contains(finding.Fingerprint, cond.Value)
+		}
+		if cond.Operator == "eq" {
+			return finding.Fingerprint == cond.Value
+		}
+	}
+	return false
+}
+
+func matchContexts(_ sqlc.Finding, _ []sqlc.WaiverContext) bool {
+	return true
+}
+
+func matchTargets(finding sqlc.Finding, targets []sqlc.WaiverFindingTarget) bool {
+	for _, t := range targets {
+		if t.FindingID.Bytes == finding.ID.Bytes {
+			return true
+		}
+	}
+	return false
 }

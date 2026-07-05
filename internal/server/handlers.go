@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/db/sqlc"
@@ -90,7 +91,7 @@ type usecaseInterface interface {
 	GetWaiver(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverDetailResponse, error)
 	UpdateWaiver(ctx context.Context, input usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error)
 	DeleteWaiver(ctx context.Context, projectSlug, waiverID string) error
-	ToggleWaiver(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverResponse, error)
+	ToggleWaiver(ctx context.Context, projectSlug, waiverID, actorID string) (*usecase.WaiverResponse, error)
 	ListWaiverEvents(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
 	CheckWaiverMatch(ctx context.Context, projectSlug, findingID string) (bool, error)
 }
@@ -698,8 +699,10 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 		Conditions:  req.Conditions,
 		Contexts:    req.Contexts,
 		TargetIDs:   req.TargetIDs,
+		ActorID:     auth.ContextIdentity(r.Context()).UserID,
 	})
 	if err != nil {
+		slog.Error("create waiver", "error", err)
 		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
@@ -710,6 +713,7 @@ func (h *Handler) ListWaivers(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	waivers, err := h.uc.ListWaivers(r.Context(), slug)
 	if err != nil {
+		slog.Error("list waivers", "error", err)
 		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
@@ -721,7 +725,12 @@ func (h *Handler) GetWaiver(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	waiver, err := h.uc.GetWaiver(r.Context(), slug, id)
 	if err != nil {
-		respondError(w, http.StatusNotFound, "not_found", "waiver not found")
+		if errors.Is(err, pgx.ErrNoRows) {
+			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
+		} else {
+			slog.Error("get waiver", "error", err)
+			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		}
 		return
 	}
 	respondJSON(w, http.StatusOK, waiver)
@@ -750,8 +759,10 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 		Conditions:  req.Conditions,
 		Contexts:    req.Contexts,
 		TargetIDs:   req.TargetIDs,
+		ActorID:     auth.ContextIdentity(r.Context()).UserID,
 	})
 	if err != nil {
+		slog.Error("update waiver", "error", err)
 		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
@@ -762,7 +773,12 @@ func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	id := chi.URLParam(r, "id")
 	if err := h.uc.DeleteWaiver(r.Context(), slug, id); err != nil {
-		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		if errors.Is(err, pgx.ErrNoRows) {
+			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
+		} else {
+			slog.Error("delete waiver", "error", err)
+			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		}
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -771,9 +787,14 @@ func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	id := chi.URLParam(r, "id")
-	result, err := h.uc.ToggleWaiver(r.Context(), slug, id)
+	result, err := h.uc.ToggleWaiver(r.Context(), slug, id, auth.ContextIdentity(r.Context()).UserID)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		if errors.Is(err, pgx.ErrNoRows) {
+			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
+		} else {
+			slog.Error("toggle waiver", "error", err)
+			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		}
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -784,7 +805,12 @@ func (h *Handler) ListWaiverEvents(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	events, err := h.uc.ListWaiverEvents(r.Context(), slug, id)
 	if err != nil {
-		respondError(w, http.StatusNotFound, "not_found", "waiver not found")
+		if errors.Is(err, pgx.ErrNoRows) {
+			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
+		} else {
+			slog.Error("list waiver events", "error", err)
+			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		}
 		return
 	}
 	respondJSON(w, http.StatusOK, events)
@@ -805,6 +831,7 @@ func (h *Handler) CheckWaiverMatch(w http.ResponseWriter, r *http.Request) {
 	}
 	matched, err := h.uc.CheckWaiverMatch(r.Context(), slug, req.FindingID)
 	if err != nil {
+		slog.Error("check waiver match", "error", err)
 		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
 		return
 	}
