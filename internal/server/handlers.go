@@ -61,46 +61,90 @@ func LoggerMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-type usecaseInterface interface {
-	CreateProject(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error)
-	IngestReport(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
-	ListProjects(ctx context.Context) ([]usecase.ProjectResponse, error)
-	GetProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
-	ListFindings(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error)
-	GetFinding(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
-	ListReports(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
-	GetReport(ctx context.Context, reportID pgtype.UUID) (*usecase.ReportResponse, error)
-	Register(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
-	Login(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
-	CreateAPIKey(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error)
-	ListAPIKeys(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
-	RevokeAPIKey(ctx context.Context, projectSlug, keyID string) error
-	TriageFinding(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
-	BulkTriage(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
-	GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*usecase.GateStatusOutput, error)
-	GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
-	Refresh(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
-	Logout(ctx context.Context, refreshToken string) error
-	GetProfile(ctx context.Context, userID string) (*usecase.UserProfile, error)
-	ListEnvironments(ctx context.Context, projectSlug string) ([]usecase.EnvironmentResponse, error)
-	ListTargets(ctx context.Context, projectSlug string) ([]usecase.TargetResponse, error)
-	ListArtifacts(ctx context.Context, projectSlug string) ([]usecase.ArtifactResponse, error)
-	CreateWaiver(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error)
-	ListWaivers(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error)
-	GetWaiver(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverDetailResponse, error)
-	UpdateWaiver(ctx context.Context, input usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error)
-	DeleteWaiver(ctx context.Context, projectSlug, waiverID string) error
-	ToggleWaiver(ctx context.Context, projectSlug, waiverID, actorID string) (*usecase.WaiverResponse, error)
-	ListWaiverEvents(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
-	CheckWaiverMatch(ctx context.Context, projectSlug, findingID string) (bool, error)
-}
+type (
+	AuthUsecases interface {
+		Register(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
+		Login(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
+		Refresh(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
+		Logout(ctx context.Context, refreshToken string) error
+		GetProfile(ctx context.Context, userID string) (*usecase.UserProfile, error)
+	}
+
+	APIKeyUsecases interface {
+		CreateAPIKey(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error)
+		ListAPIKeys(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
+		RevokeAPIKey(ctx context.Context, projectSlug, keyID string) error
+	}
+
+	ProjectUsecases interface {
+		CreateProject(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error)
+		ListProjects(ctx context.Context) ([]usecase.ProjectResponse, error)
+		GetProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
+		ListEnvironments(ctx context.Context, projectSlug string) ([]usecase.EnvironmentResponse, error)
+		ListTargets(ctx context.Context, projectSlug string) ([]usecase.TargetResponse, error)
+		ListArtifacts(ctx context.Context, projectSlug string) ([]usecase.ArtifactResponse, error)
+	}
+
+	FindingUsecases interface {
+		ListFindings(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error)
+		GetFinding(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
+		TriageFinding(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
+		BulkTriage(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
+		GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
+	}
+
+	ReportUsecases interface {
+		IngestReport(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
+		ListReports(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
+		GetReport(ctx context.Context, reportID pgtype.UUID) (*usecase.ReportResponse, error)
+	}
+
+	GateUsecases interface {
+		GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*usecase.GateStatusOutput, error)
+	}
+
+	WaiverUsecases interface {
+		CreateWaiver(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error)
+		ListWaivers(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error)
+		GetWaiver(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverDetailResponse, error)
+		UpdateWaiver(ctx context.Context, input usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error)
+		DeleteWaiver(ctx context.Context, projectSlug, waiverID string) error
+		ToggleWaiver(ctx context.Context, projectSlug, waiverID, actorID string) (*usecase.WaiverResponse, error)
+		ListWaiverEvents(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
+		CheckWaiverMatch(ctx context.Context, projectSlug, findingID string) (bool, error)
+	}
+)
 
 type Handler struct {
-	uc usecaseInterface
+	auths    AuthUsecases
+	apikeys  APIKeyUsecases
+	projects ProjectUsecases
+	findings FindingUsecases
+	reports  ReportUsecases
+	gates    GateUsecases
+	waivers  WaiverUsecases
+}
+
+type usecaseInterface interface {
+	AuthUsecases
+	APIKeyUsecases
+	ProjectUsecases
+	FindingUsecases
+	ReportUsecases
+	GateUsecases
+	WaiverUsecases
 }
 
 func NewHandler(uc usecaseInterface) *Handler {
-	return &Handler{uc: uc}
+	return &Handler{
+		auths:    uc,
+		apikeys:  uc,
+		projects: uc,
+		findings: uc,
+		reports:  uc,
+		gates:    uc,
+		waivers:  uc,
+	}
 }
 
 type ingestRequest struct {
@@ -174,7 +218,7 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.uc.CreateProject(r.Context(), req.Name, req.Slug, req.Description)
+	result, err := h.projects.CreateProject(r.Context(), req.Name, req.Slug, req.Description)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "creation_failed", err.Error())
 		return
@@ -183,7 +227,7 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
-	projects, err := h.uc.ListProjects(r.Context())
+	projects, err := h.projects.ListProjects(r.Context())
 	if err != nil {
 		log.Printf("list projects: %v", err)
 		respondError(w, http.StatusInternalServerError, "internal_error", "failed to list projects")
@@ -194,7 +238,7 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	project, err := h.uc.GetProject(r.Context(), slug)
+	project, err := h.projects.GetProject(r.Context(), slug)
 	if err != nil {
 		respondError(w, http.StatusNotFound, "not_found", "project not found")
 		return
@@ -215,7 +259,7 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 		states = strings.Split(s, ",")
 	}
 
-	findings, err := h.uc.ListFindings(r.Context(), slug, severities, states, limit, offset)
+	findings, err := h.findings.ListFindings(r.Context(), slug, severities, states, limit, offset)
 	if err != nil {
 		log.Printf("list findings: %v", err)
 		respondError(w, http.StatusNotFound, "not_found", "project not found")
@@ -229,7 +273,7 @@ func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
 	limit := parseIntParam(r, "limit", 20)
 	offset := parseIntParam(r, "offset", 0)
 
-	reports, err := h.uc.ListReports(r.Context(), slug, limit, offset)
+	reports, err := h.reports.ListReports(r.Context(), slug, limit, offset)
 	if err != nil {
 		log.Printf("list reports: %v", err)
 		respondError(w, http.StatusNotFound, "not_found", "project not found")
@@ -246,7 +290,7 @@ func (h *Handler) GetReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	report, err := h.uc.GetReport(r.Context(), id)
+	report, err := h.reports.GetReport(r.Context(), id)
 	if err != nil {
 		respondError(w, http.StatusNotFound, "not_found", "report not found")
 		return
@@ -264,7 +308,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.uc.Register(r.Context(), req.Email, req.Password)
+	result, err := h.auths.Register(r.Context(), req.Email, req.Password)
 	if err != nil {
 		respondError(w, http.StatusUnprocessableEntity, "registration_failed", err.Error())
 		return
@@ -282,7 +326,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.uc.Login(r.Context(), req.Email, req.Password)
+	result, err := h.auths.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		respondError(w, http.StatusUnauthorized, "login_failed", "invalid email or password")
 		return
@@ -299,7 +343,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.uc.Refresh(r.Context(), req.RefreshToken)
+	result, err := h.auths.Refresh(r.Context(), req.RefreshToken)
 	if err != nil {
 		respondError(w, http.StatusUnauthorized, "refresh_failed", err.Error())
 		return
@@ -315,7 +359,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		json.NewDecoder(r.Body).Decode(&req)
 	}
 
-	if err := h.uc.Logout(r.Context(), req.RefreshToken); err != nil {
+	if err := h.auths.Logout(r.Context(), req.RefreshToken); err != nil {
 		respondError(w, http.StatusInternalServerError, "logout_failed", err.Error())
 		return
 	}
@@ -329,7 +373,7 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	profile, err := h.uc.GetProfile(r.Context(), ident.UserID)
+	profile, err := h.auths.GetProfile(r.Context(), ident.UserID)
 	if err != nil {
 		respondError(w, http.StatusNotFound, "not_found", "user not found")
 		return
@@ -351,7 +395,7 @@ func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.uc.CreateAPIKey(r.Context(), req.Project, req.Name)
+	result, err := h.apikeys.CreateAPIKey(r.Context(), req.Project, req.Name)
 	if err != nil {
 		respondError(w, http.StatusUnprocessableEntity, "create_failed", err.Error())
 		return
@@ -366,7 +410,7 @@ func (h *Handler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	keys, err := h.uc.ListAPIKeys(r.Context(), project)
+	keys, err := h.apikeys.ListAPIKeys(r.Context(), project)
 	if err != nil {
 		respondError(w, http.StatusNotFound, "not_found", "project not found")
 		return
@@ -382,7 +426,7 @@ func (h *Handler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.uc.RevokeAPIKey(r.Context(), project, keyID); err != nil {
+	if err := h.apikeys.RevokeAPIKey(r.Context(), project, keyID); err != nil {
 		respondError(w, http.StatusUnprocessableEntity, "revoke_failed", err.Error())
 		return
 	}
@@ -396,7 +440,7 @@ func (h *Handler) GetFinding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	finding, err := h.uc.GetFinding(r.Context(), id)
+	finding, err := h.findings.GetFinding(r.Context(), id)
 	if err != nil {
 		if _, parseErr := uuid.Parse(id); parseErr != nil {
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
@@ -437,7 +481,7 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		gateStatus = strings.Split(req.GateStatus, ",")
 	}
 
-	result, err := h.uc.IngestReport(r.Context(), usecase.IngestReportInput{
+	result, err := h.reports.IngestReport(r.Context(), usecase.IngestReportInput{
 		ProjectSlug:    req.Project,
 		Scanner:        req.Scanner,
 		ScannerVersion: req.ScannerVersion,
@@ -492,7 +536,7 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 
 	userID := auth.ContextIdentity(r.Context()).UserID
 
-	result, err := h.uc.TriageFinding(r.Context(), usecase.TriageInput{
+	result, err := h.findings.TriageFinding(r.Context(), usecase.TriageInput{
 		FindingID:         id,
 		AnalysisState:     req.AnalysisState,
 		Reason:            req.Reason,
@@ -538,7 +582,7 @@ func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
 
 	userID := auth.ContextIdentity(r.Context()).UserID
 
-	results, err := h.uc.BulkTriage(r.Context(), usecase.BulkTriageInput{
+	results, err := h.findings.BulkTriage(r.Context(), usecase.BulkTriageInput{
 		FindingIDs:        req.FindingIDs,
 		AnalysisState:     req.AnalysisState,
 		Reason:            req.Reason,
@@ -571,7 +615,7 @@ func (h *Handler) GetGateStatus(w http.ResponseWriter, r *http.Request) {
 
 	minRank := parseMinSeverityRank(r.URL.Query().Get("severity"))
 
-	result, err := h.uc.GetGateStatus(r.Context(), slug, minRank)
+	result, err := h.gates.GetGateStatus(r.Context(), slug, minRank)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "gate_failed", err.Error())
 		return
@@ -590,7 +634,7 @@ func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
 	limit := parseIntParam(r, "limit", 50)
 	offset := parseIntParam(r, "offset", 0)
 
-	events, err := h.uc.GetFindingEvents(r.Context(), id, nil, limit, offset)
+	events, err := h.findings.GetFindingEvents(r.Context(), id, nil, limit, offset)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "events_failed", err.Error())
 		return
@@ -605,7 +649,7 @@ func (h *Handler) ListEnvironments(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
 		return
 	}
-	envs, err := h.uc.ListEnvironments(r.Context(), slug)
+	envs, err := h.projects.ListEnvironments(r.Context(), slug)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "environments_failed", err.Error())
 		return
@@ -619,7 +663,7 @@ func (h *Handler) ListTargets(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
 		return
 	}
-	targets, err := h.uc.ListTargets(r.Context(), slug)
+	targets, err := h.projects.ListTargets(r.Context(), slug)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "targets_failed", err.Error())
 		return
@@ -633,7 +677,7 @@ func (h *Handler) ListArtifacts(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
 		return
 	}
-	artifacts, err := h.uc.ListArtifacts(r.Context(), slug)
+	artifacts, err := h.projects.ListArtifacts(r.Context(), slug)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "artifacts_failed", err.Error())
 		return
@@ -691,7 +735,7 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.uc.CreateWaiver(r.Context(), usecase.CreateWaiverInput{
+	result, err := h.waivers.CreateWaiver(r.Context(), usecase.CreateWaiverInput{
 		ProjectSlug: slug,
 		Name:        req.Name,
 		Description: req.Description,
@@ -710,7 +754,7 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) ListWaivers(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	waivers, err := h.uc.ListWaivers(r.Context(), slug)
+	waivers, err := h.waivers.ListWaivers(r.Context(), slug)
 	if err != nil {
 		slog.Error("list waivers", "error", err)
 		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
@@ -722,7 +766,7 @@ func (h *Handler) ListWaivers(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	id := chi.URLParam(r, "id")
-	waiver, err := h.uc.GetWaiver(r.Context(), slug, id)
+	waiver, err := h.waivers.GetWaiver(r.Context(), slug, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
@@ -750,7 +794,7 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.uc.UpdateWaiver(r.Context(), usecase.UpdateWaiverInput{
+	result, err := h.waivers.UpdateWaiver(r.Context(), usecase.UpdateWaiverInput{
 		WaiverID:    id,
 		ProjectSlug: slug,
 		Name:        req.Name,
@@ -771,7 +815,7 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	id := chi.URLParam(r, "id")
-	if err := h.uc.DeleteWaiver(r.Context(), slug, id); err != nil {
+	if err := h.waivers.DeleteWaiver(r.Context(), slug, id); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
 		} else {
@@ -786,7 +830,7 @@ func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	id := chi.URLParam(r, "id")
-	result, err := h.uc.ToggleWaiver(r.Context(), slug, id, auth.ContextIdentity(r.Context()).UserID)
+	result, err := h.waivers.ToggleWaiver(r.Context(), slug, id, auth.ContextIdentity(r.Context()).UserID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
@@ -802,7 +846,7 @@ func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListWaiverEvents(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	id := chi.URLParam(r, "id")
-	events, err := h.uc.ListWaiverEvents(r.Context(), slug, id)
+	events, err := h.waivers.ListWaiverEvents(r.Context(), slug, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
@@ -828,7 +872,7 @@ func (h *Handler) CheckWaiverMatch(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid_body", "finding_id is required")
 		return
 	}
-	matched, err := h.uc.CheckWaiverMatch(r.Context(), slug, req.FindingID)
+	matched, err := h.waivers.CheckWaiverMatch(r.Context(), slug, req.FindingID)
 	if err != nil {
 		slog.Error("check waiver match", "error", err)
 		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())

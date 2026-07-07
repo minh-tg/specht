@@ -339,7 +339,7 @@ func TestRespondError(t *testing.T) {
 }
 
 func TestIngestReport_InvalidJSON(t *testing.T) {
-	handler := &Handler{uc: nil}
+	handler := &Handler{}
 	body := strings.NewReader(`not json`)
 	req := httptest.NewRequest("POST", "/api/v1/reports", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -361,7 +361,7 @@ func TestIngestReport_InvalidJSON(t *testing.T) {
 }
 
 func TestIngestReport_MissingFields(t *testing.T) {
-	handler := &Handler{uc: nil}
+	handler := &Handler{}
 
 	tests := []struct {
 		name       string
@@ -498,7 +498,7 @@ func TestListProjects_Error(t *testing.T) {
 			return nil, fmt.Errorf("db error")
 		},
 	}
-	h := &Handler{uc: mock}
+	h := &Handler{projects: mock}
 	req := httptest.NewRequest("GET", "/api/v1/projects", nil)
 	w := httptest.NewRecorder()
 	h.ListProjects(w, req)
@@ -575,7 +575,7 @@ func TestCreateProject_Success(t *testing.T) {
 
 func TestCreateProject_MissingFields(t *testing.T) {
 	mock := &mockUsecases{}
-	h := &Handler{uc: mock}
+	h := &Handler{projects: mock}
 	req := httptest.NewRequest("POST", "/api/v1/projects", strings.NewReader(`{"slug":"my-app"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1589,7 +1589,7 @@ func TestCreateWaiver_Success(t *testing.T) {
 }
 
 func TestCreateWaiver_MissingName(t *testing.T) {
-	handler := &Handler{uc: nil}
+	handler := &Handler{}
 	body := strings.NewReader(`{"name":""}`)
 	req := httptest.NewRequest("POST", "/api/v1/projects/my-app/waivers", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -1701,7 +1701,7 @@ func TestCheckWaiverMatch_Success(t *testing.T) {
 }
 
 func TestCheckWaiverMatch_MissingFindingID(t *testing.T) {
-	handler := &Handler{uc: nil}
+	handler := &Handler{}
 	body := strings.NewReader(`{}`)
 	req := httptest.NewRequest("POST", "/api/v1/projects/my-app/waivers/check-match", body)
 	req.Header.Set("Content-Type", "application/json")
