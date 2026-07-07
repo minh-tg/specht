@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/xMinhx/specht/internal/auth"
@@ -1321,7 +1322,7 @@ func TestMe_UserNotFound(t *testing.T) {
 // ----- AuthMiddleware Tests -----
 
 func TestAuthMiddleware_NoHeader(t *testing.T) {
-	mw := AuthMiddleware(testJWTAuth, nil)
+	mw := AuthMiddleware(testJWTAuth)
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -1333,12 +1334,73 @@ func TestAuthMiddleware_NoHeader(t *testing.T) {
 }
 
 func TestAuthMiddleware_InvalidToken(t *testing.T) {
-	mw := AuthMiddleware(testJWTAuth, nil)
+	mw := AuthMiddleware(testJWTAuth)
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	req := httptest.NewRequest("GET", "/api/v1/projects", nil)
 	req.Header.Set("Authorization", "Bearer invalid-jwt-token")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestAuthMiddleware_ExpiredJWTDoesNotFallThrough(t *testing.T) {
+	mw := AuthMiddleware(testJWTAuth, auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, error) {
+		return "user-1", "project-1", nil
+	}))
+
+	// generate an expired JWT that is well-formed but past expiry
+	a, err := auth.NewJWTAuthenticator(testJWTSecret)
+	require.NoError(t, err)
+	expiredTok, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"sub":   "test-user",
+		"email": "test@example.com",
+		"iat":   time.Now().Add(-2 * time.Hour).Unix(),
+		"exp":   time.Now().Add(-1 * time.Hour).Unix(),
+	}).SignedString([]byte(testJWTSecret))
+
+	require.NoError(t, err)
+	_ = a // silence unused
+
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest("GET", "/api/v1/projects", nil)
+	req.Header.Set("Authorization", "Bearer "+expiredTok)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestAuthMiddleware_MalformedTokenFallsThrough(t *testing.T) {
+	mw := AuthMiddleware(testJWTAuth, auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, error) {
+		return "user-1", "project-1", nil
+	}))
+	var capturedID string
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ident := auth.ContextIdentity(r.Context())
+		capturedID = ident.UserID
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest("GET", "/api/v1/projects", nil)
+	req.Header.Set("Authorization", "Bearer not-a-jwt")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "user-1", capturedID)
+}
+
+func TestAuthMiddleware_NoAuthenticators(t *testing.T) {
+	mw := AuthMiddleware()
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest("GET", "/api/v1/projects", nil)
+	req.Header.Set("Authorization", "Bearer some-token")
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 

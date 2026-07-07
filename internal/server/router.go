@@ -36,7 +36,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		MaxAge:           300,
 	}))
 
-	var apiKeyAuth *auth.APIKeyAuthenticator
+	var apiKeyAuth auth.Authenticator
 	if cfg.APIKeyLookup != nil {
 		apiKeyAuth = auth.NewAPIKeyAuthenticator(cfg.APIKeyLookup)
 	}

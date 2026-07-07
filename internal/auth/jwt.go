@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -54,15 +55,18 @@ func (a *JWTAuthenticator) Authenticate(ctx context.Context, token string) (*Ide
 		return a.secret, nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("invalid token: %w", err)
+		if errors.Is(err, jwt.ErrTokenMalformed) {
+			return nil, ErrNotApplicable
+		}
+		return nil, errors.Join(ErrInvalidCredential, err)
 	}
 	claims, ok := tok.Claims.(jwt.MapClaims)
 	if !ok || !tok.Valid {
-		return nil, fmt.Errorf("invalid token claims")
+		return nil, ErrInvalidCredential
 	}
 
 	if tokenType, _ := claims["type"].(string); tokenType == "refresh" {
-		return nil, fmt.Errorf("refresh tokens are not accepted for authentication")
+		return nil, ErrInvalidCredential
 	}
 
 	sub, _ := claims.GetSubject()

@@ -2,6 +2,12 @@ package auth
 
 import (
 	"context"
+	"errors"
+)
+
+var (
+	ErrNotApplicable     = errors.New("authenticator not applicable for this credential")
+	ErrInvalidCredential = errors.New("invalid credential")
 )
 
 type Identity struct {

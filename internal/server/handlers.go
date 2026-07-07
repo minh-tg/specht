@@ -19,7 +19,7 @@ import (
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
-func AuthMiddleware(jwtAuth *auth.JWTAuthenticator, apiKeyAuth *auth.APIKeyAuthenticator) func(http.Handler) http.Handler {
+func AuthMiddleware(authenticators ...auth.Authenticator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			header := r.Header.Get("Authorization")
@@ -29,20 +29,20 @@ func AuthMiddleware(jwtAuth *auth.JWTAuthenticator, apiKeyAuth *auth.APIKeyAuthe
 			}
 			token := strings.TrimPrefix(header, "Bearer ")
 
-			ident, err := jwtAuth.Authenticate(r.Context(), token)
-			if err == nil {
-				ctx := auth.ContextWithIdentity(r.Context(), ident)
-				next.ServeHTTP(w, r.WithContext(ctx))
-				return
-			}
-
-			if apiKeyAuth != nil {
-				ident, err = apiKeyAuth.Authenticate(r.Context(), token)
+			for _, a := range authenticators {
+				ident, err := a.Authenticate(r.Context(), token)
 				if err == nil {
 					ctx := auth.ContextWithIdentity(r.Context(), ident)
 					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
+
+				if errors.Is(err, auth.ErrNotApplicable) {
+					continue
+				}
+
+				respondError(w, http.StatusUnauthorized, "invalid_token", "invalid or expired token")
+				return
 			}
 
 			respondError(w, http.StatusUnauthorized, "invalid_token", "invalid or expired token")
