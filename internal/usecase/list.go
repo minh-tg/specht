@@ -52,6 +52,18 @@ type ReportResponse struct {
 	CompletedAt   *time.Time `json:"completed_at"`
 }
 
+type FindingEvent struct {
+	ID        string    `json:"id"`
+	FindingID string    `json:"finding_id"`
+	UserID    string    `json:"user_id"`
+	EventType string    `json:"event_type"`
+	OldValue  *string   `json:"old_value,omitempty"`
+	NewValue  *string   `json:"new_value,omitempty"`
+	Comment   *string   `json:"comment,omitempty"`
+	Changes   []byte    `json:"changes,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 func uuidStr(id pgtype.UUID) string {
 	if !id.Valid {
 		return ""

@@ -16,7 +16,6 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
@@ -79,7 +78,7 @@ type usecaseInterface interface {
 	TriageFinding(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
 	BulkTriage(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
 	GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*usecase.GateStatusOutput, error)
-	GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error)
+	GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
 	Refresh(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
 	Logout(ctx context.Context, refreshToken string) error
 	GetProfile(ctx context.Context, userID string) (*usecase.UserProfile, error)

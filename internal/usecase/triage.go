@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/repo"
 )
 
@@ -248,7 +247,7 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 	}, nil
 }
 
-func (u *Usecases) GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error) {
+func (u *Usecases) GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]FindingEvent, error) {
 	fID, err := uuid.Parse(findingID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid finding id: %w", err)
@@ -259,5 +258,28 @@ func (u *Usecases) GetFindingEvents(ctx context.Context, findingID string, event
 		return nil, fmt.Errorf("list events: %w", err)
 	}
 
-	return events, nil
+	result := make([]FindingEvent, len(events))
+	for i, e := range events {
+		result[i] = FindingEvent{
+			ID:        uuidStr(e.ID),
+			FindingID: uuidStr(e.FindingID),
+			UserID:    uuidStr(e.UserID),
+			EventType: e.EventType,
+			Changes:   e.Changes,
+			CreatedAt: e.CreatedAt.Time,
+		}
+		if e.OldValue.Valid {
+			v := e.OldValue.String
+			result[i].OldValue = &v
+		}
+		if e.NewValue.Valid {
+			v := e.NewValue.String
+			result[i].NewValue = &v
+		}
+		if e.Comment.Valid {
+			v := e.Comment.String
+			result[i].Comment = &v
+		}
+	}
+	return result, nil
 }

@@ -15,7 +15,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
@@ -36,7 +35,7 @@ type mockUsecases struct {
 	bulkTriageFn       func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
 	getGateStatusFn    func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error)
 	getFindingFn        func(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
-	getFindingEventsFn func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]any, error)
+	getFindingEventsFn func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
 	refreshFn           func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
 	logoutFn            func(ctx context.Context, refreshToken string) error
 	getProfileFn        func(ctx context.Context, userID string) (*usecase.UserProfile, error)
@@ -165,21 +164,11 @@ func (m *mockUsecases) GetGateStatus(ctx context.Context, slug string, minRank i
 	return m.getGateStatusFn(ctx, slug, minRank)
 }
 
-func (m *mockUsecases) GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error) {
+func (m *mockUsecases) GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error) {
 	if m.getFindingEventsFn == nil {
 		return nil, nil
 	}
-	results, err := m.getFindingEventsFn(ctx, findingID, eventTypes, limit, offset)
-	if err != nil {
-		return nil, err
-	}
-	events := make([]sqlc.FindingEvent, len(results))
-	for i, r := range results {
-		if e, ok := r.(sqlc.FindingEvent); ok {
-			events[i] = e
-		}
-	}
-	return events, nil
+	return m.getFindingEventsFn(ctx, findingID, eventTypes, limit, offset)
 }
 
 func (m *mockUsecases) Refresh(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error) {
@@ -1144,10 +1133,8 @@ func TestGateStatus_Breached(t *testing.T) {
 
 func TestListFindingEvents_Success(t *testing.T) {
 	mock := &mockUsecases{
-		getFindingEventsFn: func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]any, error) {
-			return []any{
-				map[string]any{"event_type": "analysis_changed"},
-			}, nil
+		getFindingEventsFn: func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error) {
+			return []usecase.FindingEvent{{EventType: "analysis_changed"}}, nil
 		},
 	}
 	router := testRouter(mock)
