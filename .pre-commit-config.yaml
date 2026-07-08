@@ -1,0 +1,93 @@
+minimum_pre_commit_version: "3.2.0"
+
+default_install_hook_types:
+  - pre-commit
+  - commit-msg
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-added-large-files
+      - id: check-yaml
+        args: [--unsafe]
+        exclude: ^deploy/helm/
+
+  - repo: local
+    hooks:
+      - id: gofumpt
+        name: gofumpt
+        entry: gofumpt -l -w
+        language: system
+        files: \.go$
+
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v1.64.8
+    hooks:
+      - id: golangci-lint
+        name: staticcheck
+        args: [--disable-all, --enable=staticcheck, ./...]
+        pass_filenames: false
+        files: \.go$
+
+  - repo: local
+    hooks:
+      - id: go-mod-tidy
+        name: go mod tidy
+        entry: go mod tidy
+        language: system
+        pass_filenames: false
+        files: ^(go\.mod|go\.sum|.*\.go)$
+
+  - repo: local
+    hooks:
+      - id: dprint
+        name: dprint
+        entry: mise exec -- pnpm --dir frontend exec dprint fmt
+        language: system
+        pass_filenames: false
+        files: ^frontend/.*\.(ts|tsx|js|jsx|json)$
+
+  - repo: https://github.com/oxc-project/mirrors-oxlint
+    rev: v0.15.0
+    hooks:
+      - id: oxlint
+        files: ^frontend/
+
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint
+        args: [--failure-threshold, warning]
+        files: ^deploy/Dockerfile$
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.2
+    hooks:
+      - id: gitleaks
+        pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: commit-msg-conventional
+        name: Conventional commit
+        language: system
+        stages: [commit-msg]
+        entry: |
+          bash -euo pipefail -c '
+          msg_file="$1"
+          first_line="$(head -n1 "$msg_file")"
+          if ! printf "%s" "$first_line" | grep -Eq "^(feat|fix|docs|style|refactor|test|chore|build|ci|perf)(\([a-z0-9._-]+\))?!?: .+"; then
+            printf "ERROR: Commit message does not follow conventional commit format.\n"
+            printf "Expected: type(scope): description\n"
+            printf "Types: feat|fix|docs|style|refactor|test|chore|build|ci|perf\n"
+            printf "Examples:\n"
+            printf "  fix(api): handle missing auth token\n"
+            printf "  chore: add pre-commit hooks\n"
+            printf "  feat!: change scan result format\n"
+            exit 1
+          fi
+          ' --
