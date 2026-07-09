@@ -1,0 +1,168 @@
+package main
+
+import (
+	"encoding/json"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/xMinhx/specht/internal/client"
+)
+
+type mockClient struct {
+	client.Client
+	findings  []client.Finding
+	gate      *client.GateStatus
+	waivers   []client.Waiver
+	waiver    *client.Waiver
+	waiverDet *client.WaiverDetail
+	events    []client.WaiverEvent
+	matched   bool
+	err       error
+}
+
+func (m *mockClient) ListFindings(projectSlug string, severities, states []string, limit, offset int32) ([]client.Finding, error) {
+	return m.findings, m.err
+}
+
+func (m *mockClient) GetFinding(findingID string) (*client.Finding, error) {
+	if len(m.findings) > 0 {
+		return &m.findings[0], m.err
+	}
+	return nil, m.err
+}
+
+func (m *mockClient) GetGateStatus(projectSlug string, severity string) (*client.GateStatus, error) {
+	return m.gate, m.err
+}
+
+func (m *mockClient) ListWaivers(projectSlug string) ([]client.Waiver, error) {
+	return m.waivers, m.err
+}
+
+func (m *mockClient) GetWaiver(projectSlug, waiverID string) (*client.WaiverDetail, error) {
+	return m.waiverDet, m.err
+}
+
+func (m *mockClient) CreateWaiver(projectSlug string, req *client.CreateWaiverRequest) (*client.Waiver, error) {
+	return m.waiver, m.err
+}
+
+func (m *mockClient) ToggleWaiver(projectSlug, waiverID string) (*client.Waiver, error) {
+	return m.waiver, m.err
+}
+
+func (m *mockClient) ListWaiverEvents(projectSlug, waiverID string) ([]client.WaiverEvent, error) {
+	return m.events, m.err
+}
+
+func TestJSONRPCParse(t *testing.T) {
+	raw := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05"}}`
+	msg, err := parseMessage([]byte(raw))
+	require.NoError(t, err)
+	assert.Equal(t, "2.0", msg.JSONRPC)
+	assert.Equal(t, float64(1), msg.ID)
+	assert.Equal(t, "initialize", msg.Method)
+}
+
+func TestMCPInitialize(t *testing.T) {
+	raw := `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(&mockClient{}, req)
+	assert.Equal(t, float64(1), resp.ID)
+	require.NotNil(t, resp.Result)
+	var init InitResult
+	err := json.Unmarshal(*resp.Result, &init)
+	require.NoError(t, err)
+	assert.Equal(t, "2024-11-05", init.ProtocolVersion)
+	assert.Contains(t, init.ServerInfo.Name, "specht-mcp")
+}
+
+func TestMCPToolsList(t *testing.T) {
+	raw := `{"jsonrpc":"2.0","id":2,"method":"tools/list"}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(&mockClient{}, req)
+	assert.Equal(t, float64(2), resp.ID)
+	require.NotNil(t, resp.Result)
+
+	var tools ToolListResult
+	err := json.Unmarshal(*resp.Result, &tools)
+	require.NoError(t, err)
+	assert.Greater(t, len(tools.Tools), 0)
+
+	toolNames := make(map[string]bool)
+	for _, t := range tools.Tools {
+		toolNames[t.Name] = true
+	}
+	assert.True(t, toolNames["findings_list"])
+	assert.True(t, toolNames["findings_get"])
+	assert.True(t, toolNames["gate_check"])
+	assert.True(t, toolNames["waivers_list"])
+	assert.True(t, toolNames["waivers_get"])
+	assert.True(t, toolNames["waivers_create"])
+	assert.True(t, toolNames["waivers_toggle"])
+}
+
+func TestMCPFindingsList(t *testing.T) {
+	mc := &mockClient{
+		findings: []client.Finding{
+			{ID: "f1", CurrentTitle: "Test Vuln", CurrentSeverity: "high", GateEffect: "block"},
+		},
+	}
+	params, _ := json.Marshal(map[string]any{"project": "my-app"})
+	req := jsonRPCMessage{
+		JSONRPC: "2.0",
+		ID:      float64(3),
+		Method:  "tools/call",
+		Params:  &json.RawMessage{},
+	}
+	json.Unmarshal(params, req.Params)
+
+	// Build a proper tools/call params
+	raw := `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"findings_list","arguments":{"project":"my-app"}}}`
+	var callReq jsonRPCMessage
+	json.Unmarshal([]byte(raw), &callReq)
+
+	resp := handleMessage(mc, callReq)
+	assert.Equal(t, float64(3), resp.ID)
+	require.Nil(t, resp.Error)
+}
+
+func TestMCPGateCheck(t *testing.T) {
+	mc := &mockClient{
+		gate: &client.GateStatus{ThresholdBreached: true, BlockingCount: 2},
+	}
+	raw := `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"gate_check","arguments":{"project":"my-app","severity":"critical"}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(mc, req)
+	assert.Equal(t, float64(4), resp.ID)
+	require.Nil(t, resp.Error)
+	require.NotNil(t, resp.Result)
+	assert.True(t, strings.Contains(string(*resp.Result), "FAILED"))
+}
+
+func TestMCPUnknownTool(t *testing.T) {
+	raw := `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"nonexistent","arguments":{}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(&mockClient{}, req)
+	assert.Equal(t, float64(5), resp.ID)
+	require.NotNil(t, resp.Error)
+	assert.Equal(t, -32601, resp.Error.Code)
+}
+
+func TestMCPSendResponse(t *testing.T) {
+	var buf strings.Builder
+	resp := jsonRPCMessage{JSONRPC: "2.0", ID: float64(1)}
+	sendResponse(&buf, resp)
+	assert.True(t, strings.HasSuffix(buf.String(), "\n"))
+	assert.True(t, strings.Contains(buf.String(), `"jsonrpc":"2.0"`))
+}
