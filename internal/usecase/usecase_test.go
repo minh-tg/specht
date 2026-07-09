@@ -84,20 +84,21 @@ func (m *mockReportRepo) ListByProject(ctx context.Context, projectID pgtype.UUI
 
 type mockFindingRepo struct {
 	repo.FindingRepo
-	upsertFn             func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error)
-	createOccurrenceFn   func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error)
-	upsertDimensionFn    func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error)
-	listByProjectFn      func(ctx context.Context, projectID pgtype.UUID, severities, states []string, limit, offset int32) ([]sqlc.Finding, error)
-	getByFingerprintFn   func(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error)
-	getByIDFn            func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error)
-	listByIDsFn          func(ctx context.Context, ids []pgtype.UUID) ([]sqlc.Finding, error)
-	hasDimensionFn       func(ctx context.Context, findingID pgtype.UUID, key string) (bool, error)
-	updateAnalysisFn     func(ctx context.Context, arg repo.UpdateAnalysisParams) (sqlc.Finding, error)
-	bulkUpdateAnalysisFn func(ctx context.Context, arg repo.BulkUpdateAnalysisParams) ([]sqlc.Finding, error)
-	createEventFn        func(ctx context.Context, arg repo.CreateEventParams) (sqlc.FindingEvent, error)
-	listEventsFn         func(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error)
-	gateEvalFn           func(ctx context.Context, arg repo.GateEvalParams) (bool, error)
-	countBlockingFn      func(ctx context.Context, arg repo.GateEvalParams) (int64, error)
+	upsertFn               func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error)
+	createOccurrenceFn     func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error)
+	upsertDimensionFn      func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error)
+	listByProjectFn        func(ctx context.Context, projectID pgtype.UUID, severities, states []string, limit, offset int32) ([]sqlc.Finding, error)
+	getByFingerprintFn     func(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error)
+	getByIDFn              func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error)
+	listByIDsFn            func(ctx context.Context, ids []pgtype.UUID) ([]sqlc.Finding, error)
+	hasDimensionFn         func(ctx context.Context, findingID pgtype.UUID, key string) (bool, error)
+	updateAnalysisFn       func(ctx context.Context, arg repo.UpdateAnalysisParams) (sqlc.Finding, error)
+	bulkUpdateAnalysisFn   func(ctx context.Context, arg repo.BulkUpdateAnalysisParams) ([]sqlc.Finding, error)
+	createEventFn          func(ctx context.Context, arg repo.CreateEventParams) (sqlc.FindingEvent, error)
+	listEventsFn           func(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error)
+	gateEvalFn             func(ctx context.Context, arg repo.GateEvalParams) (bool, error)
+	countBlockingFn        func(ctx context.Context, arg repo.GateEvalParams) (int64, error)
+	listBlockingFindingsFn func(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error)
 }
 
 func (m *mockFindingRepo) Upsert(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {
@@ -168,6 +169,13 @@ func (m *mockFindingRepo) CountBlocking(ctx context.Context, arg repo.GateEvalPa
 		return 0, fmt.Errorf("unexpected call to CountBlocking")
 	}
 	return m.countBlockingFn(ctx, arg)
+}
+
+func (m *mockFindingRepo) ListBlockingFindings(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error) {
+	if m.listBlockingFindingsFn == nil {
+		return []sqlc.Finding{}, nil
+	}
+	return m.listBlockingFindingsFn(ctx, projectID, minSeverityRank)
 }
 
 func (m *mockFindingRepo) GetByFingerprint(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error) {
@@ -266,6 +274,34 @@ func (m *mockAPIKeyRepo) Create(ctx context.Context, arg sqlc.CreateAPIKeyParams
 		return sqlc.ApiKey{}, fmt.Errorf("unexpected call to Create")
 	}
 	return m.createFn(ctx, arg)
+}
+
+type mockWaiverRepo struct {
+	repo.WaiverRepo
+	listActiveFn         func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Waiver, error)
+	listConditionsFn     func(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverCondition, error)
+	listFindingTargetsFn func(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverFindingTarget, error)
+}
+
+func (m *mockWaiverRepo) ListActive(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Waiver, error) {
+	if m.listActiveFn == nil {
+		return []sqlc.Waiver{}, nil
+	}
+	return m.listActiveFn(ctx, projectID)
+}
+
+func (m *mockWaiverRepo) ListConditions(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverCondition, error) {
+	if m.listConditionsFn == nil {
+		return []sqlc.WaiverCondition{}, nil
+	}
+	return m.listConditionsFn(ctx, waiverID)
+}
+
+func (m *mockWaiverRepo) ListFindingTargets(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverFindingTarget, error) {
+	if m.listFindingTargetsFn == nil {
+		return []sqlc.WaiverFindingTarget{}, nil
+	}
+	return m.listFindingTargetsFn(ctx, waiverID)
 }
 
 func (m *mockAPIKeyRepo) ListByProject(ctx context.Context, projectID pgtype.UUID) ([]sqlc.ListAPIKeysByProjectRow, error) {
@@ -1237,19 +1273,17 @@ func TestGetFinding_NotFound(t *testing.T) {
 func TestGetGateStatus_Success(t *testing.T) {
 	pr := &mockProjectRepo{}
 	fr := &mockFindingRepo{}
+	wr := &mockWaiverRepo{}
 
 	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
 		return makeProject(true), nil
 	}
-	fr.gateEvalFn = func(ctx context.Context, arg repo.GateEvalParams) (bool, error) {
-		return true, nil
-	}
-	fr.countBlockingFn = func(ctx context.Context, arg repo.GateEvalParams) (int64, error) {
-		return 3, nil
+	fr.listBlockingFindingsFn = func(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error) {
+		return []sqlc.Finding{makeFindingRow(1), makeFindingRow(2), makeFindingRow(3)}, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr, Findings: fr},
+		Repos: &repo.Repos{Projects: pr, Findings: fr, Waivers: wr},
 	})
 
 	status, err := uc.GetGateStatus(context.Background(), "my-app", 2)
@@ -1257,6 +1291,8 @@ func TestGetGateStatus_Success(t *testing.T) {
 	require.NotNil(t, status)
 	assert.True(t, status.ThresholdBreached)
 	assert.Equal(t, int64(3), status.BlockingCount)
+	assert.Equal(t, 0, status.WaivedCount)
+	assert.Len(t, status.BlockedBy, 3)
 }
 
 func TestGetGateStatus_ProjectNotFound(t *testing.T) {

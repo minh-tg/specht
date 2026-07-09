@@ -5,15 +5,17 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
 type pgFindingRepo struct {
-	q *sqlc.Queries
+	q    *sqlc.Queries
+	pool *pgxpool.Pool
 }
 
-func newFindingRepo(q *sqlc.Queries) *pgFindingRepo {
-	return &pgFindingRepo{q: q}
+func newFindingRepo(q *sqlc.Queries, pool *pgxpool.Pool) *pgFindingRepo {
+	return &pgFindingRepo{q: q, pool: pool}
 }
 
 type UpsertFindingParams struct {
@@ -234,4 +236,69 @@ func (r *pgFindingRepo) HasDimension(ctx context.Context, findingID pgtype.UUID,
 		FindingID: findingID,
 		DimKey:    key,
 	})
+}
+
+const listBlockingFindingsSQL = `SELECT id, project_id, finding_kind, fingerprint, current_title,
+	current_severity, current_severity_rank, current_score, state,
+	triage_status, assignee_id, first_seen_at, last_seen_at,
+	fixed_at, created_at, updated_at, analysis_state, gate_effect,
+	analysis_expires_at, analysis_reason, analysis_source,
+	analysis_updated_at, analysis_updated_by, manual_override,
+	review_required, approval_status, approved_by, approved_at,
+	fingerprint_version
+FROM findings
+WHERE project_id = $1
+  AND current_severity_rank >= $2
+  AND gate_effect = 'block'
+  AND state = 'open'
+ORDER BY current_severity_rank DESC, created_at DESC`
+
+func (r *pgFindingRepo) ListBlockingFindings(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error) {
+	rows, err := r.pool.Query(ctx, listBlockingFindingsSQL, projectID, minSeverityRank)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []sqlc.Finding
+	for rows.Next() {
+		var i sqlc.Finding
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.FindingKind,
+			&i.Fingerprint,
+			&i.CurrentTitle,
+			&i.CurrentSeverity,
+			&i.CurrentSeverityRank,
+			&i.CurrentScore,
+			&i.State,
+			&i.TriageStatus,
+			&i.AssigneeID,
+			&i.FirstSeenAt,
+			&i.LastSeenAt,
+			&i.FixedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AnalysisState,
+			&i.GateEffect,
+			&i.AnalysisExpiresAt,
+			&i.AnalysisReason,
+			&i.AnalysisSource,
+			&i.AnalysisUpdatedAt,
+			&i.AnalysisUpdatedBy,
+			&i.ManualOverride,
+			&i.ReviewRequired,
+			&i.ApprovalStatus,
+			&i.ApprovedBy,
+			&i.ApprovedAt,
+			&i.FingerprintVersion,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }

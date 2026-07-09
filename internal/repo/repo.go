@@ -28,7 +28,7 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 	return &Repos{
 		Projects:      &pgProjectRepo{q: q},
 		Reports:       &pgReportRepo{q: q},
-		Findings:      &pgFindingRepo{q: q},
+		Findings:      &pgFindingRepo{q: q, pool: pool},
 		Users:         &pgUserRepo{q: q},
 		APIKeys:       &pgAPIKeyRepo{q: q},
 		RefreshTokens: &pgRefreshTokenRepo{q: q},
@@ -137,6 +137,7 @@ type FindingRepo interface {
 	BulkUpdateAnalysis(ctx context.Context, arg BulkUpdateAnalysisParams) ([]sqlc.Finding, error)
 	GateEval(ctx context.Context, arg GateEvalParams) (bool, error)
 	CountBlocking(ctx context.Context, arg GateEvalParams) (int64, error)
+	ListBlockingFindings(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error)
 	CreateEvent(ctx context.Context, arg CreateEventParams) (sqlc.FindingEvent, error)
 	ListEvents(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error)
 	HasDimension(ctx context.Context, findingID pgtype.UUID, key string) (bool, error)

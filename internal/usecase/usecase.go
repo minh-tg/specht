@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/gate"
 	"github.com/xMinhx/specht/internal/repo"
 	"github.com/xMinhx/specht/internal/scanner"
 )
@@ -51,11 +52,78 @@ type Deps struct {
 }
 
 type Usecases struct {
-	deps Deps
+	deps   Deps
+	gate   gate.Gate
+	gateOK bool
 }
 
 func New(deps Deps) *Usecases {
 	return &Usecases{deps: deps}
+}
+
+type gateFindingRepo struct {
+	r repo.FindingRepo
+}
+
+func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID string, minSeverityRank int16) ([]gate.Finding, error) {
+	pid, err := uuid.Parse(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid project id: %w", err)
+	}
+	rows, err := a.r.ListBlockingFindings(ctx, pgtype.UUID{Bytes: pid, Valid: true}, minSeverityRank)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]gate.Finding, len(rows))
+	for i, r := range rows {
+		result[i] = gate.Finding{
+			ID:                  uuid.UUID(r.ID.Bytes).String(),
+			CurrentSeverityRank: r.CurrentSeverityRank,
+			FindingKind:         r.FindingKind,
+			Fingerprint:         r.Fingerprint,
+			CurrentTitle:        r.CurrentTitle,
+		}
+	}
+	return result, nil
+}
+
+type gateWaiverRepo struct {
+	r repo.WaiverRepo
+}
+
+func (a *gateWaiverRepo) ListActiveWaivers(ctx context.Context, projectID string) ([]gate.Waiver, error) {
+	pid, err := uuid.Parse(projectID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid project id: %w", err)
+	}
+	rows, err := a.r.ListActive(ctx, pgtype.UUID{Bytes: pid, Valid: true})
+	if err != nil {
+		return nil, err
+	}
+	result := make([]gate.Waiver, len(rows))
+	for i, w := range rows {
+		gw := gate.Waiver{
+			ID:         uuid.UUID(w.ID.Bytes).String(),
+			Conditions: nil,
+			Targets:    nil,
+		}
+		conditions, _ := a.r.ListConditions(ctx, w.ID)
+		for _, c := range conditions {
+			gw.Conditions = append(gw.Conditions, gate.WaiverCondition{
+				Field:    c.Field,
+				Operator: c.Operator,
+				Value:    c.Value,
+			})
+		}
+		targets, _ := a.r.ListFindingTargets(ctx, w.ID)
+		for _, t := range targets {
+			gw.Targets = append(gw.Targets, gate.WaiverTarget{
+				FindingID: uuid.UUID(t.FindingID.Bytes).String(),
+			})
+		}
+		result[i] = gw
+	}
+	return result, nil
 }
 
 func severityStr(s scanner.Severity) string {

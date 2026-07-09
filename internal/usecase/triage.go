@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/xMinhx/specht/internal/gate"
 	"github.com/xMinhx/specht/internal/repo"
 )
 
@@ -41,8 +42,10 @@ type BulkTriageInput struct {
 }
 
 type GateStatusOutput struct {
-	ThresholdBreached bool  `json:"threshold_breached"`
-	BlockingCount     int64 `json:"blocking_count"`
+	ThresholdBreached bool     `json:"threshold_breached"`
+	BlockingCount     int64    `json:"blocking_count"`
+	BlockedBy         []string `json:"blocked_by,omitempty"`
+	WaivedCount       int      `json:"waived_count,omitempty"`
 }
 
 func stateRequiresReason(s string) bool {
@@ -225,25 +228,26 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 
-	breached, err := u.deps.Repos.Findings.GateEval(ctx, repo.GateEvalParams{
-		ProjectID:       project.ID,
-		MinSeverityRank: minSeverityRank,
-	})
+	if !u.gateOK {
+		g := gate.New(
+			&gateFindingRepo{r: u.deps.Repos.Findings},
+			&gateWaiverRepo{r: u.deps.Repos.Waivers},
+		)
+		u.gate = g
+		u.gateOK = true
+	}
+
+	projectID := uuid.UUID(project.ID.Bytes).String()
+	decision, err := u.gate.Evaluate(ctx, projectID, minSeverityRank)
 	if err != nil {
 		return nil, fmt.Errorf("gate eval: %w", err)
 	}
 
-	count, err := u.deps.Repos.Findings.CountBlocking(ctx, repo.GateEvalParams{
-		ProjectID:       project.ID,
-		MinSeverityRank: minSeverityRank,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("count blocking: %w", err)
-	}
-
 	return &GateStatusOutput{
-		ThresholdBreached: breached,
-		BlockingCount:     count,
+		ThresholdBreached: decision.Status == gate.StatusFail,
+		BlockingCount:     int64(decision.TotalBlocking - decision.WaivedCount),
+		BlockedBy:         decision.BlockedBy,
+		WaivedCount:       decision.WaivedCount,
 	}, nil
 }
 
