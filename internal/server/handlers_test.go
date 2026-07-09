@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -1431,6 +1433,24 @@ func TestAuthMiddleware_APIKeyAuth(t *testing.T) {
 	assert.Equal(t, "user-1", capturedID)
 }
 
+func TestAPIKeyAuthenticator_IdentitySemantics(t *testing.T) {
+	var capturedHash string
+	apiKeyAuth := auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, error) {
+		capturedHash = keyHash
+		return "key-1", "project-1", nil
+	})
+
+	ident, err := apiKeyAuth.Authenticate(context.Background(), "vuln_abc123keymaterial")
+	require.NoError(t, err)
+	assert.Equal(t, "key-1", ident.UserID)
+	assert.Equal(t, "", ident.Email)
+	assert.Equal(t, "project-1", ident.ProjectID)
+	assert.True(t, ident.IsAPIKey)
+
+	h := sha256.Sum256([]byte("vuln_abc123keymaterial"))
+	assert.Equal(t, hex.EncodeToString(h[:]), capturedHash)
+}
+
 // ----- NewRouter endpoint connectivity -----
 
 func TestNewRouter_RefreshLogoutOutsideAuth(t *testing.T) {
@@ -1704,6 +1724,12 @@ func TestCheckWaiverMatch_Success(t *testing.T) {
 	assert.True(t, resp["matched"])
 }
 
+func addChiURLParam(r *http.Request, key, value string) *http.Request {
+	chiCtx := chi.NewRouteContext()
+	chiCtx.URLParams.Add(key, value)
+	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, chiCtx))
+}
+
 func TestCheckWaiverMatch_MissingFindingID(t *testing.T) {
 	handler := &Handler{}
 	body := strings.NewReader(`{}`)
@@ -1713,4 +1739,84 @@ func TestCheckWaiverMatch_MissingFindingID(t *testing.T) {
 	handler.CheckWaiverMatch(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+// ----- enforceProjectAccess Tests -----
+
+func TestEnforceProjectAccess_SessionAuthNoScope(t *testing.T) {
+	h := &Handler{}
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app", nil)
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "user-1", IsAPIKey: false}))
+	err := h.enforceProjectAccess(req, "my-app")
+	assert.NoError(t, err)
+
+	reqNil := httptest.NewRequest("GET", "/api/v1/projects/my-app", nil)
+	reqNil = reqNil.WithContext(auth.ContextWithIdentity(reqNil.Context(), &auth.Identity{UserID: "user-1", ProjectID: "", IsAPIKey: false}))
+	err = h.enforceProjectAccess(reqNil, "other-project")
+	assert.NoError(t, err)
+}
+
+func TestEnforceProjectAccess_APIKeyMatching(t *testing.T) {
+	h := &Handler{}
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app", nil)
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "key-1", ProjectID: "my-app", IsAPIKey: true}))
+	err := h.enforceProjectAccess(req, "my-app")
+	assert.NoError(t, err)
+}
+
+func TestEnforceProjectAccess_APIKeyNonMatching(t *testing.T) {
+	h := &Handler{}
+	req := httptest.NewRequest("GET", "/api/v1/projects/other-project", nil)
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "key-1", ProjectID: "my-app", IsAPIKey: true}))
+	err := h.enforceProjectAccess(req, "other-project")
+	assert.Error(t, err)
+}
+
+func TestEnforceProjectAccess_NilIdentity(t *testing.T) {
+	h := &Handler{}
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app", nil)
+	err := h.enforceProjectAccess(req, "my-app")
+	assert.NoError(t, err)
+}
+
+// ----- Handler-level enforcement test -----
+
+func TestListFindings_APIKeyAccessDenied(t *testing.T) {
+	mock := &mockUsecases{}
+	handler := &Handler{findings: mock}
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings", nil)
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{
+		UserID: "key-1", ProjectID: "other-project", IsAPIKey: true,
+	}))
+	req = addChiURLParam(req, "slug", "my-app")
+	w := httptest.NewRecorder()
+	handler.ListFindings(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	var resp struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "project_access_denied", resp.Error.Code)
+}
+
+func TestListFindings_APIKeyAllowed(t *testing.T) {
+	mock := &mockUsecases{
+		listFindingsFn: func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error) {
+			return sampleFindings(), nil
+		},
+	}
+	handler := &Handler{findings: mock}
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings", nil)
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{
+		UserID: "key-1", ProjectID: "my-app", IsAPIKey: true,
+	}))
+	req = addChiURLParam(req, "slug", "my-app")
+	w := httptest.NewRecorder()
+	handler.ListFindings(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"log/slog"
 	"net/http"
@@ -204,6 +205,17 @@ func parseIntParam(r *http.Request, name string, defaultVal int32) int32 {
 	return int32(n)
 }
 
+func (h *Handler) enforceProjectAccess(r *http.Request, projectSlug string) error {
+	ident := auth.ContextIdentity(r.Context())
+	if ident == nil || ident.ProjectID == "" {
+		return nil
+	}
+	if ident.IsAPIKey && ident.ProjectID != projectSlug {
+		return fmt.Errorf("project_access_denied")
+	}
+	return nil
+}
+
 func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name        string `json:"name"`
@@ -239,6 +251,10 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
 	project, err := h.projects.GetProject(r.Context(), slug)
 	if err != nil {
 		respondError(w, http.StatusNotFound, "not_found", "project not found")
@@ -249,6 +265,10 @@ func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
 	limit := parseIntParam(r, "limit", 20)
 	offset := parseIntParam(r, "offset", 0)
 
@@ -271,6 +291,10 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
 	limit := parseIntParam(r, "limit", 20)
 	offset := parseIntParam(r, "offset", 0)
 
@@ -395,6 +419,10 @@ func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing_field", "project and name are required")
 		return
 	}
+	if err := h.enforceProjectAccess(r, req.Project); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
 
 	result, err := h.apikeys.CreateAPIKey(r.Context(), req.Project, req.Name)
 	if err != nil {
@@ -408,6 +436,10 @@ func (h *Handler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 	project := r.URL.Query().Get("project")
 	if project == "" {
 		respondError(w, http.StatusBadRequest, "missing_field", "project query param is required")
+		return
+	}
+	if err := h.enforceProjectAccess(r, project); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
 		return
 	}
 
@@ -424,6 +456,10 @@ func (h *Handler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	keyID := chi.URLParam(r, "id")
 	if project == "" || keyID == "" {
 		respondError(w, http.StatusBadRequest, "missing_field", "project and key id are required")
+		return
+	}
+	if err := h.enforceProjectAccess(r, project); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
 		return
 	}
 
@@ -471,6 +507,10 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(req.RawData) == 0 {
 		respondError(w, http.StatusBadRequest, "missing_field", "raw_data is required")
+		return
+	}
+	if err := h.enforceProjectAccess(r, req.Project); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
 		return
 	}
 
@@ -613,6 +653,10 @@ func (h *Handler) GetGateStatus(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
 		return
 	}
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
 
 	minRank := parseMinSeverityRank(r.URL.Query().Get("severity"))
 
@@ -650,6 +694,10 @@ func (h *Handler) ListEnvironments(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
 		return
 	}
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
 	envs, err := h.projects.ListEnvironments(r.Context(), slug)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "environments_failed", err.Error())
@@ -664,6 +712,10 @@ func (h *Handler) ListTargets(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
 		return
 	}
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
 	targets, err := h.projects.ListTargets(r.Context(), slug)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "targets_failed", err.Error())
@@ -676,6 +728,10 @@ func (h *Handler) ListArtifacts(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
 		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		return
+	}
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
 		return
 	}
 	artifacts, err := h.projects.ListArtifacts(r.Context(), slug)
@@ -720,6 +776,10 @@ func parseMinSeverityRank(severities string) int16 {
 
 func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
 	var req struct {
 		Name        string                               `json:"name"`
 		Description string                               `json:"description"`
@@ -755,6 +815,10 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) ListWaivers(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
 	waivers, err := h.waivers.ListWaivers(r.Context(), slug)
 	if err != nil {
 		slog.Error("list waivers", "error", err)
@@ -766,6 +830,10 @@ func (h *Handler) ListWaivers(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) GetWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
 	id := chi.URLParam(r, "id")
 	waiver, err := h.waivers.GetWaiver(r.Context(), slug, id)
 	if err != nil {
@@ -782,6 +850,10 @@ func (h *Handler) GetWaiver(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
 	id := chi.URLParam(r, "id")
 	var req struct {
 		Name        string                               `json:"name"`
@@ -815,6 +887,10 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
 	id := chi.URLParam(r, "id")
 	if err := h.waivers.DeleteWaiver(r.Context(), slug, id); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -830,6 +906,10 @@ func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
 	id := chi.URLParam(r, "id")
 	result, err := h.waivers.ToggleWaiver(r.Context(), slug, id, auth.ContextIdentity(r.Context()).UserID)
 	if err != nil {
@@ -846,6 +926,10 @@ func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) ListWaiverEvents(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
 	id := chi.URLParam(r, "id")
 	events, err := h.waivers.ListWaiverEvents(r.Context(), slug, id)
 	if err != nil {
@@ -862,6 +946,10 @@ func (h *Handler) ListWaiverEvents(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CheckWaiverMatch(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
 	var req struct {
 		FindingID string `json:"finding_id"`
 	}
