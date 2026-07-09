@@ -28,6 +28,9 @@ type Finding struct {
 	FindingKind         string
 	Fingerprint         string
 	CurrentTitle        string
+	EnvironmentID       string
+	TargetID            string
+	ArtifactID          string
 }
 
 type WaiverCondition struct {
@@ -40,9 +43,16 @@ type WaiverTarget struct {
 	FindingID string
 }
 
+type WaiverContext struct {
+	EnvironmentID string
+	TargetID      string
+	ArtifactID    string
+}
+
 type Waiver struct {
 	ID         string
 	Conditions []WaiverCondition
+	Contexts   []WaiverContext
 	Targets    []WaiverTarget
 }
 
@@ -109,8 +119,27 @@ func (g *gate) Evaluate(ctx context.Context, projectID string, minSeverityRank i
 	}, nil
 }
 
+func contextMatchesContexts(f Finding, contexts []WaiverContext) bool {
+	for _, cx := range contexts {
+		if cx.EnvironmentID != "" && cx.EnvironmentID != f.EnvironmentID {
+			return false
+		}
+		if cx.TargetID != "" && cx.TargetID != f.TargetID {
+			return false
+		}
+		if cx.ArtifactID != "" && cx.ArtifactID != f.ArtifactID {
+			return false
+		}
+	}
+	return true
+}
+
 func isWaived(f Finding, waivers []Waiver) bool {
 	for _, w := range waivers {
+		if len(w.Contexts) > 0 && !contextMatchesContexts(f, w.Contexts) {
+			continue
+		}
+
 		if len(w.Targets) > 0 {
 			targetMatch := false
 			for _, t := range w.Targets {

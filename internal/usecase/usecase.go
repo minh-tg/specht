@@ -105,6 +105,7 @@ func (a *gateWaiverRepo) ListActiveWaivers(ctx context.Context, projectID string
 		gw := gate.Waiver{
 			ID:         uuid.UUID(w.ID.Bytes).String(),
 			Conditions: nil,
+			Contexts:   nil,
 			Targets:    nil,
 		}
 		conditions, _ := a.r.ListConditions(ctx, w.ID)
@@ -113,6 +114,26 @@ func (a *gateWaiverRepo) ListActiveWaivers(ctx context.Context, projectID string
 				Field:    c.Field,
 				Operator: c.Operator,
 				Value:    c.Value,
+			})
+		}
+		contexts, _ := a.r.ListContexts(ctx, w.ID)
+		for _, cx := range contexts {
+			envID := ""
+			if cx.EnvironmentID.Valid {
+				envID = uuid.UUID(cx.EnvironmentID.Bytes).String()
+			}
+			tgtID := ""
+			if cx.TargetID.Valid {
+				tgtID = uuid.UUID(cx.TargetID.Bytes).String()
+			}
+			artID := ""
+			if cx.ArtifactID.Valid {
+				artID = uuid.UUID(cx.ArtifactID.Bytes).String()
+			}
+			gw.Contexts = append(gw.Contexts, gate.WaiverContext{
+				EnvironmentID: envID,
+				TargetID:      tgtID,
+				ArtifactID:    artID,
 			})
 		}
 		targets, _ := a.r.ListFindingTargets(ctx, w.ID)

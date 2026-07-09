@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/repo"
 )
 
 type WaiverResponse struct {
@@ -533,6 +534,12 @@ func (u *Usecases) CheckWaiverMatch(ctx context.Context, projectSlug, findingID 
 		return false, fmt.Errorf("get finding: %w", err)
 	}
 
+	fctx := findingContext{}
+	fc, err := u.deps.Repos.Findings.GetFindingContext(ctx, pgtype.UUID{Bytes: fid, Valid: true})
+	if err == nil {
+		fctx = findContextFromRepo(fc)
+	}
+
 	for _, w := range waivers {
 		conditions, err := u.deps.Repos.Waivers.ListConditions(ctx, w.ID)
 		if err != nil {
@@ -549,7 +556,7 @@ func (u *Usecases) CheckWaiverMatch(ctx context.Context, projectSlug, findingID 
 			return false, fmt.Errorf("list targets for waiver %s: %w", uuidStr(w.ID), err)
 		}
 
-		if len(contexts) > 0 && !matchContexts(finding, contexts) {
+		if len(contexts) > 0 && !matchContexts(fctx, contexts) {
 			continue
 		}
 
@@ -626,7 +633,35 @@ func matchCondition(finding sqlc.Finding, cond sqlc.WaiverCondition) bool {
 	return false
 }
 
-func matchContexts(_ sqlc.Finding, _ []sqlc.WaiverContext) bool {
+type findingContext struct {
+	environmentID pgtype.UUID
+	targetID      pgtype.UUID
+	artifactID    pgtype.UUID
+}
+
+func findContextFromRepo(fc repo.FindingContext) findingContext {
+	return findingContext{
+		environmentID: fc.EnvironmentID,
+		targetID:      fc.TargetID,
+		artifactID:    fc.ArtifactID,
+	}
+}
+
+func matchContexts(ctx findingContext, contexts []sqlc.WaiverContext) bool {
+	if len(contexts) == 0 {
+		return true
+	}
+	for _, c := range contexts {
+		if c.EnvironmentID.Valid && c.EnvironmentID.Bytes != ctx.environmentID.Bytes {
+			return false
+		}
+		if c.TargetID.Valid && c.TargetID.Bytes != ctx.targetID.Bytes {
+			return false
+		}
+		if c.ArtifactID.Valid && c.ArtifactID.Bytes != ctx.artifactID.Bytes {
+			return false
+		}
+	}
 	return true
 }
 

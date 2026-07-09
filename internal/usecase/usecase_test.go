@@ -99,6 +99,7 @@ type mockFindingRepo struct {
 	gateEvalFn             func(ctx context.Context, arg repo.GateEvalParams) (bool, error)
 	countBlockingFn        func(ctx context.Context, arg repo.GateEvalParams) (int64, error)
 	listBlockingFindingsFn func(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error)
+	getFindingContextFn    func(ctx context.Context, findingID pgtype.UUID) (repo.FindingContext, error)
 }
 
 func (m *mockFindingRepo) Upsert(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {
@@ -176,6 +177,13 @@ func (m *mockFindingRepo) ListBlockingFindings(ctx context.Context, projectID pg
 		return []sqlc.Finding{}, nil
 	}
 	return m.listBlockingFindingsFn(ctx, projectID, minSeverityRank)
+}
+
+func (m *mockFindingRepo) GetFindingContext(ctx context.Context, findingID pgtype.UUID) (repo.FindingContext, error) {
+	if m.getFindingContextFn == nil {
+		return repo.FindingContext{}, fmt.Errorf("unexpected call to GetFindingContext")
+	}
+	return m.getFindingContextFn(ctx, findingID)
 }
 
 func (m *mockFindingRepo) GetByFingerprint(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error) {
@@ -280,6 +288,7 @@ type mockWaiverRepo struct {
 	repo.WaiverRepo
 	listActiveFn         func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Waiver, error)
 	listConditionsFn     func(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverCondition, error)
+	listContextsFn       func(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverContext, error)
 	listFindingTargetsFn func(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverFindingTarget, error)
 }
 
@@ -295,6 +304,13 @@ func (m *mockWaiverRepo) ListConditions(ctx context.Context, waiverID pgtype.UUI
 		return []sqlc.WaiverCondition{}, nil
 	}
 	return m.listConditionsFn(ctx, waiverID)
+}
+
+func (m *mockWaiverRepo) ListContexts(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverContext, error) {
+	if m.listContextsFn == nil {
+		return []sqlc.WaiverContext{}, nil
+	}
+	return m.listContextsFn(ctx, waiverID)
 }
 
 func (m *mockWaiverRepo) ListFindingTargets(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverFindingTarget, error) {
@@ -738,7 +754,7 @@ func TestIngestReport_ParseError(t *testing.T) {
 		Scanner:     "trivy",
 		RawData:     json.RawMessage(`bad data`),
 	})
-	assert.ErrorContains(t, err, "parse trivy output")
+	assert.ErrorContains(t, err, "scanner trivy: parse output")
 }
 
 func TestIngestReport_Duplicate(t *testing.T) {
@@ -859,6 +875,118 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.True(t, result.ThresholdBreached)
+}
+
+func TestIngestReport_ErrorWrapping(t *testing.T) {
+	pr, _, _ := makeTestRepos()
+	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+		return makeProject(true), nil
+	}
+
+	reg := scanner.NewRegistry()
+	reg.Register(&mockParser{
+		name:      "trivy",
+		scanTypes: []scanner.ScanType{scanner.ScanTypeImage},
+		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
+			return nil, fmt.Errorf("malformed data")
+		},
+	})
+
+	uc := New(Deps{
+		Repos: &repo.Repos{
+			Projects:     pr,
+			Targets:      stubTargetRepo(),
+			Artifacts:    stubArtifactRepo(),
+			Environments: &mockEnvironmentRepo{},
+		},
+		Registry: reg,
+	})
+
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app",
+		Scanner:     "trivy",
+		RawData:     json.RawMessage(`bad`),
+	})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "scanner trivy")
+}
+
+func TestIngestReport_PartialFailure(t *testing.T) {
+	pr, rr, fr := makeTestRepos()
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+		return makeProject(true), nil
+	}
+
+	rr.createFn = func(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error) {
+		return makeReport(), nil
+	}
+
+	rr.updateStatusFn = func(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
+		r := makeReport()
+		r.Status = status
+		return r, nil
+	}
+
+	callCount := 0
+	fr.getByFingerprintFn = func(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error) {
+		return sqlc.Finding{}, fmt.Errorf("not found")
+	}
+	fr.upsertFn = func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {
+		callCount++
+		if callCount == 2 {
+			return sqlc.Finding{}, fmt.Errorf("db unavailable")
+		}
+		return makeFinding(callCount), nil
+	}
+
+	fr.createOccurrenceFn = func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error) {
+		return sqlc.FindingOccurrence{}, nil
+	}
+
+	fr.upsertDimensionFn = func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error) {
+		return sqlc.FindingDimension{}, nil
+	}
+
+	reg := scanner.NewRegistry()
+	reg.Register(&mockParser{
+		name:      "trivy",
+		scanTypes: []scanner.ScanType{scanner.ScanTypeImage},
+		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
+			return &scanner.NormalizedReport{
+				ScannerName: "trivy",
+				ScanType:    scanner.ScanTypeImage,
+				Target:      &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings: []scanner.NormalizedFinding{
+					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2026-0001", Severity: scanner.SeverityHigh, Score: 7.5},
+					{Fingerprint: "fp2", FindingKind: "sca", Title: "CVE-2026-0002", Severity: scanner.SeverityMedium, Score: 5.0},
+				},
+				ScanScope: map[string]any{},
+			}, nil
+		},
+	})
+
+	uc := New(Deps{
+		Repos: &repo.Repos{
+			Projects:     pr,
+			Reports:      rr,
+			Findings:     fr,
+			Targets:      stubTargetRepo(),
+			Artifacts:    stubArtifactRepo(),
+			Environments: &mockEnvironmentRepo{},
+		},
+		Registry: reg,
+	})
+
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app",
+		Scanner:     "trivy",
+		RawData:     json.RawMessage(`{"test": true}`),
+	})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "scanner trivy")
+	assert.ErrorContains(t, err, "upsert finding")
+	assert.NotContains(t, err.Error(), "lookup project")
 }
 
 func testJWT(t *testing.T) *auth.JWTAuthenticator {

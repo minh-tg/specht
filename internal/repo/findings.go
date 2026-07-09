@@ -253,6 +253,30 @@ WHERE project_id = $1
   AND state = 'open'
 ORDER BY current_severity_rank DESC, created_at DESC`
 
+type FindingContext struct {
+	EnvironmentID pgtype.UUID
+	TargetID      pgtype.UUID
+	ArtifactID    pgtype.UUID
+}
+
+const getFindingContextSQL = `
+SELECT r.environment_id, r.target_id, r.artifact_id
+FROM finding_occurrences fo
+JOIN reports r ON fo.report_id = r.id
+WHERE fo.finding_id = $1
+ORDER BY fo.observed_at DESC
+LIMIT 1
+`
+
+func (r *pgFindingRepo) GetFindingContext(ctx context.Context, findingID pgtype.UUID) (FindingContext, error) {
+	var fc FindingContext
+	err := r.pool.QueryRow(ctx, getFindingContextSQL, findingID).Scan(&fc.EnvironmentID, &fc.TargetID, &fc.ArtifactID)
+	if err != nil {
+		return FindingContext{}, err
+	}
+	return fc, nil
+}
+
 func (r *pgFindingRepo) ListBlockingFindings(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error) {
 	rows, err := r.pool.Query(ctx, listBlockingFindingsSQL, projectID, minSeverityRank)
 	if err != nil {
