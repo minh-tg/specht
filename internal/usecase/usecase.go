@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/finding"
 	"github.com/xMinhx/specht/internal/gate"
 	"github.com/xMinhx/specht/internal/repo"
 	"github.com/xMinhx/specht/internal/scanner"
@@ -391,36 +392,31 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 			}
 		}
 
-		// Material change detection: only for existing triaged findings
 		if lookupErr == nil && (oldAnalysisState != "unanalyzed" || oldGateEffect == "ignore") {
-			reviewRequired := false
-			eventType := ""
-
-			// Trigger 1: severity increase
-			if newRank > oldRank {
-				reviewRequired = true
-				eventType = "reopened_severity_change"
-			}
-
-			// Trigger 2: fix just became available
-			if !reviewRequired {
-				hasNewFix := false
-				for _, d := range f.Dimensions {
-					if d.Key == "fixed_version" && d.Value != "" {
-						hasNewFix = true
-						break
-					}
-				}
-				if hasNewFix {
-					hadOldFix, fixErr := u.deps.Repos.Findings.HasDimension(ctx, upserted.ID, "fixed_version")
-					if fixErr == nil && !hadOldFix {
-						reviewRequired = true
-						eventType = "reopened_fix_available"
-					}
+			hasNewFix := false
+			for _, d := range f.Dimensions {
+				if d.Key == "fixed_version" && d.Value != "" {
+					hasNewFix = true
+					break
 				}
 			}
 
-			if reviewRequired {
+			var hadOldFix bool
+			if hasNewFix {
+				hadOldFix, _ = u.deps.Repos.Findings.HasDimension(ctx, upserted.ID, "fixed_version")
+			}
+
+			change := finding.EvaluateChange(finding.PreviousFinding{
+				SeverityRank:  oldRank,
+				GateEffect:    finding.GateEffect(oldGateEffect),
+				Analysis:      finding.AnalysisState(oldAnalysisState),
+				HadFixVersion: hadOldFix,
+			}, finding.CurrentFinding{
+				SeverityRank: newRank,
+				HasNewFix:    hasNewFix,
+			})
+
+			if change != nil && change.ReviewRequired {
 				_, err = u.deps.Repos.Findings.UpdateAnalysis(ctx, repo.UpdateAnalysisParams{
 					ID:             upserted.ID,
 					AnalysisState:  upserted.AnalysisState,
@@ -433,14 +429,11 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 					return nil, fmt.Errorf("scanner %s: set review_required for finding %q: %w", input.Scanner, f.Fingerprint, err)
 				}
 
-				changes, _ := json.Marshal(map[string]any{
-					"old_severity_rank": oldRank,
-					"new_severity_rank": newRank,
-				})
+				changesJSON, _ := json.Marshal(change.Changes)
 				_, err = u.deps.Repos.Findings.CreateEvent(ctx, repo.CreateEventParams{
 					FindingID: upserted.ID,
-					EventType: eventType,
-					Changes:   changes,
+					EventType: change.EventType,
+					Changes:   changesJSON,
 				})
 				if err != nil {
 					slog.Error("log material change event failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
