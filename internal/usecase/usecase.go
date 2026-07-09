@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/big"
 	"time"
 
@@ -217,7 +218,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 
 	nr, err := parser.Parse(ctx, bytes.NewReader(input.RawData))
 	if err != nil {
-		return nil, fmt.Errorf("parse %s output: %w", input.Scanner, err)
+		slog.Error("scanner parse failed", "scanner", input.Scanner, "error", err)
+		return nil, fmt.Errorf("scanner %s: parse output: %w", input.Scanner, err)
 	}
 
 	rawHash := sha256.Sum256(input.RawData)
@@ -312,7 +314,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return nil, ErrDuplicateReport
 		}
-		return nil, fmt.Errorf("create report: %w", err)
+		slog.Error("create report failed", "scanner", input.Scanner, "error", err)
+		return nil, fmt.Errorf("scanner %s: create report: %w", input.Scanner, err)
 	}
 
 	nowTime := now()
@@ -351,7 +354,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 			LastSeenAt:   nowTime,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("upsert finding %q: %w", f.Fingerprint, err)
+			slog.Error("upsert finding failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+			return nil, fmt.Errorf("scanner %s: upsert finding %q: %w", input.Scanner, f.Fingerprint, err)
 		}
 
 		_, err = u.deps.Repos.Findings.CreateOccurrence(ctx, repo.CreateOccurrenceParams{
@@ -370,7 +374,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 			Metadata:        mustMarshal(f.Metadata),
 		})
 		if err != nil {
-			return nil, fmt.Errorf("create occurrence for %q: %w", f.Fingerprint, err)
+			slog.Error("create occurrence failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+			return nil, fmt.Errorf("scanner %s: create occurrence for %q: %w", input.Scanner, f.Fingerprint, err)
 		}
 
 		for _, d := range f.Dimensions {
@@ -381,7 +386,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 				Source:    pgtype.Text{String: input.Scanner, Valid: true},
 			})
 			if err != nil {
-				return nil, fmt.Errorf("upsert dimension for %q: %w", f.Fingerprint, err)
+				slog.Error("upsert dimension failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+				return nil, fmt.Errorf("scanner %s: upsert dimension for %q: %w", input.Scanner, f.Fingerprint, err)
 			}
 		}
 
@@ -423,7 +429,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 					ReviewRequired: true,
 				})
 				if err != nil {
-					return nil, fmt.Errorf("set review_required for finding %q: %w", f.Fingerprint, err)
+					slog.Error("set review_required failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+					return nil, fmt.Errorf("scanner %s: set review_required for finding %q: %w", input.Scanner, f.Fingerprint, err)
 				}
 
 				changes, _ := json.Marshal(map[string]any{
@@ -436,7 +443,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 					Changes:   changes,
 				})
 				if err != nil {
-					return nil, fmt.Errorf("log material change event: %w", err)
+					slog.Error("log material change event failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+					return nil, fmt.Errorf("scanner %s: log material change event: %w", input.Scanner, err)
 				}
 			}
 		}
@@ -450,13 +458,15 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return nil, ErrDuplicateReport
 		}
-		return nil, fmt.Errorf("update report status: %w", err)
+		slog.Error("update report status failed", "scanner", input.Scanner, "report_id", report.ID, "error", err)
+		return nil, fmt.Errorf("scanner %s: update report status: %w", input.Scanner, err)
 	}
 
 	severities, statuses := defaultGateParams(input.GateSeverity, input.GateStatus)
 	gateFindings, err := u.deps.Repos.Findings.ListByProject(ctx, project.ID, severities, statuses, 1, 0)
 	if err != nil {
-		return nil, fmt.Errorf("gate check: %w", err)
+		slog.Error("gate check failed", "scanner", input.Scanner, "project", project.ID, "error", err)
+		return nil, fmt.Errorf("scanner %s: gate check: %w", input.Scanner, err)
 	}
 
 	reportID := uuid.UUID(report.ID.Bytes).String()
