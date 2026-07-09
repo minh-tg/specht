@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
@@ -369,4 +370,176 @@ func TestAPIKeyRepo_CreateAndRevoke(t *testing.T) {
 	keysAfterRevoke, err := repos.APIKeys.ListByProject(context.Background(), project.ID)
 	require.NoError(t, err)
 	assert.Len(t, keysAfterRevoke, 0)
+}
+
+func createTestProject(t *testing.T, repos *Repos) sqlc.Project {
+	t.Helper()
+	project, err := repos.Projects.Create(context.Background(), sqlc.CreateProjectParams{
+		Slug:                "test-" + uuid.New().String()[:8],
+		Name:                "Test Project",
+		Description:         pgtype.Text{Valid: false},
+		DeploymentThreshold: "high",
+		Settings:            []byte("{}"),
+	})
+	require.NoError(t, err)
+	return project
+}
+
+func TestWaiverTableRoundTrip(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	project := createTestProject(t, repos)
+
+	w, err := repos.Waivers.Create(context.Background(), sqlc.CreateWaiverParams{
+		ProjectID:   project.ID,
+		Name:        "test-waiver",
+		Description: "A test waiver",
+		Enabled:     true,
+	})
+	require.NoError(t, err)
+	assert.True(t, w.ID.Valid)
+	assert.Equal(t, "test-waiver", w.Name)
+	assert.True(t, w.Enabled)
+	assert.True(t, w.CreatedAt.Valid)
+	assert.True(t, w.UpdatedAt.Valid)
+
+	cond, err := repos.Waivers.CreateCondition(context.Background(), sqlc.CreateWaiverConditionParams{
+		WaiverID: w.ID,
+		Field:    "severity_rank",
+		Operator: "gte",
+		Value:    "4",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "severity_rank", cond.Field)
+	assert.Equal(t, "gte", cond.Operator)
+	assert.Equal(t, "4", cond.Value)
+
+	ctx, err := repos.Waivers.CreateContext(context.Background(), sqlc.CreateWaiverContextParams{
+		WaiverID:      w.ID,
+		EnvironmentID: pgtype.UUID{Valid: false},
+		TargetID:      pgtype.UUID{Valid: false},
+		ArtifactID:    pgtype.UUID{Valid: false},
+	})
+	require.NoError(t, err)
+	assert.True(t, ctx.ID.Valid)
+
+	finding, err := repos.Findings.Upsert(context.Background(), UpsertFindingParams{
+		ProjectID:    project.ID,
+		FindingKind:  "sca",
+		Fingerprint:  "pkg:npm/test@1.0.0",
+		CurrentTitle: "Test finding",
+		Severity:     "high",
+		SeverityRank: 3,
+		Score:        pgtype.Numeric{Valid: false},
+		FirstSeenAt:  pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		LastSeenAt:   pgtype.Timestamptz{Time: time.Now(), Valid: true},
+	})
+	require.NoError(t, err)
+
+	target, err := repos.Waivers.CreateFindingTarget(context.Background(), sqlc.CreateWaiverFindingTargetParams{
+		WaiverID:  w.ID,
+		FindingID: finding.ID,
+	})
+	require.NoError(t, err)
+	assert.True(t, target.ID.Valid)
+
+	ev, err := repos.Waivers.CreateEvent(context.Background(), sqlc.CreateWaiverEventParams{
+		WaiverID:  w.ID,
+		EventType: "created",
+		ActorID:   pgtype.Text{String: "user-abc", Valid: true},
+		Metadata:  []byte(`{}`),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "created", ev.EventType)
+	assert.Equal(t, "user-abc", ev.ActorID.String)
+
+	fetched, err := repos.Waivers.GetByID(context.Background(), w.ID, project.ID)
+	require.NoError(t, err)
+	assert.Equal(t, w.Name, fetched.Name)
+
+	conditions, err := repos.Waivers.ListConditions(context.Background(), w.ID)
+	require.NoError(t, err)
+	assert.Len(t, conditions, 1)
+	assert.Equal(t, "severity_rank", conditions[0].Field)
+
+	contexts, err := repos.Waivers.ListContexts(context.Background(), w.ID)
+	require.NoError(t, err)
+	assert.Len(t, contexts, 1)
+
+	targets, err := repos.Waivers.ListFindingTargets(context.Background(), w.ID)
+	require.NoError(t, err)
+	assert.Len(t, targets, 1)
+
+	events, err := repos.Waivers.ListEvents(context.Background(), w.ID)
+	require.NoError(t, err)
+	assert.Len(t, events, 1)
+	assert.Equal(t, "created", events[0].EventType)
+
+	toggled, err := repos.Waivers.Toggle(context.Background(), w.ID, project.ID)
+	require.NoError(t, err)
+	assert.False(t, toggled.Enabled)
+
+	active, err := repos.Waivers.ListActive(context.Background(), project.ID)
+	require.NoError(t, err)
+	assert.Len(t, active, 0)
+
+	_, err = repos.Waivers.Delete(context.Background(), w.ID, project.ID)
+	require.NoError(t, err)
+
+	_, err = repos.Waivers.GetByID(context.Background(), w.ID, project.ID)
+	assert.Error(t, err)
+}
+
+func TestScanScopeHashRoundTrip(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	project := createTestProject(t, repos)
+
+	expectedHash := "abc123deadbeef"
+	report, err := repos.Reports.Create(context.Background(), CreateReportParams{
+		ProjectID:     project.ID,
+		ToolName:      "trivy",
+		ToolVersion:   pgtype.Text{Valid: false},
+		ScanType:      "image",
+		ScanTarget:    pgtype.Text{String: "myapp:latest", Valid: true},
+		ScanScope:     []byte(`{}`),
+		ScanScopeHash: pgtype.Text{String: expectedHash, Valid: true},
+		Branch:        pgtype.Text{Valid: false},
+		CommitSha:     pgtype.Text{Valid: false},
+		RawReportHash: pgtype.Text{Valid: false},
+		ParserVersion: pgtype.Text{Valid: false},
+	})
+	require.NoError(t, err)
+	assert.True(t, report.ScanScopeHash.Valid)
+	assert.Equal(t, expectedHash, report.ScanScopeHash.String)
+}
+
+func TestRawDataRoundTrip(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	project := createTestProject(t, repos)
+
+	rawData := []byte(`{"scanner":"trivy","results":[]}`)
+	report, err := repos.Reports.Create(context.Background(), CreateReportParams{
+		ProjectID:     project.ID,
+		ToolName:      "trivy",
+		ToolVersion:   pgtype.Text{Valid: false},
+		ScanType:      "image",
+		ScanTarget:    pgtype.Text{Valid: false},
+		ScanScope:     []byte(`{}`),
+		ScanScopeHash: pgtype.Text{Valid: false},
+		Branch:        pgtype.Text{Valid: false},
+		CommitSha:     pgtype.Text{Valid: false},
+		RawData:       rawData,
+		RawReportHash: pgtype.Text{Valid: false},
+		ParserVersion: pgtype.Text{Valid: false},
+	})
+	require.NoError(t, err)
+
+	fetched, err := repos.Reports.GetByID(context.Background(), report.ID)
+	require.NoError(t, err)
+	assert.Equal(t, rawData, fetched.RawData)
 }

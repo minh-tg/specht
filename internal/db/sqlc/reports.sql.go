@@ -19,7 +19,8 @@ INSERT INTO reports (
     scan_completeness, scanner_config_hash,
     branch, commit_sha, status,
     total_findings, parser_version,
-    started_at, error_message, raw_report_hash
+    started_at, error_message, raw_report_hash,
+    raw_data
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7,
@@ -27,8 +28,9 @@ INSERT INTO reports (
     $11, $12,
     $13, $14, $15,
     $16, $17,
-    $18, $19, $20
-) RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at
+    $18, $19, $20,
+    $21
+) RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data
 `
 
 type CreateReportParams struct {
@@ -52,6 +54,7 @@ type CreateReportParams struct {
 	StartedAt         pgtype.Timestamptz `json:"started_at"`
 	ErrorMessage      pgtype.Text        `json:"error_message"`
 	RawReportHash     pgtype.Text        `json:"raw_report_hash"`
+	RawData           []byte             `json:"raw_data"`
 }
 
 func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Report, error) {
@@ -77,6 +80,7 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 		arg.StartedAt,
 		arg.ErrorMessage,
 		arg.RawReportHash,
+		arg.RawData,
 	)
 	var i Report
 	err := row.Scan(
@@ -103,12 +107,13 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 		&i.ErrorMessage,
 		&i.RawReportHash,
 		&i.CreatedAt,
+		&i.RawData,
 	)
 	return i, err
 }
 
 const getReportByID = `-- name: GetReportByID :one
-SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at FROM reports WHERE id = $1
+SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data FROM reports WHERE id = $1
 `
 
 func (q *Queries) GetReportByID(ctx context.Context, id pgtype.UUID) (Report, error) {
@@ -138,12 +143,13 @@ func (q *Queries) GetReportByID(ctx context.Context, id pgtype.UUID) (Report, er
 		&i.ErrorMessage,
 		&i.RawReportHash,
 		&i.CreatedAt,
+		&i.RawData,
 	)
 	return i, err
 }
 
 const listReportsByProject = `-- name: ListReportsByProject :many
-SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at FROM reports
+SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data FROM reports
 WHERE project_id = $1
 ORDER BY created_at DESC
 LIMIT $2 OFFSET $3
@@ -188,6 +194,7 @@ func (q *Queries) ListReportsByProject(ctx context.Context, arg ListReportsByPro
 			&i.ErrorMessage,
 			&i.RawReportHash,
 			&i.CreatedAt,
+			&i.RawData,
 		); err != nil {
 			return nil, err
 		}
@@ -206,7 +213,7 @@ UPDATE reports SET
     completed_at = CASE WHEN $2 = 'completed' OR $2 = 'failed' THEN NOW() ELSE completed_at END,
     error_message = $4
 WHERE id = $1 AND project_id = $5
-RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at
+RETURNING id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data
 `
 
 type UpdateReportStatusParams struct {
@@ -251,6 +258,7 @@ func (q *Queries) UpdateReportStatus(ctx context.Context, arg UpdateReportStatus
 		&i.ErrorMessage,
 		&i.RawReportHash,
 		&i.CreatedAt,
+		&i.RawData,
 	)
 	return i, err
 }

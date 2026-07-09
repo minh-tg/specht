@@ -176,6 +176,7 @@ type Report struct {
 	ErrorMessage      pgtype.Text        `json:"error_message"`
 	RawReportHash     pgtype.Text        `json:"raw_report_hash"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	RawData           []byte             `json:"raw_data"`
 }
 
 type Target struct {
@@ -230,7 +231,7 @@ type WaiverEvent struct {
 	ID        pgtype.UUID        `json:"id"`
 	WaiverID  pgtype.UUID        `json:"waiver_id"`
 	EventType string             `json:"event_type"`
-	ActorID   pgtype.UUID        `json:"actor_id"`
+	ActorID   pgtype.Text        `json:"actor_id"`
 	Metadata  []byte             `json:"metadata"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }

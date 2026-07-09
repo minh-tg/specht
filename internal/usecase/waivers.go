@@ -135,11 +135,15 @@ func toWaiverFindingTarget(t sqlc.WaiverFindingTarget) WaiverFindingTargetResp {
 }
 
 func toWaiverEvent(e sqlc.WaiverEvent) WaiverEventResp {
+	actorID := ""
+	if e.ActorID.Valid {
+		actorID = e.ActorID.String
+	}
 	return WaiverEventResp{
 		ID:        uuidStr(e.ID),
 		WaiverID:  uuidStr(e.WaiverID),
 		EventType: e.EventType,
-		ActorID:   uuidStr(e.ActorID),
+		ActorID:   actorID,
 		Metadata:  e.Metadata,
 		CreatedAt: e.CreatedAt.Time.Format(time.RFC3339),
 	}
@@ -165,17 +169,6 @@ func toWaiverDetail(w sqlc.Waiver, conditions []sqlc.WaiverCondition, contexts [
 }
 
 var waiverCreatedEvent = []byte("{}")
-
-func actorUUID(actorID string) pgtype.UUID {
-	if actorID == "" {
-		return pgtype.UUID{Valid: false}
-	}
-	id, err := uuid.Parse(actorID)
-	if err != nil {
-		return pgtype.UUID{Valid: false}
-	}
-	return pgtype.UUID{Bytes: id, Valid: true}
-}
 
 func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*WaiverResponse, error) {
 	project, err := u.deps.Repos.Projects.GetBySlug(ctx, input.ProjectSlug)
@@ -260,7 +253,7 @@ func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*
 		q.CreateWaiverEvent(ctx, sqlc.CreateWaiverEventParams{
 			WaiverID:  w.ID,
 			EventType: "created",
-			ActorID:   actorUUID(input.ActorID),
+			ActorID:   textPtr(input.ActorID),
 			Metadata:  waiverCreatedEvent,
 		})
 
@@ -343,8 +336,8 @@ func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*
 		w, err := q.UpdateWaiver(ctx, sqlc.UpdateWaiverParams{
 			ID:          pid,
 			ProjectID:   project.ID,
-			Name:        pgtype.Text{String: input.Name, Valid: input.Name != ""},
-			Description: pgtype.Text{String: input.Description, Valid: input.Description != ""},
+			Name:        input.Name,
+			Description: input.Description,
 		})
 		if err != nil {
 			return fmt.Errorf("update waiver: %w", err)
@@ -430,7 +423,7 @@ func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*
 		q.CreateWaiverEvent(ctx, sqlc.CreateWaiverEventParams{
 			WaiverID:  w.ID,
 			EventType: "updated",
-			ActorID:   actorUUID(input.ActorID),
+			ActorID:   textPtr(input.ActorID),
 			Metadata:  waiverCreatedEvent,
 		})
 
@@ -483,7 +476,7 @@ func (u *Usecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID, acto
 	u.deps.Repos.Waivers.CreateEvent(ctx, sqlc.CreateWaiverEventParams{
 		WaiverID:  w.ID,
 		EventType: eventType,
-		ActorID:   actorUUID(actorID),
+		ActorID:   textPtr(actorID),
 		Metadata:  waiverCreatedEvent,
 	})
 

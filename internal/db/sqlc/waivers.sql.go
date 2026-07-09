@@ -45,98 +45,124 @@ func (q *Queries) CreateWaiver(ctx context.Context, arg CreateWaiverParams) (Wai
 	return i, err
 }
 
-const listWaivers = `-- name: ListWaivers :many
-SELECT id, project_id, name, description, enabled, created_at, updated_at FROM waivers
-WHERE project_id = $1
-ORDER BY created_at DESC
+const createWaiverCondition = `-- name: CreateWaiverCondition :one
+INSERT INTO waiver_conditions (waiver_id, field, operator, value)
+VALUES ($1, $2, $3, $4)
+RETURNING id, waiver_id, field, operator, value, created_at
 `
 
-func (q *Queries) ListWaivers(ctx context.Context, projectID pgtype.UUID) ([]Waiver, error) {
-	rows, err := q.db.Query(ctx, listWaivers, projectID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Waiver
-	for rows.Next() {
-		var i Waiver
-		if err := rows.Scan(
-			&i.ID,
-			&i.ProjectID,
-			&i.Name,
-			&i.Description,
-			&i.Enabled,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+type CreateWaiverConditionParams struct {
+	WaiverID pgtype.UUID `json:"waiver_id"`
+	Field    string      `json:"field"`
+	Operator string      `json:"operator"`
+	Value    string      `json:"value"`
 }
 
-const getWaiver = `-- name: GetWaiver :one
-SELECT id, project_id, name, description, enabled, created_at, updated_at FROM waivers
-WHERE id = $1 AND project_id = $2
-`
-
-type GetWaiverParams struct {
-	ID        pgtype.UUID `json:"id"`
-	ProjectID pgtype.UUID `json:"project_id"`
-}
-
-func (q *Queries) GetWaiver(ctx context.Context, arg GetWaiverParams) (Waiver, error) {
-	row := q.db.QueryRow(ctx, getWaiver, arg.ID, arg.ProjectID)
-	var i Waiver
+func (q *Queries) CreateWaiverCondition(ctx context.Context, arg CreateWaiverConditionParams) (WaiverCondition, error) {
+	row := q.db.QueryRow(
+		ctx, createWaiverCondition,
+		arg.WaiverID,
+		arg.Field,
+		arg.Operator,
+		arg.Value,
+	)
+	var i WaiverCondition
 	err := row.Scan(
 		&i.ID,
-		&i.ProjectID,
-		&i.Name,
-		&i.Description,
-		&i.Enabled,
+		&i.WaiverID,
+		&i.Field,
+		&i.Operator,
+		&i.Value,
 		&i.CreatedAt,
-		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const updateWaiver = `-- name: UpdateWaiver :one
-UPDATE waivers SET
-    name = COALESCE($3, name),
-    description = COALESCE($4, description),
-    updated_at = NOW()
-WHERE id = $1 AND project_id = $2
-RETURNING id, project_id, name, description, enabled, created_at, updated_at
+const createWaiverContext = `-- name: CreateWaiverContext :one
+INSERT INTO waiver_contexts (waiver_id, environment_id, target_id, artifact_id)
+VALUES ($1, $2, $3, $4)
+RETURNING id, waiver_id, environment_id, target_id, artifact_id, created_at
 `
 
-type UpdateWaiverParams struct {
-	ID          pgtype.UUID `json:"id"`
-	ProjectID   pgtype.UUID `json:"project_id"`
-	Name        pgtype.Text `json:"name"`
-	Description pgtype.Text `json:"description"`
+type CreateWaiverContextParams struct {
+	WaiverID      pgtype.UUID `json:"waiver_id"`
+	EnvironmentID pgtype.UUID `json:"environment_id"`
+	TargetID      pgtype.UUID `json:"target_id"`
+	ArtifactID    pgtype.UUID `json:"artifact_id"`
 }
 
-func (q *Queries) UpdateWaiver(ctx context.Context, arg UpdateWaiverParams) (Waiver, error) {
+func (q *Queries) CreateWaiverContext(ctx context.Context, arg CreateWaiverContextParams) (WaiverContext, error) {
 	row := q.db.QueryRow(
-		ctx, updateWaiver,
-		arg.ID,
-		arg.ProjectID,
-		arg.Name,
-		arg.Description,
+		ctx, createWaiverContext,
+		arg.WaiverID,
+		arg.EnvironmentID,
+		arg.TargetID,
+		arg.ArtifactID,
 	)
-	var i Waiver
+	var i WaiverContext
 	err := row.Scan(
 		&i.ID,
-		&i.ProjectID,
-		&i.Name,
-		&i.Description,
-		&i.Enabled,
+		&i.WaiverID,
+		&i.EnvironmentID,
+		&i.TargetID,
+		&i.ArtifactID,
 		&i.CreatedAt,
-		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createWaiverEvent = `-- name: CreateWaiverEvent :one
+INSERT INTO waiver_events (waiver_id, event_type, actor_id, metadata)
+VALUES ($1, $2, $3, $4)
+RETURNING id, waiver_id, event_type, actor_id, metadata, created_at
+`
+
+type CreateWaiverEventParams struct {
+	WaiverID  pgtype.UUID `json:"waiver_id"`
+	EventType string      `json:"event_type"`
+	ActorID   pgtype.Text `json:"actor_id"`
+	Metadata  []byte      `json:"metadata"`
+}
+
+func (q *Queries) CreateWaiverEvent(ctx context.Context, arg CreateWaiverEventParams) (WaiverEvent, error) {
+	row := q.db.QueryRow(
+		ctx, createWaiverEvent,
+		arg.WaiverID,
+		arg.EventType,
+		arg.ActorID,
+		arg.Metadata,
+	)
+	var i WaiverEvent
+	err := row.Scan(
+		&i.ID,
+		&i.WaiverID,
+		&i.EventType,
+		&i.ActorID,
+		&i.Metadata,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const createWaiverFindingTarget = `-- name: CreateWaiverFindingTarget :one
+INSERT INTO waiver_finding_targets (waiver_id, finding_id)
+VALUES ($1, $2)
+RETURNING id, waiver_id, finding_id, created_at
+`
+
+type CreateWaiverFindingTargetParams struct {
+	WaiverID  pgtype.UUID `json:"waiver_id"`
+	FindingID pgtype.UUID `json:"finding_id"`
+}
+
+func (q *Queries) CreateWaiverFindingTarget(ctx context.Context, arg CreateWaiverFindingTargetParams) (WaiverFindingTarget, error) {
+	row := q.db.QueryRow(ctx, createWaiverFindingTarget, arg.WaiverID, arg.FindingID)
+	var i WaiverFindingTarget
+	err := row.Scan(
+		&i.ID,
+		&i.WaiverID,
+		&i.FindingID,
+		&i.CreatedAt,
 	)
 	return i, err
 }
@@ -167,21 +193,45 @@ func (q *Queries) DeleteWaiver(ctx context.Context, arg DeleteWaiverParams) (Wai
 	return i, err
 }
 
-const toggleWaiver = `-- name: ToggleWaiver :one
-UPDATE waivers SET
-    enabled = NOT enabled,
-    updated_at = NOW()
-WHERE id = $1 AND project_id = $2
-RETURNING id, project_id, name, description, enabled, created_at, updated_at
+const deleteWaiverConditions = `-- name: DeleteWaiverConditions :exec
+DELETE FROM waiver_conditions WHERE waiver_id = $1
 `
 
-type ToggleWaiverParams struct {
+func (q *Queries) DeleteWaiverConditions(ctx context.Context, waiverID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteWaiverConditions, waiverID)
+	return err
+}
+
+const deleteWaiverContexts = `-- name: DeleteWaiverContexts :exec
+DELETE FROM waiver_contexts WHERE waiver_id = $1
+`
+
+func (q *Queries) DeleteWaiverContexts(ctx context.Context, waiverID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteWaiverContexts, waiverID)
+	return err
+}
+
+const deleteWaiverFindingTargets = `-- name: DeleteWaiverFindingTargets :exec
+DELETE FROM waiver_finding_targets WHERE waiver_id = $1
+`
+
+func (q *Queries) DeleteWaiverFindingTargets(ctx context.Context, waiverID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, deleteWaiverFindingTargets, waiverID)
+	return err
+}
+
+const getWaiver = `-- name: GetWaiver :one
+SELECT id, project_id, name, description, enabled, created_at, updated_at FROM waivers
+WHERE id = $1 AND project_id = $2
+`
+
+type GetWaiverParams struct {
 	ID        pgtype.UUID `json:"id"`
 	ProjectID pgtype.UUID `json:"project_id"`
 }
 
-func (q *Queries) ToggleWaiver(ctx context.Context, arg ToggleWaiverParams) (Waiver, error) {
-	row := q.db.QueryRow(ctx, toggleWaiver, arg.ID, arg.ProjectID)
+func (q *Queries) GetWaiver(ctx context.Context, arg GetWaiverParams) (Waiver, error) {
+	row := q.db.QueryRow(ctx, getWaiver, arg.ID, arg.ProjectID)
 	var i Waiver
 	err := row.Scan(
 		&i.ID,
@@ -229,39 +279,6 @@ func (q *Queries) ListActiveWaivers(ctx context.Context, projectID pgtype.UUID) 
 	return items, nil
 }
 
-const createWaiverCondition = `-- name: CreateWaiverCondition :one
-INSERT INTO waiver_conditions (waiver_id, field, operator, value)
-VALUES ($1, $2, $3, $4)
-RETURNING id, waiver_id, field, operator, value, created_at
-`
-
-type CreateWaiverConditionParams struct {
-	WaiverID pgtype.UUID `json:"waiver_id"`
-	Field    string      `json:"field"`
-	Operator string      `json:"operator"`
-	Value    string      `json:"value"`
-}
-
-func (q *Queries) CreateWaiverCondition(ctx context.Context, arg CreateWaiverConditionParams) (WaiverCondition, error) {
-	row := q.db.QueryRow(
-		ctx, createWaiverCondition,
-		arg.WaiverID,
-		arg.Field,
-		arg.Operator,
-		arg.Value,
-	)
-	var i WaiverCondition
-	err := row.Scan(
-		&i.ID,
-		&i.WaiverID,
-		&i.Field,
-		&i.Operator,
-		&i.Value,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
 const listWaiverConditions = `-- name: ListWaiverConditions :many
 SELECT id, waiver_id, field, operator, value, created_at FROM waiver_conditions
 WHERE waiver_id = $1
@@ -293,48 +310,6 @@ func (q *Queries) ListWaiverConditions(ctx context.Context, waiverID pgtype.UUID
 		return nil, err
 	}
 	return items, nil
-}
-
-const deleteWaiverConditions = `-- name: DeleteWaiverConditions :exec
-DELETE FROM waiver_conditions WHERE waiver_id = $1
-`
-
-func (q *Queries) DeleteWaiverConditions(ctx context.Context, waiverID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteWaiverConditions, waiverID)
-	return err
-}
-
-const createWaiverContext = `-- name: CreateWaiverContext :one
-INSERT INTO waiver_contexts (waiver_id, environment_id, target_id, artifact_id)
-VALUES ($1, $2, $3, $4)
-RETURNING id, waiver_id, environment_id, target_id, artifact_id, created_at
-`
-
-type CreateWaiverContextParams struct {
-	WaiverID      pgtype.UUID `json:"waiver_id"`
-	EnvironmentID pgtype.UUID `json:"environment_id"`
-	TargetID      pgtype.UUID `json:"target_id"`
-	ArtifactID    pgtype.UUID `json:"artifact_id"`
-}
-
-func (q *Queries) CreateWaiverContext(ctx context.Context, arg CreateWaiverContextParams) (WaiverContext, error) {
-	row := q.db.QueryRow(
-		ctx, createWaiverContext,
-		arg.WaiverID,
-		arg.EnvironmentID,
-		arg.TargetID,
-		arg.ArtifactID,
-	)
-	var i WaiverContext
-	err := row.Scan(
-		&i.ID,
-		&i.WaiverID,
-		&i.EnvironmentID,
-		&i.TargetID,
-		&i.ArtifactID,
-		&i.CreatedAt,
-	)
-	return i, err
 }
 
 const listWaiverContexts = `-- name: ListWaiverContexts :many
@@ -370,40 +345,37 @@ func (q *Queries) ListWaiverContexts(ctx context.Context, waiverID pgtype.UUID) 
 	return items, nil
 }
 
-const deleteWaiverContexts = `-- name: DeleteWaiverContexts :exec
-DELETE FROM waiver_contexts WHERE waiver_id = $1
+const listWaiverEvents = `-- name: ListWaiverEvents :many
+SELECT id, waiver_id, event_type, actor_id, metadata, created_at FROM waiver_events
+WHERE waiver_id = $1
+ORDER BY created_at DESC
 `
 
-func (q *Queries) DeleteWaiverContexts(ctx context.Context, waiverID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteWaiverContexts, waiverID)
-	return err
-}
-
-const createWaiverFindingTarget = `-- name: CreateWaiverFindingTarget :one
-INSERT INTO waiver_finding_targets (waiver_id, finding_id)
-VALUES ($1, $2)
-RETURNING id, waiver_id, finding_id, created_at
-`
-
-type CreateWaiverFindingTargetParams struct {
-	WaiverID  pgtype.UUID `json:"waiver_id"`
-	FindingID pgtype.UUID `json:"finding_id"`
-}
-
-func (q *Queries) CreateWaiverFindingTarget(ctx context.Context, arg CreateWaiverFindingTargetParams) (WaiverFindingTarget, error) {
-	row := q.db.QueryRow(
-		ctx, createWaiverFindingTarget,
-		arg.WaiverID,
-		arg.FindingID,
-	)
-	var i WaiverFindingTarget
-	err := row.Scan(
-		&i.ID,
-		&i.WaiverID,
-		&i.FindingID,
-		&i.CreatedAt,
-	)
-	return i, err
+func (q *Queries) ListWaiverEvents(ctx context.Context, waiverID pgtype.UUID) ([]WaiverEvent, error) {
+	rows, err := q.db.Query(ctx, listWaiverEvents, waiverID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WaiverEvent
+	for rows.Next() {
+		var i WaiverEvent
+		if err := rows.Scan(
+			&i.ID,
+			&i.WaiverID,
+			&i.EventType,
+			&i.ActorID,
+			&i.Metadata,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listWaiverFindingTargets = `-- name: ListWaiverFindingTargets :many
@@ -437,70 +409,29 @@ func (q *Queries) ListWaiverFindingTargets(ctx context.Context, waiverID pgtype.
 	return items, nil
 }
 
-const deleteWaiverFindingTargets = `-- name: DeleteWaiverFindingTargets :exec
-DELETE FROM waiver_finding_targets WHERE waiver_id = $1
-`
-
-func (q *Queries) DeleteWaiverFindingTargets(ctx context.Context, waiverID pgtype.UUID) error {
-	_, err := q.db.Exec(ctx, deleteWaiverFindingTargets, waiverID)
-	return err
-}
-
-const createWaiverEvent = `-- name: CreateWaiverEvent :one
-INSERT INTO waiver_events (waiver_id, event_type, actor_id, metadata)
-VALUES ($1, $2, $3, $4)
-RETURNING id, waiver_id, event_type, actor_id, metadata, created_at
-`
-
-type CreateWaiverEventParams struct {
-	WaiverID  pgtype.UUID `json:"waiver_id"`
-	EventType string      `json:"event_type"`
-	ActorID   pgtype.UUID `json:"actor_id"`
-	Metadata  []byte      `json:"metadata"`
-}
-
-func (q *Queries) CreateWaiverEvent(ctx context.Context, arg CreateWaiverEventParams) (WaiverEvent, error) {
-	row := q.db.QueryRow(
-		ctx, createWaiverEvent,
-		arg.WaiverID,
-		arg.EventType,
-		arg.ActorID,
-		arg.Metadata,
-	)
-	var i WaiverEvent
-	err := row.Scan(
-		&i.ID,
-		&i.WaiverID,
-		&i.EventType,
-		&i.ActorID,
-		&i.Metadata,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const listWaiverEvents = `-- name: ListWaiverEvents :many
-SELECT id, waiver_id, event_type, actor_id, metadata, created_at FROM waiver_events
-WHERE waiver_id = $1
+const listWaivers = `-- name: ListWaivers :many
+SELECT id, project_id, name, description, enabled, created_at, updated_at FROM waivers
+WHERE project_id = $1
 ORDER BY created_at DESC
 `
 
-func (q *Queries) ListWaiverEvents(ctx context.Context, waiverID pgtype.UUID) ([]WaiverEvent, error) {
-	rows, err := q.db.Query(ctx, listWaiverEvents, waiverID)
+func (q *Queries) ListWaivers(ctx context.Context, projectID pgtype.UUID) ([]Waiver, error) {
+	rows, err := q.db.Query(ctx, listWaivers, projectID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []WaiverEvent
+	var items []Waiver
 	for rows.Next() {
-		var i WaiverEvent
+		var i Waiver
 		if err := rows.Scan(
 			&i.ID,
-			&i.WaiverID,
-			&i.EventType,
-			&i.ActorID,
-			&i.Metadata,
+			&i.ProjectID,
+			&i.Name,
+			&i.Description,
+			&i.Enabled,
 			&i.CreatedAt,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -510,4 +441,69 @@ func (q *Queries) ListWaiverEvents(ctx context.Context, waiverID pgtype.UUID) ([
 		return nil, err
 	}
 	return items, nil
+}
+
+const toggleWaiver = `-- name: ToggleWaiver :one
+UPDATE waivers SET
+    enabled = NOT enabled,
+    updated_at = NOW()
+WHERE id = $1 AND project_id = $2
+RETURNING id, project_id, name, description, enabled, created_at, updated_at
+`
+
+type ToggleWaiverParams struct {
+	ID        pgtype.UUID `json:"id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+func (q *Queries) ToggleWaiver(ctx context.Context, arg ToggleWaiverParams) (Waiver, error) {
+	row := q.db.QueryRow(ctx, toggleWaiver, arg.ID, arg.ProjectID)
+	var i Waiver
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Description,
+		&i.Enabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const updateWaiver = `-- name: UpdateWaiver :one
+UPDATE waivers SET
+    name = COALESCE($3, name),
+    description = COALESCE($4, description),
+    updated_at = NOW()
+WHERE id = $1 AND project_id = $2
+RETURNING id, project_id, name, description, enabled, created_at, updated_at
+`
+
+type UpdateWaiverParams struct {
+	ID          pgtype.UUID `json:"id"`
+	ProjectID   pgtype.UUID `json:"project_id"`
+	Name        string      `json:"name"`
+	Description string      `json:"description"`
+}
+
+func (q *Queries) UpdateWaiver(ctx context.Context, arg UpdateWaiverParams) (Waiver, error) {
+	row := q.db.QueryRow(
+		ctx, updateWaiver,
+		arg.ID,
+		arg.ProjectID,
+		arg.Name,
+		arg.Description,
+	)
+	var i Waiver
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Description,
+		&i.Enabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }

@@ -6,7 +6,8 @@ INSERT INTO reports (
     scan_completeness, scanner_config_hash,
     branch, commit_sha, status,
     total_findings, parser_version,
-    started_at, error_message, raw_report_hash
+    started_at, error_message, raw_report_hash,
+    raw_data
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7,
@@ -14,7 +15,8 @@ INSERT INTO reports (
     $11, $12,
     $13, $14, $15,
     $16, $17,
-    $18, $19, $20
+    $18, $19, $20,
+    $21
 ) RETURNING *;
 
 -- name: GetReportByID :one

@@ -199,6 +199,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		}
 	}
 
+	scopeHash := sha256.Sum256([]byte(input.Scanner + ":" + nr.Target.Identifier))
+
 	report, err := u.deps.Repos.Reports.Create(ctx, repo.CreateReportParams{
 		ProjectID:     project.ID,
 		ToolName:      input.Scanner,
@@ -209,8 +211,10 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		ArtifactID:    artifactID,
 		EnvironmentID: environmentID,
 		ScanScope:     mustMarshal(nr.ScanScope),
+		ScanScopeHash: pgtype.Text{String: hex.EncodeToString(scopeHash[:]), Valid: true},
 		Branch:        textPtr(input.Branch),
 		CommitSha:     textPtr(input.CommitSha),
+		RawData:       input.RawData,
 		RawReportHash: pgtype.Text{String: hex.EncodeToString(rawHash[:]), Valid: true},
 		ParserVersion: textPtr(input.ParserVersion),
 	})

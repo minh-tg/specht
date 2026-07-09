@@ -24,6 +24,8 @@ type CreateReportParams struct {
 	Branch        pgtype.Text
 	CommitSha     pgtype.Text
 	ScanScope     []byte
+	ScanScopeHash pgtype.Text
+	RawData       []byte
 	RawReportHash pgtype.Text
 	ParserVersion pgtype.Text
 }
@@ -39,8 +41,10 @@ func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc
 		ArtifactID:       arg.ArtifactID,
 		EnvironmentID:    arg.EnvironmentID,
 		ScanScope:        arg.ScanScope,
+		ScanScopeHash:    arg.ScanScopeHash,
 		Branch:           arg.Branch,
 		CommitSha:        arg.CommitSha,
+		RawData:          arg.RawData,
 		RawReportHash:    arg.RawReportHash,
 		ParserVersion:    arg.ParserVersion,
 		ScanCompleteness: "unknown",
