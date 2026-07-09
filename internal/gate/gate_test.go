@@ -90,6 +90,49 @@ func TestEvaluate_MixedWaivedUnwaived_Fail(t *testing.T) {
 	assert.Equal(t, 3, d.TotalBlocking)
 }
 
+func TestEvaluate_ContextWaiver_Matching(t *testing.T) {
+	g := New(
+		&mockFindingsRepo{findings: []Finding{
+			{ID: "f1", CurrentSeverityRank: 4, EnvironmentID: "env-prod", TargetID: "app-api"},
+			{ID: "f2", CurrentSeverityRank: 4, EnvironmentID: "env-staging", TargetID: "app-api"},
+			{ID: "f3", CurrentSeverityRank: 4, EnvironmentID: "env-prod", TargetID: "app-worker"},
+		}},
+		&mockWaiversRepo{waivers: []Waiver{
+			{ID: "w1", Contexts: []WaiverContext{
+				{EnvironmentID: "env-prod", TargetID: "app-api"},
+			}},
+		}},
+	)
+	d, err := g.Evaluate(context.Background(), "proj-1", 3)
+	require.NoError(t, err)
+	assert.Equal(t, StatusFail, d.Status)
+	assert.Equal(t, []string{"f2", "f3"}, d.BlockedBy)
+	assert.Equal(t, 1, d.WaivedCount)
+	assert.Equal(t, 3, d.TotalBlocking)
+}
+
+func TestEvaluate_ContextOR_MultipleRows(t *testing.T) {
+	g := New(
+		&mockFindingsRepo{findings: []Finding{
+			{ID: "f1", CurrentSeverityRank: 4, EnvironmentID: "env-prod"},
+			{ID: "f2", CurrentSeverityRank: 4, EnvironmentID: "env-staging"},
+			{ID: "f3", CurrentSeverityRank: 4, EnvironmentID: "env-dev"},
+		}},
+		&mockWaiversRepo{waivers: []Waiver{
+			{ID: "w1", Contexts: []WaiverContext{
+				{EnvironmentID: "env-prod"},
+				{EnvironmentID: "env-staging"},
+			}},
+		}},
+	)
+	d, err := g.Evaluate(context.Background(), "proj-1", 3)
+	require.NoError(t, err)
+	assert.Equal(t, StatusFail, d.Status)
+	assert.Equal(t, []string{"f3"}, d.BlockedBy)
+	assert.Equal(t, 2, d.WaivedCount)
+	assert.Equal(t, 3, d.TotalBlocking)
+}
+
 func TestEvaluate_ExpiredWaiver_TreatedAsUnwaived(t *testing.T) {
 	g := New(
 		&mockFindingsRepo{findings: []Finding{

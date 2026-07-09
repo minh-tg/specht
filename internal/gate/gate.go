@@ -122,16 +122,17 @@ func (g *gate) Evaluate(ctx context.Context, projectID string, minSeverityRank i
 func contextMatchesContexts(f Finding, contexts []WaiverContext) bool {
 	for _, cx := range contexts {
 		if cx.EnvironmentID != "" && cx.EnvironmentID != f.EnvironmentID {
-			return false
+			continue
 		}
 		if cx.TargetID != "" && cx.TargetID != f.TargetID {
-			return false
+			continue
 		}
 		if cx.ArtifactID != "" && cx.ArtifactID != f.ArtifactID {
-			return false
+			continue
 		}
+		return true
 	}
-	return true
+	return false
 }
 
 func isWaived(f Finding, waivers []Waiver) bool {

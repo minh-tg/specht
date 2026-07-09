@@ -228,15 +228,7 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 
-	if !u.gateOK {
-		g := gate.New(
-			&gateFindingRepo{r: u.deps.Repos.Findings},
-			&gateWaiverRepo{r: u.deps.Repos.Waivers},
-		)
-		u.gate = g
-		u.gateOK = true
-	}
-
+	u.initGate()
 	projectID := uuid.UUID(project.ID.Bytes).String()
 	decision, err := u.gate.Evaluate(ctx, projectID, minSeverityRank)
 	if err != nil {

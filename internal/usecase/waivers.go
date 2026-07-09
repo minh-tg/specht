@@ -334,11 +334,23 @@ func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*
 
 	var resp *WaiverResponse
 	err = u.deps.Repos.WithTx(ctx, func(q *sqlc.Queries) error {
+		current, err := q.GetWaiver(ctx, sqlc.GetWaiverParams{ID: pid, ProjectID: project.ID})
+		if err != nil {
+			return fmt.Errorf("get current waiver: %w", err)
+		}
+		name := current.Name
+		if input.Name != "" {
+			name = input.Name
+		}
+		desc := current.Description
+		if input.Description != "" {
+			desc = input.Description
+		}
 		w, err := q.UpdateWaiver(ctx, sqlc.UpdateWaiverParams{
 			ID:          pid,
 			ProjectID:   project.ID,
-			Name:        input.Name,
-			Description: input.Description,
+			Name:        name,
+			Description: desc,
 		})
 		if err != nil {
 			return fmt.Errorf("update waiver: %w", err)

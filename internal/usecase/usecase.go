@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -54,13 +55,22 @@ type Deps struct {
 }
 
 type Usecases struct {
-	deps   Deps
-	gate   gate.Gate
-	gateOK bool
+	deps     Deps
+	gate     gate.Gate
+	gateOnce sync.Once
 }
 
 func New(deps Deps) *Usecases {
 	return &Usecases{deps: deps}
+}
+
+func (u *Usecases) initGate() {
+	u.gateOnce.Do(func() {
+		u.gate = gate.New(
+			&gateFindingRepo{r: u.deps.Repos.Findings},
+			&gateWaiverRepo{r: u.deps.Repos.Waivers},
+		)
+	})
 }
 
 type gateFindingRepo struct {
@@ -78,12 +88,30 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 	}
 	result := make([]gate.Finding, len(rows))
 	for i, r := range rows {
+		fc, ctxErr := a.r.GetFindingContext(ctx, r.ID)
+		envID := ""
+		tgtID := ""
+		artID := ""
+		if ctxErr == nil {
+			if fc.EnvironmentID.Valid {
+				envID = uuid.UUID(fc.EnvironmentID.Bytes).String()
+			}
+			if fc.TargetID.Valid {
+				tgtID = uuid.UUID(fc.TargetID.Bytes).String()
+			}
+			if fc.ArtifactID.Valid {
+				artID = uuid.UUID(fc.ArtifactID.Bytes).String()
+			}
+		}
 		result[i] = gate.Finding{
 			ID:                  uuid.UUID(r.ID.Bytes).String(),
 			CurrentSeverityRank: r.CurrentSeverityRank,
 			FindingKind:         r.FindingKind,
 			Fingerprint:         r.Fingerprint,
 			CurrentTitle:        r.CurrentTitle,
+			EnvironmentID:       envID,
+			TargetID:            tgtID,
+			ArtifactID:          artID,
 		}
 	}
 	return result, nil
@@ -110,7 +138,10 @@ func (a *gateWaiverRepo) ListActiveWaivers(ctx context.Context, projectID string
 			Contexts:   nil,
 			Targets:    nil,
 		}
-		conditions, _ := a.r.ListConditions(ctx, w.ID)
+		conditions, err := a.r.ListConditions(ctx, w.ID)
+		if err != nil {
+			slog.Warn("list waiver conditions", "waiver_id", w.ID, "error", err)
+		}
 		for _, c := range conditions {
 			gw.Conditions = append(gw.Conditions, gate.WaiverCondition{
 				Field:    c.Field,
@@ -118,7 +149,10 @@ func (a *gateWaiverRepo) ListActiveWaivers(ctx context.Context, projectID string
 				Value:    c.Value,
 			})
 		}
-		contexts, _ := a.r.ListContexts(ctx, w.ID)
+		contexts, err := a.r.ListContexts(ctx, w.ID)
+		if err != nil {
+			slog.Warn("list waiver contexts", "waiver_id", w.ID, "error", err)
+		}
 		for _, cx := range contexts {
 			envID := ""
 			if cx.EnvironmentID.Valid {
@@ -138,7 +172,10 @@ func (a *gateWaiverRepo) ListActiveWaivers(ctx context.Context, projectID string
 				ArtifactID:    artID,
 			})
 		}
-		targets, _ := a.r.ListFindingTargets(ctx, w.ID)
+		targets, err := a.r.ListFindingTargets(ctx, w.ID)
+		if err != nil {
+			slog.Warn("list waiver finding targets", "waiver_id", w.ID, "error", err)
+		}
 		for _, t := range targets {
 			gw.Targets = append(gw.Targets, gate.WaiverTarget{
 				FindingID: uuid.UUID(t.FindingID.Bytes).String(),
@@ -291,7 +328,11 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		}
 	}
 
-	scopeHash := sha256.Sum256([]byte(input.Scanner + ":" + nr.Target.Identifier))
+	targetIdentifier := ""
+	if nr.Target != nil {
+		targetIdentifier = nr.Target.Identifier
+	}
+	scopeHash := sha256.Sum256([]byte(input.Scanner + ":" + targetIdentifier))
 
 	report, err := u.deps.Repos.Reports.Create(ctx, repo.CreateReportParams{
 		ProjectID:     project.ID,

@@ -1,6 +1,7 @@
 package usecase
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -17,11 +18,11 @@ func uuidFromString(s string) pgtype.UUID {
 
 func makeFindingWithID(id int) sqlc.Finding {
 	return sqlc.Finding{
-		ID: uuidFromString("00000000-0000-0000-0000-00000000002" + string(rune('0'+id))),
+		ID: uuidFromString(fmt.Sprintf("00000000-0000-0000-0000-0000000000%02d", id)),
 	}
 }
 
-func TestCheckWaiverMatch_ContextMatching(t *testing.T) {
+func TestMatchContexts(t *testing.T) {
 	envA := uuidFromString("00000000-0000-0000-0000-0000000000a1")
 	envB := uuidFromString("00000000-0000-0000-0000-0000000000b1")
 	tgtA := uuidFromString("00000000-0000-0000-0000-0000000000c1")
@@ -115,7 +116,7 @@ func TestCheckWaiverMatch_ContextMatching(t *testing.T) {
 	}
 }
 
-func TestCheckWaiverMatch_TargetMatching(t *testing.T) {
+func TestMatchTargets(t *testing.T) {
 	finding := makeFindingWithID(1)
 	otherID := uuidFromString("00000000-0000-0000-0000-000000000022")
 
@@ -161,7 +162,7 @@ func TestCheckWaiverMatch_TargetMatching(t *testing.T) {
 	}
 }
 
-func TestCheckWaiverMatch_NoFindingContext(t *testing.T) {
+func TestMatchContexts_NoEnvironment(t *testing.T) {
 	fctx := findingContext{}
 
 	envA := uuidFromString("00000000-0000-0000-0000-0000000000a1")
@@ -173,7 +174,7 @@ func TestCheckWaiverMatch_NoFindingContext(t *testing.T) {
 	assert.True(t, matchContexts(fctx, nil), "empty contexts should match even without finding context")
 }
 
-func TestCheckWaiverMatch_FindingContextReuse(t *testing.T) {
+func TestMatchContexts_ReuseLastInstance(t *testing.T) {
 	envID := pgtype.UUID{Bytes: [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, Valid: true}
 	tgtID := pgtype.UUID{Bytes: [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2}, Valid: true}
 	artID := pgtype.UUID{Bytes: [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3}, Valid: true}

@@ -40,14 +40,8 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 	}
 }
 
-// WithTxPartialFn is an optional override for WithTx (used in tests).
-var WithTxPartialFn func(ctx context.Context, fn func(q *sqlc.Queries) error) error
-
 // WithTx executes fn within a database transaction.
 func (r *Repos) WithTx(ctx context.Context, fn func(q *sqlc.Queries) error) error {
-	if WithTxPartialFn != nil {
-		return WithTxPartialFn(ctx, fn)
-	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
