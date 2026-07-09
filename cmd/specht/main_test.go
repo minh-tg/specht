@@ -60,6 +60,7 @@ func TestCLI_ParseArgs(t *testing.T) {
 		{"findings get", []string{"specht", "findings", "get", "f1"}, command{cmd: cmdFindingsGet, findingID: "f1"}, ""},
 		{"gate check", []string{"specht", "gate", "check", "--project", "my-app"}, command{cmd: cmdGateCheck, project: "my-app"}, ""},
 		{"gate check with severity", []string{"specht", "gate", "check", "--project", "my-app", "--severity", "critical"}, command{cmd: cmdGateCheck, project: "my-app", severity: "critical"}, ""},
+		{"stats show", []string{"specht", "stats", "show", "my-app"}, command{cmd: cmdStats, slug: "my-app"}, ""},
 		{"findings list with filters", []string{"specht", "findings", "list", "--project", "my-app", "--severity", "high,critical", "--status", "open", "--limit", "20"}, command{cmd: cmdFindingsList, project: "my-app", severity: "high,critical", status: "open", limit: 20}, ""},
 		{"no command", []string{"specht"}, command{cmd: cmdHelp}, ""},
 		{"unknown command", []string{"specht", "unknown"}, command{}, "unknown command: unknown"},

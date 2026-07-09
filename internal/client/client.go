@@ -361,6 +361,14 @@ func (c *Client) ListArtifacts(projectSlug string) ([]Artifact, error) {
 	return resp, nil
 }
 
+func (c *Client) GetProjectStats(projectSlug string) (*ProjectStats, error) {
+	var resp ProjectStats
+	if err := c.do("GET", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/stats", nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // Waivers.
 
 func (c *Client) CreateWaiver(projectSlug string, req *CreateWaiverRequest) (*Waiver, error) {

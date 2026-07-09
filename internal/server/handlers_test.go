@@ -53,6 +53,7 @@ type mockUsecases struct {
 	toggleWaiverFn     func(ctx context.Context, projectSlug, waiverID, actorID string) (*usecase.WaiverResponse, error)
 	listWaiverEventsFn func(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
 	checkWaiverMatchFn func(ctx context.Context, projectSlug, findingID string) (bool, error)
+	getProjectStatsFn  func(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error)
 }
 
 func (m *mockUsecases) CreateProject(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error) {
@@ -270,6 +271,13 @@ func (m *mockUsecases) CheckWaiverMatch(ctx context.Context, projectSlug, findin
 		return false, fmt.Errorf("unexpected call to CheckWaiverMatch")
 	}
 	return m.checkWaiverMatchFn(ctx, projectSlug, findingID)
+}
+
+func (m *mockUsecases) GetProjectStats(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error) {
+	if m.getProjectStatsFn == nil {
+		return nil, fmt.Errorf("unexpected call to GetProjectStats")
+	}
+	return m.getProjectStatsFn(ctx, projectSlug)
 }
 
 var now = time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)

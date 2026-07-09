@@ -115,6 +115,10 @@ type (
 		ListWaiverEvents(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
 		CheckWaiverMatch(ctx context.Context, projectSlug, findingID string) (bool, error)
 	}
+
+	StatsUsecases interface {
+		GetProjectStats(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error)
+	}
 )
 
 type Handler struct {
@@ -125,6 +129,7 @@ type Handler struct {
 	reports  ReportUsecases
 	gates    GateUsecases
 	waivers  WaiverUsecases
+	stats    StatsUsecases
 }
 
 type usecaseInterface interface {
@@ -135,6 +140,7 @@ type usecaseInterface interface {
 	ReportUsecases
 	GateUsecases
 	WaiverUsecases
+	StatsUsecases
 }
 
 func NewHandler(uc usecaseInterface) *Handler {
@@ -146,6 +152,7 @@ func NewHandler(uc usecaseInterface) *Handler {
 		reports:  uc,
 		gates:    uc,
 		waivers:  uc,
+		stats:    uc,
 	}
 }
 
@@ -740,6 +747,24 @@ func (h *Handler) ListArtifacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, artifacts)
+}
+
+func (h *Handler) GetProjectStats(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if slug == "" {
+		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		return
+	}
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
+	stats, err := h.stats.GetProjectStats(r.Context(), slug)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "stats_failed", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, stats)
 }
 
 func parseMinSeverityRank(severities string) int16 {

@@ -20,6 +20,7 @@ type Repos struct {
 	Targets       TargetRepo
 	Artifacts     ArtifactRepo
 	Waivers       WaiverRepo
+	Stats         StatsRepo
 	pool          *pgxpool.Pool
 }
 
@@ -36,6 +37,7 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 		Targets:       &pgTargetRepo{q: q},
 		Artifacts:     &pgArtifactRepo{q: q},
 		Waivers:       &pgWaiverRepo{q: q},
+		Stats:         newStatsRepo(q),
 		pool:          pool,
 	}
 }

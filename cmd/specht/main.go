@@ -17,6 +17,7 @@ const (
 	cmdFindingsList
 	cmdFindingsGet
 	cmdGateCheck
+	cmdStats
 )
 
 type command struct {
@@ -92,6 +93,15 @@ func parseArgs(args []string) (command, error) {
 		default:
 			return command{}, fmt.Errorf("unknown findings subcommand: %s", rest[1])
 		}
+
+	case "stats":
+		if len(rest) < 2 {
+			return command{}, fmt.Errorf("missing subcommand for stats")
+		}
+		if rest[1] == "show" && len(rest) >= 3 {
+			return command{cmd: cmdStats, slug: rest[2]}, nil
+		}
+		return command{}, fmt.Errorf("unknown stats subcommand: %s", rest[1])
 
 	case "gate":
 		if len(rest) < 2 {
@@ -216,6 +226,25 @@ func run(cl *client.Client, cmd command) error {
 		}
 		fmt.Println("gate PASSED: no blocking findings")
 		return nil
+
+	case cmdStats:
+		stats, err := cl.GetProjectStats(cmd.slug)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Project Stats for %s:\n", cmd.slug)
+		fmt.Printf("  Total Findings:  %d\n", stats.TotalFindings)
+		fmt.Printf("  Blocking:        %d\n", stats.BlockingCount)
+		fmt.Printf("  Active Waivers:  %d\n", stats.WaiverCount)
+		fmt.Printf("  Reports:         %d\n", stats.ReportCount)
+		fmt.Println("  By Severity:")
+		for _, s := range stats.BySeverity {
+			fmt.Printf("    %s: %d total, %d blocking\n", s.Severity, s.Count, s.BlockingCount)
+		}
+		if stats.LatestReport != nil {
+			fmt.Printf("  Latest Scan:     %s by %s (%s)\n", stats.LatestReport.ID, stats.LatestReport.ToolName, stats.LatestReport.Status)
+		}
+		return nil
 	}
 
 	return nil
@@ -234,6 +263,7 @@ Commands:
   findings get <id>                       Show finding details
   gate check --project <slug>             Check project gate status
     [--severity critical]                  Severity threshold
+  stats show <slug>                       Show project statistics
   help                                     Show this help
 
 Environment:

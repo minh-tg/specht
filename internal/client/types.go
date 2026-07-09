@@ -267,6 +267,21 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+type SeverityCount struct {
+	Severity      string `json:"severity"`
+	Count         int32  `json:"count"`
+	BlockingCount int32  `json:"blocking_count"`
+}
+
+type ProjectStats struct {
+	TotalFindings int32           `json:"total_findings"`
+	BlockingCount int32           `json:"blocking_count"`
+	WaiverCount   int32           `json:"waiver_count"`
+	ReportCount   int32           `json:"report_count"`
+	BySeverity    []SeverityCount `json:"by_severity"`
+	LatestReport  *Report         `json:"latest_report,omitempty"`
+}
+
 type APIError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`

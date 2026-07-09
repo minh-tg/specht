@@ -81,6 +81,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
 		r.Get("/api/v1/projects/{slug}/environments", h.ListEnvironments)
 		r.Get("/api/v1/projects/{slug}/targets", h.ListTargets)
+		r.Get("/api/v1/projects/{slug}/stats", h.GetProjectStats)
 		r.Get("/api/v1/projects/{slug}/artifacts", h.ListArtifacts)
 		r.Get("/api/v1/projects/{slug}/waivers", h.ListWaivers)
 		r.Post("/api/v1/projects/{slug}/waivers", h.CreateWaiver)
