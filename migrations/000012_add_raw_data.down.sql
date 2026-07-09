@@ -1,0 +1,1 @@
+ALTER TABLE reports DROP COLUMN IF EXISTS raw_data;
