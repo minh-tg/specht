@@ -14,43 +14,43 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
-	"github.com/xMinhx/specht/internal/auth"
 	"github.com/stretchr/testify/require"
+	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
 type mockUsecases struct {
-	createProjectFn func(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error)
-	listProjectsFn  func(ctx context.Context) ([]usecase.ProjectResponse, error)
-	getProjectFn    func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
-	listFindingsFn  func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error)
-	listReportsFn   func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
-	getReportFn     func(ctx context.Context, reportID pgtype.UUID) (*usecase.ReportResponse, error)
-	ingestReportFn  func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
-	registerFn      func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
-	loginFn         func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
-	createAPIKeyFn  func(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error)
-	listAPIKeysFn   func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
+	createProjectFn    func(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error)
+	listProjectsFn     func(ctx context.Context) ([]usecase.ProjectResponse, error)
+	getProjectFn       func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
+	listFindingsFn     func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error)
+	listReportsFn      func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
+	getReportFn        func(ctx context.Context, reportID pgtype.UUID) (*usecase.ReportResponse, error)
+	ingestReportFn     func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
+	registerFn         func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
+	loginFn            func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
+	createAPIKeyFn     func(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error)
+	listAPIKeysFn      func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
 	revokeAPIKeyFn     func(ctx context.Context, projectSlug, keyID string) error
 	triageFindingFn    func(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
 	bulkTriageFn       func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
 	getGateStatusFn    func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error)
-	getFindingFn        func(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
+	getFindingFn       func(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
 	getFindingEventsFn func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
-	refreshFn           func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
-	logoutFn            func(ctx context.Context, refreshToken string) error
-	getProfileFn        func(ctx context.Context, userID string) (*usecase.UserProfile, error)
-	listEnvironmentsFn  func(ctx context.Context, slug string) ([]usecase.EnvironmentResponse, error)
-	listTargetsFn       func(ctx context.Context, slug string) ([]usecase.TargetResponse, error)
-	listArtifactsFn     func(ctx context.Context, slug string) ([]usecase.ArtifactResponse, error)
-	createWaiverFn        func(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error)
-	listWaiversFn         func(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error)
-	getWaiverFn           func(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverDetailResponse, error)
-	updateWaiverFn        func(ctx context.Context, input usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error)
-	deleteWaiverFn        func(ctx context.Context, projectSlug, waiverID string) error
-	toggleWaiverFn        func(ctx context.Context, projectSlug, waiverID, actorID string) (*usecase.WaiverResponse, error)
-	listWaiverEventsFn    func(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
-	checkWaiverMatchFn    func(ctx context.Context, projectSlug, findingID string) (bool, error)
+	refreshFn          func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
+	logoutFn           func(ctx context.Context, refreshToken string) error
+	getProfileFn       func(ctx context.Context, userID string) (*usecase.UserProfile, error)
+	listEnvironmentsFn func(ctx context.Context, slug string) ([]usecase.EnvironmentResponse, error)
+	listTargetsFn      func(ctx context.Context, slug string) ([]usecase.TargetResponse, error)
+	listArtifactsFn    func(ctx context.Context, slug string) ([]usecase.ArtifactResponse, error)
+	createWaiverFn     func(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error)
+	listWaiversFn      func(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error)
+	getWaiverFn        func(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverDetailResponse, error)
+	updateWaiverFn     func(ctx context.Context, input usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error)
+	deleteWaiverFn     func(ctx context.Context, projectSlug, waiverID string) error
+	toggleWaiverFn     func(ctx context.Context, projectSlug, waiverID, actorID string) (*usecase.WaiverResponse, error)
+	listWaiverEventsFn func(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
+	checkWaiverMatchFn func(ctx context.Context, projectSlug, findingID string) (bool, error)
 }
 
 func (m *mockUsecases) CreateProject(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error) {
@@ -796,8 +796,12 @@ func TestNewRouterRoutes(t *testing.T) {
 	mock := &mockUsecases{
 		listProjectsFn: func(ctx context.Context) ([]usecase.ProjectResponse, error) { return nil, nil },
 		getProjectFn:   func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) { return nil, nil },
-		listFindingsFn: func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error) { return nil, nil },
-		listReportsFn:  func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error) { return nil, nil },
+		listFindingsFn: func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error) {
+			return nil, nil
+		},
+		listReportsFn: func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error) {
+			return nil, nil
+		},
 		getReportFn:    func(ctx context.Context, id pgtype.UUID) (*usecase.ReportResponse, error) { return nil, nil },
 		registerFn:     func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) { return nil, nil },
 		loginFn:        func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) { return nil, nil },
@@ -1507,10 +1511,10 @@ func TestParseMinSeverityRank(t *testing.T) {
 
 func TestParseIntParam(t *testing.T) {
 	tests := []struct {
-		name      string
-		query     string
+		name       string
+		query      string
 		defaultVal int32
-		want      int32
+		want       int32
 	}{
 		{"no param", "/test", 20, 20},
 		{"valid param", "/test?limit=50", 20, 50},

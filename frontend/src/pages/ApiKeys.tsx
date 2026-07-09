@@ -1,77 +1,77 @@
-import { useState } from "react"
-import { useProjects } from "@/api/hooks"
-import { apiFetch, APIError } from "@/api/client"
-import type { ApiKey } from "@/types/api"
+import { APIError, apiFetch } from "@/api/client";
+import { useProjects } from "@/api/hooks";
+import type { ApiKey } from "@/types/api";
+import { useState } from "react";
 
 export function ApiKeys() {
-  const { data: projects } = useProjects()
+  const { data: projects } = useProjects();
 
-  const [selectedProject, setSelectedProject] = useState("")
-  const [keys, setKeys] = useState<ApiKey[]>([])
-  const [loadingKeys, setLoadingKeys] = useState(false)
+  const [selectedProject, setSelectedProject] = useState("");
+  const [keys, setKeys] = useState<ApiKey[]>([]);
+  const [loadingKeys, setLoadingKeys] = useState(false);
 
-  const [newKeyName, setNewKeyName] = useState("")
-  const [creating, setCreating] = useState(false)
-  const [createdKey, setCreatedKey] = useState<string | null>(null)
-  const [createError, setCreateError] = useState<string | null>(null)
+  const [newKeyName, setNewKeyName] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [createdKey, setCreatedKey] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
 
-  const [revokingId, setRevokingId] = useState<string | null>(null)
-  const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null)
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
 
   async function loadKeys(project: string) {
-    if (!project) return
-    setLoadingKeys(true)
+    if (!project) return;
+    setLoadingKeys(true);
     try {
-      const data = await apiFetch<ApiKey[]>(`/api/v1/auth/apikeys?project=${project}`)
-      setKeys(data)
+      const data = await apiFetch<ApiKey[]>(`/api/v1/auth/apikeys?project=${project}`);
+      setKeys(data);
     } catch {
-      setKeys([])
+      setKeys([]);
     } finally {
-      setLoadingKeys(false)
+      setLoadingKeys(false);
     }
   }
 
   function handleProjectChange(slug: string) {
-    setSelectedProject(slug)
-    setCreatedKey(null)
-    if (slug) loadKeys(slug)
+    setSelectedProject(slug);
+    setCreatedKey(null);
+    if (slug) loadKeys(slug);
   }
 
   async function handleCreate(e: React.FormEvent) {
-    e.preventDefault()
+    e.preventDefault();
     if (!newKeyName.trim() || !selectedProject) {
-      setCreateError(newKeyName.trim() ? "Project is required" : "Name is required")
-      return
+      setCreateError(newKeyName.trim() ? "Project is required" : "Name is required");
+      return;
     }
-    setCreateError(null)
-    setCreating(true)
+    setCreateError(null);
+    setCreating(true);
     try {
-      const res = await apiFetch<{ key: string }>("/api/v1/auth/apikeys", {
+      const res = await apiFetch<{ key: string; }>("/api/v1/auth/apikeys", {
         method: "POST",
         body: JSON.stringify({ project: selectedProject, name: newKeyName.trim() }),
-      })
-      setCreatedKey(res.key)
-      setNewKeyName("")
-      loadKeys(selectedProject)
+      });
+      setCreatedKey(res.key);
+      setNewKeyName("");
+      loadKeys(selectedProject);
     } catch (err) {
-      setCreateError(err instanceof APIError ? err.message : "Failed to create key")
+      setCreateError(err instanceof APIError ? err.message : "Failed to create key");
     } finally {
-      setCreating(false)
+      setCreating(false);
     }
   }
 
   async function handleRevoke(id: string) {
-    setRevokingId(id)
+    setRevokingId(id);
     try {
       await apiFetch(`/api/v1/auth/apikeys/${id}?project=${selectedProject}`, {
         method: "DELETE",
-      })
-      setKeys((prev) => prev.filter((k) => k.id !== id))
+      });
+      setKeys((prev) => prev.filter((k) => k.id !== id));
     } catch {
       // silent
     } finally {
-      setRevokingId(null)
-      setConfirmRevoke(null)
+      setRevokingId(null);
+      setConfirmRevoke(null);
     }
   }
 
@@ -116,9 +116,7 @@ export function ApiKeys() {
                 {creating ? "Creating..." : "Create"}
               </button>
             </form>
-            {createError && (
-              <p className="text-destructive mt-1 text-xs">{createError}</p>
-            )}
+            {createError && <p className="text-destructive mt-1 text-xs">{createError}</p>}
           </section>
 
           {createdKey && (
@@ -146,54 +144,61 @@ export function ApiKeys() {
 
           <section>
             <h2 className="mb-3 text-lg font-semibold">Active Keys</h2>
-            {loadingKeys ? (
-              <div className="bg-muted h-20 animate-pulse rounded" />
-            ) : keys.length === 0 ? (
-              <div className="flex flex-col items-center gap-2 py-8">
-                <p className="text-muted-foreground text-sm">No API keys yet</p>
-                <p className="text-muted-foreground text-xs">Create one above</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {keys.map((k) => (
-                  <div key={k.id} className="bg-card flex items-center justify-between rounded-lg border p-3">
-                    <div>
-                      <p className="text-sm font-medium">{k.name}</p>
-                      <p className="text-muted-foreground text-xs">
-                        {k.key_prefix}... &middot; {new Date(k.created_at).toLocaleDateString()}
-                      </p>
-                    </div>
-                    {confirmRevoke === k.id ? (
-                      <div className="flex items-center gap-2">
-                        <button
-                          className="text-destructive hover:text-destructive/80 text-xs font-medium"
-                          onClick={() => handleRevoke(k.id)}
-                          disabled={revokingId === k.id}
-                        >
-                          {revokingId === k.id ? "Revoking..." : "Confirm"}
-                        </button>
-                        <button
-                          className="text-muted-foreground hover:text-foreground text-xs"
-                          onClick={() => setConfirmRevoke(null)}
-                        >
-                          Cancel
-                        </button>
+            {loadingKeys
+              ? <div className="bg-muted h-20 animate-pulse rounded" />
+              : keys.length === 0
+              ? (
+                <div className="flex flex-col items-center gap-2 py-8">
+                  <p className="text-muted-foreground text-sm">No API keys yet</p>
+                  <p className="text-muted-foreground text-xs">Create one above</p>
+                </div>
+              )
+              : (
+                <div className="space-y-2">
+                  {keys.map((k) => (
+                    <div
+                      key={k.id}
+                      className="bg-card flex items-center justify-between rounded-lg border p-3"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">{k.name}</p>
+                        <p className="text-muted-foreground text-xs">
+                          {k.key_prefix}... &middot; {new Date(k.created_at).toLocaleDateString()}
+                        </p>
                       </div>
-                    ) : (
-                      <button
-                        className="text-destructive hover:text-destructive/80 text-xs font-medium"
-                        onClick={() => setConfirmRevoke(k.id)}
-                      >
-                        Revoke
-                      </button>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
+                      {confirmRevoke === k.id
+                        ? (
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="text-destructive hover:text-destructive/80 text-xs font-medium"
+                              onClick={() => handleRevoke(k.id)}
+                              disabled={revokingId === k.id}
+                            >
+                              {revokingId === k.id ? "Revoking..." : "Confirm"}
+                            </button>
+                            <button
+                              className="text-muted-foreground hover:text-foreground text-xs"
+                              onClick={() => setConfirmRevoke(null)}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )
+                        : (
+                          <button
+                            className="text-destructive hover:text-destructive/80 text-xs font-medium"
+                            onClick={() => setConfirmRevoke(k.id)}
+                          >
+                            Revoke
+                          </button>
+                        )}
+                    </div>
+                  ))}
+                </div>
+              )}
           </section>
         </>
       )}
     </div>
-  )
+  );
 }

@@ -112,7 +112,8 @@ type UpsertTargetParams struct {
 }
 
 func (q *Queries) UpsertTarget(ctx context.Context, arg UpsertTargetParams) (Target, error) {
-	row := q.db.QueryRow(ctx, upsertTarget,
+	row := q.db.QueryRow(
+		ctx, upsertTarget,
 		arg.ProjectID,
 		arg.Name,
 		arg.Kind,

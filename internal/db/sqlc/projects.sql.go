@@ -26,7 +26,8 @@ type CreateProjectParams struct {
 }
 
 func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error) {
-	row := q.db.QueryRow(ctx, createProject,
+	row := q.db.QueryRow(
+		ctx, createProject,
 		arg.Slug,
 		arg.Name,
 		arg.Description,

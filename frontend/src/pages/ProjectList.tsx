@@ -1,8 +1,8 @@
-import { useNavigate } from "react-router-dom"
-import { useProjects, useGateStatus } from "@/api/hooks"
+import { useGateStatus, useProjects } from "@/api/hooks";
+import { useNavigate } from "react-router-dom";
 
 export function ProjectList() {
-  const { data: projects, isLoading, isError, error, refetch } = useProjects()
+  const { data: projects, isLoading, isError, error, refetch } = useProjects();
 
   if (isLoading) {
     return (
@@ -11,7 +11,7 @@ export function ProjectList() {
           <div key={i} className="bg-muted h-32 animate-pulse rounded-lg" />
         ))}
       </div>
-    )
+    );
   }
 
   if (isError) {
@@ -25,7 +25,7 @@ export function ProjectList() {
           Retry
         </button>
       </div>
-    )
+    );
   }
 
   if (!projects?.length) {
@@ -36,7 +36,7 @@ export function ProjectList() {
           Ingest a scan report or create a project via the API
         </p>
       </div>
-    )
+    );
   }
 
   return (
@@ -45,12 +45,14 @@ export function ProjectList() {
         <ProjectCard key={p.id} slug={p.slug} name={p.name} description={p.description} />
       ))}
     </div>
-  )
+  );
 }
 
-function ProjectCard({ slug, name, description }: { slug: string; name: string; description: string | null }) {
-  const navigate = useNavigate()
-  const { data: gate } = useGateStatus(slug)
+function ProjectCard(
+  { slug, name, description }: { slug: string; name: string; description: string | null; },
+) {
+  const navigate = useNavigate();
+  const { data: gate } = useGateStatus(slug);
 
   return (
     <button
@@ -68,9 +70,7 @@ function ProjectCard({ slug, name, description }: { slug: string; name: string; 
         </span>
       )}
       <h3 className="font-medium">{name}</h3>
-      {description && (
-        <p className="text-muted-foreground mt-1 text-xs">{description}</p>
-      )}
+      {description && <p className="text-muted-foreground mt-1 text-xs">{description}</p>}
     </button>
-  )
+  );
 }

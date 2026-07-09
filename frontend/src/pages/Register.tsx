@@ -1,42 +1,42 @@
-import { useState, type FormEvent } from "react"
-import { useNavigate, Link } from "react-router-dom"
-import { useAuth } from "@/auth/useAuth"
-import { apiFetch, APIError } from "@/api/client"
-import type { RegisterResponse } from "@/types/api"
+import { APIError, apiFetch } from "@/api/client";
+import { useAuth } from "@/auth/useAuth";
+import type { RegisterResponse } from "@/types/api";
+import { type FormEvent, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 
 export function Register() {
-  const auth = useAuth()
-  const navigate = useNavigate()
+  const auth = useAuth();
+  const navigate = useNavigate();
 
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   if (auth.token) {
-    navigate("/", { replace: true })
-    return null
+    navigate("/", { replace: true });
+    return null;
   }
 
   async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setError(null)
-    setSubmitting(true)
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
     try {
       await apiFetch<RegisterResponse>("/api/v1/auth/register", {
         method: "POST",
         body: JSON.stringify({ email, password }),
         skipAuthRedirect: true,
-      })
-      navigate("/login", { replace: true })
+      });
+      navigate("/login", { replace: true });
     } catch (err) {
       if (err instanceof APIError) {
-        setError(err.message)
+        setError(err.message);
       } else {
-        setError("Registration failed. Please try again.")
+        setError("Registration failed. Please try again.");
       }
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
   }
 
@@ -96,5 +96,5 @@ export function Register() {
         </p>
       </form>
     </div>
-  )
+  );
 }

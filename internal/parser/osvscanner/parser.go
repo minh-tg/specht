@@ -16,7 +16,7 @@ type osvReport struct {
 }
 
 type osvResult struct {
-	Source   osvSource   `json:"source"`
+	Source   osvSource      `json:"source"`
 	Packages []osvPkgResult `json:"packages"`
 }
 
@@ -26,9 +26,9 @@ type osvSource struct {
 }
 
 type osvPkgResult struct {
-	Package         osvPkg                `json:"package"`
-	Vulnerabilities []osvVuln             `json:"vulnerabilities"`
-	Groups          []osvGroup            `json:"groups"`
+	Package         osvPkg     `json:"package"`
+	Vulnerabilities []osvVuln  `json:"vulnerabilities"`
+	Groups          []osvGroup `json:"groups"`
 }
 
 type osvPkg struct {
@@ -39,16 +39,16 @@ type osvPkg struct {
 }
 
 type osvVuln struct {
-	ID              string            `json:"id"`
-	Aliases         []string          `json:"aliases"`
-	Summary         string            `json:"summary"`
-	Details         string            `json:"details"`
-	Published       string            `json:"published"`
-	Modified        string            `json:"modified"`
-	Severity        []osvSeverity     `json:"severity"`
-	DatabaseSpecific *osvDBSpecific   `json:"database_specific"`
-	Affected        *osvAffected      `json:"affected"`
-	References      []osvReference    `json:"references"`
+	ID               string         `json:"id"`
+	Aliases          []string       `json:"aliases"`
+	Summary          string         `json:"summary"`
+	Details          string         `json:"details"`
+	Published        string         `json:"published"`
+	Modified         string         `json:"modified"`
+	Severity         []osvSeverity  `json:"severity"`
+	DatabaseSpecific *osvDBSpecific `json:"database_specific"`
+	Affected         *osvAffected   `json:"affected"`
+	References       []osvReference `json:"references"`
 }
 
 type osvSeverity struct {
@@ -61,19 +61,19 @@ type osvDBSpecific struct {
 }
 
 type osvAffected struct {
-	Package  osvPkg         `json:"package"`
-	Ranges   []osvRange     `json:"ranges"`
-	Versions []string       `json:"versions"`
+	Package  osvPkg     `json:"package"`
+	Ranges   []osvRange `json:"ranges"`
+	Versions []string   `json:"versions"`
 }
 
 type osvRange struct {
-	Type   string       `json:"type"`
+	Type   string          `json:"type"`
 	Events []osvRangeEvent `json:"events"`
 }
 
 type osvRangeEvent struct {
-	Introduced string `json:"introduced"`
-	Fixed      string `json:"fixed"`
+	Introduced   string `json:"introduced"`
+	Fixed        string `json:"fixed"`
 	LastAffected string `json:"last_affected"`
 }
 
@@ -82,8 +82,8 @@ type osvReference struct {
 }
 
 type osvGroup struct {
-	IDs                  []string                    `json:"ids"`
-	ExperimentalAnalysis map[string]osvCallAnalysis  `json:"experimentalAnalysis"`
+	IDs                  []string                   `json:"ids"`
+	ExperimentalAnalysis map[string]osvCallAnalysis `json:"experimentalAnalysis"`
 }
 
 type osvCallAnalysis struct {
@@ -220,11 +220,11 @@ func convert(report osvReport) *scanner.NormalizedReport {
 				}
 
 				meta := map[string]any{
-					"osv_id":     v.ID,
-					"ecosystem":  pkg.Package.Ecosystem,
-					"aliases":    aliases,
-					"published":  v.Published,
-					"modified":   v.Modified,
+					"osv_id":    v.ID,
+					"ecosystem": pkg.Package.Ecosystem,
+					"aliases":   aliases,
+					"published": v.Published,
+					"modified":  v.Modified,
 				}
 
 				if analysis, ok := groupAnalysis[v.ID]; ok && analysis.Called != nil {

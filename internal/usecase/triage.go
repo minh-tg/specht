@@ -13,9 +13,9 @@ import (
 )
 
 var (
-	ErrFindingNotFound  = errors.New("finding not found")
-	ErrReasonRequired   = errors.New("reason is required for this analysis state")
-	ErrExpiryRequired   = errors.New("expiry is required for accepted_risk and wont_fix")
+	ErrFindingNotFound = errors.New("finding not found")
+	ErrReasonRequired  = errors.New("reason is required for this analysis state")
+	ErrExpiryRequired  = errors.New("expiry is required for accepted_risk and wont_fix")
 )
 
 type TriageInput struct {
@@ -27,9 +27,9 @@ type TriageInput struct {
 }
 
 type TriageOutput struct {
-	FindingID      string `json:"finding_id"`
-	AnalysisState  string `json:"analysis_state"`
-	GateEffect     string `json:"gate_effect"`
+	FindingID     string `json:"finding_id"`
+	AnalysisState string `json:"analysis_state"`
+	GateEffect    string `json:"gate_effect"`
 }
 
 type BulkTriageInput struct {

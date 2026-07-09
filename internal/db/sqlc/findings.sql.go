@@ -40,7 +40,8 @@ type BulkUpdateFindingAnalysisParams struct {
 }
 
 func (q *Queries) BulkUpdateFindingAnalysis(ctx context.Context, arg BulkUpdateFindingAnalysisParams) ([]Finding, error) {
-	rows, err := q.db.Query(ctx, bulkUpdateFindingAnalysis,
+	rows, err := q.db.Query(
+		ctx, bulkUpdateFindingAnalysis,
 		arg.Column1,
 		arg.AnalysisState,
 		arg.GateEffect,
@@ -146,7 +147,8 @@ type CreateFindingEventParams struct {
 }
 
 func (q *Queries) CreateFindingEvent(ctx context.Context, arg CreateFindingEventParams) (FindingEvent, error) {
-	row := q.db.QueryRow(ctx, createFindingEvent,
+	row := q.db.QueryRow(
+		ctx, createFindingEvent,
 		arg.FindingID,
 		arg.UserID,
 		arg.EventType,
@@ -207,7 +209,8 @@ type CreateOccurrenceParams struct {
 }
 
 func (q *Queries) CreateOccurrence(ctx context.Context, arg CreateOccurrenceParams) (FindingOccurrence, error) {
-	row := q.db.QueryRow(ctx, createOccurrence,
+	row := q.db.QueryRow(
+		ctx, createOccurrence,
 		arg.FindingID,
 		arg.ReportID,
 		arg.Title,
@@ -403,7 +406,8 @@ type ListFindingEventsParams struct {
 }
 
 func (q *Queries) ListFindingEvents(ctx context.Context, arg ListFindingEventsParams) ([]FindingEvent, error) {
-	rows, err := q.db.Query(ctx, listFindingEvents,
+	rows, err := q.db.Query(
+		ctx, listFindingEvents,
 		arg.FindingID,
 		arg.Column2,
 		arg.Limit,
@@ -509,7 +513,8 @@ type ListFindingsByProjectParams struct {
 }
 
 func (q *Queries) ListFindingsByProject(ctx context.Context, arg ListFindingsByProjectParams) ([]Finding, error) {
-	rows, err := q.db.Query(ctx, listFindingsByProject,
+	rows, err := q.db.Query(
+		ctx, listFindingsByProject,
 		arg.ProjectID,
 		arg.Column2,
 		arg.Column3,
@@ -593,7 +598,8 @@ type UpdateFindingAnalysisParams struct {
 }
 
 func (q *Queries) UpdateFindingAnalysis(ctx context.Context, arg UpdateFindingAnalysisParams) (Finding, error) {
-	row := q.db.QueryRow(ctx, updateFindingAnalysis,
+	row := q.db.QueryRow(
+		ctx, updateFindingAnalysis,
 		arg.ID,
 		arg.AnalysisState,
 		arg.GateEffect,
@@ -657,7 +663,8 @@ type UpsertDimensionParams struct {
 }
 
 func (q *Queries) UpsertDimension(ctx context.Context, arg UpsertDimensionParams) (FindingDimension, error) {
-	row := q.db.QueryRow(ctx, upsertDimension,
+	row := q.db.QueryRow(
+		ctx, upsertDimension,
 		arg.FindingID,
 		arg.DimKey,
 		arg.DimValue,
@@ -715,7 +722,8 @@ type UpsertFindingParams struct {
 }
 
 func (q *Queries) UpsertFinding(ctx context.Context, arg UpsertFindingParams) (Finding, error) {
-	row := q.db.QueryRow(ctx, upsertFinding,
+	row := q.db.QueryRow(
+		ctx, upsertFinding,
 		arg.ProjectID,
 		arg.FindingKind,
 		arg.Fingerprint,

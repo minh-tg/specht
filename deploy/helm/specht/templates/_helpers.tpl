@@ -1,8 +1,8 @@
-{{- define "vulnserve.name" -}}
+{{- define "specht.name" -}}
 {{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
-{{- define "vulnserve.fullname" -}}
+{{- define "specht.fullname" -}}
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" }}
 {{- else }}
@@ -15,6 +15,6 @@
 {{- end }}
 {{- end }}
 
-{{- define "vulnserve.chart" -}}
+{{- define "specht.chart" -}}
 {{- printf "%s-%s" .Chart.Name .Chart.Version }}
 {{- end }}

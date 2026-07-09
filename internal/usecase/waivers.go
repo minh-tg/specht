@@ -14,16 +14,16 @@ import (
 )
 
 type WaiverResponse struct {
-	ID          string                   `json:"id"`
-	ProjectID   string                   `json:"project_id"`
-	Name        string                   `json:"name"`
-	Description string                   `json:"description"`
-	Enabled     bool                     `json:"enabled"`
-	Conditions  []WaiverConditionResp   `json:"conditions"`
-	Contexts    []WaiverContextResp      `json:"contexts"`
+	ID          string                    `json:"id"`
+	ProjectID   string                    `json:"project_id"`
+	Name        string                    `json:"name"`
+	Description string                    `json:"description"`
+	Enabled     bool                      `json:"enabled"`
+	Conditions  []WaiverConditionResp     `json:"conditions"`
+	Contexts    []WaiverContextResp       `json:"contexts"`
 	Targets     []WaiverFindingTargetResp `json:"targets"`
-	CreatedAt   string                   `json:"created_at"`
-	UpdatedAt   string                   `json:"updated_at"`
+	CreatedAt   string                    `json:"created_at"`
+	UpdatedAt   string                    `json:"updated_at"`
 }
 
 type WaiverConditionResp struct {
@@ -89,9 +89,9 @@ type UpdateWaiverInput struct {
 
 type WaiverDetailResponse struct {
 	WaiverResponse
-	Conditions []WaiverConditionResp      `json:"conditions"`
-	Contexts   []WaiverContextResp        `json:"contexts"`
-	Targets    []WaiverFindingTargetResp  `json:"targets"`
+	Conditions []WaiverConditionResp     `json:"conditions"`
+	Contexts   []WaiverContextResp       `json:"contexts"`
+	Targets    []WaiverFindingTargetResp `json:"targets"`
 }
 
 func toWaiver(w sqlc.Waiver) WaiverResponse {

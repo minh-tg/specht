@@ -23,24 +23,24 @@ import (
 var ErrDuplicateReport = errors.New("duplicate report")
 
 type IngestReportInput struct {
-	ProjectSlug    string
-	Scanner        string
-	ScannerVersion string
-	ParserVersion  string
-	RawData        json.RawMessage
-	Branch         string
-	CommitSha      string
-	GateSeverity   []string
-	GateStatus     []string
-	Environment    string
-	ArtifactName   string
+	ProjectSlug     string
+	Scanner         string
+	ScannerVersion  string
+	ParserVersion   string
+	RawData         json.RawMessage
+	Branch          string
+	CommitSha       string
+	GateSeverity    []string
+	GateStatus      []string
+	Environment     string
+	ArtifactName    string
 	ArtifactVersion string
-	ArtifactType   string
+	ArtifactType    string
 }
 
 type IngestReportOutput struct {
-	ReportID         string
-	TotalFindings    int
+	ReportID          string
+	TotalFindings     int
 	ThresholdBreached bool
 }
 
@@ -200,17 +200,17 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	}
 
 	report, err := u.deps.Repos.Reports.Create(ctx, repo.CreateReportParams{
-		ProjectID:    project.ID,
-		ToolName:     input.Scanner,
-		ToolVersion:  textPtr(input.ScannerVersion),
-		ScanType:     string(nr.ScanType),
-		ScanTarget:   textPtr(nr.Target.Identifier),
-		TargetID:     targetID,
-		ArtifactID:   artifactID,
+		ProjectID:     project.ID,
+		ToolName:      input.Scanner,
+		ToolVersion:   textPtr(input.ScannerVersion),
+		ScanType:      string(nr.ScanType),
+		ScanTarget:    textPtr(nr.Target.Identifier),
+		TargetID:      targetID,
+		ArtifactID:    artifactID,
 		EnvironmentID: environmentID,
-		ScanScope:    mustMarshal(nr.ScanScope),
-		Branch:       textPtr(input.Branch),
-		CommitSha:    textPtr(input.CommitSha),
+		ScanScope:     mustMarshal(nr.ScanScope),
+		Branch:        textPtr(input.Branch),
+		CommitSha:     textPtr(input.CommitSha),
 		RawReportHash: pgtype.Text{String: hex.EncodeToString(rawHash[:]), Valid: true},
 		ParserVersion: textPtr(input.ParserVersion),
 	})
@@ -262,19 +262,19 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		}
 
 		_, err = u.deps.Repos.Findings.CreateOccurrence(ctx, repo.CreateOccurrenceParams{
-			FindingID:      upserted.ID,
-			ReportID:       report.ID,
-			Title:          f.Title,
-			Description:    textPtr(f.Description),
-			Severity:       severityStr(f.Severity),
-			SeverityRank:   severityRank(f.Severity),
-			Score:          scoreToNumeric(f.Score),
-			ToolName:       input.Scanner,
-			ToolVersion:    textPtr(input.ScannerVersion),
-			ParserVersion:  textPtr(input.ParserVersion),
+			FindingID:       upserted.ID,
+			ReportID:        report.ID,
+			Title:           f.Title,
+			Description:     textPtr(f.Description),
+			Severity:        severityStr(f.Severity),
+			SeverityRank:    severityRank(f.Severity),
+			Score:           scoreToNumeric(f.Score),
+			ToolName:        input.Scanner,
+			ToolVersion:     textPtr(input.ScannerVersion),
+			ParserVersion:   textPtr(input.ParserVersion),
 			LocationSummary: textPtr(f.Location),
-			Display:        mustMarshal(f.Display),
-			Metadata:       mustMarshal(f.Metadata),
+			Display:         mustMarshal(f.Display),
+			Metadata:        mustMarshal(f.Metadata),
 		})
 		if err != nil {
 			return nil, fmt.Errorf("create occurrence for %q: %w", f.Fingerprint, err)
@@ -381,5 +381,3 @@ func mustMarshal(v any) []byte {
 	}
 	return data
 }
-
-

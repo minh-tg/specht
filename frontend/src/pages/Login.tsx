@@ -1,39 +1,39 @@
-import { useState, type FormEvent } from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
-import { useAuth } from "@/auth/useAuth"
-import { APIError } from "@/api/client"
+import { APIError } from "@/api/client";
+import { useAuth } from "@/auth/useAuth";
+import { type FormEvent, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 export function Login() {
-  const auth = useAuth()
-  const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  const redirect = searchParams.get("redirect") ?? "/"
+  const auth = useAuth();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const redirect = searchParams.get("redirect") ?? "/";
 
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
-  const [error, setError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   if (auth.token) {
-    navigate("/", { replace: true })
-    return null
+    navigate("/", { replace: true });
+    return null;
   }
 
   async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    setError(null)
-    setSubmitting(true)
+    e.preventDefault();
+    setError(null);
+    setSubmitting(true);
     try {
-      await auth.login(email, password)
-      navigate(redirect, { replace: true })
+      await auth.login(email, password);
+      navigate(redirect, { replace: true });
     } catch (err) {
       if (err instanceof APIError && err.status === 401) {
-        setError("Invalid email or password")
+        setError("Invalid email or password");
       } else {
-        setError("Login failed. Please try again.")
+        setError("Login failed. Please try again.");
       }
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
   }
 
@@ -85,5 +85,5 @@ export function Login() {
         </button>
       </form>
     </div>
-  )
+  );
 }

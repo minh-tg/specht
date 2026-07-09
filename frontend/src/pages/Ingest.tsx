@@ -1,58 +1,60 @@
-import { useState, useRef, type ChangeEvent, type FormEvent } from "react"
-import { useProjects } from "@/api/hooks"
-import { apiFetch, APIError } from "@/api/client"
-import type { Report } from "@/types/api"
+import { APIError, apiFetch } from "@/api/client";
+import { useProjects } from "@/api/hooks";
+import type { Report } from "@/types/api";
+import { type ChangeEvent, type FormEvent, useRef, useState } from "react";
 
-const MAX_FILE_SIZE = 10 * 1024 * 1024
-const SCANNERS = ["trivy", "osv-scanner"]
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+const SCANNERS = ["trivy", "osv-scanner"];
 
 export function Ingest() {
-  const { data: projects } = useProjects()
+  const { data: projects } = useProjects();
 
-  const [selectedProject, setSelectedProject] = useState("")
-  const [selectedScanner, setSelectedScanner] = useState("trivy")
-  const [fileContent, setFileContent] = useState<string | null>(null)
-  const [fileName, setFileName] = useState<string | null>(null)
-  const [fileError, setFileError] = useState<string | null>(null)
-  const [submitting, setSubmitting] = useState(false)
-  const [result, setResult] = useState<{ success: boolean; reportId?: string; error?: string } | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
+  const [selectedProject, setSelectedProject] = useState("");
+  const [selectedScanner, setSelectedScanner] = useState("trivy");
+  const [fileContent, setFileContent] = useState<string | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<
+    { success: boolean; reportId?: string; error?: string; } | null
+  >(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    setFileError(null)
-    setResult(null)
+    setFileError(null);
+    setResult(null);
 
     if (!file.name.endsWith(".json")) {
-      setFileError("Unsupported file format")
-      setFileContent(null)
-      setFileName(null)
-      return
+      setFileError("Unsupported file format");
+      setFileContent(null);
+      setFileName(null);
+      return;
     }
 
     if (file.size > MAX_FILE_SIZE) {
-      setFileError("File too large (max 10MB)")
-      setFileContent(null)
-      setFileName(null)
-      return
+      setFileError("File too large (max 10MB)");
+      setFileContent(null);
+      setFileName(null);
+      return;
     }
 
-    setFileName(file.name)
-    const reader = new FileReader()
+    setFileName(file.name);
+    const reader = new FileReader();
     reader.onload = () => {
-      setFileContent(reader.result as string)
-    }
-    reader.readAsText(file)
+      setFileContent(reader.result as string);
+    };
+    reader.readAsText(file);
   }
 
   async function handleSubmit(e: FormEvent) {
-    e.preventDefault()
-    if (!selectedProject || !selectedScanner || !fileContent) return
+    e.preventDefault();
+    if (!selectedProject || !selectedScanner || !fileContent) return;
 
-    setSubmitting(true)
-    setResult(null)
+    setSubmitting(true);
+    setResult(null);
 
     try {
       const report = await apiFetch<Report>("/api/v1/reports", {
@@ -62,17 +64,17 @@ export function Ingest() {
           scanner: selectedScanner,
           raw_data: fileContent,
         }),
-      })
-      setResult({ success: true, reportId: report.id })
-      setFileContent(null)
-      setFileName(null)
-      setFileError(null)
-      if (fileRef.current) fileRef.current.value = ""
+      });
+      setResult({ success: true, reportId: report.id });
+      setFileContent(null);
+      setFileName(null);
+      setFileError(null);
+      if (fileRef.current) fileRef.current.value = "";
     } catch (err) {
-      const msg = err instanceof APIError ? err.message : "Upload failed"
-      setResult({ success: false, error: msg })
+      const msg = err instanceof APIError ? err.message : "Upload failed";
+      setResult({ success: false, error: msg });
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
   }
 
@@ -137,12 +139,8 @@ export function Ingest() {
             onChange={handleFileChange}
             className="mt-1 block w-full text-sm"
           />
-          {fileName && (
-            <p className="text-muted-foreground mt-1 text-xs">{fileName} loaded</p>
-          )}
-          {fileError && (
-            <p className="text-destructive mt-1 text-xs">{fileError}</p>
-          )}
+          {fileName && <p className="text-muted-foreground mt-1 text-xs">{fileName} loaded</p>}
+          {fileError && <p className="text-destructive mt-1 text-xs">{fileError}</p>}
         </div>
 
         <button
@@ -154,5 +152,5 @@ export function Ingest() {
         </button>
       </form>
     </div>
-  )
+  );
 }

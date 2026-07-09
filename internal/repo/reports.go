@@ -13,19 +13,19 @@ type pgReportRepo struct {
 }
 
 type CreateReportParams struct {
-	ProjectID       pgtype.UUID
-	ToolName        string
-	ToolVersion     pgtype.Text
-	ScanType        string
-	ScanTarget      pgtype.Text
-	TargetID        pgtype.UUID
-	ArtifactID      pgtype.UUID
-	EnvironmentID   pgtype.UUID
-	Branch          pgtype.Text
-	CommitSha       pgtype.Text
-	ScanScope       []byte
-	RawReportHash   pgtype.Text
-	ParserVersion   pgtype.Text
+	ProjectID     pgtype.UUID
+	ToolName      string
+	ToolVersion   pgtype.Text
+	ScanType      string
+	ScanTarget    pgtype.Text
+	TargetID      pgtype.UUID
+	ArtifactID    pgtype.UUID
+	EnvironmentID pgtype.UUID
+	Branch        pgtype.Text
+	CommitSha     pgtype.Text
+	ScanScope     []byte
+	RawReportHash pgtype.Text
+	ParserVersion pgtype.Text
 }
 
 func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc.Report, error) {

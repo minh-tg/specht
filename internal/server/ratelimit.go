@@ -30,12 +30,12 @@ func NewRateLimiterConfig() RateLimiterConfig {
 }
 
 type RateLimiter struct {
-	mu       sync.Mutex
-	clients  map[string]*ipLimiter
-	ttl      time.Duration
-	rps      rate.Limit
-	burst    int
-	enabled  bool
+	mu      sync.Mutex
+	clients map[string]*ipLimiter
+	ttl     time.Duration
+	rps     rate.Limit
+	burst   int
+	enabled bool
 }
 
 func NewRateLimiter(cfg RateLimiterConfig) *RateLimiter {

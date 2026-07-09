@@ -1,48 +1,67 @@
-import { BrowserRouter, Routes, Route, Navigate, Link, useParams, useLocation } from "react-router-dom"
-import { AuthProvider } from "@/auth/AuthContext"
-import { ProtectedRoute } from "@/auth/ProtectedRoute"
-import { Navbar } from "@/components/Navbar"
-import { ProjectList } from "@/pages/ProjectList"
-import { FindingsDashboard } from "@/pages/FindingsDashboard"
-import { ReportHistory } from "@/pages/ReportHistory"
-import { Login } from "@/pages/Login"
-import { Register } from "@/pages/Register"
-import { FindingDetail } from "@/pages/FindingDetail"
-import { Ingest } from "@/pages/Ingest"
-import { ApiKeys } from "@/pages/ApiKeys"
+import { AuthProvider } from "@/auth/AuthContext";
+import { ProtectedRoute } from "@/auth/ProtectedRoute";
+import { Navbar } from "@/components/Navbar";
+import { ApiKeys } from "@/pages/ApiKeys";
+import { FindingDetail } from "@/pages/FindingDetail";
+import { FindingsDashboard } from "@/pages/FindingsDashboard";
+import { Ingest } from "@/pages/Ingest";
+import { Login } from "@/pages/Login";
+import { ProjectList } from "@/pages/ProjectList";
+import { Register } from "@/pages/Register";
+import { ReportHistory } from "@/pages/ReportHistory";
+import {
+  BrowserRouter,
+  Link,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useParams,
+} from "react-router-dom";
 
 function ProjectLayout() {
-  const { slug } = useParams<{ slug: string }>()
-  const location = useLocation()
-  const path = location.pathname
-  const currentTab = path.endsWith("/reports") ? "reports" : "findings"
+  const { slug } = useParams<{ slug: string; }>();
+  const location = useLocation();
+  const path = location.pathname;
+  const currentTab = path.endsWith("/reports") ? "reports" : "findings";
 
   if (path.includes("/findings/") && !path.endsWith("/findings")) {
-    return <FindingDetail />
+    return <FindingDetail />;
   }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
-      <Link to="/" className="text-muted-foreground hover:text-foreground mb-6 inline-block text-sm">
+      <Link
+        to="/"
+        className="text-muted-foreground hover:text-foreground mb-6 inline-block text-sm"
+      >
         &larr; Projects
       </Link>
       <div className="mb-6 flex gap-4 border-b">
         <Link
           to={`/${slug}/findings`}
-          className={`pb-2 text-sm font-medium ${currentTab === "findings" ? "border-primary text-foreground border-b-2" : "text-muted-foreground hover:text-foreground"}`}
+          className={`pb-2 text-sm font-medium ${
+            currentTab === "findings"
+              ? "border-primary text-foreground border-b-2"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
         >
           Findings
         </Link>
         <Link
           to={`/${slug}/reports`}
-          className={`pb-2 text-sm font-medium ${currentTab === "reports" ? "border-primary text-foreground border-b-2" : "text-muted-foreground hover:text-foreground"}`}
+          className={`pb-2 text-sm font-medium ${
+            currentTab === "reports"
+              ? "border-primary text-foreground border-b-2"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
         >
           Reports
         </Link>
       </div>
       {currentTab === "findings" ? <FindingsDashboard /> : <ReportHistory />}
     </div>
-  )
+  );
 }
 
 function HomePage() {
@@ -51,7 +70,7 @@ function HomePage() {
       <h1 className="mb-6 text-2xl font-bold">Projects</h1>
       <ProjectList />
     </div>
-  )
+  );
 }
 
 function AppLayout() {
@@ -104,7 +123,7 @@ function AppLayout() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AuthProvider>
-  )
+  );
 }
 
 export default function App() {
@@ -112,5 +131,5 @@ export default function App() {
     <BrowserRouter>
       <AppLayout />
     </BrowserRouter>
-  )
+  );
 }

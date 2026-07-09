@@ -1,30 +1,30 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { apiFetch } from "./client"
-import type { Project, Finding, Report, GateStatus, TriageResponse } from "@/types/api"
+import type { Finding, GateStatus, Project, Report, TriageResponse } from "@/types/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiFetch } from "./client";
 
 export function useProjects() {
   return useQuery({
     queryKey: ["projects"],
     queryFn: () => apiFetch<Project[]>("/api/v1/projects"),
-  })
+  });
 }
 
 export function useFindings(
   projectSlug: string,
-  filters: { severity?: string; status?: string; offset?: number; limit?: number },
+  filters: { severity?: string; status?: string; offset?: number; limit?: number; },
 ) {
   return useQuery({
     queryKey: ["findings", projectSlug, filters],
     queryFn: () => {
-      const params = new URLSearchParams()
-      if (filters.severity) params.set("severity", filters.severity)
-      if (filters.status) params.set("status", filters.status)
-      if (filters.offset != null) params.set("offset", String(filters.offset))
-      if (filters.limit != null) params.set("limit", String(filters.limit))
-      const qs = params.toString()
-      return apiFetch<Finding[]>(`/api/v1/projects/${projectSlug}/findings${qs ? `?${qs}` : ""}`)
+      const params = new URLSearchParams();
+      if (filters.severity) params.set("severity", filters.severity);
+      if (filters.status) params.set("status", filters.status);
+      if (filters.offset != null) params.set("offset", String(filters.offset));
+      if (filters.limit != null) params.set("limit", String(filters.limit));
+      const qs = params.toString();
+      return apiFetch<Finding[]>(`/api/v1/projects/${projectSlug}/findings${qs ? `?${qs}` : ""}`);
     },
-  })
+  });
 }
 
 export function useFinding(findingId: string) {
@@ -32,14 +32,14 @@ export function useFinding(findingId: string) {
     queryKey: ["finding", findingId],
     queryFn: () => apiFetch<Finding>(`/api/v1/findings/${findingId}`),
     enabled: !!findingId,
-  })
+  });
 }
 
 export function useReports(projectSlug: string) {
   return useQuery({
     queryKey: ["reports", projectSlug],
     queryFn: () => apiFetch<Report[]>(`/api/v1/projects/${projectSlug}/reports`),
-  })
+  });
 }
 
 export function useGateStatus(projectSlug: string) {
@@ -47,11 +47,11 @@ export function useGateStatus(projectSlug: string) {
     queryKey: ["gate", projectSlug],
     queryFn: () => apiFetch<GateStatus>(`/api/v1/projects/${projectSlug}/gate`),
     enabled: !!projectSlug,
-  })
+  });
 }
 
 export function useTriageFinding() {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
       findingId,
@@ -59,10 +59,10 @@ export function useTriageFinding() {
       reason,
       analysisExpiresAt,
     }: {
-      findingId: string
-      analysisState: string
-      reason?: string
-      analysisExpiresAt?: string
+      findingId: string;
+      analysisState: string;
+      reason?: string;
+      analysisExpiresAt?: string;
     }) =>
       apiFetch<TriageResponse>(`/api/v1/findings/${findingId}`, {
         method: "PATCH",
@@ -73,9 +73,9 @@ export function useTriageFinding() {
         }),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["findings"] })
-      queryClient.invalidateQueries({ queryKey: ["finding"] })
-      queryClient.invalidateQueries({ queryKey: ["gate"] })
+      queryClient.invalidateQueries({ queryKey: ["findings"] });
+      queryClient.invalidateQueries({ queryKey: ["finding"] });
+      queryClient.invalidateQueries({ queryKey: ["gate"] });
     },
-  })
+  });
 }

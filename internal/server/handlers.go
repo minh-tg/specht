@@ -52,7 +52,8 @@ func AuthMiddleware(authenticators ...auth.Authenticator) func(http.Handler) htt
 
 func LoggerMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		slog.Info("request",
+		slog.Info(
+			"request",
 			"method", r.Method,
 			"path", r.URL.Path,
 			"remote", r.RemoteAddr,
@@ -482,19 +483,19 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.reports.IngestReport(r.Context(), usecase.IngestReportInput{
-		ProjectSlug:    req.Project,
-		Scanner:        req.Scanner,
-		ScannerVersion: req.ScannerVersion,
-		ParserVersion:  req.ParserVersion,
-		RawData:        req.RawData,
-		Branch:         req.Branch,
-		CommitSha:      req.CommitSha,
-		GateSeverity:   gateSeverity,
-		GateStatus:     gateStatus,
-		Environment:    req.Environment,
-		ArtifactName:   req.ArtifactName,
+		ProjectSlug:     req.Project,
+		Scanner:         req.Scanner,
+		ScannerVersion:  req.ScannerVersion,
+		ParserVersion:   req.ParserVersion,
+		RawData:         req.RawData,
+		Branch:          req.Branch,
+		CommitSha:       req.CommitSha,
+		GateSeverity:    gateSeverity,
+		GateStatus:      gateStatus,
+		Environment:     req.Environment,
+		ArtifactName:    req.ArtifactName,
 		ArtifactVersion: req.ArtifactVersion,
-		ArtifactType:   req.ArtifactType,
+		ArtifactType:    req.ArtifactType,
 	})
 	if err != nil {
 		log.Printf("ingest report: %v", err)
@@ -720,11 +721,11 @@ func parseMinSeverityRank(severities string) int16 {
 func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	var req struct {
-		Name        string                             `json:"name"`
-		Description string                             `json:"description"`
+		Name        string                               `json:"name"`
+		Description string                               `json:"description"`
 		Conditions  []usecase.CreateWaiverConditionInput `json:"conditions,omitempty"`
-		Contexts    []usecase.CreateWaiverContextInput    `json:"contexts,omitempty"`
-		TargetIDs   []string                            `json:"target_ids,omitempty"`
+		Contexts    []usecase.CreateWaiverContextInput   `json:"contexts,omitempty"`
+		TargetIDs   []string                             `json:"target_ids,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid_body", "invalid request body")
@@ -783,8 +784,8 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	id := chi.URLParam(r, "id")
 	var req struct {
-		Name        string                              `json:"name"`
-		Description string                              `json:"description"`
+		Name        string                               `json:"name"`
+		Description string                               `json:"description"`
 		Conditions  []usecase.CreateWaiverConditionInput `json:"conditions,omitempty"`
 		Contexts    []usecase.CreateWaiverContextInput   `json:"contexts,omitempty"`
 		TargetIDs   []string                             `json:"target_ids,omitempty"`

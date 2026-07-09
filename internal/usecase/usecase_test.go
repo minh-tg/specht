@@ -48,10 +48,10 @@ func (m *mockProjectRepo) GetBySlug(ctx context.Context, slug string) (sqlc.Proj
 
 type mockReportRepo struct {
 	repo.ReportRepo
-	createFn         func(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error)
-	getByIDFn        func(ctx context.Context, id pgtype.UUID) (sqlc.Report, error)
-	listByProjectFn  func(ctx context.Context, projectID pgtype.UUID, limit, offset int32) ([]sqlc.Report, error)
-	updateStatusFn   func(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error)
+	createFn        func(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error)
+	getByIDFn       func(ctx context.Context, id pgtype.UUID) (sqlc.Report, error)
+	listByProjectFn func(ctx context.Context, projectID pgtype.UUID, limit, offset int32) ([]sqlc.Report, error)
+	updateStatusFn  func(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error)
 }
 
 func (m *mockReportRepo) Create(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error) {
@@ -200,9 +200,9 @@ func (m *mockFindingRepo) CreateEvent(ctx context.Context, arg repo.CreateEventP
 
 type mockUserRepo struct {
 	repo.UserRepo
-	createFn    func(ctx context.Context, email string, displayName, passwordHash pgtype.Text) (sqlc.User, error)
+	createFn     func(ctx context.Context, email string, displayName, passwordHash pgtype.Text) (sqlc.User, error)
 	getByEmailFn func(ctx context.Context, email string) (sqlc.User, error)
-	getByIDFn   func(ctx context.Context, id pgtype.UUID) (sqlc.User, error)
+	getByIDFn    func(ctx context.Context, id pgtype.UUID) (sqlc.User, error)
 }
 
 func (m *mockUserRepo) Create(ctx context.Context, email string, displayName, passwordHash pgtype.Text) (sqlc.User, error) {
@@ -254,13 +254,11 @@ func (m *mockRefreshTokenRepo) Revoke(ctx context.Context, id pgtype.UUID) (sqlc
 	return m.revokeFn(ctx, id)
 }
 
-
-
 type mockAPIKeyRepo struct {
 	repo.APIKeyRepo
-	createFn         func(ctx context.Context, arg sqlc.CreateAPIKeyParams) (sqlc.ApiKey, error)
-	listByProjectFn  func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.ListAPIKeysByProjectRow, error)
-	revokeFn         func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.ApiKey, error)
+	createFn        func(ctx context.Context, arg sqlc.CreateAPIKeyParams) (sqlc.ApiKey, error)
+	listByProjectFn func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.ListAPIKeysByProjectRow, error)
+	revokeFn        func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.ApiKey, error)
 }
 
 func (m *mockAPIKeyRepo) Create(ctx context.Context, arg sqlc.CreateAPIKeyParams) (sqlc.ApiKey, error) {
@@ -294,8 +292,8 @@ type mockParser struct {
 	parseFn   func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error)
 }
 
-func (m *mockParser) Name() string                        { return m.name }
-func (m *mockParser) ScanTypes() []scanner.ScanType       { return m.scanTypes }
+func (m *mockParser) Name() string                  { return m.name }
+func (m *mockParser) ScanTypes() []scanner.ScanType { return m.scanTypes }
 func (m *mockParser) Parse(ctx context.Context, r io.Reader) (*scanner.NormalizedReport, error) {
 	if m.parseFn == nil {
 		return nil, fmt.Errorf("unexpected call to Parse")
@@ -306,10 +304,10 @@ func (m *mockParser) Parse(ctx context.Context, r io.Reader) (*scanner.Normalize
 
 type mockTargetRepo struct {
 	repo.TargetRepo
-	upsertFn    func(ctx context.Context, arg sqlc.UpsertTargetParams) (sqlc.Target, error)
-	listFn      func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Target, error)
-	getByIDFn   func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Target, error)
-	deleteFn    func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Target, error)
+	upsertFn  func(ctx context.Context, arg sqlc.UpsertTargetParams) (sqlc.Target, error)
+	listFn    func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Target, error)
+	getByIDFn func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Target, error)
+	deleteFn  func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Target, error)
 }
 
 func (m *mockTargetRepo) Upsert(ctx context.Context, arg sqlc.UpsertTargetParams) (sqlc.Target, error) {
@@ -342,10 +340,10 @@ func (m *mockTargetRepo) Delete(ctx context.Context, id, projectID pgtype.UUID) 
 
 type mockEnvironmentRepo struct {
 	repo.EnvironmentRepo
-	upsertFn    func(ctx context.Context, arg sqlc.UpsertEnvironmentParams) (sqlc.Environment, error)
-	listFn      func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Environment, error)
-	getByIDFn   func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Environment, error)
-	deleteFn    func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Environment, error)
+	upsertFn  func(ctx context.Context, arg sqlc.UpsertEnvironmentParams) (sqlc.Environment, error)
+	listFn    func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Environment, error)
+	getByIDFn func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Environment, error)
+	deleteFn  func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Environment, error)
 }
 
 func (m *mockEnvironmentRepo) Upsert(ctx context.Context, arg sqlc.UpsertEnvironmentParams) (sqlc.Environment, error) {
@@ -378,11 +376,11 @@ func (m *mockEnvironmentRepo) Delete(ctx context.Context, id, projectID pgtype.U
 
 type mockArtifactRepo struct {
 	repo.ArtifactRepo
-	upsertFn        func(ctx context.Context, arg sqlc.UpsertArtifactParams) (sqlc.Artifact, error)
-	listFn          func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Artifact, error)
-	listByTargetFn  func(ctx context.Context, targetID pgtype.UUID) ([]sqlc.Artifact, error)
-	getByIDFn       func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Artifact, error)
-	deleteFn        func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Artifact, error)
+	upsertFn       func(ctx context.Context, arg sqlc.UpsertArtifactParams) (sqlc.Artifact, error)
+	listFn         func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Artifact, error)
+	listByTargetFn func(ctx context.Context, targetID pgtype.UUID) ([]sqlc.Artifact, error)
+	getByIDFn      func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Artifact, error)
+	deleteFn       func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Artifact, error)
 }
 
 func (m *mockArtifactRepo) Upsert(ctx context.Context, arg sqlc.UpsertArtifactParams) (sqlc.Artifact, error) {
@@ -511,10 +509,10 @@ func makeReport() sqlc.Report {
 	id.Scan("00000000-0000-0000-0000-000000000010")
 	pid.Scan("00000000-0000-0000-0000-000000000001")
 	return sqlc.Report{
-		ID:        id,
-		ProjectID: pid,
-		ToolName:  "trivy",
-		Status:    "completed",
+		ID:            id,
+		ProjectID:     pid,
+		ToolName:      "trivy",
+		Status:        "completed",
 		TotalFindings: pgtype.Int4{Int32: 2, Valid: true},
 	}
 }
@@ -524,8 +522,8 @@ func makeFinding(idIdx int) sqlc.Finding {
 	id.Scan(fmt.Sprintf("00000000-0000-0000-0000-00000000002%d", idIdx))
 	pid.Scan("00000000-0000-0000-0000-000000000001")
 	return sqlc.Finding{
-		ID:        id,
-		ProjectID: pid,
+		ID:          id,
+		ProjectID:   pid,
 		FindingKind: "sca",
 		Fingerprint: "fp1",
 	}
@@ -841,21 +839,21 @@ func makeFindingRow(id int) sqlc.Finding {
 	var now pgtype.Timestamptz
 	now.Scan(time.Now())
 	return sqlc.Finding{
-		ID:                fid,
-		ProjectID:         pid,
-		FindingKind:       "sca",
-		Fingerprint:       fmt.Sprintf("fp%d", id),
-		CurrentTitle:      fmt.Sprintf("CVE-%d", 2026000+id),
-		CurrentSeverity:   "high",
+		ID:                  fid,
+		ProjectID:           pid,
+		FindingKind:         "sca",
+		Fingerprint:         fmt.Sprintf("fp%d", id),
+		CurrentTitle:        fmt.Sprintf("CVE-%d", 2026000+id),
+		CurrentSeverity:     "high",
 		CurrentSeverityRank: 2,
-		State:             "open",
-		TriageStatus:      "untriaged",
-		AnalysisState:     "unanalyzed",
-		GateEffect:        "block",
-		FirstSeenAt:       now,
-		LastSeenAt:        now,
-		CreatedAt:         now,
-		UpdatedAt:         now,
+		State:               "open",
+		TriageStatus:        "untriaged",
+		AnalysisState:       "unanalyzed",
+		GateEffect:          "block",
+		FirstSeenAt:         now,
+		LastSeenAt:          now,
+		CreatedAt:           now,
+		UpdatedAt:           now,
 	}
 }
 

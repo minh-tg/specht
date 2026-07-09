@@ -26,9 +26,9 @@ func setupTestDB(t *testing.T) (*Repos, func()) {
 		Image:        "postgres:17-alpine",
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
-			"POSTGRES_USER":     "vulnserve",
-			"POSTGRES_PASSWORD": "vulnserve",
-			"POSTGRES_DB":       "vulnserve_test",
+			"POSTGRES_USER":     "specht",
+			"POSTGRES_PASSWORD": "specht",
+			"POSTGRES_DB":       "specht_test",
 		},
 		WaitingFor: wait.ForLog("database system is ready to accept connections").
 			WithOccurrence(2).
@@ -46,7 +46,7 @@ func setupTestDB(t *testing.T) (*Repos, func()) {
 	port, err := container.MappedPort(ctx, "5432")
 	require.NoError(t, err)
 
-	dsn := fmt.Sprintf("postgres://vulnserve:vulnserve@%s:%s/vulnserve_test?sslmode=disable", host, port.Port())
+	dsn := fmt.Sprintf("postgres://specht:specht@%s:%s/specht_test?sslmode=disable", host, port.Port())
 
 	err = db.RunMigrations(dsn, "../../migrations")
 	require.NoError(t, err, "migrations must apply")
@@ -76,7 +76,8 @@ func TestUserRepo_CreateAndGetByEmail(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()
 
-	user, err := repos.Users.Create(context.Background(), "alice@test.com",
+	user, err := repos.Users.Create(
+		context.Background(), "alice@test.com",
 		pgtype.Text{Valid: false},
 		pgtype.Text{String: "$2a$10$hash", Valid: true},
 	)
@@ -164,16 +165,16 @@ func TestReportRepo_CreateAndGetByID(t *testing.T) {
 	require.NoError(t, err)
 
 	report, err := repos.Reports.Create(context.Background(), CreateReportParams{
-		ProjectID:       project.ID,
-		ToolName:        "trivy",
-		ToolVersion:     pgtype.Text{Valid: false},
-		ScanType:        "image",
-		ScanTarget:      pgtype.Text{String: "myapp:latest", Valid: true},
-		ScanScope:       []byte(`{}`),
-		Branch:          pgtype.Text{Valid: false},
-		CommitSha:       pgtype.Text{Valid: false},
-		RawReportHash:   pgtype.Text{Valid: false},
-		ParserVersion:   pgtype.Text{Valid: false},
+		ProjectID:     project.ID,
+		ToolName:      "trivy",
+		ToolVersion:   pgtype.Text{Valid: false},
+		ScanType:      "image",
+		ScanTarget:    pgtype.Text{String: "myapp:latest", Valid: true},
+		ScanScope:     []byte(`{}`),
+		Branch:        pgtype.Text{Valid: false},
+		CommitSha:     pgtype.Text{Valid: false},
+		RawReportHash: pgtype.Text{Valid: false},
+		ParserVersion: pgtype.Text{Valid: false},
 	})
 	require.NoError(t, err)
 	assert.True(t, report.ID.Valid)
@@ -207,16 +208,16 @@ func TestReportRepo_ListByProject(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		_, err := repos.Reports.Create(context.Background(), CreateReportParams{
-			ProjectID:       project.ID,
-			ToolName:        "trivy",
-			ToolVersion:     pgtype.Text{Valid: false},
-			ScanType:        "image",
-			ScanTarget:      pgtype.Text{Valid: false},
-			ScanScope:       []byte(`{}`),
-			Branch:          pgtype.Text{Valid: false},
-			CommitSha:       pgtype.Text{Valid: false},
-			RawReportHash:   pgtype.Text{Valid: false},
-			ParserVersion:   pgtype.Text{Valid: false},
+			ProjectID:     project.ID,
+			ToolName:      "trivy",
+			ToolVersion:   pgtype.Text{Valid: false},
+			ScanType:      "image",
+			ScanTarget:    pgtype.Text{Valid: false},
+			ScanScope:     []byte(`{}`),
+			Branch:        pgtype.Text{Valid: false},
+			CommitSha:     pgtype.Text{Valid: false},
+			RawReportHash: pgtype.Text{Valid: false},
+			ParserVersion: pgtype.Text{Valid: false},
 		})
 		require.NoError(t, err)
 	}
@@ -244,16 +245,16 @@ func TestFindingRepo_UpsertAndList(t *testing.T) {
 	require.NoError(t, err)
 
 	report, err := repos.Reports.Create(context.Background(), CreateReportParams{
-		ProjectID:       project.ID,
-		ToolName:        "trivy",
-		ToolVersion:     pgtype.Text{Valid: false},
-		ScanType:        "image",
-		ScanTarget:      pgtype.Text{Valid: false},
-		ScanScope:       []byte(`{}`),
-		Branch:          pgtype.Text{Valid: false},
-		CommitSha:       pgtype.Text{Valid: false},
-		RawReportHash:   pgtype.Text{Valid: false},
-		ParserVersion:   pgtype.Text{Valid: false},
+		ProjectID:     project.ID,
+		ToolName:      "trivy",
+		ToolVersion:   pgtype.Text{Valid: false},
+		ScanType:      "image",
+		ScanTarget:    pgtype.Text{Valid: false},
+		ScanScope:     []byte(`{}`),
+		Branch:        pgtype.Text{Valid: false},
+		CommitSha:     pgtype.Text{Valid: false},
+		RawReportHash: pgtype.Text{Valid: false},
+		ParserVersion: pgtype.Text{Valid: false},
 	})
 	require.NoError(t, err)
 
@@ -274,19 +275,19 @@ func TestFindingRepo_UpsertAndList(t *testing.T) {
 	assert.Equal(t, "open", finding.State)
 
 	occ, err := repos.Findings.CreateOccurrence(context.Background(), CreateOccurrenceParams{
-		FindingID:      finding.ID,
-		ReportID:       report.ID,
-		Title:          "CVE-2026-1234 in lodash",
-		Description:    pgtype.Text{Valid: false},
-		Severity:       "high",
-		SeverityRank:   3,
-		Score:          pgtype.Numeric{Valid: false},
-		ToolName:       "trivy",
-		ToolVersion:    pgtype.Text{Valid: false},
-		ParserVersion:  pgtype.Text{Valid: false},
+		FindingID:       finding.ID,
+		ReportID:        report.ID,
+		Title:           "CVE-2026-1234 in lodash",
+		Description:     pgtype.Text{Valid: false},
+		Severity:        "high",
+		SeverityRank:    3,
+		Score:           pgtype.Numeric{Valid: false},
+		ToolName:        "trivy",
+		ToolVersion:     pgtype.Text{Valid: false},
+		ParserVersion:   pgtype.Text{Valid: false},
 		LocationSummary: pgtype.Text{String: "package-lock.json", Valid: true},
-		Display:        []byte(`{}`),
-		Metadata:       []byte(`{}`),
+		Display:         []byte(`{}`),
+		Metadata:        []byte(`{}`),
 	})
 	require.NoError(t, err)
 	assert.True(t, occ.ID.Valid)
@@ -309,7 +310,7 @@ func TestFindingRepo_UpsertAndList(t *testing.T) {
 		SeverityRank: 4,
 		Score:        pgtype.Numeric{Valid: false},
 		FirstSeenAt:  now,
-		LastSeenAt:  now,
+		LastSeenAt:   now,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "open", upsertedAgain.State)

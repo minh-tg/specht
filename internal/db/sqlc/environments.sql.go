@@ -117,7 +117,8 @@ type UpsertEnvironmentParams struct {
 }
 
 func (q *Queries) UpsertEnvironment(ctx context.Context, arg UpsertEnvironmentParams) (Environment, error) {
-	row := q.db.QueryRow(ctx, upsertEnvironment,
+	row := q.db.QueryRow(
+		ctx, upsertEnvironment,
 		arg.ProjectID,
 		arg.Name,
 		arg.Tier,

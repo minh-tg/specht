@@ -1,7 +1,7 @@
-import { useState } from "react"
-import { useParams, Link } from "react-router-dom"
-import { useFinding, useTriageFinding } from "@/api/hooks"
-import { SeverityBadge } from "@/components/ui/severity-badge"
+import { useFinding, useTriageFinding } from "@/api/hooks";
+import { SeverityBadge } from "@/components/ui/severity-badge";
+import { useState } from "react";
+import { Link, useParams } from "react-router-dom";
 
 const TRIAGE_OPTIONS = [
   { value: "confirmed", label: "Confirmed", requiresReason: false, requiresExpiry: false },
@@ -9,22 +9,22 @@ const TRIAGE_OPTIONS = [
   { value: "not_affected", label: "Not Affected", requiresReason: true, requiresExpiry: false },
   { value: "accepted_risk", label: "Accepted Risk", requiresReason: true, requiresExpiry: true },
   { value: "wont_fix", label: "Won't Fix", requiresReason: true, requiresExpiry: true },
-]
+];
 
 function triageLabel(state: string): string {
-  return TRIAGE_OPTIONS.find((o) => o.value === state)?.label ?? state
+  return TRIAGE_OPTIONS.find((o) => o.value === state)?.label ?? state;
 }
 
 export function FindingDetail() {
-  const { findingId } = useParams<{ findingId: string }>()
-  const { data: finding, isLoading, isError, error, refetch } = useFinding(findingId ?? "")
-  const triageMutation = useTriageFinding()
+  const { findingId } = useParams<{ findingId: string; }>();
+  const { data: finding, isLoading, isError, error, refetch } = useFinding(findingId ?? "");
+  const triageMutation = useTriageFinding();
 
-  const [selectedState, setSelectedState] = useState("")
-  const [reason, setReason] = useState("")
-  const [expiresAt, setExpiresAt] = useState("")
+  const [selectedState, setSelectedState] = useState("");
+  const [reason, setReason] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
 
-  const selectedOption = TRIAGE_OPTIONS.find((o) => o.value === selectedState)
+  const selectedOption = TRIAGE_OPTIONS.find((o) => o.value === selectedState);
 
   if (isLoading) {
     return (
@@ -33,38 +33,44 @@ export function FindingDetail() {
         <div className="bg-muted h-4 w-96 animate-pulse rounded" />
         <div className="bg-muted h-32 animate-pulse rounded" />
       </div>
-    )
+    );
   }
 
   if (isError || !finding) {
     return (
       <div className="flex flex-col items-center gap-2 py-16">
         <p className="text-destructive text-sm">{error?.message ?? "Finding not found"}</p>
-        <button className="text-primary text-sm underline hover:no-underline" onClick={() => refetch()}>
+        <button
+          className="text-primary text-sm underline hover:no-underline"
+          onClick={() => refetch()}
+        >
           Retry
         </button>
       </div>
-    )
+    );
   }
 
   async function handleTriage() {
-    if (!selectedState || !finding) return
+    if (!selectedState || !finding) return;
     try {
       await triageMutation.mutateAsync({
         findingId: finding.id,
         analysisState: selectedState,
         reason: selectedOption?.requiresReason ? reason : undefined,
         analysisExpiresAt: selectedOption?.requiresExpiry ? expiresAt || undefined : undefined,
-      })
-      setSelectedState("")
-      setReason("")
-      setExpiresAt("")
-    } catch { }
+      });
+      setSelectedState("");
+      setReason("");
+      setExpiresAt("");
+    } catch {}
   }
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
-      <Link to=".." className="text-muted-foreground hover:text-foreground mb-6 inline-block text-sm">
+      <Link
+        to=".."
+        className="text-muted-foreground hover:text-foreground mb-6 inline-block text-sm"
+      >
         &larr; Back to findings
       </Link>
 
@@ -83,7 +89,9 @@ export function FindingDetail() {
         </div>
         <div>
           <span className="text-muted-foreground">Analysis</span>
-          <p className="font-medium">{finding.analysis_state ? triageLabel(finding.analysis_state) : "Not triaged"}</p>
+          <p className="font-medium">
+            {finding.analysis_state ? triageLabel(finding.analysis_state) : "Not triaged"}
+          </p>
         </div>
         <div>
           <span className="text-muted-foreground">Gate Effect</span>
@@ -110,9 +118,9 @@ export function FindingDetail() {
             className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
             value={selectedState}
             onChange={(e) => {
-              setSelectedState(e.target.value)
-              setReason("")
-              setExpiresAt("")
+              setSelectedState(e.target.value);
+              setReason("");
+              setExpiresAt("");
             }}
           >
             <option value="">Select action...</option>
@@ -150,9 +158,11 @@ export function FindingDetail() {
           <p className="text-destructive mt-2 text-xs">{triageMutation.error.message}</p>
         )}
         {triageMutation.isSuccess && (
-          <p className="text-green-600 mt-2 text-xs">Triage saved (effect: {triageMutation.data.gate_effect})</p>
+          <p className="text-green-600 mt-2 text-xs">
+            Triage saved (effect: {triageMutation.data.gate_effect})
+          </p>
         )}
       </div>
     </div>
-  )
+  );
 }

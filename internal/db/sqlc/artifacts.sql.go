@@ -167,7 +167,8 @@ type UpsertArtifactParams struct {
 }
 
 func (q *Queries) UpsertArtifact(ctx context.Context, arg UpsertArtifactParams) (Artifact, error) {
-	row := q.db.QueryRow(ctx, upsertArtifact,
+	row := q.db.QueryRow(
+		ctx, upsertArtifact,
 		arg.ProjectID,
 		arg.TargetID,
 		arg.ArtifactType,

@@ -17,15 +17,15 @@ func newFindingRepo(q *sqlc.Queries) *pgFindingRepo {
 }
 
 type UpsertFindingParams struct {
-	ProjectID        pgtype.UUID
-	FindingKind      string
-	Fingerprint      string
-	CurrentTitle     string
-	Severity         string
-	SeverityRank     int16
-	Score            pgtype.Numeric
-	FirstSeenAt      pgtype.Timestamptz
-	LastSeenAt       pgtype.Timestamptz
+	ProjectID    pgtype.UUID
+	FindingKind  string
+	Fingerprint  string
+	CurrentTitle string
+	Severity     string
+	SeverityRank int16
+	Score        pgtype.Numeric
+	FirstSeenAt  pgtype.Timestamptz
+	LastSeenAt   pgtype.Timestamptz
 }
 
 func (r *pgFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, severities, states []string, limit, offset int32) ([]sqlc.Finding, error) {
@@ -47,45 +47,45 @@ func (r *pgFindingRepo) Upsert(ctx context.Context, arg UpsertFindingParams) (sq
 		CurrentSeverity:     arg.Severity,
 		CurrentSeverityRank: arg.SeverityRank,
 		CurrentScore:        arg.Score,
-		State:              "open",
-		TriageStatus:       "untriaged",
-		FirstSeenAt:        arg.FirstSeenAt,
-		LastSeenAt:         arg.LastSeenAt,
+		State:               "open",
+		TriageStatus:        "untriaged",
+		FirstSeenAt:         arg.FirstSeenAt,
+		LastSeenAt:          arg.LastSeenAt,
 	})
 }
 
 type CreateOccurrenceParams struct {
-	FindingID      pgtype.UUID
-	ReportID       pgtype.UUID
-	Title          string
-	Description    pgtype.Text
-	Severity       string
-	SeverityRank   int16
-	Score          pgtype.Numeric
-	ToolName       string
-	ToolVersion    pgtype.Text
-	ParserVersion  pgtype.Text
+	FindingID       pgtype.UUID
+	ReportID        pgtype.UUID
+	Title           string
+	Description     pgtype.Text
+	Severity        string
+	SeverityRank    int16
+	Score           pgtype.Numeric
+	ToolName        string
+	ToolVersion     pgtype.Text
+	ParserVersion   pgtype.Text
 	LocationSummary pgtype.Text
-	Display        []byte
-	Metadata       []byte
+	Display         []byte
+	Metadata        []byte
 }
 
 func (r *pgFindingRepo) CreateOccurrence(ctx context.Context, arg CreateOccurrenceParams) (sqlc.FindingOccurrence, error) {
 	return r.q.CreateOccurrence(ctx, sqlc.CreateOccurrenceParams{
-		FindingID:      arg.FindingID,
-		ReportID:       arg.ReportID,
-		Title:          arg.Title,
-		Description:    arg.Description,
-		Severity:       arg.Severity,
-		SeverityRank:   arg.SeverityRank,
-		Score:          arg.Score,
-		ToolName:       arg.ToolName,
-		ToolVersion:    arg.ToolVersion,
-		ParserVersion:  arg.ParserVersion,
+		FindingID:       arg.FindingID,
+		ReportID:        arg.ReportID,
+		Title:           arg.Title,
+		Description:     arg.Description,
+		Severity:        arg.Severity,
+		SeverityRank:    arg.SeverityRank,
+		Score:           arg.Score,
+		ToolName:        arg.ToolName,
+		ToolVersion:     arg.ToolVersion,
+		ParserVersion:   arg.ParserVersion,
 		LocationSummary: arg.LocationSummary,
-		Display:        arg.Display,
-		Metadata:       arg.Metadata,
-		ObservedAt:     pgtype.Timestamptz{Time: time.Now(), Valid: true},
+		Display:         arg.Display,
+		Metadata:        arg.Metadata,
+		ObservedAt:      pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	})
 }
 
@@ -106,9 +106,9 @@ func (r *pgFindingRepo) UpsertDimension(ctx context.Context, arg UpsertDimension
 }
 
 type GetByFingerprintParams struct {
-	ProjectID    pgtype.UUID
-	FindingKind  string
-	Fingerprint  string
+	ProjectID   pgtype.UUID
+	FindingKind string
+	Fingerprint string
 }
 
 func (r *pgFindingRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
@@ -180,8 +180,8 @@ func (r *pgFindingRepo) BulkUpdateAnalysis(ctx context.Context, arg BulkUpdateAn
 }
 
 type GateEvalParams struct {
-	ProjectID        pgtype.UUID
-	MinSeverityRank  int16
+	ProjectID       pgtype.UUID
+	MinSeverityRank int16
 }
 
 func (r *pgFindingRepo) GateEval(ctx context.Context, arg GateEvalParams) (bool, error) {

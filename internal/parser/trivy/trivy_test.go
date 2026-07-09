@@ -59,20 +59,20 @@ func TestParse_AlpineScan(t *testing.T) {
 		fixedVersion string
 	}{
 		{
-			name:          "first finding should be CVE-2024-9143",
-			fingerprint:   "CVE-2024-9143:pkg:apk/alpine/libcrypto3@3.3.2-r0?arch=aarch64&distro=3.20.3",
-			severity:      scanner.SeverityLow,
-			score:         4.0,
-			findingKind:   "sca",
-			fixedVersion:  "3.3.2-r1",
+			name:         "first finding should be CVE-2024-9143",
+			fingerprint:  "CVE-2024-9143:pkg:apk/alpine/libcrypto3@3.3.2-r0?arch=aarch64&distro=3.20.3",
+			severity:     scanner.SeverityLow,
+			score:        4.0,
+			findingKind:  "sca",
+			fixedVersion: "3.3.2-r1",
 		},
 		{
-			name:          "second finding should be CVE-2024-8888",
-			fingerprint:   "CVE-2024-8888:pkg:apk/alpine/libssl3@3.3.2-r0?arch=aarch64&distro=3.20.3",
-			severity:      scanner.SeverityHigh,
-			score:         6.0,
-			findingKind:   "sca",
-			fixedVersion:  "3.3.2-r1",
+			name:         "second finding should be CVE-2024-8888",
+			fingerprint:  "CVE-2024-8888:pkg:apk/alpine/libssl3@3.3.2-r0?arch=aarch64&distro=3.20.3",
+			severity:     scanner.SeverityHigh,
+			score:        6.0,
+			findingKind:  "sca",
+			fixedVersion: "3.3.2-r1",
 		},
 	}
 

@@ -27,7 +27,8 @@ type CreateAPIKeyParams struct {
 }
 
 func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error) {
-	row := q.db.QueryRow(ctx, createAPIKey,
+	row := q.db.QueryRow(
+		ctx, createAPIKey,
 		arg.ProjectID,
 		arg.Name,
 		arg.KeyPrefix,

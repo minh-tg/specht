@@ -1,7 +1,7 @@
 replicaCount: 1
 
 image:
-  repository: vulnserve/server
+  repository: specht/server
   tag: latest
   pullPolicy: IfNotPresent
 
@@ -10,13 +10,13 @@ service:
 
 ingress:
   enabled: false
-  host: vulnserve.example.com
+  host: specht.example.com
 
 postgresql:
   enabled: true
   image: postgres:17-alpine
-  database: vulnserve
-  user: vulnserve
+  database: specht
+  user: specht
   password: ""  # must be set via --set or secret
 
 env:

@@ -25,7 +25,8 @@ type CreateWaiverParams struct {
 }
 
 func (q *Queries) CreateWaiver(ctx context.Context, arg CreateWaiverParams) (Waiver, error) {
-	row := q.db.QueryRow(ctx, createWaiver,
+	row := q.db.QueryRow(
+		ctx, createWaiver,
 		arg.ProjectID,
 		arg.Name,
 		arg.Description,
@@ -120,7 +121,8 @@ type UpdateWaiverParams struct {
 }
 
 func (q *Queries) UpdateWaiver(ctx context.Context, arg UpdateWaiverParams) (Waiver, error) {
-	row := q.db.QueryRow(ctx, updateWaiver,
+	row := q.db.QueryRow(
+		ctx, updateWaiver,
 		arg.ID,
 		arg.ProjectID,
 		arg.Name,
@@ -241,7 +243,8 @@ type CreateWaiverConditionParams struct {
 }
 
 func (q *Queries) CreateWaiverCondition(ctx context.Context, arg CreateWaiverConditionParams) (WaiverCondition, error) {
-	row := q.db.QueryRow(ctx, createWaiverCondition,
+	row := q.db.QueryRow(
+		ctx, createWaiverCondition,
 		arg.WaiverID,
 		arg.Field,
 		arg.Operator,
@@ -315,7 +318,8 @@ type CreateWaiverContextParams struct {
 }
 
 func (q *Queries) CreateWaiverContext(ctx context.Context, arg CreateWaiverContextParams) (WaiverContext, error) {
-	row := q.db.QueryRow(ctx, createWaiverContext,
+	row := q.db.QueryRow(
+		ctx, createWaiverContext,
 		arg.WaiverID,
 		arg.EnvironmentID,
 		arg.TargetID,
@@ -387,7 +391,8 @@ type CreateWaiverFindingTargetParams struct {
 }
 
 func (q *Queries) CreateWaiverFindingTarget(ctx context.Context, arg CreateWaiverFindingTargetParams) (WaiverFindingTarget, error) {
-	row := q.db.QueryRow(ctx, createWaiverFindingTarget,
+	row := q.db.QueryRow(
+		ctx, createWaiverFindingTarget,
 		arg.WaiverID,
 		arg.FindingID,
 	)
@@ -455,7 +460,8 @@ type CreateWaiverEventParams struct {
 }
 
 func (q *Queries) CreateWaiverEvent(ctx context.Context, arg CreateWaiverEventParams) (WaiverEvent, error) {
-	row := q.db.QueryRow(ctx, createWaiverEvent,
+	row := q.db.QueryRow(
+		ctx, createWaiverEvent,
 		arg.WaiverID,
 		arg.EventType,
 		arg.ActorID,

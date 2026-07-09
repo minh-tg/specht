@@ -1,7 +1,7 @@
-import { render, screen } from "@testing-library/react"
-import { MemoryRouter, Routes, Route } from "react-router-dom"
-import { AuthContext, type AuthContextValue } from "./AuthContext"
-import { ProtectedRoute } from "./ProtectedRoute"
+import { render, screen } from "@testing-library/react";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { AuthContext, type AuthContextValue } from "./AuthContext";
+import { ProtectedRoute } from "./ProtectedRoute";
 
 function renderProtected(token: string | null) {
   const auth: AuthContextValue = {
@@ -11,7 +11,7 @@ function renderProtected(token: string | null) {
     login: async () => {},
     logout: () => {},
     loading: false,
-  }
+  };
 
   return render(
     <MemoryRouter initialEntries={["/protected"]}>
@@ -29,18 +29,18 @@ function renderProtected(token: string | null) {
         </Routes>
       </AuthContext.Provider>
     </MemoryRouter>,
-  )
+  );
 }
 
 describe("ProtectedRoute", () => {
   it("renders children when authenticated", () => {
-    renderProtected("valid-token")
-    expect(screen.getByText("Protected content")).toBeInTheDocument()
-  })
+    renderProtected("valid-token");
+    expect(screen.getByText("Protected content")).toBeInTheDocument();
+  });
 
   it("redirects to login when not authenticated", () => {
-    renderProtected(null)
-    expect(screen.getByText("Login page")).toBeInTheDocument()
-    expect(screen.queryByText("Protected content")).not.toBeInTheDocument()
-  })
-})
+    renderProtected(null);
+    expect(screen.getByText("Login page")).toBeInTheDocument();
+    expect(screen.queryByText("Protected content")).not.toBeInTheDocument();
+  });
+});

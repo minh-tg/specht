@@ -13,32 +13,32 @@ import (
 type trivyReport []trivyResult
 
 type trivyResult struct {
-	Target          string             `json:"Target"`
-	Class           string             `json:"Class"`
-	Type            string             `json:"Type"`
-	Vulnerabilities []trivyVuln        `json:"Vulnerabilities"`
-	Secrets         []trivySecret      `json:"Secrets"`
-	Misconfigs      []trivyMisconfig   `json:"Misconfigurations"`
+	Target          string           `json:"Target"`
+	Class           string           `json:"Class"`
+	Type            string           `json:"Type"`
+	Vulnerabilities []trivyVuln      `json:"Vulnerabilities"`
+	Secrets         []trivySecret    `json:"Secrets"`
+	Misconfigs      []trivyMisconfig `json:"Misconfigurations"`
 }
 
 type trivyVuln struct {
-	VulnerabilityID  string              `json:"VulnerabilityID"`
-	PkgID            string              `json:"PkgID"`
-	PkgName          string              `json:"PkgName"`
-	PkgIdentifier    trivyPkgIdentifier  `json:"PkgIdentifier"`
-	InstalledVersion string              `json:"InstalledVersion"`
-	FixedVersion     string              `json:"FixedVersion"`
-	Status           string              `json:"Status"`
-	Layer            *trivyLayer         `json:"Layer"`
-	Severity         string              `json:"Severity"`
-	Title            string              `json:"Title"`
-	Description      string              `json:"Description"`
-	PublishedDate    *string             `json:"PublishedDate"`
-	LastModifiedDate *string             `json:"LastModifiedDate"`
-	CweIDs           []string            `json:"CweIDs"`
+	VulnerabilityID  string               `json:"VulnerabilityID"`
+	PkgID            string               `json:"PkgID"`
+	PkgName          string               `json:"PkgName"`
+	PkgIdentifier    trivyPkgIdentifier   `json:"PkgIdentifier"`
+	InstalledVersion string               `json:"InstalledVersion"`
+	FixedVersion     string               `json:"FixedVersion"`
+	Status           string               `json:"Status"`
+	Layer            *trivyLayer          `json:"Layer"`
+	Severity         string               `json:"Severity"`
+	Title            string               `json:"Title"`
+	Description      string               `json:"Description"`
+	PublishedDate    *string              `json:"PublishedDate"`
+	LastModifiedDate *string              `json:"LastModifiedDate"`
+	CweIDs           []string             `json:"CweIDs"`
 	CVSS             map[string]trivyCVSS `json:"CVSS"`
-	PrimaryURL       string              `json:"PrimaryURL"`
-	DataSource       *trivyDataSource    `json:"DataSource"`
+	PrimaryURL       string               `json:"PrimaryURL"`
+	DataSource       *trivyDataSource     `json:"DataSource"`
 }
 
 type trivyPkgIdentifier struct {
@@ -66,21 +66,21 @@ type trivyDataSource struct {
 }
 
 type trivySecret struct {
-	RuleID    string   `json:"RuleID"`
-	Category  string   `json:"Category"`
-	Severity  string   `json:"Severity"`
-	Title     string   `json:"Title"`
-	Match     string   `json:"Match"`
-	Code      json.RawMessage `json:"Code"`
-	Layer     *trivyLayer     `json:"Layer"`
+	RuleID   string          `json:"RuleID"`
+	Category string          `json:"Category"`
+	Severity string          `json:"Severity"`
+	Title    string          `json:"Title"`
+	Match    string          `json:"Match"`
+	Code     json.RawMessage `json:"Code"`
+	Layer    *trivyLayer     `json:"Layer"`
 }
 
 type trivyMisconfig struct {
-	RuleID    string   `json:"RuleID"`
-	Severity  string   `json:"Severity"`
-	Title     string   `json:"Title"`
-	Message   string   `json:"Message"`
-	Layer     *trivyLayer     `json:"Layer"`
+	RuleID   string      `json:"RuleID"`
+	Severity string      `json:"Severity"`
+	Title    string      `json:"Title"`
+	Message  string      `json:"Message"`
+	Layer    *trivyLayer `json:"Layer"`
 }
 
 type Parser struct{}
@@ -209,10 +209,10 @@ func convert(report trivyReport) *scanner.NormalizedReport {
 
 			meta := map[string]any{
 				"pkg_id":       v.PkgID,
-				"purl":        purl,
+				"purl":         purl,
 				"severity_src": "trivy",
-				"cwe_ids":     v.CweIDs,
-				"status":      v.Status,
+				"cwe_ids":      v.CweIDs,
+				"status":       v.Status,
 			}
 			if v.PublishedDate != nil {
 				meta["published"] = *v.PublishedDate

@@ -55,7 +55,8 @@ type CreateReportParams struct {
 }
 
 func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Report, error) {
-	row := q.db.QueryRow(ctx, createReport,
+	row := q.db.QueryRow(
+		ctx, createReport,
 		arg.ProjectID,
 		arg.ToolName,
 		arg.ToolVersion,
@@ -217,7 +218,8 @@ type UpdateReportStatusParams struct {
 }
 
 func (q *Queries) UpdateReportStatus(ctx context.Context, arg UpdateReportStatusParams) (Report, error) {
-	row := q.db.QueryRow(ctx, updateReportStatus,
+	row := q.db.QueryRow(
+		ctx, updateReportStatus,
 		arg.ID,
 		arg.Status,
 		arg.TotalFindings,

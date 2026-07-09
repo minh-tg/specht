@@ -38,10 +38,10 @@ func (a *JWTAuthenticator) CreateToken(userID, email string) (string, error) {
 func (a *JWTAuthenticator) CreateRefreshToken(userID string) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
-		"sub":   userID,
-		"type":  "refresh",
-		"iat":   now.Unix(),
-		"exp":   now.Add(7 * 24 * time.Hour).Unix(),
+		"sub":  userID,
+		"type": "refresh",
+		"iat":  now.Unix(),
+		"exp":  now.Add(7 * 24 * time.Hour).Unix(),
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return tok.SignedString(a.secret)
