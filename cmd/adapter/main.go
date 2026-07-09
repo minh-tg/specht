@@ -6,36 +6,11 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"strings"
+
+	"github.com/xMinhx/specht/internal/client"
 )
-
-type ingestPayload struct {
-	Project      string          `json:"project"`
-	Scanner      string          `json:"scanner"`
-	RawData      json.RawMessage `json:"raw_data"`
-	GateSeverity string          `json:"gate_severity,omitempty"`
-	GateStatus   string          `json:"gate_status,omitempty"`
-}
-
-type ingestResponse struct {
-	ReportID          string `json:"report_id"`
-	TotalFindings     int    `json:"total_findings"`
-	ThresholdBreached bool   `json:"threshold_breached"`
-}
-
-type gateResponse struct {
-	ThresholdBreached bool  `json:"threshold_breached"`
-	BlockingCount     int64 `json:"blocking_count"`
-}
-
-type apiError struct {
-	Error struct {
-		Code    string `json:"code"`
-		Message string `json:"message"`
-	} `json:"error"`
-}
 
 func main() {
 	severity := flag.String("severity", "", "Severity threshold (comma-separated, default: high,critical)")
@@ -71,7 +46,7 @@ func main() {
 		os.Exit(2)
 	}
 
-	var payload ingestPayload
+	var payload client.IngestPayload
 	if err := json.Unmarshal(stdin, &payload); err != nil {
 		fmt.Fprintf(os.Stderr, "error: invalid JSON on stdin: %v\n", err)
 		os.Exit(2)
@@ -93,7 +68,9 @@ func main() {
 		payload.GateStatus = *status
 	}
 
-	resp, err := ingestReport(apiURL, apiKey, payload)
+	cl := client.New(apiURL, client.WithToken(apiKey))
+
+	resp, err := cl.IngestReport(&payload)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: ingest failed: %v\n", err)
 		os.Exit(2)
@@ -101,7 +78,7 @@ func main() {
 
 	fmt.Fprintf(os.Stderr, "report %s ingested, %d finding(s)\n", resp.ReportID, resp.TotalFindings)
 
-	gate, err := checkGate(apiURL, apiKey, payload.Project, *severity)
+	gate, err := cl.GetGateStatus(payload.Project, *severity)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: gate check failed: %v\n", err)
 		os.Exit(2)
@@ -141,72 +118,4 @@ Examples:
   trivy image --format json myapp:latest | specht-adapter -project=my-app
   cat scan.json | specht-adapter -severity=critical
 `)
-}
-
-func ingestReport(apiURL, apiKey string, payload ingestPayload) (*ingestResponse, error) {
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return nil, fmt.Errorf("marshal payload: %w", err)
-	}
-
-	req, err := http.NewRequest("POST", apiURL+"/api/v1/reports", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("http post: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
-		var ae apiError
-		if json.Unmarshal(respBody, &ae) == nil && ae.Error.Message != "" {
-			return nil, fmt.Errorf("%s: %s", resp.Status, ae.Error.Message)
-		}
-		return nil, fmt.Errorf("%s: %s", resp.Status, string(respBody))
-	}
-
-	var result ingestResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-	return &result, nil
-}
-
-func checkGate(apiURL, apiKey, project, severity string) (*gateResponse, error) {
-	path := apiURL + "/api/v1/projects/" + project + "/gate"
-	if severity != "" {
-		path += "?severity=" + severity
-	}
-	req, err := http.NewRequest("GET", path, nil)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("http get: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
-		var ae apiError
-		if json.Unmarshal(respBody, &ae) == nil && ae.Error.Message != "" {
-			return nil, fmt.Errorf("%s: %s", resp.Status, ae.Error.Message)
-		}
-		return nil, fmt.Errorf("%s: %s", resp.Status, string(respBody))
-	}
-
-	var result gateResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-	return &result, nil
 }

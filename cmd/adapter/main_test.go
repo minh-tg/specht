@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/xMinhx/specht/internal/client"
 )
 
 func TestIngestReport_Success(t *testing.T) {
@@ -16,7 +17,7 @@ func TestIngestReport_Success(t *testing.T) {
 		assert.Equal(t, "/api/v1/reports", r.URL.Path)
 		assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
 
-		json.NewEncoder(w).Encode(ingestResponse{
+		json.NewEncoder(w).Encode(client.IngestResponse{
 			ReportID:          "rep-123",
 			TotalFindings:     3,
 			ThresholdBreached: false,
@@ -24,7 +25,8 @@ func TestIngestReport_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp, err := ingestReport(srv.URL, "test-key", ingestPayload{
+	cl := client.New(srv.URL, client.WithToken("test-key"))
+	resp, err := cl.IngestReport(&client.IngestPayload{
 		Project: "my-app",
 		Scanner: "trivy",
 		RawData: json.RawMessage(`{"image":"test"}`),
@@ -37,7 +39,7 @@ func TestIngestReport_Success(t *testing.T) {
 
 func TestIngestReport_ThresholdBreached(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(ingestResponse{
+		json.NewEncoder(w).Encode(client.IngestResponse{
 			ReportID:          "rep-123",
 			TotalFindings:     1,
 			ThresholdBreached: true,
@@ -45,7 +47,8 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp, err := ingestReport(srv.URL, "test-key", ingestPayload{
+	cl := client.New(srv.URL, client.WithToken("test-key"))
+	resp, err := cl.IngestReport(&client.IngestPayload{
 		Project: "my-app",
 		Scanner: "trivy",
 		RawData: json.RawMessage(`{"image":"test"}`),
@@ -63,7 +66,8 @@ func TestIngestReport_Error(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := ingestReport(srv.URL, "test-key", ingestPayload{
+	cl := client.New(srv.URL, client.WithToken("test-key"))
+	_, err := cl.IngestReport(&client.IngestPayload{
 		Project: "my-app",
 		Scanner: "unknown",
 		RawData: json.RawMessage(`{}`),
