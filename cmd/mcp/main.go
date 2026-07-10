@@ -534,7 +534,9 @@ func main() {
 		}
 
 		resp := handleMessage(cl, msg)
-		sendResponse(os.Stdout, resp)
+		if resp.ID != nil {
+			sendResponse(os.Stdout, resp)
+		}
 	}
 
 	if err := scanner.Err(); err != nil {

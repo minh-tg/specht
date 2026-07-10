@@ -34,6 +34,15 @@ func testServer() *httptest.Server {
 			"threshold_breached": true, "blocking_count": 2,
 		})
 	})
+	mux.HandleFunc("GET /api/v1/projects/{slug}/stats", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]any{
+			"total_findings": 42, "blocking_count": 3, "waiver_count": 5, "report_count": 10,
+			"by_severity": []map[string]any{
+				{"severity": "critical", "count": 2, "blocking_count": 2},
+				{"severity": "high", "count": 10, "blocking_count": 1},
+			},
+		})
+	})
 	return httptest.NewServer(mux)
 }
 
@@ -45,6 +54,18 @@ func TestCLI_ProjectsList(t *testing.T) {
 	projects, err := cl.ListProjects()
 	require.NoError(t, err)
 	assert.Len(t, projects, 1)
+}
+
+func TestCLI_StatsShow(t *testing.T) {
+	srv := testServer()
+	defer srv.Close()
+
+	cl := client.New(srv.URL, client.WithToken("test-key"))
+	stats, err := cl.GetProjectStats("my-app")
+	require.NoError(t, err)
+	assert.Equal(t, int32(42), stats.TotalFindings)
+	assert.Equal(t, int32(3), stats.BlockingCount)
+	assert.Len(t, stats.BySeverity, 2)
 }
 
 func TestCLI_ParseArgs(t *testing.T) {

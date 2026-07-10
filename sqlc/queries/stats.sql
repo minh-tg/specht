@@ -19,7 +19,10 @@ FROM reports
 WHERE project_id = $1;
 
 -- name: GetProjectLatestReport :one
-SELECT *
+SELECT
+    id, project_id, tool_name, tool_version, scan_type,
+    scan_target, status, total_findings, branch, commit_sha,
+    created_at, completed_at
 FROM reports
 WHERE project_id = $1
 ORDER BY created_at DESC

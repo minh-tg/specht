@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-
-	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
 type SeverityCount struct {
@@ -44,10 +42,26 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 		return nil, fmt.Errorf("get report count: %w", err)
 	}
 
-	latestReport, err := u.deps.Repos.Stats.GetProjectLatestReport(ctx, project.ID)
+	var latest *ReportResponse
+	latestRow, err := u.deps.Repos.Stats.GetProjectLatestReport(ctx, project.ID)
 	if err != nil {
 		slog.Warn("get latest report for stats", "project", projectSlug, "error", err)
-		latestReport = sqlc.Report{}
+	} else if latestRow.ID.Valid {
+		r := ReportResponse{
+			ID:            uuidStr(latestRow.ID),
+			ProjectID:     uuidStr(latestRow.ProjectID),
+			ToolName:      latestRow.ToolName,
+			ToolVersion:   strOpt(latestRow.ToolVersion),
+			ScanType:      latestRow.ScanType,
+			ScanTarget:    strOpt(latestRow.ScanTarget),
+			Status:        latestRow.Status,
+			TotalFindings: intOpt(latestRow.TotalFindings),
+			Branch:        strOpt(latestRow.Branch),
+			CommitSha:     strOpt(latestRow.CommitSha),
+			CreatedAt:     timePtr(latestRow.CreatedAt),
+			CompletedAt:   timeOpt(latestRow.CompletedAt),
+		}
+		latest = &r
 	}
 
 	var totalFindings int32
@@ -61,12 +75,6 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 			Count:         r.Count,
 			BlockingCount: r.BlockingCount,
 		}
-	}
-
-	var latest *ReportResponse
-	if latestReport.ID.Valid {
-		r := toReport(latestReport)
-		latest = &r
 	}
 
 	return &ProjectStats{

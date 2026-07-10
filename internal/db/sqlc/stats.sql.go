@@ -12,41 +12,47 @@ import (
 )
 
 const getProjectLatestReport = `-- name: GetProjectLatestReport :one
-SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data
+SELECT
+    id, project_id, tool_name, tool_version, scan_type,
+    scan_target, status, total_findings, branch, commit_sha,
+    created_at, completed_at
 FROM reports
 WHERE project_id = $1
 ORDER BY created_at DESC
 LIMIT 1
 `
 
-func (q *Queries) GetProjectLatestReport(ctx context.Context, projectID pgtype.UUID) (Report, error) {
+type GetProjectLatestReportRow struct {
+	ID            pgtype.UUID        `json:"id"`
+	ProjectID     pgtype.UUID        `json:"project_id"`
+	ToolName      string             `json:"tool_name"`
+	ToolVersion   pgtype.Text        `json:"tool_version"`
+	ScanType      string             `json:"scan_type"`
+	ScanTarget    pgtype.Text        `json:"scan_target"`
+	Status        string             `json:"status"`
+	TotalFindings pgtype.Int4        `json:"total_findings"`
+	Branch        pgtype.Text        `json:"branch"`
+	CommitSha     pgtype.Text        `json:"commit_sha"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	CompletedAt   pgtype.Timestamptz `json:"completed_at"`
+}
+
+func (q *Queries) GetProjectLatestReport(ctx context.Context, projectID pgtype.UUID) (GetProjectLatestReportRow, error) {
 	row := q.db.QueryRow(ctx, getProjectLatestReport, projectID)
-	var i Report
+	var i GetProjectLatestReportRow
 	err := row.Scan(
 		&i.ID,
 		&i.ProjectID,
 		&i.ToolName,
 		&i.ToolVersion,
 		&i.ScanType,
-		&i.TargetID,
-		&i.ArtifactID,
-		&i.EnvironmentID,
 		&i.ScanTarget,
-		&i.ScanScope,
-		&i.ScanScopeHash,
-		&i.ScanCompleteness,
-		&i.ScannerConfigHash,
-		&i.Branch,
-		&i.CommitSha,
 		&i.Status,
 		&i.TotalFindings,
-		&i.ParserVersion,
-		&i.StartedAt,
-		&i.CompletedAt,
-		&i.ErrorMessage,
-		&i.RawReportHash,
+		&i.Branch,
+		&i.CommitSha,
 		&i.CreatedAt,
-		&i.RawData,
+		&i.CompletedAt,
 	)
 	return i, err
 }
