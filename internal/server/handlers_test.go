@@ -508,7 +508,7 @@ func TestListProjects_Error(t *testing.T) {
 			return nil, fmt.Errorf("db error")
 		},
 	}
-	h := &Handler{projects: mock}
+	h := &Handler{usecase: mock}
 	req := httptest.NewRequest("GET", "/api/v1/projects", nil)
 	w := httptest.NewRecorder()
 	h.ListProjects(w, req)
@@ -585,7 +585,7 @@ func TestCreateProject_Success(t *testing.T) {
 
 func TestCreateProject_MissingFields(t *testing.T) {
 	mock := &mockUsecases{}
-	h := &Handler{projects: mock}
+	h := &Handler{usecase: mock}
 	req := httptest.NewRequest("POST", "/api/v1/projects", strings.NewReader(`{"slug":"my-app"}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -1791,7 +1791,7 @@ func TestEnforceProjectAccess_NilIdentity(t *testing.T) {
 
 func TestListFindings_APIKeyAccessDenied(t *testing.T) {
 	mock := &mockUsecases{}
-	handler := &Handler{findings: mock}
+	handler := &Handler{usecase: mock}
 	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings", nil)
 	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{
 		UserID: "key-1", ProjectID: "other-project", IsAPIKey: true,
@@ -1817,7 +1817,7 @@ func TestListFindings_APIKeyAllowed(t *testing.T) {
 			return sampleFindings(), nil
 		},
 	}
-	handler := &Handler{findings: mock}
+	handler := &Handler{usecase: mock}
 	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings", nil)
 	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{
 		UserID: "key-1", ProjectID: "my-app", IsAPIKey: true,
