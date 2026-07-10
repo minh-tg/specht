@@ -252,11 +252,11 @@ func (c *Client) GetReport(reportID string) (*Report, error) {
 
 func (c *Client) ListFindings(projectSlug string, severities, states []string, limit, offset int32) ([]Finding, error) {
 	q := url.Values{}
-	for _, s := range severities {
-		q.Add("severity", s)
+	if len(severities) > 0 {
+		q.Set("severity", strings.Join(severities, ","))
 	}
-	for _, s := range states {
-		q.Add("status", s)
+	if len(states) > 0 {
+		q.Set("status", strings.Join(states, ","))
 	}
 	if limit > 0 {
 		q.Set("limit", strconv.Itoa(int(limit)))

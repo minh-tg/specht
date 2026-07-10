@@ -480,6 +480,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Post("/api/v1/auth/logout", h.Logout)
 	r.Get("/api/v1/me", h.Me)
 	r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
+	r.Get("/api/v1/projects/{slug}/stats", h.GetProjectStats)
 	return r
 }
 
@@ -1144,6 +1145,50 @@ func TestGateStatus_Breached(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestStats_Success(t *testing.T) {
+	mock := &mockUsecases{
+		getProjectStatsFn: func(ctx context.Context, slug string) (*usecase.ProjectStats, error) {
+			return &usecase.ProjectStats{
+				TotalFindings: 42,
+				BlockingCount: 3,
+				WaiverCount:   5,
+				ReportCount:   10,
+				BySeverity: []usecase.SeverityCount{
+					{Severity: "critical", Count: 2, BlockingCount: 2},
+					{Severity: "high", Count: 10, BlockingCount: 1},
+				},
+			}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/stats", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.ProjectStats
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, int32(42), resp.TotalFindings)
+	assert.Equal(t, int32(3), resp.BlockingCount)
+	assert.Equal(t, int32(5), resp.WaiverCount)
+	assert.Equal(t, int32(10), resp.ReportCount)
+	assert.Len(t, resp.BySeverity, 2)
+}
+
+func TestStats_ProjectNotFound(t *testing.T) {
+	mock := &mockUsecases{
+		getProjectStatsFn: func(ctx context.Context, slug string) (*usecase.ProjectStats, error) {
+			return nil, fmt.Errorf("project not found")
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/unknown/stats", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 func TestListFindingEvents_Success(t *testing.T) {

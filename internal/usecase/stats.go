@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/xMinhx/specht/internal/db/sqlc"
 )
@@ -45,6 +46,7 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 
 	latestReport, err := u.deps.Repos.Stats.GetProjectLatestReport(ctx, project.ID)
 	if err != nil {
+		slog.Warn("get latest report for stats", "project", projectSlug, "error", err)
 		latestReport = sqlc.Report{}
 	}
 

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/xMinhx/specht/internal/client"
@@ -77,7 +78,10 @@ func parseArgs(args []string) (command, error) {
 					c.status = rest[i+1]
 					i++
 				case rest[i] == "--limit" && i+1 < len(rest):
-					fmt.Sscanf(rest[i+1], "%d", &c.limit)
+					n, err := strconv.Atoi(rest[i+1])
+					if err == nil {
+						c.limit = n
+					}
 					i++
 				}
 			}

@@ -242,12 +242,6 @@ func readArgs[T any](args *json.RawMessage) (T, error) {
 }
 
 func callFindingsList(api API, id any, args *json.RawMessage) jsonRPCMessage {
-	var a struct {
-		Project  string `json:"project"`
-		Severity string `json:"severity"`
-		Status   string `json:"status"`
-		Limit    int    `json:"limit"`
-	}
 	a, err := readArgs[struct {
 		Project  string `json:"project"`
 		Severity string `json:"severity"`
@@ -526,6 +520,7 @@ func main() {
 	cl := client.New(apiURL, client.WithToken(apiKey))
 
 	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
