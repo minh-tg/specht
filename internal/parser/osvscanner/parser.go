@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/xMinhx/specht/internal/cvss"
@@ -90,17 +89,15 @@ type osvCallAnalysis struct {
 	Called *bool `json:"called"`
 }
 
-type Parser struct{}
+type Scanner struct{}
 
-func NewParser() *Parser { return &Parser{} }
+func NewScanner() *Scanner { return &Scanner{} }
 
-func (p *Parser) Name() string { return "osv-scanner" }
+func (s *Scanner) Name() string { return "osv-scanner" }
 
-func (p *Parser) ScanTypes() []scanner.ScanType {
-	return []scanner.ScanType{scanner.ScanTypeLockfile, scanner.ScanTypeSBOM, scanner.ScanTypeRepository}
-}
+func (s *Scanner) FindingKind() string { return "sca" }
 
-func (p *Parser) Detect(data []byte) bool {
+func (s *Scanner) DetectFormat(data []byte) bool {
 	var probe osvReport
 	if err := json.Unmarshal(data, &probe); err != nil {
 		return false
@@ -108,14 +105,9 @@ func (p *Parser) Detect(data []byte) bool {
 	return len(probe.Results) > 0
 }
 
-func (p *Parser) Parse(ctx context.Context, r io.Reader) (*scanner.NormalizedReport, error) {
-	raw, err := io.ReadAll(r)
-	if err != nil {
-		return nil, fmt.Errorf("osv-scanner: read input: %w", err)
-	}
-
+func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedReport, error) {
 	var report osvReport
-	if err := json.Unmarshal(raw, &report); err != nil {
+	if err := json.Unmarshal(data, &report); err != nil {
 		return nil, fmt.Errorf("osv-scanner: parse json: %w", err)
 	}
 
@@ -143,9 +135,9 @@ func convertToScanType(s string) scanner.ScanType {
 
 func convert(report osvReport) *scanner.NormalizedReport {
 	nr := &scanner.NormalizedReport{
-		ScannerName: "osv-scanner",
-		Findings:    nil,
-		ScanScope:   make(map[string]any),
+		ToolName:  "osv-scanner",
+		Findings:  nil,
+		ScanScope: make(map[string]any),
 	}
 
 	for _, result := range report.Results {

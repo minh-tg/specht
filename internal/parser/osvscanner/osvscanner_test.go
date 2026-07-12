@@ -3,7 +3,6 @@ package osvscanner_test
 import (
 	"context"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,39 +12,32 @@ import (
 )
 
 func TestName(t *testing.T) {
-	p := osvscanner.NewParser()
-	assert.Equal(t, "osv-scanner", p.Name())
-}
-
-func TestScanTypes(t *testing.T) {
-	p := osvscanner.NewParser()
-	types := p.ScanTypes()
-	require.NotEmpty(t, types)
+	s := osvscanner.NewScanner()
+	assert.Equal(t, "osv-scanner", s.Name())
 }
 
 func TestDetect_ValidInput(t *testing.T) {
-	p := osvscanner.NewParser()
+	s := osvscanner.NewScanner()
 	data, err := os.ReadFile("testdata/go-scan.json")
 	require.NoError(t, err)
-	assert.True(t, p.Detect(data))
+	assert.True(t, s.DetectFormat(data))
 }
 
 func TestDetect_InvalidInput(t *testing.T) {
-	p := osvscanner.NewParser()
-	assert.False(t, p.Detect([]byte(`{}`)))
-	assert.False(t, p.Detect([]byte(`not json`)))
+	s := osvscanner.NewScanner()
+	assert.False(t, s.DetectFormat([]byte(`{}`)))
+	assert.False(t, s.DetectFormat([]byte(`not json`)))
 }
 
 func TestParse_GoScan(t *testing.T) {
-	p := osvscanner.NewParser()
-	f, err := os.Open("testdata/go-scan.json")
-	require.NoError(t, err)
-	defer f.Close()
-
-	report, err := p.Parse(context.Background(), f)
+	s := osvscanner.NewScanner()
+	data, err := os.ReadFile("testdata/go-scan.json")
 	require.NoError(t, err)
 
-	assert.Equal(t, "osv-scanner", report.ScannerName)
+	report, err := s.Parse(context.Background(), data)
+	require.NoError(t, err)
+
+	assert.Equal(t, "osv-scanner", report.ToolName)
 	require.NotNil(t, report.Target)
 	assert.Len(t, report.Findings, 1)
 
@@ -63,7 +55,12 @@ func TestParse_GoScan(t *testing.T) {
 }
 
 func TestParse_InvalidJSON(t *testing.T) {
-	p := osvscanner.NewParser()
-	_, err := p.Parse(context.Background(), strings.NewReader(`not json`))
+	s := osvscanner.NewScanner()
+	_, err := s.Parse(context.Background(), []byte(`not json`))
 	assert.Error(t, err)
+}
+
+func TestFindingKind(t *testing.T) {
+	s := osvscanner.NewScanner()
+	assert.Equal(t, "sca", s.FindingKind())
 }
