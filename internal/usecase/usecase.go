@@ -1,7 +1,6 @@
 package usecase
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -249,12 +248,12 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, fmt.Errorf("lookup project %q: %w", input.ProjectSlug, err)
 	}
 
-	parser, ok := u.deps.Registry.Get(input.Scanner)
+	sc, ok := u.deps.Registry.Get(input.Scanner)
 	if !ok {
 		return nil, fmt.Errorf("unknown scanner %q", input.Scanner)
 	}
 
-	nr, err := parser.Parse(ctx, bytes.NewReader(input.RawData))
+	nr, err := sc.Parse(ctx, input.RawData)
 	if err != nil {
 		slog.Error("scanner parse failed", "scanner", input.Scanner, "error", err)
 		return nil, fmt.Errorf("scanner %s: parse output: %w", input.Scanner, err)

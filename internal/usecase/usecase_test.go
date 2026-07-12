@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"testing"
 	"time"
 
@@ -338,20 +337,22 @@ func (m *mockAPIKeyRepo) GetByHash(ctx context.Context, keyHash string) (sqlc.Ap
 	return sqlc.ApiKey{}, fmt.Errorf("not implemented")
 }
 
-type mockParser struct {
+type mockScanner struct {
 	name      string
-	scanTypes []scanner.ScanType
-	parseFn   func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error)
+	parseFn   func(ctx context.Context, data []byte) (*scanner.NormalizedReport, error)
 }
 
-func (m *mockParser) Name() string                  { return m.name }
-func (m *mockParser) ScanTypes() []scanner.ScanType { return m.scanTypes }
-func (m *mockParser) Parse(ctx context.Context, r io.Reader) (*scanner.NormalizedReport, error) {
+func (m *mockScanner) Name() string { return m.name }
+
+func (m *mockScanner) FindingKind() string { return "test" }
+
+func (m *mockScanner) DetectFormat(data []byte) bool { return true }
+
+func (m *mockScanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedReport, error) {
 	if m.parseFn == nil {
 		return nil, fmt.Errorf("unexpected call to Parse")
 	}
-	input, _ := io.ReadAll(r)
-	return m.parseFn(ctx, input)
+	return m.parseFn(ctx, data)
 }
 
 type mockTargetRepo struct {
@@ -616,12 +617,11 @@ func TestIngestReport_Success(t *testing.T) {
 	}
 
 	reg := scanner.NewRegistry()
-	reg.Register(&mockParser{
+	reg.Register(&mockScanner{
 		name:      "trivy",
-		scanTypes: []scanner.ScanType{scanner.ScanTypeImage},
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return &scanner.NormalizedReport{
-				ScannerName: "trivy",
+				ToolName: "trivy",
 				ScanType:    scanner.ScanTypeImage,
 				Target:      &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
 				Findings: []scanner.NormalizedFinding{
@@ -732,9 +732,8 @@ func TestIngestReport_ParseError(t *testing.T) {
 	}
 
 	reg := scanner.NewRegistry()
-	reg.Register(&mockParser{
+	reg.Register(&mockScanner{
 		name:      "trivy",
-		scanTypes: []scanner.ScanType{scanner.ScanTypeImage},
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return nil, fmt.Errorf("invalid scan data")
 		},
@@ -769,12 +768,11 @@ func TestIngestReport_Duplicate(t *testing.T) {
 	}
 
 	reg := scanner.NewRegistry()
-	reg.Register(&mockParser{
+	reg.Register(&mockScanner{
 		name:      "trivy",
-		scanTypes: []scanner.ScanType{scanner.ScanTypeImage},
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return &scanner.NormalizedReport{
-				ScannerName: "trivy",
+				ToolName: "trivy",
 				ScanType:    scanner.ScanTypeImage,
 				Target:      &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
 				Findings:    []scanner.NormalizedFinding{},
@@ -840,12 +838,11 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 	}
 
 	reg := scanner.NewRegistry()
-	reg.Register(&mockParser{
+	reg.Register(&mockScanner{
 		name:      "trivy",
-		scanTypes: []scanner.ScanType{scanner.ScanTypeImage},
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return &scanner.NormalizedReport{
-				ScannerName: "trivy",
+				ToolName: "trivy",
 				ScanType:    scanner.ScanTypeImage,
 				Target:      &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
 				Findings: []scanner.NormalizedFinding{
@@ -884,9 +881,8 @@ func TestIngestReport_ErrorWrapping(t *testing.T) {
 	}
 
 	reg := scanner.NewRegistry()
-	reg.Register(&mockParser{
+	reg.Register(&mockScanner{
 		name:      "trivy",
-		scanTypes: []scanner.ScanType{scanner.ScanTypeImage},
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return nil, fmt.Errorf("malformed data")
 		},
@@ -949,12 +945,11 @@ func TestIngestReport_PartialFailure(t *testing.T) {
 	}
 
 	reg := scanner.NewRegistry()
-	reg.Register(&mockParser{
+	reg.Register(&mockScanner{
 		name:      "trivy",
-		scanTypes: []scanner.ScanType{scanner.ScanTypeImage},
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return &scanner.NormalizedReport{
-				ScannerName: "trivy",
+				ToolName: "trivy",
 				ScanType:    scanner.ScanTypeImage,
 				Target:      &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
 				Findings: []scanner.NormalizedFinding{
