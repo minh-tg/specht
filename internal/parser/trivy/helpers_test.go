@@ -34,19 +34,19 @@ func TestNormalizeSeverity(t *testing.T) {
 }
 
 func TestDetectEdgeCases(t *testing.T) {
-	p := &Parser{}
+	s := &Scanner{}
 
 	t.Run("empty array returns false", func(t *testing.T) {
-		assert.False(t, p.Detect([]byte(`[]`)))
+		assert.False(t, s.DetectFormat([]byte(`[]`)))
 	})
 
 	t.Run("result with empty target returns false", func(t *testing.T) {
 		data := []byte(`[{"Target":"","Class":"os-pkgs"}]`)
-		assert.False(t, p.Detect(data))
+		assert.False(t, s.DetectFormat(data))
 	})
 
 	t.Run("invalid JSON returns false", func(t *testing.T) {
-		assert.False(t, p.Detect([]byte(`{invalid`)))
+		assert.False(t, s.DetectFormat([]byte(`{invalid`)))
 	})
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/xMinhx/specht/internal/scanner"
@@ -83,17 +82,15 @@ type trivyMisconfig struct {
 	Layer    *trivyLayer `json:"Layer"`
 }
 
-type Parser struct{}
+type Scanner struct{}
 
-func NewParser() *Parser { return &Parser{} }
+func NewScanner() *Scanner { return &Scanner{} }
 
-func (p *Parser) Name() string { return "trivy" }
+func (s *Scanner) Name() string { return "trivy" }
 
-func (p *Parser) ScanTypes() []scanner.ScanType {
-	return []scanner.ScanType{scanner.ScanTypeImage, scanner.ScanTypeFilesystem, scanner.ScanTypeRepository, scanner.ScanTypeIaC}
-}
+func (s *Scanner) FindingKind() string { return "sca" }
 
-func (p *Parser) Detect(data []byte) bool {
+func (s *Scanner) DetectFormat(data []byte) bool {
 	var probe []trivyResult
 	if err := json.Unmarshal(data, &probe); err != nil {
 		return false
@@ -106,14 +103,9 @@ func (p *Parser) Detect(data []byte) bool {
 	return false
 }
 
-func (p *Parser) Parse(ctx context.Context, r io.Reader) (*scanner.NormalizedReport, error) {
-	raw, err := io.ReadAll(r)
-	if err != nil {
-		return nil, fmt.Errorf("trivy: read input: %w", err)
-	}
-
+func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedReport, error) {
 	var report trivyReport
-	if err := json.Unmarshal(raw, &report); err != nil {
+	if err := json.Unmarshal(data, &report); err != nil {
 		return nil, fmt.Errorf("trivy: parse json: %w", err)
 	}
 
@@ -122,10 +114,10 @@ func (p *Parser) Parse(ctx context.Context, r io.Reader) (*scanner.NormalizedRep
 
 func convert(report trivyReport) *scanner.NormalizedReport {
 	nr := &scanner.NormalizedReport{
-		ScannerName: "trivy",
-		ScanType:    scanner.ScanTypeImage,
-		Findings:    nil,
-		ScanScope:   make(map[string]any),
+		ToolName:  "trivy",
+		ScanType:  scanner.ScanTypeImage,
+		Findings:  nil,
+		ScanScope: make(map[string]any),
 	}
 
 	if len(report) > 0 {

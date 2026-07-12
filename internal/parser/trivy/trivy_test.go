@@ -3,7 +3,6 @@ package trivy_test
 import (
 	"context"
 	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,39 +12,32 @@ import (
 )
 
 func TestName(t *testing.T) {
-	p := trivy.NewParser()
-	assert.Equal(t, "trivy", p.Name())
-}
-
-func TestScanTypes(t *testing.T) {
-	p := trivy.NewParser()
-	types := p.ScanTypes()
-	require.NotEmpty(t, types)
+	s := trivy.NewScanner()
+	assert.Equal(t, "trivy", s.Name())
 }
 
 func TestDetect_ValidInput(t *testing.T) {
-	p := trivy.NewParser()
+	s := trivy.NewScanner()
 	data, err := os.ReadFile("testdata/alpine-scan.json")
 	require.NoError(t, err)
-	assert.True(t, p.Detect(data))
+	assert.True(t, s.DetectFormat(data))
 }
 
 func TestDetect_InvalidInput(t *testing.T) {
-	p := trivy.NewParser()
-	assert.False(t, p.Detect([]byte(`{}`)))
-	assert.False(t, p.Detect([]byte(`not json`)))
+	s := trivy.NewScanner()
+	assert.False(t, s.DetectFormat([]byte(`{}`)))
+	assert.False(t, s.DetectFormat([]byte(`not json`)))
 }
 
 func TestParse_AlpineScan(t *testing.T) {
-	p := trivy.NewParser()
-	f, err := os.Open("testdata/alpine-scan.json")
-	require.NoError(t, err)
-	defer f.Close()
-
-	report, err := p.Parse(context.Background(), f)
+	s := trivy.NewScanner()
+	data, err := os.ReadFile("testdata/alpine-scan.json")
 	require.NoError(t, err)
 
-	assert.Equal(t, "trivy", report.ScannerName)
+	report, err := s.Parse(context.Background(), data)
+	require.NoError(t, err)
+
+	assert.Equal(t, "trivy", report.ToolName)
 	require.NotNil(t, report.Target)
 	assert.Equal(t, "alpine:3.20 (alpine 3.20.3)", report.Target.Identifier)
 	require.Len(t, report.Findings, 2)
@@ -94,24 +86,22 @@ func TestParse_AlpineScan(t *testing.T) {
 }
 
 func TestParse_EmptyScan(t *testing.T) {
-	p := trivy.NewParser()
-	f, err := os.Open("testdata/empty-scan.json")
+	s := trivy.NewScanner()
+	data, err := os.ReadFile("testdata/empty-scan.json")
 	require.NoError(t, err)
-	defer f.Close()
 
-	report, err := p.Parse(context.Background(), f)
+	report, err := s.Parse(context.Background(), data)
 	require.NoError(t, err)
 
 	assert.Empty(t, report.Findings)
 }
 
 func TestParse_MultiTypeScan(t *testing.T) {
-	p := trivy.NewParser()
-	f, err := os.Open("testdata/multi-type-scan.json")
+	s := trivy.NewScanner()
+	data, err := os.ReadFile("testdata/multi-type-scan.json")
 	require.NoError(t, err)
-	defer f.Close()
 
-	report, err := p.Parse(context.Background(), f)
+	report, err := s.Parse(context.Background(), data)
 	require.NoError(t, err)
 
 	require.Len(t, report.Findings, 4)
@@ -127,7 +117,12 @@ func TestParse_MultiTypeScan(t *testing.T) {
 }
 
 func TestParse_InvalidJSON(t *testing.T) {
-	p := trivy.NewParser()
-	_, err := p.Parse(context.Background(), strings.NewReader(`not json`))
+	s := trivy.NewScanner()
+	_, err := s.Parse(context.Background(), []byte(`not json`))
 	assert.Error(t, err)
+}
+
+func TestFindingKind(t *testing.T) {
+	s := trivy.NewScanner()
+	assert.Equal(t, "sca", s.FindingKind())
 }
