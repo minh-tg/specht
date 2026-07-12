@@ -2,7 +2,6 @@ package scanner_test
 
 import (
 	"context"
-	"io"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,20 +9,19 @@ import (
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
-type testParser struct {
-	name      string
-	scanTypes []scanner.ScanType
+type testScanner struct {
+	name string
 }
 
-func (p *testParser) Name() string { return p.name }
+func (s *testScanner) Name() string { return s.name }
 
-func (p *testParser) ScanTypes() []scanner.ScanType { return p.scanTypes }
+func (s *testScanner) FindingKind() string { return "test" }
 
-func (p *testParser) Parse(_ context.Context, _ io.Reader) (*scanner.NormalizedReport, error) {
-	return &scanner.NormalizedReport{ScannerName: p.name}, nil
+func (s *testScanner) Parse(_ context.Context, _ []byte) (*scanner.NormalizedReport, error) {
+	return &scanner.NormalizedReport{ToolName: s.name}, nil
 }
 
-func (p *testParser) Detect(data []byte) bool {
+func (s *testScanner) DetectFormat(data []byte) bool {
 	return len(data) > 0
 }
 
@@ -74,13 +72,12 @@ func TestNewRegistry(t *testing.T) {
 
 func TestRegistryRegisterGet(t *testing.T) {
 	r := scanner.NewRegistry()
-	p := &testParser{name: "test-parser", scanTypes: []scanner.ScanType{scanner.ScanTypeImage}}
+	p := &testScanner{name: "test-parser"}
 	r.Register(p)
 
 	got, ok := r.Get("test-parser")
 	require.True(t, ok)
 	assert.Equal(t, "test-parser", got.Name())
-	assert.Equal(t, []scanner.ScanType{scanner.ScanTypeImage}, got.ScanTypes())
 }
 
 func TestRegistryGetUnknown(t *testing.T) {
@@ -91,7 +88,7 @@ func TestRegistryGetUnknown(t *testing.T) {
 
 func TestRegistryDetect(t *testing.T) {
 	r := scanner.NewRegistry()
-	p := &testParser{name: "detect-parser"}
+	p := &testScanner{name: "detect-parser"}
 	r.Register(p)
 
 	matched, ok := r.Detect([]byte("hello"))
@@ -107,7 +104,7 @@ func TestRegistryDetectNoMatch(t *testing.T) {
 
 func TestRegistryDetectEmptyData(t *testing.T) {
 	r := scanner.NewRegistry()
-	r.Register(&testParser{name: "p"})
+	r.Register(&testScanner{name: "p"})
 	_, ok := r.Detect([]byte{})
 	assert.False(t, ok)
 }
