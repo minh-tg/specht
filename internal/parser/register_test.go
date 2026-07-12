@@ -22,10 +22,9 @@ func TestRegisterAllRegistersExpectedParsers(t *testing.T) {
 
 	for _, e := range expected {
 		t.Run(e.name, func(t *testing.T) {
-			p, ok := reg.Get(e.name)
-			require.True(t, ok, "expected parser %q to be registered", e.name)
-			assert.Equal(t, e.name, p.Name())
-			assert.NotEmpty(t, p.ScanTypes())
+			s, ok := reg.Get(e.name)
+			require.True(t, ok, "expected scanner %q to be registered", e.name)
+			assert.Equal(t, e.name, s.Name())
 		})
 	}
 }

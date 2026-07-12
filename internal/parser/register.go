@@ -7,6 +7,6 @@ import (
 )
 
 func RegisterAll(reg *scanner.Registry) {
-	reg.Register(trivy.NewParser())
-	reg.Register(osvscanner.NewParser())
+	reg.Register(trivy.NewScanner())
+	reg.Register(osvscanner.NewScanner())
 }
