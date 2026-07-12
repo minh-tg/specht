@@ -2,7 +2,6 @@ package scanner
 
 import (
 	"context"
-	"io"
 )
 
 type ScanType string
@@ -26,19 +25,22 @@ const (
 	SeverityCritical Severity = 4
 )
 
-type Parser interface {
+type Scanner interface {
 	Name() string
-	ScanTypes() []ScanType
-	Parse(ctx context.Context, r io.Reader) (*NormalizedReport, error)
+	DetectFormat(data []byte) bool
+	Parse(ctx context.Context, data []byte) (*NormalizedReport, error)
+	FindingKind() string
 }
 
 type NormalizedReport struct {
-	ScannerName string
-	ScanType    ScanType
-	Target      *TargetInfo
-	Artifact    *ArtifactInfo
-	Findings    []NormalizedFinding
-	ScanScope   map[string]any
+	ToolName      string
+	ToolVersion   string
+	ParserVersion string
+	ScanType      ScanType
+	Target        *TargetInfo
+	Artifact      *ArtifactInfo
+	Findings      []NormalizedFinding
+	ScanScope     map[string]any
 }
 
 type TargetInfo struct {
