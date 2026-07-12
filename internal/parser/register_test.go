@@ -18,6 +18,7 @@ func TestRegisterAllRegistersExpectedParsers(t *testing.T) {
 	}{
 		{"trivy"},
 		{"osv-scanner"},
+		{"semgrep"},
 	}
 
 	for _, e := range expected {
@@ -56,6 +57,11 @@ func TestRegisterAllParsersCanDetect(t *testing.T) {
 			name: "trivy detects trivy format",
 			data: []byte(`[{"Target":"alpine:3.20","Class":"os-pkgs","Type":"alpine"}]`),
 			want: "trivy",
+		},
+		{
+			name: "semgrep detects sarif format",
+			data: []byte(`{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"semgrep","version":"1.0.0"}},"results":[]}]}`),
+			want: "semgrep",
 		},
 	}
 
