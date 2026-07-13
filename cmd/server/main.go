@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/db"
+	"github.com/xMinhx/specht/internal/lifecycle"
 	"github.com/xMinhx/specht/internal/parser"
 	"github.com/xMinhx/specht/internal/repo"
 	"github.com/xMinhx/specht/internal/scanner"
@@ -94,6 +95,10 @@ func main() {
 	}
 
 	repos := repo.NewRepos(pool)
+
+	// Start background daemons
+	go lifecycle.RunWaiverExpiry(context.Background(), pool, 5*time.Minute, slog.Default())
+	go lifecycle.RunAnalysisExpiry(context.Background(), pool, 5*time.Minute, slog.Default())
 
 	uc := usecase.New(usecase.Deps{
 		Repos:    repos,

@@ -282,6 +282,7 @@ type Waiver struct {
 	Enabled     bool               `json:"enabled"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
 }
 
 type WaiverCondition struct {
