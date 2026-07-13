@@ -19,6 +19,7 @@ func TestRegisterAllRegistersExpectedParsers(t *testing.T) {
 		{"trivy"},
 		{"osv-scanner"},
 		{"semgrep"},
+		{"checkov"},
 	}
 
 	for _, e := range expected {
@@ -62,6 +63,11 @@ func TestRegisterAllParsersCanDetect(t *testing.T) {
 			name: "semgrep detects sarif format",
 			data: []byte(`{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"semgrep","version":"1.0.0"}},"results":[]}]}`),
 			want: "semgrep",
+		},
+		{
+			name: "checkov detects checkov json format",
+			data: []byte(`{"check_type":"terraform","results":{"passed_checks":[],"failed_checks":[],"skipped_checks":[],"parsing_errors":[]},"summary":{"passed":0,"failed":0,"skipped":0,"parsing_errors":0}}`),
+			want: "checkov",
 		},
 	}
 

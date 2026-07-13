@@ -191,12 +191,30 @@ func convert(report osvReport) *scanner.NormalizedReport {
 					dims = append(dims, scanner.Dimension{Key: "fixed_version", Value: fixedVersion})
 				}
 
-				aliases := v.Aliases
 				cveID := ""
-				for _, alias := range aliases {
+				for _, alias := range v.Aliases {
 					if strings.HasPrefix(alias, "CVE-") {
 						cveID = alias
 						break
+					}
+				}
+
+				var reachability *bool
+				if analysis, ok := groupAnalysis[v.ID]; ok && analysis.Called != nil {
+					reachability = analysis.Called
+				}
+
+				cvssInfo := extractCVSSInfo(v)
+
+				var fix *scanner.FixInfo
+				if fixedVersion != "" {
+					fix = &scanner.FixInfo{Summary: fixedVersion}
+				}
+				if fix != nil {
+					for _, ref := range v.References {
+						if fix.URL == "" {
+							fix.URL = ref.URL
+						}
 					}
 				}
 
@@ -204,8 +222,8 @@ func convert(report osvReport) *scanner.NormalizedReport {
 					"source_path": result.Source.Path,
 					"ecosystem":   pkg.Package.Ecosystem,
 				}
-				if analysis, ok := groupAnalysis[v.ID]; ok && analysis.Called != nil {
-					display["reachable"] = *analysis.Called
+				if reachability != nil {
+					display["reachable"] = *reachability
 				}
 				if cveID != "" {
 					display["cve_id"] = cveID
@@ -214,35 +232,63 @@ func convert(report osvReport) *scanner.NormalizedReport {
 				meta := map[string]any{
 					"osv_id":    v.ID,
 					"ecosystem": pkg.Package.Ecosystem,
-					"aliases":   aliases,
+					"aliases":   v.Aliases,
 					"published": v.Published,
 					"modified":  v.Modified,
 				}
-
-				if analysis, ok := groupAnalysis[v.ID]; ok && analysis.Called != nil {
-					meta["call_analysis"] = *analysis.Called
+				if reachability != nil {
+					meta["call_analysis"] = *reachability
 				}
 
 				title := v.Summary
 				desc := v.Details
 
 				nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
-					Fingerprint: fingerprint,
-					FindingKind: "sca",
-					Title:       title,
-					Description: desc,
-					Severity:    severity,
-					Score:       score,
-					Location:    result.Source.Path + ":" + pkg.Package.Name,
-					Dimensions:  dims,
-					Display:     display,
-					Metadata:    meta,
+					Fingerprint:  fingerprint,
+					FindingKind:  "sca",
+					Title:        title,
+					Description:  desc,
+					Severity:     severity,
+					Score:        score,
+					Location:     result.Source.Path + ":" + pkg.Package.Name,
+					Aliases:      v.Aliases,
+					Reachability: reachability,
+					CVSS:         cvssInfo,
+					Fix:          fix,
+					Dimensions:   dims,
+					Display:      display,
+					Metadata:     meta,
 				})
 			}
 		}
 	}
 
 	return nr
+}
+
+func extractCVSSInfo(v osvVuln) *scanner.CVSSInfo {
+	for _, s := range v.Severity {
+		var version string
+		switch s.Type {
+		case "CVSS_V4":
+			version = "4.0"
+		case "CVSS_V3":
+			version = "3.1"
+		case "CVSS_V2":
+			version = "2.0"
+		default:
+			continue
+		}
+		score, _, ok := parseCVSSScore(s.Score)
+		if ok {
+			return &scanner.CVSSInfo{
+				Version: version,
+				Vector:  s.Score,
+				Score:   score,
+			}
+		}
+	}
+	return nil
 }
 
 func extractSeverity(v osvVuln) scanner.Severity {
