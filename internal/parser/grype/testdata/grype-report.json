@@ -1,0 +1,121 @@
+{
+  "matches": [
+    {
+      "vulnerability": {
+        "id": "CVE-2023-25165",
+        "dataSource": "https://avd.aquasec.com/nvd/cve-2023-25165",
+        "namespace": "nvd:cpe",
+        "severity": "High",
+        "urls": ["https://nvd.nist.gov/vuln/detail/CVE-2023-25165"],
+        "description": "A vulnerability in Helm that allows a remote attacker to cause a denial of service",
+        "cvss": [
+          {
+            "version": "3.1",
+            "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+            "metrics": {
+              "baseScore": 9.8,
+              "exploitabilityScore": 3.9,
+              "impactScore": 5.9
+            },
+            "vendorMetadata": {}
+          }
+        ],
+        "fix": {
+          "versions": ["v3.11.3", "v3.10.3"],
+          "state": "fixed"
+        },
+        "advisories": [
+          {
+            "id": "GHSA-xxxx-yyyy-zzzz",
+            "link": "https://github.com/advisories/GHSA-xxxx-yyyy-zzzz"
+          }
+        ]
+      },
+      "relatedVulnerabilities": [
+        {
+          "id": "GHSA-xxxx-yyyy-zzzz",
+          "dataSource": "https://github.com/advisories/GHSA-xxxx-yyyy-zzzz",
+          "namespace": "ghsa",
+          "severity": "High",
+          "urls": ["https://github.com/advisories/GHSA-xxxx-yyyy-zzzz"],
+          "description": "Helm vulnerability"
+        }
+      ],
+      "matchDetails": [
+        {
+          "type": "exact-direct-match",
+          "matcher": "go-module-matcher",
+          "searchedBy": {},
+          "found": {}
+        }
+      ],
+      "artifact": {
+        "name": "helm.sh/helm/v3",
+        "version": "v3.11.1",
+        "type": "go-module",
+        "locations": [
+          {
+            "path": "/app/go.mod"
+          }
+        ],
+        "language": "go",
+        "licenses": ["Apache-2.0"],
+        "purl": "pkg:golang/helm.sh/helm/v3@v3.11.1",
+        "upstreams": []
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "GHSA-c3h9-896r-86jm",
+        "dataSource": "https://github.com/advisories/GHSA-c3h9-896r-86jm",
+        "namespace": "ghsa",
+        "severity": "Critical",
+        "urls": ["https://github.com/advisories/GHSA-c3h9-896r-86jm"],
+        "description": "Protobuf vulnerability in gogo/protobuf",
+        "cvss": [
+          {
+            "version": "3.1",
+            "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+            "metrics": {
+              "baseScore": 9.8
+            }
+          }
+        ],
+        "fix": {
+          "versions": ["v1.3.2"],
+          "state": "fixed"
+        }
+      },
+      "relatedVulnerabilities": [
+        {
+          "id": "CVE-2021-3121",
+          "dataSource": "https://nvd.nist.gov/vuln/detail/CVE-2021-3121",
+          "namespace": "nvd:cpe",
+          "severity": "Critical",
+          "urls": ["https://nvd.nist.gov/vuln/detail/CVE-2021-3121"]
+        }
+      ],
+      "matchDetails": [
+        {
+          "type": "exact-direct-match",
+          "matcher": "go-module-matcher",
+          "searchedBy": {},
+          "found": {}
+        }
+      ],
+      "artifact": {
+        "name": "github.com/gogo/protobuf",
+        "version": "v1.3.1",
+        "type": "go-module",
+        "locations": [
+          {
+            "path": "/app/go.mod"
+          }
+        ],
+        "language": "go",
+        "purl": "pkg:golang/github.com/gogo/protobuf@v1.3.1",
+        "upstreams": []
+      }
+    }
+  ]
+}

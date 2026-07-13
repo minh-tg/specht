@@ -1,0 +1,72 @@
+{
+  "reportSchema": "2.0",
+  "dependencies": [
+    {
+      "fileName": "log4j-core-2.17.0.jar",
+      "filePath": "/app/lib/log4j-core-2.17.0.jar",
+      "packages": [
+        {
+          "id": "pkg:maven/org.apache.logging.log4j/log4j-core@2.17.0",
+          "evidence": []
+        }
+      ],
+      "vulnerabilities": [
+        {
+          "name": "CVE-2021-44228",
+          "severity": "Critical",
+          "cvssv3": {
+            "baseScore": 10.0,
+            "attackVector": "NETWORK",
+            "attackComplexity": "LOW",
+            "privilegesRequired": "NONE",
+            "userInteraction": "NONE",
+            "scope": "CHANGED",
+            "confidentialityImpact": "HIGH",
+            "integrityImpact": "HIGH",
+            "availabilityImpact": "HIGH",
+            "baseSeverity": "CRITICAL",
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H"
+          },
+          "description": "Log4j remote code execution vulnerability",
+          "references": [
+            {
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-44228"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "fileName": "pom.xml",
+      "filePath": "/app/pom.xml",
+      "packages": [
+        {
+          "id": "pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.9.8",
+          "evidence": []
+        }
+      ],
+      "vulnerabilities": [
+        {
+          "name": "CVE-2020-25649",
+          "severity": "High",
+          "cvssv3": {
+            "baseScore": 7.5,
+            "baseSeverity": "HIGH",
+            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+          },
+          "cvssv2": {
+            "score": 5.0,
+            "severity": "MEDIUM",
+            "vectorString": "AV:N/AC:L/Au:N/C:N/I:N/A:P"
+          },
+          "description": "XML external entity (XXE) vulnerability in Jackson databind",
+          "references": [
+            {
+              "url": "https://nvd.nist.gov/vuln/detail/CVE-2020-25649"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
