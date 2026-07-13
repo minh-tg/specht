@@ -5,8 +5,54 @@
 package sqlc
 
 import (
+	"database/sql/driver"
+	"fmt"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
+
+type SignoffStatus string
+
+const (
+	SignoffStatusPending  SignoffStatus = "pending"
+	SignoffStatusApproved SignoffStatus = "approved"
+	SignoffStatusRejected SignoffStatus = "rejected"
+)
+
+func (e *SignoffStatus) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = SignoffStatus(s)
+	case string:
+		*e = SignoffStatus(s)
+	default:
+		return fmt.Errorf("unsupported scan type for SignoffStatus: %T", src)
+	}
+	return nil
+}
+
+type NullSignoffStatus struct {
+	SignoffStatus SignoffStatus `json:"signoff_status"`
+	Valid         bool          `json:"valid"` // Valid is true if SignoffStatus is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullSignoffStatus) Scan(value interface{}) error {
+	if value == nil {
+		ns.SignoffStatus, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.SignoffStatus.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullSignoffStatus) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.SignoffStatus), nil
+}
 
 type ApiKey struct {
 	ID         pgtype.UUID        `json:"id"`
@@ -43,6 +89,16 @@ type Environment struct {
 	InternetFacing  bool               `json:"internet_facing"`
 	DataSensitivity string             `json:"data_sensitivity"`
 	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+}
+
+type EvidenceArtifact struct {
+	ID          pgtype.UUID        `json:"id"`
+	FindingID   pgtype.UUID        `json:"finding_id"`
+	Type        string             `json:"type"`
+	Url         string             `json:"url"`
+	Description string             `json:"description"`
+	UploadedBy  pgtype.UUID        `json:"uploaded_by"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 }
 
 type Finding struct {
@@ -143,6 +199,15 @@ type ProjectMember struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type ReachabilityAssessment struct {
+	ID         pgtype.UUID        `json:"id"`
+	FindingID  pgtype.UUID        `json:"finding_id"`
+	Reachable  bool               `json:"reachable"`
+	Evidence   string             `json:"evidence"`
+	AssessedBy pgtype.UUID        `json:"assessed_by"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
 type RefreshToken struct {
 	ID        pgtype.UUID        `json:"id"`
 	UserID    pgtype.UUID        `json:"user_id"`
@@ -177,6 +242,16 @@ type Report struct {
 	RawReportHash     pgtype.Text        `json:"raw_report_hash"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	RawData           []byte             `json:"raw_data"`
+}
+
+type Signoff struct {
+	ID         pgtype.UUID        `json:"id"`
+	FindingID  pgtype.UUID        `json:"finding_id"`
+	Status     SignoffStatus      `json:"status"`
+	ReviewedBy pgtype.UUID        `json:"reviewed_by"`
+	Comment    string             `json:"comment"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Target struct {

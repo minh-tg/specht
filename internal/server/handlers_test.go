@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/auth"
+	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
@@ -54,6 +55,13 @@ type mockUsecases struct {
 	listWaiverEventsFn func(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
 	checkWaiverMatchFn func(ctx context.Context, projectSlug, findingID string) (bool, error)
 	getProjectStatsFn  func(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error)
+	createEvidenceFn   func(ctx context.Context, findingID, userID, typ, url, description string) (sqlc.EvidenceArtifact, error)
+	listEvidenceFn     func(ctx context.Context, findingID string) ([]sqlc.EvidenceArtifact, error)
+	deleteEvidenceFn   func(ctx context.Context, evidenceID string) error
+	upsertReachabilityFn func(ctx context.Context, findingID, userID string, reachable bool, evidence string) (*usecase.ReachabilityResponse, error)
+	listReachabilityFn   func(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error)
+	upsertSignoffFn      func(ctx context.Context, findingID, userID, status, comment string) (*usecase.SignoffResponse, error)
+	getSignoffFn         func(ctx context.Context, findingID string) (*usecase.SignoffResponse, error)
 }
 
 func (m *mockUsecases) CreateProject(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error) {
@@ -278,6 +286,55 @@ func (m *mockUsecases) GetProjectStats(ctx context.Context, projectSlug string) 
 		return nil, fmt.Errorf("unexpected call to GetProjectStats")
 	}
 	return m.getProjectStatsFn(ctx, projectSlug)
+}
+
+func (m *mockUsecases) CreateEvidence(ctx context.Context, findingID, userID, typ, url, description string) (sqlc.EvidenceArtifact, error) {
+	if m.createEvidenceFn == nil {
+		return sqlc.EvidenceArtifact{}, fmt.Errorf("unexpected call to CreateEvidence")
+	}
+	return m.createEvidenceFn(ctx, findingID, userID, typ, url, description)
+}
+
+func (m *mockUsecases) ListEvidence(ctx context.Context, findingID string) ([]sqlc.EvidenceArtifact, error) {
+	if m.listEvidenceFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListEvidence")
+	}
+	return m.listEvidenceFn(ctx, findingID)
+}
+
+func (m *mockUsecases) DeleteEvidence(ctx context.Context, evidenceID string) error {
+	if m.deleteEvidenceFn == nil {
+		return fmt.Errorf("unexpected call to DeleteEvidence")
+	}
+	return m.deleteEvidenceFn(ctx, evidenceID)
+}
+
+func (m *mockUsecases) UpsertReachability(ctx context.Context, findingID, userID string, reachable bool, evidence string) (*usecase.ReachabilityResponse, error) {
+	if m.upsertReachabilityFn == nil {
+		return nil, fmt.Errorf("unexpected call to UpsertReachability")
+	}
+	return m.upsertReachabilityFn(ctx, findingID, userID, reachable, evidence)
+}
+
+func (m *mockUsecases) ListReachability(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error) {
+	if m.listReachabilityFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListReachability")
+	}
+	return m.listReachabilityFn(ctx, findingID)
+}
+
+func (m *mockUsecases) UpsertSignoff(ctx context.Context, findingID, userID, status, comment string) (*usecase.SignoffResponse, error) {
+	if m.upsertSignoffFn == nil {
+		return nil, fmt.Errorf("unexpected call to UpsertSignoff")
+	}
+	return m.upsertSignoffFn(ctx, findingID, userID, status, comment)
+}
+
+func (m *mockUsecases) GetSignoff(ctx context.Context, findingID string) (*usecase.SignoffResponse, error) {
+	if m.getSignoffFn == nil {
+		return nil, fmt.Errorf("unexpected call to GetSignoff")
+	}
+	return m.getSignoffFn(ctx, findingID)
 }
 
 var now = time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)

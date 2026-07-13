@@ -21,6 +21,9 @@ type Repos struct {
 	Artifacts     ArtifactRepo
 	Waivers       WaiverRepo
 	Stats         StatsRepo
+	Evidence      EvidenceRepo
+	Reachability  ReachabilityRepo
+	Signoffs      SignoffRepo
 	pool          *pgxpool.Pool
 }
 
@@ -38,6 +41,9 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 		Artifacts:     &pgArtifactRepo{q: q},
 		Waivers:       &pgWaiverRepo{q: q},
 		Stats:         newStatsRepo(q),
+		Evidence:      newEvidenceRepo(q),
+		Reachability:  newReachabilityRepo(q),
+		Signoffs:      newSignoffRepo(q),
 		pool:          pool,
 	}
 }
@@ -125,6 +131,24 @@ type ArtifactRepo interface {
 	ListByTarget(ctx context.Context, targetID pgtype.UUID) ([]sqlc.Artifact, error)
 	GetByID(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Artifact, error)
 	Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Artifact, error)
+}
+
+type SignoffRepo interface {
+	Upsert(ctx context.Context, arg UpsertSignoffParams) (sqlc.Signoff, error)
+	GetByFinding(ctx context.Context, findingID pgtype.UUID) (sqlc.Signoff, error)
+}
+
+type ReachabilityRepo interface {
+	Upsert(ctx context.Context, arg UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error)
+	ListByFinding(ctx context.Context, findingID pgtype.UUID) ([]sqlc.ReachabilityAssessment, error)
+	GetByID(ctx context.Context, id pgtype.UUID) (sqlc.ReachabilityAssessment, error)
+}
+
+type EvidenceRepo interface {
+	Create(ctx context.Context, arg CreateEvidenceParams) (sqlc.EvidenceArtifact, error)
+	ListByFinding(ctx context.Context, findingID pgtype.UUID) ([]sqlc.EvidenceArtifact, error)
+	GetByID(ctx context.Context, id pgtype.UUID) (sqlc.EvidenceArtifact, error)
+	Delete(ctx context.Context, id pgtype.UUID) error
 }
 
 type FindingRepo interface {
