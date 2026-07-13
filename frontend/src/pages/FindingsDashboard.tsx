@@ -27,6 +27,13 @@ function sortFindings(findings: Finding[], by: string, dir: "asc" | "desc") {
   });
 }
 
+const kindColors: Record<string, string> = {
+  sca: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
+  sast: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+  iac: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+  secret: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400",
+};
+
 export function FindingsDashboard() {
   const { slug } = useParams<{ slug: string; }>();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -34,6 +41,7 @@ export function FindingsDashboard() {
 
   const severity = searchParams.get("severity") ?? "";
   const status = searchParams.get("status") ?? "";
+  const kind = searchParams.get("kind") ?? "";
   const offset = parseInt(searchParams.get("offset") ?? "0", 10);
 
   const [sortBy, setSortBy] = useState("severity");
@@ -42,6 +50,7 @@ export function FindingsDashboard() {
   const { data: findings, isLoading, isError, error, refetch } = useFindings(slug ?? "", {
     severity: severity || undefined,
     status: status || undefined,
+    kind: kind || undefined,
     offset,
     limit: PAGE_SIZE,
   });
@@ -136,6 +145,17 @@ export function FindingsDashboard() {
           <option value="fixed">Fixed</option>
           <option value="reopened">Reopened</option>
         </select>
+        <select
+          className="border-input bg-background rounded-md border px-3 py-1 text-sm"
+          value={kind}
+          onChange={(e) => updateFilter("kind", e.target.value)}
+        >
+          <option value="">All kinds</option>
+          <option value="sca">SCA</option>
+          <option value="sast">SAST</option>
+          <option value="iac">IaC</option>
+          <option value="secret">Secret</option>
+        </select>
       </div>
 
       <div className="overflow-x-auto">
@@ -175,7 +195,11 @@ export function FindingsDashboard() {
                 <td className="px-3 py-2">
                   <SeverityBadge severity={f.current_severity} />
                 </td>
-                <td className="text-muted-foreground px-3 py-2">{f.finding_kind}</td>
+                <td className="px-3 py-2">
+                  <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ${kindColors[f.finding_kind] ?? "bg-muted text-muted-foreground"}`}>
+                    {f.finding_kind}
+                  </span>
+                </td>
                 <td className="px-3 py-2">{f.current_title}</td>
                 <td className="px-3 py-2 capitalize">{f.state}</td>
                 <td className="px-3 py-2 text-xs">

@@ -496,7 +496,7 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	}
 
 	severities, statuses := defaultGateParams(input.GateSeverity, input.GateStatus)
-	gateFindings, err := u.deps.Repos.Findings.ListByProject(ctx, project.ID, severities, statuses, 1, 0)
+	gateFindings, err := u.deps.Repos.Findings.ListByProject(ctx, project.ID, severities, statuses, nil, 1, 0)
 	if err != nil {
 		slog.Error("gate check failed", "scanner", input.Scanner, "project", project.ID, "error", err)
 		return nil, fmt.Errorf("scanner %s: gate check: %w", input.Scanner, err)

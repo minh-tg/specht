@@ -43,8 +43,9 @@ SELECT * FROM findings
 WHERE project_id = $1
   AND (array_length($2::text[], 1) IS NULL OR current_severity = ANY($2))
   AND (array_length($3::text[], 1) IS NULL OR state = ANY($3))
+  AND (array_length($4::text[], 1) IS NULL OR finding_kind = ANY($4))
 ORDER BY current_severity_rank DESC, created_at DESC
-LIMIT $4 OFFSET $5;
+LIMIT $5 OFFSET $6;
 
 -- name: GetFindingByID :one
 SELECT * FROM findings WHERE id = $1;

@@ -40,8 +40,7 @@ type BulkUpdateFindingAnalysisParams struct {
 }
 
 func (q *Queries) BulkUpdateFindingAnalysis(ctx context.Context, arg BulkUpdateFindingAnalysisParams) ([]Finding, error) {
-	rows, err := q.db.Query(
-		ctx, bulkUpdateFindingAnalysis,
+	rows, err := q.db.Query(ctx, bulkUpdateFindingAnalysis,
 		arg.Column1,
 		arg.AnalysisState,
 		arg.GateEffect,
@@ -147,8 +146,7 @@ type CreateFindingEventParams struct {
 }
 
 func (q *Queries) CreateFindingEvent(ctx context.Context, arg CreateFindingEventParams) (FindingEvent, error) {
-	row := q.db.QueryRow(
-		ctx, createFindingEvent,
+	row := q.db.QueryRow(ctx, createFindingEvent,
 		arg.FindingID,
 		arg.UserID,
 		arg.EventType,
@@ -209,8 +207,7 @@ type CreateOccurrenceParams struct {
 }
 
 func (q *Queries) CreateOccurrence(ctx context.Context, arg CreateOccurrenceParams) (FindingOccurrence, error) {
-	row := q.db.QueryRow(
-		ctx, createOccurrence,
+	row := q.db.QueryRow(ctx, createOccurrence,
 		arg.FindingID,
 		arg.ReportID,
 		arg.Title,
@@ -406,8 +403,7 @@ type ListFindingEventsParams struct {
 }
 
 func (q *Queries) ListFindingEvents(ctx context.Context, arg ListFindingEventsParams) ([]FindingEvent, error) {
-	rows, err := q.db.Query(
-		ctx, listFindingEvents,
+	rows, err := q.db.Query(ctx, listFindingEvents,
 		arg.FindingID,
 		arg.Column2,
 		arg.Limit,
@@ -500,24 +496,26 @@ SELECT id, project_id, finding_kind, fingerprint, current_title, current_severit
 WHERE project_id = $1
   AND (array_length($2::text[], 1) IS NULL OR current_severity = ANY($2))
   AND (array_length($3::text[], 1) IS NULL OR state = ANY($3))
+  AND (array_length($4::text[], 1) IS NULL OR finding_kind = ANY($4))
 ORDER BY current_severity_rank DESC, created_at DESC
-LIMIT $4 OFFSET $5
+LIMIT $5 OFFSET $6
 `
 
 type ListFindingsByProjectParams struct {
 	ProjectID pgtype.UUID `json:"project_id"`
 	Column2   []string    `json:"column_2"`
 	Column3   []string    `json:"column_3"`
+	Column4   []string    `json:"column_4"`
 	Limit     int32       `json:"limit"`
 	Offset    int32       `json:"offset"`
 }
 
 func (q *Queries) ListFindingsByProject(ctx context.Context, arg ListFindingsByProjectParams) ([]Finding, error) {
-	rows, err := q.db.Query(
-		ctx, listFindingsByProject,
+	rows, err := q.db.Query(ctx, listFindingsByProject,
 		arg.ProjectID,
 		arg.Column2,
 		arg.Column3,
+		arg.Column4,
 		arg.Limit,
 		arg.Offset,
 	)
@@ -598,8 +596,7 @@ type UpdateFindingAnalysisParams struct {
 }
 
 func (q *Queries) UpdateFindingAnalysis(ctx context.Context, arg UpdateFindingAnalysisParams) (Finding, error) {
-	row := q.db.QueryRow(
-		ctx, updateFindingAnalysis,
+	row := q.db.QueryRow(ctx, updateFindingAnalysis,
 		arg.ID,
 		arg.AnalysisState,
 		arg.GateEffect,
@@ -663,8 +660,7 @@ type UpsertDimensionParams struct {
 }
 
 func (q *Queries) UpsertDimension(ctx context.Context, arg UpsertDimensionParams) (FindingDimension, error) {
-	row := q.db.QueryRow(
-		ctx, upsertDimension,
+	row := q.db.QueryRow(ctx, upsertDimension,
 		arg.FindingID,
 		arg.DimKey,
 		arg.DimValue,
@@ -722,8 +718,7 @@ type UpsertFindingParams struct {
 }
 
 func (q *Queries) UpsertFinding(ctx context.Context, arg UpsertFindingParams) (Finding, error) {
-	row := q.db.QueryRow(
-		ctx, upsertFinding,
+	row := q.db.QueryRow(ctx, upsertFinding,
 		arg.ProjectID,
 		arg.FindingKind,
 		arg.Fingerprint,

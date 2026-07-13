@@ -77,7 +77,7 @@ func (m *mockUsecases) GetProject(ctx context.Context, slug string) (*usecase.Pr
 	return m.getProjectFn(ctx, slug)
 }
 
-func (m *mockUsecases) ListFindings(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error) {
+func (m *mockUsecases) ListFindings(ctx context.Context, projectSlug string, severities, states, kinds []string, limit, offset int32) ([]usecase.FindingResponse, error) {
 	if m.listFindingsFn == nil {
 		return nil, fmt.Errorf("unexpected call to ListFindings")
 	}

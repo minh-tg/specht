@@ -191,13 +191,13 @@ func (u *Usecases) GetProject(ctx context.Context, slug string) (*ProjectRespons
 	return &resp, nil
 }
 
-func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]FindingResponse, error) {
+func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, severities, states, kinds []string, limit, offset int32) ([]FindingResponse, error) {
 	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 
-	findings, err := u.deps.Repos.Findings.ListByProject(ctx, project.ID, severities, states, limit, offset)
+	findings, err := u.deps.Repos.Findings.ListByProject(ctx, project.ID, severities, states, kinds, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list findings: %w", err)
 	}

@@ -7,6 +7,13 @@ const statusStyles: Record<string, string> = {
   failed: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
 };
 
+const toolColors: Record<string, string> = {
+  trivy: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400",
+  "osv-scanner": "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
+  semgrep: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
+  checkov: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+};
+
 export function ReportHistory() {
   const { slug } = useParams<{ slug: string; }>();
   const { data: reports, isLoading, isError, error, refetch } = useReports(slug ?? "");
@@ -48,9 +55,13 @@ export function ReportHistory() {
       {reports.map((r) => (
         <div key={r.id} className="bg-card rounded-lg border p-4">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">{r.tool_name}</p>
-              {r.scan_target && <p className="text-muted-foreground text-xs">{r.scan_target}</p>}
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${toolColors[r.tool_name] ?? "bg-muted text-muted-foreground"}`}>
+                {r.tool_name}
+              </span>
+              <div>
+                {r.scan_target && <p className="text-muted-foreground text-xs">{r.scan_target}</p>}
+              </div>
             </div>
             <span
               className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${

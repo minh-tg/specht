@@ -11,7 +11,7 @@ export function useProjects() {
 
 export function useFindings(
   projectSlug: string,
-  filters: { severity?: string; status?: string; offset?: number; limit?: number; },
+  filters: { severity?: string; status?: string; kind?: string; offset?: number; limit?: number; },
 ) {
   return useQuery({
     queryKey: ["findings", projectSlug, filters],
@@ -19,6 +19,7 @@ export function useFindings(
       const params = new URLSearchParams();
       if (filters.severity) params.set("severity", filters.severity);
       if (filters.status) params.set("status", filters.status);
+      if (filters.kind) params.set("kind", filters.kind);
       if (filters.offset != null) params.set("offset", String(filters.offset));
       if (filters.limit != null) params.set("limit", String(filters.limit));
       const qs = params.toString();

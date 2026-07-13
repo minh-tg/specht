@@ -16,6 +16,8 @@ func main() {
 	severity := flag.String("severity", "", "Severity threshold (comma-separated, default: high,critical)")
 	status := flag.String("status", "", "Finding status filter (default: open)")
 	project := flag.String("project", "", "Project slug (overrides stdin)")
+	tool := flag.String("tool", "", "Scanner name (overrides scanner detected in stdin payload)")
+	excludeTool := flag.String("exclude-tool", "", "Skip if scanner matches this name")
 	help := flag.Bool("help", false, "Show usage")
 	flag.Parse()
 
@@ -56,9 +58,18 @@ func main() {
 		payload.Project = *project
 	}
 
+	if *tool != "" {
+		payload.Scanner = *tool
+	}
+
 	if payload.Scanner == "" {
 		fmt.Fprintln(os.Stderr, "error: scanner is required in stdin payload")
 		os.Exit(2)
+	}
+
+	if *excludeTool != "" && strings.EqualFold(payload.Scanner, *excludeTool) {
+		fmt.Fprintf(os.Stderr, "skipped: scanner %q excluded by -exclude-tool flag\n", payload.Scanner)
+		os.Exit(0)
 	}
 
 	if *severity != "" {
@@ -100,22 +111,25 @@ CI/CD gate-check adapter for Specht. Reads a scan result from stdin,
 ingests it, then checks project gate status and exits based on result.
 
 Flags:
-  -project string   Project slug (overrides project in stdin payload)
-  -severity string  Severity threshold, comma-separated (default: high,critical)
-  -status string    Finding status filter (default: open)
-  -help             Show this usage message
+  -project string     Project slug (overrides project in stdin payload)
+  -tool string        Scanner name (overrides scanner detected in stdin payload)
+  -exclude-tool string Skip if scanner name matches this value
+  -severity string    Severity threshold, comma-separated (default: high,critical)
+  -status string      Finding status filter (default: open)
+  -help               Show this usage message
 
 Environment:
   API_URL   Specht API base URL (default "http://localhost:8080")
   API_KEY   API key for authentication (required)
 
 Exit codes:
-  0  Pass - no blocking findings
+  0  Pass - no blocking findings, or skipped by -exclude-tool
   1  Fail - blocking findings exist (review required, expired waiver, etc.)
   2  Error - API unreachable, invalid input, or configuration error
 
 Examples:
   trivy image --format json myapp:latest | specht-adapter -project=my-app
-  cat scan.json | specht-adapter -severity=critical
+  cat scan.json | specht-adapter -severity=critical -tool=trivy
+  find . -name 'results.json' -exec specht-adapter -tool=semgrep {} +
 `)
 }

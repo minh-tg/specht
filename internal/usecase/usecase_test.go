@@ -86,7 +86,7 @@ type mockFindingRepo struct {
 	upsertFn               func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error)
 	createOccurrenceFn     func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error)
 	upsertDimensionFn      func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error)
-	listByProjectFn        func(ctx context.Context, projectID pgtype.UUID, severities, states []string, limit, offset int32) ([]sqlc.Finding, error)
+	listByProjectFn        func(ctx context.Context, projectID pgtype.UUID, severities, states, kinds []string, limit, offset int32) ([]sqlc.Finding, error)
 	getByFingerprintFn     func(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error)
 	getByIDFn              func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error)
 	listByIDsFn            func(ctx context.Context, ids []pgtype.UUID) ([]sqlc.Finding, error)
@@ -122,11 +122,11 @@ func (m *mockFindingRepo) UpsertDimension(ctx context.Context, arg repo.UpsertDi
 	return m.upsertDimensionFn(ctx, arg)
 }
 
-func (m *mockFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, severities, states []string, limit, offset int32) ([]sqlc.Finding, error) {
+func (m *mockFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, severities, states, kinds []string, limit, offset int32) ([]sqlc.Finding, error) {
 	if m.listByProjectFn == nil {
 		return []sqlc.Finding{}, nil
 	}
-	return m.listByProjectFn(ctx, projectID, severities, states, limit, offset)
+	return m.listByProjectFn(ctx, projectID, severities, states, kinds, limit, offset)
 }
 
 func (m *mockFindingRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
@@ -833,7 +833,7 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 		return sqlc.FindingDimension{}, nil
 	}
 
-	fr.listByProjectFn = func(ctx context.Context, projectID pgtype.UUID, severities, states []string, limit, offset int32) ([]sqlc.Finding, error) {
+	fr.listByProjectFn = func(ctx context.Context, projectID pgtype.UUID, severities, states, kinds []string, limit, offset int32) ([]sqlc.Finding, error) {
 		return []sqlc.Finding{makeFinding(1)}, nil
 	}
 
@@ -1441,7 +1441,7 @@ func TestListFindings_Success(t *testing.T) {
 	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
 		return makeProject(true), nil
 	}
-	fr.listByProjectFn = func(ctx context.Context, projectID pgtype.UUID, severities, states []string, limit, offset int32) ([]sqlc.Finding, error) {
+	fr.listByProjectFn = func(ctx context.Context, projectID pgtype.UUID, severities, states, kinds []string, limit, offset int32) ([]sqlc.Finding, error) {
 		return []sqlc.Finding{makeFindingRow(1), makeFindingRow(2)}, nil
 	}
 
@@ -1449,7 +1449,7 @@ func TestListFindings_Success(t *testing.T) {
 		Repos: &repo.Repos{Projects: pr, Findings: fr},
 	})
 
-	findings, err := uc.ListFindings(context.Background(), "my-app", nil, nil, 20, 0)
+	findings, err := uc.ListFindings(context.Background(), "my-app", nil, nil, nil, 20, 0)
 	require.NoError(t, err)
 	assert.Len(t, findings, 2)
 }
@@ -1464,7 +1464,7 @@ func TestListFindings_ProjectNotFound(t *testing.T) {
 		Repos: &repo.Repos{Projects: pr},
 	})
 
-	_, err := uc.ListFindings(context.Background(), "nonexistent", nil, nil, 20, 0)
+	_, err := uc.ListFindings(context.Background(), "nonexistent", nil, nil, nil, 20, 0)
 	assert.ErrorContains(t, err, "lookup project")
 }
 
