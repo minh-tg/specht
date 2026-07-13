@@ -55,16 +55,44 @@ type ArtifactInfo struct {
 }
 
 type NormalizedFinding struct {
-	Fingerprint string
-	FindingKind string
-	Title       string
+	Fingerprint  string
+	FindingKind  string
+	Title        string
+	Description  string
+	Severity     Severity
+	Score        float64
+	Location     string
+	Resource     string
+	Aliases      []string
+	Reachability *bool
+	CVSS         *CVSSInfo
+	Fix          *FixInfo
+	CodeLocation *CodeLocation
+	Dimensions   []Dimension
+	Display      map[string]any
+	Metadata     map[string]any
+}
+
+type CVSSInfo struct {
+	Version string
+	Vector  string
+	Score   float64
+}
+
+type FixInfo struct {
+	Summary     string
 	Description string
-	Severity    Severity
-	Score       float64
-	Location    string
-	Dimensions  []Dimension
-	Display     map[string]any
-	Metadata    map[string]any
+	URL         string
+	Diff        string
+}
+
+type CodeLocation struct {
+	File        string
+	StartLine   int
+	EndLine     int
+	StartColumn int
+	EndColumn   int
+	Snippet     string
 }
 
 type Dimension struct {
