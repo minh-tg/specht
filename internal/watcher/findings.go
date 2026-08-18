@@ -53,6 +53,13 @@ type Advisory struct {
 	Severity  []AdvisorySeverity `json:"severity"`
 	Affected  []Affected         `json:"affected"`
 	Refs      []AdvisoryRef      `json:"references"`
+	// Raw holds the exact upstream querybatch JSON bytes for this advisory,
+	// captured by the HTTP client from the raw response body. Evidence
+	// persistence uses these bytes verbatim (raw-bytes provenance: a
+	// re-marshal of this struct silently drops database_specific, credits,
+	// and affected[].database_specific, so the raw form is the provenance
+	// record, not the decoded subset).
+	Raw []byte `json:"-"`
 }
 
 // AdvisorySeverity is one OSV "severity[]" entry. The Score field carries a
@@ -213,6 +220,14 @@ func DecideFinding(ctx context.Context, input DecideInput, gapCheck GapCheck) (D
 	remediation := remediationText(fixed, advisoryURLs(input.Advisory.Refs))
 	fingerprint := fingerprint(input.Purl, primary)
 
+	// Provenance: persist the raw upstream bytes when the client captured
+	// them (raw-bytes provenance); fall back to the decoded subset only
+	// for hand-built fixtures.
+	evidence := mustJSON(input.Advisory)
+	if len(input.Advisory.Raw) > 0 {
+		evidence = input.Advisory.Raw
+	}
+
 	title := strings.TrimSpace(input.Advisory.Summary)
 	if title == "" {
 		title = fmt.Sprintf("%s affects %s", primary, nameLevel)
@@ -291,7 +306,7 @@ func DecideFinding(ctx context.Context, input DecideInput, gapCheck GapCheck) (D
 			EventType: EventAutoRuleApplied,
 			Changes:   eventChanges(input.Advisory.ID, ""),
 		},
-		Evidence: mustJSON(input.Advisory),
+		Evidence: evidence,
 	}, nil
 }
 
