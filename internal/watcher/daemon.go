@@ -315,7 +315,7 @@ type RunCveWatcherConfig struct {
 	// PollDeps feeds each PollOnce call.
 	PollDeps PollDeps
 	// PollInterval is the steady-state cadence between successful polls.
-	// Defaults to 5 minutes.
+	// Defaults to 6 hours (design spec default).
 	PollInterval time.Duration
 	// InitialBackoff is the wait after the first failed poll; it doubles
 	// per failure up to MaxBackoff. Defaults to 30 seconds.
@@ -341,7 +341,7 @@ type RunCveWatcherConfig struct {
 // overlapped. The loop exits when ctx is done.
 func RunCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 	if cfg.PollInterval <= 0 {
-		cfg.PollInterval = 5 * time.Minute
+		cfg.PollInterval = 6 * time.Hour
 	}
 	if cfg.InitialBackoff <= 0 {
 		cfg.InitialBackoff = 30 * time.Second

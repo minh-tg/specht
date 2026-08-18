@@ -28,8 +28,8 @@ const (
 	// DefaultOSVEndpoint is the OSV querybatch endpoint.
 	DefaultOSVEndpoint = "https://api.osv.dev/v1/querybatch"
 	// DefaultBatchSize is the default number of package queries packed into
-	// one querybatch HTTP request (WATCHER_BATCH_SIZE).
-	DefaultBatchSize = 1000
+	// one querybatch HTTP request (WATCHER_BATCH_SIZE). Design spec default 100.
+	DefaultBatchSize = 100
 )
 
 // Query is one entry of the querybatch "queries" array. Ecosystem carries

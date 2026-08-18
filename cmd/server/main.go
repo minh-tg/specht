@@ -50,7 +50,7 @@ func main() {
 
 	inventoryTTLStr := os.Getenv("INVENTORY_TTL")
 	if inventoryTTLStr == "" {
-		inventoryTTLStr = "720h"
+		inventoryTTLStr = "2160h" // 90d — design spec default; stale inventory dropped from watcher matching
 	}
 	inventoryTTL, err := time.ParseDuration(inventoryTTLStr)
 	if err != nil {
@@ -64,7 +64,7 @@ func main() {
 
 	watcherPollIntervalStr := os.Getenv("WATCHER_POLL_INTERVAL")
 	if watcherPollIntervalStr == "" {
-		watcherPollIntervalStr = "5m"
+		watcherPollIntervalStr = "6h" // design spec default
 	}
 	watcherPollInterval, err := time.ParseDuration(watcherPollIntervalStr)
 	if err != nil {
