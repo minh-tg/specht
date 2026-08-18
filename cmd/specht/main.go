@@ -1,12 +1,22 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/client"
+	"github.com/xMinhx/specht/internal/db"
+	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/repo"
+	"github.com/xMinhx/specht/internal/watcher"
 )
 
 type cmd int
@@ -19,6 +29,7 @@ const (
 	cmdFindingsGet
 	cmdGateCheck
 	cmdStats
+	cmdWatcherBackfill
 )
 
 type command struct {
@@ -29,6 +40,8 @@ type command struct {
 	severity  string
 	status    string
 	limit     int
+	since     string
+	dryRun    bool
 }
 
 func parseArgs(args []string) (command, error) {
@@ -134,6 +147,27 @@ func parseArgs(args []string) (command, error) {
 
 	case "help":
 		return command{cmd: cmdHelp}, nil
+
+	case "watcher":
+		if len(rest) < 2 {
+			return command{}, fmt.Errorf("missing subcommand for watcher")
+		}
+		switch rest[1] {
+		case "backfill":
+			c := command{cmd: cmdWatcherBackfill}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--since" && i+1 < len(rest):
+					c.since = rest[i+1]
+					i++
+				case rest[i] == "--dry-run":
+					c.dryRun = true
+				}
+			}
+			return c, nil
+		default:
+			return command{}, fmt.Errorf("unknown watcher subcommand: %s", rest[1])
+		}
 
 	default:
 		return command{}, fmt.Errorf("unknown command: %s", rest[0])
@@ -268,11 +302,14 @@ Commands:
   gate check --project <slug>             Check project gate status
     [--severity critical]                  Severity threshold
   stats show <slug>                       Show project statistics
+  watcher backfill [--since <ISO8601>]    Run one CVE watcher poll
+    [--dry-run]                           Report only; write nothing
   help                                     Show this help
 
 Environment:
   API_URL   Specht API base URL (default "http://localhost:8080")
   API_KEY   API key for authentication (required for all commands)
+  DATABASE_URL   Postgres connection (required for watcher backfill)
 `)
 }
 
@@ -281,6 +318,16 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(2)
+	}
+
+	// The watcher backfill talks to the database and OSV directly; it does
+	// not use the API client, so it is dispatched before the API_KEY gate.
+	if cmd.cmd == cmdWatcherBackfill {
+		if err := runWatcherBackfill(cmd); err != nil {
+			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			os.Exit(2)
+		}
+		return
 	}
 
 	apiURL := os.Getenv("API_URL")
@@ -300,4 +347,112 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(2)
 	}
+}
+
+// runWatcherBackfill runs one CVE watcher poll against the database and OSV,
+// using the same PollDeps wiring as the server daemon (cmd/server/main.go).
+// It is a one-shot PollOnce: findings for previously unseen advisories are
+// persisted (or reported, with --dry-run) and the watermark advances only on
+// a fully successful poll.
+func runWatcherBackfill(cmd command) error {
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		return errors.New("DATABASE_URL is required for watcher backfill")
+	}
+	ctx := context.Background()
+	pool, err := db.ConnectPool(ctx, dbURL)
+	if err != nil {
+		return fmt.Errorf("connect db: %w", err)
+	}
+	defer pool.Close()
+
+	repos := repo.NewRepos(pool)
+
+	var since time.Time
+	if cmd.since != "" {
+		since, err = time.Parse(time.RFC3339, cmd.since)
+		if err != nil {
+			return fmt.Errorf("--since must be an ISO8601 timestamp: %w", err)
+		}
+	}
+
+	var store watcher.PollStore
+	if cmd.dryRun {
+		store = discardStore{}
+	} else {
+		store = watcher.NewPollStore(repos)
+	}
+
+	projects, err := repos.Projects.List(ctx)
+	if err != nil {
+		return fmt.Errorf("list projects: %w", err)
+	}
+	projectIDs := make([]pgtype.UUID, len(projects))
+	for i, p := range projects {
+		projectIDs[i] = p.ID
+	}
+
+	inventoryTTL := 720 * time.Hour
+	if v := os.Getenv("INVENTORY_TTL"); v != "" {
+		inventoryTTL, err = time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("INVENTORY_TTL is invalid: %w", err)
+		}
+	}
+
+	deps := watcher.PollDeps{
+		Client: watcher.NewHTTPClient(watcher.HTTPClientConfig{
+			Endpoint: os.Getenv("WATCHER_OSV_ENDPOINT"), // empty → default
+			CacheTTL: 0,                                 // one-shot: no cross-call caching
+		}),
+		Store:    store,
+		Projects: projectIDs,
+		Inventory: func(ctx context.Context, projectID pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
+			return repos.Inventory.DistinctInventory(ctx, projectID, repo.IntervalFromDuration(since))
+		},
+		FindGap: repos.Findings.FindScaFindingIdForPurlAndCve,
+		GetWatermark: func(ctx context.Context) (time.Time, bool, error) {
+			st, err := repos.Watcher.GetState(ctx)
+			if errors.Is(err, pgx.ErrNoRows) {
+				return time.Time{}, false, nil
+			}
+			if err != nil {
+				return time.Time{}, false, err
+			}
+			return st.LastSuccessfulPollAt.Time, st.LastSuccessfulPollAt.Valid, nil
+		},
+		SetWatermark: func(ctx context.Context, ts time.Time) error {
+			if cmd.dryRun {
+				return nil // dry-run writes nothing
+			}
+			return repos.Watcher.UpdateState(ctx, ts)
+		},
+		Logger:       slog.Default(),
+		InventoryTTL: inventoryTTL,
+		Since:        since, // zero → full history
+	}
+
+	outcome, err := watcher.PollOnce(ctx, deps)
+	if err != nil {
+		return fmt.Errorf("watcher backfill: %w", err)
+	}
+	fmt.Printf("watcher backfill: projects=%d queried=%d created=%d skipped=%d unchanged=%d ignored=%d orphan_skips=%d\n",
+		outcome.Projects, outcome.Queried, outcome.Created, outcome.Skipped, outcome.Unchanged, outcome.Ignored, outcome.OrphanSkips)
+	if cmd.dryRun {
+		fmt.Println("dry-run: nothing was written")
+	}
+	return nil
+}
+
+// discardStore is the PollStore for --dry-run backfills: it accepts every
+// decision without persisting anything, so a dry run writes no findings,
+// occurrences, events, or evidence.
+type discardStore struct{}
+
+func (discardStore) PersistFoundFinding(ctx context.Context, d watcher.Decision) (pgtype.UUID, error) {
+	return pgtype.UUID{}, nil
+}
+
+func (discardStore) PersistSkipEvent(ctx context.Context, suppressingID pgtype.UUID, ev watcher.Event) error {
+	return nil
 }

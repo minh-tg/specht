@@ -2,23 +2,29 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/db"
+	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/lifecycle"
 	"github.com/xMinhx/specht/internal/parser"
 	"github.com/xMinhx/specht/internal/repo"
 	"github.com/xMinhx/specht/internal/scanner"
 	"github.com/xMinhx/specht/internal/server"
 	"github.com/xMinhx/specht/internal/usecase"
+	"github.com/xMinhx/specht/internal/watcher"
 )
 
 func main() {
@@ -50,6 +56,48 @@ func main() {
 	if err != nil {
 		slog.Error("INVENTORY_TTL is invalid", "value", inventoryTTLStr, "error", err)
 		os.Exit(1)
+	}
+
+	// CVE watcher daemon configuration. The daemon is off unless
+	// WATCHER_ENABLE=true; the remaining variables tune its poll loop.
+	watcherEnable := os.Getenv("WATCHER_ENABLE")
+
+	watcherPollIntervalStr := os.Getenv("WATCHER_POLL_INTERVAL")
+	if watcherPollIntervalStr == "" {
+		watcherPollIntervalStr = "5m"
+	}
+	watcherPollInterval, err := time.ParseDuration(watcherPollIntervalStr)
+	if err != nil {
+		slog.Error("WATCHER_POLL_INTERVAL is invalid", "value", watcherPollIntervalStr, "error", err)
+		os.Exit(1)
+	}
+
+	watcherOSVEndpoint := os.Getenv("WATCHER_OSV_ENDPOINT")
+	if watcherOSVEndpoint == "" {
+		watcherOSVEndpoint = watcher.DefaultOSVEndpoint
+	}
+
+	watcherBatchSize := 0
+	if v := os.Getenv("WATCHER_BATCH_SIZE"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			slog.Error("WATCHER_BATCH_SIZE is invalid", "value", v, "error", err)
+			os.Exit(1)
+		}
+		watcherBatchSize = n
+	}
+
+	// WATCHER_COLD_START_WINDOW bounds the daemon's first (watermark-less)
+	// poll: advisories published before now-window are skipped. The default
+	// "full" applies no bound — everything OSV knows about the inventory.
+	var watcherSince time.Time
+	if window := os.Getenv("WATCHER_COLD_START_WINDOW"); window != "" && window != "full" {
+		d, err := time.ParseDuration(window)
+		if err != nil {
+			slog.Error("WATCHER_COLD_START_WINDOW is invalid", "value", window, "error", err)
+			os.Exit(1)
+		}
+		watcherSince = time.Now().UTC().Add(-d)
 	}
 
 	if len(os.Args) > 1 {
@@ -143,6 +191,50 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Start the CVE watcher daemon on the same context so it shuts down with
+	// the server. Off by default; enable with WATCHER_ENABLE=true.
+	if watcherEnable == "true" {
+		projects, err := repos.Projects.List(ctx)
+		if err != nil {
+			slog.Error("watcher: list projects", "error", err)
+			os.Exit(1)
+		}
+		projectIDs := make([]pgtype.UUID, len(projects))
+		for i, p := range projects {
+			projectIDs[i] = p.ID
+		}
+		watcher.RunCveWatcher(ctx, watcher.RunCveWatcherConfig{
+			PollInterval: watcherPollInterval,
+			PollDeps: watcher.PollDeps{
+				Client: watcher.NewHTTPClient(watcher.HTTPClientConfig{
+					Endpoint:  watcherOSVEndpoint,
+					BatchSize: watcherBatchSize,
+					CacheTTL:  watcherPollInterval,
+				}),
+				Store:    watcher.NewPollStore(repos),
+				Projects: projectIDs,
+				Inventory: func(ctx context.Context, projectID pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
+					return repos.Inventory.DistinctInventory(ctx, projectID, repo.IntervalFromDuration(since))
+				},
+				FindGap: repos.Findings.FindScaFindingIdForPurlAndCve,
+				GetWatermark: func(ctx context.Context) (time.Time, bool, error) {
+					st, err := repos.Watcher.GetState(ctx)
+					if errors.Is(err, pgx.ErrNoRows) {
+						return time.Time{}, false, nil
+					}
+					if err != nil {
+						return time.Time{}, false, err
+					}
+					return st.LastSuccessfulPollAt.Time, st.LastSuccessfulPollAt.Valid, nil
+				},
+				SetWatermark: repos.Watcher.UpdateState,
+				Logger:       slog.Default(),
+				InventoryTTL: inventoryTTL,
+				Since:        watcherSince,
+			},
+		})
+	}
 
 	go func() {
 		slog.Info("server starting", "addr", addr)

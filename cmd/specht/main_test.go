@@ -82,10 +82,13 @@ func TestCLI_ParseArgs(t *testing.T) {
 		{"gate check", []string{"specht", "gate", "check", "--project", "my-app"}, command{cmd: cmdGateCheck, project: "my-app"}, ""},
 		{"gate check with severity", []string{"specht", "gate", "check", "--project", "my-app", "--severity", "critical"}, command{cmd: cmdGateCheck, project: "my-app", severity: "critical"}, ""},
 		{"stats show", []string{"specht", "stats", "show", "my-app"}, command{cmd: cmdStats, slug: "my-app"}, ""},
+		{"watcher backfill", []string{"specht", "watcher", "backfill"}, command{cmd: cmdWatcherBackfill}, ""},
+		{"watcher backfill with since and dry-run", []string{"specht", "watcher", "backfill", "--since", "2026-01-01T00:00:00Z", "--dry-run"}, command{cmd: cmdWatcherBackfill, since: "2026-01-01T00:00:00Z", dryRun: true}, ""},
 		{"findings list with filters", []string{"specht", "findings", "list", "--project", "my-app", "--severity", "high,critical", "--status", "open", "--limit", "20"}, command{cmd: cmdFindingsList, project: "my-app", severity: "high,critical", status: "open", limit: 20}, ""},
 		{"no command", []string{"specht"}, command{cmd: cmdHelp}, ""},
 		{"unknown command", []string{"specht", "unknown"}, command{}, "unknown command: unknown"},
 		{"missing subcommand", []string{"specht", "projects"}, command{}, "missing subcommand for projects"},
+		{"unknown watcher subcommand", []string{"specht", "watcher", "bogus"}, command{}, "unknown watcher subcommand: bogus"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -103,6 +106,8 @@ func TestCLI_ParseArgs(t *testing.T) {
 			assert.Equal(t, tt.want.status, got.status)
 			assert.Equal(t, tt.want.limit, got.limit)
 			assert.Equal(t, tt.want.slug, got.slug)
+			assert.Equal(t, tt.want.since, got.since)
+			assert.Equal(t, tt.want.dryRun, got.dryRun)
 		})
 	}
 }
