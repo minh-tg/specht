@@ -239,6 +239,18 @@ func (r *pgFindingRepo) HasDimension(ctx context.Context, findingID pgtype.UUID,
 	})
 }
 
+// FindScaFindingIdForPurlAndCve resolves the sca finding that already covers
+// the (name-level purl, candidate ids) pair for the CVE feed watcher's
+// gap-fill check. It returns pgx.ErrNoRows when no scan-derived finding
+// covers the pair.
+func (r *pgFindingRepo) FindScaFindingIdForPurlAndCve(ctx context.Context, projectID pgtype.UUID, purlName string, candidateIDs []string) (pgtype.UUID, error) {
+	return r.q.FindScaFindingIdForPurlAndCve(ctx, sqlc.FindScaFindingIdForPurlAndCveParams{
+		ProjectID:    projectID,
+		PurlName:     purlName,
+		CandidateIds: candidateIDs,
+	})
+}
+
 const listBlockingFindingsSQL = `SELECT f.id, f.project_id, f.finding_kind, f.fingerprint, f.current_title,
 	f.current_severity, f.current_severity_rank, f.current_score, f.state,
 	f.triage_status, f.assignee_id, f.first_seen_at, f.last_seen_at,

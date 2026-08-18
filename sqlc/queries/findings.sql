@@ -22,6 +22,27 @@ INSERT INTO findings (
     updated_at = NOW()
 RETURNING *;
 
+-- name: CreateFindingIfAbsent :one
+-- Watcher persist path: insert the finding only when absent. Returns
+-- pgx.ErrNoRows when a row with the same (project_id, finding_kind,
+-- fingerprint) already exists — the daemon's re-poll guard. Occurrences are
+-- created only for genuinely new findings (a new fingerprint), never on
+-- re-poll hits of an existing watcher finding (the
+-- UNIQUE(finding_id, report_id) constraint does not dedupe NULL report_ids).
+INSERT INTO findings (
+    project_id, finding_kind, fingerprint,
+    current_title, current_severity, current_severity_rank,
+    current_score, state, triage_status,
+    first_seen_at, last_seen_at
+) VALUES (
+    $1, $2, $3,
+    $4, $5, $6,
+    $7, 'open', 'untriaged',
+    NOW(), NOW()
+)
+ON CONFLICT (project_id, finding_kind, fingerprint) DO NOTHING
+RETURNING *;
+
 -- name: CreateOccurrence :one
 INSERT INTO finding_occurrences (
     finding_id, report_id, title, description,
@@ -176,11 +197,14 @@ INSERT INTO finding_dimensions (
     source = EXCLUDED.source
 RETURNING *;
 
--- name: FindingExistsForPurlAndCve :one
--- Gap-fill check for the CVE feed watcher: true when a scan-derived SCA
--- finding already covers the (purl, vulnerability) pair in the project, in
--- which case the watcher must NOT create a cve_watcher finding (design:
--- never reopen, never duplicate).
+-- name: FindScaFindingIdForPurlAndCve :one
+-- Gap-fill check for the CVE feed watcher: returns the id of a scan-derived
+-- SCA finding that already covers the (purl, vulnerability) pair in the
+-- project, or pgx.ErrNoRows when none does. The watcher must NOT create a
+-- cve_watcher finding when this returns a row (design: never reopen, never
+-- duplicate), and it attaches the auto_rule_skipped event to the returned
+-- finding (skip-event resolution: the decision conveys the skip but not
+-- the suppressing id — the wiring re-uses this query to resolve it).
 --
 -- Matching rules (gap-fill join keys):
 --   * purl dimension matches at NAME-LEVEL: the stored dimension value is
@@ -191,19 +215,18 @@ RETURNING *;
 --     GHSA- or OSV-id findings, never exact-CVE-string only);
 --   * findings in ANY state (open or fixed) suppress the watcher — there is
 --     no reopen logic.
-SELECT EXISTS (
-    SELECT 1
-    FROM findings f
-    JOIN finding_dimensions dp
-      ON dp.finding_id = f.id
-     AND dp.dim_key = 'purl'
-     AND dp.dim_value != ''
-    JOIN finding_dimensions dv
-      ON dv.finding_id = f.id
-     AND dv.dim_key = 'vulnerability_id'
-     AND dv.dim_value != ''
-    WHERE f.project_id = sqlc.arg(project_id)
-      AND f.finding_kind = 'sca'
-      AND split_part(dp.dim_value, '@', 1) = sqlc.arg(purl_name)
-      AND dv.dim_value = ANY(sqlc.arg(candidate_ids)::text[])
-) AS exists;
+SELECT f.id
+FROM findings f
+JOIN finding_dimensions dp
+  ON dp.finding_id = f.id
+ AND dp.dim_key = 'purl'
+ AND dp.dim_value != ''
+JOIN finding_dimensions dv
+  ON dv.finding_id = f.id
+ AND dv.dim_key = 'vulnerability_id'
+ AND dv.dim_value != ''
+WHERE f.project_id = sqlc.arg(project_id)
+  AND f.finding_kind = 'sca'
+  AND split_part(dp.dim_value, '@', 1) = sqlc.arg(purl_name)
+  AND dv.dim_value = ANY(sqlc.arg(candidate_ids)::text[])
+LIMIT 1;

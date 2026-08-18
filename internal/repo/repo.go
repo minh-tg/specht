@@ -25,6 +25,7 @@ type Repos struct {
 	Reachability  ReachabilityRepo
 	Signoffs      SignoffRepo
 	Inventory     InventoryRepo
+	Watcher       WatcherRepo
 	pool          *pgxpool.Pool
 }
 
@@ -46,6 +47,7 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 		Reachability:  newReachabilityRepo(q),
 		Signoffs:      newSignoffRepo(q),
 		Inventory:     &pgInventoryRepo{query: q, pool: pool},
+		Watcher:       newWatcherRepo(q),
 		pool:          pool,
 	}
 }
@@ -176,4 +178,5 @@ type FindingRepo interface {
 	ListEvents(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error)
 	HasDimension(ctx context.Context, findingID pgtype.UUID, key string) (bool, error)
 	GetFindingContext(ctx context.Context, findingID pgtype.UUID) (FindingContext, error)
+	FindScaFindingIdForPurlAndCve(ctx context.Context, projectID pgtype.UUID, purlName string, candidateIDs []string) (pgtype.UUID, error)
 }

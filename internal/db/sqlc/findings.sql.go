@@ -179,6 +179,83 @@ func (q *Queries) CreateFindingEvent(ctx context.Context, arg CreateFindingEvent
 	return i, err
 }
 
+const createFindingIfAbsent = `-- name: CreateFindingIfAbsent :one
+INSERT INTO findings (
+    project_id, finding_kind, fingerprint,
+    current_title, current_severity, current_severity_rank,
+    current_score, state, triage_status,
+    first_seen_at, last_seen_at
+) VALUES (
+    $1, $2, $3,
+    $4, $5, $6,
+    $7, 'open', 'untriaged',
+    NOW(), NOW()
+)
+ON CONFLICT (project_id, finding_kind, fingerprint) DO NOTHING
+RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version
+`
+
+type CreateFindingIfAbsentParams struct {
+	ProjectID           pgtype.UUID    `json:"project_id"`
+	FindingKind         string         `json:"finding_kind"`
+	Fingerprint         string         `json:"fingerprint"`
+	CurrentTitle        string         `json:"current_title"`
+	CurrentSeverity     string         `json:"current_severity"`
+	CurrentSeverityRank int16          `json:"current_severity_rank"`
+	CurrentScore        pgtype.Numeric `json:"current_score"`
+}
+
+// Watcher persist path: insert the finding only when absent. Returns
+// pgx.ErrNoRows when a row with the same (project_id, finding_kind,
+// fingerprint) already exists — the daemon's re-poll guard. Occurrences are
+// created only for genuinely new findings (a new fingerprint), never on
+// re-poll hits of an existing watcher finding (the
+// UNIQUE(finding_id, report_id) constraint does not dedupe NULL report_ids).
+func (q *Queries) CreateFindingIfAbsent(ctx context.Context, arg CreateFindingIfAbsentParams) (Finding, error) {
+	row := q.db.QueryRow(ctx, createFindingIfAbsent,
+		arg.ProjectID,
+		arg.FindingKind,
+		arg.Fingerprint,
+		arg.CurrentTitle,
+		arg.CurrentSeverity,
+		arg.CurrentSeverityRank,
+		arg.CurrentScore,
+	)
+	var i Finding
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.FindingKind,
+		&i.Fingerprint,
+		&i.CurrentTitle,
+		&i.CurrentSeverity,
+		&i.CurrentSeverityRank,
+		&i.CurrentScore,
+		&i.State,
+		&i.TriageStatus,
+		&i.AssigneeID,
+		&i.FirstSeenAt,
+		&i.LastSeenAt,
+		&i.FixedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AnalysisState,
+		&i.GateEffect,
+		&i.AnalysisExpiresAt,
+		&i.AnalysisReason,
+		&i.AnalysisSource,
+		&i.AnalysisUpdatedAt,
+		&i.AnalysisUpdatedBy,
+		&i.ManualOverride,
+		&i.ReviewRequired,
+		&i.ApprovalStatus,
+		&i.ApprovedBy,
+		&i.ApprovedAt,
+		&i.FingerprintVersion,
+	)
+	return i, err
+}
+
 const createOccurrence = `-- name: CreateOccurrence :one
 INSERT INTO finding_occurrences (
     finding_id, report_id, title, description,
@@ -257,35 +334,37 @@ func (q *Queries) CreateOccurrence(ctx context.Context, arg CreateOccurrencePara
 	return i, err
 }
 
-const findingExistsForPurlAndCve = `-- name: FindingExistsForPurlAndCve :one
-SELECT EXISTS (
-    SELECT 1
-    FROM findings f
-    JOIN finding_dimensions dp
-      ON dp.finding_id = f.id
-     AND dp.dim_key = 'purl'
-     AND dp.dim_value != ''
-    JOIN finding_dimensions dv
-      ON dv.finding_id = f.id
-     AND dv.dim_key = 'vulnerability_id'
-     AND dv.dim_value != ''
-    WHERE f.project_id = $1
-      AND f.finding_kind = 'sca'
-      AND split_part(dp.dim_value, '@', 1) = $2
-      AND dv.dim_value = ANY($3::text[])
-) AS exists
+const findScaFindingIdForPurlAndCve = `-- name: FindScaFindingIdForPurlAndCve :one
+SELECT f.id
+FROM findings f
+JOIN finding_dimensions dp
+  ON dp.finding_id = f.id
+ AND dp.dim_key = 'purl'
+ AND dp.dim_value != ''
+JOIN finding_dimensions dv
+  ON dv.finding_id = f.id
+ AND dv.dim_key = 'vulnerability_id'
+ AND dv.dim_value != ''
+WHERE f.project_id = $1
+  AND f.finding_kind = 'sca'
+  AND split_part(dp.dim_value, '@', 1) = $2
+  AND dv.dim_value = ANY($3::text[])
+LIMIT 1
 `
 
-type FindingExistsForPurlAndCveParams struct {
+type FindScaFindingIdForPurlAndCveParams struct {
 	ProjectID    pgtype.UUID `json:"project_id"`
 	PurlName     string      `json:"purl_name"`
 	CandidateIds []string    `json:"candidate_ids"`
 }
 
-// Gap-fill check for the CVE feed watcher: true when a scan-derived SCA
-// finding already covers the (purl, vulnerability) pair in the project, in
-// which case the watcher must NOT create a cve_watcher finding (design:
-// never reopen, never duplicate).
+// Gap-fill check for the CVE feed watcher: returns the id of a scan-derived
+// SCA finding that already covers the (purl, vulnerability) pair in the
+// project, or pgx.ErrNoRows when none does. The watcher must NOT create a
+// cve_watcher finding when this returns a row (design: never reopen, never
+// duplicate), and it attaches the auto_rule_skipped event to the returned
+// finding (skip-event resolution: the decision conveys the skip but not
+// the suppressing id — the wiring re-uses this query to resolve it).
 //
 // Matching rules (gap-fill join keys):
 //   - purl dimension matches at NAME-LEVEL: the stored dimension value is
@@ -296,11 +375,11 @@ type FindingExistsForPurlAndCveParams struct {
 //     GHSA- or OSV-id findings, never exact-CVE-string only);
 //   - findings in ANY state (open or fixed) suppress the watcher — there is
 //     no reopen logic.
-func (q *Queries) FindingExistsForPurlAndCve(ctx context.Context, arg FindingExistsForPurlAndCveParams) (bool, error) {
-	row := q.db.QueryRow(ctx, findingExistsForPurlAndCve, arg.ProjectID, arg.PurlName, arg.CandidateIds)
-	var exists bool
-	err := row.Scan(&exists)
-	return exists, err
+func (q *Queries) FindScaFindingIdForPurlAndCve(ctx context.Context, arg FindScaFindingIdForPurlAndCveParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, findScaFindingIdForPurlAndCve, arg.ProjectID, arg.PurlName, arg.CandidateIds)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const gateEval = `-- name: GateEval :one
