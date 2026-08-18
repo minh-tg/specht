@@ -46,7 +46,7 @@ repos:
     hooks:
       - id: dprint
         name: dprint
-        entry: mise exec -- pnpm --dir frontend exec dprint fmt
+        entry: pnpm --dir frontend exec dprint fmt
         language: system
         pass_filenames: false
         files: ^frontend/.*\.(ts|tsx|js|jsx|json)$
