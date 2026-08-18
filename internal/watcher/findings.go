@@ -322,13 +322,27 @@ func fingerprint(purl, primary string) string {
 }
 
 // matchAffected returns the first affected[] entry whose ecosystem matches
-// the inventory ecosystem (case-insensitive; either side empty skips the
-// ecosystem comparison) and whose region contains version.
+// the inventory ecosystem (case-insensitive) and whose region contains
+// version. When the inventory ecosystem is known, a differing affected
+// ecosystem is a different package identity and is skipped. When the
+// inventory ecosystem is EMPTY, an affected entry with a NON-empty ecosystem
+// is also skipped — a same-named package in another ecosystem must never
+// match an inventory row whose own ecosystem is unknown unknown-ecosystem guard
+// finding 2). Only an affected entry with no ecosystem can match an
+// ecosystem-less inventory row.
 func matchAffected(ad Advisory, ecosystem, version string) (Affected, bool) {
 	eco := strings.ToLower(strings.TrimSpace(ecosystem))
 	for _, aff := range ad.Affected {
 		affEco := strings.ToLower(strings.TrimSpace(string(aff.Ecosystem)))
-		if eco != "" && affEco != "" && affEco != eco {
+		if eco != "" {
+			// Inventory ecosystem known: skipping a differing affected
+			// ecosystem is a different-package guard, not a version check.
+			if affEco != "" && affEco != eco {
+				continue
+			}
+		} else if affEco != "" {
+			// Inventory ecosystem unknown: never let a same-named package
+			// in another ecosystem match.
 			continue
 		}
 		if VersionAffected(aff, version) {
@@ -362,12 +376,18 @@ func normalizeEcosystem(ecosystem string) string {
 
 // advisorySeverity resolves an advisory's CVSS ratings to the finding's
 // severity string, rank, numeric score, and winning vector. The highest
-// parseable score wins; ratings that cannot be parsed are ignored. An
-// advisory with no usable rating yields severity 'unknown', rank 0 —
-// visible on dashboards but never gating (design: unrated advisory policy)
-// — and the finding is still created.
+// parseable score wins; ratings that cannot be parsed are ignored. The
+// distinguishing flag is whether ANY rating parsed — not the score's sign —
+// so a legitimate CVSS 2.0 vector scoring exactly 0.0
+// (CVSS:2.0/AV:N/AC:L/Au:N/C:N/I:N/A:N) still maps to low/rank 1 rather than
+// unknown (zero-score handling). An advisory with no usable rating yields
+// severity 'unknown', rank 0 — visible on dashboards but never gating
+// (design: unrated advisory policy) — and the finding is still created.
 func advisorySeverity(ratings []AdvisorySeverity) (severity string, rank int16, score float64, vector string) {
-	var best float64
+	var (
+		best  float64
+		rated bool
+	)
 	for _, r := range ratings {
 		v := strings.TrimSpace(r.Score)
 		if v == "" {
@@ -377,11 +397,12 @@ func advisorySeverity(ratings []AdvisorySeverity) (severity string, rank int16, 
 		if err != nil {
 			continue
 		}
-		if s > best {
+		if !rated || s > best {
 			best, vector = s, v
+			rated = true
 		}
 	}
-	if best <= 0 {
+	if !rated {
 		return "unknown", 0, 0, ""
 	}
 	switch {

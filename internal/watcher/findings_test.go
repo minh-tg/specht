@@ -268,6 +268,79 @@ func TestDecideFinding_UnparseableSeverityFallsBackToUnknown(t *testing.T) {
 	}
 }
 
+func TestDecideFinding_CVSS20ZeroVectorRanksLow(t *testing.T) {
+	// zero-score handling: a legitimate CVSS 2.0 vector that scores
+	// exactly 0.0 (all-neutral metrics) must map to low/rank 1 — visible and
+	// gating-eligible — NOT unknown/rank 0. The older `best <= 0` threshold
+	// conflated "parseable but zero" with "unparseable".
+	const zeroVector = "CVSS:2.0/AV:N/AC:L/Au:N/C:N/I:N/A:N"
+	ad := log4jAdvisory
+	ad.Severity = []AdvisorySeverity{{Type: "CVSS_V2", Score: zeroVector}}
+	input := log4jInput
+	input.Advisory = ad
+
+	dec, err := DecideFinding(context.Background(), input, stubGapCheck(false, nil))
+	if err != nil {
+		t.Fatalf("DecideFinding: %v", err)
+	}
+	if !dec.Created {
+		t.Fatal("Created = false, want true")
+	}
+	if dec.Finding.Severity != "low" || dec.Finding.SeverityRank != 1 {
+		t.Errorf("severity = %s/%d, want low/1 for a 0.0 CVSS 2.0 vector", dec.Finding.Severity, dec.Finding.SeverityRank)
+	}
+	if dec.Finding.Score != 0.0 {
+		t.Errorf("score = %v, want 0.0", dec.Finding.Score)
+	}
+	if got := dimsMap(dec.Finding)["severity"]; !reflect.DeepEqual(got, []string{"low"}) {
+		t.Errorf("severity dim = %v, want [low]", got)
+	}
+	if dec.Finding.Metadata["cvss_vector"] != zeroVector {
+		t.Errorf("cvss_vector metadata = %v, want %q", dec.Finding.Metadata["cvss_vector"], zeroVector)
+	}
+}
+
+func TestDecideFinding_EmptyEcosystemDoesNotMatchOtherEcosystem(t *testing.T) {
+	// unknown-ecosystem guard: when the inventory ecosystem is empty, a
+	// same-named package in another ecosystem must NOT match. Only an
+	// affected entry with no ecosystem can match an ecosystem-less row.
+	ad := log4jAdvisory
+	ad.Severity = nil
+	// The advisory is ecosystem-agnostic (same package shape), so without a
+	// guard it would match the ecosystem-less inventory row by name at the
+	// same version. The guard must reject it.
+	input := log4jInput
+	input.Advisory = ad
+	input.Ecosystem = "" // inventory ecosystem unknown
+
+	dec, err := DecideFinding(context.Background(), input, stubGapCheck(false, nil))
+	if err != nil {
+		t.Fatalf("DecideFinding: %v", err)
+	}
+	if dec.Created {
+		t.Fatal("Created = true: an ecosystem-less inventory row must not match an ecosystem-scoped affected entry")
+	}
+	if !strings.Contains(dec.SkipReason, "no affected entry") {
+		t.Errorf("SkipReason = %q, want an affected-match skip", dec.SkipReason)
+	}
+
+	// A genuinely ecosystem-less affected entry still matches.
+	ad2 := log4jAdvisory
+	ad2.Severity = nil
+	ad2.Affected = []Affected{{Package: log4jAffected.Package, Ranges: log4jAffected.Ranges}}
+	ad2.Affected[0].Ecosystem = ""
+	input2 := log4jInput
+	input2.Advisory = ad2
+	input2.Ecosystem = ""
+	dec2, err := DecideFinding(context.Background(), input2, stubGapCheck(false, nil))
+	if err != nil {
+		t.Fatalf("DecideFinding (no-eco affected): %v", err)
+	}
+	if !dec2.Created {
+		t.Fatalf("Created = false for ecosystem-less affected entry (skip %q)", dec2.SkipReason)
+	}
+}
+
 func TestDecideFinding_GHSAOnlyAdvisoryDedupesViaAlias(t *testing.T) {
 	// GHSA-only advisory (no CVE at all): the candidate id set must carry
 	// the GHSA id plus any OSV aliases so the gap-fill check dedupes
@@ -472,6 +545,10 @@ func TestPurlNameLevel(t *testing.T) {
 		{"qualifiers stripped by caller, version kept", "pkg:apk/alpine/libcrypto3@3.3.2-r0", "pkg:apk/alpine/libcrypto3"},
 		{"non-purl with version cuts at last at", "python:setuptools@57.5.0", "python:setuptools"},
 		{"non-purl without version unchanged", "binutils", "binutils"},
+		// ***REMOVED***: the SQL side of the gap-fill join (findings.sql
+		// FindScaFindingIdForPurlAndCve) must align with this LAST-'@' cut, so
+		// a non-purl fallback with '@' in its name resolves the same way.
+		{"non-purl with at in name cuts at last at", "corp@vendor/pkg@1.0.0", "corp@vendor/pkg"},
 		{"empty input", "", ""},
 	}
 	for _, tt := range tests {

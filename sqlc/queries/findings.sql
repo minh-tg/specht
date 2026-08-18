@@ -208,8 +208,12 @@ RETURNING *;
 --
 -- Matching rules (gap-fill join keys):
 --   * purl dimension matches at NAME-LEVEL: the stored dimension value is
---     truncated at the version separator so version-less osv-scanner purls
---     still dedupe against versioned watcher candidates;
+--     truncated at the LAST '@' version separator, aligned with the Go
+--     purlNameLevel helper (findings.go), so version-less osv-scanner purls
+--     still dedupe against versioned watcher candidates. A non-purl fallback
+--     containing '@' in its name (e.g. "corp@vendor/pkg@1.0.0") resolves to
+--     "corp@vendor/pkg" — the same name-level identity Go computes. Values
+--     with no '@' compare verbatim;
 --   * vulnerability_id dimension matches ANY candidate id (primary CVE id
 --     plus aliases — GHSA-only advisories still dedupe against existing
 --     GHSA- or OSV-id findings, never exact-CVE-string only);
@@ -227,6 +231,6 @@ JOIN finding_dimensions dv
  AND dv.dim_value != ''
 WHERE f.project_id = sqlc.arg(project_id)
   AND f.finding_kind = 'sca'
-  AND split_part(dp.dim_value, '@', 1) = sqlc.arg(purl_name)
+  AND COALESCE(substring(dp.dim_value from '^(.*)@'), dp.dim_value) = sqlc.arg(purl_name)
   AND dv.dim_value = ANY(sqlc.arg(candidate_ids)::text[])
 LIMIT 1;
