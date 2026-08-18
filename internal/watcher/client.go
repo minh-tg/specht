@@ -47,10 +47,11 @@ type QueryPackage struct {
 	Name      string `json:"name"`
 }
 
-// QueryResult is the per-query outcome of a batch: the query as sent and the
-// advisories OSV knows for it (empty when OSV knows none).
+// QueryResult is the per-query outcome of a batch: the advisories OSV knows
+// for it (empty when OSV knows none). Results are returned in the input
+// order, and the caller (PollOnce) pairs each result with its query by
+// position — the query itself is not carried on the result.
 type QueryResult struct {
-	Query      Query
 	Advisories []Advisory
 }
 
@@ -314,13 +315,24 @@ func OSVEcosystem(ecosystem string) string {
 
 // responseCache is a tiny TTL cache of raw querybatch bodies keyed by
 // cacheKey. It is not a distributed cache — one daemon process, one mutex —
-// which is exactly the lifetime the poll loop needs.
+// which is exactly the lifetime the poll loop needs. Entry count is kept
+// bounded (see responseCacheMaxEntries) so batch keys that are never
+// re-queried after expiry cannot grow the map without limit over a long
+// running daemon.
 type responseCache struct {
-	mu      sync.Mutex
-	ttl     time.Duration
-	now     func() time.Time
-	entries map[string]cacheEntry
+	mu         sync.Mutex
+	ttl        time.Duration
+	now        func() time.Time
+	maxEntries int
+	entries    map[string]cacheEntry
 }
+
+// responseCacheMaxEntries caps the number of cached batch bodies. Without a
+// cap the cache would only ever evict on access-after-expiry, so batch keys a
+// changing inventory stops re-querying would linger for the process lifetime
+// (whole-branch review, Minor finding). 4096 raw batch bodies is generous for
+// the largest plausible query space while firmly bounding memory.
+const responseCacheMaxEntries = 4096
 
 type cacheEntry struct {
 	raw       []byte
@@ -328,11 +340,19 @@ type cacheEntry struct {
 }
 
 func newResponseCache(ttl time.Duration, now func() time.Time) *responseCache {
-	return &responseCache{ttl: ttl, now: now, entries: make(map[string]cacheEntry)}
+	if now == nil {
+		now = time.Now
+	}
+	return &responseCache{
+		ttl:        ttl,
+		now:        now,
+		maxEntries: responseCacheMaxEntries,
+		entries:    make(map[string]cacheEntry),
+	}
 }
 
 func (c *responseCache) get(key string) ([]byte, bool) {
-	if c.ttl <= 0 || c == nil {
+	if c == nil || c.ttl <= 0 {
 		// nil caches never happen in practice (NewHTTPClient always
 		// constructs one); the ttl gate is the disable switch.
 		return nil, false
@@ -351,12 +371,43 @@ func (c *responseCache) get(key string) ([]byte, bool) {
 }
 
 func (c *responseCache) put(key string, raw []byte) {
-	if c.ttl <= 0 {
+	if c == nil || c.ttl <= 0 {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if _, exists := c.entries[key]; !exists && len(c.entries) >= c.maxEntries {
+		// Over budget for a brand-new key: expire-sweep first, then evict
+		// the least-recently-set entry so the map stays bounded.
+		c.evictLocked()
+	}
 	c.entries[key] = cacheEntry{raw: raw, expiresAt: c.now().Add(c.ttl)}
+}
+
+// evictLocked drops already-expired entries, then — if the map is still over
+// the cap — evicts the entry with the oldest expiry until it is back within
+// budget. Callers hold c.mu.
+func (c *responseCache) evictLocked() {
+	now := c.now()
+	for k, e := range c.entries {
+		if now.After(e.expiresAt) {
+			delete(c.entries, k)
+		}
+	}
+	for len(c.entries) >= c.maxEntries {
+		var (
+			oldestKey string
+			oldest    time.Time
+			first     = true
+		)
+		for k, e := range c.entries {
+			if first || e.expiresAt.Before(oldest) {
+				oldestKey, oldest = k, e.expiresAt
+				first = false
+			}
+		}
+		delete(c.entries, oldestKey)
+	}
 }
 
 // del removes a cache entry. Used to drop a body that no longer decodes or

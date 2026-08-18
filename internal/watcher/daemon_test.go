@@ -88,6 +88,20 @@ func pypiAdvisory(id, published string) Advisory {
 	return a
 }
 
+// golangAdvisory builds an advisory in the OSV canonical "Go" ecosystem,
+// matching golang.org/x/text versions < 0.3.8.
+func golangAdvisory(id, published string) Advisory {
+	a := testAdvisory(id, published)
+	a.Affected[0].Ecosystem = "Go" // OSV canonical casing, as querybatch returns it
+	a.Affected[0].Package.Name = "golang.org/x/text"
+	a.Affected[0].Ranges = []VersionRange{
+		{Type: "SEMVER", Events: []RangeEvent{{Introduced: "0"}, {Fixed: "0.3.8"}}},
+	}
+	raw, _ := json.Marshal(a)
+	a.Raw = raw
+	return a
+}
+
 // fakeClient is a canned Client keyed by ecosystem\x00name.
 type fakeClient struct {
 	mu      sync.Mutex
@@ -107,7 +121,6 @@ func (f *fakeClient) QueryBatch(ctx context.Context, queries []Query) ([]QueryRe
 	err := f.err
 	results := make([]QueryResult, len(queries))
 	for i, q := range queries {
-		results[i].Query = q
 		results[i].Advisories = f.results[q.Package.Ecosystem+"\x00"+q.Package.Name]
 	}
 	f.mu.Unlock()
@@ -382,6 +395,37 @@ func TestPollOnce_RepollHitCountedUnchangedNotCreated(t *testing.T) {
 	assert.Equal(t, 0, outcome.Created, "a re-poll hit must not be counted as a new finding")
 	assert.Equal(t, 1, outcome.Unchanged, "a re-poll hit is counted as unchanged")
 	require.Len(t, store.created, 1, "the decision is still handed to the store for its no-op guard")
+}
+
+func TestPollOnce_GrypeGolangStoredEcosystemMatchesOSVGoAdvisory(t *testing.T) {
+	// Regression for the whole-branch review's Important finding: grype
+	// stores the purl type "golang", while OSV returns the canonical "Go"
+	// ecosystem. The daemon groups and queries under the OSV-canonical name
+	// (groupInventory -> OSVEcosystem("golang") = "Go"); it MUST hand that
+	// same canonical value to the matcher, not the raw stored "golang", or
+	// matchAffected compares "golang" against the advisory's "go" and
+	// silently skips every crate — a false-negative with no error.
+	deps := baseDeps()
+	client := deps.Client.(*fakeClient)
+	client.results["Go\x00golang.org/x/text"] = []Advisory{golangAdvisory("GHSA-gggg-gggg-gggg", "2026-06-01T00:00:00Z")}
+	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
+		return []sqlc.DistinctInventoryRow{
+			inventoryRow("pkg:golang/golang.org/x/text@0.3.7", "golang", "golang.org/x/text", "0.3.7"),
+		}, nil
+	}
+
+	outcome, err := PollOnce(context.Background(), deps)
+	require.NoError(t, err)
+	assert.Equal(t, 1, outcome.Created, "stored 'golang' must match an OSV 'Go' advisory and create")
+	require.Len(t, client.queries, 1)
+	require.Len(t, client.queries[0], 1)
+	assert.Equal(t, "Go", client.queries[0][0].Package.Ecosystem, "query uses the OSV canonical ecosystem")
+	store := deps.Store.(*recordingStore)
+	require.Len(t, store.created, 1)
+	// The persisted ecosystem dimension is the normalized canonical value.
+	ecosystemDims := dimsMap(store.created[0].Finding)["ecosystem"]
+	require.Equal(t, []string{"go"}, ecosystemDims, "ecosystem dimension normalized to lowercase canonical value")
+	assert.Equal(t, "go", store.created[0].Finding.Display["ecosystem"])
 }
 
 func TestPollOnce_MalformedResponseDoesNotAdvanceWatermark(t *testing.T) {

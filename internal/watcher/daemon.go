@@ -238,6 +238,15 @@ func pollCutoff(ctx context.Context, deps PollDeps) (time.Time, error) {
 // afterCutoff reports whether an advisory is eligible given the cutoff. An
 // advisory with an unparseable published date is always eligible — a date
 // quirk must never hide an advisory.
+//
+// Known v1 limitation (feed-delta path): the cutoff is keyed on the advisory's
+// published date (Published >= watermark on warm polls). Because querybatch is
+// NOT a delta feed, an advisory published BEFORE the watermark whose affected
+// ranges are later extended or modified is never re-evaluated on warm polls —
+// it is filtered here and the modified/added range goes unnoticed. This is the
+// documented cost of the watermark+cutoff approach and is tracked on the
+// feed-delta upgrade path; do not treat afterCutoff as an incremental-change
+// feed.
 func afterCutoff(advisory Advisory, cutoff time.Time) bool {
 	if cutoff.IsZero() {
 		return true
@@ -287,7 +296,14 @@ func decidePair(ctx context.Context, deps PollDeps, g invGroup, row sqlc.Distinc
 		Advisory:  advisory,
 		Purl:      row.Purl,
 		Version:   row.Version.String,
-		Ecosystem: row.Ecosystem.String,
+		// Use the grouped OSV-canonical ecosystem (g.ecosystem), not the raw
+		// stored row.Ecosystem, so the matcher compares the SAME name the
+		// query was sent under. groupInventory maps stored forms to the OSV
+		// canonical name (grype stores purl type "golang", OSV returns
+		// "Go"); passing the raw stored value here made matchAffected
+		// compare "golang" against the advisory's "go" and silently skip
+		// every match (whole-branch review, Important finding).
+		Ecosystem: g.ecosystem,
 	}
 	decision, err := DecideFinding(ctx, input, gap)
 	if err != nil {

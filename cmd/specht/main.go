@@ -392,7 +392,7 @@ func runWatcherBackfill(cmd command) error {
 		projectIDs[i] = p.ID
 	}
 
-	inventoryTTL := 720 * time.Hour
+	inventoryTTL := 2160 * time.Hour // 90d — must match the server's INVENTORY_TTL default
 	if v := os.Getenv("INVENTORY_TTL"); v != "" {
 		inventoryTTL, err = time.ParseDuration(v)
 		if err != nil {

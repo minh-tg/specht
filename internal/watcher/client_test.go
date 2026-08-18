@@ -327,3 +327,60 @@ func TestQueryBatch_CacheKeyIgnoresQueryOrder(t *testing.T) {
 		t.Errorf("cache keys differ for reordered same-content batches: %s vs %s", a, b)
 	}
 }
+
+func TestResponseCache_BoundedOnPutEvictsOldest(t *testing.T) {
+	// Whole-branch review Minor finding: the cache must be bounded so batch
+	// keys that are never re-queried after expiry cannot grow without limit.
+	// With maxEntries = 2, inserting a third entry evicts the oldest.
+	clock := time.Unix(1_000_000, 0)
+	c := &responseCache{
+		ttl:        time.Hour,
+		now:        func() time.Time { return clock },
+		maxEntries: 2,
+		entries:    map[string]cacheEntry{},
+	}
+	c.put("a", []byte("1"))
+	c.put("b", []byte("2"))
+	c.put("c", []byte("3")) // over budget: evicts oldest ("a")
+
+	if len(c.entries) != 2 {
+		t.Fatalf("entries after evict = %d, want 2", len(c.entries))
+	}
+	if _, ok := c.get("a"); ok {
+		t.Errorf("oldest entry 'a' must be evicted once over the cap")
+	}
+	if _, ok := c.get("b"); !ok {
+		t.Errorf("'b' must survive")
+	}
+	if _, ok := c.get("c"); !ok {
+		t.Errorf("'c' must survive")
+	}
+
+	// Expired entries are swept first: pushing the clock past the TTL and
+	// adding one more entry drops the expired remainder to stay bounded.
+	clock = clock.Add(2 * time.Hour) // b and c now expired
+	c.put("d", []byte("4"))
+	if len(c.entries) > 2 {
+		t.Errorf("entries after expiry sweep = %d, want <= 2", len(c.entries))
+	}
+	if _, ok := c.get("d"); !ok {
+		t.Errorf("newest entry 'd' must survive the expiry sweep")
+	}
+}
+
+func TestResponseCache_RePutExistingKeyDoesNotEvict(t *testing.T) {
+	c := &responseCache{
+		ttl:        time.Hour,
+		now:        time.Now,
+		maxEntries: 1,
+		entries:    map[string]cacheEntry{},
+	}
+	c.put("a", []byte("1"))
+	c.put("a", []byte("2")) // refresh existing key — no eviction needed
+	if len(c.entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(c.entries))
+	}
+	if got, _ := c.get("a"); string(got) != "2" {
+		t.Errorf("refreshed value = %q, want \"2\"", got)
+	}
+}

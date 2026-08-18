@@ -76,10 +76,13 @@ type AdvisoryRef struct {
 
 // DecideInput is everything DecideFinding needs for one (advisory,
 // inventory purl) pair. Purl is the normalized versioned purl from the
-// project inventory (pkg:npm/lodash@4.17.19); Version and Ecosystem come
-// from the same inventory row, with Ecosystem kept in its stored case —
-// normalization to lowercase happens inside the watcher (controller
-// ruling: single normalization point in watcher code, not per-parser).
+// project inventory (pkg:npm/lodash@4.17.19); Version comes from the same
+// inventory row. Ecosystem is the OSV-canonical ecosystem name the pair was
+// queried under (the daemon derives it from the stored case via OSVEcosystem
+// when grouping), so the matcher compares it against the advisory's canonical
+// affected[].ecosystem under one mapping; the watcher still normalizes the
+// stored dimension value to lowercase (single
+// normalization point in watcher code, not per-parser).
 type DecideInput struct {
 	ProjectID string
 	Advisory  Advisory
