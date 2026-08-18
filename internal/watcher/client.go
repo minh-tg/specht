@@ -174,6 +174,13 @@ func (c *HTTPClient) queryBatchChunk(ctx context.Context, queries []Query) ([]Qu
 	key := cacheKey(queries)
 	if raw, ok := c.cache.get(key); ok {
 		if results, err := decodeQueryBatch(raw); err == nil {
+			if err := validateResultLength(results, len(queries)); err != nil {
+				// A cached body whose result count no longer matches the
+				// query count is treated as corrupted (drop the cache
+				// entry) rather than trusted.
+				c.cache.del(key)
+				return nil, err
+			}
 			return results, nil
 		}
 		// A corrupted cache entry falls through to a refetch.
@@ -206,7 +213,26 @@ func (c *HTTPClient) queryBatchChunk(ctx context.Context, queries []Query) ([]Qu
 	}
 
 	c.cache.put(key, raw)
-	return decodeQueryBatch(raw)
+	results, err := decodeQueryBatch(raw)
+	if err != nil {
+		return nil, err
+	}
+	if err := validateResultLength(results, len(queries)); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+// validateResultLength enforces a 1:1 correspondence between the queries sent
+// and the results returned. A short results array means the upstream silently
+// dropped responses, which must be surfaced as a malformed (non-retryable)
+// response — otherwise advisories would be silently lost while the poll's
+// watermark still advanced (malformed-response guard).
+func validateResultLength(results []QueryResult, queryCount int) error {
+	if len(results) != queryCount {
+		return fmt.Errorf("%w: got %d results for %d queries", ErrMalformedResponse, len(results), queryCount)
+	}
+	return nil
 }
 
 // decodeQueryBatch parses the querybatch response envelope and captures each
@@ -331,4 +357,12 @@ func (c *responseCache) put(key string, raw []byte) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.entries[key] = cacheEntry{raw: raw, expiresAt: c.now().Add(c.ttl)}
+}
+
+// del removes a cache entry. Used to drop a body that no longer decodes or
+// no longer matches its query count.
+func (c *responseCache) del(key string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.entries, key)
 }

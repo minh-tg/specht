@@ -148,7 +148,17 @@ func TestQueryBatch_CacheHitsSkipNetwork(t *testing.T) {
 	var hits atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
-		w.Write(querybatchResponse([]map[string]any{cannedAdvisory("GHSA-cached-1", "2024-01-01T00:00:00Z")}))
+		// Echo one result per query so the result count matches the query
+		// count (the client validates the 1:1 correspondence).
+		var req struct {
+			Queries []json.RawMessage `json:"queries"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		lists := make([][]map[string]any, len(req.Queries))
+		for i := range lists {
+			lists[i] = []map[string]any{cannedAdvisory("GHSA-cached-1", "2024-01-01T00:00:00Z")}
+		}
+		w.Write(querybatchResponse(lists...))
 	}))
 	defer srv.Close()
 
@@ -244,6 +254,32 @@ func TestQueryBatch_MalformedBody(t *testing.T) {
 	}
 	if IsRetryable(err) {
 		t.Errorf("malformed-body error %v should NOT be retryable (not an HTTP status failure)", err)
+	}
+}
+
+func TestQueryBatch_ShortResultsMalformedNotRetryable(t *testing.T) {
+	// OSV returns fewer results than the queries sent — a silently truncated
+	// response that must be surfaced as a non-retryable malformed-response
+	// error so the poll aborts instead of advancing its watermark while
+	// dropping advisories (malformed-response guard).
+	var hits atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits.Add(1)
+		// 2 queries in, but only 1 result out.
+		w.Write(querybatchResponse([]map[string]any{cannedAdvisory("GHSA-short-1", "2024-01-01T00:00:00Z")}))
+	}))
+	defer srv.Close()
+
+	c := NewHTTPClient(HTTPClientConfig{Endpoint: srv.URL, BatchSize: 10, CacheTTL: time.Hour})
+	_, err := c.QueryBatch(context.Background(), []Query{queryFor("a"), queryFor("b")})
+	if err == nil {
+		t.Fatal("expected error for short results array")
+	}
+	if !errors.Is(err, ErrMalformedResponse) {
+		t.Errorf("error %v does not wrap ErrMalformedResponse", err)
+	}
+	if IsRetryable(err) {
+		t.Errorf("short-results error %v should NOT be retryable", err)
 	}
 }
 

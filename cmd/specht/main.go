@@ -449,8 +449,8 @@ func runWatcherBackfill(cmd command) error {
 // occurrences, events, or evidence.
 type discardStore struct{}
 
-func (discardStore) PersistFoundFinding(ctx context.Context, d watcher.Decision) (pgtype.UUID, error) {
-	return pgtype.UUID{}, nil
+func (discardStore) PersistFoundFinding(ctx context.Context, d watcher.Decision) (pgtype.UUID, bool, error) {
+	return pgtype.UUID{}, true, nil
 }
 
 func (discardStore) PersistSkipEvent(ctx context.Context, suppressingID pgtype.UUID, ev watcher.Event) error {

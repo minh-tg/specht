@@ -53,15 +53,16 @@ func NewPollStore(repos *repo.Repos) PollStore {
 // already exists, the whole persist is a no-op — occurrences are created only
 // for genuinely new findings (UNIQUE(finding_id,
 // report_id) does not dedupe NULL report_ids, so the guard is mandatory).
-func (s *pgPollStore) PersistFoundFinding(ctx context.Context, d Decision) (pgtype.UUID, error) {
+func (s *pgPollStore) PersistFoundFinding(ctx context.Context, d Decision) (pgtype.UUID, bool, error) {
 	pid, err := uuid.Parse(d.Finding.ProjectID)
 	if err != nil {
-		return pgtype.UUID{}, fmt.Errorf("parse project id %q: %w", d.Finding.ProjectID, err)
+		return pgtype.UUID{}, false, fmt.Errorf("parse project id %q: %w", d.Finding.ProjectID, err)
 	}
 	projectID := pgtype.UUID{Bytes: pid, Valid: true}
 	fp := d.Finding
 
 	var out pgtype.UUID
+	created := false
 	err = s.repos.WithTx(ctx, func(q *sqlc.Queries) error {
 		f, err := q.CreateFindingIfAbsent(ctx, sqlc.CreateFindingIfAbsentParams{
 			ProjectID:           projectID,
@@ -74,12 +75,14 @@ func (s *pgPollStore) PersistFoundFinding(ctx context.Context, d Decision) (pgty
 		})
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Re-poll hit of an existing watcher finding: nothing to do.
+			// created stays false so the poll counts this as unchanged.
 			return nil
 		}
 		if err != nil {
 			return fmt.Errorf("create finding: %w", err)
 		}
 		out = f.ID
+		created = true
 
 		source := pgtype.Text{String: DimensionSourceValue, Valid: true}
 		for _, dim := range fp.Dimensions {
@@ -127,9 +130,9 @@ func (s *pgPollStore) PersistFoundFinding(ctx context.Context, d Decision) (pgty
 		return nil
 	})
 	if err != nil {
-		return pgtype.UUID{}, err
+		return pgtype.UUID{}, false, err
 	}
-	return out, nil
+	return out, created, nil
 }
 
 // PersistSkipEvent implements PollStore: a single event insert on the

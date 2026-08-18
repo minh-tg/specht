@@ -139,16 +139,23 @@ type recordingStore struct {
 	skips      []skipCall
 	persistErr error
 	skipErr    error
+	// reportNoOp mirrors a re-poll hit: PersistFoundFinding reports
+	// created=false so the poll counts the outcome as unchanged rather than
+	// a new finding.
+	reportNoOp bool
 }
 
-func (s *recordingStore) PersistFoundFinding(ctx context.Context, d Decision) (pgtype.UUID, error) {
+func (s *recordingStore) PersistFoundFinding(ctx context.Context, d Decision) (pgtype.UUID, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.created = append(s.created, d)
 	if s.persistErr != nil {
-		return pgtype.UUID{}, s.persistErr
+		return pgtype.UUID{}, false, s.persistErr
 	}
-	return suppressingID, nil
+	if s.reportNoOp {
+		return suppressingID, false, nil
+	}
+	return suppressingID, true, nil
 }
 
 func (s *recordingStore) PersistSkipEvent(ctx context.Context, id pgtype.UUID, ev Event) error {
@@ -356,6 +363,43 @@ func TestPollOnce_StoreErrorAbortsAndKeepsWatermark(t *testing.T) {
 	_, err := PollOnce(context.Background(), deps)
 	require.Error(t, err)
 	assert.False(t, watermarked)
+}
+
+func TestPollOnce_RepollHitCountedUnchangedNotCreated(t *testing.T) {
+	deps := baseDeps()
+	client := deps.Client.(*fakeClient)
+	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
+	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
+		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	}
+	// The store reports created=false, as a real re-poll hit of an existing
+	// watcher finding would (CreateFindingIfAbsent -> pgx.ErrNoRows).
+	store := deps.Store.(*recordingStore)
+	store.reportNoOp = true
+
+	outcome, err := PollOnce(context.Background(), deps)
+	require.NoError(t, err)
+	assert.Equal(t, 0, outcome.Created, "a re-poll hit must not be counted as a new finding")
+	assert.Equal(t, 1, outcome.Unchanged, "a re-poll hit is counted as unchanged")
+	require.Len(t, store.created, 1, "the decision is still handed to the store for its no-op guard")
+}
+
+func TestPollOnce_MalformedResponseDoesNotAdvanceWatermark(t *testing.T) {
+	deps := baseDeps()
+	client := deps.Client.(*fakeClient)
+	// A malformed/short OSV response is a non-retryable error (***REMOVED***
+	// unknown-ecosystem guard): the poll must abort and leave the watermark alone.
+	client.err = ErrMalformedResponse
+	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
+		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	}
+	watermarked := false
+	deps.SetWatermark = func(ctx context.Context, ts time.Time) error { watermarked = true; return nil }
+
+	_, err := PollOnce(context.Background(), deps)
+	require.Error(t, err)
+	assert.False(t, IsRetryable(err), "malformed response must not be retried")
+	assert.False(t, watermarked, "watermark must NOT advance on a short/malformed response")
 }
 
 func TestBuildOccurrence_RawAdvisoryBase64(t *testing.T) {

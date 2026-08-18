@@ -31,9 +31,11 @@ type PollStore interface {
 	// PersistFoundFinding writes a Decision marked Created: the finding row,
 	// its dimensions, the occurrence (report_id NULL for watcher findings),
 	// the auto_rule_applied event, and the evidence artifact. It returns the
-	// finding id. Re-poll hits of an existing watcher finding (same
-	// fingerprint) are guarded: no second occurrence is created.
-	PersistFoundFinding(ctx context.Context, d Decision) (pgtype.UUID, error)
+	// finding id and whether the finding row was actually created. Re-poll
+	// hits of an existing watcher finding (same fingerprint) are guarded: no
+	// second occurrence is created, and created is false so the poll can
+	// count them as unchanged rather than inflated "created".
+	PersistFoundFinding(ctx context.Context, d Decision) (pgtype.UUID, bool, error)
 	// PersistSkipEvent attaches an auto_rule_skipped event to the
 	// scan-derived finding that suppressed a watcher finding (controller
 	// ruling: the decision conveys the skip but not the suppressing id, so
@@ -252,8 +254,16 @@ func decidePair(ctx context.Context, deps PollDeps, g invGroup, row sqlc.Distinc
 		return decisionIgnored, false, err
 	}
 	if decision.Created {
-		if _, err := deps.Store.PersistFoundFinding(ctx, decision); err != nil {
+		id, created, err := deps.Store.PersistFoundFinding(ctx, decision)
+		if err != nil {
 			return decisionIgnored, false, err
+		}
+		_ = id
+		if !created {
+			// Re-poll hit of an existing watcher finding: the fingerprint is
+			// already persisted, so this is an unchanged outcome, not a new
+			// finding (re-poll — keep backfill counters honest).
+			return decisionUnchanged, false, nil
 		}
 		return decisionCreated, false, nil
 	}
@@ -365,6 +375,7 @@ func RunCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 		var pollMu sync.Mutex
 		backoff := time.Duration(0) // first tick is immediate
 		for {
+			var delay time.Duration
 			if !pollMu.TryLock() {
 				logger.Warn("cve watcher poll skipped: previous poll still running")
 			} else {
@@ -373,15 +384,21 @@ func RunCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 				switch {
 				case err != nil:
 					backoff = nextBackoff(backoff, cfg.InitialBackoff, cfg.MaxBackoff)
-					logger.Error("cve watcher poll failed", "error", err, "next_retry", cfg.Jitter(backoff).String())
+					// Jittered exactly once and reused for both the log and
+					// the sleep, so what we report is what we wait (***REMOVED***
+					// so what we report is what we wait).
+					delay = cfg.Jitter(backoff)
+					logger.Error("cve watcher poll failed", "error", err, "next_retry", delay.String())
 				default:
-					logger.Info("cve watcher poll complete", "projects", outcome.Projects, "queried", outcome.Queried, "created", outcome.Created, "skipped", outcome.Skipped)
+					logger.Info("cve watcher poll complete", "projects", outcome.Projects, "queried", outcome.Queried, "created", outcome.Created, "skipped", outcome.Skipped, "unchanged", outcome.Unchanged)
 					backoff = 0
+					delay = cfg.Jitter(cfg.PollInterval)
 				}
 			}
-			delay := cfg.Jitter(cfg.PollInterval)
-			if backoff > 0 {
-				delay = cfg.Jitter(backoff)
+			if delay <= 0 {
+				// A skipped tick (previous poll still running when the next
+				// fired) postpones to the steady-state interval.
+				delay = cfg.Jitter(cfg.PollInterval)
 			}
 			if err := cfg.Sleep(ctx, delay); err != nil {
 				logger.Info("cve watcher daemon stopped")
