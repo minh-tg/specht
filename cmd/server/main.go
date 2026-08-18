@@ -59,46 +59,10 @@ func main() {
 	}
 
 	// CVE watcher daemon configuration. The daemon is off unless
-	// WATCHER_ENABLE=true; the remaining variables tune its poll loop.
+	// WATCHER_ENABLE=true; the remaining variables tune its poll loop and are
+	// parsed only inside the enable gate below, so malformed WATCHER_* values
+	// can never crash a server with the watcher disabled (***REMOVED*** finding 4).
 	watcherEnable := os.Getenv("WATCHER_ENABLE")
-
-	watcherPollIntervalStr := os.Getenv("WATCHER_POLL_INTERVAL")
-	if watcherPollIntervalStr == "" {
-		watcherPollIntervalStr = "6h" // design spec default
-	}
-	watcherPollInterval, err := time.ParseDuration(watcherPollIntervalStr)
-	if err != nil {
-		slog.Error("WATCHER_POLL_INTERVAL is invalid", "value", watcherPollIntervalStr, "error", err)
-		os.Exit(1)
-	}
-
-	watcherOSVEndpoint := os.Getenv("WATCHER_OSV_ENDPOINT")
-	if watcherOSVEndpoint == "" {
-		watcherOSVEndpoint = watcher.DefaultOSVEndpoint
-	}
-
-	watcherBatchSize := 0
-	if v := os.Getenv("WATCHER_BATCH_SIZE"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil {
-			slog.Error("WATCHER_BATCH_SIZE is invalid", "value", v, "error", err)
-			os.Exit(1)
-		}
-		watcherBatchSize = n
-	}
-
-	// WATCHER_COLD_START_WINDOW bounds the daemon's first (watermark-less)
-	// poll: advisories published before now-window are skipped. The default
-	// "full" applies no bound — everything OSV knows about the inventory.
-	var watcherSince time.Time
-	if window := os.Getenv("WATCHER_COLD_START_WINDOW"); window != "" && window != "full" {
-		d, err := time.ParseDuration(window)
-		if err != nil {
-			slog.Error("WATCHER_COLD_START_WINDOW is invalid", "value", window, "error", err)
-			os.Exit(1)
-		}
-		watcherSince = time.Now().UTC().Add(-d)
-	}
 
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
@@ -193,16 +157,68 @@ func main() {
 	defer stop()
 
 	// Start the CVE watcher daemon on the same context so it shuts down with
-	// the server. Off by default; enable with WATCHER_ENABLE=true.
+	// the server. Off by default; enable with WATCHER_ENABLE=true. All
+	// WATCHER_* variables are parsed here, inside the gate, so malformed
+	// values can never crash a server with the watcher disabled.
 	if watcherEnable == "true" {
+		watcherPollIntervalStr := os.Getenv("WATCHER_POLL_INTERVAL")
+		if watcherPollIntervalStr == "" {
+			watcherPollIntervalStr = "6h" // design spec default
+		}
+		watcherPollInterval, err := time.ParseDuration(watcherPollIntervalStr)
+		if err != nil {
+			slog.Error("WATCHER_POLL_INTERVAL is invalid", "value", watcherPollIntervalStr, "error", err)
+			os.Exit(1)
+		}
+
+		watcherOSVEndpoint := os.Getenv("WATCHER_OSV_ENDPOINT")
+		if watcherOSVEndpoint == "" {
+			watcherOSVEndpoint = watcher.DefaultOSVEndpoint
+		}
+
+		watcherBatchSize := 0
+		if v := os.Getenv("WATCHER_BATCH_SIZE"); v != "" {
+			n, err := strconv.Atoi(v)
+			if err != nil {
+				slog.Error("WATCHER_BATCH_SIZE is invalid", "value", v, "error", err)
+				os.Exit(1)
+			}
+			watcherBatchSize = n
+		}
+
+		// WATCHER_COLD_START_WINDOW bounds the daemon's first (watermark-less)
+		// poll: advisories published before now-window are skipped. The
+		// default "full" applies no bound — everything OSV knows about the
+		// inventory.
+		var watcherSince time.Time
+		if window := os.Getenv("WATCHER_COLD_START_WINDOW"); window != "" && window != "full" {
+			d, err := time.ParseDuration(window)
+			if err != nil {
+				slog.Error("WATCHER_COLD_START_WINDOW is invalid", "value", window, "error", err)
+				os.Exit(1)
+			}
+			watcherSince = time.Now().UTC().Add(-d)
+		}
+
+		// Notification channel: NewSlackNotifier returns a no-op when no
+		// webhook URL is configured, so an unconfigured deployment never
+		// sends and never blocks the poll.
+		watcherNotifier := watcher.NewSlackNotifier(
+			os.Getenv(watcher.EnvSlackURL),
+			os.Getenv(watcher.EnvSlackSigningSecret),
+			slog.Default(),
+		)
+
 		projects, err := repos.Projects.List(ctx)
 		if err != nil {
 			slog.Error("watcher: list projects", "error", err)
 			os.Exit(1)
 		}
 		projectIDs := make([]pgtype.UUID, len(projects))
+		projectNames := make(map[string]string, len(projects))
 		for i, p := range projects {
 			projectIDs[i] = p.ID
+			projectNames[uuid.UUID(p.ID.Bytes).String()] = p.Name
 		}
 		watcher.RunCveWatcher(ctx, watcher.RunCveWatcherConfig{
 			PollInterval: watcherPollInterval,
@@ -214,6 +230,10 @@ func main() {
 				}),
 				Store:    watcher.NewPollStore(repos),
 				Projects: projectIDs,
+				Notifier: watcherNotifier,
+				ProjectName: func(ctx context.Context, projectID pgtype.UUID) (string, error) {
+					return projectNames[uuid.UUID(projectID.Bytes).String()], nil
+				},
 				Inventory: func(ctx context.Context, projectID pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
 					return repos.Inventory.DistinctInventory(ctx, projectID, repo.IntervalFromDuration(since))
 				},

@@ -80,6 +80,15 @@ type PollDeps struct {
 	// design: "everything OSV knows about the inventory, deduped by
 	// gap-fill").
 	Since time.Time
+	// Notifier receives a Slack notification for the findings created
+	// during a poll (only decisionCreated outcomes — re-poll hits and
+	// skips never notify). It is dispatched asynchronously and never
+	// blocks or fails a poll; a nil notifier (or one configured with no
+	// webhook URL) disables the channel entirely.
+	Notifier Notifier
+	// ProjectName resolves a project's display name for notifications.
+	// When nil, the project UUID string is used as the name.
+	ProjectName func(ctx context.Context, projectID pgtype.UUID) (string, error)
 }
 
 // PollOutcome summarizes one poll for logging and tests.
@@ -127,6 +136,7 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 
 	now := deps.Now().UTC()
 	outcome := PollOutcome{}
+	var created []Decision
 	for _, projectID := range deps.Projects {
 		outcome.Projects++
 		rows, err := deps.Inventory(ctx, projectID, deps.InventoryTTL)
@@ -154,13 +164,14 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 					continue
 				}
 				for _, row := range g.rows {
-					kind, skipped, err := decidePair(ctx, deps, g, row, advisory)
+					kind, skipped, decision, err := decidePair(ctx, deps, g, row, advisory)
 					if err != nil {
 						return outcome, err
 					}
 					switch kind {
 					case decisionCreated:
 						outcome.Created++
+						created = append(created, decision)
 					case decisionSkipped:
 						outcome.Skipped++
 					case decisionUnchanged:
@@ -179,8 +190,35 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 	if err := deps.SetWatermark(ctx, now); err != nil {
 		return outcome, fmt.Errorf("advance watermark: %w", err)
 	}
+	notifyCreated(ctx, deps, created)
 	deps.Logger.Info("cve watcher poll complete", "projects", outcome.Projects, "queried", outcome.Queried, "created", outcome.Created, "skipped", outcome.Skipped, "unchanged", outcome.Unchanged)
 	return outcome, nil
+}
+
+// notifyCreated hands the newly created findings to the payload notifier.
+// It is deliberately best-effort and non-blocking: notifications are built
+// synchronously, then the Notify call is dispatched on a fresh goroutine so a
+// slow or dead webhook (which Notify itself swallows after retries) can never
+// stall or fail the poll. A nil Notifier is a no-op.
+func notifyCreated(ctx context.Context, deps PollDeps, created []Decision) {
+	if deps.Notifier == nil || len(created) == 0 {
+		return
+	}
+	notifications := make([]Notification, 0, len(created))
+	for _, d := range created {
+		project := d.Finding.ProjectID
+		if deps.ProjectName != nil {
+			if pid, err := uuid.Parse(d.Finding.ProjectID); err == nil {
+				if name, err := deps.ProjectName(ctx, pgtype.UUID{Bytes: pid, Valid: true}); err == nil && name != "" {
+					project = name
+				}
+			}
+		}
+		notifications = append(notifications, NotificationFromDecision(d, project))
+	}
+	// Copy the context's values; a cancelled parent mid-dispatch only aborts
+	// the notifier's own retry sleep, never this return.
+	go deps.Notifier.Notify(context.WithoutCancel(ctx), notifications)
 }
 
 // pollCutoff resolves the advisory published-date lower bound: the watermark
@@ -222,8 +260,10 @@ const (
 
 // decidePair evaluates one (advisory, inventory row) pair and persists the
 // outcome. The gap-check closure resolves the suppressing finding id so the
-// auto_rule_skipped event can be attached to it.
-func decidePair(ctx context.Context, deps PollDeps, g invGroup, row sqlc.DistinctInventoryRow, advisory Advisory) (decisionKind, bool, error) {
+// auto_rule_skipped event can be attached to it. It returns the outcome kind,
+// whether the skip was orphaned, and (when created) the decision that carries
+// the persisted finding payload for downstream notification.
+func decidePair(ctx context.Context, deps PollDeps, g invGroup, row sqlc.DistinctInventoryRow, advisory Advisory) (decisionKind, bool, Decision, error) {
 	var suppressing pgtype.UUID
 	haveSuppressing := false
 	gap := func(ctx context.Context, projectID, purlName string, candidateIDs []string) (bool, error) {
@@ -251,32 +291,32 @@ func decidePair(ctx context.Context, deps PollDeps, g invGroup, row sqlc.Distinc
 	}
 	decision, err := DecideFinding(ctx, input, gap)
 	if err != nil {
-		return decisionIgnored, false, err
+		return decisionIgnored, false, Decision{}, err
 	}
 	if decision.Created {
 		id, created, err := deps.Store.PersistFoundFinding(ctx, decision)
 		if err != nil {
-			return decisionIgnored, false, err
+			return decisionIgnored, false, Decision{}, err
 		}
 		_ = id
 		if !created {
 			// Re-poll hit of an existing watcher finding: the fingerprint is
 			// already persisted, so this is an unchanged outcome, not a new
 			// finding (re-poll — keep backfill counters honest).
-			return decisionUnchanged, false, nil
+			return decisionUnchanged, false, Decision{}, nil
 		}
-		return decisionCreated, false, nil
+		return decisionCreated, false, decision, nil
 	}
 	if decision.Event != nil { // auto_rule_skipped: attach to the suppressing finding
 		if haveSuppressing {
 			if err := deps.Store.PersistSkipEvent(ctx, suppressing, *decision.Event); err != nil {
-				return decisionIgnored, false, err
+				return decisionIgnored, false, Decision{}, err
 			}
-			return decisionSkipped, false, nil
+			return decisionSkipped, false, Decision{}, nil
 		}
-		return decisionIgnored, true, nil
+		return decisionIgnored, true, Decision{}, nil
 	}
-	return decisionIgnored, false, nil
+	return decisionIgnored, false, Decision{}, nil
 }
 
 // invGroup is one OSV query key (ecosystem + name) with the inventory rows

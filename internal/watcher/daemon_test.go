@@ -769,3 +769,80 @@ func TestJitterRejectsZeroBase(t *testing.T) {
 	require.NotPanics(t, func() { got = jitterDuration(0) })
 	assert.Zero(t, got)
 }
+
+// fakeNotifier captures the batches handed to it for assertions.
+type fakeNotifier struct {
+	mu     sync.Mutex
+	got    [][]Notification
+	notify func(context.Context, []Notification) error
+}
+
+func (f *fakeNotifier) Notify(ctx context.Context, ns []Notification) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.got = append(f.got, ns)
+	if f.notify != nil {
+		return f.notify(ctx, ns)
+	}
+	return nil
+}
+
+func (f *fakeNotifier) batches() [][]Notification {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.got
+}
+
+func TestPollOnce_NotifiesOnlyCreatedDecisions(t *testing.T) {
+	deps := baseDeps()
+	client := deps.Client.(*fakeClient)
+	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
+	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
+		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	}
+	nf := &fakeNotifier{}
+	deps.Notifier = nf
+	// ProjectName resolves across the poll's fire-and-forget goroutine.
+	deps.ProjectName = func(ctx context.Context, _ pgtype.UUID) (string, error) { return "acme", nil }
+
+	outcome, err := PollOnce(context.Background(), deps)
+	require.NoError(t, err)
+	assert.Equal(t, 1, outcome.Created)
+
+	// Notification dispatch is async; wait for the goroutine to land.
+	eventually(t, func() bool { return len(nf.batches()) == 1 }, 2*time.Second)
+	require.Len(t, nf.batches()[0], 1)
+	n := nf.batches()[0][0]
+	assert.Equal(t, "acme", n.Project)
+	assert.Equal(t, "CVE-2024-0001", n.CVE)
+	assert.Equal(t, "test advisory GHSA-aaaa-bbbb-cccc", n.Title)
+}
+
+func TestPollOnce_NilOrDisabledNotifierIsNoOp(t *testing.T) {
+	deps := baseDeps()
+	client := deps.Client.(*fakeClient)
+	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
+	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
+		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	}
+	// Notifier left nil (the default) — must not panic and must not notify.
+	outcome, err := PollOnce(context.Background(), deps)
+	require.NoError(t, err)
+	assert.Equal(t, 1, outcome.Created)
+}
+
+func TestNotificationFromDecision_FallsBackGracefully(t *testing.T) {
+	d := Decision{
+		Finding: FindingPayload{
+			Title:    "t",
+			Severity: "high",
+			Display:  map[string]any{"purl": "pkg:npm/lodash@4.17.19"},
+			Metadata: map[string]any{"advisory_id": "OSV-2024-1", "references": []any{"https://example.test/1"}},
+		},
+	}
+	n := NotificationFromDecision(d, "acme")
+	assert.Equal(t, "acme", n.Project)
+	assert.Equal(t, "OSV-2024-1", n.CVE)
+	assert.Equal(t, "pkg:npm/lodash@4.17.19", n.Package)
+	assert.Equal(t, "https://example.test/1", n.Link)
+}
