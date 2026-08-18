@@ -248,6 +248,52 @@ func (q *Queries) CreateOccurrence(ctx context.Context, arg CreateOccurrencePara
 	return i, err
 }
 
+const findingExistsForPurlAndCve = `-- name: FindingExistsForPurlAndCve :one
+SELECT EXISTS (
+    SELECT 1
+    FROM findings f
+    JOIN finding_dimensions dp
+      ON dp.finding_id = f.id
+     AND dp.dim_key = 'purl'
+     AND dp.dim_value != ''
+    JOIN finding_dimensions dv
+      ON dv.finding_id = f.id
+     AND dv.dim_key = 'vulnerability_id'
+     AND dv.dim_value != ''
+    WHERE f.project_id = $1
+      AND f.finding_kind = 'sca'
+      AND split_part(dp.dim_value, '@', 1) = $2
+      AND dv.dim_value = ANY($3::text[])
+) AS exists
+`
+
+type FindingExistsForPurlAndCveParams struct {
+	ProjectID    pgtype.UUID `json:"project_id"`
+	PurlName     string      `json:"purl_name"`
+	CandidateIds []string    `json:"candidate_ids"`
+}
+
+// Gap-fill check for the CVE feed watcher: true when a scan-derived SCA
+// finding already covers the (purl, vulnerability) pair in the project, in
+// which case the watcher must NOT create a cve_watcher finding (design:
+// never reopen, never duplicate).
+//
+// Matching rules (gap-fill join keys):
+//   - purl dimension matches at NAME-LEVEL: the stored dimension value is
+//     truncated at the version separator so version-less osv-scanner purls
+//     still dedupe against versioned watcher candidates;
+//   - vulnerability_id dimension matches ANY candidate id (primary CVE id
+//     plus aliases — GHSA-only advisories still dedupe against existing
+//     GHSA- or OSV-id findings, never exact-CVE-string only);
+//   - findings in ANY state (open or fixed) suppress the watcher — there is
+//     no reopen logic.
+func (q *Queries) FindingExistsForPurlAndCve(ctx context.Context, arg FindingExistsForPurlAndCveParams) (bool, error) {
+	row := q.db.QueryRow(ctx, findingExistsForPurlAndCve, arg.ProjectID, arg.PurlName, arg.CandidateIds)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const gateEval = `-- name: GateEval :one
 SELECT EXISTS (
     SELECT 1 FROM findings

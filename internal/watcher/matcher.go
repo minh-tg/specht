@@ -19,7 +19,7 @@ type Ecosystem string
 
 // Package is the minimal identification of an affected package.
 type Package struct {
-	Name string
+	Name string `json:"name"`
 }
 
 // VersionRange is one OSV "ranges[]" interval. Type carries the OSV range
@@ -27,8 +27,8 @@ type Package struct {
 // same way, comparing bounds with semantic-version semantics. Events are
 // evaluated in their given order.
 type VersionRange struct {
-	Type   string
-	Events []RangeEvent
+	Type   string       `json:"type"`
+	Events []RangeEvent `json:"events"`
 }
 
 // RangeEvent is one event inside a VersionRange. In OSV JSON each event
@@ -37,21 +37,21 @@ type VersionRange struct {
 type RangeEvent struct {
 	// Introduced is the lower bound. Absent or "0" means the beginning of
 	// time (OSV schema default).
-	Introduced string
+	Introduced string `json:"introduced,omitempty"`
 	// Fixed is an exclusive upper bound: introduced <= v < fixed.
-	Fixed string
+	Fixed string `json:"fixed,omitempty"`
 	// LastAffected is an inclusive upper bound: introduced <= v <= last_affected.
-	LastAffected string
+	LastAffected string `json:"last_affected,omitempty"`
 	// Limit is an exclusive cap: introduced <= v < limit.
-	Limit string
+	Limit string `json:"limit,omitempty"`
 }
 
 // Affected describes one OSV "affected[]" entry.
 type Affected struct {
-	Ecosystem Ecosystem
-	Package   Package
-	Ranges    []VersionRange
-	Versions  []string
+	Ecosystem Ecosystem      `json:"ecosystem"`
+	Package   Package        `json:"package"`
+	Ranges    []VersionRange `json:"ranges"`
+	Versions  []string       `json:"versions"`
 }
 
 // VersionAffected reports whether version falls inside aff's affected region.

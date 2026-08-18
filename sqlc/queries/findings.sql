@@ -148,3 +148,35 @@ INSERT INTO finding_dimensions (
 ) ON CONFLICT (finding_id, dim_key, dim_value) DO UPDATE SET
     source = EXCLUDED.source
 RETURNING *;
+
+-- name: FindingExistsForPurlAndCve :one
+-- Gap-fill check for the CVE feed watcher: true when a scan-derived SCA
+-- finding already covers the (purl, vulnerability) pair in the project, in
+-- which case the watcher must NOT create a cve_watcher finding (design:
+-- never reopen, never duplicate).
+--
+-- Matching rules (gap-fill join keys):
+--   * purl dimension matches at NAME-LEVEL: the stored dimension value is
+--     truncated at the version separator so version-less osv-scanner purls
+--     still dedupe against versioned watcher candidates;
+--   * vulnerability_id dimension matches ANY candidate id (primary CVE id
+--     plus aliases — GHSA-only advisories still dedupe against existing
+--     GHSA- or OSV-id findings, never exact-CVE-string only);
+--   * findings in ANY state (open or fixed) suppress the watcher — there is
+--     no reopen logic.
+SELECT EXISTS (
+    SELECT 1
+    FROM findings f
+    JOIN finding_dimensions dp
+      ON dp.finding_id = f.id
+     AND dp.dim_key = 'purl'
+     AND dp.dim_value != ''
+    JOIN finding_dimensions dv
+      ON dv.finding_id = f.id
+     AND dv.dim_key = 'vulnerability_id'
+     AND dv.dim_value != ''
+    WHERE f.project_id = sqlc.arg(project_id)
+      AND f.finding_kind = 'sca'
+      AND split_part(dp.dim_value, '@', 1) = sqlc.arg(purl_name)
+      AND dv.dim_value = ANY(sqlc.arg(candidate_ids)::text[])
+) AS exists;
