@@ -15,9 +15,9 @@ type dcReport struct {
 }
 
 type dcDependency struct {
-	FileName       string             `json:"fileName"`
-	FilePath       string             `json:"filePath"`
-	Packages       []dcPackage        `json:"packages"`
+	FileName        string            `json:"fileName"`
+	FilePath        string            `json:"filePath"`
+	Packages        []dcPackage       `json:"packages"`
 	Vulnerabilities []dcVulnerability `json:"vulnerabilities"`
 }
 
@@ -26,12 +26,12 @@ type dcPackage struct {
 }
 
 type dcVulnerability struct {
-	Name        string   `json:"name"`
-	Severity    string   `json:"severity"`
-	CvssV3      *dcCvss  `json:"cvssv3"`
-	CvssV2      *dcCvss  `json:"cvssv2"`
-	Description string   `json:"description"`
-	References  []dcRef  `json:"references"`
+	Name        string  `json:"name"`
+	Severity    string  `json:"severity"`
+	CvssV3      *dcCvss `json:"cvssv3"`
+	CvssV2      *dcCvss `json:"cvssv2"`
+	Description string  `json:"description"`
+	References  []dcRef `json:"references"`
 }
 
 type dcCvss struct {
@@ -81,7 +81,7 @@ func convert(report dcReport) *scanner.NormalizedReport {
 
 	if len(report.Dependencies) > 0 {
 		nr.Target = &scanner.TargetInfo{
-			Kind: "filesystem",
+			Kind:       "filesystem",
 			Identifier: report.Dependencies[0].FilePath,
 		}
 	}

@@ -42,34 +42,34 @@ func TestParse_GrypeReport(t *testing.T) {
 	assert.Len(t, report.Findings, 2)
 
 	tests := []struct {
-		name         string
-		fingerprint  string
-		severity     scanner.Severity
-		score        float64
-		findingKind  string
-		cvssVersion  string
-		aliasesLen   int
-		fixSummary   string
+		name        string
+		fingerprint string
+		severity    scanner.Severity
+		score       float64
+		findingKind string
+		cvssVersion string
+		aliasesLen  int
+		fixSummary  string
 	}{
 		{
-			name:         "first finding should be CVE-2023-25165",
-			fingerprint:  "CVE-2023-25165:pkg:golang/helm.sh/helm/v3@v3.11.1",
-			severity:     scanner.SeverityHigh,
-			score:        9.8,
-			findingKind:  "sca",
-			cvssVersion:  "3.1",
-			aliasesLen:   1,
-			fixSummary:   "v3.11.3, v3.10.3",
+			name:        "first finding should be CVE-2023-25165",
+			fingerprint: "CVE-2023-25165:pkg:golang/helm.sh/helm/v3@v3.11.1",
+			severity:    scanner.SeverityHigh,
+			score:       9.8,
+			findingKind: "sca",
+			cvssVersion: "3.1",
+			aliasesLen:  1,
+			fixSummary:  "v3.11.3, v3.10.3",
 		},
 		{
-			name:         "second finding should be GHSA-c3h9-896r-86jm",
-			fingerprint:  "GHSA-c3h9-896r-86jm:pkg:golang/github.com/gogo/protobuf@v1.3.1",
-			severity:     scanner.SeverityCritical,
-			score:        9.8,
-			findingKind:  "sca",
-			cvssVersion:  "3.1",
-			aliasesLen:   1,
-			fixSummary:   "v1.3.2",
+			name:        "second finding should be GHSA-c3h9-896r-86jm",
+			fingerprint: "GHSA-c3h9-896r-86jm:pkg:golang/github.com/gogo/protobuf@v1.3.1",
+			severity:    scanner.SeverityCritical,
+			score:       9.8,
+			findingKind: "sca",
+			cvssVersion: "3.1",
+			aliasesLen:  1,
+			fixSummary:  "v1.3.2",
 		},
 	}
 

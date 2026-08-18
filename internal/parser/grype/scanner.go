@@ -14,22 +14,22 @@ type grypeDoc struct {
 }
 
 type grypeMatch struct {
-	Vulnerability         grypeVuln             `json:"vulnerability"`
-	RelatedVulnerabilities []grypeRelatedVuln   `json:"relatedVulnerabilities"`
-	MatchDetails          []grypeMatchDetail    `json:"matchDetails"`
-	Artifact              grypeArtifact         `json:"artifact"`
+	Vulnerability          grypeVuln          `json:"vulnerability"`
+	RelatedVulnerabilities []grypeRelatedVuln `json:"relatedVulnerabilities"`
+	MatchDetails           []grypeMatchDetail `json:"matchDetails"`
+	Artifact               grypeArtifact      `json:"artifact"`
 }
 
 type grypeVuln struct {
-	ID          string       `json:"id"`
-	DataSource  string       `json:"dataSource"`
-	Namespace   string       `json:"namespace"`
-	Severity    string       `json:"severity"`
-	URLs        []string     `json:"urls"`
-	Description string       `json:"description"`
-	CVSS        []grypeCVSS  `json:"cvss"`
-	Fix         *grypeFix    `json:"fix"`
-	Advisories  []grypeAdv   `json:"advisories"`
+	ID          string      `json:"id"`
+	DataSource  string      `json:"dataSource"`
+	Namespace   string      `json:"namespace"`
+	Severity    string      `json:"severity"`
+	URLs        []string    `json:"urls"`
+	Description string      `json:"description"`
+	CVSS        []grypeCVSS `json:"cvss"`
+	Fix         *grypeFix   `json:"fix"`
+	Advisories  []grypeAdv  `json:"advisories"`
 }
 
 type grypeCVSS struct {
@@ -68,14 +68,14 @@ type grypeMatchDetail struct {
 }
 
 type grypeArtifact struct {
-	Name       string           `json:"name"`
-	Version    string           `json:"version"`
-	Type       string           `json:"type"`
-	Locations  []grypeLocation  `json:"locations"`
-	Language   string           `json:"language"`
-	Licenses   []string         `json:"licenses"`
-	PURL       string           `json:"purl"`
-	Upstreams  []grypeUpstream  `json:"upstreams"`
+	Name      string          `json:"name"`
+	Version   string          `json:"version"`
+	Type      string          `json:"type"`
+	Locations []grypeLocation `json:"locations"`
+	Language  string          `json:"language"`
+	Licenses  []string        `json:"licenses"`
+	PURL      string          `json:"purl"`
+	Upstreams []grypeUpstream `json:"upstreams"`
 }
 
 type grypeLocation struct {
@@ -188,18 +188,18 @@ func convert(doc grypeDoc) *scanner.NormalizedReport {
 		}
 
 		nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
-			Fingerprint:  fingerprint,
-			FindingKind:  "sca",
-			Title:        vuln.ID + " in " + artifact.Name,
-			Description:  vuln.Description,
-			Severity:     severity,
-			Score:        score,
-			Location:     location,
-			Resource:     artifact.Name + "@" + artifact.Version,
-			Aliases:      aliases,
-			CVSS:         cvss,
-			Fix:          fix,
-			Dimensions:   dims,
+			Fingerprint: fingerprint,
+			FindingKind: "sca",
+			Title:       vuln.ID + " in " + artifact.Name,
+			Description: vuln.Description,
+			Severity:    severity,
+			Score:       score,
+			Location:    location,
+			Resource:    artifact.Name + "@" + artifact.Version,
+			Aliases:     aliases,
+			CVSS:        cvss,
+			Fix:         fix,
+			Dimensions:  dims,
 			Display: map[string]any{
 				"package": map[string]any{
 					"name":    artifact.Name,

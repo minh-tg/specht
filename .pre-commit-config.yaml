@@ -46,15 +46,17 @@ repos:
     hooks:
       - id: dprint
         name: dprint
-        entry: pnpm --dir frontend exec dprint fmt
+        entry: dprint fmt
         language: system
         pass_filenames: false
         files: ^frontend/.*\.(ts|tsx|js|jsx|json)$
 
-  - repo: https://github.com/oxc-project/mirrors-oxlint
-    rev: v0.15.0
+  - repo: local
     hooks:
       - id: oxlint
+        name: oxlint
+        entry: oxlint
+        language: system
         files: ^frontend/
 
   - repo: https://github.com/hadolint/hadolint

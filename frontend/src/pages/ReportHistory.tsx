@@ -56,7 +56,11 @@ export function ReportHistory() {
         <div key={r.id} className="bg-card rounded-lg border p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${toolColors[r.tool_name] ?? "bg-muted text-muted-foreground"}`}>
+              <span
+                className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${
+                  toolColors[r.tool_name] ?? "bg-muted text-muted-foreground"
+                }`}
+              >
                 {r.tool_name}
               </span>
               <div>

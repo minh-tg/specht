@@ -196,7 +196,11 @@ export function FindingsDashboard() {
                   <SeverityBadge severity={f.current_severity} />
                 </td>
                 <td className="px-3 py-2">
-                  <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ${kindColors[f.finding_kind] ?? "bg-muted text-muted-foreground"}`}>
+                  <span
+                    className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ${
+                      kindColors[f.finding_kind] ?? "bg-muted text-muted-foreground"
+                    }`}
+                  >
                     {f.finding_kind}
                   </span>
                 </td>

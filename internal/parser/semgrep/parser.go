@@ -49,13 +49,13 @@ type sarifConfig struct {
 }
 
 type sarifResult struct {
-	RuleID      string              `json:"ruleId"`
-	RuleIndex   int                 `json:"ruleIndex"`
-	Level       string              `json:"level"`
-	Message     sarifMessage        `json:"message"`
-	Locations   []sarifLocation     `json:"locations"`
-	Fingerprints map[string]string  `json:"fingerprints"`
-	Properties  map[string]any      `json:"properties"`
+	RuleID       string            `json:"ruleId"`
+	RuleIndex    int               `json:"ruleIndex"`
+	Level        string            `json:"level"`
+	Message      sarifMessage      `json:"message"`
+	Locations    []sarifLocation   `json:"locations"`
+	Fingerprints map[string]string `json:"fingerprints"`
+	Properties   map[string]any    `json:"properties"`
 }
 
 type sarifMessage struct {
