@@ -239,20 +239,29 @@ func (r *pgFindingRepo) HasDimension(ctx context.Context, findingID pgtype.UUID,
 	})
 }
 
-const listBlockingFindingsSQL = `SELECT id, project_id, finding_kind, fingerprint, current_title,
-	current_severity, current_severity_rank, current_score, state,
-	triage_status, assignee_id, first_seen_at, last_seen_at,
-	fixed_at, created_at, updated_at, analysis_state, gate_effect,
-	analysis_expires_at, analysis_reason, analysis_source,
-	analysis_updated_at, analysis_updated_by, manual_override,
-	review_required, approval_status, approved_by, approved_at,
-	fingerprint_version
-FROM findings
-WHERE project_id = $1
-  AND current_severity_rank >= $2
-  AND gate_effect = 'block'
-  AND state = 'open'
-ORDER BY current_severity_rank DESC, created_at DESC`
+const listBlockingFindingsSQL = `SELECT f.id, f.project_id, f.finding_kind, f.fingerprint, f.current_title,
+	f.current_severity, f.current_severity_rank, f.current_score, f.state,
+	f.triage_status, f.assignee_id, f.first_seen_at, f.last_seen_at,
+	f.fixed_at, f.created_at, f.updated_at, f.analysis_state, f.gate_effect,
+	f.analysis_expires_at, f.analysis_reason, f.analysis_source,
+	f.analysis_updated_at, f.analysis_updated_by, f.manual_override,
+	f.review_required, f.approval_status, f.approved_by, f.approved_at,
+	f.fingerprint_version
+FROM findings f
+JOIN projects p ON p.id = f.project_id
+WHERE f.project_id = $1
+  AND f.current_severity_rank >= $2
+  AND f.gate_effect = 'block'
+  AND f.state = 'open'
+  AND (
+      p.cve_watcher_gate = 'immediate'
+      OR f.finding_kind <> 'cve_watcher'
+      OR (
+          p.cve_watcher_gate = 'require_triage'
+          AND f.analysis_state <> 'unanalyzed'
+      )
+  )
+ORDER BY f.current_severity_rank DESC, f.created_at DESC`
 
 type FindingContext struct {
 	EnvironmentID pgtype.UUID

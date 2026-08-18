@@ -5,6 +5,7 @@ package repo
 import (
 	"context"
 	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -712,4 +713,112 @@ func TestInventoryRepo_DeleteReportPackages_ClearsAndCascades(t *testing.T) {
 	_, err = repos.pool.Exec(ctx, "DELETE FROM reports WHERE id = $1", report.ID)
 	require.NoError(t, err)
 	assert.Equal(t, 0, countInventoryRows(t, repos, report.ID))
+}
+
+// TestGateQueries_CveWatcherGatePolicy covers the CVE-watcher acceptance matrix at
+// the query level: cve_watcher findings gate only when the project's
+// cve_watcher_gate mode admits them. 'require_triage' (the column default)
+// admits only watcher findings that have been triaged (analysis_state set —
+// 'unanalyzed' is the untriaged marker per migration 000009), 'immediate'
+// admits all watcher findings, and 'off' admits none. Non-watcher findings
+// are unaffected in every mode. All three gate queries must agree:
+// sqlc GateEval + CountBlockingFindings and the repo ListBlockingFindings
+// production path.
+func TestGateQueries_CveWatcherGatePolicy(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+
+	upsertFinding := func(t *testing.T, project sqlc.Project, kind, title string) sqlc.Finding {
+		t.Helper()
+		f, err := repos.Findings.Upsert(ctx, UpsertFindingParams{
+			ProjectID:    project.ID,
+			FindingKind:  kind,
+			Fingerprint:  title,
+			CurrentTitle: title,
+			Severity:     "critical",
+			SeverityRank: 4,
+			Score:        pgtype.Numeric{Valid: false},
+			FirstSeenAt:  now,
+			LastSeenAt:   now,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "open", f.State)
+		assert.Equal(t, "unanalyzed", f.AnalysisState, "fresh findings start untriaged")
+		return f
+	}
+
+	// Triage the finding the way TriageFinding does: analysis_state moves off
+	// the 'unanalyzed' untriaged marker; gate_effect stays 'block'.
+	triage := func(t *testing.T, f sqlc.Finding) sqlc.Finding {
+		t.Helper()
+		updated, err := repos.Findings.UpdateAnalysis(ctx, UpdateAnalysisParams{
+			ID:                f.ID,
+			AnalysisState:     "exploitable",
+			GateEffect:        "block",
+			AnalysisExpiresAt: pgtype.Timestamptz{Valid: false},
+			AnalysisReason:    pgtype.Text{Valid: false},
+			AnalysisSource:    "manual",
+			ManualOverride:    true,
+			ReviewRequired:    false,
+			AnalysisUpdatedBy: pgtype.UUID{Valid: false},
+		})
+		require.NoError(t, err)
+		assert.Equal(t, "exploitable", updated.AnalysisState)
+		return updated
+	}
+
+	setMode := func(t *testing.T, project sqlc.Project, mode string) {
+		t.Helper()
+		_, err := repos.pool.Exec(ctx, "UPDATE projects SET cve_watcher_gate = $1 WHERE id = $2", mode, project.ID)
+		require.NoError(t, err)
+	}
+
+	blockedTitles := func(t *testing.T, project sqlc.Project) []string {
+		t.Helper()
+		rows, err := repos.Findings.ListBlockingFindings(ctx, project.ID, 4)
+		require.NoError(t, err)
+		titles := make([]string, 0, len(rows))
+		for _, r := range rows {
+			titles = append(titles, r.CurrentTitle)
+		}
+		sort.Strings(titles)
+		return titles
+	}
+
+	runScenario := func(t *testing.T, name, mode string, wantBlocked []string) {
+		t.Helper()
+		project := createTestProject(t, repos)
+		if mode != "" {
+			setMode(t, project, mode)
+		}
+		upsertFinding(t, project, "sca", name+"-sca")
+		upsertFinding(t, project, "cve_watcher", name+"-w-untriaged")
+		triage(t, upsertFinding(t, project, "cve_watcher", name+"-w-triaged"))
+
+		sort.Strings(wantBlocked)
+		assert.Contains(t, wantBlocked, name+"-sca", "sca finding must gate in every mode")
+
+		assert.Equal(t, wantBlocked, blockedTitles(t, project), "%s: ListBlockingFindings", name)
+
+		count, err := repos.Findings.CountBlocking(ctx, GateEvalParams{ProjectID: project.ID, MinSeverityRank: 4})
+		require.NoError(t, err)
+		assert.Equal(t, int64(len(wantBlocked)), count, "%s: CountBlockingFindings", name)
+
+		breached, err := repos.Findings.GateEval(ctx, GateEvalParams{ProjectID: project.ID, MinSeverityRank: 4})
+		require.NoError(t, err)
+		assert.Equal(t, len(wantBlocked) > 0, breached, "%s: GateEval", name)
+	}
+
+	// Default-mode project (column untouched): untriaged watcher excluded,
+	// triaged watcher and sca findings gate exactly as before.
+	runScenario(t, "default", "", []string{"default-sca", "default-w-triaged"})
+	// Explicit require_triage behaves identically to the default.
+	runScenario(t, "require_triage", "require_triage", []string{"require_triage-sca", "require_triage-w-triaged"})
+	// off: no watcher finding ever gates, triaged or not; sca unaffected.
+	runScenario(t, "off", "off", []string{"off-sca"})
+	// immediate: watcher findings gate immediately, untriaged included.
+	runScenario(t, "immediate", "immediate", []string{"immediate-sca", "immediate-w-untriaged", "immediate-w-triaged"})
 }

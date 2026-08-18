@@ -90,33 +90,60 @@ RETURNING *;
 
 -- name: GateEval :one
 SELECT EXISTS (
-    SELECT 1 FROM findings
-    WHERE project_id = $1
-      AND state IN ('open', 'reopened')
-      AND current_severity_rank >= $2
+    SELECT 1
+    FROM findings f
+    JOIN projects p ON p.id = f.project_id
+    WHERE f.project_id = $1
+      AND f.state IN ('open', 'reopened')
+      AND f.current_severity_rank >= $2
       AND (
-          gate_effect = 'block'
-          OR review_required = true
+          f.gate_effect = 'block'
+          OR f.review_required = true
           OR (
-              gate_effect = 'ignore'
-              AND analysis_expires_at IS NOT NULL
-              AND analysis_expires_at <= NOW()
+              f.gate_effect = 'ignore'
+              AND f.analysis_expires_at IS NOT NULL
+              AND f.analysis_expires_at <= NOW()
+          )
+      )
+      -- CVE watcher gate policy: cve_watcher findings gate only when the
+      -- project's cve_watcher_gate mode admits them. 'immediate' admits all;
+      -- 'off' admits none; 'require_triage' (the column default) admits only
+      -- watcher findings that have been triaged (analysis_state set, i.e. no
+      -- longer 'unanalyzed' — the "untriaged" marker from migration 000009).
+      -- Additive by construction: non-watcher findings pass through
+      -- unchanged in every mode, so behavior at the default is identical to
+      -- the pre-gate-policy queries.
+      AND (
+          p.cve_watcher_gate = 'immediate'
+          OR f.finding_kind <> 'cve_watcher'
+          OR (
+              p.cve_watcher_gate = 'require_triage'
+              AND f.analysis_state <> 'unanalyzed'
           )
       )
 ) AS threshold_breached;
 
 -- name: CountBlockingFindings :one
-SELECT COUNT(*) FROM findings
-WHERE project_id = $1
-  AND state IN ('open', 'reopened')
-  AND current_severity_rank >= $2
+SELECT COUNT(*) FROM findings f
+JOIN projects p ON p.id = f.project_id
+WHERE f.project_id = $1
+  AND f.state IN ('open', 'reopened')
+  AND f.current_severity_rank >= $2
   AND (
-      gate_effect = 'block'
-      OR review_required = true
+      f.gate_effect = 'block'
+      OR f.review_required = true
       OR (
-          gate_effect = 'ignore'
-          AND analysis_expires_at IS NOT NULL
-          AND analysis_expires_at <= NOW()
+          f.gate_effect = 'ignore'
+          AND f.analysis_expires_at IS NOT NULL
+          AND f.analysis_expires_at <= NOW()
+      )
+  )
+  AND (
+      p.cve_watcher_gate = 'immediate'
+      OR f.finding_kind <> 'cve_watcher'
+      OR (
+          p.cve_watcher_gate = 'require_triage'
+          AND f.analysis_state <> 'unanalyzed'
       )
   );
 
