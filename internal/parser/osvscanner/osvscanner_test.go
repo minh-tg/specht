@@ -105,18 +105,21 @@ func TestParse_GoFullScan(t *testing.T) {
 	require.Greater(t, len(report.Packages), len(report.Findings))
 
 	// A clearly non-vulnerable module is present with its manifest path.
+	// (github.com/gin-gonic/gin is actually vulnerable in this fixture —
+	// GHSA-5zsk-r65m-s884 — so cobra, whose vulnerabilities are empty, is
+	// the honest non-vulnerable probe.)
 	found := false
 	for _, p := range report.Packages {
-		if p.Name == "github.com/gin-gonic/gin" {
+		if p.Name == "github.com/spf13/cobra" {
 			found = true
 			assert.Equal(t, "Go", p.Ecosystem)
 			assert.NotEmpty(t, p.Version)
 			assert.Equal(t, "/home/ci/app/go.mod", p.ManifestPath)
-			assert.Contains(t, p.PURL, "pkg:golang/github.com/gin-gonic/gin@")
+			assert.Contains(t, p.PURL, "pkg:golang/github.com/spf13/cobra@")
 			assert.NotContains(t, p.PURL, "?")
 		}
 	}
-	assert.True(t, found, "non-vulnerable module github.com/gin-gonic/gin missing from inventory")
+	assert.True(t, found, "non-vulnerable module github.com/spf13/cobra missing from inventory")
 
 	// Every finding maps to a captured package. osv findings identify
 	// packages by name only: finding purls are built from the OSV

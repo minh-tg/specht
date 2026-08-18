@@ -46,7 +46,9 @@ type NormalizedReport struct {
 
 // PackageRef identifies a single package found in a scan, whether or not it
 // has an associated finding. The PURL is normalized (qualifiers and subpath
-// stripped) so findings can be matched against inventory by purl@version.
+// stripped) so inventory lookups can be matched by name and version; note
+// that some scanners (e.g. osv-scanner) emit finding purls without a version,
+// so callers should not assume every purl carries one.
 type PackageRef struct {
 	PURL         string
 	Ecosystem    string

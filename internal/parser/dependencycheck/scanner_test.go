@@ -126,8 +126,11 @@ func TestParse_DependencyCheckFullReport(t *testing.T) {
 	for _, f := range report.Findings {
 		for _, d := range f.Dimensions {
 			if d.Key == "purl" {
-				findingPURLs[d.Value] = true
-				assert.True(t, inventory[d.Value], "finding purl %s not in inventory", d.Value)
+				// Finding purls are normalized (qualifiers/subpath stripped)
+				// like the inventory's, so compare in the same space.
+				norm := scanner.NormalizePURL(d.Value)
+				findingPURLs[norm] = true
+				assert.True(t, inventory[norm], "finding purl %s not in inventory", d.Value)
 			}
 		}
 	}
