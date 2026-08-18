@@ -542,7 +542,9 @@ func TestRawDataRoundTrip(t *testing.T) {
 
 	fetched, err := repos.Reports.GetByID(context.Background(), report.ID)
 	require.NoError(t, err)
-	assert.Equal(t, rawData, fetched.RawData)
+	// RawData is stored in a JSONB column; Postgres canonicalizes key order
+	// and whitespace, so compare the decoded JSON rather than raw bytes.
+	assert.JSONEq(t, string(rawData), string(fetched.RawData))
 }
 
 func countInventoryRows(t *testing.T, repos *Repos, reportID pgtype.UUID) int {
