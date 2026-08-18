@@ -118,6 +118,21 @@ var versionsOnlyAffected = Affected{
 	Versions:  []string{"v1.0.0", "v1.5.0", "1.6.3"},
 }
 
+// openEndedAffected is an introduced-only range with no closing event: the
+// OSV shape for unfixed advisories (or reverted fixes) whose affected region
+// has no upper bound yet. Everything at or above the introduced bound is
+// affected; everything below it is not.
+var openEndedAffected = Affected{
+	Ecosystem: "Go",
+	Package:   Package{Name: "example.com/openended"},
+	Ranges: []VersionRange{{
+		Type: "SEMVER",
+		Events: []RangeEvent{
+			{Introduced: "2.0.0"},
+		},
+	}},
+}
+
 func TestVersionAffected(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -173,6 +188,16 @@ func TestVersionAffected(t *testing.T) {
 		{"limit below introduced is safe", limitAffected, "1.9.9", false},
 		{"limit at limit is safe (exclusive)", limitAffected, "2.4.0", false},
 
+		// Open-ended introduced-only range (unfixed advisory shape): the
+		// introduced bound must be respected as a lower bound.
+		{"open-ended below introduced is safe", openEndedAffected, "1.5.0", false},
+		{"open-ended far below introduced is safe", openEndedAffected, "0.9.9", false},
+		{"open-ended at introduced is affected", openEndedAffected, "2.0.0", true},
+		{"open-ended above introduced is affected", openEndedAffected, "2.1.0", true},
+		{"open-ended far above is affected", openEndedAffected, "9.9.9", true},
+		{"open-ended v-prefixed version is affected", openEndedAffected, "v3.0.0", true},
+		{"open-ended unparseable introduced cannot judge", Affected{Ranges: []VersionRange{{Events: []RangeEvent{{Introduced: "next"}}}}}, "5.0.0", false},
+
 		// Multiple disjoint intervals.
 		{"multi-interval first block", multiIntervalAffected, "1.1.0", true},
 		{"multi-interval gap is safe", multiIntervalAffected, "1.5.0", false},
@@ -211,7 +236,7 @@ func TestVersionAffected(t *testing.T) {
 // TestVersionAffectedDeterministic proves the same input produces the same
 // result every time (task "done when": determinism proven).
 func TestVersionAffectedDeterministic(t *testing.T) {
-	affs := []Affected{log4jAffected, jacksonAffected, ginAffected, lodashAffected, limitAffected}
+	affs := []Affected{log4jAffected, jacksonAffected, ginAffected, lodashAffected, limitAffected, openEndedAffected}
 	versions := []string{"2.14.1", "2.15.0", "v1.6.3", "4.17.19", "2.4.0", "1:2.14.1-1", ""}
 	var first []bool
 	for _, aff := range affs {
@@ -265,6 +290,18 @@ func TestNormalizeAliases(t *testing.T) {
 			[]string{"  CVE-2021-44228  ", " GHSA-jfh8-c2jp-5v3q "},
 			"CVE-2021-44228",
 			[]string{"GHSA-jfh8-c2jp-5v3q"},
+		},
+		{
+			"lowercase cve outranks ghsa like its uppercase form",
+			[]string{"GHSA-jfh8-c2jp-5v3q", "cve-2021-44228"},
+			"cve-2021-44228",
+			[]string{"GHSA-jfh8-c2jp-5v3q"},
+		},
+		{
+			"lowercase ghsa classifies into ghsa bucket",
+			[]string{"ghsa-jfh8-c2jp-5v3q", "CVE-2021-44228"},
+			"CVE-2021-44228",
+			[]string{"ghsa-jfh8-c2jp-5v3q"},
 		},
 		{
 			"duplicate aliases are deduplicated",

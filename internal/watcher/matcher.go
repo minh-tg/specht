@@ -93,18 +93,22 @@ func VersionAffected(aff Affected, version string) bool {
 // id list and returns the remaining identifiers as ordered aliases.
 //
 // The primary indicator is the CVE id when one is present; otherwise the
-// GHSA id; otherwise any other id (for example the OSV id). Aliases are
-// deduplicated and sorted so finding dimensions (primary id plus
-// dim_key='alias' entries) are built deterministically. This is a pure
-// function — no database layer — by design by design.
+// GHSA id; otherwise any other id (for example the OSV id). Prefix
+// classification (CVE-/GHSA-) is case-insensitive, so lowercase variants
+// still land in their proper buckets instead of falling into the catch-all;
+// the id strings themselves are preserved as given. Aliases are deduplicated
+// and sorted so finding dimensions (primary id plus dim_key='alias' entries)
+// are built deterministically. This is a pure function — no database layer —
+// by design by design.
 func NormalizeAliases(ids []string) (primary string, aliases []string) {
 	var cves, ghsas, others []string
 	for _, id := range ids {
 		id = strings.TrimSpace(id)
+		upper := strings.ToUpper(id)
 		switch {
-		case strings.HasPrefix(id, "CVE-"):
+		case strings.HasPrefix(upper, "CVE-"):
 			cves = append(cves, id)
-		case strings.HasPrefix(id, "GHSA-"):
+		case strings.HasPrefix(upper, "GHSA-"):
 			ghsas = append(ghsas, id)
 		default:
 			if id != "" {
@@ -174,9 +178,19 @@ func versionInRange(r VersionRange, v string) bool {
 		}
 	}
 	// A trailing introduced leaves the interval open-ended: all versions
-	// at or above the lower bound are affected.
+	// at or above the lower bound are affected. The lower bound is enforced
+	// exactly as in intervalContains: "0" means the beginning of time, an
+	// unparseable bound cannot be judged (never a false positive), and
+	// anything else requires v >= introduced.
 	if haveIntroduced {
-		return introduced == "0" || normalizeVersion(introduced) != ""
+		if introduced == "0" {
+			return true
+		}
+		lower := normalizeVersion(introduced)
+		if lower == "" {
+			return false
+		}
+		return semver.Compare(v, lower) >= 0
 	}
 	return false
 }
