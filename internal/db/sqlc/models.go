@@ -190,6 +190,7 @@ type Project struct {
 	Settings            []byte             `json:"settings"`
 	CreatedAt           pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
+	CveWatcherGate      string             `json:"cve_watcher_gate"`
 }
 
 type ProjectMember struct {
@@ -242,6 +243,17 @@ type Report struct {
 	RawReportHash     pgtype.Text        `json:"raw_report_hash"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	RawData           []byte             `json:"raw_data"`
+}
+
+type ReportPackage struct {
+	ReportID     pgtype.UUID        `json:"report_id"`
+	Purl         string             `json:"purl"`
+	Ecosystem    pgtype.Text        `json:"ecosystem"`
+	Name         pgtype.Text        `json:"name"`
+	Version      pgtype.Text        `json:"version"`
+	ManifestPath pgtype.Text        `json:"manifest_path"`
+	FirstSeenAt  pgtype.Timestamptz `json:"first_seen_at"`
+	LastSeenAt   pgtype.Timestamptz `json:"last_seen_at"`
 }
 
 type Signoff struct {
@@ -317,4 +329,9 @@ type WaiverFindingTarget struct {
 	WaiverID  pgtype.UUID        `json:"waiver_id"`
 	FindingID pgtype.UUID        `json:"finding_id"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type WatcherState struct {
+	ID                   int32              `json:"id"`
+	LastSuccessfulPollAt pgtype.Timestamptz `json:"last_successful_poll_at"`
 }

@@ -471,6 +471,34 @@ func (m *mockArtifactRepo) Delete(ctx context.Context, id, projectID pgtype.UUID
 	return m.deleteFn(ctx, id, projectID)
 }
 
+type mockInventoryRepo struct {
+	repo.InventoryRepo
+	upsertReportPackagesFn func(ctx context.Context, reportID pgtype.UUID, packages []repo.UpsertReportPackageParams) error
+	distinctInventoryFn    func(ctx context.Context, projectID pgtype.UUID, since pgtype.Interval) ([]sqlc.DistinctInventoryRow, error)
+	deleteReportPackagesFn func(ctx context.Context, reportID pgtype.UUID) error
+}
+
+func (m *mockInventoryRepo) UpsertReportPackages(ctx context.Context, reportID pgtype.UUID, packages []repo.UpsertReportPackageParams) error {
+	if m.upsertReportPackagesFn == nil {
+		return fmt.Errorf("unexpected call to UpsertReportPackages")
+	}
+	return m.upsertReportPackagesFn(ctx, reportID, packages)
+}
+
+func (m *mockInventoryRepo) DistinctInventory(ctx context.Context, projectID pgtype.UUID, since pgtype.Interval) ([]sqlc.DistinctInventoryRow, error) {
+	if m.distinctInventoryFn == nil {
+		return nil, fmt.Errorf("unexpected call to DistinctInventory")
+	}
+	return m.distinctInventoryFn(ctx, projectID, since)
+}
+
+func (m *mockInventoryRepo) DeleteReportPackages(ctx context.Context, reportID pgtype.UUID) error {
+	if m.deleteReportPackagesFn == nil {
+		return fmt.Errorf("unexpected call to DeleteReportPackages")
+	}
+	return m.deleteReportPackagesFn(ctx, reportID)
+}
+
 func makeTestRepos() (*mockProjectRepo, *mockReportRepo, *mockFindingRepo) {
 	pr := &mockProjectRepo{}
 	rr := &mockReportRepo{}
@@ -616,6 +644,15 @@ func TestIngestReport_Success(t *testing.T) {
 		return sqlc.FindingDimension{}, nil
 	}
 
+	inv := &mockInventoryRepo{}
+	var gotReportID pgtype.UUID
+	var gotPackages []repo.UpsertReportPackageParams
+	inv.upsertReportPackagesFn = func(ctx context.Context, reportID pgtype.UUID, packages []repo.UpsertReportPackageParams) error {
+		gotReportID = reportID
+		gotPackages = packages
+		return nil
+	}
+
 	reg := scanner.NewRegistry()
 	reg.Register(&mockScanner{
 		name: "trivy",
@@ -643,6 +680,14 @@ func TestIngestReport_Success(t *testing.T) {
 						Score:       5.0,
 					},
 				},
+				// Vulnerable and clean packages both land in inventory; the
+				// duplicate purl is forwarded as-is — the DB primary key is
+				// what collapses it.
+				Packages: []scanner.PackageRef{
+					{PURL: "pkg:npm/lodash@4.17.20", Ecosystem: "npm", Name: "lodash", Version: "4.17.20", ManifestPath: "package-lock.json"},
+					{PURL: "pkg:golang/github.com/gin-gonic/gin@v1.9.1", Ecosystem: "Go", Name: "github.com/gin-gonic/gin", Version: "v1.9.1"},
+					{PURL: "pkg:npm/lodash@4.17.20", Ecosystem: "npm", Name: "lodash", Version: "4.17.20", ManifestPath: "package-lock.json"},
+				},
 				ScanScope: map[string]any{"packages": 150},
 			}, nil
 		},
@@ -656,6 +701,7 @@ func TestIngestReport_Success(t *testing.T) {
 			Targets:      stubTargetRepo(),
 			Artifacts:    stubArtifactRepo(),
 			Environments: &mockEnvironmentRepo{},
+			Inventory:    inv,
 		},
 		Registry: reg,
 	})
@@ -670,6 +716,17 @@ func TestIngestReport_Success(t *testing.T) {
 	assert.Equal(t, 2, result.TotalFindings)
 	assert.NotEmpty(t, result.ReportID)
 	assert.False(t, result.ThresholdBreached)
+
+	assert.Equal(t, makeReport().ID, gotReportID, "inventory write must target the created report")
+	require.Len(t, gotPackages, 3, "all package refs must be forwarded, duplicates included")
+	assert.Equal(t, "pkg:npm/lodash@4.17.20", gotPackages[0].PURL)
+	assert.Equal(t, pgtype.Text{String: "npm", Valid: true}, gotPackages[0].Ecosystem)
+	assert.Equal(t, pgtype.Text{String: "lodash", Valid: true}, gotPackages[0].Name)
+	assert.Equal(t, pgtype.Text{String: "4.17.20", Valid: true}, gotPackages[0].Version)
+	assert.Equal(t, pgtype.Text{String: "package-lock.json", Valid: true}, gotPackages[0].ManifestPath)
+	assert.Equal(t, "pkg:golang/github.com/gin-gonic/gin@v1.9.1", gotPackages[1].PURL)
+	assert.Equal(t, pgtype.Text{String: "Go", Valid: true}, gotPackages[1].Ecosystem, "ecosystem is stored as-is from the parser")
+	assert.Equal(t, "pkg:npm/lodash@4.17.20", gotPackages[2].PURL)
 }
 
 func TestIngestReport_EmptySlug(t *testing.T) {
@@ -982,6 +1039,85 @@ func TestIngestReport_PartialFailure(t *testing.T) {
 	assert.ErrorContains(t, err, "scanner trivy")
 	assert.ErrorContains(t, err, "upsert finding")
 	assert.NotContains(t, err.Error(), "lookup project")
+}
+
+func TestIngestReport_InventoryWriteFailure(t *testing.T) {
+	pr, rr, fr := makeTestRepos()
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+		return makeProject(true), nil
+	}
+
+	rr.createFn = func(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error) {
+		return makeReport(), nil
+	}
+
+	fr.getByFingerprintFn = func(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error) {
+		return sqlc.Finding{}, fmt.Errorf("not found")
+	}
+	fr.upsertFn = func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {
+		return makeFinding(1), nil
+	}
+	fr.createOccurrenceFn = func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error) {
+		return sqlc.FindingOccurrence{}, nil
+	}
+	fr.upsertDimensionFn = func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error) {
+		return sqlc.FindingDimension{}, nil
+	}
+
+	updateStatusCalled := false
+	rr.updateStatusFn = func(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
+		updateStatusCalled = true
+		r := makeReport()
+		r.Status = status
+		return r, nil
+	}
+
+	inv := &mockInventoryRepo{}
+	inv.upsertReportPackagesFn = func(ctx context.Context, reportID pgtype.UUID, packages []repo.UpsertReportPackageParams) error {
+		return fmt.Errorf("db unavailable")
+	}
+
+	reg := scanner.NewRegistry()
+	reg.Register(&mockScanner{
+		name: "trivy",
+		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
+			return &scanner.NormalizedReport{
+				ToolName: "trivy",
+				ScanType: scanner.ScanTypeImage,
+				Target:   &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings: []scanner.NormalizedFinding{
+					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2026-0001", Severity: scanner.SeverityHigh, Score: 7.5},
+				},
+				Packages: []scanner.PackageRef{
+					{PURL: "pkg:npm/lodash@4.17.20", Ecosystem: "npm", Name: "lodash", Version: "4.17.20"},
+				},
+				ScanScope: map[string]any{},
+			}, nil
+		},
+	})
+
+	uc := New(Deps{
+		Repos: &repo.Repos{
+			Projects:     pr,
+			Reports:      rr,
+			Findings:     fr,
+			Targets:      stubTargetRepo(),
+			Artifacts:    stubArtifactRepo(),
+			Environments: &mockEnvironmentRepo{},
+			Inventory:    inv,
+		},
+		Registry: reg,
+	})
+
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app",
+		Scanner:     "trivy",
+		RawData:     json.RawMessage(`{"test": true}`),
+	})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "persist package inventory")
+	assert.False(t, updateStatusCalled, "a failed inventory batch must fail the ingest before status update")
 }
 
 func testJWT(t *testing.T) *auth.JWTAuthenticator {

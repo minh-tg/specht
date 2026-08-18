@@ -317,15 +317,15 @@ func TestFindingRepo_UpsertAndList(t *testing.T) {
 	assert.Equal(t, "open", upsertedAgain.State)
 	assert.Equal(t, "CVE-2026-1234 (updated)", upsertedAgain.CurrentTitle)
 
-	findings, err := repos.Findings.ListByProject(context.Background(), project.ID, nil, nil, 10, 0)
+	findings, err := repos.Findings.ListByProject(context.Background(), project.ID, nil, nil, nil, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, findings, 1)
 
-	criticalFindings, err := repos.Findings.ListByProject(context.Background(), project.ID, []string{"critical"}, nil, 10, 0)
+	criticalFindings, err := repos.Findings.ListByProject(context.Background(), project.ID, []string{"critical"}, nil, nil, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, criticalFindings, 1)
 
-	lowFindings, err := repos.Findings.ListByProject(context.Background(), project.ID, []string{"low"}, nil, 10, 0)
+	lowFindings, err := repos.Findings.ListByProject(context.Background(), project.ID, []string{"low"}, nil, nil, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, lowFindings, 0)
 }
@@ -542,4 +542,174 @@ func TestRawDataRoundTrip(t *testing.T) {
 	fetched, err := repos.Reports.GetByID(context.Background(), report.ID)
 	require.NoError(t, err)
 	assert.Equal(t, rawData, fetched.RawData)
+}
+
+func countInventoryRows(t *testing.T, repos *Repos, reportID pgtype.UUID) int {
+	t.Helper()
+	var n int
+	err := repos.pool.QueryRow(context.Background(),
+		"SELECT count(*) FROM report_packages WHERE report_id = $1", reportID).Scan(&n)
+	require.NoError(t, err)
+	return n
+}
+
+// TestInventoryRepo_PersistsPackages_SecondIngestBumpsLastSeenAt covers the
+// acceptance criterion: an ingest with an N-vuln / M-clean package set
+// persists N+M rows, and a second identical ingest bumps last_seen_at without
+// duplicating any row.
+func TestInventoryRepo_PersistsPackages_SecondIngestBumpsLastSeenAt(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	project := createTestProject(t, repos)
+
+	report, err := repos.Reports.Create(ctx, CreateReportParams{
+		ProjectID:     project.ID,
+		ToolName:      "trivy",
+		ToolVersion:   pgtype.Text{Valid: false},
+		ScanType:      "image",
+		ScanTarget:    pgtype.Text{String: "myapp:latest", Valid: true},
+		ScanScope:     []byte(`{}`),
+		Branch:        pgtype.Text{Valid: false},
+		CommitSha:     pgtype.Text{Valid: false},
+		RawReportHash: pgtype.Text{Valid: false},
+		ParserVersion: pgtype.Text{Valid: false},
+	})
+	require.NoError(t, err)
+
+	// Vulnerable and clean packages alike land in inventory — the repo
+	// persists whatever the ingest pipeline hands it, metadata included.
+	packages := []UpsertReportPackageParams{
+		{
+			PURL:         "pkg:npm/lodash@4.17.20",
+			Ecosystem:    pgtype.Text{String: "npm", Valid: true},
+			Name:         pgtype.Text{String: "lodash", Valid: true},
+			Version:      pgtype.Text{String: "4.17.20", Valid: true},
+			ManifestPath: pgtype.Text{String: "package-lock.json", Valid: true},
+		},
+		{
+			PURL:      "pkg:golang/github.com/gin-gonic/gin@v1.9.1",
+			Ecosystem: pgtype.Text{String: "Go", Valid: true},
+			Name:      pgtype.Text{String: "github.com/gin-gonic/gin", Valid: true},
+			Version:   pgtype.Text{String: "v1.9.1", Valid: true},
+		},
+		{PURL: "pkg:deb/debian/openssl@3.0.0-1"},
+	}
+
+	// First ingest: N+M rows persisted with the report targeting set.
+	err = repos.Inventory.UpsertReportPackages(ctx, report.ID, packages)
+	require.NoError(t, err)
+	assert.Equal(t, len(packages), countInventoryRows(t, repos, report.ID))
+
+	var firstSeen pgtype.Timestamptz
+	err = repos.pool.QueryRow(ctx,
+		"SELECT last_seen_at FROM report_packages WHERE report_id = $1 AND purl = $2",
+		report.ID, "pkg:npm/lodash@4.17.20").Scan(&firstSeen)
+	require.NoError(t, err)
+	assert.True(t, firstSeen.Time.After(time.Now().Add(-time.Minute)))
+
+	// Identical second ingest: still N+M rows ...
+	time.Sleep(1100 * time.Millisecond)
+	err = repos.Inventory.UpsertReportPackages(ctx, report.ID, packages)
+	require.NoError(t, err)
+	assert.Equal(t, len(packages), countInventoryRows(t, repos, report.ID),
+		"repeat ingest must not duplicate package rows")
+
+	// ... but last_seen_at is bumped server-side (NOW()) on the conflict path.
+	var secondSeen pgtype.Timestamptz
+	err = repos.pool.QueryRow(ctx,
+		"SELECT last_seen_at FROM report_packages WHERE report_id = $1 AND purl = $2",
+		report.ID, "pkg:npm/lodash@4.17.20").Scan(&secondSeen)
+	require.NoError(t, err)
+	assert.True(t, secondSeen.Time.After(firstSeen.Time),
+		"second ingest must bump last_seen_at (got %s after %s)", secondSeen.Time.Format(time.RFC3339Nano), firstSeen.Time.Format(time.RFC3339Nano))
+}
+
+func TestInventoryRepo_DistinctInventory_FiltersByTTL(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	project := createTestProject(t, repos)
+
+	mkReport := func() sqlc.Report {
+		report, err := repos.Reports.Create(ctx, CreateReportParams{
+			ProjectID:     project.ID,
+			ToolName:      "trivy",
+			ToolVersion:   pgtype.Text{Valid: false},
+			ScanType:      "image",
+			ScanTarget:    pgtype.Text{Valid: false},
+			ScanScope:     []byte(`{}`),
+			Branch:        pgtype.Text{Valid: false},
+			CommitSha:     pgtype.Text{Valid: false},
+			RawReportHash: pgtype.Text{Valid: false},
+			ParserVersion: pgtype.Text{Valid: false},
+		})
+		require.NoError(t, err)
+		return report
+	}
+	reportA := mkReport()
+	reportB := mkReport()
+
+	for _, reportID := range []pgtype.UUID{reportA.ID, reportB.ID} {
+		err := repos.Inventory.UpsertReportPackages(ctx, reportID, []UpsertReportPackageParams{
+			{PURL: "pkg:npm/lodash@4.17.20", Name: pgtype.Text{String: "lodash", Valid: true}},
+			{PURL: "pkg:npm/express@4.19.2", Name: pgtype.Text{String: "express", Valid: true}},
+		})
+		require.NoError(t, err)
+	}
+
+	// Age lodash out of the TTL window in reportA only; reportB's copies must
+	// still surface, collapsed by DISTINCT across reports.
+	_, err := repos.pool.Exec(ctx,
+		"UPDATE report_packages SET last_seen_at = NOW() - interval '180 days' WHERE report_id = $1 AND purl = $2",
+		reportA.ID, "pkg:npm/lodash@4.17.20")
+	require.NoError(t, err)
+
+	since := pgtype.Interval{Microseconds: 90 * 24 * int64(time.Hour/time.Microsecond), Valid: true}
+	rows, err := repos.Inventory.DistinctInventory(ctx, project.ID, since)
+	require.NoError(t, err)
+	require.Len(t, rows, 2, "stale rows excluded by TTL, duplicates across reports collapsed")
+	assert.Equal(t, "pkg:npm/express@4.19.2", rows[0].Purl, "rows ordered by purl")
+	assert.Equal(t, "pkg:npm/lodash@4.17.20", rows[1].Purl)
+}
+
+func TestInventoryRepo_DeleteReportPackages_ClearsAndCascades(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	project := createTestProject(t, repos)
+
+	report, err := repos.Reports.Create(ctx, CreateReportParams{
+		ProjectID:     project.ID,
+		ToolName:      "trivy",
+		ToolVersion:   pgtype.Text{Valid: false},
+		ScanType:      "image",
+		ScanTarget:    pgtype.Text{Valid: false},
+		ScanScope:     []byte(`{}`),
+		Branch:        pgtype.Text{Valid: false},
+		CommitSha:     pgtype.Text{Valid: false},
+		RawReportHash: pgtype.Text{Valid: false},
+		ParserVersion: pgtype.Text{Valid: false},
+	})
+	require.NoError(t, err)
+
+	packages := []UpsertReportPackageParams{
+		{PURL: "pkg:npm/lodash@4.17.20"},
+		{PURL: "pkg:npm/express@4.19.2"},
+	}
+	require.NoError(t, repos.Inventory.UpsertReportPackages(ctx, report.ID, packages))
+	require.Equal(t, 2, countInventoryRows(t, repos, report.ID))
+
+	// Explicit cleanup path removes every package row for the report.
+	require.NoError(t, repos.Inventory.DeleteReportPackages(ctx, report.ID))
+	assert.Equal(t, 0, countInventoryRows(t, repos, report.ID))
+
+	// Referential integrity: deleting the report cascades to its leftover rows.
+	require.NoError(t, repos.Inventory.UpsertReportPackages(ctx, report.ID, packages))
+	_, err = repos.pool.Exec(ctx, "DELETE FROM reports WHERE id = $1", report.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 0, countInventoryRows(t, repos, report.ID))
 }

@@ -24,6 +24,7 @@ type Repos struct {
 	Evidence      EvidenceRepo
 	Reachability  ReachabilityRepo
 	Signoffs      SignoffRepo
+	Inventory     InventoryRepo
 	pool          *pgxpool.Pool
 }
 
@@ -44,6 +45,7 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 		Evidence:      newEvidenceRepo(q),
 		Reachability:  newReachabilityRepo(q),
 		Signoffs:      newSignoffRepo(q),
+		Inventory:     &pgInventoryRepo{query: q, pool: pool},
 		pool:          pool,
 	}
 }
@@ -136,6 +138,12 @@ type ArtifactRepo interface {
 type SignoffRepo interface {
 	Upsert(ctx context.Context, arg UpsertSignoffParams) (sqlc.Signoff, error)
 	GetByFinding(ctx context.Context, findingID pgtype.UUID) (sqlc.Signoff, error)
+}
+
+type InventoryRepo interface {
+	UpsertReportPackages(ctx context.Context, reportID pgtype.UUID, packages []UpsertReportPackageParams) error
+	DistinctInventory(ctx context.Context, projectID pgtype.UUID, since pgtype.Interval) ([]sqlc.DistinctInventoryRow, error)
+	DeleteReportPackages(ctx context.Context, reportID pgtype.UUID) error
 }
 
 type ReachabilityRepo interface {

@@ -48,9 +48,10 @@ type IngestReportOutput struct {
 }
 
 type Deps struct {
-	Repos    *repo.Repos
-	Registry *scanner.Registry
-	JWTAuth  *auth.JWTAuthenticator
+	Repos        *repo.Repos
+	Registry     *scanner.Registry
+	JWTAuth      *auth.JWTAuthenticator
+	InventoryTTL time.Duration
 }
 
 type Usecases struct {
@@ -485,6 +486,14 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		total++
 	}
 
+	if len(nr.Packages) > 0 {
+		err = u.deps.Repos.Inventory.UpsertReportPackages(ctx, report.ID, toInventoryPackageParams(nr.Packages))
+		if err != nil {
+			slog.Error("persist package inventory failed", "scanner", input.Scanner, "report_id", report.ID, "error", err)
+			return nil, fmt.Errorf("scanner %s: persist package inventory: %w", input.Scanner, err)
+		}
+	}
+
 	_, err = u.deps.Repos.Reports.UpdateStatus(ctx, report.ID, project.ID, "completed", total, pgtype.Text{Valid: false})
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -516,4 +525,21 @@ func mustMarshal(v any) []byte {
 		panic(err)
 	}
 	return data
+}
+
+// toInventoryPackageParams converts normalized package refs into repo params.
+// PURLs pass through verbatim — the DB's (report_id, purl) primary key is what
+// collapses duplicates across (and within) reports.
+func toInventoryPackageParams(packages []scanner.PackageRef) []repo.UpsertReportPackageParams {
+	params := make([]repo.UpsertReportPackageParams, 0, len(packages))
+	for _, p := range packages {
+		params = append(params, repo.UpsertReportPackageParams{
+			PURL:         p.PURL,
+			Ecosystem:    textPtr(p.Ecosystem),
+			Name:         textPtr(p.Name),
+			Version:      textPtr(p.Version),
+			ManifestPath: textPtr(p.ManifestPath),
+		})
+	}
+	return params
 }

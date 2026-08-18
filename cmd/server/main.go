@@ -42,6 +42,16 @@ func main() {
 	migrate := os.Getenv("DB_MIGRATE")
 	corsOrigins := os.Getenv("CORS_ORIGINS")
 
+	inventoryTTLStr := os.Getenv("INVENTORY_TTL")
+	if inventoryTTLStr == "" {
+		inventoryTTLStr = "720h"
+	}
+	inventoryTTL, err := time.ParseDuration(inventoryTTLStr)
+	if err != nil {
+		slog.Error("INVENTORY_TTL is invalid", "value", inventoryTTLStr, "error", err)
+		os.Exit(1)
+	}
+
 	if len(os.Args) > 1 {
 		switch os.Args[1] {
 		case "migrate":
@@ -101,9 +111,10 @@ func main() {
 	go lifecycle.RunAnalysisExpiry(context.Background(), pool, 5*time.Minute, slog.Default())
 
 	uc := usecase.New(usecase.Deps{
-		Repos:    repos,
-		Registry: reg,
-		JWTAuth:  jwtAuth,
+		Repos:        repos,
+		Registry:     reg,
+		JWTAuth:      jwtAuth,
+		InventoryTTL: inventoryTTL,
 	})
 
 	handler := server.NewRouter(server.RouterConfig{
