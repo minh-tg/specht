@@ -87,6 +87,22 @@ func convert(report dcReport) *scanner.NormalizedReport {
 	}
 
 	for _, dep := range report.Dependencies {
+		// full package inventory, vulnerable or not
+		for _, p := range dep.Packages {
+			purl := scanner.NormalizePURL(p.ID)
+			if purl == "" {
+				continue
+			}
+			pkgType, name, version := scanner.SplitPURL(purl)
+			nr.Packages = append(nr.Packages, scanner.PackageRef{
+				PURL:         purl,
+				Ecosystem:    pkgType,
+				Name:         name,
+				Version:      version,
+				ManifestPath: dep.FilePath,
+			})
+		}
+
 		purl := ""
 		if len(dep.Packages) > 0 {
 			purl = dep.Packages[0].ID

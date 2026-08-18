@@ -15,9 +15,17 @@ type trivyResult struct {
 	Target          string           `json:"Target"`
 	Class           string           `json:"Class"`
 	Type            string           `json:"Type"`
+	Packages        []trivyPackage   `json:"Packages"`
 	Vulnerabilities []trivyVuln      `json:"Vulnerabilities"`
 	Secrets         []trivySecret    `json:"Secrets"`
 	Misconfigs      []trivyMisconfig `json:"Misconfigurations"`
+}
+
+type trivyPackage struct {
+	Name       string             `json:"Name"`
+	Version    string             `json:"Version"`
+	PkgID      string             `json:"PkgID"`
+	Identifier trivyPkgIdentifier `json:"Identifier"`
 }
 
 type trivyVuln struct {
@@ -139,6 +147,23 @@ func convert(report trivyReport) *scanner.NormalizedReport {
 	}
 
 	for _, result := range report {
+		// full package inventory, vulnerable or not
+		for _, p := range result.Packages {
+			purl := p.Identifier.PURL
+			if purl == "" {
+				purl = p.PkgID
+			}
+			if purl == "" {
+				continue
+			}
+			nr.Packages = append(nr.Packages, scanner.PackageRef{
+				PURL:      scanner.NormalizePURL(purl),
+				Ecosystem: result.Type,
+				Name:      p.Name,
+				Version:   p.Version,
+			})
+		}
+
 		// vulnerabilities
 		for _, v := range result.Vulnerabilities {
 			severity := normalizeSeverity(v.Severity)

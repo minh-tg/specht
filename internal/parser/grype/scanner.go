@@ -130,6 +130,37 @@ func convert(doc grypeDoc) *scanner.NormalizedReport {
 		}
 	}
 
+	// Grype's standard JSON output only reports matched artifacts, i.e.
+	// packages that carry at least one vulnerability. The package inventory is
+	// therefore limited to those artifacts; projects that need a complete
+	// dependency tree should pair grype with a syft SBOM scan.
+	seen := make(map[string]struct{})
+	for _, match := range doc.Matches {
+		artifact := match.Artifact
+		purl := scanner.NormalizePURL(artifact.PURL)
+		if purl == "" {
+			continue
+		}
+		if _, ok := seen[purl]; ok {
+			continue
+		}
+		seen[purl] = struct{}{}
+
+		manifestPath := ""
+		if len(artifact.Locations) > 0 {
+			manifestPath = artifact.Locations[0].Path
+		}
+		pkgType, _, _ := scanner.SplitPURL(purl)
+
+		nr.Packages = append(nr.Packages, scanner.PackageRef{
+			PURL:         purl,
+			Ecosystem:    pkgType,
+			Name:         artifact.Name,
+			Version:      artifact.Version,
+			ManifestPath: manifestPath,
+		})
+	}
+
 	for _, match := range doc.Matches {
 		vuln := match.Vulnerability
 		artifact := match.Artifact

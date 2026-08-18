@@ -88,6 +88,52 @@ func TestParse_DependencyCheckReport(t *testing.T) {
 	}
 }
 
+func TestParse_DependencyCheckFullReport(t *testing.T) {
+	s := dependencycheck.NewScanner()
+	data, err := os.ReadFile("testdata/dependency-check-full.json")
+	require.NoError(t, err)
+
+	report, err := s.Parse(context.Background(), data)
+	require.NoError(t, err)
+
+	// Only the vulnerable subset surfaces as findings.
+	require.Len(t, report.Findings, 12)
+
+	// Every dependency is captured, vulnerable or not.
+	require.GreaterOrEqual(t, len(report.Packages), 100)
+	require.Greater(t, len(report.Packages), len(report.Findings))
+
+	// A non-vulnerable dependency is present, decomposed from its purl.
+	var commonsIO *scanner.PackageRef
+	for i := range report.Packages {
+		if report.Packages[i].PURL == "pkg:maven/commons-io/commons-io@2.11.0" {
+			commonsIO = &report.Packages[i]
+			break
+		}
+	}
+	require.NotNil(t, commonsIO, "non-vulnerable dependency commons-io missing from inventory")
+	assert.Equal(t, "maven", commonsIO.Ecosystem)
+	assert.Equal(t, "commons-io/commons-io", commonsIO.Name)
+	assert.Equal(t, "2.11.0", commonsIO.Version)
+	assert.Equal(t, "/app/lib/commons-io-2.11.0.jar", commonsIO.ManifestPath)
+
+	// Findings reference inventory purls, and the inventory is strictly larger.
+	findingPURLs := map[string]bool{}
+	inventory := map[string]bool{}
+	for _, p := range report.Packages {
+		inventory[p.PURL] = true
+	}
+	for _, f := range report.Findings {
+		for _, d := range f.Dimensions {
+			if d.Key == "purl" {
+				findingPURLs[d.Value] = true
+				assert.True(t, inventory[d.Value], "finding purl %s not in inventory", d.Value)
+			}
+		}
+	}
+	assert.False(t, findingPURLs[commonsIO.PURL], "non-vulnerable package listed as finding")
+}
+
 func TestParse_InvalidJSON(t *testing.T) {
 	s := dependencycheck.NewScanner()
 	_, err := s.Parse(context.Background(), []byte(`not json`))

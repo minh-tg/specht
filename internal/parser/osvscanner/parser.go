@@ -149,6 +149,21 @@ func convert(report osvReport) *scanner.NormalizedReport {
 			Identifier: result.Source.Path,
 		}
 
+		// full package inventory, vulnerable or not
+		for _, pkg := range result.Packages {
+			purl := pkg.Package.PURL
+			if purl == "" {
+				purl = "pkg:" + strings.ToLower(pkg.Package.Ecosystem) + "/" + pkg.Package.Name
+			}
+			nr.Packages = append(nr.Packages, scanner.PackageRef{
+				PURL:         scanner.NormalizePURL(purl),
+				Ecosystem:    pkg.Package.Ecosystem,
+				Name:         pkg.Package.Name,
+				Version:      pkg.Package.Version,
+				ManifestPath: result.Source.Path,
+			})
+		}
+
 		for _, pkg := range result.Packages {
 			groupAnalysis := make(map[string]osvCallAnalysis, len(pkg.Groups))
 			for _, g := range pkg.Groups {

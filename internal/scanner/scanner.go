@@ -40,7 +40,19 @@ type NormalizedReport struct {
 	Target        *TargetInfo
 	Artifact      *ArtifactInfo
 	Findings      []NormalizedFinding
+	Packages      []PackageRef
 	ScanScope     map[string]any
+}
+
+// PackageRef identifies a single package found in a scan, whether or not it
+// has an associated finding. The PURL is normalized (qualifiers and subpath
+// stripped) so findings can be matched against inventory by purl@version.
+type PackageRef struct {
+	PURL         string
+	Ecosystem    string
+	Name         string
+	Version      string
+	ManifestPath string
 }
 
 type TargetInfo struct {

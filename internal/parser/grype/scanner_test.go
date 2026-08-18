@@ -99,6 +99,39 @@ func TestParse_GrypeReport(t *testing.T) {
 	}
 }
 
+func TestParse_GrypeFullReport(t *testing.T) {
+	s := grype.NewScanner()
+	data, err := os.ReadFile("testdata/grype-full.json")
+	require.NoError(t, err)
+
+	report, err := s.Parse(context.Background(), data)
+	require.NoError(t, err)
+
+	// Grype's standard JSON only reports matched (vulnerable) artifacts, so
+	// findings and inventory are the same population here. Every matched
+	// artifact is captured, deduplicated by normalized purl.
+	require.Len(t, report.Findings, 105)
+	require.GreaterOrEqual(t, len(report.Packages), 100)
+	require.Equal(t, len(report.Packages), len(report.Findings))
+
+	seen := map[string]bool{}
+	lodashSeen := false
+	for _, p := range report.Packages {
+		assert.NotContains(t, p.PURL, "?")
+		assert.NotContains(t, p.PURL, "#")
+		assert.False(t, seen[p.PURL], "duplicate inventory purl %s", p.PURL)
+		seen[p.PURL] = true
+		assert.Equal(t, "npm", p.Ecosystem)
+		assert.Equal(t, "/app/package-lock.json", p.ManifestPath)
+		if p.Name == "lodash" {
+			lodashSeen = true
+			assert.Contains(t, p.PURL, "pkg:npm/lodash@")
+			assert.NotEmpty(t, p.Version)
+		}
+	}
+	assert.True(t, lodashSeen, "lodash missing from inventory")
+}
+
 func TestParse_InvalidJSON(t *testing.T) {
 	s := grype.NewScanner()
 	_, err := s.Parse(context.Background(), []byte(`not json`))

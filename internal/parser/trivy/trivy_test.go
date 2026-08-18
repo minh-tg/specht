@@ -96,6 +96,68 @@ func TestParse_EmptyScan(t *testing.T) {
 	assert.Empty(t, report.Findings)
 }
 
+func TestParse_AlpineFullScan(t *testing.T) {
+	s := trivy.NewScanner()
+	data, err := os.ReadFile("testdata/alpine-full.json")
+	require.NoError(t, err)
+
+	report, err := s.Parse(context.Background(), data)
+	require.NoError(t, err)
+
+	// Only the vulnerable subset surfaces as findings.
+	require.Len(t, report.Findings, 8)
+
+	// The full package tree is captured, not just vulnerable packages.
+	require.GreaterOrEqual(t, len(report.Packages), 100)
+	require.Greater(t, len(report.Packages), len(report.Findings))
+
+	// A vulnerable package is present, with qualifiers stripped from its purl
+	// so it can be matched against findings by purl@version.
+	vulnRef, ok := packageByPURL(report.Packages, "pkg:apk/alpine/libcrypto3@3.3.2-r0")
+	require.True(t, ok, "vulnerable package libcrypto3 missing from inventory")
+	assert.Equal(t, "alpine", vulnRef.Ecosystem)
+	assert.Equal(t, "libcrypto3", vulnRef.Name)
+	assert.Equal(t, "3.3.2-r0", vulnRef.Version)
+
+	// A package with no finding is captured too.
+	cleanRef, ok := packageByPURL(report.Packages, "pkg:apk/alpine/ncurses@6.4_p20240414-r0")
+	require.True(t, ok, "non-vulnerable package ncurses missing from inventory")
+	assert.Equal(t, "ncurses", cleanRef.Name)
+
+	// Vulnerable packages are a strict subset of the inventory: every finding
+	// references a captured package, but findings do not cover the inventory.
+	vulnPURLs := map[string]bool{}
+	for _, p := range report.Packages {
+		vulnPURLs[p.PURL] = true
+	}
+	for _, f := range report.Findings {
+		purl := ""
+		for _, d := range f.Dimensions {
+			if d.Key == "purl" {
+				purl = d.Value
+				break
+			}
+		}
+		require.NotEmpty(t, purl, "finding %s missing purl dimension", f.Fingerprint)
+		assert.True(t, vulnPURLs[scanner.NormalizePURL(purl)], "finding purl %s not in inventory", purl)
+	}
+
+	// No inventory purl retains qualifiers.
+	for _, p := range report.Packages {
+		assert.NotContains(t, p.PURL, "?")
+		assert.NotContains(t, p.PURL, "#")
+	}
+}
+
+func packageByPURL(packages []scanner.PackageRef, purl string) (scanner.PackageRef, bool) {
+	for _, p := range packages {
+		if p.PURL == purl {
+			return p, true
+		}
+	}
+	return scanner.PackageRef{}, false
+}
+
 func TestParse_MultiTypeScan(t *testing.T) {
 	s := trivy.NewScanner()
 	data, err := os.ReadFile("testdata/multi-type-scan.json")
