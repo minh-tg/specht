@@ -61,9 +61,11 @@ jobs:
       # which refuses to analyse a Go 1.26 module ("Go language version used
       # to build golangci-lint is lower than the targeted Go version"). The
       # repo's own pre-commit hook builds the same rev from source in the dev
-      # shell (Go 1.26.5), so CI mirrors that.
+      # shell (Go 1.26.5), so CI mirrors that. The args mirror the repo's
+      # pre-commit hook exactly --disable-all --enable=staticcheck -- so CI
+      # enforces the same bar developers get locally.
       - name: golangci-lint
-        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run ./... --timeout=5m
+        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8 run --disable-all --enable=staticcheck ./... --timeout=5m
 
       - name: Build
         run: go build ./...

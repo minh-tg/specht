@@ -375,9 +375,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 			FindingKind: f.FindingKind,
 			Fingerprint: f.Fingerprint,
 		})
-		if lookupErr != nil {
-			// New finding — no existing state to compare.
-		}
+		// A lookup error (incl. pgx.ErrNoRows) means there is no existing
+		// finding yet; only carry forward gate state when one exists.
 		if lookupErr == nil {
 			oldRank = existing.CurrentSeverityRank
 			oldGateEffect = existing.GateEffect
