@@ -23,7 +23,9 @@ jobs:
           go-version-file: go.mod
 
       - name: Resolve module graph
-        run: go mod download -mod=mod
+        env:
+          GOFLAGS: -mod=mod
+        run: go mod download
 
       - name: Set image tag from git tag
         id: tag
