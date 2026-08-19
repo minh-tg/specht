@@ -336,7 +336,14 @@ func fingerprint(purl, primary string) string {
 func matchAffected(ad Advisory, ecosystem, version string) (Affected, bool) {
 	eco := strings.ToLower(strings.TrimSpace(ecosystem))
 	for _, aff := range ad.Affected {
-		affEco := strings.ToLower(strings.TrimSpace(string(aff.Ecosystem)))
+		// Real OSV records nest the ecosystem inside affected[].package;
+		// prefer that, falling back to the top-level Affected.Ecosystem for
+		// hand-built fixtures/tests.
+		affEcosystem := aff.Package.Ecosystem
+		if affEcosystem == "" {
+			affEcosystem = aff.Ecosystem
+		}
+		affEco := strings.ToLower(strings.TrimSpace(string(affEcosystem)))
 		if eco != "" {
 			// Inventory ecosystem known: skipping a differing affected
 			// ecosystem is a different-package guard, not a version check.

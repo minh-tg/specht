@@ -20,6 +20,11 @@ type Ecosystem string
 // Package is the minimal identification of an affected package.
 type Package struct {
 	Name string `json:"name"`
+	// Ecosystem is the OSV ecosystem this affected entry applies to. In real
+	// OSV records it is nested inside the package object
+	// (affected[].package.ecosystem), alongside name and purl. It is kept here
+	// (not as a top-level Affected field) to match the upstream decode shape.
+	Ecosystem Ecosystem `json:"ecosystem,omitempty"`
 }
 
 // VersionRange is one OSV "ranges[]" interval. Type carries the OSV range

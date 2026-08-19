@@ -27,6 +27,10 @@ import (
 const (
 	// DefaultOSVEndpoint is the OSV querybatch endpoint.
 	DefaultOSVEndpoint = "https://api.osv.dev/v1/querybatch"
+	// DefaultOSVVulnURL is the template for fetching a full advisory record by
+	// ID; "{id}" is replaced with the advisory ID. OSV's querybatch endpoint
+	// returns only ids, so full records are fetched per matched ID.
+	DefaultOSVVulnURL = "https://api.osv.dev/v1/vulns/{id}"
 	// DefaultBatchSize is the default number of package queries packed into
 	// one querybatch HTTP request (WATCHER_BATCH_SIZE). Design spec default 100.
 	DefaultBatchSize = 100
@@ -55,11 +59,12 @@ type QueryResult struct {
 	Advisories []Advisory
 }
 
-// Client is the OSV querybatch surface the poll loop depends on.
+// Client is the OSV surface the poll loop depends on.
 type Client interface {
 	// QueryBatch asks OSV about every query and returns one QueryResult per
-	// query in the input order. Failures that IsRetryable classifies as
-	// transient abort the whole call; the caller backs off and retries.
+	// query in the input order, each holding the FULL advisory records for
+	// that package. Failures that IsRetryable classifies as transient abort
+	// the whole call; the caller backs off and retries.
 	QueryBatch(ctx context.Context, queries []Query) ([]QueryResult, error)
 }
 
@@ -106,6 +111,10 @@ func IsRetryable(err error) bool {
 type HTTPClientConfig struct {
 	// Endpoint is the querybatch URL. Defaults to DefaultOSVEndpoint.
 	Endpoint string
+	// VulnEndpoint is the base URL template for fetching a full advisory
+	// record by ID. Defaults to DefaultOSVVulnURL, which contains the
+	// literal "{id}" placeholder that is substituted with the advisory ID.
+	VulnEndpoint string
 	// BatchSize is the number of queries per HTTP request. Defaults to
 	// DefaultBatchSize.
 	BatchSize int
@@ -118,11 +127,13 @@ type HTTPClientConfig struct {
 	Now func() time.Time
 }
 
-// HTTPClient is the production Client: POSTs querybatch requests, batches
-// queries by BatchSize, and caches raw responses keyed by batch (TTL =
+// HTTPClient is the production Client: POSTs querybatch requests to discover
+// matched advisory IDs, GETs the full record for each ID, batches queries by
+// BatchSize, and caches raw querybatch responses keyed by batch (TTL =
 // CacheTTL) so repeated polls do not refetch unchanged history.
 type HTTPClient struct {
 	endpoint  string
+	vulnURL   string
 	http      *http.Client
 	batchSize int
 	cache     *responseCache
@@ -132,6 +143,9 @@ type HTTPClient struct {
 func NewHTTPClient(cfg HTTPClientConfig) *HTTPClient {
 	if cfg.Endpoint == "" {
 		cfg.Endpoint = DefaultOSVEndpoint
+	}
+	if cfg.VulnEndpoint == "" {
+		cfg.VulnEndpoint = DefaultOSVVulnURL
 	}
 	if cfg.BatchSize <= 0 {
 		cfg.BatchSize = DefaultBatchSize
@@ -144,10 +158,17 @@ func NewHTTPClient(cfg HTTPClientConfig) *HTTPClient {
 	}
 	return &HTTPClient{
 		endpoint:  cfg.Endpoint,
+		vulnURL:   cfg.VulnEndpoint,
 		http:      cfg.HTTP,
 		batchSize: cfg.BatchSize,
 		cache:     newResponseCache(cfg.CacheTTL, cfg.Now),
 	}
+}
+
+// endpointVuln returns the full-record URL for the given advisory ID by
+// substituting the "{id}" placeholder in the configured template.
+func (c *HTTPClient) endpointVuln(id string) string {
+	return strings.ReplaceAll(c.vulnURL, "{id}", id)
 }
 
 // QueryBatch implements Client. Queries are split into BatchSize chunks
@@ -156,33 +177,53 @@ func NewHTTPClient(cfg HTTPClientConfig) *HTTPClient {
 // query order.
 func (c *HTTPClient) QueryBatch(ctx context.Context, queries []Query) ([]QueryResult, error) {
 	results := make([]QueryResult, len(queries))
+	// Phase 1: querybatch — returns only the matching vulnerability IDs per
+	// query (OSV's querybatch endpoint returns {id, modified} only, not full
+	// records). Sliced into BatchSize chunks executed sequentially.
+	idBatches := make([][]string, len(queries))
 	for start := 0; start < len(queries); start += c.batchSize {
 		end := min(start+c.batchSize, len(queries))
 		chunk := queries[start:end]
-		chunkResults, err := c.queryBatchChunk(ctx, chunk)
+		chunkIDs, err := c.queryBatchChunk(ctx, chunk)
 		if err != nil {
 			return nil, err
 		}
-		copy(results[start:end], chunkResults)
+		copy(idBatches[start:end], chunkIDs)
+	}
+
+	// Phase 2: fetch the full record for every distinct matched ID. OSV has no
+	// batch full-record endpoint, so one GET /v1/vulns/{id} per unique ID.
+	// Fetches are deduped so a package matched by many queries never refetches.
+	full, err := c.fetchFullRecords(ctx, idBatches)
+	if err != nil {
+		return nil, err
+	}
+	for i, ids := range idBatches {
+		for _, id := range ids {
+			if a, ok := full[id]; ok {
+				results[i].Advisories = append(results[i].Advisories, a)
+			}
+		}
 	}
 	return results, nil
 }
 
-// queryBatchChunk performs one querybatch POST. The raw response body is
-// cached under a stable key derived from the chunk; a cache hit short-circuits
-// the network round trip entirely.
-func (c *HTTPClient) queryBatchChunk(ctx context.Context, queries []Query) ([]QueryResult, error) {
+// queryBatchChunk performs one querybatch POST and returns the matched
+// vulnerability IDs per query (the only data querybatch returns). The raw
+// response body is cached under a stable key derived from the chunk; a cache
+// hit short-circuits the network round trip entirely.
+func (c *HTTPClient) queryBatchChunk(ctx context.Context, queries []Query) ([][]string, error) {
 	key := cacheKey(queries)
 	if raw, ok := c.cache.get(key); ok {
-		if results, err := decodeQueryBatch(raw); err == nil {
-			if err := validateResultLength(results, len(queries)); err != nil {
+		if ids, err := decodeQueryBatch(raw); err == nil {
+			if err := validateIDLength(ids, len(queries)); err != nil {
 				// A cached body whose result count no longer matches the
 				// query count is treated as corrupted (drop the cache
 				// entry) rather than trusted.
 				c.cache.del(key)
 				return nil, err
 			}
-			return results, nil
+			return ids, nil
 		}
 		// A corrupted cache entry falls through to a refetch.
 	}
@@ -214,55 +255,117 @@ func (c *HTTPClient) queryBatchChunk(ctx context.Context, queries []Query) ([]Qu
 	}
 
 	c.cache.put(key, raw)
-	results, err := decodeQueryBatch(raw)
+	ids, err := decodeQueryBatch(raw)
 	if err != nil {
 		return nil, err
 	}
-	if err := validateResultLength(results, len(queries)); err != nil {
+	if err := validateIDLength(ids, len(queries)); err != nil {
 		return nil, err
 	}
-	return results, nil
+	return ids, nil
 }
 
-// validateResultLength enforces a 1:1 correspondence between the queries sent
+// fetchFullRecords fetches the full advisory record for every distinct ID
+// across all per-query ID slices, returning a map keyed by ID. IDs are
+// deduped across queries so a package matched many times is fetched once.
+func (c *HTTPClient) fetchFullRecords(ctx context.Context, idBatches [][]string) (map[string]Advisory, error) {
+	seen := make(map[string]bool)
+	var ids []string
+	for _, batch := range idBatches {
+		for _, id := range batch {
+			id = strings.TrimSpace(id)
+			if id == "" || seen[id] {
+				continue
+			}
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+
+	records := make(map[string]Advisory, len(ids))
+	for _, id := range ids {
+		a, err := c.fetchVuln(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		records[id] = a
+	}
+	return records, nil
+}
+
+// fetchVuln fetches one full advisory record via GET /v1/vulns/{id}. OSV's
+// querybatch endpoint returns only IDs; the full record (affected, aliases,
+// severity, summary, ...) comes from this endpoint.
+func (c *HTTPClient) fetchVuln(ctx context.Context, id string) (Advisory, error) {
+	url := c.endpointVuln(id)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return Advisory{}, fmt.Errorf("osv vuln request: %w", err)
+	}
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return Advisory{}, err
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	if err != nil {
+		return Advisory{}, fmt.Errorf("osv vuln read: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return Advisory{}, &HTTPError{Status: resp.StatusCode, StatusText: resp.Status, Body: truncate(raw, 512)}
+	}
+
+	var a Advisory
+	if err := json.Unmarshal(raw, &a); err != nil {
+		return Advisory{}, fmt.Errorf("%w: vuln %s: %v", ErrMalformedResponse, id, err)
+	}
+	// Persist the verbatim full-record bytes for byte-exact evidence.
+	a.Raw = append([]byte(nil), raw...)
+	return a, nil
+}
+
+// validateIDLength enforces a 1:1 correspondence between the queries sent
 // and the results returned. A short results array means the upstream silently
 // dropped responses, which must be surfaced as a malformed (non-retryable)
 // response — otherwise advisories would be silently lost while the poll's
 // watermark still advanced (malformed-response guard).
-func validateResultLength(results []QueryResult, queryCount int) error {
-	if len(results) != queryCount {
-		return fmt.Errorf("%w: got %d results for %d queries", ErrMalformedResponse, len(results), queryCount)
+func validateIDLength(ids [][]string, queryCount int) error {
+	if len(ids) != queryCount {
+		return fmt.Errorf("%w: got %d results for %d queries", ErrMalformedResponse, len(ids), queryCount)
 	}
 	return nil
 }
 
-// decodeQueryBatch parses the querybatch response envelope and captures each
-// advisory's raw bytes verbatim. The response shape is
+// decodeQueryBatch parses the querybatch response envelope and returns the
+// matched vulnerability IDs per query. The response shape is
 //
-//	{"results":[{"vulns":[{...advisory...}, ...]}, ...]}
+//	{"results":[{"vulns":[{"id":"GHSA-...","modified":"..."}, ...]}, ...]}
 //
-// with one results entry per query, in query order.
-func decodeQueryBatch(raw []byte) ([]QueryResult, error) {
+// with one results entry per query, in query order. OSV's querybatch endpoint
+// returns only the id and modified fields per match — the full advisory
+// records must be fetched separately (see fetchFullRecords).
+func decodeQueryBatch(raw []byte) ([][]string, error) {
 	var envelope struct {
 		Results []struct {
-			Vulns []json.RawMessage `json:"vulns"`
+			Vulns []struct {
+				ID string `json:"id"`
+			} `json:"vulns"`
 		} `json:"results"`
 	}
 	if err := json.Unmarshal(raw, &envelope); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrMalformedResponse, err)
 	}
-	results := make([]QueryResult, 0, len(envelope.Results))
+	results := make([][]string, 0, len(envelope.Results))
 	for i, r := range envelope.Results {
-		advisories := make([]Advisory, 0, len(r.Vulns))
-		for _, vm := range r.Vulns {
-			var a Advisory
-			if err := json.Unmarshal(vm, &a); err != nil {
-				return nil, fmt.Errorf("%w: advisory %d: %v", ErrMalformedResponse, i, err)
+		ids := make([]string, 0, len(r.Vulns))
+		for _, v := range r.Vulns {
+			if v.ID == "" {
+				return nil, fmt.Errorf("%w: query %d has an advisory with an empty id", ErrMalformedResponse, i)
 			}
-			a.Raw = append([]byte(nil), vm...) // verbatim upstream bytes
-			advisories = append(advisories, a)
+			ids = append(ids, v.ID)
 		}
-		results = append(results, QueryResult{Advisories: advisories})
+		results = append(results, ids)
 	}
 	return results, nil
 }

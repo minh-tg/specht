@@ -38,10 +38,11 @@ func cannedAdvisory(id, published string) map[string]any {
 }
 
 // querybatchResponse renders {"results":[{vulns...}...]} from the given
-// advisory lists, mirroring the real OSV envelope.
-func querybatchResponse(vulnsLists ...[]map[string]any) []byte {
+// advisory ID lists, mirroring the real OSV envelope. querybatch returns only
+// id+modified per match — the full record comes from a separate GET.
+func querybatchResponse(idLists ...[]map[string]any) []byte {
 	var results []map[string]any
-	for _, vulns := range vulnsLists {
+	for _, vulns := range idLists {
 		results = append(results, map[string]any{"vulns": vulns})
 	}
 	b, _ := json.Marshal(map[string]any{"results": results})
@@ -52,6 +53,54 @@ func queryFor(name string) Query {
 	return Query{Package: QueryPackage{Ecosystem: "npm", Name: name}}
 }
 
+// mockOSV builds a two-phase fake OSV server: POST <endpoint> answers the
+// querybatch request (returning the matched ID per query via idFor, defaulting
+// to "GHSA-"+name), and GET <endpoint>/v1/vulns/{id} returns the full advisory
+// record from registry. It returns the server plus counters of POST (querybatch)
+// and GET (full-record) requests so tests can assert caching and dedup.
+func mockOSV(t *testing.T, registry map[string]map[string]any, idFor func(name string) string) (*httptest.Server, *atomic.Int32, *atomic.Int32) {
+	t.Helper()
+	if idFor == nil {
+		idFor = func(name string) string { return "GHSA-" + name }
+	}
+	var posts, gets atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost:
+			posts.Add(1)
+			var body struct {
+				Queries []Query `json:"queries"`
+			}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Errorf("decode querybatch body: %v", err)
+				return
+			}
+			var idLists [][]map[string]any
+			for _, q := range body.Queries {
+				idLists = append(idLists, []map[string]any{{
+					"id": idFor(q.Package.Name), "modified": "2024-01-01T00:00:00Z",
+				}})
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(querybatchResponse(idLists...))
+		case r.Method == http.MethodGet:
+			gets.Add(1)
+			id := strings.TrimPrefix(r.URL.Path, "/v1/vulns/")
+			adv, ok := registry[id]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			b, _ := json.Marshal(adv)
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(b)
+		default:
+			t.Errorf("unexpected method %s on %s", r.Method, r.URL.Path)
+		}
+	}))
+	return srv, &posts, &gets
+}
+
 func TestQueryBatch_OKParsesAndCapturesRawBytes(t *testing.T) {
 	databaseSpecific := map[string]any{"cwe_ids": []string{"CWE-79"}, "credits": map[string]any{"a": "b"}}
 	advisory := cannedAdvisory("GHSA-test-1", "2024-01-01T00:00:00Z")
@@ -60,21 +109,29 @@ func TestQueryBatch_OKParsesAndCapturesRawBytes(t *testing.T) {
 
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Errorf("method = %s, want POST", r.Method)
+		switch {
+		case r.Method == http.MethodPost:
+			if got := r.Header.Get("Content-Type"); got != "application/json" {
+				t.Errorf("content-type = %q, want application/json", got)
+			}
+			if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+				t.Errorf("decode request body: %v", err)
+			}
+			// querybatch returns only the matched ID (id+modified), not the
+			// full record — the full advisory is fetched via GET /v1/vulns/{id}.
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-test-1", "modified": "2024-01-01T00:00:00Z"}}))
+		case r.Method == http.MethodGet:
+			b, _ := json.Marshal(advisory)
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(b)
+		default:
+			t.Errorf("method = %s, want POST or GET", r.Method)
 		}
-		if got := r.Header.Get("Content-Type"); got != "application/json" {
-			t.Errorf("content-type = %q, want application/json", got)
-		}
-		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
-			t.Errorf("decode request body: %v", err)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(querybatchResponse([]map[string]any{advisory}))
 	}))
 	defer srv.Close()
 
-	c := NewHTTPClient(HTTPClientConfig{Endpoint: srv.URL, BatchSize: 10})
+	c := NewHTTPClient(HTTPClientConfig{Endpoint: srv.URL, VulnEndpoint: srv.URL + "/v1/vulns/{id}", BatchSize: 10})
 	results, err := c.QueryBatch(context.Background(), []Query{queryFor("lodash")})
 	if err != nil {
 		t.Fatalf("QueryBatch: %v", err)
@@ -86,11 +143,21 @@ func TestQueryBatch_OKParsesAndCapturesRawBytes(t *testing.T) {
 	if a.ID != "GHSA-test-1" {
 		t.Errorf("id = %q, want GHSA-test-1", a.ID)
 	}
+	// The full record (from the GET) must populate the structured fields.
+	if len(a.Affected) != 1 || a.Affected[0].Ecosystem != "npm" {
+		t.Errorf("affected = %+v, want npm ecosystem populated from full record", a.Affected)
+	}
+	if len(a.Aliases) != 1 || a.Aliases[0] != "CVE-2024-0001" {
+		t.Errorf("aliases = %+v, want populated from full record", a.Aliases)
+	}
+	if len(a.Severity) != 1 || a.Severity[0].Score == "" {
+		t.Errorf("severity = %+v, want populated from full record", a.Severity)
+	}
 	if a.Raw == nil || len(a.Raw) == 0 {
 		t.Fatal("Raw advisory bytes not captured")
 	}
-	// Raw must be byte-exact upstream JSON, including fields the decoded
-	// subset drops (database_specific, credits).
+	// Raw must be byte-exact upstream JSON (from the full GET record),
+	// including fields the decoded subset drops (database_specific, credits).
 	rawStr := string(a.Raw)
 	if !strings.Contains(rawStr, `"database_specific"`) || !strings.Contains(rawStr, `"CWE-79"`) {
 		t.Errorf("Raw missing database_specific: %s", rawStr)
@@ -106,33 +173,26 @@ func TestQueryBatch_OKParsesAndCapturesRawBytes(t *testing.T) {
 }
 
 func TestQueryBatch_BatchesAndPreservesOrder(t *testing.T) {
-	var requests int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requests++
-		var body struct {
-			Queries []Query `json:"queries"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			t.Errorf("decode: %v", err)
-		}
-		var resultLists [][]map[string]any
-		for _, q := range body.Queries {
-			resultLists = append(resultLists, []map[string]any{{
-				"id": "GHSA-" + q.Package.Name, "summary": "advisory for " + q.Package.Name,
-			}})
-		}
-		w.Write(querybatchResponse(resultLists...))
-	}))
+	registry := map[string]map[string]any{}
+	for _, c := range []string{"a", "b", "c", "d", "e"} {
+		registry["GHSA-"+c] = cannedAdvisory("GHSA-"+c, "2024-01-01T00:00:00Z")
+	}
+	srv, posts, gets := mockOSV(t, registry, nil)
 	defer srv.Close()
 
-	c := NewHTTPClient(HTTPClientConfig{Endpoint: srv.URL, BatchSize: 2})
+	c := NewHTTPClient(HTTPClientConfig{Endpoint: srv.URL, VulnEndpoint: srv.URL + "/v1/vulns/{id}", BatchSize: 2})
 	queries := []Query{queryFor("a"), queryFor("b"), queryFor("c"), queryFor("d"), queryFor("e")}
 	results, err := c.QueryBatch(context.Background(), queries)
 	if err != nil {
 		t.Fatalf("QueryBatch: %v", err)
 	}
-	if requests != 3 {
-		t.Errorf("http requests = %d, want 3 (chunks of 2)", requests)
+	// 5 queries at BatchSize 2 => 3 querybatch POSTs (chunks of 2, 2, 1).
+	if posts.Load() != 3 {
+		t.Errorf("querybatch posts = %d, want 3 (chunks of 2)", posts.Load())
+	}
+	// 5 distinct matched IDs => 5 full-record GETs.
+	if gets.Load() != 5 {
+		t.Errorf("full-record gets = %d, want 5 (one per distinct id)", gets.Load())
 	}
 	if len(results) != 5 {
 		t.Fatalf("results = %d, want 5", len(results))
@@ -144,46 +204,47 @@ func TestQueryBatch_BatchesAndPreservesOrder(t *testing.T) {
 	}
 }
 
-func TestQueryBatch_CacheHitsSkipNetwork(t *testing.T) {
-	var hits atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits.Add(1)
-		// Echo one result per query so the result count matches the query
-		// count (the client validates the 1:1 correspondence).
-		var req struct {
-			Queries []json.RawMessage `json:"queries"`
-		}
-		_ = json.NewDecoder(r.Body).Decode(&req)
-		lists := make([][]map[string]any, len(req.Queries))
-		for i := range lists {
-			lists[i] = []map[string]any{cannedAdvisory("GHSA-cached-1", "2024-01-01T00:00:00Z")}
-		}
-		w.Write(querybatchResponse(lists...))
-	}))
+func TestQueryBatch_CacheHitsSkipQuerybatchNetwork(t *testing.T) {
+	// Both queries resolve to the SAME advisory id, exercising both the
+	// querybatch cache (second identical call within TTL is a no-op) and
+	// full-record dedup (a shared id is fetched exactly once per poll).
+	registry := map[string]map[string]any{"GHSA-cached-1": cannedAdvisory("GHSA-cached-1", "2024-01-01T00:00:00Z")}
+	srv, posts, gets := mockOSV(t, registry, func(name string) string { return "GHSA-cached-1" })
 	defer srv.Close()
 
 	clock := time.Unix(1_000_000, 0)
 	now := func() time.Time { return clock }
-	c := NewHTTPClient(HTTPClientConfig{Endpoint: srv.URL, BatchSize: 5, CacheTTL: time.Hour, Now: now})
+	c := NewHTTPClient(HTTPClientConfig{
+		Endpoint: srv.URL, VulnEndpoint: srv.URL + "/v1/vulns/{id}",
+		BatchSize: 5, CacheTTL: time.Hour, Now: now,
+	})
 
 	queries := []Query{queryFor("b"), queryFor("a")} // order swapped second time
 	if _, err := c.QueryBatch(context.Background(), queries); err != nil {
 		t.Fatalf("first QueryBatch: %v", err)
 	}
-	// Same content, different order, within TTL: cache hit for both chunks.
+	if posts.Load() != 1 || gets.Load() != 1 {
+		t.Fatalf("after first call: posts=%d gets=%d, want 1 and 1", posts.Load(), gets.Load())
+	}
+	// Same content, different order, within TTL: querybatch cache hit, so no
+	// new POST. The full-record GET is NOT cached by querybatch and re-runs —
+	// that is correct (each poll refetches full records for freshness).
 	if _, err := c.QueryBatch(context.Background(), []Query{queryFor("a"), queryFor("b")}); err != nil {
 		t.Fatalf("second QueryBatch: %v", err)
 	}
-	if hits.Load() != 1 {
-		t.Errorf("http requests = %d, want 1 (second call served from cache)", hits.Load())
+	if posts.Load() != 1 {
+		t.Errorf("querybatch posts = %d, want 1 (second call served from querybatch cache)", posts.Load())
 	}
-	// After TTL expiry the cache misses and refetches.
+	if gets.Load() != 2 {
+		t.Errorf("full-record gets = %d, want 2 (full records re-fetched each poll)", gets.Load())
+	}
+	// After TTL expiry the querybatch cache misses and refetches.
 	clock = clock.Add(2 * time.Hour)
 	if _, err := c.QueryBatch(context.Background(), []Query{queryFor("a")}); err != nil {
 		t.Fatalf("third QueryBatch: %v", err)
 	}
-	if hits.Load() != 2 {
-		t.Errorf("http requests = %d, want 2 (TTL expired)", hits.Load())
+	if posts.Load() != 2 {
+		t.Errorf("querybatch posts = %d, want 2 (TTL expired)", posts.Load())
 	}
 }
 
@@ -266,7 +327,7 @@ func TestQueryBatch_ShortResultsMalformedNotRetryable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
 		// 2 queries in, but only 1 result out.
-		w.Write(querybatchResponse([]map[string]any{cannedAdvisory("GHSA-short-1", "2024-01-01T00:00:00Z")}))
+		w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-short-1"}}))
 	}))
 	defer srv.Close()
 
@@ -298,6 +359,97 @@ func TestQueryBatch_TransportFailureIsRetryable(t *testing.T) {
 	}
 	if !IsRetryable(err) {
 		t.Errorf("transport error %v should be retryable", err)
+	}
+}
+
+// The querybatch phase succeeded (returning an id) but the full-record GET
+// failed. The full-record GET must obey the same error taxonomy.
+func TestQueryBatch_VulnGET429IsRetryable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-get-429"}}))
+			return
+		}
+		w.WriteHeader(http.StatusTooManyRequests)
+		w.Write([]byte(`{"code":1,"message":"rate limited"}`))
+	}))
+	defer srv.Close()
+
+	c := NewHTTPClient(HTTPClientConfig{Endpoint: srv.URL, VulnEndpoint: srv.URL + "/v1/vulns/{id}"})
+	_, err := c.QueryBatch(context.Background(), []Query{queryFor("lodash")})
+	if err == nil {
+		t.Fatal("expected error for 429 on full-record GET")
+	}
+	if !IsRetryable(err) {
+		t.Errorf("429 GET error %v should be retryable", err)
+	}
+	var he *HTTPError
+	if !errors.As(err, &he) || he.Status != http.StatusTooManyRequests {
+		t.Errorf("error = %#v, want *HTTPError with status 429", err)
+	}
+}
+
+func TestQueryBatch_VulnGET500IsRetryable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-get-500"}}))
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	c := NewHTTPClient(HTTPClientConfig{Endpoint: srv.URL, VulnEndpoint: srv.URL + "/v1/vulns/{id}"})
+	_, err := c.QueryBatch(context.Background(), []Query{queryFor("lodash")})
+	if err == nil {
+		t.Fatal("expected error for 500 on full-record GET")
+	}
+	if !IsRetryable(err) {
+		t.Errorf("500 GET error %v should be retryable", err)
+	}
+}
+
+func TestQueryBatch_VulnGET400NotRetryable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-get-400"}}))
+			return
+		}
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(`{"code":3,"message":"bad request"}`))
+	}))
+	defer srv.Close()
+
+	c := NewHTTPClient(HTTPClientConfig{Endpoint: srv.URL, VulnEndpoint: srv.URL + "/v1/vulns/{id}"})
+	_, err := c.QueryBatch(context.Background(), []Query{queryFor("lodash")})
+	if err == nil {
+		t.Fatal("expected error for 400 on full-record GET")
+	}
+	if IsRetryable(err) {
+		t.Errorf("400 GET error %v should NOT be retryable", err)
+	}
+}
+
+func TestQueryBatch_VulnGETMalformedNotRetryable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-get-malformed"}}))
+			return
+		}
+		w.Write([]byte(`{"id": `)) // truncated full record
+	}))
+	defer srv.Close()
+
+	c := NewHTTPClient(HTTPClientConfig{Endpoint: srv.URL, VulnEndpoint: srv.URL + "/v1/vulns/{id}"})
+	_, err := c.QueryBatch(context.Background(), []Query{queryFor("lodash")})
+	if err == nil {
+		t.Fatal("expected error for malformed full-record GET")
+	}
+	if !errors.Is(err, ErrMalformedResponse) {
+		t.Errorf("error %v does not wrap ErrMalformedResponse", err)
+	}
+	if IsRetryable(err) {
+		t.Errorf("malformed GET error %v should NOT be retryable", err)
 	}
 }
 
