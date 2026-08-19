@@ -29,7 +29,10 @@ test-race:
 
 build:
 	cd frontend && npm run build
-	mkdir -p cmd/server/dist && cp -r frontend/dist/* cmd/server/dist/
+	# Copy into cmd/server/dist/dist/ (not over the committed placeholder
+	# index.html): the placeholder must stay byte-identical so go:embed and
+	# clean-checkout builds work; the nested dist/ is git-excluded.
+	cp -r frontend/dist cmd/server/dist/
 	go build -ldflags "$(LDFLAGS)" -o bin/server ./cmd/server
 	go build -ldflags "$(LDFLAGS)" -o bin/adapter ./cmd/adapter
 
