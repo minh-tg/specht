@@ -29,9 +29,14 @@ test-race:
 
 build:
 	cd frontend && npm run build
-	cp -r frontend/dist cmd/server/dist
-	go build -o bin/server ./cmd/server
-	go build -o bin/adapter ./cmd/adapter
+	mkdir -p cmd/server/dist && cp -r frontend/dist/* cmd/server/dist/
+	go build -ldflags "$(LDFLAGS)" -o bin/server ./cmd/server
+	go build -ldflags "$(LDFLAGS)" -o bin/adapter ./cmd/adapter
+
+# Version wiring: VERSION defaults to a dev marker; the release workflow
+# builds with VERSION=vX.Y.Z so the health endpoint reports the tagged build.
+VERSION ?= dev
+LDFLAGS = -X github.com/xMinhx/specht/internal/version.Version=$(VERSION) -X github.com/xMinhx/specht/internal/version.Commit=$(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 
 clean:
 	rm -rf bin/ frontend/dist/ cmd/server/dist/

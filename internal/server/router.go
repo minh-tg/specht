@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -10,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/xMinhx/specht/internal/auth"
+	"github.com/xMinhx/specht/internal/version"
 )
 
 type RouterConfig struct {
@@ -113,5 +115,5 @@ func realIPMiddleware(next http.Handler) http.Handler {
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status":"ok"}`))
+	fmt.Fprintf(w, `{"status":"ok","version":%q,"commit":%q}`, version.Version, version.Commit)
 }
