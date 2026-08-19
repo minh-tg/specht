@@ -489,7 +489,11 @@ func (c *responseCache) put(key string, raw []byte) {
 
 // evictLocked drops already-expired entries, then — if the map is still over
 // the cap — evicts the entry with the oldest expiry until it is back within
-// budget. Callers hold c.mu.
+// budget. Equal-expiry ties are broken by key (lexicographically smallest
+// evicted first) so eviction is fully deterministic — Go map iteration order
+// is randomized, and two entries written under the same clock/TTL share an
+// expiresAt, so picking "the oldest" without a tie-break would be arbitrary.
+// Callers hold c.mu.
 func (c *responseCache) evictLocked() {
 	now := c.now()
 	for k, e := range c.entries {
@@ -504,7 +508,7 @@ func (c *responseCache) evictLocked() {
 			first     = true
 		)
 		for k, e := range c.entries {
-			if first || e.expiresAt.Before(oldest) {
+			if first || e.expiresAt.Before(oldest) || (e.expiresAt.Equal(oldest) && k < oldestKey) {
 				oldestKey, oldest = k, e.expiresAt
 				first = false
 			}
