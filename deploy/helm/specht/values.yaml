@@ -24,5 +24,18 @@ env:
   CORS_ORIGINS: ""
   DB_MIGRATE: "true"
   SERVER_ADDR: ":8080"
+  INVENTORY_TTL: "2160h"
+  WATCHER_ENABLE: "false"
+  WATCHER_POLL_INTERVAL: "6h"
+  WATCHER_OSV_ENDPOINT: "https://api.osv.dev/v1/querybatch"
+  WATCHER_BATCH_SIZE: "100"
+  WATCHER_COLD_START_WINDOW: "full"
+  WATCHER_SLACK_URL: ""
+  WATCHER_SLACK_SIGNING_SECRET: ""
+
+watcher:
+  # Secret values for the watcher, separate from non-secret env above.
+  slackSigningSecret: ""
+  slackUrl: ""
 
 resources: {}

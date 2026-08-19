@@ -43,5 +43,21 @@ spec:
               value: {{ .Values.env.DB_MIGRATE | quote }}
             - name: CORS_ORIGINS
               value: {{ .Values.env.CORS_ORIGINS | quote }}
+            - name: INVENTORY_TTL
+              value: {{ .Values.env.INVENTORY_TTL | quote }}
+            - name: WATCHER_ENABLE
+              value: {{ .Values.env.WATCHER_ENABLE | quote }}
+            - name: WATCHER_POLL_INTERVAL
+              value: {{ .Values.env.WATCHER_POLL_INTERVAL | quote }}
+            - name: WATCHER_OSV_ENDPOINT
+              value: {{ .Values.env.WATCHER_OSV_ENDPOINT | quote }}
+            - name: WATCHER_BATCH_SIZE
+              value: {{ .Values.env.WATCHER_BATCH_SIZE | quote }}
+            - name: WATCHER_COLD_START_WINDOW
+              value: {{ .Values.env.WATCHER_COLD_START_WINDOW | quote }}
+            - name: WATCHER_SLACK_URL
+              value: {{ .Values.watcher.slackUrl | quote }}
+            - name: WATCHER_SLACK_SIGNING_SECRET
+              value: {{ .Values.watcher.slackSigningSecret | quote }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
