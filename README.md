@@ -6,26 +6,39 @@ Small, watchful vulnerability management platform. Ingest scan results from Triv
 
 ```bash
 cp .env.example .env
+docker compose -f deploy/docker-compose.yml up -d db
+set -a
+source .env
+set +a
 go run ./cmd/server
 ```
 
 API starts at `http://localhost:8080`. Health check: `curl http://localhost:8080/api/v1/health`.
 
-## Documentation
-
-See [docs/](docs/) for architecture, data model, API reference, roadmap, and development guide.
-
 ## Project Layout
 
 ```
-cmd/specht/      API server
+cmd/server/      API server (chi router, embedded SPA, watcher daemon)
+cmd/specht/      CLI client (specht)
 cmd/adapter/     CI/CD gate-check CLI (specht-adapter)
+cmd/mcp/         MCP bridge
 internal/        Go packages (handlers, usecases, repos, auth, scanners)
 frontend/        React SPA (Vite, shadcn/ui)
 migrations/      SQL migrations (golang-migrate)
 sqlc/            Type-safe SQL queries
 deploy/          Docker Compose + Helm chart
 ```
+
+## Development
+
+```bash
+nix develop            # enter the dev shell (Go 1.26, sqlc, prek, frontend toolchain)
+prek install           # enable commit hooks: format/lint/vet/secrets + conventional commits
+```
+
+Commits are checked automatically once hooks are installed: gofumpt, staticcheck, `go vet`, `go mod tidy`, dprint/oxlint (frontend), hadolint, gitleaks, and conventional-commit message validation. 
+
+Run the test suite with `go test ./... -count=1 -short` (unit) or `go test -tags integration ./internal/repo/ -count=1` (needs Docker for testcontainers).
 
 ## License
 
