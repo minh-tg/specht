@@ -96,7 +96,7 @@ func (g *gate) Evaluate(ctx context.Context, projectID string, minSeverityRank i
 	waivedCount := 0
 
 	for _, f := range findings {
-		if isWaived(f, waivers) {
+		if IsFindingWaived(f, waivers) {
 			waivedCount++
 		} else {
 			blockedBy = append(blockedBy, f.ID)
@@ -135,7 +135,13 @@ func contextMatchesContexts(f Finding, contexts []WaiverContext) bool {
 	return false
 }
 
-func isWaived(f Finding, waivers []Waiver) bool {
+// IsFindingWaived reports whether a single finding is waived by any of the
+// given waivers. It is the single-finding counterpart to Evaluate: a waiver
+// applies when the finding's context matches any of the waiver's contexts
+// (contexts OR together), its ID matches any explicit target, and every
+// condition on the waiver holds. Evaluate and CheckWaiverMatch both build on
+// this helper so the two paths can never drift apart.
+func IsFindingWaived(f Finding, waivers []Waiver) bool {
 	for _, w := range waivers {
 		if len(w.Contexts) > 0 && !contextMatchesContexts(f, w.Contexts) {
 			continue

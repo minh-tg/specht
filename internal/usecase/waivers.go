@@ -4,14 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/db/sqlc"
-	"github.com/xMinhx/specht/internal/repo"
+	"github.com/xMinhx/specht/internal/gate"
 )
 
 type WaiverResponse struct {
@@ -535,153 +533,37 @@ func (u *Usecases) CheckWaiverMatch(ctx context.Context, projectSlug, findingID 
 	if err != nil {
 		return false, fmt.Errorf("invalid finding id: %w", err)
 	}
+	findingUUID := pgtype.UUID{Bytes: fid, Valid: true}
 
-	waivers, err := u.deps.Repos.Waivers.ListActive(ctx, project.ID)
-	if err != nil {
-		return false, fmt.Errorf("list active waivers: %w", err)
-	}
-
-	finding, err := u.deps.Repos.Findings.GetByID(ctx, pgtype.UUID{Bytes: fid, Valid: true})
+	finding, err := u.deps.Repos.Findings.GetByID(ctx, findingUUID)
 	if err != nil {
 		return false, fmt.Errorf("get finding: %w", err)
 	}
 
-	fctx := findingContext{}
-	fc, err := u.deps.Repos.Findings.GetFindingContext(ctx, pgtype.UUID{Bytes: fid, Valid: true})
-	if err == nil {
-		fctx = findContextFromRepo(fc)
+	gf := gate.Finding{
+		ID:                  uuid.UUID(finding.ID.Bytes).String(),
+		CurrentSeverityRank: finding.CurrentSeverityRank,
+		FindingKind:         finding.FindingKind,
+		Fingerprint:         finding.Fingerprint,
+		CurrentTitle:        finding.CurrentTitle,
 	}
-
-	for _, w := range waivers {
-		conditions, err := u.deps.Repos.Waivers.ListConditions(ctx, w.ID)
-		if err != nil {
-			return false, fmt.Errorf("list conditions for waiver %s: %w", uuidStr(w.ID), err)
+	if fc, ctxErr := u.deps.Repos.Findings.GetFindingContext(ctx, findingUUID); ctxErr == nil {
+		if fc.EnvironmentID.Valid {
+			gf.EnvironmentID = uuid.UUID(fc.EnvironmentID.Bytes).String()
 		}
-
-		contexts, err := u.deps.Repos.Waivers.ListContexts(ctx, w.ID)
-		if err != nil {
-			return false, fmt.Errorf("list contexts for waiver %s: %w", uuidStr(w.ID), err)
+		if fc.TargetID.Valid {
+			gf.TargetID = uuid.UUID(fc.TargetID.Bytes).String()
 		}
-
-		targets, err := u.deps.Repos.Waivers.ListFindingTargets(ctx, w.ID)
-		if err != nil {
-			return false, fmt.Errorf("list targets for waiver %s: %w", uuidStr(w.ID), err)
-		}
-
-		if len(contexts) > 0 && !matchContexts(fctx, contexts) {
-			continue
-		}
-
-		if len(targets) > 0 && !matchTargets(finding, targets) {
-			continue
-		}
-
-		matched := true
-		for _, c := range conditions {
-			if !matchCondition(finding, c) {
-				matched = false
-				break
-			}
-		}
-
-		if matched {
-			return true, nil
+		if fc.ArtifactID.Valid {
+			gf.ArtifactID = uuid.UUID(fc.ArtifactID.Bytes).String()
 		}
 	}
 
-	return false, nil
-}
-
-func matchCondition(finding sqlc.Finding, cond sqlc.WaiverCondition) bool {
-	switch cond.Field {
-	case "severity_rank":
-		threshold, err := strconv.Atoi(cond.Value)
-		if err != nil {
-			return false
-		}
-		switch cond.Operator {
-		case "eq":
-			return int(finding.CurrentSeverityRank) == threshold
-		case "neq":
-			return int(finding.CurrentSeverityRank) != threshold
-		case "lt":
-			return int(finding.CurrentSeverityRank) < threshold
-		case "lte":
-			return int(finding.CurrentSeverityRank) <= threshold
-		case "gt":
-			return int(finding.CurrentSeverityRank) > threshold
-		case "gte":
-			return int(finding.CurrentSeverityRank) >= threshold
-		}
-	case "finding_kind":
-		if cond.Operator == "eq" {
-			return finding.FindingKind == cond.Value
-		}
-		if cond.Operator == "neq" {
-			return finding.FindingKind != cond.Value
-		}
-	case "fingerprint":
-		if cond.Operator == "eq" {
-			return finding.Fingerprint == cond.Value
-		}
-		if cond.Operator == "neq" {
-			return finding.Fingerprint != cond.Value
-		}
-	case "title_pattern":
-		if cond.Operator == "contains" {
-			return strings.Contains(finding.CurrentTitle, cond.Value)
-		}
-		if cond.Operator == "matches" {
-			return finding.CurrentTitle == cond.Value
-		}
-	case "cve_id":
-		if cond.Operator == "contains" {
-			return strings.Contains(finding.Fingerprint, cond.Value)
-		}
-		if cond.Operator == "eq" {
-			return finding.Fingerprint == cond.Value
-		}
+	projectID := uuid.UUID(project.ID.Bytes).String()
+	waivers, err := (&gateWaiverRepo{r: u.deps.Repos.Waivers}).ListActiveWaivers(ctx, projectID)
+	if err != nil {
+		return false, fmt.Errorf("list active waivers: %w", err)
 	}
-	return false
-}
 
-type findingContext struct {
-	environmentID pgtype.UUID
-	targetID      pgtype.UUID
-	artifactID    pgtype.UUID
-}
-
-func findContextFromRepo(fc repo.FindingContext) findingContext {
-	return findingContext{
-		environmentID: fc.EnvironmentID,
-		targetID:      fc.TargetID,
-		artifactID:    fc.ArtifactID,
-	}
-}
-
-func matchContexts(ctx findingContext, contexts []sqlc.WaiverContext) bool {
-	if len(contexts) == 0 {
-		return true
-	}
-	for _, c := range contexts {
-		if c.EnvironmentID.Valid && c.EnvironmentID.Bytes != ctx.environmentID.Bytes {
-			return false
-		}
-		if c.TargetID.Valid && c.TargetID.Bytes != ctx.targetID.Bytes {
-			return false
-		}
-		if c.ArtifactID.Valid && c.ArtifactID.Bytes != ctx.artifactID.Bytes {
-			return false
-		}
-	}
-	return true
-}
-
-func matchTargets(finding sqlc.Finding, targets []sqlc.WaiverFindingTarget) bool {
-	for _, t := range targets {
-		if t.FindingID.Bytes == finding.ID.Bytes {
-			return true
-		}
-	}
-	return false
+	return gate.IsFindingWaived(gf, waivers), nil
 }
