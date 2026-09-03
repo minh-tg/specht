@@ -1,3 +1,7 @@
+// Package repo implements the persistence seam between use cases and the
+// sqlc-generated query layer. Repositories own row-level CRUD and the
+// multi-table unit-of-work transactions (waiver create/update, watcher
+// finding persistence); use cases never execute SQL directly.
 package repo
 
 import (
@@ -9,6 +13,9 @@ import (
 	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
+// Repos is the aggregate persistence handle: one field per domain repository,
+// backed by a shared pgx pool. It is the single repo value wired into use
+// cases and commands.
 type Repos struct {
 	Projects      ProjectRepo
 	Reports       ReportRepo
@@ -29,6 +36,7 @@ type Repos struct {
 	pool          *pgxpool.Pool
 }
 
+// NewRepos builds every repository over a single pgx pool.
 func NewRepos(pool *pgxpool.Pool) *Repos {
 	q := sqlc.New(pool)
 	return &Repos{

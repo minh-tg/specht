@@ -1,3 +1,6 @@
+// Package lifecycle runs the time-based sweeps that keep findings and waivers
+// current: marking findings whose analysis window expired back to unanalyzed
+// and disabling waivers past their expiry.
 package lifecycle
 
 import (

@@ -1,3 +1,8 @@
+// Package usecase implements the application's business use cases: report
+// ingestion, finding triage, waiver management, gate evaluation, and the
+// read/stat surfaces the HTTP handlers and CLI consume. Use cases
+// orchestrate repositories and the scanner registry; they hold no HTTP or
+// persistence concerns of their own.
 package usecase
 
 import (
@@ -18,30 +23,44 @@ import (
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
+// ErrDuplicateReport is returned when a report with the same raw-content hash
+// has already been ingested for the project.
 var ErrDuplicateReport = errors.New("duplicate report")
 
+// IngestReportInput is a scanner report to ingest for a project.
 type IngestReportInput struct {
-	ProjectSlug     string
-	Scanner         string
-	ScannerVersion  string
-	ParserVersion   string
-	RawData         json.RawMessage
-	Branch          string
-	CommitSha       string
-	GateSeverity    []string
-	GateStatus      []string
+	ProjectSlug string // slug of the target project
+	Scanner     string // registered scanner name, e.g. "trivy"
+	// ScannerVersion and ParserVersion are recorded on the report row for
+	// provenance.
+	ScannerVersion string
+	ParserVersion  string
+	RawData        json.RawMessage // raw scanner output, byte-for-byte
+	Branch         string
+	CommitSha      string
+	// GateSeverity and GateStatus override which findings count as blocking
+	// for the post-ingest threshold check (defaults: high/critical, open).
+	GateSeverity []string
+	GateStatus   []string
+	// Environment, ArtifactName, ArtifactVersion, and ArtifactType attach
+	// deployment context to the report. When empty, context is derived from
+	// the normalized scanner report when possible.
 	Environment     string
 	ArtifactName    string
 	ArtifactVersion string
 	ArtifactType    string
 }
 
+// IngestReportOutput reports what a completed ingest produced.
 type IngestReportOutput struct {
 	ReportID          string
 	TotalFindings     int
 	ThresholdBreached bool
 }
 
+// Deps wires the dependencies a Usecases instance needs. Repos, Registry,
+// and JWTAuth are required; InventoryTTL tunes how long scanned inventory is
+// considered fresh.
 type Deps struct {
 	Repos        *repo.Repos
 	Registry     *scanner.Registry
@@ -49,12 +68,15 @@ type Deps struct {
 	InventoryTTL time.Duration
 }
 
+// Usecases groups the application's use-case methods. It is safe for
+// concurrent use: the gate evaluator is built lazily once.
 type Usecases struct {
 	deps     Deps
 	gate     gate.Gate
 	gateOnce sync.Once
 }
 
+// New builds a Usecases from its dependencies.
 func New(deps Deps) *Usecases {
 	return &Usecases{deps: deps}
 }

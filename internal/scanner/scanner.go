@@ -1,3 +1,7 @@
+// Package scanner defines the normalized report/finding model that every
+// scanner parser produces and the registry that maps scanner names to their
+// parser implementations. Parsers live in internal/parser/<name> and convert
+// vendor-specific output into this package's types.
 package scanner
 
 import (

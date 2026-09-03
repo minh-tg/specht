@@ -1,3 +1,7 @@
+// Package gate evaluates whether a project's deployment gate should pass:
+// blocking findings that are not covered by an active waiver fail the gate.
+// The gate consumes findings and waivers through narrow repository
+// interfaces, keeping the evaluation logic independent of persistence.
 package gate
 
 import (
@@ -7,6 +11,7 @@ import (
 	"strings"
 )
 
+// Status is the outcome of a gate evaluation.
 type Status string
 
 const (
@@ -15,13 +20,21 @@ const (
 	StatusError Status = "error"
 )
 
+// Decision is the result of a gate evaluation for one project.
 type Decision struct {
-	Status        Status
-	BlockedBy     []string
-	WaivedCount   int
+	// Status is pass when no blocking finding is unwaived, fail when at
+	// least one is, or error when the evaluation could not complete.
+	Status Status
+	// BlockedBy lists the ids of unwaived blocking findings (empty on pass).
+	BlockedBy []string
+	// WaivedCount is the number of blocking findings an active waiver covers.
+	WaivedCount int
+	// TotalBlocking is the number of blocking findings considered.
 	TotalBlocking int
 }
 
+// Finding is the subset of a finding the gate needs to decide whether an
+// active waiver applies.
 type Finding struct {
 	ID                  string
 	CurrentSeverityRank int16
@@ -33,22 +46,32 @@ type Finding struct {
 	ArtifactID          string
 }
 
+// WaiverCondition is a predicate on a finding field: Field is one of
+// severity_rank, finding_kind, fingerprint, title_pattern, or cve_id;
+// Operator is one of eq, neq, lt, lte, gt, gte, contains, or matches.
 type WaiverCondition struct {
 	Field    string
 	Operator string
 	Value    string
 }
 
+// WaiverTarget pins a waiver to one specific finding by id.
 type WaiverTarget struct {
 	FindingID string
 }
 
+// WaiverContext scopes a waiver to a deployment context. Empty fields are
+// wildcards: a context with only EnvironmentID set applies to any finding in
+// that environment regardless of target or artifact.
 type WaiverContext struct {
 	EnvironmentID string
 	TargetID      string
 	ArtifactID    string
 }
 
+// Waiver is an active waiver policy. A finding is waived when its context
+// matches any of Contexts (contexts OR together), its id matches any of
+// Targets, and every Condition holds.
 type Waiver struct {
 	ID         string
 	Conditions []WaiverCondition
@@ -56,15 +79,23 @@ type Waiver struct {
 	Targets    []WaiverTarget
 }
 
+// FindingsRepo supplies the findings that would block a project's gate.
 type FindingsRepo interface {
+	// ListBlockingFindings returns findings at or above minSeverityRank that
+	// are candidates for blocking the gate (severity and state already
+	// filtered by the query).
 	ListBlockingFindings(ctx context.Context, projectID string, minSeverityRank int16) ([]Finding, error)
 }
 
+// WaiversRepo supplies the active waivers for a project.
 type WaiversRepo interface {
 	ListActiveWaivers(ctx context.Context, projectID string) ([]Waiver, error)
 }
 
+// Gate evaluates deployment-readiness for a project.
 type Gate interface {
+	// Evaluate returns the gate decision: pass when every blocking finding
+	// is waived, fail listing the unwaived blockers otherwise.
 	Evaluate(ctx context.Context, projectID string, minSeverityRank int16) (Decision, error)
 }
 
@@ -73,6 +104,7 @@ type gate struct {
 	waivers  WaiversRepo
 }
 
+// New builds a Gate over the given finding and waiver sources.
 func New(findings FindingsRepo, waivers WaiversRepo) Gate {
 	return &gate{findings: findings, waivers: waivers}
 }

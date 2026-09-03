@@ -1,3 +1,6 @@
+// Package cvss is a thin facade over the go-cvss library: it detects the CVSS
+// version from a vector prefix and delegates scoring to the matching
+// sub-version implementation. Callers never import go-cvss directly.
 package cvss
 
 import (

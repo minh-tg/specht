@@ -13,6 +13,8 @@ import (
 	"github.com/xMinhx/specht/internal/repo"
 )
 
+// WaiverResponse is the API representation of a waiver with its condition,
+// context, and target rows attached.
 type WaiverResponse struct {
 	ID          string                    `json:"id"`
 	ProjectID   string                    `json:"project_id"`
@@ -54,6 +56,10 @@ type WaiverEventResp struct {
 	CreatedAt string          `json:"created_at"`
 }
 
+// CreateWaiverInput is a request to create a waiver: a name/description plus
+// optional conditions, deployment-context scopes, and directly-targeted
+// finding ids. An empty Conditions/Contexts/Targets set makes the waiver
+// apply to every blocking finding in the project.
 type CreateWaiverInput struct {
 	ProjectSlug string
 	Name        string
@@ -76,6 +82,9 @@ type CreateWaiverContextInput struct {
 	ArtifactID    string
 }
 
+// UpdateWaiverInput is a request to update a waiver. Name and Description
+// replace the stored values when non-empty; a non-nil Conditions/Contexts/
+// TargetIDs slice replaces that child set (nil leaves it untouched).
 type UpdateWaiverInput struct {
 	WaiverID    string
 	ProjectSlug string
