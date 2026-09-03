@@ -1,12 +1,10 @@
-// ***REMOVED***
-//
 // This file holds the pure decision logic that turns one (advisory,
 // inventory purl) pair into watcher action: create a cve_watcher finding,
 // or skip it because a scan-derived finding already covers the pair. It
-// contains no database, HTTP, or daemon code — the poll loop
-// supplies context, the gap-check callback, and persistence. Every
-// function here is deterministic: the same inputs always produce the same
-// decision, so a re-poll (idempotent) produces identical output.
+// contains no database, HTTP, or daemon code — the poll loop supplies
+// context, the gap-check callback, and persistence. Every function here
+// is deterministic: the same inputs always produce the same decision, so
+// a re-poll (idempotent) produces identical output.
 package watcher
 
 import (
@@ -39,7 +37,7 @@ const (
 )
 
 // Advisory mirrors the subset of the OSV schema
-// (https://ossf.github.io/osv-schema/) the watcher consumes. the HTTP
+// (https://ossf.github.io/osv-schema/) the watcher consumes. The HTTP
 // client decodes querybatch responses directly into this type, and
 // DecideFinding consumes it. Affected reuses the matcher's type, which
 // carries OSV json tags for direct decoding.
@@ -55,10 +53,10 @@ type Advisory struct {
 	Refs      []AdvisoryRef      `json:"references"`
 	// Raw holds the exact upstream querybatch JSON bytes for this advisory,
 	// captured by the HTTP client from the raw response body. Evidence
-	// persistence uses these bytes verbatim (raw-bytes provenance: a
-	// re-marshal of this struct silently drops database_specific, credits,
-	// and affected[].database_specific, so the raw form is the provenance
-	// record, not the decoded subset).
+	// persistence uses these bytes verbatim: a re-marshal of this struct
+	// silently drops database_specific, credits, and
+	// affected[].database_specific, so the raw form is the provenance
+	// record, not the decoded subset.
 	Raw []byte `json:"-"`
 }
 
@@ -81,8 +79,8 @@ type AdvisoryRef struct {
 // queried under (the daemon derives it from the stored case via OSVEcosystem
 // when grouping), so the matcher compares it against the advisory's canonical
 // affected[].ecosystem under one mapping; the watcher still normalizes the
-// stored dimension value to lowercase (single
-// normalization point in watcher code, not per-parser).
+// stored dimension value to lowercase — watcher code is the single
+// normalization point, not each parser.
 type DecideInput struct {
 	ProjectID string
 	Advisory  Advisory
@@ -93,10 +91,9 @@ type DecideInput struct {
 
 // GapCheck reports whether a scan-derived finding already covers the
 // (project, name-level purl, candidate advisory ids) pair. The poll loop
-// (the poll loop) supplies the implementation backed by the
-// FindingExistsForPurlAndCve query; tests inject a stub. An error aborts
-// the decision so a broken gap check fails the poll instead of
-// double-creating findings.
+// supplies the implementation backed by the FindingExistsForPurlAndCve
+// query; tests inject a stub. An error aborts the decision so a broken
+// gap check fails the poll instead of double-creating findings.
 type GapCheck func(ctx context.Context, projectID, purlName string, candidateIDs []string) (bool, error)
 
 // Decision is the outcome of evaluating one pair: create the finding, or
@@ -201,8 +198,7 @@ func DecideFinding(ctx context.Context, input DecideInput, gapCheck GapCheck) (D
 	// 4. Gap-fill: never duplicate, never reopen. Any sca finding — open
 	// or fixed — with a matching name-level purl dimension and a
 	// vulnerability_id dimension equal to any candidate id suppresses
-	// creation (any-alias, name-level purl; no reopen
-	// logic exists by design).
+	// creation (any-alias, name-level purl; no reopen logic exists by design).
 	candidateIDs := append([]string{primary}, aliases...)
 	covered, err := gapCheck(ctx, input.ProjectID, nameLevel, candidateIDs)
 	if err != nil {
@@ -224,8 +220,7 @@ func DecideFinding(ctx context.Context, input DecideInput, gapCheck GapCheck) (D
 	fingerprint := fingerprint(input.Purl, primary)
 
 	// Provenance: persist the raw upstream bytes when the client captured
-	// them (raw-bytes provenance); fall back to the decoded subset only
-	// for hand-built fixtures.
+	// them; fall back to the decoded subset only for hand-built fixtures.
 	evidence := mustJSON(input.Advisory)
 	if len(input.Advisory.Raw) > 0 {
 		evidence = input.Advisory.Raw
@@ -330,9 +325,8 @@ func fingerprint(purl, primary string) string {
 // ecosystem is a different package identity and is skipped. When the
 // inventory ecosystem is EMPTY, an affected entry with a NON-empty ecosystem
 // is also skipped — a same-named package in another ecosystem must never
-// match an inventory row whose own ecosystem is unknown unknown-ecosystem guard
-// finding 2). Only an affected entry with no ecosystem can match an
-// ecosystem-less inventory row.
+// match an inventory row whose own ecosystem is unknown. Only an affected
+// entry with no ecosystem can match an ecosystem-less inventory row.
 func matchAffected(ad Advisory, ecosystem, version string) (Affected, bool) {
 	eco := strings.ToLower(strings.TrimSpace(ecosystem))
 	for _, aff := range ad.Affected {
@@ -378,8 +372,8 @@ func purlNameLevel(purl string) string {
 }
 
 // normalizeEcosystem is the single ecosystem normalization point for the
-// watcher: the ecosystem dimension value is always
-// lowercase, regardless of the mixed case parsers store.
+// watcher: the ecosystem dimension value is always lowercase, regardless
+// of the mixed case parsers store.
 func normalizeEcosystem(ecosystem string) string {
 	return strings.ToLower(strings.TrimSpace(ecosystem))
 }
@@ -390,8 +384,8 @@ func normalizeEcosystem(ecosystem string) string {
 // distinguishing flag is whether ANY rating parsed — not the score's sign —
 // so a legitimate CVSS 2.0 vector scoring exactly 0.0
 // (CVSS:2.0/AV:N/AC:L/Au:N/C:N/I:N/A:N) still maps to low/rank 1 rather than
-// unknown (zero-score handling). An advisory with no usable rating yields
-// severity 'unknown', rank 0 — visible on dashboards but never gating
+// unknown. An advisory with no usable rating yields severity 'unknown',
+// rank 0 — visible on dashboards but never gating
 // (design: unrated advisory policy) — and the finding is still created.
 func advisorySeverity(ratings []AdvisorySeverity) (severity string, rank int16, score float64, vector string) {
 	var (

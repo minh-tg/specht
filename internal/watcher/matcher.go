@@ -1,8 +1,8 @@
 // Package watcher implements the CVE feed watcher's pure matching logic:
 // deciding whether an inventory version falls inside an OSV advisory's
 // affected region, and normalizing advisory alias identifiers. It contains
-// no database, HTTP, or daemon code — finding creation and the
-// polling daemon consume it, and every function here is deterministic.
+// no database, HTTP, or daemon code — finding creation and the polling
+// daemon consume it, and every function here is deterministic.
 package watcher
 
 import (
@@ -62,19 +62,19 @@ type Affected struct {
 // VersionAffected reports whether version falls inside aff's affected region.
 //
 // It is a pure, deterministic function: the same inputs always produce the
-// same result, and it never performs I/O. It is exported (rather than the
-// brief's lowercase versionAffected) because finding creation runs
-// in a different package and must call it across the package boundary.
+// same result, and it never performs I/O. It is exported because finding
+// creation runs in a different package and must call it across the package
+// boundary.
 //
 // A version that is empty, unknown, or not parseable as semantic versioning
-// is never reported affected (no false positives).
-// An entry with neither ranges nor versions is treated as affecting the
-// whole package (every parseable version).
+// is never reported affected (no false positives). An entry with neither
+// ranges nor versions is treated as affecting the whole package (every
+// parseable version).
 func VersionAffected(aff Affected, version string) bool {
 	v := normalizeVersion(version)
 	if v == "" {
-		// Ruling: versions that cannot be parsed with confidence are never
-		// reported affected.
+		// Versions that cannot be parsed with confidence are never reported
+		// affected.
 		return false
 	}
 	for _, r := range aff.Ranges {
@@ -104,7 +104,7 @@ func VersionAffected(aff Affected, version string) bool {
 // the id strings themselves are preserved as given. Aliases are deduplicated
 // and sorted so finding dimensions (primary id plus dim_key='alias' entries)
 // are built deterministically. This is a pure function — no database layer —
-// by design by design.
+// by design.
 func NormalizeAliases(ids []string) (primary string, aliases []string) {
 	var cves, ghsas, others []string
 	for _, id := range ids {

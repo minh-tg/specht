@@ -1,6 +1,6 @@
-// The OSV querybatch client turns a batch of package queries
-// into per-query advisory lists, capturing the RAW upstream JSON for every
-// advisory so evidence persistence is byte-exact (raw-bytes provenance).
+// This file implements the OSV querybatch client. It turns a batch of
+// package queries into per-query advisory lists, capturing the RAW upstream
+// JSON for every advisory so evidence persistence is byte-exact.
 //
 // Error taxonomy: transport failures and HTTP 429 / 5xx responses are
 // retryable (IsRetryable true); other 4xx responses are not. The client is
@@ -329,7 +329,7 @@ func (c *HTTPClient) fetchVuln(ctx context.Context, id string) (Advisory, error)
 // and the results returned. A short results array means the upstream silently
 // dropped responses, which must be surfaced as a malformed (non-retryable)
 // response — otherwise advisories would be silently lost while the poll's
-// watermark still advanced (malformed-response guard).
+// watermark still advanced.
 func validateIDLength(ids [][]string, queryCount int) error {
 	if len(ids) != queryCount {
 		return fmt.Errorf("%w: got %d results for %d queries", ErrMalformedResponse, len(ids), queryCount)

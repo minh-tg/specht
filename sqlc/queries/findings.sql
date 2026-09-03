@@ -27,8 +27,8 @@ RETURNING *;
 -- pgx.ErrNoRows when a row with the same (project_id, finding_kind,
 -- fingerprint) already exists — the daemon's re-poll guard. Occurrences are
 -- created only for genuinely new findings (a new fingerprint), never on
--- re-poll hits of an existing watcher finding (the
--- UNIQUE(finding_id, report_id) constraint does not dedupe NULL report_ids).
+-- re-poll hits of an existing watcher finding. The UNIQUE(finding_id,
+-- report_id) constraint does not dedupe NULL report_ids.
 INSERT INTO findings (
     project_id, finding_kind, fingerprint,
     current_title, current_severity, current_severity_rank,
@@ -203,8 +203,8 @@ RETURNING *;
 -- project, or pgx.ErrNoRows when none does. The watcher must NOT create a
 -- cve_watcher finding when this returns a row (design: never reopen, never
 -- duplicate), and it attaches the auto_rule_skipped event to the returned
--- finding (skip-event resolution: the decision conveys the skip but not
--- the suppressing id — the wiring re-uses this query to resolve it).
+-- finding. The decision conveys the skip but not the suppressing id, so
+-- the wiring re-uses this query to resolve it.
 --
 -- Matching rules (gap-fill join keys):
 --   * purl dimension matches at NAME-LEVEL: the stored dimension value is

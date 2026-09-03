@@ -1,5 +1,3 @@
-// ***REMOVED***
-//
 // This file holds everything the human-alert channel needs and nothing more:
 // a payload builder that maps watcher findings (Decision) to the Slack
 // message shape {text, attachments:[{title, cve, package, project, severity,
@@ -28,8 +26,8 @@ import (
 )
 
 // WATCHER_* environment variables for the notification channel. Env sourcing
-// happens at wiring time; this package only declares the names and
-// consumes what the constructor is given.
+// happens at wiring time; this package only declares the names and consumes
+// what the constructor is given.
 const (
 	// EnvSlackURL is the single Slack incoming-webhook URL
 	// (WATCHER_SLACK_URL). Empty = channel disabled.
@@ -46,16 +44,16 @@ const SlackSignatureHeader = "X-Specht-Signature"
 
 const (
 	// notifierMaxAttempts is the total number of POST attempts including the
-	// first (3).
+	// first.
 	notifierMaxAttempts = 3
 	// notifierBaseBackoff is the sleep before the second attempt; it doubles
 	// per subsequent retry (500ms, 1s, 2s).
 	notifierBaseBackoff = 500 * time.Millisecond
 )
 
-// Notification is one finding's Slack attachment row. the wiring builds
-// these from page of created Decisions (NotificationFromDecision) and hands
-// the batch to Notify.
+// Notification is one finding's Slack attachment row. The daemon wiring
+// builds these from a page of created Decisions (NotificationFromDecision)
+// and hands the batch to Notify.
 type Notification struct {
 	// Title is the finding title (advisory summary).
 	Title string
@@ -73,8 +71,8 @@ type Notification struct {
 	Link string
 }
 
-// Notifier is the surface the daemon wiring can inject. It is
-// deliberately tiny: one batched send, failures logged not returned.
+// Notifier is the surface the daemon wiring can inject. It is deliberately
+// tiny: one batched send, failures logged not returned.
 type Notifier interface {
 	// Notify sends one Slack message carrying every notification. It never
 	// blocks the caller for longer than the retry loop, and it NEVER
@@ -220,8 +218,8 @@ func BuildSlackPayload(notifications []Notification) ([]byte, error) {
 	return b, nil
 }
 
-// slackPayload is the wire form of the envelope; field names are the exact JSON keys
-// exact JSON keys.
+// slackPayload is the wire form of the envelope; field names are the exact
+// JSON keys the Slack API expects.
 type slackPayload struct {
 	Text        string            `json:"text"`
 	Attachments []slackAttachment `json:"attachments"`

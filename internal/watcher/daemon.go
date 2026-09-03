@@ -1,6 +1,7 @@
-// ***REMOVED*** PollOnce turns the current
-// inventory into OSV querybatch calls and persists or skips findings via an
-// injected store; RunCveWatcher drives it on a jittered ticker with backoff.
+// Package watcher implements the CVE feed watcher: a daemon that polls the
+// current inventory against the OSV API and persists or skips findings via an
+// injected store. RunCveWatcher drives the poll loop on a jittered ticker with
+// backoff.
 //
 // Everything the poll touches is behind small interfaces or function fields,
 // so the whole loop is testable offline with fakes — no database, no network
@@ -319,7 +320,7 @@ func decidePair(ctx context.Context, deps PollDeps, g invGroup, row sqlc.Distinc
 		if !created {
 			// Re-poll hit of an existing watcher finding: the fingerprint is
 			// already persisted, so this is an unchanged outcome, not a new
-			// finding (re-poll — keep backfill counters honest).
+			// finding — backfill counters must stay honest.
 			return decisionUnchanged, false, Decision{}, nil
 		}
 		return decisionCreated, false, decision, nil
@@ -442,8 +443,7 @@ func RunCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 				case err != nil:
 					backoff = nextBackoff(backoff, cfg.InitialBackoff, cfg.MaxBackoff)
 					// Jittered exactly once and reused for both the log and
-					// the sleep, so what we report is what we wait (***REMOVED***
-					// so what we report is what we wait).
+					// the sleep, so what we report is what we wait.
 					delay = cfg.Jitter(backoff)
 					logger.Error("cve watcher poll failed", "error", err, "next_retry", delay.String())
 				default:

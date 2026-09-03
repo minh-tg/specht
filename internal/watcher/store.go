@@ -1,12 +1,11 @@
-// The production PollStore implementation. Every created decision is
+// This file implements the production PollStore. Every created decision is
 // persisted atomically through repo.FindingRepo.PersistWatcherFinding: the
 // finding row (insert-if-absent), its scan-equivalent dimensions, the
 // occurrence (report_id NULL — watcher findings have no scan report,
 // migration 000018), the auto_rule_applied event, and the evidence artifact
 // (type 'automated', url = first advisory reference, description = advisory
 // summary). The raw querybatch advisory bytes travel byte-exact as base64 in
-// occurrence.metadata["raw_advisory"] (JSONB-safe,
-// satisfies raw-bytes provenance).
+// occurrence.metadata["raw_advisory"] (JSONB-safe by construction).
 package watcher
 
 import (
@@ -50,8 +49,8 @@ func NewPollStore(repos *repo.Repos) PollStore {
 // PersistFoundFinding implements PollStore. The insert-if-absent guard
 // (CreateFindingIfAbsent) is the re-poll protection: when the fingerprint
 // already exists, the whole persist is a no-op — occurrences are created only
-// for genuinely new findings (UNIQUE(finding_id,
-// report_id) does not dedupe NULL report_ids, so the guard is mandatory).
+// for genuinely new findings. UNIQUE(finding_id, report_id) does not dedupe
+// NULL report_ids, so the guard is mandatory.
 func (s *pgPollStore) PersistFoundFinding(ctx context.Context, d Decision) (pgtype.UUID, bool, error) {
 	pid, err := uuid.Parse(d.Finding.ProjectID)
 	if err != nil {
