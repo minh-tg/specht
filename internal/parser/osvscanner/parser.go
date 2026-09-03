@@ -150,135 +150,168 @@ func convert(report osvReport) *scanner.NormalizedReport {
 		}
 
 		// full package inventory, vulnerable or not
-		for _, pkg := range result.Packages {
-			purl := pkg.Package.PURL
-			if purl == "" {
-				purl = "pkg:" + strings.ToLower(pkg.Package.Ecosystem) + "/" + pkg.Package.Name
-			}
-			nr.Packages = append(nr.Packages, scanner.PackageRef{
-				PURL:         scanner.NormalizePURL(purl),
-				Ecosystem:    pkg.Package.Ecosystem,
-				Name:         pkg.Package.Name,
-				Version:      pkg.Package.Version,
-				ManifestPath: result.Source.Path,
-			})
-		}
-
-		for _, pkg := range result.Packages {
-			groupAnalysis := make(map[string]osvCallAnalysis, len(pkg.Groups))
-			for _, g := range pkg.Groups {
-				for id, analysis := range g.ExperimentalAnalysis {
-					groupAnalysis[id] = analysis
-				}
-			}
-
-			for _, v := range pkg.Vulnerabilities {
-				severity := extractSeverity(v)
-				score := extractScore(v)
-
-				purl := v.Affected.Package.PURL
-				if purl == "" {
-					purl = "pkg:" + strings.ToLower(v.Affected.Package.Ecosystem) + "/" + v.Affected.Package.Name
-				}
-				pkgPURL := purl
-
-				fingerprint := string(scanner.SCAFingerprint(v.ID, pkgPURL))
-
-				var fixedVersion string
-				if v.Affected != nil {
-					for _, rng := range v.Affected.Ranges {
-						for _, e := range rng.Events {
-							if e.Fixed != "" {
-								fixedVersion = e.Fixed
-							}
-						}
-					}
-				}
-
-				dims := []scanner.Dimension{
-					{Key: "vulnerability_id", Value: v.ID},
-					{Key: "package_name", Value: pkg.Package.Name},
-					{Key: "ecosystem", Value: pkg.Package.Ecosystem},
-					{Key: "installed_version", Value: pkg.Package.Version},
-					{Key: "purl", Value: pkgPURL},
-				}
-				if fixedVersion != "" {
-					dims = append(dims, scanner.Dimension{Key: "fixed_version", Value: fixedVersion})
-				}
-
-				cveID := ""
-				for _, alias := range v.Aliases {
-					if strings.HasPrefix(alias, "CVE-") {
-						cveID = alias
-						break
-					}
-				}
-
-				var reachability *bool
-				if analysis, ok := groupAnalysis[v.ID]; ok && analysis.Called != nil {
-					reachability = analysis.Called
-				}
-
-				cvssInfo := extractCVSSInfo(v)
-
-				var fix *scanner.FixInfo
-				if fixedVersion != "" {
-					fix = &scanner.FixInfo{Summary: fixedVersion}
-				}
-				if fix != nil {
-					for _, ref := range v.References {
-						if fix.URL == "" {
-							fix.URL = ref.URL
-						}
-					}
-				}
-
-				display := map[string]any{
-					"source_path": result.Source.Path,
-					"ecosystem":   pkg.Package.Ecosystem,
-				}
-				if reachability != nil {
-					display["reachable"] = *reachability
-				}
-				if cveID != "" {
-					display["cve_id"] = cveID
-				}
-
-				meta := map[string]any{
-					"osv_id":    v.ID,
-					"ecosystem": pkg.Package.Ecosystem,
-					"aliases":   v.Aliases,
-					"published": v.Published,
-					"modified":  v.Modified,
-				}
-				if reachability != nil {
-					meta["call_analysis"] = *reachability
-				}
-
-				title := v.Summary
-				desc := v.Details
-
-				nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
-					Fingerprint:  fingerprint,
-					FindingKind:  "sca",
-					Title:        title,
-					Description:  desc,
-					Severity:     severity,
-					Score:        score,
-					Location:     result.Source.Path + ":" + pkg.Package.Name,
-					Aliases:      v.Aliases,
-					Reachability: reachability,
-					CVSS:         cvssInfo,
-					Fix:          fix,
-					Dimensions:   dims,
-					Display:      display,
-					Metadata:     meta,
-				})
-			}
-		}
+		addOsvPackages(nr, result)
+		addOsvVulns(nr, result)
 	}
 
 	return nr
+}
+
+func addOsvPackages(nr *scanner.NormalizedReport, result osvResult) {
+	for _, pkg := range result.Packages {
+		purl := pkg.Package.PURL
+		if purl == "" {
+			purl = "pkg:" + strings.ToLower(pkg.Package.Ecosystem) + "/" + pkg.Package.Name
+		}
+		nr.Packages = append(nr.Packages, scanner.PackageRef{
+			PURL:         scanner.NormalizePURL(purl),
+			Ecosystem:    pkg.Package.Ecosystem,
+			Name:         pkg.Package.Name,
+			Version:      pkg.Package.Version,
+			ManifestPath: result.Source.Path,
+		})
+	}
+}
+
+func addOsvVulns(nr *scanner.NormalizedReport, result osvResult) {
+	for _, pkg := range result.Packages {
+		groupAnalysis := make(map[string]osvCallAnalysis, len(pkg.Groups))
+		for _, g := range pkg.Groups {
+			for id, analysis := range g.ExperimentalAnalysis {
+				groupAnalysis[id] = analysis
+			}
+		}
+
+		for _, v := range pkg.Vulnerabilities {
+			f := osvFinding{
+				vuln:     v,
+				pkg:      pkg.Package,
+				source:   result.Source,
+				analysis: groupAnalysis[v.ID],
+			}
+			nr.Findings = append(nr.Findings, f.normalized())
+		}
+	}
+}
+
+// osvFinding is the per-vulnerability conversion context for one OSV
+// vulnerability entry.
+type osvFinding struct {
+	vuln     osvVuln
+	pkg      osvPkg
+	source   osvSource
+	analysis osvCallAnalysis
+}
+
+// normalized converts one OSV vulnerability into a NormalizedFinding.
+func (f osvFinding) normalized() scanner.NormalizedFinding {
+	v := f.vuln
+	purl := v.Affected.Package.PURL
+	if purl == "" {
+		purl = "pkg:" + strings.ToLower(v.Affected.Package.Ecosystem) + "/" + v.Affected.Package.Name
+	}
+
+	fixedVersion := firstFixedVersion(v)
+	cveID := firstCVEAlias(v)
+
+	var reachability *bool
+	if f.analysis.Called != nil {
+		reachability = f.analysis.Called
+	}
+
+	fix := fixInfo(v, fixedVersion)
+
+	display := map[string]any{
+		"source_path": f.source.Path,
+		"ecosystem":   f.pkg.Ecosystem,
+	}
+	if reachability != nil {
+		display["reachable"] = *reachability
+	}
+	if cveID != "" {
+		display["cve_id"] = cveID
+	}
+
+	meta := map[string]any{
+		"osv_id":    v.ID,
+		"ecosystem": f.pkg.Ecosystem,
+		"aliases":   v.Aliases,
+		"published": v.Published,
+		"modified":  v.Modified,
+	}
+	if reachability != nil {
+		meta["call_analysis"] = *reachability
+	}
+
+	dims := []scanner.Dimension{
+		{Key: "vulnerability_id", Value: v.ID},
+		{Key: "package_name", Value: f.pkg.Name},
+		{Key: "ecosystem", Value: f.pkg.Ecosystem},
+		{Key: "installed_version", Value: f.pkg.Version},
+		{Key: "purl", Value: purl},
+	}
+	if fixedVersion != "" {
+		dims = append(dims, scanner.Dimension{Key: "fixed_version", Value: fixedVersion})
+	}
+
+	return scanner.NormalizedFinding{
+		Fingerprint:  string(scanner.SCAFingerprint(v.ID, purl)),
+		FindingKind:  "sca",
+		Title:        v.Summary,
+		Description:  v.Details,
+		Severity:     extractSeverity(v),
+		Score:        extractScore(v),
+		Location:     f.source.Path + ":" + f.pkg.Name,
+		Aliases:      v.Aliases,
+		Reachability: reachability,
+		CVSS:         extractCVSSInfo(v),
+		Fix:          fix,
+		Dimensions:   dims,
+		Display:      display,
+		Metadata:     meta,
+	}
+}
+
+// firstFixedVersion returns the last fixed version recorded across the
+// vulnerability's affected ranges, or "" when none is fixed.
+func firstFixedVersion(v osvVuln) string {
+	if v.Affected == nil {
+		return ""
+	}
+	var fixed string
+	for _, rng := range v.Affected.Ranges {
+		for _, e := range rng.Events {
+			if e.Fixed != "" {
+				fixed = e.Fixed
+			}
+		}
+	}
+	return fixed
+}
+
+// firstCVEAlias returns the first CVE- alias of a vulnerability, if any.
+func firstCVEAlias(v osvVuln) string {
+	for _, alias := range v.Aliases {
+		if strings.HasPrefix(alias, "CVE-") {
+			return alias
+		}
+	}
+	return ""
+}
+
+// fixInfo builds the FixInfo from a fixed version and the first reference
+// URL.
+func fixInfo(v osvVuln, fixedVersion string) *scanner.FixInfo {
+	if fixedVersion == "" {
+		return nil
+	}
+	fix := &scanner.FixInfo{Summary: fixedVersion}
+	for _, ref := range v.References {
+		if fix.URL == "" {
+			fix.URL = ref.URL
+		}
+	}
+	return fix
 }
 
 func extractCVSSInfo(v osvVuln) *scanner.CVSSInfo {
