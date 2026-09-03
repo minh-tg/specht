@@ -2,8 +2,11 @@ package repo
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xMinhx/specht/internal/db/sqlc"
@@ -297,6 +300,83 @@ func (r *pgFindingRepo) GetFindingContext(ctx context.Context, findingID pgtype.
 		return FindingContext{}, err
 	}
 	return fc, nil
+}
+
+// PersistWatcherFindingParams carries everything needed to persist one
+// watcher-created finding: the finding row, its dimensions, its occurrence
+// (report_id NULL), the auto_rule_applied event, and the provenance evidence
+// artifact. All are written in a single transaction.
+type PersistWatcherFindingParams struct {
+	Finding    sqlc.CreateFindingIfAbsentParams
+	Dimensions []sqlc.UpsertDimensionParams
+	Occurrence sqlc.CreateOccurrenceParams
+	Event      *sqlc.CreateFindingEventParams
+	Evidence   *sqlc.CreateEvidenceParams
+}
+
+// PersistWatcherFinding creates a cve_watcher finding and its dependent rows
+// atomically. When the finding fingerprint already exists (a re-poll hit),
+// the insert returns pgx.ErrNoRows and PersistWatcherFinding reports
+// created=false with no changes — the caller counts that as unchanged.
+func (r *pgFindingRepo) PersistWatcherFinding(ctx context.Context, arg PersistWatcherFindingParams) (sqlc.Finding, bool, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return sqlc.Finding{}, false, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	q := sqlc.New(tx)
+	f, err := q.CreateFindingIfAbsent(ctx, arg.Finding)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Finding{}, false, nil // re-poll hit: nothing to do
+	}
+	if err != nil {
+		return sqlc.Finding{}, false, fmt.Errorf("create finding: %w", err)
+	}
+
+	for _, d := range arg.Dimensions {
+		d.FindingID = f.ID
+		if _, err := q.UpsertDimension(ctx, d); err != nil {
+			return sqlc.Finding{}, false, fmt.Errorf("upsert dimension: %w", err)
+		}
+	}
+
+	occ := arg.Occurrence
+	occ.FindingID = f.ID
+	if _, err := q.CreateOccurrence(ctx, occ); err != nil {
+		return sqlc.Finding{}, false, fmt.Errorf("create occurrence: %w", err)
+	}
+
+	if arg.Event != nil {
+		ev := *arg.Event
+		ev.FindingID = f.ID
+		if _, err := q.CreateFindingEvent(ctx, ev); err != nil {
+			return sqlc.Finding{}, false, fmt.Errorf("create event: %w", err)
+		}
+	}
+
+	if arg.Evidence != nil {
+		ev := *arg.Evidence
+		ev.FindingID = f.ID
+		if _, err := q.CreateEvidence(ctx, ev); err != nil {
+			return sqlc.Finding{}, false, fmt.Errorf("create evidence: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return sqlc.Finding{}, false, fmt.Errorf("commit tx: %w", err)
+	}
+	return f, true, nil
+}
+
+// PersistWatcherSkipEvent appends an audit event to an existing finding (the
+// suppressing finding for a skipped watcher pair).
+func (r *pgFindingRepo) PersistWatcherSkipEvent(ctx context.Context, arg sqlc.CreateFindingEventParams) error {
+	_, err := r.q.CreateFindingEvent(ctx, arg)
+	if err != nil {
+		return fmt.Errorf("create skip event: %w", err)
+	}
+	return nil
 }
 
 func (r *pgFindingRepo) ListBlockingFindings(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error) {

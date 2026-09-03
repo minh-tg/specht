@@ -165,6 +165,8 @@ type EvidenceRepo interface {
 
 type FindingRepo interface {
 	Upsert(ctx context.Context, arg UpsertFindingParams) (sqlc.Finding, error)
+	PersistWatcherFinding(ctx context.Context, arg PersistWatcherFindingParams) (sqlc.Finding, bool, error)
+	PersistWatcherSkipEvent(ctx context.Context, arg sqlc.CreateFindingEventParams) error
 	CreateOccurrence(ctx context.Context, arg CreateOccurrenceParams) (sqlc.FindingOccurrence, error)
 	UpsertDimension(ctx context.Context, arg UpsertDimensionParams) (sqlc.FindingDimension, error)
 	ListByProject(ctx context.Context, projectID pgtype.UUID, severities, states, kinds []string, limit, offset int32) ([]sqlc.Finding, error)

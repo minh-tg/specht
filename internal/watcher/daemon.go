@@ -25,8 +25,9 @@ import (
 )
 
 // PollStore is the persistence surface a poll writes through. The production
-// implementation (store.go) wraps repo.WithTx so a created finding lands
-// atomically with its dimensions, occurrence, event, and evidence.
+// implementation (store.go) persists through repo.FindingRepo unit-of-work
+// methods so a created finding lands atomically with its dimensions,
+// occurrence, event, and evidence.
 type PollStore interface {
 	// PersistFoundFinding writes a Decision marked Created: the finding row,
 	// its dimensions, the occurrence (report_id NULL for watcher findings),

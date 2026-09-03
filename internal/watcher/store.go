@@ -1,24 +1,23 @@
 // The production PollStore implementation. Every created decision is
-// persisted atomically via repo.WithTx: the finding row (insert-if-absent),
-// its scan-equivalent dimensions, the occurrence (report_id NULL — watcher
-// findings have no scan report, migration 000018), the auto_rule_applied
-// event, and the evidence artifact (type 'automated', url = first advisory
-// reference, description = advisory summary). The raw querybatch advisory
-// bytes travel byte-exact as base64 in occurrence.metadata["raw_advisory"]
-// (JSONB-safe, satisfies raw-bytes provenance).
+// persisted atomically through repo.FindingRepo.PersistWatcherFinding: the
+// finding row (insert-if-absent), its scan-equivalent dimensions, the
+// occurrence (report_id NULL — watcher findings have no scan report,
+// migration 000018), the auto_rule_applied event, and the evidence artifact
+// (type 'automated', url = first advisory reference, description = advisory
+// summary). The raw querybatch advisory bytes travel byte-exact as base64 in
+// occurrence.metadata["raw_advisory"] (JSONB-safe,
+// satisfies raw-bytes provenance).
 package watcher
 
 import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math/big"
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/repo"
@@ -61,10 +60,44 @@ func (s *pgPollStore) PersistFoundFinding(ctx context.Context, d Decision) (pgty
 	projectID := pgtype.UUID{Bytes: pid, Valid: true}
 	fp := d.Finding
 
-	var out pgtype.UUID
-	created := false
-	err = s.repos.WithTx(ctx, func(q *sqlc.Queries) error {
-		f, err := q.CreateFindingIfAbsent(ctx, sqlc.CreateFindingIfAbsentParams{
+	dimensions := make([]sqlc.UpsertDimensionParams, len(fp.Dimensions))
+	source := pgtype.Text{String: DimensionSourceValue, Valid: true}
+	for i, dim := range fp.Dimensions {
+		dimensions[i] = sqlc.UpsertDimensionParams{
+			DimKey:   dim.Key,
+			DimValue: dim.Value,
+			Source:   source,
+		}
+	}
+
+	occurrence, err := buildOccurrence(d, s.now())
+	if err != nil {
+		return pgtype.UUID{}, false, err
+	}
+
+	var event *sqlc.CreateFindingEventParams
+	if d.Event != nil {
+		event = &sqlc.CreateFindingEventParams{
+			EventType: d.Event.EventType,
+			OldValue:  textPtr(d.Event.OldValue),
+			NewValue:  textPtr(d.Event.NewValue),
+			Comment:   textPtr(d.Event.Comment),
+			Changes:   d.Event.Changes,
+		}
+	}
+
+	url, desc := evidencePayload(d)
+	var evidence *sqlc.CreateEvidenceParams
+	if d.Evidence != nil {
+		evidence = &sqlc.CreateEvidenceParams{
+			Type:        EvidenceTypeAutomated,
+			Url:         url,
+			Description: desc,
+		}
+	}
+
+	f, created, err := s.repos.Findings.PersistWatcherFinding(ctx, repo.PersistWatcherFindingParams{
+		Finding: sqlc.CreateFindingIfAbsentParams{
 			ProjectID:           projectID,
 			FindingKind:         fp.FindingKind,
 			Fingerprint:         fp.Fingerprint,
@@ -72,85 +105,28 @@ func (s *pgPollStore) PersistFoundFinding(ctx context.Context, d Decision) (pgty
 			CurrentSeverity:     fp.Severity,
 			CurrentSeverityRank: fp.SeverityRank,
 			CurrentScore:        numericScore(fp.Score),
-		})
-		if errors.Is(err, pgx.ErrNoRows) {
-			// Re-poll hit of an existing watcher finding: nothing to do.
-			// created stays false so the poll counts this as unchanged.
-			return nil
-		}
-		if err != nil {
-			return fmt.Errorf("create finding: %w", err)
-		}
-		out = f.ID
-		created = true
-
-		source := pgtype.Text{String: DimensionSourceValue, Valid: true}
-		for _, dim := range fp.Dimensions {
-			if _, err := q.UpsertDimension(ctx, sqlc.UpsertDimensionParams{
-				FindingID: f.ID,
-				DimKey:    dim.Key,
-				DimValue:  dim.Value,
-				Source:    source,
-			}); err != nil {
-				return fmt.Errorf("dimension %q: %w", dim.Key, err)
-			}
-		}
-
-		occurrence, err := buildOccurrence(d, s.now())
-		if err != nil {
-			return err
-		}
-		occurrence.FindingID = f.ID
-		if _, err := q.CreateOccurrence(ctx, occurrence); err != nil {
-			return fmt.Errorf("create occurrence: %w", err)
-		}
-
-		if d.Event != nil {
-			if _, err := q.CreateFindingEvent(ctx, sqlc.CreateFindingEventParams{
-				FindingID: f.ID,
-				EventType: d.Event.EventType,
-				OldValue:  textPtr(d.Event.OldValue),
-				NewValue:  textPtr(d.Event.NewValue),
-				Comment:   textPtr(d.Event.Comment),
-				Changes:   d.Event.Changes,
-			}); err != nil {
-				return fmt.Errorf("create event: %w", err)
-			}
-		}
-
-		url, desc := evidencePayload(d)
-		if _, err := q.CreateEvidence(ctx, sqlc.CreateEvidenceParams{
-			FindingID:   f.ID,
-			Type:        EvidenceTypeAutomated,
-			Url:         url,
-			Description: desc,
-		}); err != nil {
-			return fmt.Errorf("create evidence: %w", err)
-		}
-		return nil
+		},
+		Dimensions: dimensions,
+		Occurrence: occurrence,
+		Event:      event,
+		Evidence:   evidence,
 	})
 	if err != nil {
 		return pgtype.UUID{}, false, err
 	}
-	return out, created, nil
+	return f.ID, created, nil
 }
 
 // PersistSkipEvent implements PollStore: a single event insert on the
 // suppressing finding.
 func (s *pgPollStore) PersistSkipEvent(ctx context.Context, suppressingID pgtype.UUID, ev Event) error {
-	return s.repos.WithTx(ctx, func(q *sqlc.Queries) error {
-		_, err := q.CreateFindingEvent(ctx, sqlc.CreateFindingEventParams{
-			FindingID: suppressingID,
-			EventType: ev.EventType,
-			OldValue:  textPtr(ev.OldValue),
-			NewValue:  textPtr(ev.NewValue),
-			Comment:   textPtr(ev.Comment),
-			Changes:   ev.Changes,
-		})
-		if err != nil {
-			return fmt.Errorf("create skip event: %w", err)
-		}
-		return nil
+	return s.repos.Findings.PersistWatcherSkipEvent(ctx, sqlc.CreateFindingEventParams{
+		FindingID: suppressingID,
+		EventType: ev.EventType,
+		OldValue:  textPtr(ev.OldValue),
+		NewValue:  textPtr(ev.NewValue),
+		Comment:   textPtr(ev.Comment),
+		Changes:   ev.Changes,
 	})
 }
 
