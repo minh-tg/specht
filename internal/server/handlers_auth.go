@@ -1,0 +1,156 @@
+package server
+
+import (
+	"encoding/json"
+	"net/http"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/xMinhx/specht/internal/auth"
+)
+
+func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+		return
+	}
+
+	result, err := h.usecase.Register(r.Context(), req.Email, req.Password)
+	if err != nil {
+		respondError(w, http.StatusUnprocessableEntity, "registration_failed", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusCreated, result)
+}
+
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+		return
+	}
+
+	result, err := h.usecase.Login(r.Context(), req.Email, req.Password)
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, "login_failed", "invalid email or password")
+		return
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+		return
+	}
+
+	result, err := h.usecase.Refresh(r.Context(), req.RefreshToken)
+	if err != nil {
+		respondError(w, http.StatusUnauthorized, "refresh_failed", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		RefreshToken string `json:"refresh_token"`
+	}
+	if r.Body != nil {
+		json.NewDecoder(r.Body).Decode(&req)
+	}
+
+	if err := h.usecase.Logout(r.Context(), req.RefreshToken); err != nil {
+		respondError(w, http.StatusInternalServerError, "logout_failed", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
+	ident := auth.ContextIdentity(r.Context())
+	if ident == nil {
+		respondError(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+
+	profile, err := h.usecase.GetProfile(r.Context(), ident.UserID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "not_found", "user not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, profile)
+}
+
+func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Project string `json:"project"`
+		Name    string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+		return
+	}
+	if req.Project == "" || req.Name == "" {
+		respondError(w, http.StatusBadRequest, "missing_field", "project and name are required")
+		return
+	}
+	if err := h.enforceProjectAccess(r, req.Project); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
+
+	result, err := h.usecase.CreateAPIKey(r.Context(), req.Project, req.Name)
+	if err != nil {
+		respondError(w, http.StatusUnprocessableEntity, "create_failed", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusCreated, result)
+}
+
+func (h *Handler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
+	project := r.URL.Query().Get("project")
+	if project == "" {
+		respondError(w, http.StatusBadRequest, "missing_field", "project query param is required")
+		return
+	}
+	if err := h.enforceProjectAccess(r, project); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
+
+	keys, err := h.usecase.ListAPIKeys(r.Context(), project)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "not_found", "project not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, keys)
+}
+
+func (h *Handler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
+	project := r.URL.Query().Get("project")
+	keyID := chi.URLParam(r, "id")
+	if project == "" || keyID == "" {
+		respondError(w, http.StatusBadRequest, "missing_field", "project and key id are required")
+		return
+	}
+	if err := h.enforceProjectAccess(r, project); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
+
+	if err := h.usecase.RevokeAPIKey(r.Context(), project, keyID); err != nil {
+		respondError(w, http.StatusUnprocessableEntity, "revoke_failed", err.Error())
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
