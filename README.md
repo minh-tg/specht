@@ -18,14 +18,27 @@ See [docs/](docs/) for architecture, data model, API reference, roadmap, and dev
 ## Project Layout
 
 ```
-cmd/specht/      API server
+cmd/server/      API server (chi router, embedded SPA, watcher daemon)
+cmd/specht/      CLI client (specht)
 cmd/adapter/     CI/CD gate-check CLI (specht-adapter)
+cmd/mcp/         MCP bridge
 internal/        Go packages (handlers, usecases, repos, auth, scanners)
 frontend/        React SPA (Vite, shadcn/ui)
 migrations/      SQL migrations (golang-migrate)
 sqlc/            Type-safe SQL queries
 deploy/          Docker Compose + Helm chart
 ```
+
+## Development
+
+```bash
+nix develop            # enter the dev shell (Go 1.26, sqlc, prek, frontend toolchain)
+prek install           # enable commit hooks: format/lint/vet/secrets + conventional commits
+```
+
+Commits are checked automatically once hooks are installed: gofumpt, staticcheck, `go vet`, `go mod tidy`, dprint/oxlint (frontend), hadolint, gitleaks, and conventional-commit message validation. 
+
+Run the test suite with `go test ./... -count=1 -short` (unit) or `go test -tags integration ./internal/repo/ -count=1` (needs Docker for testcontainers).
 
 ## License
 
