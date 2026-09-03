@@ -41,7 +41,7 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 		Environments:  &pgEnvironmentRepo{q: q},
 		Targets:       &pgTargetRepo{q: q},
 		Artifacts:     &pgArtifactRepo{q: q},
-		Waivers:       &pgWaiverRepo{q: q},
+		Waivers:       &pgWaiverRepo{q: q, pool: pool},
 		Stats:         newStatsRepo(q),
 		Evidence:      newEvidenceRepo(q),
 		Reachability:  newReachabilityRepo(q),
@@ -110,9 +110,11 @@ type TargetRepo interface {
 
 type WaiverRepo interface {
 	Create(ctx context.Context, arg sqlc.CreateWaiverParams) (sqlc.Waiver, error)
+	CreateWithDetails(ctx context.Context, arg CreateWaiverDetailsParams) (sqlc.Waiver, error)
 	List(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Waiver, error)
 	GetByID(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Waiver, error)
 	Update(ctx context.Context, arg sqlc.UpdateWaiverParams) (sqlc.Waiver, error)
+	UpdateWithDetails(ctx context.Context, arg UpdateWaiverDetailsParams) (sqlc.Waiver, error)
 	Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Waiver, error)
 	Toggle(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Waiver, error)
 	ListActive(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Waiver, error)

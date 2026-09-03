@@ -2,13 +2,16 @@ package repo
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
 type pgWaiverRepo struct {
-	q *sqlc.Queries
+	q    *sqlc.Queries
+	pool *pgxpool.Pool
 }
 
 func (r *pgWaiverRepo) Create(ctx context.Context, arg sqlc.CreateWaiverParams) (sqlc.Waiver, error) {
@@ -81,4 +84,226 @@ func (r *pgWaiverRepo) CreateEvent(ctx context.Context, arg sqlc.CreateWaiverEve
 
 func (r *pgWaiverRepo) ListEvents(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverEvent, error) {
 	return r.q.ListWaiverEvents(ctx, waiverID)
+}
+
+// WaiverConditionInput, WaiverContextInput, and WaiverTargetInput describe
+// child rows to attach to a waiver within the transactional create/update
+// unit-of-work methods. WaiverID on the persisted rows is derived from the
+// parent waiver, so the inputs do not carry it.
+type WaiverConditionInput struct {
+	Field    string
+	Operator string
+	Value    string
+}
+
+type WaiverContextInput struct {
+	EnvironmentID pgtype.UUID
+	TargetID      pgtype.UUID
+	ArtifactID    pgtype.UUID
+}
+
+type WaiverTargetInput struct {
+	FindingID pgtype.UUID
+}
+
+// WaiverEventInput carries the audit event appended by the transactional
+// unit-of-work methods.
+type WaiverEventInput struct {
+	EventType string
+	ActorID   pgtype.Text
+	Metadata  []byte
+}
+
+// CreateWaiverDetailsParams is the input to CreateWithDetails.
+type CreateWaiverDetailsParams struct {
+	ProjectID   pgtype.UUID
+	Name        string
+	Description string
+	Enabled     bool
+	Conditions  []WaiverConditionInput
+	Contexts    []WaiverContextInput
+	Targets     []WaiverTargetInput
+	Event       WaiverEventInput
+}
+
+// UpdateWaiverDetailsParams is the input to UpdateWithDetails. A nil slice
+// for Conditions/Contexts/Targets leaves the corresponding child rows
+// untouched; an empty (non-nil) slice clears them.
+type UpdateWaiverDetailsParams struct {
+	ID          pgtype.UUID
+	ProjectID   pgtype.UUID
+	Name        string
+	Description string
+	Conditions  []WaiverConditionInput
+	Contexts    []WaiverContextInput
+	Targets     []WaiverTargetInput
+	Event       WaiverEventInput
+}
+
+// CreateWithDetails inserts a waiver together with its conditions, contexts,
+// finding targets, and a creation event inside one transaction. The child
+// rows are derived from the new waiver's ID.
+func (r *pgWaiverRepo) CreateWithDetails(ctx context.Context, arg CreateWaiverDetailsParams) (sqlc.Waiver, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	q := sqlc.New(tx)
+	w, err := q.CreateWaiver(ctx, sqlc.CreateWaiverParams{
+		ProjectID:   arg.ProjectID,
+		Name:        arg.Name,
+		Description: arg.Description,
+		Enabled:     arg.Enabled,
+	})
+	if err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("create waiver: %w", err)
+	}
+
+	if err := createWaiverChildren(ctx, q, w.ID, arg.Conditions, arg.Contexts, arg.Targets); err != nil {
+		return sqlc.Waiver{}, err
+	}
+
+	if _, err := q.CreateWaiverEvent(ctx, sqlc.CreateWaiverEventParams{
+		WaiverID:  w.ID,
+		EventType: arg.Event.EventType,
+		ActorID:   arg.Event.ActorID,
+		Metadata:  arg.Event.Metadata,
+	}); err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("create waiver event: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("commit tx: %w", err)
+	}
+	return w, nil
+}
+
+// UpdateWithDetails replaces the name/description and, when the given slices
+// are non-nil, the full set of conditions/contexts/finding targets of a
+// waiver inside one transaction, then appends an update event.
+func (r *pgWaiverRepo) UpdateWithDetails(ctx context.Context, arg UpdateWaiverDetailsParams) (sqlc.Waiver, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	q := sqlc.New(tx)
+	current, err := q.GetWaiver(ctx, sqlc.GetWaiverParams{ID: arg.ID, ProjectID: arg.ProjectID})
+	if err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("get current waiver: %w", err)
+	}
+	name := current.Name
+	if arg.Name != "" {
+		name = arg.Name
+	}
+	desc := current.Description
+	if arg.Description != "" {
+		desc = arg.Description
+	}
+	w, err := q.UpdateWaiver(ctx, sqlc.UpdateWaiverParams{
+		ID:          arg.ID,
+		ProjectID:   arg.ProjectID,
+		Name:        name,
+		Description: desc,
+	})
+	if err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("update waiver: %w", err)
+	}
+
+	if arg.Conditions != nil {
+		if err := q.DeleteWaiverConditions(ctx, w.ID); err != nil {
+			return sqlc.Waiver{}, fmt.Errorf("delete conditions: %w", err)
+		}
+		for _, c := range arg.Conditions {
+			if _, err := q.CreateWaiverCondition(ctx, sqlc.CreateWaiverConditionParams{
+				WaiverID: w.ID,
+				Field:    c.Field,
+				Operator: c.Operator,
+				Value:    c.Value,
+			}); err != nil {
+				return sqlc.Waiver{}, fmt.Errorf("create condition: %w", err)
+			}
+		}
+	}
+
+	if arg.Contexts != nil {
+		if err := q.DeleteWaiverContexts(ctx, w.ID); err != nil {
+			return sqlc.Waiver{}, fmt.Errorf("delete contexts: %w", err)
+		}
+		for _, c := range arg.Contexts {
+			if _, err := q.CreateWaiverContext(ctx, sqlc.CreateWaiverContextParams{
+				WaiverID:      w.ID,
+				EnvironmentID: c.EnvironmentID,
+				TargetID:      c.TargetID,
+				ArtifactID:    c.ArtifactID,
+			}); err != nil {
+				return sqlc.Waiver{}, fmt.Errorf("create context: %w", err)
+			}
+		}
+	}
+
+	if arg.Targets != nil {
+		if err := q.DeleteWaiverFindingTargets(ctx, w.ID); err != nil {
+			return sqlc.Waiver{}, fmt.Errorf("delete targets: %w", err)
+		}
+		for _, t := range arg.Targets {
+			if _, err := q.CreateWaiverFindingTarget(ctx, sqlc.CreateWaiverFindingTargetParams{
+				WaiverID:  w.ID,
+				FindingID: t.FindingID,
+			}); err != nil {
+				return sqlc.Waiver{}, fmt.Errorf("create finding target: %w", err)
+			}
+		}
+	}
+
+	if _, err := q.CreateWaiverEvent(ctx, sqlc.CreateWaiverEventParams{
+		WaiverID:  w.ID,
+		EventType: arg.Event.EventType,
+		ActorID:   arg.Event.ActorID,
+		Metadata:  arg.Event.Metadata,
+	}); err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("create waiver event: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("commit tx: %w", err)
+	}
+	return w, nil
+}
+
+// createWaiverChildren inserts the condition/context/target child rows of a
+// newly created waiver inside the caller's transaction.
+func createWaiverChildren(ctx context.Context, q *sqlc.Queries, waiverID pgtype.UUID, conditions []WaiverConditionInput, contexts []WaiverContextInput, targets []WaiverTargetInput) error {
+	for _, c := range conditions {
+		if _, err := q.CreateWaiverCondition(ctx, sqlc.CreateWaiverConditionParams{
+			WaiverID: waiverID,
+			Field:    c.Field,
+			Operator: c.Operator,
+			Value:    c.Value,
+		}); err != nil {
+			return fmt.Errorf("create condition: %w", err)
+		}
+	}
+	for _, c := range contexts {
+		if _, err := q.CreateWaiverContext(ctx, sqlc.CreateWaiverContextParams{
+			WaiverID:      waiverID,
+			EnvironmentID: c.EnvironmentID,
+			TargetID:      c.TargetID,
+			ArtifactID:    c.ArtifactID,
+		}); err != nil {
+			return fmt.Errorf("create context: %w", err)
+		}
+	}
+	for _, t := range targets {
+		if _, err := q.CreateWaiverFindingTarget(ctx, sqlc.CreateWaiverFindingTargetParams{
+			WaiverID:  waiverID,
+			FindingID: t.FindingID,
+		}); err != nil {
+			return fmt.Errorf("create finding target: %w", err)
+		}
+	}
+	return nil
 }
