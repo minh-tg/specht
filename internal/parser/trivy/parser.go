@@ -129,185 +129,194 @@ func convert(report trivyReport) *scanner.NormalizedReport {
 	}
 
 	if len(report) > 0 {
-		first := report[0]
-		target := &scanner.TargetInfo{
-			Identifier: first.Target,
-		}
-		switch first.Class {
-		case "os-pkgs", "lang-pkgs":
-			target.Kind = "container_image"
-		case "config":
-			target.Kind = "iac"
-		case "secret":
-			target.Kind = "filesystem"
-		default:
-			target.Kind = "filesystem"
-		}
-		nr.Target = target
+		nr.Target = resultTarget(report[0])
 	}
 
 	for _, result := range report {
 		// full package inventory, vulnerable or not
-		for _, p := range result.Packages {
-			purl := p.Identifier.PURL
-			if purl == "" {
-				purl = p.PkgID
-			}
-			if purl == "" {
-				continue
-			}
-			nr.Packages = append(nr.Packages, scanner.PackageRef{
-				PURL:      scanner.NormalizePURL(purl),
-				Ecosystem: result.Type,
-				Name:      p.Name,
-				Version:   p.Version,
-			})
-		}
-
-		// vulnerabilities
-		for _, v := range result.Vulnerabilities {
-			severity := normalizeSeverity(v.Severity)
-			var score float64
-			if cvss, ok := v.CVSS["nvd"]; ok {
-				if cvss.V4Score > 0 {
-					score = cvss.V4Score
-				} else if cvss.V3Score > 0 {
-					score = cvss.V3Score
-				}
-			}
-			if score == 0 {
-				if cvss, ok := v.CVSS["redhat"]; ok {
-					if cvss.V4Score > 0 {
-						score = cvss.V4Score
-					} else if cvss.V3Score > 0 {
-						score = cvss.V3Score
-					}
-				}
-			}
-			if score == 0 {
-				for _, c := range v.CVSS {
-					if c.V4Score > 0 {
-						score = c.V4Score
-						break
-					} else if c.V3Score > 0 {
-						score = c.V3Score
-						break
-					} else if c.V2Score > 0 {
-						score = c.V2Score
-					}
-				}
-			}
-
-			purl := v.PkgIdentifier.PURL
-			if purl == "" {
-				purl = v.PkgID
-			}
-
-			fingerprint := string(scanner.SCAFingerprint(v.VulnerabilityID, purl))
-
-			dims := []scanner.Dimension{
-				{Key: "vulnerability_id", Value: v.VulnerabilityID},
-				{Key: "package_name", Value: v.PkgName},
-				{Key: "installed_version", Value: v.InstalledVersion},
-				{Key: "purl", Value: purl},
-			}
-			if v.FixedVersion != "" {
-				dims = append(dims, scanner.Dimension{Key: "fixed_version", Value: v.FixedVersion})
-			}
-
-			display := map[string]any{
-				"target":   result.Target,
-				"pkg_name": v.PkgName,
-				"status":   v.Status,
-			}
-			if v.Layer != nil {
-				display["layer"] = v.Layer.DiffID
-			}
-
-			meta := map[string]any{
-				"pkg_id":       v.PkgID,
-				"purl":         purl,
-				"severity_src": "trivy",
-				"cwe_ids":      v.CweIDs,
-				"status":       v.Status,
-			}
-			if v.PublishedDate != nil {
-				meta["published"] = *v.PublishedDate
-			}
-			if v.LastModifiedDate != nil {
-				meta["last_modified"] = *v.LastModifiedDate
-			}
-			if v.PrimaryURL != "" {
-				meta["primary_url"] = v.PrimaryURL
-			}
-			if v.DataSource != nil {
-				meta["data_source"] = v.DataSource.URL
-			}
-
-			nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
-				Fingerprint: fingerprint,
-				FindingKind: "sca",
-				Title:       v.Title,
-				Description: v.Description,
-				Severity:    severity,
-				Score:       score,
-				Location:    result.Target,
-				Dimensions:  dims,
-				Display:     display,
-				Metadata:    meta,
-			})
-		}
-
-		// secrets
-		for _, s := range result.Secrets {
-			severity := normalizeSeverity(s.Severity)
-			fp := "secret:" + s.RuleID + ":" + result.Target
-			nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
-				Fingerprint: fp,
-				FindingKind: "secret",
-				Title:       s.Title,
-				Severity:    severity,
-				Dimensions: []scanner.Dimension{
-					{Key: "rule_id", Value: s.RuleID},
-					{Key: "category", Value: s.Category},
-				},
-				Display: map[string]any{
-					"target":   result.Target,
-					"category": s.Category,
-				},
-				Metadata: map[string]any{
-					"category": s.Category,
-					"rule_id":  s.RuleID,
-				},
-			})
-		}
-
-		// misconfigurations
-		for _, m := range result.Misconfigs {
-			severity := normalizeSeverity(m.Severity)
-			fp := "iac:" + m.RuleID + ":" + result.Target
-			nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
-				Fingerprint: fp,
-				FindingKind: "iac",
-				Title:       m.Title,
-				Severity:    severity,
-				Dimensions: []scanner.Dimension{
-					{Key: "rule_id", Value: m.RuleID},
-				},
-				Display: map[string]any{
-					"target":  result.Target,
-					"message": m.Message,
-				},
-				Metadata: map[string]any{
-					"rule_id":  m.RuleID,
-					"severity": m.Severity,
-					"message":  m.Message,
-				},
-			})
-		}
+		addPackages(nr, result)
+		addVulns(nr, result)
+		addSecrets(nr, result)
+		addMisconfigs(nr, result)
 	}
 
 	return nr
+}
+
+func resultTarget(first trivyResult) *scanner.TargetInfo {
+	target := &scanner.TargetInfo{Identifier: first.Target}
+	switch first.Class {
+	case "os-pkgs", "lang-pkgs":
+		target.Kind = "container_image"
+	case "config":
+		target.Kind = "iac"
+	case "secret":
+		target.Kind = "filesystem"
+	default:
+		target.Kind = "filesystem"
+	}
+	return target
+}
+
+func addPackages(nr *scanner.NormalizedReport, result trivyResult) {
+	for _, p := range result.Packages {
+		purl := p.Identifier.PURL
+		if purl == "" {
+			purl = p.PkgID
+		}
+		if purl == "" {
+			continue
+		}
+		nr.Packages = append(nr.Packages, scanner.PackageRef{
+			PURL:      scanner.NormalizePURL(purl),
+			Ecosystem: result.Type,
+			Name:      p.Name,
+			Version:   p.Version,
+		})
+	}
+}
+
+func addVulns(nr *scanner.NormalizedReport, result trivyResult) {
+	for _, v := range result.Vulnerabilities {
+		purl := v.PkgIdentifier.PURL
+		if purl == "" {
+			purl = v.PkgID
+		}
+
+		dims := []scanner.Dimension{
+			{Key: "vulnerability_id", Value: v.VulnerabilityID},
+			{Key: "package_name", Value: v.PkgName},
+			{Key: "installed_version", Value: v.InstalledVersion},
+			{Key: "purl", Value: purl},
+		}
+		if v.FixedVersion != "" {
+			dims = append(dims, scanner.Dimension{Key: "fixed_version", Value: v.FixedVersion})
+		}
+
+		display := map[string]any{
+			"target":   result.Target,
+			"pkg_name": v.PkgName,
+			"status":   v.Status,
+		}
+		if v.Layer != nil {
+			display["layer"] = v.Layer.DiffID
+		}
+
+		meta := map[string]any{
+			"pkg_id":       v.PkgID,
+			"purl":         purl,
+			"severity_src": "trivy",
+			"cwe_ids":      v.CweIDs,
+			"status":       v.Status,
+		}
+		if v.PublishedDate != nil {
+			meta["published"] = *v.PublishedDate
+		}
+		if v.LastModifiedDate != nil {
+			meta["last_modified"] = *v.LastModifiedDate
+		}
+		if v.PrimaryURL != "" {
+			meta["primary_url"] = v.PrimaryURL
+		}
+		if v.DataSource != nil {
+			meta["data_source"] = v.DataSource.URL
+		}
+
+		nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
+			Fingerprint: string(scanner.SCAFingerprint(v.VulnerabilityID, purl)),
+			FindingKind: "sca",
+			Title:       v.Title,
+			Description: v.Description,
+			Severity:    normalizeSeverity(v.Severity),
+			Score:       maxCVSSScore(v.CVSS),
+			Location:    result.Target,
+			Dimensions:  dims,
+			Display:     display,
+			Metadata:    meta,
+		})
+	}
+}
+
+// maxCVSSScore returns the highest available CVSS score for a vulnerability,
+// preferring nvd, then redhat, then any vendor source, across CVSS versions.
+func maxCVSSScore(cvss map[string]trivyCVSS) float64 {
+	if cvss == nil {
+		return 0
+	}
+	for _, source := range []string{"nvd", "redhat"} {
+		if c, ok := cvss[source]; ok {
+			if score := bestCVSSScore(c); score > 0 {
+				return score
+			}
+		}
+	}
+	for _, c := range cvss {
+		if score := bestCVSSScore(c); score > 0 {
+			return score
+		}
+	}
+	return 0
+}
+
+func bestCVSSScore(c trivyCVSS) float64 {
+	switch {
+	case c.V4Score > 0:
+		return c.V4Score
+	case c.V3Score > 0:
+		return c.V3Score
+	case c.V2Score > 0:
+		return c.V2Score
+	default:
+		return 0
+	}
+}
+
+func addSecrets(nr *scanner.NormalizedReport, result trivyResult) {
+	for _, s := range result.Secrets {
+		fp := "secret:" + s.RuleID + ":" + result.Target
+		nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
+			Fingerprint: fp,
+			FindingKind: "secret",
+			Title:       s.Title,
+			Severity:    normalizeSeverity(s.Severity),
+			Dimensions: []scanner.Dimension{
+				{Key: "rule_id", Value: s.RuleID},
+				{Key: "category", Value: s.Category},
+			},
+			Display: map[string]any{
+				"target":   result.Target,
+				"category": s.Category,
+			},
+			Metadata: map[string]any{
+				"category": s.Category,
+				"rule_id":  s.RuleID,
+			},
+		})
+	}
+}
+
+func addMisconfigs(nr *scanner.NormalizedReport, result trivyResult) {
+	for _, m := range result.Misconfigs {
+		fp := "iac:" + m.RuleID + ":" + result.Target
+		nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
+			Fingerprint: fp,
+			FindingKind: "iac",
+			Title:       m.Title,
+			Severity:    normalizeSeverity(m.Severity),
+			Dimensions: []scanner.Dimension{
+				{Key: "rule_id", Value: m.RuleID},
+			},
+			Display: map[string]any{
+				"target":  result.Target,
+				"message": m.Message,
+			},
+			Metadata: map[string]any{
+				"rule_id":  m.RuleID,
+				"severity": m.Severity,
+				"message":  m.Message,
+			},
+		})
+	}
 }
 
 func normalizeSeverity(s string) scanner.Severity {
