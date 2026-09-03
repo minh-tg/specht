@@ -19,14 +19,14 @@
           pnpm
           dprint
           oxlint # pre-commit oxlint mirror ships a glibc binary NixOS can't run — use the nixpkgs build
-          pre-commit
+          prek
           hadolint
           gitleaks
         ];
 
         shellHook = ''
           echo "Specht dev shell — $(go version | awk '{print $3}') · sqlc $(sqlc version 2>/dev/null | awk '{print $2}')"
-          echo "Hooks: pre-commit run --all-files (NixOS-native oxlint + dprint from nixpkgs)"
+          echo "Hooks: prek run --all-files (NixOS-native oxlint + dprint from nixpkgs)"
         '';
       };
     };
