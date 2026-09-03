@@ -6,14 +6,14 @@ Small, watchful vulnerability management platform. Ingest scan results from Triv
 
 ```bash
 cp .env.example .env
+docker compose -f deploy/docker-compose.yml up -d db
+set -a
+source .env
+set +a
 go run ./cmd/server
 ```
 
 API starts at `http://localhost:8080`. Health check: `curl http://localhost:8080/api/v1/health`.
-
-## Documentation
-
-See [docs/](docs/) for architecture, data model, API reference, roadmap, and development guide.
 
 ## Project Layout
 
