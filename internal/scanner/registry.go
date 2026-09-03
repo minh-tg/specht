@@ -1,9 +1,11 @@
 package scanner
 
+// Registry maps scanner names to their Scanner implementations.
 type Registry struct {
 	scanners map[string]Scanner
 }
 
+// NewRegistry builds an empty scanner registry.
 func NewRegistry() *Registry {
 	return &Registry{scanners: make(map[string]Scanner)}
 }

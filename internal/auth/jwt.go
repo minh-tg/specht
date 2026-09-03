@@ -9,10 +9,12 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// JWTAuthenticator signs and verifies JWT access tokens.
 type JWTAuthenticator struct {
 	secret []byte
 }
 
+// NewJWTAuthenticator builds a JWT authenticator with the given HMAC secret.
 func NewJWTAuthenticator(secret string) (*JWTAuthenticator, error) {
 	if secret == "" {
 		return nil, fmt.Errorf("JWT_SECRET is required")

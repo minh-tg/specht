@@ -87,8 +87,10 @@ type grypeUpstream struct {
 	Version string `json:"version"`
 }
 
+// Scanner adapts grype JSON output to the normalized scanner model.
 type Scanner struct{}
 
+// NewScanner builds the grype adapter.
 func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Name() string { return "grype" }

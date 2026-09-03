@@ -10,6 +10,7 @@ import (
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
+// RegisterAll registers every built-in scanner parser into the registry.
 func RegisterAll(reg *scanner.Registry) {
 	reg.Register(trivy.NewScanner())
 	reg.Register(osvscanner.NewScanner())

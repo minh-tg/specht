@@ -28,6 +28,7 @@ type WaiverResponse struct {
 	UpdatedAt   string                    `json:"updated_at"`
 }
 
+// WaiverConditionResp is a waiver condition in API responses.
 type WaiverConditionResp struct {
 	ID       string `json:"id"`
 	Field    string `json:"field"`
@@ -35,6 +36,7 @@ type WaiverConditionResp struct {
 	Value    string `json:"value"`
 }
 
+// WaiverContextResp is a waiver context scope in API responses.
 type WaiverContextResp struct {
 	ID            string `json:"id"`
 	EnvironmentID string `json:"environment_id,omitempty"`
@@ -42,11 +44,13 @@ type WaiverContextResp struct {
 	ArtifactID    string `json:"artifact_id,omitempty"`
 }
 
+// WaiverFindingTargetResp is a waiver finding target in API responses.
 type WaiverFindingTargetResp struct {
 	ID        string `json:"id"`
 	FindingID string `json:"finding_id"`
 }
 
+// WaiverEventResp is a waiver audit event in API responses.
 type WaiverEventResp struct {
 	ID        string          `json:"id"`
 	WaiverID  string          `json:"waiver_id"`
@@ -70,12 +74,14 @@ type CreateWaiverInput struct {
 	ActorID     string
 }
 
+// CreateWaiverConditionInput is a condition input for waiver create/update.
 type CreateWaiverConditionInput struct {
 	Field    string
 	Operator string
 	Value    string
 }
 
+// CreateWaiverContextInput is a context scope input for waiver create/update.
 type CreateWaiverContextInput struct {
 	EnvironmentID string
 	TargetID      string
@@ -96,6 +102,7 @@ type UpdateWaiverInput struct {
 	ActorID     string
 }
 
+// WaiverDetailResponse is a waiver with full condition/context/target rows.
 type WaiverDetailResponse struct {
 	WaiverResponse
 	Conditions []WaiverConditionResp     `json:"conditions"`

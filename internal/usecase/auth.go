@@ -13,6 +13,7 @@ import (
 	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
+// UserProfile is the authenticated user's public profile.
 type UserProfile struct {
 	ID          string `json:"id"`
 	Email       string `json:"email"`
@@ -21,6 +22,7 @@ type UserProfile struct {
 	CreatedAt   string `json:"created_at"`
 }
 
+// AuthResponse carries the tokens and identity returned by login/register.
 type AuthResponse struct {
 	Token        string `json:"token"`
 	RefreshToken string `json:"refresh_token,omitempty"`
@@ -28,6 +30,7 @@ type AuthResponse struct {
 	Email        string `json:"email"`
 }
 
+// APIKeyResponse is a project API key. RawKey is present only in the create response.
 type APIKeyResponse struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`

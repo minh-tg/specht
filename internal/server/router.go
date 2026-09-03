@@ -1,3 +1,7 @@
+// Package server exposes the Specht HTTP API: the chi router, middleware
+// stack (auth, CORS, logging), and the HTTP handlers that translate requests
+// into use-case calls. Handlers are split by domain across the
+// handlers_*.go files in this package.
 package server
 
 import (
@@ -14,6 +18,7 @@ import (
 	"github.com/xMinhx/specht/internal/version"
 )
 
+// RouterConfig wires the dependencies the API router needs.
 type RouterConfig struct {
 	Usecases     usecaseInterface
 	CORSOrigins  string
@@ -21,6 +26,7 @@ type RouterConfig struct {
 	APIKeyLookup func(ctx context.Context, keyHash string) (userID, projectID string, err error)
 }
 
+// NewRouter builds the chi router with middleware and all API routes.
 func NewRouter(cfg RouterConfig) http.Handler {
 	r := chi.NewRouter()
 

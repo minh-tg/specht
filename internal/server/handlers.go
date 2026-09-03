@@ -18,6 +18,7 @@ import (
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
+// AuthMiddleware authenticates requests, trying each authenticator in order and storing the identity on the context.
 func AuthMiddleware(authenticators ...auth.Authenticator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -49,6 +50,7 @@ func AuthMiddleware(authenticators ...auth.Authenticator) func(http.Handler) htt
 	}
 }
 
+// LoggerMiddleware logs each request method, path, status, and duration.
 func LoggerMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		slog.Info(
@@ -135,6 +137,7 @@ type (
 	}
 )
 
+// Handler holds the use-case dependency for the HTTP handlers.
 type Handler struct {
 	usecase usecaseInterface
 }
@@ -153,6 +156,7 @@ type usecaseInterface interface {
 	StatsUsecases
 }
 
+// NewHandler builds the HTTP handlers over a use-case implementation.
 func NewHandler(uc usecaseInterface) *Handler {
 	return &Handler{usecase: uc}
 }

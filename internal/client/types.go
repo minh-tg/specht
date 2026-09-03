@@ -1,3 +1,7 @@
+// Package client is the typed HTTP client for the Specht API (used by the
+// specht CLI and CI/CD adapters). It mirrors the server's JSON wire types:
+// request payloads encode to the API contract and response structs decode
+// from it.
 package client
 
 import (
@@ -5,6 +9,7 @@ import (
 	"time"
 )
 
+// IngestPayload is the request body for ingesting a scanner report.
 type IngestPayload struct {
 	Project         string          `json:"project"`
 	Scanner         string          `json:"scanner"`
@@ -21,12 +26,14 @@ type IngestPayload struct {
 	ArtifactType    string          `json:"artifact_type,omitempty"`
 }
 
+// IngestResponse is the server reply to a report ingest.
 type IngestResponse struct {
 	ReportID          string `json:"report_id"`
 	TotalFindings     int    `json:"total_findings"`
 	ThresholdBreached bool   `json:"threshold_breached"`
 }
 
+// GateStatus is a project's current deployment-gate evaluation.
 type GateStatus struct {
 	ThresholdBreached bool     `json:"threshold_breached"`
 	BlockingCount     int64    `json:"blocking_count"`
@@ -34,6 +41,7 @@ type GateStatus struct {
 	WaivedCount       int      `json:"waived_count,omitempty"`
 }
 
+// Project is a scan project (the top-level tenant of findings and reports).
 type Project struct {
 	ID          string    `json:"id"`
 	Slug        string    `json:"slug"`
@@ -43,12 +51,14 @@ type Project struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+// CreateProjectRequest is the request body for creating a project.
 type CreateProjectRequest struct {
 	Name        string `json:"name"`
 	Slug        string `json:"slug"`
 	Description string `json:"description,omitempty"`
 }
 
+// Finding is a deduplicated vulnerability finding within a project.
 type Finding struct {
 	ID              string    `json:"id"`
 	ProjectID       string    `json:"project_id"`
@@ -67,6 +77,7 @@ type Finding struct {
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
+// Report is an ingested scanner report (one scan run).
 type Report struct {
 	ID            string     `json:"id"`
 	ProjectID     string     `json:"project_id"`
@@ -82,18 +93,21 @@ type Report struct {
 	CompletedAt   *time.Time `json:"completed_at"`
 }
 
+// TriageRequest is the request body for setting a finding's analysis state.
 type TriageRequest struct {
 	AnalysisState     string     `json:"analysis_state"`
 	Reason            string     `json:"reason,omitempty"`
 	AnalysisExpiresAt *time.Time `json:"analysis_expires_at,omitempty"`
 }
 
+// TriageResponse reports the triage outcome for one finding.
 type TriageResponse struct {
 	FindingID     string `json:"finding_id"`
 	AnalysisState string `json:"analysis_state"`
 	GateEffect    string `json:"gate_effect"`
 }
 
+// BulkTriageRequest applies one analysis state to many findings at once.
 type BulkTriageRequest struct {
 	FindingIDs        []string   `json:"finding_ids"`
 	AnalysisState     string     `json:"analysis_state"`
@@ -101,6 +115,7 @@ type BulkTriageRequest struct {
 	AnalysisExpiresAt *time.Time `json:"analysis_expires_at,omitempty"`
 }
 
+// FindingEvent is an audit event recorded against a finding.
 type FindingEvent struct {
 	ID        string    `json:"id"`
 	FindingID string    `json:"finding_id"`
@@ -113,6 +128,7 @@ type FindingEvent struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// AuthResponse carries the tokens and identity returned by login/register.
 type AuthResponse struct {
 	Token        string `json:"token"`
 	RefreshToken string `json:"refresh_token,omitempty"`
@@ -120,6 +136,7 @@ type AuthResponse struct {
 	Email        string `json:"email"`
 }
 
+// UserProfile is the authenticated user's profile.
 type UserProfile struct {
 	ID          string `json:"id"`
 	Email       string `json:"email"`
@@ -128,6 +145,8 @@ type UserProfile struct {
 	CreatedAt   string `json:"created_at"`
 }
 
+// APIKey is a project-scoped API key. RawKey is only present in the create
+// response (the server stores only a hash).
 type APIKey struct {
 	ID        string  `json:"id"`
 	Name      string  `json:"name"`
@@ -137,11 +156,13 @@ type APIKey struct {
 	CreatedAt string  `json:"created_at"`
 }
 
+// CreateAPIKeyRequest is the request body for minting an API key.
 type CreateAPIKeyRequest struct {
 	Name    string `json:"name"`
 	Project string `json:"project"`
 }
 
+// Environment is a deployment environment a project scans against.
 type Environment struct {
 	ID              string `json:"id"`
 	ProjectID       string `json:"project_id"`
@@ -152,6 +173,7 @@ type Environment struct {
 	CreatedAt       string `json:"created_at"`
 }
 
+// Target is a scan target (repo, image, filesystem, etc.) within a project.
 type Target struct {
 	ID        string `json:"id"`
 	ProjectID string `json:"project_id"`
@@ -161,6 +183,7 @@ type Target struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// Artifact is a specific artifact (image digest, package build) of a target.
 type Artifact struct {
 	ID           string `json:"id"`
 	ProjectID    string `json:"project_id"`
@@ -173,6 +196,7 @@ type Artifact struct {
 	CreatedAt    string `json:"created_at"`
 }
 
+// Waiver is a waiver policy with its conditions, contexts, and targets.
 type Waiver struct {
 	ID          string                `json:"id"`
 	ProjectID   string                `json:"project_id"`
@@ -186,6 +210,7 @@ type Waiver struct {
 	UpdatedAt   string                `json:"updated_at"`
 }
 
+// WaiverCondition is a predicate on a finding field.
 type WaiverCondition struct {
 	ID       string `json:"id"`
 	Field    string `json:"field"`
@@ -193,6 +218,7 @@ type WaiverCondition struct {
 	Value    string `json:"value"`
 }
 
+// WaiverContext scopes a waiver to environments/targets/artifacts.
 type WaiverContext struct {
 	ID            string `json:"id"`
 	EnvironmentID string `json:"environment_id,omitempty"`
@@ -200,11 +226,13 @@ type WaiverContext struct {
 	ArtifactID    string `json:"artifact_id,omitempty"`
 }
 
+// WaiverFindingTarget pins a waiver to one specific finding.
 type WaiverFindingTarget struct {
 	ID        string `json:"id"`
 	FindingID string `json:"finding_id"`
 }
 
+// WaiverDetail is a waiver plus its full condition/context/target rows.
 type WaiverDetail struct {
 	Waiver
 	Conditions []WaiverCondition     `json:"conditions"`
@@ -212,6 +240,7 @@ type WaiverDetail struct {
 	Targets    []WaiverFindingTarget `json:"targets"`
 }
 
+// WaiverEvent is an audit event recorded against a waiver.
 type WaiverEvent struct {
 	ID        string          `json:"id"`
 	WaiverID  string          `json:"waiver_id"`
@@ -221,6 +250,7 @@ type WaiverEvent struct {
 	CreatedAt string          `json:"created_at"`
 }
 
+// CreateWaiverRequest is the request body for creating a waiver.
 type CreateWaiverRequest struct {
 	Name        string                  `json:"name"`
 	Description string                  `json:"description"`
@@ -229,18 +259,21 @@ type CreateWaiverRequest struct {
 	TargetIDs   []string                `json:"target_ids,omitempty"`
 }
 
+// CreateWaiverCondition is a condition input for waiver creation.
 type CreateWaiverCondition struct {
 	Field    string `json:"field"`
 	Operator string `json:"operator"`
 	Value    string `json:"value"`
 }
 
+// CreateWaiverContext is a context input for waiver creation.
 type CreateWaiverContext struct {
 	EnvironmentID string `json:"environment_id,omitempty"`
 	TargetID      string `json:"target_id,omitempty"`
 	ArtifactID    string `json:"artifact_id,omitempty"`
 }
 
+// UpdateWaiverRequest is the request body for updating a waiver.
 type UpdateWaiverRequest struct {
 	Name        string                  `json:"name,omitempty"`
 	Description string                  `json:"description,omitempty"`
@@ -249,30 +282,36 @@ type UpdateWaiverRequest struct {
 	TargetIDs   []string                `json:"target_ids,omitempty"`
 }
 
+// CheckWaiverMatchResponse reports whether a single finding is waived.
 type CheckWaiverMatchResponse struct {
 	Matched bool `json:"matched"`
 }
 
+// LoginRequest is the request body for email/password login.
 type LoginRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
+// RegisterRequest is the request body for self-service registration.
 type RegisterRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
+// RefreshRequest is the request body for rotating a refresh token.
 type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+// SeverityCount is one severity bucket of a project's finding breakdown.
 type SeverityCount struct {
 	Severity      string `json:"severity"`
 	Count         int32  `json:"count"`
 	BlockingCount int32  `json:"blocking_count"`
 }
 
+// ProjectStats is a project's aggregate finding/waiver/report statistics.
 type ProjectStats struct {
 	TotalFindings int32           `json:"total_findings"`
 	BlockingCount int32           `json:"blocking_count"`
@@ -282,6 +321,7 @@ type ProjectStats struct {
 	LatestReport  *Report         `json:"latest_report,omitempty"`
 }
 
+// APIError is the error envelope the API returns on non-2xx responses.
 type APIError struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`

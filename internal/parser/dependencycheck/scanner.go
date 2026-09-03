@@ -44,8 +44,10 @@ type dcRef struct {
 	URL string `json:"url"`
 }
 
+// Scanner adapts OWASP Dependency-Check JSON output to the normalized scanner model.
 type Scanner struct{}
 
+// NewScanner builds the Dependency-Check adapter.
 func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Name() string { return "dependency-check" }

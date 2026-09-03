@@ -76,12 +76,14 @@ func (r *Repos) WithTx(ctx context.Context, fn func(q *sqlc.Queries) error) erro
 	return tx.Commit(ctx)
 }
 
+// ProjectRepo persists scan projects.
 type ProjectRepo interface {
 	Create(ctx context.Context, arg sqlc.CreateProjectParams) (sqlc.Project, error)
 	List(ctx context.Context) ([]sqlc.Project, error)
 	GetBySlug(ctx context.Context, slug string) (sqlc.Project, error)
 }
 
+// ReportRepo persists ingested scan reports.
 type ReportRepo interface {
 	Create(ctx context.Context, arg CreateReportParams) (sqlc.Report, error)
 	GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Report, error)
@@ -89,12 +91,14 @@ type ReportRepo interface {
 	UpdateStatus(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error)
 }
 
+// UserRepo persists user accounts.
 type UserRepo interface {
 	Create(ctx context.Context, email string, displayName, passwordHash pgtype.Text) (sqlc.User, error)
 	GetByEmail(ctx context.Context, email string) (sqlc.User, error)
 	GetByID(ctx context.Context, id pgtype.UUID) (sqlc.User, error)
 }
 
+// APIKeyRepo persists project-scoped API keys.
 type APIKeyRepo interface {
 	Create(ctx context.Context, arg sqlc.CreateAPIKeyParams) (sqlc.ApiKey, error)
 	ListByProject(ctx context.Context, projectID pgtype.UUID) ([]sqlc.ListAPIKeysByProjectRow, error)
@@ -102,6 +106,7 @@ type APIKeyRepo interface {
 	Revoke(ctx context.Context, id, projectID pgtype.UUID) (sqlc.ApiKey, error)
 }
 
+// EnvironmentRepo persists deployment environments.
 type EnvironmentRepo interface {
 	Upsert(ctx context.Context, arg sqlc.UpsertEnvironmentParams) (sqlc.Environment, error)
 	List(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Environment, error)
@@ -109,6 +114,7 @@ type EnvironmentRepo interface {
 	Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Environment, error)
 }
 
+// TargetRepo persists scan targets.
 type TargetRepo interface {
 	Upsert(ctx context.Context, arg sqlc.UpsertTargetParams) (sqlc.Target, error)
 	List(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Target, error)
@@ -116,6 +122,7 @@ type TargetRepo interface {
 	Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Target, error)
 }
 
+// WaiverRepo persists waiver policies and their conditions, contexts, targets, and events.
 type WaiverRepo interface {
 	Create(ctx context.Context, arg sqlc.CreateWaiverParams) (sqlc.Waiver, error)
 	CreateWithDetails(ctx context.Context, arg CreateWaiverDetailsParams) (sqlc.Waiver, error)
@@ -139,6 +146,7 @@ type WaiverRepo interface {
 	ListEvents(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverEvent, error)
 }
 
+// ArtifactRepo persists artifacts of scan targets.
 type ArtifactRepo interface {
 	Upsert(ctx context.Context, arg sqlc.UpsertArtifactParams) (sqlc.Artifact, error)
 	List(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Artifact, error)
@@ -147,23 +155,27 @@ type ArtifactRepo interface {
 	Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Artifact, error)
 }
 
+// SignoffRepo persists finding signoffs.
 type SignoffRepo interface {
 	Upsert(ctx context.Context, arg UpsertSignoffParams) (sqlc.Signoff, error)
 	GetByFinding(ctx context.Context, findingID pgtype.UUID) (sqlc.Signoff, error)
 }
 
+// InventoryRepo persists a report's package inventory and serves the watcher's distinct-package view.
 type InventoryRepo interface {
 	UpsertReportPackages(ctx context.Context, reportID pgtype.UUID, packages []UpsertReportPackageParams) error
 	DistinctInventory(ctx context.Context, projectID pgtype.UUID, since pgtype.Interval) ([]sqlc.DistinctInventoryRow, error)
 	DeleteReportPackages(ctx context.Context, reportID pgtype.UUID) error
 }
 
+// ReachabilityRepo persists reachability assessments.
 type ReachabilityRepo interface {
 	Upsert(ctx context.Context, arg UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error)
 	ListByFinding(ctx context.Context, findingID pgtype.UUID) ([]sqlc.ReachabilityAssessment, error)
 	GetByID(ctx context.Context, id pgtype.UUID) (sqlc.ReachabilityAssessment, error)
 }
 
+// EvidenceRepo persists evidence artifacts attached to findings.
 type EvidenceRepo interface {
 	Create(ctx context.Context, arg CreateEvidenceParams) (sqlc.EvidenceArtifact, error)
 	ListByFinding(ctx context.Context, findingID pgtype.UUID) ([]sqlc.EvidenceArtifact, error)
@@ -171,6 +183,7 @@ type EvidenceRepo interface {
 	Delete(ctx context.Context, id pgtype.UUID) error
 }
 
+// FindingRepo persists findings, occurrences, dimensions, events, and the watcher finding unit-of-work.
 type FindingRepo interface {
 	Upsert(ctx context.Context, arg UpsertFindingParams) (sqlc.Finding, error)
 	PersistWatcherFinding(ctx context.Context, arg PersistWatcherFindingParams) (sqlc.Finding, bool, error)

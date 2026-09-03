@@ -102,6 +102,7 @@ type WaiverContextInput struct {
 	ArtifactID    pgtype.UUID
 }
 
+// WaiverTargetInput is a finding-target child row for the waiver unit-of-work methods.
 type WaiverTargetInput struct {
 	FindingID pgtype.UUID
 }

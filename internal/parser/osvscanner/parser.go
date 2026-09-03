@@ -89,8 +89,10 @@ type osvCallAnalysis struct {
 	Called *bool `json:"called"`
 }
 
+// Scanner adapts osv-scanner JSON output to the normalized scanner model.
 type Scanner struct{}
 
+// NewScanner builds the osv-scanner adapter.
 func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Name() string { return "osv-scanner" }

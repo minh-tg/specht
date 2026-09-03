@@ -11,6 +11,7 @@ import (
 	"github.com/xMinhx/specht/internal/repo"
 )
 
+// SignoffResponse is a signoff record attached to a finding.
 type SignoffResponse struct {
 	ID         string `json:"id"`
 	FindingID  string `json:"finding_id"`

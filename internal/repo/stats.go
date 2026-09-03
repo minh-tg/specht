@@ -7,6 +7,7 @@ import (
 	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
+// StatsRepo serves aggregate project statistics.
 type StatsRepo interface {
 	GetProjectStats(ctx context.Context, projectID pgtype.UUID) ([]sqlc.GetProjectStatsRow, error)
 	GetProjectWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error)

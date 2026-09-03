@@ -91,8 +91,10 @@ type sarifArtifact struct {
 	Location sarifArtifactLocation `json:"location"`
 }
 
+// Scanner adapts semgrep SARIF output to the normalized scanner model.
 type Scanner struct{}
 
+// NewScanner builds the semgrep adapter.
 func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Name() string { return "semgrep" }

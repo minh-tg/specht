@@ -90,8 +90,10 @@ type trivyMisconfig struct {
 	Layer    *trivyLayer `json:"Layer"`
 }
 
+// Scanner adapts trivy JSON output to the normalized scanner model.
 type Scanner struct{}
 
+// NewScanner builds the trivy adapter.
 func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Name() string { return "trivy" }

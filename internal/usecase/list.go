@@ -10,6 +10,7 @@ import (
 	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
+// ProjectResponse is the API representation of a project.
 type ProjectResponse struct {
 	ID          string    `json:"id"`
 	Slug        string    `json:"slug"`
@@ -19,6 +20,7 @@ type ProjectResponse struct {
 	UpdatedAt   time.Time `json:"updated_at"`
 }
 
+// FindingResponse is the API representation of a finding.
 type FindingResponse struct {
 	ID              string    `json:"id"`
 	ProjectID       string    `json:"project_id"`
@@ -37,6 +39,7 @@ type FindingResponse struct {
 	UpdatedAt       time.Time `json:"updated_at"`
 }
 
+// ReportResponse is the API representation of an ingested report.
 type ReportResponse struct {
 	ID            string     `json:"id"`
 	ProjectID     string     `json:"project_id"`
@@ -52,6 +55,7 @@ type ReportResponse struct {
 	CompletedAt   *time.Time `json:"completed_at"`
 }
 
+// FindingEvent is the API representation of a finding audit event.
 type FindingEvent struct {
 	ID        string    `json:"id"`
 	FindingID string    `json:"finding_id"`
@@ -249,6 +253,7 @@ func (u *Usecases) GetReport(ctx context.Context, reportID pgtype.UUID) (*Report
 	return &resp, nil
 }
 
+// EnvironmentResponse is the API representation of a deployment environment.
 type EnvironmentResponse struct {
 	ID              string `json:"id"`
 	ProjectID       string `json:"project_id"`
@@ -259,6 +264,7 @@ type EnvironmentResponse struct {
 	CreatedAt       string `json:"created_at"`
 }
 
+// TargetResponse is the API representation of a scan target.
 type TargetResponse struct {
 	ID        string `json:"id"`
 	ProjectID string `json:"project_id"`
@@ -268,6 +274,7 @@ type TargetResponse struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// ArtifactResponse is the API representation of an artifact.
 type ArtifactResponse struct {
 	ID           string `json:"id"`
 	ProjectID    string `json:"project_id"`

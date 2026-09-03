@@ -47,8 +47,10 @@ type checkovSummary struct {
 	CheckovVersion string `json:"checkov_version"`
 }
 
+// Scanner adapts checkov JSON output to the normalized scanner model.
 type Scanner struct{}
 
+// NewScanner builds the checkov adapter.
 func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Name() string { return "checkov" }

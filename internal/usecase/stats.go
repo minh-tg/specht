@@ -6,12 +6,14 @@ import (
 	"log/slog"
 )
 
+// SeverityCount is one severity bucket of a project's finding breakdown.
 type SeverityCount struct {
 	Severity      string `json:"severity"`
 	Count         int32  `json:"count"`
 	BlockingCount int32  `json:"blocking_count"`
 }
 
+// ProjectStats is a project's aggregate finding/waiver/report statistics.
 type ProjectStats struct {
 	TotalFindings int32           `json:"total_findings"`
 	BlockingCount int32           `json:"blocking_count"`

@@ -21,6 +21,7 @@ func newFindingRepo(q *sqlc.Queries, pool *pgxpool.Pool) *pgFindingRepo {
 	return &pgFindingRepo{q: q, pool: pool}
 }
 
+// UpsertFindingParams is the input to upserting a finding row.
 type UpsertFindingParams struct {
 	ProjectID    pgtype.UUID
 	FindingKind  string
@@ -60,6 +61,7 @@ func (r *pgFindingRepo) Upsert(ctx context.Context, arg UpsertFindingParams) (sq
 	})
 }
 
+// CreateOccurrenceParams is the input to creating a finding occurrence.
 type CreateOccurrenceParams struct {
 	FindingID       pgtype.UUID
 	ReportID        pgtype.UUID
@@ -95,6 +97,7 @@ func (r *pgFindingRepo) CreateOccurrence(ctx context.Context, arg CreateOccurren
 	})
 }
 
+// UpsertDimensionParams is the input to upserting a finding dimension.
 type UpsertDimensionParams struct {
 	FindingID pgtype.UUID
 	Key       string
@@ -111,6 +114,7 @@ func (r *pgFindingRepo) UpsertDimension(ctx context.Context, arg UpsertDimension
 	})
 }
 
+// GetByFingerprintParams identifies a finding by project, kind, and fingerprint.
 type GetByFingerprintParams struct {
 	ProjectID   pgtype.UUID
 	FindingKind string
@@ -133,6 +137,7 @@ func (r *pgFindingRepo) ListByIDs(ctx context.Context, ids []pgtype.UUID) ([]sql
 	return r.q.ListFindingsByIDs(ctx, ids)
 }
 
+// UpdateAnalysisParams is the input to updating a finding's analysis state.
 type UpdateAnalysisParams struct {
 	ID                pgtype.UUID
 	AnalysisState     string
@@ -159,6 +164,7 @@ func (r *pgFindingRepo) UpdateAnalysis(ctx context.Context, arg UpdateAnalysisPa
 	})
 }
 
+// BulkUpdateAnalysisParams is the input to a bulk analysis-state update.
 type BulkUpdateAnalysisParams struct {
 	IDs               []pgtype.UUID
 	AnalysisState     string
@@ -185,6 +191,7 @@ func (r *pgFindingRepo) BulkUpdateAnalysis(ctx context.Context, arg BulkUpdateAn
 	})
 }
 
+// GateEvalParams identifies a project and severity floor for gate evaluation.
 type GateEvalParams struct {
 	ProjectID       pgtype.UUID
 	MinSeverityRank int16
@@ -204,6 +211,7 @@ func (r *pgFindingRepo) CountBlocking(ctx context.Context, arg GateEvalParams) (
 	})
 }
 
+// CreateEventParams is the input to creating a finding audit event.
 type CreateEventParams struct {
 	FindingID pgtype.UUID
 	UserID    pgtype.UUID
@@ -278,6 +286,7 @@ WHERE f.project_id = $1
   )
 ORDER BY f.current_severity_rank DESC, f.created_at DESC`
 
+// FindingContext is the environment/target/artifact context of a finding.
 type FindingContext struct {
 	EnvironmentID pgtype.UUID
 	TargetID      pgtype.UUID

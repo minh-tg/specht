@@ -10,6 +10,7 @@ import (
 	"github.com/xMinhx/specht/internal/repo"
 )
 
+// ReachabilityResponse is a finding's reachability assessment.
 type ReachabilityResponse struct {
 	ID         string `json:"id"`
 	FindingID  string `json:"finding_id"`

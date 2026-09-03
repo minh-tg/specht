@@ -19,6 +19,7 @@ var (
 	ErrExpiryRequired  = errors.New("expiry is required for accepted_risk and wont_fix")
 )
 
+// TriageInput sets a finding's analysis state with an optional reason and expiry.
 type TriageInput struct {
 	FindingID         string
 	AnalysisState     string
@@ -27,12 +28,14 @@ type TriageInput struct {
 	UserID            string
 }
 
+// TriageOutput reports the triage result for one finding.
 type TriageOutput struct {
 	FindingID     string `json:"finding_id"`
 	AnalysisState string `json:"analysis_state"`
 	GateEffect    string `json:"gate_effect"`
 }
 
+// BulkTriageInput applies one analysis state to many findings.
 type BulkTriageInput struct {
 	FindingIDs        []string
 	AnalysisState     string
@@ -41,6 +44,7 @@ type BulkTriageInput struct {
 	UserID            string
 }
 
+// GateStatusOutput is a project's gate evaluation for the API.
 type GateStatusOutput struct {
 	ThresholdBreached bool     `json:"threshold_breached"`
 	BlockingCount     int64    `json:"blocking_count"`

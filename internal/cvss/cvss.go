@@ -13,6 +13,7 @@ import (
 	gocvss40 "github.com/pandatix/go-cvss/40"
 )
 
+// Calculate scores a CVSS vector, auto-detecting the version from its prefix.
 func Calculate(vector string) (float64, error) {
 	switch {
 	case strings.HasPrefix(vector, "CVSS:4.0/"):

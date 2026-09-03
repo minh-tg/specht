@@ -10,6 +10,7 @@ import (
 	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
+// RefreshTokenRepo persists user refresh tokens.
 type RefreshTokenRepo interface {
 	Create(ctx context.Context, userID pgtype.UUID, tokenHash string, expiresAt time.Time) (sqlc.RefreshToken, error)
 	GetByHash(ctx context.Context, tokenHash string) (sqlc.RefreshToken, error)

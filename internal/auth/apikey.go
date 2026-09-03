@@ -8,10 +8,12 @@ import (
 	"fmt"
 )
 
+// APIKeyAuthenticator authenticates project-scoped API keys via a lookup callback.
 type APIKeyAuthenticator struct {
 	lookup func(ctx context.Context, keyHash string) (userID, projectID string, err error)
 }
 
+// NewAPIKeyAuthenticator builds an API key authenticator over the given key-hash lookup.
 func NewAPIKeyAuthenticator(lookup func(ctx context.Context, keyHash string) (userID, projectID string, err error)) *APIKeyAuthenticator {
 	return &APIKeyAuthenticator{lookup: lookup}
 }
@@ -28,6 +30,7 @@ func (a *APIKeyAuthenticator) Authenticate(ctx context.Context, token string) (*
 	return &Identity{UserID: userID, ProjectID: projectID, IsAPIKey: true}, nil
 }
 
+// GenerateAPIKey mints a new API key and returns the raw key plus its hash.
 func GenerateAPIKey() (rawKey, prefix, hash, lastFour string, err error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {

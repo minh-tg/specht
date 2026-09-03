@@ -11,12 +11,14 @@ import (
 	"strings"
 )
 
+// Client is a typed HTTP client for the Specht API.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
 	token      string
 }
 
+// New builds a client for the given base URL (e.g. http://localhost:8080).
 func New(baseURL string, opts ...Option) *Client {
 	c := &Client{
 		baseURL:    strings.TrimRight(baseURL, "/"),
@@ -28,14 +30,17 @@ func New(baseURL string, opts ...Option) *Client {
 	return c
 }
 
+// Option configures a Client at construction.
 type Option func(*Client)
 
+// WithHTTPClient overrides the default HTTP client (e.g. for tests).
 func WithHTTPClient(hc *http.Client) Option {
 	return func(c *Client) {
 		c.httpClient = hc
 	}
 }
 
+// WithToken sets a bearer token sent on every request.
 func WithToken(token string) Option {
 	return func(c *Client) {
 		c.token = token
@@ -96,6 +101,7 @@ func (c *Client) do(method, path string, body, out any) error {
 	return nil
 }
 
+// Error is a non-2xx API response, carrying the server error code when present.
 type Error struct {
 	Code       string
 	Message    string

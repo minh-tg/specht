@@ -7,6 +7,7 @@ import (
 	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
+// UpsertReachabilityParams is the input to a reachability-assessment upsert.
 type UpsertReachabilityParams struct {
 	FindingID  pgtype.UUID
 	Reachable  bool

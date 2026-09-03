@@ -12,6 +12,7 @@ type pgReportRepo struct {
 	q *sqlc.Queries
 }
 
+// CreateReportParams is the input to creating a report row.
 type CreateReportParams struct {
 	ProjectID     pgtype.UUID
 	ToolName      string

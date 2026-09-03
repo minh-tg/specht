@@ -7,6 +7,7 @@ import (
 	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
+// UpsertSignoffParams is the input to a signoff upsert.
 type UpsertSignoffParams struct {
 	FindingID  pgtype.UUID
 	Status     string

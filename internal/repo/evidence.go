@@ -7,6 +7,7 @@ import (
 	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
+// CreateEvidenceParams is the input to creating an evidence artifact.
 type CreateEvidenceParams struct {
 	FindingID   pgtype.UUID
 	Type        string
