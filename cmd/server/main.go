@@ -83,7 +83,11 @@ func main() {
 			if key.RevokedAt.Valid {
 				return "", "", fmt.Errorf("key revoked")
 			}
-			return uuid.UUID(key.ID.Bytes).String(), uuid.UUID(key.ProjectID.Bytes).String(), nil
+			actorID := ""
+			if key.CreatedBy.Valid {
+				actorID = uuid.UUID(key.CreatedBy.Bytes).String()
+			}
+			return actorID, uuid.UUID(key.ProjectID.Bytes).String(), nil
 		},
 	})
 
@@ -268,11 +272,39 @@ func runWatcherDaemon(ctx context.Context, repos *repo.Repos, cfg config) {
 		slog.Error("watcher: list projects", "error", err)
 		os.Exit(1)
 	}
-	projectIDs := make([]pgtype.UUID, len(projects))
-	projectNames := make(map[string]string, len(projects))
-	for i, p := range projects {
+	// Per-project enable/interval config (migration 000020): watch
+	// only cve_watcher_enabled projects and schedule each project independently.
+	watched := make([]sqlc.Project, 0, len(projects))
+	for _, p := range projects {
+		if !p.CveWatcherEnabled {
+			continue
+		}
+		watched = append(watched, p)
+	}
+	if len(watched) == 0 {
+		slog.Info("watcher: no enabled projects")
+		return
+	}
+	projectIDs := make([]pgtype.UUID, len(watched))
+	projectNames := make(map[string]string, len(watched))
+	projectIntervals := make(map[pgtype.UUID]time.Duration, len(watched))
+	for i, p := range watched {
 		projectIDs[i] = p.ID
 		projectNames[uuid.UUID(p.ID.Bytes).String()] = p.Name
+		if p.CveWatcherIntervalSeconds > 0 {
+			projectIntervals[p.ID] = time.Duration(p.CveWatcherIntervalSeconds) * time.Second
+		} else {
+			projectIntervals[p.ID] = watcherPollInterval
+		}
+	}
+	cacheTTL := watcherPollInterval
+	if cacheTTL <= 0 {
+		cacheTTL = 6 * time.Hour
+	}
+	for _, interval := range projectIntervals {
+		if interval > 0 && interval < cacheTTL {
+			cacheTTL = interval
+		}
 	}
 
 	watcher.RunCveWatcher(ctx, watcher.RunCveWatcherConfig{
@@ -281,7 +313,7 @@ func runWatcherDaemon(ctx context.Context, repos *repo.Repos, cfg config) {
 			Client: watcher.NewHTTPClient(watcher.HTTPClientConfig{
 				Endpoint:  watcherOSVEndpoint,
 				BatchSize: watcherBatchSize,
-				CacheTTL:  watcherPollInterval,
+				CacheTTL:  cacheTTL,
 			}),
 			Store:    watcher.NewPollStore(repos),
 			Projects: projectIDs,
@@ -293,8 +325,8 @@ func runWatcherDaemon(ctx context.Context, repos *repo.Repos, cfg config) {
 				return repos.Inventory.DistinctInventory(ctx, projectID, repo.IntervalFromDuration(since))
 			},
 			FindGap: repos.Findings.FindScaFindingIdForPurlAndCve,
-			GetWatermark: func(ctx context.Context) (time.Time, bool, error) {
-				st, err := repos.Watcher.GetState(ctx)
+			GetWatermark: func(ctx context.Context, projectID pgtype.UUID) (time.Time, bool, error) {
+				st, err := repos.Watcher.GetProjectState(ctx, projectID)
 				if errors.Is(err, pgx.ErrNoRows) {
 					return time.Time{}, false, nil
 				}
@@ -303,10 +335,25 @@ func runWatcherDaemon(ctx context.Context, repos *repo.Repos, cfg config) {
 				}
 				return st.LastSuccessfulPollAt.Time, st.LastSuccessfulPollAt.Valid, nil
 			},
-			SetWatermark: repos.Watcher.UpdateState,
+			SetWatermark: func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error {
+				return repos.Watcher.UpsertProjectState(ctx, projectID, ts)
+			},
+			// Health hooks: record attempt/failure state so operators can
+			// see whether the watcher is healthy or failing.
+			RecordAttempt: func(ctx context.Context, ts time.Time) error {
+				return repos.Watcher.RecordAttempt(ctx, ts)
+			},
+			RecordFailure: func(ctx context.Context, errText string, ts time.Time) error {
+				return repos.Watcher.RecordFailure(ctx, errText, ts)
+			},
+			RecordSuccess: func(ctx context.Context, ts time.Time) error {
+				return repos.Watcher.UpdateState(ctx, ts)
+			},
+			ResetFailure: repos.Watcher.ResetFailure,
 			Logger:       slog.Default(),
 			InventoryTTL: cfg.inventoryTTL,
 			Since:        watcherSince,
 		},
+		ProjectIntervals: projectIntervals,
 	})
 }

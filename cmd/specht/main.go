@@ -27,9 +27,11 @@ const (
 	cmdProjectsGet
 	cmdFindingsList
 	cmdFindingsGet
+	cmdFindingsReachability
 	cmdGateCheck
 	cmdStats
 	cmdWatcherBackfill
+	cmdWatcherStatus
 )
 
 type command struct {
@@ -39,6 +41,8 @@ type command struct {
 	findingID string
 	severity  string
 	status    string
+	state     string
+	evidence  string
 	limit     int
 	since     string
 	dryRun    bool
@@ -107,6 +111,25 @@ func parseArgs(args []string) (command, error) {
 				return command{}, fmt.Errorf("missing finding ID")
 			}
 			return command{cmd: cmdFindingsGet, findingID: rest[2]}, nil
+		case "reachability":
+			c := command{cmd: cmdFindingsReachability}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--finding" && i+1 < len(rest):
+					c.findingID = rest[i+1]
+					i++
+				case rest[i] == "--state" && i+1 < len(rest):
+					c.state = rest[i+1]
+					i++
+				case rest[i] == "--evidence" && i+1 < len(rest):
+					c.evidence = rest[i+1]
+					i++
+				}
+			}
+			if c.findingID == "" {
+				return command{}, fmt.Errorf("--finding is required for findings reachability")
+			}
+			return c, nil
 		default:
 			return command{}, fmt.Errorf("unknown findings subcommand: %s", rest[1])
 		}
@@ -165,6 +188,8 @@ func parseArgs(args []string) (command, error) {
 				}
 			}
 			return c, nil
+		case "status":
+			return command{cmd: cmdWatcherStatus}, nil
 		default:
 			return command{}, fmt.Errorf("unknown watcher subcommand: %s", rest[1])
 		}
@@ -248,6 +273,28 @@ func run(cl *client.Client, cmd command) error {
 		fmt.Printf("ID:           %s\nTitle:        %s\nSeverity:     %s\nScore:        %s\nState:        %s\nAnalysis:     %s\nGate Effect:  %s\nFingerprint:  %s\nKind:         %s\n", f.ID, f.CurrentTitle, f.CurrentSeverity, score, f.State, f.AnalysisState, f.GateEffect, f.Fingerprint, f.FindingKind)
 		return nil
 
+	case cmdFindingsReachability:
+		if cmd.state != "" {
+			assess, err := cl.UpsertReachability(cmd.findingID, cmd.state, cmd.evidence)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("reachability set: finding=%s state=%s evidence=%q\n", assess.FindingID, assess.State, assess.Evidence)
+			return nil
+		}
+		history, err := cl.ListReachability(cmd.findingID)
+		if err != nil {
+			return err
+		}
+		if len(history) == 0 {
+			fmt.Println("no reachability assessments for finding")
+			return nil
+		}
+		for _, a := range history {
+			fmt.Printf("%s\t%s\t%s\t%s\n", a.CreatedAt, a.State, a.AssessedBy, a.Evidence)
+		}
+		return nil
+
 	case cmdGateCheck:
 		gs, err := cl.GetGateStatus(cmd.project, cmd.severity)
 		if err != nil {
@@ -257,7 +304,11 @@ func run(cl *client.Client, cmd command) error {
 			fmt.Printf("gate FAILED: %d blocking finding(s)\n", gs.BlockingCount)
 			if len(gs.BlockedBy) > 0 {
 				for _, b := range gs.BlockedBy {
-					fmt.Printf("  blocked by: %s\n", b)
+					reach := "unknown"
+					if r, ok := gs.BlockedByReachability[b]; ok && r != "" {
+						reach = r
+					}
+					fmt.Printf("  blocked by: %s (reachability: %s)\n", b, reach)
 				}
 			}
 			os.Exit(1)
@@ -283,6 +334,33 @@ func run(cl *client.Client, cmd command) error {
 			fmt.Printf("  Latest Scan:     %s by %s (%s)\n", stats.LatestReport.ID, stats.LatestReport.ToolName, stats.LatestReport.Status)
 		}
 		return nil
+
+	case cmdWatcherStatus:
+		ws, err := cl.GetWatcherStatus()
+		if err != nil {
+			return err
+		}
+		if ws.LastSuccessfulPollAt != "" {
+			fmt.Printf("Last Successful Poll:  %s\n", ws.LastSuccessfulPollAt)
+		} else {
+			fmt.Println("Last Successful Poll:  never (cold start)")
+		}
+		if ws.LastPollAttemptAt != "" {
+			fmt.Printf("Last Poll Attempt:     %s\n", ws.LastPollAttemptAt)
+		}
+		if ws.LastError != "" {
+			fmt.Printf("Last Error:            %s\n", ws.LastError)
+		}
+		fmt.Printf("Consecutive Failures:  %d\n", ws.ConsecutiveFailures)
+		switch {
+		case ws.Healthy:
+			fmt.Println("Status:                healthy")
+		case ws.Stale:
+			fmt.Printf("Status:                STALE (no successful poll within %s)\n", ws.StalenessWindow)
+		default:
+			fmt.Println("Status:                FAILING")
+		}
+		return nil
 	}
 
 	return nil
@@ -299,10 +377,14 @@ Commands:
     [--status open]                        Filter by status
     [--limit N]                            Limit results
   findings get <id>                       Show finding details
+  findings reachability --finding <id>    List reachability assessments (omit --state)
+  findings reachability --finding <id> --state <s> [--evidence <e>]
+                                          Set reachability (reachable|not_reachable|unknown|not_applicable)
   gate check --project <slug>             Check project gate status
     [--severity critical]                  Severity threshold
   stats show <slug>                       Show project statistics
   watcher backfill [--since <ISO8601>]    Run one CVE watcher poll
+  watcher status                          Show watcher health (last poll, failures)
     [--dry-run]                           Report only; write nothing
   help                                     Show this help
 
@@ -411,8 +493,8 @@ func runWatcherBackfill(cmd command) error {
 			return repos.Inventory.DistinctInventory(ctx, projectID, repo.IntervalFromDuration(since))
 		},
 		FindGap: repos.Findings.FindScaFindingIdForPurlAndCve,
-		GetWatermark: func(ctx context.Context) (time.Time, bool, error) {
-			st, err := repos.Watcher.GetState(ctx)
+		GetWatermark: func(ctx context.Context, projectID pgtype.UUID) (time.Time, bool, error) {
+			st, err := repos.Watcher.GetProjectState(ctx, projectID)
 			if errors.Is(err, pgx.ErrNoRows) {
 				return time.Time{}, false, nil
 			}
@@ -421,11 +503,11 @@ func runWatcherBackfill(cmd command) error {
 			}
 			return st.LastSuccessfulPollAt.Time, st.LastSuccessfulPollAt.Valid, nil
 		},
-		SetWatermark: func(ctx context.Context, ts time.Time) error {
+		SetWatermark: func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error {
 			if cmd.dryRun {
 				return nil // dry-run writes nothing
 			}
-			return repos.Watcher.UpdateState(ctx, ts)
+			return repos.Watcher.UpsertProjectState(ctx, projectID, ts)
 		},
 		Logger:       slog.Default(),
 		InventoryTTL: inventoryTTL,

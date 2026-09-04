@@ -28,6 +28,19 @@ export interface Finding {
 export interface GateStatus {
   threshold_breached: boolean;
   blocking_count: number;
+  blocked_by?: string[];
+  blocked_by_reachability?: Record<string, string>;
+  waived_count?: number;
+}
+
+export interface ReachabilityAssessment {
+  id: string;
+  finding_id: string;
+  state: string;
+  evidence: string;
+  assessed_by: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface RegisterResponse {

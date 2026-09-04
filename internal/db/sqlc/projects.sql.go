@@ -14,7 +14,7 @@ import (
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (slug, name, description, deployment_threshold, settings)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate
+RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds
 `
 
 type CreateProjectParams struct {
@@ -44,12 +44,14 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CveWatcherGate,
+		&i.CveWatcherEnabled,
+		&i.CveWatcherIntervalSeconds,
 	)
 	return i, err
 }
 
 const getProjectBySlug = `-- name: GetProjectBySlug :one
-SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate FROM projects
+SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds FROM projects
 WHERE slug = $1 LIMIT 1
 `
 
@@ -66,12 +68,14 @@ func (q *Queries) GetProjectBySlug(ctx context.Context, slug string) (Project, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.CveWatcherGate,
+		&i.CveWatcherEnabled,
+		&i.CveWatcherIntervalSeconds,
 	)
 	return i, err
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate FROM projects
+SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds FROM projects
 ORDER BY created_at DESC
 `
 
@@ -94,6 +98,8 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.CveWatcherGate,
+			&i.CveWatcherEnabled,
+			&i.CveWatcherIntervalSeconds,
 		); err != nil {
 			return nil, err
 		}

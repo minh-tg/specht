@@ -25,10 +25,6 @@ function ProjectLayout() {
   const path = location.pathname;
   const currentTab = path.endsWith("/reports") ? "reports" : "findings";
 
-  if (path.includes("/findings/") && !path.endsWith("/findings")) {
-    return <FindingDetail />;
-  }
-
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <Link
@@ -73,55 +69,69 @@ function HomePage() {
   );
 }
 
+export function AppRoutes() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+      <Route path="/register" element={<Register />} />
+      <Route
+        path="/"
+        element={
+          <ProtectedRoute>
+            <HomePage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/:slug/findings"
+        element={
+          <ProtectedRoute>
+            <ProjectLayout />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/:slug/findings/:findingId"
+        element={
+          <ProtectedRoute>
+            <FindingDetail />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/:slug/reports"
+        element={
+          <ProtectedRoute>
+            <ProjectLayout />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ingest"
+        element={
+          <ProtectedRoute>
+            <Ingest />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/api-keys"
+        element={
+          <ProtectedRoute>
+            <ApiKeys />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
 function AppLayout() {
   return (
     <AuthProvider>
       <Navbar />
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <HomePage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/:slug/findings"
-          element={
-            <ProtectedRoute>
-              <ProjectLayout />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/:slug/reports"
-          element={
-            <ProtectedRoute>
-              <ProjectLayout />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/ingest"
-          element={
-            <ProtectedRoute>
-              <Ingest />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/api-keys"
-          element={
-            <ProtectedRoute>
-              <ApiKeys />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
+      <AppRoutes />
     </AuthProvider>
   );
 }

@@ -191,8 +191,10 @@ func baseDeps() PollDeps {
 		FindGap: func(ctx context.Context, pid pgtype.UUID, purlName string, candidateIDs []string) (pgtype.UUID, error) {
 			return pgtype.UUID{}, pgx.ErrNoRows
 		},
-		GetWatermark: func(ctx context.Context) (time.Time, bool, error) { return time.Time{}, false, nil },
-		SetWatermark: func(ctx context.Context, ts time.Time) error { return nil },
+		GetWatermark: func(ctx context.Context, projectID pgtype.UUID) (time.Time, bool, error) {
+			return time.Time{}, false, nil
+		},
+		SetWatermark: func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error { return nil },
 		Now:          func() time.Time { return fixedNow },
 		Logger:       testLogger(),
 		InventoryTTL: 720 * time.Hour,
@@ -208,7 +210,10 @@ func TestPollOnce_ColdStartFullHistory_AdvancesWatermark(t *testing.T) {
 	}
 	var wm time.Time
 	watermarked := false
-	deps.SetWatermark = func(ctx context.Context, ts time.Time) error { wm, watermarked = ts, true; return nil }
+	deps.SetWatermark = func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error {
+		wm, watermarked = ts, true
+		return nil
+	}
 
 	outcome, err := PollOnce(context.Background(), deps)
 	require.NoError(t, err)
@@ -232,7 +237,7 @@ func TestPollOnce_WatermarkUntouchedOnFailure(t *testing.T) {
 		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
 	watermarked := false
-	deps.SetWatermark = func(ctx context.Context, ts time.Time) error { watermarked = true; return nil }
+	deps.SetWatermark = func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error { watermarked = true; return nil }
 
 	_, err := PollOnce(context.Background(), deps)
 	require.Error(t, err)
@@ -249,7 +254,7 @@ func TestPollOnce_WarmPollFiltersAdvisoriesBeforeWatermark(t *testing.T) {
 	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
 		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
-	deps.GetWatermark = func(ctx context.Context) (time.Time, bool, error) {
+	deps.GetWatermark = func(ctx context.Context, projectID pgtype.UUID) (time.Time, bool, error) {
 		return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), true, nil
 	}
 
@@ -336,10 +341,38 @@ func TestPollOnce_BatchResponseMappingAcrossGroups(t *testing.T) {
 func TestPollOnce_EmptyInventorySkipsClient(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
+	watermarked := false
+	deps.SetWatermark = func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error {
+		watermarked = true
+		return nil
+	}
 	outcome, err := PollOnce(context.Background(), deps) // inventory returns nil
 	require.NoError(t, err)
 	assert.Zero(t, client.callCount(), "no OSV query for an empty inventory")
 	assert.Equal(t, 0, outcome.Created)
+	assert.False(t, watermarked, "empty inventory must not advance its watermark")
+}
+
+func TestPollOnce_UnqueryableInventoryDoesNotAdvanceWatermark(t *testing.T) {
+	deps := baseDeps()
+	client := deps.Client.(*fakeClient)
+	watermarked := false
+	deps.SetWatermark = func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error {
+		watermarked = true
+		return nil
+	}
+	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
+		return []sqlc.DistinctInventoryRow{
+			inventoryRow("pkg:generic/noname@1.0.0", "npm", "", "1.0.0"),
+			inventoryRow("pkg:generic/noeco@1.0.0", "", "noeco", "1.0.0"),
+		}, nil
+	}
+
+	outcome, err := PollOnce(context.Background(), deps)
+	require.NoError(t, err)
+	assert.Zero(t, client.callCount())
+	assert.Zero(t, outcome.Queried)
+	assert.False(t, watermarked, "unqueryable inventory must not advance its watermark")
 }
 
 func TestPollOnce_UnqueryableRowsDropped(t *testing.T) {
@@ -371,7 +404,7 @@ func TestPollOnce_StoreErrorAbortsAndKeepsWatermark(t *testing.T) {
 	store := deps.Store.(*recordingStore)
 	store.persistErr = errors.New("tx failed")
 	watermarked := false
-	deps.SetWatermark = func(ctx context.Context, ts time.Time) error { watermarked = true; return nil }
+	deps.SetWatermark = func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error { watermarked = true; return nil }
 
 	_, err := PollOnce(context.Background(), deps)
 	require.Error(t, err)
@@ -438,7 +471,7 @@ func TestPollOnce_MalformedResponseDoesNotAdvanceWatermark(t *testing.T) {
 		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
 	watermarked := false
-	deps.SetWatermark = func(ctx context.Context, ts time.Time) error { watermarked = true; return nil }
+	deps.SetWatermark = func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error { watermarked = true; return nil }
 
 	_, err := PollOnce(context.Background(), deps)
 	require.Error(t, err)
@@ -678,6 +711,21 @@ func (f *flakyClient) QueryBatch(ctx context.Context, queries []Query) ([]QueryR
 	return f.inner.QueryBatch(ctx, queries)
 }
 
+type failingProjectClient struct {
+	inner Client
+	name  string
+	err   error
+}
+
+func (f *failingProjectClient) QueryBatch(ctx context.Context, queries []Query) ([]QueryResult, error) {
+	for _, q := range queries {
+		if q.Package.Name == f.name {
+			return nil, f.err
+		}
+	}
+	return f.inner.QueryBatch(ctx, queries)
+}
+
 func TestRunCveWatcher_BackoffResetsOnSuccess(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
@@ -731,6 +779,178 @@ func TestRunCveWatcher_BackoffResetsOnSuccess(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("daemon did not stop on cancellation")
 	}
+}
+
+func TestRunCveWatcher_RecordsSuccessTimestamp(t *testing.T) {
+	deps := baseDeps()
+	success := make(chan time.Time, 1)
+	deps.RecordSuccess = func(ctx context.Context, ts time.Time) error {
+		success <- ts
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := runDaemon(ctx, RunCveWatcherConfig{
+		PollDeps:     deps,
+		PollInterval: time.Minute,
+		Jitter:       func(d time.Duration) time.Duration { return d },
+		Sleep: func(ctx context.Context, d time.Duration) error {
+			cancel()
+			return ctx.Err()
+		},
+		Logger: testLogger(),
+	})
+
+	select {
+	case successAt := <-success:
+		assert.False(t, successAt.IsZero(), "successful polls must record a completion timestamp")
+	case <-time.After(2 * time.Second):
+		t.Fatal("successful poll did not record a completion timestamp")
+	}
+	cancel()
+	<-done
+}
+
+func TestRunCveWatcher_ProjectIntervalsScheduleIndependently(t *testing.T) {
+	projectTwo := pgtype.UUID{Bytes: uuid.MustParse("33333333-3333-3333-3333-333333333333"), Valid: true}
+	deps := baseDeps()
+	deps.Projects = []pgtype.UUID{projectID, projectTwo}
+	client := deps.Client.(*fakeClient)
+	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
+
+	var mu sync.Mutex
+	clock := fixedNow
+	var inventoryProjects []pgtype.UUID
+	var projectTwoPolls int
+	observedProjectTwo := make(chan struct{})
+	var observeOnce sync.Once
+	ctx, cancel := context.WithCancel(context.Background())
+	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
+		mu.Lock()
+		inventoryProjects = append(inventoryProjects, pid)
+		if pid == projectTwo {
+			projectTwoPolls++
+			if projectTwoPolls == 2 {
+				observeOnce.Do(func() {
+					close(observedProjectTwo)
+					cancel()
+				})
+			}
+		}
+		mu.Unlock()
+		row := inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")
+		row.ProjectID = pid
+		return []sqlc.DistinctInventoryRow{row}, nil
+	}
+
+	stopped := make(chan struct{})
+	done := runDaemon(ctx, RunCveWatcherConfig{
+		PollDeps:     deps,
+		PollInterval: time.Hour,
+		ProjectIntervals: map[pgtype.UUID]time.Duration{
+			projectID:  time.Minute,
+			projectTwo: 5 * time.Minute,
+		},
+		Jitter: func(d time.Duration) time.Duration { return d },
+		Now: func() time.Time {
+			mu.Lock()
+			defer mu.Unlock()
+			return clock
+		},
+		Sleep: func(ctx context.Context, d time.Duration) error {
+			mu.Lock()
+			clock = clock.Add(d)
+			mu.Unlock()
+			if ctx.Err() != nil {
+				close(stopped)
+				return ctx.Err()
+			}
+			return nil
+		},
+		Logger: testLogger(),
+	})
+
+	select {
+	case <-observedProjectTwo:
+	case <-time.After(2 * time.Second):
+		t.Fatal("slower project was not scheduled after its configured interval")
+	}
+	select {
+	case <-stopped:
+	case <-time.After(2 * time.Second):
+		t.Fatal("scheduled daemon did not stop")
+	}
+	<-done
+
+	mu.Lock()
+	got := append([]pgtype.UUID(nil), inventoryProjects...)
+	mu.Unlock()
+	want := []pgtype.UUID{projectID, projectTwo, projectID, projectID, projectID, projectID, projectID, projectTwo}
+	assert.Equal(t, want, got)
+}
+
+func TestRunCveWatcher_ScheduledProjectsFailIndependently(t *testing.T) {
+	projectTwo := pgtype.UUID{Bytes: uuid.MustParse("33333333-3333-3333-3333-333333333333"), Valid: true}
+	deps := baseDeps()
+	deps.Projects = []pgtype.UUID{projectID, projectTwo}
+	inner := deps.Client.(*fakeClient)
+	inner.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
+	deps.Client = &failingProjectClient{inner: inner, name: "broken", err: errors.New("project upstream down")}
+
+	bAttempted := make(chan struct{}, 1)
+	watermarked := make(chan pgtype.UUID, 1)
+	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
+		row := inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")
+		if pid == projectTwo {
+			row = inventoryRow("pkg:npm/broken@1.0.0", "npm", "broken", "1.0.0")
+			bAttempted <- struct{}{}
+		}
+		row.ProjectID = pid
+		return []sqlc.DistinctInventoryRow{row}, nil
+	}
+	deps.SetWatermark = func(ctx context.Context, pid pgtype.UUID, ts time.Time) error {
+		watermarked <- pid
+		return nil
+	}
+	nf := &fakeNotifier{notify: func(ctx context.Context, ns []Notification) error { return nil }}
+	deps.Notifier = nf
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := runDaemon(ctx, RunCveWatcherConfig{
+		PollDeps:     deps,
+		PollInterval: time.Hour,
+		ProjectIntervals: map[pgtype.UUID]time.Duration{
+			projectID:  time.Hour,
+			projectTwo: time.Hour,
+		},
+		InitialBackoff: time.Minute,
+		Jitter:         func(d time.Duration) time.Duration { return d },
+		Sleep: func(ctx context.Context, d time.Duration) error {
+			cancel()
+			return ctx.Err()
+		},
+		Logger: testLogger(),
+	})
+
+	select {
+	case got := <-watermarked:
+		assert.Equal(t, projectID, got)
+	case <-time.After(2 * time.Second):
+		t.Fatal("successful project was not completed")
+	}
+	select {
+	case <-bAttempted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("failed project was not attempted")
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("scheduled daemon did not stop")
+	}
+	eventually(t, func() bool { return len(nf.batches()) == 1 }, 2*time.Second)
 }
 
 func TestRunCveWatcher_StopsOnContextCancel(t *testing.T) {

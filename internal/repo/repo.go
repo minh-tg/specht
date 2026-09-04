@@ -173,6 +173,8 @@ type ReachabilityRepo interface {
 	Upsert(ctx context.Context, arg UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error)
 	ListByFinding(ctx context.Context, findingID pgtype.UUID) ([]sqlc.ReachabilityAssessment, error)
 	GetByID(ctx context.Context, id pgtype.UUID) (sqlc.ReachabilityAssessment, error)
+	LatestByFinding(ctx context.Context, findingID pgtype.UUID) (sqlc.ReachabilityAssessment, error)
+	LatestByFindings(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ReachabilityAssessment, error)
 }
 
 // EvidenceRepo persists evidence artifacts attached to findings.

@@ -55,10 +55,11 @@ type mockUsecases struct {
 	listWaiverEventsFn   func(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
 	checkWaiverMatchFn   func(ctx context.Context, projectSlug, findingID string) (bool, error)
 	getProjectStatsFn    func(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error)
+	getWatcherStatusFn   func(ctx context.Context) (*usecase.WatcherStatusResponse, error)
 	createEvidenceFn     func(ctx context.Context, findingID, userID, typ, url, description string) (sqlc.EvidenceArtifact, error)
 	listEvidenceFn       func(ctx context.Context, findingID string) ([]sqlc.EvidenceArtifact, error)
 	deleteEvidenceFn     func(ctx context.Context, evidenceID string) error
-	upsertReachabilityFn func(ctx context.Context, findingID, userID string, reachable bool, evidence string) (*usecase.ReachabilityResponse, error)
+	upsertReachabilityFn func(ctx context.Context, findingID, userID, state, evidence string) (*usecase.ReachabilityResponse, error)
 	listReachabilityFn   func(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error)
 	upsertSignoffFn      func(ctx context.Context, findingID, userID, status, comment string) (*usecase.SignoffResponse, error)
 	getSignoffFn         func(ctx context.Context, findingID string) (*usecase.SignoffResponse, error)
@@ -134,7 +135,7 @@ func (m *mockUsecases) Login(ctx context.Context, email, password string) (*usec
 	return m.loginFn(ctx, email, password)
 }
 
-func (m *mockUsecases) CreateAPIKey(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error) {
+func (m *mockUsecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string) (*usecase.APIKeyResponse, error) {
 	if m.createAPIKeyFn == nil {
 		return nil, fmt.Errorf("unexpected call to CreateAPIKey")
 	}
@@ -288,6 +289,13 @@ func (m *mockUsecases) GetProjectStats(ctx context.Context, projectSlug string) 
 	return m.getProjectStatsFn(ctx, projectSlug)
 }
 
+func (m *mockUsecases) GetWatcherStatus(ctx context.Context) (*usecase.WatcherStatusResponse, error) {
+	if m.getWatcherStatusFn == nil {
+		return nil, fmt.Errorf("unexpected call to GetWatcherStatus")
+	}
+	return m.getWatcherStatusFn(ctx)
+}
+
 func (m *mockUsecases) CreateEvidence(ctx context.Context, findingID, userID, typ, url, description string) (sqlc.EvidenceArtifact, error) {
 	if m.createEvidenceFn == nil {
 		return sqlc.EvidenceArtifact{}, fmt.Errorf("unexpected call to CreateEvidence")
@@ -309,11 +317,11 @@ func (m *mockUsecases) DeleteEvidence(ctx context.Context, evidenceID string) er
 	return m.deleteEvidenceFn(ctx, evidenceID)
 }
 
-func (m *mockUsecases) UpsertReachability(ctx context.Context, findingID, userID string, reachable bool, evidence string) (*usecase.ReachabilityResponse, error) {
+func (m *mockUsecases) UpsertReachability(ctx context.Context, findingID, userID, state, evidence string) (*usecase.ReachabilityResponse, error) {
 	if m.upsertReachabilityFn == nil {
 		return nil, fmt.Errorf("unexpected call to UpsertReachability")
 	}
-	return m.upsertReachabilityFn(ctx, findingID, userID, reachable, evidence)
+	return m.upsertReachabilityFn(ctx, findingID, userID, state, evidence)
 }
 
 func (m *mockUsecases) ListReachability(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error) {
@@ -538,6 +546,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/me", h.Me)
 	r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
 	r.Get("/api/v1/projects/{slug}/stats", h.GetProjectStats)
+	r.Get("/api/v1/watcher/status", h.GetWatcherStatus)
 	return r
 }
 
@@ -877,6 +886,9 @@ func TestNewRouterRoutes(t *testing.T) {
 		listAPIKeysFn:  func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error) { return nil, nil },
 		revokeAPIKeyFn: func(ctx context.Context, projectSlug, keyID string) error { return nil },
 		getFindingFn:   func(ctx context.Context, findingID string) (*usecase.FindingResponse, error) { return nil, nil },
+		checkWaiverMatchFn: func(ctx context.Context, projectSlug, findingID string) (bool, error) {
+			return true, nil
+		},
 	}
 	router := NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth})
 	require.NotNil(t, router)
@@ -929,6 +941,15 @@ func TestNewRouterRoutes(t *testing.T) {
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 		assert.NotEqual(t, http.StatusNotFound, w.Code)
+	})
+
+	t.Run("waiver check match accepts POST", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/v1/projects/my-app/waivers/check-match", strings.NewReader(`{"finding_id":"f1"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+testToken(t))
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
 	})
 
 	t.Run("unauthenticated request returns 401", func(t *testing.T) {
@@ -1046,6 +1067,7 @@ func TestCreateAPIKey_Success(t *testing.T) {
 	body := strings.NewReader(`{"project":"my-app","name":"ci-key"}`)
 	req := httptest.NewRequest("POST", "/api/v1/auth/apikeys", body)
 	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "test-user"}))
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -1308,6 +1330,24 @@ func TestGetFinding_NotFound(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestGetFinding_APIKeyAccessDenied(t *testing.T) {
+	mock := &mockUsecases{
+		getFindingFn: func(ctx context.Context, findingID string) (*usecase.FindingResponse, error) {
+			return nil, usecase.ErrProjectAccessDenied
+		},
+	}
+	h := &Handler{usecase: mock}
+	req := httptest.NewRequest("GET", "/api/v1/findings/00000000-0000-0000-0000-000000000021", nil)
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{
+		UserID: "00000000-0000-0000-0000-000000000040", IsAPIKey: true,
+	}))
+	req = addChiURLParam(req, "id", "00000000-0000-0000-0000-000000000021")
+	w := httptest.NewRecorder()
+	h.GetFinding(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
 }
 
 // ----- Refresh Handler Tests -----
@@ -1867,17 +1907,30 @@ func TestEnforceProjectAccess_SessionAuthNoScope(t *testing.T) {
 }
 
 func TestEnforceProjectAccess_APIKeyMatching(t *testing.T) {
-	h := &Handler{}
+	projectID := "00000000-0000-0000-0000-000000000001"
+	h := &Handler{usecase: &mockUsecases{
+		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			assert.Equal(t, "my-app", slug)
+			return &usecase.ProjectResponse{ID: projectID, Slug: slug}, nil
+		},
+	}}
 	req := httptest.NewRequest("GET", "/api/v1/projects/my-app", nil)
-	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "key-1", ProjectID: "my-app", IsAPIKey: true}))
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "key-1", ProjectID: projectID, IsAPIKey: true}))
 	err := h.enforceProjectAccess(req, "my-app")
 	assert.NoError(t, err)
 }
 
 func TestEnforceProjectAccess_APIKeyNonMatching(t *testing.T) {
-	h := &Handler{}
+	projectID := "00000000-0000-0000-0000-000000000001"
+	otherProjectID := "00000000-0000-0000-0000-000000000002"
+	h := &Handler{usecase: &mockUsecases{
+		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			assert.Equal(t, "other-project", slug)
+			return &usecase.ProjectResponse{ID: otherProjectID, Slug: slug}, nil
+		},
+	}}
 	req := httptest.NewRequest("GET", "/api/v1/projects/other-project", nil)
-	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "key-1", ProjectID: "my-app", IsAPIKey: true}))
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "key-1", ProjectID: projectID, IsAPIKey: true}))
 	err := h.enforceProjectAccess(req, "other-project")
 	assert.Error(t, err)
 }
@@ -1892,11 +1945,17 @@ func TestEnforceProjectAccess_NilIdentity(t *testing.T) {
 // ----- Handler-level enforcement test -----
 
 func TestListFindings_APIKeyAccessDenied(t *testing.T) {
-	mock := &mockUsecases{}
+	projectID := "00000000-0000-0000-0000-000000000001"
+	otherProjectID := "00000000-0000-0000-0000-000000000002"
+	mock := &mockUsecases{
+		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			return &usecase.ProjectResponse{ID: otherProjectID, Slug: slug}, nil
+		},
+	}
 	handler := &Handler{usecase: mock}
 	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings", nil)
 	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{
-		UserID: "key-1", ProjectID: "other-project", IsAPIKey: true,
+		UserID: "key-1", ProjectID: projectID, IsAPIKey: true,
 	}))
 	req = addChiURLParam(req, "slug", "my-app")
 	w := httptest.NewRecorder()
@@ -1914,7 +1973,11 @@ func TestListFindings_APIKeyAccessDenied(t *testing.T) {
 }
 
 func TestListFindings_APIKeyAllowed(t *testing.T) {
+	projectID := "00000000-0000-0000-0000-000000000001"
 	mock := &mockUsecases{
+		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			return &usecase.ProjectResponse{ID: projectID, Slug: slug}, nil
+		},
 		listFindingsFn: func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error) {
 			return sampleFindings(), nil
 		},
@@ -1922,11 +1985,104 @@ func TestListFindings_APIKeyAllowed(t *testing.T) {
 	handler := &Handler{usecase: mock}
 	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings", nil)
 	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{
-		UserID: "key-1", ProjectID: "my-app", IsAPIKey: true,
+		UserID: "key-1", ProjectID: projectID, IsAPIKey: true,
 	}))
 	req = addChiURLParam(req, "slug", "my-app")
 	w := httptest.NewRecorder()
 	handler.ListFindings(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestWatcherStatusHandler(t *testing.T) {
+	mock := &mockUsecases{
+		getWatcherStatusFn: func(ctx context.Context) (*usecase.WatcherStatusResponse, error) {
+			return &usecase.WatcherStatusResponse{
+				LastSuccessfulPollAt: "2026-09-03T10:00:00Z",
+				ConsecutiveFailures:  0,
+				Healthy:              true,
+			}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/watcher/status", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.WatcherStatusResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.True(t, resp.Healthy)
+	assert.Equal(t, "2026-09-03T10:00:00Z", resp.LastSuccessfulPollAt)
+}
+
+func TestGetGateStatus_APIKeyUUIDProject(t *testing.T) {
+	projectID := "00000000-0000-0000-0000-000000000001"
+	mock := &mockUsecases{
+		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			return &usecase.ProjectResponse{ID: projectID, Slug: slug}, nil
+		},
+		getGateStatusFn: func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error) {
+			assert.Equal(t, "my-app", slug)
+			return &usecase.GateStatusOutput{}, nil
+		},
+	}
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/gate", nil)
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{
+		UserID: "key-1", ProjectID: projectID, IsAPIKey: true,
+	}))
+	w := httptest.NewRecorder()
+	testRouter(mock).ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestReachabilityHandlers_InvalidFindingID(t *testing.T) {
+	tests := []struct {
+		name   string
+		method string
+		body   string
+		handle func(*Handler, http.ResponseWriter, *http.Request)
+	}{
+		{
+			name:   "list",
+			method: "GET",
+			handle: (*Handler).ListReachability,
+		},
+		{
+			name:   "upsert",
+			method: "POST",
+			body:   `{"state":"unknown"}`,
+			handle: (*Handler).UpsertReachability,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &mockUsecases{}
+			if tt.name == "list" {
+				mock.listReachabilityFn = func(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error) {
+					return nil, usecase.ErrInvalidFindingID
+				}
+			} else {
+				mock.upsertReachabilityFn = func(ctx context.Context, findingID, userID, state, evidence string) (*usecase.ReachabilityResponse, error) {
+					return nil, usecase.ErrInvalidFindingID
+				}
+			}
+			h := &Handler{usecase: mock}
+			req := httptest.NewRequest(tt.method, "/api/v1/findings/not-a-uuid/reachability", strings.NewReader(tt.body))
+			req = addChiURLParam(req, "findingID", "not-a-uuid")
+			if tt.name == "upsert" {
+				req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "user-1"}))
+			}
+			w := httptest.NewRecorder()
+			tt.handle(h, w, req)
+
+			assert.Equal(t, http.StatusBadRequest, w.Code)
+			var resp apiError
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+			assert.Equal(t, "invalid_id", resp.Error.Code)
+		})
+	}
 }

@@ -73,7 +73,7 @@ type (
 	}
 
 	APIKeyUsecases interface {
-		CreateAPIKey(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error)
+		CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string) (*usecase.APIKeyResponse, error)
 		ListAPIKeys(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
 		RevokeAPIKey(ctx context.Context, projectSlug, keyID string) error
 	}
@@ -123,7 +123,7 @@ type (
 	}
 
 	ReachabilityUsecases interface {
-		UpsertReachability(ctx context.Context, findingID, userID string, reachable bool, evidence string) (*usecase.ReachabilityResponse, error)
+		UpsertReachability(ctx context.Context, findingID, userID, state, evidence string) (*usecase.ReachabilityResponse, error)
 		ListReachability(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error)
 	}
 
@@ -134,6 +134,10 @@ type (
 
 	StatsUsecases interface {
 		GetProjectStats(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error)
+	}
+
+	WatcherUsecases interface {
+		GetWatcherStatus(ctx context.Context) (*usecase.WatcherStatusResponse, error)
 	}
 )
 
@@ -154,6 +158,7 @@ type usecaseInterface interface {
 	ReachabilityUsecases
 	SignoffUsecases
 	StatsUsecases
+	WatcherUsecases
 }
 
 // NewHandler builds the HTTP handlers over a use-case implementation.
@@ -219,10 +224,14 @@ func parseIntParam(r *http.Request, name string, defaultVal int32) int32 {
 
 func (h *Handler) enforceProjectAccess(r *http.Request, projectSlug string) error {
 	ident := auth.ContextIdentity(r.Context())
-	if ident == nil || ident.ProjectID == "" {
+	if ident == nil || ident.ProjectID == "" || !ident.IsAPIKey {
 		return nil
 	}
-	if ident.IsAPIKey && ident.ProjectID != projectSlug {
+	if h.usecase == nil {
+		return fmt.Errorf("project_access_denied")
+	}
+	project, err := h.usecase.GetProject(r.Context(), projectSlug)
+	if err != nil || project == nil || project.ID != ident.ProjectID {
 		return fmt.Errorf("project_access_denied")
 	}
 	return nil

@@ -38,7 +38,10 @@ type GateStatus struct {
 	ThresholdBreached bool     `json:"threshold_breached"`
 	BlockingCount     int64    `json:"blocking_count"`
 	BlockedBy         []string `json:"blocked_by,omitempty"`
-	WaivedCount       int      `json:"waived_count,omitempty"`
+	// BlockedByReachability maps each blocked finding id to its latest
+	// reachability state.
+	BlockedByReachability map[string]string `json:"blocked_by_reachability,omitempty"`
+	WaivedCount           int               `json:"waived_count,omitempty"`
 }
 
 // Project is a scan project (the top-level tenant of findings and reports).
@@ -329,4 +332,32 @@ type APIError struct {
 
 type apiErrorWrapper struct {
 	Error APIError `json:"error"`
+}
+
+// ReachabilityAssessment is a finding's human reachability assessment.
+type ReachabilityAssessment struct {
+	ID         string `json:"id"`
+	FindingID  string `json:"finding_id"`
+	State      string `json:"state"`
+	Evidence   string `json:"evidence"`
+	AssessedBy string `json:"assessed_by"`
+	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
+}
+
+// UpsertReachabilityRequest sets a finding's reachability assessment.
+type UpsertReachabilityRequest struct {
+	State    string `json:"state"`
+	Evidence string `json:"evidence"`
+}
+
+// WatcherStatus is the CVE watcher daemon's health.
+type WatcherStatus struct {
+	LastSuccessfulPollAt string `json:"last_successful_poll_at,omitempty"`
+	LastPollAttemptAt    string `json:"last_poll_attempt_at,omitempty"`
+	LastError            string `json:"last_error,omitempty"`
+	ConsecutiveFailures  int32  `json:"consecutive_failures"`
+	Healthy              bool   `json:"healthy"`
+	Stale                bool   `json:"stale"`
+	StalenessWindow      string `json:"staleness_window,omitempty"`
 }

@@ -16,6 +16,9 @@ type API interface {
 	ListFindings(projectSlug string, severities, states []string, limit, offset int32) ([]client.Finding, error)
 	GetFinding(findingID string) (*client.Finding, error)
 	GetGateStatus(projectSlug string, severity string) (*client.GateStatus, error)
+	UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error)
+	ListReachability(findingID string) ([]client.ReachabilityAssessment, error)
+	GetWatcherStatus() (*client.WatcherStatus, error)
 	ListWaivers(projectSlug string) ([]client.Waiver, error)
 	GetWaiver(projectSlug, waiverID string) (*client.WaiverDetail, error)
 	CreateWaiver(projectSlug string, req *client.CreateWaiverRequest) (*client.Waiver, error)
@@ -114,6 +117,27 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 						"severity": map[string]any{"type": "string", "description": "Severity threshold (default: high,critical)"},
 					},
 					"required": []string{"project"},
+				},
+			},
+			{
+				Name:        "reachability_set",
+				Description: "Set a finding's reachability assessment (reachable, not_reachable, unknown, not_applicable)",
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"finding_id": map[string]any{"type": "string", "description": "Finding ID"},
+						"state":      map[string]any{"type": "string", "description": "reachable | not_reachable | unknown | not_applicable"},
+						"evidence":   map[string]any{"type": "string", "description": "Optional evidence note"},
+					},
+					"required": []string{"finding_id", "state"},
+				},
+			},
+			{
+				Name:        "watcher_status",
+				Description: "Check CVE watcher daemon health (last poll, failures)",
+				InputSchema: map[string]any{
+					"type":       "object",
+					"properties": map[string]any{},
 				},
 			},
 			{
@@ -217,6 +241,10 @@ func handleToolCall(api API, msg jsonRPCMessage) jsonRPCMessage {
 		return callFindingsGet(api, msg.ID, params.Arguments)
 	case "gate_check":
 		return callGateCheck(api, msg.ID, params.Arguments)
+	case "reachability_set":
+		return callReachabilitySet(api, msg.ID, params.Arguments)
+	case "watcher_status":
+		return callWatcherStatus(api, msg.ID)
 	case "waivers_list":
 		return callWaiversList(api, msg.ID, params.Arguments)
 	case "waivers_get":
@@ -333,13 +361,75 @@ func callGateCheck(api API, id any, args *json.RawMessage) jsonRPCMessage {
 		text = fmt.Sprintf("gate FAILED: %d blocking finding(s)", gs.BlockingCount)
 		if len(gs.BlockedBy) > 0 {
 			for _, b := range gs.BlockedBy {
-				text += fmt.Sprintf("\n  blocked by: %s", b)
+				reach := "unknown"
+				if r, ok := gs.BlockedByReachability[b]; ok && r != "" {
+					reach = r
+				}
+				text += fmt.Sprintf("\n  blocked by: %s (reachability: %s)", b, reach)
 			}
 		}
 	} else {
 		text = "gate PASSED: no blocking findings"
 	}
 
+	result, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
+	raw := json.RawMessage(result)
+	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &raw}
+}
+
+func callReachabilitySet(api API, id any, args *json.RawMessage) jsonRPCMessage {
+	a, err := readArgs[struct {
+		FindingID string `json:"finding_id"`
+		State     string `json:"state"`
+		Evidence  string `json:"evidence"`
+	}](args)
+	if err != nil {
+		return errorResponse(id, -32602, "invalid arguments")
+	}
+	if a.FindingID == "" || a.State == "" {
+		return errorResponse(id, -32602, "finding_id and state are required")
+	}
+
+	assess, err := api.UpsertReachability(a.FindingID, a.State, a.Evidence)
+	if err != nil {
+		return errorResponse(id, -32603, err.Error())
+	}
+
+	text := fmt.Sprintf("reachability set: finding=%s state=%s", assess.FindingID, assess.State)
+	if assess.Evidence != "" {
+		text += fmt.Sprintf(" evidence=%q", assess.Evidence)
+	}
+	result, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
+	raw := json.RawMessage(result)
+	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &raw}
+}
+
+func callWatcherStatus(api API, id any) jsonRPCMessage {
+	ws, err := api.GetWatcherStatus()
+	if err != nil {
+		return errorResponse(id, -32603, err.Error())
+	}
+	var text string
+	if ws.LastSuccessfulPollAt != "" {
+		text = fmt.Sprintf("last successful poll: %s", ws.LastSuccessfulPollAt)
+	} else {
+		text = "last successful poll: never (cold start)"
+	}
+	if ws.LastPollAttemptAt != "" {
+		text += fmt.Sprintf("\nlast poll attempt: %s", ws.LastPollAttemptAt)
+	}
+	if ws.LastError != "" {
+		text += fmt.Sprintf("\nlast error: %s", ws.LastError)
+	}
+	text += fmt.Sprintf("\nconsecutive failures: %d", ws.ConsecutiveFailures)
+	switch {
+	case ws.Healthy:
+		text += "\nstatus: healthy"
+	case ws.Stale:
+		text += fmt.Sprintf("\nstatus: STALE (no successful poll within %s)", ws.StalenessWindow)
+	default:
+		text += "\nstatus: FAILING"
+	}
 	result, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
 	raw := json.RawMessage(result)
 	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &raw}

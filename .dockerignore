@@ -1,0 +1,6 @@
+.git
+bin
+go.sum
+frontend/node_modules
+frontend/dist
+cmd/server/dist/dist

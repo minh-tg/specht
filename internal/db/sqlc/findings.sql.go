@@ -122,6 +122,16 @@ WHERE f.project_id = $1
           AND f.analysis_state <> 'unanalyzed'
       )
   )
+  AND COALESCE((
+      SELECT ra.state
+      FROM reachability_assessments ra
+      WHERE ra.finding_id = f.id
+      ORDER BY ra.updated_at DESC
+      LIMIT 1
+  ), 'unknown'::reachability_state) NOT IN (
+      'not_reachable'::reachability_state,
+      'not_applicable'::reachability_state
+  )
 `
 
 type CountBlockingFindingsParams struct {
@@ -418,6 +428,16 @@ SELECT EXISTS (
               p.cve_watcher_gate = 'require_triage'
               AND f.analysis_state <> 'unanalyzed'
           )
+      )
+      AND COALESCE((
+          SELECT ra.state
+          FROM reachability_assessments ra
+          WHERE ra.finding_id = f.id
+          ORDER BY ra.updated_at DESC
+          LIMIT 1
+      ), 'unknown'::reachability_state) NOT IN (
+          'not_reachable'::reachability_state,
+          'not_applicable'::reachability_state
       )
 ) AS threshold_breached
 `

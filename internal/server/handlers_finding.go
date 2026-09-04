@@ -21,7 +21,9 @@ func (h *Handler) GetFinding(w http.ResponseWriter, r *http.Request) {
 
 	finding, err := h.usecase.GetFinding(r.Context(), id)
 	if err != nil {
-		if _, parseErr := uuid.Parse(id); parseErr != nil {
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+		} else if _, parseErr := uuid.Parse(id); parseErr != nil {
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		} else {
 			respondError(w, http.StatusNotFound, "not_found", "finding not found")

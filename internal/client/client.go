@@ -436,3 +436,31 @@ func (c *Client) CheckWaiverMatch(projectSlug, findingID string) (bool, error) {
 	}
 	return resp.Matched, nil
 }
+
+// UpsertReachability sets a finding's reachability assessment (state is one
+// of reachable, not_reachable, unknown, not_applicable).
+func (c *Client) UpsertReachability(findingID, state, evidence string) (*ReachabilityAssessment, error) {
+	var resp ReachabilityAssessment
+	if err := c.do("POST", "/api/v1/findings/"+url.PathEscape(findingID)+"/reachability", &UpsertReachabilityRequest{State: state, Evidence: evidence}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ListReachability returns a finding's reachability assessment history.
+func (c *Client) ListReachability(findingID string) ([]ReachabilityAssessment, error) {
+	var resp []ReachabilityAssessment
+	if err := c.do("GET", "/api/v1/findings/"+url.PathEscape(findingID)+"/reachability", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// GetWatcherStatus returns the CVE watcher daemon's health.
+func (c *Client) GetWatcherStatus() (*WatcherStatus, error) {
+	var resp WatcherStatus
+	if err := c.do("GET", "/api/v1/watcher/status", nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}

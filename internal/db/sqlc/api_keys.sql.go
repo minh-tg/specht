@@ -12,9 +12,9 @@ import (
 )
 
 const createAPIKey = `-- name: CreateAPIKey :one
-INSERT INTO api_keys (project_id, name, key_prefix, key_hash, last_four, scopes)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, project_id, name, key_prefix, key_hash, last_four, scopes, expires_at, last_used_at, created_at, revoked_at
+INSERT INTO api_keys (project_id, name, key_prefix, key_hash, last_four, scopes, created_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+RETURNING id, project_id, name, key_prefix, key_hash, last_four, scopes, expires_at, last_used_at, created_at, revoked_at, created_by
 `
 
 type CreateAPIKeyParams struct {
@@ -24,6 +24,7 @@ type CreateAPIKeyParams struct {
 	KeyHash   string      `json:"key_hash"`
 	LastFour  pgtype.Text `json:"last_four"`
 	Scopes    []byte      `json:"scopes"`
+	CreatedBy pgtype.UUID `json:"created_by"`
 }
 
 func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error) {
@@ -34,6 +35,7 @@ func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (Api
 		arg.KeyHash,
 		arg.LastFour,
 		arg.Scopes,
+		arg.CreatedBy,
 	)
 	var i ApiKey
 	err := row.Scan(
@@ -48,12 +50,48 @@ func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (Api
 		&i.LastUsedAt,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.CreatedBy,
 	)
 	return i, err
 }
 
 const getAPIKeyByHash = `-- name: GetAPIKeyByHash :one
-SELECT id, project_id, name, key_prefix, key_hash, last_four, scopes, expires_at, last_used_at, created_at, revoked_at FROM api_keys WHERE key_hash = $1
+SELECT
+    ak.id,
+    ak.project_id,
+    ak.name,
+    ak.key_prefix,
+    ak.key_hash,
+    ak.last_four,
+    ak.scopes,
+    ak.expires_at,
+    ak.last_used_at,
+    ak.created_at,
+    ak.revoked_at,
+    COALESCE(
+        ak.created_by,
+        (SELECT pm.user_id
+         FROM project_members pm
+         WHERE pm.project_id = ak.project_id
+           AND pm.role = 'admin'
+         ORDER BY pm.created_at, pm.user_id
+         LIMIT 1),
+        (SELECT pm.user_id
+         FROM project_members pm
+         WHERE pm.project_id = ak.project_id
+         ORDER BY pm.created_at, pm.user_id
+         LIMIT 1),
+        (SELECT u.id
+         FROM users u
+         WHERE u.email = 'system@specht.local'
+         LIMIT 1),
+        (SELECT u.id
+         FROM users u
+         ORDER BY u.created_at, u.id
+         LIMIT 1)
+    ) AS created_by
+FROM api_keys ak
+WHERE ak.key_hash = $1
 `
 
 func (q *Queries) GetAPIKeyByHash(ctx context.Context, keyHash string) (ApiKey, error) {
@@ -71,6 +109,7 @@ func (q *Queries) GetAPIKeyByHash(ctx context.Context, keyHash string) (ApiKey, 
 		&i.LastUsedAt,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.CreatedBy,
 	)
 	return i, err
 }
@@ -122,7 +161,7 @@ func (q *Queries) ListAPIKeysByProject(ctx context.Context, projectID pgtype.UUI
 
 const revokeAPIKey = `-- name: RevokeAPIKey :one
 UPDATE api_keys SET revoked_at = NOW() WHERE id = $1 AND project_id = $2
-RETURNING id, project_id, name, key_prefix, key_hash, last_four, scopes, expires_at, last_used_at, created_at, revoked_at
+RETURNING id, project_id, name, key_prefix, key_hash, last_four, scopes, expires_at, last_used_at, created_at, revoked_at, created_by
 `
 
 type RevokeAPIKeyParams struct {
@@ -145,6 +184,7 @@ func (q *Queries) RevokeAPIKey(ctx context.Context, arg RevokeAPIKeyParams) (Api
 		&i.LastUsedAt,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.CreatedBy,
 	)
 	return i, err
 }

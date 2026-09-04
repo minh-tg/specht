@@ -63,13 +63,13 @@ type PollDeps struct {
 	// (name-level purl, candidate ids) pair, or pgx.ErrNoRows when none
 	// does. The resolved id is where the auto_rule_skipped event lands.
 	FindGap func(ctx context.Context, projectID pgtype.UUID, purlName string, candidateIDs []string) (pgtype.UUID, error)
-	// GetWatermark returns the last successful poll timestamp, or
-	// (zero, false) when no poll has ever completed (the cold-start
-	// condition).
-	GetWatermark func(ctx context.Context) (time.Time, bool, error)
-	// SetWatermark advances the watermark. The daemon calls it only after a
-	// fully successful poll.
-	SetWatermark func(ctx context.Context, ts time.Time) error
+	// GetWatermark returns the project's last successful poll timestamp, or
+	// (zero, false) when that project has never polled (cold start /
+	// catch-up). Per-project so disabling a project cannot lose advisories.
+	GetWatermark func(ctx context.Context, projectID pgtype.UUID) (time.Time, bool, error)
+	// SetWatermark advances a project's watermark. The daemon calls it only
+	// after a fully successful poll of that project's inventory.
+	SetWatermark func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error
 	// Now supplies the clock for the watermark. Defaults to time.Now.
 	Now func() time.Time
 	// Logger for poll progress. Defaults to slog.Default().
@@ -91,6 +91,19 @@ type PollDeps struct {
 	// ProjectName resolves a project's display name for notifications.
 	// When nil, the project UUID string is used as the name.
 	ProjectName func(ctx context.Context, projectID pgtype.UUID) (string, error)
+	// RecordAttempt is an optional health hook called when a poll starts.
+	// A nil hook disables attempt recording.
+	RecordAttempt func(ctx context.Context, ts time.Time) error
+	// RecordFailure is an optional health hook called after a failed poll
+	// with the error text. A nil hook disables failure recording.
+	RecordFailure func(ctx context.Context, errText string, ts time.Time) error
+	// RecordSuccess is an optional health hook called after a successful poll
+	// with its completion timestamp. A nil hook disables success recording.
+	RecordSuccess func(ctx context.Context, ts time.Time) error
+	// ResetFailure is an optional health hook called after a successful
+	// poll, clearing the consecutive-failure/error state. A nil hook
+	// disables the reset.
+	ResetFailure func(ctx context.Context) error
 }
 
 // PollOutcome summarizes one poll for logging and tests.
@@ -131,11 +144,6 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 		deps.Logger = slog.Default()
 	}
 
-	cutoff, err := pollCutoff(ctx, deps)
-	if err != nil {
-		return PollOutcome{}, fmt.Errorf("watcher state: %w", err)
-	}
-
 	now := deps.Now().UTC()
 	outcome := PollOutcome{}
 	var created []Decision
@@ -149,6 +157,18 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 			continue
 		}
 		groups := groupInventory(rows)
+		if len(groups) == 0 {
+			continue
+		}
+		// Per-project cutoff: the project's own last successful poll (or
+		// the cold-start bound when it has never polled). A project that
+		// was disabled while others advanced does not skip advisories that
+		// appeared during its disabled period — its cutoff only reflects
+		// its own history.
+		cutoff, err := pollCutoff(ctx, deps, projectID)
+		if err != nil {
+			return outcome, fmt.Errorf("cutoff for project %s: %w", uuid.UUID(projectID.Bytes), err)
+		}
 		queries := make([]Query, len(groups))
 		for i, g := range groups {
 			queries[i] = Query{Package: QueryPackage{Ecosystem: g.ecosystem, Name: g.name}}
@@ -187,11 +207,17 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 				}
 			}
 		}
+		// The project's inventory was polled successfully: advance its own
+		// watermark so the next poll uses this as its cutoff. A failure
+		// above already returned; reaching here means this project fully
+		// succeeded.
+		if deps.SetWatermark != nil {
+			if err := deps.SetWatermark(ctx, projectID, now); err != nil {
+				return outcome, fmt.Errorf("advance watermark for project %s: %w", uuid.UUID(projectID.Bytes), err)
+			}
+		}
 	}
 
-	if err := deps.SetWatermark(ctx, now); err != nil {
-		return outcome, fmt.Errorf("advance watermark: %w", err)
-	}
 	notifyCreated(ctx, deps, created)
 	deps.Logger.Info("cve watcher poll complete", "projects", outcome.Projects, "queried", outcome.Queried, "created", outcome.Created, "skipped", outcome.Skipped, "unchanged", outcome.Unchanged)
 	return outcome, nil
@@ -223,11 +249,11 @@ func notifyCreated(ctx context.Context, deps PollDeps, created []Decision) {
 	go deps.Notifier.Notify(context.WithoutCancel(ctx), notifications)
 }
 
-// pollCutoff resolves the advisory published-date lower bound: the watermark
-// on warm polls, the configured cold-start window (or full history) when no
-// watermark exists.
-func pollCutoff(ctx context.Context, deps PollDeps) (time.Time, error) {
-	wm, ok, err := deps.GetWatermark(ctx)
+// pollCutoff resolves one project's advisory published-date lower bound: the
+// project's own watermark on warm polls, the configured cold-start window (or
+// full history) when that project has never polled.
+func pollCutoff(ctx context.Context, deps PollDeps, projectID pgtype.UUID) (time.Time, error) {
+	wm, ok, err := deps.GetWatermark(ctx, projectID)
 	if err != nil {
 		return time.Time{}, err
 	}
@@ -382,9 +408,13 @@ func groupInventory(rows []sqlc.DistinctInventoryRow) []invGroup {
 type RunCveWatcherConfig struct {
 	// PollDeps feeds each PollOnce call.
 	PollDeps PollDeps
-	// PollInterval is the steady-state cadence between successful polls.
-	// Defaults to 6 hours (design spec default).
+	// PollInterval is the steady-state cadence between successful polls when
+	// ProjectIntervals has no entry for a project. Defaults to 6 hours.
 	PollInterval time.Duration
+	// ProjectIntervals schedules projects independently when non-empty. Each
+	// project in PollDeps.Projects uses its mapped interval; missing or invalid
+	// entries fall back to PollInterval.
+	ProjectIntervals map[pgtype.UUID]time.Duration
 	// InitialBackoff is the wait after the first failed poll; it doubles
 	// per failure up to MaxBackoff. Defaults to 30 seconds.
 	InitialBackoff time.Duration
@@ -399,6 +429,8 @@ type RunCveWatcherConfig struct {
 	Sleep func(ctx context.Context, d time.Duration) error
 	// Logger for loop events. Defaults to slog.Default().
 	Logger *slog.Logger
+	// Now supplies the scheduler clock. Defaults to time.Now.
+	Now func() time.Time
 }
 
 // RunCveWatcher starts the daemon loop in a background goroutine. The first
@@ -426,9 +458,17 @@ func RunCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
+	if cfg.Now == nil {
+		cfg.Now = time.Now
+	}
 
 	go func() {
 		logger := cfg.Logger
+		if len(cfg.ProjectIntervals) > 0 {
+			logger.Info("cve watcher daemon started", "projects", len(cfg.PollDeps.Projects), "project_intervals", true)
+			runScheduledCveWatcher(ctx, cfg)
+			return
+		}
 		logger.Info("cve watcher daemon started", "interval", cfg.PollInterval.String())
 		var pollMu sync.Mutex
 		backoff := time.Duration(0) // first tick is immediate
@@ -437,6 +477,12 @@ func RunCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 			if !pollMu.TryLock() {
 				logger.Warn("cve watcher poll skipped: previous poll still running")
 			} else {
+				now := cfg.Now().UTC()
+				if cfg.PollDeps.RecordAttempt != nil {
+					if err := cfg.PollDeps.RecordAttempt(ctx, now); err != nil {
+						logger.Warn("cve watcher record attempt", "error", err)
+					}
+				}
 				outcome, err := PollOnce(ctx, cfg.PollDeps)
 				pollMu.Unlock()
 				switch {
@@ -446,10 +492,25 @@ func RunCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 					// the sleep, so what we report is what we wait.
 					delay = cfg.Jitter(backoff)
 					logger.Error("cve watcher poll failed", "error", err, "next_retry", delay.String())
+					if cfg.PollDeps.RecordFailure != nil {
+						if herr := cfg.PollDeps.RecordFailure(ctx, err.Error(), now); herr != nil {
+							logger.Warn("cve watcher record failure", "error", herr)
+						}
+					}
 				default:
 					logger.Info("cve watcher poll complete", "projects", outcome.Projects, "queried", outcome.Queried, "created", outcome.Created, "skipped", outcome.Skipped, "unchanged", outcome.Unchanged)
 					backoff = 0
 					delay = cfg.Jitter(cfg.PollInterval)
+					if cfg.PollDeps.RecordSuccess != nil {
+						if herr := cfg.PollDeps.RecordSuccess(ctx, cfg.Now().UTC()); herr != nil {
+							logger.Warn("cve watcher record success", "error", herr)
+						}
+					}
+					if cfg.PollDeps.ResetFailure != nil {
+						if herr := cfg.PollDeps.ResetFailure(ctx); herr != nil {
+							logger.Warn("cve watcher reset failure", "error", herr)
+						}
+					}
 				}
 			}
 			if delay <= 0 {
@@ -463,6 +524,123 @@ func RunCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 			}
 		}
 	}()
+}
+
+func runScheduledCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
+	logger := cfg.Logger
+	intervals := make(map[pgtype.UUID]time.Duration, len(cfg.PollDeps.Projects))
+	nextDue := make(map[pgtype.UUID]time.Time, len(cfg.PollDeps.Projects))
+	now := cfg.Now().UTC()
+	for _, projectID := range cfg.PollDeps.Projects {
+		interval := cfg.ProjectIntervals[projectID]
+		if interval <= 0 {
+			interval = cfg.PollInterval
+		}
+		if interval <= 0 {
+			interval = 6 * time.Hour
+		}
+		intervals[projectID] = interval
+		nextDue[projectID] = now
+	}
+	if len(nextDue) == 0 {
+		logger.Info("cve watcher daemon stopped")
+		return
+	}
+
+	backoffs := make(map[pgtype.UUID]time.Duration, len(nextDue))
+	failedProjects := make(map[pgtype.UUID]bool, len(nextDue))
+	for {
+		now = cfg.Now().UTC()
+
+		due := make([]pgtype.UUID, 0, len(nextDue))
+		var earliest time.Time
+		for _, projectID := range cfg.PollDeps.Projects {
+			dueAt := nextDue[projectID]
+			if !now.Before(dueAt) {
+				due = append(due, projectID)
+				continue
+			}
+			if earliest.IsZero() || dueAt.Before(earliest) {
+				earliest = dueAt
+			}
+		}
+		if len(due) == 0 {
+			delay := earliest.Sub(now)
+			jittered := cfg.Jitter(delay)
+			if jittered > 0 {
+				delay = jittered
+			}
+			if err := cfg.Sleep(ctx, delay); err != nil {
+				logger.Info("cve watcher daemon stopped")
+				return
+			}
+			continue
+		}
+
+		attemptAt := now
+		if cfg.PollDeps.RecordAttempt != nil {
+			if err := cfg.PollDeps.RecordAttempt(ctx, attemptAt); err != nil {
+				logger.Warn("cve watcher record attempt", "error", err)
+			}
+		}
+		outcome := PollOutcome{}
+		var pollErr error
+		for _, projectID := range due {
+			pollDeps := cfg.PollDeps
+			pollDeps.Projects = []pgtype.UUID{projectID}
+			projectOutcome, err := PollOnce(ctx, pollDeps)
+			outcome.Projects += projectOutcome.Projects
+			outcome.Queried += projectOutcome.Queried
+			outcome.Created += projectOutcome.Created
+			outcome.Skipped += projectOutcome.Skipped
+			outcome.Unchanged += projectOutcome.Unchanged
+			outcome.Ignored += projectOutcome.Ignored
+			outcome.OrphanSkips += projectOutcome.OrphanSkips
+			if err != nil {
+				backoff := nextBackoff(backoffs[projectID], cfg.InitialBackoff, cfg.MaxBackoff)
+				backoffs[projectID] = backoff
+				delay := cfg.Jitter(backoff)
+				if delay <= 0 {
+					delay = backoff
+				}
+				nextDue[projectID] = cfg.Now().UTC().Add(delay)
+				failedProjects[projectID] = true
+				if pollErr == nil {
+					pollErr = fmt.Errorf("project %s: %w", uuid.UUID(projectID.Bytes), err)
+				}
+				logger.Error("cve watcher poll failed", "project", uuid.UUID(projectID.Bytes), "error", err, "next_retry", delay.String())
+				continue
+			}
+			delete(failedProjects, projectID)
+			backoffs[projectID] = 0
+			nextDue[projectID] = cfg.Now().UTC().Add(intervals[projectID])
+		}
+
+		if pollErr != nil {
+			if cfg.PollDeps.RecordFailure != nil {
+				if herr := cfg.PollDeps.RecordFailure(ctx, pollErr.Error(), attemptAt); herr != nil {
+					logger.Warn("cve watcher record failure", "error", herr)
+				}
+			}
+			continue
+		}
+		if len(failedProjects) > 0 {
+			continue
+		}
+
+		logger.Info("cve watcher poll complete", "projects", outcome.Projects, "queried", outcome.Queried, "created", outcome.Created, "skipped", outcome.Skipped, "unchanged", outcome.Unchanged)
+		successAt := cfg.Now().UTC()
+		if cfg.PollDeps.RecordSuccess != nil {
+			if herr := cfg.PollDeps.RecordSuccess(ctx, successAt); herr != nil {
+				logger.Warn("cve watcher record success", "error", herr)
+			}
+		}
+		if cfg.PollDeps.ResetFailure != nil {
+			if herr := cfg.PollDeps.ResetFailure(ctx); herr != nil {
+				logger.Warn("cve watcher reset failure", "error", herr)
+			}
+		}
+	}
 }
 
 // jitterDuration perturbs a scheduled delay by a uniform ±10% to avoid a

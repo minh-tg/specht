@@ -84,14 +84,15 @@ func New(deps Deps) *Usecases {
 func (u *Usecases) initGate() {
 	u.gateOnce.Do(func() {
 		u.gate = gate.New(
-			&gateFindingRepo{r: u.deps.Repos.Findings},
+			&gateFindingRepo{r: u.deps.Repos.Findings, reachability: u.deps.Repos.Reachability},
 			&gateWaiverRepo{r: u.deps.Repos.Waivers},
 		)
 	})
 }
 
 type gateFindingRepo struct {
-	r repo.FindingRepo
+	r            repo.FindingRepo
+	reachability repo.ReachabilityRepo
 }
 
 func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID string, minSeverityRank int16) ([]gate.Finding, error) {
@@ -103,6 +104,23 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 	if err != nil {
 		return nil, err
 	}
+	// Batch-load the latest reachability assessment for every blocking
+	// finding in one query (avoids an N+1 round-trip per blocker).
+	ids := make([]pgtype.UUID, len(rows))
+	for i, r := range rows {
+		ids[i] = r.ID
+	}
+	latestByFinding := map[string]gate.ReachabilityState{}
+	if a.reachability != nil && len(ids) > 0 {
+		assessments, err := a.reachability.LatestByFindings(ctx, ids)
+		if err != nil {
+			return nil, fmt.Errorf("batch load reachability: %w", err)
+		}
+		for _, as := range assessments {
+			latestByFinding[uuid.UUID(as.FindingID.Bytes).String()] = gate.ReachabilityState(as.State)
+		}
+	}
+
 	result := make([]gate.Finding, len(rows))
 	for i, r := range rows {
 		fc, ctxErr := a.r.GetFindingContext(ctx, r.ID)
@@ -120,6 +138,11 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 				artID = uuid.UUID(fc.ArtifactID.Bytes).String()
 			}
 		}
+		// No assessment in the batch => unknown (still blocks).
+		reachability := latestByFinding[uuid.UUID(r.ID.Bytes).String()]
+		if reachability == "" {
+			reachability = gate.ReachabilityUnknown
+		}
 		result[i] = gate.Finding{
 			ID:                  uuid.UUID(r.ID.Bytes).String(),
 			CurrentSeverityRank: r.CurrentSeverityRank,
@@ -129,6 +152,7 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 			EnvironmentID:       envID,
 			TargetID:            tgtID,
 			ArtifactID:          artID,
+			Reachability:        reachability,
 		}
 	}
 	return result, nil

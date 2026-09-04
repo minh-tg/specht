@@ -11,6 +11,50 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ReachabilityState string
+
+const (
+	ReachabilityStateReachable     ReachabilityState = "reachable"
+	ReachabilityStateNotReachable  ReachabilityState = "not_reachable"
+	ReachabilityStateUnknown       ReachabilityState = "unknown"
+	ReachabilityStateNotApplicable ReachabilityState = "not_applicable"
+)
+
+func (e *ReachabilityState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ReachabilityState(s)
+	case string:
+		*e = ReachabilityState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ReachabilityState: %T", src)
+	}
+	return nil
+}
+
+type NullReachabilityState struct {
+	ReachabilityState ReachabilityState `json:"reachability_state"`
+	Valid             bool              `json:"valid"` // Valid is true if ReachabilityState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullReachabilityState) Scan(value interface{}) error {
+	if value == nil {
+		ns.ReachabilityState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ReachabilityState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullReachabilityState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ReachabilityState), nil
+}
+
 type SignoffStatus string
 
 const (
@@ -66,6 +110,7 @@ type ApiKey struct {
 	LastUsedAt pgtype.Timestamptz `json:"last_used_at"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
+	CreatedBy  pgtype.UUID        `json:"created_by"`
 }
 
 type Artifact struct {
@@ -182,15 +227,17 @@ type FindingOccurrence struct {
 }
 
 type Project struct {
-	ID                  pgtype.UUID        `json:"id"`
-	Slug                string             `json:"slug"`
-	Name                string             `json:"name"`
-	Description         pgtype.Text        `json:"description"`
-	DeploymentThreshold string             `json:"deployment_threshold"`
-	Settings            []byte             `json:"settings"`
-	CreatedAt           pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
-	CveWatcherGate      string             `json:"cve_watcher_gate"`
+	ID                        pgtype.UUID        `json:"id"`
+	Slug                      string             `json:"slug"`
+	Name                      string             `json:"name"`
+	Description               pgtype.Text        `json:"description"`
+	DeploymentThreshold       string             `json:"deployment_threshold"`
+	Settings                  []byte             `json:"settings"`
+	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                 pgtype.Timestamptz `json:"updated_at"`
+	CveWatcherGate            string             `json:"cve_watcher_gate"`
+	CveWatcherEnabled         bool               `json:"cve_watcher_enabled"`
+	CveWatcherIntervalSeconds int32              `json:"cve_watcher_interval_seconds"`
 }
 
 type ProjectMember struct {
@@ -203,10 +250,11 @@ type ProjectMember struct {
 type ReachabilityAssessment struct {
 	ID         pgtype.UUID        `json:"id"`
 	FindingID  pgtype.UUID        `json:"finding_id"`
-	Reachable  bool               `json:"reachable"`
 	Evidence   string             `json:"evidence"`
 	AssessedBy pgtype.UUID        `json:"assessed_by"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	State      ReachabilityState  `json:"state"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
 type RefreshToken struct {
@@ -331,7 +379,15 @@ type WaiverFindingTarget struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type WatcherProjectState struct {
+	ProjectID            pgtype.UUID        `json:"project_id"`
+	LastSuccessfulPollAt pgtype.Timestamptz `json:"last_successful_poll_at"`
+}
+
 type WatcherState struct {
 	ID                   int32              `json:"id"`
 	LastSuccessfulPollAt pgtype.Timestamptz `json:"last_successful_poll_at"`
+	LastPollAttemptAt    pgtype.Timestamptz `json:"last_poll_attempt_at"`
+	LastError            pgtype.Text        `json:"last_error"`
+	ConsecutiveFailures  int32              `json:"consecutive_failures"`
 }

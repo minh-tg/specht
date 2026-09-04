@@ -109,10 +109,14 @@ func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResp
 	return resp, nil
 }
 
-func (u *Usecases) CreateAPIKey(ctx context.Context, projectSlug, name string) (*APIKeyResponse, error) {
+func (u *Usecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string) (*APIKeyResponse, error) {
 	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("project not found: %w", err)
+	}
+	creatorID, err := uuid.Parse(createdBy)
+	if err != nil {
+		return nil, fmt.Errorf("invalid creator user id: %w", err)
 	}
 
 	rawKey, prefix, hash, lastFour, err := auth.GenerateAPIKey()
@@ -127,6 +131,7 @@ func (u *Usecases) CreateAPIKey(ctx context.Context, projectSlug, name string) (
 		KeyHash:   hash,
 		LastFour:  pgtype.Text{String: lastFour, Valid: true},
 		Scopes:    []byte(`["ingest"]`),
+		CreatedBy: pgtype.UUID{Bytes: creatorID, Valid: true},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("store key: %w", err)

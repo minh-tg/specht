@@ -49,7 +49,10 @@ type GateStatusOutput struct {
 	ThresholdBreached bool     `json:"threshold_breached"`
 	BlockingCount     int64    `json:"blocking_count"`
 	BlockedBy         []string `json:"blocked_by,omitempty"`
-	WaivedCount       int      `json:"waived_count,omitempty"`
+	// BlockedByReachability maps each blocked finding id to its latest
+	// reachability state. Callers can explain why each finding blocks the gate.
+	BlockedByReachability map[string]string `json:"blocked_by_reachability,omitempty"`
+	WaivedCount           int               `json:"waived_count,omitempty"`
 }
 
 func stateRequiresReason(s string) bool {
@@ -83,9 +86,9 @@ func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*Triag
 		return nil, fmt.Errorf("invalid user id: %w", err)
 	}
 
-	finding, err := u.deps.Repos.Findings.GetByID(ctx, pgtype.UUID{Bytes: findingID, Valid: true})
+	finding, err := u.findingWithProjectAccess(ctx, findingID)
 	if err != nil {
-		return nil, ErrFindingNotFound
+		return nil, err
 	}
 
 	if stateRequiresReason(input.AnalysisState) && input.Reason == "" {
@@ -165,6 +168,9 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 	if len(findings) != len(input.FindingIDs) {
 		return nil, fmt.Errorf("%w: one or more findings not found", ErrFindingNotFound)
 	}
+	if err := checkFindingRowsProjectAccess(ctx, findings); err != nil {
+		return nil, err
+	}
 
 	for _, f := range findings {
 		if stateRequiresReason(input.AnalysisState) && input.Reason == "" {
@@ -239,11 +245,17 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 		return nil, fmt.Errorf("gate eval: %w", err)
 	}
 
+	reachability := make(map[string]string, len(decision.BlockedByReachability))
+	for id, state := range decision.BlockedByReachability {
+		reachability[id] = string(state)
+	}
+
 	return &GateStatusOutput{
-		ThresholdBreached: decision.Status == gate.StatusFail,
-		BlockingCount:     int64(decision.TotalBlocking - decision.WaivedCount),
-		BlockedBy:         decision.BlockedBy,
-		WaivedCount:       decision.WaivedCount,
+		ThresholdBreached:     decision.Status == gate.StatusFail,
+		BlockingCount:         int64(decision.TotalBlocking - decision.WaivedCount),
+		BlockedBy:             decision.BlockedBy,
+		BlockedByReachability: reachability,
+		WaivedCount:           decision.WaivedCount,
 	}, nil
 }
 
@@ -251,6 +263,9 @@ func (u *Usecases) GetFindingEvents(ctx context.Context, findingID string, event
 	fID, err := uuid.Parse(findingID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid finding id: %w", err)
+	}
+	if err := u.checkFindingProjectAccess(ctx, fID); err != nil {
+		return nil, err
 	}
 
 	events, err := u.deps.Repos.Findings.ListEvents(ctx, pgtype.UUID{Bytes: fID, Valid: true}, eventTypes, limit, offset)
