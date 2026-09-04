@@ -135,7 +135,7 @@ func (m *mockUsecases) Login(ctx context.Context, email, password string) (*usec
 	return m.loginFn(ctx, email, password)
 }
 
-func (m *mockUsecases) CreateAPIKey(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error) {
+func (m *mockUsecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string) (*usecase.APIKeyResponse, error) {
 	if m.createAPIKeyFn == nil {
 		return nil, fmt.Errorf("unexpected call to CreateAPIKey")
 	}
@@ -1054,6 +1054,7 @@ func TestCreateAPIKey_Success(t *testing.T) {
 	body := strings.NewReader(`{"project":"my-app","name":"ci-key"}`)
 	req := httptest.NewRequest("POST", "/api/v1/auth/apikeys", body)
 	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "test-user"}))
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 

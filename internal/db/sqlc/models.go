@@ -110,6 +110,7 @@ type ApiKey struct {
 	LastUsedAt pgtype.Timestamptz `json:"last_used_at"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
+	CreatedBy  pgtype.UUID        `json:"created_by"`
 }
 
 type Artifact struct {

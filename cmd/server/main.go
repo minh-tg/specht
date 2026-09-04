@@ -83,8 +83,15 @@ func main() {
 			if key.RevokedAt.Valid {
 				return "", "", fmt.Errorf("key revoked")
 			}
-			// (api-key owner resolution added with migration 000021)
-			return uuid.UUID(key.ID.Bytes).String(), uuid.UUID(key.ProjectID.Bytes).String(), nil
+			// Resolve the API key to its owning user so assessed_by /
+			// reviewed_by references to users(id) succeed. Keys created
+			// before the created_by column (migration 000021) have no
+			// owner and therefore cannot perform actor-requiring writes.
+			actorID := ""
+			if key.CreatedBy.Valid {
+				actorID = uuid.UUID(key.CreatedBy.Bytes).String()
+			}
+			return actorID, uuid.UUID(key.ProjectID.Bytes).String(), nil
 		},
 	})
 

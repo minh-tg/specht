@@ -73,7 +73,7 @@ type (
 	}
 
 	APIKeyUsecases interface {
-		CreateAPIKey(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error)
+		CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string) (*usecase.APIKeyResponse, error)
 		ListAPIKeys(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
 		RevokeAPIKey(ctx context.Context, projectSlug, keyID string) error
 	}

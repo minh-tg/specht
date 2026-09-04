@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
@@ -1750,7 +1751,7 @@ func TestCreateAPIKey_Success(t *testing.T) {
 		Repos: &repo.Repos{Projects: pr, APIKeys: akr},
 	})
 
-	resp, err := uc.CreateAPIKey(context.Background(), "my-app", "ci-key")
+	resp, err := uc.CreateAPIKey(context.Background(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001")
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, "ci-key", resp.Name)
@@ -1768,7 +1769,7 @@ func TestCreateAPIKey_ProjectNotFound(t *testing.T) {
 		Repos: &repo.Repos{Projects: pr},
 	})
 
-	_, err := uc.CreateAPIKey(context.Background(), "nonexistent", "ci-key")
+	_, err := uc.CreateAPIKey(context.Background(), "nonexistent", "ci-key", "00000000-0000-0000-0000-000000000001")
 	assert.ErrorContains(t, err, "project not found")
 }
 
@@ -2054,4 +2055,28 @@ func TestGetFindingEvents_InvalidID(t *testing.T) {
 	uc := New(Deps{})
 	_, err := uc.GetFindingEvents(context.Background(), "not-a-uuid", nil, 10, 0)
 	assert.ErrorContains(t, err, "invalid finding id")
+}
+
+func TestCreateAPIKey_RecordsCreator(t *testing.T) {
+	pr := &mockProjectRepo{}
+	akr := &mockAPIKeyRepo{}
+	var gotCreator pgtype.UUID
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+		return makeProject(true), nil
+	}
+	akr.createFn = func(ctx context.Context, arg sqlc.CreateAPIKeyParams) (sqlc.ApiKey, error) {
+		gotCreator = arg.CreatedBy
+		var id pgtype.UUID
+		id.Scan("00000000-0000-0000-0000-000000000050")
+		var now pgtype.Timestamptz
+		now.Scan(time.Now())
+		return sqlc.ApiKey{ID: id, Name: arg.Name, KeyPrefix: arg.KeyPrefix, LastFour: pgtype.Text{Valid: false}, CreatedAt: now}, nil
+	}
+
+	uc := New(Deps{Repos: &repo.Repos{Projects: pr, APIKeys: akr}})
+	_, err := uc.CreateAPIKey(context.Background(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001")
+	require.NoError(t, err)
+	require.True(t, gotCreator.Valid)
+	assert.Equal(t, "00000000-0000-0000-0000-000000000001", uuid.UUID(gotCreator.Bytes).String())
 }

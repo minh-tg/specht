@@ -109,7 +109,13 @@ func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.usecase.CreateAPIKey(r.Context(), req.Project, req.Name)
+	ident := auth.ContextIdentity(r.Context())
+	if ident == nil || ident.UserID == "" {
+		respondError(w, http.StatusUnauthorized, "unauthorized", "user id required")
+		return
+	}
+
+	result, err := h.usecase.CreateAPIKey(r.Context(), req.Project, req.Name, ident.UserID)
 	if err != nil {
 		respondError(w, http.StatusUnprocessableEntity, "create_failed", err.Error())
 		return
