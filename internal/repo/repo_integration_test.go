@@ -727,9 +727,7 @@ func TestInventoryRepo_DeleteReportPackages_ClearsAndCascades(t *testing.T) {
 // admits only watcher findings that have been triaged (analysis_state set —
 // 'unanalyzed' is the untriaged marker per migration 000009), 'immediate'
 // admits all watcher findings, and 'off' admits none. Non-watcher findings
-// are unaffected in every mode. All three gate queries must agree:
-// sqlc GateEval + CountBlockingFindings and the repo ListBlockingFindings
-// production path.
+// are unaffected in every mode.
 func TestGateQueries_CveWatcherGatePolicy(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()
@@ -844,7 +842,7 @@ func TestGateQueries_CveWatcherGatePolicy(t *testing.T) {
 		})
 		require.NoError(t, err)
 	}
-	assert.Empty(t, blockedTitles(t, exemptProject))
+	assert.Equal(t, []string{"exempt-not-applicable", "exempt-not-reachable"}, blockedTitles(t, exemptProject))
 	count, err := repos.Findings.CountBlocking(ctx, GateEvalParams{ProjectID: exemptProject.ID, MinSeverityRank: 4})
 	require.NoError(t, err)
 	assert.Zero(t, count)

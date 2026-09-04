@@ -264,6 +264,9 @@ func (u *Usecases) GetFindingEvents(ctx context.Context, findingID string, event
 	if err != nil {
 		return nil, fmt.Errorf("invalid finding id: %w", err)
 	}
+	if err := u.checkFindingProjectAccess(ctx, fID); err != nil {
+		return nil, err
+	}
 
 	events, err := u.deps.Repos.Findings.ListEvents(ctx, pgtype.UUID{Bytes: fID, Valid: true}, eventTypes, limit, offset)
 	if err != nil {

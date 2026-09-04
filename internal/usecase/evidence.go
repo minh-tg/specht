@@ -42,6 +42,9 @@ func (u *Usecases) ListEvidence(ctx context.Context, findingID string) ([]sqlc.E
 	if err != nil {
 		return nil, fmt.Errorf("invalid finding id: %w", err)
 	}
+	if err := u.checkFindingProjectAccess(ctx, fid); err != nil {
+		return nil, err
+	}
 	return u.deps.Repos.Evidence.ListByFinding(ctx, pgtype.UUID{Bytes: fid, Valid: true})
 }
 

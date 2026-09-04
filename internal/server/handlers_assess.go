@@ -57,8 +57,15 @@ func (h *Handler) ListEvidence(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.usecase.ListEvidence(r.Context(), findingID)
 	if err != nil {
-		slog.Error("list evidence", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		switch {
+		case errors.Is(err, usecase.ErrFindingNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+		default:
+			slog.Error("list evidence", "error", err)
+			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		}
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -108,6 +115,8 @@ func (h *Handler) UpsertReachability(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidReachabilityState):
 			respondError(w, http.StatusBadRequest, "invalid_state", err.Error())
+		case errors.Is(err, usecase.ErrInvalidFindingID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		case errors.Is(err, usecase.ErrFindingNotFound):
 			respondError(w, http.StatusNotFound, "not_found", "finding not found")
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
@@ -130,6 +139,8 @@ func (h *Handler) ListReachability(w http.ResponseWriter, r *http.Request) {
 	result, err := h.usecase.ListReachability(r.Context(), findingID)
 	if err != nil {
 		switch {
+		case errors.Is(err, usecase.ErrInvalidFindingID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		case errors.Is(err, usecase.ErrFindingNotFound):
 			respondError(w, http.StatusNotFound, "not_found", "finding not found")
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
@@ -192,8 +203,12 @@ func (h *Handler) GetSignoff(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.usecase.GetSignoff(r.Context(), findingID)
 	if err != nil {
-		slog.Error("get signoff", "error", err)
-		respondError(w, http.StatusNotFound, "not_found", "signoff not found")
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+		} else {
+			slog.Error("get signoff", "error", err)
+			respondError(w, http.StatusNotFound, "not_found", "signoff not found")
+		}
 		return
 	}
 	respondJSON(w, http.StatusOK, result)

@@ -359,13 +359,15 @@ func (m *mockScanner) Parse(ctx context.Context, data []byte) (*scanner.Normaliz
 type mockReachabilityRepo struct {
 	repo.ReachabilityRepo
 	upsertFn           func(ctx context.Context, arg repo.UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error)
+	listByFindingFn    func(ctx context.Context, findingID pgtype.UUID) ([]sqlc.ReachabilityAssessment, error)
 	latestByFindingFn  func(ctx context.Context, findingID pgtype.UUID) (sqlc.ReachabilityAssessment, error)
 	latestByFindingsFn func(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ReachabilityAssessment, error)
 }
 
 type mockEvidenceRepo struct {
 	repo.EvidenceRepo
-	getByIDFn func(ctx context.Context, id pgtype.UUID) (sqlc.EvidenceArtifact, error)
+	getByIDFn       func(ctx context.Context, id pgtype.UUID) (sqlc.EvidenceArtifact, error)
+	listByFindingFn func(ctx context.Context, findingID pgtype.UUID) ([]sqlc.EvidenceArtifact, error)
 }
 
 func (m *mockEvidenceRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.EvidenceArtifact, error) {
@@ -375,11 +377,37 @@ func (m *mockEvidenceRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Ev
 	return m.getByIDFn(ctx, id)
 }
 
+func (m *mockEvidenceRepo) ListByFinding(ctx context.Context, findingID pgtype.UUID) ([]sqlc.EvidenceArtifact, error) {
+	if m.listByFindingFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListByFinding")
+	}
+	return m.listByFindingFn(ctx, findingID)
+}
+
+type mockSignoffRepo struct {
+	repo.SignoffRepo
+	getByFindingFn func(ctx context.Context, findingID pgtype.UUID) (sqlc.Signoff, error)
+}
+
+func (m *mockSignoffRepo) GetByFinding(ctx context.Context, findingID pgtype.UUID) (sqlc.Signoff, error) {
+	if m.getByFindingFn == nil {
+		return sqlc.Signoff{}, fmt.Errorf("unexpected call to GetByFinding")
+	}
+	return m.getByFindingFn(ctx, findingID)
+}
+
 func (m *mockReachabilityRepo) Upsert(ctx context.Context, arg repo.UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error) {
 	if m.upsertFn == nil {
 		return sqlc.ReachabilityAssessment{}, fmt.Errorf("unexpected call to Upsert")
 	}
 	return m.upsertFn(ctx, arg)
+}
+
+func (m *mockReachabilityRepo) ListByFinding(ctx context.Context, findingID pgtype.UUID) ([]sqlc.ReachabilityAssessment, error) {
+	if m.listByFindingFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListByFinding")
+	}
+	return m.listByFindingFn(ctx, findingID)
 }
 
 func (m *mockReachabilityRepo) LatestByFinding(ctx context.Context, findingID pgtype.UUID) (sqlc.ReachabilityAssessment, error) {
@@ -2075,6 +2103,9 @@ func TestGetFindingEvents_Success(t *testing.T) {
 	fr := &mockFindingRepo{}
 	var fid pgtype.UUID
 	fid.Scan("00000000-0000-0000-0000-000000000021")
+	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+		return makeFindingRow(1), nil
+	}
 	fr.listEventsFn = func(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error) {
 		return []sqlc.FindingEvent{
 			{EventType: "analysis_changed"},
@@ -2231,11 +2262,60 @@ func TestUpsertReachability_UsesUpdatedAt(t *testing.T) {
 			AssessedBy: userID, CreatedAt: created, UpdatedAt: updated,
 		}, nil
 	}
-	uc := New(Deps{Repos: &repo.Repos{Reachability: rch}})
+	fr := &mockFindingRepo{}
+	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+		return makeFindingRow(1), nil
+	}
+	uc := New(Deps{Repos: &repo.Repos{Findings: fr, Reachability: rch}})
 
 	result, err := uc.UpsertReachability(context.Background(), uuid.UUID(findingID.Bytes).String(), uuid.UUID(userID.Bytes).String(), "reachable", "evidence")
 	require.NoError(t, err)
 	assert.Equal(t, updatedAt.Format(time.RFC3339), result.UpdatedAt)
+}
+
+func TestReachability_InvalidFindingID(t *testing.T) {
+	uc := New(Deps{})
+
+	_, err := uc.ListReachability(context.Background(), "not-a-uuid")
+	require.ErrorIs(t, err, ErrInvalidFindingID)
+
+	_, err = uc.UpsertReachability(
+		context.Background(),
+		"not-a-uuid",
+		"00000000-0000-0000-0000-000000000002",
+		"unknown",
+		"",
+	)
+	require.ErrorIs(t, err, ErrInvalidFindingID)
+}
+
+func TestReachability_ValidatesFindingForJWT(t *testing.T) {
+	fr := &mockFindingRepo{}
+	var findingLookups int
+	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+		findingLookups++
+		return sqlc.Finding{}, fmt.Errorf("missing finding")
+	}
+	rch := &mockReachabilityRepo{
+		listByFindingFn: func(ctx context.Context, findingID pgtype.UUID) ([]sqlc.ReachabilityAssessment, error) {
+			return nil, nil
+		},
+		upsertFn: func(ctx context.Context, arg repo.UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error) {
+			return sqlc.ReachabilityAssessment{}, nil
+		},
+	}
+	uc := New(Deps{Repos: &repo.Repos{Findings: fr, Reachability: rch}})
+	ctx := auth.ContextWithIdentity(context.Background(), &auth.Identity{
+		UserID: "00000000-0000-0000-0000-000000000002",
+	})
+	findingID := "00000000-0000-0000-0000-000000000021"
+
+	_, err := uc.ListReachability(ctx, findingID)
+	require.ErrorIs(t, err, ErrFindingNotFound)
+
+	_, err = uc.UpsertReachability(ctx, findingID, "00000000-0000-0000-0000-000000000002", "unknown", "")
+	require.ErrorIs(t, err, ErrFindingNotFound)
+	assert.Equal(t, 2, findingLookups)
 }
 
 func TestReachability_APIKeyCannotCrossProject(t *testing.T) {
@@ -2308,6 +2388,46 @@ func TestFindingWrites_APIKeyCannotCrossProject(t *testing.T) {
 		AnalysisState: "confirmed",
 		UserID:        userID,
 	})
+	require.ErrorIs(t, err, ErrProjectAccessDenied)
+}
+
+func TestFindingReads_APIKeyCannotCrossProject(t *testing.T) {
+	fr := &mockFindingRepo{}
+	finding := makeFindingRow(1)
+	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+		return finding, nil
+	}
+	fr.listEventsFn = func(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error) {
+		return []sqlc.FindingEvent{{FindingID: finding.ID}}, nil
+	}
+	er := &mockEvidenceRepo{
+		listByFindingFn: func(ctx context.Context, findingID pgtype.UUID) ([]sqlc.EvidenceArtifact, error) {
+			return []sqlc.EvidenceArtifact{{FindingID: finding.ID}}, nil
+		},
+	}
+	sr := &mockSignoffRepo{
+		getByFindingFn: func(ctx context.Context, findingID pgtype.UUID) (sqlc.Signoff, error) {
+			return sqlc.Signoff{FindingID: finding.ID}, nil
+		},
+	}
+	uc := New(Deps{Repos: &repo.Repos{Findings: fr, Evidence: er, Signoffs: sr}})
+	ctx := auth.ContextWithIdentity(context.Background(), &auth.Identity{
+		UserID:    "00000000-0000-0000-0000-000000000040",
+		ProjectID: "00000000-0000-0000-0000-000000000002",
+		IsAPIKey:  true,
+	})
+	findingID := "00000000-0000-0000-0000-000000000021"
+
+	_, err := uc.GetFinding(ctx, findingID)
+	require.ErrorIs(t, err, ErrProjectAccessDenied)
+
+	_, err = uc.GetFindingEvents(ctx, findingID, nil, 10, 0)
+	require.ErrorIs(t, err, ErrProjectAccessDenied)
+
+	_, err = uc.ListEvidence(ctx, findingID)
+	require.ErrorIs(t, err, ErrProjectAccessDenied)
+
+	_, err = uc.GetSignoff(ctx, findingID)
 	require.ErrorIs(t, err, ErrProjectAccessDenied)
 }
 

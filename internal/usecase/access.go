@@ -11,7 +11,10 @@ import (
 	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
-var ErrProjectAccessDenied = errors.New("project access denied")
+var (
+	ErrProjectAccessDenied = errors.New("project access denied")
+	ErrInvalidFindingID    = errors.New("invalid finding id")
+)
 
 func (u *Usecases) findingWithProjectAccess(ctx context.Context, findingID uuid.UUID) (sqlc.Finding, error) {
 	if u.deps.Repos == nil || u.deps.Repos.Findings == nil {
@@ -29,11 +32,6 @@ func (u *Usecases) findingWithProjectAccess(ctx context.Context, findingID uuid.
 }
 
 func (u *Usecases) checkFindingProjectAccess(ctx context.Context, findingID uuid.UUID) error {
-	ident := auth.ContextIdentity(ctx)
-	if ident == nil || !ident.IsAPIKey {
-		return nil
-	}
-
 	_, err := u.findingWithProjectAccess(ctx, findingID)
 	return err
 }

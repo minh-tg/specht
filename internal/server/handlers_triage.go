@@ -142,7 +142,14 @@ func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
 
 	events, err := h.usecase.GetFindingEvents(r.Context(), id, nil, limit, offset)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "events_failed", err.Error())
+		switch {
+		case errors.Is(err, usecase.ErrFindingNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+		default:
+			respondError(w, http.StatusInternalServerError, "events_failed", err.Error())
+		}
 		return
 	}
 

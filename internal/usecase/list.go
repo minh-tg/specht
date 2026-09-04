@@ -222,6 +222,9 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 	if err != nil {
 		return nil, fmt.Errorf("get finding: %w", err)
 	}
+	if err := checkFindingProjectIDAccess(ctx, f.ProjectID); err != nil {
+		return nil, err
+	}
 	resp := toFinding(f)
 	return &resp, nil
 }

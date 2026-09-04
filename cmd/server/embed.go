@@ -37,7 +37,16 @@ func (s spaFileSystem) Open(name string) (fs.File, error) {
 }
 
 func spaHandler(apiHandler http.Handler) http.Handler {
-	sub, err := fs.Sub(frontendDist, "dist")
+	return spaHandlerWithFS(apiHandler, frontendDist)
+}
+
+func spaHandlerWithFS(apiHandler http.Handler, assets fs.FS) http.Handler {
+	root := "dist"
+	if _, err := fs.Stat(assets, "dist/dist/index.html"); err == nil {
+		root = "dist/dist"
+	}
+
+	sub, err := fs.Sub(assets, root)
 	if err != nil {
 		panic("embedded frontend not found: " + err.Error())
 	}

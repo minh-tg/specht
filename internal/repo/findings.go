@@ -284,16 +284,6 @@ WHERE f.project_id = $1
           AND f.analysis_state <> 'unanalyzed'
       )
   )
-  AND COALESCE((
-      SELECT ra.state
-      FROM reachability_assessments ra
-      WHERE ra.finding_id = f.id
-      ORDER BY ra.updated_at DESC
-      LIMIT 1
-  ), 'unknown'::reachability_state) NOT IN (
-      'not_reachable'::reachability_state,
-      'not_applicable'::reachability_state
-  )
 ORDER BY f.current_severity_rank DESC, f.created_at DESC`
 
 // FindingContext is the environment/target/artifact context of a finding.

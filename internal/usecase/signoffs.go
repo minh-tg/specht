@@ -53,6 +53,9 @@ func (u *Usecases) GetSignoff(ctx context.Context, findingID string) (*SignoffRe
 	if err != nil {
 		return nil, fmt.Errorf("invalid finding id: %w", err)
 	}
+	if err := u.checkFindingProjectAccess(ctx, fid); err != nil {
+		return nil, err
+	}
 
 	s, err := u.deps.Repos.Signoffs.GetByFinding(ctx, pgtype.UUID{Bytes: fid, Valid: true})
 	if err != nil {

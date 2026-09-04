@@ -48,7 +48,7 @@ func (u *Usecases) UpsertReachability(ctx context.Context, findingID, userID, st
 	}
 	fid, err := uuid.Parse(findingID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid finding id: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidFindingID, err)
 	}
 	uid, err := uuid.Parse(userID)
 	if err != nil {
@@ -82,7 +82,7 @@ func (u *Usecases) UpsertReachability(ctx context.Context, findingID, userID, st
 func (u *Usecases) ListReachability(ctx context.Context, findingID string) ([]ReachabilityResponse, error) {
 	fid, err := uuid.Parse(findingID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid finding id: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidFindingID, err)
 	}
 	if err := u.checkFindingProjectAccess(ctx, fid); err != nil {
 		return nil, err

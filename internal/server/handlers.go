@@ -224,10 +224,14 @@ func parseIntParam(r *http.Request, name string, defaultVal int32) int32 {
 
 func (h *Handler) enforceProjectAccess(r *http.Request, projectSlug string) error {
 	ident := auth.ContextIdentity(r.Context())
-	if ident == nil || ident.ProjectID == "" {
+	if ident == nil || ident.ProjectID == "" || !ident.IsAPIKey {
 		return nil
 	}
-	if ident.IsAPIKey && ident.ProjectID != projectSlug {
+	if h.usecase == nil {
+		return fmt.Errorf("project_access_denied")
+	}
+	project, err := h.usecase.GetProject(r.Context(), projectSlug)
+	if err != nil || project == nil || project.ID != ident.ProjectID {
 		return fmt.Errorf("project_access_denied")
 	}
 	return nil
