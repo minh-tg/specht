@@ -123,7 +123,7 @@ type (
 	}
 
 	ReachabilityUsecases interface {
-		UpsertReachability(ctx context.Context, findingID, userID string, reachable bool, evidence string) (*usecase.ReachabilityResponse, error)
+		UpsertReachability(ctx context.Context, findingID, userID, state, evidence string) (*usecase.ReachabilityResponse, error)
 		ListReachability(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error)
 	}
 

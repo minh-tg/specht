@@ -49,7 +49,11 @@ type GateStatusOutput struct {
 	ThresholdBreached bool     `json:"threshold_breached"`
 	BlockingCount     int64    `json:"blocking_count"`
 	BlockedBy         []string `json:"blocked_by,omitempty"`
-	WaivedCount       int      `json:"waived_count,omitempty"`
+	// BlockedByReachability maps each blocked finding id to its latest
+	// reachability state (empty string = no assessment / unknown). Callers
+	// can explain why each finding blocks the gate.
+	BlockedByReachability map[string]string `json:"blocked_by_reachability,omitempty"`
+	WaivedCount           int               `json:"waived_count,omitempty"`
 }
 
 func stateRequiresReason(s string) bool {
@@ -239,11 +243,17 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 		return nil, fmt.Errorf("gate eval: %w", err)
 	}
 
+	reachability := make(map[string]string, len(decision.BlockedByReachability))
+	for id, state := range decision.BlockedByReachability {
+		reachability[id] = string(state)
+	}
+
 	return &GateStatusOutput{
-		ThresholdBreached: decision.Status == gate.StatusFail,
-		BlockingCount:     int64(decision.TotalBlocking - decision.WaivedCount),
-		BlockedBy:         decision.BlockedBy,
-		WaivedCount:       decision.WaivedCount,
+		ThresholdBreached:     decision.Status == gate.StatusFail,
+		BlockingCount:         int64(decision.TotalBlocking - decision.WaivedCount),
+		BlockedBy:             decision.BlockedBy,
+		BlockedByReachability: reachability,
+		WaivedCount:           decision.WaivedCount,
 	}, nil
 }
 

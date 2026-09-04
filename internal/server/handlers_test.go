@@ -58,7 +58,7 @@ type mockUsecases struct {
 	createEvidenceFn     func(ctx context.Context, findingID, userID, typ, url, description string) (sqlc.EvidenceArtifact, error)
 	listEvidenceFn       func(ctx context.Context, findingID string) ([]sqlc.EvidenceArtifact, error)
 	deleteEvidenceFn     func(ctx context.Context, evidenceID string) error
-	upsertReachabilityFn func(ctx context.Context, findingID, userID string, reachable bool, evidence string) (*usecase.ReachabilityResponse, error)
+	upsertReachabilityFn func(ctx context.Context, findingID, userID, state, evidence string) (*usecase.ReachabilityResponse, error)
 	listReachabilityFn   func(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error)
 	upsertSignoffFn      func(ctx context.Context, findingID, userID, status, comment string) (*usecase.SignoffResponse, error)
 	getSignoffFn         func(ctx context.Context, findingID string) (*usecase.SignoffResponse, error)
@@ -309,11 +309,11 @@ func (m *mockUsecases) DeleteEvidence(ctx context.Context, evidenceID string) er
 	return m.deleteEvidenceFn(ctx, evidenceID)
 }
 
-func (m *mockUsecases) UpsertReachability(ctx context.Context, findingID, userID string, reachable bool, evidence string) (*usecase.ReachabilityResponse, error) {
+func (m *mockUsecases) UpsertReachability(ctx context.Context, findingID, userID, state, evidence string) (*usecase.ReachabilityResponse, error) {
 	if m.upsertReachabilityFn == nil {
 		return nil, fmt.Errorf("unexpected call to UpsertReachability")
 	}
-	return m.upsertReachabilityFn(ctx, findingID, userID, reachable, evidence)
+	return m.upsertReachabilityFn(ctx, findingID, userID, state, evidence)
 }
 
 func (m *mockUsecases) ListReachability(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error) {

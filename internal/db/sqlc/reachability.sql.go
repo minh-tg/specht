@@ -12,7 +12,7 @@ import (
 )
 
 const getReachability = `-- name: GetReachability :one
-SELECT id, finding_id, reachable, evidence, assessed_by, created_at FROM reachability_assessments WHERE id = $1
+SELECT id, finding_id, evidence, assessed_by, created_at, state, updated_at FROM reachability_assessments WHERE id = $1
 `
 
 func (q *Queries) GetReachability(ctx context.Context, id pgtype.UUID) (ReachabilityAssessment, error) {
@@ -21,18 +21,83 @@ func (q *Queries) GetReachability(ctx context.Context, id pgtype.UUID) (Reachabi
 	err := row.Scan(
 		&i.ID,
 		&i.FindingID,
-		&i.Reachable,
 		&i.Evidence,
 		&i.AssessedBy,
 		&i.CreatedAt,
+		&i.State,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const listReachabilityByFinding = `-- name: ListReachabilityByFinding :many
-SELECT id, finding_id, reachable, evidence, assessed_by, created_at FROM reachability_assessments
+const latestReachabilityByFinding = `-- name: LatestReachabilityByFinding :one
+SELECT id, finding_id, evidence, assessed_by, created_at, state, updated_at FROM reachability_assessments
 WHERE finding_id = $1
-ORDER BY created_at DESC
+ORDER BY updated_at DESC
+LIMIT 1
+`
+
+// The most recent assessment for one finding, if any. Ordered by updated_at
+// so the "latest" reflects the most recent write (upserts update state
+// without touching created_at). Returns pgx.ErrNoRows when no assessment
+// exists yet.
+func (q *Queries) LatestReachabilityByFinding(ctx context.Context, findingID pgtype.UUID) (ReachabilityAssessment, error) {
+	row := q.db.QueryRow(ctx, latestReachabilityByFinding, findingID)
+	var i ReachabilityAssessment
+	err := row.Scan(
+		&i.ID,
+		&i.FindingID,
+		&i.Evidence,
+		&i.AssessedBy,
+		&i.CreatedAt,
+		&i.State,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const latestReachabilityByFindings = `-- name: LatestReachabilityByFindings :many
+SELECT DISTINCT ON (finding_id) id, finding_id, evidence, assessed_by, created_at, state, updated_at
+FROM reachability_assessments
+WHERE finding_id = ANY($1::uuid[])
+ORDER BY finding_id, updated_at DESC
+`
+
+// The latest assessment per finding for a set of finding ids (one row per
+// finding that has any assessment). Used to batch-load gate blocker
+// reachability without an N+1 query.
+func (q *Queries) LatestReachabilityByFindings(ctx context.Context, dollar_1 []pgtype.UUID) ([]ReachabilityAssessment, error) {
+	rows, err := q.db.Query(ctx, latestReachabilityByFindings, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ReachabilityAssessment
+	for rows.Next() {
+		var i ReachabilityAssessment
+		if err := rows.Scan(
+			&i.ID,
+			&i.FindingID,
+			&i.Evidence,
+			&i.AssessedBy,
+			&i.CreatedAt,
+			&i.State,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReachabilityByFinding = `-- name: ListReachabilityByFinding :many
+SELECT id, finding_id, evidence, assessed_by, created_at, state, updated_at FROM reachability_assessments
+WHERE finding_id = $1
+ORDER BY updated_at DESC
 `
 
 func (q *Queries) ListReachabilityByFinding(ctx context.Context, findingID pgtype.UUID) ([]ReachabilityAssessment, error) {
@@ -47,10 +112,11 @@ func (q *Queries) ListReachabilityByFinding(ctx context.Context, findingID pgtyp
 		if err := rows.Scan(
 			&i.ID,
 			&i.FindingID,
-			&i.Reachable,
 			&i.Evidence,
 			&i.AssessedBy,
 			&i.CreatedAt,
+			&i.State,
+			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -63,25 +129,26 @@ func (q *Queries) ListReachabilityByFinding(ctx context.Context, findingID pgtyp
 }
 
 const upsertReachability = `-- name: UpsertReachability :one
-INSERT INTO reachability_assessments (finding_id, reachable, evidence, assessed_by)
+INSERT INTO reachability_assessments (finding_id, state, evidence, assessed_by)
 VALUES ($1, $2, $3, $4)
 ON CONFLICT (finding_id, assessed_by) DO UPDATE SET
-    reachable = EXCLUDED.reachable,
-    evidence = EXCLUDED.evidence
-RETURNING id, finding_id, reachable, evidence, assessed_by, created_at
+    state = EXCLUDED.state,
+    evidence = EXCLUDED.evidence,
+    updated_at = NOW()
+RETURNING id, finding_id, evidence, assessed_by, created_at, state, updated_at
 `
 
 type UpsertReachabilityParams struct {
-	FindingID  pgtype.UUID `json:"finding_id"`
-	Reachable  bool        `json:"reachable"`
-	Evidence   string      `json:"evidence"`
-	AssessedBy pgtype.UUID `json:"assessed_by"`
+	FindingID  pgtype.UUID       `json:"finding_id"`
+	State      ReachabilityState `json:"state"`
+	Evidence   string            `json:"evidence"`
+	AssessedBy pgtype.UUID       `json:"assessed_by"`
 }
 
 func (q *Queries) UpsertReachability(ctx context.Context, arg UpsertReachabilityParams) (ReachabilityAssessment, error) {
 	row := q.db.QueryRow(ctx, upsertReachability,
 		arg.FindingID,
-		arg.Reachable,
+		arg.State,
 		arg.Evidence,
 		arg.AssessedBy,
 	)
@@ -89,10 +156,11 @@ func (q *Queries) UpsertReachability(ctx context.Context, arg UpsertReachability
 	err := row.Scan(
 		&i.ID,
 		&i.FindingID,
-		&i.Reachable,
 		&i.Evidence,
 		&i.AssessedBy,
 		&i.CreatedAt,
+		&i.State,
+		&i.UpdatedAt,
 	)
 	return i, err
 }

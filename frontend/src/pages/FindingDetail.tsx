@@ -1,7 +1,14 @@
-import { useFinding, useTriageFinding } from "@/api/hooks";
+import { useFinding, useReachability, useTriageFinding, useUpsertReachability } from "@/api/hooks";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
+
+const REACHABILITY_OPTIONS = [
+  { value: "reachable", label: "Reachable" },
+  { value: "not_reachable", label: "Not Reachable" },
+  { value: "unknown", label: "Unknown" },
+  { value: "not_applicable", label: "Not Applicable" },
+];
 
 const TRIAGE_OPTIONS = [
   { value: "confirmed", label: "Confirmed", requiresReason: false, requiresExpiry: false },
@@ -19,10 +26,22 @@ export function FindingDetail() {
   const { findingId } = useParams<{ findingId: string; }>();
   const { data: finding, isLoading, isError, error, refetch } = useFinding(findingId ?? "");
   const triageMutation = useTriageFinding();
+  const {
+    data: reachability,
+    isLoading: reachabilityLoading,
+    isError: reachabilityIsError,
+    error: reachabilityError,
+    isSuccess: reachabilityLoaded,
+  } = useReachability(findingId ?? "");
+  const reachabilityMutation = useUpsertReachability();
 
   const [selectedState, setSelectedState] = useState("");
   const [reason, setReason] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
+  const [reachState, setReachState] = useState("");
+  const [reachEvidence, setReachEvidence] = useState("");
+
+  const latestReachability = reachability?.[0];
 
   const selectedOption = TRIAGE_OPTIONS.find((o) => o.value === selectedState);
 
@@ -161,6 +180,76 @@ export function FindingDetail() {
           <p className="text-green-600 mt-2 text-xs">
             Triage saved (effect: {triageMutation.data.gate_effect})
           </p>
+        )}
+      </div>
+
+      <div className="mt-8 rounded-lg border p-4">
+        <h2 className="mb-3 text-sm font-semibold">Reachability</h2>
+        {reachabilityLoading
+          ? <p className="text-muted-foreground mb-3 text-xs">Latest: Loading...</p>
+          : reachabilityIsError
+          ? (
+            <p className="text-destructive mb-3 text-xs">
+              Unable to load reachability: {reachabilityError?.message ?? "request failed"}
+            </p>
+          )
+          : reachabilityLoaded && latestReachability
+          ? (
+            <p className="text-muted-foreground mb-3 text-xs">
+              Latest:{" "}
+              <span className="font-medium capitalize">
+                {latestReachability.state.replaceAll("_", " ")}
+              </span>
+              {latestReachability.evidence ? ` — ${latestReachability.evidence}` : ""}{" "}
+              ({new Date(latestReachability.created_at).toLocaleString()})
+            </p>
+          )
+          : reachabilityLoaded
+          ? (
+            <p className="text-muted-foreground mb-3 text-xs">
+              Latest: <span className="font-medium">Unknown</span>{" "}
+              — no assessment yet; an unassessed finding still blocks the gate until marked not
+              reachable or not applicable.
+            </p>
+          )
+          : <p className="text-muted-foreground mb-3 text-xs">Latest: Loading...</p>}
+        <div className="flex flex-wrap gap-2">
+          <select
+            className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
+            value={reachState}
+            onChange={(e) => setReachState(e.target.value)}
+          >
+            <option value="">Select assessment...</option>
+            {REACHABILITY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+          <input
+            className="border-input bg-background min-w-[200px] rounded-md border px-3 py-1.5 text-sm"
+            placeholder="Evidence"
+            value={reachEvidence}
+            onChange={(e) => setReachEvidence(e.target.value)}
+          />
+          <button
+            onClick={() =>
+              reachabilityMutation.mutate({
+                findingId: findingId ?? "",
+                state: reachState,
+                evidence: reachEvidence,
+              })}
+            disabled={!reachState || reachabilityMutation.isPending}
+            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-1.5 text-sm font-medium disabled:opacity-50"
+          >
+            {reachabilityMutation.isPending ? "Saving..." : "Assess"}
+          </button>
+        </div>
+        {reachabilityMutation.isError && (
+          <p className="text-destructive mt-2 text-xs">{reachabilityMutation.error.message}</p>
+        )}
+        {reachabilityMutation.isSuccess && (
+          <p className="text-green-600 mt-2 text-xs">Reachability saved</p>
         )}
       </div>
     </div>

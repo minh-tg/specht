@@ -20,6 +20,17 @@ const (
 	StatusError Status = "error"
 )
 
+// ReachabilityState is a finding's latest human reachability assessment.
+// The empty string means no assessment exists (treated as unknown).
+type ReachabilityState string
+
+const (
+	ReachabilityReachable     ReachabilityState = "reachable"
+	ReachabilityNotReachable  ReachabilityState = "not_reachable"
+	ReachabilityUnknown       ReachabilityState = "unknown"
+	ReachabilityNotApplicable ReachabilityState = "not_applicable"
+)
+
 // Decision is the result of a gate evaluation for one project.
 type Decision struct {
 	// Status is pass when no blocking finding is unwaived, fail when at
@@ -27,6 +38,10 @@ type Decision struct {
 	Status Status
 	// BlockedBy lists the ids of unwaived blocking findings (empty on pass).
 	BlockedBy []string
+	// BlockedByReachability maps each blocked finding id to its latest
+	// reachability state (empty when no assessment exists). It lets callers
+	// explain why each finding blocks the gate.
+	BlockedByReachability map[string]ReachabilityState
 	// WaivedCount is the number of blocking findings an active waiver covers.
 	WaivedCount int
 	// TotalBlocking is the number of blocking findings considered.
@@ -44,6 +59,9 @@ type Finding struct {
 	EnvironmentID       string
 	TargetID            string
 	ArtifactID          string
+	// Reachability is the finding's latest human reachability assessment.
+	// Empty means none exists (unknown).
+	Reachability ReachabilityState
 }
 
 // WaiverCondition is a predicate on a finding field: Field is one of
@@ -125,6 +143,7 @@ func (g *gate) Evaluate(ctx context.Context, projectID string, minSeverityRank i
 	}
 
 	var blockedBy []string
+	blockedByReachability := make(map[string]ReachabilityState, len(findings))
 	waivedCount := 0
 
 	for _, f := range findings {
@@ -132,6 +151,7 @@ func (g *gate) Evaluate(ctx context.Context, projectID string, minSeverityRank i
 			waivedCount++
 		} else {
 			blockedBy = append(blockedBy, f.ID)
+			blockedByReachability[f.ID] = f.Reachability
 		}
 	}
 
@@ -144,10 +164,11 @@ func (g *gate) Evaluate(ctx context.Context, projectID string, minSeverityRank i
 	}
 
 	return Decision{
-		Status:        StatusFail,
-		BlockedBy:     blockedBy,
-		WaivedCount:   waivedCount,
-		TotalBlocking: len(findings),
+		Status:                StatusFail,
+		BlockedBy:             blockedBy,
+		BlockedByReachability: blockedByReachability,
+		WaivedCount:           waivedCount,
+		TotalBlocking:         len(findings),
 	}, nil
 }
 

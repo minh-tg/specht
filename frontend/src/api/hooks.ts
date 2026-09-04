@@ -1,4 +1,11 @@
-import type { Finding, GateStatus, Project, Report, TriageResponse } from "@/types/api";
+import type {
+  Finding,
+  GateStatus,
+  Project,
+  ReachabilityAssessment,
+  Report,
+  TriageResponse,
+} from "@/types/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";
 
@@ -77,6 +84,32 @@ export function useTriageFinding() {
       queryClient.invalidateQueries({ queryKey: ["findings"] });
       queryClient.invalidateQueries({ queryKey: ["finding"] });
       queryClient.invalidateQueries({ queryKey: ["gate"] });
+    },
+  });
+}
+
+export function useReachability(findingId: string) {
+  return useQuery({
+    queryKey: ["reachability", findingId],
+    queryFn: () => apiFetch<ReachabilityAssessment[]>(`/api/v1/findings/${findingId}/reachability`),
+    enabled: !!findingId,
+  });
+}
+
+export function useUpsertReachability() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      { findingId, state, evidence }: { findingId: string; state: string; evidence?: string; },
+    ) =>
+      apiFetch<ReachabilityAssessment>(`/api/v1/findings/${findingId}/reachability`, {
+        method: "POST",
+        body: JSON.stringify({ state, evidence: evidence ?? "" }),
+      }),
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["reachability", vars.findingId] });
+      queryClient.invalidateQueries({ queryKey: ["gate"] });
+      queryClient.invalidateQueries({ queryKey: ["finding"] });
     },
   });
 }

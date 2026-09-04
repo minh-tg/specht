@@ -11,6 +11,50 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ReachabilityState string
+
+const (
+	ReachabilityStateReachable     ReachabilityState = "reachable"
+	ReachabilityStateNotReachable  ReachabilityState = "not_reachable"
+	ReachabilityStateUnknown       ReachabilityState = "unknown"
+	ReachabilityStateNotApplicable ReachabilityState = "not_applicable"
+)
+
+func (e *ReachabilityState) Scan(src interface{}) error {
+	switch s := src.(type) {
+	case []byte:
+		*e = ReachabilityState(s)
+	case string:
+		*e = ReachabilityState(s)
+	default:
+		return fmt.Errorf("unsupported scan type for ReachabilityState: %T", src)
+	}
+	return nil
+}
+
+type NullReachabilityState struct {
+	ReachabilityState ReachabilityState `json:"reachability_state"`
+	Valid             bool              `json:"valid"` // Valid is true if ReachabilityState is not NULL
+}
+
+// Scan implements the Scanner interface.
+func (ns *NullReachabilityState) Scan(value interface{}) error {
+	if value == nil {
+		ns.ReachabilityState, ns.Valid = "", false
+		return nil
+	}
+	ns.Valid = true
+	return ns.ReachabilityState.Scan(value)
+}
+
+// Value implements the driver Valuer interface.
+func (ns NullReachabilityState) Value() (driver.Value, error) {
+	if !ns.Valid {
+		return nil, nil
+	}
+	return string(ns.ReachabilityState), nil
+}
+
 type SignoffStatus string
 
 const (
@@ -203,10 +247,11 @@ type ProjectMember struct {
 type ReachabilityAssessment struct {
 	ID         pgtype.UUID        `json:"id"`
 	FindingID  pgtype.UUID        `json:"finding_id"`
-	Reachable  bool               `json:"reachable"`
 	Evidence   string             `json:"evidence"`
 	AssessedBy pgtype.UUID        `json:"assessed_by"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	State      ReachabilityState  `json:"state"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
 type RefreshToken struct {

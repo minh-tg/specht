@@ -12,14 +12,15 @@ import (
 
 type mockClient struct {
 	client.Client
-	findings  []client.Finding
-	gate      *client.GateStatus
-	waivers   []client.Waiver
-	waiver    *client.Waiver
-	waiverDet *client.WaiverDetail
-	events    []client.WaiverEvent
-	matched   bool
-	err       error
+	findings   []client.Finding
+	gate       *client.GateStatus
+	waivers    []client.Waiver
+	waiver     *client.Waiver
+	waiverDet  *client.WaiverDetail
+	events     []client.WaiverEvent
+	matched    bool
+	assessment *client.ReachabilityAssessment
+	err        error
 }
 
 func (m *mockClient) ListFindings(projectSlug string, severities, states []string, limit, offset int32) ([]client.Finding, error) {
@@ -35,6 +36,20 @@ func (m *mockClient) GetFinding(findingID string) (*client.Finding, error) {
 
 func (m *mockClient) GetGateStatus(projectSlug string, severity string) (*client.GateStatus, error) {
 	return m.gate, m.err
+}
+
+func (m *mockClient) UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error) {
+	if m.assessment == nil {
+		return nil, m.err
+	}
+	return m.assessment, m.err
+}
+
+func (m *mockClient) ListReachability(findingID string) ([]client.ReachabilityAssessment, error) {
+	if m.assessment == nil {
+		return nil, m.err
+	}
+	return []client.ReachabilityAssessment{*m.assessment}, m.err
 }
 
 func (m *mockClient) ListWaivers(projectSlug string) ([]client.Waiver, error) {
@@ -165,4 +180,52 @@ func TestMCPSendResponse(t *testing.T) {
 	sendResponse(&buf, resp)
 	assert.True(t, strings.HasSuffix(buf.String(), "\n"))
 	assert.True(t, strings.Contains(buf.String(), `"jsonrpc":"2.0"`))
+}
+
+func TestMCPReachabilitySet(t *testing.T) {
+	mc := &mockClient{
+		assessment: &client.ReachabilityAssessment{FindingID: "f1", State: "not_reachable", Evidence: "reviewed"},
+	}
+	raw := `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"reachability_set","arguments":{"finding_id":"f1","state":"not_reachable","evidence":"reviewed"}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(mc, req)
+	assert.Equal(t, float64(6), resp.ID)
+	require.Nil(t, resp.Error)
+	require.NotNil(t, resp.Result)
+	assert.True(t, strings.Contains(string(*resp.Result), "state=not_reachable"))
+}
+
+func TestMCPReachabilitySet_MissingArgs(t *testing.T) {
+	raw := `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"reachability_set","arguments":{"finding_id":"f1"}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(&mockClient{}, req)
+	assert.Equal(t, float64(7), resp.ID)
+	require.NotNil(t, resp.Error)
+	assert.Equal(t, -32602, resp.Error.Code)
+}
+
+func TestMCPGateCheck_ShowsReachability(t *testing.T) {
+	mc := &mockClient{
+		gate: &client.GateStatus{
+			ThresholdBreached:     true,
+			BlockingCount:         2,
+			BlockedBy:             []string{"f1", "f2"},
+			BlockedByReachability: map[string]string{"f1": "reachable", "f2": "not_reachable"},
+		},
+	}
+	raw := `{"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"gate_check","arguments":{"project":"my-app"}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(mc, req)
+	assert.Equal(t, float64(8), resp.ID)
+	require.Nil(t, resp.Error)
+	require.NotNil(t, resp.Result)
+	out := string(*resp.Result)
+	assert.True(t, strings.Contains(out, "reachability: reachable"))
+	assert.True(t, strings.Contains(out, "reachability: not_reachable"))
 }

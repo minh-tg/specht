@@ -279,3 +279,48 @@ func TestEvaluate_CveWatcherGateMatrix(t *testing.T) {
 		})
 	}
 }
+
+func TestEvaluate_BlockedByReachability_Populated(t *testing.T) {
+	g := New(
+		&mockFindingsRepo{findings: []Finding{
+			{ID: "f1", CurrentSeverityRank: 4, Fingerprint: "CVE-2024-0001", Reachability: ReachabilityReachable},
+			{ID: "f2", CurrentSeverityRank: 4, Fingerprint: "CVE-2024-0002", Reachability: ReachabilityUnknown},
+			{ID: "f3", CurrentSeverityRank: 4, Fingerprint: "CVE-2024-0003", Reachability: ""}, // no assessment
+		}},
+		&mockWaiversRepo{},
+	)
+	d, err := g.Evaluate(context.Background(), "proj-1", 3)
+	require.NoError(t, err)
+	assert.Equal(t, StatusFail, d.Status)
+	assert.Equal(t, []string{"f1", "f2", "f3"}, d.BlockedBy)
+	assert.Equal(t, ReachabilityReachable, d.BlockedByReachability["f1"])
+	assert.Equal(t, ReachabilityUnknown, d.BlockedByReachability["f2"])
+	assert.Equal(t, ReachabilityState(""), d.BlockedByReachability["f3"])
+	assert.Len(t, d.BlockedByReachability, 3)
+}
+
+func TestEvaluate_Pass_HasEmptyReachabilityMap(t *testing.T) {
+	g := New(&mockFindingsRepo{}, &mockWaiversRepo{})
+	d, err := g.Evaluate(context.Background(), "proj-1", 3)
+	require.NoError(t, err)
+	assert.Equal(t, StatusPass, d.Status)
+	assert.Empty(t, d.BlockedByReachability)
+}
+
+func TestEvaluate_WaivedFinding_NotInReachabilityMap(t *testing.T) {
+	g := New(
+		&mockFindingsRepo{findings: []Finding{
+			{ID: "f1", CurrentSeverityRank: 4, Fingerprint: "CVE-2024-0001", Reachability: ReachabilityReachable},
+			{ID: "f2", CurrentSeverityRank: 4, Fingerprint: "CVE-2024-0002", Reachability: ReachabilityNotReachable},
+		}},
+		&mockWaiversRepo{waivers: []Waiver{
+			{ID: "w1", Targets: []WaiverTarget{{FindingID: "f1"}}},
+		}},
+	)
+	d, err := g.Evaluate(context.Background(), "proj-1", 3)
+	require.NoError(t, err)
+	assert.Equal(t, StatusFail, d.Status)
+	assert.Equal(t, []string{"f2"}, d.BlockedBy)
+	assert.NotContains(t, d.BlockedByReachability, "f1")
+	assert.Equal(t, ReachabilityNotReachable, d.BlockedByReachability["f2"])
+}

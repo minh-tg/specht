@@ -8,9 +8,11 @@ import (
 )
 
 // UpsertReachabilityParams is the input to a reachability-assessment upsert.
+// State is one of the reachability_state values ('reachable',
+// 'not_reachable', 'unknown', 'not_applicable').
 type UpsertReachabilityParams struct {
 	FindingID  pgtype.UUID
-	Reachable  bool
+	State      string
 	Evidence   string
 	AssessedBy pgtype.UUID
 }
@@ -26,7 +28,7 @@ func newReachabilityRepo(q *sqlc.Queries) *pgReachabilityRepo {
 func (r *pgReachabilityRepo) Upsert(ctx context.Context, arg UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error) {
 	return r.q.UpsertReachability(ctx, sqlc.UpsertReachabilityParams{
 		FindingID:  arg.FindingID,
-		Reachable:  arg.Reachable,
+		State:      sqlc.ReachabilityState(arg.State),
 		Evidence:   arg.Evidence,
 		AssessedBy: arg.AssessedBy,
 	})
@@ -38,4 +40,12 @@ func (r *pgReachabilityRepo) ListByFinding(ctx context.Context, findingID pgtype
 
 func (r *pgReachabilityRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.ReachabilityAssessment, error) {
 	return r.q.GetReachability(ctx, id)
+}
+
+func (r *pgReachabilityRepo) LatestByFinding(ctx context.Context, findingID pgtype.UUID) (sqlc.ReachabilityAssessment, error) {
+	return r.q.LatestReachabilityByFinding(ctx, findingID)
+}
+
+func (r *pgReachabilityRepo) LatestByFindings(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ReachabilityAssessment, error) {
+	return r.q.LatestReachabilityByFindings(ctx, findingIDs)
 }
