@@ -201,7 +201,7 @@ export function FindingDetail() {
                 {latestReachability.state.replaceAll("_", " ")}
               </span>
               {latestReachability.evidence ? ` — ${latestReachability.evidence}` : ""}{" "}
-              ({new Date(latestReachability.created_at).toLocaleString()})
+              ({new Date(latestReachability.updated_at).toLocaleString()})
             </p>
           )
           : reachabilityLoaded

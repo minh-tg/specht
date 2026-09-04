@@ -35,8 +35,15 @@ func (h *Handler) CreateEvidence(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.usecase.CreateEvidence(r.Context(), findingID, userID, req.Type, req.URL, req.Description)
 	if err != nil {
-		slog.Error("create evidence", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		switch {
+		case errors.Is(err, usecase.ErrFindingNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+		default:
+			slog.Error("create evidence", "error", err)
+			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		}
 		return
 	}
 	respondJSON(w, http.StatusCreated, result)
@@ -64,8 +71,12 @@ func (h *Handler) DeleteEvidence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.usecase.DeleteEvidence(r.Context(), evidenceID); err != nil {
-		slog.Error("delete evidence", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+		} else {
+			slog.Error("delete evidence", "error", err)
+			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		}
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -159,8 +170,15 @@ func (h *Handler) UpsertSignoff(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.usecase.UpsertSignoff(r.Context(), findingID, userID, req.Status, req.Comment)
 	if err != nil {
-		slog.Error("upsert signoff", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		switch {
+		case errors.Is(err, usecase.ErrFindingNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+		default:
+			slog.Error("upsert signoff", "error", err)
+			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		}
 		return
 	}
 	respondJSON(w, http.StatusOK, result)

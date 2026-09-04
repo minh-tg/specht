@@ -45,6 +45,8 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, usecase.ErrFindingNotFound):
 			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
 		case errors.Is(err, usecase.ErrReasonRequired):
 			respondError(w, http.StatusUnprocessableEntity, "reason_required", err.Error())
 		case errors.Is(err, usecase.ErrExpiryRequired):
@@ -91,6 +93,8 @@ func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, usecase.ErrFindingNotFound):
 			respondError(w, http.StatusNotFound, "not_found", err.Error())
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
 		case errors.Is(err, usecase.ErrReasonRequired):
 			respondError(w, http.StatusUnprocessableEntity, "reason_required", err.Error())
 		case errors.Is(err, usecase.ErrExpiryRequired):

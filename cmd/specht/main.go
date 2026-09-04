@@ -291,7 +291,7 @@ func run(cl *client.Client, cmd command) error {
 			return nil
 		}
 		for _, a := range history {
-			fmt.Printf("%s\t%s\t%s\t%s\n", a.CreatedAt, a.State, a.AssessedBy, a.Evidence)
+			fmt.Printf("%s\t%s\t%s\t%s\n", a.UpdatedAt, a.State, a.AssessedBy, a.Evidence)
 		}
 		return nil
 

@@ -40,6 +40,7 @@ export interface ReachabilityAssessment {
   evidence: string;
   assessed_by: string;
   created_at: string;
+  updated_at: string;
 }
 
 export interface RegisterResponse {

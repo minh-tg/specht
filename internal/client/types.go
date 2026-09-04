@@ -342,6 +342,7 @@ type ReachabilityAssessment struct {
 	Evidence   string `json:"evidence"`
 	AssessedBy string `json:"assessed_by"`
 	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
 }
 
 // UpsertReachabilityRequest sets a finding's reachability assessment.

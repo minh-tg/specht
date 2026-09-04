@@ -87,9 +87,9 @@ func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*Triag
 		return nil, fmt.Errorf("invalid user id: %w", err)
 	}
 
-	finding, err := u.deps.Repos.Findings.GetByID(ctx, pgtype.UUID{Bytes: findingID, Valid: true})
+	finding, err := u.findingWithProjectAccess(ctx, findingID)
 	if err != nil {
-		return nil, ErrFindingNotFound
+		return nil, err
 	}
 
 	if stateRequiresReason(input.AnalysisState) && input.Reason == "" {
@@ -168,6 +168,9 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 	}
 	if len(findings) != len(input.FindingIDs) {
 		return nil, fmt.Errorf("%w: one or more findings not found", ErrFindingNotFound)
+	}
+	if err := checkFindingRowsProjectAccess(ctx, findings); err != nil {
+		return nil, err
 	}
 
 	for _, f := range findings {

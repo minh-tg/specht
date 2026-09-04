@@ -8,7 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/repo"
 )
 
@@ -22,10 +21,7 @@ const (
 
 // ErrInvalidReachabilityState is returned when an assessment state is not one
 // of the reachability_state enum values.
-var (
-	ErrInvalidReachabilityState = errors.New("invalid reachability state")
-	ErrProjectAccessDenied      = errors.New("project access denied")
-)
+var ErrInvalidReachabilityState = errors.New("invalid reachability state")
 
 func validReachabilityState(s string) bool {
 	switch s {
@@ -43,6 +39,7 @@ type ReachabilityResponse struct {
 	Evidence   string `json:"evidence"`
 	AssessedBy string `json:"assessed_by"`
 	CreatedAt  string `json:"created_at"`
+	UpdatedAt  string `json:"updated_at"`
 }
 
 func (u *Usecases) UpsertReachability(ctx context.Context, findingID, userID, state, evidence string) (*ReachabilityResponse, error) {
@@ -78,6 +75,7 @@ func (u *Usecases) UpsertReachability(ctx context.Context, findingID, userID, st
 		Evidence:   r.Evidence,
 		AssessedBy: uuid.UUID(r.AssessedBy.Bytes).String(),
 		CreatedAt:  r.CreatedAt.Time.Format(time.RFC3339),
+		UpdatedAt:  r.UpdatedAt.Time.Format(time.RFC3339),
 	}, nil
 }
 
@@ -104,29 +102,8 @@ func (u *Usecases) ListReachability(ctx context.Context, findingID string) ([]Re
 			Evidence:   r.Evidence,
 			AssessedBy: uuid.UUID(r.AssessedBy.Bytes).String(),
 			CreatedAt:  r.CreatedAt.Time.Format(time.RFC3339),
+			UpdatedAt:  r.UpdatedAt.Time.Format(time.RFC3339),
 		}
 	}
 	return result, nil
-}
-
-func (u *Usecases) checkFindingProjectAccess(ctx context.Context, findingID uuid.UUID) error {
-	ident := auth.ContextIdentity(ctx)
-	if ident == nil || !ident.IsAPIKey {
-		return nil
-	}
-	project, err := uuid.Parse(ident.ProjectID)
-	if err != nil {
-		return ErrProjectAccessDenied
-	}
-	if u.deps.Repos == nil || u.deps.Repos.Findings == nil {
-		return fmt.Errorf("check finding project: finding repository unavailable")
-	}
-	finding, err := u.deps.Repos.Findings.GetByID(ctx, pgtype.UUID{Bytes: findingID, Valid: true})
-	if err != nil {
-		return ErrFindingNotFound
-	}
-	if !finding.ProjectID.Valid || uuid.UUID(finding.ProjectID.Bytes) != project {
-		return ErrProjectAccessDenied
-	}
-	return nil
 }

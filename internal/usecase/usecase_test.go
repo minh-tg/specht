@@ -363,6 +363,18 @@ type mockReachabilityRepo struct {
 	latestByFindingsFn func(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ReachabilityAssessment, error)
 }
 
+type mockEvidenceRepo struct {
+	repo.EvidenceRepo
+	getByIDFn func(ctx context.Context, id pgtype.UUID) (sqlc.EvidenceArtifact, error)
+}
+
+func (m *mockEvidenceRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.EvidenceArtifact, error) {
+	if m.getByIDFn == nil {
+		return sqlc.EvidenceArtifact{}, fmt.Errorf("unexpected call to GetByID")
+	}
+	return m.getByIDFn(ctx, id)
+}
+
 func (m *mockReachabilityRepo) Upsert(ctx context.Context, arg repo.UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error) {
 	if m.upsertFn == nil {
 		return sqlc.ReachabilityAssessment{}, fmt.Errorf("unexpected call to Upsert")
@@ -2168,6 +2180,30 @@ func TestUpsertReachability_InvalidState(t *testing.T) {
 	require.ErrorIs(t, err, ErrInvalidReachabilityState)
 }
 
+func TestUpsertReachability_UsesUpdatedAt(t *testing.T) {
+	var id, findingID, userID pgtype.UUID
+	id.Scan("00000000-0000-0000-0000-000000000030")
+	findingID.Scan("00000000-0000-0000-0000-000000000031")
+	userID.Scan("00000000-0000-0000-0000-000000000032")
+	createdAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	updatedAt := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	var created, updated pgtype.Timestamptz
+	created.Scan(createdAt)
+	updated.Scan(updatedAt)
+	rch := &mockReachabilityRepo{}
+	rch.upsertFn = func(ctx context.Context, arg repo.UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error) {
+		return sqlc.ReachabilityAssessment{
+			ID: id, FindingID: findingID, State: sqlc.ReachabilityState("reachable"),
+			AssessedBy: userID, CreatedAt: created, UpdatedAt: updated,
+		}, nil
+	}
+	uc := New(Deps{Repos: &repo.Repos{Reachability: rch}})
+
+	result, err := uc.UpsertReachability(context.Background(), uuid.UUID(findingID.Bytes).String(), uuid.UUID(userID.Bytes).String(), "reachable", "evidence")
+	require.NoError(t, err)
+	assert.Equal(t, updatedAt.Format(time.RFC3339), result.UpdatedAt)
+}
+
 func TestReachability_APIKeyCannotCrossProject(t *testing.T) {
 	fr := &mockFindingRepo{}
 	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
@@ -2193,6 +2229,51 @@ func TestReachability_APIKeyCannotCrossProject(t *testing.T) {
 
 	_, err = uc.ListReachability(ctx,
 		"00000000-0000-0000-0000-000000000021")
+	require.ErrorIs(t, err, ErrProjectAccessDenied)
+}
+
+func TestFindingWrites_APIKeyCannotCrossProject(t *testing.T) {
+	fr := &mockFindingRepo{}
+	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+		return makeFindingRow(1), nil
+	}
+	fr.listByIDsFn = func(ctx context.Context, ids []pgtype.UUID) ([]sqlc.Finding, error) {
+		return []sqlc.Finding{makeFindingRow(1)}, nil
+	}
+	er := &mockEvidenceRepo{}
+	er.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.EvidenceArtifact, error) {
+		return sqlc.EvidenceArtifact{FindingID: makeFindingRow(1).ID}, nil
+	}
+	uc := New(Deps{Repos: &repo.Repos{Findings: fr, Evidence: er}})
+	ctx := auth.ContextWithIdentity(context.Background(), &auth.Identity{
+		UserID:    "00000000-0000-0000-0000-000000000040",
+		ProjectID: "00000000-0000-0000-0000-000000000002",
+		IsAPIKey:  true,
+	})
+	findingID := "00000000-0000-0000-0000-000000000021"
+	userID := "00000000-0000-0000-0000-000000000040"
+
+	_, err := uc.TriageFinding(ctx, TriageInput{
+		FindingID:     findingID,
+		AnalysisState: "confirmed",
+		UserID:        userID,
+	})
+	require.ErrorIs(t, err, ErrProjectAccessDenied)
+
+	_, err = uc.CreateEvidence(ctx, findingID, userID, "url", "https://example.test", "evidence")
+	require.ErrorIs(t, err, ErrProjectAccessDenied)
+
+	_, err = uc.UpsertSignoff(ctx, findingID, userID, "approved", "reviewed")
+	require.ErrorIs(t, err, ErrProjectAccessDenied)
+
+	err = uc.DeleteEvidence(ctx, "00000000-0000-0000-0000-000000000031")
+	require.ErrorIs(t, err, ErrProjectAccessDenied)
+
+	_, err = uc.BulkTriage(ctx, BulkTriageInput{
+		FindingIDs:    []string{findingID},
+		AnalysisState: "confirmed",
+		UserID:        userID,
+	})
 	require.ErrorIs(t, err, ErrProjectAccessDenied)
 }
 

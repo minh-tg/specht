@@ -31,6 +31,9 @@ func (u *Usecases) UpsertSignoff(ctx context.Context, findingID, userID, status,
 	if err != nil {
 		return nil, fmt.Errorf("invalid user id: %w", err)
 	}
+	if err := u.checkFindingProjectAccess(ctx, fid); err != nil {
+		return nil, err
+	}
 
 	s, err := u.deps.Repos.Signoffs.Upsert(ctx, repo.UpsertSignoffParams{
 		FindingID:  pgtype.UUID{Bytes: fid, Valid: true},
