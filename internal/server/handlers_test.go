@@ -55,6 +55,7 @@ type mockUsecases struct {
 	listWaiverEventsFn   func(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
 	checkWaiverMatchFn   func(ctx context.Context, projectSlug, findingID string) (bool, error)
 	getProjectStatsFn    func(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error)
+	getWatcherStatusFn   func(ctx context.Context) (*usecase.WatcherStatusResponse, error)
 	createEvidenceFn     func(ctx context.Context, findingID, userID, typ, url, description string) (sqlc.EvidenceArtifact, error)
 	listEvidenceFn       func(ctx context.Context, findingID string) ([]sqlc.EvidenceArtifact, error)
 	deleteEvidenceFn     func(ctx context.Context, evidenceID string) error
@@ -62,7 +63,6 @@ type mockUsecases struct {
 	listReachabilityFn   func(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error)
 	upsertSignoffFn      func(ctx context.Context, findingID, userID, status, comment string) (*usecase.SignoffResponse, error)
 	getSignoffFn         func(ctx context.Context, findingID string) (*usecase.SignoffResponse, error)
-	getWatcherStatusFn   func(ctx context.Context) (*usecase.WatcherStatusResponse, error)
 }
 
 func (m *mockUsecases) CreateProject(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error) {
@@ -546,6 +546,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/me", h.Me)
 	r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
 	r.Get("/api/v1/projects/{slug}/stats", h.GetProjectStats)
+	r.Get("/api/v1/watcher/status", h.GetWatcherStatus)
 	return r
 }
 
@@ -885,6 +886,9 @@ func TestNewRouterRoutes(t *testing.T) {
 		listAPIKeysFn:  func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error) { return nil, nil },
 		revokeAPIKeyFn: func(ctx context.Context, projectSlug, keyID string) error { return nil },
 		getFindingFn:   func(ctx context.Context, findingID string) (*usecase.FindingResponse, error) { return nil, nil },
+		checkWaiverMatchFn: func(ctx context.Context, projectSlug, findingID string) (bool, error) {
+			return true, nil
+		},
 	}
 	router := NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth})
 	require.NotNil(t, router)
@@ -937,6 +941,15 @@ func TestNewRouterRoutes(t *testing.T) {
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 		assert.NotEqual(t, http.StatusNotFound, w.Code)
+	})
+
+	t.Run("waiver check match accepts POST", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/api/v1/projects/my-app/waivers/check-match", strings.NewReader(`{"finding_id":"f1"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+testToken(t))
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
 	})
 
 	t.Run("unauthenticated request returns 401", func(t *testing.T) {
@@ -1938,4 +1951,27 @@ func TestListFindings_APIKeyAllowed(t *testing.T) {
 	handler.ListFindings(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestWatcherStatusHandler(t *testing.T) {
+	mock := &mockUsecases{
+		getWatcherStatusFn: func(ctx context.Context) (*usecase.WatcherStatusResponse, error) {
+			return &usecase.WatcherStatusResponse{
+				LastSuccessfulPollAt: "2026-09-03T10:00:00Z",
+				ConsecutiveFailures:  0,
+				Healthy:              true,
+			}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/watcher/status", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.WatcherStatusResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.True(t, resp.Healthy)
+	assert.Equal(t, "2026-09-03T10:00:00Z", resp.LastSuccessfulPollAt)
 }

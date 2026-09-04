@@ -356,6 +356,34 @@ func (m *mockScanner) Parse(ctx context.Context, data []byte) (*scanner.Normaliz
 	return m.parseFn(ctx, data)
 }
 
+type mockReachabilityRepo struct {
+	repo.ReachabilityRepo
+	upsertFn           func(ctx context.Context, arg repo.UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error)
+	latestByFindingFn  func(ctx context.Context, findingID pgtype.UUID) (sqlc.ReachabilityAssessment, error)
+	latestByFindingsFn func(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ReachabilityAssessment, error)
+}
+
+func (m *mockReachabilityRepo) Upsert(ctx context.Context, arg repo.UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error) {
+	if m.upsertFn == nil {
+		return sqlc.ReachabilityAssessment{}, fmt.Errorf("unexpected call to Upsert")
+	}
+	return m.upsertFn(ctx, arg)
+}
+
+func (m *mockReachabilityRepo) LatestByFinding(ctx context.Context, findingID pgtype.UUID) (sqlc.ReachabilityAssessment, error) {
+	if m.latestByFindingFn == nil {
+		return sqlc.ReachabilityAssessment{}, fmt.Errorf("unexpected call to LatestByFinding")
+	}
+	return m.latestByFindingFn(ctx, findingID)
+}
+
+func (m *mockReachabilityRepo) LatestByFindings(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ReachabilityAssessment, error) {
+	if m.latestByFindingsFn == nil {
+		return nil, fmt.Errorf("unexpected call to LatestByFindings")
+	}
+	return m.latestByFindingsFn(ctx, findingIDs)
+}
+
 type mockTargetRepo struct {
 	repo.TargetRepo
 	upsertFn  func(ctx context.Context, arg sqlc.UpsertTargetParams) (sqlc.Target, error)
@@ -2055,6 +2083,117 @@ func TestGetFindingEvents_InvalidID(t *testing.T) {
 	uc := New(Deps{})
 	_, err := uc.GetFindingEvents(context.Background(), "not-a-uuid", nil, 10, 0)
 	assert.ErrorContains(t, err, "invalid finding id")
+}
+
+func TestGetGateStatus_IncludesBlockedByReachability(t *testing.T) {
+	pr := &mockProjectRepo{}
+	fr := &mockFindingRepo{}
+	wr := &mockWaiverRepo{}
+	rch := &mockReachabilityRepo{}
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+		return makeProject(true), nil
+	}
+	fr.listBlockingFindingsFn = func(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error) {
+		rows := []sqlc.Finding{makeFindingRow(1), makeFindingRow(2)}
+		return rows, nil
+	}
+	fr.getFindingContextFn = func(ctx context.Context, findingID pgtype.UUID) (repo.FindingContext, error) {
+		return repo.FindingContext{}, fmt.Errorf("no context")
+	}
+	var batchCalls int
+	rch.latestByFindingsFn = func(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ReachabilityAssessment, error) {
+		batchCalls++
+		// Only finding 21 has an assessment; 22 is absent => unknown.
+		var out []sqlc.ReachabilityAssessment
+		for _, fid := range findingIDs {
+			if uuid.UUID(fid.Bytes).String() == "00000000-0000-0000-0000-000000000021" {
+				out = append(out, sqlc.ReachabilityAssessment{State: sqlc.ReachabilityState("reachable"), FindingID: fid})
+			}
+		}
+		return out, nil
+	}
+
+	uc := New(Deps{
+		Repos: &repo.Repos{Projects: pr, Findings: fr, Waivers: wr, Reachability: rch},
+	})
+
+	status, err := uc.GetGateStatus(context.Background(), "my-app", 2)
+	require.NoError(t, err)
+	require.NotNil(t, status)
+	assert.True(t, status.ThresholdBreached)
+	assert.Equal(t, []string{
+		"00000000-0000-0000-0000-000000000021",
+		"00000000-0000-0000-0000-000000000022",
+	}, status.BlockedBy)
+	assert.Equal(t, 1, batchCalls, "reachability must be loaded in one batched call, not N+1")
+	assert.Equal(t, map[string]string{
+		"00000000-0000-0000-0000-000000000021": "reachable",
+		"00000000-0000-0000-0000-000000000022": "unknown",
+	}, status.BlockedByReachability)
+}
+
+func TestGetGateStatus_ReachabilityLookupError(t *testing.T) {
+	pr := &mockProjectRepo{}
+	fr := &mockFindingRepo{}
+	wr := &mockWaiverRepo{}
+	rch := &mockReachabilityRepo{}
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+		return makeProject(true), nil
+	}
+	fr.listBlockingFindingsFn = func(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error) {
+		return []sqlc.Finding{makeFindingRow(1)}, nil
+	}
+	fr.getFindingContextFn = func(ctx context.Context, findingID pgtype.UUID) (repo.FindingContext, error) {
+		return repo.FindingContext{}, fmt.Errorf("no context")
+	}
+	rch.latestByFindingsFn = func(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ReachabilityAssessment, error) {
+		return nil, fmt.Errorf("database unavailable")
+	}
+
+	uc := New(Deps{
+		Repos: &repo.Repos{Projects: pr, Findings: fr, Waivers: wr, Reachability: rch},
+	})
+
+	_, err := uc.GetGateStatus(context.Background(), "my-app", 2)
+	assert.ErrorContains(t, err, "batch load reachability")
+}
+
+func TestUpsertReachability_InvalidState(t *testing.T) {
+	rch := &mockReachabilityRepo{}
+	uc := New(Deps{Repos: &repo.Repos{Reachability: rch}})
+
+	_, err := uc.UpsertReachability(context.Background(), "00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002", "definitely-reachable", "evidence")
+	require.ErrorIs(t, err, ErrInvalidReachabilityState)
+}
+
+func TestReachability_APIKeyCannotCrossProject(t *testing.T) {
+	fr := &mockFindingRepo{}
+	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+		return makeFindingRow(1), nil
+	}
+	rch := &mockReachabilityRepo{}
+	rch.upsertFn = func(ctx context.Context, arg repo.UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error) {
+		t.Fatal("cross-project reachability must be denied before the write")
+		return sqlc.ReachabilityAssessment{}, nil
+	}
+	uc := New(Deps{Repos: &repo.Repos{Findings: fr, Reachability: rch}})
+	ctx := auth.ContextWithIdentity(context.Background(), &auth.Identity{
+		UserID:    "00000000-0000-0000-0000-000000000040",
+		ProjectID: "00000000-0000-0000-0000-000000000002",
+		IsAPIKey:  true,
+	})
+
+	_, err := uc.UpsertReachability(ctx,
+		"00000000-0000-0000-0000-000000000021",
+		"00000000-0000-0000-0000-000000000040",
+		"reachable", "evidence")
+	require.ErrorIs(t, err, ErrProjectAccessDenied)
+
+	_, err = uc.ListReachability(ctx,
+		"00000000-0000-0000-0000-000000000021")
+	require.ErrorIs(t, err, ErrProjectAccessDenied)
 }
 
 func TestCreateAPIKey_RecordsCreator(t *testing.T) {
