@@ -100,6 +100,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Post("/api/v1/projects/{slug}/waivers/{id}/toggle", h.ToggleWaiver)
 		r.Get("/api/v1/projects/{slug}/waivers/{id}/events", h.ListWaiverEvents)
 		r.Post("/api/v1/projects/{slug}/waivers/check-match", h.CheckWaiverMatch)
+		r.Get("/api/v1/watcher/status", h.GetWatcherStatus)
 	})
 
 	return r

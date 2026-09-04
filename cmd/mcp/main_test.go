@@ -20,6 +20,7 @@ type mockClient struct {
 	events     []client.WaiverEvent
 	matched    bool
 	assessment *client.ReachabilityAssessment
+	watcher    *client.WatcherStatus
 	err        error
 }
 
@@ -50,6 +51,10 @@ func (m *mockClient) ListReachability(findingID string) ([]client.ReachabilityAs
 		return nil, m.err
 	}
 	return []client.ReachabilityAssessment{*m.assessment}, m.err
+}
+
+func (m *mockClient) GetWatcherStatus() (*client.WatcherStatus, error) {
+	return m.watcher, m.err
 }
 
 func (m *mockClient) ListWaivers(projectSlug string) ([]client.Waiver, error) {
@@ -228,4 +233,32 @@ func TestMCPGateCheck_ShowsReachability(t *testing.T) {
 	out := string(*resp.Result)
 	assert.True(t, strings.Contains(out, "reachability: reachable"))
 	assert.True(t, strings.Contains(out, "reachability: not_reachable"))
+}
+
+func TestMCPWatcherStatus(t *testing.T) {
+	mc := &mockClient{watcher: &client.WatcherStatus{Healthy: true, ConsecutiveFailures: 0}}
+	raw := `{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"watcher_status","arguments":{}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(mc, req)
+	assert.Equal(t, float64(9), resp.ID)
+	require.Nil(t, resp.Error)
+	require.NotNil(t, resp.Result)
+	assert.True(t, strings.Contains(string(*resp.Result), "healthy"))
+}
+
+func TestMCPWatcherStatus_Failing(t *testing.T) {
+	mc := &mockClient{watcher: &client.WatcherStatus{Healthy: false, ConsecutiveFailures: 3, LastError: "osv timeout"}}
+	raw := `{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"watcher_status","arguments":{}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(mc, req)
+	assert.Equal(t, float64(10), resp.ID)
+	require.Nil(t, resp.Error)
+	require.NotNil(t, resp.Result)
+	out := string(*resp.Result)
+	assert.True(t, strings.Contains(out, "FAILING"))
+	assert.True(t, strings.Contains(out, "osv timeout"))
 }

@@ -18,6 +18,7 @@ type API interface {
 	GetGateStatus(projectSlug string, severity string) (*client.GateStatus, error)
 	UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error)
 	ListReachability(findingID string) ([]client.ReachabilityAssessment, error)
+	GetWatcherStatus() (*client.WatcherStatus, error)
 	ListWaivers(projectSlug string) ([]client.Waiver, error)
 	GetWaiver(projectSlug, waiverID string) (*client.WaiverDetail, error)
 	CreateWaiver(projectSlug string, req *client.CreateWaiverRequest) (*client.Waiver, error)
@@ -131,7 +132,14 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 					"required": []string{"finding_id", "state"},
 				},
 			},
-
+			{
+				Name:        "watcher_status",
+				Description: "Check CVE watcher daemon health (last poll, failures)",
+				InputSchema: map[string]any{
+					"type":       "object",
+					"properties": map[string]any{},
+				},
+			},
 			{
 				Name:        "waivers_list",
 				Description: "List waivers for a project",
@@ -235,6 +243,8 @@ func handleToolCall(api API, msg jsonRPCMessage) jsonRPCMessage {
 		return callGateCheck(api, msg.ID, params.Arguments)
 	case "reachability_set":
 		return callReachabilitySet(api, msg.ID, params.Arguments)
+	case "watcher_status":
+		return callWatcherStatus(api, msg.ID)
 	case "waivers_list":
 		return callWaiversList(api, msg.ID, params.Arguments)
 	case "waivers_get":
@@ -388,6 +398,37 @@ func callReachabilitySet(api API, id any, args *json.RawMessage) jsonRPCMessage 
 	text := fmt.Sprintf("reachability set: finding=%s state=%s", assess.FindingID, assess.State)
 	if assess.Evidence != "" {
 		text += fmt.Sprintf(" evidence=%q", assess.Evidence)
+	}
+	result, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
+	raw := json.RawMessage(result)
+	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &raw}
+}
+
+func callWatcherStatus(api API, id any) jsonRPCMessage {
+	ws, err := api.GetWatcherStatus()
+	if err != nil {
+		return errorResponse(id, -32603, err.Error())
+	}
+	var text string
+	if ws.LastSuccessfulPollAt != "" {
+		text = fmt.Sprintf("last successful poll: %s", ws.LastSuccessfulPollAt)
+	} else {
+		text = "last successful poll: never (cold start)"
+	}
+	if ws.LastPollAttemptAt != "" {
+		text += fmt.Sprintf("\nlast poll attempt: %s", ws.LastPollAttemptAt)
+	}
+	if ws.LastError != "" {
+		text += fmt.Sprintf("\nlast error: %s", ws.LastError)
+	}
+	text += fmt.Sprintf("\nconsecutive failures: %d", ws.ConsecutiveFailures)
+	switch {
+	case ws.Healthy:
+		text += "\nstatus: healthy"
+	case ws.Stale:
+		text += fmt.Sprintf("\nstatus: STALE (no successful poll within %s)", ws.StalenessWindow)
+	default:
+		text += "\nstatus: FAILING"
 	}
 	result, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
 	raw := json.RawMessage(result)

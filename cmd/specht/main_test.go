@@ -86,6 +86,7 @@ func TestCLI_ParseArgs(t *testing.T) {
 		{"gate check with severity", []string{"specht", "gate", "check", "--project", "my-app", "--severity", "critical"}, command{cmd: cmdGateCheck, project: "my-app", severity: "critical"}, ""},
 		{"stats show", []string{"specht", "stats", "show", "my-app"}, command{cmd: cmdStats, slug: "my-app"}, ""},
 		{"watcher backfill", []string{"specht", "watcher", "backfill"}, command{cmd: cmdWatcherBackfill}, ""},
+		{"watcher status", []string{"specht", "watcher", "status"}, command{cmd: cmdWatcherStatus}, ""},
 		{"watcher backfill with since and dry-run", []string{"specht", "watcher", "backfill", "--since", "2026-01-01T00:00:00Z", "--dry-run"}, command{cmd: cmdWatcherBackfill, since: "2026-01-01T00:00:00Z", dryRun: true}, ""},
 		{"findings list with filters", []string{"specht", "findings", "list", "--project", "my-app", "--severity", "high,critical", "--status", "open", "--limit", "20"}, command{cmd: cmdFindingsList, project: "my-app", severity: "high,critical", status: "open", limit: 20}, ""},
 		{"no command", []string{"specht"}, command{cmd: cmdHelp}, ""},

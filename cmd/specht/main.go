@@ -31,6 +31,7 @@ const (
 	cmdGateCheck
 	cmdStats
 	cmdWatcherBackfill
+	cmdWatcherStatus
 )
 
 type command struct {
@@ -187,6 +188,8 @@ func parseArgs(args []string) (command, error) {
 				}
 			}
 			return c, nil
+		case "status":
+			return command{cmd: cmdWatcherStatus}, nil
 		default:
 			return command{}, fmt.Errorf("unknown watcher subcommand: %s", rest[1])
 		}
@@ -301,7 +304,11 @@ func run(cl *client.Client, cmd command) error {
 			fmt.Printf("gate FAILED: %d blocking finding(s)\n", gs.BlockingCount)
 			if len(gs.BlockedBy) > 0 {
 				for _, b := range gs.BlockedBy {
-					fmt.Printf("  blocked by: %s\n", b)
+					reach := "unknown"
+					if r, ok := gs.BlockedByReachability[b]; ok && r != "" {
+						reach = r
+					}
+					fmt.Printf("  blocked by: %s (reachability: %s)\n", b, reach)
 				}
 			}
 			os.Exit(1)
@@ -327,6 +334,33 @@ func run(cl *client.Client, cmd command) error {
 			fmt.Printf("  Latest Scan:     %s by %s (%s)\n", stats.LatestReport.ID, stats.LatestReport.ToolName, stats.LatestReport.Status)
 		}
 		return nil
+
+	case cmdWatcherStatus:
+		ws, err := cl.GetWatcherStatus()
+		if err != nil {
+			return err
+		}
+		if ws.LastSuccessfulPollAt != "" {
+			fmt.Printf("Last Successful Poll:  %s\n", ws.LastSuccessfulPollAt)
+		} else {
+			fmt.Println("Last Successful Poll:  never (cold start)")
+		}
+		if ws.LastPollAttemptAt != "" {
+			fmt.Printf("Last Poll Attempt:     %s\n", ws.LastPollAttemptAt)
+		}
+		if ws.LastError != "" {
+			fmt.Printf("Last Error:            %s\n", ws.LastError)
+		}
+		fmt.Printf("Consecutive Failures:  %d\n", ws.ConsecutiveFailures)
+		switch {
+		case ws.Healthy:
+			fmt.Println("Status:                healthy")
+		case ws.Stale:
+			fmt.Printf("Status:                STALE (no successful poll within %s)\n", ws.StalenessWindow)
+		default:
+			fmt.Println("Status:                FAILING")
+		}
+		return nil
 	}
 
 	return nil
@@ -350,6 +384,7 @@ Commands:
     [--severity critical]                  Severity threshold
   stats show <slug>                       Show project statistics
   watcher backfill [--since <ISO8601>]    Run one CVE watcher poll
+  watcher status                          Show watcher health (last poll, failures)
     [--dry-run]                           Report only; write nothing
   help                                     Show this help
 
@@ -458,8 +493,8 @@ func runWatcherBackfill(cmd command) error {
 			return repos.Inventory.DistinctInventory(ctx, projectID, repo.IntervalFromDuration(since))
 		},
 		FindGap: repos.Findings.FindScaFindingIdForPurlAndCve,
-		GetWatermark: func(ctx context.Context) (time.Time, bool, error) {
-			st, err := repos.Watcher.GetState(ctx)
+		GetWatermark: func(ctx context.Context, projectID pgtype.UUID) (time.Time, bool, error) {
+			st, err := repos.Watcher.GetProjectState(ctx, projectID)
 			if errors.Is(err, pgx.ErrNoRows) {
 				return time.Time{}, false, nil
 			}
@@ -468,11 +503,11 @@ func runWatcherBackfill(cmd command) error {
 			}
 			return st.LastSuccessfulPollAt.Time, st.LastSuccessfulPollAt.Valid, nil
 		},
-		SetWatermark: func(ctx context.Context, ts time.Time) error {
+		SetWatermark: func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error {
 			if cmd.dryRun {
 				return nil // dry-run writes nothing
 			}
-			return repos.Watcher.UpdateState(ctx, ts)
+			return repos.Watcher.UpsertProjectState(ctx, projectID, ts)
 		},
 		Logger:       slog.Default(),
 		InventoryTTL: inventoryTTL,

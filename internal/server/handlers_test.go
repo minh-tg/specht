@@ -62,6 +62,7 @@ type mockUsecases struct {
 	listReachabilityFn   func(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error)
 	upsertSignoffFn      func(ctx context.Context, findingID, userID, status, comment string) (*usecase.SignoffResponse, error)
 	getSignoffFn         func(ctx context.Context, findingID string) (*usecase.SignoffResponse, error)
+	getWatcherStatusFn   func(ctx context.Context) (*usecase.WatcherStatusResponse, error)
 }
 
 func (m *mockUsecases) CreateProject(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error) {
@@ -286,6 +287,13 @@ func (m *mockUsecases) GetProjectStats(ctx context.Context, projectSlug string) 
 		return nil, fmt.Errorf("unexpected call to GetProjectStats")
 	}
 	return m.getProjectStatsFn(ctx, projectSlug)
+}
+
+func (m *mockUsecases) GetWatcherStatus(ctx context.Context) (*usecase.WatcherStatusResponse, error) {
+	if m.getWatcherStatusFn == nil {
+		return nil, fmt.Errorf("unexpected call to GetWatcherStatus")
+	}
+	return m.getWatcherStatusFn(ctx)
 }
 
 func (m *mockUsecases) CreateEvidence(ctx context.Context, findingID, userID, typ, url, description string) (sqlc.EvidenceArtifact, error) {

@@ -135,6 +135,10 @@ type (
 	StatsUsecases interface {
 		GetProjectStats(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error)
 	}
+
+	WatcherUsecases interface {
+		GetWatcherStatus(ctx context.Context) (*usecase.WatcherStatusResponse, error)
+	}
 )
 
 // Handler holds the use-case dependency for the HTTP handlers.
@@ -154,6 +158,7 @@ type usecaseInterface interface {
 	ReachabilityUsecases
 	SignoffUsecases
 	StatsUsecases
+	WatcherUsecases
 }
 
 // NewHandler builds the HTTP handlers over a use-case implementation.

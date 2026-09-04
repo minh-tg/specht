@@ -226,15 +226,17 @@ type FindingOccurrence struct {
 }
 
 type Project struct {
-	ID                  pgtype.UUID        `json:"id"`
-	Slug                string             `json:"slug"`
-	Name                string             `json:"name"`
-	Description         pgtype.Text        `json:"description"`
-	DeploymentThreshold string             `json:"deployment_threshold"`
-	Settings            []byte             `json:"settings"`
-	CreatedAt           pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
-	CveWatcherGate      string             `json:"cve_watcher_gate"`
+	ID                        pgtype.UUID        `json:"id"`
+	Slug                      string             `json:"slug"`
+	Name                      string             `json:"name"`
+	Description               pgtype.Text        `json:"description"`
+	DeploymentThreshold       string             `json:"deployment_threshold"`
+	Settings                  []byte             `json:"settings"`
+	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                 pgtype.Timestamptz `json:"updated_at"`
+	CveWatcherGate            string             `json:"cve_watcher_gate"`
+	CveWatcherEnabled         bool               `json:"cve_watcher_enabled"`
+	CveWatcherIntervalSeconds int32              `json:"cve_watcher_interval_seconds"`
 }
 
 type ProjectMember struct {
@@ -376,7 +378,15 @@ type WaiverFindingTarget struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type WatcherProjectState struct {
+	ProjectID            pgtype.UUID        `json:"project_id"`
+	LastSuccessfulPollAt pgtype.Timestamptz `json:"last_successful_poll_at"`
+}
+
 type WatcherState struct {
 	ID                   int32              `json:"id"`
 	LastSuccessfulPollAt pgtype.Timestamptz `json:"last_successful_poll_at"`
+	LastPollAttemptAt    pgtype.Timestamptz `json:"last_poll_attempt_at"`
+	LastError            pgtype.Text        `json:"last_error"`
+	ConsecutiveFailures  int32              `json:"consecutive_failures"`
 }
