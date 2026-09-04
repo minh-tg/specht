@@ -363,6 +363,10 @@ func TestAPIKeyRepo_CreateAndRevoke(t *testing.T) {
 	fetched, err := repos.APIKeys.GetByHash(context.Background(), "abc123hash")
 	require.NoError(t, err)
 	assert.Equal(t, "ci-key", fetched.Name)
+	require.True(t, fetched.CreatedBy.Valid)
+	actor, err := repos.Users.GetByID(context.Background(), fetched.CreatedBy)
+	require.NoError(t, err)
+	assert.Equal(t, fetched.CreatedBy.Bytes, actor.ID.Bytes)
 
 	revoked, err := repos.APIKeys.Revoke(context.Background(), key.ID, project.ID)
 	require.NoError(t, err)
@@ -823,4 +827,28 @@ func TestGateQueries_CveWatcherGatePolicy(t *testing.T) {
 	runScenario(t, "off", "off", []string{"off-sca"})
 	// immediate: watcher findings gate immediately, untriaged included.
 	runScenario(t, "immediate", "immediate", []string{"immediate-sca", "immediate-w-untriaged", "immediate-w-triaged"})
+
+	systemUser, err := repos.Users.GetByEmail(ctx, "system@specht.local")
+	require.NoError(t, err)
+	exemptProject := createTestProject(t, repos)
+	notReachable := upsertFinding(t, exemptProject, "sca", "exempt-not-reachable")
+	notApplicable := upsertFinding(t, exemptProject, "sca", "exempt-not-applicable")
+	for finding, state := range map[pgtype.UUID]string{
+		notReachable.ID:  "not_reachable",
+		notApplicable.ID: "not_applicable",
+	} {
+		_, err := repos.Reachability.Upsert(ctx, UpsertReachabilityParams{
+			FindingID:  finding,
+			State:      state,
+			AssessedBy: systemUser.ID,
+		})
+		require.NoError(t, err)
+	}
+	assert.Empty(t, blockedTitles(t, exemptProject))
+	count, err := repos.Findings.CountBlocking(ctx, GateEvalParams{ProjectID: exemptProject.ID, MinSeverityRank: 4})
+	require.NoError(t, err)
+	assert.Zero(t, count)
+	breached, err := repos.Findings.GateEval(ctx, GateEvalParams{ProjectID: exemptProject.ID, MinSeverityRank: 4})
+	require.NoError(t, err)
+	assert.False(t, breached)
 }

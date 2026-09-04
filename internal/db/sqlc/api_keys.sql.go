@@ -56,7 +56,42 @@ func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (Api
 }
 
 const getAPIKeyByHash = `-- name: GetAPIKeyByHash :one
-SELECT id, project_id, name, key_prefix, key_hash, last_four, scopes, expires_at, last_used_at, created_at, revoked_at, created_by FROM api_keys WHERE key_hash = $1
+SELECT
+    ak.id,
+    ak.project_id,
+    ak.name,
+    ak.key_prefix,
+    ak.key_hash,
+    ak.last_four,
+    ak.scopes,
+    ak.expires_at,
+    ak.last_used_at,
+    ak.created_at,
+    ak.revoked_at,
+    COALESCE(
+        ak.created_by,
+        (SELECT pm.user_id
+         FROM project_members pm
+         WHERE pm.project_id = ak.project_id
+           AND pm.role = 'admin'
+         ORDER BY pm.created_at, pm.user_id
+         LIMIT 1),
+        (SELECT pm.user_id
+         FROM project_members pm
+         WHERE pm.project_id = ak.project_id
+         ORDER BY pm.created_at, pm.user_id
+         LIMIT 1),
+        (SELECT u.id
+         FROM users u
+         WHERE u.email = 'system@specht.local'
+         LIMIT 1),
+        (SELECT u.id
+         FROM users u
+         ORDER BY u.created_at, u.id
+         LIMIT 1)
+    ) AS created_by
+FROM api_keys ak
+WHERE ak.key_hash = $1
 `
 
 func (q *Queries) GetAPIKeyByHash(ctx context.Context, keyHash string) (ApiKey, error) {

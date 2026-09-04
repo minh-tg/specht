@@ -2145,6 +2145,40 @@ func TestGetGateStatus_IncludesBlockedByReachability(t *testing.T) {
 	}, status.BlockedByReachability)
 }
 
+func TestGetGateStatus_ReachabilityExemptionsPass(t *testing.T) {
+	pr := &mockProjectRepo{}
+	fr := &mockFindingRepo{}
+	wr := &mockWaiverRepo{}
+	rch := &mockReachabilityRepo{}
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+		return makeProject(true), nil
+	}
+	fr.listBlockingFindingsFn = func(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error) {
+		return []sqlc.Finding{makeFindingRow(1), makeFindingRow(2)}, nil
+	}
+	fr.getFindingContextFn = func(ctx context.Context, findingID pgtype.UUID) (repo.FindingContext, error) {
+		return repo.FindingContext{}, fmt.Errorf("no context")
+	}
+	rch.latestByFindingsFn = func(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ReachabilityAssessment, error) {
+		return []sqlc.ReachabilityAssessment{
+			{FindingID: findingIDs[0], State: sqlc.ReachabilityStateNotReachable},
+			{FindingID: findingIDs[1], State: sqlc.ReachabilityStateNotApplicable},
+		}, nil
+	}
+
+	uc := New(Deps{
+		Repos: &repo.Repos{Projects: pr, Findings: fr, Waivers: wr, Reachability: rch},
+	})
+
+	status, err := uc.GetGateStatus(context.Background(), "my-app", 2)
+	require.NoError(t, err)
+	assert.False(t, status.ThresholdBreached)
+	assert.Zero(t, status.BlockingCount)
+	assert.Empty(t, status.BlockedBy)
+	assert.Empty(t, status.BlockedByReachability)
+}
+
 func TestGetGateStatus_ReachabilityLookupError(t *testing.T) {
 	pr := &mockProjectRepo{}
 	fr := &mockFindingRepo{}

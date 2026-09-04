@@ -39,7 +39,7 @@ type GateStatus struct {
 	BlockingCount     int64    `json:"blocking_count"`
 	BlockedBy         []string `json:"blocked_by,omitempty"`
 	// BlockedByReachability maps each blocked finding id to its latest
-	// reachability state (empty = no assessment / unknown).
+	// reachability state.
 	BlockedByReachability map[string]string `json:"blocked_by_reachability,omitempty"`
 	WaivedCount           int               `json:"waived_count,omitempty"`
 }
