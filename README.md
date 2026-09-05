@@ -42,4 +42,6 @@ Run the test suite with `go test ./... -count=1 -short` (unit) or `go test -tags
 
 ## License
 
-MIT
+[GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0)
+
+Contributions are accepted under the project's [Developer Certificate of Origin](CONTRIBUTING.md#contributor-license-agreement).
