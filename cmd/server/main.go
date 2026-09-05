@@ -21,6 +21,7 @@ import (
 	"github.com/xMinhx/specht/internal/repo"
 	"github.com/xMinhx/specht/internal/scanner"
 	"github.com/xMinhx/specht/internal/server"
+	"github.com/xMinhx/specht/internal/tracker"
 	"github.com/xMinhx/specht/internal/usecase"
 	"github.com/xMinhx/specht/internal/watcher"
 )
@@ -73,6 +74,7 @@ func main() {
 		Tokens:       jwtAuth,
 		Passwords:    auth.NewPasswordHasher(),
 		InventoryTTL: cfg.InventoryTTL,
+		Tracker:      buildTrackerDispatcher(),
 	})
 
 	handler := server.NewRouter(server.RouterConfig{
@@ -189,6 +191,24 @@ func handleSubcommand(cfg *config.Server) bool {
 		return true
 	}
 	return false
+}
+
+// buildTrackerDispatcher wires the tracker event dispatcher from env config.
+// Disabled by default (TRACKER_PROVIDER=noop); a no-op dispatcher is returned
+// when no provider is configured, so core use cases never need nil checks
+// beyond the optional Tracker field.
+func buildTrackerDispatcher() *tracker.Dispatcher {
+	cfg := tracker.ResolveConfig()
+	var tr tracker.Tracker = tracker.NoopTracker{}
+	switch cfg.Provider {
+	case "inprocess":
+		tr = tracker.NewInProcessTracker(func(msg string, args ...any) {
+			slog.Debug(msg, args...)
+		})
+	case "noop", "":
+		tr = tracker.NoopTracker{}
+	}
+	return tracker.NewDispatcher(tr, slog.Default())
 }
 
 // runWatcherDaemon starts the CVE watcher poll loop. All WATCHER_* variables

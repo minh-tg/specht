@@ -19,6 +19,7 @@ import (
 	"github.com/xMinhx/specht/internal/gate"
 	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/scanner"
+	"github.com/xMinhx/specht/internal/tracker"
 )
 
 // ErrDuplicateReport is returned when a report with the same raw-content hash
@@ -73,6 +74,7 @@ type Deps struct {
 	Tokens       auth.TokenIssuer
 	Passwords    auth.PasswordHasher
 	InventoryTTL time.Duration
+	Tracker      *tracker.Dispatcher
 }
 
 // Usecases groups the application's use-case methods. It is safe for

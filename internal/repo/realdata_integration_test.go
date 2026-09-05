@@ -9,6 +9,7 @@ package repo
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
@@ -24,6 +25,7 @@ import (
 	"github.com/xMinhx/specht/internal/parser"
 	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/scanner"
+	"github.com/xMinhx/specht/internal/tracker"
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
@@ -614,3 +616,96 @@ func findingIDFor(findings []port.Finding, substr string) string {
 	}
 	return ""
 }
+
+func TestTracker_DispatchLifecycle(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	tapTracker := &tapTracker{inner: tracker.NewInProcessTracker(nil)}
+	dispatcher := tracker.NewDispatcher(tapTracker, slog.Default())
+
+	stores := NewPortStores(pool)
+	reg := scanner.NewRegistry()
+	for _, s := range parser.Builtins() {
+		require.NoError(t, reg.Register(s))
+	}
+	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg, Tracker: dispatcher})
+
+	_, err := uc.CreateProject(ctx, "Tracker App", "tracker-app", "validation")
+	require.NoError(t, err)
+
+	raw, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
+	require.NoError(t, err)
+	_, err = uc.IngestReport(ctx, usecase.IngestReportInput{
+		ProjectSlug: "tracker-app", Scanner: "trivy", RawData: raw,
+		Branch: "main", CommitSha: "aaa",
+	})
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, len(tapTracker.dispatched), 1, "new findings must trigger tracker create")
+
+	// Verify fix for the lodash finding, then re-ingest to trigger regression.
+	project, err := stores.Projects.GetBySlug(ctx, "tracker-app")
+	require.NoError(t, err)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, []string{"sca"}, nil, nil, 100, 0)
+	require.NoError(t, err)
+	f := findingIDFor(findings, "lodash")
+	require.NotEmpty(t, f)
+
+	raw2, err := removeFingerprint(raw, "CVE-2024-2222")
+	require.NoError(t, err)
+	_, err = uc.IngestReport(ctx, usecase.IngestReportInput{
+		ProjectSlug: "tracker-app", Scanner: "trivy", RawData: raw2,
+		Branch: "main", CommitSha: "bbb",
+	})
+	require.NoError(t, err)
+
+	verified, err := uc.VerifyFix(ctx, f)
+	require.NoError(t, err)
+	assert.Equal(t, usecase.VerifyFixed, verified.Outcome)
+
+	raw3, err := appendComment(raw, "regression-rescan")
+	require.NoError(t, err)
+	_, err = uc.IngestReport(ctx, usecase.IngestReportInput{
+		ProjectSlug: "tracker-app", Scanner: "trivy", RawData: raw3,
+		Branch: "main", CommitSha: "ccc",
+	})
+	require.NoError(t, err)
+
+	var hasRegression, hasVerifiedFixed bool
+	for _, e := range tapTracker.dispatched {
+		switch e.Type {
+		case tracker.EventRegression:
+			hasRegression = true
+		case tracker.EventVerifiedFixed:
+			hasVerifiedFixed = true
+		}
+	}
+	assert.True(t, hasRegression, "tracker must receive a regression dispatch")
+	assert.True(t, hasVerifiedFixed, "tracker must receive a verified_fixed dispatch")
+}
+
+// tapTracker records every dispatched event and delegates to an inner
+// InProcessTracker for state tracking.
+type tapTracker struct {
+	inner      *tracker.InProcessTracker
+	dispatched []tracker.Event
+}
+
+func (t *tapTracker) CreateIssue(_ context.Context, event tracker.Event) (tracker.IssueID, error) {
+	id, err := t.inner.CreateIssue(context.Background(), event)
+	if err == nil {
+		t.dispatched = append(t.dispatched, event)
+	}
+	return id, err
+}
+
+func (t *tapTracker) UpdateIssue(_ context.Context, issueID tracker.IssueID, event tracker.Event) error {
+	err := t.inner.UpdateIssue(context.Background(), issueID, event)
+	if err == nil {
+		t.dispatched = append(t.dispatched, event)
+	}
+	return err
+}
+
+func (t *tapTracker) Name() string { return "tap" }

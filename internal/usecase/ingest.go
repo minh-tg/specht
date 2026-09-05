@@ -16,6 +16,7 @@ import (
 	"github.com/xMinhx/specht/internal/gate"
 	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/scanner"
+	"github.com/xMinhx/specht/internal/tracker"
 )
 
 // reportContext carries the contextual ids resolved for an ingested report
@@ -331,17 +332,45 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, i
 	}
 
 	if regression {
+		changes := mustMarshal(map[string]any{"report_id": report.ID, "scanner": input.Scanner, "new_state": upserted.State})
 		if _, err := u.deps.Stores.Findings.CreateEvent(ctx, port.FindingEventInput{
 			FindingID: upserted.ID,
 			EventType: "regression",
 			OldValue:  &prevState,
 			NewValue:  strPtr(upserted.State),
-			Changes:   mustMarshal(map[string]any{"report_id": report.ID, "scanner": input.Scanner, "new_state": upserted.State}),
+			Changes:   changes,
 		}); err != nil {
 			slog.Warn("log regression event failed", "finding", upserted.ID, "error", err)
 		}
+		if u.deps.Tracker != nil {
+			u.deps.Tracker.Dispatch(ctx, tracker.Event{
+				Type:         tracker.EventRegression,
+				FindingID:    upserted.ID,
+				ProjectSlug:  input.ProjectSlug,
+				Severity:     severityStr(f.Severity),
+				SeverityRank: newRank,
+				Title:        f.Title,
+				Fingerprint:  f.Fingerprint,
+				FindingKind:  f.FindingKind,
+				OccurredAt:   nowTime,
+			})
+		}
 	}
-
+	// New findings trigger a tracker create; regressions trigger an update.
+	// Both are best-effort — the tracker swallows its own failures.
+	if lookupErr != nil && u.deps.Tracker != nil {
+		u.deps.Tracker.Dispatch(ctx, tracker.Event{
+			Type:         tracker.EventCreated,
+			FindingID:    upserted.ID,
+			ProjectSlug:  input.ProjectSlug,
+			Severity:     severityStr(f.Severity),
+			SeverityRank: newRank,
+			Title:        f.Title,
+			Fingerprint:  f.Fingerprint,
+			FindingKind:  f.FindingKind,
+			OccurredAt:   nowTime,
+		})
+	}
 	occ := toOccurrenceParams(f, input.Scanner)
 	occ.FindingID = upserted.ID
 	occ.ReportID = &report.ID

@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/xMinhx/specht/internal/port"
+	"github.com/xMinhx/specht/internal/tracker"
 )
 
 // Verify outcomes for evidence-backed rescan verification.
@@ -109,6 +111,18 @@ func (u *Usecases) VerifyFix(ctx context.Context, findingID string) (*VerifyResp
 		Changes:   changes,
 	}); err != nil {
 		return nil, fmt.Errorf("log verification event: %w", err)
+	}
+	if u.deps.Tracker != nil {
+		u.deps.Tracker.Dispatch(ctx, tracker.Event{
+			Type:         tracker.EventVerifiedFixed,
+			FindingID:    fid.String(),
+			Severity:     f.CurrentSeverity,
+			SeverityRank: f.CurrentSeverityRank,
+			Title:        f.CurrentTitle,
+			Fingerprint:  f.Fingerprint,
+			FindingKind:  f.FindingKind,
+			OccurredAt:   time.Now(),
+		})
 	}
 	return &VerifyResponse{
 		FindingID: fid.String(), Outcome: VerifyFixed, ReportID: &reportID,
