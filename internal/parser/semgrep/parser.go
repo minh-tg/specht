@@ -97,6 +97,19 @@ type Scanner struct{}
 // NewScanner builds the semgrep adapter.
 func NewScanner() *Scanner { return &Scanner{} }
 
+func (s *Scanner) Descriptor() scanner.Descriptor {
+	return scanner.Descriptor{
+		Name:                  "semgrep",
+		Version:               "2.1",
+		ContractVersion:       1,
+		FingerprintVersion:    1,
+		FindingKinds:          []scanner.FindingKind{"sast"},
+		ScanTypes:             []scanner.ScanType{scanner.ScanTypeFilesystem, scanner.ScanTypeRepository},
+		ProvidesPackages:      false,
+		SupportsAutoDetection: true,
+	}
+}
+
 func (s *Scanner) Name() string { return "semgrep" }
 
 func (s *Scanner) FindingKind() string { return "sast" }

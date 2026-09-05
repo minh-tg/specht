@@ -50,6 +50,19 @@ type Scanner struct{}
 // NewScanner builds the Dependency-Check adapter.
 func NewScanner() *Scanner { return &Scanner{} }
 
+func (s *Scanner) Descriptor() scanner.Descriptor {
+	return scanner.Descriptor{
+		Name:                  "dependency-check",
+		Version:               "2",
+		ContractVersion:       1,
+		FingerprintVersion:    1,
+		FindingKinds:          []scanner.FindingKind{"sca"},
+		ScanTypes:             []scanner.ScanType{scanner.ScanTypeFilesystem},
+		ProvidesPackages:      true,
+		SupportsAutoDetection: true,
+	}
+}
+
 func (s *Scanner) Name() string { return "dependency-check" }
 
 func (s *Scanner) FindingKind() string { return "sca" }

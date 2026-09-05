@@ -331,3 +331,104 @@ func TestEvaluate_WaivedFinding_NotInReachabilityMap(t *testing.T) {
 	assert.Equal(t, 1, d.WaivedCount)
 	assert.Equal(t, 1, d.TotalBlocking)
 }
+
+// TestEvaluateWithPolicies_SourceAdmission exercises the per-source gate
+// policy input directly. The core gate must not hard-code the watcher source
+// literal: policies arrive as data from source registration, and findings
+// from ungoverned sources always gate.
+func TestEvaluateWithPolicies_SourceAdmission(t *testing.T) {
+	const minRank = int16(3)
+
+	sca := Finding{ID: "s1", FindingKind: "sca", CurrentSeverityRank: 4, Fingerprint: "CVE-2026-1001", Source: ""}
+	watcherTriaged := Finding{ID: "w-triaged", FindingKind: "cve_watcher", CurrentSeverityRank: 4, Fingerprint: "CVE-2026-1002", Source: "cve_watcher", AnalysisState: "exploitable"}
+	watcherUntriaged := Finding{ID: "w-untriaged", FindingKind: "cve_watcher", CurrentSeverityRank: 4, Fingerprint: "CVE-2026-1003", Source: "cve_watcher", AnalysisState: ""}
+
+	tests := []struct {
+		name     string
+		findings []Finding
+		policies []GatePolicy
+		want     Status
+		blocked  []string
+		total    int
+	}{
+		{
+			name:     "no policies: every finding gates",
+			findings: []Finding{sca, watcherTriaged, watcherUntriaged},
+			want:     StatusFail,
+			blocked:  []string{"s1", "w-triaged", "w-untriaged"},
+			total:    3,
+		},
+		{
+			name:     "require_triage drops untriaged watcher finding",
+			findings: []Finding{sca, watcherTriaged, watcherUntriaged},
+			policies: []GatePolicy{{Source: "cve_watcher", Mode: PolicyRequireTriage}},
+			want:     StatusFail,
+			blocked:  []string{"s1", "w-triaged"},
+			total:    2,
+		},
+		{
+			name:     "off drops every governed finding",
+			findings: []Finding{sca, watcherTriaged, watcherUntriaged},
+			policies: []GatePolicy{{Source: "cve_watcher", Mode: PolicyOff}},
+			want:     StatusFail,
+			blocked:  []string{"s1"},
+			total:    1,
+		},
+		{
+			name:     "immediate admits untriaged watcher finding",
+			findings: []Finding{sca, watcherTriaged, watcherUntriaged},
+			policies: []GatePolicy{{Source: "cve_watcher", Mode: PolicyImmediate}},
+			want:     StatusFail,
+			blocked:  []string{"s1", "w-triaged", "w-untriaged"},
+			total:    3,
+		},
+		{
+			name:     "policy for another source does not affect watcher findings",
+			findings: []Finding{watcherTriaged, watcherUntriaged},
+			policies: []GatePolicy{{Source: "other_source", Mode: PolicyOff}},
+			want:     StatusFail,
+			blocked:  []string{"w-triaged", "w-untriaged"},
+			total:    2,
+		},
+		{
+			name:     "off drops all governed findings to pass",
+			findings: []Finding{watcherTriaged, watcherUntriaged},
+			policies: []GatePolicy{{Source: "cve_watcher", Mode: PolicyOff}},
+			want:     StatusPass,
+			total:    0,
+		},
+		{
+			name:     "require_triage all untriaged passes",
+			findings: []Finding{watcherUntriaged},
+			policies: []GatePolicy{{Source: "cve_watcher", Mode: PolicyRequireTriage}},
+			want:     StatusPass,
+			total:    0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := New(&mockFindingsRepo{findings: tt.findings}, &mockWaiversRepo{})
+			d, err := g.EvaluateWithPolicies(context.Background(), "proj-1", minRank, tt.policies)
+			require.NoError(t, err)
+			assert.Equal(t, tt.want, d.Status)
+			assert.Equal(t, tt.blocked, d.BlockedBy)
+			assert.Equal(t, tt.total, d.TotalBlocking)
+		})
+	}
+}
+
+// TestEvaluate_DefaultNoPoliciesMatchesEvaluateWithPoliciesNil ensures the
+// plain Evaluate path is identical to EvaluateWithPolicies with no policies.
+func TestEvaluate_DefaultNoPoliciesMatchesEvaluateWithPoliciesNil(t *testing.T) {
+	findings := []Finding{
+		{ID: "f1", FindingKind: "sca", CurrentSeverityRank: 4, Fingerprint: "CVE-1", Source: "cve_watcher", AnalysisState: ""},
+	}
+	mock := &mockFindingsRepo{findings: findings}
+	g := New(mock, &mockWaiversRepo{})
+	d1, err := g.Evaluate(context.Background(), "p", 3)
+	require.NoError(t, err)
+	d2, err2 := g.EvaluateWithPolicies(context.Background(), "p", 3, nil)
+	require.NoError(t, err2)
+	assert.Equal(t, d1, d2)
+}

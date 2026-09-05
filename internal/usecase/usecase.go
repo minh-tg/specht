@@ -152,6 +152,7 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 			EnvironmentID:       envID,
 			TargetID:            tgtID,
 			ArtifactID:          artID,
+			AnalysisState:       r.AnalysisState,
 			Reachability:        reachability,
 		}
 	}

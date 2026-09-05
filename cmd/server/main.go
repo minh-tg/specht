@@ -50,7 +50,12 @@ func main() {
 	defer pool.Close()
 
 	reg := scanner.NewRegistry()
-	parser.RegisterAll(reg)
+	for _, s := range parser.Builtins() {
+		if err := reg.Register(s); err != nil {
+			slog.Error("register scanner", "error", err)
+			os.Exit(1)
+		}
+	}
 
 	jwtAuth, err := auth.NewJWTAuthenticator(cfg.jwtSecret)
 	if err != nil {

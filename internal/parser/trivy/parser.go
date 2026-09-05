@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
@@ -90,15 +91,33 @@ type trivyMisconfig struct {
 	Layer    *trivyLayer `json:"Layer"`
 }
 
-// Scanner adapts trivy JSON output to the normalized scanner model.
+// Finding kind constants this adapter emits. Trivy emits multiple kinds from
+// one report (sca, secret, iac), which is why capability discovery is
+// per-descriptor rather than a single FindingKind() method.
+const (
+	kindSCA    = "sca"
+	kindSecret = "secret"
+	kindIaC    = "iac"
+)
+
+// Scanner adapts trivy JSON output to the normalized domain model.
 type Scanner struct{}
 
 // NewScanner builds the trivy adapter.
 func NewScanner() *Scanner { return &Scanner{} }
 
-func (s *Scanner) Name() string { return "trivy" }
-
-func (s *Scanner) FindingKind() string { return "sca" }
+func (s *Scanner) Descriptor() scanner.Descriptor {
+	return scanner.Descriptor{
+		Name:                  "trivy",
+		Version:               "2",
+		ContractVersion:       1,
+		FingerprintVersion:    1,
+		FindingKinds:          []scanner.FindingKind{kindSCA, kindSecret, kindIaC},
+		ScanTypes:             []scanner.ScanType{scanner.ScanTypeImage, scanner.ScanTypeIaC, scanner.ScanTypeFilesystem},
+		ProvidesPackages:      true,
+		SupportsAutoDetection: true,
+	}
+}
 
 func (s *Scanner) DetectFormat(data []byte) bool {
 	var probe []trivyResult
@@ -113,7 +132,7 @@ func (s *Scanner) DetectFormat(data []byte) bool {
 	return false
 }
 
-func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedReport, error) {
+func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
 	var report trivyReport
 	if err := json.Unmarshal(data, &report); err != nil {
 		return nil, fmt.Errorf("trivy: parse json: %w", err)
@@ -122,12 +141,15 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedRe
 	return convert(report), nil
 }
 
-func convert(report trivyReport) *scanner.NormalizedReport {
-	nr := &scanner.NormalizedReport{
-		ToolName:  "trivy",
-		ScanType:  scanner.ScanTypeImage,
-		Findings:  nil,
-		ScanScope: make(map[string]any),
+func convert(report trivyReport) *domain.NormalizedReport {
+	nr := &domain.NormalizedReport{
+		ContractVersion:    1,
+		FingerprintVersion: 1,
+		Completeness:       domain.CompletenessUnknown,
+		ToolName:           "trivy",
+		ScanType:           scanner.ScanTypeImage,
+		Findings:           nil,
+		ScanScope:          make(map[string]any),
 	}
 
 	if len(report) > 0 {
@@ -145,8 +167,8 @@ func convert(report trivyReport) *scanner.NormalizedReport {
 	return nr
 }
 
-func resultTarget(first trivyResult) *scanner.TargetInfo {
-	target := &scanner.TargetInfo{Identifier: first.Target}
+func resultTarget(first trivyResult) *domain.TargetInfo {
+	target := &domain.TargetInfo{Identifier: first.Target}
 	switch first.Class {
 	case "os-pkgs", "lang-pkgs":
 		target.Kind = "container_image"
@@ -160,7 +182,7 @@ func resultTarget(first trivyResult) *scanner.TargetInfo {
 	return target
 }
 
-func addPackages(nr *scanner.NormalizedReport, result trivyResult) {
+func addPackages(nr *domain.NormalizedReport, result trivyResult) {
 	for _, p := range result.Packages {
 		purl := p.Identifier.PURL
 		if purl == "" {
@@ -169,8 +191,8 @@ func addPackages(nr *scanner.NormalizedReport, result trivyResult) {
 		if purl == "" {
 			continue
 		}
-		nr.Packages = append(nr.Packages, scanner.PackageRef{
-			PURL:      scanner.NormalizePURL(purl),
+		nr.Packages = append(nr.Packages, domain.PackageRef{
+			PURL:      domain.NormalizePURL(purl),
 			Ecosystem: result.Type,
 			Name:      p.Name,
 			Version:   p.Version,
@@ -178,21 +200,21 @@ func addPackages(nr *scanner.NormalizedReport, result trivyResult) {
 	}
 }
 
-func addVulns(nr *scanner.NormalizedReport, result trivyResult) {
+func addVulns(nr *domain.NormalizedReport, result trivyResult) {
 	for _, v := range result.Vulnerabilities {
 		purl := v.PkgIdentifier.PURL
 		if purl == "" {
 			purl = v.PkgID
 		}
 
-		dims := []scanner.Dimension{
-			{Key: "vulnerability_id", Value: v.VulnerabilityID},
-			{Key: "package_name", Value: v.PkgName},
-			{Key: "installed_version", Value: v.InstalledVersion},
-			{Key: "purl", Value: purl},
+		dims := []domain.Dimension{
+			{Key: domain.DimVulnerabilityID, Value: v.VulnerabilityID},
+			{Key: domain.DimPackageName, Value: v.PkgName},
+			{Key: domain.DimInstalledVer, Value: v.InstalledVersion},
+			{Key: domain.DimPURL, Value: purl},
 		}
 		if v.FixedVersion != "" {
-			dims = append(dims, scanner.Dimension{Key: "fixed_version", Value: v.FixedVersion})
+			dims = append(dims, domain.Dimension{Key: domain.DimFixedVersion, Value: v.FixedVersion})
 		}
 
 		display := map[string]any{
@@ -224,9 +246,9 @@ func addVulns(nr *scanner.NormalizedReport, result trivyResult) {
 			meta["data_source"] = v.DataSource.URL
 		}
 
-		nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
-			Fingerprint: string(scanner.SCAFingerprint(v.VulnerabilityID, purl)),
-			FindingKind: "sca",
+		nr.Findings = append(nr.Findings, domain.NormalizedFinding{
+			Fingerprint: string(domain.SCAFingerprint(v.VulnerabilityID, purl)),
+			FindingKind: kindSCA,
 			Title:       v.Title,
 			Description: v.Description,
 			Severity:    normalizeSeverity(v.Severity),
@@ -273,17 +295,17 @@ func bestCVSSScore(c trivyCVSS) float64 {
 	}
 }
 
-func addSecrets(nr *scanner.NormalizedReport, result trivyResult) {
+func addSecrets(nr *domain.NormalizedReport, result trivyResult) {
 	for _, s := range result.Secrets {
 		fp := "secret:" + s.RuleID + ":" + result.Target
-		nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
+		nr.Findings = append(nr.Findings, domain.NormalizedFinding{
 			Fingerprint: fp,
-			FindingKind: "secret",
+			FindingKind: kindSecret,
 			Title:       s.Title,
 			Severity:    normalizeSeverity(s.Severity),
-			Dimensions: []scanner.Dimension{
-				{Key: "rule_id", Value: s.RuleID},
-				{Key: "category", Value: s.Category},
+			Dimensions: []domain.Dimension{
+				{Key: domain.DimRuleID, Value: s.RuleID},
+				{Key: domain.DimSource, Value: s.Category},
 			},
 			Display: map[string]any{
 				"target":   result.Target,
@@ -297,16 +319,16 @@ func addSecrets(nr *scanner.NormalizedReport, result trivyResult) {
 	}
 }
 
-func addMisconfigs(nr *scanner.NormalizedReport, result trivyResult) {
+func addMisconfigs(nr *domain.NormalizedReport, result trivyResult) {
 	for _, m := range result.Misconfigs {
 		fp := "iac:" + m.RuleID + ":" + result.Target
-		nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
+		nr.Findings = append(nr.Findings, domain.NormalizedFinding{
 			Fingerprint: fp,
-			FindingKind: "iac",
+			FindingKind: kindIaC,
 			Title:       m.Title,
 			Severity:    normalizeSeverity(m.Severity),
-			Dimensions: []scanner.Dimension{
-				{Key: "rule_id", Value: m.RuleID},
+			Dimensions: []domain.Dimension{
+				{Key: domain.DimRuleID, Value: m.RuleID},
 			},
 			Display: map[string]any{
 				"target":  result.Target,
@@ -321,17 +343,17 @@ func addMisconfigs(nr *scanner.NormalizedReport, result trivyResult) {
 	}
 }
 
-func normalizeSeverity(s string) scanner.Severity {
+func normalizeSeverity(s string) domain.Severity {
 	switch strings.ToUpper(s) {
 	case "CRITICAL":
-		return scanner.SeverityCritical
+		return domain.SeverityCritical
 	case "HIGH":
-		return scanner.SeverityHigh
+		return domain.SeverityHigh
 	case "MEDIUM":
-		return scanner.SeverityMedium
+		return domain.SeverityMedium
 	case "LOW":
-		return scanner.SeverityLow
+		return domain.SeverityLow
 	default:
-		return scanner.SeverityUnknown
+		return domain.SeverityUnknown
 	}
 }

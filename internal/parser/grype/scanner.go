@@ -93,6 +93,19 @@ type Scanner struct{}
 // NewScanner builds the grype adapter.
 func NewScanner() *Scanner { return &Scanner{} }
 
+func (s *Scanner) Descriptor() scanner.Descriptor {
+	return scanner.Descriptor{
+		Name:                  "grype",
+		Version:               "0.7",
+		ContractVersion:       1,
+		FingerprintVersion:    1,
+		FindingKinds:          []scanner.FindingKind{"sca"},
+		ScanTypes:             []scanner.ScanType{scanner.ScanTypeFilesystem, scanner.ScanTypeImage},
+		ProvidesPackages:      true,
+		SupportsAutoDetection: true,
+	}
+}
+
 func (s *Scanner) Name() string { return "grype" }
 
 func (s *Scanner) FindingKind() string { return "sca" }

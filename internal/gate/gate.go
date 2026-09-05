@@ -21,7 +21,10 @@ const (
 )
 
 // ReachabilityState is a finding's latest human reachability assessment.
-// The empty string means no assessment exists (treated as unknown).
+// The empty string means no assessment exists (treated as unknown). The
+// values alias the canonical four-state vocabulary defined in
+// internal/domain; the gate package keeps its own named type so the core
+// policy evaluator stays dependency-free while sharing the same strings.
 type ReachabilityState string
 
 const (
@@ -49,7 +52,7 @@ type Decision struct {
 }
 
 // Finding is the subset of a finding the gate needs to decide whether an
-// active waiver applies.
+// active waiver applies and whether the finding is a gate candidate.
 type Finding struct {
 	ID                  string
 	CurrentSeverityRank int16
@@ -59,9 +62,17 @@ type Finding struct {
 	EnvironmentID       string
 	TargetID            string
 	ArtifactID          string
+	// AnalysisState is the finding's current analysis state ("" when none
+	// has been recorded — the untriaged marker). Source policies that admit
+	// findings only after triage consult it.
+	AnalysisState string
 	// Reachability is the finding's latest human reachability assessment.
 	// Empty means none exists (unknown).
 	Reachability ReachabilityState
+	// Source is the plugin/source category that produced the finding (e.g.
+	// the watcher source category "cve_watcher"). Gate policies may treat
+	// sources differently; the core never hard-codes a source literal.
+	Source string
 }
 
 // WaiverCondition is a predicate on a finding field: Field is one of
@@ -110,11 +121,58 @@ type WaiversRepo interface {
 	ListActiveWaivers(ctx context.Context, projectID string) ([]Waiver, error)
 }
 
+// GatePolicy is a per-source admission rule supplied by the source
+// registration (the watcher supplies its own category; the core never
+// hard-codes a source literal like "cve_watcher"). A finding from Source is
+// a gate candidate only when its policy admits it.
+type GatePolicy struct {
+	// Source is the source category the policy governs (e.g. the watcher
+	// category). Empty Source matches findings with no source set.
+	Source string
+	// Mode decides admission:
+	//   "immediate"       — findings from this source always gate.
+	//   "off"             — findings from this source never gate.
+	//   "require_triage"  — findings from this source gate only after their
+	//                       analysis_state has been set (not ""/unanalyzed).
+	// An empty mode means no policy (findings from the source gate normally).
+	Mode string
+}
+
+const (
+	PolicyImmediate     = "immediate"
+	PolicyOff           = "off"
+	PolicyRequireTriage = "require_triage"
+)
+
+// sourcePolicies maps each governed source to its policy mode.
+type sourcePolicies map[string]string
+
+// admits reports whether a finding is admitted as a gate candidate under the
+// given policies. Findings with no governing policy are always admitted.
+func (p sourcePolicies) admits(f Finding) bool {
+	mode, governed := p[f.Source]
+	if !governed {
+		return true
+	}
+	switch mode {
+	case PolicyOff:
+		return false
+	case PolicyRequireTriage:
+		return f.AnalysisState != "" && f.AnalysisState != "unanalyzed"
+	default: // PolicyImmediate and unknown modes admit everything
+		return true
+	}
+}
+
 // Gate evaluates deployment-readiness for a project.
 type Gate interface {
 	// Evaluate returns the gate decision: pass when every blocking finding
 	// is waived, fail listing the unwaived blockers otherwise.
 	Evaluate(ctx context.Context, projectID string, minSeverityRank int16) (Decision, error)
+	// EvaluateWithPolicies evaluates the gate while applying per-source
+	// admission policies. Policies decide which findings are gate candidates
+	// before waiver matching; findings from ungoverned sources always gate.
+	EvaluateWithPolicies(ctx context.Context, projectID string, minSeverityRank int16, policies []GatePolicy) (Decision, error)
 }
 
 type gate struct {
@@ -139,6 +197,15 @@ func reachabilityExemptsFromGate(state ReachabilityState) bool {
 }
 
 func (g *gate) Evaluate(ctx context.Context, projectID string, minSeverityRank int16) (Decision, error) {
+	return g.EvaluateWithPolicies(ctx, projectID, minSeverityRank, nil)
+}
+
+func (g *gate) EvaluateWithPolicies(ctx context.Context, projectID string, minSeverityRank int16, policies []GatePolicy) (Decision, error) {
+	p := sourcePolicies{}
+	for _, policy := range policies {
+		p[policy.Source] = policy.Mode
+	}
+
 	findings, err := g.findings.ListBlockingFindings(ctx, projectID, minSeverityRank)
 	if err != nil {
 		return Decision{Status: StatusError}, fmt.Errorf("list blocking findings: %w", err)
@@ -151,9 +218,13 @@ func (g *gate) Evaluate(ctx context.Context, projectID string, minSeverityRank i
 	applicableFindings := make([]Finding, 0, len(findings))
 	for _, f := range findings {
 		f.Reachability = normalizeReachabilityState(f.Reachability)
-		if !reachabilityExemptsFromGate(f.Reachability) {
-			applicableFindings = append(applicableFindings, f)
+		if reachabilityExemptsFromGate(f.Reachability) {
+			continue
 		}
+		if !p.admits(f) {
+			continue
+		}
+		applicableFindings = append(applicableFindings, f)
 	}
 	if len(applicableFindings) == 0 {
 		return Decision{Status: StatusPass}, nil

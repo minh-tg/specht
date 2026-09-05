@@ -13,7 +13,7 @@ import (
 
 func TestName(t *testing.T) {
 	s := trivy.NewScanner()
-	assert.Equal(t, "trivy", s.Name())
+	assert.Equal(t, "trivy", s.Descriptor().Name)
 }
 
 func TestDetect_ValidInput(t *testing.T) {
@@ -186,5 +186,12 @@ func TestParse_InvalidJSON(t *testing.T) {
 
 func TestFindingKind(t *testing.T) {
 	s := trivy.NewScanner()
-	assert.Equal(t, "sca", s.FindingKind())
+	kinds := make([]string, 0, len(s.Descriptor().FindingKinds))
+	for _, k := range s.Descriptor().FindingKinds {
+		kinds = append(kinds, string(k))
+	}
+	// Trivy emits sca, secret, and iac findings from one report.
+	assert.Contains(t, kinds, "sca")
+	assert.Contains(t, kinds, "secret")
+	assert.Contains(t, kinds, "iac")
 }

@@ -8,15 +8,18 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/repo"
 )
 
-// ReachabilityState values accepted by UpsertReachability.
+// ReachabilityState values accepted by UpsertReachability. They alias the
+// canonical four-state vocabulary defined in internal/domain so existing
+// use-case callers keep compiling during the boundary move.
 const (
-	ReachabilityReachable     = "reachable"
-	ReachabilityNotReachable  = "not_reachable"
-	ReachabilityUnknown       = "unknown"
-	ReachabilityNotApplicable = "not_applicable"
+	ReachabilityReachable     = domain.ReachabilityReachable
+	ReachabilityNotReachable  = domain.ReachabilityNotReachable
+	ReachabilityUnknown       = domain.ReachabilityUnknown
+	ReachabilityNotApplicable = domain.ReachabilityNotApplicable
 )
 
 // ErrInvalidReachabilityState is returned when an assessment state is not one
@@ -24,11 +27,7 @@ const (
 var ErrInvalidReachabilityState = errors.New("invalid reachability state")
 
 func validReachabilityState(s string) bool {
-	switch s {
-	case ReachabilityReachable, ReachabilityNotReachable, ReachabilityUnknown, ReachabilityNotApplicable:
-		return true
-	}
-	return false
+	return domain.ValidReachabilityState(domain.ReachabilityState(s))
 }
 
 // ReachabilityResponse is a finding's reachability assessment.

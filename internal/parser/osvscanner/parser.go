@@ -95,6 +95,19 @@ type Scanner struct{}
 // NewScanner builds the osv-scanner adapter.
 func NewScanner() *Scanner { return &Scanner{} }
 
+func (s *Scanner) Descriptor() scanner.Descriptor {
+	return scanner.Descriptor{
+		Name:                  "osv-scanner",
+		Version:               "1",
+		ContractVersion:       1,
+		FingerprintVersion:    1,
+		FindingKinds:          []scanner.FindingKind{"sca"},
+		ScanTypes:             []scanner.ScanType{scanner.ScanTypeLockfile, scanner.ScanTypeSBOM, scanner.ScanTypeRepository, scanner.ScanTypeImage, scanner.ScanTypeFilesystem},
+		ProvidesPackages:      true,
+		SupportsAutoDetection: true,
+	}
+}
+
 func (s *Scanner) Name() string { return "osv-scanner" }
 
 func (s *Scanner) FindingKind() string { return "sca" }

@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/xMinhx/specht/internal/finding"
 	"github.com/xMinhx/specht/internal/gate"
 	"github.com/xMinhx/specht/internal/repo"
 )
@@ -17,6 +18,7 @@ var (
 	ErrFindingNotFound = errors.New("finding not found")
 	ErrReasonRequired  = errors.New("reason is required for this analysis state")
 	ErrExpiryRequired  = errors.New("expiry is required for accepted_risk and wont_fix")
+	ErrInvalidState    = errors.New("invalid analysis state")
 )
 
 // TriageInput sets a finding's analysis state with an optional reason and expiry.
@@ -55,25 +57,31 @@ type GateStatusOutput struct {
 	WaivedCount           int               `json:"waived_count,omitempty"`
 }
 
+// stateRequiresReason delegates to the canonical lifecycle vocabulary. The
+// helpers remain so callers carrying untyped strings (HTTP bodies) validate
+// at the boundary before persisting.
 func stateRequiresReason(s string) bool {
-	switch s {
-	case "false_positive", "not_affected", "accepted_risk", "wont_fix":
-		return true
+	st, ok := finding.ParseAnalysisState(s)
+	if !ok {
+		return false
 	}
-	return false
+	return finding.RequiresReason(st)
 }
 
 func stateRequiresExpiry(s string) bool {
-	return s == "accepted_risk" || s == "wont_fix"
+	st, ok := finding.ParseAnalysisState(s)
+	if !ok {
+		return false
+	}
+	return finding.RequiresExpiry(st)
 }
 
 func stateToGateEffect(s string) string {
-	switch s {
-	case "false_positive", "not_affected", "accepted_risk", "wont_fix":
-		return "ignore"
-	default:
-		return "block"
+	st, ok := finding.ParseAnalysisState(s)
+	if !ok {
+		return string(finding.EffectBlock)
 	}
+	return string(finding.GateEffectFor(st))
 }
 
 func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*TriageOutput, error) {
@@ -84,6 +92,10 @@ func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*Triag
 	userID, err := uuid.Parse(input.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid user id: %w", err)
+	}
+
+	if !finding.ValidateAnalysisState(input.AnalysisState) {
+		return nil, fmt.Errorf("%w: %q", ErrInvalidState, input.AnalysisState)
 	}
 
 	finding, err := u.findingWithProjectAccess(ctx, findingID)
@@ -150,6 +162,10 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 	userID, err := uuid.Parse(input.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid user id: %w", err)
+	}
+
+	if !finding.ValidateAnalysisState(input.AnalysisState) {
+		return nil, fmt.Errorf("%w: %q", ErrInvalidState, input.AnalysisState)
 	}
 
 	findingIDs := make([]pgtype.UUID, len(input.FindingIDs))

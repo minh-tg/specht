@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/finding"
 	"github.com/xMinhx/specht/internal/repo"
 	"github.com/xMinhx/specht/internal/scanner"
@@ -44,8 +45,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, fmt.Errorf("lookup project %q: %w", input.ProjectSlug, err)
 	}
 
-	sc, ok := u.deps.Registry.Get(input.Scanner)
-	if !ok {
+	sc, err := u.deps.Registry.Get(input.Scanner)
+	if err != nil {
 		return nil, fmt.Errorf("unknown scanner %q", input.Scanner)
 	}
 
@@ -286,7 +287,7 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project sqlc.Project, i
 		}
 	}
 
-	if lookupErr == nil && (oldAnalysisState != "unanalyzed" || oldGateEffect == "ignore") {
+	if lookupErr == nil && (oldAnalysisState != string(finding.StateUnanalyzed) || oldGateEffect == string(finding.EffectIgnore)) {
 		if err := u.applyMaterialChange(ctx, project, input, upserted, f, oldRank, oldGateEffect, oldAnalysisState); err != nil {
 			return 0, err
 		}
@@ -301,7 +302,7 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project sqlc.Project, i
 func (u *Usecases) applyMaterialChange(ctx context.Context, project sqlc.Project, input IngestReportInput, upserted sqlc.Finding, f scanner.NormalizedFinding, oldRank int16, oldGateEffect, oldAnalysisState string) error {
 	hasNewFix := false
 	for _, d := range f.Dimensions {
-		if d.Key == "fixed_version" && d.Value != "" {
+		if d.Key == domain.DimFixedVersion && d.Value != "" {
 			hasNewFix = true
 			break
 		}
@@ -309,7 +310,7 @@ func (u *Usecases) applyMaterialChange(ctx context.Context, project sqlc.Project
 
 	var hadOldFix bool
 	if hasNewFix {
-		hadOldFix, _ = u.deps.Repos.Findings.HasDimension(ctx, upserted.ID, "fixed_version")
+		hadOldFix, _ = u.deps.Repos.Findings.HasDimension(ctx, upserted.ID, domain.DimFixedVersion)
 	}
 
 	change := finding.EvaluateChange(finding.PreviousFinding{

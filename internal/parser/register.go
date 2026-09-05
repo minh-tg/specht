@@ -1,3 +1,7 @@
+// Package parser is the composition point for the built-in scanner parser
+// adapters. It exposes the concrete built-in scanners; registering them into
+// a scanner.Registry is a composition-root concern, so this package never
+// imports the registry package.
 package parser
 
 import (
@@ -10,12 +14,16 @@ import (
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
-// RegisterAll registers every built-in scanner parser into the registry.
-func RegisterAll(reg *scanner.Registry) {
-	reg.Register(trivy.NewScanner())
-	reg.Register(osvscanner.NewScanner())
-	reg.Register(semgrep.NewScanner())
-	reg.Register(checkov.NewScanner())
-	reg.Register(dependencycheck.NewScanner())
-	reg.Register(grype.NewScanner())
+// Builtins returns the concrete built-in scanner parser adapters in a stable
+// order. Only the composition root registers these into a Registry and
+// handles registration errors.
+func Builtins() []scanner.Scanner {
+	return []scanner.Scanner{
+		trivy.NewScanner(),
+		osvscanner.NewScanner(),
+		semgrep.NewScanner(),
+		checkov.NewScanner(),
+		dependencycheck.NewScanner(),
+		grype.NewScanner(),
+	}
 }

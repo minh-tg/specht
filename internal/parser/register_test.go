@@ -9,82 +9,53 @@ import (
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
-func TestRegisterAllRegistersExpectedParsers(t *testing.T) {
-	reg := scanner.NewRegistry()
-	parser.RegisterAll(reg)
-
-	expected := []struct {
-		name string
-	}{
-		{"trivy"},
-		{"osv-scanner"},
-		{"semgrep"},
-		{"checkov"},
-		{"dependency-check"},
-		{"grype"},
+func TestBuiltinsIncludesExpectedParsers(t *testing.T) {
+	builtins := parser.Builtins()
+	names := make([]string, len(builtins))
+	for i, s := range builtins {
+		names[i] = s.Descriptor().Name
 	}
 
+	expected := []string{"trivy", "osv-scanner", "semgrep", "checkov", "dependency-check", "grype"}
 	for _, e := range expected {
-		t.Run(e.name, func(t *testing.T) {
-			s, ok := reg.Get(e.name)
-			require.True(t, ok, "expected scanner %q to be registered", e.name)
-			assert.Equal(t, e.name, s.Name())
-		})
+		assert.Contains(t, names, e, "expected builtin scanner %q", e)
 	}
 }
 
-func TestRegisterAllAllNamesAreNonEmpty(t *testing.T) {
-	reg := scanner.NewRegistry()
-	parser.RegisterAll(reg)
-
-	for _, name := range []string{"trivy", "osv-scanner", "semgrep", "checkov", "dependency-check", "grype"} {
-		t.Run(name, func(t *testing.T) {
-			s, ok := reg.Get(name)
-			require.True(t, ok, "%q must be registered", name)
-			assert.NotEmpty(t, s.Name(), "%q Name() must be non-empty", name)
-		})
+func TestBuiltinsDescriptorsAreNonEmpty(t *testing.T) {
+	for _, s := range parser.Builtins() {
+		d := s.Descriptor()
+		assert.NotEmpty(t, d.Name, "descriptor name must be non-empty")
+		assert.NotEmpty(t, d.FindingKinds, "%q must declare at least one finding kind", d.Name)
+		assert.NotEmpty(t, d.ScanTypes, "%q must declare at least one scan type", d.Name)
+		assert.NotZero(t, d.ContractVersion, "%q must declare a contract version", d.Name)
+		assert.NotZero(t, d.FingerprintVersion, "%q must declare a fingerprint version", d.Name)
 	}
 }
 
-func TestRegisterAllTrivyAndOSVNamesAreNonEmpty(t *testing.T) {
+func TestBuiltinsRegisterCleanly(t *testing.T) {
 	reg := scanner.NewRegistry()
-	parser.RegisterAll(reg)
-
-	trivyScanner, ok := reg.Get("trivy")
-	require.True(t, ok, "trivy must be registered")
-	assert.NotEmpty(t, trivyScanner.Name(), "trivy Name() must be non-empty")
-	assert.Equal(t, "trivy", trivyScanner.Name())
-
-	osvScanner, ok := reg.Get("osv-scanner")
-	require.True(t, ok, "osv-scanner must be registered")
-	assert.NotEmpty(t, osvScanner.Name(), "osv-scanner Name() must be non-empty")
-	assert.Equal(t, "osv-scanner", osvScanner.Name())
-}
-
-func TestRegisterAllCount(t *testing.T) {
-	reg := scanner.NewRegistry()
-	parser.RegisterAll(reg)
-
-	// Count all registered scanners by iterating via Detect probe.
-	// This verifies all parsers are registered without knowing their names.
-	var count int
-	for _, probe := range [][]byte{
-		[]byte(`{"results":[{"source":{"path":"test","type":"lockfile"},"packages":[]}]}`),
-		[]byte(`[{"Target":"alpine:3.20","Class":"os-pkgs","Type":"alpine"}]`),
-		[]byte(`{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"semgrep","version":"1.0.0"}},"results":[]}]}`),
-		[]byte(`{"check_type":"terraform","results":{"passed_checks":[],"failed_checks":[],"skipped_checks":[],"parsing_errors":[]},"summary":{"passed":0,"failed":0,"skipped":0,"parsing_errors":0}}`),
-	} {
-		if _, ok := reg.Detect(probe); ok {
-			count++
-		}
+	for _, s := range parser.Builtins() {
+		require.NoError(t, reg.Register(s))
 	}
+	require.Len(t, reg.List(), 6)
 
-	assert.Equal(t, 4, count, "should detect 4 distinct scanner formats; remaining 2 (Dependency-Check, Grype) have overlapping probe data not tested here")
+	for _, s := range parser.Builtins() {
+		got, err := reg.Get(s.Descriptor().Name)
+		require.NoError(t, err, "scanner %q must be registered", s.Descriptor().Name)
+		assert.Equal(t, s.Descriptor().Name, got.Descriptor().Name)
+	}
 }
 
-func TestRegisterAllParsersCanDetect(t *testing.T) {
+func TestBuiltinsCount(t *testing.T) {
+	assert.Len(t, parser.Builtins(), 6)
+}
+
+func TestBuiltinsDetectFormats(t *testing.T) {
 	reg := scanner.NewRegistry()
-	parser.RegisterAll(reg)
+	for _, s := range parser.Builtins() {
+		require.NoError(t, reg.Register(s))
+	}
 
 	tests := []struct {
 		name string
@@ -115,14 +86,33 @@ func TestRegisterAllParsersCanDetect(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			p, ok := reg.Detect(tt.data)
-			require.True(t, ok, "no parser detected for data, want %q", tt.want)
-			assert.Equal(t, tt.want, p.Name())
+			p, err := reg.Detect(tt.data)
+			require.NoError(t, err, "no parser detected for data, want %q", tt.want)
+			assert.Equal(t, tt.want, p.Descriptor().Name)
 		})
 	}
 
 	t.Run("empty data matches nothing", func(t *testing.T) {
-		_, ok := reg.Detect([]byte(`{}`))
-		assert.False(t, ok)
+		_, err := reg.Detect([]byte(`{}`))
+		assert.ErrorIs(t, err, scanner.ErrNoMatch)
 	})
+}
+
+func TestBuiltinsScanTypesMatchDatabase(t *testing.T) {
+	// The database scan_type check (000007_create_findings era) accepts the
+	// six ScanType constants; every descriptor's declared scan types must be
+	// among them.
+	valid := map[scanner.ScanType]bool{
+		scanner.ScanTypeImage:      true,
+		scanner.ScanTypeFilesystem: true,
+		scanner.ScanTypeRepository: true,
+		scanner.ScanTypeIaC:        true,
+		scanner.ScanTypeSBOM:       true,
+		scanner.ScanTypeLockfile:   true,
+	}
+	for _, s := range parser.Builtins() {
+		for _, st := range s.Descriptor().ScanTypes {
+			assert.True(t, valid[st], "%q declares invalid scan type %q", s.Descriptor().Name, st)
+		}
+	}
 }

@@ -53,6 +53,19 @@ type Scanner struct{}
 // NewScanner builds the checkov adapter.
 func NewScanner() *Scanner { return &Scanner{} }
 
+func (s *Scanner) Descriptor() scanner.Descriptor {
+	return scanner.Descriptor{
+		Name:                  "checkov",
+		Version:               "3",
+		ContractVersion:       1,
+		FingerprintVersion:    1,
+		FindingKinds:          []scanner.FindingKind{"iac"},
+		ScanTypes:             []scanner.ScanType{scanner.ScanTypeIaC},
+		ProvidesPackages:      false,
+		SupportsAutoDetection: true,
+	}
+}
+
 func (s *Scanner) Name() string { return "checkov" }
 
 func (s *Scanner) FindingKind() string { return "iac" }

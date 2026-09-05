@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/repo"
 	"github.com/xMinhx/specht/internal/scanner"
 )
@@ -340,16 +341,24 @@ func (m *mockAPIKeyRepo) GetByHash(ctx context.Context, keyHash string) (sqlc.Ap
 
 type mockScanner struct {
 	name    string
-	parseFn func(ctx context.Context, data []byte) (*scanner.NormalizedReport, error)
+	parseFn func(ctx context.Context, data []byte) (*domain.NormalizedReport, error)
 }
 
-func (m *mockScanner) Name() string { return m.name }
-
-func (m *mockScanner) FindingKind() string { return "test" }
+func (m *mockScanner) Descriptor() scanner.Descriptor {
+	return scanner.Descriptor{
+		Name:               m.name,
+		Version:            "test",
+		ContractVersion:    1,
+		FingerprintVersion: 1,
+		FindingKinds:       []scanner.FindingKind{"sca", "test"},
+		ScanTypes:          []scanner.ScanType{scanner.ScanTypeImage, scanner.ScanTypeFilesystem},
+		ProvidesPackages:   true,
+	}
+}
 
 func (m *mockScanner) DetectFormat(data []byte) bool { return true }
 
-func (m *mockScanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedReport, error) {
+func (m *mockScanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
 	if m.parseFn == nil {
 		return nil, fmt.Errorf("unexpected call to Parse")
 	}
@@ -723,7 +732,7 @@ func TestIngestReport_Success(t *testing.T) {
 	}
 
 	reg := scanner.NewRegistry()
-	reg.Register(&mockScanner{
+	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return &scanner.NormalizedReport{
@@ -760,7 +769,7 @@ func TestIngestReport_Success(t *testing.T) {
 				ScanScope: map[string]any{"packages": 150},
 			}, nil
 		},
-	})
+	}))
 
 	uc := New(Deps{
 		Repos: &repo.Repos{
@@ -858,12 +867,12 @@ func TestIngestReport_ParseError(t *testing.T) {
 	}
 
 	reg := scanner.NewRegistry()
-	reg.Register(&mockScanner{
+	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return nil, fmt.Errorf("invalid scan data")
 		},
-	})
+	}))
 
 	uc := New(Deps{
 		Repos: &repo.Repos{
@@ -894,7 +903,7 @@ func TestIngestReport_Duplicate(t *testing.T) {
 	}
 
 	reg := scanner.NewRegistry()
-	reg.Register(&mockScanner{
+	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return &scanner.NormalizedReport{
@@ -905,7 +914,7 @@ func TestIngestReport_Duplicate(t *testing.T) {
 				ScanScope: map[string]any{},
 			}, nil
 		},
-	})
+	}))
 
 	uc := New(Deps{
 		Repos: &repo.Repos{
@@ -964,7 +973,7 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 	}
 
 	reg := scanner.NewRegistry()
-	reg.Register(&mockScanner{
+	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return &scanner.NormalizedReport{
@@ -977,7 +986,7 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 				ScanScope: map[string]any{},
 			}, nil
 		},
-	})
+	}))
 
 	uc := New(Deps{
 		Repos: &repo.Repos{
@@ -1007,12 +1016,12 @@ func TestIngestReport_ErrorWrapping(t *testing.T) {
 	}
 
 	reg := scanner.NewRegistry()
-	reg.Register(&mockScanner{
+	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return nil, fmt.Errorf("malformed data")
 		},
-	})
+	}))
 
 	uc := New(Deps{
 		Repos: &repo.Repos{
@@ -1071,7 +1080,7 @@ func TestIngestReport_PartialFailure(t *testing.T) {
 	}
 
 	reg := scanner.NewRegistry()
-	reg.Register(&mockScanner{
+	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return &scanner.NormalizedReport{
@@ -1085,7 +1094,7 @@ func TestIngestReport_PartialFailure(t *testing.T) {
 				ScanScope: map[string]any{},
 			}, nil
 		},
-	})
+	}))
 
 	uc := New(Deps{
 		Repos: &repo.Repos{
@@ -1148,7 +1157,7 @@ func TestIngestReport_InventoryWriteFailure(t *testing.T) {
 	}
 
 	reg := scanner.NewRegistry()
-	reg.Register(&mockScanner{
+	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return &scanner.NormalizedReport{
@@ -1164,7 +1173,7 @@ func TestIngestReport_InventoryWriteFailure(t *testing.T) {
 				ScanScope: map[string]any{},
 			}, nil
 		},
-	})
+	}))
 
 	uc := New(Deps{
 		Repos: &repo.Repos{
@@ -2369,7 +2378,7 @@ func TestFindingWrites_APIKeyCannotCrossProject(t *testing.T) {
 
 	_, err := uc.TriageFinding(ctx, TriageInput{
 		FindingID:     findingID,
-		AnalysisState: "confirmed",
+		AnalysisState: "exploitable",
 		UserID:        userID,
 	})
 	require.ErrorIs(t, err, ErrProjectAccessDenied)
@@ -2385,7 +2394,7 @@ func TestFindingWrites_APIKeyCannotCrossProject(t *testing.T) {
 
 	_, err = uc.BulkTriage(ctx, BulkTriageInput{
 		FindingIDs:    []string{findingID},
-		AnalysisState: "confirmed",
+		AnalysisState: "exploitable",
 		UserID:        userID,
 	})
 	require.ErrorIs(t, err, ErrProjectAccessDenied)

@@ -2,23 +2,36 @@ package scanner_test
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
 type testScanner struct {
-	name string
+	name    string
+	kind    scanner.FindingKind
+	version string
 }
 
-func (s *testScanner) Name() string { return s.name }
+func (s *testScanner) Descriptor() scanner.Descriptor {
+	return scanner.Descriptor{
+		Name:                  s.name,
+		Version:               s.version,
+		ContractVersion:       1,
+		FingerprintVersion:    1,
+		FindingKinds:          []scanner.FindingKind{s.kind},
+		ScanTypes:             []scanner.ScanType{scanner.ScanTypeFilesystem},
+		ProvidesPackages:      false,
+		SupportsAutoDetection: true,
+	}
+}
 
-func (s *testScanner) FindingKind() string { return "test" }
-
-func (s *testScanner) Parse(_ context.Context, _ []byte) (*scanner.NormalizedReport, error) {
-	return &scanner.NormalizedReport{ToolName: s.name}, nil
+func (s *testScanner) Parse(_ context.Context, _ []byte) (*domain.NormalizedReport, error) {
+	return &domain.NormalizedReport{ScanType: scanner.ScanTypeFilesystem}, nil
 }
 
 func (s *testScanner) DetectFormat(data []byte) bool {
@@ -31,12 +44,20 @@ type selectiveScanner struct {
 	matchPrefix []byte
 }
 
-func (s *selectiveScanner) Name() string { return s.name }
+func (s *selectiveScanner) Descriptor() scanner.Descriptor {
+	return scanner.Descriptor{
+		Name:                  s.name,
+		Version:               "1",
+		ContractVersion:       1,
+		FingerprintVersion:    1,
+		FindingKinds:          []scanner.FindingKind{"selective"},
+		ScanTypes:             []scanner.ScanType{scanner.ScanTypeFilesystem},
+		SupportsAutoDetection: true,
+	}
+}
 
-func (s *selectiveScanner) FindingKind() string { return "selective" }
-
-func (s *selectiveScanner) Parse(_ context.Context, _ []byte) (*scanner.NormalizedReport, error) {
-	return &scanner.NormalizedReport{ToolName: s.name}, nil
+func (s *selectiveScanner) Parse(_ context.Context, _ []byte) (*domain.NormalizedReport, error) {
+	return &domain.NormalizedReport{}, nil
 }
 
 func (s *selectiveScanner) DetectFormat(data []byte) bool {
@@ -90,41 +111,60 @@ func TestNewRegistry(t *testing.T) {
 
 func TestRegistryRegisterGet(t *testing.T) {
 	r := scanner.NewRegistry()
-	p := &testScanner{name: "test-parser"}
-	r.Register(p)
+	p := &testScanner{name: "test-parser", kind: "test"}
+	require.NoError(t, r.Register(p))
 
-	got, ok := r.Get("test-parser")
-	require.True(t, ok)
-	assert.Equal(t, "test-parser", got.Name())
+	got, err := r.Get("test-parser")
+	require.NoError(t, err)
+	assert.Equal(t, "test-parser", got.Descriptor().Name)
 }
 
 func TestRegistryGetUnknown(t *testing.T) {
 	r := scanner.NewRegistry()
-	_, ok := r.Get("nonexistent")
-	assert.False(t, ok)
+	_, err := r.Get("nonexistent")
+	assert.ErrorIs(t, err, scanner.ErrNoMatch)
+}
+
+func TestRegistryRegisterDuplicate(t *testing.T) {
+	r := scanner.NewRegistry()
+	p1 := &testScanner{name: "overwrite-me", kind: "test"}
+	p2 := &testScanner{name: "overwrite-me", kind: "test"}
+	require.NoError(t, r.Register(p1))
+	err := r.Register(p2)
+	assert.ErrorIs(t, err, scanner.ErrDuplicateName)
+	// First registration wins; registration order retained.
+	got, err := r.Get("overwrite-me")
+	require.NoError(t, err)
+	assert.Equal(t, "overwrite-me", got.Descriptor().Name)
+}
+
+func TestRegistryRegisterNilAndInvalid(t *testing.T) {
+	r := scanner.NewRegistry()
+	assert.ErrorIs(t, r.Register(nil), scanner.ErrInvalidDescriptor)
+	assert.ErrorIs(t, r.Register(&testScanner{kind: "test"}), scanner.ErrInvalidDescriptor)
 }
 
 func TestRegistryDetect(t *testing.T) {
 	r := scanner.NewRegistry()
-	p := &testScanner{name: "detect-parser"}
-	r.Register(p)
+	p := &testScanner{name: "detect-parser", kind: "test"}
+	require.NoError(t, r.Register(p))
 
-	matched, ok := r.Detect([]byte("hello"))
-	require.True(t, ok)
-	assert.Equal(t, "detect-parser", matched.Name())
+	matched, err := r.Detect([]byte("hello"))
+	require.NoError(t, err)
+	assert.Equal(t, "detect-parser", matched.Descriptor().Name)
 }
 
 func TestRegistryDetectNoMatch(t *testing.T) {
 	r := scanner.NewRegistry()
-	_, ok := r.Detect([]byte("data"))
-	assert.False(t, ok)
+	_, err := r.Detect([]byte("data"))
+	assert.ErrorIs(t, err, scanner.ErrNoMatch)
 }
 
 func TestRegistryDetectEmptyData(t *testing.T) {
 	r := scanner.NewRegistry()
-	r.Register(&testScanner{name: "p"})
-	_, ok := r.Detect([]byte{})
-	assert.False(t, ok)
+	require.NoError(t, r.Register(&testScanner{name: "p", kind: "test"}))
+	_, err := r.Detect([]byte{})
+	assert.ErrorIs(t, err, scanner.ErrNoMatch)
 }
 
 func TestScanTypeConstants(t *testing.T) {
@@ -147,84 +187,76 @@ func TestScanTypeConstants(t *testing.T) {
 	}
 }
 
-func TestRegistryRegisterOverwrite(t *testing.T) {
+func TestRegistryDetectAmbiguous(t *testing.T) {
 	r := scanner.NewRegistry()
-	p1 := &testScanner{name: "overwrite-me"}
-	p2 := &testScanner{name: "overwrite-me"}
-	r.Register(p1)
-	r.Register(p2)
+	require.NoError(t, r.Register(&testScanner{name: "scanner-a", kind: "test"}))
+	require.NoError(t, r.Register(&testScanner{name: "scanner-b", kind: "test"}))
+	require.NoError(t, r.Register(&testScanner{name: "scanner-c", kind: "test"}))
 
-	got, ok := r.Get("overwrite-me")
-	require.True(t, ok)
-	assert.Same(t, p2, got, "last registered scanner with same name should overwrite the previous")
-}
-
-func TestRegistryDetectMultipleMatches(t *testing.T) {
-	r := scanner.NewRegistry()
-	r.Register(&testScanner{name: "scanner-a"})
-	r.Register(&testScanner{name: "scanner-b"})
-	r.Register(&testScanner{name: "scanner-c"})
-
-	got, ok := r.Detect([]byte("data"))
-	require.True(t, ok)
-	assert.Contains(t, []string{"scanner-a", "scanner-b", "scanner-c"}, got.Name())
+	_, err := r.Detect([]byte("data"))
+	assert.ErrorIs(t, err, scanner.ErrAmbiguousMatch)
 }
 
 func TestRegistryDetectWithSelectiveMatchers(t *testing.T) {
 	// Test that a scanner matching only specific data works when it is the only match.
 	r := scanner.NewRegistry()
 	selective := &selectiveScanner{name: "selective", matchPrefix: []byte("secret")}
-	r.Register(selective)
+	require.NoError(t, r.Register(selective))
 
-	got, ok := r.Detect([]byte("secret stuff"))
-	require.True(t, ok)
-	assert.Equal(t, "selective", got.Name())
+	got, err := r.Detect([]byte("secret stuff"))
+	require.NoError(t, err)
+	assert.Equal(t, "selective", got.Descriptor().Name)
 
 	// Test that a non-matching prefix returns nothing (not detected by selective scanner).
-	_, ok = r.Detect([]byte("other data"))
-	assert.False(t, ok)
+	_, err = r.Detect([]byte("other data"))
+	assert.ErrorIs(t, err, scanner.ErrNoMatch)
 
 	// Separate registry: a generic (all-non-empty) scanner alone.
 	r2 := scanner.NewRegistry()
-	r2.Register(&testScanner{name: "generic"})
+	require.NoError(t, r2.Register(&testScanner{name: "generic", kind: "test"}))
 
-	got2, ok2 := r2.Detect([]byte("other data"))
-	require.True(t, ok2)
-	assert.Equal(t, "generic", got2.Name())
+	got2, err2 := r2.Detect([]byte("other data"))
+	require.NoError(t, err2)
+	assert.Equal(t, "generic", got2.Descriptor().Name)
 }
 
-func TestSCAFingerprintEmbeddedSeparator(t *testing.T) {
-	tests := []struct {
-		name   string
-		vulnID string
-		purl   string
-		want   scanner.Fingerprint
-	}{
-		{
-			name:   "colon in purl",
-			vulnID: "CVE-2024-1234",
-			purl:   "pkg:github/foo/bar@1.0",
-			want:   "CVE-2024-1234:pkg:github/foo/bar@1.0",
-		},
-		{
-			name:   "colon in vulnID",
-			vulnID: "GHSA:xxxx:yyyy",
-			purl:   "pkg:npm/foo",
-			want:   "GHSA:xxxx:yyyy:pkg:npm/foo",
-		},
-		{
-			name:   "multiple colons",
-			vulnID: "CVE-2024-1234",
-			purl:   "pkg:oci/alpine:3.21",
-			want:   "CVE-2024-1234:pkg:oci/alpine:3.21",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := scanner.SCAFingerprint(tt.vulnID, tt.purl)
-			assert.Equal(t, tt.want, got)
-		})
-	}
+func TestRegistryListOrdered(t *testing.T) {
+	r := scanner.NewRegistry()
+	require.NoError(t, r.Register(&testScanner{name: "z-first", kind: "a"}))
+	require.NoError(t, r.Register(&testScanner{name: "a-second", kind: "b"}))
+	require.NoError(t, r.Register(&testScanner{name: "m-third", kind: "c"}))
+
+	list := r.List()
+	require.Len(t, list, 3)
+	assert.Equal(t, "z-first", list[0].Name)
+	assert.Equal(t, "a-second", list[1].Name)
+	assert.Equal(t, "m-third", list[2].Name)
+}
+
+func TestDescriptorForKind(t *testing.T) {
+	r := scanner.NewRegistry()
+	require.NoError(t, r.Register(&testScanner{name: "multi-a", kind: "sca"}))
+	require.NoError(t, r.Register(&testScanner{name: "multi-b", kind: "iac"}))
+
+	sca := r.DescriptorForKind("sca")
+	require.Len(t, sca, 1)
+	assert.Equal(t, "multi-a", sca[0].Name)
+
+	iac := r.DescriptorForKind("iac")
+	require.Len(t, iac, 1)
+	assert.Equal(t, "multi-b", iac[0].Name)
+
+	assert.Empty(t, r.DescriptorForKind("secret"))
+}
+
+func TestScannerInterfaceIsDomainBoundary(t *testing.T) {
+	// Parse returns *domain.NormalizedReport — the scanner package no longer
+	// defines the normalized model.
+	var s scanner.Scanner = &testScanner{name: "boundary", kind: "test"}
+	nr, err := s.Parse(context.Background(), nil)
+	require.NoError(t, err)
+	assert.NotNil(t, nr)
+	_ = domain.NormalizedReport{}
 }
 
 func TestFingerprintType(t *testing.T) {
@@ -236,4 +268,10 @@ func TestFingerprintType(t *testing.T) {
 	var empty scanner.Fingerprint
 	assert.Equal(t, "", string(empty))
 	assert.Equal(t, 0, len(empty))
+}
+
+func TestGetReturnsScannerNotFoundError(t *testing.T) {
+	r := scanner.NewRegistry()
+	_, err := r.Get("missing")
+	assert.True(t, errors.Is(err, scanner.ErrNoMatch))
 }

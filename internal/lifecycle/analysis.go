@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/finding"
 )
 
 // SweepExpiredFindings performs a single sweep of findings with expired
@@ -33,8 +34,8 @@ func SweepExpiredFindings(ctx context.Context, pool *pgxpool.Pool, logger *slog.
 
 	for _, f := range expired {
 		changes, err := json.Marshal(map[string]map[string]string{
-			"analysis_state": {"old": f.AnalysisState, "new": "unanalyzed"},
-			"gate_effect":    {"old": f.GateEffect, "new": "block"},
+			"analysis_state": {"old": f.AnalysisState, "new": string(finding.StateUnanalyzed)},
+			"gate_effect":    {"old": f.GateEffect, "new": string(finding.EffectBlock)},
 		})
 		if err != nil {
 			logger.Error("marshal changes", "error", err)
