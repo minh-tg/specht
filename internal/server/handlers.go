@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/xMinhx/specht/internal/audit"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/usecase"
 )
@@ -149,6 +150,7 @@ type (
 // Handler holds the use-case dependency for the HTTP handlers.
 type Handler struct {
 	usecase usecaseInterface
+	audit   *audit.Logger
 }
 
 type usecaseInterface interface {
@@ -169,7 +171,7 @@ type usecaseInterface interface {
 
 // NewHandler builds the HTTP handlers over a use-case implementation.
 func NewHandler(uc usecaseInterface) *Handler {
-	return &Handler{usecase: uc}
+	return &Handler{usecase: uc, audit: audit.NewLogger(nil)}
 }
 
 type ingestRequest struct {
@@ -189,7 +191,6 @@ type ingestRequest struct {
 	ArtifactVersion string          `json:"artifact_version,omitempty"`
 	ArtifactType    string          `json:"artifact_type,omitempty"`
 }
-
 type ingestResponse struct {
 	ReportID          string `json:"report_id"`
 	TotalFindings     int    `json:"total_findings"`

@@ -9,6 +9,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/xMinhx/specht/internal/audit"
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
@@ -16,21 +17,24 @@ func (h *Handler) GetFinding(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
 		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		h.audit.HTTP(r, audit.EventGetFinding, audit.OutcomeFailure, "", id, nil)
 		return
 	}
-
 	finding, err := h.usecase.GetFinding(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
 			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+			h.audit.HTTP(r, audit.EventGetFinding, audit.OutcomeFailure, "", id, err)
 		} else if _, parseErr := uuid.Parse(id); parseErr != nil {
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
+			h.audit.HTTP(r, audit.EventGetFinding, audit.OutcomeFailure, "", id, err)
 		} else {
 			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+			h.audit.HTTP(r, audit.EventGetFinding, audit.OutcomeFailure, "", id, err)
 		}
 		return
 	}
-
+	h.audit.HTTP(r, audit.EventGetFinding, audit.OutcomeSuccess, "", id, nil)
 	respondJSON(w, http.StatusOK, finding)
 }
 
@@ -87,12 +91,14 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		log.Printf("ingest report: %v", err)
 		if errors.Is(err, usecase.ErrDuplicateReport) {
 			respondError(w, http.StatusConflict, "duplicate_report", "report already exists for this project and data")
+			h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
 			return
 		}
 		respondError(w, http.StatusUnprocessableEntity, "ingest_failed", err.Error())
+		h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
 		return
 	}
-
+	h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeSuccess, req.Project, req.Scanner, nil)
 	respondJSON(w, http.StatusCreated, ingestResponse{
 		ReportID:          result.ReportID,
 		TotalFindings:     result.TotalFindings,

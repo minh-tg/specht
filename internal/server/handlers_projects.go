@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/xMinhx/specht/internal/audit"
 )
 
 func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
@@ -30,6 +31,7 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusCreated, result)
+	h.audit.HTTP(r, audit.EventCreateProject, audit.OutcomeSuccess, "", req.Slug, nil)
 }
 
 func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {

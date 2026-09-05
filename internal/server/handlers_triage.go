@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/xMinhx/specht/internal/audit"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/usecase"
 )
@@ -58,8 +59,8 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-
 	respondJSON(w, http.StatusOK, result)
+	h.audit.HTTP(r, audit.EventTriageFinding, audit.OutcomeSuccess, "", id, nil)
 }
 
 func (h *Handler) VerifyFinding(w http.ResponseWriter, r *http.Request) {

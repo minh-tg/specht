@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/xMinhx/specht/internal/audit"
 	"github.com/xMinhx/specht/internal/auth"
 )
 
@@ -24,6 +25,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusCreated, result)
+	h.audit.HTTP(r, audit.EventRegister, audit.OutcomeSuccess, "", req.Email, nil)
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
@@ -39,9 +41,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	result, err := h.usecase.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		respondError(w, http.StatusUnauthorized, "login_failed", "invalid email or password")
+		h.audit.HTTP(r, audit.EventLogin, audit.OutcomeFailure, "", req.Email, err)
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
+	h.audit.HTTP(r, audit.EventLogin, audit.OutcomeSuccess, "", req.Email, nil)
 }
 
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +78,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+	h.audit.HTTP(r, audit.EventLogout, audit.OutcomeSuccess, "", "", nil)
 }
 
 func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
@@ -121,6 +126,7 @@ func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusCreated, result)
+	h.audit.HTTP(r, audit.EventCreateAPIKey, audit.OutcomeSuccess, req.Project, req.Name, nil)
 }
 
 func (h *Handler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
@@ -140,6 +146,7 @@ func (h *Handler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, keys)
+	h.audit.HTTP(r, audit.EventListAPIKeys, audit.OutcomeSuccess, project, "", nil)
 }
 
 func (h *Handler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
@@ -153,10 +160,10 @@ func (h *Handler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
 		return
 	}
-
 	if err := h.usecase.RevokeAPIKey(r.Context(), project, keyID); err != nil {
 		respondError(w, http.StatusUnprocessableEntity, "revoke_failed", err.Error())
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+	h.audit.HTTP(r, audit.EventRevokeAPIKey, audit.OutcomeSuccess, project, keyID, nil)
 }
