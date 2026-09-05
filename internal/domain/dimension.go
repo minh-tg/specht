@@ -1,15 +1,12 @@
 // Package domain defines the core, engine-neutral domain vocabulary of
 // Specht: the normalized scan report/finding model, canonical dimension
-// keys, and the reachability hint shape. Packages inside internal/domain
-// must not import sqlc, pgtype, HTTP, or scanner packages; the persistence
-// adapter (internal/repo) and the HTTP layer translate between this
-// vocabulary and their own representations.
+// keys, purl normalization, and the reachability hint shape. Packages inside
+// internal/domain must not import sqlc, pgtype, HTTP, or scanner packages;
+// the persistence adapter (internal/repo) and the HTTP layer translate
+// between this vocabulary and their own representations.
 //
-// The normalized report model was moved here verbatim from
-// internal/scanner (a boundary move, not a semantic rewrite). The scanner
-// package re-exports the same identifiers so the first cutover is a
-// mechanical import change; new code should import internal/domain
-// directly.
+// The scanner package is the plugin seam and returns *domain.NormalizedReport
+// from Parse; producers and core consumers import this package directly.
 package domain
 
 // ScanType classifies what kind of artifact a scan covered.

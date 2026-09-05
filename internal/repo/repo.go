@@ -1,7 +1,9 @@
-// Package repo implements the persistence seam between use cases and the
-// sqlc-generated query layer. Repositories own row-level CRUD and the
-// multi-table unit-of-work transactions (waiver create/update, watcher
-// finding persistence); use cases never execute SQL directly.
+// Package repo implements the PostgreSQL adapter for the neutral persistence
+// contracts in internal/port. Repositories own row-level CRUD over the
+// sqlc-generated query layer and the multi-table unit-of-work transactions
+// (waiver create/update, watcher finding persistence, expiry sweeps); use
+// cases, lifecycle, and watcher depend only on the port interfaces, never on
+// sqlc/pgtype types.
 package repo
 
 import (
