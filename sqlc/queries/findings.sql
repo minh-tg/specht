@@ -56,7 +56,7 @@ INSERT INTO finding_occurrences (
     $8, $9, $10,
     $11, $12, $13,
     $14, $15, $16
-) ON CONFLICT (finding_id, report_id) DO NOTHING
+) ON CONFLICT (finding_id, report_id) DO UPDATE SET observed_at = NOW()
 RETURNING *;
 
 -- name: ListFindingsByProject :many

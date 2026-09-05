@@ -18,7 +18,7 @@ func TestBuiltinsIncludesExpectedParsers(t *testing.T) {
 		names[i] = s.Descriptor().Name
 	}
 
-	expected := []string{"trivy", "osv-scanner", "semgrep", "checkov", "dependency-check", "grype", "sbom", "sarif", "gitleaks", "tfsec"}
+	expected := []string{"trivy", "osv-scanner", "semgrep", "checkov", "dependency-check", "grype", "sbom", "sarif", "gitleaks", "tfsec", "nuclei"}
 	for _, e := range expected {
 		assert.Contains(t, names, e, "expected builtin scanner %q", e)
 	}
@@ -43,7 +43,7 @@ func TestBuiltinsRegisterCleanly(t *testing.T) {
 	for _, s := range parser.Builtins() {
 		require.NoError(t, reg.Register(s))
 	}
-	require.Len(t, reg.List(), 10)
+	require.Len(t, reg.List(), 11)
 
 	for _, s := range parser.Builtins() {
 		got, err := reg.Get(s.Descriptor().Name)
@@ -53,7 +53,7 @@ func TestBuiltinsRegisterCleanly(t *testing.T) {
 }
 
 func TestBuiltinsCount(t *testing.T) {
-	assert.Len(t, parser.Builtins(), 10)
+	assert.Len(t, parser.Builtins(), 11)
 }
 
 func TestBuiltinsDetectFormats(t *testing.T) {
@@ -124,6 +124,7 @@ func TestBuiltinsScanTypesMatchDatabase(t *testing.T) {
 		domain.ScanTypeIaC:        true,
 		domain.ScanTypeSBOM:       true,
 		domain.ScanTypeLockfile:   true,
+		domain.ScanTypeDAST:       true,
 	}
 	for _, s := range parser.Builtins() {
 		for _, st := range s.Descriptor().ScanTypes {

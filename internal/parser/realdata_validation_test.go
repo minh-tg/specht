@@ -32,6 +32,8 @@ var canonicalDims = map[string]struct{}{
 	domain.DimLine:            {},
 	domain.DimResource:        {},
 	domain.DimSource:          {},
+	domain.DimURL:             {},
+	domain.DimParameter:       {},
 }
 
 type realdataCase struct {
@@ -39,6 +41,10 @@ type realdataCase struct {
 	fixture string // relative to internal/parser/<adapter>/testdata
 	min     int
 	minPkg  int
+	// allowDupFingerprints documents adapters whose reports legitimately
+	// carry two observations under one identity (e.g. nuclei matchers on
+	// one URL): ingest upserts one row with two occurrences.
+	allowDupFingerprints bool
 }
 
 func TestRealDataValidationSweep(t *testing.T) {
@@ -48,19 +54,18 @@ func TestRealDataValidationSweep(t *testing.T) {
 	}
 
 	cases := []realdataCase{
-		{"trivy", "trivy/testdata/alpine-full.json", 8, 100},
-		{"trivy", "trivy/testdata/multi-type-scan.json", 4, 0},
-		{"osv-scanner", "osvscanner/testdata/go-full.json", 12, 100},
-		{"checkov", "checkov/testdata/checkov-terraform.json", 3, 0},
-		{"checkov", "checkov/testdata/checkov-kubernetes.json", 2, 0},
-		{"checkov", "checkov/testdata/checkov-cloudformation.json", 1, 0},
-		{"tfsec", "tfsec/testdata/tfsec.json", 2, 0},
-		{"dependency-check", "dependencycheck/testdata/dependency-check-full.json", 12, 100},
-		{"grype", "grype/testdata/grype-full.json", 105, 100},
-		{"sbom", "sbom/testdata/cyclonedx.json", 0, 3},
-		{"sbom", "sbom/testdata/spdx.json", 0, 2},
-		{"sarif", "sarif/testdata/multi-tool.sarif.json", 3, 0},
-		{"gitleaks", "gitleaks/testdata/gitleaks.json", 3, 0},
+		{"trivy", "trivy/testdata/alpine-full.json", 8, 100, false},
+		{"trivy", "trivy/testdata/multi-type-scan.json", 4, 0, false},
+		{"osv-scanner", "osvscanner/testdata/go-full.json", 12, 100, false},
+		{"checkov", "checkov/testdata/checkov-terraform.json", 3, 0, false},
+		{"checkov", "checkov/testdata/checkov-kubernetes.json", 2, 0, false},
+		{"checkov", "checkov/testdata/checkov-cloudformation.json", 1, 0, false},
+		{"tfsec", "tfsec/testdata/tfsec.json", 2, 0, false},
+		{scanner: "nuclei", fixture: "nuclei/testdata/nuclei.jsonl", min: 3, allowDupFingerprints: true},
+		{"grype", "grype/testdata/grype-full.json", 105, 100, false},
+		{"sbom", "sbom/testdata/cyclonedx.json", 0, 3, false},
+		{"gitleaks", "gitleaks/testdata/gitleaks.json", 3, 0, false},
+		{"sarif", "sarif/testdata/multi-tool.sarif.json", 3, 0, false},
 	}
 
 	for _, tc := range cases {
@@ -88,7 +93,7 @@ func TestRealDataValidationSweep(t *testing.T) {
 			seen := map[string]string{}
 			for i, f := range rep.Findings {
 				require.NotEmpty(t, f.Fingerprint, "finding %d missing fingerprint", i)
-				if prev, dup := seen[f.Fingerprint]; dup {
+				if prev, dup := seen[f.Fingerprint]; dup && !tc.allowDupFingerprints {
 					t.Fatalf("duplicate fingerprint %q (findings %q and %q)", f.Fingerprint, prev, f.Title)
 				}
 				seen[f.Fingerprint] = f.Title

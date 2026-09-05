@@ -286,3 +286,40 @@ func TestArtifactDigestDedup(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, all, 2)
 }
+
+func TestNucleiIngest_EndToEnd(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	stores := NewPortStores(pool)
+	reg := scanner.NewRegistry()
+	for _, s := range parser.Builtins() {
+		require.NoError(t, reg.Register(s))
+	}
+	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
+
+	_, err := uc.CreateProject(ctx, "My App", "my-app", "validation")
+	require.NoError(t, err)
+
+	raw, err := os.ReadFile("../parser/nuclei/testdata/nuclei.jsonl")
+	require.NoError(t, err)
+	out, err := uc.IngestReport(ctx, usecase.IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "nuclei", RawData: raw,
+		Environment: "staging",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 3, out.TotalFindings)
+	project, err := stores.Projects.GetBySlug(ctx, "my-app")
+	require.NoError(t, err)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, []string{"dast"}, nil, nil, 100, 0)
+	require.NoError(t, err)
+	require.Len(t, findings, 2, "dast kind must satisfy the finding_kinds FK and dast scan_type the reports CHECK; two events share one identity")
+	for _, f := range findings {
+		assert.Equal(t, "dast", f.FindingKind)
+	}
+	stored, err := stores.Reports.ListByProject(ctx, project.ID, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, stored, 1)
+	assert.Equal(t, "dast", stored[0].ScanType)
+}

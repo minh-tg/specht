@@ -226,7 +226,7 @@ INSERT INTO finding_occurrences (
     $8, $9, $10,
     $11, $12, $13,
     $14, $15, $16
-) ON CONFLICT (finding_id, report_id) DO NOTHING
+) ON CONFLICT (finding_id, report_id) DO UPDATE SET observed_at = NOW()
 RETURNING id, finding_id, report_id, title, description, severity, severity_rank, score, tool_name, tool_version, parser_version, location_summary, subject_summary, remediation, display, metadata, observed_at
 `
 

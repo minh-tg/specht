@@ -9,6 +9,7 @@ import (
 	"github.com/xMinhx/specht/internal/parser/dependencycheck"
 	"github.com/xMinhx/specht/internal/parser/gitleaks"
 	"github.com/xMinhx/specht/internal/parser/grype"
+	"github.com/xMinhx/specht/internal/parser/nuclei"
 	"github.com/xMinhx/specht/internal/parser/osvscanner"
 	"github.com/xMinhx/specht/internal/parser/sarif"
 	"github.com/xMinhx/specht/internal/parser/sbom"
@@ -33,5 +34,6 @@ func Builtins() []scanner.Scanner {
 		sarif.NewScanner(),
 		gitleaks.NewScanner(),
 		tfsec.NewScanner(),
+		nuclei.NewScanner(),
 	}
 }

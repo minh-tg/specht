@@ -19,6 +19,7 @@ const (
 	ScanTypeIaC        ScanType = "iac"
 	ScanTypeSBOM       ScanType = "sbom"
 	ScanTypeLockfile   ScanType = "lockfile"
+	ScanTypeDAST       ScanType = "dast"
 )
 
 // Severity is the normalized severity scale used across scanners. The int
@@ -170,4 +171,11 @@ const (
 	DimLine            string = "line"
 	DimResource        string = "resource"
 	DimSource          string = "source"
+	// DimURL is the observed URL without query parameters or fragments:
+	// identity-grade for DAST. Query keys of interest get their own
+	// parameter dimension; the rest stays out of identity.
+	DimURL string = "url"
+	// DimParameter is one URL query/form parameter under test (name only,
+	// never the value — values may carry payloads or secrets).
+	DimParameter string = "parameter"
 )

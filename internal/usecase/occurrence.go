@@ -119,6 +119,8 @@ var canonicalDimensionKeys = map[string]struct{}{
 	domain.DimLine:            {},
 	domain.DimResource:        {},
 	domain.DimSource:          {},
+	domain.DimURL:             {},
+	domain.DimParameter:       {},
 }
 
 // isCanonicalDimension reports whether a dimension key is part of the
