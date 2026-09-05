@@ -25,6 +25,7 @@ type checkovResult struct {
 
 type checkovFinding struct {
 	CheckID       string          `json:"check_id"`
+	BcCheckID     string          `json:"bc_check_id"`
 	CheckName     string          `json:"check_name"`
 	CheckResult   checkovResult_  `json:"check_result"`
 	FileLineRange []int           `json:"file_line_range"`
@@ -120,11 +121,15 @@ func convert(report checkovReport) *domain.NormalizedReport {
 		if f.Resource != "" {
 			dims = append(dims, domain.Dimension{Key: "resource", Value: f.Resource})
 		}
-
 		ext := map[string]any{
 			"file":        file,
 			"check_class": f.CheckClass,
 			"check_type":  report.CheckType,
+		}
+		var aliases []string
+		if f.BcCheckID != "" && f.BcCheckID != f.CheckID {
+			aliases = append(aliases, f.BcCheckID)
+			ext["bc_check_id"] = f.BcCheckID
 		}
 		if f.Guideline != "" {
 			ext["guideline"] = f.Guideline
@@ -165,6 +170,7 @@ func convert(report checkovReport) *domain.NormalizedReport {
 			Severity:     severity,
 			Location:     location,
 			Resource:     f.Resource,
+			Aliases:      aliases,
 			Fix:          fix,
 			CodeLocation: codeLoc,
 			Dimensions:   dims,

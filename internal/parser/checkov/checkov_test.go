@@ -18,6 +18,12 @@ var checkovTerraformFixture []byte
 //go:embed testdata/checkov-empty.json
 var checkovEmptyFixture []byte
 
+//go:embed testdata/checkov-kubernetes.json
+var checkovKubernetesFixture []byte
+
+//go:embed testdata/checkov-cloudformation.json
+var checkovCloudformationFixture []byte
+
 func TestDetectFormat(t *testing.T) {
 	s := checkov.NewScanner()
 
@@ -129,4 +135,28 @@ func TestParseInvalidJSON(t *testing.T) {
 	_, err := s.Parse(context.Background(), []byte(`not json`))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "checkov")
+}
+
+func TestParseKubernetesFramework(t *testing.T) {
+	s := checkov.NewScanner()
+	report, err := s.Parse(context.Background(), checkovKubernetesFixture)
+	require.NoError(t, err)
+	require.NotNil(t, report.Target)
+	assert.Equal(t, "kubernetes", report.Target.Kind)
+	require.Len(t, report.Findings, 2)
+	assert.Equal(t, "Deployment.default.web", report.Findings[0].Resource)
+	assert.Equal(t, []string{"BC_K8S_21"}, report.Findings[0].Aliases)
+	assert.Equal(t, "BC_K8S_21", report.Findings[0].Extensions["bc_check_id"])
+	assert.Empty(t, report.Findings[1].Aliases, "absent bc id yields no alias")
+}
+
+func TestParseCloudformationFramework(t *testing.T) {
+	s := checkov.NewScanner()
+	report, err := s.Parse(context.Background(), checkovCloudformationFixture)
+	require.NoError(t, err)
+	require.NotNil(t, report.Target)
+	assert.Equal(t, "cloudformation", report.Target.Kind)
+	require.Len(t, report.Findings, 1)
+	assert.Equal(t, "AWS::S3::Bucket.DataBucket", report.Findings[0].Resource)
+	assert.Equal(t, []string{"BC_AWS_19"}, report.Findings[0].Aliases)
 }

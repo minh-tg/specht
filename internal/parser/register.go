@@ -13,6 +13,7 @@ import (
 	"github.com/xMinhx/specht/internal/parser/sarif"
 	"github.com/xMinhx/specht/internal/parser/sbom"
 	"github.com/xMinhx/specht/internal/parser/semgrep"
+	"github.com/xMinhx/specht/internal/parser/tfsec"
 	"github.com/xMinhx/specht/internal/parser/trivy"
 	"github.com/xMinhx/specht/internal/scanner"
 )
@@ -31,5 +32,6 @@ func Builtins() []scanner.Scanner {
 		sbom.NewScanner(),
 		sarif.NewScanner(),
 		gitleaks.NewScanner(),
+		tfsec.NewScanner(),
 	}
 }

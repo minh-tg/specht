@@ -1,0 +1,43 @@
+{
+  "check_type": "kubernetes",
+  "results": {
+    "passed_checks": [],
+    "failed_checks": [
+      {
+        "check_id": "CKV_K8S_21",
+        "bc_check_id": "BC_K8S_21",
+        "check_name": "Ensure containers do not run as root",
+        "check_result": {
+          "result": "FAILED"
+        },
+        "file_path": "/k8s/deployment.yaml",
+        "file_line_range": [12, 20],
+        "resource": "Deployment.default.web",
+        "check_class": "checkov.kubernetes.checks.resource.RunAsNonRoot",
+        "guideline": "https://docs.bridgecrew.io/docs/bc_k8s_21",
+        "severity": "HIGH"
+      },
+      {
+        "check_id": "CKV_K8S_16",
+        "check_name": "Ensure memory limits are set",
+        "check_result": {
+          "result": "FAILED"
+        },
+        "file_path": "/k8s/deployment.yaml",
+        "file_line_range": [12, 20],
+        "resource": "Deployment.default.web",
+        "check_class": "checkov.kubernetes.checks.resource.MemoryLimits",
+        "severity": "LOW"
+      }
+    ],
+    "skipped_checks": [],
+    "parsing_errors": []
+  },
+  "summary": {
+    "passed": 5,
+    "failed": 2,
+    "skipped": 0,
+    "parsing_errors": 0,
+    "checkov_version": "3.2.344"
+  }
+}

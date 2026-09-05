@@ -1,0 +1,31 @@
+{
+  "check_type": "cloudformation",
+  "results": {
+    "passed_checks": [],
+    "failed_checks": [
+      {
+        "check_id": "CKV_AWS_19",
+        "bc_check_id": "BC_AWS_19",
+        "check_name": "Ensure S3 bucket has server-side encryption",
+        "check_result": {
+          "result": "FAILED"
+        },
+        "file_path": "/cfn/template.yaml",
+        "file_line_range": [30, 45],
+        "resource": "AWS::S3::Bucket.DataBucket",
+        "check_class": "checkov.cloudformation.checks.resource.aws.S3Encryption",
+        "guideline": "https://docs.bridgecrew.io/docs/ensure-the-s3-bucket-has-server-side-encryption-enabled",
+        "severity": "HIGH"
+      }
+    ],
+    "skipped_checks": [],
+    "parsing_errors": []
+  },
+  "summary": {
+    "passed": 8,
+    "failed": 1,
+    "skipped": 0,
+    "parsing_errors": 0,
+    "checkov_version": "3.2.344"
+  }
+}
