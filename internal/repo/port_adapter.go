@@ -2,10 +2,12 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/port"
@@ -157,12 +159,14 @@ func projectToPort(p sqlc.Project) port.Project {
 	}
 }
 
-// mappingErr adapts pgx no-rows to port.ErrNotFound.
+// mappingErr adapts pgx no-rows to port.ErrNotFound. It uses errors.Is so
+// wrapped pgx.ErrNoRows values translate too, keeping the sentinel reliable
+// across every port adapter call site.
 func mappingErr(err error) error {
 	if err == nil {
 		return nil
 	}
-	if err.Error() == "no rows in result set" {
+	if errors.Is(err, pgx.ErrNoRows) {
 		return port.ErrNotFound
 	}
 	return err
