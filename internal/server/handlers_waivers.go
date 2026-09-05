@@ -7,8 +7,8 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5"
 	"github.com/xMinhx/specht/internal/auth"
+	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
@@ -75,7 +75,7 @@ func (h *Handler) GetWaiver(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	waiver, err := h.usecase.GetWaiver(r.Context(), slug, id)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, port.ErrNotFound) {
 			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
 		} else {
 			slog.Error("get waiver", "error", err)
@@ -131,7 +131,7 @@ func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 	if err := h.usecase.DeleteWaiver(r.Context(), slug, id); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, port.ErrNotFound) {
 			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
 		} else {
 			slog.Error("delete waiver", "error", err)
@@ -151,7 +151,7 @@ func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	result, err := h.usecase.ToggleWaiver(r.Context(), slug, id, auth.ContextIdentity(r.Context()).UserID)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, port.ErrNotFound) {
 			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
 		} else {
 			slog.Error("toggle waiver", "error", err)
@@ -171,7 +171,7 @@ func (h *Handler) ListWaiverEvents(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	events, err := h.usecase.ListWaiverEvents(r.Context(), slug, id)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
+		if errors.Is(err, port.ErrNotFound) {
 			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
 		} else {
 			slog.Error("list waiver events", "error", err)
