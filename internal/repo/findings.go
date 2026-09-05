@@ -343,10 +343,7 @@ func (r *pgFindingRepo) ListBlockingFindings(ctx context.Context, projectID pgty
 	// their context and latest reachability (see ListGateCandidates in
 	// findings.sql). This repo method is the legacy sqlc-row surface; the
 	// port FindingStore maps rows to port.Finding for the gate.
-	rows, err := r.q.ListGateCandidates(ctx, sqlc.ListGateCandidatesParams{
-		ProjectID:           projectID,
-		CurrentSeverityRank: minSeverityRank,
-	})
+	rows, err := r.ListGateCandidates(ctx, projectID, minSeverityRank)
 	if err != nil {
 		return nil, err
 	}
@@ -363,4 +360,13 @@ func (r *pgFindingRepo) ListBlockingFindings(ctx context.Context, projectID pgty
 		})
 	}
 	return items, nil
+}
+
+// ListGateCandidates returns the batch gate-candidate rows (context +
+// latest reachability in one round trip).
+func (r *pgFindingRepo) ListGateCandidates(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.ListGateCandidatesRow, error) {
+	return r.q.ListGateCandidates(ctx, sqlc.ListGateCandidatesParams{
+		ProjectID:           projectID,
+		CurrentSeverityRank: minSeverityRank,
+	})
 }

@@ -728,57 +728,56 @@ func TestInventoryRepo_DeleteReportPackages_ClearsAndCascades(t *testing.T) {
 // 'unanalyzed' is the untriaged marker per migration 000009), 'immediate'
 // admits all watcher findings, and 'off' admits none. Non-watcher findings
 // are unaffected in every mode.
-func TestGateQueries_CveWatcherGatePolicy(t *testing.T) {
+
+// upsertGateCandidate inserts a critical open finding used by the batch
+// gate-candidate integration test.
+func upsertGateCandidate(t *testing.T, repos *Repos, ctx context.Context, project sqlc.Project, kind, title string) sqlc.Finding {
+	t.Helper()
+	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+	f, err := repos.Findings.Upsert(ctx, UpsertFindingParams{
+		ProjectID:    project.ID,
+		FindingKind:  kind,
+		Fingerprint:  title,
+		CurrentTitle: title,
+		Severity:     "critical",
+		SeverityRank: 4,
+		Score:        pgtype.Numeric{Valid: false},
+		FirstSeenAt:  now,
+		LastSeenAt:   now,
+	})
+	require.NoError(t, err)
+	return f
+}
+
+// triageGateCandidate moves a finding off the unanalyzed marker the way the
+// triage use case does: analysis_state set, gate_effect stays block.
+func triageGateCandidate(t *testing.T, repos *Repos, ctx context.Context, f sqlc.Finding) sqlc.Finding {
+	t.Helper()
+	updated, err := repos.Findings.UpdateAnalysis(ctx, UpdateAnalysisParams{
+		ID:                f.ID,
+		AnalysisState:     "exploitable",
+		GateEffect:        "block",
+		AnalysisExpiresAt: pgtype.Timestamptz{Valid: false},
+		AnalysisReason:    pgtype.Text{Valid: false},
+		AnalysisSource:    "manual",
+		ManualOverride:    true,
+		ReviewRequired:    false,
+		AnalysisUpdatedBy: pgtype.UUID{Valid: false},
+	})
+	require.NoError(t, err)
+	return updated
+}
+
+// TestGateQueries_BatchCandidates asserts the batch gate-candidate loader is
+// a pure prefilter: it returns every blocking finding (state open, gate_effect
+// block, rank >= floor) with its latest reachability in one round trip. The
+// cve_watcher mode policy and reachability exemptions are gate-core behavior
+// (gate.GatePolicy / reachabilityExemptsFromGate) and are no longer applied
+// in SQL.
+func TestGateQueries_BatchCandidates(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
-
-	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
-
-	upsertFinding := func(t *testing.T, project sqlc.Project, kind, title string) sqlc.Finding {
-		t.Helper()
-		f, err := repos.Findings.Upsert(ctx, UpsertFindingParams{
-			ProjectID:    project.ID,
-			FindingKind:  kind,
-			Fingerprint:  title,
-			CurrentTitle: title,
-			Severity:     "critical",
-			SeverityRank: 4,
-			Score:        pgtype.Numeric{Valid: false},
-			FirstSeenAt:  now,
-			LastSeenAt:   now,
-		})
-		require.NoError(t, err)
-		assert.Equal(t, "open", f.State)
-		assert.Equal(t, "unanalyzed", f.AnalysisState, "fresh findings start untriaged")
-		return f
-	}
-
-	// Triage the finding the way TriageFinding does: analysis_state moves off
-	// the 'unanalyzed' untriaged marker; gate_effect stays 'block'.
-	triage := func(t *testing.T, f sqlc.Finding) sqlc.Finding {
-		t.Helper()
-		updated, err := repos.Findings.UpdateAnalysis(ctx, UpdateAnalysisParams{
-			ID:                f.ID,
-			AnalysisState:     "exploitable",
-			GateEffect:        "block",
-			AnalysisExpiresAt: pgtype.Timestamptz{Valid: false},
-			AnalysisReason:    pgtype.Text{Valid: false},
-			AnalysisSource:    "manual",
-			ManualOverride:    true,
-			ReviewRequired:    false,
-			AnalysisUpdatedBy: pgtype.UUID{Valid: false},
-		})
-		require.NoError(t, err)
-		assert.Equal(t, "exploitable", updated.AnalysisState)
-		return updated
-	}
-
-	setMode := func(t *testing.T, project sqlc.Project, mode string) {
-		t.Helper()
-		_, err := repos.pool.Exec(ctx, "UPDATE projects SET cve_watcher_gate = $1 WHERE id = $2", mode, project.ID)
-		require.NoError(t, err)
-	}
 
 	blockedTitles := func(t *testing.T, project sqlc.Project) []string {
 		t.Helper()
@@ -792,61 +791,40 @@ func TestGateQueries_CveWatcherGatePolicy(t *testing.T) {
 		return titles
 	}
 
-	runScenario := func(t *testing.T, name, mode string, wantBlocked []string) {
-		t.Helper()
-		project := createTestProject(t, repos)
-		if mode != "" {
-			setMode(t, project, mode)
-		}
-		upsertFinding(t, project, "sca", name+"-sca")
-		upsertFinding(t, project, "cve_watcher", name+"-w-untriaged")
-		triage(t, upsertFinding(t, project, "cve_watcher", name+"-w-triaged"))
+	// All three findings are candidates at rank >= 4 regardless of the
+	// project's cve_watcher_gate mode: the candidate SQL applies no policy.
+	project := createTestProject(t, repos)
+	upsertGateCandidate(t, repos, ctx, project, "sca", "cand-sca")
+	upsertGateCandidate(t, repos, ctx, project, "cve_watcher", "cand-w-untriaged")
+	triageGateCandidate(t, repos, ctx, upsertGateCandidate(t, repos, ctx, project, "cve_watcher", "cand-w-triaged"))
 
-		sort.Strings(wantBlocked)
-		assert.Contains(t, wantBlocked, name+"-sca", "sca finding must gate in every mode")
+	assert.Equal(t, []string{"cand-sca", "cand-w-triaged", "cand-w-untriaged"}, blockedTitles(t, project),
+		"ListBlockingFindings must return the full candidate set; policy is core-side")
 
-		assert.Equal(t, wantBlocked, blockedTitles(t, project), "%s: ListBlockingFindings", name)
-
-		count, err := repos.Findings.CountBlocking(ctx, GateEvalParams{ProjectID: project.ID, MinSeverityRank: 4})
-		require.NoError(t, err)
-		assert.Equal(t, int64(len(wantBlocked)), count, "%s: CountBlockingFindings", name)
-
-		breached, err := repos.Findings.GateEval(ctx, GateEvalParams{ProjectID: project.ID, MinSeverityRank: 4})
-		require.NoError(t, err)
-		assert.Equal(t, len(wantBlocked) > 0, breached, "%s: GateEval", name)
-	}
-
-	// Default-mode project (column untouched): untriaged watcher excluded,
-	// triaged watcher and sca findings gate exactly as before.
-	runScenario(t, "default", "", []string{"default-sca", "default-w-triaged"})
-	// Explicit require_triage behaves identically to the default.
-	runScenario(t, "require_triage", "require_triage", []string{"require_triage-sca", "require_triage-w-triaged"})
-	// off: no watcher finding ever gates, triaged or not; sca unaffected.
-	runScenario(t, "off", "off", []string{"off-sca"})
-	// immediate: watcher findings gate immediately, untriaged included.
-	runScenario(t, "immediate", "immediate", []string{"immediate-sca", "immediate-w-untriaged", "immediate-w-triaged"})
-
+	// Batch reachability: after an assessment is recorded, the candidate row
+	// carries it in the same round trip.
 	systemUser, err := repos.Users.GetByEmail(ctx, "system@specht.local")
 	require.NoError(t, err)
-	exemptProject := createTestProject(t, repos)
-	notReachable := upsertFinding(t, exemptProject, "sca", "exempt-not-reachable")
-	notApplicable := upsertFinding(t, exemptProject, "sca", "exempt-not-applicable")
-	for finding, state := range map[pgtype.UUID]string{
-		notReachable.ID:  "not_reachable",
-		notApplicable.ID: "not_applicable",
-	} {
-		_, err := repos.Reachability.Upsert(ctx, UpsertReachabilityParams{
-			FindingID:  finding,
-			State:      state,
-			AssessedBy: systemUser.ID,
-		})
-		require.NoError(t, err)
+	assessed, err := repos.Findings.ListBlockingFindings(ctx, project.ID, 4)
+	require.NoError(t, err)
+	require.NotEmpty(t, assessed)
+	_, err = repos.Reachability.Upsert(ctx, UpsertReachabilityParams{
+		FindingID:  assessed[0].ID,
+		State:      "not_reachable",
+		AssessedBy: systemUser.ID,
+	})
+	require.NoError(t, err)
+
+	// The batch loader reports the latest assessment on the row.
+	candidates, err := repos.Findings.ListGateCandidates(ctx, project.ID, 4)
+	require.NoError(t, err)
+	require.Len(t, candidates, 3)
+	found := false
+	for _, c := range candidates {
+		if c.ID == assessed[0].ID {
+			found = true
+			assert.Equal(t, "not_reachable", string(c.ReachabilityState))
+		}
 	}
-	assert.Equal(t, []string{"exempt-not-applicable", "exempt-not-reachable"}, blockedTitles(t, exemptProject))
-	count, err := repos.Findings.CountBlocking(ctx, GateEvalParams{ProjectID: exemptProject.ID, MinSeverityRank: 4})
-	require.NoError(t, err)
-	assert.Zero(t, count)
-	breached, err := repos.Findings.GateEval(ctx, GateEvalParams{ProjectID: exemptProject.ID, MinSeverityRank: 4})
-	require.NoError(t, err)
-	assert.False(t, breached)
+	assert.True(t, found, "batch candidate must carry the latest reachability")
 }

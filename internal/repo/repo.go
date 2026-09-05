@@ -201,6 +201,9 @@ type FindingRepo interface {
 	UpdateAnalysis(ctx context.Context, arg UpdateAnalysisParams) (sqlc.Finding, error)
 	BulkUpdateAnalysis(ctx context.Context, arg BulkUpdateAnalysisParams) ([]sqlc.Finding, error)
 	ListBlockingFindings(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error)
+	// ListGateCandidates loads every gate candidate with its context and
+	// latest reachability in one batch (the port batch method).
+	ListGateCandidates(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.ListGateCandidatesRow, error)
 	CreateEvent(ctx context.Context, arg CreateEventParams) (sqlc.FindingEvent, error)
 	ListEvents(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error)
 	HasDimension(ctx context.Context, findingID pgtype.UUID, key string) (bool, error)
