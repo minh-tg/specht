@@ -1185,6 +1185,34 @@ func TestTriageFinding_MissingExpiry(t *testing.T) {
 	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
 }
 
+func TestTriageFinding_InvalidState(t *testing.T) {
+	mock := &mockUsecases{
+		triageFindingFn: func(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error) {
+			return nil, usecase.ErrInvalidState
+		},
+	}
+	router := testRouter(mock)
+	req := authRequest("PATCH", "/api/v1/findings/abc-123", `{"analysis_state":"bogus"}`)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+}
+
+func TestBulkTriage_InvalidState(t *testing.T) {
+	mock := &mockUsecases{
+		bulkTriageFn: func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error) {
+			return nil, usecase.ErrInvalidState
+		},
+	}
+	router := testRouter(mock)
+	req := authRequest("POST", "/api/v1/findings/bulk-analysis", `{"finding_ids":["abc-123"],"analysis_state":"bogus"}`)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+}
+
 func TestBulkTriage_Success(t *testing.T) {
 	mock := &mockUsecases{
 		bulkTriageFn: func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error) {

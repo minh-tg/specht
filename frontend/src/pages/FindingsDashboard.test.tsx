@@ -14,7 +14,7 @@ beforeEach(() => {
           project_id: "p1",
           current_title: "Test Vuln",
           current_severity: "high",
-          triage_status: "open",
+          triage_status: "untriaged",
           finding_kind: "sca",
           last_seen_at: "2025-01-01T00:00:00Z",
           first_seen_at: "2025-01-01T00:00:00Z",

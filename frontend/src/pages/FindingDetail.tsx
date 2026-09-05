@@ -11,7 +11,7 @@ const REACHABILITY_OPTIONS = [
 ];
 
 const TRIAGE_OPTIONS = [
-  { value: "confirmed", label: "Confirmed", requiresReason: false, requiresExpiry: false },
+  { value: "exploitable", label: "Confirmed", requiresReason: false, requiresExpiry: false },
   { value: "false_positive", label: "False Positive", requiresReason: true, requiresExpiry: false },
   { value: "not_affected", label: "Not Affected", requiresReason: true, requiresExpiry: false },
   { value: "accepted_risk", label: "Accepted Risk", requiresReason: true, requiresExpiry: true },

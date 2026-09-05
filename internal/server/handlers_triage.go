@@ -51,6 +51,8 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusUnprocessableEntity, "reason_required", err.Error())
 		case errors.Is(err, usecase.ErrExpiryRequired):
 			respondError(w, http.StatusUnprocessableEntity, "expiry_required", err.Error())
+		case errors.Is(err, usecase.ErrInvalidState):
+			respondError(w, http.StatusUnprocessableEntity, "invalid_state", err.Error())
 		default:
 			respondError(w, http.StatusInternalServerError, "triage_failed", err.Error())
 		}
@@ -99,6 +101,8 @@ func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusUnprocessableEntity, "reason_required", err.Error())
 		case errors.Is(err, usecase.ErrExpiryRequired):
 			respondError(w, http.StatusUnprocessableEntity, "expiry_required", err.Error())
+		case errors.Is(err, usecase.ErrInvalidState):
+			respondError(w, http.StatusUnprocessableEntity, "invalid_state", err.Error())
 		default:
 			respondError(w, http.StatusInternalServerError, "bulk_triage_failed", err.Error())
 		}
