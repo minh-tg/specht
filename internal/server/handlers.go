@@ -89,6 +89,7 @@ type (
 		ListFindings(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error)
 		GetFinding(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
 		TriageFinding(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
+		VerifyFix(ctx context.Context, findingID string) (*usecase.VerifyResponse, error)
 		BulkTriage(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
 		GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
 	}

@@ -116,6 +116,17 @@ func (r *pgFindingRepo) ListDimensions(ctx context.Context, findingID pgtype.UUI
 	return r.q.ListFindingDimensions(ctx, findingID)
 }
 
+func (r *pgFindingRepo) HasOccurrence(ctx context.Context, findingID, reportID pgtype.UUID) (bool, error) {
+	return r.q.OccurrenceExists(ctx, sqlc.OccurrenceExistsParams{
+		FindingID: findingID,
+		ReportID:  reportID,
+	})
+}
+
+func (r *pgFindingRepo) MarkFixed(ctx context.Context, findingID pgtype.UUID) (sqlc.Finding, error) {
+	return r.q.MarkFindingFixed(ctx, findingID)
+}
+
 // GetByFingerprintParams identifies a finding by project, kind, and fingerprint.
 type GetByFingerprintParams struct {
 	ProjectID   pgtype.UUID

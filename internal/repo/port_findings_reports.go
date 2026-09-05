@@ -33,21 +33,22 @@ func (r *pgReportPort) Create(ctx context.Context, input port.CreateReportInput)
 		status = "processing"
 	}
 	row, err := r.inner.Create(ctx, CreateReportParams{
-		ProjectID:     pid,
-		ToolName:      input.ToolName,
-		ToolVersion:   textPtrFromString(input.ToolVersion),
-		ScanType:      input.ScanType,
-		ScanTarget:    textPtrFromString(input.ScanTarget),
-		TargetID:      uuidPtrFromString(&input.TargetID),
-		ArtifactID:    uuidPtrFromString(&input.ArtifactID),
-		EnvironmentID: uuidPtrFromString(&input.EnvironmentID),
-		ScanScope:     input.ScanScope,
-		ScanScopeHash: textPtrFromString(&input.ScanScopeHash),
-		Branch:        textPtrFromString(input.Branch),
-		CommitSha:     textPtrFromString(input.CommitSha),
-		RawData:       input.RawData,
-		RawReportHash: textPtrFromString(&input.RawReportHash),
-		ParserVersion: textPtrFromString(input.ParserVersion),
+		ProjectID:        pid,
+		ToolName:         input.ToolName,
+		ToolVersion:      textPtrFromString(input.ToolVersion),
+		ScanType:         input.ScanType,
+		ScanTarget:       textPtrFromString(input.ScanTarget),
+		TargetID:         uuidPtrFromString(&input.TargetID),
+		ArtifactID:       uuidPtrFromString(&input.ArtifactID),
+		EnvironmentID:    uuidPtrFromString(&input.EnvironmentID),
+		ScanScope:        input.ScanScope,
+		ScanScopeHash:    textPtrFromString(&input.ScanScopeHash),
+		Branch:           textPtrFromString(input.Branch),
+		CommitSha:        textPtrFromString(input.CommitSha),
+		RawData:          input.RawData,
+		RawReportHash:    textPtrFromString(&input.RawReportHash),
+		ParserVersion:    textPtrFromString(input.ParserVersion),
+		ScanCompleteness: completeness,
 	})
 	if err != nil {
 		// The duplicate-report unique violation (23505 on the raw-content
@@ -98,6 +99,25 @@ func (r *pgReportPort) ListByProject(ctx context.Context, projectID string, limi
 		out[i] = reportRowToPort(row)
 	}
 	return out, nil
+}
+
+func (r *pgReportPort) LatestCompletedByScanner(ctx context.Context, projectID, scanner string) (port.CompletedReport, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.CompletedReport{}, err
+	}
+	row, err := r.inner.LatestCompletedByScanner(ctx, pid, scanner)
+	if err != nil {
+		return port.CompletedReport{}, mappingErr(err)
+	}
+	return port.CompletedReport{
+		ID:           toUUID(row.ID),
+		ToolName:     row.ToolName,
+		Branch:       stringFromTextPtr(row.Branch),
+		CommitSha:    stringFromTextPtr(row.CommitSha),
+		Completeness: row.ScanCompleteness,
+		CreatedAt:    row.CreatedAt.Time,
+	}, nil
 }
 
 func (r *pgReportPort) UpdateStatus(ctx context.Context, id, projectID, status string, totalFindings int32, errorMessage *string) (port.Report, error) {
@@ -375,6 +395,30 @@ func (r *pgFindingPort) ListDimensions(ctx context.Context, findingID string) ([
 		out[i] = port.FindingDimension{Key: row.DimKey, Value: row.DimValue}
 	}
 	return out, nil
+}
+
+func (r *pgFindingPort) HasOccurrence(ctx context.Context, findingID, reportID string) (bool, error) {
+	fid, err := parseID(findingID)
+	if err != nil {
+		return false, err
+	}
+	rid, err := parseID(reportID)
+	if err != nil {
+		return false, err
+	}
+	return r.inner.HasOccurrence(ctx, fid, rid)
+}
+
+func (r *pgFindingPort) MarkFixed(ctx context.Context, findingID string) (port.Finding, error) {
+	fid, err := parseID(findingID)
+	if err != nil {
+		return port.Finding{}, err
+	}
+	row, err := r.inner.MarkFixed(ctx, fid)
+	if err != nil {
+		return port.Finding{}, mappingErr(err)
+	}
+	return findingRowToPort(row), nil
 }
 
 func (r *pgFindingPort) GetFindingContext(ctx context.Context, findingID string) (port.FindingContext, error) {

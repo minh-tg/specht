@@ -103,6 +103,8 @@ func TestFindings(t *testing.T) {
 			json.NewEncoder(w).Encode([]TriageResponse{{FindingID: "f1"}})
 		case "GET /api/v1/findings/f1/events":
 			json.NewEncoder(w).Encode([]FindingEvent{{EventType: "analysis_changed"}})
+		case "POST /api/v1/findings/f1/verify":
+			json.NewEncoder(w).Encode(VerifyResponse{FindingID: "f1", Outcome: "verified_fixed"})
 		}
 	}))
 	defer srv.Close()
@@ -128,6 +130,10 @@ func TestFindings(t *testing.T) {
 	events, err := cl.ListFindingEvents("f1", nil, 0, 0)
 	require.NoError(t, err)
 	assert.Len(t, events, 1)
+
+	vr, err := cl.VerifyFinding("f1")
+	require.NoError(t, err)
+	assert.Equal(t, "verified_fixed", vr.Outcome)
 }
 
 func TestAPIKeyEndpoints(t *testing.T) {

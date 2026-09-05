@@ -91,6 +91,7 @@ type ReportRepo interface {
 	GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Report, error)
 	ListByProject(ctx context.Context, projectID pgtype.UUID, limit, offset int32) ([]sqlc.Report, error)
 	UpdateStatus(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error)
+	LatestCompletedByScanner(ctx context.Context, projectID pgtype.UUID, toolName string) (sqlc.LatestCompletedReportByScannerRow, error)
 }
 
 // UserRepo persists user accounts.
@@ -207,8 +208,9 @@ type FindingRepo interface {
 	ListGateCandidates(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.ListGateCandidatesRow, error)
 	CreateEvent(ctx context.Context, arg CreateEventParams) (sqlc.FindingEvent, error)
 	ListEvents(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error)
-	HasDimension(ctx context.Context, findingID pgtype.UUID, key string) (bool, error)
 	GetFindingContext(ctx context.Context, findingID pgtype.UUID) (FindingContext, error)
 	GetFindingDisplayContext(ctx context.Context, findingID pgtype.UUID) (sqlc.GetFindingDisplayContextRow, error)
+	HasOccurrence(ctx context.Context, findingID, reportID pgtype.UUID) (bool, error)
+	MarkFixed(ctx context.Context, findingID pgtype.UUID) (sqlc.Finding, error)
 	FindScaFindingIdForPurlAndCve(ctx context.Context, projectID pgtype.UUID, purlName string, candidateIDs []string) (pgtype.UUID, error)
 }

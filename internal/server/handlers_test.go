@@ -53,6 +53,7 @@ type mockUsecases struct {
 	listWaiverEventsFn   func(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
 	checkWaiverMatchFn   func(ctx context.Context, projectSlug, findingID string) (bool, error)
 	getProjectStatsFn    func(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error)
+	verifyFixFn          func(ctx context.Context, findingID string) (*usecase.VerifyResponse, error)
 	getAgingFn           func(ctx context.Context, projectSlug string) (*usecase.AgingResponse, error)
 	getWatcherStatusFn   func(ctx context.Context) (*usecase.WatcherStatusResponse, error)
 	listScannersFn       func() []usecase.ScannerDescriptorResponse
@@ -161,6 +162,13 @@ func (m *mockUsecases) TriageFinding(ctx context.Context, input usecase.TriageIn
 		return nil, fmt.Errorf("unexpected call to TriageFinding")
 	}
 	return m.triageFindingFn(ctx, input)
+}
+
+func (m *mockUsecases) VerifyFix(ctx context.Context, findingID string) (*usecase.VerifyResponse, error) {
+	if m.verifyFixFn == nil {
+		return nil, fmt.Errorf("unexpected call to VerifyFix")
+	}
+	return m.verifyFixFn(ctx, findingID)
 }
 
 func (m *mockUsecases) BulkTriage(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error) {
@@ -559,6 +567,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/auth/apikeys", h.ListAPIKeys)
 	r.Delete("/api/v1/auth/apikeys/{id}", h.RevokeAPIKey)
 	r.Patch("/api/v1/findings/{id}", h.TriageFinding)
+	r.Post("/api/v1/findings/{id}/verify", h.VerifyFinding)
 	r.Post("/api/v1/findings/bulk-analysis", h.BulkTriage)
 	r.Get("/api/v1/findings/{id}/events", h.ListFindingEvents)
 	r.Get("/api/v1/findings/{id}", h.GetFinding)
@@ -1173,6 +1182,24 @@ func TestTriageFinding_Success(t *testing.T) {
 	var resp usecase.TriageOutput
 	json.Unmarshal(w.Body.Bytes(), &resp)
 	assert.Equal(t, "false_positive", resp.AnalysisState)
+}
+
+func TestVerifyFinding_Success(t *testing.T) {
+	mock := &mockUsecases{
+		verifyFixFn: func(ctx context.Context, findingID string) (*usecase.VerifyResponse, error) {
+			assert.Equal(t, "abc-123", findingID)
+			return &usecase.VerifyResponse{FindingID: "abc-123", Outcome: usecase.VerifyFixed, Detail: "absent from rescan"}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := authRequest("POST", "/api/v1/findings/abc-123/verify", "{}")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.VerifyResponse
+	json.Unmarshal(w.Body.Bytes(), &resp)
+	assert.Equal(t, usecase.VerifyFixed, resp.Outcome)
 }
 
 func TestTriageFinding_MissingReason(t *testing.T) {

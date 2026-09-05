@@ -14,21 +14,22 @@ type pgReportRepo struct {
 
 // CreateReportParams is the input to creating a report row.
 type CreateReportParams struct {
-	ProjectID     pgtype.UUID
-	ToolName      string
-	ToolVersion   pgtype.Text
-	ScanType      string
-	ScanTarget    pgtype.Text
-	TargetID      pgtype.UUID
-	ArtifactID    pgtype.UUID
-	EnvironmentID pgtype.UUID
-	Branch        pgtype.Text
-	CommitSha     pgtype.Text
-	ScanScope     []byte
-	ScanScopeHash pgtype.Text
-	RawData       []byte
-	RawReportHash pgtype.Text
-	ParserVersion pgtype.Text
+	ProjectID        pgtype.UUID
+	ToolName         string
+	ToolVersion      pgtype.Text
+	ScanType         string
+	ScanTarget       pgtype.Text
+	TargetID         pgtype.UUID
+	ArtifactID       pgtype.UUID
+	EnvironmentID    pgtype.UUID
+	Branch           pgtype.Text
+	CommitSha        pgtype.Text
+	ScanScope        []byte
+	ScanScopeHash    pgtype.Text
+	RawData          []byte
+	RawReportHash    pgtype.Text
+	ParserVersion    pgtype.Text
+	ScanCompleteness string
 }
 
 func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc.Report, error) {
@@ -48,10 +49,17 @@ func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc
 		RawData:          arg.RawData,
 		RawReportHash:    arg.RawReportHash,
 		ParserVersion:    arg.ParserVersion,
-		ScanCompleteness: "unknown",
+		ScanCompleteness: orUnknown(arg.ScanCompleteness),
 		Status:           "processing",
 		StartedAt:        pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	})
+}
+
+func orUnknown(s string) string {
+	if s == "" {
+		return "unknown"
+	}
+	return s
 }
 
 func (r *pgReportRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Report, error) {
@@ -63,6 +71,13 @@ func (r *pgReportRepo) ListByProject(ctx context.Context, projectID pgtype.UUID,
 		ProjectID: projectID,
 		Limit:     limit,
 		Offset:    offset,
+	})
+}
+
+func (r *pgReportRepo) LatestCompletedByScanner(ctx context.Context, projectID pgtype.UUID, toolName string) (sqlc.LatestCompletedReportByScannerRow, error) {
+	return r.q.LatestCompletedReportByScanner(ctx, sqlc.LatestCompletedReportByScannerParams{
+		ProjectID: projectID,
+		ToolName:  toolName,
 	})
 }
 

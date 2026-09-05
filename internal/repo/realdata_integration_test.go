@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -405,4 +406,211 @@ func TestSuggestion_EndToEnd(t *testing.T) {
 		}
 	}
 	assert.True(t, upgraded, "the curl CVE carries a fixed version and must yield a high upgrade suggestion")
+}
+
+func TestVerifyFix_FullCycle(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	stores := NewPortStores(pool)
+	reg := scanner.NewRegistry()
+	for _, s := range parser.Builtins() {
+		require.NoError(t, reg.Register(s))
+	}
+	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
+
+	_, err := uc.CreateProject(ctx, "My App", "my-app", "validation")
+	require.NoError(t, err)
+
+	raw1, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
+	require.NoError(t, err)
+	out1, err := uc.IngestReport(ctx, usecase.IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy", RawData: raw1,
+		Branch: "main", CommitSha: "aaa",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 4, out1.TotalFindings)
+
+	// Rescan with the npm vulnerability fixed: drop it from the raw report.
+	var results []map[string]any
+	require.NoError(t, json.Unmarshal(raw1, &results))
+	for _, r := range results {
+		if class, _ := r["Class"].(string); class == "lang-pkgs" {
+			r["Vulnerabilities"] = []any{}
+		}
+	}
+	raw2, err := json.Marshal(results)
+	require.NoError(t, err)
+	raw2 = append(raw2, '\n')
+	out2, err := uc.IngestReport(ctx, usecase.IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy", RawData: raw2,
+		Branch: "main", CommitSha: "bbb",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 3, out2.TotalFindings)
+
+	project, err := stores.Projects.GetBySlug(ctx, "my-app")
+	require.NoError(t, err)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, nil, nil, 100, 0)
+	require.NoError(t, err)
+	require.Len(t, findings, 4)
+
+	var fixed, present port.Finding
+	for _, f := range findings {
+		if strings.Contains(f.Fingerprint, "lodash") {
+			fixed = f
+		} else if present.ID == "" {
+			present = f
+		}
+	}
+	require.NotEmpty(t, fixed.ID, "lodash finding must exist from the first scan")
+
+	verified, err := uc.VerifyFix(ctx, fixed.ID)
+	require.NoError(t, err)
+	assert.Equal(t, usecase.VerifyFixed, verified.Outcome)
+	require.NotNil(t, verified.ReportID)
+
+	after, err := stores.Findings.GetByID(ctx, fixed.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "fixed", after.State, "verification moves the technical state")
+
+	events, err := stores.Findings.ListEvents(ctx, fixed.ID, []string{"verified_fixed"}, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, events, 1, "closure records the verifying scan")
+
+	still, err := uc.VerifyFix(ctx, present.ID)
+	require.NoError(t, err)
+	assert.Equal(t, usecase.VerifyPresent, still.Outcome)
+}
+
+func TestRegression_DetectedAndReopened(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	stores := NewPortStores(pool)
+	reg := scanner.NewRegistry()
+	for _, s := range parser.Builtins() {
+		require.NoError(t, reg.Register(s))
+	}
+	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
+
+	_, err := uc.CreateProject(ctx, "Regress App", "regress-app", "validation")
+	require.NoError(t, err)
+
+	raw1, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
+	require.NoError(t, err)
+	_, err = uc.IngestReport(ctx, usecase.IngestReportInput{
+		ProjectSlug: "regress-app", Scanner: "trivy", RawData: raw1,
+		Branch: "main", CommitSha: "aaa",
+	})
+	require.NoError(t, err)
+
+	project, err := stores.Projects.GetBySlug(ctx, "regress-app")
+	require.NoError(t, err)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, []string{"sca"}, nil, nil, 100, 0)
+	require.NoError(t, err)
+	require.NotEmpty(t, findings)
+
+	f := findingIDFor(findings, "lodash")
+	require.NotEmpty(t, f, "lodash finding must exist in scan 1")
+
+	// Scan 2: lodash is fixed (removed from the raw report). VerifyFix marks
+	// the finding fixed against this newer, complete, lodash-free report.
+	raw2, err := removeFingerprint(raw1, "CVE-2024-2222")
+	require.NoError(t, err)
+	_, err = uc.IngestReport(ctx, usecase.IngestReportInput{
+		ProjectSlug: "regress-app", Scanner: "trivy", RawData: raw2,
+		Branch: "main", CommitSha: "bbb",
+	})
+	require.NoError(t, err)
+
+	verified, err := uc.VerifyFix(ctx, f)
+	require.NoError(t, err)
+	assert.Equal(t, usecase.VerifyFixed, verified.Outcome)
+
+	after, err := stores.Findings.GetByID(ctx, f)
+	require.NoError(t, err)
+	assert.Equal(t, "fixed", after.State, "verification moves the technical state")
+
+	// Scan 3: lodash reappears → regression. Use a content-identical scan
+	// (with an innocuous marker so it isn't deduped) to simulate the
+	// vulnerability showing up again in a newer rescan.
+
+	raw3, err := appendComment(raw1, "regression-rescan")
+	require.NoError(t, err)
+	_, err = uc.IngestReport(ctx, usecase.IngestReportInput{
+		ProjectSlug: "regress-app", Scanner: "trivy", RawData: raw3,
+		Branch: "main", CommitSha: "ccc",
+	})
+
+	regressed, err := stores.Findings.GetByID(ctx, f)
+	require.NoError(t, err)
+	assert.Equal(t, "reopened", regressed.State, "reappeared finding flips back to reopened")
+
+	events, err := stores.Findings.ListEvents(ctx, f, []string{"regression"}, 10, 0)
+	require.NoError(t, err)
+	require.Len(t, events, 1, "regression must log a regression event")
+
+	// The gate must block: the regressed finding is a blocking candidate.
+	g, err := uc.GetGateStatus(ctx, "regress-app", 0)
+	require.NoError(t, err)
+	assert.True(t, g.ThresholdBreached, "regressed finding must re-block the gate")
+	assert.NotEmpty(t, g.BlockedBy)
+}
+
+// removeFingerprint strips a vulnerability from the trivy multi-type fixture so
+// the resulting rescan no longer contains it — simulating a fix.
+func removeFingerprint(raw []byte, id string) ([]byte, error) {
+	var results []map[string]any
+	if err := json.Unmarshal(raw, &results); err != nil {
+		return nil, err
+	}
+	for _, r := range results {
+		if vulns, ok := r["Vulnerabilities"].([]any); ok {
+			kept := make([]any, 0, len(vulns))
+			for _, v := range vulns {
+				if vm, ok := v.(map[string]any); ok {
+					if vid, _ := vm["VulnerabilityID"].(string); vid == id {
+						continue
+					}
+				}
+				kept = append(kept, v)
+			}
+			r["Vulnerabilities"] = kept
+		}
+	}
+	out, err := json.MarshalIndent(results, "", "  ")
+	if err != nil {
+		return nil, err
+	}
+	return append(out, '\n'), nil
+}
+
+// appendComment injects a harmless top-level field into the trivy multi-type
+// fixture JSON so that the report hash differs and the dedup constraint does
+// not reject it as an identical re-ingest.
+func appendComment(raw []byte, marker string) ([]byte, error) {
+	var results []map[string]any
+	if err := json.Unmarshal(raw, &results); err != nil {
+		return nil, err
+	}
+	for _, r := range results {
+		r["_regression_marker"] = marker
+	}
+	out, err := json.Marshal(results)
+	if err != nil {
+		return nil, err
+	}
+	return append(out, '\n'), nil
+}
+
+func findingIDFor(findings []port.Finding, substr string) string {
+	for _, f := range findings {
+		if strings.Contains(f.Fingerprint, substr) {
+			return f.ID
+		}
+	}
+	return ""
 }

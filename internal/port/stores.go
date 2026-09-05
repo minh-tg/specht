@@ -416,12 +416,18 @@ type FindingStore interface {
 	BulkUpdateAnalysis(ctx context.Context, input UpdateAnalysisInput, ids []string) ([]Finding, error)
 	CreateEvent(ctx context.Context, input FindingEventInput) (FindingEvent, error)
 	ListEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]FindingEvent, error)
-	HasDimension(ctx context.Context, findingID, key string) (bool, error)
-	CreateOccurrence(ctx context.Context, input OccurrenceInput) (Occurrence, error)
-	UpsertDimension(ctx context.Context, input DimensionInput) error
 	// ListDimensions returns every persisted dimension of a finding,
 	// ordered by key for determinism.
 	ListDimensions(ctx context.Context, findingID string) ([]FindingDimension, error)
+	// HasOccurrence reports whether a finding was observed in a report.
+	HasOccurrence(ctx context.Context, findingID, reportID string) (bool, error)
+	// MarkFixed moves a finding to the scan-derived fixed state. It is
+	// the only path to fixed: triage never sets it, only VerifyFix does,
+	// backed by a rescan that no longer observes the finding.
+	MarkFixed(ctx context.Context, findingID string) (Finding, error)
+	HasDimension(ctx context.Context, findingID, key string) (bool, error)
+	CreateOccurrence(ctx context.Context, input OccurrenceInput) (Occurrence, error)
+	UpsertDimension(ctx context.Context, input DimensionInput) error
 	GetFindingContext(ctx context.Context, findingID string) (FindingContext, error)
 	// GetFindingDisplayContext returns the latest observed deployment
 	// context of a finding for detail views: target, environment, branch,
@@ -603,7 +609,21 @@ type ReportStore interface {
 	Create(ctx context.Context, input CreateReportInput) (Report, error)
 	GetByID(ctx context.Context, id string) (Report, error)
 	ListByProject(ctx context.Context, projectID string, limit, offset int32) ([]Report, error)
-	UpdateStatus(ctx context.Context, id, projectID, status string, totalFindings int32, errorMessage *string) (Report, error)
+	UpdateStatus(ctx context.Context, id, projectID string, status string, totalFindings int32, errorMessage *string) (Report, error)
+	// LatestCompletedByScanner returns the newest completed report from
+	// one scanner, or ErrNotFound when the scanner never completed.
+	LatestCompletedByScanner(ctx context.Context, projectID, scanner string) (CompletedReport, error)
+}
+
+// CompletedReport is the verification basis: the newest completed scan
+// from one scanner with its revision and scope completeness.
+type CompletedReport struct {
+	ID           string
+	ToolName     string
+	Branch       *string
+	CommitSha    *string
+	Completeness string
+	CreatedAt    time.Time
 }
 
 // ---------- Inventory ----------

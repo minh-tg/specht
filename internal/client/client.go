@@ -392,6 +392,14 @@ func (c *Client) GetAging(projectSlug string) (*AgingResponse, error) {
 	return &resp, nil
 }
 
+func (c *Client) VerifyFinding(findingID string) (*VerifyResponse, error) {
+	var resp VerifyResponse
+	if err := c.do("POST", "/api/v1/findings/"+url.PathEscape(findingID)+"/verify", nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // Waivers.
 
 func (c *Client) CreateWaiver(projectSlug string, req *CreateWaiverRequest) (*Waiver, error) {

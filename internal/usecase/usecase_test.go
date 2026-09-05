@@ -50,6 +50,7 @@ type mockReportRepo struct {
 	getByIDFn       func(context.Context, string) (port.Report, error)
 	listByProjectFn func(context.Context, string, int32, int32) ([]port.Report, error)
 	updateStatusFn  func(context.Context, string, string, string, int32, *string) (port.Report, error)
+	latestReportFn  func(context.Context, string, string) (port.CompletedReport, error)
 }
 
 func (m *mockReportRepo) Create(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
@@ -80,14 +81,23 @@ func (m *mockReportRepo) ListByProject(ctx context.Context, projectID string, li
 	return m.listByProjectFn(ctx, projectID, limit, offset)
 }
 
+func (m *mockReportRepo) LatestCompletedByScanner(ctx context.Context, projectID, scanner string) (port.CompletedReport, error) {
+	if m.latestReportFn == nil {
+		return port.CompletedReport{}, port.ErrNotFound
+	}
+	return m.latestReportFn(ctx, projectID, scanner)
+}
+
 type mockFindingRepo struct {
 	port.FindingStore
-	upsertFn               func(context.Context, string, string, string, string, string, int16, float64, time.Time, time.Time) (port.Finding, error)
+	hasOccurrenceFn        func(context.Context, string, string) (bool, error)
+	markFixedFn            func(context.Context, string) (port.Finding, error)
 	createOccurrenceFn     func(context.Context, port.OccurrenceInput) (port.Occurrence, error)
 	upsertDimensionFn      func(context.Context, port.DimensionInput) error
 	listByProjectFn        func(context.Context, string, []string, []string, []string, []string, []string, int32, int32) ([]port.Finding, error)
 	getDisplayContextFn    func(context.Context, string) (port.FindingDisplayContext, error)
 	listDimensionsFn       func(context.Context, string) ([]port.FindingDimension, error)
+	upsertFn               func(context.Context, string, string, string, string, string, int16, float64, time.Time, time.Time) (port.Finding, error)
 	getByFingerprintFn     func(context.Context, string, string, string) (port.Finding, error)
 	getByIDFn              func(context.Context, string) (port.Finding, error)
 	listByIDsFn            func(context.Context, []string) ([]port.Finding, error)
@@ -190,6 +200,20 @@ func (m *mockFindingRepo) ListDimensions(ctx context.Context, findingID string) 
 		return nil, nil
 	}
 	return m.listDimensionsFn(ctx, findingID)
+}
+
+func (m *mockFindingRepo) HasOccurrence(ctx context.Context, findingID, reportID string) (bool, error) {
+	if m.hasOccurrenceFn == nil {
+		return false, fmt.Errorf("unexpected call to HasOccurrence")
+	}
+	return m.hasOccurrenceFn(ctx, findingID, reportID)
+}
+
+func (m *mockFindingRepo) MarkFixed(ctx context.Context, findingID string) (port.Finding, error) {
+	if m.markFixedFn == nil {
+		return port.Finding{}, fmt.Errorf("unexpected call to MarkFixed")
+	}
+	return m.markFixedFn(ctx, findingID)
 }
 
 func (m *mockFindingRepo) GetByFingerprint(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {

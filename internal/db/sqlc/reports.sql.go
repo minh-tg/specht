@@ -147,6 +147,42 @@ func (q *Queries) GetReportByID(ctx context.Context, id pgtype.UUID) (Report, er
 	return i, err
 }
 
+const latestCompletedReportByScanner = `-- name: LatestCompletedReportByScanner :one
+SELECT id, tool_name, branch, commit_sha, scan_completeness, created_at
+FROM reports
+WHERE project_id = $1 AND tool_name = $2 AND status = 'completed'
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+type LatestCompletedReportByScannerParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	ToolName  string      `json:"tool_name"`
+}
+
+type LatestCompletedReportByScannerRow struct {
+	ID               pgtype.UUID        `json:"id"`
+	ToolName         string             `json:"tool_name"`
+	Branch           pgtype.Text        `json:"branch"`
+	CommitSha        pgtype.Text        `json:"commit_sha"`
+	ScanCompleteness string             `json:"scan_completeness"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) LatestCompletedReportByScanner(ctx context.Context, arg LatestCompletedReportByScannerParams) (LatestCompletedReportByScannerRow, error) {
+	row := q.db.QueryRow(ctx, latestCompletedReportByScanner, arg.ProjectID, arg.ToolName)
+	var i LatestCompletedReportByScannerRow
+	err := row.Scan(
+		&i.ID,
+		&i.ToolName,
+		&i.Branch,
+		&i.CommitSha,
+		&i.ScanCompleteness,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const listReportsByProject = `-- name: ListReportsByProject :many
 SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data FROM reports
 WHERE project_id = $1

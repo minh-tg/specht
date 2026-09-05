@@ -171,7 +171,7 @@ LEFT JOIN LATERAL (
 WHERE f.project_id = $1
   AND f.current_severity_rank >= $2
   AND f.gate_effect = 'block'
-  AND f.state = 'open'
+  AND f.state IN ('open', 'reopened')
 ORDER BY f.current_severity_rank DESC, f.created_at DESC;
 
 -- name: GetFindingContext :one
@@ -206,6 +206,16 @@ SELECT dim_key, dim_value, source
 FROM finding_dimensions
 WHERE finding_id = $1
 ORDER BY dim_key, dim_value;
+-- name: OccurrenceExists :one
+SELECT EXISTS (
+    SELECT 1 FROM finding_occurrences
+    WHERE finding_id = $1 AND report_id = $2
+) AS exists;
+
+-- name: MarkFindingFixed :one
+UPDATE findings SET state = 'fixed', updated_at = NOW()
+WHERE id = $1
+RETURNING *;
 
 -- name: UpsertDimension :one
 INSERT INTO finding_dimensions (

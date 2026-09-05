@@ -36,3 +36,9 @@ UPDATE reports SET
     error_message = $4
 WHERE id = $1 AND project_id = $5
 RETURNING *;
+-- name: LatestCompletedReportByScanner :one
+SELECT id, tool_name, branch, commit_sha, scan_completeness, created_at
+FROM reports
+WHERE project_id = $1 AND tool_name = $2 AND status = 'completed'
+ORDER BY created_at DESC
+LIMIT 1;

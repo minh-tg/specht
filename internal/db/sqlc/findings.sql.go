@@ -764,7 +764,7 @@ LEFT JOIN LATERAL (
 WHERE f.project_id = $1
   AND f.current_severity_rank >= $2
   AND f.gate_effect = 'block'
-  AND f.state = 'open'
+  AND f.state IN ('open', 'reopened')
 ORDER BY f.current_severity_rank DESC, f.created_at DESC
 `
 
@@ -823,6 +823,65 @@ func (q *Queries) ListGateCandidates(ctx context.Context, arg ListGateCandidates
 		return nil, err
 	}
 	return items, nil
+}
+
+const markFindingFixed = `-- name: MarkFindingFixed :one
+UPDATE findings SET state = 'fixed', updated_at = NOW()
+WHERE id = $1
+RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version
+`
+
+func (q *Queries) MarkFindingFixed(ctx context.Context, id pgtype.UUID) (Finding, error) {
+	row := q.db.QueryRow(ctx, markFindingFixed, id)
+	var i Finding
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.FindingKind,
+		&i.Fingerprint,
+		&i.CurrentTitle,
+		&i.CurrentSeverity,
+		&i.CurrentSeverityRank,
+		&i.CurrentScore,
+		&i.State,
+		&i.TriageStatus,
+		&i.AssigneeID,
+		&i.FirstSeenAt,
+		&i.LastSeenAt,
+		&i.FixedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AnalysisState,
+		&i.GateEffect,
+		&i.AnalysisExpiresAt,
+		&i.AnalysisReason,
+		&i.AnalysisSource,
+		&i.AnalysisUpdatedAt,
+		&i.AnalysisUpdatedBy,
+		&i.ManualOverride,
+		&i.ReviewRequired,
+		&i.FingerprintVersion,
+	)
+	return i, err
+}
+
+const occurrenceExists = `-- name: OccurrenceExists :one
+SELECT EXISTS (
+    SELECT 1 FROM finding_occurrences
+    WHERE finding_id = $1 AND report_id = $2
+) AS exists
+`
+
+type OccurrenceExistsParams struct {
+	FindingID pgtype.UUID `json:"finding_id"`
+	ReportID  pgtype.UUID `json:"report_id"`
+}
+
+func (q *Queries) OccurrenceExists(ctx context.Context, arg OccurrenceExistsParams) (bool, error) {
+	row := q.db.QueryRow(ctx, occurrenceExists, arg.FindingID, arg.ReportID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const updateFindingAnalysis = `-- name: UpdateFindingAnalysis :one

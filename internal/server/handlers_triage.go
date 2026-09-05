@@ -62,6 +62,27 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, result)
 }
 
+func (h *Handler) VerifyFinding(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		return
+	}
+	result, err := h.usecase.VerifyFix(r.Context(), id)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrFindingNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+		default:
+			respondError(w, http.StatusInternalServerError, "verify_failed", err.Error())
+		}
+		return
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
 func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		FindingIDs        []string   `json:"finding_ids"`

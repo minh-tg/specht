@@ -380,6 +380,14 @@ type WeeklyNew struct {
 	Count int32  `json:"count"`
 }
 
+// VerifyResponse is the outcome of evidence-backed fix verification.
+type VerifyResponse struct {
+	FindingID string  `json:"finding_id"`
+	Outcome   string  `json:"outcome"`
+	ReportID  *string `json:"report_id,omitempty"`
+	Detail    string  `json:"detail"`
+}
+
 // APIError is the error envelope the API returns on non-2xx responses.
 type APIError struct {
 	Code    string `json:"code"`

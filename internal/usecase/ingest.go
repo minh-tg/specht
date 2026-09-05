@@ -302,6 +302,18 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, i
 		oldAnalysisState = existing.AnalysisState
 	}
 
+	// A finding that was previously verified as fixed and is now observed
+	// again is a regression: the fix did not hold. The SQL upsert flips
+	// state 'fixed' -> 'reopened'; we detect the pre-upsert fixed state here
+	// and log an explicit regression event so consumers (gate, dashboards,
+	// watchers) can react to the backslide.
+	var regression bool
+	var prevState string
+	if lookupErr == nil && existing.State == string(finding.TechFixed) {
+		regression = true
+		prevState = existing.State
+	}
+
 	upserted, err := u.deps.Stores.Findings.Upsert(ctx,
 		project.ID,
 		f.FindingKind,
@@ -316,6 +328,18 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, i
 	if err != nil {
 		slog.Error("upsert finding failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
 		return 0, fmt.Errorf("scanner %s: upsert finding %q: %w", input.Scanner, f.Fingerprint, err)
+	}
+
+	if regression {
+		if _, err := u.deps.Stores.Findings.CreateEvent(ctx, port.FindingEventInput{
+			FindingID: upserted.ID,
+			EventType: "regression",
+			OldValue:  &prevState,
+			NewValue:  strPtr(upserted.State),
+			Changes:   mustMarshal(map[string]any{"report_id": report.ID, "scanner": input.Scanner, "new_state": upserted.State}),
+		}); err != nil {
+			slog.Warn("log regression event failed", "finding", upserted.ID, "error", err)
+		}
 	}
 
 	occ := toOccurrenceParams(f, input.Scanner)

@@ -145,9 +145,13 @@ func convert(report trivyReport) *domain.NormalizedReport {
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
 		FingerprintVersion: 1,
-		Completeness:       domain.CompletenessUnknown,
-		ScanType:           domain.ScanTypeImage,
-		Findings:           nil,
+		// Trivy scans its whole target (every result class covers the
+		// target it ran against), so absence in a rescan is meaningful:
+		// VerifyFix can treat newer complete trivy reports as proof a
+		// finding is gone. Unknown-completeness reports never verify.
+		Completeness: domain.CompletenessComplete,
+		ScanType:     domain.ScanTypeImage,
+		Findings:     nil,
 	}
 
 	if len(report) > 0 {

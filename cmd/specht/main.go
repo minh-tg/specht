@@ -27,6 +27,7 @@ const (
 	cmdProjectsGet
 	cmdFindingsList
 	cmdFindingsGet
+	cmdFindingsVerify
 	cmdFindingsReachability
 	cmdGateCheck
 	cmdStats
@@ -121,6 +122,11 @@ func parseArgs(args []string) (command, error) {
 				return command{}, fmt.Errorf("missing finding ID")
 			}
 			return command{cmd: cmdFindingsGet, findingID: rest[2]}, nil
+		case "verify":
+			if len(rest) < 3 {
+				return command{}, fmt.Errorf("missing finding ID")
+			}
+			return command{cmd: cmdFindingsVerify, findingID: rest[2]}, nil
 		case "reachability":
 			c := command{cmd: cmdFindingsReachability}
 			for i := 2; i < len(rest); i++ {
@@ -349,6 +355,17 @@ func run(cl *client.Client, cmd command) error {
 		fmt.Printf("ID:           %s\nTitle:        %s\nSeverity:     %s\nScore:        %s\nState:        %s\nAnalysis:     %s\nGate Effect:  %s\nFingerprint:  %s\nKind:         %s\n", f.ID, f.CurrentTitle, f.CurrentSeverity, score, f.State, f.AnalysisState, f.GateEffect, f.Fingerprint, f.FindingKind)
 		return nil
 
+	case cmdFindingsVerify:
+		res, err := cl.VerifyFinding(cmd.findingID)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("finding %s: %s\n", res.FindingID, res.Outcome)
+		if res.ReportID != nil {
+			fmt.Printf("report: %s\n", *res.ReportID)
+		}
+		fmt.Printf("detail: %s\n", res.Detail)
+		return nil
 	case cmdFindingsReachability:
 		if cmd.state != "" {
 			assess, err := cl.UpsertReachability(cmd.findingID, cmd.state, cmd.evidence)
@@ -467,6 +484,7 @@ Commands:
     [--status open]                        Filter by status
     [--limit N]                            Limit results
   findings get <id>                       Show finding details
+  findings verify <id>                    Verify fix against latest rescan
   findings reachability --finding <id>    List reachability assessments (omit --state)
   findings reachability --finding <id> --state <s> [--evidence <e>]
                                           Set reachability (reachable|not_reachable|unknown|not_applicable)
