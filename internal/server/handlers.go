@@ -137,6 +137,11 @@ type (
 	WatcherUsecases interface {
 		GetWatcherStatus(ctx context.Context) (*usecase.WatcherStatusResponse, error)
 	}
+
+	// ScannerUsecases exposes deterministic scanner capability discovery.
+	ScannerUsecases interface {
+		ListScanners() []usecase.ScannerDescriptorResponse
+	}
 )
 
 // Handler holds the use-case dependency for the HTTP handlers.
@@ -157,6 +162,7 @@ type usecaseInterface interface {
 	SignoffUsecases
 	StatsUsecases
 	WatcherUsecases
+	ScannerUsecases
 }
 
 // NewHandler builds the HTTP handlers over a use-case implementation.

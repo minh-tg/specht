@@ -169,6 +169,15 @@ func (c *Client) Me() (*UserProfile, error) {
 	return &resp, nil
 }
 
+// ListScanners returns the deterministic scanner capability list.
+func (c *Client) ListScanners() ([]ScannerDescriptor, error) {
+	var resp []ScannerDescriptor
+	if err := c.do("GET", "/api/v1/scanners", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
 // API Keys.
 
 func (c *Client) CreateAPIKey(project, name string) (*APIKey, error) {

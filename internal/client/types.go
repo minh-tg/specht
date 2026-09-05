@@ -170,6 +170,16 @@ type Evidence struct {
 	CreatedAt   string  `json:"created_at"`
 }
 
+// ScannerDescriptor is the API representation of a scanner capability.
+type ScannerDescriptor struct {
+	Name                  string   `json:"name"`
+	Version               string   `json:"version"`
+	FindingKinds          []string `json:"finding_kinds"`
+	ScanTypes             []string `json:"scan_types"`
+	ProvidesPackages      bool     `json:"provides_packages"`
+	SupportsAutoDetection bool     `json:"supports_auto_detection"`
+}
+
 // CreateAPIKeyRequest is the request body for minting an API key.
 type CreateAPIKeyRequest struct {
 	Name    string `json:"name"`

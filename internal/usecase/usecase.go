@@ -57,12 +57,13 @@ type IngestReportOutput struct {
 }
 
 // Deps wires the dependencies a Usecases instance needs. Stores, Registry,
-// and JWTAuth are required; InventoryTTL tunes how long scanned inventory is
-// considered fresh.
+// Tokens, and Passwords are required; InventoryTTL tunes how long scanned
+// inventory is considered fresh.
 type Deps struct {
 	Stores       *port.Stores
 	Registry     *scanner.Registry
-	JWTAuth      *auth.JWTAuthenticator
+	Tokens       auth.TokenIssuer
+	Passwords    auth.PasswordHasher
 	InventoryTTL time.Duration
 }
 

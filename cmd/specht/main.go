@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/xMinhx/specht/internal/client"
+	"github.com/xMinhx/specht/internal/config"
 	"github.com/xMinhx/specht/internal/db"
 	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/repo"
@@ -472,18 +473,22 @@ func runWatcherBackfill(cmd command) error {
 		projectIDs[i] = p.ID
 	}
 
-	inventoryTTL := 2160 * time.Hour // 90d — must match the server's INVENTORY_TTL default
+	inventoryTTL := config.DefaultInventoryTTL
 	if v := os.Getenv("INVENTORY_TTL"); v != "" {
 		inventoryTTL, err = time.ParseDuration(v)
 		if err != nil {
 			return fmt.Errorf("INVENTORY_TTL is invalid: %w", err)
 		}
 	}
+	watcherCfg, err := config.WatcherConfig()
+	if err != nil {
+		return err
+	}
 
 	deps := watcher.PollDeps{
 		Client: watcher.NewHTTPClient(watcher.HTTPClientConfig{
-			Endpoint: os.Getenv("WATCHER_OSV_ENDPOINT"), // empty → default
-			CacheTTL: 0,                                 // one-shot: no cross-call caching
+			Endpoint: watcherCfg.OSVEndpoint,
+			CacheTTL: 0, // one-shot: no cross-call caching
 		}),
 		Store:    store,
 		Projects: projectIDs,

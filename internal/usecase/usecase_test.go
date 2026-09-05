@@ -1207,8 +1207,9 @@ func TestRegister_Success(t *testing.T) {
 	}
 
 	uc := New(Deps{
-		Stores:  &port.Stores{Users: ur, RefreshTokens: rr},
-		JWTAuth: jwt,
+		Stores:    &port.Stores{Users: ur, RefreshTokens: rr},
+		Tokens:    jwt,
+		Passwords: auth.NewPasswordHasher(),
 	})
 
 	resp, err := uc.Register(context.Background(), "new@example.com", "password123")
@@ -1272,8 +1273,9 @@ func TestLogin_Success(t *testing.T) {
 	}
 
 	uc := New(Deps{
-		Stores:  &port.Stores{Users: ur, RefreshTokens: rr},
-		JWTAuth: jwt,
+		Stores:    &port.Stores{Users: ur, RefreshTokens: rr},
+		Tokens:    jwt,
+		Passwords: auth.NewPasswordHasher(),
 	})
 
 	resp, err := uc.Login(context.Background(), "test@example.com", "correct-password")
@@ -1340,8 +1342,9 @@ func TestLogin_WrongPassword(t *testing.T) {
 	}
 
 	uc := New(Deps{
-		Stores:  &port.Stores{Users: ur},
-		JWTAuth: jwt,
+		Stores:    &port.Stores{Users: ur},
+		Tokens:    jwt,
+		Passwords: auth.NewPasswordHasher(),
 	})
 
 	_, err = uc.Login(context.Background(), "test@example.com", "wrong-password")
@@ -1371,8 +1374,9 @@ func TestRefresh_Success(t *testing.T) {
 	}
 
 	uc := New(Deps{
-		Stores:  &port.Stores{RefreshTokens: rr, Users: ur},
-		JWTAuth: jwt,
+		Stores:    &port.Stores{RefreshTokens: rr, Users: ur},
+		Tokens:    jwt,
+		Passwords: auth.NewPasswordHasher(),
 	})
 
 	resp, err := uc.Refresh(context.Background(), "some-valid-refresh-token")

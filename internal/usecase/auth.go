@@ -53,7 +53,7 @@ func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthR
 		return nil, fmt.Errorf("email already registered")
 	}
 
-	hash, err := auth.HashPassword(password)
+	hash, err := u.deps.Passwords.Hash(password)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
@@ -64,7 +64,7 @@ func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthR
 	}
 
 	userID := user.ID
-	token, err := u.deps.JWTAuth.CreateToken(userID, user.Email)
+	token, err := u.deps.Tokens.CreateToken(userID, user.Email)
 	if err != nil {
 		return nil, fmt.Errorf("create token: %w", err)
 	}
@@ -91,12 +91,12 @@ func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResp
 		return nil, fmt.Errorf("invalid email or password")
 	}
 
-	if !auth.VerifyPassword(password, user.PasswordHash) {
+	if !u.deps.Passwords.Verify(password, user.PasswordHash) {
 		return nil, fmt.Errorf("invalid email or password")
 	}
 
 	userID := user.ID
-	token, err := u.deps.JWTAuth.CreateToken(userID, user.Email)
+	token, err := u.deps.Tokens.CreateToken(userID, user.Email)
 	if err != nil {
 		return nil, fmt.Errorf("create token: %w", err)
 	}
@@ -194,7 +194,7 @@ func (u *Usecases) RevokeAPIKey(ctx context.Context, projectSlug, keyID string) 
 }
 
 func (u *Usecases) createSession(ctx context.Context, userID, email string) (*AuthResponse, error) {
-	rawRefresh, err := u.deps.JWTAuth.CreateRefreshToken(userID)
+	rawRefresh, err := u.deps.Tokens.CreateRefreshToken(userID)
 	if err != nil {
 		return nil, fmt.Errorf("create refresh token: %w", err)
 	}
@@ -244,7 +244,7 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 		return nil, fmt.Errorf("user not found")
 	}
 
-	token, err := u.deps.JWTAuth.CreateToken(userID, user.Email)
+	token, err := u.deps.Tokens.CreateToken(userID, user.Email)
 	if err != nil {
 		return nil, fmt.Errorf("create token: %w", err)
 	}

@@ -30,6 +30,30 @@ describe("Ingest", () => {
       const method = ((opts as RequestInit)?.method ?? "GET").toUpperCase();
       fetchCalls.push({ url: u, method, body: (opts as RequestInit)?.body as string | undefined });
 
+      if (u === "/api/v1/scanners" && method === "GET") {
+        return {
+          ok: true,
+          json: () =>
+            Promise.resolve([
+              {
+                name: "trivy",
+                version: "2",
+                finding_kinds: ["sca", "secret", "iac"],
+                scan_types: ["image", "iac", "filesystem"],
+                provides_packages: true,
+                supports_auto_detection: true,
+              },
+              {
+                name: "osv-scanner",
+                version: "1",
+                finding_kinds: ["sca"],
+                scan_types: ["lockfile", "sbom", "repository", "image", "filesystem"],
+                provides_packages: true,
+                supports_auto_detection: true,
+              },
+            ]),
+        } as Response;
+      }
       if (u === "/api/v1/reports" && method === "POST") {
         return {
           ok: true,
@@ -89,8 +113,15 @@ describe("Ingest", () => {
     await waitFor(() => {
       expect(screen.getByText("Test Project")).toBeInTheDocument();
     });
+    await waitFor(() => {
+      expect(screen.getByRole("combobox", { name: /scanner/i })).not.toBeDisabled();
+    });
 
     await user.selectOptions(screen.getByRole("combobox", { name: /project/i }), "test-project");
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /scanner/i }),
+      "trivy (2)",
+    );
     await user.upload(screen.getByLabelText(/scan file/i), createJsonFile("{\"vuln\":true}"));
     await user.click(screen.getByRole("button", { name: /upload/i }));
 
@@ -104,5 +135,43 @@ describe("Ingest", () => {
     expect(body.project).toBe("test-project");
     expect(body.scanner).toBe("trivy");
     expect(body.raw_data).toBe("{\"vuln\":true}");
+  });
+});
+
+describe("Ingest scanner loading and error states", () => {
+  it("shows loading then an error when the scanners endpoint fails", async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async (url) => {
+      const u = String(url);
+      if (u === "/api/v1/scanners") {
+        return { ok: false, status: 500, json: () => Promise.resolve({}) } as Response;
+      }
+      if (u === "/api/v1/projects") {
+        return { ok: true, json: () => Promise.resolve([]) } as Response;
+      }
+      return { ok: true, json: () => Promise.resolve([]) } as Response;
+    });
+
+    renderIngest();
+    await waitFor(() => {
+      expect(screen.getByText(/failed to load scanners/i)).toBeInTheDocument();
+    });
+  });
+
+  it("shows the empty state when the scanners endpoint returns no rows", async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async (url) => {
+      const u = String(url);
+      if (u === "/api/v1/scanners") {
+        return { ok: true, json: () => Promise.resolve([]) } as Response;
+      }
+      if (u === "/api/v1/projects") {
+        return { ok: true, json: () => Promise.resolve([]) } as Response;
+      }
+      return { ok: true, json: () => Promise.resolve([]) } as Response;
+    });
+
+    renderIngest();
+    await waitFor(() => {
+      expect(screen.getByText(/no scanners available/i)).toBeInTheDocument();
+    });
   });
 });

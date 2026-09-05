@@ -54,6 +54,7 @@ type mockUsecases struct {
 	checkWaiverMatchFn   func(ctx context.Context, projectSlug, findingID string) (bool, error)
 	getProjectStatsFn    func(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error)
 	getWatcherStatusFn   func(ctx context.Context) (*usecase.WatcherStatusResponse, error)
+	listScannersFn       func() []usecase.ScannerDescriptorResponse
 	createEvidenceFn     func(ctx context.Context, findingID, userID, typ, url, description string) (usecase.EvidenceResponse, error)
 	listEvidenceFn       func(ctx context.Context, findingID string) ([]usecase.EvidenceResponse, error)
 	deleteEvidenceFn     func(ctx context.Context, evidenceID string) error
@@ -292,6 +293,13 @@ func (m *mockUsecases) GetWatcherStatus(ctx context.Context) (*usecase.WatcherSt
 		return nil, fmt.Errorf("unexpected call to GetWatcherStatus")
 	}
 	return m.getWatcherStatusFn(ctx)
+}
+
+func (m *mockUsecases) ListScanners() []usecase.ScannerDescriptorResponse {
+	if m.listScannersFn == nil {
+		return nil
+	}
+	return m.listScannersFn()
 }
 
 func (m *mockUsecases) CreateEvidence(ctx context.Context, findingID, userID, typ, url, description string) (usecase.EvidenceResponse, error) {
@@ -545,6 +553,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
 	r.Get("/api/v1/projects/{slug}/stats", h.GetProjectStats)
 	r.Get("/api/v1/watcher/status", h.GetWatcherStatus)
+	r.Get("/api/v1/scanners", h.ListScanners)
 	return r
 }
 
@@ -2083,4 +2092,28 @@ func TestReachabilityHandlers_InvalidFindingID(t *testing.T) {
 			assert.Equal(t, "invalid_id", resp.Error.Code)
 		})
 	}
+}
+
+func TestListScannersHandler(t *testing.T) {
+	mock := &mockUsecases{
+		listScannersFn: func() []usecase.ScannerDescriptorResponse {
+			return []usecase.ScannerDescriptorResponse{
+				{Name: "trivy", Version: "2", FindingKinds: []string{"sca", "secret", "iac"}, ProvidesPackages: true},
+				{Name: "semgrep", Version: "2.1", FindingKinds: []string{"sast"}},
+			}
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/scanners", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp []usecase.ScannerDescriptorResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	require.Len(t, resp, 2)
+	assert.Equal(t, "trivy", resp[0].Name)
+	assert.Equal(t, []string{"sca", "secret", "iac"}, resp[0].FindingKinds)
+	assert.Equal(t, "semgrep", resp[1].Name)
 }

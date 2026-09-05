@@ -4,6 +4,7 @@ import type {
   Project,
   ReachabilityAssessment,
   Report,
+  ScannerDescriptor,
   TriageResponse,
 } from "@/types/api";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -13,6 +14,13 @@ export function useProjects() {
   return useQuery({
     queryKey: ["projects"],
     queryFn: () => apiFetch<Project[]>("/api/v1/projects"),
+  });
+}
+
+export function useScanners() {
+  return useQuery({
+    queryKey: ["scanners"],
+    queryFn: () => apiFetch<ScannerDescriptor[]>("/api/v1/scanners"),
   });
 }
 

@@ -289,3 +289,26 @@ func TestMe(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "a@b.com", profile.Email)
 }
+
+func TestListScanners(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/scanners" {
+			http.NotFound(w, r)
+			return
+		}
+		json.NewEncoder(w).Encode([]ScannerDescriptor{
+			{Name: "trivy", Version: "2", FindingKinds: []string{"sca", "secret", "iac"}, ProvidesPackages: true},
+			{Name: "semgrep", Version: "2.1", FindingKinds: []string{"sast"}},
+		})
+	}))
+	defer srv.Close()
+
+	cl := New(srv.URL, WithToken("key"))
+	scanners, err := cl.ListScanners()
+	require.NoError(t, err)
+	require.Len(t, scanners, 2)
+	assert.Equal(t, "trivy", scanners[0].Name)
+	assert.Equal(t, []string{"sca", "secret", "iac"}, scanners[0].FindingKinds)
+	assert.True(t, scanners[0].ProvidesPackages)
+	assert.Equal(t, "sast", scanners[1].FindingKinds[0])
+}

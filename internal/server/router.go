@@ -22,7 +22,7 @@ import (
 type RouterConfig struct {
 	Usecases     usecaseInterface
 	CORSOrigins  string
-	JWTAuth      *auth.JWTAuthenticator
+	JWTAuth      auth.Authenticator
 	APIKeyLookup func(ctx context.Context, keyHash string) (userID, projectID string, err error)
 }
 
@@ -65,6 +65,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Use(AuthMiddleware(cfg.JWTAuth, apiKeyAuth))
 
 		r.Get("/api/v1/me", h.Me)
+		r.Get("/api/v1/scanners", h.ListScanners)
 
 		r.Get("/api/v1/projects", h.ListProjects)
 		r.Post("/api/v1/projects", h.CreateProject)

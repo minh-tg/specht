@@ -1,3 +1,12 @@
+export interface ScannerDescriptor {
+  name: string;
+  version: string;
+  finding_kinds: string[];
+  scan_types: string[];
+  provides_packages: boolean;
+  supports_auto_detection: boolean;
+}
+
 export interface Project {
   id: string;
   slug: string;
