@@ -13,7 +13,7 @@ import (
 
 func TestName(t *testing.T) {
 	s := dependencycheck.NewScanner()
-	assert.Equal(t, "dependency-check", s.Name())
+	assert.Equal(t, "dependency-check", s.Descriptor().Name)
 }
 
 func TestDetect_ValidInput(t *testing.T) {
@@ -37,7 +37,6 @@ func TestParse_DependencyCheckReport(t *testing.T) {
 	report, err := s.Parse(context.Background(), data)
 	require.NoError(t, err)
 
-	assert.Equal(t, "dependency-check", report.ToolName)
 	require.NotNil(t, report.Target)
 	assert.Len(t, report.Findings, 2)
 
@@ -145,5 +144,5 @@ func TestParse_InvalidJSON(t *testing.T) {
 
 func TestFindingKind(t *testing.T) {
 	s := dependencycheck.NewScanner()
-	assert.Equal(t, "sca", s.FindingKind())
+	assert.Equal(t, "sca", string(s.Descriptor().FindingKinds[0]))
 }

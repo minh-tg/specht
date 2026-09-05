@@ -17,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/xMinhx/specht/internal/cvss"
+	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
@@ -234,52 +235,50 @@ func DecideFinding(ctx context.Context, input DecideInput, gapCheck GapCheck) (D
 	ecosystem := normalizeEcosystem(input.Ecosystem)
 
 	dims := []scanner.Dimension{
-		{Key: "purl", Value: input.Purl},
-		{Key: "severity", Value: severity},
-		{Key: "cve_id", Value: primary},
-		{Key: "component.identity", Value: nameLevel},
-		{Key: "source", Value: DimensionSourceValue},
-		{Key: "installed_version", Value: input.Version},
+		{Key: domain.DimPURL, Value: input.Purl},
+		{Key: domain.DimVulnerabilityID, Value: primary},
+		{Key: domain.DimSource, Value: DimensionSourceValue},
+		{Key: domain.DimInstalledVer, Value: input.Version},
 	}
 	if ecosystem != "" {
-		dims = append(dims, scanner.Dimension{Key: "ecosystem", Value: ecosystem})
+		dims = append(dims, scanner.Dimension{Key: domain.DimEcosystem, Value: ecosystem})
 	}
 	for _, a := range aliases {
-		dims = append(dims, scanner.Dimension{Key: "alias", Value: a})
+		dims = append(dims, scanner.Dimension{Key: domain.DimAlias, Value: a})
 	}
 	for _, fv := range fixed {
-		dims = append(dims, scanner.Dimension{Key: "fixed_version", Value: fv})
+		dims = append(dims, scanner.Dimension{Key: domain.DimFixedVersion, Value: fv})
 	}
-
-	display := map[string]any{
-		"purl":         input.Purl,
-		"package_name": nameLevel,
-		"version":      input.Version,
-		"severity":     severity,
-		"advisory_id":  input.Advisory.ID,
-		"source":       DimensionSourceValue,
+	// The watcher has no versioned package_name for non-purl ecosystems; the
+	// name-level identity dimension is not canonical (dropped at persistence),
+	// so it lives in the extension payload instead of the dimension set.
+	ext := map[string]any{
+		"purl":            input.Purl,
+		"package_name":    nameLevel,
+		"version":         input.Version,
+		"severity":        severity,
+		"advisory_id":     input.Advisory.ID,
+		"cve_id":          primary,
+		"component_name":  nameLevel,
+		"source":          DimensionSourceValue,
+		"aliases":         aliases,
+		"severity_src":    "osv",
+		"installed_range": fixed,
 	}
 	if ecosystem != "" {
-		display["ecosystem"] = ecosystem
-	}
-
-	metadata := map[string]any{
-		"advisory_id":  input.Advisory.ID,
-		"aliases":      aliases,
-		"severity_src": "osv",
-		"source":       DimensionSourceValue,
+		ext["ecosystem"] = ecosystem
 	}
 	if input.Advisory.Published != "" {
-		metadata["published"] = input.Advisory.Published
+		ext["published"] = input.Advisory.Published
 	}
 	if input.Advisory.Modified != "" {
-		metadata["modified"] = input.Advisory.Modified
+		ext["modified"] = input.Advisory.Modified
 	}
 	if vector != "" {
-		metadata["cvss_vector"] = vector
+		ext["cvss_vector"] = vector
 	}
 	if urls := advisoryURLs(input.Advisory.Refs); len(urls) > 0 {
-		metadata["references"] = urls
+		ext["references"] = urls
 	}
 
 	finding := FindingPayload{
@@ -293,8 +292,8 @@ func DecideFinding(ctx context.Context, input DecideInput, gapCheck GapCheck) (D
 		Score:        score,
 		Remediation:  remediation,
 		Dimensions:   dims,
-		Display:      display,
-		Metadata:     metadata,
+		Display:      ext,
+		Metadata:     ext,
 	}
 
 	return Decision{

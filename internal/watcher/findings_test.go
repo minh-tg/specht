@@ -97,15 +97,13 @@ func TestDecideFinding_CreatesFinding(t *testing.T) {
 
 	dims := dimsMap(f)
 	wantDims := map[string][]string{
-		"purl":               {"pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1"},
-		"ecosystem":          {"maven"}, // lowercased at the watcher boundary
-		"severity":           {"critical"},
-		"cve_id":             {"CVE-2021-44228"},
-		"component.identity": {"pkg:maven/org.apache.logging.log4j/log4j-core"},
-		"source":             {"cve_watcher"},
-		"installed_version":  {"2.14.1"},
-		"alias":              {"GHSA-jfh8-c2jp-5v3q", "OSV-2021-1627"}, // primary excluded, sorted
-		"fixed_version":      {"v2.15.0"},
+		"purl":              {"pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1"},
+		"ecosystem":         {"maven"}, // lowercased at the watcher boundary
+		"vulnerability_id":  {"CVE-2021-44228"},
+		"source":            {"cve_watcher"},
+		"installed_version": {"2.14.1"},
+		"alias":             {"GHSA-jfh8-c2jp-5v3q", "OSV-2021-1627"}, // primary excluded, sorted
+		"fixed_version":     {"v2.15.0"},
 	}
 	for k, want := range wantDims {
 		if got := dims[k]; !reflect.DeepEqual(got, want) {
@@ -116,10 +114,10 @@ func TestDecideFinding_CreatesFinding(t *testing.T) {
 		t.Errorf("dims = %d keys, want %d: %v", len(dims), len(wantDims), dims)
 	}
 
-	if f.Metadata["advisory_id"] != "OSV-2021-1627" {
+	if f.Display["advisory_id"] != "OSV-2021-1627" {
 		t.Errorf("metadata advisory_id = %v", f.Metadata["advisory_id"])
 	}
-	if f.Metadata["cvss_vector"] != "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H" {
+	if f.Display["cvss_vector"] != "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H" {
 		t.Errorf("metadata cvss_vector = %v", f.Metadata["cvss_vector"])
 	}
 
@@ -242,10 +240,10 @@ func TestDecideFinding_UnknownSeverity(t *testing.T) {
 		t.Errorf("severity = %s/%d/%.1f, want unknown/0/0", dec.Finding.Severity, dec.Finding.SeverityRank, dec.Finding.Score)
 	}
 	dims := dimsMap(dec.Finding)
-	if got := dims["severity"]; !reflect.DeepEqual(got, []string{"unknown"}) {
-		t.Errorf("severity dim = %v, want [unknown]", got)
+	if _, ok := dims["severity"]; ok {
+		t.Errorf("severity dim must not be emitted for an unrated advisory (canonical keys only)")
 	}
-	if _, ok := dec.Finding.Metadata["cvss_vector"]; ok {
+	if _, ok := dec.Finding.Display["cvss_vector"]; ok {
 		t.Errorf("metadata should not carry a cvss_vector for an unrated advisory")
 	}
 }
@@ -292,10 +290,10 @@ func TestDecideFinding_CVSS20ZeroVectorRanksLow(t *testing.T) {
 	if dec.Finding.Score != 0.0 {
 		t.Errorf("score = %v, want 0.0", dec.Finding.Score)
 	}
-	if got := dimsMap(dec.Finding)["severity"]; !reflect.DeepEqual(got, []string{"low"}) {
-		t.Errorf("severity dim = %v, want [low]", got)
+	if got := dimsMap(dec.Finding)["severity"]; len(got) != 0 {
+		t.Errorf("severity dim = %v, want none (canonical keys only)", got)
 	}
-	if dec.Finding.Metadata["cvss_vector"] != zeroVector {
+	if dec.Finding.Display["cvss_vector"] != zeroVector {
 		t.Errorf("cvss_vector metadata = %v, want %q", dec.Finding.Metadata["cvss_vector"], zeroVector)
 	}
 }
@@ -378,8 +376,8 @@ func TestDecideFinding_GHSAOnlyAdvisoryDedupesViaAlias(t *testing.T) {
 	if !dec2.Created {
 		t.Fatal("Created = false, want true when no finding covers the GHSA-only pair")
 	}
-	if got := dimsMap(dec2.Finding)["cve_id"]; !reflect.DeepEqual(got, []string{"GHSA-jfh8-c2jp-5v3q"}) {
-		t.Errorf("cve_id dim = %v, want [GHSA-jfh8-c2jp-5v3q]", got)
+	if got := dimsMap(dec2.Finding)["vulnerability_id"]; !reflect.DeepEqual(got, []string{"GHSA-jfh8-c2jp-5v3q"}) {
+		t.Errorf("vulnerability_id dim = %v, want [GHSA-jfh8-c2jp-5v3q]", got)
 	}
 	if got := dimsMap(dec2.Finding)["alias"]; !reflect.DeepEqual(got, []string{"OSV-2021-1627"}) {
 		t.Errorf("alias dim = %v, want [OSV-2021-1627]", got)

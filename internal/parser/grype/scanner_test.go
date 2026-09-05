@@ -13,7 +13,7 @@ import (
 
 func TestName(t *testing.T) {
 	s := grype.NewScanner()
-	assert.Equal(t, "grype", s.Name())
+	assert.Equal(t, "grype", s.Descriptor().Name)
 }
 
 func TestDetect_ValidInput(t *testing.T) {
@@ -37,7 +37,6 @@ func TestParse_GrypeReport(t *testing.T) {
 	report, err := s.Parse(context.Background(), data)
 	require.NoError(t, err)
 
-	assert.Equal(t, "grype", report.ToolName)
 	require.NotNil(t, report.Target)
 	assert.Len(t, report.Findings, 2)
 
@@ -140,7 +139,7 @@ func TestParse_InvalidJSON(t *testing.T) {
 
 func TestFindingKind(t *testing.T) {
 	s := grype.NewScanner()
-	assert.Equal(t, "sca", s.FindingKind())
+	assert.Equal(t, "sca", string(s.Descriptor().FindingKinds[0]))
 }
 
 func TestParse_GrypeReport_Aliases(t *testing.T) {
@@ -153,7 +152,6 @@ func TestParse_GrypeReport_Aliases(t *testing.T) {
 	require.Len(t, report.Findings, 2)
 
 	ghsaFinding := report.Findings[1]
-	assert.Equal(t, "GHSA-c3h9-896r-86jm", ghsaFinding.Metadata["vulnerability_id"])
-	assert.Len(t, ghsaFinding.Aliases, 1)
+	assert.Equal(t, "ghsa", ghsaFinding.Extensions["namespace"])
 	assert.Equal(t, "CVE-2021-3121", ghsaFinding.Aliases[0])
 }

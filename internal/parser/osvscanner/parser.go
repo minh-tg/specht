@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/xMinhx/specht/internal/cvss"
+	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
@@ -108,10 +109,6 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 	}
 }
 
-func (s *Scanner) Name() string { return "osv-scanner" }
-
-func (s *Scanner) FindingKind() string { return "sca" }
-
 func (s *Scanner) DetectFormat(data []byte) bool {
 	var probe osvReport
 	if err := json.Unmarshal(data, &probe); err != nil {
@@ -150,9 +147,10 @@ func convertToScanType(s string) scanner.ScanType {
 
 func convert(report osvReport) *scanner.NormalizedReport {
 	nr := &scanner.NormalizedReport{
-		ToolName:  "osv-scanner",
-		Findings:  nil,
-		ScanScope: make(map[string]any),
+		ContractVersion:    1,
+		FingerprintVersion: 1,
+		Completeness:       domain.CompletenessUnknown,
+		Findings:           nil,
 	}
 
 	for _, result := range report.Results {
@@ -229,33 +227,36 @@ func (f osvFinding) normalized() scanner.NormalizedFinding {
 	fixedVersion := firstFixedVersion(v)
 	cveID := firstCVEAlias(v)
 
-	var reachability *bool
+	var reachability *domain.ReachabilityHint
 	if f.analysis.Called != nil {
-		reachability = f.analysis.Called
+		state := domain.ReachabilityUnknown
+		if *f.analysis.Called {
+			state = domain.ReachabilityReachable
+		} else {
+			state = domain.ReachabilityNotReachable
+		}
+		reachability = &domain.ReachabilityHint{
+			State:    state,
+			Source:   "osv",
+			Evidence: "osv-scanner experimental call analysis",
+		}
 	}
 
 	fix := fixInfo(v, fixedVersion)
 
-	display := map[string]any{
+	ext := map[string]any{
 		"source_path": f.source.Path,
 		"ecosystem":   f.pkg.Ecosystem,
-	}
-	if reachability != nil {
-		display["reachable"] = *reachability
+		"osv_id":      v.ID,
+		"aliases":     v.Aliases,
+		"published":   v.Published,
+		"modified":    v.Modified,
 	}
 	if cveID != "" {
-		display["cve_id"] = cveID
+		ext["cve_id"] = cveID
 	}
-
-	meta := map[string]any{
-		"osv_id":    v.ID,
-		"ecosystem": f.pkg.Ecosystem,
-		"aliases":   v.Aliases,
-		"published": v.Published,
-		"modified":  v.Modified,
-	}
-	if reachability != nil {
-		meta["call_analysis"] = *reachability
+	if f.analysis.Called != nil {
+		ext["call_analysis"] = *f.analysis.Called
 	}
 
 	dims := []scanner.Dimension{
@@ -282,8 +283,7 @@ func (f osvFinding) normalized() scanner.NormalizedFinding {
 		CVSS:         extractCVSSInfo(v),
 		Fix:          fix,
 		Dimensions:   dims,
-		Display:      display,
-		Metadata:     meta,
+		Extensions:   ext,
 	}
 }
 
@@ -316,11 +316,11 @@ func firstCVEAlias(v osvVuln) string {
 
 // fixInfo builds the FixInfo from a fixed version and the first reference
 // URL.
-func fixInfo(v osvVuln, fixedVersion string) *scanner.FixInfo {
+func fixInfo(v osvVuln, fixedVersion string) *domain.FixInfo {
 	if fixedVersion == "" {
 		return nil
 	}
-	fix := &scanner.FixInfo{Summary: fixedVersion}
+	fix := &domain.FixInfo{Summary: fixedVersion}
 	for _, ref := range v.References {
 		if fix.URL == "" {
 			fix.URL = ref.URL
@@ -329,7 +329,7 @@ func fixInfo(v osvVuln, fixedVersion string) *scanner.FixInfo {
 	return fix
 }
 
-func extractCVSSInfo(v osvVuln) *scanner.CVSSInfo {
+func extractCVSSInfo(v osvVuln) *domain.CVSSInfo {
 	for _, s := range v.Severity {
 		var version string
 		switch s.Type {
@@ -344,7 +344,7 @@ func extractCVSSInfo(v osvVuln) *scanner.CVSSInfo {
 		}
 		score, _, ok := parseCVSSScore(s.Score)
 		if ok {
-			return &scanner.CVSSInfo{
+			return &domain.CVSSInfo{
 				Version: version,
 				Vector:  s.Score,
 				Score:   score,
@@ -354,7 +354,7 @@ func extractCVSSInfo(v osvVuln) *scanner.CVSSInfo {
 	return nil
 }
 
-func extractSeverity(v osvVuln) scanner.Severity {
+func extractSeverity(v osvVuln) domain.Severity {
 	if v.DatabaseSpecific != nil && v.DatabaseSpecific.Severity != "" {
 		return normalizeOSVSeverity(v.DatabaseSpecific.Severity)
 	}
@@ -366,7 +366,7 @@ func extractSeverity(v osvVuln) scanner.Severity {
 			}
 		}
 	}
-	return scanner.SeverityUnknown
+	return domain.SeverityUnknown
 }
 
 func extractScore(v osvVuln) float64 {
@@ -429,32 +429,32 @@ func looksLikeCVSSv2Vector(s string) bool {
 	return strings.HasPrefix(s, "AV:") || strings.HasPrefix(s, "AC:") || strings.HasPrefix(s, "Au:")
 }
 
-func severityFromScore(score float64) scanner.Severity {
+func severityFromScore(score float64) domain.Severity {
 	switch {
 	case score >= 9.0:
-		return scanner.SeverityCritical
+		return domain.SeverityCritical
 	case score >= 7.0:
-		return scanner.SeverityHigh
+		return domain.SeverityHigh
 	case score >= 4.0:
-		return scanner.SeverityMedium
+		return domain.SeverityMedium
 	case score > 0:
-		return scanner.SeverityLow
+		return domain.SeverityLow
 	default:
-		return scanner.SeverityUnknown
+		return domain.SeverityUnknown
 	}
 }
 
-func normalizeOSVSeverity(s string) scanner.Severity {
+func normalizeOSVSeverity(s string) domain.Severity {
 	switch strings.ToUpper(s) {
 	case "CRITICAL":
-		return scanner.SeverityCritical
+		return domain.SeverityCritical
 	case "HIGH":
-		return scanner.SeverityHigh
+		return domain.SeverityHigh
 	case "MEDIUM":
-		return scanner.SeverityMedium
+		return domain.SeverityMedium
 	case "LOW":
-		return scanner.SeverityLow
+		return domain.SeverityLow
 	default:
-		return scanner.SeverityUnknown
+		return domain.SeverityUnknown
 	}
 }

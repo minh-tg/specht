@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
@@ -66,10 +67,6 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 	}
 }
 
-func (s *Scanner) Name() string { return "checkov" }
-
-func (s *Scanner) FindingKind() string { return "iac" }
-
 func (s *Scanner) DetectFormat(data []byte) bool {
 	var probe struct {
 		CheckType string          `json:"check_type"`
@@ -92,15 +89,14 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedRe
 
 func convert(report checkovReport) *scanner.NormalizedReport {
 	nr := &scanner.NormalizedReport{
-		ToolName:  "checkov",
-		ScanType:  scanner.ScanTypeIaC,
-		Findings:  nil,
-		ScanScope: make(map[string]any),
+		ContractVersion:    1,
+		FingerprintVersion: 1,
+		Completeness:       domain.CompletenessUnknown,
+		ScanType:           scanner.ScanTypeIaC,
+		Findings:           nil,
 	}
 
-	nr.ToolVersion = report.Summary.CheckovVersion
-
-	nr.Target = &scanner.TargetInfo{
+	nr.Target = &domain.TargetInfo{
 		Kind: report.CheckType,
 	}
 
@@ -125,39 +121,32 @@ func convert(report checkovReport) *scanner.NormalizedReport {
 			dims = append(dims, scanner.Dimension{Key: "resource", Value: f.Resource})
 		}
 
-		display := map[string]any{
-			"file":     file,
-			"resource": f.Resource,
-		}
-		if f.Guideline != "" {
-			display["guideline"] = f.Guideline
-		}
-
-		meta := map[string]any{
+		ext := map[string]any{
+			"file":        file,
 			"check_class": f.CheckClass,
 			"check_type":  report.CheckType,
 		}
 		if f.Guideline != "" {
-			meta["guideline"] = f.Guideline
+			ext["guideline"] = f.Guideline
 		}
 		if len(f.CodeBlock) > 0 {
-			meta["code_block"] = string(f.CodeBlock)
+			ext["code_block"] = string(f.CodeBlock)
 		}
 
-		var fix *scanner.FixInfo
+		var fix *domain.FixInfo
 		if f.Guideline != "" {
-			fix = &scanner.FixInfo{URL: f.Guideline}
+			fix = &domain.FixInfo{URL: f.Guideline}
 		}
 
-		var codeLoc *scanner.CodeLocation
+		var codeLoc *domain.CodeLocation
 		if len(f.FileLineRange) >= 2 {
-			codeLoc = &scanner.CodeLocation{
+			codeLoc = &domain.CodeLocation{
 				File:      file,
 				StartLine: f.FileLineRange[0],
 				EndLine:   f.FileLineRange[1],
 			}
 		} else if len(f.FileLineRange) == 1 {
-			codeLoc = &scanner.CodeLocation{
+			codeLoc = &domain.CodeLocation{
 				File:      file,
 				StartLine: f.FileLineRange[0],
 			}
@@ -179,25 +168,24 @@ func convert(report checkovReport) *scanner.NormalizedReport {
 			Fix:          fix,
 			CodeLocation: codeLoc,
 			Dimensions:   dims,
-			Display:      display,
-			Metadata:     meta,
+			Extensions:   ext,
 		})
 	}
 
 	return nr
 }
 
-func normalizeSeverity(s string) scanner.Severity {
+func normalizeSeverity(s string) domain.Severity {
 	switch strings.ToUpper(s) {
 	case "CRITICAL":
-		return scanner.SeverityCritical
+		return domain.SeverityCritical
 	case "HIGH":
-		return scanner.SeverityHigh
+		return domain.SeverityHigh
 	case "MEDIUM":
-		return scanner.SeverityMedium
+		return domain.SeverityMedium
 	case "LOW":
-		return scanner.SeverityLow
+		return domain.SeverityLow
 	default:
-		return scanner.SeverityUnknown
+		return domain.SeverityUnknown
 	}
 }

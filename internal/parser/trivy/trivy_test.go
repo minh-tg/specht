@@ -37,7 +37,6 @@ func TestParse_AlpineScan(t *testing.T) {
 	report, err := s.Parse(context.Background(), data)
 	require.NoError(t, err)
 
-	assert.Equal(t, "trivy", report.ToolName)
 	require.NotNil(t, report.Target)
 	assert.Equal(t, "alpine:3.20 (alpine 3.20.3)", report.Target.Identifier)
 	require.Len(t, report.Findings, 2)

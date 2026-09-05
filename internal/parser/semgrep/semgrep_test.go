@@ -13,7 +13,7 @@ import (
 
 func TestName(t *testing.T) {
 	s := semgrep.NewScanner()
-	assert.Equal(t, "semgrep", s.Name())
+	assert.Equal(t, "semgrep", s.Descriptor().Name)
 }
 
 func TestDetect_ValidInput(t *testing.T) {
@@ -38,8 +38,6 @@ func TestParse_SemgrepScan(t *testing.T) {
 	report, err := s.Parse(context.Background(), data)
 	require.NoError(t, err)
 
-	assert.Equal(t, "semgrep", report.ToolName)
-	assert.Equal(t, "1.72.0", report.ToolVersion)
 	require.Len(t, report.Findings, 2)
 
 	tests := []struct {
@@ -90,7 +88,7 @@ func TestParse_SemgrepScan(t *testing.T) {
 					assert.True(t, hasRuleID, "finding missing rule_id dimension")
 
 					if tt.cwe != nil {
-						assert.Equal(t, tt.cwe, f.Metadata["cwe"])
+						assert.Equal(t, tt.cwe, f.Extensions["cwe"])
 					}
 					break
 				}
@@ -125,10 +123,9 @@ func TestParse_EmptyReport(t *testing.T) {
 	report, err := s.Parse(context.Background(), data)
 	require.NoError(t, err)
 	assert.Empty(t, report.Findings)
-	assert.Equal(t, "1.0.0", report.ToolVersion)
 }
 
 func TestFindingKind(t *testing.T) {
 	s := semgrep.NewScanner()
-	assert.Equal(t, "sast", s.FindingKind())
+	assert.Equal(t, "sast", string(s.Descriptor().FindingKinds[0]))
 }

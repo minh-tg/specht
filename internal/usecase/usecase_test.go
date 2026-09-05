@@ -736,9 +736,10 @@ func TestIngestReport_Success(t *testing.T) {
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return &scanner.NormalizedReport{
-				ToolName: "trivy",
-				ScanType: scanner.ScanTypeImage,
-				Target:   &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				ContractVersion:    1,
+				FingerprintVersion: 1,
+				ScanType:           scanner.ScanTypeImage,
+				Target:             &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
 				Findings: []scanner.NormalizedFinding{
 					{
 						Fingerprint: "fp1",
@@ -747,8 +748,7 @@ func TestIngestReport_Success(t *testing.T) {
 						Severity:    scanner.SeverityHigh,
 						Score:       7.5,
 						Dimensions:  []scanner.Dimension{{Key: "vulnerability.id", Value: "CVE-2026-1234"}},
-						Display:     map[string]any{"title": "CVE-2026-1234"},
-						Metadata:    map[string]any{"cvss": "7.5"},
+						Extensions:  map[string]any{"title": "CVE-2026-1234", "cvss": "7.5"},
 					},
 					{
 						Fingerprint: "fp2",
@@ -766,7 +766,7 @@ func TestIngestReport_Success(t *testing.T) {
 					{PURL: "pkg:golang/github.com/gin-gonic/gin@v1.9.1", Ecosystem: "Go", Name: "github.com/gin-gonic/gin", Version: "v1.9.1"},
 					{PURL: "pkg:npm/lodash@4.17.20", Ecosystem: "npm", Name: "lodash", Version: "4.17.20", ManifestPath: "package-lock.json"},
 				},
-				ScanScope: map[string]any{"packages": 150},
+				ScanScope: &scanner.ScanScope{Ext: map[string]string{"packages": "150"}},
 			}, nil
 		},
 	}))
@@ -907,11 +907,10 @@ func TestIngestReport_Duplicate(t *testing.T) {
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return &scanner.NormalizedReport{
-				ToolName:  "trivy",
 				ScanType:  scanner.ScanTypeImage,
 				Target:    &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
 				Findings:  []scanner.NormalizedFinding{},
-				ScanScope: map[string]any{},
+				ScanScope: &scanner.ScanScope{},
 			}, nil
 		},
 	}))
@@ -977,13 +976,12 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return &scanner.NormalizedReport{
-				ToolName: "trivy",
 				ScanType: scanner.ScanTypeImage,
 				Target:   &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
 				Findings: []scanner.NormalizedFinding{
 					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2026-1234", Severity: scanner.SeverityCritical, Score: 9.5},
 				},
-				ScanScope: map[string]any{},
+				ScanScope: &scanner.ScanScope{},
 			}, nil
 		},
 	}))
@@ -1084,14 +1082,13 @@ func TestIngestReport_PartialFailure(t *testing.T) {
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return &scanner.NormalizedReport{
-				ToolName: "trivy",
 				ScanType: scanner.ScanTypeImage,
 				Target:   &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
 				Findings: []scanner.NormalizedFinding{
 					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2026-0001", Severity: scanner.SeverityHigh, Score: 7.5},
 					{Fingerprint: "fp2", FindingKind: "sca", Title: "CVE-2026-0002", Severity: scanner.SeverityMedium, Score: 5.0},
 				},
-				ScanScope: map[string]any{},
+				ScanScope: &scanner.ScanScope{},
 			}, nil
 		},
 	}))
@@ -1161,7 +1158,6 @@ func TestIngestReport_InventoryWriteFailure(t *testing.T) {
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
 			return &scanner.NormalizedReport{
-				ToolName: "trivy",
 				ScanType: scanner.ScanTypeImage,
 				Target:   &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
 				Findings: []scanner.NormalizedFinding{
@@ -1170,7 +1166,7 @@ func TestIngestReport_InventoryWriteFailure(t *testing.T) {
 				Packages: []scanner.PackageRef{
 					{PURL: "pkg:npm/lodash@4.17.20", Ecosystem: "npm", Name: "lodash", Version: "4.17.20"},
 				},
-				ScanScope: map[string]any{},
+				ScanScope: &scanner.ScanScope{},
 			}, nil
 		},
 	}))

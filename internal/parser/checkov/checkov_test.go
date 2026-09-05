@@ -29,11 +29,15 @@ func TestDetectFormat(t *testing.T) {
 }
 
 func TestName(t *testing.T) {
-	assert.Equal(t, "checkov", checkov.NewScanner().Name())
+	assert.Equal(t, "checkov", checkov.NewScanner().Descriptor().Name)
 }
 
 func TestFindingKind(t *testing.T) {
-	assert.Equal(t, "iac", checkov.NewScanner().FindingKind())
+	kinds := []string{}
+	for _, k := range checkov.NewScanner().Descriptor().FindingKinds {
+		kinds = append(kinds, string(k))
+	}
+	assert.Equal(t, []string{"iac"}, kinds)
 }
 
 func TestParseReturnsReport(t *testing.T) {
@@ -42,8 +46,6 @@ func TestParseReturnsReport(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, report)
 
-	assert.Equal(t, "checkov", report.ToolName)
-	assert.Equal(t, "3.2.344", report.ToolVersion)
 	assert.Equal(t, scanner.ScanTypeIaC, report.ScanType)
 	require.NotNil(t, report.Target)
 	assert.Equal(t, "terraform", report.Target.Kind)
@@ -97,9 +99,9 @@ func TestParseSetsDisplay(t *testing.T) {
 	require.NoError(t, err)
 
 	f := report.Findings[0]
-	assert.Equal(t, "/terraform/main.tf", f.Display["file"])
-	assert.Equal(t, "azurerm_key_vault.main", f.Display["resource"])
-	assert.Contains(t, f.Display, "guideline")
+	assert.Equal(t, "/terraform/main.tf", f.Extensions["file"])
+	assert.Equal(t, "azurerm_key_vault.main", f.Resource)
+	assert.Contains(t, f.Extensions, "guideline")
 }
 
 func TestParseEmptyResults(t *testing.T) {
@@ -108,8 +110,6 @@ func TestParseEmptyResults(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, report)
 	assert.Empty(t, report.Findings)
-	assert.Equal(t, "checkov", report.ToolName)
-	assert.Equal(t, "3.2.344", report.ToolVersion)
 }
 
 func TestSeverityMapping(t *testing.T) {

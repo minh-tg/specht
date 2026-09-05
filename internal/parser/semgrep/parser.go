@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
@@ -110,10 +111,6 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 	}
 }
 
-func (s *Scanner) Name() string { return "semgrep" }
-
-func (s *Scanner) FindingKind() string { return "sast" }
-
 func (s *Scanner) DetectFormat(data []byte) bool {
 	var probe sarifReport
 	if err := json.Unmarshal(data, &probe); err != nil {
@@ -136,10 +133,11 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedRe
 
 func convert(report sarifReport) *scanner.NormalizedReport {
 	nr := &scanner.NormalizedReport{
-		ToolName:  "semgrep",
-		ScanType:  scanner.ScanTypeFilesystem,
-		Findings:  nil,
-		ScanScope: make(map[string]any),
+		ContractVersion:    1,
+		FingerprintVersion: 1,
+		Completeness:       domain.CompletenessUnknown,
+		ScanType:           scanner.ScanTypeFilesystem,
+		Findings:           nil,
 	}
 
 	if len(report.Runs) == 0 {
@@ -147,12 +145,6 @@ func convert(report sarifReport) *scanner.NormalizedReport {
 	}
 
 	run := report.Runs[0]
-
-	if run.Tool.Driver.Version != "" {
-		nr.ToolVersion = run.Tool.Driver.Version
-	} else if run.Tool.Driver.SemanticVersion != "" {
-		nr.ToolVersion = run.Tool.Driver.SemanticVersion
-	}
 
 	ruleMap := make(map[string]sarifRule, len(run.Tool.Driver.Rules))
 	for _, rule := range run.Tool.Driver.Rules {
@@ -188,16 +180,6 @@ func convert(report sarifReport) *scanner.NormalizedReport {
 			{Key: "line", Value: strconv.Itoa(line)},
 		}
 
-		display := map[string]any{
-			"file": file,
-			"line": line,
-		}
-		if result.Properties != nil {
-			if fix, ok := result.Properties["fix"]; ok {
-				display["fix"] = fix
-			}
-		}
-
 		meta := map[string]any{}
 		if hasRule && rule.Properties != nil {
 			if cwe, ok := rule.Properties["cwe"]; ok {
@@ -220,6 +202,14 @@ func convert(report sarifReport) *scanner.NormalizedReport {
 			if sv, ok := result.Properties["severity"]; ok {
 				meta["semgrep_severity"] = sv
 			}
+			if fix, ok := result.Properties["fix"]; ok {
+				meta["fix"] = fix
+			}
+		}
+		if !hasRule && result.Properties != nil {
+			if cwe, ok := result.Properties["cwe"]; ok {
+				meta["cwe"] = cwe
+			}
 		}
 
 		nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
@@ -230,8 +220,7 @@ func convert(report sarifReport) *scanner.NormalizedReport {
 			Severity:    severity,
 			Location:    location,
 			Dimensions:  dims,
-			Display:     display,
-			Metadata:    meta,
+			Extensions:  meta,
 		})
 	}
 

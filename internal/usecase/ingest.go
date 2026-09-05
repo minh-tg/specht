@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -168,21 +169,29 @@ func (u *Usecases) resolveReportContext(ctx context.Context, project sqlc.Projec
 }
 
 // createReport persists the report row, returning ErrDuplicateReport on a
-// raw-data hash collision.
+// raw-data hash collision. The scope hash is computed from the full typed
+// scan scope (scanner, target, artifact, branch, commit SHA, environment)
+// so identical content scanned at a different revision or artifact never
+// collides.
 func (u *Usecases) createReport(ctx context.Context, project sqlc.Project, input IngestReportInput, nr *scanner.NormalizedReport, ctxInfo reportContext) (sqlc.Report, error) {
 	rawHash := sha256.Sum256(input.RawData)
-	scopeHash := sha256.Sum256([]byte(input.Scanner + ":" + ctxInfo.targetIdentifier))
+	scopeHash := sha256.Sum256([]byte(scopeHashMaterial(input, nr, ctxInfo)))
+
+	scanTarget := ""
+	if nr.Target != nil {
+		scanTarget = nr.Target.Identifier
+	}
 
 	report, err := u.deps.Repos.Reports.Create(ctx, repo.CreateReportParams{
 		ProjectID:     project.ID,
 		ToolName:      input.Scanner,
 		ToolVersion:   textPtr(input.ScannerVersion),
 		ScanType:      string(nr.ScanType),
-		ScanTarget:    textPtr(nr.Target.Identifier),
+		ScanTarget:    textPtr(scanTarget),
 		TargetID:      ctxInfo.targetID,
 		ArtifactID:    ctxInfo.artifactID,
 		EnvironmentID: ctxInfo.environmentID,
-		ScanScope:     mustMarshal(nr.ScanScope),
+		ScanScope:     mustMarshal(scopeDocument(nr)),
 		ScanScopeHash: pgtype.Text{String: hex.EncodeToString(scopeHash[:]), Valid: true},
 		Branch:        textPtr(input.Branch),
 		CommitSha:     textPtr(input.CommitSha),
@@ -199,6 +208,65 @@ func (u *Usecases) createReport(ctx context.Context, project sqlc.Project, input
 		return sqlc.Report{}, fmt.Errorf("scanner %s: create report: %w", input.Scanner, err)
 	}
 	return report, nil
+}
+
+// scopeHashMaterial is the deterministic, ordered material the scope hash is
+// computed from: every attribute that distinguishes one scan scope from
+// another.
+func scopeHashMaterial(input IngestReportInput, nr *scanner.NormalizedReport, ctxInfo reportContext) string {
+	target := ""
+	if nr.Target != nil {
+		target = nr.Target.Identifier
+	}
+	return strings.Join([]string{
+		input.Scanner,
+		target,
+		input.ArtifactName,
+		input.ArtifactVersion,
+		input.Branch,
+		input.CommitSha,
+		input.Environment,
+	}, "\x00")
+}
+
+// scopeDocument renders the persisted scan_scope JSONB: the typed scope
+// attributes plus transport-supplied extension attributes, in a stable
+// shape.
+func scopeDocument(nr *scanner.NormalizedReport) map[string]any {
+	doc := map[string]any{}
+	if nr.ScanScope == nil {
+		return doc
+	}
+	s := nr.ScanScope
+	if s.Target != "" {
+		doc["target"] = s.Target
+	}
+	if s.TargetKind != "" {
+		doc["target_kind"] = s.TargetKind
+	}
+	if s.Artifact != "" {
+		doc["artifact"] = s.Artifact
+	}
+	if s.ArtifactVer != "" {
+		doc["artifact_version"] = s.ArtifactVer
+	}
+	if s.ArtifactTyp != "" {
+		doc["artifact_type"] = s.ArtifactTyp
+	}
+	if s.Branch != "" {
+		doc["branch"] = s.Branch
+	}
+	if s.CommitSha != "" {
+		doc["commit_sha"] = s.CommitSha
+	}
+	if len(s.Ext) > 0 {
+		ext := make(map[string]string, len(s.Ext))
+		for k, v := range s.Ext {
+			ext[k] = v
+		}
+		doc["ext"] = ext
+	}
+	return doc
 }
 
 // ingestReportFindings upserts each normalized finding and its occurrence,
@@ -254,27 +322,22 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project sqlc.Project, i
 		return 0, fmt.Errorf("scanner %s: upsert finding %q: %w", input.Scanner, f.Fingerprint, err)
 	}
 
-	_, err = u.deps.Repos.Findings.CreateOccurrence(ctx, repo.CreateOccurrenceParams{
-		FindingID:       upserted.ID,
-		ReportID:        report.ID,
-		Title:           f.Title,
-		Description:     textPtr(f.Description),
-		Severity:        severityStr(f.Severity),
-		SeverityRank:    severityRank(f.Severity),
-		Score:           scoreToNumeric(f.Score),
-		ToolName:        input.Scanner,
-		ToolVersion:     textPtr(input.ScannerVersion),
-		ParserVersion:   textPtr(input.ParserVersion),
-		LocationSummary: textPtr(f.Location),
-		Display:         mustMarshal(f.Display),
-		Metadata:        mustMarshal(f.Metadata),
-	})
+	occ := toOccurrenceParams(f, input.Scanner)
+	occ.FindingID = upserted.ID
+	occ.ReportID = report.ID
+	occ.ToolVersion = textPtr(input.ScannerVersion)
+	occ.ParserVersion = textPtr(input.ParserVersion)
+	_, err = u.deps.Repos.Findings.CreateOccurrence(ctx, occ)
 	if err != nil {
 		slog.Error("create occurrence failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
 		return 0, fmt.Errorf("scanner %s: create occurrence for %q: %w", input.Scanner, f.Fingerprint, err)
 	}
 
 	for _, d := range f.Dimensions {
+		if !isCanonicalDimension(d.Key) {
+			slog.Warn("drop non-canonical dimension", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "key", d.Key)
+			continue
+		}
 		_, err = u.deps.Repos.Findings.UpsertDimension(ctx, repo.UpsertDimensionParams{
 			FindingID: upserted.ID,
 			Key:       d.Key,

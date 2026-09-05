@@ -86,11 +86,6 @@ type ArtifactInfo struct {
 // Fingerprint must be stable across scans of the same issue (see the
 // per-kind fingerprint formulas) and Dimensions carries the structured
 // key/value pairs used for waiver matching and display.
-//
-// The legacy Display/Metadata/Reachability fields remain on the
-// boundary-moved type until every producer migrates to the namespaced
-// Extensions map and typed reachability hint in the same change that
-// introduces them; then they are removed with no compatibility shim.
 type NormalizedFinding struct {
 	Fingerprint  string
 	FindingKind  string
@@ -101,13 +96,18 @@ type NormalizedFinding struct {
 	Location     string
 	Resource     string
 	Aliases      []string
-	Reachability *bool
+	Reachability *ReachabilityHint
 	CVSS         *CVSSInfo
 	Fix          *FixInfo
 	CodeLocation *CodeLocation
 	Dimensions   []Dimension
-	Display      map[string]any
-	Metadata     map[string]any
+	// Extensions carries producer payloads that do not fit a canonical
+	// dimension or typed field. The Postgres occurrence mapper preserves
+	// payloads under their source namespace (extension keys are namespaced
+	// by producer, e.g. "trivy.cwe_ids") and reserves the "specht" namespace
+	// for canonical CVSS/fix/location/resource data. Extension keys never
+	// become identity or gate inputs.
+	Extensions map[string]any
 }
 
 // CVSSInfo is a parsed CVSS vector and its score.

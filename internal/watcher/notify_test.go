@@ -342,9 +342,7 @@ func sampleFindings() Decision {
 			Severity:    "high",
 			Dimensions: []scanner.Dimension{
 				{Key: "purl", Value: "pkg:npm/lodash@4.17.19"},
-				{Key: "severity", Value: "high"},
-				{Key: "cve_id", Value: "CVE-2019-10744"},
-				{Key: "component.identity", Value: "pkg:npm/lodash"},
+				{Key: "vulnerability_id", Value: "CVE-2019-10744"},
 				{Key: "source", Value: DimensionSourceValue},
 			},
 			Display: map[string]any{
@@ -376,8 +374,8 @@ func TestNotificationFromDecision_Mapping(t *testing.T) {
 }
 
 func TestNotificationFromDecision_Fallbacks(t *testing.T) {
-	// Missing cve_id dimension and package_name display; degraded inputs
-	// must fall back without panicking.
+	// Missing vulnerability_id dimension and package_name display; degraded
+	// inputs must fall back without panicking.
 	d := sampleFindings()
 	d.Finding.Dimensions = []scanner.Dimension{{Key: "source", Value: DimensionSourceValue}}
 	d.Finding.Display = nil // severely degraded
@@ -395,13 +393,14 @@ func TestNotificationFromDecision_Fallbacks(t *testing.T) {
 
 func TestNotificationFromDecision_NoReferences(t *testing.T) {
 	d := sampleFindings()
-	d.Finding.Metadata = map[string]any{"advisory_id": "OSV-2026-0001"}
+	d.Finding.Metadata = nil
+	d.Finding.Display = map[string]any{"advisory_id": "OSV-2026-0001"}
 	n := NotificationFromDecision(d, "acme")
 	if n.Link != "" {
 		t.Errorf("Link = %q, want empty with no references", n.Link)
 	}
 	if n.CVE != "CVE-2019-10744" {
-		t.Errorf("CVE = %q, want cve_id dimension", n.CVE)
+		t.Errorf("CVE = %q, want vulnerability_id dimension", n.CVE)
 	}
 }
 

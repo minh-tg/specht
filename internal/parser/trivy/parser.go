@@ -146,10 +146,8 @@ func convert(report trivyReport) *domain.NormalizedReport {
 		ContractVersion:    1,
 		FingerprintVersion: 1,
 		Completeness:       domain.CompletenessUnknown,
-		ToolName:           "trivy",
 		ScanType:           scanner.ScanTypeImage,
 		Findings:           nil,
-		ScanScope:          make(map[string]any),
 	}
 
 	if len(report) > 0 {
@@ -217,33 +215,29 @@ func addVulns(nr *domain.NormalizedReport, result trivyResult) {
 			dims = append(dims, domain.Dimension{Key: domain.DimFixedVersion, Value: v.FixedVersion})
 		}
 
-		display := map[string]any{
-			"target":   result.Target,
-			"pkg_name": v.PkgName,
-			"status":   v.Status,
-		}
-		if v.Layer != nil {
-			display["layer"] = v.Layer.DiffID
-		}
-
-		meta := map[string]any{
+		ext := map[string]any{
+			"target":       result.Target,
+			"pkg_name":     v.PkgName,
 			"pkg_id":       v.PkgID,
 			"purl":         purl,
+			"status":       v.Status,
 			"severity_src": "trivy",
 			"cwe_ids":      v.CweIDs,
-			"status":       v.Status,
+		}
+		if v.Layer != nil {
+			ext["layer"] = v.Layer.DiffID
 		}
 		if v.PublishedDate != nil {
-			meta["published"] = *v.PublishedDate
+			ext["published"] = *v.PublishedDate
 		}
 		if v.LastModifiedDate != nil {
-			meta["last_modified"] = *v.LastModifiedDate
+			ext["last_modified"] = *v.LastModifiedDate
 		}
 		if v.PrimaryURL != "" {
-			meta["primary_url"] = v.PrimaryURL
+			ext["primary_url"] = v.PrimaryURL
 		}
 		if v.DataSource != nil {
-			meta["data_source"] = v.DataSource.URL
+			ext["data_source"] = v.DataSource.URL
 		}
 
 		nr.Findings = append(nr.Findings, domain.NormalizedFinding{
@@ -255,8 +249,7 @@ func addVulns(nr *domain.NormalizedReport, result trivyResult) {
 			Score:       maxCVSSScore(v.CVSS),
 			Location:    result.Target,
 			Dimensions:  dims,
-			Display:     display,
-			Metadata:    meta,
+			Extensions:  ext,
 		})
 	}
 }
@@ -303,17 +296,12 @@ func addSecrets(nr *domain.NormalizedReport, result trivyResult) {
 			FindingKind: kindSecret,
 			Title:       s.Title,
 			Severity:    normalizeSeverity(s.Severity),
+			Location:    result.Target,
 			Dimensions: []domain.Dimension{
 				{Key: domain.DimRuleID, Value: s.RuleID},
-				{Key: domain.DimSource, Value: s.Category},
 			},
-			Display: map[string]any{
-				"target":   result.Target,
+			Extensions: map[string]any{
 				"category": s.Category,
-			},
-			Metadata: map[string]any{
-				"category": s.Category,
-				"rule_id":  s.RuleID,
 			},
 		})
 	}
@@ -327,17 +315,13 @@ func addMisconfigs(nr *domain.NormalizedReport, result trivyResult) {
 			FindingKind: kindIaC,
 			Title:       m.Title,
 			Severity:    normalizeSeverity(m.Severity),
+			Location:    result.Target,
 			Dimensions: []domain.Dimension{
 				{Key: domain.DimRuleID, Value: m.RuleID},
 			},
-			Display: map[string]any{
-				"target":  result.Target,
-				"message": m.Message,
-			},
-			Metadata: map[string]any{
-				"rule_id":  m.RuleID,
-				"severity": m.Severity,
-				"message":  m.Message,
+			Extensions: map[string]any{
+				"message":      m.Message,
+				"severity_raw": m.Severity,
 			},
 		})
 	}

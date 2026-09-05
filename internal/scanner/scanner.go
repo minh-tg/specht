@@ -38,6 +38,7 @@ type (
 	ContractVersion    = domain.ContractVersion
 	FingerprintVersion = domain.FingerprintVersion
 	ScanCompleteness   = domain.ScanCompleteness
+	ScanScope          = domain.ScanScope
 	ReachabilityState  = domain.ReachabilityState
 	ReachabilityHint   = domain.ReachabilityHint
 )

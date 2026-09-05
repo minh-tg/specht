@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
@@ -106,10 +107,6 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 	}
 }
 
-func (s *Scanner) Name() string { return "grype" }
-
-func (s *Scanner) FindingKind() string { return "sca" }
-
 func (s *Scanner) DetectFormat(data []byte) bool {
 	var probe struct {
 		Matches []json.RawMessage `json:"matches"`
@@ -131,10 +128,11 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedRe
 
 func convert(doc grypeDoc) *scanner.NormalizedReport {
 	nr := &scanner.NormalizedReport{
-		ToolName:  "grype",
-		ScanType:  scanner.ScanTypeFilesystem,
-		Findings:  nil,
-		ScanScope: make(map[string]any),
+		ContractVersion:    1,
+		FingerprintVersion: 1,
+		Completeness:       domain.CompletenessUnknown,
+		ScanType:           scanner.ScanTypeFilesystem,
+		Findings:           nil,
 	}
 
 	if len(doc.Matches) > 0 && len(doc.Matches[0].Artifact.Locations) > 0 {
@@ -203,19 +201,19 @@ func convert(doc grypeDoc) *scanner.NormalizedReport {
 			}
 		}
 
-		var cvss *scanner.CVSSInfo
+		var cvss *domain.CVSSInfo
 		if cvssVec != "" {
-			cvss = &scanner.CVSSInfo{
+			cvss = &domain.CVSSInfo{
 				Version: cvssVer,
 				Vector:  cvssVec,
 				Score:   score,
 			}
 		}
 
-		var fix *scanner.FixInfo
+		var fix *domain.FixInfo
 		if vuln.Fix != nil && len(vuln.Fix.Versions) > 0 {
 			summary := strings.Join(vuln.Fix.Versions, ", ")
-			fix = &scanner.FixInfo{Summary: summary}
+			fix = &domain.FixInfo{Summary: summary}
 		}
 
 		dims := []scanner.Dimension{
@@ -246,21 +244,17 @@ func convert(doc grypeDoc) *scanner.NormalizedReport {
 			CVSS:        cvss,
 			Fix:         fix,
 			Dimensions:  dims,
-			Display: map[string]any{
+			Extensions: map[string]any{
 				"package": map[string]any{
 					"name":    artifact.Name,
 					"version": artifact.Version,
 					"type":    artifact.Type,
 				},
-				"fix": fix,
-			},
-			Metadata: map[string]any{
-				"vulnerability_id": vuln.ID,
-				"namespace":        vuln.Namespace,
-				"severity":         vuln.Severity,
-				"purl":             purl,
-				"artifact_type":    artifact.Type,
-				"language":         artifact.Language,
+				"namespace":     vuln.Namespace,
+				"severity_raw":  vuln.Severity,
+				"purl":          purl,
+				"artifact_type": artifact.Type,
+				"language":      artifact.Language,
 			},
 		})
 	}
@@ -285,17 +279,17 @@ func extractAliases(related []grypeRelatedVuln) []string {
 	return aliases
 }
 
-func normalizeGrypeSeverity(s string) scanner.Severity {
+func normalizeGrypeSeverity(s string) domain.Severity {
 	switch strings.ToUpper(s) {
 	case "CRITICAL":
-		return scanner.SeverityCritical
+		return domain.SeverityCritical
 	case "HIGH":
-		return scanner.SeverityHigh
+		return domain.SeverityHigh
 	case "MEDIUM":
-		return scanner.SeverityMedium
+		return domain.SeverityMedium
 	case "LOW":
-		return scanner.SeverityLow
+		return domain.SeverityLow
 	default:
-		return scanner.SeverityUnknown
+		return domain.SeverityUnknown
 	}
 }

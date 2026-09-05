@@ -13,7 +13,7 @@ import (
 
 func TestName(t *testing.T) {
 	s := osvscanner.NewScanner()
-	assert.Equal(t, "osv-scanner", s.Name())
+	assert.Equal(t, "osv-scanner", s.Descriptor().Name)
 }
 
 func TestDetect_ValidInput(t *testing.T) {
@@ -37,7 +37,7 @@ func TestParse_GoScan(t *testing.T) {
 	report, err := s.Parse(context.Background(), data)
 	require.NoError(t, err)
 
-	assert.Equal(t, "osv-scanner", report.ToolName)
+	assert.Equal(t, "osv-scanner", osvscanner.NewScanner().Descriptor().Name)
 	require.NotNil(t, report.Target)
 	assert.Len(t, report.Findings, 1)
 
@@ -46,16 +46,17 @@ func TestParse_GoScan(t *testing.T) {
 	expectedFP := "GHSA-c3h9-896r-86jm:pkg:golang/github.com/gogo/protobuf"
 	assert.Equal(t, expectedFP, finding.Fingerprint)
 	assert.Equal(t, "sca", finding.FindingKind)
-	assert.Equal(t, scanner.SeverityHigh, finding.Severity)
+	assert.Equal(t, 3, int(finding.Severity)) // high
 	assert.Equal(t, 9.3, finding.Score)
 
 	// Aliases promoted from metadata to struct field
 	require.Len(t, finding.Aliases, 1)
 	assert.Equal(t, "CVE-2021-3121", finding.Aliases[0])
 
-	// Reachability promoted from display to struct field
+	// Reachability is a typed hint (state/evidence/source), not a raw bool.
 	require.NotNil(t, finding.Reachability)
-	assert.True(t, *finding.Reachability)
+	assert.Equal(t, "reachable", string(finding.Reachability.State))
+	assert.Equal(t, "osv", finding.Reachability.Source)
 
 	// CVSS extracted from severity array
 	require.NotNil(t, finding.CVSS)
@@ -67,11 +68,8 @@ func TestParse_GoScan(t *testing.T) {
 	require.NotNil(t, finding.Fix)
 	assert.Equal(t, "1.3.2", finding.Fix.Summary)
 
-	// Legacy display/meta still populated for backward compat
-	reachable, ok := finding.Display["reachable"]
-	assert.True(t, ok)
-	assert.Equal(t, true, reachable)
-	assert.Equal(t, []string{"CVE-2021-3121"}, finding.Metadata["aliases"])
+	// Observation payload lands in Extensions.
+	assert.Equal(t, []string{"CVE-2021-3121"}, finding.Extensions["aliases"])
 }
 
 func TestParseCVSSInfo(t *testing.T) {
@@ -156,5 +154,5 @@ func TestParse_InvalidJSON(t *testing.T) {
 
 func TestFindingKind(t *testing.T) {
 	s := osvscanner.NewScanner()
-	assert.Equal(t, "sca", s.FindingKind())
+	assert.Equal(t, "sca", string(s.Descriptor().FindingKinds[0]))
 }

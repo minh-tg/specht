@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
@@ -63,10 +64,6 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 	}
 }
 
-func (s *Scanner) Name() string { return "dependency-check" }
-
-func (s *Scanner) FindingKind() string { return "sca" }
-
 func (s *Scanner) DetectFormat(data []byte) bool {
 	var probe struct {
 		ReportSchema string `json:"reportSchema"`
@@ -88,10 +85,11 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedRe
 
 func convert(report dcReport) *scanner.NormalizedReport {
 	nr := &scanner.NormalizedReport{
-		ToolName:  "dependency-check",
-		ScanType:  scanner.ScanTypeFilesystem,
-		Findings:  nil,
-		ScanScope: make(map[string]any),
+		ContractVersion:    1,
+		FingerprintVersion: 1,
+		Completeness:       domain.CompletenessUnknown,
+		ScanType:           scanner.ScanTypeFilesystem,
+		Findings:           nil,
 	}
 
 	if len(report.Dependencies) > 0 {
@@ -130,16 +128,20 @@ func convert(report dcReport) *scanner.NormalizedReport {
 			fingerprint := createFingerprint(v.Name, purl)
 
 			dims := []scanner.Dimension{
-				{Key: "vulnerability_id", Value: v.Name},
-				{Key: "file_name", Value: dep.FileName},
+				{Key: domain.DimVulnerabilityID, Value: v.Name},
 			}
 			if purl != "" {
-				dims = append(dims, scanner.Dimension{Key: "purl", Value: purl})
+				dims = append(dims, scanner.Dimension{Key: domain.DimPURL, Value: purl})
+			} else if name := packageNameFromFile(dep.FileName); name != "" {
+				// Stable fallback component identity for Dependency-Check
+				// records without a purl: waivers and dedupe need a stable
+				// component key even when the report omits purls.
+				dims = append(dims, scanner.Dimension{Key: domain.DimPackageName, Value: name})
 			}
 
-			var cvss *scanner.CVSSInfo
+			var cvss *domain.CVSSInfo
 			if cvssVec != "" {
-				cvss = &scanner.CVSSInfo{
+				cvss = &domain.CVSSInfo{
 					Version: cvssVer,
 					Vector:  cvssVec,
 					Score:   score,
@@ -156,14 +158,11 @@ func convert(report dcReport) *scanner.NormalizedReport {
 				Location:    dep.FilePath,
 				CVSS:        cvss,
 				Dimensions:  dims,
-				Display: map[string]any{
+				Extensions: map[string]any{
 					"file_name": dep.FileName,
 					"file_path": dep.FilePath,
-				},
-				Metadata: map[string]any{
 					"cve":       v.Name,
 					"severity":  v.Severity,
-					"file_name": dep.FileName,
 				},
 			})
 		}
@@ -195,17 +194,37 @@ func createFingerprint(vulnID, purl string) string {
 	return vulnID + ":"
 }
 
-func normalizeDCSeverity(s string) scanner.Severity {
+func normalizeDCSeverity(s string) domain.Severity {
 	switch strings.ToUpper(s) {
 	case "CRITICAL":
-		return scanner.SeverityCritical
+		return domain.SeverityCritical
 	case "HIGH":
-		return scanner.SeverityHigh
+		return domain.SeverityHigh
 	case "MEDIUM":
-		return scanner.SeverityMedium
+		return domain.SeverityMedium
 	case "LOW":
-		return scanner.SeverityLow
+		return domain.SeverityLow
 	default:
-		return scanner.SeverityUnknown
+		return domain.SeverityUnknown
 	}
+}
+
+// packageNameFromFile derives a stable component name from a Dependency-Check
+// report's fileName when the record carries no purl (e.g.
+// "commons-lang3-3.12.0.jar" -> "commons-lang3"). It strips the file
+// extension and, when the last dash-separated segment looks like a version,
+// that segment too; the result is the component identity used for dedupe and
+// waivers. Names with embedded digits (commons-lang3) are preserved.
+func packageNameFromFile(fileName string) string {
+	name := fileName
+	if i := strings.LastIndexByte(name, '.'); i > 0 {
+		name = name[:i]
+	}
+	if i := strings.LastIndexByte(name, '-'); i > 0 {
+		suffix := name[i+1:]
+		if suffix != "" && suffix[0] >= '0' && suffix[0] <= '9' {
+			name = name[:i]
+		}
+	}
+	return name
 }

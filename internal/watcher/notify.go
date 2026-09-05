@@ -251,7 +251,7 @@ func SignSlackBody(body []byte, secret string) string {
 // parser variants both degrade gracefully, and it never panics on nil maps.
 //
 //   - title    ← Finding.Title (advisory summary; never empty for Created)
-//   - cve      ← dimension key "cve_id" (primary id), fallback
+//   - cve      ← dimension key "vulnerability_id" (primary id), fallback
 //     metadata["advisory_id"]
 //   - package  ← display["package_name"] (name-level purl), fallback
 //     dimension key "purl" (versioned), fallback display["purl"]
@@ -269,7 +269,7 @@ func NotificationFromDecision(d Decision, project string) Notification {
 
 	for _, dim := range fp.Dimensions {
 		switch dim.Key {
-		case "cve_id":
+		case "vulnerability_id":
 			if n.CVE == "" {
 				n.CVE = dim.Value
 			}
@@ -287,6 +287,8 @@ func NotificationFromDecision(d Decision, project string) Notification {
 	}
 
 	if refs, ok := stringSlice(fp.Metadata, "references"); ok && len(refs) > 0 {
+		n.Link = refs[0]
+	} else if refs, ok := stringSlice(fp.Display, "references"); ok && len(refs) > 0 {
 		n.Link = refs[0]
 	}
 	return n
