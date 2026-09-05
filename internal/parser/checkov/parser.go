@@ -61,7 +61,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		ContractVersion:       1,
 		FingerprintVersion:    1,
 		FindingKinds:          []scanner.FindingKind{"iac"},
-		ScanTypes:             []scanner.ScanType{scanner.ScanTypeIaC},
+		ScanTypes:             []domain.ScanType{domain.ScanTypeIaC},
 		ProvidesPackages:      false,
 		SupportsAutoDetection: true,
 	}
@@ -78,7 +78,7 @@ func (s *Scanner) DetectFormat(data []byte) bool {
 	return probe.CheckType != "" && probe.Results != nil
 }
 
-func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedReport, error) {
+func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
 	var report checkovReport
 	if err := json.Unmarshal(data, &report); err != nil {
 		return nil, fmt.Errorf("checkov: parse json: %w", err)
@@ -87,12 +87,12 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedRe
 	return convert(report), nil
 }
 
-func convert(report checkovReport) *scanner.NormalizedReport {
-	nr := &scanner.NormalizedReport{
+func convert(report checkovReport) *domain.NormalizedReport {
+	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
 		FingerprintVersion: 1,
 		Completeness:       domain.CompletenessUnknown,
-		ScanType:           scanner.ScanTypeIaC,
+		ScanType:           domain.ScanTypeIaC,
 		Findings:           nil,
 	}
 
@@ -114,11 +114,11 @@ func convert(report checkovReport) *scanner.NormalizedReport {
 
 		severity := normalizeSeverity(f.Severity)
 
-		dims := []scanner.Dimension{
+		dims := []domain.Dimension{
 			{Key: "rule_id", Value: f.CheckID},
 		}
 		if f.Resource != "" {
-			dims = append(dims, scanner.Dimension{Key: "resource", Value: f.Resource})
+			dims = append(dims, domain.Dimension{Key: "resource", Value: f.Resource})
 		}
 
 		ext := map[string]any{
@@ -157,7 +157,7 @@ func convert(report checkovReport) *scanner.NormalizedReport {
 			location = fmt.Sprintf("%s:%d", file, codeLoc.StartLine)
 		}
 
-		nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
+		nr.Findings = append(nr.Findings, domain.NormalizedFinding{
 			Fingerprint:  fingerprint,
 			FindingKind:  "iac",
 			Title:        f.CheckName,

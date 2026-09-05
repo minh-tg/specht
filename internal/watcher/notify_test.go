@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xMinhx/specht/internal/scanner"
+	"github.com/xMinhx/specht/internal/domain"
 )
 
 // testNotification builds a representative Notification for envelope tests.
@@ -340,7 +340,7 @@ func sampleFindings() Decision {
 			FindingKind: FindingKindCVEWatcher,
 			Title:       "Prototype pollution in lodash",
 			Severity:    "high",
-			Dimensions: []scanner.Dimension{
+			Dimensions: []domain.Dimension{
 				{Key: "purl", Value: "pkg:npm/lodash@4.17.19"},
 				{Key: "vulnerability_id", Value: "CVE-2019-10744"},
 				{Key: "source", Value: DimensionSourceValue},
@@ -377,7 +377,7 @@ func TestNotificationFromDecision_Fallbacks(t *testing.T) {
 	// Missing vulnerability_id dimension and package_name display; degraded
 	// inputs must fall back without panicking.
 	d := sampleFindings()
-	d.Finding.Dimensions = []scanner.Dimension{{Key: "source", Value: DimensionSourceValue}}
+	d.Finding.Dimensions = []domain.Dimension{{Key: "source", Value: DimensionSourceValue}}
 	d.Finding.Display = nil // severely degraded
 	n := NotificationFromDecision(d, "acme")
 	if n.CVE != "GHSA-jq35-85cj-fj4p" {

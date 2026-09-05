@@ -3,25 +3,26 @@ package osvscanner
 import (
 	"testing"
 
+	"github.com/xMinhx/specht/internal/domain"
+
 	"github.com/stretchr/testify/assert"
-	"github.com/xMinhx/specht/internal/scanner"
 )
 
 func TestSeverityFromScore(t *testing.T) {
 	tests := []struct {
 		score float64
-		want  scanner.Severity
+		want  domain.Severity
 	}{
-		{10.0, scanner.SeverityCritical},
-		{9.0, scanner.SeverityCritical},
-		{8.9, scanner.SeverityHigh},
-		{7.0, scanner.SeverityHigh},
-		{6.9, scanner.SeverityMedium},
-		{4.0, scanner.SeverityMedium},
-		{3.9, scanner.SeverityLow},
-		{0.1, scanner.SeverityLow},
-		{0.0, scanner.SeverityUnknown},
-		{-1.0, scanner.SeverityUnknown},
+		{10.0, domain.SeverityCritical},
+		{9.0, domain.SeverityCritical},
+		{8.9, domain.SeverityHigh},
+		{7.0, domain.SeverityHigh},
+		{6.9, domain.SeverityMedium},
+		{4.0, domain.SeverityMedium},
+		{3.9, domain.SeverityLow},
+		{0.1, domain.SeverityLow},
+		{0.0, domain.SeverityUnknown},
+		{-1.0, domain.SeverityUnknown},
 	}
 	for _, tt := range tests {
 		t.Run("", func(t *testing.T) {
@@ -34,18 +35,18 @@ func TestSeverityFromScore(t *testing.T) {
 func TestNormalizeOSVSeverity(t *testing.T) {
 	tests := []struct {
 		input string
-		want  scanner.Severity
+		want  domain.Severity
 	}{
-		{"CRITICAL", scanner.SeverityCritical},
-		{"critical", scanner.SeverityCritical},
-		{"Critical", scanner.SeverityCritical},
-		{"HIGH", scanner.SeverityHigh},
-		{"MEDIUM", scanner.SeverityMedium},
-		{"LOW", scanner.SeverityLow},
-		{"", scanner.SeverityUnknown},
-		{"UNKNOWN", scanner.SeverityUnknown},
-		{"INFO", scanner.SeverityUnknown},
-		{"random", scanner.SeverityUnknown},
+		{"CRITICAL", domain.SeverityCritical},
+		{"critical", domain.SeverityCritical},
+		{"Critical", domain.SeverityCritical},
+		{"HIGH", domain.SeverityHigh},
+		{"MEDIUM", domain.SeverityMedium},
+		{"LOW", domain.SeverityLow},
+		{"", domain.SeverityUnknown},
+		{"UNKNOWN", domain.SeverityUnknown},
+		{"INFO", domain.SeverityUnknown},
+		{"random", domain.SeverityUnknown},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -118,17 +119,17 @@ func TestExtractSeverity(t *testing.T) {
 	tests := []struct {
 		name string
 		vuln osvVuln
-		want scanner.Severity
+		want domain.Severity
 	}{
-		{"db specific overrides", osvVuln{DatabaseSpecific: &dbSpecificHigh, Severity: []osvSeverity{v4Crit}}, scanner.SeverityHigh},
-		{"empty severities", osvVuln{}, scanner.SeverityUnknown},
-		{"no match", osvVuln{Severity: []osvSeverity{empty}}, scanner.SeverityUnknown},
-		{"cvss v4 critical", osvVuln{Severity: []osvSeverity{v4Crit}}, scanner.SeverityCritical},
-		{"cvss v3 critical", osvVuln{Severity: []osvSeverity{v3Crit}}, scanner.SeverityCritical},
-		{"cvss v2 high", osvVuln{Severity: []osvSeverity{v2High}}, scanner.SeverityHigh},
-		{"cvss v2 bare medium", osvVuln{Severity: []osvSeverity{v2Bare}}, scanner.SeverityMedium},
-		{"numeric medium", osvVuln{Severity: []osvSeverity{numericMed}}, scanner.SeverityMedium},
-		{"numeric low", osvVuln{Severity: []osvSeverity{numericLow}}, scanner.SeverityLow},
+		{"db specific overrides", osvVuln{DatabaseSpecific: &dbSpecificHigh, Severity: []osvSeverity{v4Crit}}, domain.SeverityHigh},
+		{"empty severities", osvVuln{}, domain.SeverityUnknown},
+		{"no match", osvVuln{Severity: []osvSeverity{empty}}, domain.SeverityUnknown},
+		{"cvss v4 critical", osvVuln{Severity: []osvSeverity{v4Crit}}, domain.SeverityCritical},
+		{"cvss v3 critical", osvVuln{Severity: []osvSeverity{v3Crit}}, domain.SeverityCritical},
+		{"cvss v2 high", osvVuln{Severity: []osvSeverity{v2High}}, domain.SeverityHigh},
+		{"cvss v2 bare medium", osvVuln{Severity: []osvSeverity{v2Bare}}, domain.SeverityMedium},
+		{"numeric medium", osvVuln{Severity: []osvSeverity{numericMed}}, domain.SeverityMedium},
+		{"numeric low", osvVuln{Severity: []osvSeverity{numericLow}}, domain.SeverityLow},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

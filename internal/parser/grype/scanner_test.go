@@ -5,10 +5,11 @@ import (
 	"os"
 	"testing"
 
+	"github.com/xMinhx/specht/internal/domain"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/parser/grype"
-	"github.com/xMinhx/specht/internal/scanner"
 )
 
 func TestName(t *testing.T) {
@@ -43,7 +44,7 @@ func TestParse_GrypeReport(t *testing.T) {
 	tests := []struct {
 		name        string
 		fingerprint string
-		severity    scanner.Severity
+		severity    domain.Severity
 		score       float64
 		findingKind string
 		cvssVersion string
@@ -53,7 +54,7 @@ func TestParse_GrypeReport(t *testing.T) {
 		{
 			name:        "first finding should be CVE-2023-25165",
 			fingerprint: "CVE-2023-25165:pkg:golang/helm.sh/helm/v3@v3.11.1",
-			severity:    scanner.SeverityHigh,
+			severity:    domain.SeverityHigh,
 			score:       9.8,
 			findingKind: "sca",
 			cvssVersion: "3.1",
@@ -63,7 +64,7 @@ func TestParse_GrypeReport(t *testing.T) {
 		{
 			name:        "second finding should be GHSA-c3h9-896r-86jm",
 			fingerprint: "GHSA-c3h9-896r-86jm:pkg:golang/github.com/gogo/protobuf@v1.3.1",
-			severity:    scanner.SeverityCritical,
+			severity:    domain.SeverityCritical,
 			score:       9.8,
 			findingKind: "sca",
 			cvssVersion: "3.1",

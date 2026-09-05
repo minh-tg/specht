@@ -5,10 +5,11 @@ import (
 	"os"
 	"testing"
 
+	"github.com/xMinhx/specht/internal/domain"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/parser/trivy"
-	"github.com/xMinhx/specht/internal/scanner"
 )
 
 func TestName(t *testing.T) {
@@ -44,7 +45,7 @@ func TestParse_AlpineScan(t *testing.T) {
 	tests := []struct {
 		name         string
 		fingerprint  string
-		severity     scanner.Severity
+		severity     domain.Severity
 		score        float64
 		findingKind  string
 		fixedVersion string
@@ -52,7 +53,7 @@ func TestParse_AlpineScan(t *testing.T) {
 		{
 			name:         "first finding should be CVE-2024-9143",
 			fingerprint:  "CVE-2024-9143:pkg:apk/alpine/libcrypto3@3.3.2-r0?arch=aarch64&distro=3.20.3",
-			severity:     scanner.SeverityLow,
+			severity:     domain.SeverityLow,
 			score:        4.0,
 			findingKind:  "sca",
 			fixedVersion: "3.3.2-r1",
@@ -60,7 +61,7 @@ func TestParse_AlpineScan(t *testing.T) {
 		{
 			name:         "second finding should be CVE-2024-8888",
 			fingerprint:  "CVE-2024-8888:pkg:apk/alpine/libssl3@3.3.2-r0?arch=aarch64&distro=3.20.3",
-			severity:     scanner.SeverityHigh,
+			severity:     domain.SeverityHigh,
 			score:        6.0,
 			findingKind:  "sca",
 			fixedVersion: "3.3.2-r1",
@@ -138,7 +139,7 @@ func TestParse_AlpineFullScan(t *testing.T) {
 			}
 		}
 		require.NotEmpty(t, purl, "finding %s missing purl dimension", f.Fingerprint)
-		assert.True(t, vulnPURLs[scanner.NormalizePURL(purl)], "finding purl %s not in inventory", purl)
+		assert.True(t, vulnPURLs[domain.NormalizePURL(purl)], "finding purl %s not in inventory", purl)
 	}
 
 	// No inventory purl retains qualifiers.
@@ -148,13 +149,13 @@ func TestParse_AlpineFullScan(t *testing.T) {
 	}
 }
 
-func packageByPURL(packages []scanner.PackageRef, purl string) (scanner.PackageRef, bool) {
+func packageByPURL(packages []domain.PackageRef, purl string) (domain.PackageRef, bool) {
 	for _, p := range packages {
 		if p.PURL == purl {
 			return p, true
 		}
 	}
-	return scanner.PackageRef{}, false
+	return domain.PackageRef{}, false
 }
 
 func TestParse_MultiTypeScan(t *testing.T) {

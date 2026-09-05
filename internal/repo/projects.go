@@ -10,10 +10,6 @@ type pgProjectRepo struct {
 	q *sqlc.Queries
 }
 
-func newProjectRepo(q *sqlc.Queries) *pgProjectRepo {
-	return &pgProjectRepo{q: q}
-}
-
 func (r *pgProjectRepo) Create(ctx context.Context, arg sqlc.CreateProjectParams) (sqlc.Project, error) {
 	return r.q.CreateProject(ctx, arg)
 }

@@ -17,10 +17,6 @@ type pgFindingRepo struct {
 	pool *pgxpool.Pool
 }
 
-func newFindingRepo(q *sqlc.Queries, pool *pgxpool.Pool) *pgFindingRepo {
-	return &pgFindingRepo{q: q, pool: pool}
-}
-
 // UpsertFindingParams is the input to upserting a finding row.
 type UpsertFindingParams struct {
 	ProjectID    pgtype.UUID

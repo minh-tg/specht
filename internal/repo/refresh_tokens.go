@@ -2,8 +2,6 @@ package repo
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -40,9 +38,4 @@ func (r *pgRefreshTokenRepo) Revoke(ctx context.Context, id pgtype.UUID) (sqlc.R
 
 func (r *pgRefreshTokenRepo) RevokeAllForUser(ctx context.Context, userID pgtype.UUID) error {
 	return r.q.RevokeUserRefreshTokens(ctx, userID)
-}
-
-func hashToken(token string) string {
-	h := sha256.Sum256([]byte(token))
-	return hex.EncodeToString(h[:])
 }

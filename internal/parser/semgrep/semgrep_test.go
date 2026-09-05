@@ -5,10 +5,11 @@ import (
 	"os"
 	"testing"
 
+	"github.com/xMinhx/specht/internal/domain"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/parser/semgrep"
-	"github.com/xMinhx/specht/internal/scanner"
 )
 
 func TestName(t *testing.T) {
@@ -43,7 +44,7 @@ func TestParse_SemgrepScan(t *testing.T) {
 	tests := []struct {
 		name        string
 		fingerprint string
-		severity    scanner.Severity
+		severity    domain.Severity
 		findingKind string
 		location    string
 		ruleID      string
@@ -52,7 +53,7 @@ func TestParse_SemgrepScan(t *testing.T) {
 		{
 			name:        "first finding is JWT hardcoded secret",
 			fingerprint: "sast:go.jwt-hardcoded-secret:src/auth/login.go:42",
-			severity:    scanner.SeverityHigh,
+			severity:    domain.SeverityHigh,
 			findingKind: "sast",
 			location:    "src/auth/login.go:42",
 			ruleID:      "go.jwt-hardcoded-secret",
@@ -61,7 +62,7 @@ func TestParse_SemgrepScan(t *testing.T) {
 		{
 			name:        "second finding is Flask debug enabled",
 			fingerprint: "sast:python.flask.debug-enabled:src/app.py:15",
-			severity:    scanner.SeverityMedium,
+			severity:    domain.SeverityMedium,
 			findingKind: "sast",
 			location:    "src/app.py:15",
 			ruleID:      "python.flask.debug-enabled",

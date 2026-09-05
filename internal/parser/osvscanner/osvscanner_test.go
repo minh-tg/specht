@@ -5,10 +5,11 @@ import (
 	"os"
 	"testing"
 
+	"github.com/xMinhx/specht/internal/domain"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/parser/osvscanner"
-	"github.com/xMinhx/specht/internal/scanner"
 )
 
 func TestName(t *testing.T) {
@@ -127,17 +128,17 @@ func TestParse_GoFullScan(t *testing.T) {
 	for _, f := range report.Findings {
 		for _, d := range f.Dimensions {
 			if d.Key == "purl" {
-				findingPURLs[scanner.NormalizePURL(d.Value)] = true
+				findingPURLs[domain.NormalizePURL(d.Value)] = true
 			}
 		}
 	}
 	inventory := map[string]bool{}
 	for _, p := range report.Packages {
-		pkgType, name, _ := scanner.SplitPURL(p.PURL)
+		pkgType, name, _ := domain.SplitPURL(p.PURL)
 		inventory["pkg:"+pkgType+"/"+name] = true
 	}
 	for purl := range findingPURLs {
-		pkgType, name, _ := scanner.SplitPURL(purl)
+		pkgType, name, _ := domain.SplitPURL(purl)
 		key := purl
 		if name != "" {
 			key = "pkg:" + pkgType + "/" + name

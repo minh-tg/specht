@@ -5,10 +5,11 @@ import (
 	_ "embed"
 	"testing"
 
+	"github.com/xMinhx/specht/internal/domain"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/parser/checkov"
-	"github.com/xMinhx/specht/internal/scanner"
 )
 
 //go:embed testdata/checkov-terraform.json
@@ -46,7 +47,7 @@ func TestParseReturnsReport(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, report)
 
-	assert.Equal(t, scanner.ScanTypeIaC, report.ScanType)
+	assert.Equal(t, domain.ScanTypeIaC, report.ScanType)
 	require.NotNil(t, report.Target)
 	assert.Equal(t, "terraform", report.Target.Kind)
 
@@ -64,7 +65,7 @@ func TestParseFindingFields(t *testing.T) {
 	assert.Equal(t, "iac", f.FindingKind)
 	assert.Equal(t, "Ensure the key vault is recoverable", f.Title)
 	assert.Equal(t, "Ensure the key vault is recoverable", f.Description)
-	assert.Equal(t, scanner.SeverityHigh, f.Severity)
+	assert.Equal(t, domain.SeverityHigh, f.Severity)
 	assert.Equal(t, "/terraform/main.tf:1", f.Location)
 	assert.Equal(t, "azurerm_key_vault.main", f.Resource)
 	assert.Equal(t, "iac:CKV_AZURE_41:azurerm_key_vault.main:/terraform/main.tf", f.Fingerprint)
@@ -118,9 +119,9 @@ func TestSeverityMapping(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, report.Findings, 3)
 
-	assert.Equal(t, scanner.SeverityHigh, report.Findings[0].Severity, "HIGH")
-	assert.Equal(t, scanner.SeverityMedium, report.Findings[1].Severity, "MEDIUM")
-	assert.Equal(t, scanner.SeverityMedium, report.Findings[2].Severity, "MEDIUM")
+	assert.Equal(t, domain.SeverityHigh, report.Findings[0].Severity, "HIGH")
+	assert.Equal(t, domain.SeverityMedium, report.Findings[1].Severity, "MEDIUM")
+	assert.Equal(t, domain.SeverityMedium, report.Findings[2].Severity, "MEDIUM")
 }
 
 func TestParseInvalidJSON(t *testing.T) {

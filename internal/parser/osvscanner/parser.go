@@ -103,7 +103,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		ContractVersion:       1,
 		FingerprintVersion:    1,
 		FindingKinds:          []scanner.FindingKind{"sca"},
-		ScanTypes:             []scanner.ScanType{scanner.ScanTypeLockfile, scanner.ScanTypeSBOM, scanner.ScanTypeRepository, scanner.ScanTypeImage, scanner.ScanTypeFilesystem},
+		ScanTypes:             []domain.ScanType{domain.ScanTypeLockfile, domain.ScanTypeSBOM, domain.ScanTypeRepository, domain.ScanTypeImage, domain.ScanTypeFilesystem},
 		ProvidesPackages:      true,
 		SupportsAutoDetection: true,
 	}
@@ -117,7 +117,7 @@ func (s *Scanner) DetectFormat(data []byte) bool {
 	return len(probe.Results) > 0
 }
 
-func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedReport, error) {
+func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
 	var report osvReport
 	if err := json.Unmarshal(data, &report); err != nil {
 		return nil, fmt.Errorf("osv-scanner: parse json: %w", err)
@@ -126,27 +126,27 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedRe
 	return convert(report), nil
 }
 
-func convertToScanType(s string) scanner.ScanType {
+func convertToScanType(s string) domain.ScanType {
 	switch s {
 	case "lockfile":
-		return scanner.ScanTypeLockfile
+		return domain.ScanTypeLockfile
 	case "sbom":
-		return scanner.ScanTypeSBOM
+		return domain.ScanTypeSBOM
 	case "repository", "git":
-		return scanner.ScanTypeRepository
+		return domain.ScanTypeRepository
 	case "image":
-		return scanner.ScanTypeImage
+		return domain.ScanTypeImage
 	case "filesystem":
-		return scanner.ScanTypeFilesystem
+		return domain.ScanTypeFilesystem
 	case "iac":
-		return scanner.ScanTypeIaC
+		return domain.ScanTypeIaC
 	default:
-		return scanner.ScanTypeLockfile
+		return domain.ScanTypeLockfile
 	}
 }
 
-func convert(report osvReport) *scanner.NormalizedReport {
-	nr := &scanner.NormalizedReport{
+func convert(report osvReport) *domain.NormalizedReport {
+	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
 		FingerprintVersion: 1,
 		Completeness:       domain.CompletenessUnknown,
@@ -157,7 +157,7 @@ func convert(report osvReport) *scanner.NormalizedReport {
 		if nr.ScanType == "" {
 			nr.ScanType = convertToScanType(result.Source.Type)
 		}
-		nr.Target = &scanner.TargetInfo{
+		nr.Target = &domain.TargetInfo{
 			Kind:       result.Source.Type,
 			Identifier: result.Source.Path,
 		}
@@ -170,14 +170,14 @@ func convert(report osvReport) *scanner.NormalizedReport {
 	return nr
 }
 
-func addOsvPackages(nr *scanner.NormalizedReport, result osvResult) {
+func addOsvPackages(nr *domain.NormalizedReport, result osvResult) {
 	for _, pkg := range result.Packages {
 		purl := pkg.Package.PURL
 		if purl == "" {
 			purl = "pkg:" + strings.ToLower(pkg.Package.Ecosystem) + "/" + pkg.Package.Name
 		}
-		nr.Packages = append(nr.Packages, scanner.PackageRef{
-			PURL:         scanner.NormalizePURL(purl),
+		nr.Packages = append(nr.Packages, domain.PackageRef{
+			PURL:         domain.NormalizePURL(purl),
 			Ecosystem:    pkg.Package.Ecosystem,
 			Name:         pkg.Package.Name,
 			Version:      pkg.Package.Version,
@@ -186,7 +186,7 @@ func addOsvPackages(nr *scanner.NormalizedReport, result osvResult) {
 	}
 }
 
-func addOsvVulns(nr *scanner.NormalizedReport, result osvResult) {
+func addOsvVulns(nr *domain.NormalizedReport, result osvResult) {
 	for _, pkg := range result.Packages {
 		groupAnalysis := make(map[string]osvCallAnalysis, len(pkg.Groups))
 		for _, g := range pkg.Groups {
@@ -217,7 +217,7 @@ type osvFinding struct {
 }
 
 // normalized converts one OSV vulnerability into a NormalizedFinding.
-func (f osvFinding) normalized() scanner.NormalizedFinding {
+func (f osvFinding) normalized() domain.NormalizedFinding {
 	v := f.vuln
 	purl := v.Affected.Package.PURL
 	if purl == "" {
@@ -259,7 +259,7 @@ func (f osvFinding) normalized() scanner.NormalizedFinding {
 		ext["call_analysis"] = *f.analysis.Called
 	}
 
-	dims := []scanner.Dimension{
+	dims := []domain.Dimension{
 		{Key: "vulnerability_id", Value: v.ID},
 		{Key: "package_name", Value: f.pkg.Name},
 		{Key: "ecosystem", Value: f.pkg.Ecosystem},
@@ -267,11 +267,11 @@ func (f osvFinding) normalized() scanner.NormalizedFinding {
 		{Key: "purl", Value: purl},
 	}
 	if fixedVersion != "" {
-		dims = append(dims, scanner.Dimension{Key: "fixed_version", Value: fixedVersion})
+		dims = append(dims, domain.Dimension{Key: "fixed_version", Value: fixedVersion})
 	}
 
-	return scanner.NormalizedFinding{
-		Fingerprint:  string(scanner.SCAFingerprint(v.ID, purl)),
+	return domain.NormalizedFinding{
+		Fingerprint:  string(domain.SCAFingerprint(v.ID, purl)),
 		FindingKind:  "sca",
 		Title:        v.Summary,
 		Description:  v.Details,

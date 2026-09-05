@@ -24,14 +24,14 @@ func (s *testScanner) Descriptor() scanner.Descriptor {
 		ContractVersion:       1,
 		FingerprintVersion:    1,
 		FindingKinds:          []scanner.FindingKind{s.kind},
-		ScanTypes:             []scanner.ScanType{scanner.ScanTypeFilesystem},
+		ScanTypes:             []domain.ScanType{domain.ScanTypeFilesystem},
 		ProvidesPackages:      false,
 		SupportsAutoDetection: true,
 	}
 }
 
 func (s *testScanner) Parse(_ context.Context, _ []byte) (*domain.NormalizedReport, error) {
-	return &domain.NormalizedReport{ScanType: scanner.ScanTypeFilesystem}, nil
+	return &domain.NormalizedReport{ScanType: domain.ScanTypeFilesystem}, nil
 }
 
 func (s *testScanner) DetectFormat(data []byte) bool {
@@ -51,7 +51,7 @@ func (s *selectiveScanner) Descriptor() scanner.Descriptor {
 		ContractVersion:       1,
 		FingerprintVersion:    1,
 		FindingKinds:          []scanner.FindingKind{"selective"},
-		ScanTypes:             []scanner.ScanType{scanner.ScanTypeFilesystem},
+		ScanTypes:             []domain.ScanType{domain.ScanTypeFilesystem},
 		SupportsAutoDetection: true,
 	}
 }
@@ -66,15 +66,15 @@ func (s *selectiveScanner) DetectFormat(data []byte) bool {
 
 func TestSeverityValues(t *testing.T) {
 	tests := []struct {
-		severity scanner.Severity
+		severity domain.Severity
 		name     string
 		want     int
 	}{
-		{scanner.SeverityUnknown, "unknown", 0},
-		{scanner.SeverityLow, "low", 1},
-		{scanner.SeverityMedium, "medium", 2},
-		{scanner.SeverityHigh, "high", 3},
-		{scanner.SeverityCritical, "critical", 4},
+		{domain.SeverityUnknown, "unknown", 0},
+		{domain.SeverityLow, "low", 1},
+		{domain.SeverityMedium, "medium", 2},
+		{domain.SeverityHigh, "high", 3},
+		{domain.SeverityCritical, "critical", 4},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -88,7 +88,7 @@ func TestSCAFingerprint(t *testing.T) {
 		name   string
 		vulnID string
 		purl   string
-		want   scanner.Fingerprint
+		want   domain.Fingerprint
 	}{
 		{"standard", "CVE-2024-1234", "pkg:npm/foo@1.0.0", "CVE-2024-1234:pkg:npm/foo@1.0.0"},
 		{"empty vuln id", "", "pkg:npm/foo", ":pkg:npm/foo"},
@@ -98,7 +98,7 @@ func TestSCAFingerprint(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := scanner.SCAFingerprint(tt.vulnID, tt.purl)
+			got := domain.SCAFingerprint(tt.vulnID, tt.purl)
 			assert.Equal(t, tt.want, got)
 		})
 	}
@@ -169,16 +169,16 @@ func TestRegistryDetectEmptyData(t *testing.T) {
 
 func TestScanTypeConstants(t *testing.T) {
 	tests := []struct {
-		scanType scanner.ScanType
+		scanType domain.ScanType
 		name     string
 		want     string
 	}{
-		{scanner.ScanTypeImage, "image", "image"},
-		{scanner.ScanTypeFilesystem, "filesystem", "filesystem"},
-		{scanner.ScanTypeRepository, "repository", "repository"},
-		{scanner.ScanTypeIaC, "iac", "iac"},
-		{scanner.ScanTypeSBOM, "sbom", "sbom"},
-		{scanner.ScanTypeLockfile, "lockfile", "lockfile"},
+		{domain.ScanTypeImage, "image", "image"},
+		{domain.ScanTypeFilesystem, "filesystem", "filesystem"},
+		{domain.ScanTypeRepository, "repository", "repository"},
+		{domain.ScanTypeIaC, "iac", "iac"},
+		{domain.ScanTypeSBOM, "sbom", "sbom"},
+		{domain.ScanTypeLockfile, "lockfile", "lockfile"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -261,11 +261,11 @@ func TestScannerInterfaceIsDomainBoundary(t *testing.T) {
 
 func TestFingerprintType(t *testing.T) {
 	// Fingerprint is a distinct named type, not just a string alias
-	var fp scanner.Fingerprint = "custom-fp"
+	var fp domain.Fingerprint = "custom-fp"
 	assert.Equal(t, "custom-fp", string(fp))
 
 	// Empty Fingerprint is valid
-	var empty scanner.Fingerprint
+	var empty domain.Fingerprint
 	assert.Equal(t, "", string(empty))
 	assert.Equal(t, 0, len(empty))
 }

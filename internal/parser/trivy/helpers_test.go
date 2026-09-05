@@ -3,27 +3,28 @@ package trivy
 import (
 	"testing"
 
+	"github.com/xMinhx/specht/internal/domain"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/scanner"
 )
 
 func TestNormalizeSeverity(t *testing.T) {
 	tests := []struct {
 		input string
-		want  scanner.Severity
+		want  domain.Severity
 	}{
-		{"CRITICAL", scanner.SeverityCritical},
-		{"critical", scanner.SeverityCritical},
-		{"Critical", scanner.SeverityCritical},
-		{"HIGH", scanner.SeverityHigh},
-		{"MEDIUM", scanner.SeverityMedium},
-		{"LOW", scanner.SeverityLow},
-		{"", scanner.SeverityUnknown},
-		{"UNKNOWN", scanner.SeverityUnknown},
-		{"INFO", scanner.SeverityUnknown},
-		{"NONE", scanner.SeverityUnknown},
-		{"random_string", scanner.SeverityUnknown},
+		{"CRITICAL", domain.SeverityCritical},
+		{"critical", domain.SeverityCritical},
+		{"Critical", domain.SeverityCritical},
+		{"HIGH", domain.SeverityHigh},
+		{"MEDIUM", domain.SeverityMedium},
+		{"LOW", domain.SeverityLow},
+		{"", domain.SeverityUnknown},
+		{"UNKNOWN", domain.SeverityUnknown},
+		{"INFO", domain.SeverityUnknown},
+		{"NONE", domain.SeverityUnknown},
+		{"random_string", domain.SeverityUnknown},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -55,7 +56,7 @@ func TestConvertEdgeCases(t *testing.T) {
 		nr := convert(trivyReport{})
 		require.NotNil(t, nr)
 		assert.Empty(t, nr.Findings)
-		assert.Equal(t, scanner.ScanTypeImage, nr.ScanType)
+		assert.Equal(t, domain.ScanTypeImage, nr.ScanType)
 	})
 
 	t.Run("empty vulnerabilities list", func(t *testing.T) {
@@ -179,7 +180,7 @@ func TestConvertScoreSelection(t *testing.T) {
 		}
 		nr := convert(trivyReport{result})
 		require.Len(t, nr.Findings, 1)
-		fp := string(scanner.SCAFingerprint("CVE-2024-0005", "pkg:apk/test-pkg@1.0"))
+		fp := string(domain.SCAFingerprint("CVE-2024-0005", "pkg:apk/test-pkg@1.0"))
 		assert.Equal(t, fp, nr.Findings[0].Fingerprint)
 	})
 }

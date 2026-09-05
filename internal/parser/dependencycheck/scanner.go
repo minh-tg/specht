@@ -58,7 +58,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		ContractVersion:       1,
 		FingerprintVersion:    1,
 		FindingKinds:          []scanner.FindingKind{"sca"},
-		ScanTypes:             []scanner.ScanType{scanner.ScanTypeFilesystem},
+		ScanTypes:             []domain.ScanType{domain.ScanTypeFilesystem},
 		ProvidesPackages:      true,
 		SupportsAutoDetection: true,
 	}
@@ -74,7 +74,7 @@ func (s *Scanner) DetectFormat(data []byte) bool {
 	return probe.ReportSchema != ""
 }
 
-func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedReport, error) {
+func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
 	var report dcReport
 	if err := json.Unmarshal(data, &report); err != nil {
 		return nil, fmt.Errorf("dependency-check: parse json: %w", err)
@@ -83,17 +83,17 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedRe
 	return convert(report), nil
 }
 
-func convert(report dcReport) *scanner.NormalizedReport {
-	nr := &scanner.NormalizedReport{
+func convert(report dcReport) *domain.NormalizedReport {
+	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
 		FingerprintVersion: 1,
 		Completeness:       domain.CompletenessUnknown,
-		ScanType:           scanner.ScanTypeFilesystem,
+		ScanType:           domain.ScanTypeFilesystem,
 		Findings:           nil,
 	}
 
 	if len(report.Dependencies) > 0 {
-		nr.Target = &scanner.TargetInfo{
+		nr.Target = &domain.TargetInfo{
 			Kind:       "filesystem",
 			Identifier: report.Dependencies[0].FilePath,
 		}
@@ -102,12 +102,12 @@ func convert(report dcReport) *scanner.NormalizedReport {
 	for _, dep := range report.Dependencies {
 		// full package inventory, vulnerable or not
 		for _, p := range dep.Packages {
-			purl := scanner.NormalizePURL(p.ID)
+			purl := domain.NormalizePURL(p.ID)
 			if purl == "" {
 				continue
 			}
-			pkgType, name, version := scanner.SplitPURL(purl)
-			nr.Packages = append(nr.Packages, scanner.PackageRef{
+			pkgType, name, version := domain.SplitPURL(purl)
+			nr.Packages = append(nr.Packages, domain.PackageRef{
 				PURL:         purl,
 				Ecosystem:    pkgType,
 				Name:         name,
@@ -127,16 +127,16 @@ func convert(report dcReport) *scanner.NormalizedReport {
 
 			fingerprint := createFingerprint(v.Name, purl)
 
-			dims := []scanner.Dimension{
+			dims := []domain.Dimension{
 				{Key: domain.DimVulnerabilityID, Value: v.Name},
 			}
 			if purl != "" {
-				dims = append(dims, scanner.Dimension{Key: domain.DimPURL, Value: purl})
+				dims = append(dims, domain.Dimension{Key: domain.DimPURL, Value: purl})
 			} else if name := packageNameFromFile(dep.FileName); name != "" {
 				// Stable fallback component identity for Dependency-Check
 				// records without a purl: waivers and dedupe need a stable
 				// component key even when the report omits purls.
-				dims = append(dims, scanner.Dimension{Key: domain.DimPackageName, Value: name})
+				dims = append(dims, domain.Dimension{Key: domain.DimPackageName, Value: name})
 			}
 
 			var cvss *domain.CVSSInfo
@@ -148,7 +148,7 @@ func convert(report dcReport) *scanner.NormalizedReport {
 				}
 			}
 
-			nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
+			nr.Findings = append(nr.Findings, domain.NormalizedFinding{
 				Fingerprint: fingerprint,
 				FindingKind: "sca",
 				Title:       v.Name,
@@ -189,7 +189,7 @@ func extractCVSS(v dcVulnerability) (score float64, vector string, version strin
 
 func createFingerprint(vulnID, purl string) string {
 	if purl != "" {
-		return string(scanner.SCAFingerprint(vulnID, purl))
+		return string(domain.SCAFingerprint(vulnID, purl))
 	}
 	return vulnID + ":"
 }

@@ -5,10 +5,11 @@ import (
 	"os"
 	"testing"
 
+	"github.com/xMinhx/specht/internal/domain"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/parser/dependencycheck"
-	"github.com/xMinhx/specht/internal/scanner"
 )
 
 func TestName(t *testing.T) {
@@ -43,7 +44,7 @@ func TestParse_DependencyCheckReport(t *testing.T) {
 	tests := []struct {
 		name        string
 		fingerprint string
-		severity    scanner.Severity
+		severity    domain.Severity
 		score       float64
 		findingKind string
 		cvssVersion string
@@ -51,7 +52,7 @@ func TestParse_DependencyCheckReport(t *testing.T) {
 		{
 			name:        "first finding should be CVE-2021-44228",
 			fingerprint: "CVE-2021-44228:pkg:maven/org.apache.logging.log4j/log4j-core@2.17.0",
-			severity:    scanner.SeverityCritical,
+			severity:    domain.SeverityCritical,
 			score:       10.0,
 			findingKind: "sca",
 			cvssVersion: "3.1",
@@ -59,7 +60,7 @@ func TestParse_DependencyCheckReport(t *testing.T) {
 		{
 			name:        "second finding should be CVE-2020-25649",
 			fingerprint: "CVE-2020-25649:pkg:maven/com.fasterxml.jackson.core/jackson-databind@2.9.8",
-			severity:    scanner.SeverityHigh,
+			severity:    domain.SeverityHigh,
 			score:       7.5,
 			findingKind: "sca",
 			cvssVersion: "3.1",
@@ -103,7 +104,7 @@ func TestParse_DependencyCheckFullReport(t *testing.T) {
 	require.Greater(t, len(report.Packages), len(report.Findings))
 
 	// A non-vulnerable dependency is present, decomposed from its purl.
-	var commonsIO *scanner.PackageRef
+	var commonsIO *domain.PackageRef
 	for i := range report.Packages {
 		if report.Packages[i].PURL == "pkg:maven/commons-io/commons-io@2.11.0" {
 			commonsIO = &report.Packages[i]
@@ -127,7 +128,7 @@ func TestParse_DependencyCheckFullReport(t *testing.T) {
 			if d.Key == "purl" {
 				// Finding purls are normalized (qualifiers/subpath stripped)
 				// like the inventory's, so compare in the same space.
-				norm := scanner.NormalizePURL(d.Value)
+				norm := domain.NormalizePURL(d.Value)
 				findingPURLs[norm] = true
 				assert.True(t, inventory[norm], "finding purl %s not in inventory", d.Value)
 			}

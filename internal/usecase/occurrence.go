@@ -3,7 +3,6 @@ package usecase
 import (
 	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/port"
-	"github.com/xMinhx/specht/internal/scanner"
 )
 
 // Extension namespace prefixes. The occurrence mapper preserves producer
@@ -33,7 +32,7 @@ type occurrenceDocument struct {
 //
 // Canonical enrichment never changes finding identity or gate effect: it
 // only shapes the occurrence row.
-func buildOccurrenceDocument(f scanner.NormalizedFinding, source string) occurrenceDocument {
+func buildOccurrenceDocument(f domain.NormalizedFinding, source string) occurrenceDocument {
 	display := map[string]any{}
 	metadata := map[string]any{}
 
@@ -88,7 +87,7 @@ func isReservedKey(k string) bool {
 // toOccurrenceParams converts a normalized finding into the port occurrence
 // input used by ingest, mapping display/metadata through
 // buildOccurrenceDocument and preserving typed columns.
-func toOccurrenceParams(f scanner.NormalizedFinding, source string) port.OccurrenceInput {
+func toOccurrenceParams(f domain.NormalizedFinding, source string) port.OccurrenceInput {
 	doc := buildOccurrenceDocument(f, source)
 	return port.OccurrenceInput{
 		Title:           f.Title,

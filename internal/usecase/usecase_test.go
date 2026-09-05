@@ -341,7 +341,7 @@ func (m *mockScanner) Descriptor() scanner.Descriptor {
 	return scanner.Descriptor{
 		Name: m.name, Version: "test", ContractVersion: 1, FingerprintVersion: 1,
 		FindingKinds:     []scanner.FindingKind{"sca", "test"},
-		ScanTypes:        []scanner.ScanType{scanner.ScanTypeImage, scanner.ScanTypeFilesystem},
+		ScanTypes:        []domain.ScanType{domain.ScanTypeImage, domain.ScanTypeFilesystem},
 		ProvidesPackages: true,
 	}
 }
@@ -690,39 +690,39 @@ func TestIngestReport_Success(t *testing.T) {
 	reg := scanner.NewRegistry()
 	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
-		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
-			return &scanner.NormalizedReport{
+		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
+			return &domain.NormalizedReport{
 				ContractVersion:    1,
 				FingerprintVersion: 1,
-				ScanType:           scanner.ScanTypeImage,
-				Target:             &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
-				Findings: []scanner.NormalizedFinding{
+				ScanType:           domain.ScanTypeImage,
+				Target:             &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings: []domain.NormalizedFinding{
 					{
 						Fingerprint: "fp1",
 						FindingKind: "sca",
 						Title:       "CVE-2026-1234",
-						Severity:    scanner.SeverityHigh,
+						Severity:    domain.SeverityHigh,
 						Score:       7.5,
-						Dimensions:  []scanner.Dimension{{Key: "vulnerability.id", Value: "CVE-2026-1234"}},
+						Dimensions:  []domain.Dimension{{Key: "vulnerability.id", Value: "CVE-2026-1234"}},
 						Extensions:  map[string]any{"title": "CVE-2026-1234", "cvss": "7.5"},
 					},
 					{
 						Fingerprint: "fp2",
 						FindingKind: "sca",
 						Title:       "CVE-2026-5678",
-						Severity:    scanner.SeverityMedium,
+						Severity:    domain.SeverityMedium,
 						Score:       5.0,
 					},
 				},
 				// Vulnerable and clean packages both land in inventory; the
 				// duplicate purl is forwarded as-is — the DB primary key is
 				// what collapses it.
-				Packages: []scanner.PackageRef{
+				Packages: []domain.PackageRef{
 					{PURL: "pkg:npm/lodash@4.17.20", Ecosystem: "npm", Name: "lodash", Version: "4.17.20", ManifestPath: "package-lock.json"},
 					{PURL: "pkg:golang/github.com/gin-gonic/gin@v1.9.1", Ecosystem: "Go", Name: "github.com/gin-gonic/gin", Version: "v1.9.1"},
 					{PURL: "pkg:npm/lodash@4.17.20", Ecosystem: "npm", Name: "lodash", Version: "4.17.20", ManifestPath: "package-lock.json"},
 				},
-				ScanScope: &scanner.ScanScope{Ext: map[string]string{"packages": "150"}},
+				ScanScope: &domain.ScanScope{Ext: map[string]string{"packages": "150"}},
 			}, nil
 		},
 	}))
@@ -825,7 +825,7 @@ func TestIngestReport_ParseError(t *testing.T) {
 	reg := scanner.NewRegistry()
 	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
-		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
+		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
 			return nil, fmt.Errorf("invalid scan data")
 		},
 	}))
@@ -861,12 +861,12 @@ func TestIngestReport_Duplicate(t *testing.T) {
 	reg := scanner.NewRegistry()
 	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
-		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
-			return &scanner.NormalizedReport{
-				ScanType:  scanner.ScanTypeImage,
-				Target:    &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
-				Findings:  []scanner.NormalizedFinding{},
-				ScanScope: &scanner.ScanScope{},
+		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
+			return &domain.NormalizedReport{
+				ScanType:  domain.ScanTypeImage,
+				Target:    &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings:  []domain.NormalizedFinding{},
+				ScanScope: &domain.ScanScope{},
 			}, nil
 		},
 	}))
@@ -934,14 +934,14 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 	reg := scanner.NewRegistry()
 	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
-		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
-			return &scanner.NormalizedReport{
-				ScanType: scanner.ScanTypeImage,
-				Target:   &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
-				Findings: []scanner.NormalizedFinding{
-					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2026-1234", Severity: scanner.SeverityCritical, Score: 9.5},
+		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
+			return &domain.NormalizedReport{
+				ScanType: domain.ScanTypeImage,
+				Target:   &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings: []domain.NormalizedFinding{
+					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2026-1234", Severity: domain.SeverityCritical, Score: 9.5},
 				},
-				ScanScope: &scanner.ScanScope{},
+				ScanScope: &domain.ScanScope{},
 			}, nil
 		},
 	}))
@@ -977,7 +977,7 @@ func TestIngestReport_ErrorWrapping(t *testing.T) {
 	reg := scanner.NewRegistry()
 	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
-		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
+		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
 			return nil, fmt.Errorf("malformed data")
 		},
 	}))
@@ -1041,15 +1041,15 @@ func TestIngestReport_PartialFailure(t *testing.T) {
 	reg := scanner.NewRegistry()
 	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
-		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
-			return &scanner.NormalizedReport{
-				ScanType: scanner.ScanTypeImage,
-				Target:   &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
-				Findings: []scanner.NormalizedFinding{
-					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2026-0001", Severity: scanner.SeverityHigh, Score: 7.5},
-					{Fingerprint: "fp2", FindingKind: "sca", Title: "CVE-2026-0002", Severity: scanner.SeverityMedium, Score: 5.0},
+		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
+			return &domain.NormalizedReport{
+				ScanType: domain.ScanTypeImage,
+				Target:   &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings: []domain.NormalizedFinding{
+					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2026-0001", Severity: domain.SeverityHigh, Score: 7.5},
+					{Fingerprint: "fp2", FindingKind: "sca", Title: "CVE-2026-0002", Severity: domain.SeverityMedium, Score: 5.0},
 				},
-				ScanScope: &scanner.ScanScope{},
+				ScanScope: &domain.ScanScope{},
 			}, nil
 		},
 	}))
@@ -1117,17 +1117,17 @@ func TestIngestReport_InventoryWriteFailure(t *testing.T) {
 	reg := scanner.NewRegistry()
 	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
-		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
-			return &scanner.NormalizedReport{
-				ScanType: scanner.ScanTypeImage,
-				Target:   &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
-				Findings: []scanner.NormalizedFinding{
-					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2026-0001", Severity: scanner.SeverityHigh, Score: 7.5},
+		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
+			return &domain.NormalizedReport{
+				ScanType: domain.ScanTypeImage,
+				Target:   &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings: []domain.NormalizedFinding{
+					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2026-0001", Severity: domain.SeverityHigh, Score: 7.5},
 				},
-				Packages: []scanner.PackageRef{
+				Packages: []domain.PackageRef{
 					{PURL: "pkg:npm/lodash@4.17.20", Ecosystem: "npm", Name: "lodash", Version: "4.17.20"},
 				},
-				ScanScope: &scanner.ScanScope{},
+				ScanScope: &domain.ScanScope{},
 			}, nil
 		},
 	}))
@@ -2466,14 +2466,14 @@ func newTestRegistryWithCriticalFinding() *scanner.Registry {
 	reg := scanner.NewRegistry()
 	_ = reg.Register(&mockScanner{
 		name: "trivy",
-		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
-			return &scanner.NormalizedReport{
-				ScanType: scanner.ScanTypeImage,
-				Target:   &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
-				Findings: []scanner.NormalizedFinding{
-					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2026-1234", Severity: scanner.SeverityCritical, Score: 9.5},
+		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
+			return &domain.NormalizedReport{
+				ScanType: domain.ScanTypeImage,
+				Target:   &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings: []domain.NormalizedFinding{
+					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2026-1234", Severity: domain.SeverityCritical, Score: 9.5},
 				},
-				ScanScope: &scanner.ScanScope{},
+				ScanScope: &domain.ScanScope{},
 			}, nil
 		},
 	})
@@ -2614,13 +2614,13 @@ func TestIngestUnknownScan_CannotCloseUnseenFinding(t *testing.T) {
 	reg := scanner.NewRegistry()
 	_ = reg.Register(&mockScanner{
 		name: "trivy",
-		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
-			return &scanner.NormalizedReport{
-				ScanType:     scanner.ScanTypeImage,
-				Completeness: scanner.CompletenessUnknown,
-				Target:       &scanner.TargetInfo{Kind: "container", Identifier: "img:latest"},
-				Findings:     []scanner.NormalizedFinding{{Fingerprint: "fp-new", FindingKind: "sca", Title: "CVE-new", Severity: scanner.SeverityHigh}},
-				ScanScope:    &scanner.ScanScope{},
+		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
+			return &domain.NormalizedReport{
+				ScanType:     domain.ScanTypeImage,
+				Completeness: domain.CompletenessUnknown,
+				Target:       &domain.TargetInfo{Kind: "container", Identifier: "img:latest"},
+				Findings:     []domain.NormalizedFinding{{Fingerprint: "fp-new", FindingKind: "sca", Title: "CVE-new", Severity: domain.SeverityHigh}},
+				ScanScope:    &domain.ScanScope{},
 			}, nil
 		},
 	})

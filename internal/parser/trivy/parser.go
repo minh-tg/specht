@@ -113,7 +113,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		ContractVersion:       1,
 		FingerprintVersion:    1,
 		FindingKinds:          []scanner.FindingKind{kindSCA, kindSecret, kindIaC},
-		ScanTypes:             []scanner.ScanType{scanner.ScanTypeImage, scanner.ScanTypeIaC, scanner.ScanTypeFilesystem},
+		ScanTypes:             []domain.ScanType{domain.ScanTypeImage, domain.ScanTypeIaC, domain.ScanTypeFilesystem},
 		ProvidesPackages:      true,
 		SupportsAutoDetection: true,
 	}
@@ -146,7 +146,7 @@ func convert(report trivyReport) *domain.NormalizedReport {
 		ContractVersion:    1,
 		FingerprintVersion: 1,
 		Completeness:       domain.CompletenessUnknown,
-		ScanType:           scanner.ScanTypeImage,
+		ScanType:           domain.ScanTypeImage,
 		Findings:           nil,
 	}
 

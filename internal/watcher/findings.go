@@ -18,7 +18,6 @@ import (
 
 	"github.com/xMinhx/specht/internal/cvss"
 	"github.com/xMinhx/specht/internal/domain"
-	"github.com/xMinhx/specht/internal/scanner"
 )
 
 const (
@@ -132,7 +131,7 @@ type FindingPayload struct {
 	SeverityRank int16
 	Score        float64
 	Remediation  string
-	Dimensions   []scanner.Dimension
+	Dimensions   []domain.Dimension
 	Display      map[string]any
 	Metadata     map[string]any
 }
@@ -234,20 +233,20 @@ func DecideFinding(ctx context.Context, input DecideInput, gapCheck GapCheck) (D
 
 	ecosystem := normalizeEcosystem(input.Ecosystem)
 
-	dims := []scanner.Dimension{
+	dims := []domain.Dimension{
 		{Key: domain.DimPURL, Value: input.Purl},
 		{Key: domain.DimVulnerabilityID, Value: primary},
 		{Key: domain.DimSource, Value: DimensionSourceValue},
 		{Key: domain.DimInstalledVer, Value: input.Version},
 	}
 	if ecosystem != "" {
-		dims = append(dims, scanner.Dimension{Key: domain.DimEcosystem, Value: ecosystem})
+		dims = append(dims, domain.Dimension{Key: domain.DimEcosystem, Value: ecosystem})
 	}
 	for _, a := range aliases {
-		dims = append(dims, scanner.Dimension{Key: domain.DimAlias, Value: a})
+		dims = append(dims, domain.Dimension{Key: domain.DimAlias, Value: a})
 	}
 	for _, fv := range fixed {
-		dims = append(dims, scanner.Dimension{Key: domain.DimFixedVersion, Value: fv})
+		dims = append(dims, domain.Dimension{Key: domain.DimFixedVersion, Value: fv})
 	}
 	// The watcher has no versioned package_name for non-purl ecosystems; the
 	// name-level identity dimension is not canonical (dropped at persistence),
@@ -361,7 +360,7 @@ func matchAffected(ad Advisory, ecosystem, version string) (Affected, bool) {
 // finding contract. Non-purl inputs (scanner PkgID-style fallbacks) fall
 // back to cutting at the last '@'.
 func purlNameLevel(purl string) string {
-	if pkgType, name, _ := scanner.SplitPURL(purl); pkgType != "" && name != "" {
+	if pkgType, name, _ := domain.SplitPURL(purl); pkgType != "" && name != "" {
 		return "pkg:" + pkgType + "/" + name
 	}
 	if i := strings.LastIndexByte(purl, '@'); i >= 0 {

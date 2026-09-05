@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/domain"
-	"github.com/xMinhx/specht/internal/scanner"
 )
 
 func TestScopeHashMaterial_StableAndSensitive(t *testing.T) {
@@ -21,7 +20,7 @@ func TestScopeHashMaterial_StableAndSensitive(t *testing.T) {
 			Environment:     "prod",
 		}
 	}
-	nr := &scanner.NormalizedReport{Target: &scanner.TargetInfo{Identifier: "img:latest"}}
+	nr := &domain.NormalizedReport{Target: &domain.TargetInfo{Identifier: "img:latest"}}
 	ctxInfo := reportContext{}
 
 	// Deterministic: identical inputs hash identically.
@@ -53,13 +52,13 @@ func TestScopeHashMaterial_StableAndSensitive(t *testing.T) {
 }
 
 func TestScopeHashMaterial_TargetChanges(t *testing.T) {
-	a := scopeHashMaterial(IngestReportInput{Scanner: "trivy"}, &scanner.NormalizedReport{Target: &scanner.TargetInfo{Identifier: "img:a"}}, reportContext{})
-	b := scopeHashMaterial(IngestReportInput{Scanner: "trivy"}, &scanner.NormalizedReport{Target: &scanner.TargetInfo{Identifier: "img:b"}}, reportContext{})
+	a := scopeHashMaterial(IngestReportInput{Scanner: "trivy"}, &domain.NormalizedReport{Target: &domain.TargetInfo{Identifier: "img:a"}}, reportContext{})
+	b := scopeHashMaterial(IngestReportInput{Scanner: "trivy"}, &domain.NormalizedReport{Target: &domain.TargetInfo{Identifier: "img:b"}}, reportContext{})
 	assert.NotEqual(t, a, b)
 }
 
 func TestBuildOccurrenceDocument_NamespacesAndPreserves(t *testing.T) {
-	f := scanner.NormalizedFinding{
+	f := domain.NormalizedFinding{
 		Aliases:      []string{"CVE-2021-3121"},
 		Resource:     "pkg@1.0",
 		Extensions:   map[string]any{"cwe_ids": []any{"CWE-798"}, "status": "fixed"},
@@ -91,7 +90,7 @@ func TestBuildOccurrenceDocument_NamespacesAndPreserves(t *testing.T) {
 }
 
 func TestBuildOccurrenceDocument_DisplayEmpty(t *testing.T) {
-	doc := buildOccurrenceDocument(scanner.NormalizedFinding{}, "trivy")
+	doc := buildOccurrenceDocument(domain.NormalizedFinding{}, "trivy")
 	assert.Empty(t, doc.Display)
 	data, err := json.Marshal(doc.Metadata)
 	require.NoError(t, err)
@@ -99,7 +98,7 @@ func TestBuildOccurrenceDocument_DisplayEmpty(t *testing.T) {
 }
 
 func TestToOccurrenceParams_Lossless(t *testing.T) {
-	f := scanner.NormalizedFinding{
+	f := domain.NormalizedFinding{
 		Title:       "t",
 		Description: "d",
 		Severity:    domain.SeverityHigh,

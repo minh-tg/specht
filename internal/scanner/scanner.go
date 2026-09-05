@@ -3,11 +3,9 @@
 // deterministic registry that maps scanner names to implementations, and the
 // descriptor a scanner publishes about itself.
 //
-// The normalized report/finding model itself lives in internal/domain (it
-// moved here from this package so the core model carries no plugin
-// vocabulary). This package re-exports the domain identifiers below so the
-// existing parser adapters and tests keep compiling while the boundary move
-// lands; new code should import internal/domain directly.
+// The scanner package owns the plugin seam only. Scanner parsers return
+// *domain.NormalizedReport values; the normalized report/finding model lives
+// in internal/domain.
 package scanner
 
 import (
@@ -19,59 +17,6 @@ import (
 
 	"github.com/xMinhx/specht/internal/domain"
 )
-
-// Re-exported domain identifiers (boundary move compatibility layer; removed
-// once every in-repository caller imports internal/domain).
-type (
-	ScanType           = domain.ScanType
-	Severity           = domain.Severity
-	NormalizedReport   = domain.NormalizedReport
-	NormalizedFinding  = domain.NormalizedFinding
-	PackageRef         = domain.PackageRef
-	TargetInfo         = domain.TargetInfo
-	ArtifactInfo       = domain.ArtifactInfo
-	CVSSInfo           = domain.CVSSInfo
-	FixInfo            = domain.FixInfo
-	CodeLocation       = domain.CodeLocation
-	Dimension          = domain.Dimension
-	Fingerprint        = domain.Fingerprint
-	ContractVersion    = domain.ContractVersion
-	FingerprintVersion = domain.FingerprintVersion
-	ScanCompleteness   = domain.ScanCompleteness
-	ScanScope          = domain.ScanScope
-	ReachabilityState  = domain.ReachabilityState
-	ReachabilityHint   = domain.ReachabilityHint
-)
-
-const (
-	ScanTypeImage      = domain.ScanTypeImage
-	ScanTypeFilesystem = domain.ScanTypeFilesystem
-	ScanTypeRepository = domain.ScanTypeRepository
-	ScanTypeIaC        = domain.ScanTypeIaC
-	ScanTypeSBOM       = domain.ScanTypeSBOM
-	ScanTypeLockfile   = domain.ScanTypeLockfile
-
-	SeverityUnknown  = domain.SeverityUnknown
-	SeverityLow      = domain.SeverityLow
-	SeverityMedium   = domain.SeverityMedium
-	SeverityHigh     = domain.SeverityHigh
-	SeverityCritical = domain.SeverityCritical
-
-	CompletenessUnknown  = domain.CompletenessUnknown
-	CompletenessPartial  = domain.CompletenessPartial
-	CompletenessComplete = domain.CompletenessComplete
-
-	ReachabilityReachable     = domain.ReachabilityReachable
-	ReachabilityNotReachable  = domain.ReachabilityNotReachable
-	ReachabilityUnknown       = domain.ReachabilityUnknown
-	ReachabilityNotApplicable = domain.ReachabilityNotApplicable
-)
-
-// SCAFingerprint computes the SCA fingerprint from a vulnerability id and
-// normalized purl. It is the version-1 fingerprint formula.
-func SCAFingerprint(vulnID, purl string) Fingerprint {
-	return domain.SCAFingerprint(vulnID, purl)
-}
 
 // ScanTypeSARIF classifies a SARIF-format scan (semgrep). It is the scanner
 // plugin's declaration of a scan type; the domain ScanType vocabulary covers
@@ -102,14 +47,14 @@ type Descriptor struct {
 	Version string
 	// ContractVersion is the version of the normalized report contract the
 	// parser produces.
-	ContractVersion ContractVersion
+	ContractVersion domain.ContractVersion
 	// FingerprintVersion is the fingerprint-algorithm version the parser's
 	// fingerprints use. Version 1 preserves existing finding identities.
-	FingerprintVersion FingerprintVersion
+	FingerprintVersion domain.FingerprintVersion
 	// FindingKinds lists the finding kinds this scanner can emit.
 	FindingKinds []FindingKind
 	// ScanTypes lists the scan types this scanner can cover.
-	ScanTypes []ScanType
+	ScanTypes []domain.ScanType
 	// ProvidesPackages reports whether the scanner emits package inventory.
 	ProvidesPackages bool
 	// SupportsAutoDetection reports whether DetectFormat can identify this

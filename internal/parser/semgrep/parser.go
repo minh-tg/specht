@@ -105,7 +105,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		ContractVersion:       1,
 		FingerprintVersion:    1,
 		FindingKinds:          []scanner.FindingKind{"sast"},
-		ScanTypes:             []scanner.ScanType{scanner.ScanTypeFilesystem, scanner.ScanTypeRepository},
+		ScanTypes:             []domain.ScanType{domain.ScanTypeFilesystem, domain.ScanTypeRepository},
 		ProvidesPackages:      false,
 		SupportsAutoDetection: true,
 	}
@@ -122,7 +122,7 @@ func (s *Scanner) DetectFormat(data []byte) bool {
 	return strings.EqualFold(probe.Runs[0].Tool.Driver.Name, "semgrep")
 }
 
-func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedReport, error) {
+func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
 	var report sarifReport
 	if err := json.Unmarshal(data, &report); err != nil {
 		return nil, fmt.Errorf("semgrep: parse json: %w", err)
@@ -131,12 +131,12 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedRe
 	return convert(report), nil
 }
 
-func convert(report sarifReport) *scanner.NormalizedReport {
-	nr := &scanner.NormalizedReport{
+func convert(report sarifReport) *domain.NormalizedReport {
+	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
 		FingerprintVersion: 1,
 		Completeness:       domain.CompletenessUnknown,
-		ScanType:           scanner.ScanTypeFilesystem,
+		ScanType:           domain.ScanTypeFilesystem,
 		Findings:           nil,
 	}
 
@@ -174,7 +174,7 @@ func convert(report sarifReport) *scanner.NormalizedReport {
 		title := extractTitle(result, rule)
 		description := extractDescription(result, rule)
 
-		dims := []scanner.Dimension{
+		dims := []domain.Dimension{
 			{Key: "rule_id", Value: result.RuleID},
 			{Key: "file", Value: file},
 			{Key: "line", Value: strconv.Itoa(line)},
@@ -212,7 +212,7 @@ func convert(report sarifReport) *scanner.NormalizedReport {
 			}
 		}
 
-		nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
+		nr.Findings = append(nr.Findings, domain.NormalizedFinding{
 			Fingerprint: fingerprint,
 			FindingKind: "sast",
 			Title:       title,
@@ -262,20 +262,20 @@ func extractDescription(result sarifResult, rule sarifRule) string {
 	return rule.ShortDescription.Text
 }
 
-func mapSarifLevel(level string, rule sarifRule) scanner.Severity {
+func mapSarifLevel(level string, rule sarifRule) domain.Severity {
 	switch strings.ToLower(level) {
 	case "error":
-		return scanner.SeverityHigh
+		return domain.SeverityHigh
 	case "warning":
-		return scanner.SeverityMedium
+		return domain.SeverityMedium
 	case "note":
-		return scanner.SeverityLow
+		return domain.SeverityLow
 	case "none":
-		return scanner.SeverityUnknown
+		return domain.SeverityUnknown
 	default:
 		if rule.DefaultConfiguration.Level != "" {
 			return mapSarifLevel(rule.DefaultConfiguration.Level, sarifRule{})
 		}
-		return scanner.SeverityUnknown
+		return domain.SeverityUnknown
 	}
 }

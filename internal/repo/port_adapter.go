@@ -36,10 +36,6 @@ func uuidFromTime(t time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: t, Valid: true}
 }
 
-func timeFromUUID(t pgtype.Timestamptz) time.Time {
-	return t.Time
-}
-
 func textPtrFromString(s *string) pgtype.Text {
 	if s == nil || *s == "" {
 		return pgtype.Text{Valid: false}
@@ -158,23 +154,6 @@ func projectToPort(p sqlc.Project) port.Project {
 		CveWatcherIntervalSecs: p.CveWatcherIntervalSeconds,
 		CreatedAt:              p.CreatedAt.Time,
 		UpdatedAt:              p.UpdatedAt.Time,
-	}
-}
-
-// portProjectToSQLC maps a port project to the sqlc upsert/watch shapes the
-// watcher needs (only used where the caller supplies a full project).
-func portProjectToSQLC(p port.Project) sqlc.Project {
-	return sqlc.Project{
-		ID:                        mustParseID(p.ID),
-		Slug:                      p.Slug,
-		Name:                      p.Name,
-		Description:               textPtrFromString(p.Description),
-		DeploymentThreshold:       p.DeploymentThreshold,
-		CveWatcherGate:            p.CveWatcherGate,
-		CveWatcherEnabled:         p.CveWatcherEnabled,
-		CveWatcherIntervalSeconds: p.CveWatcherIntervalSecs,
-		CreatedAt:                 uuidFromTime(p.CreatedAt),
-		UpdatedAt:                 uuidFromTime(p.UpdatedAt),
 	}
 }
 

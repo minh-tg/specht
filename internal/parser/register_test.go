@@ -3,6 +3,8 @@ package parser_test
 import (
 	"testing"
 
+	"github.com/xMinhx/specht/internal/domain"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/parser"
@@ -102,13 +104,13 @@ func TestBuiltinsScanTypesMatchDatabase(t *testing.T) {
 	// The database scan_type check (000007_create_findings era) accepts the
 	// six ScanType constants; every descriptor's declared scan types must be
 	// among them.
-	valid := map[scanner.ScanType]bool{
-		scanner.ScanTypeImage:      true,
-		scanner.ScanTypeFilesystem: true,
-		scanner.ScanTypeRepository: true,
-		scanner.ScanTypeIaC:        true,
-		scanner.ScanTypeSBOM:       true,
-		scanner.ScanTypeLockfile:   true,
+	valid := map[domain.ScanType]bool{
+		domain.ScanTypeImage:      true,
+		domain.ScanTypeFilesystem: true,
+		domain.ScanTypeRepository: true,
+		domain.ScanTypeIaC:        true,
+		domain.ScanTypeSBOM:       true,
+		domain.ScanTypeLockfile:   true,
 	}
 	for _, s := range parser.Builtins() {
 		for _, st := range s.Descriptor().ScanTypes {

@@ -15,7 +15,6 @@ import (
 	"github.com/xMinhx/specht/internal/finding"
 	"github.com/xMinhx/specht/internal/gate"
 	"github.com/xMinhx/specht/internal/port"
-	"github.com/xMinhx/specht/internal/scanner"
 )
 
 // reportContext carries the contextual ids resolved for an ingested report
@@ -88,7 +87,7 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 // resolveReportContext upserts the target/artifact/environment rows a report
 // references (best-effort: a failure to resolve context does not fail the
 // ingest) and returns their ids plus the target identifier for the scope hash.
-func (u *Usecases) resolveReportContext(ctx context.Context, project port.Project, input IngestReportInput, nr *scanner.NormalizedReport) (reportContext, error) {
+func (u *Usecases) resolveReportContext(ctx context.Context, project port.Project, input IngestReportInput, nr *domain.NormalizedReport) (reportContext, error) {
 	var out reportContext
 
 	if nr.Target != nil && nr.Target.Identifier != "" {
@@ -156,7 +155,7 @@ func (u *Usecases) resolveReportContext(ctx context.Context, project port.Projec
 // scan scope (scanner, target, artifact, branch, commit SHA, environment)
 // so identical content scanned at a different revision or artifact never
 // collides.
-func (u *Usecases) createReport(ctx context.Context, project port.Project, input IngestReportInput, nr *scanner.NormalizedReport, ctxInfo reportContext) (port.Report, error) {
+func (u *Usecases) createReport(ctx context.Context, project port.Project, input IngestReportInput, nr *domain.NormalizedReport, ctxInfo reportContext) (port.Report, error) {
 	rawHash := sha256.Sum256(input.RawData)
 	scopeHash := sha256.Sum256([]byte(scopeHashMaterial(input, nr, ctxInfo)))
 
@@ -197,7 +196,7 @@ func (u *Usecases) createReport(ctx context.Context, project port.Project, input
 // scopeHashMaterial is the deterministic, ordered material the scope hash is
 // computed from: every attribute that distinguishes one scan scope from
 // another.
-func scopeHashMaterial(input IngestReportInput, nr *scanner.NormalizedReport, ctxInfo reportContext) string {
+func scopeHashMaterial(input IngestReportInput, nr *domain.NormalizedReport, ctxInfo reportContext) string {
 	target := ""
 	if nr.Target != nil {
 		target = nr.Target.Identifier
@@ -216,7 +215,7 @@ func scopeHashMaterial(input IngestReportInput, nr *scanner.NormalizedReport, ct
 // scopeDocument renders the persisted scan_scope JSONB: the typed scope
 // attributes plus transport-supplied extension attributes, in a stable
 // shape.
-func scopeDocument(nr *scanner.NormalizedReport) map[string]any {
+func scopeDocument(nr *domain.NormalizedReport) map[string]any {
 	doc := map[string]any{}
 	if nr.ScanScope == nil {
 		return doc
@@ -256,7 +255,7 @@ func scopeDocument(nr *scanner.NormalizedReport) map[string]any {
 // ingestReportFindings upserts each normalized finding and its occurrence,
 // dimensions, and material-change events. It returns the number of findings
 // ingested.
-func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, nr *scanner.NormalizedReport) (int, error) {
+func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, nr *domain.NormalizedReport) (int, error) {
 	nowTime := now()
 	total := 0
 
@@ -270,7 +269,7 @@ func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Projec
 	return total, nil
 }
 
-func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, f scanner.NormalizedFinding, nowTime time.Time) (int, error) {
+func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, f domain.NormalizedFinding, nowTime time.Time) (int, error) {
 	newRank := severityRank(f.Severity)
 
 	var oldRank int16
@@ -343,7 +342,7 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, i
 // applyMaterialChange runs finding.EvaluateChange on a previously-known
 // finding and, when the change demands review, marks review_required and logs
 // the material-change event.
-func (u *Usecases) applyMaterialChange(ctx context.Context, project port.Project, input IngestReportInput, upserted port.Finding, f scanner.NormalizedFinding, oldRank int16, oldGateEffect, oldAnalysisState string) error {
+func (u *Usecases) applyMaterialChange(ctx context.Context, project port.Project, input IngestReportInput, upserted port.Finding, f domain.NormalizedFinding, oldRank int16, oldGateEffect, oldAnalysisState string) error {
 	hasNewFix := false
 	for _, d := range f.Dimensions {
 		if d.Key == domain.DimFixedVersion && d.Value != "" {
@@ -400,7 +399,7 @@ func (u *Usecases) applyMaterialChange(ctx context.Context, project port.Project
 }
 
 // persistInventory writes the report's package references when any exist.
-func (u *Usecases) persistInventory(ctx context.Context, input IngestReportInput, report port.Report, nr *scanner.NormalizedReport) error {
+func (u *Usecases) persistInventory(ctx context.Context, input IngestReportInput, report port.Report, nr *domain.NormalizedReport) error {
 	if len(nr.Packages) == 0 {
 		return nil
 	}

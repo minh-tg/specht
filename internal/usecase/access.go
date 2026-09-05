@@ -63,16 +63,3 @@ func checkFindingProjectIDAccess(ctx context.Context, findingProjectID string) e
 	}
 	return nil
 }
-
-func apiKeyProjectID(ctx context.Context) (uuid.UUID, bool, error) {
-	ident := auth.ContextIdentity(ctx)
-	if ident == nil || !ident.IsAPIKey {
-		return uuid.Nil, false, nil
-	}
-
-	projectID, err := uuid.Parse(ident.ProjectID)
-	if err != nil {
-		return uuid.Nil, true, ErrProjectAccessDenied
-	}
-	return projectID, true, nil
-}

@@ -182,22 +182,22 @@ func (a *gateWaiverRepo) ListActiveWaivers(ctx context.Context, projectID string
 	return result, nil
 }
 
-func severityStr(s scanner.Severity) string {
+func severityStr(s domain.Severity) string {
 	switch s {
-	case scanner.SeverityCritical:
+	case domain.SeverityCritical:
 		return "critical"
-	case scanner.SeverityHigh:
+	case domain.SeverityHigh:
 		return "high"
-	case scanner.SeverityMedium:
+	case domain.SeverityMedium:
 		return "medium"
-	case scanner.SeverityLow:
+	case domain.SeverityLow:
 		return "low"
 	default:
 		return "unknown"
 	}
 }
 
-func severityRank(s scanner.Severity) int16 {
+func severityRank(s domain.Severity) int16 {
 	return int16(s)
 }
 
@@ -217,16 +217,6 @@ func textPtr(s string) *string {
 
 func now() time.Time {
 	return time.Now()
-}
-
-func defaultGateParams(severities, statuses []string) ([]string, []string) {
-	if len(severities) == 0 {
-		severities = []string{"high", "critical"}
-	}
-	if len(statuses) == 0 {
-		statuses = []string{"open"}
-	}
-	return severities, statuses
 }
 
 func mustMarshal(v any) []byte {

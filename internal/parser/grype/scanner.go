@@ -101,7 +101,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		ContractVersion:       1,
 		FingerprintVersion:    1,
 		FindingKinds:          []scanner.FindingKind{"sca"},
-		ScanTypes:             []scanner.ScanType{scanner.ScanTypeFilesystem, scanner.ScanTypeImage},
+		ScanTypes:             []domain.ScanType{domain.ScanTypeFilesystem, domain.ScanTypeImage},
 		ProvidesPackages:      true,
 		SupportsAutoDetection: true,
 	}
@@ -117,7 +117,7 @@ func (s *Scanner) DetectFormat(data []byte) bool {
 	return len(probe.Matches) > 0
 }
 
-func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedReport, error) {
+func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
 	var doc grypeDoc
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("grype: parse json: %w", err)
@@ -126,18 +126,18 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*scanner.NormalizedRe
 	return convert(doc), nil
 }
 
-func convert(doc grypeDoc) *scanner.NormalizedReport {
-	nr := &scanner.NormalizedReport{
+func convert(doc grypeDoc) *domain.NormalizedReport {
+	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
 		FingerprintVersion: 1,
 		Completeness:       domain.CompletenessUnknown,
-		ScanType:           scanner.ScanTypeFilesystem,
+		ScanType:           domain.ScanTypeFilesystem,
 		Findings:           nil,
 	}
 
 	if len(doc.Matches) > 0 && len(doc.Matches[0].Artifact.Locations) > 0 {
 		loc := doc.Matches[0].Artifact.Locations[0]
-		nr.Target = &scanner.TargetInfo{
+		nr.Target = &domain.TargetInfo{
 			Kind:       "filesystem",
 			Identifier: loc.Path,
 		}
@@ -150,7 +150,7 @@ func convert(doc grypeDoc) *scanner.NormalizedReport {
 	seen := make(map[string]struct{})
 	for _, match := range doc.Matches {
 		artifact := match.Artifact
-		purl := scanner.NormalizePURL(artifact.PURL)
+		purl := domain.NormalizePURL(artifact.PURL)
 		if purl == "" {
 			continue
 		}
@@ -163,9 +163,9 @@ func convert(doc grypeDoc) *scanner.NormalizedReport {
 		if len(artifact.Locations) > 0 {
 			manifestPath = artifact.Locations[0].Path
 		}
-		pkgType, _, _ := scanner.SplitPURL(purl)
+		pkgType, _, _ := domain.SplitPURL(purl)
 
-		nr.Packages = append(nr.Packages, scanner.PackageRef{
+		nr.Packages = append(nr.Packages, domain.PackageRef{
 			PURL:         purl,
 			Ecosystem:    pkgType,
 			Name:         artifact.Name,
@@ -179,7 +179,7 @@ func convert(doc grypeDoc) *scanner.NormalizedReport {
 		artifact := match.Artifact
 
 		purl := artifact.PURL
-		fingerprint := string(scanner.SCAFingerprint(vuln.ID, purl))
+		fingerprint := string(domain.SCAFingerprint(vuln.ID, purl))
 
 		severity := normalizeGrypeSeverity(vuln.Severity)
 
@@ -216,14 +216,14 @@ func convert(doc grypeDoc) *scanner.NormalizedReport {
 			fix = &domain.FixInfo{Summary: summary}
 		}
 
-		dims := []scanner.Dimension{
+		dims := []domain.Dimension{
 			{Key: "vulnerability_id", Value: vuln.ID},
 			{Key: "package_name", Value: artifact.Name},
 			{Key: "installed_version", Value: artifact.Version},
 			{Key: "purl", Value: purl},
 		}
 		if fix != nil {
-			dims = append(dims, scanner.Dimension{Key: "fixed_version", Value: fix.Summary})
+			dims = append(dims, domain.Dimension{Key: "fixed_version", Value: fix.Summary})
 		}
 
 		location := ""
@@ -231,7 +231,7 @@ func convert(doc grypeDoc) *scanner.NormalizedReport {
 			location = artifact.Locations[0].Path
 		}
 
-		nr.Findings = append(nr.Findings, scanner.NormalizedFinding{
+		nr.Findings = append(nr.Findings, domain.NormalizedFinding{
 			Fingerprint: fingerprint,
 			FindingKind: "sca",
 			Title:       vuln.ID + " in " + artifact.Name,

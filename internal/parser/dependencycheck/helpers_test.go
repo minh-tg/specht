@@ -3,26 +3,27 @@ package dependencycheck
 import (
 	"testing"
 
+	"github.com/xMinhx/specht/internal/domain"
+
 	"github.com/stretchr/testify/assert"
-	"github.com/xMinhx/specht/internal/scanner"
 )
 
 func TestNormalizeDCSeverity(t *testing.T) {
 	tests := []struct {
 		input string
-		want  scanner.Severity
+		want  domain.Severity
 	}{
-		{"CRITICAL", scanner.SeverityCritical},
-		{"critical", scanner.SeverityCritical},
-		{"Critical", scanner.SeverityCritical},
-		{"HIGH", scanner.SeverityHigh},
-		{"MEDIUM", scanner.SeverityMedium},
-		{"LOW", scanner.SeverityLow},
-		{"", scanner.SeverityUnknown},
-		{"UNKNOWN", scanner.SeverityUnknown},
-		{"INFO", scanner.SeverityUnknown},
-		{"NONE", scanner.SeverityUnknown},
-		{"random_string", scanner.SeverityUnknown},
+		{"CRITICAL", domain.SeverityCritical},
+		{"critical", domain.SeverityCritical},
+		{"Critical", domain.SeverityCritical},
+		{"HIGH", domain.SeverityHigh},
+		{"MEDIUM", domain.SeverityMedium},
+		{"LOW", domain.SeverityLow},
+		{"", domain.SeverityUnknown},
+		{"UNKNOWN", domain.SeverityUnknown},
+		{"INFO", domain.SeverityUnknown},
+		{"NONE", domain.SeverityUnknown},
+		{"random_string", domain.SeverityUnknown},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
