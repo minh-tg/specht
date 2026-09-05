@@ -53,6 +53,7 @@ type mockUsecases struct {
 	listWaiverEventsFn   func(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
 	checkWaiverMatchFn   func(ctx context.Context, projectSlug, findingID string) (bool, error)
 	getProjectStatsFn    func(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error)
+	getAgingFn           func(ctx context.Context, projectSlug string) (*usecase.AgingResponse, error)
 	getWatcherStatusFn   func(ctx context.Context) (*usecase.WatcherStatusResponse, error)
 	listScannersFn       func() []usecase.ScannerDescriptorResponse
 	createEvidenceFn     func(ctx context.Context, findingID, userID, typ, url, description string) (usecase.EvidenceResponse, error)
@@ -286,6 +287,13 @@ func (m *mockUsecases) GetProjectStats(ctx context.Context, projectSlug string) 
 		return nil, fmt.Errorf("unexpected call to GetProjectStats")
 	}
 	return m.getProjectStatsFn(ctx, projectSlug)
+}
+
+func (m *mockUsecases) GetAging(ctx context.Context, projectSlug string) (*usecase.AgingResponse, error) {
+	if m.getAgingFn == nil {
+		return nil, fmt.Errorf("unexpected call to GetAging")
+	}
+	return m.getAgingFn(ctx, projectSlug)
 }
 
 func (m *mockUsecases) GetWatcherStatus(ctx context.Context) (*usecase.WatcherStatusResponse, error) {
@@ -558,6 +566,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/me", h.Me)
 	r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
 	r.Get("/api/v1/projects/{slug}/stats", h.GetProjectStats)
+	r.Get("/api/v1/projects/{slug}/aging", h.GetAging)
 	r.Get("/api/v1/watcher/status", h.GetWatcherStatus)
 	r.Get("/api/v1/scanners", h.ListScanners)
 	return r
@@ -1311,6 +1320,29 @@ func TestStats_ProjectNotFound(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+func TestAging_Success(t *testing.T) {
+	mock := &mockUsecases{
+		getAgingFn: func(ctx context.Context, slug string) (*usecase.AgingResponse, error) {
+			assert.Equal(t, "my-app", slug)
+			return &usecase.AgingResponse{
+				Buckets:      []usecase.AgingBucketCount{{Bucket: "debt", Count: 2, Overdue: 1}},
+				OverdueTotal: 1,
+				Reopened:     1,
+			}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/aging", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.AgingResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, int32(1), resp.OverdueTotal)
+	assert.Equal(t, int32(1), resp.Reopened)
 }
 
 func TestListFindingEvents_Success(t *testing.T) {

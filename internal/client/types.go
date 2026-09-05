@@ -346,6 +346,39 @@ type ProjectStats struct {
 	LatestReport  *Report         `json:"latest_report,omitempty"`
 }
 
+// AgingBucketCount is one age bucket with its overdue subset.
+type AgingBucketCount struct {
+	Bucket  string `json:"bucket"`
+	Count   int32  `json:"count"`
+	Overdue int32  `json:"overdue"`
+}
+
+// OverdueFinding is an open finding past its SLA date.
+type OverdueFinding struct {
+	ID       string    `json:"id"`
+	Title    string    `json:"title"`
+	Severity string    `json:"severity"`
+	AgeDays  int32     `json:"age_days"`
+	SLADays  int32     `json:"sla_days"`
+	DueDate  time.Time `json:"due_date"`
+	Reopened bool      `json:"reopened"`
+}
+
+// AgingResponse is a project's aging/SLA snapshot.
+type AgingResponse struct {
+	Buckets      []AgingBucketCount `json:"buckets"`
+	OverdueTotal int32              `json:"overdue_total"`
+	Overdue      []OverdueFinding   `json:"overdue"`
+	Reopened     int32              `json:"reopened"`
+	NewPerWeek   []WeeklyNew        `json:"new_per_week"`
+}
+
+// WeeklyNew is one week's newly introduced finding count.
+type WeeklyNew struct {
+	Week  string `json:"week"`
+	Count int32  `json:"count"`
+}
+
 // APIError is the error envelope the API returns on non-2xx responses.
 type APIError struct {
 	Code    string `json:"code"`

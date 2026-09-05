@@ -231,3 +231,21 @@ func (h *Handler) GetProjectStats(w http.ResponseWriter, r *http.Request) {
 	}
 	respondJSON(w, http.StatusOK, stats)
 }
+
+func (h *Handler) GetAging(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if slug == "" {
+		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		return
+	}
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		return
+	}
+	resp, err := h.usecase.GetAging(r.Context(), slug)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "aging_failed", err.Error())
+		return
+	}
+	respondJSON(w, http.StatusOK, resp)
+}

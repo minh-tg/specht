@@ -98,6 +98,30 @@ func (r *pgStatsPort) GetProjectReportCount(ctx context.Context, projectID strin
 	return r.inner.GetProjectReportCount(ctx, pid)
 }
 
+func (r *pgStatsPort) GetAgingRows(ctx context.Context, projectID string) ([]port.AgingRow, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.inner.GetAgingRows(ctx, pid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.AgingRow, len(rows))
+	for i, row := range rows {
+		out[i] = port.AgingRow{
+			ID:           toUUID(row.ID),
+			Title:        row.CurrentTitle,
+			Severity:     row.CurrentSeverity,
+			SeverityRank: int(row.CurrentSeverityRank),
+			FirstSeen:    row.FirstSeenAt.Time,
+			State:        row.State,
+			Reopened:     row.Reopened,
+		}
+	}
+	return out, nil
+}
+
 func (r *pgStatsPort) GetProjectLatestReport(ctx context.Context, projectID string) (port.Report, error) {
 	pid, err := parseID(projectID)
 	if err != nil {

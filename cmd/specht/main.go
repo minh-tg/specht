@@ -30,6 +30,7 @@ const (
 	cmdFindingsReachability
 	cmdGateCheck
 	cmdStats
+	cmdStatsAging
 	cmdWatcherBackfill
 	cmdWatcherStatus
 )
@@ -150,6 +151,9 @@ func parseArgs(args []string) (command, error) {
 		if rest[1] == "show" && len(rest) >= 3 {
 			return command{cmd: cmdStats, slug: rest[2]}, nil
 		}
+		if rest[1] == "aging" && len(rest) >= 3 {
+			return command{cmd: cmdStatsAging, slug: rest[2]}, nil
+		}
 		return command{}, fmt.Errorf("unknown stats subcommand: %s", rest[1])
 
 	case "gate":
@@ -261,6 +265,14 @@ func gateExitCode(breached bool) int {
 		return exitGateBreached
 	}
 	return exitGatePass
+}
+
+// reopenedMark flags regressed findings in the aging table.
+func reopenedMark(reopened bool) string {
+	if reopened {
+		return " (reopened)"
+	}
+	return ""
 }
 
 func run(cl *client.Client, cmd command) error {
@@ -393,6 +405,26 @@ func run(cl *client.Client, cmd command) error {
 		}
 		return nil
 
+	case cmdStatsAging:
+		aging, err := cl.GetAging(cmd.slug)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Aging for %s (SLA: critical 7d, high 30d, medium 90d, low 180d):\n", cmd.slug)
+		for _, b := range aging.Buckets {
+			fmt.Printf("  %-6s %4d finding(s), %d overdue\n", b.Bucket, b.Count, b.Overdue)
+		}
+		fmt.Printf("  reopened ever: %d\n", aging.Reopened)
+		if len(aging.Overdue) > 0 {
+			fmt.Println("  Oldest overdue:")
+			for _, o := range aging.Overdue {
+				fmt.Printf("    %s [%s] %dd (SLA %dd, due %s)%s\n",
+					o.Title, o.Severity, o.AgeDays, o.SLADays,
+					o.DueDate.Format("2006-01-02"), reopenedMark(o.Reopened))
+			}
+		}
+		return nil
+
 	case cmdWatcherStatus:
 		ws, err := cl.GetWatcherStatus()
 		if err != nil {
@@ -443,6 +475,7 @@ Commands:
     [--format human|json]                  Output format (default human)
                                            Exit codes: 0 pass, 1 threshold breached, 2 error
   stats show <slug>                       Show project statistics
+  stats aging <slug>                      Show aging buckets, SLA overdue, reopened
   watcher backfill [--since <ISO8601>]    Run one CVE watcher poll
   watcher status                          Show watcher health (last poll, failures)
     [--dry-run]                           Report only; write nothing

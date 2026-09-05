@@ -13,6 +13,7 @@ type StatsRepo interface {
 	GetProjectWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error)
 	GetProjectReportCount(ctx context.Context, projectID pgtype.UUID) (int32, error)
 	GetProjectLatestReport(ctx context.Context, projectID pgtype.UUID) (sqlc.GetProjectLatestReportRow, error)
+	GetAgingRows(ctx context.Context, projectID pgtype.UUID) ([]sqlc.GetAgingRowsRow, error)
 }
 
 type pgStatsRepo struct {
@@ -37,4 +38,8 @@ func (r *pgStatsRepo) GetProjectReportCount(ctx context.Context, projectID pgtyp
 
 func (r *pgStatsRepo) GetProjectLatestReport(ctx context.Context, projectID pgtype.UUID) (sqlc.GetProjectLatestReportRow, error) {
 	return r.q.GetProjectLatestReport(ctx, projectID)
+}
+
+func (r *pgStatsRepo) GetAgingRows(ctx context.Context, projectID pgtype.UUID) ([]sqlc.GetAgingRowsRow, error) {
+	return r.q.GetAgingRows(ctx, projectID)
 }

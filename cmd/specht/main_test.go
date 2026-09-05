@@ -87,6 +87,7 @@ func TestCLI_ParseArgs(t *testing.T) {
 		{"gate check json", []string{"specht", "gate", "check", "--project", "my-app", "--format", "json"}, command{cmd: cmdGateCheck, project: "my-app", format: "json"}, ""},
 		{"gate check invalid format", []string{"specht", "gate", "check", "--project", "my-app", "--format", "yaml"}, command{}, `invalid --format "yaml"`},
 		{"stats show", []string{"specht", "stats", "show", "my-app"}, command{cmd: cmdStats, slug: "my-app"}, ""},
+		{"stats aging", []string{"specht", "stats", "aging", "my-app"}, command{cmd: cmdStatsAging, slug: "my-app"}, ""},
 		{"watcher backfill", []string{"specht", "watcher", "backfill"}, command{cmd: cmdWatcherBackfill}, ""},
 		{"watcher status", []string{"specht", "watcher", "status"}, command{cmd: cmdWatcherStatus}, ""},
 		{"watcher backfill with since and dry-run", []string{"specht", "watcher", "backfill", "--since", "2026-01-01T00:00:00Z", "--dry-run"}, command{cmd: cmdWatcherBackfill, since: "2026-01-01T00:00:00Z", dryRun: true}, ""},

@@ -384,6 +384,14 @@ func (c *Client) GetProjectStats(projectSlug string) (*ProjectStats, error) {
 	return &resp, nil
 }
 
+func (c *Client) GetAging(projectSlug string) (*AgingResponse, error) {
+	var resp AgingResponse
+	if err := c.do("GET", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/aging", nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // Waivers.
 
 func (c *Client) CreateWaiver(projectSlug string, req *CreateWaiverRequest) (*Waiver, error) {

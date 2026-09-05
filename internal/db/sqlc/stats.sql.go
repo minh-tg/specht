@@ -11,6 +11,62 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getAgingRows = `-- name: GetAgingRows :many
+SELECT
+    f.id,
+    f.current_title,
+    f.current_severity,
+    f.current_severity_rank,
+    f.first_seen_at,
+    f.state,
+    EXISTS (
+        SELECT 1 FROM finding_events e
+        WHERE e.finding_id = f.id AND e.event_type LIKE 'reopened%'
+    ) AS reopened
+FROM findings f
+WHERE f.project_id = $1
+ORDER BY f.first_seen_at ASC
+LIMIT 10000
+`
+
+type GetAgingRowsRow struct {
+	ID                  pgtype.UUID        `json:"id"`
+	CurrentTitle        string             `json:"current_title"`
+	CurrentSeverity     string             `json:"current_severity"`
+	CurrentSeverityRank int16              `json:"current_severity_rank"`
+	FirstSeenAt         pgtype.Timestamptz `json:"first_seen_at"`
+	State               string             `json:"state"`
+	Reopened            bool               `json:"reopened"`
+}
+
+func (q *Queries) GetAgingRows(ctx context.Context, projectID pgtype.UUID) ([]GetAgingRowsRow, error) {
+	rows, err := q.db.Query(ctx, getAgingRows, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAgingRowsRow
+	for rows.Next() {
+		var i GetAgingRowsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CurrentTitle,
+			&i.CurrentSeverity,
+			&i.CurrentSeverityRank,
+			&i.FirstSeenAt,
+			&i.State,
+			&i.Reopened,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getProjectLatestReport = `-- name: GetProjectLatestReport :one
 SELECT
     id, project_id, tool_name, tool_version, scan_type,

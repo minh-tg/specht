@@ -199,3 +199,53 @@ func mustProjectID(t *testing.T, ctx context.Context, stores *port.Stores) strin
 	require.NoError(t, err)
 	return project.ID
 }
+
+func TestAgingRows_EndToEnd(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	stores := NewPortStores(pool)
+	reg := scanner.NewRegistry()
+	for _, s := range parser.Builtins() {
+		require.NoError(t, reg.Register(s))
+	}
+	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
+
+	_, err := uc.CreateProject(ctx, "My App", "my-app", "validation")
+	require.NoError(t, err)
+	project, err := stores.Projects.GetBySlug(ctx, "my-app")
+	require.NoError(t, err)
+
+	now := time.Now().UTC()
+	seed := func(fp string, rank int16, daysAgo int) string {
+		t.Helper()
+		ts := now.AddDate(0, 0, -daysAgo)
+		f, err := stores.Findings.Upsert(ctx, project.ID, "sca", fp, fp, "critical", rank, 9.0, ts, now)
+		require.NoError(t, err)
+		return f.ID
+	}
+
+	oldCritical := seed("fp-old-critical", 4, 40)
+	oldLow := seed("fp-old-low", 1, 100)
+	_, err = stores.Findings.CreateEvent(ctx, port.FindingEventInput{
+		FindingID: oldCritical, EventType: "reopened_severity_change",
+	})
+	require.NoError(t, err)
+
+	rows, err := stores.Stats.GetAgingRows(ctx, project.ID)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	byID := map[string]port.AgingRow{}
+	for _, r := range rows {
+		byID[r.ID] = r
+	}
+	assert.True(t, byID[oldCritical].Reopened)
+	assert.False(t, byID[oldLow].Reopened)
+	assert.Equal(t, "critical", byID[oldCritical].Severity)
+
+	resp, err := uc.GetAging(ctx, "my-app")
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), resp.OverdueTotal, "40d critical past 7d SLA; 100d low within 180d SLA")
+	assert.Equal(t, int32(1), resp.Reopened)
+}

@@ -632,6 +632,21 @@ type StatsStore interface {
 	GetProjectWaiverCount(ctx context.Context, projectID string) (int32, error)
 	GetProjectReportCount(ctx context.Context, projectID string) (int32, error)
 	GetProjectLatestReport(ctx context.Context, projectID string) (Report, error)
+	// GetAgingRows loads every finding's aging input for a project,
+	// oldest first, capped at 10000 rows.
+	GetAgingRows(ctx context.Context, projectID string) ([]AgingRow, error)
+}
+
+// AgingRow is one finding's aging input: identity, severity, first
+// observation, lifecycle state, and whether it ever reopened.
+type AgingRow struct {
+	ID           string
+	Title        string
+	Severity     string
+	SeverityRank int
+	FirstSeen    time.Time
+	State        string
+	Reopened     bool
 }
 
 // ---------- Watcher ----------

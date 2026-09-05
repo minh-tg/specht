@@ -132,6 +132,7 @@ type (
 
 	StatsUsecases interface {
 		GetProjectStats(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error)
+		GetAging(ctx context.Context, projectSlug string) (*usecase.AgingResponse, error)
 	}
 
 	WatcherUsecases interface {
