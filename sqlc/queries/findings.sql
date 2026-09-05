@@ -60,13 +60,23 @@ INSERT INTO finding_occurrences (
 RETURNING *;
 
 -- name: ListFindingsByProject :many
-SELECT * FROM findings
-WHERE project_id = $1
-  AND (array_length($2::text[], 1) IS NULL OR current_severity = ANY($2))
-  AND (array_length($3::text[], 1) IS NULL OR state = ANY($3))
-  AND (array_length($4::text[], 1) IS NULL OR finding_kind = ANY($4))
-ORDER BY current_severity_rank DESC, created_at DESC
-LIMIT $5 OFFSET $6;
+SELECT f.* FROM findings f
+WHERE f.project_id = $1
+  AND (array_length($2::text[], 1) IS NULL OR f.current_severity = ANY($2))
+  AND (array_length($3::text[], 1) IS NULL OR f.state = ANY($3))
+  AND (array_length($4::text[], 1) IS NULL OR f.finding_kind = ANY($4))
+  AND (array_length($5::text[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM finding_occurrences fo
+    JOIN reports r ON fo.report_id = r.id
+    JOIN environments e ON r.environment_id = e.id
+    WHERE fo.finding_id = f.id AND e.name = ANY($5)))
+  AND (array_length($6::text[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM finding_occurrences fo
+    JOIN reports r ON fo.report_id = r.id
+    JOIN targets t ON r.target_id = t.id
+    WHERE fo.finding_id = f.id AND t.name = ANY($6)))
+ORDER BY f.current_severity_rank DESC, f.created_at DESC
+LIMIT $7 OFFSET $8;
 
 -- name: GetFindingByID :one
 SELECT * FROM findings WHERE id = $1;
@@ -171,6 +181,17 @@ JOIN reports r ON fo.report_id = r.id
 WHERE fo.finding_id = $1
 ORDER BY fo.observed_at DESC
 LIMIT 1;
+-- name: GetFindingDisplayContext :one
+SELECT t.name AS target_name, t.kind AS target_kind, t.owner AS target_owner,
+    e.name AS environment_name, r.branch AS branch, r.commit_sha AS commit_sha
+FROM finding_occurrences fo
+JOIN reports r ON fo.report_id = r.id
+LEFT JOIN targets t ON r.target_id = t.id
+LEFT JOIN environments e ON r.environment_id = e.id
+WHERE fo.finding_id = $1
+ORDER BY fo.observed_at DESC
+LIMIT 1;
+
 
 
 -- name: HasDimension :one

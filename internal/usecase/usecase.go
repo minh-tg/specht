@@ -47,6 +47,10 @@ type IngestReportInput struct {
 	ArtifactName    string
 	ArtifactVersion string
 	ArtifactType    string
+	// Owner names who is responsible for the scanned target. It is bound
+	// to the target row (last supplied wins); empty preserves the stored
+	// value. Free-text until gives it a structured identity.
+	Owner string
 }
 
 // IngestReportOutput reports what a completed ingest produced.

@@ -318,15 +318,15 @@ func TestFindingRepo_UpsertAndList(t *testing.T) {
 	assert.Equal(t, "open", upsertedAgain.State)
 	assert.Equal(t, "CVE-2026-1234 (updated)", upsertedAgain.CurrentTitle)
 
-	findings, err := repos.Findings.ListByProject(context.Background(), project.ID, nil, nil, nil, 10, 0)
+	findings, err := repos.Findings.ListByProject(context.Background(), project.ID, nil, nil, nil, nil, nil, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, findings, 1)
 
-	criticalFindings, err := repos.Findings.ListByProject(context.Background(), project.ID, []string{"critical"}, nil, nil, 10, 0)
+	criticalFindings, err := repos.Findings.ListByProject(context.Background(), project.ID, []string{"critical"}, nil, nil, nil, nil, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, criticalFindings, 1)
 
-	lowFindings, err := repos.Findings.ListByProject(context.Background(), project.ID, []string{"low"}, nil, nil, 10, 0)
+	lowFindings, err := repos.Findings.ListByProject(context.Background(), project.ID, []string{"low"}, nil, nil, nil, nil, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, lowFindings, 0)
 }

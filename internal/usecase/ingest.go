@@ -96,7 +96,7 @@ func (u *Usecases) resolveReportContext(ctx context.Context, project port.Projec
 		if kind == "" {
 			kind = string(nr.ScanType)
 		}
-		t, err := u.deps.Stores.Targets.Upsert(ctx, project.ID, nr.Target.Identifier, kind, nr.Target.Identifier)
+		t, err := u.deps.Stores.Targets.Upsert(ctx, project.ID, nr.Target.Identifier, kind, nr.Target.Identifier, input.Owner)
 		if err != nil {
 			slog.Warn("upsert target failed", "project", project.ID, "target", nr.Target.Identifier, "error", err)
 		} else {

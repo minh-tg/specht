@@ -30,12 +30,14 @@ type UpsertFindingParams struct {
 	LastSeenAt   pgtype.Timestamptz
 }
 
-func (r *pgFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, severities, states, kinds []string, limit, offset int32) ([]sqlc.Finding, error) {
+func (r *pgFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, severities, states, kinds, environments, targets []string, limit, offset int32) ([]sqlc.Finding, error) {
 	return r.q.ListFindingsByProject(ctx, sqlc.ListFindingsByProjectParams{
 		ProjectID: projectID,
 		Column2:   severities,
 		Column3:   states,
 		Column4:   kinds,
+		Column5:   environments,
+		Column6:   targets,
 		Limit:     limit,
 		Offset:    offset,
 	})
@@ -259,6 +261,12 @@ func (r *pgFindingRepo) GetFindingContext(ctx context.Context, findingID pgtype.
 		TargetID:      row.TargetID,
 		ArtifactID:    row.ArtifactID,
 	}, nil
+}
+
+// GetFindingDisplayContext returns the human-readable deployment context of
+// the finding's most recent scan occurrence for detail views.
+func (r *pgFindingRepo) GetFindingDisplayContext(ctx context.Context, findingID pgtype.UUID) (sqlc.GetFindingDisplayContextRow, error) {
+	return r.q.GetFindingDisplayContext(ctx, findingID)
 }
 
 // PersistWatcherFindingParams carries everything needed to persist one

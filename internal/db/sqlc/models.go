@@ -318,6 +318,7 @@ type Target struct {
 	Kind      string             `json:"kind"`
 	Locator   pgtype.Text        `json:"locator"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	Owner     pgtype.Text        `json:"owner"`
 }
 
 type User struct {

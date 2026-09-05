@@ -165,12 +165,17 @@ type Target struct {
 	Name      string
 	Kind      string
 	Locator   *string
+	// Owner names who is responsible for the target. Free-text until the
+	// repository-provider decision gives it a structured identity.
+	Owner     *string
 	CreatedAt time.Time
 }
 
 // TargetStore persists scan targets.
 type TargetStore interface {
-	Upsert(ctx context.Context, projectID, name, kind, locator string) (Target, error)
+	// Upsert inserts or updates a target. An empty owner preserves the
+	// stored value; a non-empty owner overwrites it (last supplied wins).
+	Upsert(ctx context.Context, projectID, name, kind, locator, owner string) (Target, error)
 	List(ctx context.Context, projectID string) ([]Target, error)
 	GetByID(ctx context.Context, id, projectID string) (Target, error)
 	Delete(ctx context.Context, id, projectID string) (Target, error)
@@ -400,7 +405,7 @@ type FindingStore interface {
 	GetByID(ctx context.Context, id string) (Finding, error)
 	GetByFingerprint(ctx context.Context, projectID, findingKind, fingerprint string) (Finding, error)
 	ListByIDs(ctx context.Context, ids []string) ([]Finding, error)
-	ListByProject(ctx context.Context, projectID string, severities, states, kinds []string, limit, offset int32) ([]Finding, error)
+	ListByProject(ctx context.Context, projectID string, severities, states, kinds, environments, targets []string, limit, offset int32) ([]Finding, error)
 	UpdateAnalysis(ctx context.Context, input UpdateAnalysisInput) (Finding, error)
 	BulkUpdateAnalysis(ctx context.Context, input UpdateAnalysisInput, ids []string) ([]Finding, error)
 	CreateEvent(ctx context.Context, input FindingEventInput) (FindingEvent, error)
@@ -409,6 +414,11 @@ type FindingStore interface {
 	CreateOccurrence(ctx context.Context, input OccurrenceInput) (Occurrence, error)
 	UpsertDimension(ctx context.Context, input DimensionInput) error
 	GetFindingContext(ctx context.Context, findingID string) (FindingContext, error)
+	// GetFindingDisplayContext returns the latest observed deployment
+	// context of a finding for detail views: target, environment, branch,
+	// and commit names. Every field is empty when the context is missing —
+	// missing context is explicit, never a placeholder string.
+	GetFindingDisplayContext(ctx context.Context, findingID string) (FindingDisplayContext, error)
 	ListBlockingFindings(ctx context.Context, projectID string, minSeverityRank int16) ([]Finding, error)
 	// ListGateCandidates loads every gate candidate with its context and
 	// latest reachability in one batch (kills the per-finding N+1 context
@@ -430,6 +440,17 @@ type FindingContext struct {
 	EnvironmentID string
 	TargetID      string
 	ArtifactID    string
+}
+
+// FindingDisplayContext is the human-readable deployment context of a
+// finding's latest observation, for detail views and routing.
+type FindingDisplayContext struct {
+	TargetName      string
+	TargetKind      string
+	TargetOwner     string
+	EnvironmentName string
+	Branch          string
+	CommitSha       string
 }
 
 // GateCandidate is a finding that may block a project's gate together with

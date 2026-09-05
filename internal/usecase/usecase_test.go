@@ -85,7 +85,8 @@ type mockFindingRepo struct {
 	upsertFn               func(context.Context, string, string, string, string, string, int16, float64, time.Time, time.Time) (port.Finding, error)
 	createOccurrenceFn     func(context.Context, port.OccurrenceInput) (port.Occurrence, error)
 	upsertDimensionFn      func(context.Context, port.DimensionInput) error
-	listByProjectFn        func(context.Context, string, []string, []string, []string, int32, int32) ([]port.Finding, error)
+	listByProjectFn        func(context.Context, string, []string, []string, []string, []string, []string, int32, int32) ([]port.Finding, error)
+	getDisplayContextFn    func(context.Context, string) (port.FindingDisplayContext, error)
 	getByFingerprintFn     func(context.Context, string, string, string) (port.Finding, error)
 	getByIDFn              func(context.Context, string) (port.Finding, error)
 	listByIDsFn            func(context.Context, []string) ([]port.Finding, error)
@@ -120,11 +121,11 @@ func (m *mockFindingRepo) UpsertDimension(ctx context.Context, arg port.Dimensio
 	return m.upsertDimensionFn(ctx, arg)
 }
 
-func (m *mockFindingRepo) ListByProject(ctx context.Context, projectID string, severities, states, kinds []string, limit, offset int32) ([]port.Finding, error) {
+func (m *mockFindingRepo) ListByProject(ctx context.Context, projectID string, severities, states, kinds, environments, targets []string, limit, offset int32) ([]port.Finding, error) {
 	if m.listByProjectFn == nil {
 		return []port.Finding{}, nil
 	}
-	return m.listByProjectFn(ctx, projectID, severities, states, kinds, limit, offset)
+	return m.listByProjectFn(ctx, projectID, severities, states, kinds, environments, targets, limit, offset)
 }
 
 func (m *mockFindingRepo) GetByID(ctx context.Context, id string) (port.Finding, error) {
@@ -174,6 +175,13 @@ func (m *mockFindingRepo) GetFindingContext(ctx context.Context, findingID strin
 		return port.FindingContext{}, fmt.Errorf("unexpected call to GetFindingContext")
 	}
 	return m.getFindingContextFn(ctx, findingID)
+}
+
+func (m *mockFindingRepo) GetFindingDisplayContext(ctx context.Context, findingID string) (port.FindingDisplayContext, error) {
+	if m.getDisplayContextFn == nil {
+		return port.FindingDisplayContext{}, nil
+	}
+	return m.getDisplayContextFn(ctx, findingID)
 }
 
 func (m *mockFindingRepo) GetByFingerprint(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
@@ -423,17 +431,17 @@ func (m *mockSignoffRepo) GetByFinding(ctx context.Context, findingID string) (p
 
 type mockTargetRepo struct {
 	port.TargetStore
-	upsertFn  func(context.Context, string, string, string, string) (port.Target, error)
+	upsertFn  func(context.Context, string, string, string, string, string) (port.Target, error)
 	listFn    func(context.Context, string) ([]port.Target, error)
 	getByIDFn func(context.Context, string, string) (port.Target, error)
 	deleteFn  func(context.Context, string, string) (port.Target, error)
 }
 
-func (m *mockTargetRepo) Upsert(ctx context.Context, projectID, name, kind, locator string) (port.Target, error) {
+func (m *mockTargetRepo) Upsert(ctx context.Context, projectID, name, kind, locator, owner string) (port.Target, error) {
 	if m.upsertFn == nil {
 		return port.Target{}, fmt.Errorf("unexpected call to Upsert")
 	}
-	return m.upsertFn(ctx, projectID, name, kind, locator)
+	return m.upsertFn(ctx, projectID, name, kind, locator, owner)
 }
 
 func (m *mockTargetRepo) List(ctx context.Context, projectID string) ([]port.Target, error) {
@@ -571,7 +579,7 @@ func makeTestRepos() (*mockProjectRepo, *mockReportRepo, *mockFindingRepo) {
 
 func stubTargetRepo() *mockTargetRepo {
 	tr := &mockTargetRepo{}
-	tr.upsertFn = func(ctx context.Context, projectID, name, kind, locator string) (port.Target, error) {
+	tr.upsertFn = func(ctx context.Context, projectID, name, kind, locator, owner string) (port.Target, error) {
 		return port.Target{ID: projectID, ProjectID: projectID, Name: name, Kind: kind}, nil
 	}
 	return tr
@@ -923,7 +931,7 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 		return nil
 	}
 
-	fr.listByProjectFn = func(ctx context.Context, projectID string, severities, states, kinds []string, limit, offset int32) ([]port.Finding, error) {
+	fr.listByProjectFn = func(ctx context.Context, projectID string, severities, states, kinds, environments, targets []string, limit, offset int32) ([]port.Finding, error) {
 		return []port.Finding{makeFinding(1)}, nil
 	}
 
@@ -1618,7 +1626,7 @@ func TestListFindings_Success(t *testing.T) {
 	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
-	fr.listByProjectFn = func(ctx context.Context, projectID string, severities, states, kinds []string, limit, offset int32) ([]port.Finding, error) {
+	fr.listByProjectFn = func(ctx context.Context, projectID string, severities, states, kinds, environments, targets []string, limit, offset int32) ([]port.Finding, error) {
 		return []port.Finding{makeFindingRow(1), makeFindingRow(2)}, nil
 	}
 
@@ -1626,7 +1634,7 @@ func TestListFindings_Success(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, Findings: fr},
 	})
 
-	findings, err := uc.ListFindings(context.Background(), "my-app", nil, nil, nil, 20, 0)
+	findings, err := uc.ListFindings(context.Background(), "my-app", FindingFilter{}, 20, 0)
 	require.NoError(t, err)
 	assert.Len(t, findings, 2)
 }
@@ -1641,7 +1649,7 @@ func TestListFindings_ProjectNotFound(t *testing.T) {
 		Stores: &port.Stores{Projects: pr},
 	})
 
-	_, err := uc.ListFindings(context.Background(), "nonexistent", nil, nil, nil, 20, 0)
+	_, err := uc.ListFindings(context.Background(), "nonexistent", FindingFilter{}, 20, 0)
 	assert.ErrorContains(t, err, "lookup project")
 }
 

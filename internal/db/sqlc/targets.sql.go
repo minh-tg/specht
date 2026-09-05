@@ -14,7 +14,7 @@ import (
 const deleteTarget = `-- name: DeleteTarget :one
 DELETE FROM targets
 WHERE id = $1 AND project_id = $2
-RETURNING id, project_id, name, kind, locator, created_at
+RETURNING id, project_id, name, kind, locator, created_at, owner
 `
 
 type DeleteTargetParams struct {
@@ -32,12 +32,13 @@ func (q *Queries) DeleteTarget(ctx context.Context, arg DeleteTargetParams) (Tar
 		&i.Kind,
 		&i.Locator,
 		&i.CreatedAt,
+		&i.Owner,
 	)
 	return i, err
 }
 
 const getTarget = `-- name: GetTarget :one
-SELECT id, project_id, name, kind, locator, created_at FROM targets
+SELECT id, project_id, name, kind, locator, created_at, owner FROM targets
 WHERE id = $1 AND project_id = $2
 LIMIT 1
 `
@@ -57,12 +58,13 @@ func (q *Queries) GetTarget(ctx context.Context, arg GetTargetParams) (Target, e
 		&i.Kind,
 		&i.Locator,
 		&i.CreatedAt,
+		&i.Owner,
 	)
 	return i, err
 }
 
 const listTargets = `-- name: ListTargets :many
-SELECT id, project_id, name, kind, locator, created_at FROM targets
+SELECT id, project_id, name, kind, locator, created_at, owner FROM targets
 WHERE project_id = $1
 ORDER BY name
 `
@@ -83,6 +85,7 @@ func (q *Queries) ListTargets(ctx context.Context, projectID pgtype.UUID) ([]Tar
 			&i.Kind,
 			&i.Locator,
 			&i.CreatedAt,
+			&i.Owner,
 		); err != nil {
 			return nil, err
 		}
@@ -95,13 +98,14 @@ func (q *Queries) ListTargets(ctx context.Context, projectID pgtype.UUID) ([]Tar
 }
 
 const upsertTarget = `-- name: UpsertTarget :one
-INSERT INTO targets (project_id, name, kind, locator)
-VALUES ($1, $2, $3, $4)
+INSERT INTO targets (project_id, name, kind, locator, owner)
+VALUES ($1, $2, $3, $4, NULLIF($5::text, ''))
 ON CONFLICT (project_id, name)
 DO UPDATE SET
     kind = EXCLUDED.kind,
-    locator = EXCLUDED.locator
-RETURNING id, project_id, name, kind, locator, created_at
+    locator = EXCLUDED.locator,
+    owner = COALESCE(EXCLUDED.owner, targets.owner)
+RETURNING id, project_id, name, kind, locator, created_at, owner
 `
 
 type UpsertTargetParams struct {
@@ -109,6 +113,7 @@ type UpsertTargetParams struct {
 	Name      string      `json:"name"`
 	Kind      string      `json:"kind"`
 	Locator   pgtype.Text `json:"locator"`
+	Column5   string      `json:"column_5"`
 }
 
 func (q *Queries) UpsertTarget(ctx context.Context, arg UpsertTargetParams) (Target, error) {
@@ -117,6 +122,7 @@ func (q *Queries) UpsertTarget(ctx context.Context, arg UpsertTargetParams) (Tar
 		arg.Name,
 		arg.Kind,
 		arg.Locator,
+		arg.Column5,
 	)
 	var i Target
 	err := row.Scan(
@@ -126,6 +132,7 @@ func (q *Queries) UpsertTarget(ctx context.Context, arg UpsertTargetParams) (Tar
 		&i.Kind,
 		&i.Locator,
 		&i.CreatedAt,
+		&i.Owner,
 	)
 	return i, err
 }

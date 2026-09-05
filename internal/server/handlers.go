@@ -86,7 +86,7 @@ type (
 	}
 
 	FindingUsecases interface {
-		ListFindings(ctx context.Context, projectSlug string, severities, states, kinds []string, limit, offset int32) ([]usecase.FindingResponse, error)
+		ListFindings(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error)
 		GetFinding(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
 		TriageFinding(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
 		BulkTriage(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
@@ -250,18 +250,24 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 	limit := parseIntParam(r, "limit", 20)
 	offset := parseIntParam(r, "offset", 0)
 
-	var severities, states, kinds []string
+	var filter usecase.FindingFilter
 	if s := r.URL.Query().Get("severity"); s != "" {
-		severities = strings.Split(s, ",")
+		filter.Severities = strings.Split(s, ",")
 	}
 	if s := r.URL.Query().Get("status"); s != "" {
-		states = strings.Split(s, ",")
+		filter.States = strings.Split(s, ",")
 	}
 	if s := r.URL.Query().Get("kind"); s != "" {
-		kinds = strings.Split(s, ",")
+		filter.Kinds = strings.Split(s, ",")
+	}
+	if s := r.URL.Query().Get("environment"); s != "" {
+		filter.Environments = strings.Split(s, ",")
+	}
+	if s := r.URL.Query().Get("target"); s != "" {
+		filter.Targets = strings.Split(s, ",")
 	}
 
-	findings, err := h.usecase.ListFindings(r.Context(), slug, severities, states, kinds, limit, offset)
+	findings, err := h.usecase.ListFindings(r.Context(), slug, filter, limit, offset)
 	if err != nil {
 		log.Printf("list findings: %v", err)
 		respondError(w, http.StatusNotFound, "not_found", "project not found")

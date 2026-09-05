@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -36,6 +37,20 @@ type FindingResponse struct {
 	LastSeenAt      time.Time `json:"last_seen_at"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+	// Context is the latest observed deployment context. Nil when the
+	// finding has no linked scan occurrence — missing context is explicit.
+	Context *FindingContextResponse `json:"context,omitempty"`
+}
+
+// FindingContextResponse carries the human-readable deployment context of
+// a finding's latest observation for detail views and routing.
+type FindingContextResponse struct {
+	TargetName      string `json:"target_name,omitempty"`
+	TargetKind      string `json:"target_kind,omitempty"`
+	TargetOwner     string `json:"target_owner,omitempty"`
+	EnvironmentName string `json:"environment_name,omitempty"`
+	Branch          string `json:"branch,omitempty"`
+	CommitSha       string `json:"commit_sha,omitempty"`
 }
 
 // ReportResponse is the API representation of an ingested report.
@@ -175,13 +190,24 @@ func (u *Usecases) GetProject(ctx context.Context, slug string) (*ProjectRespons
 	return &resp, nil
 }
 
-func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, severities, states, kinds []string, limit, offset int32) ([]FindingResponse, error) {
+// FindingFilter scopes a finding list. All fields are optional; empty means
+// unfiltered. Environments and Targets match by name against the
+// environments/targets linked to a finding's observations.
+type FindingFilter struct {
+	Severities   []string
+	States       []string
+	Kinds        []string
+	Environments []string
+	Targets      []string
+}
+
+func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, filter FindingFilter, limit, offset int32) ([]FindingResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 
-	findings, err := u.deps.Stores.Findings.ListByProject(ctx, project.ID, severities, states, kinds, limit, offset)
+	findings, err := u.deps.Stores.Findings.ListByProject(ctx, project.ID, filter.Severities, filter.States, filter.Kinds, filter.Environments, filter.Targets, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list findings: %w", err)
 	}
@@ -206,6 +232,20 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 		return nil, err
 	}
 	resp := toFinding(f)
+	dc, err := u.deps.Stores.Findings.GetFindingDisplayContext(ctx, id.String())
+	if err != nil && !errors.Is(err, port.ErrNotFound) {
+		return nil, fmt.Errorf("get finding context: %w", err)
+	}
+	if err == nil {
+		resp.Context = &FindingContextResponse{
+			TargetName:      dc.TargetName,
+			TargetKind:      dc.TargetKind,
+			TargetOwner:     dc.TargetOwner,
+			EnvironmentName: dc.EnvironmentName,
+			Branch:          dc.Branch,
+			CommitSha:       dc.CommitSha,
+		}
+	}
 	return &resp, nil
 }
 

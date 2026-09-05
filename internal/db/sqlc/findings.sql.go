@@ -449,6 +449,41 @@ func (q *Queries) GetFindingContext(ctx context.Context, findingID pgtype.UUID) 
 	return i, err
 }
 
+const getFindingDisplayContext = `-- name: GetFindingDisplayContext :one
+SELECT t.name AS target_name, t.kind AS target_kind, t.owner AS target_owner,
+    e.name AS environment_name, r.branch AS branch, r.commit_sha AS commit_sha
+FROM finding_occurrences fo
+JOIN reports r ON fo.report_id = r.id
+LEFT JOIN targets t ON r.target_id = t.id
+LEFT JOIN environments e ON r.environment_id = e.id
+WHERE fo.finding_id = $1
+ORDER BY fo.observed_at DESC
+LIMIT 1
+`
+
+type GetFindingDisplayContextRow struct {
+	TargetName      pgtype.Text `json:"target_name"`
+	TargetKind      pgtype.Text `json:"target_kind"`
+	TargetOwner     pgtype.Text `json:"target_owner"`
+	EnvironmentName pgtype.Text `json:"environment_name"`
+	Branch          pgtype.Text `json:"branch"`
+	CommitSha       pgtype.Text `json:"commit_sha"`
+}
+
+func (q *Queries) GetFindingDisplayContext(ctx context.Context, findingID pgtype.UUID) (GetFindingDisplayContextRow, error) {
+	row := q.db.QueryRow(ctx, getFindingDisplayContext, findingID)
+	var i GetFindingDisplayContextRow
+	err := row.Scan(
+		&i.TargetName,
+		&i.TargetKind,
+		&i.TargetOwner,
+		&i.EnvironmentName,
+		&i.Branch,
+		&i.CommitSha,
+	)
+	return i, err
+}
+
 const hasDimension = `-- name: HasDimension :one
 SELECT EXISTS (
     SELECT 1 FROM finding_dimensions
@@ -570,13 +605,23 @@ func (q *Queries) ListFindingsByIDs(ctx context.Context, dollar_1 []pgtype.UUID)
 }
 
 const listFindingsByProject = `-- name: ListFindingsByProject :many
-SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version FROM findings
-WHERE project_id = $1
-  AND (array_length($2::text[], 1) IS NULL OR current_severity = ANY($2))
-  AND (array_length($3::text[], 1) IS NULL OR state = ANY($3))
-  AND (array_length($4::text[], 1) IS NULL OR finding_kind = ANY($4))
-ORDER BY current_severity_rank DESC, created_at DESC
-LIMIT $5 OFFSET $6
+SELECT f.id, f.project_id, f.finding_kind, f.fingerprint, f.current_title, f.current_severity, f.current_severity_rank, f.current_score, f.state, f.triage_status, f.assignee_id, f.first_seen_at, f.last_seen_at, f.fixed_at, f.created_at, f.updated_at, f.analysis_state, f.gate_effect, f.analysis_expires_at, f.analysis_reason, f.analysis_source, f.analysis_updated_at, f.analysis_updated_by, f.manual_override, f.review_required, f.fingerprint_version FROM findings f
+WHERE f.project_id = $1
+  AND (array_length($2::text[], 1) IS NULL OR f.current_severity = ANY($2))
+  AND (array_length($3::text[], 1) IS NULL OR f.state = ANY($3))
+  AND (array_length($4::text[], 1) IS NULL OR f.finding_kind = ANY($4))
+  AND (array_length($5::text[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM finding_occurrences fo
+    JOIN reports r ON fo.report_id = r.id
+    JOIN environments e ON r.environment_id = e.id
+    WHERE fo.finding_id = f.id AND e.name = ANY($5)))
+  AND (array_length($6::text[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM finding_occurrences fo
+    JOIN reports r ON fo.report_id = r.id
+    JOIN targets t ON r.target_id = t.id
+    WHERE fo.finding_id = f.id AND t.name = ANY($6)))
+ORDER BY f.current_severity_rank DESC, f.created_at DESC
+LIMIT $7 OFFSET $8
 `
 
 type ListFindingsByProjectParams struct {
@@ -584,6 +629,8 @@ type ListFindingsByProjectParams struct {
 	Column2   []string    `json:"column_2"`
 	Column3   []string    `json:"column_3"`
 	Column4   []string    `json:"column_4"`
+	Column5   []string    `json:"column_5"`
+	Column6   []string    `json:"column_6"`
 	Limit     int32       `json:"limit"`
 	Offset    int32       `json:"offset"`
 }
@@ -594,6 +641,8 @@ func (q *Queries) ListFindingsByProject(ctx context.Context, arg ListFindingsByP
 		arg.Column2,
 		arg.Column3,
 		arg.Column4,
+		arg.Column5,
+		arg.Column6,
 		arg.Limit,
 		arg.Offset,
 	)

@@ -192,12 +192,12 @@ func (r *pgFindingPort) ListByIDs(ctx context.Context, ids []string) ([]port.Fin
 	return out, nil
 }
 
-func (r *pgFindingPort) ListByProject(ctx context.Context, projectID string, severities, states, kinds []string, limit, offset int32) ([]port.Finding, error) {
+func (r *pgFindingPort) ListByProject(ctx context.Context, projectID string, severities, states, kinds, environments, targets []string, limit, offset int32) ([]port.Finding, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.inner.ListByProject(ctx, pid, severities, states, kinds, limit, offset)
+	rows, err := r.inner.ListByProject(ctx, pid, severities, states, kinds, environments, targets, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -374,6 +374,25 @@ func (r *pgFindingPort) GetFindingContext(ctx context.Context, findingID string)
 		EnvironmentID: toUUID(row.EnvironmentID),
 		TargetID:      toUUID(row.TargetID),
 		ArtifactID:    toUUID(row.ArtifactID),
+	}, nil
+}
+
+func (r *pgFindingPort) GetFindingDisplayContext(ctx context.Context, findingID string) (port.FindingDisplayContext, error) {
+	fid, err := parseID(findingID)
+	if err != nil {
+		return port.FindingDisplayContext{}, err
+	}
+	row, err := r.inner.GetFindingDisplayContext(ctx, fid)
+	if err != nil {
+		return port.FindingDisplayContext{}, mappingErr(err)
+	}
+	return port.FindingDisplayContext{
+		TargetName:      strVal(row.TargetName),
+		TargetKind:      strVal(row.TargetKind),
+		TargetOwner:     strVal(row.TargetOwner),
+		EnvironmentName: strVal(row.EnvironmentName),
+		Branch:          strVal(row.Branch),
+		CommitSha:       strVal(row.CommitSha),
 	}, nil
 }
 

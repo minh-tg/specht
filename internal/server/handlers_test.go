@@ -24,7 +24,7 @@ type mockUsecases struct {
 	createProjectFn      func(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error)
 	listProjectsFn       func(ctx context.Context) ([]usecase.ProjectResponse, error)
 	getProjectFn         func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
-	listFindingsFn       func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error)
+	listFindingsFn       func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error)
 	listReportsFn        func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
 	getReportFn          func(ctx context.Context, reportID string) (*usecase.ReportResponse, error)
 	ingestReportFn       func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
@@ -85,11 +85,11 @@ func (m *mockUsecases) GetProject(ctx context.Context, slug string) (*usecase.Pr
 	return m.getProjectFn(ctx, slug)
 }
 
-func (m *mockUsecases) ListFindings(ctx context.Context, projectSlug string, severities, states, kinds []string, limit, offset int32) ([]usecase.FindingResponse, error) {
+func (m *mockUsecases) ListFindings(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
 	if m.listFindingsFn == nil {
 		return nil, fmt.Errorf("unexpected call to ListFindings")
 	}
-	return m.listFindingsFn(ctx, projectSlug, severities, states, limit, offset)
+	return m.listFindingsFn(ctx, projectSlug, filter, limit, offset)
 }
 
 func (m *mockUsecases) GetFinding(ctx context.Context, findingID string) (*usecase.FindingResponse, error) {
@@ -670,7 +670,7 @@ func TestCreateProject_MissingFields(t *testing.T) {
 
 func TestListFindings_Success(t *testing.T) {
 	mock := &mockUsecases{
-		listFindingsFn: func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error) {
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
 			assert.Equal(t, "my-app", projectSlug)
 			assert.Equal(t, int32(20), limit)
 			assert.Equal(t, int32(0), offset)
@@ -692,16 +692,18 @@ func TestListFindings_Success(t *testing.T) {
 
 func TestListFindings_WithFilters(t *testing.T) {
 	mock := &mockUsecases{
-		listFindingsFn: func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error) {
-			assert.Equal(t, []string{"high", "critical"}, severities)
-			assert.Equal(t, []string{"open"}, states)
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
+			assert.Equal(t, []string{"high", "critical"}, filter.Severities)
+			assert.Equal(t, []string{"open"}, filter.States)
+			assert.Equal(t, []string{"production"}, filter.Environments)
+			assert.Equal(t, []string{"web"}, filter.Targets)
 			assert.Equal(t, int32(50), limit)
 			assert.Equal(t, int32(10), offset)
 			return sampleFindings(), nil
 		},
 	}
 	router := testRouter(mock)
-	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings?severity=high,critical&status=open&limit=50&offset=10", nil)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings?severity=high,critical&status=open&environment=production&target=web&limit=50&offset=10", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -710,7 +712,7 @@ func TestListFindings_WithFilters(t *testing.T) {
 
 func TestListFindings_NotFound(t *testing.T) {
 	mock := &mockUsecases{
-		listFindingsFn: func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error) {
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
 			return nil, fmt.Errorf("not found")
 		},
 	}
@@ -880,7 +882,7 @@ func TestNewRouterRoutes(t *testing.T) {
 	mock := &mockUsecases{
 		listProjectsFn: func(ctx context.Context) ([]usecase.ProjectResponse, error) { return nil, nil },
 		getProjectFn:   func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) { return nil, nil },
-		listFindingsFn: func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error) {
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
 			return nil, nil
 		},
 		listReportsFn: func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error) {
@@ -2013,7 +2015,7 @@ func TestListFindings_APIKeyAllowed(t *testing.T) {
 		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
 			return &usecase.ProjectResponse{ID: projectID, Slug: slug}, nil
 		},
-		listFindingsFn: func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error) {
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
 			return sampleFindings(), nil
 		},
 	}

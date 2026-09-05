@@ -279,7 +279,7 @@ func environmentToPort(e sqlc.Environment) port.Environment {
 // pgTargetPort adapts TargetStore.
 type pgTargetPort struct{ q *sqlc.Queries }
 
-func (r *pgTargetPort) Upsert(ctx context.Context, projectID, name, kind, locator string) (port.Target, error) {
+func (r *pgTargetPort) Upsert(ctx context.Context, projectID, name, kind, locator, owner string) (port.Target, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
 		return port.Target{}, err
@@ -289,6 +289,7 @@ func (r *pgTargetPort) Upsert(ctx context.Context, projectID, name, kind, locato
 		Name:      name,
 		Kind:      kind,
 		Locator:   textPtrFromString(&locator),
+		Column5:   owner,
 	})
 	if err != nil {
 		return port.Target{}, err
@@ -351,6 +352,7 @@ func targetToPort(t sqlc.Target) port.Target {
 		Name:      t.Name,
 		Kind:      t.Kind,
 		Locator:   stringFromTextPtr(t.Locator),
+		Owner:     stringFromTextPtr(t.Owner),
 		CreatedAt: t.CreatedAt.Time,
 	}
 }

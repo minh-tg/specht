@@ -194,7 +194,7 @@ type FindingRepo interface {
 	PersistWatcherSkipEvent(ctx context.Context, arg sqlc.CreateFindingEventParams) error
 	CreateOccurrence(ctx context.Context, arg CreateOccurrenceParams) (sqlc.FindingOccurrence, error)
 	UpsertDimension(ctx context.Context, arg UpsertDimensionParams) (sqlc.FindingDimension, error)
-	ListByProject(ctx context.Context, projectID pgtype.UUID, severities, states, kinds []string, limit, offset int32) ([]sqlc.Finding, error)
+	ListByProject(ctx context.Context, projectID pgtype.UUID, severities, states, kinds, environments, targets []string, limit, offset int32) ([]sqlc.Finding, error)
 	GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error)
 	GetByFingerprint(ctx context.Context, arg GetByFingerprintParams) (sqlc.Finding, error)
 	ListByIDs(ctx context.Context, ids []pgtype.UUID) ([]sqlc.Finding, error)
@@ -208,5 +208,6 @@ type FindingRepo interface {
 	ListEvents(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error)
 	HasDimension(ctx context.Context, findingID pgtype.UUID, key string) (bool, error)
 	GetFindingContext(ctx context.Context, findingID pgtype.UUID) (FindingContext, error)
+	GetFindingDisplayContext(ctx context.Context, findingID pgtype.UUID) (sqlc.GetFindingDisplayContextRow, error)
 	FindScaFindingIdForPurlAndCve(ctx context.Context, projectID pgtype.UUID, purlName string, candidateIDs []string) (pgtype.UUID, error)
 }

@@ -1,10 +1,11 @@
 -- name: UpsertTarget :one
-INSERT INTO targets (project_id, name, kind, locator)
-VALUES ($1, $2, $3, $4)
+INSERT INTO targets (project_id, name, kind, locator, owner)
+VALUES ($1, $2, $3, $4, NULLIF($5::text, ''))
 ON CONFLICT (project_id, name)
 DO UPDATE SET
     kind = EXCLUDED.kind,
-    locator = EXCLUDED.locator
+    locator = EXCLUDED.locator,
+    owner = COALESCE(EXCLUDED.owner, targets.owner)
 RETURNING *;
 
 -- name: ListTargets :many

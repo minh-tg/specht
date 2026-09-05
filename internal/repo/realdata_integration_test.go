@@ -20,6 +20,7 @@ import (
 
 	"github.com/xMinhx/specht/internal/db"
 	"github.com/xMinhx/specht/internal/parser"
+	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/scanner"
 	"github.com/xMinhx/specht/internal/usecase"
 )
@@ -99,10 +100,102 @@ func TestRealDataDoubleIngest_Idempotent(t *testing.T) {
 
 	project, err := stores.Projects.GetBySlug(ctx, "my-app")
 	require.NoError(t, err)
-	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, 100, 0)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, nil, nil, 100, 0)
 	require.NoError(t, err)
 	require.Len(t, findings, 4, "re-ingest must not duplicate finding rows")
 	for _, f := range findings {
 		assert.Equal(t, "open", f.State, "ingest must never move finding state")
 	}
+}
+
+func TestRealDataContext_EndToEnd(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	stores := NewPortStores(pool)
+	reg := scanner.NewRegistry()
+	for _, s := range parser.Builtins() {
+		require.NoError(t, reg.Register(s))
+	}
+	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
+
+	_, err := uc.CreateProject(ctx, "My App", "my-app", "validation")
+	require.NoError(t, err)
+
+	raw1, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
+	require.NoError(t, err)
+
+	ingest := func(raw []byte, branch, commit, owner string) {
+		t.Helper()
+		_, err := uc.IngestReport(ctx, usecase.IngestReportInput{
+			ProjectSlug: "my-app", Scanner: "trivy", RawData: raw,
+			Branch: branch, CommitSha: commit,
+			Environment: "production", Owner: owner,
+		})
+		require.NoError(t, err)
+	}
+	targetOwner := func() string {
+		t.Helper()
+		targets, err := stores.Targets.List(ctx, mustProjectID(t, ctx, stores))
+		require.NoError(t, err)
+		require.Len(t, targets, 1)
+		if targets[0].Owner == nil {
+			return ""
+		}
+		return *targets[0].Owner
+	}
+
+	ingest(raw1, "main", "aaa", "team-a")
+	require.Equal(t, "team-a", targetOwner())
+
+	// Same findings on another branch with no owner: rows must not fork
+	// and the stored owner must be preserved, not cleared.
+	raw2 := append(append([]byte{}, raw1...), '\n')
+	ingest(raw2, "feature", "bbb", "")
+	require.Equal(t, "team-a", targetOwner(), "absent owner must preserve the stored value")
+
+	// A supplied owner overwrites (last supplied wins).
+	raw3 := append(append([]byte{}, raw1...), '\n', '\n')
+	ingest(raw3, "feature", "ccc", "team-b")
+	require.Equal(t, "team-b", targetOwner())
+
+	project, err := stores.Projects.GetBySlug(ctx, "my-app")
+	require.NoError(t, err)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, nil, nil, 100, 0)
+	require.NoError(t, err)
+	require.Len(t, findings, 4, "context changes must not fork finding rows")
+
+	// Detail exposes the latest observed context.
+	detail, err := uc.GetFinding(ctx, findings[0].ID)
+	require.NoError(t, err)
+	require.NotNil(t, detail.Context)
+	assert.NotEmpty(t, detail.Context.TargetName)
+	assert.Equal(t, "production", detail.Context.EnvironmentName)
+	assert.Equal(t, "feature", detail.Context.Branch)
+	assert.Equal(t, "ccc", detail.Context.CommitSha)
+	assert.Equal(t, "team-b", detail.Context.TargetOwner)
+
+	// Name filters match against linked observations.
+	targets, err := stores.Targets.List(ctx, project.ID)
+	require.NoError(t, err)
+	prod, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, []string{"production"}, nil, 100, 0)
+	require.NoError(t, err)
+	assert.Len(t, prod, 4)
+	staging, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, []string{"staging"}, nil, 100, 0)
+	require.NoError(t, err)
+	assert.Empty(t, staging)
+	byTarget, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, nil, []string{targets[0].Name}, 100, 0)
+	require.NoError(t, err)
+	assert.Len(t, byTarget, 4)
+	byMissing, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, nil, []string{"does-not-exist"}, 100, 0)
+	require.NoError(t, err)
+	assert.Empty(t, byMissing)
+}
+
+func mustProjectID(t *testing.T, ctx context.Context, stores *port.Stores) string {
+	t.Helper()
+	project, err := stores.Projects.GetBySlug(ctx, "my-app")
+	require.NoError(t, err)
+	return project.ID
 }
