@@ -18,7 +18,6 @@ type mockClient struct {
 	waiver     *client.Waiver
 	waiverDet  *client.WaiverDetail
 	events     []client.WaiverEvent
-	matched    bool
 	assessment *client.ReachabilityAssessment
 	watcher    *client.WatcherStatus
 	err        error

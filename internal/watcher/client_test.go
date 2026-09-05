@@ -153,7 +153,7 @@ func TestQueryBatch_OKParsesAndCapturesRawBytes(t *testing.T) {
 	if len(a.Severity) != 1 || a.Severity[0].Score == "" {
 		t.Errorf("severity = %+v, want populated from full record", a.Severity)
 	}
-	if a.Raw == nil || len(a.Raw) == 0 {
+	if len(a.Raw) == 0 {
 		t.Fatal("Raw advisory bytes not captured")
 	}
 	// Raw must be byte-exact upstream JSON (from the full GET record),

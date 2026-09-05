@@ -202,14 +202,7 @@ func BuildSlackPayload(notifications []Notification) ([]byte, error) {
 		Attachments: make([]slackAttachment, 0, len(notifications)),
 	}
 	for _, n := range notifications {
-		payload.Attachments = append(payload.Attachments, slackAttachment{
-			Title:    n.Title,
-			CVE:      n.CVE,
-			Package:  n.Package,
-			Project:  n.Project,
-			Severity: n.Severity,
-			Link:     n.Link,
-		})
+		payload.Attachments = append(payload.Attachments, slackAttachment(n))
 	}
 	b, err := json.Marshal(payload)
 	if err != nil {
