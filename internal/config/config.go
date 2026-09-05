@@ -48,6 +48,8 @@ type Watcher struct {
 	ColdStartWindow time.Duration // zero = full history
 	SlackURL        string
 	SlackSigning    string
+	WebhookURL      string
+	WebhookSigning  string
 	// Staleness window multiplier is applied by the watcher status surface.
 }
 
@@ -110,6 +112,8 @@ func Load() (*Server, error) {
 	}
 	s.Watcher.SlackURL = os.Getenv("WATCHER_SLACK_URL")
 	s.Watcher.SlackSigning = os.Getenv("WATCHER_SLACK_SIGNING_SECRET")
+	s.Watcher.WebhookURL = os.Getenv("WATCHER_WEBHOOK_URL")
+	s.Watcher.WebhookSigning = os.Getenv("WATCHER_WEBHOOK_SIGNING_SECRET")
 
 	if s.Watcher.Enable && len(watcherErrs) > 0 {
 		return nil, watcherErrs[0]
@@ -149,8 +153,11 @@ func strOr(v, def string) string {
 	return v
 }
 
-// EnvSlackURL/EnvSlackSigningSecret are re-exported for the notifier wiring.
+// EnvSlackURL/EnvSlackSigningSecret/EnvWebhookURL/EnvWebhookSigningSecret
+// are re-exported for the notifier wiring.
 const (
-	EnvSlackURL           = "WATCHER_SLACK_URL"
-	EnvSlackSigningSecret = "WATCHER_SLACK_SIGNING_SECRET"
+	EnvSlackURL             = "WATCHER_SLACK_URL"
+	EnvSlackSigningSecret   = "WATCHER_SLACK_SIGNING_SECRET"
+	EnvWebhookURL           = "WATCHER_WEBHOOK_URL"
+	EnvWebhookSigningSecret = "WATCHER_WEBHOOK_SIGNING_SECRET"
 )

@@ -11,17 +11,14 @@
 package watcher
 
 import (
-	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
-	"strings"
 	"time"
 )
 
@@ -135,50 +132,8 @@ func (n *SlackNotifier) Notify(ctx context.Context, notifications []Notification
 		return nil
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, n.webhookURL, bytes.NewReader(body))
-	if err != nil {
-		n.logger.Error("slack request build failed", "error", err)
-		return nil
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if n.secret != "" {
-		req.Header.Set(SlackSignatureHeader, SignSlackBody(body, n.secret))
-	}
-
-	backoff := notifierBaseBackoff
-	for attempt := 1; attempt <= notifierMaxAttempts; attempt++ {
-		resp, err := n.client.Do(req)
-		switch {
-		case err == nil && resp.StatusCode >= 200 && resp.StatusCode < 300:
-			io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
-			n.logger.Info("slack notification delivered", "attempt", attempt, "count", len(notifications))
-			return nil
-		case err == nil:
-			// Non-2xx: drain a little for diagnostics then retry.
-			drain := io.LimitReader(resp.Body, 1024)
-			msg, _ := io.ReadAll(drain)
-			resp.Body.Close()
-			n.logger.Warn("slack notification rejected",
-				"attempt", attempt, "status", resp.StatusCode, "body", strings.TrimSpace(string(msg)))
-		default:
-			n.logger.Warn("slack notification transport error",
-				"attempt", attempt, "error", err)
-		}
-		if attempt < notifierMaxAttempts {
-			if err := n.sleeper(ctx, backoff); err != nil {
-				// Context cancelled mid-retry: shut down quietly, never
-				// fail the caller.
-				n.logger.Warn("slack notification aborted", "error", err)
-				return nil
-			}
-			backoff *= 2
-		}
-	}
-
-	n.logger.Error("slack notification failed after retries",
-		"attempts", notifierMaxAttempts, "count", len(notifications))
-	return nil // silent failure: the poll must not see this
+	postNotifications(ctx, n.logger, n.client, n.sleeper, "slack", n.webhookURL, n.secret, body, len(notifications))
+	return nil
 }
 
 // BuildSlackPayload renders the batch as the Slack message envelope:

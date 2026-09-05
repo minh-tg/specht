@@ -207,14 +207,24 @@ func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Serv
 		watcherSince = time.Now().UTC().Add(-cfg.Watcher.ColdStartWindow)
 	}
 
-	// Notification channel: NewSlackNotifier returns a no-op when no webhook
-	// URL is configured, so an unconfigured deployment never sends and never
-	// blocks the poll.
-	watcherNotifier := watcher.NewSlackNotifier(
-		os.Getenv(watcher.EnvSlackURL),
-		os.Getenv(watcher.EnvSlackSigningSecret),
-		slog.Default(),
-	)
+	// Notification channels: each configured channel delivers every batch;
+	// no channel configured leaves a nil Notifier, which the daemon treats
+	// as a no-op. Failures never propagate by Notifier contract.
+	var watcherNotifier watcher.Notifier
+	var channels []watcher.Notifier
+	if slackURL := os.Getenv(watcher.EnvSlackURL); slackURL != "" {
+		channels = append(channels, watcher.NewSlackNotifier(
+			slackURL, os.Getenv(watcher.EnvSlackSigningSecret), slog.Default()))
+	}
+	if webhookURL := os.Getenv(watcher.EnvWebhookURL); webhookURL != "" {
+		channels = append(channels, watcher.NewWebhookNotifier(
+			webhookURL, os.Getenv(watcher.EnvWebhookSigningSecret), slog.Default()))
+	}
+	if len(channels) == 1 {
+		watcherNotifier = channels[0]
+	} else if len(channels) > 1 {
+		watcherNotifier = watcher.NewFanoutNotifier(channels...)
+	}
 
 	projects, err := stores.Projects.List(ctx)
 	if err != nil {
