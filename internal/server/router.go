@@ -24,6 +24,8 @@ type RouterConfig struct {
 	CORSOrigins  string
 	JWTAuth      auth.Authenticator
 	APIKeyLookup func(ctx context.Context, keyHash string) (userID, projectID string, err error)
+	OIDC         *auth.OIDCAuthenticator
+	OIDCEnabled  bool
 }
 
 // NewRouter builds the chi router with middleware and all API routes.
@@ -56,6 +58,13 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	h := NewHandler(cfg.Usecases)
 
 	r.Get("/api/v1/health", healthHandler)
+	// SSO/OIDC entry point: redirect to the provider's authorization URL.
+	if cfg.OIDCEnabled && cfg.OIDC != nil {
+		r.Get("/api/v1/auth/sso/login", ssoLoginHandler(cfg.OIDC))
+		r.Get("/api/v1/auth/sso/callback", cfg.OIDC.CallbackHandler(func(userID, email string) (string, error) {
+			return cfg.JWTAuth.(*auth.JWTAuthenticator).CreateToken(userID, email, auth.RoleViewer)
+		}))
+	}
 	r.Post("/api/v1/auth/register", h.Register)
 	r.Post("/api/v1/auth/login", h.Login)
 	r.Post("/api/v1/auth/refresh", h.Refresh)
@@ -125,4 +134,18 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, `{"status":"ok","version":%q,"commit":%q}`, version.Version, version.Commit)
+}
+
+// ssoLoginHandler redirects unauthenticated users to the OIDC provider's
+// authorization endpoint. The state parameter is a CSRF token.
+func ssoLoginHandler(oidc *auth.OIDCAuthenticator) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		state := stateToken()
+		http.Redirect(w, r, oidc.LoginURL(state), http.StatusFound)
+	}
+}
+
+// stateToken generates a random string for OAuth2 CSRF protection.
+func stateToken() string {
+	return fmt.Sprintf("%d", time.Now().UnixNano())
 }

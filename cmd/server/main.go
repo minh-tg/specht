@@ -95,6 +95,8 @@ func main() {
 			}
 			return actorID, uuid.UUID(key.ProjectID.Bytes).String(), nil
 		},
+		OIDCEnabled: cfg.SSO.Enabled,
+		OIDC:        auth.NewOIDCAuthenticator(auth.OIDCConfig{ClientID: cfg.SSO.ClientID, ClientSecret: cfg.SSO.ClientSecret, IssuerURL: cfg.SSO.IssuerURL, RedirectURI: cfg.SSO.RedirectURI}, nil),
 	})
 
 	srv := &http.Server{

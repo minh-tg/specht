@@ -33,10 +33,20 @@ type Server struct {
 	JWTSecret    string
 	LogLevel     string
 	InventoryTTL time.Duration
+	SSO          SSOConfig
 	// Watcher settings. Enable is the master switch; the remaining fields are
 	// only validated when Enable is true (a malformed optional setting must
 	// not crash a server with the watcher disabled).
 	Watcher Watcher
+}
+
+// SSOConfig configures OIDC single-sign-on login.
+type SSOConfig struct {
+	Enabled      bool
+	ClientID     string
+	ClientSecret string
+	IssuerURL    string
+	RedirectURI  string
 }
 
 // Watcher is the resolved CVE watcher configuration.
@@ -65,6 +75,15 @@ func Load() (*Server, error) {
 		JWTSecret:    os.Getenv("JWT_SECRET"),
 		LogLevel:     strOr(os.Getenv("LOG_LEVEL"), "info"),
 		InventoryTTL: DefaultInventoryTTL,
+	}
+
+	// SSO/OIDC configuration — omitted means SSO is disabled.
+	s.SSO = SSOConfig{
+		Enabled:      os.Getenv("SSO_ENABLE") == "true",
+		ClientID:     os.Getenv("SSO_CLIENT_ID"),
+		ClientSecret: os.Getenv("SSO_CLIENT_SECRET"),
+		IssuerURL:    os.Getenv("SSO_ISSUER_URL"),
+		RedirectURI:  os.Getenv("SSO_REDIRECT_URI"),
 	}
 
 	if v := os.Getenv("INVENTORY_TTL"); v != "" {
