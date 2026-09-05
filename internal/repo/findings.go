@@ -112,6 +112,10 @@ func (r *pgFindingRepo) UpsertDimension(ctx context.Context, arg UpsertDimension
 	})
 }
 
+func (r *pgFindingRepo) ListDimensions(ctx context.Context, findingID pgtype.UUID) ([]sqlc.ListFindingDimensionsRow, error) {
+	return r.q.ListFindingDimensions(ctx, findingID)
+}
+
 // GetByFingerprintParams identifies a finding by project, kind, and fingerprint.
 type GetByFingerprintParams struct {
 	ProjectID   pgtype.UUID

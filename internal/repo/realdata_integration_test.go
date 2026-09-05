@@ -363,3 +363,46 @@ func TestRemediation_EndToEnd(t *testing.T) {
 	assert.NotEmpty(t, detail.Location.Resource)
 	assert.NotEmpty(t, detail.Location.File)
 }
+
+func TestSuggestion_EndToEnd(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	stores := NewPortStores(pool)
+	reg := scanner.NewRegistry()
+	for _, s := range parser.Builtins() {
+		require.NoError(t, reg.Register(s))
+	}
+	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
+
+	_, err := uc.CreateProject(ctx, "My App", "my-app", "validation")
+	require.NoError(t, err)
+
+	raw, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
+	require.NoError(t, err)
+	out, err := uc.IngestReport(ctx, usecase.IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy", RawData: raw,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 4, out.TotalFindings)
+
+	project, err := stores.Projects.GetBySlug(ctx, "my-app")
+	require.NoError(t, err)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, []string{"sca"}, nil, nil, 100, 0)
+	require.NoError(t, err)
+	require.NotEmpty(t, findings)
+
+	var upgraded bool
+	for _, f := range findings {
+		detail, err := uc.GetFinding(ctx, f.ID)
+		require.NoError(t, err)
+		require.NotNil(t, detail.Suggestion)
+		if detail.Suggestion.Confidence == "high" {
+			upgraded = true
+			assert.Equal(t, "upgrade", detail.Suggestion.Action)
+			assert.NotEmpty(t, detail.Suggestion.Target)
+		}
+	}
+	assert.True(t, upgraded, "the curl CVE carries a fixed version and must yield a high upgrade suggestion")
+}

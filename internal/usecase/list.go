@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/xMinhx/specht/internal/port"
+	"github.com/xMinhx/specht/internal/remediate"
 )
 
 // ProjectResponse is the API representation of a project.
@@ -49,6 +50,9 @@ type FindingResponse struct {
 	// Location points at the exact package, rule, resource, file, or URL
 	// when the latest observation supplies one.
 	Location *LocationResponse `json:"location,omitempty"`
+	// Suggestion is the reviewable remediation proposal for this finding,
+	// built from persisted dimensions and source guidance.
+	Suggestion *SuggestionResponse `json:"suggestion,omitempty"`
 }
 
 // FindingContextResponse carries the human-readable deployment context of
@@ -80,6 +84,40 @@ type LocationResponse struct {
 	EndLine   int    `json:"end_line,omitempty"`
 	Resource  string `json:"resource,omitempty"`
 	Summary   string `json:"summary,omitempty"`
+}
+
+// SuggestionResponse is one reviewable remediation proposal.
+type SuggestionResponse struct {
+	Action     string `json:"action"`
+	Target     string `json:"target,omitempty"`
+	Detail     string `json:"detail,omitempty"`
+	Confidence string `json:"confidence"`
+	Source     string `json:"source,omitempty"`
+}
+
+// suggestionFromEvidence builds the remediation suggestion from persisted
+// dimensions plus the assembled remediation section. The fix summary and
+// URL come from source guidance when present (rem.Fallback marks their
+// absence, in which case only dims feed the model).
+func suggestionFromEvidence(f port.Finding, dims []port.FindingDimension, tool string, rem *RemediationResponse) *SuggestionResponse {
+	dimMap := make(map[string]string, len(dims))
+	for _, d := range dims {
+		if _, ok := dimMap[d.Key]; !ok {
+			dimMap[d.Key] = d.Value
+		}
+	}
+	in := remediate.Input{
+		FindingID: f.ID, FindingKind: f.FindingKind, Title: f.CurrentTitle,
+		Dims: dimMap, Tool: tool,
+	}
+	if rem != nil && !rem.Fallback {
+		in.FixSummary, in.FixURL = rem.Summary, rem.URL
+	}
+	s := remediate.Suggest(in)
+	return &SuggestionResponse{
+		Action: s.Action, Target: s.Target, Detail: s.Detail,
+		Confidence: string(s.Confidence), Source: s.Source,
+	}
 }
 
 // ReportResponse is the API representation of an ingested report.
@@ -276,6 +314,11 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 		}
 		resp.Remediation = remediationFromMetadata(dc.Metadata, dc.ToolName, f.FindingKind)
 		resp.Location = locationFromDisplay(dc.LocationSummary, dc.Metadata)
+		dims, err := u.deps.Stores.Findings.ListDimensions(ctx, id.String())
+		if err != nil {
+			return nil, fmt.Errorf("get finding dimensions: %w", err)
+		}
+		resp.Suggestion = suggestionFromEvidence(f, dims, dc.ToolName, resp.Remediation)
 	}
 	return &resp, nil
 }

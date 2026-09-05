@@ -361,6 +361,22 @@ func (r *pgFindingPort) UpsertDimension(ctx context.Context, input port.Dimensio
 	return err
 }
 
+func (r *pgFindingPort) ListDimensions(ctx context.Context, findingID string) ([]port.FindingDimension, error) {
+	fid, err := parseID(findingID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.inner.ListDimensions(ctx, fid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.FindingDimension, len(rows))
+	for i, row := range rows {
+		out[i] = port.FindingDimension{Key: row.DimKey, Value: row.DimValue}
+	}
+	return out, nil
+}
+
 func (r *pgFindingPort) GetFindingContext(ctx context.Context, findingID string) (port.FindingContext, error) {
 	fid, err := parseID(findingID)
 	if err != nil {

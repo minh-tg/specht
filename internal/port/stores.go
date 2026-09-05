@@ -361,6 +361,12 @@ type DimensionInput struct {
 	Source    *string
 }
 
+// FindingDimension is one persisted dimension of a finding.
+type FindingDimension struct {
+	Key   string
+	Value string
+}
+
 // FindingEvent is one finding audit event.
 type FindingEvent struct {
 	ID        string
@@ -413,6 +419,9 @@ type FindingStore interface {
 	HasDimension(ctx context.Context, findingID, key string) (bool, error)
 	CreateOccurrence(ctx context.Context, input OccurrenceInput) (Occurrence, error)
 	UpsertDimension(ctx context.Context, input DimensionInput) error
+	// ListDimensions returns every persisted dimension of a finding,
+	// ordered by key for determinism.
+	ListDimensions(ctx context.Context, findingID string) ([]FindingDimension, error)
 	GetFindingContext(ctx context.Context, findingID string) (FindingContext, error)
 	// GetFindingDisplayContext returns the latest observed deployment
 	// context of a finding for detail views: target, environment, branch,

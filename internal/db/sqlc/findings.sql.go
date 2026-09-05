@@ -511,6 +511,39 @@ func (q *Queries) HasDimension(ctx context.Context, arg HasDimensionParams) (boo
 	return exists, err
 }
 
+const listFindingDimensions = `-- name: ListFindingDimensions :many
+SELECT dim_key, dim_value, source
+FROM finding_dimensions
+WHERE finding_id = $1
+ORDER BY dim_key, dim_value
+`
+
+type ListFindingDimensionsRow struct {
+	DimKey   string      `json:"dim_key"`
+	DimValue string      `json:"dim_value"`
+	Source   pgtype.Text `json:"source"`
+}
+
+func (q *Queries) ListFindingDimensions(ctx context.Context, findingID pgtype.UUID) ([]ListFindingDimensionsRow, error) {
+	rows, err := q.db.Query(ctx, listFindingDimensions, findingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFindingDimensionsRow
+	for rows.Next() {
+		var i ListFindingDimensionsRow
+		if err := rows.Scan(&i.DimKey, &i.DimValue, &i.Source); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFindingEvents = `-- name: ListFindingEvents :many
 SELECT id, finding_id, user_id, event_type, old_value, new_value, comment, changes, created_at FROM finding_events
 WHERE finding_id = $1

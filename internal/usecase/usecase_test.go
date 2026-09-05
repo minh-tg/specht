@@ -87,6 +87,7 @@ type mockFindingRepo struct {
 	upsertDimensionFn      func(context.Context, port.DimensionInput) error
 	listByProjectFn        func(context.Context, string, []string, []string, []string, []string, []string, int32, int32) ([]port.Finding, error)
 	getDisplayContextFn    func(context.Context, string) (port.FindingDisplayContext, error)
+	listDimensionsFn       func(context.Context, string) ([]port.FindingDimension, error)
 	getByFingerprintFn     func(context.Context, string, string, string) (port.Finding, error)
 	getByIDFn              func(context.Context, string) (port.Finding, error)
 	listByIDsFn            func(context.Context, []string) ([]port.Finding, error)
@@ -182,6 +183,13 @@ func (m *mockFindingRepo) GetFindingDisplayContext(ctx context.Context, findingI
 		return port.FindingDisplayContext{}, nil
 	}
 	return m.getDisplayContextFn(ctx, findingID)
+}
+
+func (m *mockFindingRepo) ListDimensions(ctx context.Context, findingID string) ([]port.FindingDimension, error) {
+	if m.listDimensionsFn == nil {
+		return nil, nil
+	}
+	return m.listDimensionsFn(ctx, findingID)
 }
 
 func (m *mockFindingRepo) GetByFingerprint(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {

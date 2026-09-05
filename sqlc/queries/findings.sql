@@ -201,6 +201,11 @@ SELECT EXISTS (
     SELECT 1 FROM finding_dimensions
     WHERE finding_id = $1 AND dim_key = $2 AND dim_value != ''
 ) AS exists;
+-- name: ListFindingDimensions :many
+SELECT dim_key, dim_value, source
+FROM finding_dimensions
+WHERE finding_id = $1
+ORDER BY dim_key, dim_value;
 
 -- name: UpsertDimension :one
 INSERT INTO finding_dimensions (

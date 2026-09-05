@@ -245,3 +245,31 @@ func TestGetFinding_RemediationFallback(t *testing.T) {
 	assert.True(t, finding.Remediation.Fallback)
 	assert.Contains(t, finding.Remediation.Summary, "fixed version")
 }
+
+func TestGetFinding_SuggestionFromDims(t *testing.T) {
+	fr := &mockFindingRepo{}
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
+		f := makeFindingRow(1)
+		f.FindingKind = "sca"
+		return f, nil
+	}
+	fr.getDisplayContextFn = func(ctx context.Context, findingID string) (port.FindingDisplayContext, error) {
+		return port.FindingDisplayContext{ToolName: "trivy"}, nil
+	}
+	fr.listDimensionsFn = func(ctx context.Context, findingID string) ([]port.FindingDimension, error) {
+		return []port.FindingDimension{
+			{Key: "package_name", Value: "curl"},
+			{Key: "installed_version", Value: "7.88.1-r0"},
+			{Key: "fixed_version", Value: "7.88.1-r1"},
+		}, nil
+	}
+
+	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
+	finding, err := uc.GetFinding(context.Background(), "00000000-0000-0000-0000-000000000021")
+	require.NoError(t, err)
+	require.NotNil(t, finding.Suggestion)
+	assert.Equal(t, "upgrade", finding.Suggestion.Action)
+	assert.Equal(t, "curl", finding.Suggestion.Target)
+	assert.Equal(t, "high", finding.Suggestion.Confidence)
+	assert.Contains(t, finding.Suggestion.Detail, "7.88.1-r1")
+}
