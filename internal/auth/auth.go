@@ -10,11 +10,21 @@ var (
 	ErrInvalidCredential = errors.New("invalid credential")
 )
 
+// Roles for the RBAC model.
+const (
+	RoleAdmin  = "admin"
+	RoleEditor = "editor"
+	RoleViewer = "viewer"
+)
+
 // Identity is the authenticated principal attached to a request context.
+// Role is populated from the JWT token claim (for session auth) or from the
+// user's global role (for API key auth).
 type Identity struct {
 	UserID    string
 	Email     string
 	ProjectID string
+	Role      string
 	IsAPIKey  bool
 }
 

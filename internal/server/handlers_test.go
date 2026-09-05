@@ -850,7 +850,16 @@ func testToken(t *testing.T) string {
 	t.Helper()
 	a, err := auth.NewJWTAuthenticator(testJWTSecret)
 	require.NoError(t, err)
-	tok, err := a.CreateToken("test-user", "test@example.com")
+	tok, err := a.CreateToken("test-user", "test@example.com", auth.RoleViewer)
+	require.NoError(t, err)
+	return tok
+}
+
+func makeTestToken(t *testing.T, role string) string {
+	t.Helper()
+	a, err := auth.NewJWTAuthenticator(testJWTSecret)
+	require.NoError(t, err)
+	tok, err := a.CreateToken("test-user", "test@example.com", role)
 	require.NoError(t, err)
 	return tok
 }
@@ -2212,4 +2221,64 @@ func TestListScannersHandler(t *testing.T) {
 	assert.Equal(t, "trivy", resp[0].Name)
 	assert.Equal(t, []string{"sca", "secret", "iac"}, resp[0].FindingKinds)
 	assert.Equal(t, "semgrep", resp[1].Name)
+}
+
+func TestRequireRole_AdminAllowed(t *testing.T) {
+	tok := makeTestToken(t, auth.RoleAdmin)
+	mw := AuthMiddleware(testJWTAuth)
+	roleMw := RequireRole(auth.RoleAdmin)
+	handler := mw(roleMw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})))
+	req := httptest.NewRequest("POST", "/api/v1/projects", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestRequireRole_ViewerDenied(t *testing.T) {
+	tok := makeTestToken(t, auth.RoleViewer)
+	mw := AuthMiddleware(testJWTAuth)
+	roleMw := RequireRole(auth.RoleAdmin)
+	handler := mw(roleMw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})))
+	req := httptest.NewRequest("POST", "/api/v1/projects", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestRequireRole_UnauthenticatedDenied(t *testing.T) {
+	roleMw := RequireRole(auth.RoleAdmin)
+	handler := roleMw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest("POST", "/api/v1/projects", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestRequireRole_APIKeyBypass(t *testing.T) {
+	// API keys are project-scoped and bypass role checks.
+	roleMw := RequireRole(auth.RoleAdmin)
+	h := roleMw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest("POST", "/api/v1/projects", nil)
+	ctx := auth.ContextWithIdentity(context.Background(), &auth.Identity{
+		UserID: "key-user", ProjectID: "proj-1", IsAPIKey: true,
+	})
+	// Simulate the identity being set by AuthMiddleware.
+	req = req.WithContext(ctx)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
 }

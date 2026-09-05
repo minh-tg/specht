@@ -25,15 +25,17 @@ func NewJWTAuthenticator(secret string) (*JWTAuthenticator, error) {
 	return &JWTAuthenticator{secret: []byte(secret)}, nil
 }
 
-func (a *JWTAuthenticator) CreateToken(userID, email string) (string, error) {
+func (a *JWTAuthenticator) CreateToken(userID, email, role string) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
 		"sub":   userID,
 		"email": email,
+		"role":  role,
 		"iat":   now.Unix(),
 		"exp":   now.Add(15 * time.Minute).Unix(),
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
 	return tok.SignedString(a.secret)
 }
 
@@ -70,8 +72,8 @@ func (a *JWTAuthenticator) Authenticate(ctx context.Context, token string) (*Ide
 	if tokenType, _ := claims["type"].(string); tokenType == "refresh" {
 		return nil, ErrInvalidCredential
 	}
-
 	sub, _ := claims.GetSubject()
 	email, _ := claims["email"].(string)
-	return &Identity{UserID: sub, Email: email}, nil
+	role, _ := claims["role"].(string)
+	return &Identity{UserID: sub, Email: email, Role: role}, nil
 }

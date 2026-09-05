@@ -5,7 +5,7 @@ package auth
 // a concrete JWT type.
 type TokenIssuer interface {
 	// CreateToken mints an access token for the user.
-	CreateToken(userID, email string) (string, error)
+	CreateToken(userID, email, role string) (string, error)
 	// CreateRefreshToken mints a refresh token for the user.
 	CreateRefreshToken(userID string) (string, error)
 }

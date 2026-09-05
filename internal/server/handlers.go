@@ -246,6 +246,34 @@ func (h *Handler) enforceProjectAccess(r *http.Request, projectSlug string) erro
 	return nil
 }
 
+// RequireRole is a middleware that enforces a minimum role for session-authenticated
+// users. API keys bypass role checks (they are already project-scoped). Unauthenticated
+// requests fall through to 401.
+func RequireRole(roles ...string) func(http.Handler) http.Handler {
+	allowed := make(map[string]bool, len(roles))
+	for _, r := range roles {
+		allowed[r] = true
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ident := auth.ContextIdentity(r.Context())
+			if ident == nil {
+				respondError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+				return
+			}
+			if ident.IsAPIKey {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if !allowed[ident.Role] {
+				respondError(w, http.StatusForbidden, "insufficient_role", "requires admin role")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
