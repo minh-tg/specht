@@ -34,6 +34,7 @@ func TestRealDataFullLoopParity(t *testing.T) {
 		{"trivy", "../parser/trivy/testdata/multi-type-scan.json", 4},
 		{"grype", "../parser/grype/testdata/grype-full.json", 105},
 		{"semgrep", "../parser/semgrep/testdata/semgrep-sarif.json", 2},
+		{"sbom", "../parser/sbom/testdata/cyclonedx.json", 0},
 	}
 
 	for _, tc := range cases {

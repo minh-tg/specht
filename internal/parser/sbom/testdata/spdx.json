@@ -1,0 +1,58 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "myapp-1.2.3",
+  "documentName": "myapp-1.2.3",
+  "documentNamespace": "https://example.com/sbom/myapp-1.2.3",
+  "creationInfo": {
+    "created": "2026-09-01T10:00:00Z",
+    "creators": ["Tool: syft-1.0.0"]
+  },
+  "packages": [
+    {
+      "SPDXID": "SPDXRef-DOCUMENT",
+      "name": "myapp-1.2.3",
+      "downloadLocation": "NOASSERTION"
+    },
+    {
+      "SPDXID": "SPDXRef-Package-lodash",
+      "name": "lodash",
+      "versionInfo": "4.17.20",
+      "supplier": "Organization: OpenJS Foundation",
+      "downloadLocation": "https://registry.npmjs.org/lodash/-/lodash-4.17.20.tgz",
+      "filesAnalyzed": false,
+      "licenseConcluded": "MIT",
+      "licenseDeclared": "MIT",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/lodash@4.17.20"
+        }
+      ]
+    },
+    {
+      "SPDXID": "SPDXRef-Package-openssl",
+      "name": "openssl",
+      "versionInfo": "3.0.12",
+      "supplier": "Organization: OpenSSL",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false,
+      "licenseConcluded": "Apache-2.0"
+    },
+    {
+      "SPDXID": "SPDXRef-Relationship-stub",
+      "name": "stub-without-version-or-purl",
+      "downloadLocation": "NOASSERTION",
+      "filesAnalyzed": false
+    }
+  ],
+  "relationships": [
+    {
+      "spdxElementId": "SPDXRef-DOCUMENT",
+      "relationshipType": "DESCRIBES",
+      "relatedSpdxElement": "SPDXRef-Package-lodash"
+    }
+  ]
+}

@@ -38,6 +38,7 @@ type realdataCase struct {
 	scanner string
 	fixture string // relative to internal/parser/<adapter>/testdata
 	min     int
+	minPkg  int
 }
 
 func TestRealDataValidationSweep(t *testing.T) {
@@ -47,13 +48,15 @@ func TestRealDataValidationSweep(t *testing.T) {
 	}
 
 	cases := []realdataCase{
-		{"trivy", "trivy/testdata/alpine-full.json", 8},
-		{"trivy", "trivy/testdata/multi-type-scan.json", 4},
-		{"osv-scanner", "osvscanner/testdata/go-full.json", 12},
-		{"semgrep", "semgrep/testdata/semgrep-sarif.json", 2},
-		{"checkov", "checkov/testdata/checkov-terraform.json", 3},
-		{"dependency-check", "dependencycheck/testdata/dependency-check-full.json", 12},
-		{"grype", "grype/testdata/grype-full.json", 105},
+		{"trivy", "trivy/testdata/alpine-full.json", 8, 100},
+		{"trivy", "trivy/testdata/multi-type-scan.json", 4, 0},
+		{"osv-scanner", "osvscanner/testdata/go-full.json", 12, 100},
+		{"semgrep", "semgrep/testdata/semgrep-sarif.json", 2, 0},
+		{"checkov", "checkov/testdata/checkov-terraform.json", 3, 0},
+		{"dependency-check", "dependencycheck/testdata/dependency-check-full.json", 12, 100},
+		{"grype", "grype/testdata/grype-full.json", 105, 100},
+		{"sbom", "sbom/testdata/cyclonedx.json", 0, 3},
+		{"sbom", "sbom/testdata/spdx.json", 0, 2},
 	}
 
 	for _, tc := range cases {
@@ -69,6 +72,7 @@ func TestRealDataValidationSweep(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, rep)
 			require.GreaterOrEqual(t, len(rep.Findings), tc.min)
+			require.GreaterOrEqual(t, len(rep.Packages), tc.minPkg)
 			t.Logf("%s/%s: %d findings, %d packages, completeness=%q",
 				tc.scanner, filepath.Base(tc.fixture), len(rep.Findings), len(rep.Packages), rep.Completeness)
 

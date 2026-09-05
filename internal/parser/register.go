@@ -9,6 +9,7 @@ import (
 	"github.com/xMinhx/specht/internal/parser/dependencycheck"
 	"github.com/xMinhx/specht/internal/parser/grype"
 	"github.com/xMinhx/specht/internal/parser/osvscanner"
+	"github.com/xMinhx/specht/internal/parser/sbom"
 	"github.com/xMinhx/specht/internal/parser/semgrep"
 	"github.com/xMinhx/specht/internal/parser/trivy"
 	"github.com/xMinhx/specht/internal/scanner"
@@ -25,5 +26,6 @@ func Builtins() []scanner.Scanner {
 		checkov.NewScanner(),
 		dependencycheck.NewScanner(),
 		grype.NewScanner(),
+		sbom.NewScanner(),
 	}
 }
