@@ -1,0 +1,10 @@
+# Gitleaks baseline for the Specht repository.
+#
+# The parser test fixture below contains SYNTHETIC secret-shaped strings
+# (EXAMPLE suffixes, example.com identities, "examplekeymaterial") whose
+# only purpose is proving the gitleaks adapter redacts real-shaped leaks.
+# They are allowlisted by path; every other file stays under the default
+# rules.
+[allowlist]
+description = "synthetic secrets in the gitleaks adapter test fixture"
+paths = ['''internal/parser/gitleaks/testdata/gitleaks.json''']

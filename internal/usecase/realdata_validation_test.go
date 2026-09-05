@@ -17,8 +17,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
 	"github.com/xMinhx/specht/internal/parser"
+	"github.com/xMinhx/specht/internal/parser/gitleaks"
 	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/scanner"
 )
@@ -132,4 +132,66 @@ func TestRealDataFullLoopParity(t *testing.T) {
 				tc.scanner, result.TotalFindings, status.ThresholdBreached, status.BlockingCount)
 		})
 	}
+}
+
+func TestIngestReport_RedactsSecretRaw(t *testing.T) {
+	raw, err := os.ReadFile("../parser/gitleaks/testdata/gitleaks.json")
+	require.NoError(t, err)
+	require.Contains(t, string(raw), "AKIAIOSFODNN7EXAMPLE")
+
+	pr, rr, fr := makeTestRepos()
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	var storedRaw []byte
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
+		storedRaw = append([]byte{}, arg.RawData...)
+		return makeReport(), nil
+	}
+	rr.updateStatusFn = func(ctx context.Context, id, projectID string, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
+		r := makeReport()
+		r.Status = status
+		return r, nil
+	}
+	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
+	}
+	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+		return makeFinding(1), nil
+	}
+	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
+		return port.Occurrence{}, nil
+	}
+	fr.upsertDimensionFn = func(ctx context.Context, arg port.DimensionInput) error {
+		return nil
+	}
+	fr.createEventFn = func(ctx context.Context, arg port.FindingEventInput) (port.FindingEvent, error) {
+		return port.FindingEvent{}, nil
+	}
+
+	reg := scanner.NewRegistry()
+	require.NoError(t, reg.Register(gitleaks.NewScanner()))
+
+	uc := New(Deps{
+		Stores: &port.Stores{
+			Projects: pr, Reports: rr, Findings: fr,
+			Targets: stubTargetRepo(), Artifacts: stubArtifactRepo(),
+			Environments: &mockEnvironmentRepo{},
+			Inventory:    &mockInventoryRepo{},
+			Waivers:      &mockWaiverRepo{},
+		},
+		Registry: reg,
+	})
+
+	result, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app",
+		Scanner:     "gitleaks",
+		RawData:     raw,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 3, result.TotalFindings)
+	assert.NotContains(t, string(storedRaw), "AKIAIOSFODNN7EXAMPLE", "stored raw must not carry secret material")
+	assert.NotContains(t, string(storedRaw), "sk-live-4eC39HqLyjWDarjtT1zdp7dc")
+	assert.Contains(t, string(storedRaw), "[REDACTED]")
+	assert.Contains(t, string(storedRaw), "aws-access-key", "provenance survives redaction")
 }

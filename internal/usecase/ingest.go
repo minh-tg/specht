@@ -15,6 +15,7 @@ import (
 	"github.com/xMinhx/specht/internal/finding"
 	"github.com/xMinhx/specht/internal/gate"
 	"github.com/xMinhx/specht/internal/port"
+	"github.com/xMinhx/specht/internal/scanner"
 )
 
 // reportContext carries the contextual ids resolved for an ingested report
@@ -24,6 +25,16 @@ type reportContext struct {
 	artifactID       string
 	environmentID    string
 	targetIdentifier string
+}
+
+// redactRaw lets a scanner scrub sensitive material from raw evidence
+// before it is hashed and stored. Scanners opt in by implementing
+// RedactRaw; all other scanners store bytes verbatim.
+func redactRaw(sc scanner.Scanner, raw []byte) []byte {
+	if r, ok := sc.(interface{ RedactRaw([]byte) []byte }); ok {
+		return r.RedactRaw(raw)
+	}
+	return raw
 }
 
 func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*IngestReportOutput, error) {
@@ -52,6 +63,7 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		slog.Error("scanner parse failed", "scanner", input.Scanner, "error", err)
 		return nil, fmt.Errorf("scanner %s: parse output: %w", input.Scanner, err)
 	}
+	input.RawData = redactRaw(sc, input.RawData)
 
 	ctxInfo, err := u.resolveReportContext(ctx, project, input, nr)
 	if err != nil {

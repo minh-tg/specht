@@ -58,6 +58,7 @@ func TestRealDataValidationSweep(t *testing.T) {
 		{"sbom", "sbom/testdata/cyclonedx.json", 0, 3},
 		{"sbom", "sbom/testdata/spdx.json", 0, 2},
 		{"sarif", "sarif/testdata/multi-tool.sarif.json", 3, 0},
+		{"gitleaks", "gitleaks/testdata/gitleaks.json", 3, 0},
 	}
 
 	for _, tc := range cases {

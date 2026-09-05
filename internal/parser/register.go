@@ -7,6 +7,7 @@ package parser
 import (
 	"github.com/xMinhx/specht/internal/parser/checkov"
 	"github.com/xMinhx/specht/internal/parser/dependencycheck"
+	"github.com/xMinhx/specht/internal/parser/gitleaks"
 	"github.com/xMinhx/specht/internal/parser/grype"
 	"github.com/xMinhx/specht/internal/parser/osvscanner"
 	"github.com/xMinhx/specht/internal/parser/sarif"
@@ -29,5 +30,6 @@ func Builtins() []scanner.Scanner {
 		grype.NewScanner(),
 		sbom.NewScanner(),
 		sarif.NewScanner(),
+		gitleaks.NewScanner(),
 	}
 }
