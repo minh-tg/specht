@@ -10,26 +10,23 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"math/rand"
+	"math/rand/v2"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/port"
 )
 
 var (
 	// fixedNow is the injected clock for deterministic watermark assertions.
 	fixedNow = time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
 	// projectID is the sole watched project in most tests.
-	projectID = pgtype.UUID{Bytes: uuid.MustParse("11111111-1111-1111-1111-111111111111"), Valid: true}
+	projectID = "11111111-1111-1111-1111-111111111111"
 	// suppressingID is the scan-derived finding that suppresses a watcher hit.
-	suppressingID = pgtype.UUID{Bytes: uuid.MustParse("22222222-2222-2222-2222-222222222222"), Valid: true}
+	suppressingID = "22222222-2222-2222-2222-222222222222"
 )
 
 // testLogger discards log output so tests stay quiet.
@@ -38,14 +35,12 @@ func testLogger() *slog.Logger {
 }
 
 // inventoryRow builds one distinct-inventory row.
-func inventoryRow(purl, eco, name, version string) sqlc.DistinctInventoryRow {
-	return sqlc.DistinctInventoryRow{
-		ProjectID:  projectID,
-		Purl:       purl,
-		Ecosystem:  pgtype.Text{String: eco, Valid: true},
-		Name:       pgtype.Text{String: name, Valid: true},
-		Version:    pgtype.Text{String: version, Valid: true},
-		LastSeenAt: pgtype.Timestamptz{Time: fixedNow, Valid: true},
+func inventoryRow(purl, eco, name, version string) port.InventoryPackage {
+	return port.InventoryPackage{
+		PURL:      purl,
+		Ecosystem: eco,
+		Name:      name,
+		Version:   version,
 	}
 }
 
@@ -141,7 +136,7 @@ func (f *fakeClient) callCount() int {
 }
 
 type skipCall struct {
-	id pgtype.UUID
+	id string
 	ev Event
 }
 
@@ -158,12 +153,12 @@ type recordingStore struct {
 	reportNoOp bool
 }
 
-func (s *recordingStore) PersistFoundFinding(ctx context.Context, d Decision) (pgtype.UUID, bool, error) {
+func (s *recordingStore) PersistFoundFinding(ctx context.Context, d Decision) (string, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.created = append(s.created, d)
 	if s.persistErr != nil {
-		return pgtype.UUID{}, false, s.persistErr
+		return "", false, s.persistErr
 	}
 	if s.reportNoOp {
 		return suppressingID, false, nil
@@ -171,7 +166,7 @@ func (s *recordingStore) PersistFoundFinding(ctx context.Context, d Decision) (p
 	return suppressingID, true, nil
 }
 
-func (s *recordingStore) PersistSkipEvent(ctx context.Context, id pgtype.UUID, ev Event) error {
+func (s *recordingStore) PersistSkipEvent(ctx context.Context, id string, ev Event) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.skips = append(s.skips, skipCall{id: id, ev: ev})
@@ -184,17 +179,17 @@ func baseDeps() PollDeps {
 	return PollDeps{
 		Client:   &fakeClient{results: map[string][]Advisory{}},
 		Store:    &recordingStore{},
-		Projects: []pgtype.UUID{projectID},
-		Inventory: func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
+		Projects: []string{projectID},
+		Inventory: func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
 			return nil, nil
 		},
-		FindGap: func(ctx context.Context, pid pgtype.UUID, purlName string, candidateIDs []string) (pgtype.UUID, error) {
-			return pgtype.UUID{}, pgx.ErrNoRows
+		FindGap: func(ctx context.Context, pid string, purlName string, candidateIDs []string) (string, error) {
+			return "", nil
 		},
-		GetWatermark: func(ctx context.Context, projectID pgtype.UUID) (time.Time, bool, error) {
+		GetWatermark: func(ctx context.Context, projectID string) (time.Time, bool, error) {
 			return time.Time{}, false, nil
 		},
-		SetWatermark: func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error { return nil },
+		SetWatermark: func(ctx context.Context, projectID string, ts time.Time) error { return nil },
 		Now:          func() time.Time { return fixedNow },
 		Logger:       testLogger(),
 		InventoryTTL: 720 * time.Hour,
@@ -205,12 +200,12 @@ func TestPollOnce_ColdStartFullHistory_AdvancesWatermark(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
 	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2020-01-01T00:00:00Z")}
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
 	var wm time.Time
 	watermarked := false
-	deps.SetWatermark = func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error {
+	deps.SetWatermark = func(ctx context.Context, projectID string, ts time.Time) error {
 		wm, watermarked = ts, true
 		return nil
 	}
@@ -233,11 +228,11 @@ func TestPollOnce_WatermarkUntouchedOnFailure(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
 	client.err = errors.New("connection refused")
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
 	watermarked := false
-	deps.SetWatermark = func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error { watermarked = true; return nil }
+	deps.SetWatermark = func(ctx context.Context, projectID string, ts time.Time) error { watermarked = true; return nil }
 
 	_, err := PollOnce(context.Background(), deps)
 	require.Error(t, err)
@@ -251,10 +246,10 @@ func TestPollOnce_WarmPollFiltersAdvisoriesBeforeWatermark(t *testing.T) {
 		testAdvisory("GHSA-old-old-old", "2020-01-01T00:00:00Z"), // before watermark
 		testAdvisory("GHSA-new-new-new", "2026-06-01T00:00:00Z"), // after watermark
 	}
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
-	deps.GetWatermark = func(ctx context.Context, projectID pgtype.UUID) (time.Time, bool, error) {
+	deps.GetWatermark = func(ctx context.Context, projectID string) (time.Time, bool, error) {
 		return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), true, nil
 	}
 
@@ -275,8 +270,8 @@ func TestPollOnce_ColdStartWindowFiltersBySince(t *testing.T) {
 		testAdvisory("GHSA-new-new-new", "2026-08-01T00:00:00Z"),
 	}
 	deps.Since = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) // WATCHER_COLD_START_WINDOW
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
 
 	outcome, err := PollOnce(context.Background(), deps)
@@ -289,10 +284,10 @@ func TestPollOnce_GapSkipAttachesEventToSuppressingID(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
 	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
-	deps.FindGap = func(ctx context.Context, pid pgtype.UUID, purlName string, candidateIDs []string) (pgtype.UUID, error) {
+	deps.FindGap = func(ctx context.Context, pid string, purlName string, candidateIDs []string) (string, error) {
 		assert.Equal(t, "pkg:npm/lodash", purlName)
 		assert.Contains(t, candidateIDs, "CVE-2024-0001")
 		return suppressingID, nil
@@ -314,8 +309,8 @@ func TestPollOnce_BatchResponseMappingAcrossGroups(t *testing.T) {
 	// Two distinct query groups; OSV answers each package separately.
 	client.results["PyPI\x00requests"] = []Advisory{pypiAdvisory("GHSA-pppp-pppp-pppp", "2026-06-01T00:00:00Z")}
 	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-llll-llll-llll", "2026-06-01T00:00:00Z")}
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{
 			inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19"),
 			inventoryRow("pkg:npm/lodash@4.17.15", "npm", "lodash", "4.17.15"),
 			inventoryRow("pkg:pypi/requests@2.31.0", "pypi", "requests", "2.31.0"),
@@ -342,7 +337,7 @@ func TestPollOnce_EmptyInventorySkipsClient(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
 	watermarked := false
-	deps.SetWatermark = func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error {
+	deps.SetWatermark = func(ctx context.Context, projectID string, ts time.Time) error {
 		watermarked = true
 		return nil
 	}
@@ -357,12 +352,12 @@ func TestPollOnce_UnqueryableInventoryDoesNotAdvanceWatermark(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
 	watermarked := false
-	deps.SetWatermark = func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error {
+	deps.SetWatermark = func(ctx context.Context, projectID string, ts time.Time) error {
 		watermarked = true
 		return nil
 	}
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{
 			inventoryRow("pkg:generic/noname@1.0.0", "npm", "", "1.0.0"),
 			inventoryRow("pkg:generic/noeco@1.0.0", "", "noeco", "1.0.0"),
 		}, nil
@@ -379,8 +374,8 @@ func TestPollOnce_UnqueryableRowsDropped(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
 	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{
 			inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19"),
 			inventoryRow("pkg:generic/noname@1.0.0", "npm", "", "1.0.0"),  // empty name
 			inventoryRow("pkg:generic/noeco@1.0.0", "", "noeco", "1.0.0"), // empty ecosystem
@@ -398,13 +393,13 @@ func TestPollOnce_StoreErrorAbortsAndKeepsWatermark(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
 	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
 	store := deps.Store.(*recordingStore)
 	store.persistErr = errors.New("tx failed")
 	watermarked := false
-	deps.SetWatermark = func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error { watermarked = true; return nil }
+	deps.SetWatermark = func(ctx context.Context, projectID string, ts time.Time) error { watermarked = true; return nil }
 
 	_, err := PollOnce(context.Background(), deps)
 	require.Error(t, err)
@@ -415,11 +410,11 @@ func TestPollOnce_RepollHitCountedUnchangedNotCreated(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
 	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
 	// The store reports created=false, as a real re-poll hit of an existing
-	// watcher finding would (CreateFindingIfAbsent -> pgx.ErrNoRows).
+	// watcher finding would (insert-if-absent -> no-op).
 	store := deps.Store.(*recordingStore)
 	store.reportNoOp = true
 
@@ -441,8 +436,8 @@ func TestPollOnce_GrypeGolangStoredEcosystemMatchesOSVGoAdvisory(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
 	client.results["Go\x00golang.org/x/text"] = []Advisory{golangAdvisory("GHSA-gggg-gggg-gggg", "2026-06-01T00:00:00Z")}
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{
 			inventoryRow("pkg:golang/golang.org/x/text@0.3.7", "golang", "golang.org/x/text", "0.3.7"),
 		}, nil
 	}
@@ -467,11 +462,11 @@ func TestPollOnce_MalformedResponseDoesNotAdvanceWatermark(t *testing.T) {
 	// A malformed/short OSV response is a non-retryable error (***REMOVED***
 	// unknown-ecosystem guard): the poll must abort and leave the watermark alone.
 	client.err = ErrMalformedResponse
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
 	watermarked := false
-	deps.SetWatermark = func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error { watermarked = true; return nil }
+	deps.SetWatermark = func(ctx context.Context, projectID string, ts time.Time) error { watermarked = true; return nil }
 
 	_, err := PollOnce(context.Background(), deps)
 	require.Error(t, err)
@@ -496,7 +491,7 @@ func TestBuildOccurrence_RawAdvisoryBase64(t *testing.T) {
 	}
 	occ, err := buildOccurrence(decision, fixedNow)
 	require.NoError(t, err)
-	assert.Equal(t, pgtype.UUID{}, occ.ReportID, "watcher occurrence carries NULL report_id")
+	assert.Nil(t, occ.ReportID, "watcher occurrence carries NULL report_id")
 	var meta map[string]any
 	require.NoError(t, json.Unmarshal(occ.Metadata, &meta))
 	b64, ok := meta[MetadataRawAdvisoryKey].(string)
@@ -526,7 +521,7 @@ func TestEvidencePayload_FirstRefAndSummary(t *testing.T) {
 }
 
 func TestGroupInventory_DedupesAndDropsUnqueryable(t *testing.T) {
-	groups := groupInventory([]sqlc.DistinctInventoryRow{
+	groups := groupInventory([]port.InventoryPackage{
 		inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19"),
 		inventoryRow("pkg:npm/lodash@4.17.15", "npm", "lodash", "4.17.15"),
 		inventoryRow("pkg:pypi/requests@2.31.0", "PyPI", "requests", "2.31.0"),
@@ -588,8 +583,8 @@ func TestRunCveWatcher_FirstTickImmediateAndSteadyCadence(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
 	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
 
 	var mu sync.Mutex
@@ -642,8 +637,8 @@ func TestRunCveWatcher_BackoffDoublingWhenFailing(t *testing.T) {
 	// baseDeps ships an empty inventory, which would make polls succeed
 	// without ever touching the client; feed it a row so QueryBatch is
 	// actually invoked and fails.
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
 
 	var mu sync.Mutex
@@ -730,8 +725,8 @@ func TestRunCveWatcher_BackoffResetsOnSuccess(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
 	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
 	deps.Client = &flakyClient{inner: client, failFirst: 2}
 
@@ -813,20 +808,20 @@ func TestRunCveWatcher_RecordsSuccessTimestamp(t *testing.T) {
 }
 
 func TestRunCveWatcher_ProjectIntervalsScheduleIndependently(t *testing.T) {
-	projectTwo := pgtype.UUID{Bytes: uuid.MustParse("33333333-3333-3333-3333-333333333333"), Valid: true}
+	projectTwo := "33333333-3333-3333-3333-333333333333"
 	deps := baseDeps()
-	deps.Projects = []pgtype.UUID{projectID, projectTwo}
+	deps.Projects = []string{projectID, projectTwo}
 	client := deps.Client.(*fakeClient)
 	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
 
 	var mu sync.Mutex
 	clock := fixedNow
-	var inventoryProjects []pgtype.UUID
+	var inventoryProjects []string
 	var projectTwoPolls int
 	observedProjectTwo := make(chan struct{})
 	var observeOnce sync.Once
 	ctx, cancel := context.WithCancel(context.Background())
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
 		mu.Lock()
 		inventoryProjects = append(inventoryProjects, pid)
 		if pid == projectTwo {
@@ -840,15 +835,14 @@ func TestRunCveWatcher_ProjectIntervalsScheduleIndependently(t *testing.T) {
 		}
 		mu.Unlock()
 		row := inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")
-		row.ProjectID = pid
-		return []sqlc.DistinctInventoryRow{row}, nil
+		return []port.InventoryPackage{row}, nil
 	}
 
 	stopped := make(chan struct{})
 	done := runDaemon(ctx, RunCveWatcherConfig{
 		PollDeps:     deps,
 		PollInterval: time.Hour,
-		ProjectIntervals: map[pgtype.UUID]time.Duration{
+		ProjectIntervals: map[string]time.Duration{
 			projectID:  time.Minute,
 			projectTwo: 5 * time.Minute,
 		},
@@ -884,32 +878,31 @@ func TestRunCveWatcher_ProjectIntervalsScheduleIndependently(t *testing.T) {
 	<-done
 
 	mu.Lock()
-	got := append([]pgtype.UUID(nil), inventoryProjects...)
+	got := append([]string(nil), inventoryProjects...)
 	mu.Unlock()
-	want := []pgtype.UUID{projectID, projectTwo, projectID, projectID, projectID, projectID, projectID, projectTwo}
+	want := []string{projectID, projectTwo, projectID, projectID, projectID, projectID, projectID, projectTwo}
 	assert.Equal(t, want, got)
 }
 
 func TestRunCveWatcher_ScheduledProjectsFailIndependently(t *testing.T) {
-	projectTwo := pgtype.UUID{Bytes: uuid.MustParse("33333333-3333-3333-3333-333333333333"), Valid: true}
+	projectTwo := "33333333-3333-3333-3333-333333333333"
 	deps := baseDeps()
-	deps.Projects = []pgtype.UUID{projectID, projectTwo}
+	deps.Projects = []string{projectID, projectTwo}
 	inner := deps.Client.(*fakeClient)
 	inner.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
 	deps.Client = &failingProjectClient{inner: inner, name: "broken", err: errors.New("project upstream down")}
 
 	bAttempted := make(chan struct{}, 1)
-	watermarked := make(chan pgtype.UUID, 1)
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
+	watermarked := make(chan string, 1)
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
 		row := inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")
 		if pid == projectTwo {
 			row = inventoryRow("pkg:npm/broken@1.0.0", "npm", "broken", "1.0.0")
 			bAttempted <- struct{}{}
 		}
-		row.ProjectID = pid
-		return []sqlc.DistinctInventoryRow{row}, nil
+		return []port.InventoryPackage{row}, nil
 	}
-	deps.SetWatermark = func(ctx context.Context, pid pgtype.UUID, ts time.Time) error {
+	deps.SetWatermark = func(ctx context.Context, pid string, ts time.Time) error {
 		watermarked <- pid
 		return nil
 	}
@@ -921,7 +914,7 @@ func TestRunCveWatcher_ScheduledProjectsFailIndependently(t *testing.T) {
 	done := runDaemon(ctx, RunCveWatcherConfig{
 		PollDeps:     deps,
 		PollInterval: time.Hour,
-		ProjectIntervals: map[pgtype.UUID]time.Duration{
+		ProjectIntervals: map[string]time.Duration{
 			projectID:  time.Hour,
 			projectTwo: time.Hour,
 		},
@@ -979,8 +972,8 @@ func TestRunCveWatcher_SinglePollIsolation(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
 	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
 	// The first in-flight poll blocks inside the client until released.
 	client.block = make(chan struct{})
@@ -1061,13 +1054,13 @@ func TestPollOnce_NotifiesOnlyCreatedDecisions(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
 	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
 	nf := &fakeNotifier{}
 	deps.Notifier = nf
 	// ProjectName resolves across the poll's fire-and-forget goroutine.
-	deps.ProjectName = func(ctx context.Context, _ pgtype.UUID) (string, error) { return "acme", nil }
+	deps.ProjectName = func(ctx context.Context, _ string) (string, error) { return "acme", nil }
 
 	outcome, err := PollOnce(context.Background(), deps)
 	require.NoError(t, err)
@@ -1086,8 +1079,8 @@ func TestPollOnce_NilOrDisabledNotifierIsNoOp(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
 	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
-	deps.Inventory = func(ctx context.Context, pid pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-		return []sqlc.DistinctInventoryRow{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
 	}
 	// Notifier left nil (the default) — must not panic and must not notify.
 	outcome, err := PollOnce(context.Background(), deps)

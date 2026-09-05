@@ -6,9 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/xMinhx/specht/internal/db/sqlc"
-	"github.com/xMinhx/specht/internal/repo"
+	"github.com/xMinhx/specht/internal/port"
 )
 
 // SignoffResponse is a signoff record attached to a finding.
@@ -35,12 +33,7 @@ func (u *Usecases) UpsertSignoff(ctx context.Context, findingID, userID, status,
 		return nil, err
 	}
 
-	s, err := u.deps.Repos.Signoffs.Upsert(ctx, repo.UpsertSignoffParams{
-		FindingID:  pgtype.UUID{Bytes: fid, Valid: true},
-		Status:     status,
-		ReviewedBy: pgtype.UUID{Bytes: uid, Valid: true},
-		Comment:    comment,
-	})
+	s, err := u.deps.Stores.Signoffs.Upsert(ctx, fid.String(), status, uid.String(), comment)
 	if err != nil {
 		return nil, fmt.Errorf("upsert signoff: %w", err)
 	}
@@ -57,7 +50,7 @@ func (u *Usecases) GetSignoff(ctx context.Context, findingID string) (*SignoffRe
 		return nil, err
 	}
 
-	s, err := u.deps.Repos.Signoffs.GetByFinding(ctx, pgtype.UUID{Bytes: fid, Valid: true})
+	s, err := u.deps.Stores.Signoffs.GetByFinding(ctx, fid.String())
 	if err != nil {
 		return nil, fmt.Errorf("get signoff: %w", err)
 	}
@@ -65,14 +58,14 @@ func (u *Usecases) GetSignoff(ctx context.Context, findingID string) (*SignoffRe
 	return signoffToResponse(s), nil
 }
 
-func signoffToResponse(s sqlc.Signoff) *SignoffResponse {
+func signoffToResponse(s port.Signoff) *SignoffResponse {
 	return &SignoffResponse{
-		ID:         uuid.UUID(s.ID.Bytes).String(),
-		FindingID:  uuid.UUID(s.FindingID.Bytes).String(),
-		Status:     string(s.Status),
-		ReviewedBy: uuid.UUID(s.ReviewedBy.Bytes).String(),
+		ID:         s.ID,
+		FindingID:  s.FindingID,
+		Status:     s.Status,
+		ReviewedBy: s.ReviewedBy,
 		Comment:    s.Comment,
-		CreatedAt:  s.CreatedAt.Time.Format(time.RFC3339),
-		UpdatedAt:  s.UpdatedAt.Time.Format(time.RFC3339),
+		CreatedAt:  s.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:  s.UpdatedAt.Format(time.RFC3339),
 	}
 }

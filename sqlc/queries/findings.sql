@@ -202,6 +202,56 @@ WHERE finding_id = $1
 ORDER BY created_at DESC
 LIMIT $3 OFFSET $4;
 
+-- name: ListGateCandidates :many
+-- Batch gate-candidate loader: one round trip returns every finding that may
+-- block a project's gate together with its environment/target/artifact
+-- context and latest reachability assessment. The query is a performance
+-- prefilter only — gate.Gate.Evaluate is the authoritative policy. Context
+-- comes from the most recent occurrence's report; NULL report_id (watcher
+-- findings) has no context and joins as NULL.
+SELECT
+    f.id,
+    f.project_id,
+    f.finding_kind,
+    f.fingerprint,
+    f.current_title,
+    f.current_severity_rank,
+    f.analysis_state,
+    COALESCE(ra.state, 'unknown'::reachability_state) AS reachability_state,
+    ctx.environment_id,
+    ctx.target_id,
+    ctx.artifact_id
+FROM findings f
+LEFT JOIN LATERAL (
+    SELECT r.environment_id, r.target_id, r.artifact_id
+    FROM finding_occurrences fo
+    JOIN reports r ON fo.report_id = r.id
+    WHERE fo.finding_id = f.id
+    ORDER BY fo.observed_at DESC
+    LIMIT 1
+) ctx ON true
+LEFT JOIN LATERAL (
+    SELECT ra.state
+    FROM reachability_assessments ra
+    WHERE ra.finding_id = f.id
+    ORDER BY ra.updated_at DESC
+    LIMIT 1
+) ra ON true
+WHERE f.project_id = $1
+  AND f.current_severity_rank >= $2
+  AND f.gate_effect = 'block'
+  AND f.state = 'open'
+ORDER BY f.current_severity_rank DESC, f.created_at DESC;
+
+-- name: GetFindingContext :one
+SELECT r.environment_id, r.target_id, r.artifact_id
+FROM finding_occurrences fo
+JOIN reports r ON fo.report_id = r.id
+WHERE fo.finding_id = $1
+ORDER BY fo.observed_at DESC
+LIMIT 1;
+
+
 -- name: HasDimension :one
 SELECT EXISTS (
     SELECT 1 FROM finding_dimensions

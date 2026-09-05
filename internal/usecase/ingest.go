@@ -9,24 +9,20 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/finding"
-	"github.com/xMinhx/specht/internal/repo"
+	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
-// reportContext carries the contextual rows resolved for an ingested report:
-// the (optional) target/artifact/environment ids and the target identifier
-// used to derive the scan-scope hash.
+// reportContext carries the contextual ids resolved for an ingested report
+// and the target identifier used to derive the scan-scope hash.
 type reportContext struct {
-	targetID         pgtype.UUID
-	artifactID       pgtype.UUID
-	environmentID    pgtype.UUID
+	targetID         string
+	artifactID       string
+	environmentID    string
 	targetIdentifier string
 }
 
@@ -41,7 +37,7 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, fmt.Errorf("raw scan data is required")
 	}
 
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, input.ProjectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, input.ProjectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", input.ProjectSlug, err)
 	}
@@ -82,7 +78,7 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	}
 
 	return &IngestReportOutput{
-		ReportID:          uuid.UUID(report.ID.Bytes).String(),
+		ReportID:          report.ID,
 		TotalFindings:     total,
 		ThresholdBreached: thresholdBreached,
 	}, nil
@@ -90,9 +86,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 
 // resolveReportContext upserts the target/artifact/environment rows a report
 // references (best-effort: a failure to resolve context does not fail the
-// ingest) and returns their ids plus the target identifier for the scope
-// hash. The sqlc rows carry pgtype.UUID zero values when absent.
-func (u *Usecases) resolveReportContext(ctx context.Context, project sqlc.Project, input IngestReportInput, nr *scanner.NormalizedReport) (reportContext, error) {
+// ingest) and returns their ids plus the target identifier for the scope hash.
+func (u *Usecases) resolveReportContext(ctx context.Context, project port.Project, input IngestReportInput, nr *scanner.NormalizedReport) (reportContext, error) {
 	var out reportContext
 
 	if nr.Target != nil && nr.Target.Identifier != "" {
@@ -101,12 +96,7 @@ func (u *Usecases) resolveReportContext(ctx context.Context, project sqlc.Projec
 		if kind == "" {
 			kind = string(nr.ScanType)
 		}
-		t, err := u.deps.Repos.Targets.Upsert(ctx, sqlc.UpsertTargetParams{
-			ProjectID: project.ID,
-			Name:      nr.Target.Identifier,
-			Kind:      kind,
-			Locator:   pgtype.Text{String: nr.Target.Identifier, Valid: true},
-		})
+		t, err := u.deps.Stores.Targets.Upsert(ctx, project.ID, nr.Target.Identifier, kind, nr.Target.Identifier)
 		if err != nil {
 			slog.Warn("upsert target failed", "project", project.ID, "target", nr.Target.Identifier, "error", err)
 		} else {
@@ -133,14 +123,12 @@ func (u *Usecases) resolveReportContext(ctx context.Context, project sqlc.Projec
 				metadata = []byte("{}")
 			}
 		}
-		a, err := u.deps.Repos.Artifacts.Upsert(ctx, sqlc.UpsertArtifactParams{
+		a, err := u.deps.Stores.Artifacts.Upsert(ctx, port.ArtifactInput{
 			ProjectID:    project.ID,
 			TargetID:     out.targetID,
 			ArtifactType: artifactType,
 			Name:         artifactName,
 			Version:      textPtr(input.ArtifactVersion),
-			Digest:       pgtype.Text{Valid: false},
-			Locator:      pgtype.Text{Valid: false},
 			Metadata:     metadata,
 		})
 		if err != nil {
@@ -151,13 +139,7 @@ func (u *Usecases) resolveReportContext(ctx context.Context, project sqlc.Projec
 	}
 
 	if input.Environment != "" {
-		e, err := u.deps.Repos.Environments.Upsert(ctx, sqlc.UpsertEnvironmentParams{
-			ProjectID:       project.ID,
-			Name:            input.Environment,
-			Tier:            "development",
-			InternetFacing:  false,
-			DataSensitivity: "internal",
-		})
+		e, err := u.deps.Stores.Environments.Upsert(ctx, project.ID, input.Environment, "development", false, "internal")
 		if err != nil {
 			slog.Warn("upsert environment failed", "project", project.ID, "environment", input.Environment, "error", err)
 		} else {
@@ -173,7 +155,7 @@ func (u *Usecases) resolveReportContext(ctx context.Context, project sqlc.Projec
 // scan scope (scanner, target, artifact, branch, commit SHA, environment)
 // so identical content scanned at a different revision or artifact never
 // collides.
-func (u *Usecases) createReport(ctx context.Context, project sqlc.Project, input IngestReportInput, nr *scanner.NormalizedReport, ctxInfo reportContext) (sqlc.Report, error) {
+func (u *Usecases) createReport(ctx context.Context, project port.Project, input IngestReportInput, nr *scanner.NormalizedReport, ctxInfo reportContext) (port.Report, error) {
 	rawHash := sha256.Sum256(input.RawData)
 	scopeHash := sha256.Sum256([]byte(scopeHashMaterial(input, nr, ctxInfo)))
 
@@ -182,30 +164,31 @@ func (u *Usecases) createReport(ctx context.Context, project sqlc.Project, input
 		scanTarget = nr.Target.Identifier
 	}
 
-	report, err := u.deps.Repos.Reports.Create(ctx, repo.CreateReportParams{
-		ProjectID:     project.ID,
-		ToolName:      input.Scanner,
-		ToolVersion:   textPtr(input.ScannerVersion),
-		ScanType:      string(nr.ScanType),
-		ScanTarget:    textPtr(scanTarget),
-		TargetID:      ctxInfo.targetID,
-		ArtifactID:    ctxInfo.artifactID,
-		EnvironmentID: ctxInfo.environmentID,
-		ScanScope:     mustMarshal(scopeDocument(nr)),
-		ScanScopeHash: pgtype.Text{String: hex.EncodeToString(scopeHash[:]), Valid: true},
-		Branch:        textPtr(input.Branch),
-		CommitSha:     textPtr(input.CommitSha),
-		RawData:       input.RawData,
-		RawReportHash: pgtype.Text{String: hex.EncodeToString(rawHash[:]), Valid: true},
-		ParserVersion: textPtr(input.ParserVersion),
+	report, err := u.deps.Stores.Reports.Create(ctx, port.CreateReportInput{
+		ProjectID:        project.ID,
+		ToolName:         input.Scanner,
+		ToolVersion:      textPtr(input.ScannerVersion),
+		ScanType:         string(nr.ScanType),
+		ScanTarget:       textPtr(scanTarget),
+		TargetID:         ctxInfo.targetID,
+		ArtifactID:       ctxInfo.artifactID,
+		EnvironmentID:    ctxInfo.environmentID,
+		ScanScope:        mustMarshal(scopeDocument(nr)),
+		ScanScopeHash:    hex.EncodeToString(scopeHash[:]),
+		Branch:           textPtr(input.Branch),
+		CommitSha:        textPtr(input.CommitSha),
+		RawData:          input.RawData,
+		RawReportHash:    hex.EncodeToString(rawHash[:]),
+		ParserVersion:    textPtr(input.ParserVersion),
+		ScanCompleteness: string(nr.Completeness),
+		Status:           "processing",
 	})
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return sqlc.Report{}, ErrDuplicateReport
+		if errors.Is(err, port.ErrDuplicateReport) {
+			return port.Report{}, ErrDuplicateReport
 		}
 		slog.Error("create report failed", "scanner", input.Scanner, "error", err)
-		return sqlc.Report{}, fmt.Errorf("scanner %s: create report: %w", input.Scanner, err)
+		return port.Report{}, fmt.Errorf("scanner %s: create report: %w", input.Scanner, err)
 	}
 	return report, nil
 }
@@ -272,7 +255,7 @@ func scopeDocument(nr *scanner.NormalizedReport) map[string]any {
 // ingestReportFindings upserts each normalized finding and its occurrence,
 // dimensions, and material-change events. It returns the number of findings
 // ingested.
-func (u *Usecases) ingestReportFindings(ctx context.Context, project sqlc.Project, input IngestReportInput, report sqlc.Report, nr *scanner.NormalizedReport) (int, error) {
+func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, nr *scanner.NormalizedReport) (int, error) {
 	nowTime := now()
 	total := 0
 
@@ -286,19 +269,15 @@ func (u *Usecases) ingestReportFindings(ctx context.Context, project sqlc.Projec
 	return total, nil
 }
 
-func (u *Usecases) ingestOneFinding(ctx context.Context, project sqlc.Project, input IngestReportInput, report sqlc.Report, f scanner.NormalizedFinding, nowTime pgtype.Timestamptz) (int, error) {
+func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, f scanner.NormalizedFinding, nowTime time.Time) (int, error) {
 	newRank := severityRank(f.Severity)
 
 	var oldRank int16
 	var oldGateEffect string
 	var oldAnalysisState string
 
-	existing, lookupErr := u.deps.Repos.Findings.GetByFingerprint(ctx, repo.GetByFingerprintParams{
-		ProjectID:   project.ID,
-		FindingKind: f.FindingKind,
-		Fingerprint: f.Fingerprint,
-	})
-	// A lookup error (incl. pgx.ErrNoRows) means there is no existing
+	existing, lookupErr := u.deps.Stores.Findings.GetByFingerprint(ctx, project.ID, f.FindingKind, f.Fingerprint)
+	// A lookup error (incl. port.ErrNotFound) means there is no existing
 	// finding yet; only carry forward gate state when one exists.
 	if lookupErr == nil {
 		oldRank = existing.CurrentSeverityRank
@@ -306,17 +285,17 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project sqlc.Project, i
 		oldAnalysisState = existing.AnalysisState
 	}
 
-	upserted, err := u.deps.Repos.Findings.Upsert(ctx, repo.UpsertFindingParams{
-		ProjectID:    project.ID,
-		FindingKind:  f.FindingKind,
-		Fingerprint:  f.Fingerprint,
-		CurrentTitle: f.Title,
-		Severity:     severityStr(f.Severity),
-		SeverityRank: newRank,
-		Score:        scoreToNumeric(f.Score),
-		FirstSeenAt:  nowTime,
-		LastSeenAt:   nowTime,
-	})
+	upserted, err := u.deps.Stores.Findings.Upsert(ctx,
+		project.ID,
+		f.FindingKind,
+		f.Fingerprint,
+		f.Title,
+		severityStr(f.Severity),
+		newRank,
+		scoreToFloat(f.Score),
+		nowTime,
+		nowTime,
+	)
 	if err != nil {
 		slog.Error("upsert finding failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
 		return 0, fmt.Errorf("scanner %s: upsert finding %q: %w", input.Scanner, f.Fingerprint, err)
@@ -324,25 +303,26 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project sqlc.Project, i
 
 	occ := toOccurrenceParams(f, input.Scanner)
 	occ.FindingID = upserted.ID
-	occ.ReportID = report.ID
+	occ.ReportID = &report.ID
 	occ.ToolVersion = textPtr(input.ScannerVersion)
 	occ.ParserVersion = textPtr(input.ParserVersion)
-	_, err = u.deps.Repos.Findings.CreateOccurrence(ctx, occ)
+	_, err = u.deps.Stores.Findings.CreateOccurrence(ctx, occ)
 	if err != nil {
 		slog.Error("create occurrence failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
 		return 0, fmt.Errorf("scanner %s: create occurrence for %q: %w", input.Scanner, f.Fingerprint, err)
 	}
 
+	source := textPtr(input.Scanner)
 	for _, d := range f.Dimensions {
 		if !isCanonicalDimension(d.Key) {
 			slog.Warn("drop non-canonical dimension", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "key", d.Key)
 			continue
 		}
-		_, err = u.deps.Repos.Findings.UpsertDimension(ctx, repo.UpsertDimensionParams{
+		err = u.deps.Stores.Findings.UpsertDimension(ctx, port.DimensionInput{
 			FindingID: upserted.ID,
 			Key:       d.Key,
 			Value:     d.Value,
-			Source:    pgtype.Text{String: input.Scanner, Valid: true},
+			Source:    source,
 		})
 		if err != nil {
 			slog.Error("upsert dimension failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
@@ -362,7 +342,7 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project sqlc.Project, i
 // applyMaterialChange runs finding.EvaluateChange on a previously-known
 // finding and, when the change demands review, marks review_required and logs
 // the material-change event.
-func (u *Usecases) applyMaterialChange(ctx context.Context, project sqlc.Project, input IngestReportInput, upserted sqlc.Finding, f scanner.NormalizedFinding, oldRank int16, oldGateEffect, oldAnalysisState string) error {
+func (u *Usecases) applyMaterialChange(ctx context.Context, project port.Project, input IngestReportInput, upserted port.Finding, f scanner.NormalizedFinding, oldRank int16, oldGateEffect, oldAnalysisState string) error {
 	hasNewFix := false
 	for _, d := range f.Dimensions {
 		if d.Key == domain.DimFixedVersion && d.Value != "" {
@@ -373,7 +353,7 @@ func (u *Usecases) applyMaterialChange(ctx context.Context, project sqlc.Project
 
 	var hadOldFix bool
 	if hasNewFix {
-		hadOldFix, _ = u.deps.Repos.Findings.HasDimension(ctx, upserted.ID, domain.DimFixedVersion)
+		hadOldFix, _ = u.deps.Stores.Findings.HasDimension(ctx, upserted.ID, domain.DimFixedVersion)
 	}
 
 	change := finding.EvaluateChange(finding.PreviousFinding{
@@ -390,12 +370,15 @@ func (u *Usecases) applyMaterialChange(ctx context.Context, project sqlc.Project
 		return nil
 	}
 
-	_, err := u.deps.Repos.Findings.UpdateAnalysis(ctx, repo.UpdateAnalysisParams{
-		ID:             upserted.ID,
-		AnalysisState:  upserted.AnalysisState,
-		GateEffect:     upserted.GateEffect,
-		AnalysisSource: upserted.AnalysisSource,
-		ReviewRequired: true,
+	_, err := u.deps.Stores.Findings.UpdateAnalysis(ctx, port.UpdateAnalysisInput{
+		ID:                upserted.ID,
+		AnalysisState:     upserted.AnalysisState,
+		GateEffect:        upserted.GateEffect,
+		AnalysisSource:    upserted.AnalysisSource,
+		ManualOverride:    upserted.ManualOverride,
+		ReviewRequired:    true,
+		AnalysisReason:    upserted.AnalysisReason,
+		AnalysisExpiresAt: upserted.AnalysisExpiresAt,
 	})
 	if err != nil {
 		slog.Error("set review_required failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
@@ -403,7 +386,7 @@ func (u *Usecases) applyMaterialChange(ctx context.Context, project sqlc.Project
 	}
 
 	changesJSON, _ := json.Marshal(change.Changes)
-	_, err = u.deps.Repos.Findings.CreateEvent(ctx, repo.CreateEventParams{
+	_, err = u.deps.Stores.Findings.CreateEvent(ctx, port.FindingEventInput{
 		FindingID: upserted.ID,
 		EventType: change.EventType,
 		Changes:   changesJSON,
@@ -416,11 +399,11 @@ func (u *Usecases) applyMaterialChange(ctx context.Context, project sqlc.Project
 }
 
 // persistInventory writes the report's package references when any exist.
-func (u *Usecases) persistInventory(ctx context.Context, input IngestReportInput, report sqlc.Report, nr *scanner.NormalizedReport) error {
+func (u *Usecases) persistInventory(ctx context.Context, input IngestReportInput, report port.Report, nr *scanner.NormalizedReport) error {
 	if len(nr.Packages) == 0 {
 		return nil
 	}
-	if err := u.deps.Repos.Inventory.UpsertReportPackages(ctx, report.ID, toInventoryPackageParams(nr.Packages)); err != nil {
+	if err := u.deps.Stores.Inventory.UpsertReportPackages(ctx, report.ID, toInventoryPackageParams(nr.Packages)); err != nil {
 		slog.Error("persist package inventory failed", "scanner", input.Scanner, "report_id", report.ID, "error", err)
 		return fmt.Errorf("scanner %s: persist package inventory: %w", input.Scanner, err)
 	}
@@ -429,19 +412,15 @@ func (u *Usecases) persistInventory(ctx context.Context, input IngestReportInput
 
 // checkGateAfterIngest marks the report completed and reports whether any
 // blocking finding exists at the configured severity/status threshold.
-func (u *Usecases) checkGateAfterIngest(ctx context.Context, project sqlc.Project, input IngestReportInput, report sqlc.Report, total int) (bool, error) {
-	_, err := u.deps.Repos.Reports.UpdateStatus(ctx, report.ID, project.ID, "completed", total, pgtype.Text{Valid: false})
+func (u *Usecases) checkGateAfterIngest(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, total int) (bool, error) {
+	_, err := u.deps.Stores.Reports.UpdateStatus(ctx, report.ID, project.ID, "completed", int32(total), nil)
 	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return false, ErrDuplicateReport
-		}
 		slog.Error("update report status failed", "scanner", input.Scanner, "report_id", report.ID, "error", err)
 		return false, fmt.Errorf("scanner %s: update report status: %w", input.Scanner, err)
 	}
 
 	severities, statuses := defaultGateParams(input.GateSeverity, input.GateStatus)
-	gateFindings, err := u.deps.Repos.Findings.ListByProject(ctx, project.ID, severities, statuses, nil, 1, 0)
+	gateFindings, err := u.deps.Stores.Findings.ListByProject(ctx, project.ID, severities, statuses, nil, 1, 0)
 	if err != nil {
 		slog.Error("gate check failed", "scanner", input.Scanner, "project", project.ID, "error", err)
 		return false, fmt.Errorf("scanner %s: gate check: %w", input.Scanner, err)

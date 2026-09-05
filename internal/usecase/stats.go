@@ -24,31 +24,31 @@ type ProjectStats struct {
 }
 
 func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*ProjectStats, error) {
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 
-	rows, err := u.deps.Repos.Stats.GetProjectStats(ctx, project.ID)
+	rows, err := u.deps.Stores.Stats.GetProjectStats(ctx, project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get stats: %w", err)
 	}
 
-	waiverCount, err := u.deps.Repos.Stats.GetProjectWaiverCount(ctx, project.ID)
+	waiverCount, err := u.deps.Stores.Stats.GetProjectWaiverCount(ctx, project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get waiver count: %w", err)
 	}
 
-	reportCount, err := u.deps.Repos.Stats.GetProjectReportCount(ctx, project.ID)
+	reportCount, err := u.deps.Stores.Stats.GetProjectReportCount(ctx, project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get report count: %w", err)
 	}
 
 	var latest *ReportResponse
-	latestRow, err := u.deps.Repos.Stats.GetProjectLatestReport(ctx, project.ID)
+	latestRow, err := u.deps.Stores.Stats.GetProjectLatestReport(ctx, project.ID)
 	if err != nil {
 		slog.Warn("get latest report for stats", "project", projectSlug, "error", err)
-	} else if latestRow.ID.Valid {
+	} else if latestRow.ID != "" {
 		r := ReportResponse{
 			ID:            uuidStr(latestRow.ID),
 			ProjectID:     uuidStr(latestRow.ProjectID),

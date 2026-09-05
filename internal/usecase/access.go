@@ -6,9 +6,8 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/port"
 )
 
 var (
@@ -16,17 +15,22 @@ var (
 	ErrInvalidFindingID    = errors.New("invalid finding id")
 )
 
-func (u *Usecases) findingWithProjectAccess(ctx context.Context, findingID uuid.UUID) (sqlc.Finding, error) {
-	if u.deps.Repos == nil || u.deps.Repos.Findings == nil {
-		return sqlc.Finding{}, fmt.Errorf("check finding project: finding repository unavailable")
+func (u *Usecases) findingWithProjectAccess(ctx context.Context, findingID uuid.UUID) (port.Finding, error) {
+	if u.deps.Stores == nil || u.deps.Stores.Findings == nil {
+		return port.Finding{}, fmt.Errorf("check finding project: finding store unavailable")
 	}
 
-	finding, err := u.deps.Repos.Findings.GetByID(ctx, pgtype.UUID{Bytes: findingID, Valid: true})
+	finding, err := u.deps.Stores.Findings.GetByID(ctx, findingID.String())
 	if err != nil {
-		return sqlc.Finding{}, ErrFindingNotFound
+		if errors.Is(err, port.ErrNotFound) {
+			return port.Finding{}, ErrFindingNotFound
+		}
+		// Preserve the public not-found behavior of this helper: callers
+		// should not learn persistence details from an access check.
+		return port.Finding{}, ErrFindingNotFound
 	}
 	if err := checkFindingProjectIDAccess(ctx, finding.ProjectID); err != nil {
-		return sqlc.Finding{}, err
+		return port.Finding{}, err
 	}
 	return finding, nil
 }
@@ -36,26 +40,25 @@ func (u *Usecases) checkFindingProjectAccess(ctx context.Context, findingID uuid
 	return err
 }
 
-func checkFindingRowsProjectAccess(ctx context.Context, findings []sqlc.Finding) error {
-	projectID, isAPIKey, err := apiKeyProjectID(ctx)
-	if err != nil || !isAPIKey {
-		return err
+func checkFindingRowsProjectAccess(ctx context.Context, findings []port.Finding) error {
+	ident := auth.ContextIdentity(ctx)
+	if ident == nil || !ident.IsAPIKey {
+		return nil
 	}
-
 	for _, finding := range findings {
-		if !finding.ProjectID.Valid || uuid.UUID(finding.ProjectID.Bytes) != projectID {
+		if finding.ProjectID != ident.ProjectID {
 			return ErrProjectAccessDenied
 		}
 	}
 	return nil
 }
 
-func checkFindingProjectIDAccess(ctx context.Context, findingProjectID pgtype.UUID) error {
-	projectID, isAPIKey, err := apiKeyProjectID(ctx)
-	if err != nil || !isAPIKey {
-		return err
+func checkFindingProjectIDAccess(ctx context.Context, findingProjectID string) error {
+	ident := auth.ContextIdentity(ctx)
+	if ident == nil || !ident.IsAPIKey {
+		return nil
 	}
-	if !findingProjectID.Valid || uuid.UUID(findingProjectID.Bytes) != projectID {
+	if findingProjectID != ident.ProjectID {
 		return ErrProjectAccessDenied
 	}
 	return nil

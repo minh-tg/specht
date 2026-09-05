@@ -13,13 +13,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/db"
-	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/lifecycle"
 	"github.com/xMinhx/specht/internal/parser"
+	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/repo"
 	"github.com/xMinhx/specht/internal/scanner"
 	"github.com/xMinhx/specht/internal/server"
@@ -64,13 +62,14 @@ func main() {
 	}
 
 	repos := repo.NewRepos(pool)
+	stores := repo.NewPortStores(pool)
 
 	// Start background daemons
-	go lifecycle.RunWaiverExpiry(context.Background(), pool, 5*time.Minute, slog.Default())
-	go lifecycle.RunAnalysisExpiry(context.Background(), pool, 5*time.Minute, slog.Default())
+	go lifecycle.RunWaiverExpiry(context.Background(), repo.NewWaiverExpiryStore(pool), 5*time.Minute, slog.Default())
+	go lifecycle.RunAnalysisExpiry(context.Background(), repo.NewAnalysisExpiryStore(pool), 5*time.Minute, slog.Default())
 
 	uc := usecase.New(usecase.Deps{
-		Repos:        repos,
+		Stores:       stores,
 		Registry:     reg,
 		JWTAuth:      jwtAuth,
 		InventoryTTL: cfg.inventoryTTL,
@@ -112,7 +111,7 @@ func main() {
 	// WATCHER_* variables are parsed inside the gate, so malformed values can
 	// never crash a server with the watcher disabled.
 	if cfg.watcherEnable {
-		runWatcherDaemon(ctx, repos, cfg)
+		runWatcherDaemon(ctx, stores, cfg)
 	}
 
 	go func() {
@@ -224,7 +223,7 @@ func handleSubcommand(cfg config) bool {
 // runWatcherDaemon starts the CVE watcher poll loop. All WATCHER_* variables
 // are parsed here, inside the enable gate, so malformed values can never
 // crash a server with the watcher disabled.
-func runWatcherDaemon(ctx context.Context, repos *repo.Repos, cfg config) {
+func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg config) {
 	watcherPollIntervalStr := os.Getenv("WATCHER_POLL_INTERVAL")
 	if watcherPollIntervalStr == "" {
 		watcherPollIntervalStr = "6h" // design spec default
@@ -272,14 +271,14 @@ func runWatcherDaemon(ctx context.Context, repos *repo.Repos, cfg config) {
 		slog.Default(),
 	)
 
-	projects, err := repos.Projects.List(ctx)
+	projects, err := stores.Projects.List(ctx)
 	if err != nil {
 		slog.Error("watcher: list projects", "error", err)
 		os.Exit(1)
 	}
 	// Per-project enable/interval config (migration 000020): watch
 	// only cve_watcher_enabled projects and schedule each project independently.
-	watched := make([]sqlc.Project, 0, len(projects))
+	watched := make([]port.Project, 0, len(projects))
 	for _, p := range projects {
 		if !p.CveWatcherEnabled {
 			continue
@@ -290,14 +289,14 @@ func runWatcherDaemon(ctx context.Context, repos *repo.Repos, cfg config) {
 		slog.Info("watcher: no enabled projects")
 		return
 	}
-	projectIDs := make([]pgtype.UUID, len(watched))
+	projectIDs := make([]string, len(watched))
 	projectNames := make(map[string]string, len(watched))
-	projectIntervals := make(map[pgtype.UUID]time.Duration, len(watched))
+	projectIntervals := make(map[string]time.Duration, len(watched))
 	for i, p := range watched {
 		projectIDs[i] = p.ID
-		projectNames[uuid.UUID(p.ID.Bytes).String()] = p.Name
-		if p.CveWatcherIntervalSeconds > 0 {
-			projectIntervals[p.ID] = time.Duration(p.CveWatcherIntervalSeconds) * time.Second
+		projectNames[p.ID] = p.Name
+		if p.CveWatcherIntervalSecs > 0 {
+			projectIntervals[p.ID] = time.Duration(p.CveWatcherIntervalSecs) * time.Second
 		} else {
 			projectIntervals[p.ID] = watcherPollInterval
 		}
@@ -320,41 +319,44 @@ func runWatcherDaemon(ctx context.Context, repos *repo.Repos, cfg config) {
 				BatchSize: watcherBatchSize,
 				CacheTTL:  cacheTTL,
 			}),
-			Store:    watcher.NewPollStore(repos),
+			Store:    watcher.NewPollStore(stores),
 			Projects: projectIDs,
 			Notifier: watcherNotifier,
-			ProjectName: func(ctx context.Context, projectID pgtype.UUID) (string, error) {
-				return projectNames[uuid.UUID(projectID.Bytes).String()], nil
+			ProjectName: func(ctx context.Context, projectID string) (string, error) {
+				return projectNames[projectID], nil
 			},
-			Inventory: func(ctx context.Context, projectID pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-				return repos.Inventory.DistinctInventory(ctx, projectID, repo.IntervalFromDuration(since))
+			Inventory: func(ctx context.Context, projectID string, since time.Duration) ([]port.InventoryPackage, error) {
+				return stores.Inventory.DistinctInventory(ctx, projectID, since)
 			},
-			FindGap: repos.Findings.FindScaFindingIdForPurlAndCve,
-			GetWatermark: func(ctx context.Context, projectID pgtype.UUID) (time.Time, bool, error) {
-				st, err := repos.Watcher.GetProjectState(ctx, projectID)
-				if errors.Is(err, pgx.ErrNoRows) {
+			FindGap: stores.Findings.FindScaFindingIDForPurlAndCve,
+			GetWatermark: func(ctx context.Context, projectID string) (time.Time, bool, error) {
+				st, err := stores.Watcher.GetProjectState(ctx, projectID)
+				if errors.Is(err, port.ErrNotFound) {
 					return time.Time{}, false, nil
 				}
 				if err != nil {
 					return time.Time{}, false, err
 				}
-				return st.LastSuccessfulPollAt.Time, st.LastSuccessfulPollAt.Valid, nil
+				if st.LastSuccessfulPollAt == nil {
+					return time.Time{}, false, nil
+				}
+				return *st.LastSuccessfulPollAt, true, nil
 			},
-			SetWatermark: func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error {
-				return repos.Watcher.UpsertProjectState(ctx, projectID, ts)
+			SetWatermark: func(ctx context.Context, projectID string, ts time.Time) error {
+				return stores.Watcher.UpsertProjectState(ctx, projectID, ts)
 			},
 			// Health hooks: record attempt/failure state so operators can
 			// see whether the watcher is healthy or failing.
 			RecordAttempt: func(ctx context.Context, ts time.Time) error {
-				return repos.Watcher.RecordAttempt(ctx, ts)
+				return stores.Watcher.RecordAttempt(ctx, ts)
 			},
 			RecordFailure: func(ctx context.Context, errText string, ts time.Time) error {
-				return repos.Watcher.RecordFailure(ctx, errText, ts)
+				return stores.Watcher.RecordFailure(ctx, errText, ts)
 			},
 			RecordSuccess: func(ctx context.Context, ts time.Time) error {
-				return repos.Watcher.UpdateState(ctx, ts)
+				return stores.Watcher.UpdateState(ctx, ts)
 			},
-			ResetFailure: repos.Watcher.ResetFailure,
+			ResetFailure: stores.Watcher.ResetFailure,
 			Logger:       slog.Default(),
 			InventoryTTL: cfg.inventoryTTL,
 			Since:        watcherSince,

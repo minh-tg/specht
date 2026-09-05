@@ -7,10 +7,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/gate"
-	"github.com/xMinhx/specht/internal/repo"
+	"github.com/xMinhx/specht/internal/port"
 )
 
 // WaiverResponse is the API representation of a waiver with its condition,
@@ -110,62 +108,58 @@ type WaiverDetailResponse struct {
 	Targets    []WaiverFindingTargetResp `json:"targets"`
 }
 
-func toWaiver(w sqlc.Waiver) WaiverResponse {
+func toWaiver(w port.Waiver) WaiverResponse {
 	return WaiverResponse{
-		ID:          uuidStr(w.ID),
-		ProjectID:   uuidStr(w.ProjectID),
+		ID:          w.ID,
+		ProjectID:   w.ProjectID,
 		Name:        w.Name,
 		Description: w.Description,
 		Enabled:     w.Enabled,
 		Conditions:  make([]WaiverConditionResp, 0),
 		Contexts:    make([]WaiverContextResp, 0),
 		Targets:     make([]WaiverFindingTargetResp, 0),
-		CreatedAt:   w.CreatedAt.Time.Format(time.RFC3339),
-		UpdatedAt:   w.UpdatedAt.Time.Format(time.RFC3339),
+		CreatedAt:   w.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:   w.UpdatedAt.Format(time.RFC3339),
 	}
 }
 
-func toWaiverCondition(c sqlc.WaiverCondition) WaiverConditionResp {
+func toWaiverCondition(c port.WaiverCondition) WaiverConditionResp {
 	return WaiverConditionResp{
-		ID:       uuidStr(c.ID),
+		ID:       c.ID,
 		Field:    c.Field,
 		Operator: c.Operator,
 		Value:    c.Value,
 	}
 }
 
-func toWaiverContext(c sqlc.WaiverContext) WaiverContextResp {
+func toWaiverContext(c port.WaiverContext) WaiverContextResp {
 	return WaiverContextResp{
-		ID:            uuidStr(c.ID),
-		EnvironmentID: uuidStr(c.EnvironmentID),
-		TargetID:      uuidStr(c.TargetID),
-		ArtifactID:    uuidStr(c.ArtifactID),
+		ID:            c.ID,
+		EnvironmentID: c.EnvironmentID,
+		TargetID:      c.TargetID,
+		ArtifactID:    c.ArtifactID,
 	}
 }
 
-func toWaiverFindingTarget(t sqlc.WaiverFindingTarget) WaiverFindingTargetResp {
+func toWaiverFindingTarget(t port.WaiverFindingTarget) WaiverFindingTargetResp {
 	return WaiverFindingTargetResp{
-		ID:        uuidStr(t.ID),
-		FindingID: uuidStr(t.FindingID),
+		ID:        t.ID,
+		FindingID: t.FindingID,
 	}
 }
 
-func toWaiverEvent(e sqlc.WaiverEvent) WaiverEventResp {
-	actorID := ""
-	if e.ActorID.Valid {
-		actorID = e.ActorID.String
-	}
+func toWaiverEvent(e port.WaiverEvent) WaiverEventResp {
 	return WaiverEventResp{
-		ID:        uuidStr(e.ID),
-		WaiverID:  uuidStr(e.WaiverID),
+		ID:        e.ID,
+		WaiverID:  e.WaiverID,
 		EventType: e.EventType,
-		ActorID:   actorID,
+		ActorID:   e.ActorID,
 		Metadata:  e.Metadata,
-		CreatedAt: e.CreatedAt.Time.Format(time.RFC3339),
+		CreatedAt: e.CreatedAt.Format(time.RFC3339),
 	}
 }
 
-func toWaiverDetail(w sqlc.Waiver, conditions []sqlc.WaiverCondition, contexts []sqlc.WaiverContext, targets []sqlc.WaiverFindingTarget) WaiverDetailResponse {
+func toWaiverDetail(w port.Waiver, conditions []port.WaiverCondition, contexts []port.WaiverContext, targets []port.WaiverFindingTarget) WaiverDetailResponse {
 	resp := WaiverDetailResponse{
 		WaiverResponse: toWaiver(w),
 		Conditions:     make([]WaiverConditionResp, len(conditions)),
@@ -187,14 +181,14 @@ func toWaiverDetail(w sqlc.Waiver, conditions []sqlc.WaiverCondition, contexts [
 var waiverCreatedEvent = []byte("{}")
 
 func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*WaiverResponse, error) {
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, input.ProjectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, input.ProjectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", input.ProjectSlug, err)
 	}
 
-	conditions := make([]repo.WaiverConditionInput, len(input.Conditions))
+	conditions := make([]port.WaiverCondition, len(input.Conditions))
 	for i, c := range input.Conditions {
-		conditions[i] = repo.WaiverConditionInput{
+		conditions[i] = port.WaiverCondition{
 			Field:    c.Field,
 			Operator: c.Operator,
 			Value:    c.Value,
@@ -206,28 +200,20 @@ func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*
 		return nil, err
 	}
 
-	targets := make([]repo.WaiverTargetInput, len(input.TargetIDs))
+	targets := make([]port.WaiverFindingTarget, len(input.TargetIDs))
 	for i, targetID := range input.TargetIDs {
 		id, err := uuid.Parse(targetID)
 		if err != nil {
 			return nil, fmt.Errorf("invalid target finding id %q: %w", targetID, err)
 		}
-		targets[i] = repo.WaiverTargetInput{FindingID: pgtype.UUID{Bytes: id, Valid: true}}
+		targets[i] = port.WaiverFindingTarget{FindingID: id.String()}
 	}
 
-	w, err := u.deps.Repos.Waivers.CreateWithDetails(ctx, repo.CreateWaiverDetailsParams{
-		ProjectID:   project.ID,
-		Name:        input.Name,
-		Description: input.Description,
-		Enabled:     true,
-		Conditions:  conditions,
-		Contexts:    contexts,
-		Targets:     targets,
-		Event: repo.WaiverEventInput{
-			EventType: "created",
-			ActorID:   textPtr(input.ActorID),
-			Metadata:  waiverCreatedEvent,
-		},
+	actorID := stringPtr(input.ActorID)
+	w, err := u.deps.Stores.Waivers.CreateWithDetails(ctx, project.ID, input.Name, input.Description, true, conditions, contexts, targets, port.WaiverEventInput{
+		EventType: "created",
+		ActorID:   actorID,
+		Metadata:  waiverCreatedEvent,
 	})
 	if err != nil {
 		return nil, err
@@ -238,12 +224,12 @@ func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*
 }
 
 func (u *Usecases) ListWaivers(ctx context.Context, projectSlug string) ([]WaiverResponse, error) {
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 
-	waivers, err := u.deps.Repos.Waivers.List(ctx, project.ID)
+	waivers, err := u.deps.Stores.Waivers.List(ctx, project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list waivers: %w", err)
 	}
@@ -256,7 +242,7 @@ func (u *Usecases) ListWaivers(ctx context.Context, projectSlug string) ([]Waive
 }
 
 func (u *Usecases) GetWaiver(ctx context.Context, projectSlug, waiverID string) (*WaiverDetailResponse, error) {
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
@@ -266,22 +252,22 @@ func (u *Usecases) GetWaiver(ctx context.Context, projectSlug, waiverID string) 
 		return nil, fmt.Errorf("invalid waiver id: %w", err)
 	}
 
-	w, err := u.deps.Repos.Waivers.GetByID(ctx, pgtype.UUID{Bytes: id, Valid: true}, project.ID)
+	w, err := u.deps.Stores.Waivers.GetByID(ctx, id.String(), project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get waiver: %w", err)
 	}
 
-	conditions, err := u.deps.Repos.Waivers.ListConditions(ctx, w.ID)
+	conditions, err := u.deps.Stores.Waivers.ListConditions(ctx, w.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list conditions: %w", err)
 	}
 
-	contexts, err := u.deps.Repos.Waivers.ListContexts(ctx, w.ID)
+	contexts, err := u.deps.Stores.Waivers.ListContexts(ctx, w.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list contexts: %w", err)
 	}
 
-	targets, err := u.deps.Repos.Waivers.ListFindingTargets(ctx, w.ID)
+	targets, err := u.deps.Stores.Waivers.ListFindingTargets(ctx, w.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list finding targets: %w", err)
 	}
@@ -291,7 +277,7 @@ func (u *Usecases) GetWaiver(ctx context.Context, projectSlug, waiverID string) 
 }
 
 func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*WaiverResponse, error) {
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, input.ProjectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, input.ProjectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", input.ProjectSlug, err)
 	}
@@ -300,53 +286,49 @@ func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*
 	if err != nil {
 		return nil, fmt.Errorf("invalid waiver id: %w", err)
 	}
-	pid := pgtype.UUID{Bytes: id, Valid: true}
-
-	var conditions []repo.WaiverConditionInput
-	if input.Conditions != nil {
-		conditions = make([]repo.WaiverConditionInput, len(input.Conditions))
-		for i, c := range input.Conditions {
-			conditions[i] = repo.WaiverConditionInput{
-				Field:    c.Field,
-				Operator: c.Operator,
-				Value:    c.Value,
-			}
-		}
+	waiver := port.Waiver{
+		ID:          id.String(),
+		ProjectID:   project.ID,
+		Name:        input.Name,
+		Description: input.Description,
 	}
 
-	var contexts []repo.WaiverContextInput
+	var conditions *[]port.WaiverCondition
+	if input.Conditions != nil {
+		conds := make([]port.WaiverCondition, len(input.Conditions))
+		for i, c := range input.Conditions {
+			conds[i] = port.WaiverCondition{Field: c.Field, Operator: c.Operator, Value: c.Value}
+		}
+		conditions = &conds
+	}
+
+	var contexts *[]port.WaiverContext
 	if input.Contexts != nil {
-		contexts, err = waiverContextInputs(input.Contexts)
+		ctxs, err := waiverContextInputs(input.Contexts)
 		if err != nil {
 			return nil, err
 		}
+		contexts = &ctxs
 	}
 
-	var targets []repo.WaiverTargetInput
+	var targets *[]port.WaiverFindingTarget
 	if input.TargetIDs != nil {
-		targets = make([]repo.WaiverTargetInput, len(input.TargetIDs))
+		tgts := make([]port.WaiverFindingTarget, len(input.TargetIDs))
 		for i, targetID := range input.TargetIDs {
 			uid, err := uuid.Parse(targetID)
 			if err != nil {
 				return nil, fmt.Errorf("invalid target finding id %q: %w", targetID, err)
 			}
-			targets[i] = repo.WaiverTargetInput{FindingID: pgtype.UUID{Bytes: uid, Valid: true}}
+			tgts[i] = port.WaiverFindingTarget{FindingID: uid.String()}
 		}
+		targets = &tgts
 	}
 
-	w, err := u.deps.Repos.Waivers.UpdateWithDetails(ctx, repo.UpdateWaiverDetailsParams{
-		ID:          pid,
-		ProjectID:   project.ID,
-		Name:        input.Name,
-		Description: input.Description,
-		Conditions:  conditions,
-		Contexts:    contexts,
-		Targets:     targets,
-		Event: repo.WaiverEventInput{
-			EventType: "updated",
-			ActorID:   textPtr(input.ActorID),
-			Metadata:  waiverCreatedEvent,
-		},
+	actorID := stringPtr(input.ActorID)
+	w, err := u.deps.Stores.Waivers.UpdateWithDetails(ctx, waiver, conditions, contexts, targets, port.WaiverEventInput{
+		EventType: "updated",
+		ActorID:   actorID,
+		Metadata:  waiverCreatedEvent,
 	})
 	if err != nil {
 		return nil, err
@@ -356,38 +338,38 @@ func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*
 	return &r, nil
 }
 
-// waiverContextInputs validates and converts create/update waiver context
-// inputs into repo context inputs with parsed UUIDs.
-func waiverContextInputs(inputs []CreateWaiverContextInput) ([]repo.WaiverContextInput, error) {
-	out := make([]repo.WaiverContextInput, len(inputs))
+// waiverContextInputs validates create/update waiver context inputs and
+// keeps them as port context DTOs (empty ids are wildcards).
+func waiverContextInputs(inputs []CreateWaiverContextInput) ([]port.WaiverContext, error) {
+	out := make([]port.WaiverContext, len(inputs))
 	for i, c := range inputs {
 		if c.EnvironmentID != "" {
 			id, err := uuid.Parse(c.EnvironmentID)
 			if err != nil {
 				return nil, fmt.Errorf("invalid environment_id %q: %w", c.EnvironmentID, err)
 			}
-			out[i].EnvironmentID = pgtype.UUID{Bytes: id, Valid: true}
+			out[i].EnvironmentID = id.String()
 		}
 		if c.TargetID != "" {
 			id, err := uuid.Parse(c.TargetID)
 			if err != nil {
 				return nil, fmt.Errorf("invalid target_id %q: %w", c.TargetID, err)
 			}
-			out[i].TargetID = pgtype.UUID{Bytes: id, Valid: true}
+			out[i].TargetID = id.String()
 		}
 		if c.ArtifactID != "" {
 			id, err := uuid.Parse(c.ArtifactID)
 			if err != nil {
 				return nil, fmt.Errorf("invalid artifact_id %q: %w", c.ArtifactID, err)
 			}
-			out[i].ArtifactID = pgtype.UUID{Bytes: id, Valid: true}
+			out[i].ArtifactID = id.String()
 		}
 	}
 	return out, nil
 }
 
 func (u *Usecases) DeleteWaiver(ctx context.Context, projectSlug, waiverID string) error {
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
@@ -397,15 +379,14 @@ func (u *Usecases) DeleteWaiver(ctx context.Context, projectSlug, waiverID strin
 		return fmt.Errorf("invalid waiver id: %w", err)
 	}
 
-	_, err = u.deps.Repos.Waivers.Delete(ctx, pgtype.UUID{Bytes: id, Valid: true}, project.ID)
-	if err != nil {
+	if err := u.deps.Stores.Waivers.Delete(ctx, id.String(), project.ID); err != nil {
 		return fmt.Errorf("delete waiver: %w", err)
 	}
 	return nil
 }
 
 func (u *Usecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID, actorID string) (*WaiverResponse, error) {
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
@@ -415,7 +396,7 @@ func (u *Usecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID, acto
 		return nil, fmt.Errorf("invalid waiver id: %w", err)
 	}
 
-	w, err := u.deps.Repos.Waivers.Toggle(ctx, pgtype.UUID{Bytes: id, Valid: true}, project.ID)
+	w, err := u.deps.Stores.Waivers.Toggle(ctx, id.String(), project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("toggle waiver: %w", err)
 	}
@@ -424,10 +405,10 @@ func (u *Usecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID, acto
 	if !w.Enabled {
 		eventType = "disabled"
 	}
-	u.deps.Repos.Waivers.CreateEvent(ctx, sqlc.CreateWaiverEventParams{
+	_ = u.deps.Stores.Waivers.CreateEvent(ctx, port.WaiverEvent{
 		WaiverID:  w.ID,
 		EventType: eventType,
-		ActorID:   textPtr(actorID),
+		ActorID:   actorID,
 		Metadata:  waiverCreatedEvent,
 	})
 
@@ -436,7 +417,7 @@ func (u *Usecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID, acto
 }
 
 func (u *Usecases) ListWaiverEvents(ctx context.Context, projectSlug, waiverID string) ([]WaiverEventResp, error) {
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
@@ -446,12 +427,11 @@ func (u *Usecases) ListWaiverEvents(ctx context.Context, projectSlug, waiverID s
 		return nil, fmt.Errorf("invalid waiver id: %w", err)
 	}
 
-	_, err = u.deps.Repos.Waivers.GetByID(ctx, pgtype.UUID{Bytes: id, Valid: true}, project.ID)
-	if err != nil {
+	if _, err := u.deps.Stores.Waivers.GetByID(ctx, id.String(), project.ID); err != nil {
 		return nil, fmt.Errorf("get waiver: %w", err)
 	}
 
-	events, err := u.deps.Repos.Waivers.ListEvents(ctx, pgtype.UUID{Bytes: id, Valid: true})
+	events, err := u.deps.Stores.Waivers.ListEvents(ctx, id.String())
 	if err != nil {
 		return nil, fmt.Errorf("list events: %w", err)
 	}
@@ -464,7 +444,7 @@ func (u *Usecases) ListWaiverEvents(ctx context.Context, projectSlug, waiverID s
 }
 
 func (u *Usecases) CheckWaiverMatch(ctx context.Context, projectSlug, findingID string) (bool, error) {
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return false, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
@@ -473,37 +453,36 @@ func (u *Usecases) CheckWaiverMatch(ctx context.Context, projectSlug, findingID 
 	if err != nil {
 		return false, fmt.Errorf("invalid finding id: %w", err)
 	}
-	findingUUID := pgtype.UUID{Bytes: fid, Valid: true}
 
-	finding, err := u.deps.Repos.Findings.GetByID(ctx, findingUUID)
+	finding, err := u.deps.Stores.Findings.GetByID(ctx, fid.String())
 	if err != nil {
 		return false, fmt.Errorf("get finding: %w", err)
 	}
 
 	gf := gate.Finding{
-		ID:                  uuid.UUID(finding.ID.Bytes).String(),
+		ID:                  finding.ID,
 		CurrentSeverityRank: finding.CurrentSeverityRank,
 		FindingKind:         finding.FindingKind,
 		Fingerprint:         finding.Fingerprint,
 		CurrentTitle:        finding.CurrentTitle,
 	}
-	if fc, ctxErr := u.deps.Repos.Findings.GetFindingContext(ctx, findingUUID); ctxErr == nil {
-		if fc.EnvironmentID.Valid {
-			gf.EnvironmentID = uuid.UUID(fc.EnvironmentID.Bytes).String()
-		}
-		if fc.TargetID.Valid {
-			gf.TargetID = uuid.UUID(fc.TargetID.Bytes).String()
-		}
-		if fc.ArtifactID.Valid {
-			gf.ArtifactID = uuid.UUID(fc.ArtifactID.Bytes).String()
-		}
+	if fc, ctxErr := u.deps.Stores.Findings.GetFindingContext(ctx, fid.String()); ctxErr == nil {
+		gf.EnvironmentID = fc.EnvironmentID
+		gf.TargetID = fc.TargetID
+		gf.ArtifactID = fc.ArtifactID
 	}
 
-	projectID := uuid.UUID(project.ID.Bytes).String()
-	waivers, err := (&gateWaiverRepo{r: u.deps.Repos.Waivers}).ListActiveWaivers(ctx, projectID)
+	waivers, err := (&gateWaiverRepo{stores: u.deps.Stores}).ListActiveWaivers(ctx, project.ID)
 	if err != nil {
 		return false, fmt.Errorf("list active waivers: %w", err)
 	}
 
 	return gate.IsFindingWaived(gf, waivers), nil
+}
+
+func stringPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

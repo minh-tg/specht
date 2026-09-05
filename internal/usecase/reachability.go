@@ -7,9 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/domain"
-	"github.com/xMinhx/specht/internal/repo"
 )
 
 // ReachabilityState values accepted by UpsertReachability. They alias the
@@ -57,24 +55,19 @@ func (u *Usecases) UpsertReachability(ctx context.Context, findingID, userID, st
 		return nil, err
 	}
 
-	r, err := u.deps.Repos.Reachability.Upsert(ctx, repo.UpsertReachabilityParams{
-		FindingID:  pgtype.UUID{Bytes: fid, Valid: true},
-		State:      state,
-		Evidence:   evidence,
-		AssessedBy: pgtype.UUID{Bytes: uid, Valid: true},
-	})
+	r, err := u.deps.Stores.Reachability.Upsert(ctx, fid.String(), state, evidence, uid.String())
 	if err != nil {
 		return nil, fmt.Errorf("upsert reachability: %w", err)
 	}
 
 	return &ReachabilityResponse{
-		ID:         uuid.UUID(r.ID.Bytes).String(),
-		FindingID:  uuid.UUID(r.FindingID.Bytes).String(),
-		State:      string(r.State),
+		ID:         r.ID,
+		FindingID:  r.FindingID,
+		State:      r.State,
 		Evidence:   r.Evidence,
-		AssessedBy: uuid.UUID(r.AssessedBy.Bytes).String(),
-		CreatedAt:  r.CreatedAt.Time.Format(time.RFC3339),
-		UpdatedAt:  r.UpdatedAt.Time.Format(time.RFC3339),
+		AssessedBy: r.AssessedBy,
+		CreatedAt:  r.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:  r.UpdatedAt.Format(time.RFC3339),
 	}, nil
 }
 
@@ -87,7 +80,7 @@ func (u *Usecases) ListReachability(ctx context.Context, findingID string) ([]Re
 		return nil, err
 	}
 
-	rows, err := u.deps.Repos.Reachability.ListByFinding(ctx, pgtype.UUID{Bytes: fid, Valid: true})
+	rows, err := u.deps.Stores.Reachability.ListByFinding(ctx, fid.String())
 	if err != nil {
 		return nil, fmt.Errorf("list reachability: %w", err)
 	}
@@ -95,13 +88,13 @@ func (u *Usecases) ListReachability(ctx context.Context, findingID string) ([]Re
 	result := make([]ReachabilityResponse, len(rows))
 	for i, r := range rows {
 		result[i] = ReachabilityResponse{
-			ID:         uuid.UUID(r.ID.Bytes).String(),
-			FindingID:  uuid.UUID(r.FindingID.Bytes).String(),
-			State:      string(r.State),
+			ID:         r.ID,
+			FindingID:  r.FindingID,
+			State:      r.State,
 			Evidence:   r.Evidence,
-			AssessedBy: uuid.UUID(r.AssessedBy.Bytes).String(),
-			CreatedAt:  r.CreatedAt.Time.Format(time.RFC3339),
-			UpdatedAt:  r.UpdatedAt.Time.Format(time.RFC3339),
+			AssessedBy: r.AssessedBy,
+			CreatedAt:  r.CreatedAt.Format(time.RFC3339),
+			UpdatedAt:  r.UpdatedAt.Format(time.RFC3339),
 		}
 	}
 	return result, nil

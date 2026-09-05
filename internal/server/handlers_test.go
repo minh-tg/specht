@@ -14,11 +14,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
@@ -28,7 +26,7 @@ type mockUsecases struct {
 	getProjectFn         func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
 	listFindingsFn       func(ctx context.Context, projectSlug string, severities, states []string, limit, offset int32) ([]usecase.FindingResponse, error)
 	listReportsFn        func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
-	getReportFn          func(ctx context.Context, reportID pgtype.UUID) (*usecase.ReportResponse, error)
+	getReportFn          func(ctx context.Context, reportID string) (*usecase.ReportResponse, error)
 	ingestReportFn       func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
 	registerFn           func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
 	loginFn              func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
@@ -56,8 +54,8 @@ type mockUsecases struct {
 	checkWaiverMatchFn   func(ctx context.Context, projectSlug, findingID string) (bool, error)
 	getProjectStatsFn    func(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error)
 	getWatcherStatusFn   func(ctx context.Context) (*usecase.WatcherStatusResponse, error)
-	createEvidenceFn     func(ctx context.Context, findingID, userID, typ, url, description string) (sqlc.EvidenceArtifact, error)
-	listEvidenceFn       func(ctx context.Context, findingID string) ([]sqlc.EvidenceArtifact, error)
+	createEvidenceFn     func(ctx context.Context, findingID, userID, typ, url, description string) (usecase.EvidenceResponse, error)
+	listEvidenceFn       func(ctx context.Context, findingID string) ([]usecase.EvidenceResponse, error)
 	deleteEvidenceFn     func(ctx context.Context, evidenceID string) error
 	upsertReachabilityFn func(ctx context.Context, findingID, userID, state, evidence string) (*usecase.ReachabilityResponse, error)
 	listReachabilityFn   func(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error)
@@ -107,7 +105,7 @@ func (m *mockUsecases) ListReports(ctx context.Context, projectSlug string, limi
 	return m.listReportsFn(ctx, projectSlug, limit, offset)
 }
 
-func (m *mockUsecases) GetReport(ctx context.Context, reportID pgtype.UUID) (*usecase.ReportResponse, error) {
+func (m *mockUsecases) GetReport(ctx context.Context, reportID string) (*usecase.ReportResponse, error) {
 	if m.getReportFn == nil {
 		return nil, fmt.Errorf("unexpected call to GetReport")
 	}
@@ -296,14 +294,14 @@ func (m *mockUsecases) GetWatcherStatus(ctx context.Context) (*usecase.WatcherSt
 	return m.getWatcherStatusFn(ctx)
 }
 
-func (m *mockUsecases) CreateEvidence(ctx context.Context, findingID, userID, typ, url, description string) (sqlc.EvidenceArtifact, error) {
+func (m *mockUsecases) CreateEvidence(ctx context.Context, findingID, userID, typ, url, description string) (usecase.EvidenceResponse, error) {
 	if m.createEvidenceFn == nil {
-		return sqlc.EvidenceArtifact{}, fmt.Errorf("unexpected call to CreateEvidence")
+		return usecase.EvidenceResponse{}, fmt.Errorf("unexpected call to CreateEvidence")
 	}
 	return m.createEvidenceFn(ctx, findingID, userID, typ, url, description)
 }
 
-func (m *mockUsecases) ListEvidence(ctx context.Context, findingID string) ([]sqlc.EvidenceArtifact, error) {
+func (m *mockUsecases) ListEvidence(ctx context.Context, findingID string) ([]usecase.EvidenceResponse, error) {
 	if m.listEvidenceFn == nil {
 		return nil, fmt.Errorf("unexpected call to ListEvidence")
 	}
@@ -753,7 +751,7 @@ func TestListReports_NotFound(t *testing.T) {
 
 func TestGetReport_Success(t *testing.T) {
 	mock := &mockUsecases{
-		getReportFn: func(ctx context.Context, id pgtype.UUID) (*usecase.ReportResponse, error) {
+		getReportFn: func(ctx context.Context, id string) (*usecase.ReportResponse, error) {
 			return &sampleReports()[0], nil
 		},
 	}
@@ -771,7 +769,7 @@ func TestGetReport_Success(t *testing.T) {
 
 func TestGetReport_NotFound(t *testing.T) {
 	mock := &mockUsecases{
-		getReportFn: func(ctx context.Context, id pgtype.UUID) (*usecase.ReportResponse, error) {
+		getReportFn: func(ctx context.Context, id string) (*usecase.ReportResponse, error) {
 			return nil, fmt.Errorf("not found")
 		},
 	}
@@ -879,7 +877,7 @@ func TestNewRouterRoutes(t *testing.T) {
 		listReportsFn: func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error) {
 			return nil, nil
 		},
-		getReportFn:    func(ctx context.Context, id pgtype.UUID) (*usecase.ReportResponse, error) { return nil, nil },
+		getReportFn:    func(ctx context.Context, id string) (*usecase.ReportResponse, error) { return nil, nil },
 		registerFn:     func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) { return nil, nil },
 		loginFn:        func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) { return nil, nil },
 		createAPIKeyFn: func(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error) { return nil, nil },

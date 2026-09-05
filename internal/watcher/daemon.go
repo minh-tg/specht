@@ -10,19 +10,15 @@ package watcher
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
-	"math/rand"
+	"math/rand/v2"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/port"
 )
 
 // PollStore is the persistence surface a poll writes through. The production
@@ -37,12 +33,12 @@ type PollStore interface {
 	// hits of an existing watcher finding (same fingerprint) are guarded: no
 	// second occurrence is created, and created is false so the poll can
 	// count them as unchanged rather than inflated "created".
-	PersistFoundFinding(ctx context.Context, d Decision) (pgtype.UUID, bool, error)
+	PersistFoundFinding(ctx context.Context, d Decision) (string, bool, error)
 	// PersistSkipEvent attaches an auto_rule_skipped event to the
 	// scan-derived finding that suppressed a watcher finding (controller
 	// ruling: the decision conveys the skip but not the suppressing id, so
 	// the wiring resolves it via FindScaFindingIdForPurlAndCve).
-	PersistSkipEvent(ctx context.Context, suppressingID pgtype.UUID, ev Event) error
+	PersistSkipEvent(ctx context.Context, suppressingID string, ev Event) error
 }
 
 // PollDeps are the injectable surfaces PollOnce needs. Function fields keep
@@ -55,21 +51,22 @@ type PollDeps struct {
 	Store PollStore
 	// Projects is the set of projects to watch. The daemon queries the
 	// inventory of every project and attributes findings per project.
-	Projects []pgtype.UUID
+	Projects []string
 	// Inventory returns the project's distinct packages seen within the
 	// given TTL window (last_seen_at >= now() - since).
-	Inventory func(ctx context.Context, projectID pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error)
+	Inventory func(ctx context.Context, projectID string, since time.Duration) ([]port.InventoryPackage, error)
 	// FindGap resolves the scan-derived sca finding that already covers a
-	// (name-level purl, candidate ids) pair, or pgx.ErrNoRows when none
-	// does. The resolved id is where the auto_rule_skipped event lands.
-	FindGap func(ctx context.Context, projectID pgtype.UUID, purlName string, candidateIDs []string) (pgtype.UUID, error)
+	// (name-level purl, candidate ids) pair. An empty id with nil error means
+	// no suppressing finding exists. The resolved id is where the
+	// auto_rule_skipped event lands.
+	FindGap func(ctx context.Context, projectID string, purlName string, candidateIDs []string) (string, error)
 	// GetWatermark returns the project's last successful poll timestamp, or
 	// (zero, false) when that project has never polled (cold start /
 	// catch-up). Per-project so disabling a project cannot lose advisories.
-	GetWatermark func(ctx context.Context, projectID pgtype.UUID) (time.Time, bool, error)
+	GetWatermark func(ctx context.Context, projectID string) (time.Time, bool, error)
 	// SetWatermark advances a project's watermark. The daemon calls it only
 	// after a fully successful poll of that project's inventory.
-	SetWatermark func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error
+	SetWatermark func(ctx context.Context, projectID string, ts time.Time) error
 	// Now supplies the clock for the watermark. Defaults to time.Now.
 	Now func() time.Time
 	// Logger for poll progress. Defaults to slog.Default().
@@ -89,8 +86,8 @@ type PollDeps struct {
 	// webhook URL) disables the channel entirely.
 	Notifier Notifier
 	// ProjectName resolves a project's display name for notifications.
-	// When nil, the project UUID string is used as the name.
-	ProjectName func(ctx context.Context, projectID pgtype.UUID) (string, error)
+	// When nil, the project ID string is used as the name.
+	ProjectName func(ctx context.Context, projectID string) (string, error)
 	// RecordAttempt is an optional health hook called when a poll starts.
 	// A nil hook disables attempt recording.
 	RecordAttempt func(ctx context.Context, ts time.Time) error
@@ -151,7 +148,7 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 		outcome.Projects++
 		rows, err := deps.Inventory(ctx, projectID, deps.InventoryTTL)
 		if err != nil {
-			return outcome, fmt.Errorf("inventory for project %s: %w", uuid.UUID(projectID.Bytes), err)
+			return outcome, fmt.Errorf("inventory for project %s: %w", projectID, err)
 		}
 		if len(rows) == 0 {
 			continue
@@ -167,7 +164,7 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 		// its own history.
 		cutoff, err := pollCutoff(ctx, deps, projectID)
 		if err != nil {
-			return outcome, fmt.Errorf("cutoff for project %s: %w", uuid.UUID(projectID.Bytes), err)
+			return outcome, fmt.Errorf("cutoff for project %s: %w", projectID, err)
 		}
 		queries := make([]Query, len(groups))
 		for i, g := range groups {
@@ -175,7 +172,7 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 		}
 		results, err := deps.Client.QueryBatch(ctx, queries)
 		if err != nil {
-			return outcome, fmt.Errorf("querybatch for project %s: %w", uuid.UUID(projectID.Bytes), err)
+			return outcome, fmt.Errorf("querybatch for project %s: %w", projectID, err)
 		}
 		outcome.Queried += len(queries)
 		for i, res := range results {
@@ -186,7 +183,7 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 					continue
 				}
 				for _, row := range g.rows {
-					kind, skipped, decision, err := decidePair(ctx, deps, g, row, advisory)
+					kind, skipped, decision, err := decidePair(ctx, deps, projectID, g, row, advisory)
 					if err != nil {
 						return outcome, err
 					}
@@ -213,7 +210,7 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 		// succeeded.
 		if deps.SetWatermark != nil {
 			if err := deps.SetWatermark(ctx, projectID, now); err != nil {
-				return outcome, fmt.Errorf("advance watermark for project %s: %w", uuid.UUID(projectID.Bytes), err)
+				return outcome, fmt.Errorf("advance watermark for project %s: %w", projectID, err)
 			}
 		}
 	}
@@ -236,10 +233,8 @@ func notifyCreated(ctx context.Context, deps PollDeps, created []Decision) {
 	for _, d := range created {
 		project := d.Finding.ProjectID
 		if deps.ProjectName != nil {
-			if pid, err := uuid.Parse(d.Finding.ProjectID); err == nil {
-				if name, err := deps.ProjectName(ctx, pgtype.UUID{Bytes: pid, Valid: true}); err == nil && name != "" {
-					project = name
-				}
+			if name, err := deps.ProjectName(ctx, d.Finding.ProjectID); err == nil && name != "" {
+				project = name
 			}
 		}
 		notifications = append(notifications, NotificationFromDecision(d, project))
@@ -252,7 +247,7 @@ func notifyCreated(ctx context.Context, deps PollDeps, created []Decision) {
 // pollCutoff resolves one project's advisory published-date lower bound: the
 // project's own watermark on warm polls, the configured cold-start window (or
 // full history) when that project has never polled.
-func pollCutoff(ctx context.Context, deps PollDeps, projectID pgtype.UUID) (time.Time, error) {
+func pollCutoff(ctx context.Context, deps PollDeps, projectID string) (time.Time, error) {
 	wm, ok, err := deps.GetWatermark(ctx, projectID)
 	if err != nil {
 		return time.Time{}, err
@@ -300,30 +295,25 @@ const (
 // auto_rule_skipped event can be attached to it. It returns the outcome kind,
 // whether the skip was orphaned, and (when created) the decision that carries
 // the persisted finding payload for downstream notification.
-func decidePair(ctx context.Context, deps PollDeps, g invGroup, row sqlc.DistinctInventoryRow, advisory Advisory) (decisionKind, bool, Decision, error) {
-	var suppressing pgtype.UUID
-	haveSuppressing := false
-	gap := func(ctx context.Context, projectID, purlName string, candidateIDs []string) (bool, error) {
-		pid, err := uuid.Parse(projectID)
-		if err != nil {
-			return false, fmt.Errorf("parse project id %q: %w", projectID, err)
-		}
-		id, err := deps.FindGap(ctx, pgtype.UUID{Bytes: pid, Valid: true}, purlName, candidateIDs)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return false, nil
-		}
+func decidePair(ctx context.Context, deps PollDeps, projectID string, g invGroup, row port.InventoryPackage, advisory Advisory) (decisionKind, bool, Decision, error) {
+	var suppressing string
+	gap := func(ctx context.Context, gapProjectID, purlName string, candidateIDs []string) (bool, error) {
+		id, err := deps.FindGap(ctx, gapProjectID, purlName, candidateIDs)
 		if err != nil {
 			return false, err
 		}
-		suppressing, haveSuppressing = id, true
+		if id == "" {
+			return false, nil
+		}
+		suppressing = id
 		return true, nil
 	}
 
 	input := DecideInput{
-		ProjectID: uuid.UUID(row.ProjectID.Bytes).String(),
+		ProjectID: projectID,
 		Advisory:  advisory,
-		Purl:      row.Purl,
-		Version:   row.Version.String,
+		Purl:      row.PURL,
+		Version:   row.Version,
 		// Use the grouped OSV-canonical ecosystem (g.ecosystem), not the raw
 		// stored row.Ecosystem, so the matcher compares the SAME name the
 		// query was sent under. groupInventory maps stored forms to the OSV
@@ -338,11 +328,10 @@ func decidePair(ctx context.Context, deps PollDeps, g invGroup, row sqlc.Distinc
 		return decisionIgnored, false, Decision{}, err
 	}
 	if decision.Created {
-		id, created, err := deps.Store.PersistFoundFinding(ctx, decision)
+		_, created, err := deps.Store.PersistFoundFinding(ctx, decision)
 		if err != nil {
 			return decisionIgnored, false, Decision{}, err
 		}
-		_ = id
 		if !created {
 			// Re-poll hit of an existing watcher finding: the fingerprint is
 			// already persisted, so this is an unchanged outcome, not a new
@@ -352,7 +341,7 @@ func decidePair(ctx context.Context, deps PollDeps, g invGroup, row sqlc.Distinc
 		return decisionCreated, false, decision, nil
 	}
 	if decision.Event != nil { // auto_rule_skipped: attach to the suppressing finding
-		if haveSuppressing {
+		if suppressing != "" {
 			if err := deps.Store.PersistSkipEvent(ctx, suppressing, *decision.Event); err != nil {
 				return decisionIgnored, false, Decision{}, err
 			}
@@ -370,19 +359,19 @@ func decidePair(ctx context.Context, deps PollDeps, g invGroup, row sqlc.Distinc
 type invGroup struct {
 	ecosystem string
 	name      string
-	rows      []sqlc.DistinctInventoryRow
+	rows      []port.InventoryPackage
 }
 
 // groupInventory buckets inventory rows by (OSV ecosystem, name), dropping
 // rows that cannot be queried (missing ecosystem or name). Group order is
 // deterministic so polls are reproducible and the client's result order lines
 // up.
-func groupInventory(rows []sqlc.DistinctInventoryRow) []invGroup {
+func groupInventory(rows []port.InventoryPackage) []invGroup {
 	byKey := make(map[string]*invGroup)
 	var keys []string
 	for _, r := range rows {
-		eco := strings.TrimSpace(r.Ecosystem.String)
-		name := strings.TrimSpace(r.Name.String)
+		eco := strings.TrimSpace(r.Ecosystem)
+		name := strings.TrimSpace(r.Name)
 		if eco == "" || name == "" {
 			continue // OSV cannot query a package without an ecosystem or name
 		}
@@ -404,7 +393,6 @@ func groupInventory(rows []sqlc.DistinctInventoryRow) []invGroup {
 	return out
 }
 
-// RunCveWatcherConfig configures the polling loop.
 type RunCveWatcherConfig struct {
 	// PollDeps feeds each PollOnce call.
 	PollDeps PollDeps
@@ -414,7 +402,7 @@ type RunCveWatcherConfig struct {
 	// ProjectIntervals schedules projects independently when non-empty. Each
 	// project in PollDeps.Projects uses its mapped interval; missing or invalid
 	// entries fall back to PollInterval.
-	ProjectIntervals map[pgtype.UUID]time.Duration
+	ProjectIntervals map[string]time.Duration
 	// InitialBackoff is the wait after the first failed poll; it doubles
 	// per failure up to MaxBackoff. Defaults to 30 seconds.
 	InitialBackoff time.Duration
@@ -528,8 +516,8 @@ func RunCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 
 func runScheduledCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 	logger := cfg.Logger
-	intervals := make(map[pgtype.UUID]time.Duration, len(cfg.PollDeps.Projects))
-	nextDue := make(map[pgtype.UUID]time.Time, len(cfg.PollDeps.Projects))
+	intervals := make(map[string]time.Duration, len(cfg.PollDeps.Projects))
+	nextDue := make(map[string]time.Time, len(cfg.PollDeps.Projects))
 	now := cfg.Now().UTC()
 	for _, projectID := range cfg.PollDeps.Projects {
 		interval := cfg.ProjectIntervals[projectID]
@@ -547,12 +535,12 @@ func runScheduledCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 		return
 	}
 
-	backoffs := make(map[pgtype.UUID]time.Duration, len(nextDue))
-	failedProjects := make(map[pgtype.UUID]bool, len(nextDue))
+	backoffs := make(map[string]time.Duration, len(nextDue))
+	failedProjects := make(map[string]bool, len(nextDue))
 	for {
 		now = cfg.Now().UTC()
 
-		due := make([]pgtype.UUID, 0, len(nextDue))
+		due := make([]string, 0, len(nextDue))
 		var earliest time.Time
 		for _, projectID := range cfg.PollDeps.Projects {
 			dueAt := nextDue[projectID]
@@ -587,7 +575,7 @@ func runScheduledCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 		var pollErr error
 		for _, projectID := range due {
 			pollDeps := cfg.PollDeps
-			pollDeps.Projects = []pgtype.UUID{projectID}
+			pollDeps.Projects = []string{projectID}
 			projectOutcome, err := PollOnce(ctx, pollDeps)
 			outcome.Projects += projectOutcome.Projects
 			outcome.Queried += projectOutcome.Queried
@@ -606,9 +594,9 @@ func runScheduledCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 				nextDue[projectID] = cfg.Now().UTC().Add(delay)
 				failedProjects[projectID] = true
 				if pollErr == nil {
-					pollErr = fmt.Errorf("project %s: %w", uuid.UUID(projectID.Bytes), err)
+					pollErr = fmt.Errorf("project %s: %w", projectID, err)
 				}
-				logger.Error("cve watcher poll failed", "project", uuid.UUID(projectID.Bytes), "error", err, "next_retry", delay.String())
+				logger.Error("cve watcher poll failed", "project", projectID, "error", err, "next_retry", delay.String())
 				continue
 			}
 			delete(failedProjects, projectID)

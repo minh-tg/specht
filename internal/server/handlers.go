@@ -12,9 +12,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
@@ -98,7 +96,7 @@ type (
 	ReportUsecases interface {
 		IngestReport(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
 		ListReports(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
-		GetReport(ctx context.Context, reportID pgtype.UUID) (*usecase.ReportResponse, error)
+		GetReport(ctx context.Context, reportID string) (*usecase.ReportResponse, error)
 	}
 
 	GateUsecases interface {
@@ -117,8 +115,8 @@ type (
 	}
 
 	EvidenceUsecases interface {
-		CreateEvidence(ctx context.Context, findingID, userID, typ, url, description string) (sqlc.EvidenceArtifact, error)
-		ListEvidence(ctx context.Context, findingID string) ([]sqlc.EvidenceArtifact, error)
+		CreateEvidence(ctx context.Context, findingID, userID, typ, url, description string) (usecase.EvidenceResponse, error)
+		ListEvidence(ctx context.Context, findingID string) ([]usecase.EvidenceResponse, error)
 		DeleteEvidence(ctx context.Context, evidenceID string) error
 	}
 

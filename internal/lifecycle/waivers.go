@@ -1,56 +1,36 @@
+// Package lifecycle runs the time-based sweeps that keep findings and waivers
+// current: marking findings whose analysis window expired back to unanalyzed
+// and disabling waivers past their expiry. The sweepers depend only on the
+// neutral port expiry stores and the caller's shutdown context — no database
+// handle leaks here.
 package lifecycle
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/port"
 )
 
-// sweepExpiredWaivers performs a single sweep of waivers with expired
-// expires_at, disabling them. It returns the expired waiver rows.
-func sweepExpiredWaivers(ctx context.Context, q *sqlc.Queries, logger *slog.Logger) ([]sqlc.ExpireWaiversRow, error) {
-	expired, err := q.ExpireWaivers(ctx)
+// SweepExpiredWaivers performs a single sweep of waivers with expired
+// expires_at through the store's transaction, disabling them. It returns the
+// number of waivers disabled.
+func SweepExpiredWaivers(ctx context.Context, store port.WaiverExpiryStore, logger *slog.Logger) (int, error) {
+	expired, err := store.ExpireExpired(ctx)
 	if err != nil {
-		return nil, err
+		return 0, err
 	}
-
-	for _, w := range expired {
-		metadata, err := json.Marshal(map[string]interface{}{
-			"reason":      "waiver_expired",
-			"waiver_name": w.Name,
-		})
-		if err != nil {
-			logger.Error("marshal waiver event metadata", "error", err)
-			continue
-		}
-
-		_, err = q.CreateWaiverEvent(ctx, sqlc.CreateWaiverEventParams{
-			WaiverID:  w.ID,
-			EventType: "auto_disabled",
-			ActorID:   pgtype.Text{Valid: false},
-			Metadata:  metadata,
-		})
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	if len(expired) > 0 {
 		logger.Info("expired waivers disabled", "count", len(expired))
 	}
-
-	return expired, nil
+	return len(expired), nil
 }
 
 // RunWaiverExpiry starts a background goroutine that periodically sweeps
-// waivers with expired expires_at, disabling them automatically.
-// The goroutine stops when ctx is cancelled.
-func RunWaiverExpiry(ctx context.Context, pool *pgxpool.Pool, interval time.Duration, logger *slog.Logger) {
+// waivers with expired expires_at, disabling them automatically. The goroutine
+// stops when ctx is cancelled.
+func RunWaiverExpiry(ctx context.Context, store port.WaiverExpiryStore, interval time.Duration, logger *slog.Logger) {
 	go func() {
 		logger.Info("waiver expiry daemon started", "interval", interval)
 		ticker := time.NewTicker(interval)
@@ -62,9 +42,7 @@ func RunWaiverExpiry(ctx context.Context, pool *pgxpool.Pool, interval time.Dura
 				logger.Info("waiver expiry daemon stopped")
 				return
 			case <-ticker.C:
-				q := sqlc.New(pool)
-				_, err := sweepExpiredWaivers(context.Background(), q, logger)
-				if err != nil {
+				if _, err := SweepExpiredWaivers(ctx, store, logger); err != nil {
 					logger.Error("waiver expiry sweep failed", "error", err)
 				}
 			}

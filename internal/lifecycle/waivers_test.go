@@ -19,6 +19,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/xMinhx/specht/internal/db"
 	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/repo"
 )
 
 func setupLifecycleTestDB(t *testing.T) (*pgxpool.Pool, func()) {
@@ -117,10 +118,11 @@ func TestSweepExpiredWaivers_DisablesExpired(t *testing.T) {
 		Valid: true,
 	})
 
-	// Run sweep
-	result, err := sweepExpiredWaivers(ctx, q, slog.Default())
+	// Run sweep through the port expiry store
+	store := repo.NewWaiverExpiryStore(pool)
+	count, err := SweepExpiredWaivers(ctx, store, slog.Default())
 	require.NoError(t, err)
-	assert.Len(t, result, 1, "only one waiver should be disabled")
+	assert.Equal(t, 1, count, "only one waiver should be disabled")
 
 	// Verify expired waiver is now disabled
 	updatedExpired, err := q.GetWaiver(ctx, sqlc.GetWaiverParams{
@@ -128,8 +130,6 @@ func TestSweepExpiredWaivers_DisablesExpired(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.False(t, updatedExpired.Enabled, "expired waiver should be disabled")
-	assert.Equal(t, "expired-waiver", result[0].Name)
-	assert.Equal(t, expiredID.Bytes, result[0].ID.Bytes)
 
 	// Verify non-expired waiver is still enabled
 	updatedNotExpired, err := q.GetWaiver(ctx, sqlc.GetWaiverParams{
@@ -197,7 +197,7 @@ func TestRunWaiverExpiry_TickerDisablesExpired(t *testing.T) {
 	ctx2, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	RunWaiverExpiry(ctx2, pool, 100*time.Millisecond, slog.Default())
+	RunWaiverExpiry(ctx2, repo.NewWaiverExpiryStore(pool), 100*time.Millisecond, slog.Default())
 
 	// Wait for at least 2 ticks
 	time.Sleep(500 * time.Millisecond)
@@ -241,7 +241,7 @@ func TestRunWaiverExpiry_NonExpiredUntouched(t *testing.T) {
 	ctx2, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	RunWaiverExpiry(ctx2, pool, 100*time.Millisecond, slog.Default())
+	RunWaiverExpiry(ctx2, repo.NewWaiverExpiryStore(pool), 100*time.Millisecond, slog.Default())
 
 	time.Sleep(500 * time.Millisecond)
 

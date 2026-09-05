@@ -20,6 +20,7 @@ import (
 	"github.com/xMinhx/specht/internal/db"
 	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/lifecycle"
+	"github.com/xMinhx/specht/internal/repo"
 )
 
 func setupTestDB(t *testing.T) (*pgxpool.Pool, func()) {
@@ -150,7 +151,7 @@ func TestSweepExpiredFindings_ExpiredFindingsGetReset(t *testing.T) {
 
 	// Act
 	logger := slog.Default()
-	count, err := lifecycle.SweepExpiredFindings(ctx, pool, logger)
+	count, err := lifecycle.SweepExpiredFindings(ctx, repo.NewAnalysisExpiryStore(pool), logger)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count, "only the expired finding should be swept")
 
@@ -189,7 +190,7 @@ func TestSweepExpiredFindings_CreatesAnalysisChangedEvents(t *testing.T) {
 	finding := createTestFinding(t, q, project.ID, "expired-event-1", expiredTime)
 
 	logger := slog.Default()
-	count, err := lifecycle.SweepExpiredFindings(ctx, pool, logger)
+	count, err := lifecycle.SweepExpiredFindings(ctx, repo.NewAnalysisExpiryStore(pool), logger)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count)
 
@@ -236,7 +237,7 @@ func TestSweepExpiredFindings_NoExpiredFindings(t *testing.T) {
 
 	// Act
 	logger := slog.Default()
-	count, err := lifecycle.SweepExpiredFindings(ctx, pool, logger)
+	count, err := lifecycle.SweepExpiredFindings(ctx, repo.NewAnalysisExpiryStore(pool), logger)
 	require.NoError(t, err)
 	assert.Equal(t, 0, count, "no findings should be swept")
 }

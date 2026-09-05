@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/google/uuid"
 )
 
 func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
@@ -76,13 +76,12 @@ func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) GetReport(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
-	var id pgtype.UUID
-	if err := id.Scan(idStr); err != nil {
+	if _, err := uuid.Parse(idStr); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid_id", "invalid report id")
 		return
 	}
 
-	report, err := h.usecase.GetReport(r.Context(), id)
+	report, err := h.usecase.GetReport(r.Context(), idStr)
 	if err != nil {
 		respondError(w, http.StatusNotFound, "not_found", "report not found")
 		return

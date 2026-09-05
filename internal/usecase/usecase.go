@@ -1,8 +1,8 @@
 // Package usecase implements the application's business use cases: report
 // ingestion, finding triage, waiver management, gate evaluation, and the
 // read/stat surfaces the HTTP handlers and CLI consume. Use cases
-// orchestrate repositories and the scanner registry; they hold no HTTP or
-// persistence concerns of their own.
+// orchestrate the neutral persistence stores and scanner registry; they hold
+// no HTTP or persistence concerns of their own.
 package usecase
 
 import (
@@ -11,15 +11,13 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"math/big"
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/auth"
+	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/gate"
-	"github.com/xMinhx/specht/internal/repo"
+	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
@@ -58,11 +56,11 @@ type IngestReportOutput struct {
 	ThresholdBreached bool
 }
 
-// Deps wires the dependencies a Usecases instance needs. Repos, Registry,
+// Deps wires the dependencies a Usecases instance needs. Stores, Registry,
 // and JWTAuth are required; InventoryTTL tunes how long scanned inventory is
 // considered fresh.
 type Deps struct {
-	Repos        *repo.Repos
+	Stores       *port.Stores
 	Registry     *scanner.Registry
 	JWTAuth      *auth.JWTAuthenticator
 	InventoryTTL time.Duration
@@ -84,75 +82,44 @@ func New(deps Deps) *Usecases {
 func (u *Usecases) initGate() {
 	u.gateOnce.Do(func() {
 		u.gate = gate.New(
-			&gateFindingRepo{r: u.deps.Repos.Findings, reachability: u.deps.Repos.Reachability},
-			&gateWaiverRepo{r: u.deps.Repos.Waivers},
+			&gateFindingRepo{stores: u.deps.Stores},
+			&gateWaiverRepo{stores: u.deps.Stores},
 		)
 	})
 }
 
 type gateFindingRepo struct {
-	r            repo.FindingRepo
-	reachability repo.ReachabilityRepo
+	stores *port.Stores
 }
 
 func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID string, minSeverityRank int16) ([]gate.Finding, error) {
-	pid, err := uuid.Parse(projectID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid project id: %w", err)
+	if a.stores == nil || a.stores.Findings == nil {
+		return nil, fmt.Errorf("finding store unavailable")
 	}
-	rows, err := a.r.ListBlockingFindings(ctx, pgtype.UUID{Bytes: pid, Valid: true}, minSeverityRank)
+	// Batch candidate loader: one round trip returns each candidate with its
+	// deployment context and latest reachability, so gate evaluation performs
+	// no per-finding GetFindingContext N+1 lookups.
+	candidates, err := a.stores.Findings.ListGateCandidates(ctx, projectID, minSeverityRank)
 	if err != nil {
 		return nil, err
 	}
-	// Batch-load the latest reachability assessment for every blocking
-	// finding in one query (avoids an N+1 round-trip per blocker).
-	ids := make([]pgtype.UUID, len(rows))
-	for i, r := range rows {
-		ids[i] = r.ID
-	}
-	latestByFinding := map[string]gate.ReachabilityState{}
-	if a.reachability != nil && len(ids) > 0 {
-		assessments, err := a.reachability.LatestByFindings(ctx, ids)
-		if err != nil {
-			return nil, fmt.Errorf("batch load reachability: %w", err)
-		}
-		for _, as := range assessments {
-			latestByFinding[uuid.UUID(as.FindingID.Bytes).String()] = gate.ReachabilityState(as.State)
-		}
-	}
 
-	result := make([]gate.Finding, len(rows))
-	for i, r := range rows {
-		fc, ctxErr := a.r.GetFindingContext(ctx, r.ID)
-		envID := ""
-		tgtID := ""
-		artID := ""
-		if ctxErr == nil {
-			if fc.EnvironmentID.Valid {
-				envID = uuid.UUID(fc.EnvironmentID.Bytes).String()
-			}
-			if fc.TargetID.Valid {
-				tgtID = uuid.UUID(fc.TargetID.Bytes).String()
-			}
-			if fc.ArtifactID.Valid {
-				artID = uuid.UUID(fc.ArtifactID.Bytes).String()
-			}
-		}
-		// No assessment in the batch => unknown (still blocks).
-		reachability := latestByFinding[uuid.UUID(r.ID.Bytes).String()]
+	result := make([]gate.Finding, len(candidates))
+	for i, c := range candidates {
+		reachability := gate.ReachabilityState(c.Reachability)
 		if reachability == "" {
 			reachability = gate.ReachabilityUnknown
 		}
 		result[i] = gate.Finding{
-			ID:                  uuid.UUID(r.ID.Bytes).String(),
-			CurrentSeverityRank: r.CurrentSeverityRank,
-			FindingKind:         r.FindingKind,
-			Fingerprint:         r.Fingerprint,
-			CurrentTitle:        r.CurrentTitle,
-			EnvironmentID:       envID,
-			TargetID:            tgtID,
-			ArtifactID:          artID,
-			AnalysisState:       r.AnalysisState,
+			ID:                  c.ID,
+			CurrentSeverityRank: c.CurrentSeverityRank,
+			FindingKind:         c.FindingKind,
+			Fingerprint:         c.Fingerprint,
+			CurrentTitle:        c.CurrentTitle,
+			EnvironmentID:       c.Context.EnvironmentID,
+			TargetID:            c.Context.TargetID,
+			ArtifactID:          c.Context.ArtifactID,
+			AnalysisState:       c.AnalysisState,
 			Reachability:        reachability,
 		}
 	}
@@ -160,68 +127,53 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 }
 
 type gateWaiverRepo struct {
-	r repo.WaiverRepo
+	stores *port.Stores
 }
 
 func (a *gateWaiverRepo) ListActiveWaivers(ctx context.Context, projectID string) ([]gate.Waiver, error) {
-	pid, err := uuid.Parse(projectID)
-	if err != nil {
-		return nil, fmt.Errorf("invalid project id: %w", err)
+	if a.stores == nil || a.stores.Waivers == nil {
+		return nil, fmt.Errorf("waiver store unavailable")
 	}
-	rows, err := a.r.ListActive(ctx, pgtype.UUID{Bytes: pid, Valid: true})
+	rows, err := a.stores.Waivers.ListActive(ctx, projectID)
 	if err != nil {
 		return nil, err
 	}
 	result := make([]gate.Waiver, len(rows))
-	for i, w := range rows {
+	for i, waiver := range rows {
 		gw := gate.Waiver{
-			ID:         uuid.UUID(w.ID.Bytes).String(),
+			ID:         waiver.ID,
 			Conditions: nil,
 			Contexts:   nil,
 			Targets:    nil,
 		}
-		conditions, err := a.r.ListConditions(ctx, w.ID)
+		conditions, err := a.stores.Waivers.ListConditions(ctx, waiver.ID)
 		if err != nil {
-			slog.Warn("list waiver conditions", "waiver_id", w.ID, "error", err)
+			slog.Warn("list waiver conditions", "waiver_id", waiver.ID, "error", err)
 		}
-		for _, c := range conditions {
+		for _, condition := range conditions {
 			gw.Conditions = append(gw.Conditions, gate.WaiverCondition{
-				Field:    c.Field,
-				Operator: c.Operator,
-				Value:    c.Value,
+				Field:    condition.Field,
+				Operator: condition.Operator,
+				Value:    condition.Value,
 			})
 		}
-		contexts, err := a.r.ListContexts(ctx, w.ID)
+		contexts, err := a.stores.Waivers.ListContexts(ctx, waiver.ID)
 		if err != nil {
-			slog.Warn("list waiver contexts", "waiver_id", w.ID, "error", err)
+			slog.Warn("list waiver contexts", "waiver_id", waiver.ID, "error", err)
 		}
-		for _, cx := range contexts {
-			envID := ""
-			if cx.EnvironmentID.Valid {
-				envID = uuid.UUID(cx.EnvironmentID.Bytes).String()
-			}
-			tgtID := ""
-			if cx.TargetID.Valid {
-				tgtID = uuid.UUID(cx.TargetID.Bytes).String()
-			}
-			artID := ""
-			if cx.ArtifactID.Valid {
-				artID = uuid.UUID(cx.ArtifactID.Bytes).String()
-			}
+		for _, waiverContext := range contexts {
 			gw.Contexts = append(gw.Contexts, gate.WaiverContext{
-				EnvironmentID: envID,
-				TargetID:      tgtID,
-				ArtifactID:    artID,
+				EnvironmentID: waiverContext.EnvironmentID,
+				TargetID:      waiverContext.TargetID,
+				ArtifactID:    waiverContext.ArtifactID,
 			})
 		}
-		targets, err := a.r.ListFindingTargets(ctx, w.ID)
+		targets, err := a.stores.Waivers.ListFindingTargets(ctx, waiver.ID)
 		if err != nil {
-			slog.Warn("list waiver finding targets", "waiver_id", w.ID, "error", err)
+			slog.Warn("list waiver finding targets", "waiver_id", waiver.ID, "error", err)
 		}
-		for _, t := range targets {
-			gw.Targets = append(gw.Targets, gate.WaiverTarget{
-				FindingID: uuid.UUID(t.FindingID.Bytes).String(),
-			})
+		for _, target := range targets {
+			gw.Targets = append(gw.Targets, gate.WaiverTarget{FindingID: target.FindingID})
 		}
 		result[i] = gw
 	}
@@ -247,22 +199,22 @@ func severityRank(s scanner.Severity) int16 {
 	return int16(s)
 }
 
-func scoreToNumeric(s float64) pgtype.Numeric {
+func scoreToFloat(s float64) float64 {
 	if s <= 0 {
-		return pgtype.Numeric{Valid: false}
+		return 0
 	}
-	return pgtype.Numeric{Int: big.NewInt(int64(s * 10)), Exp: -1, Valid: true}
+	return s
 }
 
-func textPtr(s string) pgtype.Text {
+func textPtr(s string) *string {
 	if s == "" {
-		return pgtype.Text{Valid: false}
+		return nil
 	}
-	return pgtype.Text{String: s, Valid: true}
+	return &s
 }
 
-func now() pgtype.Timestamptz {
-	return pgtype.Timestamptz{Time: time.Now(), Valid: true}
+func now() time.Time {
+	return time.Now()
 }
 
 func defaultGateParams(severities, statuses []string) ([]string, []string) {
@@ -283,13 +235,13 @@ func mustMarshal(v any) []byte {
 	return data
 }
 
-// toInventoryPackageParams converts normalized package refs into repo params.
+// toInventoryPackageParams converts normalized package refs into port values.
 // PURLs pass through verbatim — the DB's (report_id, purl) primary key is what
 // collapses duplicates across (and within) reports.
-func toInventoryPackageParams(packages []scanner.PackageRef) []repo.UpsertReportPackageParams {
-	params := make([]repo.UpsertReportPackageParams, 0, len(packages))
+func toInventoryPackageParams(packages []domain.PackageRef) []port.PackageRef {
+	params := make([]port.PackageRef, 0, len(packages))
 	for _, p := range packages {
-		params = append(params, repo.UpsertReportPackageParams{
+		params = append(params, port.PackageRef{
 			PURL:         p.PURL,
 			Ecosystem:    textPtr(p.Ecosystem),
 			Name:         textPtr(p.Name),

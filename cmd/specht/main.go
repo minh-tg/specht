@@ -10,11 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/client"
 	"github.com/xMinhx/specht/internal/db"
-	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/repo"
 	"github.com/xMinhx/specht/internal/watcher"
 )
@@ -448,7 +446,7 @@ func runWatcherBackfill(cmd command) error {
 	}
 	defer pool.Close()
 
-	repos := repo.NewRepos(pool)
+	stores := repo.NewPortStores(pool)
 
 	var since time.Time
 	if cmd.since != "" {
@@ -462,14 +460,14 @@ func runWatcherBackfill(cmd command) error {
 	if cmd.dryRun {
 		store = discardStore{}
 	} else {
-		store = watcher.NewPollStore(repos)
+		store = watcher.NewPollStore(stores)
 	}
 
-	projects, err := repos.Projects.List(ctx)
+	projects, err := stores.Projects.List(ctx)
 	if err != nil {
 		return fmt.Errorf("list projects: %w", err)
 	}
-	projectIDs := make([]pgtype.UUID, len(projects))
+	projectIDs := make([]string, len(projects))
 	for i, p := range projects {
 		projectIDs[i] = p.ID
 	}
@@ -489,25 +487,28 @@ func runWatcherBackfill(cmd command) error {
 		}),
 		Store:    store,
 		Projects: projectIDs,
-		Inventory: func(ctx context.Context, projectID pgtype.UUID, since time.Duration) ([]sqlc.DistinctInventoryRow, error) {
-			return repos.Inventory.DistinctInventory(ctx, projectID, repo.IntervalFromDuration(since))
+		Inventory: func(ctx context.Context, projectID string, since time.Duration) ([]port.InventoryPackage, error) {
+			return stores.Inventory.DistinctInventory(ctx, projectID, since)
 		},
-		FindGap: repos.Findings.FindScaFindingIdForPurlAndCve,
-		GetWatermark: func(ctx context.Context, projectID pgtype.UUID) (time.Time, bool, error) {
-			st, err := repos.Watcher.GetProjectState(ctx, projectID)
-			if errors.Is(err, pgx.ErrNoRows) {
+		FindGap: stores.Findings.FindScaFindingIDForPurlAndCve,
+		GetWatermark: func(ctx context.Context, projectID string) (time.Time, bool, error) {
+			st, err := stores.Watcher.GetProjectState(ctx, projectID)
+			if errors.Is(err, port.ErrNotFound) {
 				return time.Time{}, false, nil
 			}
 			if err != nil {
 				return time.Time{}, false, err
 			}
-			return st.LastSuccessfulPollAt.Time, st.LastSuccessfulPollAt.Valid, nil
+			if st.LastSuccessfulPollAt == nil {
+				return time.Time{}, false, nil
+			}
+			return *st.LastSuccessfulPollAt, true, nil
 		},
-		SetWatermark: func(ctx context.Context, projectID pgtype.UUID, ts time.Time) error {
+		SetWatermark: func(ctx context.Context, projectID string, ts time.Time) error {
 			if cmd.dryRun {
 				return nil // dry-run writes nothing
 			}
-			return repos.Watcher.UpsertProjectState(ctx, projectID, ts)
+			return stores.Watcher.UpsertProjectState(ctx, projectID, ts)
 		},
 		Logger:       slog.Default(),
 		InventoryTTL: inventoryTTL,
@@ -531,10 +532,10 @@ func runWatcherBackfill(cmd command) error {
 // occurrences, events, or evidence.
 type discardStore struct{}
 
-func (discardStore) PersistFoundFinding(ctx context.Context, d watcher.Decision) (pgtype.UUID, bool, error) {
-	return pgtype.UUID{}, true, nil
+func (discardStore) PersistFoundFinding(ctx context.Context, d watcher.Decision) (string, bool, error) {
+	return "", true, nil
 }
 
-func (discardStore) PersistSkipEvent(ctx context.Context, suppressingID pgtype.UUID, ev watcher.Event) error {
+func (discardStore) PersistSkipEvent(ctx context.Context, suppressingID string, ev watcher.Event) error {
 	return nil
 }

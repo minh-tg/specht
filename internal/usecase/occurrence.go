@@ -2,7 +2,7 @@ package usecase
 
 import (
 	"github.com/xMinhx/specht/internal/domain"
-	"github.com/xMinhx/specht/internal/repo"
+	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
@@ -85,17 +85,17 @@ func isReservedKey(k string) bool {
 	return k == spechtNamespace || len(k) > len(spechtNamespace) && k[:len(spechtNamespace)+1] == spechtNamespace+"."
 }
 
-// toOccurrenceParams converts a normalized finding into the repo occurrence
-// params used by ingest, mapping display/metadata through
+// toOccurrenceParams converts a normalized finding into the port occurrence
+// input used by ingest, mapping display/metadata through
 // buildOccurrenceDocument and preserving typed columns.
-func toOccurrenceParams(f scanner.NormalizedFinding, source string) repo.CreateOccurrenceParams {
+func toOccurrenceParams(f scanner.NormalizedFinding, source string) port.OccurrenceInput {
 	doc := buildOccurrenceDocument(f, source)
-	return repo.CreateOccurrenceParams{
+	return port.OccurrenceInput{
 		Title:           f.Title,
 		Description:     textPtr(f.Description),
 		Severity:        severityStr(f.Severity),
 		SeverityRank:    severityRank(f.Severity),
-		Score:           scoreToNumeric(f.Score),
+		Score:           scoreToFloat(f.Score),
 		ToolName:        source,
 		LocationSummary: textPtr(f.Location),
 		Display:         mustMarshal(doc.Display),

@@ -262,30 +262,6 @@ func (r *pgFindingRepo) FindScaFindingIdForPurlAndCve(ctx context.Context, proje
 	})
 }
 
-const listBlockingFindingsSQL = `SELECT f.id, f.project_id, f.finding_kind, f.fingerprint, f.current_title,
-	f.current_severity, f.current_severity_rank, f.current_score, f.state,
-	f.triage_status, f.assignee_id, f.first_seen_at, f.last_seen_at,
-	f.fixed_at, f.created_at, f.updated_at, f.analysis_state, f.gate_effect,
-	f.analysis_expires_at, f.analysis_reason, f.analysis_source,
-	f.analysis_updated_at, f.analysis_updated_by, f.manual_override,
-	f.review_required, f.approval_status, f.approved_by, f.approved_at,
-	f.fingerprint_version
-FROM findings f
-JOIN projects p ON p.id = f.project_id
-WHERE f.project_id = $1
-  AND f.current_severity_rank >= $2
-  AND f.gate_effect = 'block'
-  AND f.state = 'open'
-  AND (
-      p.cve_watcher_gate = 'immediate'
-      OR f.finding_kind <> 'cve_watcher'
-      OR (
-          p.cve_watcher_gate = 'require_triage'
-          AND f.analysis_state <> 'unanalyzed'
-      )
-  )
-ORDER BY f.current_severity_rank DESC, f.created_at DESC`
-
 // FindingContext is the environment/target/artifact context of a finding.
 type FindingContext struct {
 	EnvironmentID pgtype.UUID
@@ -293,22 +269,20 @@ type FindingContext struct {
 	ArtifactID    pgtype.UUID
 }
 
-const getFindingContextSQL = `
-SELECT r.environment_id, r.target_id, r.artifact_id
-FROM finding_occurrences fo
-JOIN reports r ON fo.report_id = r.id
-WHERE fo.finding_id = $1
-ORDER BY fo.observed_at DESC
-LIMIT 1
-`
-
+// GetFindingContext returns the environment/target/artifact context of the
+// finding's most recent scan occurrence. It is the per-finding counterpart
+// to the batch ListGateCandidates loader; prefer the batch query for gate
+// evaluation.
 func (r *pgFindingRepo) GetFindingContext(ctx context.Context, findingID pgtype.UUID) (FindingContext, error) {
-	var fc FindingContext
-	err := r.pool.QueryRow(ctx, getFindingContextSQL, findingID).Scan(&fc.EnvironmentID, &fc.TargetID, &fc.ArtifactID)
+	row, err := r.q.GetFindingContext(ctx, findingID)
 	if err != nil {
 		return FindingContext{}, err
 	}
-	return fc, nil
+	return FindingContext{
+		EnvironmentID: row.EnvironmentID,
+		TargetID:      row.TargetID,
+		ArtifactID:    row.ArtifactID,
+	}, nil
 }
 
 // PersistWatcherFindingParams carries everything needed to persist one
@@ -389,51 +363,28 @@ func (r *pgFindingRepo) PersistWatcherSkipEvent(ctx context.Context, arg sqlc.Cr
 }
 
 func (r *pgFindingRepo) ListBlockingFindings(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error) {
-	rows, err := r.pool.Query(ctx, listBlockingFindingsSQL, projectID, minSeverityRank)
+	// Batch gate-candidate loader: one round trip returns the candidates with
+	// their context and latest reachability (see ListGateCandidates in
+	// findings.sql). This repo method is the legacy sqlc-row surface; the
+	// port FindingStore maps rows to port.Finding for the gate.
+	rows, err := r.q.ListGateCandidates(ctx, sqlc.ListGateCandidatesParams{
+		ProjectID:           projectID,
+		CurrentSeverityRank: minSeverityRank,
+	})
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var items []sqlc.Finding
-	for rows.Next() {
-		var i sqlc.Finding
-		if err := rows.Scan(
-			&i.ID,
-			&i.ProjectID,
-			&i.FindingKind,
-			&i.Fingerprint,
-			&i.CurrentTitle,
-			&i.CurrentSeverity,
-			&i.CurrentSeverityRank,
-			&i.CurrentScore,
-			&i.State,
-			&i.TriageStatus,
-			&i.AssigneeID,
-			&i.FirstSeenAt,
-			&i.LastSeenAt,
-			&i.FixedAt,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.AnalysisState,
-			&i.GateEffect,
-			&i.AnalysisExpiresAt,
-			&i.AnalysisReason,
-			&i.AnalysisSource,
-			&i.AnalysisUpdatedAt,
-			&i.AnalysisUpdatedBy,
-			&i.ManualOverride,
-			&i.ReviewRequired,
-			&i.ApprovalStatus,
-			&i.ApprovedBy,
-			&i.ApprovedAt,
-			&i.FingerprintVersion,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
+	items := make([]sqlc.Finding, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, sqlc.Finding{
+			ID:                  row.ID,
+			ProjectID:           row.ProjectID,
+			FindingKind:         row.FindingKind,
+			Fingerprint:         row.Fingerprint,
+			CurrentTitle:        row.CurrentTitle,
+			CurrentSeverityRank: row.CurrentSeverityRank,
+			AnalysisState:       row.AnalysisState,
+		})
 	}
 	return items, nil
 }

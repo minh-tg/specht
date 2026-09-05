@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/domain"
-	"github.com/xMinhx/specht/internal/repo"
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
@@ -112,7 +111,8 @@ func TestToOccurrenceParams_Lossless(t *testing.T) {
 	assert.Equal(t, "t", p.Title)
 	assert.Equal(t, "high", p.Severity)
 	assert.Equal(t, int16(3), p.SeverityRank)
-	assert.Equal(t, "/a/b", p.LocationSummary.String)
+	require.NotNil(t, p.LocationSummary)
+	assert.Equal(t, "/a/b", *p.LocationSummary)
 	assert.Equal(t, "grype", p.ToolName)
 	var meta map[string]any
 	require.NoError(t, json.Unmarshal(p.Metadata, &meta))
@@ -128,5 +128,3 @@ func TestCanonicalDimensionFilter(t *testing.T) {
 	assert.True(t, isCanonicalDimension("component.identity") == false)
 	assert.True(t, isCanonicalDimension("severity") == false)
 }
-
-var _ = repo.CreateOccurrenceParams{}

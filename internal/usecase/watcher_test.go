@@ -4,16 +4,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
-	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/port"
 )
+
+func watcherTestTimePtr(t time.Time) *time.Time { return &t }
 
 func TestWatcherStatusFromState_AttemptWithoutSuccessBecomesStale(t *testing.T) {
 	t.Setenv("WATCHER_POLL_INTERVAL", "1h")
 
-	resp := watcherStatusFromState(sqlc.WatcherState{
-		LastPollAttemptAt: pgtype.Timestamptz{Time: time.Now().Add(-3 * time.Hour), Valid: true},
+	resp := watcherStatusFromState(port.WatcherState{
+		LastPollAttemptAt: watcherTestTimePtr(time.Now().Add(-3 * time.Hour)),
 	})
 
 	assert.True(t, resp.Stale)
@@ -23,7 +24,7 @@ func TestWatcherStatusFromState_AttemptWithoutSuccessBecomesStale(t *testing.T) 
 func TestWatcherStatusFromState_NoAttemptIsColdStart(t *testing.T) {
 	t.Setenv("WATCHER_POLL_INTERVAL", "1h")
 
-	resp := watcherStatusFromState(sqlc.WatcherState{})
+	resp := watcherStatusFromState(port.WatcherState{})
 
 	assert.False(t, resp.Stale)
 	assert.True(t, resp.Healthy)

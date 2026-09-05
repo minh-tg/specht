@@ -6,8 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/port"
 )
 
 // ProjectResponse is the API representation of a project.
@@ -68,50 +67,31 @@ type FindingEvent struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
-func uuidStr(id pgtype.UUID) string {
-	if !id.Valid {
-		return ""
-	}
-	return uuid.UUID(id.Bytes).String()
+func uuidStr(id string) string {
+	return id
 }
 
-func timePtr(t pgtype.Timestamptz) time.Time {
-	return t.Time
+func timePtr(t time.Time) time.Time {
+	return t
 }
 
-func timeOpt(t pgtype.Timestamptz) *time.Time {
-	if !t.Valid {
-		return nil
-	}
-	return &t.Time
+func timeOpt(t *time.Time) *time.Time {
+	return t
 }
 
-func strOpt(t pgtype.Text) *string {
-	if !t.Valid {
-		return nil
-	}
-	return &t.String
+func strOpt(t *string) *string {
+	return t
 }
 
-func scoreOpt(n pgtype.Numeric) *float64 {
-	if !n.Valid {
-		return nil
-	}
-	f, _ := n.Float64Value()
-	if !f.Valid {
-		return nil
-	}
-	return &f.Float64
+func scoreOpt(n *float64) *float64 {
+	return n
 }
 
-func intOpt(i pgtype.Int4) *int32 {
-	if !i.Valid {
-		return nil
-	}
-	return &i.Int32
+func intOpt(i *int32) *int32 {
+	return i
 }
 
-func toProject(p sqlc.Project) ProjectResponse {
+func toProject(p port.Project) ProjectResponse {
 	return ProjectResponse{
 		ID:          uuidStr(p.ID),
 		Slug:        p.Slug,
@@ -122,7 +102,7 @@ func toProject(p sqlc.Project) ProjectResponse {
 	}
 }
 
-func toFinding(f sqlc.Finding) FindingResponse {
+func toFinding(f port.Finding) FindingResponse {
 	return FindingResponse{
 		ID:              uuidStr(f.ID),
 		ProjectID:       uuidStr(f.ProjectID),
@@ -142,7 +122,7 @@ func toFinding(f sqlc.Finding) FindingResponse {
 	}
 }
 
-func toReport(r sqlc.Report) ReportResponse {
+func toReport(r port.Report) ReportResponse {
 	return ReportResponse{
 		ID:            uuidStr(r.ID),
 		ProjectID:     uuidStr(r.ProjectID),
@@ -160,10 +140,10 @@ func toReport(r sqlc.Report) ReportResponse {
 }
 
 func (u *Usecases) CreateProject(ctx context.Context, name, slug, description string) (*ProjectResponse, error) {
-	p, err := u.deps.Repos.Projects.Create(ctx, sqlc.CreateProjectParams{
+	p, err := u.deps.Stores.Projects.Create(ctx, port.CreateProjectInput{
 		Slug:                slug,
 		Name:                name,
-		Description:         pgtype.Text{String: description, Valid: description != ""},
+		Description:         description,
 		DeploymentThreshold: "high",
 		Settings:            []byte("{}"),
 	})
@@ -175,7 +155,7 @@ func (u *Usecases) CreateProject(ctx context.Context, name, slug, description st
 }
 
 func (u *Usecases) ListProjects(ctx context.Context) ([]ProjectResponse, error) {
-	projects, err := u.deps.Repos.Projects.List(ctx)
+	projects, err := u.deps.Stores.Projects.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
 	}
@@ -187,7 +167,7 @@ func (u *Usecases) ListProjects(ctx context.Context) ([]ProjectResponse, error) 
 }
 
 func (u *Usecases) GetProject(ctx context.Context, slug string) (*ProjectResponse, error) {
-	p, err := u.deps.Repos.Projects.GetBySlug(ctx, slug)
+	p, err := u.deps.Stores.Projects.GetBySlug(ctx, slug)
 	if err != nil {
 		return nil, fmt.Errorf("get project %q: %w", slug, err)
 	}
@@ -196,12 +176,12 @@ func (u *Usecases) GetProject(ctx context.Context, slug string) (*ProjectRespons
 }
 
 func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, severities, states, kinds []string, limit, offset int32) ([]FindingResponse, error) {
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 
-	findings, err := u.deps.Repos.Findings.ListByProject(ctx, project.ID, severities, states, kinds, limit, offset)
+	findings, err := u.deps.Stores.Findings.ListByProject(ctx, project.ID, severities, states, kinds, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list findings: %w", err)
 	}
@@ -218,7 +198,7 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 	if err != nil {
 		return nil, fmt.Errorf("invalid finding id: %w", err)
 	}
-	f, err := u.deps.Repos.Findings.GetByID(ctx, pgtype.UUID{Bytes: id, Valid: true})
+	f, err := u.deps.Stores.Findings.GetByID(ctx, id.String())
 	if err != nil {
 		return nil, fmt.Errorf("get finding: %w", err)
 	}
@@ -230,12 +210,12 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 }
 
 func (u *Usecases) ListReports(ctx context.Context, projectSlug string, limit, offset int32) ([]ReportResponse, error) {
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 
-	reports, err := u.deps.Repos.Reports.ListByProject(ctx, project.ID, limit, offset)
+	reports, err := u.deps.Stores.Reports.ListByProject(ctx, project.ID, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list reports: %w", err)
 	}
@@ -247,8 +227,8 @@ func (u *Usecases) ListReports(ctx context.Context, projectSlug string, limit, o
 	return resp, nil
 }
 
-func (u *Usecases) GetReport(ctx context.Context, reportID pgtype.UUID) (*ReportResponse, error) {
-	r, err := u.deps.Repos.Reports.GetByID(ctx, reportID)
+func (u *Usecases) GetReport(ctx context.Context, reportID string) (*ReportResponse, error) {
+	r, err := u.deps.Stores.Reports.GetByID(ctx, reportID)
 	if err != nil {
 		return nil, fmt.Errorf("get report: %w", err)
 	}
@@ -290,49 +270,53 @@ type ArtifactResponse struct {
 	CreatedAt    string `json:"created_at"`
 }
 
-func toEnvironment(e sqlc.Environment) EnvironmentResponse {
+func toEnvironment(e port.Environment) EnvironmentResponse {
 	return EnvironmentResponse{
-		ID:              uuidStr(e.ID),
-		ProjectID:       uuidStr(e.ProjectID),
-		Name:            e.Name,
-		Tier:            e.Tier,
-		InternetFacing:  e.InternetFacing,
-		DataSensitivity: e.DataSensitivity,
-		CreatedAt:       e.CreatedAt.Time.Format(time.RFC3339),
+		ID:        uuidStr(e.ID),
+		ProjectID: uuidStr(e.ProjectID),
+		Name:      e.Name,
+		Tier:      e.Tier,
+		CreatedAt: e.CreatedAt.Format(time.RFC3339),
 	}
 }
 
-func toTarget(t sqlc.Target) TargetResponse {
+func toTarget(t port.Target) TargetResponse {
+	var locator string
+	if t.Locator != nil {
+		locator = *t.Locator
+	}
 	return TargetResponse{
 		ID:        uuidStr(t.ID),
 		ProjectID: uuidStr(t.ProjectID),
 		Name:      t.Name,
 		Kind:      t.Kind,
-		Locator:   t.Locator.String,
-		CreatedAt: t.CreatedAt.Time.Format(time.RFC3339),
+		Locator:   locator,
+		CreatedAt: t.CreatedAt.Format(time.RFC3339),
 	}
 }
 
-func toArtifact(a sqlc.Artifact) ArtifactResponse {
+func toArtifact(a port.Artifact) ArtifactResponse {
+	var version string
+	if a.Version != nil {
+		version = *a.Version
+	}
 	return ArtifactResponse{
 		ID:           uuidStr(a.ID),
 		ProjectID:    uuidStr(a.ProjectID),
 		TargetID:     uuidStr(a.TargetID),
 		ArtifactType: a.ArtifactType,
 		Name:         a.Name,
-		Version:      a.Version.String,
-		Digest:       a.Digest.String,
-		Locator:      a.Locator.String,
-		CreatedAt:    a.CreatedAt.Time.Format(time.RFC3339),
+		Version:      version,
+		CreatedAt:    a.CreatedAt.Format(time.RFC3339),
 	}
 }
 
 func (u *Usecases) ListEnvironments(ctx context.Context, projectSlug string) ([]EnvironmentResponse, error) {
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
-	envs, err := u.deps.Repos.Environments.List(ctx, project.ID)
+	envs, err := u.deps.Stores.Environments.List(ctx, project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list environments: %w", err)
 	}
@@ -344,11 +328,11 @@ func (u *Usecases) ListEnvironments(ctx context.Context, projectSlug string) ([]
 }
 
 func (u *Usecases) ListTargets(ctx context.Context, projectSlug string) ([]TargetResponse, error) {
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
-	targets, err := u.deps.Repos.Targets.List(ctx, project.ID)
+	targets, err := u.deps.Stores.Targets.List(ctx, project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list targets: %w", err)
 	}
@@ -360,11 +344,11 @@ func (u *Usecases) ListTargets(ctx context.Context, projectSlug string) ([]Targe
 }
 
 func (u *Usecases) ListArtifacts(ctx context.Context, projectSlug string) ([]ArtifactResponse, error) {
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
-	artifacts, err := u.deps.Repos.Artifacts.List(ctx, project.ID)
+	artifacts, err := u.deps.Stores.Artifacts.List(ctx, project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list artifacts: %w", err)
 	}

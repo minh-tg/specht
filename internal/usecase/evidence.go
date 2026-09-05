@@ -3,41 +3,68 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/db/sqlc"
-	"github.com/xMinhx/specht/internal/repo"
+	"github.com/xMinhx/specht/internal/port"
 )
 
-func (u *Usecases) CreateEvidence(ctx context.Context, findingID, userID string, typ, url, description string) (sqlc.EvidenceArtifact, error) {
+// EvidenceResponse is an evidence artifact attached to a finding.
+type EvidenceResponse struct {
+	ID          string  `json:"id"`
+	FindingID   string  `json:"finding_id"`
+	Type        string  `json:"type"`
+	URL         string  `json:"url"`
+	Description string  `json:"description"`
+	UploadedBy  *string `json:"uploaded_by"`
+	CreatedAt   string  `json:"created_at"`
+}
+
+func (u *Usecases) CreateEvidence(ctx context.Context, findingID, userID string, typ, url, description string) (EvidenceResponse, error) {
 	fid, err := uuid.Parse(findingID)
 	if err != nil {
-		return sqlc.EvidenceArtifact{}, fmt.Errorf("invalid finding id: %w", err)
+		return EvidenceResponse{}, fmt.Errorf("invalid finding id: %w", err)
 	}
 	if err := u.checkFindingProjectAccess(ctx, fid); err != nil {
-		return sqlc.EvidenceArtifact{}, err
+		return EvidenceResponse{}, err
 	}
 
-	var uploadedBy pgtype.UUID
+	var uploadedBy *string
 	if userID != "" {
 		uid, err := uuid.Parse(userID)
 		if err == nil {
-			uploadedBy = pgtype.UUID{Bytes: uid, Valid: true}
+			normalized := uid.String()
+			uploadedBy = &normalized
 		}
 	}
 
-	return u.deps.Repos.Evidence.Create(ctx, repo.CreateEvidenceParams{
-		FindingID:   pgtype.UUID{Bytes: fid, Valid: true},
+	evidence, err := u.deps.Stores.Evidence.Create(ctx, port.EvidenceInput{
+		FindingID:   fid.String(),
 		Type:        typ,
 		URL:         url,
 		Description: description,
 		UploadedBy:  uploadedBy,
 	})
+	if err != nil {
+		return EvidenceResponse{}, err
+	}
+	return evidenceToResponse(evidence), nil
 }
 
-func (u *Usecases) ListEvidence(ctx context.Context, findingID string) ([]sqlc.EvidenceArtifact, error) {
+func evidenceToResponse(e port.Evidence) EvidenceResponse {
+	return EvidenceResponse{
+		ID:          e.ID,
+		FindingID:   e.FindingID,
+		Type:        e.Type,
+		URL:         e.URL,
+		Description: e.Description,
+		UploadedBy:  e.UploadedBy,
+		CreatedAt:   e.CreatedAt.Format(time.RFC3339Nano),
+	}
+}
+
+func (u *Usecases) ListEvidence(ctx context.Context, findingID string) ([]EvidenceResponse, error) {
 	fid, err := uuid.Parse(findingID)
 	if err != nil {
 		return nil, fmt.Errorf("invalid finding id: %w", err)
@@ -45,7 +72,15 @@ func (u *Usecases) ListEvidence(ctx context.Context, findingID string) ([]sqlc.E
 	if err := u.checkFindingProjectAccess(ctx, fid); err != nil {
 		return nil, err
 	}
-	return u.deps.Repos.Evidence.ListByFinding(ctx, pgtype.UUID{Bytes: fid, Valid: true})
+	evidence, err := u.deps.Stores.Evidence.ListByFinding(ctx, fid.String())
+	if err != nil {
+		return nil, err
+	}
+	result := make([]EvidenceResponse, len(evidence))
+	for i, e := range evidence {
+		result[i] = evidenceToResponse(e)
+	}
+	return result, nil
 }
 
 func (u *Usecases) DeleteEvidence(ctx context.Context, evidenceID string) error {
@@ -55,16 +90,17 @@ func (u *Usecases) DeleteEvidence(ctx context.Context, evidenceID string) error 
 	}
 	ident := auth.ContextIdentity(ctx)
 	if ident != nil && ident.IsAPIKey {
-		evidence, err := u.deps.Repos.Evidence.GetByID(ctx, pgtype.UUID{Bytes: eid, Valid: true})
+		evidence, err := u.deps.Stores.Evidence.GetByID(ctx, eid.String())
 		if err != nil {
 			return fmt.Errorf("get evidence: %w", err)
 		}
-		if !evidence.FindingID.Valid {
+		fid, err := uuid.Parse(evidence.FindingID)
+		if err != nil {
 			return fmt.Errorf("evidence finding id is invalid")
 		}
-		if err := u.checkFindingProjectAccess(ctx, uuid.UUID(evidence.FindingID.Bytes)); err != nil {
+		if err := u.checkFindingProjectAccess(ctx, fid); err != nil {
 			return err
 		}
 	}
-	return u.deps.Repos.Evidence.Delete(ctx, pgtype.UUID{Bytes: eid, Valid: true})
+	return u.deps.Stores.Evidence.Delete(ctx, eid.String())
 }

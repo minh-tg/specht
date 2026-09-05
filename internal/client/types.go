@@ -159,6 +159,17 @@ type APIKey struct {
 	CreatedAt string  `json:"created_at"`
 }
 
+// Evidence is an evidence artifact attached to a finding.
+type Evidence struct {
+	ID          string  `json:"id"`
+	FindingID   string  `json:"finding_id"`
+	Type        string  `json:"type"`
+	URL         string  `json:"url"`
+	Description string  `json:"description"`
+	UploadedBy  *string `json:"uploaded_by"`
+	CreatedAt   string  `json:"created_at"`
+}
+
 // CreateAPIKeyRequest is the request body for minting an API key.
 type CreateAPIKeyRequest struct {
 	Name    string `json:"name"`

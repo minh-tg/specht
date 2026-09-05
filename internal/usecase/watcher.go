@@ -7,8 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/jackc/pgx/v5"
-	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/port"
 )
 
 // WatcherStatusResponse reports the CVE watcher daemon's health so operators
@@ -50,8 +49,8 @@ func watcherStalenessWindow() time.Duration {
 }
 
 func (u *Usecases) GetWatcherStatus(ctx context.Context) (*WatcherStatusResponse, error) {
-	st, err := u.deps.Repos.Watcher.GetState(ctx)
-	if errors.Is(err, pgx.ErrNoRows) {
+	st, err := u.deps.Stores.Watcher.GetState(ctx)
+	if errors.Is(err, port.ErrNotFound) {
 		// No poll ever recorded: cold start, not a failure.
 		return &WatcherStatusResponse{Healthy: true}, nil
 	}
@@ -61,24 +60,24 @@ func (u *Usecases) GetWatcherStatus(ctx context.Context) (*WatcherStatusResponse
 	return watcherStatusFromState(st), nil
 }
 
-func watcherStatusFromState(st sqlc.WatcherState) *WatcherStatusResponse {
+func watcherStatusFromState(st port.WatcherState) *WatcherStatusResponse {
 	window := watcherStalenessWindow()
 	resp := &WatcherStatusResponse{
 		ConsecutiveFailures: st.ConsecutiveFailures,
 		StalenessWindow:     window.String(),
 	}
-	if st.LastSuccessfulPollAt.Valid {
-		resp.LastSuccessfulPollAt = st.LastSuccessfulPollAt.Time.UTC().Format(time.RFC3339)
-		resp.Stale = time.Since(st.LastSuccessfulPollAt.Time) > window
-	} else if st.LastPollAttemptAt.Valid {
-		resp.Stale = time.Since(st.LastPollAttemptAt.Time) > window
+	if st.LastSuccessfulPollAt != nil {
+		resp.LastSuccessfulPollAt = st.LastSuccessfulPollAt.UTC().Format(time.RFC3339)
+		resp.Stale = time.Since(*st.LastSuccessfulPollAt) > window
+	} else if st.LastPollAttemptAt != nil {
+		resp.Stale = time.Since(*st.LastPollAttemptAt) > window
 	}
-	if st.LastPollAttemptAt.Valid {
-		resp.LastPollAttemptAt = st.LastPollAttemptAt.Time.UTC().Format(time.RFC3339)
+	if st.LastPollAttemptAt != nil {
+		resp.LastPollAttemptAt = st.LastPollAttemptAt.UTC().Format(time.RFC3339)
 	}
-	if st.LastError.Valid {
-		resp.LastError = st.LastError.String
+	if st.LastError != nil {
+		resp.LastError = *st.LastError
 	}
-	resp.Healthy = !resp.Stale && (!st.LastError.Valid || st.LastError.String == "")
+	resp.Healthy = !resp.Stale && (st.LastError == nil || *st.LastError == "")
 	return resp
 }

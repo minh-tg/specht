@@ -7,76 +7,72 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/domain"
-	"github.com/xMinhx/specht/internal/repo"
+	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
 type mockProjectRepo struct {
-	repo.ProjectRepo
-	createFn    func(ctx context.Context, arg sqlc.CreateProjectParams) (sqlc.Project, error)
-	listFn      func(ctx context.Context) ([]sqlc.Project, error)
-	getBySlugFn func(ctx context.Context, slug string) (sqlc.Project, error)
+	port.ProjectStore
+	createFn    func(context.Context, port.CreateProjectInput) (port.Project, error)
+	listFn      func(context.Context) ([]port.Project, error)
+	getBySlugFn func(context.Context, string) (port.Project, error)
 }
 
-func (m *mockProjectRepo) Create(ctx context.Context, arg sqlc.CreateProjectParams) (sqlc.Project, error) {
+func (m *mockProjectRepo) Create(ctx context.Context, arg port.CreateProjectInput) (port.Project, error) {
 	if m.createFn == nil {
-		return sqlc.Project{}, fmt.Errorf("unexpected call to Create")
+		return port.Project{}, fmt.Errorf("unexpected call to Create")
 	}
 	return m.createFn(ctx, arg)
 }
 
-func (m *mockProjectRepo) List(ctx context.Context) ([]sqlc.Project, error) {
+func (m *mockProjectRepo) List(ctx context.Context) ([]port.Project, error) {
 	if m.listFn == nil {
 		return nil, fmt.Errorf("unexpected call to List")
 	}
 	return m.listFn(ctx)
 }
 
-func (m *mockProjectRepo) GetBySlug(ctx context.Context, slug string) (sqlc.Project, error) {
+func (m *mockProjectRepo) GetBySlug(ctx context.Context, slug string) (port.Project, error) {
 	if m.getBySlugFn == nil {
-		return sqlc.Project{}, fmt.Errorf("unexpected call to GetBySlug")
+		return port.Project{}, fmt.Errorf("unexpected call to GetBySlug")
 	}
 	return m.getBySlugFn(ctx, slug)
 }
 
 type mockReportRepo struct {
-	repo.ReportRepo
-	createFn        func(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error)
-	getByIDFn       func(ctx context.Context, id pgtype.UUID) (sqlc.Report, error)
-	listByProjectFn func(ctx context.Context, projectID pgtype.UUID, limit, offset int32) ([]sqlc.Report, error)
-	updateStatusFn  func(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error)
+	port.ReportStore
+	createFn        func(context.Context, port.CreateReportInput) (port.Report, error)
+	getByIDFn       func(context.Context, string) (port.Report, error)
+	listByProjectFn func(context.Context, string, int32, int32) ([]port.Report, error)
+	updateStatusFn  func(context.Context, string, string, string, int32, *string) (port.Report, error)
 }
 
-func (m *mockReportRepo) Create(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error) {
+func (m *mockReportRepo) Create(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
 	if m.createFn == nil {
-		return sqlc.Report{}, fmt.Errorf("unexpected call to Create")
+		return port.Report{}, fmt.Errorf("unexpected call to Create")
 	}
 	return m.createFn(ctx, arg)
 }
 
-func (m *mockReportRepo) UpdateStatus(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
+func (m *mockReportRepo) UpdateStatus(ctx context.Context, id, projectID, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
 	if m.updateStatusFn == nil {
-		return sqlc.Report{}, fmt.Errorf("unexpected call to UpdateStatus")
+		return port.Report{}, fmt.Errorf("unexpected call to UpdateStatus")
 	}
 	return m.updateStatusFn(ctx, id, projectID, status, totalFindings, errorMsg)
 }
 
-func (m *mockReportRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Report, error) {
+func (m *mockReportRepo) GetByID(ctx context.Context, id string) (port.Report, error) {
 	if m.getByIDFn == nil {
-		return sqlc.Report{}, fmt.Errorf("unexpected call to GetByID")
+		return port.Report{}, fmt.Errorf("unexpected call to GetByID")
 	}
 	return m.getByIDFn(ctx, id)
 }
 
-func (m *mockReportRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, limit, offset int32) ([]sqlc.Report, error) {
+func (m *mockReportRepo) ListByProject(ctx context.Context, projectID string, limit, offset int32) ([]port.Report, error) {
 	if m.listByProjectFn == nil {
 		return nil, fmt.Errorf("unexpected call to ListByProject")
 	}
@@ -84,280 +80,271 @@ func (m *mockReportRepo) ListByProject(ctx context.Context, projectID pgtype.UUI
 }
 
 type mockFindingRepo struct {
-	repo.FindingRepo
-	upsertFn               func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error)
-	createOccurrenceFn     func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error)
-	upsertDimensionFn      func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error)
-	listByProjectFn        func(ctx context.Context, projectID pgtype.UUID, severities, states, kinds []string, limit, offset int32) ([]sqlc.Finding, error)
-	getByFingerprintFn     func(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error)
-	getByIDFn              func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error)
-	listByIDsFn            func(ctx context.Context, ids []pgtype.UUID) ([]sqlc.Finding, error)
-	hasDimensionFn         func(ctx context.Context, findingID pgtype.UUID, key string) (bool, error)
-	updateAnalysisFn       func(ctx context.Context, arg repo.UpdateAnalysisParams) (sqlc.Finding, error)
-	bulkUpdateAnalysisFn   func(ctx context.Context, arg repo.BulkUpdateAnalysisParams) ([]sqlc.Finding, error)
-	createEventFn          func(ctx context.Context, arg repo.CreateEventParams) (sqlc.FindingEvent, error)
-	listEventsFn           func(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error)
-	gateEvalFn             func(ctx context.Context, arg repo.GateEvalParams) (bool, error)
-	countBlockingFn        func(ctx context.Context, arg repo.GateEvalParams) (int64, error)
-	listBlockingFindingsFn func(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error)
-	getFindingContextFn    func(ctx context.Context, findingID pgtype.UUID) (repo.FindingContext, error)
+	port.FindingStore
+	upsertFn               func(context.Context, string, string, string, string, string, int16, float64, time.Time, time.Time) (port.Finding, error)
+	createOccurrenceFn     func(context.Context, port.OccurrenceInput) (port.Occurrence, error)
+	upsertDimensionFn      func(context.Context, port.DimensionInput) error
+	listByProjectFn        func(context.Context, string, []string, []string, []string, int32, int32) ([]port.Finding, error)
+	getByFingerprintFn     func(context.Context, string, string, string) (port.Finding, error)
+	getByIDFn              func(context.Context, string) (port.Finding, error)
+	listByIDsFn            func(context.Context, []string) ([]port.Finding, error)
+	hasDimensionFn         func(context.Context, string, string) (bool, error)
+	updateAnalysisFn       func(context.Context, port.UpdateAnalysisInput) (port.Finding, error)
+	bulkUpdateAnalysisFn   func(context.Context, port.UpdateAnalysisInput, []string) ([]port.Finding, error)
+	createEventFn          func(context.Context, port.FindingEventInput) (port.FindingEvent, error)
+	listEventsFn           func(context.Context, string, []string, int32, int32) ([]port.FindingEvent, error)
+	listBlockingFindingsFn func(context.Context, string, int16) ([]port.Finding, error)
+	listGateCandidatesFn   func(context.Context, string, int16) ([]port.GateCandidate, error)
+	getFindingContextFn    func(context.Context, string) (port.FindingContext, error)
 }
 
-func (m *mockFindingRepo) Upsert(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {
+func (m *mockFindingRepo) Upsert(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
 	if m.upsertFn == nil {
-		return sqlc.Finding{}, fmt.Errorf("unexpected call to Upsert")
+		return port.Finding{}, fmt.Errorf("unexpected call to Upsert")
 	}
-	return m.upsertFn(ctx, arg)
+	return m.upsertFn(ctx, projectID, findingKind, fingerprint, title, severity, severityRank, score, firstSeen, lastSeen)
 }
 
-func (m *mockFindingRepo) CreateOccurrence(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error) {
+func (m *mockFindingRepo) CreateOccurrence(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
 	if m.createOccurrenceFn == nil {
-		return sqlc.FindingOccurrence{}, fmt.Errorf("unexpected call to CreateOccurrence")
+		return port.Occurrence{}, fmt.Errorf("unexpected call to CreateOccurrence")
 	}
 	return m.createOccurrenceFn(ctx, arg)
 }
 
-func (m *mockFindingRepo) UpsertDimension(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error) {
+func (m *mockFindingRepo) UpsertDimension(ctx context.Context, arg port.DimensionInput) error {
 	if m.upsertDimensionFn == nil {
-		return sqlc.FindingDimension{}, fmt.Errorf("unexpected call to UpsertDimension")
+		return nil
 	}
 	return m.upsertDimensionFn(ctx, arg)
 }
 
-func (m *mockFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, severities, states, kinds []string, limit, offset int32) ([]sqlc.Finding, error) {
+func (m *mockFindingRepo) ListByProject(ctx context.Context, projectID string, severities, states, kinds []string, limit, offset int32) ([]port.Finding, error) {
 	if m.listByProjectFn == nil {
-		return []sqlc.Finding{}, nil
+		return []port.Finding{}, nil
 	}
 	return m.listByProjectFn(ctx, projectID, severities, states, kinds, limit, offset)
 }
 
-func (m *mockFindingRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+func (m *mockFindingRepo) GetByID(ctx context.Context, id string) (port.Finding, error) {
 	if m.getByIDFn == nil {
-		return sqlc.Finding{}, fmt.Errorf("unexpected call to GetByID")
+		return port.Finding{}, fmt.Errorf("unexpected call to GetByID")
 	}
 	return m.getByIDFn(ctx, id)
 }
 
-func (m *mockFindingRepo) ListByIDs(ctx context.Context, ids []pgtype.UUID) ([]sqlc.Finding, error) {
+func (m *mockFindingRepo) ListByIDs(ctx context.Context, ids []string) ([]port.Finding, error) {
 	if m.listByIDsFn == nil {
 		return nil, fmt.Errorf("unexpected call to ListByIDs")
 	}
 	return m.listByIDsFn(ctx, ids)
 }
 
-func (m *mockFindingRepo) BulkUpdateAnalysis(ctx context.Context, arg repo.BulkUpdateAnalysisParams) ([]sqlc.Finding, error) {
+func (m *mockFindingRepo) BulkUpdateAnalysis(ctx context.Context, arg port.UpdateAnalysisInput, ids []string) ([]port.Finding, error) {
 	if m.bulkUpdateAnalysisFn == nil {
 		return nil, fmt.Errorf("unexpected call to BulkUpdateAnalysis")
 	}
-	return m.bulkUpdateAnalysisFn(ctx, arg)
+	return m.bulkUpdateAnalysisFn(ctx, arg, ids)
 }
 
-func (m *mockFindingRepo) ListEvents(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error) {
+func (m *mockFindingRepo) ListEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]port.FindingEvent, error) {
 	if m.listEventsFn == nil {
 		return nil, fmt.Errorf("unexpected call to ListEvents")
 	}
 	return m.listEventsFn(ctx, findingID, eventTypes, limit, offset)
 }
 
-func (m *mockFindingRepo) GateEval(ctx context.Context, arg repo.GateEvalParams) (bool, error) {
-	if m.gateEvalFn == nil {
-		return false, fmt.Errorf("unexpected call to GateEval")
-	}
-	return m.gateEvalFn(ctx, arg)
-}
-
-func (m *mockFindingRepo) CountBlocking(ctx context.Context, arg repo.GateEvalParams) (int64, error) {
-	if m.countBlockingFn == nil {
-		return 0, fmt.Errorf("unexpected call to CountBlocking")
-	}
-	return m.countBlockingFn(ctx, arg)
-}
-
-func (m *mockFindingRepo) ListBlockingFindings(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error) {
+func (m *mockFindingRepo) ListBlockingFindings(ctx context.Context, projectID string, minSeverityRank int16) ([]port.Finding, error) {
 	if m.listBlockingFindingsFn == nil {
-		return []sqlc.Finding{}, nil
+		return []port.Finding{}, nil
 	}
 	return m.listBlockingFindingsFn(ctx, projectID, minSeverityRank)
 }
 
-func (m *mockFindingRepo) GetFindingContext(ctx context.Context, findingID pgtype.UUID) (repo.FindingContext, error) {
+func (m *mockFindingRepo) ListGateCandidates(ctx context.Context, projectID string, minSeverityRank int16) ([]port.GateCandidate, error) {
+	if m.listGateCandidatesFn == nil {
+		return []port.GateCandidate{}, nil
+	}
+	return m.listGateCandidatesFn(ctx, projectID, minSeverityRank)
+}
+
+func (m *mockFindingRepo) GetFindingContext(ctx context.Context, findingID string) (port.FindingContext, error) {
 	if m.getFindingContextFn == nil {
-		return repo.FindingContext{}, fmt.Errorf("unexpected call to GetFindingContext")
+		return port.FindingContext{}, fmt.Errorf("unexpected call to GetFindingContext")
 	}
 	return m.getFindingContextFn(ctx, findingID)
 }
 
-func (m *mockFindingRepo) GetByFingerprint(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error) {
+func (m *mockFindingRepo) GetByFingerprint(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
 	if m.getByFingerprintFn == nil {
-		return sqlc.Finding{}, fmt.Errorf("unexpected call to GetByFingerprint")
+		return port.Finding{}, fmt.Errorf("unexpected call to GetByFingerprint")
 	}
-	return m.getByFingerprintFn(ctx, arg)
+	return m.getByFingerprintFn(ctx, projectID, findingKind, fingerprint)
 }
 
-func (m *mockFindingRepo) HasDimension(ctx context.Context, findingID pgtype.UUID, key string) (bool, error) {
+func (m *mockFindingRepo) HasDimension(ctx context.Context, findingID, key string) (bool, error) {
 	if m.hasDimensionFn == nil {
 		return false, nil
 	}
 	return m.hasDimensionFn(ctx, findingID, key)
 }
 
-func (m *mockFindingRepo) UpdateAnalysis(ctx context.Context, arg repo.UpdateAnalysisParams) (sqlc.Finding, error) {
+func (m *mockFindingRepo) UpdateAnalysis(ctx context.Context, arg port.UpdateAnalysisInput) (port.Finding, error) {
 	if m.updateAnalysisFn == nil {
-		return sqlc.Finding{}, fmt.Errorf("unexpected call to UpdateAnalysis")
+		return port.Finding{}, fmt.Errorf("unexpected call to UpdateAnalysis")
 	}
 	return m.updateAnalysisFn(ctx, arg)
 }
 
-func (m *mockFindingRepo) CreateEvent(ctx context.Context, arg repo.CreateEventParams) (sqlc.FindingEvent, error) {
+func (m *mockFindingRepo) CreateEvent(ctx context.Context, arg port.FindingEventInput) (port.FindingEvent, error) {
 	if m.createEventFn == nil {
-		return sqlc.FindingEvent{}, nil
+		return port.FindingEvent{}, nil
 	}
 	return m.createEventFn(ctx, arg)
 }
 
 type mockUserRepo struct {
-	repo.UserRepo
-	createFn     func(ctx context.Context, email string, displayName, passwordHash pgtype.Text) (sqlc.User, error)
-	getByEmailFn func(ctx context.Context, email string) (sqlc.User, error)
-	getByIDFn    func(ctx context.Context, id pgtype.UUID) (sqlc.User, error)
+	port.UserStore
+	createFn     func(context.Context, string, *string, *string) (port.User, error)
+	getByEmailFn func(context.Context, string) (port.User, error)
+	getByIDFn    func(context.Context, string) (port.User, error)
 }
 
-func (m *mockUserRepo) Create(ctx context.Context, email string, displayName, passwordHash pgtype.Text) (sqlc.User, error) {
+func (m *mockUserRepo) Create(ctx context.Context, email string, displayName, passwordHash *string) (port.User, error) {
 	if m.createFn == nil {
-		return sqlc.User{}, fmt.Errorf("unexpected call to Create")
+		return port.User{}, fmt.Errorf("unexpected call to Create")
 	}
 	return m.createFn(ctx, email, displayName, passwordHash)
 }
 
-func (m *mockUserRepo) GetByEmail(ctx context.Context, email string) (sqlc.User, error) {
+func (m *mockUserRepo) GetByEmail(ctx context.Context, email string) (port.User, error) {
 	if m.getByEmailFn == nil {
-		return sqlc.User{}, fmt.Errorf("unexpected call to GetByEmail")
+		return port.User{}, fmt.Errorf("unexpected call to GetByEmail")
 	}
 	return m.getByEmailFn(ctx, email)
 }
 
-func (m *mockUserRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.User, error) {
+func (m *mockUserRepo) GetByID(ctx context.Context, id string) (port.User, error) {
 	if m.getByIDFn == nil {
-		return sqlc.User{}, fmt.Errorf("unexpected call to GetByID")
+		return port.User{}, fmt.Errorf("unexpected call to GetByID")
 	}
 	return m.getByIDFn(ctx, id)
 }
 
 type mockRefreshTokenRepo struct {
-	repo.RefreshTokenRepo
-	createFn    func(ctx context.Context, userID pgtype.UUID, tokenHash string, expiresAt time.Time) (sqlc.RefreshToken, error)
-	getByHashFn func(ctx context.Context, tokenHash string) (sqlc.RefreshToken, error)
-	revokeFn    func(ctx context.Context, id pgtype.UUID) (sqlc.RefreshToken, error)
+	port.RefreshTokenStore
+	createFn    func(context.Context, string, string, time.Time) (port.RefreshToken, error)
+	getByHashFn func(context.Context, string) (port.RefreshToken, error)
+	revokeFn    func(context.Context, string) (port.RefreshToken, error)
 }
 
-func (m *mockRefreshTokenRepo) Create(ctx context.Context, userID pgtype.UUID, tokenHash string, expiresAt time.Time) (sqlc.RefreshToken, error) {
+func (m *mockRefreshTokenRepo) Create(ctx context.Context, userID, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
 	if m.createFn == nil {
-		return sqlc.RefreshToken{}, fmt.Errorf("unexpected call to Create")
+		return port.RefreshToken{}, fmt.Errorf("unexpected call to Create")
 	}
 	return m.createFn(ctx, userID, tokenHash, expiresAt)
 }
 
-func (m *mockRefreshTokenRepo) GetByHash(ctx context.Context, tokenHash string) (sqlc.RefreshToken, error) {
+func (m *mockRefreshTokenRepo) GetByHash(ctx context.Context, tokenHash string) (port.RefreshToken, error) {
 	if m.getByHashFn == nil {
-		return sqlc.RefreshToken{}, fmt.Errorf("unexpected call to GetByHash")
+		return port.RefreshToken{}, fmt.Errorf("unexpected call to GetByHash")
 	}
 	return m.getByHashFn(ctx, tokenHash)
 }
 
-func (m *mockRefreshTokenRepo) Revoke(ctx context.Context, id pgtype.UUID) (sqlc.RefreshToken, error) {
+func (m *mockRefreshTokenRepo) Revoke(ctx context.Context, id string) (port.RefreshToken, error) {
 	if m.revokeFn == nil {
-		return sqlc.RefreshToken{}, fmt.Errorf("unexpected call to Revoke")
+		return port.RefreshToken{}, fmt.Errorf("unexpected call to Revoke")
 	}
 	return m.revokeFn(ctx, id)
 }
 
 type mockAPIKeyRepo struct {
-	repo.APIKeyRepo
-	createFn        func(ctx context.Context, arg sqlc.CreateAPIKeyParams) (sqlc.ApiKey, error)
-	listByProjectFn func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.ListAPIKeysByProjectRow, error)
-	revokeFn        func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.ApiKey, error)
+	port.APIKeyStore
+	createFn        func(context.Context, port.CreateAPIKeyInput) (port.APIKey, error)
+	listByProjectFn func(context.Context, string) ([]port.APIKey, error)
+	revokeFn        func(context.Context, string, string) (port.APIKey, error)
+	getByHashFn     func(context.Context, string) (port.APIKey, error)
 }
 
-func (m *mockAPIKeyRepo) Create(ctx context.Context, arg sqlc.CreateAPIKeyParams) (sqlc.ApiKey, error) {
+func (m *mockAPIKeyRepo) Create(ctx context.Context, arg port.CreateAPIKeyInput) (port.APIKey, error) {
 	if m.createFn == nil {
-		return sqlc.ApiKey{}, fmt.Errorf("unexpected call to Create")
+		return port.APIKey{}, fmt.Errorf("unexpected call to Create")
 	}
 	return m.createFn(ctx, arg)
 }
 
-type mockWaiverRepo struct {
-	repo.WaiverRepo
-	listActiveFn         func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Waiver, error)
-	listConditionsFn     func(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverCondition, error)
-	listContextsFn       func(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverContext, error)
-	listFindingTargetsFn func(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverFindingTarget, error)
-}
-
-func (m *mockWaiverRepo) ListActive(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Waiver, error) {
-	if m.listActiveFn == nil {
-		return []sqlc.Waiver{}, nil
-	}
-	return m.listActiveFn(ctx, projectID)
-}
-
-func (m *mockWaiverRepo) ListConditions(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverCondition, error) {
-	if m.listConditionsFn == nil {
-		return []sqlc.WaiverCondition{}, nil
-	}
-	return m.listConditionsFn(ctx, waiverID)
-}
-
-func (m *mockWaiverRepo) ListContexts(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverContext, error) {
-	if m.listContextsFn == nil {
-		return []sqlc.WaiverContext{}, nil
-	}
-	return m.listContextsFn(ctx, waiverID)
-}
-
-func (m *mockWaiverRepo) ListFindingTargets(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverFindingTarget, error) {
-	if m.listFindingTargetsFn == nil {
-		return []sqlc.WaiverFindingTarget{}, nil
-	}
-	return m.listFindingTargetsFn(ctx, waiverID)
-}
-
-func (m *mockAPIKeyRepo) ListByProject(ctx context.Context, projectID pgtype.UUID) ([]sqlc.ListAPIKeysByProjectRow, error) {
+func (m *mockAPIKeyRepo) ListByProject(ctx context.Context, projectID string) ([]port.APIKey, error) {
 	if m.listByProjectFn == nil {
 		return nil, fmt.Errorf("unexpected call to ListByProject")
 	}
 	return m.listByProjectFn(ctx, projectID)
 }
 
-func (m *mockAPIKeyRepo) Revoke(ctx context.Context, id, projectID pgtype.UUID) (sqlc.ApiKey, error) {
+func (m *mockAPIKeyRepo) Revoke(ctx context.Context, id, projectID string) (port.APIKey, error) {
 	if m.revokeFn == nil {
-		return sqlc.ApiKey{}, fmt.Errorf("unexpected call to Revoke")
+		return port.APIKey{}, fmt.Errorf("unexpected call to Revoke")
 	}
 	return m.revokeFn(ctx, id, projectID)
 }
 
-func (m *mockAPIKeyRepo) GetByHash(ctx context.Context, keyHash string) (sqlc.ApiKey, error) {
-	return sqlc.ApiKey{}, fmt.Errorf("not implemented")
+func (m *mockAPIKeyRepo) GetByHash(ctx context.Context, keyHash string) (port.APIKey, error) {
+	if m.getByHashFn == nil {
+		return port.APIKey{}, fmt.Errorf("unexpected call to GetByHash")
+	}
+	return m.getByHashFn(ctx, keyHash)
+}
+
+type mockWaiverRepo struct {
+	port.WaiverStore
+	listActiveFn         func(context.Context, string) ([]port.Waiver, error)
+	listConditionsFn     func(context.Context, string) ([]port.WaiverCondition, error)
+	listContextsFn       func(context.Context, string) ([]port.WaiverContext, error)
+	listFindingTargetsFn func(context.Context, string) ([]port.WaiverFindingTarget, error)
+}
+
+func (m *mockWaiverRepo) ListActive(ctx context.Context, projectID string) ([]port.Waiver, error) {
+	if m.listActiveFn == nil {
+		return []port.Waiver{}, nil
+	}
+	return m.listActiveFn(ctx, projectID)
+}
+
+func (m *mockWaiverRepo) ListConditions(ctx context.Context, waiverID string) ([]port.WaiverCondition, error) {
+	if m.listConditionsFn == nil {
+		return []port.WaiverCondition{}, nil
+	}
+	return m.listConditionsFn(ctx, waiverID)
+}
+
+func (m *mockWaiverRepo) ListContexts(ctx context.Context, waiverID string) ([]port.WaiverContext, error) {
+	if m.listContextsFn == nil {
+		return []port.WaiverContext{}, nil
+	}
+	return m.listContextsFn(ctx, waiverID)
+}
+
+func (m *mockWaiverRepo) ListFindingTargets(ctx context.Context, waiverID string) ([]port.WaiverFindingTarget, error) {
+	if m.listFindingTargetsFn == nil {
+		return []port.WaiverFindingTarget{}, nil
+	}
+	return m.listFindingTargetsFn(ctx, waiverID)
 }
 
 type mockScanner struct {
 	name    string
-	parseFn func(ctx context.Context, data []byte) (*domain.NormalizedReport, error)
+	parseFn func(context.Context, []byte) (*domain.NormalizedReport, error)
 }
 
 func (m *mockScanner) Descriptor() scanner.Descriptor {
 	return scanner.Descriptor{
-		Name:               m.name,
-		Version:            "test",
-		ContractVersion:    1,
-		FingerprintVersion: 1,
-		FindingKinds:       []scanner.FindingKind{"sca", "test"},
-		ScanTypes:          []scanner.ScanType{scanner.ScanTypeImage, scanner.ScanTypeFilesystem},
-		ProvidesPackages:   true,
+		Name: m.name, Version: "test", ContractVersion: 1, FingerprintVersion: 1,
+		FindingKinds:     []scanner.FindingKind{"sca", "test"},
+		ScanTypes:        []scanner.ScanType{scanner.ScanTypeImage, scanner.ScanTypeFilesystem},
+		ProvidesPackages: true,
 	}
 }
-
 func (m *mockScanner) DetectFormat(data []byte) bool { return true }
-
 func (m *mockScanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
 	if m.parseFn == nil {
 		return nil, fmt.Errorf("unexpected call to Parse")
@@ -366,27 +353,55 @@ func (m *mockScanner) Parse(ctx context.Context, data []byte) (*domain.Normalize
 }
 
 type mockReachabilityRepo struct {
-	repo.ReachabilityRepo
-	upsertFn           func(ctx context.Context, arg repo.UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error)
-	listByFindingFn    func(ctx context.Context, findingID pgtype.UUID) ([]sqlc.ReachabilityAssessment, error)
-	latestByFindingFn  func(ctx context.Context, findingID pgtype.UUID) (sqlc.ReachabilityAssessment, error)
-	latestByFindingsFn func(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ReachabilityAssessment, error)
+	port.ReachabilityStore
+	upsertFn           func(context.Context, string, string, string, string) (port.ReachabilityAssessment, error)
+	listByFindingFn    func(context.Context, string) ([]port.ReachabilityAssessment, error)
+	latestByFindingFn  func(context.Context, string) (port.ReachabilityAssessment, error)
+	latestByFindingsFn func(context.Context, []string) ([]port.ReachabilityAssessment, error)
+}
+
+func (m *mockReachabilityRepo) Upsert(ctx context.Context, findingID, state, evidence, assessedBy string) (port.ReachabilityAssessment, error) {
+	if m.upsertFn == nil {
+		return port.ReachabilityAssessment{}, fmt.Errorf("unexpected call to Upsert")
+	}
+	return m.upsertFn(ctx, findingID, state, evidence, assessedBy)
+}
+
+func (m *mockReachabilityRepo) ListByFinding(ctx context.Context, findingID string) ([]port.ReachabilityAssessment, error) {
+	if m.listByFindingFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListByFinding")
+	}
+	return m.listByFindingFn(ctx, findingID)
+}
+
+func (m *mockReachabilityRepo) LatestByFinding(ctx context.Context, findingID string) (port.ReachabilityAssessment, error) {
+	if m.latestByFindingFn == nil {
+		return port.ReachabilityAssessment{}, fmt.Errorf("unexpected call to LatestByFinding")
+	}
+	return m.latestByFindingFn(ctx, findingID)
+}
+
+func (m *mockReachabilityRepo) LatestByFindings(ctx context.Context, findingIDs []string) ([]port.ReachabilityAssessment, error) {
+	if m.latestByFindingsFn == nil {
+		return nil, fmt.Errorf("unexpected call to LatestByFindings")
+	}
+	return m.latestByFindingsFn(ctx, findingIDs)
 }
 
 type mockEvidenceRepo struct {
-	repo.EvidenceRepo
-	getByIDFn       func(ctx context.Context, id pgtype.UUID) (sqlc.EvidenceArtifact, error)
-	listByFindingFn func(ctx context.Context, findingID pgtype.UUID) ([]sqlc.EvidenceArtifact, error)
+	port.EvidenceStore
+	getByIDFn       func(context.Context, string) (port.Evidence, error)
+	listByFindingFn func(context.Context, string) ([]port.Evidence, error)
 }
 
-func (m *mockEvidenceRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.EvidenceArtifact, error) {
+func (m *mockEvidenceRepo) GetByID(ctx context.Context, id string) (port.Evidence, error) {
 	if m.getByIDFn == nil {
-		return sqlc.EvidenceArtifact{}, fmt.Errorf("unexpected call to GetByID")
+		return port.Evidence{}, fmt.Errorf("unexpected call to GetByID")
 	}
 	return m.getByIDFn(ctx, id)
 }
 
-func (m *mockEvidenceRepo) ListByFinding(ctx context.Context, findingID pgtype.UUID) ([]sqlc.EvidenceArtifact, error) {
+func (m *mockEvidenceRepo) ListByFinding(ctx context.Context, findingID string) ([]port.Evidence, error) {
 	if m.listByFindingFn == nil {
 		return nil, fmt.Errorf("unexpected call to ListByFinding")
 	}
@@ -394,183 +409,155 @@ func (m *mockEvidenceRepo) ListByFinding(ctx context.Context, findingID pgtype.U
 }
 
 type mockSignoffRepo struct {
-	repo.SignoffRepo
-	getByFindingFn func(ctx context.Context, findingID pgtype.UUID) (sqlc.Signoff, error)
+	port.SignoffStore
+	getByFindingFn func(context.Context, string) (port.Signoff, error)
 }
 
-func (m *mockSignoffRepo) GetByFinding(ctx context.Context, findingID pgtype.UUID) (sqlc.Signoff, error) {
+func (m *mockSignoffRepo) GetByFinding(ctx context.Context, findingID string) (port.Signoff, error) {
 	if m.getByFindingFn == nil {
-		return sqlc.Signoff{}, fmt.Errorf("unexpected call to GetByFinding")
+		return port.Signoff{}, fmt.Errorf("unexpected call to GetByFinding")
 	}
 	return m.getByFindingFn(ctx, findingID)
 }
 
-func (m *mockReachabilityRepo) Upsert(ctx context.Context, arg repo.UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error) {
-	if m.upsertFn == nil {
-		return sqlc.ReachabilityAssessment{}, fmt.Errorf("unexpected call to Upsert")
-	}
-	return m.upsertFn(ctx, arg)
-}
-
-func (m *mockReachabilityRepo) ListByFinding(ctx context.Context, findingID pgtype.UUID) ([]sqlc.ReachabilityAssessment, error) {
-	if m.listByFindingFn == nil {
-		return nil, fmt.Errorf("unexpected call to ListByFinding")
-	}
-	return m.listByFindingFn(ctx, findingID)
-}
-
-func (m *mockReachabilityRepo) LatestByFinding(ctx context.Context, findingID pgtype.UUID) (sqlc.ReachabilityAssessment, error) {
-	if m.latestByFindingFn == nil {
-		return sqlc.ReachabilityAssessment{}, fmt.Errorf("unexpected call to LatestByFinding")
-	}
-	return m.latestByFindingFn(ctx, findingID)
-}
-
-func (m *mockReachabilityRepo) LatestByFindings(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ReachabilityAssessment, error) {
-	if m.latestByFindingsFn == nil {
-		return nil, fmt.Errorf("unexpected call to LatestByFindings")
-	}
-	return m.latestByFindingsFn(ctx, findingIDs)
-}
-
 type mockTargetRepo struct {
-	repo.TargetRepo
-	upsertFn  func(ctx context.Context, arg sqlc.UpsertTargetParams) (sqlc.Target, error)
-	listFn    func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Target, error)
-	getByIDFn func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Target, error)
-	deleteFn  func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Target, error)
+	port.TargetStore
+	upsertFn  func(context.Context, string, string, string, string) (port.Target, error)
+	listFn    func(context.Context, string) ([]port.Target, error)
+	getByIDFn func(context.Context, string, string) (port.Target, error)
+	deleteFn  func(context.Context, string, string) (port.Target, error)
 }
 
-func (m *mockTargetRepo) Upsert(ctx context.Context, arg sqlc.UpsertTargetParams) (sqlc.Target, error) {
+func (m *mockTargetRepo) Upsert(ctx context.Context, projectID, name, kind, locator string) (port.Target, error) {
 	if m.upsertFn == nil {
-		return sqlc.Target{}, fmt.Errorf("unexpected call to Upsert")
+		return port.Target{}, fmt.Errorf("unexpected call to Upsert")
 	}
-	return m.upsertFn(ctx, arg)
+	return m.upsertFn(ctx, projectID, name, kind, locator)
 }
 
-func (m *mockTargetRepo) List(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Target, error) {
+func (m *mockTargetRepo) List(ctx context.Context, projectID string) ([]port.Target, error) {
 	if m.listFn == nil {
 		return nil, fmt.Errorf("unexpected call to List")
 	}
 	return m.listFn(ctx, projectID)
 }
 
-func (m *mockTargetRepo) GetByID(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Target, error) {
+func (m *mockTargetRepo) GetByID(ctx context.Context, id, projectID string) (port.Target, error) {
 	if m.getByIDFn == nil {
-		return sqlc.Target{}, fmt.Errorf("unexpected call to GetByID")
+		return port.Target{}, fmt.Errorf("unexpected call to GetByID")
 	}
 	return m.getByIDFn(ctx, id, projectID)
 }
 
-func (m *mockTargetRepo) Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Target, error) {
+func (m *mockTargetRepo) Delete(ctx context.Context, id, projectID string) (port.Target, error) {
 	if m.deleteFn == nil {
-		return sqlc.Target{}, fmt.Errorf("unexpected call to Delete")
+		return port.Target{}, fmt.Errorf("unexpected call to Delete")
 	}
 	return m.deleteFn(ctx, id, projectID)
 }
 
 type mockEnvironmentRepo struct {
-	repo.EnvironmentRepo
-	upsertFn  func(ctx context.Context, arg sqlc.UpsertEnvironmentParams) (sqlc.Environment, error)
-	listFn    func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Environment, error)
-	getByIDFn func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Environment, error)
-	deleteFn  func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Environment, error)
+	port.EnvironmentStore
+	upsertFn  func(context.Context, string, string, string, bool, string) (port.Environment, error)
+	listFn    func(context.Context, string) ([]port.Environment, error)
+	getByIDFn func(context.Context, string, string) (port.Environment, error)
+	deleteFn  func(context.Context, string, string) (port.Environment, error)
 }
 
-func (m *mockEnvironmentRepo) Upsert(ctx context.Context, arg sqlc.UpsertEnvironmentParams) (sqlc.Environment, error) {
+func (m *mockEnvironmentRepo) Upsert(ctx context.Context, projectID, name, tier string, internetFacing bool, dataSensitivity string) (port.Environment, error) {
 	if m.upsertFn == nil {
-		return sqlc.Environment{}, fmt.Errorf("unexpected call to Upsert")
+		return port.Environment{}, fmt.Errorf("unexpected call to Upsert")
 	}
-	return m.upsertFn(ctx, arg)
+	return m.upsertFn(ctx, projectID, name, tier, internetFacing, dataSensitivity)
 }
 
-func (m *mockEnvironmentRepo) List(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Environment, error) {
+func (m *mockEnvironmentRepo) List(ctx context.Context, projectID string) ([]port.Environment, error) {
 	if m.listFn == nil {
 		return nil, fmt.Errorf("unexpected call to List")
 	}
 	return m.listFn(ctx, projectID)
 }
 
-func (m *mockEnvironmentRepo) GetByID(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Environment, error) {
+func (m *mockEnvironmentRepo) GetByID(ctx context.Context, id, projectID string) (port.Environment, error) {
 	if m.getByIDFn == nil {
-		return sqlc.Environment{}, fmt.Errorf("unexpected call to GetByID")
+		return port.Environment{}, fmt.Errorf("unexpected call to GetByID")
 	}
 	return m.getByIDFn(ctx, id, projectID)
 }
 
-func (m *mockEnvironmentRepo) Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Environment, error) {
+func (m *mockEnvironmentRepo) Delete(ctx context.Context, id, projectID string) (port.Environment, error) {
 	if m.deleteFn == nil {
-		return sqlc.Environment{}, fmt.Errorf("unexpected call to Delete")
+		return port.Environment{}, fmt.Errorf("unexpected call to Delete")
 	}
 	return m.deleteFn(ctx, id, projectID)
 }
 
 type mockArtifactRepo struct {
-	repo.ArtifactRepo
-	upsertFn       func(ctx context.Context, arg sqlc.UpsertArtifactParams) (sqlc.Artifact, error)
-	listFn         func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Artifact, error)
-	listByTargetFn func(ctx context.Context, targetID pgtype.UUID) ([]sqlc.Artifact, error)
-	getByIDFn      func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Artifact, error)
-	deleteFn       func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Artifact, error)
+	port.ArtifactStore
+	upsertFn       func(context.Context, port.ArtifactInput) (port.Artifact, error)
+	listFn         func(context.Context, string) ([]port.Artifact, error)
+	listByTargetFn func(context.Context, string) ([]port.Artifact, error)
+	getByIDFn      func(context.Context, string, string) (port.Artifact, error)
+	deleteFn       func(context.Context, string, string) (port.Artifact, error)
 }
 
-func (m *mockArtifactRepo) Upsert(ctx context.Context, arg sqlc.UpsertArtifactParams) (sqlc.Artifact, error) {
+func (m *mockArtifactRepo) Upsert(ctx context.Context, arg port.ArtifactInput) (port.Artifact, error) {
 	if m.upsertFn == nil {
-		return sqlc.Artifact{}, fmt.Errorf("unexpected call to Upsert")
+		return port.Artifact{}, fmt.Errorf("unexpected call to Upsert")
 	}
 	return m.upsertFn(ctx, arg)
 }
 
-func (m *mockArtifactRepo) List(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Artifact, error) {
+func (m *mockArtifactRepo) List(ctx context.Context, projectID string) ([]port.Artifact, error) {
 	if m.listFn == nil {
 		return nil, fmt.Errorf("unexpected call to List")
 	}
 	return m.listFn(ctx, projectID)
 }
 
-func (m *mockArtifactRepo) ListByTarget(ctx context.Context, targetID pgtype.UUID) ([]sqlc.Artifact, error) {
+func (m *mockArtifactRepo) ListByTarget(ctx context.Context, targetID string) ([]port.Artifact, error) {
 	if m.listByTargetFn == nil {
 		return nil, fmt.Errorf("unexpected call to ListByTarget")
 	}
 	return m.listByTargetFn(ctx, targetID)
 }
 
-func (m *mockArtifactRepo) GetByID(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Artifact, error) {
+func (m *mockArtifactRepo) GetByID(ctx context.Context, id, projectID string) (port.Artifact, error) {
 	if m.getByIDFn == nil {
-		return sqlc.Artifact{}, fmt.Errorf("unexpected call to GetByID")
+		return port.Artifact{}, fmt.Errorf("unexpected call to GetByID")
 	}
 	return m.getByIDFn(ctx, id, projectID)
 }
 
-func (m *mockArtifactRepo) Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Artifact, error) {
+func (m *mockArtifactRepo) Delete(ctx context.Context, id, projectID string) (port.Artifact, error) {
 	if m.deleteFn == nil {
-		return sqlc.Artifact{}, fmt.Errorf("unexpected call to Delete")
+		return port.Artifact{}, fmt.Errorf("unexpected call to Delete")
 	}
 	return m.deleteFn(ctx, id, projectID)
 }
 
 type mockInventoryRepo struct {
-	repo.InventoryRepo
-	upsertReportPackagesFn func(ctx context.Context, reportID pgtype.UUID, packages []repo.UpsertReportPackageParams) error
-	distinctInventoryFn    func(ctx context.Context, projectID pgtype.UUID, since pgtype.Interval) ([]sqlc.DistinctInventoryRow, error)
-	deleteReportPackagesFn func(ctx context.Context, reportID pgtype.UUID) error
+	port.InventoryStore
+	upsertReportPackagesFn func(context.Context, string, []port.PackageRef) error
+	distinctInventoryFn    func(context.Context, string, time.Duration) ([]port.InventoryPackage, error)
+	deleteReportPackagesFn func(context.Context, string) error
 }
 
-func (m *mockInventoryRepo) UpsertReportPackages(ctx context.Context, reportID pgtype.UUID, packages []repo.UpsertReportPackageParams) error {
+func (m *mockInventoryRepo) UpsertReportPackages(ctx context.Context, reportID string, packages []port.PackageRef) error {
 	if m.upsertReportPackagesFn == nil {
 		return fmt.Errorf("unexpected call to UpsertReportPackages")
 	}
 	return m.upsertReportPackagesFn(ctx, reportID, packages)
 }
 
-func (m *mockInventoryRepo) DistinctInventory(ctx context.Context, projectID pgtype.UUID, since pgtype.Interval) ([]sqlc.DistinctInventoryRow, error) {
+func (m *mockInventoryRepo) DistinctInventory(ctx context.Context, projectID string, since time.Duration) ([]port.InventoryPackage, error) {
 	if m.distinctInventoryFn == nil {
 		return nil, fmt.Errorf("unexpected call to DistinctInventory")
 	}
 	return m.distinctInventoryFn(ctx, projectID, since)
 }
 
-func (m *mockInventoryRepo) DeleteReportPackages(ctx context.Context, reportID pgtype.UUID) error {
+func (m *mockInventoryRepo) DeleteReportPackages(ctx context.Context, reportID string) error {
 	if m.deleteReportPackagesFn == nil {
 		return fmt.Errorf("unexpected call to DeleteReportPackages")
 	}
@@ -578,37 +565,75 @@ func (m *mockInventoryRepo) DeleteReportPackages(ctx context.Context, reportID p
 }
 
 func makeTestRepos() (*mockProjectRepo, *mockReportRepo, *mockFindingRepo) {
-	pr := &mockProjectRepo{}
-	rr := &mockReportRepo{}
-	fr := &mockFindingRepo{}
-	return pr, rr, fr
+	return &mockProjectRepo{}, &mockReportRepo{}, &mockFindingRepo{}
 }
 
 func stubTargetRepo() *mockTargetRepo {
 	tr := &mockTargetRepo{}
-	tr.upsertFn = func(ctx context.Context, arg sqlc.UpsertTargetParams) (sqlc.Target, error) {
-		return sqlc.Target{ID: arg.ProjectID, ProjectID: arg.ProjectID, Name: arg.Name, Kind: arg.Kind}, nil
+	tr.upsertFn = func(ctx context.Context, projectID, name, kind, locator string) (port.Target, error) {
+		return port.Target{ID: projectID, ProjectID: projectID, Name: name, Kind: kind}, nil
 	}
 	return tr
 }
 
 func stubArtifactRepo() *mockArtifactRepo {
 	ar := &mockArtifactRepo{}
-	ar.upsertFn = func(ctx context.Context, arg sqlc.UpsertArtifactParams) (sqlc.Artifact, error) {
-		return sqlc.Artifact{ID: arg.ProjectID, ProjectID: arg.ProjectID, Name: arg.Name}, nil
+	ar.upsertFn = func(ctx context.Context, arg port.ArtifactInput) (port.Artifact, error) {
+		return port.Artifact{ID: arg.ProjectID, ProjectID: arg.ProjectID, Name: arg.Name}, nil
 	}
 	return ar
+}
+
+func makeProject(valid bool) port.Project {
+	if !valid {
+		return port.Project{}
+	}
+	return port.Project{ID: "00000000-0000-0000-0000-000000000001", Slug: "my-app", Name: "My App"}
+}
+
+func makeUser(id string) port.User {
+	return port.User{ID: id, Email: "test@example.com", Role: "user", CreatedAt: time.Now()}
+}
+
+func makeRefreshToken(revoked bool) port.RefreshToken {
+	var revokedAt *time.Time
+	if revoked {
+		t := time.Now()
+		revokedAt = &t
+	}
+	return port.RefreshToken{
+		ID:        "00000000-0000-0000-0000-000000000030",
+		UserID:    "00000000-0000-0000-0000-000000000040",
+		TokenHash: "somehash", ExpiresAt: time.Now().Add(7 * 24 * time.Hour), RevokedAt: revokedAt,
+	}
+}
+
+func makeReport() port.Report {
+	total := int32(2)
+	return port.Report{
+		ID:        "00000000-0000-0000-0000-000000000010",
+		ProjectID: "00000000-0000-0000-0000-000000000001",
+		ToolName:  "trivy", Status: "completed", TotalFindings: &total,
+	}
+}
+
+func makeFinding(idIdx int) port.Finding {
+	return port.Finding{
+		ID:          fmt.Sprintf("00000000-0000-0000-0000-00000000002%d", idIdx),
+		ProjectID:   "00000000-0000-0000-0000-000000000001",
+		FindingKind: "sca", Fingerprint: "fp1",
+	}
 }
 
 func TestCreateProject_Success(t *testing.T) {
 	pr, _, _ := makeTestRepos()
 
-	pr.createFn = func(ctx context.Context, arg sqlc.CreateProjectParams) (sqlc.Project, error) {
+	pr.createFn = func(ctx context.Context, arg port.CreateProjectInput) (port.Project, error) {
 		return makeProject(true), nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr},
+		Stores: &port.Stores{Projects: pr},
 	})
 
 	result, err := uc.CreateProject(context.Background(), "My App", "my-app", "test description")
@@ -618,114 +643,44 @@ func TestCreateProject_Success(t *testing.T) {
 	assert.Equal(t, "My App", result.Name)
 }
 
-func makeProject(valid bool) sqlc.Project {
-	if !valid {
-		return sqlc.Project{}
-	}
-	var id pgtype.UUID
-	id.Scan("00000000-0000-0000-0000-000000000001")
-	return sqlc.Project{
-		ID:   id,
-		Slug: "my-app",
-		Name: "My App",
-	}
-}
-
-func makeUser(id string) sqlc.User {
-	var uid pgtype.UUID
-	uid.Scan(id)
-	var now pgtype.Timestamptz
-	now.Scan(time.Now())
-	return sqlc.User{
-		ID:        uid,
-		Email:     "test@example.com",
-		Role:      "user",
-		CreatedAt: now,
-	}
-}
-
-func makeRefreshToken(revoked bool) sqlc.RefreshToken {
-	var id, uid pgtype.UUID
-	id.Scan("00000000-0000-0000-0000-000000000030")
-	uid.Scan("00000000-0000-0000-0000-000000000040")
-	var expires pgtype.Timestamptz
-	expires.Scan(time.Now().Add(7 * 24 * time.Hour))
-	var revokedAt pgtype.Timestamptz
-	if revoked {
-		revokedAt.Scan(time.Now())
-	}
-	return sqlc.RefreshToken{
-		ID:        id,
-		UserID:    uid,
-		TokenHash: "somehash",
-		ExpiresAt: expires,
-		RevokedAt: revokedAt,
-	}
-}
-
-func makeReport() sqlc.Report {
-	var id, pid pgtype.UUID
-	id.Scan("00000000-0000-0000-0000-000000000010")
-	pid.Scan("00000000-0000-0000-0000-000000000001")
-	return sqlc.Report{
-		ID:            id,
-		ProjectID:     pid,
-		ToolName:      "trivy",
-		Status:        "completed",
-		TotalFindings: pgtype.Int4{Int32: 2, Valid: true},
-	}
-}
-
-func makeFinding(idIdx int) sqlc.Finding {
-	var id, pid pgtype.UUID
-	id.Scan(fmt.Sprintf("00000000-0000-0000-0000-00000000002%d", idIdx))
-	pid.Scan("00000000-0000-0000-0000-000000000001")
-	return sqlc.Finding{
-		ID:          id,
-		ProjectID:   pid,
-		FindingKind: "sca",
-		Fingerprint: "fp1",
-	}
-}
-
 func TestIngestReport_Success(t *testing.T) {
 	pr, rr, fr := makeTestRepos()
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
 
-	rr.createFn = func(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error) {
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
 		return makeReport(), nil
 	}
 
-	rr.updateStatusFn = func(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
+	rr.updateStatusFn = func(ctx context.Context, id, projectID string, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
 		r := makeReport()
 		r.Status = status
 		return r, nil
 	}
 
 	callCount := 0
-	fr.getByFingerprintFn = func(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error) {
-		return sqlc.Finding{}, fmt.Errorf("not found")
+	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
 	}
-	fr.upsertFn = func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
 		callCount++
 		return makeFinding(callCount), nil
 	}
 
-	fr.createOccurrenceFn = func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error) {
-		return sqlc.FindingOccurrence{}, nil
+	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
+		return port.Occurrence{}, nil
 	}
 
-	fr.upsertDimensionFn = func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error) {
-		return sqlc.FindingDimension{}, nil
+	fr.upsertDimensionFn = func(ctx context.Context, arg port.DimensionInput) error {
+		return nil
 	}
 
 	inv := &mockInventoryRepo{}
-	var gotReportID pgtype.UUID
-	var gotPackages []repo.UpsertReportPackageParams
-	inv.upsertReportPackagesFn = func(ctx context.Context, reportID pgtype.UUID, packages []repo.UpsertReportPackageParams) error {
+	var gotReportID string
+	var gotPackages []port.PackageRef
+	inv.upsertReportPackagesFn = func(ctx context.Context, reportID string, packages []port.PackageRef) error {
 		gotReportID = reportID
 		gotPackages = packages
 		return nil
@@ -772,7 +727,7 @@ func TestIngestReport_Success(t *testing.T) {
 	}))
 
 	uc := New(Deps{
-		Repos: &repo.Repos{
+		Stores: &port.Stores{
 			Projects:     pr,
 			Reports:      rr,
 			Findings:     fr,
@@ -798,12 +753,12 @@ func TestIngestReport_Success(t *testing.T) {
 	assert.Equal(t, makeReport().ID, gotReportID, "inventory write must target the created report")
 	require.Len(t, gotPackages, 3, "all package refs must be forwarded, duplicates included")
 	assert.Equal(t, "pkg:npm/lodash@4.17.20", gotPackages[0].PURL)
-	assert.Equal(t, pgtype.Text{String: "npm", Valid: true}, gotPackages[0].Ecosystem)
-	assert.Equal(t, pgtype.Text{String: "lodash", Valid: true}, gotPackages[0].Name)
-	assert.Equal(t, pgtype.Text{String: "4.17.20", Valid: true}, gotPackages[0].Version)
-	assert.Equal(t, pgtype.Text{String: "package-lock.json", Valid: true}, gotPackages[0].ManifestPath)
+	assert.Equal(t, "npm", *gotPackages[0].Ecosystem)
+	assert.Equal(t, "lodash", *gotPackages[0].Name)
+	assert.Equal(t, "4.17.20", *gotPackages[0].Version)
+	assert.Equal(t, "package-lock.json", *gotPackages[0].ManifestPath)
 	assert.Equal(t, "pkg:golang/github.com/gin-gonic/gin@v1.9.1", gotPackages[1].PURL)
-	assert.Equal(t, pgtype.Text{String: "Go", Valid: true}, gotPackages[1].Ecosystem, "ecosystem is stored as-is from the parser")
+	assert.Equal(t, "Go", *gotPackages[1].Ecosystem, "ecosystem is stored as-is from the parser")
 	assert.Equal(t, "pkg:npm/lodash@4.17.20", gotPackages[2].PURL)
 }
 
@@ -827,12 +782,12 @@ func TestIngestReport_EmptyData(t *testing.T) {
 
 func TestIngestReport_UnknownProject(t *testing.T) {
 	pr, _, _ := makeTestRepos()
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
-		return sqlc.Project{}, fmt.Errorf("not found")
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return port.Project{}, port.ErrNotFound
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr},
+		Stores: &port.Stores{Projects: pr},
 	})
 	_, err := uc.IngestReport(context.Background(), IngestReportInput{
 		ProjectSlug: "nonexistent",
@@ -844,12 +799,12 @@ func TestIngestReport_UnknownProject(t *testing.T) {
 
 func TestIngestReport_UnknownScanner(t *testing.T) {
 	pr, _, _ := makeTestRepos()
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
 
 	uc := New(Deps{
-		Repos:    &repo.Repos{Projects: pr},
+		Stores:   &port.Stores{Projects: pr},
 		Registry: scanner.NewRegistry(),
 	})
 	_, err := uc.IngestReport(context.Background(), IngestReportInput{
@@ -862,7 +817,7 @@ func TestIngestReport_UnknownScanner(t *testing.T) {
 
 func TestIngestReport_ParseError(t *testing.T) {
 	pr, _, _ := makeTestRepos()
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
 
@@ -875,7 +830,7 @@ func TestIngestReport_ParseError(t *testing.T) {
 	}))
 
 	uc := New(Deps{
-		Repos: &repo.Repos{
+		Stores: &port.Stores{
 			Projects:     pr,
 			Targets:      stubTargetRepo(),
 			Artifacts:    stubArtifactRepo(),
@@ -894,12 +849,12 @@ func TestIngestReport_ParseError(t *testing.T) {
 func TestIngestReport_Duplicate(t *testing.T) {
 	pr, rr, _ := makeTestRepos()
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
 
-	rr.createFn = func(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error) {
-		return sqlc.Report{}, &pgconn.PgError{Code: "23505"}
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
+		return port.Report{}, port.ErrDuplicateReport
 	}
 
 	reg := scanner.NewRegistry()
@@ -916,7 +871,7 @@ func TestIngestReport_Duplicate(t *testing.T) {
 	}))
 
 	uc := New(Deps{
-		Repos: &repo.Repos{
+		Stores: &port.Stores{
 			Projects:     pr,
 			Reports:      rr,
 			Targets:      stubTargetRepo(),
@@ -937,38 +892,38 @@ func TestIngestReport_Duplicate(t *testing.T) {
 func TestIngestReport_ThresholdBreached(t *testing.T) {
 	pr, rr, fr := makeTestRepos()
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
 
-	rr.createFn = func(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error) {
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
 		return makeReport(), nil
 	}
 
-	rr.updateStatusFn = func(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
+	rr.updateStatusFn = func(ctx context.Context, id, projectID string, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
 		r := makeReport()
 		r.Status = status
 		return r, nil
 	}
 
-	fr.getByFingerprintFn = func(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error) {
-		return sqlc.Finding{}, fmt.Errorf("not found")
+	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
 	}
 
-	fr.upsertFn = func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
 		return makeFinding(1), nil
 	}
 
-	fr.createOccurrenceFn = func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error) {
-		return sqlc.FindingOccurrence{}, nil
+	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
+		return port.Occurrence{}, nil
 	}
 
-	fr.upsertDimensionFn = func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error) {
-		return sqlc.FindingDimension{}, nil
+	fr.upsertDimensionFn = func(ctx context.Context, arg port.DimensionInput) error {
+		return nil
 	}
 
-	fr.listByProjectFn = func(ctx context.Context, projectID pgtype.UUID, severities, states, kinds []string, limit, offset int32) ([]sqlc.Finding, error) {
-		return []sqlc.Finding{makeFinding(1)}, nil
+	fr.listByProjectFn = func(ctx context.Context, projectID string, severities, states, kinds []string, limit, offset int32) ([]port.Finding, error) {
+		return []port.Finding{makeFinding(1)}, nil
 	}
 
 	reg := scanner.NewRegistry()
@@ -987,7 +942,7 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 	}))
 
 	uc := New(Deps{
-		Repos: &repo.Repos{
+		Stores: &port.Stores{
 			Projects:     pr,
 			Reports:      rr,
 			Findings:     fr,
@@ -1009,7 +964,7 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 
 func TestIngestReport_ErrorWrapping(t *testing.T) {
 	pr, _, _ := makeTestRepos()
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
 
@@ -1022,7 +977,7 @@ func TestIngestReport_ErrorWrapping(t *testing.T) {
 	}))
 
 	uc := New(Deps{
-		Repos: &repo.Repos{
+		Stores: &port.Stores{
 			Projects:     pr,
 			Targets:      stubTargetRepo(),
 			Artifacts:    stubArtifactRepo(),
@@ -1043,38 +998,38 @@ func TestIngestReport_ErrorWrapping(t *testing.T) {
 func TestIngestReport_PartialFailure(t *testing.T) {
 	pr, rr, fr := makeTestRepos()
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
 
-	rr.createFn = func(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error) {
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
 		return makeReport(), nil
 	}
 
-	rr.updateStatusFn = func(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
+	rr.updateStatusFn = func(ctx context.Context, id, projectID string, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
 		r := makeReport()
 		r.Status = status
 		return r, nil
 	}
 
 	callCount := 0
-	fr.getByFingerprintFn = func(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error) {
-		return sqlc.Finding{}, fmt.Errorf("not found")
+	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
 	}
-	fr.upsertFn = func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
 		callCount++
 		if callCount == 2 {
-			return sqlc.Finding{}, fmt.Errorf("db unavailable")
+			return port.Finding{}, fmt.Errorf("db unavailable")
 		}
 		return makeFinding(callCount), nil
 	}
 
-	fr.createOccurrenceFn = func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error) {
-		return sqlc.FindingOccurrence{}, nil
+	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
+		return port.Occurrence{}, nil
 	}
 
-	fr.upsertDimensionFn = func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error) {
-		return sqlc.FindingDimension{}, nil
+	fr.upsertDimensionFn = func(ctx context.Context, arg port.DimensionInput) error {
+		return nil
 	}
 
 	reg := scanner.NewRegistry()
@@ -1094,7 +1049,7 @@ func TestIngestReport_PartialFailure(t *testing.T) {
 	}))
 
 	uc := New(Deps{
-		Repos: &repo.Repos{
+		Stores: &port.Stores{
 			Projects:     pr,
 			Reports:      rr,
 			Findings:     fr,
@@ -1119,29 +1074,29 @@ func TestIngestReport_PartialFailure(t *testing.T) {
 func TestIngestReport_InventoryWriteFailure(t *testing.T) {
 	pr, rr, fr := makeTestRepos()
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
 
-	rr.createFn = func(ctx context.Context, arg repo.CreateReportParams) (sqlc.Report, error) {
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
 		return makeReport(), nil
 	}
 
-	fr.getByFingerprintFn = func(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error) {
-		return sqlc.Finding{}, fmt.Errorf("not found")
+	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
 	}
-	fr.upsertFn = func(ctx context.Context, arg repo.UpsertFindingParams) (sqlc.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
 		return makeFinding(1), nil
 	}
-	fr.createOccurrenceFn = func(ctx context.Context, arg repo.CreateOccurrenceParams) (sqlc.FindingOccurrence, error) {
-		return sqlc.FindingOccurrence{}, nil
+	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
+		return port.Occurrence{}, nil
 	}
-	fr.upsertDimensionFn = func(ctx context.Context, arg repo.UpsertDimensionParams) (sqlc.FindingDimension, error) {
-		return sqlc.FindingDimension{}, nil
+	fr.upsertDimensionFn = func(ctx context.Context, arg port.DimensionInput) error {
+		return nil
 	}
 
 	updateStatusCalled := false
-	rr.updateStatusFn = func(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
+	rr.updateStatusFn = func(ctx context.Context, id, projectID string, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
 		updateStatusCalled = true
 		r := makeReport()
 		r.Status = status
@@ -1149,7 +1104,7 @@ func TestIngestReport_InventoryWriteFailure(t *testing.T) {
 	}
 
 	inv := &mockInventoryRepo{}
-	inv.upsertReportPackagesFn = func(ctx context.Context, reportID pgtype.UUID, packages []repo.UpsertReportPackageParams) error {
+	inv.upsertReportPackagesFn = func(ctx context.Context, reportID string, packages []port.PackageRef) error {
 		return fmt.Errorf("db unavailable")
 	}
 
@@ -1172,7 +1127,7 @@ func TestIngestReport_InventoryWriteFailure(t *testing.T) {
 	}))
 
 	uc := New(Deps{
-		Repos: &repo.Repos{
+		Stores: &port.Stores{
 			Projects:     pr,
 			Reports:      rr,
 			Findings:     fr,
@@ -1200,14 +1155,11 @@ func testJWT(t *testing.T) *auth.JWTAuthenticator {
 	return a
 }
 
-func makeFindingRow(id int) sqlc.Finding {
-	var fid pgtype.UUID
-	fid.Scan(fmt.Sprintf("00000000-0000-0000-0000-00000000002%d", id))
-	var pid pgtype.UUID
-	pid.Scan("00000000-0000-0000-0000-000000000001")
-	var now pgtype.Timestamptz
-	now.Scan(time.Now())
-	return sqlc.Finding{
+func makeFindingRow(id int) port.Finding {
+	fid := fmt.Sprintf("00000000-0000-0000-0000-00000000002%d", id)
+	pid := "00000000-0000-0000-0000-000000000001"
+	now := time.Now()
+	return port.Finding{
 		ID:                  fid,
 		ProjectID:           pid,
 		FindingKind:         "sca",
@@ -1233,21 +1185,23 @@ func TestRegister_Success(t *testing.T) {
 	rr := &mockRefreshTokenRepo{}
 	jwt := testJWT(t)
 
-	ur.getByEmailFn = func(ctx context.Context, email string) (sqlc.User, error) {
-		return sqlc.User{}, fmt.Errorf("not found")
+	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {
+		return port.User{}, port.ErrNotFound
 	}
-	ur.createFn = func(ctx context.Context, email string, displayName, passwordHash pgtype.Text) (sqlc.User, error) {
+	ur.createFn = func(ctx context.Context, email string, displayName, passwordHash *string) (port.User, error) {
 		u := makeUser("00000000-0000-0000-0000-000000000040")
 		u.Email = email
-		u.PasswordHash = passwordHash
+		if passwordHash != nil {
+			u.PasswordHash = *passwordHash
+		}
 		return u, nil
 	}
-	rr.createFn = func(ctx context.Context, userID pgtype.UUID, tokenHash string, expiresAt time.Time) (sqlc.RefreshToken, error) {
+	rr.createFn = func(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
 		return makeRefreshToken(false), nil
 	}
 
 	uc := New(Deps{
-		Repos:   &repo.Repos{Users: ur, RefreshTokens: rr},
+		Stores:  &port.Stores{Users: ur, RefreshTokens: rr},
 		JWTAuth: jwt,
 	})
 
@@ -1280,12 +1234,12 @@ func TestRegister_ShortPassword(t *testing.T) {
 
 func TestRegister_ExistingEmail(t *testing.T) {
 	ur := &mockUserRepo{}
-	ur.getByEmailFn = func(ctx context.Context, email string) (sqlc.User, error) {
+	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {
 		return makeUser("00000000-0000-0000-0000-000000000040"), nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Users: ur},
+		Stores: &port.Stores{Users: ur},
 	})
 
 	_, err := uc.Register(context.Background(), "test@example.com", "password123")
@@ -1302,17 +1256,17 @@ func TestLogin_Success(t *testing.T) {
 	hash, err := auth.HashPassword("correct-password")
 	require.NoError(t, err)
 
-	ur.getByEmailFn = func(ctx context.Context, email string) (sqlc.User, error) {
+	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {
 		u := makeUser("00000000-0000-0000-0000-000000000040")
-		u.PasswordHash = pgtype.Text{String: hash, Valid: true}
+		u.PasswordHash = hash
 		return u, nil
 	}
-	rr.createFn = func(ctx context.Context, userID pgtype.UUID, tokenHash string, expiresAt time.Time) (sqlc.RefreshToken, error) {
+	rr.createFn = func(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
 		return makeRefreshToken(false), nil
 	}
 
 	uc := New(Deps{
-		Repos:   &repo.Repos{Users: ur, RefreshTokens: rr},
+		Stores:  &port.Stores{Users: ur, RefreshTokens: rr},
 		JWTAuth: jwt,
 	})
 
@@ -1338,12 +1292,12 @@ func TestLogin_EmptyPassword(t *testing.T) {
 
 func TestLogin_UserNotFound(t *testing.T) {
 	ur := &mockUserRepo{}
-	ur.getByEmailFn = func(ctx context.Context, email string) (sqlc.User, error) {
-		return sqlc.User{}, fmt.Errorf("not found")
+	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {
+		return port.User{}, port.ErrNotFound
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Users: ur},
+		Stores: &port.Stores{Users: ur},
 	})
 
 	_, err := uc.Login(context.Background(), "unknown@example.com", "password123")
@@ -1352,14 +1306,14 @@ func TestLogin_UserNotFound(t *testing.T) {
 
 func TestLogin_NoPasswordHash(t *testing.T) {
 	ur := &mockUserRepo{}
-	ur.getByEmailFn = func(ctx context.Context, email string) (sqlc.User, error) {
+	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {
 		u := makeUser("00000000-0000-0000-0000-000000000040")
-		u.PasswordHash = pgtype.Text{Valid: false}
+		u.PasswordHash = ""
 		return u, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Users: ur},
+		Stores: &port.Stores{Users: ur},
 	})
 
 	_, err := uc.Login(context.Background(), "test@example.com", "password123")
@@ -1373,14 +1327,14 @@ func TestLogin_WrongPassword(t *testing.T) {
 	hash, err := auth.HashPassword("real-password")
 	require.NoError(t, err)
 
-	ur.getByEmailFn = func(ctx context.Context, email string) (sqlc.User, error) {
+	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {
 		u := makeUser("00000000-0000-0000-0000-000000000040")
-		u.PasswordHash = pgtype.Text{String: hash, Valid: true}
+		u.PasswordHash = hash
 		return u, nil
 	}
 
 	uc := New(Deps{
-		Repos:   &repo.Repos{Users: ur},
+		Stores:  &port.Stores{Users: ur},
 		JWTAuth: jwt,
 	})
 
@@ -1397,21 +1351,21 @@ func TestRefresh_Success(t *testing.T) {
 
 	token := makeRefreshToken(false)
 
-	rr.getByHashFn = func(ctx context.Context, tokenHash string) (sqlc.RefreshToken, error) {
+	rr.getByHashFn = func(ctx context.Context, tokenHash string) (port.RefreshToken, error) {
 		return token, nil
 	}
-	rr.revokeFn = func(ctx context.Context, id pgtype.UUID) (sqlc.RefreshToken, error) {
+	rr.revokeFn = func(ctx context.Context, id string) (port.RefreshToken, error) {
 		return makeRefreshToken(true), nil
 	}
-	rr.createFn = func(ctx context.Context, userID pgtype.UUID, tokenHash string, expiresAt time.Time) (sqlc.RefreshToken, error) {
+	rr.createFn = func(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
 		return makeRefreshToken(false), nil
 	}
-	ur.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.User, error) {
+	ur.getByIDFn = func(ctx context.Context, id string) (port.User, error) {
 		return makeUser("00000000-0000-0000-0000-000000000040"), nil
 	}
 
 	uc := New(Deps{
-		Repos:   &repo.Repos{RefreshTokens: rr, Users: ur},
+		Stores:  &port.Stores{RefreshTokens: rr, Users: ur},
 		JWTAuth: jwt,
 	})
 
@@ -1431,12 +1385,12 @@ func TestRefresh_EmptyToken(t *testing.T) {
 
 func TestRefresh_InvalidToken(t *testing.T) {
 	rr := &mockRefreshTokenRepo{}
-	rr.getByHashFn = func(ctx context.Context, tokenHash string) (sqlc.RefreshToken, error) {
-		return sqlc.RefreshToken{}, fmt.Errorf("not found")
+	rr.getByHashFn = func(ctx context.Context, tokenHash string) (port.RefreshToken, error) {
+		return port.RefreshToken{}, port.ErrNotFound
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{RefreshTokens: rr},
+		Stores: &port.Stores{RefreshTokens: rr},
 	})
 
 	_, err := uc.Refresh(context.Background(), "invalid-token")
@@ -1445,12 +1399,12 @@ func TestRefresh_InvalidToken(t *testing.T) {
 
 func TestRefresh_RevokedToken(t *testing.T) {
 	rr := &mockRefreshTokenRepo{}
-	rr.getByHashFn = func(ctx context.Context, tokenHash string) (sqlc.RefreshToken, error) {
+	rr.getByHashFn = func(ctx context.Context, tokenHash string) (port.RefreshToken, error) {
 		return makeRefreshToken(true), nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{RefreshTokens: rr},
+		Stores: &port.Stores{RefreshTokens: rr},
 	})
 
 	_, err := uc.Refresh(context.Background(), "revoked-token")
@@ -1460,17 +1414,16 @@ func TestRefresh_RevokedToken(t *testing.T) {
 func TestRefresh_ExpiredToken(t *testing.T) {
 	rr := &mockRefreshTokenRepo{}
 
-	var expired pgtype.Timestamptz
-	expired.Scan(time.Now().Add(-1 * time.Hour))
+	expired := time.Now().Add(-1 * time.Hour)
 
-	rr.getByHashFn = func(ctx context.Context, tokenHash string) (sqlc.RefreshToken, error) {
+	rr.getByHashFn = func(ctx context.Context, tokenHash string) (port.RefreshToken, error) {
 		tok := makeRefreshToken(false)
 		tok.ExpiresAt = expired
 		return tok, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{RefreshTokens: rr},
+		Stores: &port.Stores{RefreshTokens: rr},
 	})
 
 	_, err := uc.Refresh(context.Background(), "expired-token")
@@ -1481,15 +1434,15 @@ func TestRefresh_ExpiredToken(t *testing.T) {
 
 func TestLogout_Success(t *testing.T) {
 	rr := &mockRefreshTokenRepo{}
-	rr.getByHashFn = func(ctx context.Context, tokenHash string) (sqlc.RefreshToken, error) {
+	rr.getByHashFn = func(ctx context.Context, tokenHash string) (port.RefreshToken, error) {
 		return makeRefreshToken(false), nil
 	}
-	rr.revokeFn = func(ctx context.Context, id pgtype.UUID) (sqlc.RefreshToken, error) {
+	rr.revokeFn = func(ctx context.Context, id string) (port.RefreshToken, error) {
 		return makeRefreshToken(true), nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{RefreshTokens: rr},
+		Stores: &port.Stores{RefreshTokens: rr},
 	})
 
 	err := uc.Logout(context.Background(), "valid-token")
@@ -1504,12 +1457,12 @@ func TestLogout_EmptyToken(t *testing.T) {
 
 func TestLogout_InvalidToken(t *testing.T) {
 	rr := &mockRefreshTokenRepo{}
-	rr.getByHashFn = func(ctx context.Context, tokenHash string) (sqlc.RefreshToken, error) {
-		return sqlc.RefreshToken{}, fmt.Errorf("not found")
+	rr.getByHashFn = func(ctx context.Context, tokenHash string) (port.RefreshToken, error) {
+		return port.RefreshToken{}, port.ErrNotFound
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{RefreshTokens: rr},
+		Stores: &port.Stores{RefreshTokens: rr},
 	})
 
 	err := uc.Logout(context.Background(), "invalid-token")
@@ -1520,12 +1473,12 @@ func TestLogout_InvalidToken(t *testing.T) {
 
 func TestGetProfile_Success(t *testing.T) {
 	ur := &mockUserRepo{}
-	ur.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.User, error) {
+	ur.getByIDFn = func(ctx context.Context, id string) (port.User, error) {
 		return makeUser("00000000-0000-0000-0000-000000000040"), nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Users: ur},
+		Stores: &port.Stores{Users: ur},
 	})
 
 	profile, err := uc.GetProfile(context.Background(), "00000000-0000-0000-0000-000000000040")
@@ -1544,12 +1497,12 @@ func TestGetProfile_InvalidUUID(t *testing.T) {
 
 func TestGetProfile_UserNotFound(t *testing.T) {
 	ur := &mockUserRepo{}
-	ur.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.User, error) {
-		return sqlc.User{}, fmt.Errorf("not found")
+	ur.getByIDFn = func(ctx context.Context, id string) (port.User, error) {
+		return port.User{}, port.ErrNotFound
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Users: ur},
+		Stores: &port.Stores{Users: ur},
 	})
 
 	_, err := uc.GetProfile(context.Background(), "00000000-0000-0000-0000-000000000001")
@@ -1560,17 +1513,17 @@ func TestGetProfile_UserNotFound(t *testing.T) {
 
 func TestGetFinding_Success(t *testing.T) {
 	fr := &mockFindingRepo{}
-	fr.getByFingerprintFn = func(ctx context.Context, arg repo.GetByFingerprintParams) (sqlc.Finding, error) {
-		return sqlc.Finding{}, fmt.Errorf("not used")
+	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
+		return port.Finding{}, fmt.Errorf("not used")
 	}
 
 	fr.getByFingerprintFn = nil
-	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
 		return makeFindingRow(1), nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Findings: fr},
+		Stores: &port.Stores{Findings: fr},
 	})
 
 	finding, err := uc.GetFinding(context.Background(), "00000000-0000-0000-0000-000000000021")
@@ -1589,12 +1542,12 @@ func TestGetFinding_InvalidUUID(t *testing.T) {
 
 func TestGetFinding_NotFound(t *testing.T) {
 	fr := &mockFindingRepo{}
-	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
-		return sqlc.Finding{}, fmt.Errorf("not found")
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Findings: fr},
+		Stores: &port.Stores{Findings: fr},
 	})
 
 	_, err := uc.GetFinding(context.Background(), "00000000-0000-0000-0000-000000000021")
@@ -1608,15 +1561,19 @@ func TestGetGateStatus_Success(t *testing.T) {
 	fr := &mockFindingRepo{}
 	wr := &mockWaiverRepo{}
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
-	fr.listBlockingFindingsFn = func(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error) {
-		return []sqlc.Finding{makeFindingRow(1), makeFindingRow(2), makeFindingRow(3)}, nil
+	fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minSeverityRank int16) ([]port.GateCandidate, error) {
+		return []port.GateCandidate{
+			{Finding: makeFindingRow(1)},
+			{Finding: makeFindingRow(2)},
+			{Finding: makeFindingRow(3)},
+		}, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr, Findings: fr, Waivers: wr},
+		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: wr},
 	})
 
 	status, err := uc.GetGateStatus(context.Background(), "my-app", 2)
@@ -1630,12 +1587,12 @@ func TestGetGateStatus_Success(t *testing.T) {
 
 func TestGetGateStatus_ProjectNotFound(t *testing.T) {
 	pr := &mockProjectRepo{}
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
-		return sqlc.Project{}, fmt.Errorf("not found")
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return port.Project{}, port.ErrNotFound
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr},
+		Stores: &port.Stores{Projects: pr},
 	})
 
 	_, err := uc.GetGateStatus(context.Background(), "nonexistent", 2)
@@ -1648,15 +1605,15 @@ func TestListFindings_Success(t *testing.T) {
 	pr := &mockProjectRepo{}
 	fr := &mockFindingRepo{}
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
-	fr.listByProjectFn = func(ctx context.Context, projectID pgtype.UUID, severities, states, kinds []string, limit, offset int32) ([]sqlc.Finding, error) {
-		return []sqlc.Finding{makeFindingRow(1), makeFindingRow(2)}, nil
+	fr.listByProjectFn = func(ctx context.Context, projectID string, severities, states, kinds []string, limit, offset int32) ([]port.Finding, error) {
+		return []port.Finding{makeFindingRow(1), makeFindingRow(2)}, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr, Findings: fr},
+		Stores: &port.Stores{Projects: pr, Findings: fr},
 	})
 
 	findings, err := uc.ListFindings(context.Background(), "my-app", nil, nil, nil, 20, 0)
@@ -1666,12 +1623,12 @@ func TestListFindings_Success(t *testing.T) {
 
 func TestListFindings_ProjectNotFound(t *testing.T) {
 	pr := &mockProjectRepo{}
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
-		return sqlc.Project{}, fmt.Errorf("not found")
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return port.Project{}, port.ErrNotFound
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr},
+		Stores: &port.Stores{Projects: pr},
 	})
 
 	_, err := uc.ListFindings(context.Background(), "nonexistent", nil, nil, nil, 20, 0)
@@ -1682,12 +1639,12 @@ func TestListFindings_ProjectNotFound(t *testing.T) {
 
 func TestListProjects_Success(t *testing.T) {
 	pr := &mockProjectRepo{}
-	pr.listFn = func(ctx context.Context) ([]sqlc.Project, error) {
-		return []sqlc.Project{makeProject(true)}, nil
+	pr.listFn = func(ctx context.Context) ([]port.Project, error) {
+		return []port.Project{makeProject(true)}, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr},
+		Stores: &port.Stores{Projects: pr},
 	})
 
 	projects, err := uc.ListProjects(context.Background())
@@ -1700,12 +1657,12 @@ func TestListProjects_Success(t *testing.T) {
 
 func TestGetProject_Success(t *testing.T) {
 	pr := &mockProjectRepo{}
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr},
+		Stores: &port.Stores{Projects: pr},
 	})
 
 	proj, err := uc.GetProject(context.Background(), "my-app")
@@ -1716,12 +1673,12 @@ func TestGetProject_Success(t *testing.T) {
 
 func TestGetProject_NotFound(t *testing.T) {
 	pr := &mockProjectRepo{}
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
-		return sqlc.Project{}, fmt.Errorf("not found")
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return port.Project{}, port.ErrNotFound
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr},
+		Stores: &port.Stores{Projects: pr},
 	})
 
 	_, err := uc.GetProject(context.Background(), "nonexistent")
@@ -1734,15 +1691,15 @@ func TestListReports_Success(t *testing.T) {
 	pr := &mockProjectRepo{}
 	rr := &mockReportRepo{}
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
-	rr.listByProjectFn = func(ctx context.Context, projectID pgtype.UUID, limit, offset int32) ([]sqlc.Report, error) {
-		return []sqlc.Report{makeReport()}, nil
+	rr.listByProjectFn = func(ctx context.Context, projectID string, limit, offset int32) ([]port.Report, error) {
+		return []port.Report{makeReport()}, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr, Reports: rr},
+		Stores: &port.Stores{Projects: pr, Reports: rr},
 	})
 
 	reports, err := uc.ListReports(context.Background(), "my-app", 20, 0)
@@ -1753,12 +1710,12 @@ func TestListReports_Success(t *testing.T) {
 
 func TestListReports_ProjectNotFound(t *testing.T) {
 	pr := &mockProjectRepo{}
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
-		return sqlc.Project{}, fmt.Errorf("not found")
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return port.Project{}, port.ErrNotFound
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr},
+		Stores: &port.Stores{Projects: pr},
 	})
 
 	_, err := uc.ListReports(context.Background(), "nonexistent", 20, 0)
@@ -1769,15 +1726,15 @@ func TestListReports_ProjectNotFound(t *testing.T) {
 
 func TestGetReport_Success(t *testing.T) {
 	rr := &mockReportRepo{}
-	rr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Report, error) {
+	rr.getByIDFn = func(ctx context.Context, id string) (port.Report, error) {
 		return makeReport(), nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Reports: rr},
+		Stores: &port.Stores{Reports: rr},
 	})
 
-	report, err := uc.GetReport(context.Background(), pgtype.UUID{Bytes: [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}, Valid: true})
+	report, err := uc.GetReport(context.Background(), "00000000-0000-0000-0000-000000000001")
 	require.NoError(t, err)
 	require.NotNil(t, report)
 	assert.Equal(t, "trivy", report.ToolName)
@@ -1785,15 +1742,15 @@ func TestGetReport_Success(t *testing.T) {
 
 func TestGetReport_NotFound(t *testing.T) {
 	rr := &mockReportRepo{}
-	rr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Report, error) {
-		return sqlc.Report{}, fmt.Errorf("not found")
+	rr.getByIDFn = func(ctx context.Context, id string) (port.Report, error) {
+		return port.Report{}, port.ErrNotFound
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Reports: rr},
+		Stores: &port.Stores{Reports: rr},
 	})
 
-	_, err := uc.GetReport(context.Background(), pgtype.UUID{Valid: true})
+	_, err := uc.GetReport(context.Background(), "00000000-0000-0000-0000-000000000001")
 	assert.ErrorContains(t, err, "get report")
 }
 
@@ -1803,25 +1760,20 @@ func TestCreateAPIKey_Success(t *testing.T) {
 	pr := &mockProjectRepo{}
 	akr := &mockAPIKeyRepo{}
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
-	akr.createFn = func(ctx context.Context, arg sqlc.CreateAPIKeyParams) (sqlc.ApiKey, error) {
-		var id pgtype.UUID
-		id.Scan("00000000-0000-0000-0000-000000000050")
-		var now pgtype.Timestamptz
-		now.Scan(time.Now())
-		return sqlc.ApiKey{
-			ID:        id,
-			Name:      arg.Name,
-			KeyPrefix: arg.KeyPrefix,
-			LastFour:  pgtype.Text{String: arg.LastFour.String, Valid: true},
-			CreatedAt: now,
+	akr.createFn = func(ctx context.Context, arg port.CreateAPIKeyInput) (port.APIKey, error) {
+		now := time.Now()
+		return port.APIKey{
+			ID:   "00000000-0000-0000-0000-000000000050",
+			Name: arg.Name, KeyPrefix: arg.KeyPrefix, LastFour: new(arg.LastFour),
+			ProjectID: arg.ProjectID, CreatedBy: new(arg.CreatedBy), CreatedAt: now,
 		}, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr, APIKeys: akr},
+		Stores: &port.Stores{Projects: pr, APIKeys: akr},
 	})
 
 	resp, err := uc.CreateAPIKey(context.Background(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001")
@@ -1834,12 +1786,12 @@ func TestCreateAPIKey_Success(t *testing.T) {
 
 func TestCreateAPIKey_ProjectNotFound(t *testing.T) {
 	pr := &mockProjectRepo{}
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
-		return sqlc.Project{}, fmt.Errorf("not found")
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return port.Project{}, port.ErrNotFound
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr},
+		Stores: &port.Stores{Projects: pr},
 	})
 
 	_, err := uc.CreateAPIKey(context.Background(), "nonexistent", "ci-key", "00000000-0000-0000-0000-000000000001")
@@ -1852,19 +1804,18 @@ func TestListAPIKeys_Success(t *testing.T) {
 	pr := &mockProjectRepo{}
 	akr := &mockAPIKeyRepo{}
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
-	akr.listByProjectFn = func(ctx context.Context, projectID pgtype.UUID) ([]sqlc.ListAPIKeysByProjectRow, error) {
-		var now pgtype.Timestamptz
-		now.Scan(time.Now())
-		return []sqlc.ListAPIKeysByProjectRow{
-			{ID: pgtype.UUID{Bytes: [16]byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5}, Valid: true}, Name: "ci-key", KeyPrefix: "vuln_abc", CreatedAt: now},
-		}, nil
+	akr.listByProjectFn = func(ctx context.Context, projectID string) ([]port.APIKey, error) {
+		return []port.APIKey{{
+			ID:        "00000000-0000-0000-0000-000000000005",
+			ProjectID: projectID, Name: "ci-key", KeyPrefix: "vuln_abc", CreatedAt: time.Now(),
+		}}, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr, APIKeys: akr},
+		Stores: &port.Stores{Projects: pr, APIKeys: akr},
 	})
 
 	keys, err := uc.ListAPIKeys(context.Background(), "my-app")
@@ -1875,12 +1826,12 @@ func TestListAPIKeys_Success(t *testing.T) {
 
 func TestListAPIKeys_ProjectNotFound(t *testing.T) {
 	pr := &mockProjectRepo{}
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
-		return sqlc.Project{}, fmt.Errorf("not found")
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return port.Project{}, port.ErrNotFound
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr},
+		Stores: &port.Stores{Projects: pr},
 	})
 
 	_, err := uc.ListAPIKeys(context.Background(), "nonexistent")
@@ -1893,15 +1844,15 @@ func TestRevokeAPIKey_Success(t *testing.T) {
 	pr := &mockProjectRepo{}
 	akr := &mockAPIKeyRepo{}
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
-	akr.revokeFn = func(ctx context.Context, id, projectID pgtype.UUID) (sqlc.ApiKey, error) {
-		return sqlc.ApiKey{}, nil
+	akr.revokeFn = func(ctx context.Context, id, projectID string) (port.APIKey, error) {
+		return port.APIKey{}, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr, APIKeys: akr},
+		Stores: &port.Stores{Projects: pr, APIKeys: akr},
 	})
 
 	err := uc.RevokeAPIKey(context.Background(), "my-app", "00000000-0000-0000-0000-000000000050")
@@ -1910,12 +1861,12 @@ func TestRevokeAPIKey_Success(t *testing.T) {
 
 func TestRevokeAPIKey_ProjectNotFound(t *testing.T) {
 	pr := &mockProjectRepo{}
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
-		return sqlc.Project{}, fmt.Errorf("not found")
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return port.Project{}, port.ErrNotFound
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr},
+		Stores: &port.Stores{Projects: pr},
 	})
 
 	err := uc.RevokeAPIKey(context.Background(), "nonexistent", "some-id")
@@ -1926,13 +1877,13 @@ func TestRevokeAPIKey_InvalidID(t *testing.T) {
 	pr := &mockProjectRepo{}
 	akr := &mockAPIKeyRepo{}
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
 	akr.revokeFn = nil
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr, APIKeys: akr},
+		Stores: &port.Stores{Projects: pr, APIKeys: akr},
 	})
 
 	err := uc.RevokeAPIKey(context.Background(), "my-app", "not-a-uuid")
@@ -1945,24 +1896,24 @@ func TestTriageFinding_Success(t *testing.T) {
 	fID := "00000000-0000-0000-0000-000000000021"
 
 	fr := &mockFindingRepo{}
-	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
 		f := makeFindingRow(1)
 		f.AnalysisState = "unanalyzed"
 		f.GateEffect = "block"
 		return f, nil
 	}
-	fr.updateAnalysisFn = func(ctx context.Context, arg repo.UpdateAnalysisParams) (sqlc.Finding, error) {
+	fr.updateAnalysisFn = func(ctx context.Context, arg port.UpdateAnalysisInput) (port.Finding, error) {
 		f := makeFindingRow(1)
 		f.AnalysisState = "false_positive"
 		f.GateEffect = "ignore"
 		return f, nil
 	}
-	fr.createEventFn = func(ctx context.Context, arg repo.CreateEventParams) (sqlc.FindingEvent, error) {
-		return sqlc.FindingEvent{}, nil
+	fr.createEventFn = func(ctx context.Context, arg port.FindingEventInput) (port.FindingEvent, error) {
+		return port.FindingEvent{}, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Findings: fr},
+		Stores: &port.Stores{Findings: fr},
 	})
 
 	result, err := uc.TriageFinding(context.Background(), TriageInput{
@@ -1979,12 +1930,12 @@ func TestTriageFinding_Success(t *testing.T) {
 
 func TestTriageFinding_NotFound(t *testing.T) {
 	fr := &mockFindingRepo{}
-	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
-		return sqlc.Finding{}, fmt.Errorf("not found")
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Findings: fr},
+		Stores: &port.Stores{Findings: fr},
 	})
 
 	_, err := uc.TriageFinding(context.Background(), TriageInput{
@@ -2006,12 +1957,12 @@ func TestTriageFinding_InvalidFindingID(t *testing.T) {
 
 func TestTriageFinding_MissingReason(t *testing.T) {
 	fr := &mockFindingRepo{}
-	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
 		return makeFindingRow(1), nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Findings: fr},
+		Stores: &port.Stores{Findings: fr},
 	})
 
 	_, err := uc.TriageFinding(context.Background(), TriageInput{
@@ -2024,12 +1975,12 @@ func TestTriageFinding_MissingReason(t *testing.T) {
 
 func TestTriageFinding_MissingExpiry(t *testing.T) {
 	fr := &mockFindingRepo{}
-	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
 		return makeFindingRow(1), nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Findings: fr},
+		Stores: &port.Stores{Findings: fr},
 	})
 
 	_, err := uc.TriageFinding(context.Background(), TriageInput{
@@ -2045,21 +1996,21 @@ func TestTriageFinding_MissingExpiry(t *testing.T) {
 
 func TestBulkTriage_Success(t *testing.T) {
 	fr := &mockFindingRepo{}
-	fr.listByIDsFn = func(ctx context.Context, ids []pgtype.UUID) ([]sqlc.Finding, error) {
-		return []sqlc.Finding{makeFindingRow(1)}, nil
+	fr.listByIDsFn = func(ctx context.Context, ids []string) ([]port.Finding, error) {
+		return []port.Finding{makeFindingRow(1)}, nil
 	}
-	fr.bulkUpdateAnalysisFn = func(ctx context.Context, arg repo.BulkUpdateAnalysisParams) ([]sqlc.Finding, error) {
+	fr.bulkUpdateAnalysisFn = func(ctx context.Context, arg port.UpdateAnalysisInput, ids []string) ([]port.Finding, error) {
 		f := makeFindingRow(1)
 		f.AnalysisState = "false_positive"
 		f.GateEffect = "ignore"
-		return []sqlc.Finding{f}, nil
+		return []port.Finding{f}, nil
 	}
-	fr.createEventFn = func(ctx context.Context, arg repo.CreateEventParams) (sqlc.FindingEvent, error) {
-		return sqlc.FindingEvent{}, nil
+	fr.createEventFn = func(ctx context.Context, arg port.FindingEventInput) (port.FindingEvent, error) {
+		return port.FindingEvent{}, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Findings: fr},
+		Stores: &port.Stores{Findings: fr},
 	})
 
 	results, err := uc.BulkTriage(context.Background(), BulkTriageInput{
@@ -2075,12 +2026,12 @@ func TestBulkTriage_Success(t *testing.T) {
 
 func TestBulkTriage_FindingsNotFound(t *testing.T) {
 	fr := &mockFindingRepo{}
-	fr.listByIDsFn = func(ctx context.Context, ids []pgtype.UUID) ([]sqlc.Finding, error) {
-		return []sqlc.Finding{}, nil
+	fr.listByIDsFn = func(ctx context.Context, ids []string) ([]port.Finding, error) {
+		return []port.Finding{}, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Findings: fr},
+		Stores: &port.Stores{Findings: fr},
 	})
 
 	_, err := uc.BulkTriage(context.Background(), BulkTriageInput{
@@ -2106,19 +2057,17 @@ func TestBulkTriage_InvalidUserID(t *testing.T) {
 
 func TestGetFindingEvents_Success(t *testing.T) {
 	fr := &mockFindingRepo{}
-	var fid pgtype.UUID
-	fid.Scan("00000000-0000-0000-0000-000000000021")
-	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
 		return makeFindingRow(1), nil
 	}
-	fr.listEventsFn = func(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error) {
-		return []sqlc.FindingEvent{
+	fr.listEventsFn = func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]port.FindingEvent, error) {
+		return []port.FindingEvent{
 			{EventType: "analysis_changed"},
 		}, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Findings: fr},
+		Stores: &port.Stores{Findings: fr},
 	})
 
 	events, err := uc.GetFindingEvents(context.Background(), "00000000-0000-0000-0000-000000000021", nil, 10, 0)
@@ -2139,31 +2088,20 @@ func TestGetGateStatus_IncludesBlockedByReachability(t *testing.T) {
 	wr := &mockWaiverRepo{}
 	rch := &mockReachabilityRepo{}
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
-	fr.listBlockingFindingsFn = func(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error) {
-		rows := []sqlc.Finding{makeFindingRow(1), makeFindingRow(2)}
-		return rows, nil
-	}
-	fr.getFindingContextFn = func(ctx context.Context, findingID pgtype.UUID) (repo.FindingContext, error) {
-		return repo.FindingContext{}, fmt.Errorf("no context")
-	}
-	var batchCalls int
-	rch.latestByFindingsFn = func(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ReachabilityAssessment, error) {
-		batchCalls++
-		// Only finding 21 has an assessment; 22 is absent => unknown.
-		var out []sqlc.ReachabilityAssessment
-		for _, fid := range findingIDs {
-			if uuid.UUID(fid.Bytes).String() == "00000000-0000-0000-0000-000000000021" {
-				out = append(out, sqlc.ReachabilityAssessment{State: sqlc.ReachabilityState("reachable"), FindingID: fid})
-			}
-		}
-		return out, nil
+	row1 := makeFindingRow(1)
+	row2 := makeFindingRow(2)
+	fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minSeverityRank int16) ([]port.GateCandidate, error) {
+		return []port.GateCandidate{
+			{Finding: row1, Reachability: "reachable"},
+			{Finding: row2, Reachability: ""}, // no assessment => unknown
+		}, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr, Findings: fr, Waivers: wr, Reachability: rch},
+		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: wr, Reachability: rch},
 	})
 
 	status, err := uc.GetGateStatus(context.Background(), "my-app", 2)
@@ -2174,7 +2112,8 @@ func TestGetGateStatus_IncludesBlockedByReachability(t *testing.T) {
 		"00000000-0000-0000-0000-000000000021",
 		"00000000-0000-0000-0000-000000000022",
 	}, status.BlockedBy)
-	assert.Equal(t, 1, batchCalls, "reachability must be loaded in one batched call, not N+1")
+	// Reachability arrives in the batch row (no separate per-finding or
+	// N+1 reachability calls). The reachability store is never consulted.
 	assert.Equal(t, map[string]string{
 		"00000000-0000-0000-0000-000000000021": "reachable",
 		"00000000-0000-0000-0000-000000000022": "unknown",
@@ -2187,24 +2126,20 @@ func TestGetGateStatus_ReachabilityExemptionsPass(t *testing.T) {
 	wr := &mockWaiverRepo{}
 	rch := &mockReachabilityRepo{}
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
-	fr.listBlockingFindingsFn = func(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error) {
-		return []sqlc.Finding{makeFindingRow(1), makeFindingRow(2)}, nil
-	}
-	fr.getFindingContextFn = func(ctx context.Context, findingID pgtype.UUID) (repo.FindingContext, error) {
-		return repo.FindingContext{}, fmt.Errorf("no context")
-	}
-	rch.latestByFindingsFn = func(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ReachabilityAssessment, error) {
-		return []sqlc.ReachabilityAssessment{
-			{FindingID: findingIDs[0], State: sqlc.ReachabilityStateNotReachable},
-			{FindingID: findingIDs[1], State: sqlc.ReachabilityStateNotApplicable},
+	row1 := makeFindingRow(1)
+	row2 := makeFindingRow(2)
+	fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minSeverityRank int16) ([]port.GateCandidate, error) {
+		return []port.GateCandidate{
+			{Finding: row1, Reachability: "not_reachable"},
+			{Finding: row2, Reachability: "not_applicable"},
 		}, nil
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr, Findings: fr, Waivers: wr, Reachability: rch},
+		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: wr, Reachability: rch},
 	})
 
 	status, err := uc.GetGateStatus(context.Background(), "my-app", 2)
@@ -2221,59 +2156,49 @@ func TestGetGateStatus_ReachabilityLookupError(t *testing.T) {
 	wr := &mockWaiverRepo{}
 	rch := &mockReachabilityRepo{}
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
-	fr.listBlockingFindingsFn = func(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error) {
-		return []sqlc.Finding{makeFindingRow(1)}, nil
-	}
-	fr.getFindingContextFn = func(ctx context.Context, findingID pgtype.UUID) (repo.FindingContext, error) {
-		return repo.FindingContext{}, fmt.Errorf("no context")
-	}
-	rch.latestByFindingsFn = func(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ReachabilityAssessment, error) {
+	fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minSeverityRank int16) ([]port.GateCandidate, error) {
 		return nil, fmt.Errorf("database unavailable")
 	}
 
 	uc := New(Deps{
-		Repos: &repo.Repos{Projects: pr, Findings: fr, Waivers: wr, Reachability: rch},
+		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: wr, Reachability: rch},
 	})
 
 	_, err := uc.GetGateStatus(context.Background(), "my-app", 2)
-	assert.ErrorContains(t, err, "batch load reachability")
+	assert.ErrorContains(t, err, "database unavailable")
 }
 
 func TestUpsertReachability_InvalidState(t *testing.T) {
 	rch := &mockReachabilityRepo{}
-	uc := New(Deps{Repos: &repo.Repos{Reachability: rch}})
+	uc := New(Deps{Stores: &port.Stores{Reachability: rch}})
 
 	_, err := uc.UpsertReachability(context.Background(), "00000000-0000-0000-0000-000000000001", "00000000-0000-0000-0000-000000000002", "definitely-reachable", "evidence")
 	require.ErrorIs(t, err, ErrInvalidReachabilityState)
 }
 
 func TestUpsertReachability_UsesUpdatedAt(t *testing.T) {
-	var id, findingID, userID pgtype.UUID
-	id.Scan("00000000-0000-0000-0000-000000000030")
-	findingID.Scan("00000000-0000-0000-0000-000000000031")
-	userID.Scan("00000000-0000-0000-0000-000000000032")
+	id := "00000000-0000-0000-0000-000000000030"
+	findingID := "00000000-0000-0000-0000-000000000031"
+	userID := "00000000-0000-0000-0000-000000000032"
 	createdAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	updatedAt := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
-	var created, updated pgtype.Timestamptz
-	created.Scan(createdAt)
-	updated.Scan(updatedAt)
 	rch := &mockReachabilityRepo{}
-	rch.upsertFn = func(ctx context.Context, arg repo.UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error) {
-		return sqlc.ReachabilityAssessment{
-			ID: id, FindingID: findingID, State: sqlc.ReachabilityState("reachable"),
-			AssessedBy: userID, CreatedAt: created, UpdatedAt: updated,
+	rch.upsertFn = func(ctx context.Context, findingID, state, evidence, assessedBy string) (port.ReachabilityAssessment, error) {
+		return port.ReachabilityAssessment{
+			ID: id, FindingID: findingID, State: "reachable",
+			AssessedBy: userID, CreatedAt: createdAt, UpdatedAt: updatedAt,
 		}, nil
 	}
 	fr := &mockFindingRepo{}
-	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
 		return makeFindingRow(1), nil
 	}
-	uc := New(Deps{Repos: &repo.Repos{Findings: fr, Reachability: rch}})
+	uc := New(Deps{Stores: &port.Stores{Findings: fr, Reachability: rch}})
 
-	result, err := uc.UpsertReachability(context.Background(), uuid.UUID(findingID.Bytes).String(), uuid.UUID(userID.Bytes).String(), "reachable", "evidence")
+	result, err := uc.UpsertReachability(context.Background(), findingID, userID, "reachable", "evidence")
 	require.NoError(t, err)
 	assert.Equal(t, updatedAt.Format(time.RFC3339), result.UpdatedAt)
 }
@@ -2297,19 +2222,19 @@ func TestReachability_InvalidFindingID(t *testing.T) {
 func TestReachability_ValidatesFindingForJWT(t *testing.T) {
 	fr := &mockFindingRepo{}
 	var findingLookups int
-	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
 		findingLookups++
-		return sqlc.Finding{}, fmt.Errorf("missing finding")
+		return port.Finding{}, fmt.Errorf("missing finding")
 	}
 	rch := &mockReachabilityRepo{
-		listByFindingFn: func(ctx context.Context, findingID pgtype.UUID) ([]sqlc.ReachabilityAssessment, error) {
+		listByFindingFn: func(ctx context.Context, findingID string) ([]port.ReachabilityAssessment, error) {
 			return nil, nil
 		},
-		upsertFn: func(ctx context.Context, arg repo.UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error) {
-			return sqlc.ReachabilityAssessment{}, nil
+		upsertFn: func(ctx context.Context, findingID, state, evidence, assessedBy string) (port.ReachabilityAssessment, error) {
+			return port.ReachabilityAssessment{}, nil
 		},
 	}
-	uc := New(Deps{Repos: &repo.Repos{Findings: fr, Reachability: rch}})
+	uc := New(Deps{Stores: &port.Stores{Findings: fr, Reachability: rch}})
 	ctx := auth.ContextWithIdentity(context.Background(), &auth.Identity{
 		UserID: "00000000-0000-0000-0000-000000000002",
 	})
@@ -2325,15 +2250,15 @@ func TestReachability_ValidatesFindingForJWT(t *testing.T) {
 
 func TestReachability_APIKeyCannotCrossProject(t *testing.T) {
 	fr := &mockFindingRepo{}
-	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
 		return makeFindingRow(1), nil
 	}
 	rch := &mockReachabilityRepo{}
-	rch.upsertFn = func(ctx context.Context, arg repo.UpsertReachabilityParams) (sqlc.ReachabilityAssessment, error) {
+	rch.upsertFn = func(ctx context.Context, findingID, state, evidence, assessedBy string) (port.ReachabilityAssessment, error) {
 		t.Fatal("cross-project reachability must be denied before the write")
-		return sqlc.ReachabilityAssessment{}, nil
+		return port.ReachabilityAssessment{}, nil
 	}
-	uc := New(Deps{Repos: &repo.Repos{Findings: fr, Reachability: rch}})
+	uc := New(Deps{Stores: &port.Stores{Findings: fr, Reachability: rch}})
 	ctx := auth.ContextWithIdentity(context.Background(), &auth.Identity{
 		UserID:    "00000000-0000-0000-0000-000000000040",
 		ProjectID: "00000000-0000-0000-0000-000000000002",
@@ -2353,17 +2278,17 @@ func TestReachability_APIKeyCannotCrossProject(t *testing.T) {
 
 func TestFindingWrites_APIKeyCannotCrossProject(t *testing.T) {
 	fr := &mockFindingRepo{}
-	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
 		return makeFindingRow(1), nil
 	}
-	fr.listByIDsFn = func(ctx context.Context, ids []pgtype.UUID) ([]sqlc.Finding, error) {
-		return []sqlc.Finding{makeFindingRow(1)}, nil
+	fr.listByIDsFn = func(ctx context.Context, ids []string) ([]port.Finding, error) {
+		return []port.Finding{makeFindingRow(1)}, nil
 	}
 	er := &mockEvidenceRepo{}
-	er.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.EvidenceArtifact, error) {
-		return sqlc.EvidenceArtifact{FindingID: makeFindingRow(1).ID}, nil
+	er.getByIDFn = func(ctx context.Context, id string) (port.Evidence, error) {
+		return port.Evidence{FindingID: makeFindingRow(1).ID}, nil
 	}
-	uc := New(Deps{Repos: &repo.Repos{Findings: fr, Evidence: er}})
+	uc := New(Deps{Stores: &port.Stores{Findings: fr, Evidence: er}})
 	ctx := auth.ContextWithIdentity(context.Background(), &auth.Identity{
 		UserID:    "00000000-0000-0000-0000-000000000040",
 		ProjectID: "00000000-0000-0000-0000-000000000002",
@@ -2399,23 +2324,23 @@ func TestFindingWrites_APIKeyCannotCrossProject(t *testing.T) {
 func TestFindingReads_APIKeyCannotCrossProject(t *testing.T) {
 	fr := &mockFindingRepo{}
 	finding := makeFindingRow(1)
-	fr.getByIDFn = func(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error) {
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
 		return finding, nil
 	}
-	fr.listEventsFn = func(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error) {
-		return []sqlc.FindingEvent{{FindingID: finding.ID}}, nil
+	fr.listEventsFn = func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]port.FindingEvent, error) {
+		return []port.FindingEvent{{FindingID: finding.ID}}, nil
 	}
 	er := &mockEvidenceRepo{
-		listByFindingFn: func(ctx context.Context, findingID pgtype.UUID) ([]sqlc.EvidenceArtifact, error) {
-			return []sqlc.EvidenceArtifact{{FindingID: finding.ID}}, nil
+		listByFindingFn: func(ctx context.Context, findingID string) ([]port.Evidence, error) {
+			return []port.Evidence{{FindingID: finding.ID}}, nil
 		},
 	}
 	sr := &mockSignoffRepo{
-		getByFindingFn: func(ctx context.Context, findingID pgtype.UUID) (sqlc.Signoff, error) {
-			return sqlc.Signoff{FindingID: finding.ID}, nil
+		getByFindingFn: func(ctx context.Context, findingID string) (port.Signoff, error) {
+			return port.Signoff{FindingID: finding.ID}, nil
 		},
 	}
-	uc := New(Deps{Repos: &repo.Repos{Findings: fr, Evidence: er, Signoffs: sr}})
+	uc := New(Deps{Stores: &port.Stores{Findings: fr, Evidence: er, Signoffs: sr}})
 	ctx := auth.ContextWithIdentity(context.Background(), &auth.Identity{
 		UserID:    "00000000-0000-0000-0000-000000000040",
 		ProjectID: "00000000-0000-0000-0000-000000000002",
@@ -2439,23 +2364,21 @@ func TestFindingReads_APIKeyCannotCrossProject(t *testing.T) {
 func TestCreateAPIKey_RecordsCreator(t *testing.T) {
 	pr := &mockProjectRepo{}
 	akr := &mockAPIKeyRepo{}
-	var gotCreator pgtype.UUID
+	var gotCreator string
 
-	pr.getBySlugFn = func(ctx context.Context, slug string) (sqlc.Project, error) {
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
-	akr.createFn = func(ctx context.Context, arg sqlc.CreateAPIKeyParams) (sqlc.ApiKey, error) {
+	akr.createFn = func(ctx context.Context, arg port.CreateAPIKeyInput) (port.APIKey, error) {
 		gotCreator = arg.CreatedBy
-		var id pgtype.UUID
-		id.Scan("00000000-0000-0000-0000-000000000050")
-		var now pgtype.Timestamptz
-		now.Scan(time.Now())
-		return sqlc.ApiKey{ID: id, Name: arg.Name, KeyPrefix: arg.KeyPrefix, LastFour: pgtype.Text{Valid: false}, CreatedAt: now}, nil
+		return port.APIKey{
+			ID:   "00000000-0000-0000-0000-000000000050",
+			Name: arg.Name, KeyPrefix: arg.KeyPrefix, CreatedAt: time.Now(),
+		}, nil
 	}
 
-	uc := New(Deps{Repos: &repo.Repos{Projects: pr, APIKeys: akr}})
+	uc := New(Deps{Stores: &port.Stores{Projects: pr, APIKeys: akr}})
 	_, err := uc.CreateAPIKey(context.Background(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001")
 	require.NoError(t, err)
-	require.True(t, gotCreator.Valid)
-	assert.Equal(t, "00000000-0000-0000-0000-000000000001", uuid.UUID(gotCreator.Bytes).String())
+	assert.Equal(t, "00000000-0000-0000-0000-000000000001", gotCreator)
 }

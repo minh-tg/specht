@@ -8,10 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/finding"
 	"github.com/xMinhx/specht/internal/gate"
-	"github.com/xMinhx/specht/internal/repo"
+	"github.com/xMinhx/specht/internal/port"
 )
 
 var (
@@ -98,7 +97,7 @@ func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*Triag
 		return nil, fmt.Errorf("%w: %q", ErrInvalidState, input.AnalysisState)
 	}
 
-	finding, err := u.findingWithProjectAccess(ctx, findingID)
+	f, err := u.findingWithProjectAccess(ctx, findingID)
 	if err != nil {
 		return nil, err
 	}
@@ -111,40 +110,36 @@ func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*Triag
 	}
 
 	gateEffect := stateToGateEffect(input.AnalysisState)
+	userIDStr := userID.String()
 
-	var expiresAt pgtype.Timestamptz
-	if input.AnalysisExpiresAt != nil {
-		expiresAt = pgtype.Timestamptz{Time: *input.AnalysisExpiresAt, Valid: true}
-	}
-
-	updated, err := u.deps.Repos.Findings.UpdateAnalysis(ctx, repo.UpdateAnalysisParams{
-		ID:                pgtype.UUID{Bytes: findingID, Valid: true},
+	updated, err := u.deps.Stores.Findings.UpdateAnalysis(ctx, port.UpdateAnalysisInput{
+		ID:                findingID.String(),
 		AnalysisState:     input.AnalysisState,
 		GateEffect:        gateEffect,
-		AnalysisExpiresAt: expiresAt,
-		AnalysisReason:    pgtype.Text{String: input.Reason, Valid: input.Reason != ""},
+		AnalysisExpiresAt: input.AnalysisExpiresAt,
+		AnalysisReason:    stringPtr(input.Reason),
 		AnalysisSource:    "manual",
 		ManualOverride:    true,
 		ReviewRequired:    false,
-		AnalysisUpdatedBy: pgtype.UUID{Bytes: userID, Valid: true},
+		AnalysisUpdatedBy: &userIDStr,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("update analysis: %w", err)
 	}
 
-	oldState := finding.AnalysisState
+	oldState := f.AnalysisState
 	changes, _ := json.Marshal(map[string]any{
 		"from":   oldState,
 		"to":     input.AnalysisState,
 		"reason": input.Reason,
 	})
-	_, err = u.deps.Repos.Findings.CreateEvent(ctx, repo.CreateEventParams{
-		FindingID: pgtype.UUID{Bytes: findingID, Valid: true},
-		UserID:    pgtype.UUID{Bytes: userID, Valid: true},
+	_, err = u.deps.Stores.Findings.CreateEvent(ctx, port.FindingEventInput{
+		FindingID: findingID.String(),
+		UserID:    &userIDStr,
 		EventType: "analysis_changed",
-		OldValue:  pgtype.Text{String: oldState, Valid: true},
-		NewValue:  pgtype.Text{String: input.AnalysisState, Valid: true},
-		Comment:   pgtype.Text{String: input.Reason, Valid: input.Reason != ""},
+		OldValue:  stringPtr(oldState),
+		NewValue:  stringPtr(input.AnalysisState),
+		Comment:   stringPtr(input.Reason),
 		Changes:   changes,
 	})
 	if err != nil {
@@ -152,7 +147,7 @@ func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*Triag
 	}
 
 	return &TriageOutput{
-		FindingID:     uuid.UUID(updated.ID.Bytes).String(),
+		FindingID:     updated.ID,
 		AnalysisState: updated.AnalysisState,
 		GateEffect:    updated.GateEffect,
 	}, nil
@@ -168,16 +163,13 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 		return nil, fmt.Errorf("%w: %q", ErrInvalidState, input.AnalysisState)
 	}
 
-	findingIDs := make([]pgtype.UUID, len(input.FindingIDs))
-	for i, id := range input.FindingIDs {
-		parsed, err := uuid.Parse(id)
-		if err != nil {
+	for _, id := range input.FindingIDs {
+		if _, err := uuid.Parse(id); err != nil {
 			return nil, fmt.Errorf("invalid finding id %q: %w", id, err)
 		}
-		findingIDs[i] = pgtype.UUID{Bytes: parsed, Valid: true}
 	}
 
-	findings, err := u.deps.Repos.Findings.ListByIDs(ctx, findingIDs)
+	findings, err := u.deps.Stores.Findings.ListByIDs(ctx, input.FindingIDs)
 	if err != nil {
 		return nil, fmt.Errorf("lookup findings: %w", err)
 	}
@@ -190,31 +182,26 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 
 	for _, f := range findings {
 		if stateRequiresReason(input.AnalysisState) && input.Reason == "" {
-			return nil, fmt.Errorf("finding %s: %w", uuid.UUID(f.ID.Bytes).String(), ErrReasonRequired)
+			return nil, fmt.Errorf("finding %s: %w", f.ID, ErrReasonRequired)
 		}
 		if stateRequiresExpiry(input.AnalysisState) && input.AnalysisExpiresAt == nil {
-			return nil, fmt.Errorf("finding %s: %w", uuid.UUID(f.ID.Bytes).String(), ErrExpiryRequired)
+			return nil, fmt.Errorf("finding %s: %w", f.ID, ErrExpiryRequired)
 		}
 	}
 
 	gateEffect := stateToGateEffect(input.AnalysisState)
+	userIDStr := userID.String()
 
-	var expiresAt pgtype.Timestamptz
-	if input.AnalysisExpiresAt != nil {
-		expiresAt = pgtype.Timestamptz{Time: *input.AnalysisExpiresAt, Valid: true}
-	}
-
-	updated, err := u.deps.Repos.Findings.BulkUpdateAnalysis(ctx, repo.BulkUpdateAnalysisParams{
-		IDs:               findingIDs,
+	updated, err := u.deps.Stores.Findings.BulkUpdateAnalysis(ctx, port.UpdateAnalysisInput{
 		AnalysisState:     input.AnalysisState,
 		GateEffect:        gateEffect,
-		AnalysisExpiresAt: expiresAt,
-		AnalysisReason:    pgtype.Text{String: input.Reason, Valid: input.Reason != ""},
+		AnalysisExpiresAt: input.AnalysisExpiresAt,
+		AnalysisReason:    stringPtr(input.Reason),
 		AnalysisSource:    "bulk",
 		ManualOverride:    true,
 		ReviewRequired:    false,
-		AnalysisUpdatedBy: pgtype.UUID{Bytes: userID, Valid: true},
-	})
+		AnalysisUpdatedBy: &userIDStr,
+	}, input.FindingIDs)
 	if err != nil {
 		return nil, fmt.Errorf("bulk update analysis: %w", err)
 	}
@@ -225,11 +212,11 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 		"count":  len(updated),
 	})
 	for _, f := range updated {
-		_, err = u.deps.Repos.Findings.CreateEvent(ctx, repo.CreateEventParams{
+		_, err = u.deps.Stores.Findings.CreateEvent(ctx, port.FindingEventInput{
 			FindingID: f.ID,
-			UserID:    pgtype.UUID{Bytes: userID, Valid: true},
+			UserID:    &userIDStr,
 			EventType: "bulk_triage_applied",
-			NewValue:  pgtype.Text{String: input.AnalysisState, Valid: true},
+			NewValue:  stringPtr(input.AnalysisState),
 			Changes:   changes,
 		})
 		if err != nil {
@@ -240,7 +227,7 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 	results := make([]TriageOutput, len(updated))
 	for i, f := range updated {
 		results[i] = TriageOutput{
-			FindingID:     uuid.UUID(f.ID.Bytes).String(),
+			FindingID:     f.ID,
 			AnalysisState: f.AnalysisState,
 			GateEffect:    f.GateEffect,
 		}
@@ -249,14 +236,13 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 }
 
 func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*GateStatusOutput, error) {
-	project, err := u.deps.Repos.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 
 	u.initGate()
-	projectID := uuid.UUID(project.ID.Bytes).String()
-	decision, err := u.gate.Evaluate(ctx, projectID, minSeverityRank)
+	decision, err := u.gate.Evaluate(ctx, project.ID, minSeverityRank)
 	if err != nil {
 		return nil, fmt.Errorf("gate eval: %w", err)
 	}
@@ -284,7 +270,7 @@ func (u *Usecases) GetFindingEvents(ctx context.Context, findingID string, event
 		return nil, err
 	}
 
-	events, err := u.deps.Repos.Findings.ListEvents(ctx, pgtype.UUID{Bytes: fID, Valid: true}, eventTypes, limit, offset)
+	events, err := u.deps.Stores.Findings.ListEvents(ctx, fID.String(), eventTypes, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list events: %w", err)
 	}
@@ -292,25 +278,23 @@ func (u *Usecases) GetFindingEvents(ctx context.Context, findingID string, event
 	result := make([]FindingEvent, len(events))
 	for i, e := range events {
 		result[i] = FindingEvent{
-			ID:        uuidStr(e.ID),
-			FindingID: uuidStr(e.FindingID),
-			UserID:    uuidStr(e.UserID),
+			ID:        e.ID,
+			FindingID: e.FindingID,
+			UserID:    derefStr(e.UserID),
 			EventType: e.EventType,
 			Changes:   e.Changes,
-			CreatedAt: e.CreatedAt.Time,
-		}
-		if e.OldValue.Valid {
-			v := e.OldValue.String
-			result[i].OldValue = &v
-		}
-		if e.NewValue.Valid {
-			v := e.NewValue.String
-			result[i].NewValue = &v
-		}
-		if e.Comment.Valid {
-			v := e.Comment.String
-			result[i].Comment = &v
+			CreatedAt: e.CreatedAt,
+			OldValue:  e.OldValue,
+			NewValue:  e.NewValue,
+			Comment:   e.Comment,
 		}
 	}
 	return result, nil
+}
+
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

@@ -1,11 +1,13 @@
 // This file implements the production PollStore. Every created decision is
-// persisted atomically through repo.FindingRepo.PersistWatcherFinding: the
-// finding row (insert-if-absent), its scan-equivalent dimensions, the
-// occurrence (report_id NULL — watcher findings have no scan report,
-// migration 000018), the auto_rule_applied event, and the evidence artifact
-// (type 'automated', url = first advisory reference, description = advisory
-// summary). The raw querybatch advisory bytes travel byte-exact as base64 in
-// occurrence.metadata["raw_advisory"] (JSONB-safe by construction).
+// persisted atomically through the port finding store's
+// PersistWatcherFinding: the finding row (insert-if-absent), its
+// scan-equivalent dimensions, the occurrence (report_id NULL — watcher
+// findings have no scan report, migration 000018), the auto_rule_applied
+// event, and the evidence artifact (type 'automated', url = first advisory
+// reference, description = advisory summary). The raw querybatch advisory
+// bytes travel byte-exact as base64 in occurrence.metadata["raw_advisory"]
+// (JSONB-safe by construction). This file imports no pgtype/sqlc types: the
+// store adapts decisions to the port contract.
 package watcher
 
 import (
@@ -13,13 +15,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"math/big"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/xMinhx/specht/internal/db/sqlc"
-	"github.com/xMinhx/specht/internal/repo"
+	"github.com/xMinhx/specht/internal/port"
 )
 
 const (
@@ -34,111 +32,107 @@ const (
 	MetadataRawAdvisoryKey = "raw_advisory"
 )
 
-// pgPollStore persists through the repository layer inside one transaction
+// pgPollStore persists through the port finding store inside one transaction
 // per decision.
 type pgPollStore struct {
-	repos *repo.Repos
-	now   func() time.Time
+	stores *port.Stores
+	now    func() time.Time
 }
 
-// NewPollStore builds the production PollStore for a repository set.
-func NewPollStore(repos *repo.Repos) PollStore {
-	return &pgPollStore{repos: repos, now: time.Now}
+// NewPollStore builds the production PollStore for a port store aggregate.
+func NewPollStore(stores *port.Stores) PollStore {
+	return &pgPollStore{stores: stores, now: time.Now}
 }
 
-// PersistFoundFinding implements PollStore. The insert-if-absent guard
-// (CreateFindingIfAbsent) is the re-poll protection: when the fingerprint
-// already exists, the whole persist is a no-op — occurrences are created only
-// for genuinely new findings. UNIQUE(finding_id, report_id) does not dedupe
-// NULL report_ids, so the guard is mandatory.
-func (s *pgPollStore) PersistFoundFinding(ctx context.Context, d Decision) (pgtype.UUID, bool, error) {
-	pid, err := uuid.Parse(d.Finding.ProjectID)
-	if err != nil {
-		return pgtype.UUID{}, false, fmt.Errorf("parse project id %q: %w", d.Finding.ProjectID, err)
-	}
-	projectID := pgtype.UUID{Bytes: pid, Valid: true}
+// PersistFoundFinding implements PollStore. The insert-if-absent guard is the
+// re-poll protection: when the fingerprint already exists, the whole persist
+// is a no-op (port.ErrFindingSuppressed) — occurrences are created only for
+// genuinely new findings.
+func (s *pgPollStore) PersistFoundFinding(ctx context.Context, d Decision) (string, bool, error) {
 	fp := d.Finding
+	source := DimensionSourceValue
 
-	dimensions := make([]sqlc.UpsertDimensionParams, len(fp.Dimensions))
-	source := pgtype.Text{String: DimensionSourceValue, Valid: true}
+	dimensions := make([]port.DimensionInput, len(fp.Dimensions))
 	for i, dim := range fp.Dimensions {
-		dimensions[i] = sqlc.UpsertDimensionParams{
-			DimKey:   dim.Key,
-			DimValue: dim.Value,
-			Source:   source,
+		dimensions[i] = port.DimensionInput{
+			Key:    dim.Key,
+			Value:  dim.Value,
+			Source: &source,
 		}
 	}
 
 	occurrence, err := buildOccurrence(d, s.now())
 	if err != nil {
-		return pgtype.UUID{}, false, err
+		return "", false, err
 	}
 
-	var event *sqlc.CreateFindingEventParams
+	var event *port.FindingEventInput
 	if d.Event != nil {
-		event = &sqlc.CreateFindingEventParams{
+		event = &port.FindingEventInput{
 			EventType: d.Event.EventType,
-			OldValue:  textPtr(d.Event.OldValue),
-			NewValue:  textPtr(d.Event.NewValue),
-			Comment:   textPtr(d.Event.Comment),
+			OldValue:  emptyToNil(d.Event.OldValue),
+			NewValue:  emptyToNil(d.Event.NewValue),
+			Comment:   emptyToNil(d.Event.Comment),
 			Changes:   d.Event.Changes,
 		}
 	}
 
 	url, desc := evidencePayload(d)
-	var evidence *sqlc.CreateEvidenceParams
+	var evidence *port.EvidenceInput
 	if d.Evidence != nil {
-		evidence = &sqlc.CreateEvidenceParams{
+		evidence = &port.EvidenceInput{
 			Type:        EvidenceTypeAutomated,
-			Url:         url,
+			URL:         url,
 			Description: desc,
 		}
 	}
 
-	f, created, err := s.repos.Findings.PersistWatcherFinding(ctx, repo.PersistWatcherFindingParams{
-		Finding: sqlc.CreateFindingIfAbsentParams{
-			ProjectID:           projectID,
+	f, err := s.stores.Findings.PersistWatcherFinding(ctx, port.PersistWatcherFindingInput{
+		Finding: port.Finding{
+			ProjectID:           fp.ProjectID,
 			FindingKind:         fp.FindingKind,
 			Fingerprint:         fp.Fingerprint,
 			CurrentTitle:        fp.Title,
 			CurrentSeverity:     fp.Severity,
 			CurrentSeverityRank: fp.SeverityRank,
-			CurrentScore:        numericScore(fp.Score),
+			CurrentScore:        scorePtr(fp.Score),
 		},
 		Dimensions: dimensions,
 		Occurrence: occurrence,
 		Event:      event,
 		Evidence:   evidence,
 	})
-	if err != nil {
-		return pgtype.UUID{}, false, err
+	if err == port.ErrFindingSuppressed {
+		return "", false, nil
 	}
-	return f.ID, created, nil
+	if err != nil {
+		return "", false, err
+	}
+	return f.ID, true, nil
 }
 
 // PersistSkipEvent implements PollStore: a single event insert on the
 // suppressing finding.
-func (s *pgPollStore) PersistSkipEvent(ctx context.Context, suppressingID pgtype.UUID, ev Event) error {
-	return s.repos.Findings.PersistWatcherSkipEvent(ctx, sqlc.CreateFindingEventParams{
-		FindingID: suppressingID,
+func (s *pgPollStore) PersistSkipEvent(ctx context.Context, suppressingID string, ev Event) error {
+	return s.stores.Findings.PersistWatcherSkipEvent(ctx, suppressingID, port.FindingEventInput{
 		EventType: ev.EventType,
-		OldValue:  textPtr(ev.OldValue),
-		NewValue:  textPtr(ev.NewValue),
-		Comment:   textPtr(ev.Comment),
+		OldValue:  emptyToNil(ev.OldValue),
+		NewValue:  emptyToNil(ev.NewValue),
+		Comment:   emptyToNil(ev.Comment),
 		Changes:   ev.Changes,
 	})
 }
 
-// buildOccurrence computes the occurrence row for a created decision. ReportID
-// is left as the zero pgtype.UUID, which encodes to NULL (watcher findings
-// have no scan report). The metadata gains raw_advisory = base64 of the
-// evidence bytes, byte-exact. Pure and unit-testable.
-func buildOccurrence(d Decision, now time.Time) (sqlc.CreateOccurrenceParams, error) {
+// buildOccurrence computes the occurrence port input for a created decision.
+// ReportID is nil (watcher findings have no scan report). The metadata gains
+// raw_advisory = base64 of the evidence bytes, byte-exact. Pure and
+// unit-testable.
+func buildOccurrence(d Decision, now time.Time) (port.OccurrenceInput, error) {
 	fp := d.Finding
 
 	displayJSON, err := json.Marshal(fp.Display)
 	if err != nil {
-		return sqlc.CreateOccurrenceParams{}, fmt.Errorf("marshal display: %w", err)
+		return port.OccurrenceInput{}, fmt.Errorf("marshal display: %w", err)
 	}
 	metadata := make(map[string]any, len(fp.Metadata)+1)
 	for k, v := range fp.Metadata {
@@ -149,27 +143,26 @@ func buildOccurrence(d Decision, now time.Time) (sqlc.CreateOccurrenceParams, er
 	}
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
-		return sqlc.CreateOccurrenceParams{}, fmt.Errorf("marshal metadata: %w", err)
+		return port.OccurrenceInput{}, fmt.Errorf("marshal metadata: %w", err)
 	}
 
-	return sqlc.CreateOccurrenceParams{
-		ReportID:       pgtype.UUID{}, // NULL
+	return port.OccurrenceInput{
 		Title:          fp.Title,
-		Description:    textPtr(fp.Description),
+		Description:    emptyToNil(fp.Description),
 		Severity:       fp.Severity,
 		SeverityRank:   fp.SeverityRank,
-		Score:          numericScore(fp.Score),
+		Score:          fp.Score,
 		ToolName:       occurrenceToolName,
-		SubjectSummary: textPtr(fp.Title),
-		Remediation:    textPtr(fp.Remediation),
+		SubjectSummary: emptyToNil(fp.Title),
+		Remediation:    emptyToNil(fp.Remediation),
 		Display:        displayJSON,
 		Metadata:       metadataJSON,
-		ObservedAt:     pgtype.Timestamptz{Time: now, Valid: true},
+		ObservedAt:     now,
 	}, nil
 }
 
-// evidencePayload derives the evidence_artifacts row for a created decision:
-// url = first advisory reference (” when none), description = advisory
+// evidencePayload derives the evidence artifact fields for a created decision:
+// url = first advisory reference ("" when none), description = advisory
 // summary. Best-effort decode of the raw bytes; any failure yields empty
 // values rather than a failed poll.
 func evidencePayload(d Decision) (url, description string) {
@@ -183,19 +176,17 @@ func evidencePayload(d Decision) (url, description string) {
 	return url, advisory.Summary
 }
 
-// numericScore mirrors the usecase layer's score encoding: a decimal with one
-// fractional digit (score * 10, exp -1). Non-positive scores map to SQL NULL.
-func numericScore(s float64) pgtype.Numeric {
-	if s <= 0 {
-		return pgtype.Numeric{Valid: false}
+// emptyToNil maps an empty string to nil.
+func emptyToNil(s string) *string {
+	if s == "" {
+		return nil
 	}
-	return pgtype.Numeric{Int: big.NewInt(int64(s * 10)), Exp: -1, Valid: true}
+	return &s
 }
 
-// textPtr maps an empty string to SQL NULL.
-func textPtr(s string) pgtype.Text {
-	if s == "" {
-		return pgtype.Text{Valid: false}
+func scorePtr(s float64) *float64 {
+	if s <= 0 {
+		return nil
 	}
-	return pgtype.Text{String: s, Valid: true}
+	return &s
 }
