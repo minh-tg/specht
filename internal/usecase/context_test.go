@@ -129,3 +129,71 @@ func TestGetFinding_NoContext(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, finding.Context, "missing context must be explicit nil, not zero fields")
 }
+
+func TestIngestReport_BindsDigestToArtifact(t *testing.T) {
+	raw, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
+	require.NoError(t, err)
+
+	pr, rr, fr := makeTestRepos()
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
+		return makeReport(), nil
+	}
+	rr.updateStatusFn = func(ctx context.Context, id, projectID string, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
+		r := makeReport()
+		r.Status = status
+		return r, nil
+	}
+	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
+	}
+	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+		return makeFinding(1), nil
+	}
+	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
+		return port.Occurrence{}, nil
+	}
+	fr.upsertDimensionFn = func(ctx context.Context, arg port.DimensionInput) error {
+		return nil
+	}
+	fr.createEventFn = func(ctx context.Context, arg port.FindingEventInput) (port.FindingEvent, error) {
+		return port.FindingEvent{}, nil
+	}
+
+	var got port.ArtifactInput
+	ar := &mockArtifactRepo{}
+	ar.upsertFn = func(ctx context.Context, arg port.ArtifactInput) (port.Artifact, error) {
+		got = arg
+		return port.Artifact{ID: "a1", ProjectID: arg.ProjectID, Name: arg.Name}, nil
+	}
+	inv := &mockInventoryRepo{}
+	inv.upsertReportPackagesFn = func(ctx context.Context, reportID string, packages []port.PackageRef) error {
+		return nil
+	}
+
+	uc := New(Deps{
+		Stores: &port.Stores{
+			Projects: pr, Reports: rr, Findings: fr,
+			Targets: stubTargetRepo(), Artifacts: ar,
+			Environments: &mockEnvironmentRepo{},
+			Inventory:    inv,
+			Waivers:      &mockWaiverRepo{},
+		},
+		Registry: contextTestRegistry(t),
+	})
+
+	_, err = uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug:  "my-app",
+		Scanner:      "trivy",
+		RawData:      raw,
+		ArtifactName: "myapp",
+		ArtifactType: "container_image",
+		Digest:       "sha256:abc123",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, got.Digest)
+	assert.Equal(t, "sha256:abc123", *got.Digest)
+	assert.Equal(t, "myapp", got.Name)
+}

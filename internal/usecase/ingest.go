@@ -135,12 +135,17 @@ func (u *Usecases) resolveReportContext(ctx context.Context, project port.Projec
 				metadata = []byte("{}")
 			}
 		}
+		digest := input.Digest
+		if digest == "" && nr.Artifact != nil {
+			digest = nr.Artifact.Digest
+		}
 		a, err := u.deps.Stores.Artifacts.Upsert(ctx, port.ArtifactInput{
 			ProjectID:    project.ID,
 			TargetID:     out.targetID,
 			ArtifactType: artifactType,
 			Name:         artifactName,
 			Version:      textPtr(input.ArtifactVersion),
+			Digest:       textPtr(digest),
 			Metadata:     metadata,
 		})
 		if err != nil {

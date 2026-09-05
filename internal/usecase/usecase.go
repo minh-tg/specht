@@ -51,6 +51,10 @@ type IngestReportInput struct {
 	// to the target row (last supplied wins); empty preserves the stored
 	// value. Free-text until gives it a structured identity.
 	Owner string
+	// Digest is the content digest of the scanned artifact (e.g. an image
+	// sha256). Artifacts key on (type, name, digest) so rebuilds under one
+	// tag never conflate; tags themselves are never identity.
+	Digest string
 }
 
 // IngestReportOutput reports what a completed ingest produced.

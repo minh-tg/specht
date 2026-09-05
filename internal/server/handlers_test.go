@@ -495,7 +495,7 @@ func TestIngestReport_Success(t *testing.T) {
 		},
 	}
 	router := testRouter(mock)
-	body := strings.NewReader(`{"project":"my-app","scanner":"trivy","raw_data":{"image":"myapp:latest"},"branch":"main","commit_sha":"abc","environment":"ci","owner":"team-a"}`)
+	body := strings.NewReader(`{"project":"my-app","scanner":"trivy","raw_data":{"image":"myapp:latest"},"branch":"main","commit_sha":"abc","environment":"ci","owner":"team-a","digest":"sha256:deadbeef"}`)
 	req := httptest.NewRequest("POST", "/api/v1/reports", body)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -516,6 +516,7 @@ func TestIngestReport_Success(t *testing.T) {
 	assert.Equal(t, "abc", got.CommitSha)
 	assert.Equal(t, "ci", got.Environment)
 	assert.Equal(t, "team-a", got.Owner)
+	assert.Equal(t, "sha256:deadbeef", got.Digest)
 }
 
 func TestIngestReport_Duplicate(t *testing.T) {

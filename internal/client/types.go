@@ -22,6 +22,7 @@ type IngestPayload struct {
 	GateStatus      string          `json:"gate_status,omitempty"`
 	Environment     string          `json:"environment,omitempty"`
 	Owner           string          `json:"owner,omitempty"`
+	Digest          string          `json:"digest,omitempty"`
 	ArtifactName    string          `json:"artifact_name,omitempty"`
 	ArtifactVersion string          `json:"artifact_version,omitempty"`
 	ArtifactType    string          `json:"artifact_type,omitempty"`

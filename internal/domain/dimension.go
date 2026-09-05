@@ -76,7 +76,10 @@ type TargetInfo struct {
 type ArtifactInfo struct {
 	Kind       string
 	Identifier string
-	Metadata   map[string]any
+	// Digest is the content digest (e.g. sha256:…) when the scanner
+	// reports one. Tags are mutable and never identity; digests are.
+	Digest   string
+	Metadata map[string]any
 }
 
 // NormalizedFinding is one scanner-detected issue in the normalized model.

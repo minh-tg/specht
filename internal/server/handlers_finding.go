@@ -78,6 +78,7 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		GateStatus:      gateStatus,
 		Environment:     req.Environment,
 		Owner:           req.Owner,
+		Digest:          req.Digest,
 		ArtifactName:    req.ArtifactName,
 		ArtifactVersion: req.ArtifactVersion,
 		ArtifactType:    req.ArtifactType,

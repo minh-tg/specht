@@ -8,6 +8,7 @@ package repo
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 	"time"
@@ -24,6 +25,8 @@ import (
 	"github.com/xMinhx/specht/internal/scanner"
 	"github.com/xMinhx/specht/internal/usecase"
 )
+
+func strPtr(s string) *string { return &s }
 
 func setupIngestPool(t *testing.T) (*pgxpool.Pool, func()) {
 	t.Helper()
@@ -248,4 +251,38 @@ func TestAgingRows_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int32(1), resp.OverdueTotal, "40d critical past 7d SLA; 100d low within 180d SLA")
 	assert.Equal(t, int32(1), resp.Reopened)
+}
+
+func TestArtifactDigestDedup(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	stores := NewPortStores(pool)
+	project, err := stores.Projects.Create(ctx, port.CreateProjectInput{
+		Slug: "my-app", Name: "My App",
+		DeploymentThreshold: "high", Settings: []byte("{}"),
+	})
+	require.NoError(t, err)
+
+	upsert := func(digest *string) port.Artifact {
+		t.Helper()
+		a, err := stores.Artifacts.Upsert(ctx, port.ArtifactInput{
+			ProjectID: project.ID, ArtifactType: "container_image",
+			Name: "myapp", Version: strPtr("1.2.3"), Digest: digest,
+			Metadata: json.RawMessage("{}"),
+		})
+		require.NoError(t, err)
+		return a
+	}
+
+	first := upsert(strPtr("sha256:aaa"))
+	again := upsert(strPtr("sha256:aaa"))
+	assert.Equal(t, first.ID, again.ID, "same digest upserts the same row")
+	second := upsert(strPtr("sha256:bbb"))
+	assert.NotEqual(t, first.ID, second.ID, "rebuild under one tag is a distinct artifact")
+
+	all, err := stores.Artifacts.List(ctx, project.ID)
+	require.NoError(t, err)
+	assert.Len(t, all, 2)
 }
