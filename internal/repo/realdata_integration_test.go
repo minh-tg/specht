@@ -323,3 +323,43 @@ func TestNucleiIngest_EndToEnd(t *testing.T) {
 	require.Len(t, stored, 1)
 	assert.Equal(t, "dast", stored[0].ScanType)
 }
+
+func TestRemediation_EndToEnd(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	stores := NewPortStores(pool)
+	reg := scanner.NewRegistry()
+	for _, s := range parser.Builtins() {
+		require.NoError(t, reg.Register(s))
+	}
+	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
+
+	_, err := uc.CreateProject(ctx, "My App", "my-app", "validation")
+	require.NoError(t, err)
+
+	raw, err := os.ReadFile("../parser/checkov/testdata/checkov-terraform.json")
+	require.NoError(t, err)
+	out, err := uc.IngestReport(ctx, usecase.IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "checkov", RawData: raw,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 3, out.TotalFindings)
+
+	project, err := stores.Projects.GetBySlug(ctx, "my-app")
+	require.NoError(t, err)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, []string{"iac"}, nil, nil, 100, 0)
+	require.NoError(t, err)
+	require.Len(t, findings, 3)
+
+	detail, err := uc.GetFinding(ctx, findings[0].ID)
+	require.NoError(t, err)
+	require.NotNil(t, detail.Remediation, "guideline-backed fix must surface on detail")
+	assert.False(t, detail.Remediation.Fallback)
+	assert.Contains(t, detail.Remediation.URL, "bridgecrew.io")
+	assert.Equal(t, "checkov", detail.Remediation.Source)
+	require.NotNil(t, detail.Location)
+	assert.NotEmpty(t, detail.Location.Resource)
+	assert.NotEmpty(t, detail.Location.File)
+}

@@ -4,6 +4,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"testing"
 	"time"
@@ -196,4 +197,51 @@ func TestIngestReport_BindsDigestToArtifact(t *testing.T) {
 	require.NotNil(t, got.Digest)
 	assert.Equal(t, "sha256:abc123", *got.Digest)
 	assert.Equal(t, "myapp", got.Name)
+}
+
+func TestGetFinding_RemediationFromSource(t *testing.T) {
+	fr := &mockFindingRepo{}
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
+		return makeFindingRow(1), nil
+	}
+	fr.getDisplayContextFn = func(ctx context.Context, findingID string) (port.FindingDisplayContext, error) {
+		return port.FindingDisplayContext{
+			ToolName:        "trivy",
+			LocationSummary: "main.tf:10",
+			Metadata:        json.RawMessage(`{"specht":{"fix":{"Summary":"Upgrade to 1.2.4","URL":"https://advisory"},"code_location":{"File":"main.tf","StartLine":10,"EndLine":12},"resource":"aws_s3_bucket.data"}}`),
+		}, nil
+	}
+
+	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
+	finding, err := uc.GetFinding(context.Background(), "00000000-0000-0000-0000-000000000021")
+	require.NoError(t, err)
+	require.NotNil(t, finding.Remediation)
+	assert.Equal(t, "Upgrade to 1.2.4", finding.Remediation.Summary)
+	assert.Equal(t, "https://advisory", finding.Remediation.URL)
+	assert.Equal(t, "trivy", finding.Remediation.Source)
+	assert.False(t, finding.Remediation.Fallback)
+	require.NotNil(t, finding.Location)
+	assert.Equal(t, "main.tf", finding.Location.File)
+	assert.Equal(t, 10, finding.Location.StartLine)
+	assert.Equal(t, "aws_s3_bucket.data", finding.Location.Resource)
+	assert.Equal(t, "main.tf:10", finding.Location.Summary)
+}
+
+func TestGetFinding_RemediationFallback(t *testing.T) {
+	fr := &mockFindingRepo{}
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
+		f := makeFindingRow(1)
+		f.FindingKind = "sca"
+		return f, nil
+	}
+	fr.getDisplayContextFn = func(ctx context.Context, findingID string) (port.FindingDisplayContext, error) {
+		return port.FindingDisplayContext{ToolName: "grype", LocationSummary: "pkg:x"}, nil
+	}
+
+	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
+	finding, err := uc.GetFinding(context.Background(), "00000000-0000-0000-0000-000000000021")
+	require.NoError(t, err)
+	require.NotNil(t, finding.Remediation)
+	assert.True(t, finding.Remediation.Fallback)
+	assert.Contains(t, finding.Remediation.Summary, "fixed version")
 }

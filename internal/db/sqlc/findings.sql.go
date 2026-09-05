@@ -451,7 +451,9 @@ func (q *Queries) GetFindingContext(ctx context.Context, findingID pgtype.UUID) 
 
 const getFindingDisplayContext = `-- name: GetFindingDisplayContext :one
 SELECT t.name AS target_name, t.kind AS target_kind, t.owner AS target_owner,
-    e.name AS environment_name, r.branch AS branch, r.commit_sha AS commit_sha
+    e.name AS environment_name, r.branch AS branch, r.commit_sha AS commit_sha,
+    fo.tool_name AS tool_name, fo.location_summary AS location_summary,
+    fo.metadata AS metadata
 FROM finding_occurrences fo
 JOIN reports r ON fo.report_id = r.id
 LEFT JOIN targets t ON r.target_id = t.id
@@ -468,6 +470,9 @@ type GetFindingDisplayContextRow struct {
 	EnvironmentName pgtype.Text `json:"environment_name"`
 	Branch          pgtype.Text `json:"branch"`
 	CommitSha       pgtype.Text `json:"commit_sha"`
+	ToolName        string      `json:"tool_name"`
+	LocationSummary pgtype.Text `json:"location_summary"`
+	Metadata        []byte      `json:"metadata"`
 }
 
 func (q *Queries) GetFindingDisplayContext(ctx context.Context, findingID pgtype.UUID) (GetFindingDisplayContextRow, error) {
@@ -480,6 +485,9 @@ func (q *Queries) GetFindingDisplayContext(ctx context.Context, findingID pgtype
 		&i.EnvironmentName,
 		&i.Branch,
 		&i.CommitSha,
+		&i.ToolName,
+		&i.LocationSummary,
+		&i.Metadata,
 	)
 	return i, err
 }

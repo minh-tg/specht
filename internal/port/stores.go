@@ -451,6 +451,13 @@ type FindingDisplayContext struct {
 	EnvironmentName string
 	Branch          string
 	CommitSha       string
+	// ToolName is the scanner that produced the latest observation.
+	ToolName string
+	// LocationSummary is the latest observed location string.
+	LocationSummary string
+	// Metadata is the latest occurrence metadata document (specht
+	// namespace carries fix, code location, resource).
+	Metadata json.RawMessage
 }
 
 // GateCandidate is a finding that may block a project's gate together with

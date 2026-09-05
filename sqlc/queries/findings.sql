@@ -183,7 +183,9 @@ ORDER BY fo.observed_at DESC
 LIMIT 1;
 -- name: GetFindingDisplayContext :one
 SELECT t.name AS target_name, t.kind AS target_kind, t.owner AS target_owner,
-    e.name AS environment_name, r.branch AS branch, r.commit_sha AS commit_sha
+    e.name AS environment_name, r.branch AS branch, r.commit_sha AS commit_sha,
+    fo.tool_name AS tool_name, fo.location_summary AS location_summary,
+    fo.metadata AS metadata
 FROM finding_occurrences fo
 JOIN reports r ON fo.report_id = r.id
 LEFT JOIN targets t ON r.target_id = t.id

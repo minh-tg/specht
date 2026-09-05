@@ -393,6 +393,9 @@ func (r *pgFindingPort) GetFindingDisplayContext(ctx context.Context, findingID 
 		EnvironmentName: strVal(row.EnvironmentName),
 		Branch:          strVal(row.Branch),
 		CommitSha:       strVal(row.CommitSha),
+		ToolName:        row.ToolName,
+		LocationSummary: strVal(row.LocationSummary),
+		Metadata:        append([]byte{}, row.Metadata...),
 	}, nil
 }
 

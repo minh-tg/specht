@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -40,6 +41,14 @@ type FindingResponse struct {
 	// Context is the latest observed deployment context. Nil when the
 	// finding has no linked scan occurrence — missing context is explicit.
 	Context *FindingContextResponse `json:"context,omitempty"`
+	// Remediation is the source-aware fix guidance from the latest
+	// observation. Nil only when the finding has no linked occurrence;
+	// a present-but-empty guidance section means the source supplied
+	// nothing usable (labeled per kind, never invented).
+	Remediation *RemediationResponse `json:"remediation,omitempty"`
+	// Location points at the exact package, rule, resource, file, or URL
+	// when the latest observation supplies one.
+	Location *LocationResponse `json:"location,omitempty"`
 }
 
 // FindingContextResponse carries the human-readable deployment context of
@@ -51,6 +60,26 @@ type FindingContextResponse struct {
 	EnvironmentName string `json:"environment_name,omitempty"`
 	Branch          string `json:"branch,omitempty"`
 	CommitSha       string `json:"commit_sha,omitempty"`
+}
+
+// RemediationResponse is one finding's fix guidance with its provenance.
+type RemediationResponse struct {
+	Summary string `json:"summary,omitempty"`
+	URL     string `json:"url,omitempty"`
+	// Source names the scanner whose observation supplied the guidance.
+	Source string `json:"source,omitempty"`
+	// Fallback is true when the source supplied nothing and the section
+	// is a kind-level label instead of tool guidance.
+	Fallback bool `json:"fallback,omitempty"`
+}
+
+// LocationResponse points at the affected subject.
+type LocationResponse struct {
+	File      string `json:"file,omitempty"`
+	StartLine int    `json:"start_line,omitempty"`
+	EndLine   int    `json:"end_line,omitempty"`
+	Resource  string `json:"resource,omitempty"`
+	Summary   string `json:"summary,omitempty"`
 }
 
 // ReportResponse is the API representation of an ingested report.
@@ -245,8 +274,90 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 			Branch:          dc.Branch,
 			CommitSha:       dc.CommitSha,
 		}
+		resp.Remediation = remediationFromMetadata(dc.Metadata, dc.ToolName, f.FindingKind)
+		resp.Location = locationFromDisplay(dc.LocationSummary, dc.Metadata)
 	}
 	return &resp, nil
+}
+
+// spechtMetadata is the canonical namespace of an occurrence metadata
+// document (see buildOccurrenceDocument).
+type spechtMetadata struct {
+	Specht struct {
+		Fix struct {
+			Summary     string `json:"Summary"`
+			Description string `json:"Description"`
+			URL         string `json:"URL"`
+			Diff        string `json:"Diff"`
+		} `json:"fix"`
+		CodeLocation struct {
+			File        string `json:"File"`
+			StartLine   int    `json:"StartLine"`
+			EndLine     int    `json:"EndLine"`
+			StartColumn int    `json:"StartColumn"`
+			EndColumn   int    `json:"EndColumn"`
+		} `json:"code_location"`
+		Resource string `json:"resource"`
+	} `json:"specht"`
+}
+
+// remediationFromMetadata builds the fix guidance section from the latest
+// occurrence metadata. Source guidance wins; otherwise a kind-level label
+// marks the gap explicitly instead of inventing a fix.
+func remediationFromMetadata(metadata json.RawMessage, tool, kind string) *RemediationResponse {
+	var doc spechtMetadata
+	if len(metadata) > 0 {
+		_ = json.Unmarshal(metadata, &doc)
+	}
+	if doc.Specht.Fix.Summary != "" || doc.Specht.Fix.URL != "" {
+		return &RemediationResponse{
+			Summary: doc.Specht.Fix.Summary,
+			URL:     doc.Specht.Fix.URL,
+			Source:  tool,
+		}
+	}
+	return &RemediationResponse{Summary: fixFallback(kind), Source: tool, Fallback: true}
+}
+
+// locationFromDisplay points at the affected subject from the latest
+// observation summary and code location. Nil when neither exists.
+func locationFromDisplay(summary string, metadata json.RawMessage) *LocationResponse {
+	var doc spechtMetadata
+	if len(metadata) > 0 {
+		_ = json.Unmarshal(metadata, &doc)
+	}
+	loc := &LocationResponse{Summary: summary}
+	if doc.Specht.CodeLocation.File != "" {
+		loc.File = doc.Specht.CodeLocation.File
+		loc.StartLine = doc.Specht.CodeLocation.StartLine
+		loc.EndLine = doc.Specht.CodeLocation.EndLine
+	}
+	if doc.Specht.Resource != "" {
+		loc.Resource = doc.Specht.Resource
+	}
+	if loc.File == "" && loc.Resource == "" && loc.Summary == "" {
+		return nil
+	}
+	return loc
+}
+
+// fixFallback labels missing remediation data per kind. These are pointers
+// to where guidance lives, never fixes themselves.
+func fixFallback(kind string) string {
+	switch kind {
+	case "sca":
+		return "No fixed version reported by the scanner — check the advisory references for upgrade guidance."
+	case "sast":
+		return "No fix description reported — follow the rule documentation for the secure coding pattern."
+	case "iac":
+		return "No remediation reported — see the policy guideline for the required configuration."
+	case "secret":
+		return "Rotate the exposed credential with its provider, revoke the old value, and purge it from history."
+	case "dast":
+		return "No remediation reported — reproduce against the observed URL and follow the linked references."
+	default:
+		return "No remediation reported by the scanner for this finding."
+	}
 }
 
 func (u *Usecases) ListReports(ctx context.Context, projectSlug string, limit, offset int32) ([]ReportResponse, error) {
