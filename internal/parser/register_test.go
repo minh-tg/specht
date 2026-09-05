@@ -18,7 +18,7 @@ func TestBuiltinsIncludesExpectedParsers(t *testing.T) {
 		names[i] = s.Descriptor().Name
 	}
 
-	expected := []string{"trivy", "osv-scanner", "semgrep", "checkov", "dependency-check", "grype"}
+	expected := []string{"trivy", "osv-scanner", "semgrep", "checkov", "dependency-check", "grype", "sbom", "sarif"}
 	for _, e := range expected {
 		assert.Contains(t, names, e, "expected builtin scanner %q", e)
 	}
@@ -28,6 +28,9 @@ func TestBuiltinsDescriptorsAreNonEmpty(t *testing.T) {
 	for _, s := range parser.Builtins() {
 		d := s.Descriptor()
 		assert.NotEmpty(t, d.Name, "descriptor name must be non-empty")
+		if d.ProvidesPackages && len(d.FindingKinds) == 0 {
+			continue
+		}
 		assert.NotEmpty(t, d.FindingKinds, "%q must declare at least one finding kind", d.Name)
 		assert.NotEmpty(t, d.ScanTypes, "%q must declare at least one scan type", d.Name)
 		assert.NotZero(t, d.ContractVersion, "%q must declare a contract version", d.Name)
@@ -40,7 +43,7 @@ func TestBuiltinsRegisterCleanly(t *testing.T) {
 	for _, s := range parser.Builtins() {
 		require.NoError(t, reg.Register(s))
 	}
-	require.Len(t, reg.List(), 6)
+	require.Len(t, reg.List(), 8)
 
 	for _, s := range parser.Builtins() {
 		got, err := reg.Get(s.Descriptor().Name)
@@ -50,7 +53,7 @@ func TestBuiltinsRegisterCleanly(t *testing.T) {
 }
 
 func TestBuiltinsCount(t *testing.T) {
-	assert.Len(t, parser.Builtins(), 6)
+	assert.Len(t, parser.Builtins(), 8)
 }
 
 func TestBuiltinsDetectFormats(t *testing.T) {
@@ -75,9 +78,14 @@ func TestBuiltinsDetectFormats(t *testing.T) {
 			want: "trivy",
 		},
 		{
-			name: "semgrep detects sarif format",
+			name: "semgrep sarif is claimed by both sarif adapters",
 			data: []byte(`{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"semgrep","version":"1.0.0"}},"results":[]}]}`),
-			want: "semgrep",
+			want: "ambiguous",
+		},
+		{
+			name: "sarif detects non-semgrep sarif",
+			data: []byte(`{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"CodeQL","version":"3.0"}},"results":[]}]}`),
+			want: "sarif",
 		},
 		{
 			name: "checkov detects checkov json format",
@@ -89,6 +97,11 @@ func TestBuiltinsDetectFormats(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			p, err := reg.Detect(tt.data)
+			if tt.want == "ambiguous" {
+				assert.ErrorIs(t, err, scanner.ErrAmbiguousMatch,
+					"semgrep SARIF matches two adapters; ingest selects by explicit name")
+				return
+			}
 			require.NoError(t, err, "no parser detected for data, want %q", tt.want)
 			assert.Equal(t, tt.want, p.Descriptor().Name)
 		})

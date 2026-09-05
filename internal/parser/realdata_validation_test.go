@@ -57,6 +57,7 @@ func TestRealDataValidationSweep(t *testing.T) {
 		{"grype", "grype/testdata/grype-full.json", 105, 100},
 		{"sbom", "sbom/testdata/cyclonedx.json", 0, 3},
 		{"sbom", "sbom/testdata/spdx.json", 0, 2},
+		{"sarif", "sarif/testdata/multi-tool.sarif.json", 3, 0},
 	}
 
 	for _, tc := range cases {

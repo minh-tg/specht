@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Semgrep",
+          "version": "1.2.3",
+          "rules": [
+            {
+              "id": "go.sql-injection",
+              "shortDescription": {"text": "SQL injection"},
+              "fullDescription": {"text": "User input reaches a SQL query"},
+              "defaultConfiguration": {"level": "error"},
+              "properties": {"precision": "high", "category": "security"}
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "go.sql-injection",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {"text": "tainted query in db.go"},
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {"uri": "db.go"},
+                "region": {"startLine": 42}
+              }
+            }
+          ],
+          "partialFingerprints": {"primaryLocationLineHash/v1": "abc123"},
+          "properties": {"severity": "ERROR"}
+        },
+        {
+          "ruleId": "go.sql-injection",
+          "ruleIndex": 0,
+          "level": "warning",
+          "message": {"text": "suppressed finding"},
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {"uri": "db.go"},
+                "region": {"startLine": 99}
+              }
+            }
+          ],
+          "suppressions": [{"kind": "inSource", "status": "accepted"}]
+        }
+      ]
+    },
+    {
+      "tool": {
+        "driver": {
+          "name": "CodeQL",
+          "version": "3.1.0",
+          "rules": [
+            {
+              "id": "js/xss",
+              "name": "XSS",
+              "shortDescription": {"text": "Cross-site scripting"},
+              "fullDescription": {"text": "Untrusted input in HTML output"},
+              "properties": {"security-severity": "8.2"},
+              "relationships": [
+                {"target": {"id": "CWE-79"}, "kinds": ["relevant"]}
+              ]
+            }
+          ]
+        }
+      },
+      "taxonomies": [
+        {"name": "CWE", "fullName": "Common Weakness Enumeration"}
+      ],
+      "results": [
+        {
+          "ruleId": "js/xss",
+          "ruleIndex": 0,
+          "message": {"text": "xss in render"},
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {"uri": "app/render.js"},
+                "region": {"startLine": 7}
+              }
+            }
+          ],
+          "partialFingerprints": {"primaryLocationLineHash/v1": "def456"},
+          "fixes": [{"description": {"text": "Escape output with encodeHTML"}}],
+          "baselineState": "new"
+        },
+        {
+          "ruleId": "js/xss",
+          "ruleIndex": 0,
+          "message": {"text": "config-level note without location"}
+        },
+        {
+          "message": {"text": "ruleless result is skipped"}
+        }
+      ]
+    }
+  ]
+}
