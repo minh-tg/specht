@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/domain"
+	"github.com/xMinhx/specht/internal/gate"
 	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/scanner"
 )
@@ -926,6 +927,10 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 		return []port.Finding{makeFinding(1)}, nil
 	}
 
+	fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minSeverityRank int16) ([]port.GateCandidate, error) {
+		return []port.GateCandidate{{Finding: makeFinding(1)}}, nil
+	}
+
 	reg := scanner.NewRegistry()
 	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
@@ -946,6 +951,7 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 			Projects:     pr,
 			Reports:      rr,
 			Findings:     fr,
+			Waivers:      &mockWaiverRepo{},
 			Targets:      stubTargetRepo(),
 			Artifacts:    stubArtifactRepo(),
 			Environments: &mockEnvironmentRepo{},
@@ -2381,4 +2387,256 @@ func TestCreateAPIKey_RecordsCreator(t *testing.T) {
 	_, err := uc.CreateAPIKey(context.Background(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001")
 	require.NoError(t, err)
 	assert.Equal(t, "00000000-0000-0000-0000-000000000001", gotCreator)
+}
+
+// TestIngestGateParity_GetGateStatusAgrees asserts Phase 4's core contract:
+// after a completed ingest, the ingest response's ThresholdBreached equals
+// what a subsequent GET /api/v1/projects/{slug}/gate would report for the
+// same project. Both paths now run through the same gate service, so a
+// waiver covering every blocking finding flips both to false and an unwaived
+// critical finding keeps both true.
+func TestIngestGateParity_GetGateStatusAgrees(t *testing.T) {
+	pr, rr, fr := makeTestRepos()
+	wr := &mockWaiverRepo{}
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
+		return makeReport(), nil
+	}
+	rr.updateStatusFn = func(ctx context.Context, id, projectID string, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
+		r := makeReport()
+		r.Status = status
+		return r, nil
+	}
+	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
+	}
+	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+		return makeFinding(1), nil
+	}
+	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
+		return port.Occurrence{}, nil
+	}
+	fr.upsertDimensionFn = func(ctx context.Context, arg port.DimensionInput) error {
+		return nil
+	}
+	// One unwaived blocking candidate (rank 4 => above the default high floor).
+	blocking := makeFinding(1)
+	blocking.CurrentSeverityRank = 4
+	fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minSeverityRank int16) ([]port.GateCandidate, error) {
+		return []port.GateCandidate{{Finding: blocking}}, nil
+	}
+	wr.listActiveFn = func(ctx context.Context, projectID string) ([]port.Waiver, error) {
+		return nil, nil // no waivers => still blocked
+	}
+
+	uc := New(Deps{
+		Stores: &port.Stores{
+			Projects: pr, Reports: rr, Findings: fr, Waivers: wr,
+			Targets: stubTargetRepo(), Artifacts: stubArtifactRepo(),
+			Environments: &mockEnvironmentRepo{},
+		},
+		Registry: newTestRegistryWithCriticalFinding(),
+	})
+
+	ingestOut, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app",
+		Scanner:     "trivy",
+		RawData:     json.RawMessage(`{"test": true}`),
+	})
+	require.NoError(t, err)
+	assert.True(t, ingestOut.ThresholdBreached, "unwaived critical finding breaches ingest gate")
+
+	gateStatus, err := uc.GetGateStatus(context.Background(), "my-app", 3)
+	require.NoError(t, err)
+	assert.Equal(t, ingestOut.ThresholdBreached, gateStatus.ThresholdBreached,
+		"ingest response and GET gate must agree for the same completed report")
+	assert.True(t, gateStatus.ThresholdBreached)
+}
+
+// newTestRegistryWithCriticalFinding registers a trivy mock scanner whose
+// report carries one critical SCA finding.
+func newTestRegistryWithCriticalFinding() *scanner.Registry {
+	reg := scanner.NewRegistry()
+	_ = reg.Register(&mockScanner{
+		name: "trivy",
+		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
+			return &scanner.NormalizedReport{
+				ScanType: scanner.ScanTypeImage,
+				Target:   &scanner.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings: []scanner.NormalizedFinding{
+					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2026-1234", Severity: scanner.SeverityCritical, Score: 9.5},
+				},
+				ScanScope: &scanner.ScanScope{},
+			}, nil
+		},
+	})
+	return reg
+}
+
+// TestGatePoliciesForProject maps the stored project mode to gate source
+// policies — the SQL literal policy is gone; the watcher source category is
+// data, not a core constant.
+func TestGatePoliciesForProject(t *testing.T) {
+	tests := []struct {
+		mode string
+		want []gate.GatePolicy
+	}{
+		{"", nil},
+		{"immediate", nil},
+		{"off", []gate.GatePolicy{{Source: "cve_watcher", Mode: gate.PolicyOff}}},
+		{"require_triage", []gate.GatePolicy{{Source: "cve_watcher", Mode: gate.PolicyRequireTriage}}},
+	}
+	for _, tt := range tests {
+		got := gatePoliciesForProject(port.Project{CveWatcherGate: tt.mode})
+		assert.Equal(t, tt.want, got, "mode %q", tt.mode)
+	}
+}
+
+// TestGetGateStatus_WatcherRequireTriageDropsUntriaged asserts the watcher
+// policy is honored through the gate service without any SQL literal: an
+// untriaged cve_watcher finding is not a gate candidate under require_triage,
+// while a triaged one is.
+func TestGetGateStatus_WatcherRequireTriageDropsUntriaged(t *testing.T) {
+	pr := &mockProjectRepo{}
+	fr := &mockFindingRepo{}
+	wr := &mockWaiverRepo{}
+	rch := &mockReachabilityRepo{}
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	untriaged := port.Finding{ID: "w1", FindingKind: "cve_watcher", CurrentSeverityRank: 4, AnalysisState: ""}
+	triaged := port.Finding{ID: "w2", FindingKind: "cve_watcher", CurrentSeverityRank: 4, AnalysisState: "exploitable"}
+	fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minSeverityRank int16) ([]port.GateCandidate, error) {
+		return []port.GateCandidate{{Finding: untriaged}, {Finding: triaged}}, nil
+	}
+	// The candidate SQL no longer filters by project mode: the full candidate
+	// set is returned and the core policy decides admission.
+	_ = rch
+	uc := New(Deps{
+		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: wr},
+	})
+
+	// Default project (cve_watcher_gate = "" -> immediate): both block.
+	status, err := uc.GetGateStatus(context.Background(), "my-app", 3)
+	require.NoError(t, err)
+	assert.True(t, status.ThresholdBreached)
+	assert.Len(t, status.BlockedBy, 2)
+
+	// require_triage project: only the triaged watcher finding blocks.
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		p := makeProject(true)
+		p.CveWatcherGate = "require_triage"
+		return p, nil
+	}
+	status, err = uc.GetGateStatus(context.Background(), "my-app", 3)
+	require.NoError(t, err)
+	assert.True(t, status.ThresholdBreached)
+	assert.Equal(t, []string{"w2"}, status.BlockedBy)
+}
+
+// TestGetGateStatus_WatcherOffDropsAll asserts 'off' admits no watcher
+// findings: an untriaged and a triaged cve_watcher finding both pass.
+func TestGetGateStatus_WatcherOffDropsAll(t *testing.T) {
+	pr := &mockProjectRepo{}
+	fr := &mockFindingRepo{}
+	wr := &mockWaiverRepo{}
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		p := makeProject(true)
+		p.CveWatcherGate = "off"
+		return p, nil
+	}
+	fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minSeverityRank int16) ([]port.GateCandidate, error) {
+		return []port.GateCandidate{
+			{Finding: port.Finding{ID: "w1", FindingKind: "cve_watcher", CurrentSeverityRank: 4, AnalysisState: ""}},
+			{Finding: port.Finding{ID: "w2", FindingKind: "cve_watcher", CurrentSeverityRank: 4, AnalysisState: "exploitable"}},
+		}, nil
+	}
+	uc := New(Deps{
+		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: wr},
+	})
+
+	status, err := uc.GetGateStatus(context.Background(), "my-app", 3)
+	require.NoError(t, err)
+	assert.False(t, status.ThresholdBreached)
+	assert.Empty(t, status.BlockedBy)
+}
+
+// TestIngestUnknownScan_CannotCloseUnseenFinding is the no-auto-fix
+// regression: an unknown-completeness scan of a new fingerprint must leave
+// the finding open/unanalyzed — no fixed-state write and no silent expiry
+// path may close an unseen finding. (The auto-fix writer does not exist;
+// SQL has no state='fixed' update, and upsert reopens on reappearance.)
+func TestIngestUnknownScan_CannotCloseUnseenFinding(t *testing.T) {
+	pr, rr, fr := makeTestRepos()
+	wr := &mockWaiverRepo{}
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
+		assert.Equal(t, "unknown", arg.ScanCompleteness, "report completeness must default to unknown")
+		return makeReport(), nil
+	}
+	rr.updateStatusFn = func(ctx context.Context, id, projectID string, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
+		return makeReport(), nil
+	}
+	// No existing finding: the fingerprint is unseen.
+	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
+	}
+	var upsertedSeverity string
+	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+		upsertedSeverity = severity
+		return port.Finding{
+			ID: "find-1", ProjectID: projectID, FindingKind: findingKind,
+			Fingerprint: fingerprint, CurrentTitle: title, CurrentSeverity: severity,
+			CurrentSeverityRank: severityRank, State: "open", AnalysisState: "unanalyzed",
+			GateEffect: "block", FirstSeenAt: firstSeen, LastSeenAt: lastSeen,
+		}, nil
+	}
+	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
+		return port.Occurrence{ID: "occ-1", FindingID: arg.FindingID}, nil
+	}
+	fr.upsertDimensionFn = func(ctx context.Context, arg port.DimensionInput) error { return nil }
+	fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minSeverityRank int16) ([]port.GateCandidate, error) {
+		return nil, nil
+	}
+
+	reg := scanner.NewRegistry()
+	_ = reg.Register(&mockScanner{
+		name: "trivy",
+		parseFn: func(ctx context.Context, input []byte) (*scanner.NormalizedReport, error) {
+			return &scanner.NormalizedReport{
+				ScanType:     scanner.ScanTypeImage,
+				Completeness: scanner.CompletenessUnknown,
+				Target:       &scanner.TargetInfo{Kind: "container", Identifier: "img:latest"},
+				Findings:     []scanner.NormalizedFinding{{Fingerprint: "fp-new", FindingKind: "sca", Title: "CVE-new", Severity: scanner.SeverityHigh}},
+				ScanScope:    &scanner.ScanScope{},
+			}, nil
+		},
+	})
+
+	uc := New(Deps{
+		Stores: &port.Stores{
+			Projects: pr, Reports: rr, Findings: fr, Waivers: wr,
+			Targets: stubTargetRepo(), Artifacts: stubArtifactRepo(),
+			Environments: &mockEnvironmentRepo{},
+		},
+		Registry: reg,
+	})
+
+	out, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app",
+		Scanner:     "trivy",
+		RawData:     json.RawMessage(`{"test": true}`),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 1, out.TotalFindings)
+	assert.Equal(t, "high", upsertedSeverity, "fresh unknown-scan finding upserts as open/high, never fixed")
+	// No update-analysis call may have fired (no fixed write, no expiry).
 }

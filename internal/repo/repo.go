@@ -198,8 +198,6 @@ type FindingRepo interface {
 	ListByIDs(ctx context.Context, ids []pgtype.UUID) ([]sqlc.Finding, error)
 	UpdateAnalysis(ctx context.Context, arg UpdateAnalysisParams) (sqlc.Finding, error)
 	BulkUpdateAnalysis(ctx context.Context, arg BulkUpdateAnalysisParams) ([]sqlc.Finding, error)
-	GateEval(ctx context.Context, arg GateEvalParams) (bool, error)
-	CountBlocking(ctx context.Context, arg GateEvalParams) (int64, error)
 	ListBlockingFindings(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error)
 	CreateEvent(ctx context.Context, arg CreateEventParams) (sqlc.FindingEvent, error)
 	ListEvents(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error)

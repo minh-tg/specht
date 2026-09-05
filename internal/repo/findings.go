@@ -191,26 +191,6 @@ func (r *pgFindingRepo) BulkUpdateAnalysis(ctx context.Context, arg BulkUpdateAn
 	})
 }
 
-// GateEvalParams identifies a project and severity floor for gate evaluation.
-type GateEvalParams struct {
-	ProjectID       pgtype.UUID
-	MinSeverityRank int16
-}
-
-func (r *pgFindingRepo) GateEval(ctx context.Context, arg GateEvalParams) (bool, error) {
-	return r.q.GateEval(ctx, sqlc.GateEvalParams{
-		ProjectID:           arg.ProjectID,
-		CurrentSeverityRank: arg.MinSeverityRank,
-	})
-}
-
-func (r *pgFindingRepo) CountBlocking(ctx context.Context, arg GateEvalParams) (int64, error) {
-	return r.q.CountBlockingFindings(ctx, sqlc.CountBlockingFindingsParams{
-		ProjectID:           arg.ProjectID,
-		CurrentSeverityRank: arg.MinSeverityRank,
-	})
-}
-
 // CreateEventParams is the input to creating a finding audit event.
 type CreateEventParams struct {
 	FindingID pgtype.UUID

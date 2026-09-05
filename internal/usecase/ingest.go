@@ -13,6 +13,7 @@ import (
 
 	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/finding"
+	"github.com/xMinhx/specht/internal/gate"
 	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/scanner"
 )
@@ -410,8 +411,12 @@ func (u *Usecases) persistInventory(ctx context.Context, input IngestReportInput
 	return nil
 }
 
-// checkGateAfterIngest marks the report completed and reports whether any
-// blocking finding exists at the configured severity/status threshold.
+// checkGateAfterIngest marks the report completed and reports whether the
+// project's gate is breached. It routes through the same gate service as
+// GetGateStatus (u.gate.Evaluate) so the ingest response's ThresholdBreached
+// always agrees with a subsequent GET /api/v1/projects/{slug}/gate for the
+// same report: both consume the batch candidate loader, waiver matching,
+// reachability exemptions, and source policies.
 func (u *Usecases) checkGateAfterIngest(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, total int) (bool, error) {
 	_, err := u.deps.Stores.Reports.UpdateStatus(ctx, report.ID, project.ID, "completed", int32(total), nil)
 	if err != nil {
@@ -419,11 +424,48 @@ func (u *Usecases) checkGateAfterIngest(ctx context.Context, project port.Projec
 		return false, fmt.Errorf("scanner %s: update report status: %w", input.Scanner, err)
 	}
 
-	severities, statuses := defaultGateParams(input.GateSeverity, input.GateStatus)
-	gateFindings, err := u.deps.Stores.Findings.ListByProject(ctx, project.ID, severities, statuses, nil, 1, 0)
+	u.initGate()
+	minRank := gateSeverityRank(input.GateSeverity, input.GateStatus)
+	decision, err := u.gate.EvaluateWithPolicies(ctx, project.ID, minRank, gatePoliciesForProject(project))
 	if err != nil {
 		slog.Error("gate check failed", "scanner", input.Scanner, "project", project.ID, "error", err)
 		return false, fmt.Errorf("scanner %s: gate check: %w", input.Scanner, err)
 	}
-	return len(gateFindings) > 0, nil
+	return decision.Status == gate.StatusFail, nil
+}
+
+// gateSeverityRank resolves the ingest gate overrides into the severity-rank
+// floor the gate service consumes. GateStatus is not part of the gate
+// service's candidate prefilter (the candidate SQL already scopes to
+// open/reopened state); the rank floor maps the severity strings, defaulting
+// to high (rank 3) like parseMinSeverityRank.
+func gateSeverityRank(severities, statuses []string) int16 {
+	if len(severities) == 0 {
+		return 3
+	}
+	minRank := int16(0)
+	for _, s := range severities {
+		switch s {
+		case "critical":
+			if 4 > minRank {
+				minRank = 4
+			}
+		case "high":
+			if 3 > minRank {
+				minRank = 3
+			}
+		case "medium":
+			if 2 > minRank {
+				minRank = 2
+			}
+		case "low":
+			if 1 > minRank {
+				minRank = 1
+			}
+		}
+	}
+	if minRank == 0 {
+		return 3
+	}
+	return minRank
 }

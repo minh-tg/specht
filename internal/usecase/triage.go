@@ -235,6 +235,24 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 	return results, nil
 }
 
+// gatePoliciesForProject translates a project's stored cve_watcher_gate mode
+// into gate source policies. The mode names match the DB column
+// ('immediate' | 'off' | 'require_triage'); the source category is the
+// watcher finding kind (cve_watcher), supplied by the watcher registration —
+// the gate core itself never hard-codes that literal.
+func gatePoliciesForProject(p port.Project) []gate.GatePolicy {
+	if p.CveWatcherGate == "" || p.CveWatcherGate == "immediate" {
+		return nil // default: watcher findings gate immediately
+	}
+	mode := p.CveWatcherGate
+	switch mode {
+	case gate.PolicyOff, gate.PolicyRequireTriage:
+		return []gate.GatePolicy{{Source: "cve_watcher", Mode: mode}}
+	default:
+		return nil
+	}
+}
+
 func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*GateStatusOutput, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
@@ -242,7 +260,7 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 	}
 
 	u.initGate()
-	decision, err := u.gate.Evaluate(ctx, project.ID, minSeverityRank)
+	decision, err := u.gate.EvaluateWithPolicies(ctx, project.ID, minSeverityRank, gatePoliciesForProject(project))
 	if err != nil {
 		return nil, fmt.Errorf("gate eval: %w", err)
 	}

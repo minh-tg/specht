@@ -64,10 +64,6 @@ func main() {
 	repos := repo.NewRepos(pool)
 	stores := repo.NewPortStores(pool)
 
-	// Start background daemons
-	go lifecycle.RunWaiverExpiry(context.Background(), repo.NewWaiverExpiryStore(pool), 5*time.Minute, slog.Default())
-	go lifecycle.RunAnalysisExpiry(context.Background(), repo.NewAnalysisExpiryStore(pool), 5*time.Minute, slog.Default())
-
 	uc := usecase.New(usecase.Deps{
 		Stores:       stores,
 		Registry:     reg,
@@ -103,8 +99,17 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	// Build the shutdown context before launching any worker: every
+	// background goroutine (lifecycle sweepers, CVE watcher) is cancelled by
+	// this context so none can keep running on context.Background() after
+	// the HTTP server shuts down.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Lifecycle sweepers: analysis expiry and waiver expiry. Both stop when
+	// ctx is cancelled.
+	go lifecycle.RunWaiverExpiry(ctx, repo.NewWaiverExpiryStore(pool), 5*time.Minute, slog.Default())
+	go lifecycle.RunAnalysisExpiry(ctx, repo.NewAnalysisExpiryStore(pool), 5*time.Minute, slog.Default())
 
 	// Start the CVE watcher daemon on the same context so it shuts down with
 	// the server. Off by default; enable with WATCHER_ENABLE=true. All
@@ -128,6 +133,8 @@ func main() {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	// Stop accepting HTTP first; the worker goroutines observe ctx.Done() and
+	// drain on their own tickers/selects.
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slog.Error("shutdown error", "error", err)
 	}
