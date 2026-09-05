@@ -479,13 +479,15 @@ func TestIngestReport_MissingFields(t *testing.T) {
 }
 
 func TestIngestReport_Success(t *testing.T) {
+	var got usecase.IngestReportInput
 	mock := &mockUsecases{
 		ingestReportFn: func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
+			got = input
 			return &usecase.IngestReportOutput{ReportID: "rep-1", TotalFindings: 3, ThresholdBreached: true}, nil
 		},
 	}
 	router := testRouter(mock)
-	body := strings.NewReader(`{"project":"my-app","scanner":"trivy","raw_data":{"image":"myapp:latest"}}`)
+	body := strings.NewReader(`{"project":"my-app","scanner":"trivy","raw_data":{"image":"myapp:latest"},"branch":"main","commit_sha":"abc","environment":"ci","owner":"team-a"}`)
 	req := httptest.NewRequest("POST", "/api/v1/reports", body)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
@@ -502,6 +504,10 @@ func TestIngestReport_Success(t *testing.T) {
 	assert.Equal(t, "rep-1", resp.ReportID)
 	assert.Equal(t, 3, resp.TotalFindings)
 	assert.True(t, resp.ThresholdBreached)
+	assert.Equal(t, "main", got.Branch)
+	assert.Equal(t, "abc", got.CommitSha)
+	assert.Equal(t, "ci", got.Environment)
+	assert.Equal(t, "team-a", got.Owner)
 }
 
 func TestIngestReport_Duplicate(t *testing.T) {

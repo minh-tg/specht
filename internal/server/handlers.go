@@ -181,6 +181,7 @@ type ingestRequest struct {
 	GateSeverity    string          `json:"gate_severity,omitempty"`
 	GateStatus      string          `json:"gate_status,omitempty"`
 	Environment     string          `json:"environment,omitempty"`
+	Owner           string          `json:"owner,omitempty"`
 	ArtifactName    string          `json:"artifact_name,omitempty"`
 	ArtifactVersion string          `json:"artifact_version,omitempty"`
 	ArtifactType    string          `json:"artifact_type,omitempty"`

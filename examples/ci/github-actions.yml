@@ -1,0 +1,78 @@
+# Specht gate for GitHub Actions.
+#
+# What it does, in order:
+#   1. Scans the checkout with Trivy (filesystem mode; swap in any Specht
+#      adapter: trivy, grype, osv-scanner, semgrep, checkov, dependency-check).
+#   2. Wraps the raw scanner JSON in a Specht ingest envelope (jq) carrying
+#      the branch, commit, environment, and owner for finding context.
+#   3. Pipes the envelope to `specht-adapter`, which ingests the report and
+#      evaluates the deployment gate in one step.
+#
+# Exit codes (fail the job on breach, not on infra errors alone):
+#   0 - gate passed. 1 - severity threshold breached (blocking findings
+#   listed in the log). 2 - usage or runtime error (ingest/API failure).
+#
+# Required secrets / vars:
+#   SPECHT_API_URL - Specht server base URL (e.g. https://specht.example.com).
+#   SPECHT_API_KEY - API key for the target project (repo secret).
+#   SPECHT_PROJECT - project slug (repo var). SPECHT_ENVIRONMENT is optional
+#   (default: ci); SPECHT_OWNER pins the responsible team on the target row.
+#
+# Local reproduction: run the trivy + jq + specht-adapter lines below with
+# API_URL/API_KEY exported; identical envelope, identical gate decision.
+# Gate JSON for automation: `specht gate check --project $P --format json`.
+
+name: specht-gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  specht:
+    runs-on: ubuntu-latest
+    env:
+      SPECHT_ENVIRONMENT: ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan with Trivy
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          format: json
+          output: trivy-results.json
+          exit-code: "0"
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+
+      - name: Ingest and gate with Specht
+        env:
+          API_URL: ${{ secrets.SPECHT_API_URL }}
+          API_KEY: ${{ secrets.SPECHT_API_KEY }}
+        run: |
+          go run ./cmd/adapter \
+            -project "${{ vars.SPECHT_PROJECT }}" \
+            -tool trivy < <(jq -n \
+              --arg project "${{ vars.SPECHT_PROJECT }}" \
+              --arg branch "${{ github.head_ref || github.ref_name }}" \
+              --arg commit "${{ github.sha }}" \
+              --arg env "${SPECHT_ENVIRONMENT}" \
+              --arg owner "${{ vars.SPECHT_OWNER }}" \
+              --slurpfile raw trivy-results.json \
+              '{project: $project, scanner: "trivy",
+                branch: $branch, commit_sha: $commit,
+                environment: $env, owner: $owner,
+                raw_data: $raw[0]}')
+
+      - name: Upload gate evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: specht-gate-evidence
+          path: trivy-results.json
+          retention-days: 30

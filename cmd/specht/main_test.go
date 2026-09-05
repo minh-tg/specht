@@ -82,8 +82,10 @@ func TestCLI_ParseArgs(t *testing.T) {
 		{"findings reachability list", []string{"specht", "findings", "reachability", "--finding", "f1"}, command{cmd: cmdFindingsReachability, findingID: "f1"}, ""},
 		{"findings reachability set", []string{"specht", "findings", "reachability", "--finding", "f1", "--state", "not_reachable", "--evidence", "reviewed"}, command{cmd: cmdFindingsReachability, findingID: "f1", state: "not_reachable", evidence: "reviewed"}, ""},
 		{"findings reachability missing finding", []string{"specht", "findings", "reachability"}, command{}, "--finding is required for findings reachability"},
-		{"gate check", []string{"specht", "gate", "check", "--project", "my-app"}, command{cmd: cmdGateCheck, project: "my-app"}, ""},
-		{"gate check with severity", []string{"specht", "gate", "check", "--project", "my-app", "--severity", "critical"}, command{cmd: cmdGateCheck, project: "my-app", severity: "critical"}, ""},
+		{"gate check", []string{"specht", "gate", "check", "--project", "my-app"}, command{cmd: cmdGateCheck, project: "my-app", format: "human"}, ""},
+		{"gate check with severity", []string{"specht", "gate", "check", "--project", "my-app", "--severity", "critical"}, command{cmd: cmdGateCheck, project: "my-app", severity: "critical", format: "human"}, ""},
+		{"gate check json", []string{"specht", "gate", "check", "--project", "my-app", "--format", "json"}, command{cmd: cmdGateCheck, project: "my-app", format: "json"}, ""},
+		{"gate check invalid format", []string{"specht", "gate", "check", "--project", "my-app", "--format", "yaml"}, command{}, `invalid --format "yaml"`},
 		{"stats show", []string{"specht", "stats", "show", "my-app"}, command{cmd: cmdStats, slug: "my-app"}, ""},
 		{"watcher backfill", []string{"specht", "watcher", "backfill"}, command{cmd: cmdWatcherBackfill}, ""},
 		{"watcher status", []string{"specht", "watcher", "status"}, command{cmd: cmdWatcherStatus}, ""},
@@ -107,6 +109,7 @@ func TestCLI_ParseArgs(t *testing.T) {
 			assert.Equal(t, tt.want.project, got.project)
 			assert.Equal(t, tt.want.findingID, got.findingID)
 			assert.Equal(t, tt.want.severity, got.severity)
+			assert.Equal(t, tt.want.format, got.format)
 			assert.Equal(t, tt.want.status, got.status)
 			assert.Equal(t, tt.want.limit, got.limit)
 			assert.Equal(t, tt.want.slug, got.slug)
@@ -114,4 +117,44 @@ func TestCLI_ParseArgs(t *testing.T) {
 			assert.Equal(t, tt.want.dryRun, got.dryRun)
 		})
 	}
+}
+
+func TestCLI_GateFormatContract(t *testing.T) {
+	// The CI contract: 0 pass, 1 breached, 2 error.
+	assert.Equal(t, 0, exitGatePass)
+	assert.Equal(t, 1, exitGateBreached)
+	assert.Equal(t, 2, exitGateError)
+	assert.Equal(t, exitGatePass, gateExitCode(false))
+	assert.Equal(t, exitGateBreached, gateExitCode(true))
+
+	pass := &client.GateStatus{ThresholdBreached: false, BlockingCount: 0}
+	out, err := formatGateStatus(pass, "human")
+	require.NoError(t, err)
+	assert.Equal(t, "gate PASSED: no blocking findings", out)
+
+	fail := &client.GateStatus{
+		ThresholdBreached: true, BlockingCount: 2,
+		BlockedBy:             []string{"id-1", "id-2"},
+		BlockedByReachability: map[string]string{"id-1": "reachable"},
+		WaivedCount:           1,
+	}
+	out, err = formatGateStatus(fail, "human")
+	require.NoError(t, err)
+	assert.Contains(t, out, "gate FAILED: 2 blocking finding(s)")
+	assert.Contains(t, out, "blocked by: id-1 (reachability: reachable)")
+	assert.Contains(t, out, "blocked by: id-2 (reachability: unknown)")
+	assert.Contains(t, out, "waived: 1 finding(s) excluded by active waivers")
+
+	// JSON is deterministic and round-trips through the API shape.
+	first, err := formatGateStatus(fail, "json")
+	require.NoError(t, err)
+	second, err := formatGateStatus(fail, "json")
+	require.NoError(t, err)
+	assert.Equal(t, first, second)
+	var back client.GateStatus
+	require.NoError(t, json.Unmarshal([]byte(first), &back))
+	assert.Equal(t, *fail, back)
+
+	_, err = formatGateStatus(fail, "yaml")
+	require.ErrorContains(t, err, "invalid --format")
 }

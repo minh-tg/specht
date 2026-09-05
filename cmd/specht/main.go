@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -33,12 +34,21 @@ const (
 	cmdWatcherStatus
 )
 
+// Gate check exit codes: the CI contract. 0 means the gate passed, 1 means
+// the severity threshold was breached, 2 means a usage or runtime error.
+const (
+	exitGatePass     = 0
+	exitGateBreached = 1
+	exitGateError    = 2
+)
+
 type command struct {
 	cmd       cmd
 	project   string
 	slug      string
 	findingID string
 	severity  string
+	format    string
 	status    string
 	state     string
 	evidence  string
@@ -157,10 +167,19 @@ func parseArgs(args []string) (command, error) {
 				case rest[i] == "--severity" && i+1 < len(rest):
 					c.severity = rest[i+1]
 					i++
+				case rest[i] == "--format" && i+1 < len(rest):
+					c.format = rest[i+1]
+					i++
 				}
 			}
 			if c.project == "" {
 				return command{}, fmt.Errorf("--project is required for gate check")
+			}
+			if c.format == "" {
+				c.format = "human"
+			}
+			if c.format != "human" && c.format != "json" {
+				return command{}, fmt.Errorf("invalid --format %q: want human or json", c.format)
 			}
 			return c, nil
 		default:
@@ -196,6 +215,52 @@ func parseArgs(args []string) (command, error) {
 	default:
 		return command{}, fmt.Errorf("unknown command: %s", rest[0])
 	}
+}
+
+// formatGateStatus renders a gate evaluation for CLI output. "human" is the
+// concise log-friendly summary; "json" is the machine-readable form for CI
+// automation (struct field order, so output is deterministic).
+func formatGateStatus(gs *client.GateStatus, format string) (string, error) {
+	switch format {
+	case "", "human":
+		return formatGateHuman(gs), nil
+	case "json":
+		buf, err := json.Marshal(gs)
+		if err != nil {
+			return "", err
+		}
+		return string(buf), nil
+	default:
+		return "", fmt.Errorf("invalid --format %q: want human or json", format)
+	}
+}
+
+func formatGateHuman(gs *client.GateStatus) string {
+	var b strings.Builder
+	if gs.ThresholdBreached {
+		fmt.Fprintf(&b, "gate FAILED: %d blocking finding(s)\n", gs.BlockingCount)
+		for _, id := range gs.BlockedBy {
+			reach := "unknown"
+			if r, ok := gs.BlockedByReachability[id]; ok && r != "" {
+				reach = r
+			}
+			fmt.Fprintf(&b, "  blocked by: %s (reachability: %s)\n", id, reach)
+		}
+	} else {
+		b.WriteString("gate PASSED: no blocking findings\n")
+	}
+	if gs.WaivedCount > 0 {
+		fmt.Fprintf(&b, "  waived: %d finding(s) excluded by active waivers\n", gs.WaivedCount)
+	}
+	return strings.TrimSuffix(b.String(), "\n")
+}
+
+// gateExitCode maps a gate evaluation to the CI exit-code contract.
+func gateExitCode(breached bool) int {
+	if breached {
+		return exitGateBreached
+	}
+	return exitGatePass
 }
 
 func run(cl *client.Client, cmd command) error {
@@ -299,20 +364,14 @@ func run(cl *client.Client, cmd command) error {
 		if err != nil {
 			return err
 		}
-		if gs.ThresholdBreached {
-			fmt.Printf("gate FAILED: %d blocking finding(s)\n", gs.BlockingCount)
-			if len(gs.BlockedBy) > 0 {
-				for _, b := range gs.BlockedBy {
-					reach := "unknown"
-					if r, ok := gs.BlockedByReachability[b]; ok && r != "" {
-						reach = r
-					}
-					fmt.Printf("  blocked by: %s (reachability: %s)\n", b, reach)
-				}
-			}
-			os.Exit(1)
+		out, err := formatGateStatus(gs, cmd.format)
+		if err != nil {
+			return err
 		}
-		fmt.Println("gate PASSED: no blocking findings")
+		fmt.Println(out)
+		if gs.ThresholdBreached {
+			os.Exit(exitGateBreached)
+		}
 		return nil
 
 	case cmdStats:
@@ -381,6 +440,8 @@ Commands:
                                           Set reachability (reachable|not_reachable|unknown|not_applicable)
   gate check --project <slug>             Check project gate status
     [--severity critical]                  Severity threshold
+    [--format human|json]                  Output format (default human)
+                                           Exit codes: 0 pass, 1 threshold breached, 2 error
   stats show <slug>                       Show project statistics
   watcher backfill [--since <ISO8601>]    Run one CVE watcher poll
   watcher status                          Show watcher health (last poll, failures)
