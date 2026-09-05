@@ -24,7 +24,7 @@ UPDATE findings SET
     analysis_updated_by = $9,
     updated_at = NOW()
 WHERE id = ANY($1::uuid[])
-RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version
+RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version
 `
 
 type BulkUpdateFindingAnalysisParams struct {
@@ -84,9 +84,6 @@ func (q *Queries) BulkUpdateFindingAnalysis(ctx context.Context, arg BulkUpdateF
 			&i.AnalysisUpdatedBy,
 			&i.ManualOverride,
 			&i.ReviewRequired,
-			&i.ApprovalStatus,
-			&i.ApprovedBy,
-			&i.ApprovedAt,
 			&i.FingerprintVersion,
 		); err != nil {
 			return nil, err
@@ -155,7 +152,7 @@ INSERT INTO findings (
     NOW(), NOW()
 )
 ON CONFLICT (project_id, finding_kind, fingerprint) DO NOTHING
-RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version
+RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version
 `
 
 type CreateFindingIfAbsentParams struct {
@@ -211,9 +208,6 @@ func (q *Queries) CreateFindingIfAbsent(ctx context.Context, arg CreateFindingIf
 		&i.AnalysisUpdatedBy,
 		&i.ManualOverride,
 		&i.ReviewRequired,
-		&i.ApprovalStatus,
-		&i.ApprovedBy,
-		&i.ApprovedAt,
 		&i.FingerprintVersion,
 	)
 	return i, err
@@ -350,7 +344,7 @@ func (q *Queries) FindScaFindingIdForPurlAndCve(ctx context.Context, arg FindSca
 }
 
 const getFindingByFingerprint = `-- name: GetFindingByFingerprint :one
-SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version FROM findings
+SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version FROM findings
 WHERE project_id = $1 AND finding_kind = $2 AND fingerprint = $3
 FOR UPDATE
 `
@@ -390,16 +384,13 @@ func (q *Queries) GetFindingByFingerprint(ctx context.Context, arg GetFindingByF
 		&i.AnalysisUpdatedBy,
 		&i.ManualOverride,
 		&i.ReviewRequired,
-		&i.ApprovalStatus,
-		&i.ApprovedBy,
-		&i.ApprovedAt,
 		&i.FingerprintVersion,
 	)
 	return i, err
 }
 
 const getFindingByID = `-- name: GetFindingByID :one
-SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version FROM findings WHERE id = $1
+SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version FROM findings WHERE id = $1
 `
 
 func (q *Queries) GetFindingByID(ctx context.Context, id pgtype.UUID) (Finding, error) {
@@ -431,9 +422,6 @@ func (q *Queries) GetFindingByID(ctx context.Context, id pgtype.UUID) (Finding, 
 		&i.AnalysisUpdatedBy,
 		&i.ManualOverride,
 		&i.ReviewRequired,
-		&i.ApprovalStatus,
-		&i.ApprovedBy,
-		&i.ApprovedAt,
 		&i.FingerprintVersion,
 	)
 	return i, err
@@ -531,7 +519,7 @@ func (q *Queries) ListFindingEvents(ctx context.Context, arg ListFindingEventsPa
 }
 
 const listFindingsByIDs = `-- name: ListFindingsByIDs :many
-SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version FROM findings WHERE id = ANY($1::uuid[])
+SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version FROM findings WHERE id = ANY($1::uuid[])
 `
 
 func (q *Queries) ListFindingsByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Finding, error) {
@@ -569,9 +557,6 @@ func (q *Queries) ListFindingsByIDs(ctx context.Context, dollar_1 []pgtype.UUID)
 			&i.AnalysisUpdatedBy,
 			&i.ManualOverride,
 			&i.ReviewRequired,
-			&i.ApprovalStatus,
-			&i.ApprovedBy,
-			&i.ApprovedAt,
 			&i.FingerprintVersion,
 		); err != nil {
 			return nil, err
@@ -585,7 +570,7 @@ func (q *Queries) ListFindingsByIDs(ctx context.Context, dollar_1 []pgtype.UUID)
 }
 
 const listFindingsByProject = `-- name: ListFindingsByProject :many
-SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version FROM findings
+SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version FROM findings
 WHERE project_id = $1
   AND (array_length($2::text[], 1) IS NULL OR current_severity = ANY($2))
   AND (array_length($3::text[], 1) IS NULL OR state = ANY($3))
@@ -645,9 +630,6 @@ func (q *Queries) ListFindingsByProject(ctx context.Context, arg ListFindingsByP
 			&i.AnalysisUpdatedBy,
 			&i.ManualOverride,
 			&i.ReviewRequired,
-			&i.ApprovalStatus,
-			&i.ApprovedBy,
-			&i.ApprovedAt,
 			&i.FingerprintVersion,
 		); err != nil {
 			return nil, err
@@ -766,7 +748,7 @@ UPDATE findings SET
     analysis_updated_by = $9,
     updated_at = NOW()
 WHERE id = $1
-RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version
+RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version
 `
 
 type UpdateFindingAnalysisParams struct {
@@ -820,9 +802,6 @@ func (q *Queries) UpdateFindingAnalysis(ctx context.Context, arg UpdateFindingAn
 		&i.AnalysisUpdatedBy,
 		&i.ManualOverride,
 		&i.ReviewRequired,
-		&i.ApprovalStatus,
-		&i.ApprovedBy,
-		&i.ApprovedAt,
 		&i.FingerprintVersion,
 	)
 	return i, err
@@ -886,7 +865,7 @@ INSERT INTO findings (
         ELSE findings.state
     END,
     updated_at = NOW()
-RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, approval_status, approved_by, approved_at, fingerprint_version
+RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version
 `
 
 type UpsertFindingParams struct {
@@ -944,9 +923,6 @@ func (q *Queries) UpsertFinding(ctx context.Context, arg UpsertFindingParams) (F
 		&i.AnalysisUpdatedBy,
 		&i.ManualOverride,
 		&i.ReviewRequired,
-		&i.ApprovalStatus,
-		&i.ApprovedBy,
-		&i.ApprovedAt,
 		&i.FingerprintVersion,
 	)
 	return i, err

@@ -172,9 +172,6 @@ type Finding struct {
 	AnalysisUpdatedBy   pgtype.UUID        `json:"analysis_updated_by"`
 	ManualOverride      bool               `json:"manual_override"`
 	ReviewRequired      bool               `json:"review_required"`
-	ApprovalStatus      string             `json:"approval_status"`
-	ApprovedBy          pgtype.UUID        `json:"approved_by"`
-	ApprovedAt          pgtype.Timestamptz `json:"approved_at"`
 	FingerprintVersion  int32              `json:"fingerprint_version"`
 }
 
