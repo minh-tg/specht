@@ -32,6 +32,51 @@ export interface Finding {
   last_seen_at: string;
   created_at: string;
   updated_at: string;
+  /** Deployment context of the finding's latest observation. Absent when
+   * the finding has no linked scan occurrence. */
+  context?: FindingContext;
+  /** Source-aware fix guidance from the latest observation. */
+  remediation?: FindingRemediation;
+  /** Exact package, rule, resource, file, or URL when supplied. */
+  location?: FindingLocation;
+  /** Reviewable remediation proposal built from dimensions + guidance. */
+  suggestion?: FindingSuggestion;
+}
+
+export interface FindingContext {
+  target_name?: string;
+  target_kind?: string;
+  target_owner?: string;
+  environment_name?: string;
+  branch?: string;
+  commit_sha?: string;
+  /** Full URL to the source code at the observed commit. */
+  source_link?: string;
+}
+
+export interface FindingRemediation {
+  summary?: string;
+  url?: string;
+  /** Scanner whose observation supplied the guidance. */
+  source?: string;
+  /** True when the source supplied nothing and the section is a label. */
+  fallback?: boolean;
+}
+
+export interface FindingLocation {
+  file?: string;
+  start_line?: number;
+  end_line?: number;
+  resource?: string;
+  summary?: string;
+}
+
+export interface FindingSuggestion {
+  action: string;
+  target?: string;
+  detail?: string;
+  confidence: string;
+  source?: string;
 }
 
 export interface GateStatus {

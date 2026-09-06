@@ -130,6 +130,53 @@ export function FindingDetail() {
         </div>
       </div>
 
+      {finding.context && (
+        <div className="mt-8 rounded-lg border p-4">
+          <h2 className="mb-3 text-sm font-semibold">Context</h2>
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <span className="text-muted-foreground">Target</span>
+              <p className="font-medium">
+                {[finding.context.target_name, finding.context.target_kind]
+                  .filter(Boolean)
+                  .join(" · ") || "–"}
+              </p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Environment</span>
+              <p className="font-medium">{finding.context.environment_name || "–"}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Branch</span>
+              <p className="font-mono text-xs">{finding.context.branch || "–"}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Commit</span>
+              <p className="font-mono text-xs">
+                {finding.context.commit_sha
+                  ? finding.context.commit_sha.slice(0, 12)
+                  : "–"}
+              </p>
+            </div>
+            {finding.context.source_link && (
+              <div className="col-span-2">
+                <span className="text-muted-foreground">Source</span>
+                <p className="font-medium">
+                  <a
+                    href={finding.context.source_link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary hover:text-primary/80 text-sm underline underline-offset-4"
+                  >
+                    View source at commit
+                  </a>
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="mt-8 rounded-lg border p-4">
         <h2 className="mb-3 text-sm font-semibold">Triage</h2>
         <div className="flex flex-wrap gap-2">
