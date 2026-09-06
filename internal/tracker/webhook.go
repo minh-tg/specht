@@ -82,6 +82,13 @@ func (t *WebHookTracker) UpdateIssue(ctx context.Context, issueID IssueID, event
 }
 
 // dispatch POSTs the event payload to every configured webhook endpoint.
+// Delivery is asynchronous and best-effort: the payload is marshalled
+// synchronously, then each endpoint is POSTed on its own goroutine with a
+// context detached from the caller (context.WithoutCancel), so a slow or
+// dead webhook can never stall ingest or verification — even if the caller
+// cancels its context before delivery completes. Each POST is still bounded
+// by the short client Timeout configured at construction, and failures are
+// logged and swallowed.
 func (t *WebHookTracker) dispatch(ctx context.Context, event Event) {
 	if len(t.endpoints) == 0 {
 		return
@@ -94,32 +101,44 @@ func (t *WebHookTracker) dispatch(ctx context.Context, event Event) {
 		return
 	}
 
+	// Detach from the caller's context: a cancelled parent mid-dispatch must
+	// only abort in-flight POSTs, never this return (mirrors the watcher
+	// daemon's notifyCreated). Endpoints are POSTed concurrently so N dead
+	// endpoints cost one timeout, not N sequential ones.
+	deliveryCtx := context.WithoutCancel(ctx)
 	for _, url := range t.endpoints {
-		req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
-		if err != nil {
-			if t.logger != nil {
-				t.logger("webhook request build failed", "url", url, "error", err)
-			}
-			continue
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-Tracker-Event", event.Type)
-		if t.secret != "" {
-			req.Header.Set(WebHookSignatureHeader, signWebHookBody(payload, t.secret))
-		}
+		go t.post(deliveryCtx, url, event.Type, payload)
+	}
+}
 
-		resp, err := t.client.Do(req)
-		if err != nil {
-			if t.logger != nil {
-				t.logger("webhook dispatch failed", "url", url, "error", err)
-			}
-			continue
-		}
-		io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+// post sends one signed JSON payload to a single webhook endpoint and logs
+// the outcome. It runs on a background goroutine; errors are logged and
+// swallowed (best-effort delivery by design).
+func (t *WebHookTracker) post(ctx context.Context, url, eventType string, payload []byte) {
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(payload))
+	if err != nil {
 		if t.logger != nil {
-			t.logger("webhook dispatched", "url", url, "event", event.Type, "status", resp.StatusCode)
+			t.logger("webhook request build failed", "url", url, "error", err)
 		}
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Tracker-Event", eventType)
+	if t.secret != "" {
+		req.Header.Set(WebHookSignatureHeader, signWebHookBody(payload, t.secret))
+	}
+
+	resp, err := t.client.Do(req)
+	if err != nil {
+		if t.logger != nil {
+			t.logger("webhook dispatch failed", "url", url, "error", err)
+		}
+		return
+	}
+	io.Copy(io.Discard, resp.Body)
+	resp.Body.Close()
+	if t.logger != nil {
+		t.logger("webhook dispatched", "url", url, "event", eventType, "status", resp.StatusCode)
 	}
 }
 

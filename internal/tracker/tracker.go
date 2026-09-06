@@ -11,7 +11,6 @@ import (
 	"context"
 	"log/slog"
 	"os"
-	"sync"
 	"time"
 )
 
@@ -125,7 +124,6 @@ func EnvEnabled() bool {
 // the external tracking system.
 type Dispatcher struct {
 	tracker Tracker
-	mu      sync.Mutex
 	logger  *slog.Logger
 }
 
@@ -143,10 +141,12 @@ func NewDispatcher(tracker Tracker, logger *slog.Logger) *Dispatcher {
 
 // Dispatch sends a finding lifecycle event to the tracker. It is
 // best-effort: delivery failures are logged and swallowed.
+//
+// Dispatch does not serialize tracker calls behind a mutex: HTTP-backed
+// trackers (webhook) dispatch asynchronously so their network I/O never
+// blocks the request path, and stateful in-process trackers own their own
+// locking. A slow delivery must not queue unrelated events behind it.
 func (d *Dispatcher) Dispatch(ctx context.Context, event Event) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
 	switch event.Type {
 	case EventVerifiedFixed, EventRegression, EventReopenedSeverity:
 		issueID, _ := event.Changes["external_id"].(string)

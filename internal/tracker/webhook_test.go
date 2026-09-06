@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -17,6 +18,15 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// waitFor polls until cond reports true. Webhook delivery is asynchronous
+// by design (a dead endpoint must never block the caller), so tests that
+// assert a POST landed must wait for the background delivery rather than
+// check immediately after CreateIssue/UpdateIssue returns.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	require.Eventually(t, cond, 2*time.Second, 5*time.Millisecond, "timed out waiting for %s", what)
+}
 
 func TestWebHookTracker_CreateIssue(t *testing.T) {
 	var mu sync.Mutex
@@ -50,6 +60,11 @@ func TestWebHookTracker_CreateIssue(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, IssueID("fp1"), id)
 
+	waitFor(t, "webhook delivery", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(received) == 1
+	})
 	mu.Lock()
 	defer mu.Unlock()
 	require.Len(t, received, 1)
@@ -81,9 +96,11 @@ func TestWebHookTracker_FanOutMultiple(t *testing.T) {
 	_, err := tr.CreateIssue(context.Background(), event)
 	require.NoError(t, err)
 
-	mu.Lock()
-	defer mu.Unlock()
-	assert.Equal(t, 2, count)
+	waitFor(t, "fan-out to both endpoints", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return count == 2
+	})
 }
 
 func TestWebHookTracker_NoEndpoints(t *testing.T) {
@@ -115,6 +132,11 @@ func TestWebHookTracker_UpdateIssue(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	waitFor(t, "webhook delivery", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(received) == 1
+	})
 	mu.Lock()
 	defer mu.Unlock()
 	require.Len(t, received, 1)
@@ -126,6 +148,41 @@ func TestWebHookTracker_EmptyEndpointsOnFailure(t *testing.T) {
 	// Should not panic and should return nil error
 	err := tr.UpdateIssue(context.Background(), "issue-1", Event{Type: EventRegression})
 	assert.NoError(t, err)
+}
+
+func TestWebHookTracker_DeadEndpointDoesNotBlockCreateIssue(t *testing.T) {
+	// A listener that accepts the connection and then stalls without
+	// responding. The client-side 10s timeout would otherwise make
+	// CreateIssue block ~10s per dead endpoint; dispatch must be async
+	// so the caller returns promptly regardless.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer l.Close()
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			go func(c net.Conn) {
+				defer c.Close()
+				// Read the request, then stall until the server closes.
+				io.Copy(io.Discard, c)
+			}(c)
+		}
+	}()
+
+	tr := NewWebHookTracker(WebHookTrackerConfig{
+		Endpoints: []string{"http://" + l.Addr().String()},
+	}, nil)
+
+	start := time.Now()
+	id, err := tr.CreateIssue(context.Background(), Event{Type: EventCreated, Fingerprint: "fp"})
+	elapsed := time.Since(start)
+	require.NoError(t, err)
+	assert.Equal(t, IssueID("fp"), id)
+	assert.Less(t, elapsed, 5*time.Second,
+		"CreateIssue must return promptly while delivery happens in the background; took %s", elapsed)
 }
 
 func TestEnvWebHookURLs(t *testing.T) {
@@ -170,11 +227,13 @@ func TestWebHookTracker_SignedPayload(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	waitFor(t, "signed webhook delivery", func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return gotHeader != ""
+	})
 	mu.Lock()
 	defer mu.Unlock()
-	if gotHeader == "" {
-		t.Fatal("signature header not sent when secret configured")
-	}
 	// Signature must cover the exact raw bytes the server received, using
 	// the same HMAC-SHA256 scheme as the watcher notifiers.
 	mac := hmac.New(sha256.New, []byte(secret))
@@ -191,10 +250,16 @@ func TestWebHookTracker_SignedPayload(t *testing.T) {
 func TestWebHookTracker_NoSignatureWithoutSecret(t *testing.T) {
 	var mu sync.Mutex
 	var gotHeader string
+	delivered := make(chan struct{})
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		gotHeader = r.Header.Get(WebHookSignatureHeader)
 		mu.Unlock()
+		select {
+		case <-delivered:
+		default:
+			close(delivered)
+		}
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
@@ -206,6 +271,11 @@ func TestWebHookTracker_NoSignatureWithoutSecret(t *testing.T) {
 	_, err := tr.CreateIssue(context.Background(), Event{Type: EventCreated, Fingerprint: "fp"})
 	require.NoError(t, err)
 
+	select {
+	case <-delivered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for webhook delivery")
+	}
 	mu.Lock()
 	defer mu.Unlock()
 	assert.Empty(t, gotHeader, "no signature header when no secret configured")
