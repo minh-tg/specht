@@ -21,6 +21,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/db"
 	"github.com/xMinhx/specht/internal/parser"
 	"github.com/xMinhx/specht/internal/port"
@@ -30,6 +31,22 @@ import (
 )
 
 func strPtr(s string) *string { return &s }
+
+// fixtureProjectID is the project UUID assigned to findings ingested from the
+// shared parser fixtures (see usecase.access_test findingFixtureProjectID).
+const fixtureProjectID = "00000000-0000-0000-0000-000000000001"
+
+// findingScopeCtx returns a context carrying an authenticated session-user
+// identity. The finding access checks require an identity (nil is denied);
+// session users are global and pass regardless of the ProjectID field, which
+// only gates API-key principals. The project ID is supplied to keep the
+// fixture close to the real project-scoped shapes used elsewhere.
+func findingScopeCtx(projectID string) context.Context {
+	return auth.ContextWithIdentity(context.Background(), &auth.Identity{
+		UserID:    "00000000-0000-0000-0000-000000000040",
+		ProjectID: projectID,
+	})
+}
 
 func setupIngestPool(t *testing.T) (*pgxpool.Pool, func()) {
 	t.Helper()
@@ -173,7 +190,7 @@ func TestRealDataContext_EndToEnd(t *testing.T) {
 	require.Len(t, findings, 4, "context changes must not fork finding rows")
 
 	// Detail exposes the latest observed context.
-	detail, err := uc.GetFinding(ctx, findings[0].ID)
+	detail, err := uc.GetFinding(findingScopeCtx(fixtureProjectID), findings[0].ID)
 	require.NoError(t, err)
 	require.NotNil(t, detail.Context)
 	assert.NotEmpty(t, detail.Context.TargetName)
@@ -356,7 +373,7 @@ func TestRemediation_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, findings, 3)
 
-	detail, err := uc.GetFinding(ctx, findings[0].ID)
+	detail, err := uc.GetFinding(findingScopeCtx(fixtureProjectID), findings[0].ID)
 	require.NoError(t, err)
 	require.NotNil(t, detail.Remediation, "guideline-backed fix must surface on detail")
 	assert.False(t, detail.Remediation.Fallback)
@@ -398,7 +415,7 @@ func TestSuggestion_EndToEnd(t *testing.T) {
 
 	var upgraded bool
 	for _, f := range findings {
-		detail, err := uc.GetFinding(ctx, f.ID)
+		detail, err := uc.GetFinding(findingScopeCtx(fixtureProjectID), f.ID)
 		require.NoError(t, err)
 		require.NotNil(t, detail.Suggestion)
 		if detail.Suggestion.Confidence == "high" {
@@ -468,7 +485,7 @@ func TestVerifyFix_FullCycle(t *testing.T) {
 	}
 	require.NotEmpty(t, fixed.ID, "lodash finding must exist from the first scan")
 
-	verified, err := uc.VerifyFix(ctx, fixed.ID)
+	verified, err := uc.VerifyFix(findingScopeCtx(fixtureProjectID), fixed.ID)
 	require.NoError(t, err)
 	assert.Equal(t, usecase.VerifyFixed, verified.Outcome)
 	require.NotNil(t, verified.ReportID)
@@ -481,7 +498,7 @@ func TestVerifyFix_FullCycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, events, 1, "closure records the verifying scan")
 
-	still, err := uc.VerifyFix(ctx, present.ID)
+	still, err := uc.VerifyFix(findingScopeCtx(fixtureProjectID), present.ID)
 	require.NoError(t, err)
 	assert.Equal(t, usecase.VerifyPresent, still.Outcome)
 }
@@ -528,7 +545,7 @@ func TestRegression_DetectedAndReopened(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	verified, err := uc.VerifyFix(ctx, f)
+	verified, err := uc.VerifyFix(findingScopeCtx(fixtureProjectID), f)
 	require.NoError(t, err)
 	assert.Equal(t, usecase.VerifyFixed, verified.Outcome)
 
@@ -660,7 +677,7 @@ func TestTracker_DispatchLifecycle(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	verified, err := uc.VerifyFix(ctx, f)
+	verified, err := uc.VerifyFix(findingScopeCtx(fixtureProjectID), f)
 	require.NoError(t, err)
 	assert.Equal(t, usecase.VerifyFixed, verified.Outcome)
 

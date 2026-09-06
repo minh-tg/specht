@@ -1576,7 +1576,7 @@ func TestGetFinding_Success(t *testing.T) {
 		Stores: &port.Stores{Findings: fr},
 	})
 
-	finding, err := uc.GetFinding(context.Background(), "00000000-0000-0000-0000-000000000021")
+	finding, err := uc.GetFinding(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000021")
 	require.NoError(t, err)
 	require.NotNil(t, finding)
 	assert.Equal(t, "00000000-0000-0000-0000-000000000021", finding.ID)
@@ -1966,7 +1966,7 @@ func TestTriageFinding_Success(t *testing.T) {
 		Stores: &port.Stores{Findings: fr},
 	})
 
-	result, err := uc.TriageFinding(context.Background(), TriageInput{
+	result, err := uc.TriageFinding(findingScopeCtx(findingFixtureProjectID), TriageInput{
 		FindingID:     fID,
 		AnalysisState: "false_positive",
 		Reason:        "test code",
@@ -2015,7 +2015,7 @@ func TestTriageFinding_MissingReason(t *testing.T) {
 		Stores: &port.Stores{Findings: fr},
 	})
 
-	_, err := uc.TriageFinding(context.Background(), TriageInput{
+	_, err := uc.TriageFinding(findingScopeCtx(findingFixtureProjectID), TriageInput{
 		FindingID:     "00000000-0000-0000-0000-000000000021",
 		AnalysisState: "false_positive",
 		UserID:        "00000000-0000-0000-0000-000000000040",
@@ -2033,7 +2033,7 @@ func TestTriageFinding_MissingExpiry(t *testing.T) {
 		Stores: &port.Stores{Findings: fr},
 	})
 
-	_, err := uc.TriageFinding(context.Background(), TriageInput{
+	_, err := uc.TriageFinding(findingScopeCtx(findingFixtureProjectID), TriageInput{
 		FindingID:     "00000000-0000-0000-0000-000000000021",
 		AnalysisState: "accepted_risk",
 		Reason:        "it's fine",
@@ -2063,7 +2063,7 @@ func TestBulkTriage_Success(t *testing.T) {
 		Stores: &port.Stores{Findings: fr},
 	})
 
-	results, err := uc.BulkTriage(context.Background(), BulkTriageInput{
+	results, err := uc.BulkTriage(findingScopeCtx(findingFixtureProjectID), BulkTriageInput{
 		FindingIDs:    []string{"00000000-0000-0000-0000-000000000021"},
 		AnalysisState: "false_positive",
 		Reason:        "test code",
@@ -2120,7 +2120,7 @@ func TestGetFindingEvents_Success(t *testing.T) {
 		Stores: &port.Stores{Findings: fr},
 	})
 
-	events, err := uc.GetFindingEvents(context.Background(), "00000000-0000-0000-0000-000000000021", nil, 10, 0)
+	events, err := uc.GetFindingEvents(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000021", nil, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, events, 1)
 	assert.Equal(t, "analysis_changed", events[0].EventType)
@@ -2248,7 +2248,7 @@ func TestUpsertReachability_UsesUpdatedAt(t *testing.T) {
 	}
 	uc := New(Deps{Stores: &port.Stores{Findings: fr, Reachability: rch}})
 
-	result, err := uc.UpsertReachability(context.Background(), findingID, userID, "reachable", "evidence")
+	result, err := uc.UpsertReachability(findingScopeCtx(findingFixtureProjectID), findingID, userID, "reachable", "evidence")
 	require.NoError(t, err)
 	assert.Equal(t, updatedAt.Format(time.RFC3339), result.UpdatedAt)
 }

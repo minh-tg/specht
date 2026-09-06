@@ -106,7 +106,7 @@ func TestGetFinding_WithContext(t *testing.T) {
 	}
 
 	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
-	finding, err := uc.GetFinding(context.Background(), "00000000-0000-0000-0000-000000000021")
+	finding, err := uc.GetFinding(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000021")
 	require.NoError(t, err)
 	require.NotNil(t, finding.Context)
 	assert.Equal(t, "alpine:3.20", finding.Context.TargetName)
@@ -126,7 +126,7 @@ func TestGetFinding_NoContext(t *testing.T) {
 	}
 
 	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
-	finding, err := uc.GetFinding(context.Background(), "00000000-0000-0000-0000-000000000021")
+	finding, err := uc.GetFinding(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000021")
 	require.NoError(t, err)
 	assert.Nil(t, finding.Context, "missing context must be explicit nil, not zero fields")
 }
@@ -213,7 +213,7 @@ func TestGetFinding_RemediationFromSource(t *testing.T) {
 	}
 
 	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
-	finding, err := uc.GetFinding(context.Background(), "00000000-0000-0000-0000-000000000021")
+	finding, err := uc.GetFinding(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000021")
 	require.NoError(t, err)
 	require.NotNil(t, finding.Remediation)
 	assert.Equal(t, "Upgrade to 1.2.4", finding.Remediation.Summary)
@@ -239,7 +239,7 @@ func TestGetFinding_RemediationFallback(t *testing.T) {
 	}
 
 	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
-	finding, err := uc.GetFinding(context.Background(), "00000000-0000-0000-0000-000000000021")
+	finding, err := uc.GetFinding(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000021")
 	require.NoError(t, err)
 	require.NotNil(t, finding.Remediation)
 	assert.True(t, finding.Remediation.Fallback)
@@ -265,7 +265,7 @@ func TestGetFinding_SuggestionFromDims(t *testing.T) {
 	}
 
 	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
-	finding, err := uc.GetFinding(context.Background(), "00000000-0000-0000-0000-000000000021")
+	finding, err := uc.GetFinding(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000021")
 	require.NoError(t, err)
 	require.NotNil(t, finding.Suggestion)
 	assert.Equal(t, "upgrade", finding.Suggestion.Action)

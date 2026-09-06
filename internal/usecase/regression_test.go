@@ -219,7 +219,7 @@ func TestVerifyFix_RegressionDetected(t *testing.T) {
 	reg := scanner.NewRegistry()
 	uc := New(Deps{Stores: &port.Stores{Projects: pr, Reports: rr, Findings: fr}, Registry: reg})
 
-	resp, err := uc.VerifyFix(context.Background(), f.ID)
+	resp, err := uc.VerifyFix(findingScopeCtx(findingFixtureProjectID), f.ID)
 	require.NoError(t, err)
 	assert.Equal(t, VerifyPresent, resp.Outcome, "finding still observed means regression is detected as still present")
 }

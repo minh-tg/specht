@@ -53,7 +53,7 @@ func TestVerifyFix_Verified(t *testing.T) {
 		return port.FindingEvent{}, nil
 	}
 
-	resp, err := uc.VerifyFix(context.Background(), f.ID)
+	resp, err := uc.VerifyFix(findingScopeCtx(findingFixtureProjectID), f.ID)
 	require.NoError(t, err)
 	assert.Equal(t, VerifyFixed, resp.Outcome)
 	require.NotNil(t, resp.ReportID)
@@ -75,7 +75,7 @@ func TestVerifyFix_StillPresent(t *testing.T) {
 		return true, nil
 	}
 
-	resp, err := uc.VerifyFix(context.Background(), f.ID)
+	resp, err := uc.VerifyFix(findingScopeCtx(findingFixtureProjectID), f.ID)
 	require.NoError(t, err)
 	assert.Equal(t, VerifyPresent, resp.Outcome)
 }
@@ -85,7 +85,7 @@ func TestVerifyFix_InconclusivePaths(t *testing.T) {
 
 	t.Run("no completed report", func(t *testing.T) {
 		uc, _, _, f := verifyHarness(now)
-		resp, err := uc.VerifyFix(context.Background(), f.ID)
+		resp, err := uc.VerifyFix(findingScopeCtx(findingFixtureProjectID), f.ID)
 		require.NoError(t, err)
 		assert.Equal(t, VerifyInconclusive, resp.Outcome)
 		assert.Nil(t, resp.ReportID)
@@ -102,7 +102,7 @@ func TestVerifyFix_InconclusivePaths(t *testing.T) {
 		fr.hasOccurrenceFn = func(_ context.Context, _, _ string) (bool, error) {
 			return false, nil
 		}
-		resp, err := uc.VerifyFix(context.Background(), f.ID)
+		resp, err := uc.VerifyFix(findingScopeCtx(findingFixtureProjectID), f.ID)
 		require.NoError(t, err)
 		assert.Equal(t, VerifyInconclusive, resp.Outcome)
 		assert.Contains(t, resp.Detail, "not complete")
@@ -118,7 +118,7 @@ func TestVerifyFix_InconclusivePaths(t *testing.T) {
 		fr.hasOccurrenceFn = func(_ context.Context, _, _ string) (bool, error) {
 			return false, nil
 		}
-		resp, err := uc.VerifyFix(context.Background(), f.ID)
+		resp, err := uc.VerifyFix(findingScopeCtx(findingFixtureProjectID), f.ID)
 		require.NoError(t, err)
 		assert.Equal(t, VerifyInconclusive, resp.Outcome)
 	})
