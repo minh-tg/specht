@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -48,9 +49,12 @@ func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthR
 		return nil, fmt.Errorf("password must be at least 8 characters")
 	}
 
-	existing, err := u.deps.Stores.Users.GetByEmail(ctx, email)
-	if err == nil && existing.Email != "" {
+	_, err := u.deps.Stores.Users.GetByEmail(ctx, email)
+	if err == nil {
 		return nil, fmt.Errorf("email already registered")
+	}
+	if !errors.Is(err, port.ErrNotFound) {
+		return nil, fmt.Errorf("lookup user: %w", err)
 	}
 
 	hash, err := u.deps.Passwords.Hash(password)
