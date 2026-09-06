@@ -2318,9 +2318,10 @@ func TestReachability_InvalidFindingID(t *testing.T) {
 func TestReachability_ValidatesFindingForJWT(t *testing.T) {
 	fr := &mockFindingRepo{}
 	var findingLookups int
+	storeErr := fmt.Errorf("missing finding")
 	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
 		findingLookups++
-		return port.Finding{}, fmt.Errorf("missing finding")
+		return port.Finding{}, storeErr
 	}
 	rch := &mockReachabilityRepo{
 		listByFindingFn: func(ctx context.Context, findingID string) ([]port.ReachabilityAssessment, error) {
@@ -2336,11 +2337,15 @@ func TestReachability_ValidatesFindingForJWT(t *testing.T) {
 	})
 	findingID := "00000000-0000-0000-0000-000000000021"
 
+	// A persistence error from the store must propagate (surfacing as a 500
+	// at the handler layer), not be masked as a not-found.
 	_, err := uc.ListReachability(ctx, findingID)
-	require.ErrorIs(t, err, ErrFindingNotFound)
+	require.ErrorIs(t, err, storeErr)
+	require.NotErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.UpsertReachability(ctx, findingID, "00000000-0000-0000-0000-000000000002", "unknown", "")
-	require.ErrorIs(t, err, ErrFindingNotFound)
+	require.ErrorIs(t, err, storeErr)
+	require.NotErrorIs(t, err, ErrFindingNotFound)
 	assert.Equal(t, 2, findingLookups)
 }
 

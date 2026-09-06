@@ -2,9 +2,12 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/port"
 )
@@ -85,4 +88,67 @@ func TestCheckFindingRowsProjectAccess_SessionUserCrossProjectAllowed(t *testing
 func TestCheckFindingRowsProjectAccess_NoIdentityDenied(t *testing.T) {
 	err := checkFindingRowsProjectAccess(context.Background(), []port.Finding{makeFindingRow(1)})
 	assert.ErrorIs(t, err, ErrProjectAccessDenied)
+}
+
+// Regression: a persistence failure (e.g. DB down) must not be masked as
+// ErrFindingNotFound. Only a true port.ErrNotFound from the store maps to
+// the public not-found sentinel; everything else propagates so the handler
+// layer can surface a 500 instead of a 404.
+func TestFindingWithProjectAccess_StoreErrorNotMaskedAsNotFound(t *testing.T) {
+	storeErr := fmt.Errorf("finding store: %w", context.DeadlineExceeded)
+	fr := &mockFindingRepo{}
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
+		return port.Finding{}, storeErr
+	}
+
+	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
+
+	finding, err := uc.findingWithProjectAccess(
+		findingScopeCtx(findingFixtureProjectID),
+		uuid.MustParse("00000000-0000-0000-0000-000000000021"),
+	)
+	assert.Equal(t, port.Finding{}, finding)
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrFindingNotFound)
+	// The underlying store error must survive the helper for logging and
+	// for the handler layer to distinguish outages from not-found.
+	assert.ErrorIs(t, err, storeErr)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+// The access check entry point used by evidence/reachability/triage callers
+// must follow the same contract: only port.ErrNotFound becomes
+// ErrFindingNotFound.
+func TestCheckFindingProjectAccess_StoreErrorNotMaskedAsNotFound(t *testing.T) {
+	storeErr := fmt.Errorf("db unavailable")
+	fr := &mockFindingRepo{}
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
+		return port.Finding{}, storeErr
+	}
+
+	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
+
+	err := uc.checkFindingProjectAccess(
+		findingScopeCtx(findingFixtureProjectID),
+		uuid.MustParse("00000000-0000-0000-0000-000000000021"),
+	)
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrFindingNotFound)
+	assert.ErrorIs(t, err, storeErr)
+}
+
+// A true store-level not-found must keep mapping to the public sentinel.
+func TestCheckFindingProjectAccess_StoreNotFoundMapsToErrFindingNotFound(t *testing.T) {
+	fr := &mockFindingRepo{}
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
+	}
+
+	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
+
+	err := uc.checkFindingProjectAccess(
+		findingScopeCtx(findingFixtureProjectID),
+		uuid.MustParse("00000000-0000-0000-0000-000000000021"),
+	)
+	assert.ErrorIs(t, err, ErrFindingNotFound)
 }

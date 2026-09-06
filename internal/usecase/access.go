@@ -25,9 +25,10 @@ func (u *Usecases) findingWithProjectAccess(ctx context.Context, findingID uuid.
 		if errors.Is(err, port.ErrNotFound) {
 			return port.Finding{}, ErrFindingNotFound
 		}
-		// Preserve the public not-found behavior of this helper: callers
-		// should not learn persistence details from an access check.
-		return port.Finding{}, ErrFindingNotFound
+		// Persistence failures (DB down, …) must not surface as not-found:
+		// propagate the wrapped error so callers can log it and handlers map
+		// it to a 500 instead of a misleading 404.
+		return port.Finding{}, fmt.Errorf("check finding project: %w", err)
 	}
 	if err := checkFindingProjectIDAccess(ctx, finding.ProjectID); err != nil {
 		return port.Finding{}, err
