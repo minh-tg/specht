@@ -1,10 +1,20 @@
-import { apiFetch, setAuthToken, setOnUnauthorized } from "@/api/client";
+import {
+  apiFetch,
+  clearStoredSession,
+  getStoredSession,
+  revokeRefreshToken,
+  setAuthToken,
+  setRefreshFailedHandler,
+  setStoredSession,
+  setUnauthorizedHandler,
+} from "@/api/client";
 import { SSO_SESSION_KEY, ssoTokenFromHash } from "@/auth/sso";
 import type { LoginResponse } from "@/types/api";
 import { createContext, type ReactNode, useCallback, useEffect, useState } from "react";
 
 interface AuthState {
   token: string | null;
+  refreshToken: string | null;
   userId: string | null;
   email: string | null;
 }
@@ -18,20 +28,36 @@ export interface AuthContextValue extends AuthState {
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode; }) {
-  // The SSO callback redirects to "/#sso_token=<token>". The token must be
-  // installed before the first render: a mount effect would race child
-  // effects (route guards, data fetches) that already saw a null session.
+  // Restore a persisted session before the first render: a mount effect
+  // would race child effects (route guards, data fetches) that already saw
+  // a null session. The SSO callback fragment takes precedence, and a
+  // token there is installed immediately for the same reason.
   const [state, setState] = useState<AuthState>(() => {
     const sso = ssoTokenFromHash(window.location.hash);
     if (sso) {
       setAuthToken(sso.token);
+      setStoredSession(sso.token, null, {
+        userId: sso.claims.sub ?? null,
+        email: sso.claims.email ?? null,
+      });
       return {
         token: sso.token,
+        refreshToken: null,
         userId: sso.claims.sub ?? null,
         email: sso.claims.email ?? null,
       };
     }
-    return { token: null, userId: null, email: null };
+    const stored = getStoredSession();
+    if (stored) {
+      setAuthToken(stored.token);
+      return {
+        token: stored.token,
+        refreshToken: stored.refreshToken,
+        userId: stored.userId,
+        email: stored.email,
+      };
+    }
+    return { token: null, refreshToken: null, userId: null, email: null };
   });
   const [loading, setLoading] = useState(false);
 
@@ -44,10 +70,18 @@ export function AuthProvider({ children }: { children: ReactNode; }) {
       const clean = window.location.pathname + window.location.search;
       window.history.replaceState(null, "", clean);
     }
-    setOnUnauthorized(() => {
-      setState({ token: null, userId: null, email: null });
+    setUnauthorizedHandler(() => {
+      setAuthToken(null);
+      clearStoredSession();
+      setState({ token: null, refreshToken: null, userId: null, email: null });
     });
-    return () => setOnUnauthorized(null);
+    setRefreshFailedHandler(() => {
+      setState({ token: null, refreshToken: null, userId: null, email: null });
+    });
+    return () => {
+      setUnauthorizedHandler(null);
+      setRefreshFailedHandler(null);
+    };
   }, []);
 
   const login = useCallback(async (email: string, password: string) => {
@@ -59,15 +93,26 @@ export function AuthProvider({ children }: { children: ReactNode; }) {
         skipAuthRedirect: true,
       });
       setAuthToken(res.token);
-      setState({ token: res.token, userId: res.user_id, email: res.email });
+      setStoredSession(res.token, res.refresh_token, { userId: res.user_id, email: res.email });
+      setState({
+        token: res.token,
+        refreshToken: res.refresh_token,
+        userId: res.user_id,
+        email: res.email,
+      });
     } finally {
       setLoading(false);
     }
   }, []);
 
   const logout = useCallback(() => {
+    const { refreshToken } = getStoredSession() ?? {};
+    if (refreshToken) {
+      void revokeRefreshToken(refreshToken);
+    }
     setAuthToken(null);
-    setState({ token: null, userId: null, email: null });
+    clearStoredSession();
+    setState({ token: null, refreshToken: null, userId: null, email: null });
   }, []);
 
   return (
