@@ -100,7 +100,7 @@ func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResp
 	}
 
 	userID := user.ID
-	token, err := u.deps.Tokens.CreateToken(userID, user.Email, user.Role)
+	token, err := u.deps.Tokens.CreateToken(userID, user.Email, auth.TokenRole(user.Role))
 	if err != nil {
 		return nil, fmt.Errorf("create token: %w", err)
 	}
@@ -248,7 +248,7 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 		return nil, fmt.Errorf("user not found")
 	}
 
-	token, err := u.deps.Tokens.CreateToken(userID, user.Email, user.Role)
+	token, err := u.deps.Tokens.CreateToken(userID, user.Email, auth.TokenRole(user.Role))
 	if err != nil {
 		return nil, fmt.Errorf("create token: %w", err)
 	}

@@ -2299,3 +2299,38 @@ func TestRequireRole_APIKeyBypass(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 }
+
+// TestRequireRole_RejectsUnknownRole guards the RequireRole allowlist: a JWT
+// carrying a role outside the canonical vocabulary (admin/editor/viewer) must
+// be denied even when it is not the guarded role. Before the fix, RequireRole
+// compared ident.Role only against the demanded roles, so the legacy DB role
+// "member" embedded verbatim in a token sailed through any middleware that
+// did not name it — an unknown role was treated as "authenticated, nothing
+// demanded matches, allow" instead of "not a known principal, deny".
+func TestRequireRole_RejectsUnknownRole(t *testing.T) {
+	mw := AuthMiddleware(testJWTAuth)
+
+	tests := []struct {
+		name string
+		role string
+	}{
+		{name: "legacy member role", role: "member"},
+		{name: "empty role", role: ""},
+		{name: "garbage role", role: "superuser"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tok := makeTestToken(t, tt.role)
+			roleMw := RequireRole(auth.RoleEditor, auth.RoleViewer)
+			handler := mw(roleMw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})))
+			req := httptest.NewRequest("POST", "/api/v1/projects", nil)
+			req.Header.Set("Authorization", "Bearer "+tok)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusForbidden, w.Code)
+		})
+	}
+}

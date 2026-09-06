@@ -1338,6 +1338,48 @@ func TestLogin_EmptyPassword(t *testing.T) {
 	assert.EqualError(t, err, "email and password are required")
 }
 
+// TestLogin_DBMemberRoleMapsToViewerClaim guards the role vocabulary seam
+// between the users table and the JWT. The DB CHECK allows only
+// ('admin', 'member') for users.role and self-registration always creates
+// 'member'; the JWT/RBAC vocabulary is admin/editor/viewer. Embedding the
+// DB role verbatim in a token mints "member" claims that no RequireRole
+// allowlist recognizes, so a freshly registered user could never pass any
+// role gate (and, worse, "member" sailed past gates that did not name it).
+// Login must translate the legacy DB role to the canonical token role.
+func TestLogin_DBMemberRoleMapsToViewerClaim(t *testing.T) {
+	ur := &mockUserRepo{}
+	rr := &mockRefreshTokenRepo{}
+	jwt := testJWT(t)
+
+	hash, err := auth.HashPassword("correct-password")
+	require.NoError(t, err)
+
+	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {
+		u := makeUser("00000000-0000-0000-0000-000000000040")
+		u.Role = "member" // DB CHECK ('admin','member') legacy role
+		u.PasswordHash = hash
+		return u, nil
+	}
+	rr.createFn = func(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
+		return makeRefreshToken(false), nil
+	}
+
+	uc := New(Deps{
+		Stores:    &port.Stores{Users: ur, RefreshTokens: rr},
+		Tokens:    jwt,
+		Passwords: auth.NewPasswordHasher(),
+	})
+
+	resp, err := uc.Login(context.Background(), "test@example.com", "correct-password")
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.NotEmpty(t, resp.Token)
+
+	ident, err := jwt.Authenticate(context.Background(), resp.Token)
+	require.NoError(t, err)
+	assert.Equal(t, auth.RoleViewer, ident.Role, "legacy DB role 'member' must map to canonical viewer claim")
+}
+
 func TestLogin_UserNotFound(t *testing.T) {
 	ur := &mockUserRepo{}
 	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {

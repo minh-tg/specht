@@ -260,6 +260,12 @@ func (h *Handler) enforceProjectAccess(r *http.Request, projectSlug string) erro
 // RequireRole is a middleware that enforces a minimum role for session-authenticated
 // users. API keys bypass role checks (they are already project-scoped). Unauthenticated
 // requests fall through to 401.
+//
+// The identity's role is validated against the canonical RBAC vocabulary
+// (auth.ValidRole) before the demanded-role check: a token carrying a role
+// outside admin/editor/viewer — the legacy DB role "member", an empty claim,
+// or garbage — is not a known principal and is denied 403, never admitted
+// just because no demanded role matched it.
 func RequireRole(roles ...string) func(http.Handler) http.Handler {
 	allowed := make(map[string]bool, len(roles))
 	for _, r := range roles {
@@ -276,7 +282,7 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if !allowed[ident.Role] {
+			if !auth.ValidRole(ident.Role) || !allowed[ident.Role] {
 				respondError(w, http.StatusForbidden, "insufficient_role", "requires admin role")
 				return
 			}
