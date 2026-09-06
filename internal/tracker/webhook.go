@@ -3,6 +3,9 @@ package tracker
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -10,21 +13,36 @@ import (
 	"time"
 )
 
+// WebHookSignatureHeader carries the HMAC-SHA256 digest of the raw request
+// body. Format: hex lowercase of HMAC-SHA256(body) keyed with the signing
+// secret, prefixed "sha256=" — the same scheme the watcher notifiers use, so
+// a receiver can verify tracker and watcher payloads identically.
+const WebHookSignatureHeader = "X-Specht-Signature"
+
+// EnvWebHookSecret is the HMAC-SHA256 signing key for tracker webhook
+// payloads (WATCHER_WEBHOOK_SIGNING_SECRET, shared with the watcher generic
+// webhook so one secret covers both outbound channels). Empty = unsigned.
+const EnvWebHookSecret = "WATCHER_WEBHOOK_SIGNING_SECRET"
+
 // WebHookTracker is a Tracker adapter that fans finding lifecycle events out
 // to one or more HTTP webhook endpoints. Each Event is POSTed as a JSON
-// payload; failures are logged and swallowed (best-effort), so a dead or slow
-// webhook can never stall ingest or verification.
+// payload, optionally signed with HMAC-SHA256; failures are logged and
+// swallowed (best-effort), so a dead or slow webhook can never stall ingest
+// or verification.
 //
 // webhook fan-out for finding lifecycle events.
 type WebHookTracker struct {
 	endpoints []string
+	secret    string
 	client    *http.Client
 	logger    func(string, ...any)
 }
 
-// WebHookTrackerConfig holds the endpoint list and HTTP client tuning.
+// WebHookTrackerConfig holds the endpoint list, optional HMAC-SHA256 signing
+// secret, and HTTP client tuning. An empty secret sends no signature header.
 type WebHookTrackerConfig struct {
 	Endpoints []string
+	Secret    string
 	Timeout   time.Duration
 }
 
@@ -36,6 +54,7 @@ func NewWebHookTracker(cfg WebHookTrackerConfig, logger func(string, ...any)) *W
 	}
 	return &WebHookTracker{
 		endpoints: cfg.Endpoints,
+		secret:    cfg.Secret,
 		client:    &http.Client{Timeout: cfg.Timeout},
 		logger:    logger,
 	}
@@ -85,6 +104,9 @@ func (t *WebHookTracker) dispatch(ctx context.Context, event Event) {
 		}
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-Tracker-Event", event.Type)
+		if t.secret != "" {
+			req.Header.Set(WebHookSignatureHeader, signWebHookBody(payload, t.secret))
+		}
 
 		resp, err := t.client.Do(req)
 		if err != nil {
@@ -115,6 +137,16 @@ func EnvWebHookURLs(envVar string, env func(string) string) []string {
 		}
 	}
 	return urls
+}
+
+// signWebHookBody computes the X-Specht-Signature value for a raw payload:
+// "sha256=" + lowercase hex HMAC-SHA256(body) keyed with the secret. It
+// mirrors watcher.SignSlackBody so one verification path covers both
+// signers; hmac.Equal is the constant-time comparison a verifier must use.
+func signWebHookBody(body []byte, secret string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	return "sha256=" + hex.EncodeToString(mac.Sum(nil))
 }
 
 // Compile-time check that WebHookTracker satisfies the Tracker interface.
