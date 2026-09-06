@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/remediate"
 )
@@ -64,6 +65,10 @@ type FindingContextResponse struct {
 	EnvironmentName string `json:"environment_name,omitempty"`
 	Branch          string `json:"branch,omitempty"`
 	CommitSha       string `json:"commit_sha,omitempty"`
+	// SourceLink is the full URL to the source code at the observed commit,
+	// derived from TargetOwner (provider://owner/repo) + CommitSha + file.
+	// evidence source provenance. Empty when no target owner is set.
+	SourceLink string `json:"source_link,omitempty"`
 }
 
 // RemediationResponse is one finding's fix guidance with its provenance.
@@ -314,6 +319,14 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 		}
 		resp.Remediation = remediationFromMetadata(dc.Metadata, dc.ToolName, f.FindingKind)
 		resp.Location = locationFromDisplay(dc.LocationSummary, dc.Metadata)
+		// derive source provenance link from provider:// owner URI.
+		if ref, err := domain.ParseRepoRef(dc.TargetOwner); err == nil && ref.Provider != "" {
+			var filePath string
+			if resp.Location != nil {
+				filePath = resp.Location.File
+			}
+			resp.Context.SourceLink = ref.SourceLink(dc.CommitSha, filePath)
+		}
 		dims, err := u.deps.Stores.Findings.ListDimensions(ctx, id.String())
 		if err != nil {
 			return nil, fmt.Errorf("get finding dimensions: %w", err)

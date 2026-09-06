@@ -207,6 +207,15 @@ func buildTrackerDispatcher() *tracker.Dispatcher {
 		tr = tracker.NewInProcessTracker(func(msg string, args ...any) {
 			slog.Debug(msg, args...)
 		})
+	case "webhook":
+		urls := tracker.EnvWebHookURLs("WATCHER_WEBHOOK_URLS", os.Getenv)
+		if len(urls) == 0 {
+			slog.Warn("webhook tracker enabled but WATCHER_WEBHOOK_URLS is empty; falling back to noop")
+			tr = tracker.NoopTracker{}
+		} else {
+			tr = tracker.NewWebHookTracker(tracker.WebHookTrackerConfig{Endpoints: urls},
+				func(msg string, args ...any) { slog.Debug(msg, args...) })
+		}
 	case "noop", "":
 		tr = tracker.NoopTracker{}
 	}

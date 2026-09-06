@@ -68,3 +68,40 @@ func (r RepoRef) GetProvider() string { return r.Provider }
 
 // FullName returns owner/repo (without provider prefix).
 func (r RepoRef) FullName() string { return r.Owner + "/" + r.Repo }
+
+// SourceLink builds a URL to source code for the given commit and file path.
+// It handles the common providers (GitHub, GitLab, Bitbucket). Returns ""
+// when the repo ref is empty or the provider is unknown.
+//
+// evidence source provenance — links findings to source commits.
+func (r RepoRef) SourceLink(commitSha, filePath string) string {
+	if r.Provider == "" && r.Owner == "" && r.Repo == "" {
+		return ""
+	}
+	base := r.hostBase()
+	if base == "" {
+		return ""
+	}
+	link := base + r.FullName() + "/blob/" + commitSha
+	if filePath != "" {
+		link += "/" + strings.TrimPrefix(filePath, "/")
+	}
+	return link
+}
+
+// hostBase returns the canonical base URL for known providers, or "" if
+// the provider is recognized as unknown.
+func (r RepoRef) hostBase() string {
+	switch r.Provider {
+	case "github":
+		return "https://github.com/"
+	case "gitlab":
+		return "https://gitlab.com/"
+	case "bitbucket":
+		return "https://bitbucket.org/"
+	case "codeberg":
+		return "https://codeberg.org/"
+	default:
+		return ""
+	}
+}

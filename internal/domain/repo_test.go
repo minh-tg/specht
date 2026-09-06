@@ -79,3 +79,25 @@ func TestParseRepoRef_RoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, original, ref.String())
 }
+
+func TestRepoRefSourceLink(t *testing.T) {
+	r := RepoRef{Provider: "github", Owner: "minhx", Repo: "specht"}
+	assert.Equal(t, "https://github.com/minhx/specht/blob/abc1234/main.go",
+		r.SourceLink("abc1234", "main.go"))
+
+	// No file path.
+	assert.Equal(t, "https://github.com/minhx/specht/blob/abc1234",
+		r.SourceLink("abc1234", ""))
+
+	// GitLab subgroup.
+	glab := RepoRef{Provider: "gitlab", Owner: "myorg", Repo: "subgroup/repo"}
+	assert.Equal(t, "https://gitlab.com/myorg/subgroup/repo/blob/def5678/src/main.py",
+		glab.SourceLink("def5678", "/src/main.py"))
+
+	// Unknown provider → empty.
+	custom := RepoRef{Provider: "custom", Owner: "org", Repo: "repo"}
+	assert.Empty(t, custom.SourceLink("abc1234", "main.go"))
+
+	// Empty ref → empty.
+	assert.Empty(t, RepoRef{}.SourceLink("abc1234", "main.go"))
+}
