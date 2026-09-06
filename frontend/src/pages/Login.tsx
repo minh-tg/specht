@@ -3,11 +3,20 @@ import { useAuth } from "@/auth/useAuth";
 import { type FormEvent, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
+export function safeRedirect(redirect: string | null): string {
+  if (!redirect) return "/";
+  if (!redirect.startsWith("/")) return "/";
+  const second = redirect[1];
+  // Block "//evil.com" (protocol-relative) and "/\evil.com" (backslash trick).
+  if (second === "/" || second === "\\") return "/";
+  return redirect;
+}
+
 export function Login() {
   const auth = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const redirect = searchParams.get("redirect") ?? "/";
+  const redirect = safeRedirect(searchParams.get("redirect"));
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

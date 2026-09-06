@@ -1784,7 +1784,7 @@ func TestGetReport_Success(t *testing.T) {
 		Stores: &port.Stores{Reports: rr},
 	})
 
-	report, err := uc.GetReport(context.Background(), "00000000-0000-0000-0000-000000000001")
+	report, err := uc.GetReport(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000001")
 	require.NoError(t, err)
 	require.NotNil(t, report)
 	assert.Equal(t, "trivy", report.ToolName)
@@ -1802,6 +1802,52 @@ func TestGetReport_NotFound(t *testing.T) {
 
 	_, err := uc.GetReport(context.Background(), "00000000-0000-0000-0000-000000000001")
 	assert.ErrorContains(t, err, "get report")
+}
+
+// makeReport belongs to findingFixtureProjectID (project A); the API-key
+// identities below are scoped like the other project-access tests.
+func TestGetReport_APIKeyCrossProjectDenied(t *testing.T) {
+	report := makeReport()
+	rr := &mockReportRepo{}
+	rr.getByIDFn = func(ctx context.Context, id string) (port.Report, error) {
+		return report, nil
+	}
+
+	uc := New(Deps{
+		Stores: &port.Stores{Reports: rr},
+	})
+	ctx := auth.ContextWithIdentity(context.Background(), &auth.Identity{
+		UserID:    "00000000-0000-0000-0000-000000000040",
+		ProjectID: "00000000-0000-0000-0000-000000000002", // API key scoped to project B
+		IsAPIKey:  true,
+	})
+
+	// An API key scoped to project B must not read a report owned by
+	// project A (findingFixtureProjectID).
+	_, err := uc.GetReport(ctx, report.ID)
+	require.ErrorIs(t, err, ErrProjectAccessDenied)
+}
+
+func TestGetReport_APIKeySameProjectAllowed(t *testing.T) {
+	report := makeReport()
+	rr := &mockReportRepo{}
+	rr.getByIDFn = func(ctx context.Context, id string) (port.Report, error) {
+		return report, nil
+	}
+
+	uc := New(Deps{
+		Stores: &port.Stores{Reports: rr},
+	})
+	ctx := auth.ContextWithIdentity(context.Background(), &auth.Identity{
+		UserID:    "00000000-0000-0000-0000-000000000040",
+		ProjectID: findingFixtureProjectID, // API key scoped to the report's project A
+		IsAPIKey:  true,
+	})
+
+	resp, err := uc.GetReport(ctx, report.ID)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, "trivy", resp.ToolName)
 }
 
 // ----- CreateAPIKey Tests -----

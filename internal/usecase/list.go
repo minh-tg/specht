@@ -439,6 +439,9 @@ func (u *Usecases) GetReport(ctx context.Context, reportID string) (*ReportRespo
 	if err != nil {
 		return nil, fmt.Errorf("get report: %w", err)
 	}
+	if err := checkFindingProjectIDAccess(ctx, r.ProjectID); err != nil {
+		return nil, err
+	}
 	resp := toReport(r)
 	return &resp, nil
 }

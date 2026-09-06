@@ -1,10 +1,10 @@
-import { AuthProvider } from "@/auth/AuthContext";
+import { AuthContext, type AuthContextValue, AuthProvider } from "@/auth/AuthContext";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { vi } from "vitest";
-import { Login } from "./Login";
+import { Login, safeRedirect } from "./Login";
 
 function renderLogin() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -19,8 +19,81 @@ function renderLogin() {
   );
 }
 
+let authState: { token: string | null; login: (email: string, password: string) => Promise<void>; };
+
+function authContext(): AuthContextValue {
+  return {
+    token: authState.token,
+    userId: authState.token ? "u1" : null,
+    email: authState.token ? "test@test.com" : null,
+    login: authState.login,
+    logout: () => {},
+    loading: false,
+  };
+}
+
+function renderLoginWithAuth(initialPath = "/login") {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={[initialPath]}>
+        <AuthContext.Provider value={authContext()}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/" element={<div>Home page</div>} />
+            <Route path="/dashboard" element={<div>Dashboard page</div>} />
+          </Routes>
+        </AuthContext.Provider>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+describe("safeRedirect", () => {
+  it("returns internal paths unchanged", () => {
+    expect(safeRedirect("/dashboard")).toBe("/dashboard");
+    expect(safeRedirect("/reports/42?tab=details")).toBe("/reports/42?tab=details");
+  });
+
+  it("falls back to / when no redirect is given", () => {
+    expect(safeRedirect(null)).toBe("/");
+  });
+
+  it("falls back to / for empty and relative-path redirects", () => {
+    expect(safeRedirect("")).toBe("/");
+    expect(safeRedirect("dashboard")).toBe("/");
+  });
+
+  it("blocks protocol-relative external URLs", () => {
+    expect(safeRedirect("//evil.example.com")).toBe("/");
+    expect(safeRedirect("///evil.example.com")).toBe("/");
+  });
+
+  it("blocks absolute external URLs", () => {
+    expect(safeRedirect("https://evil.example.com/phish")).toBe("/");
+    expect(safeRedirect("http://evil.example.com")).toBe("/");
+  });
+
+  it("blocks backslash and encoded-scheme tricks", () => {
+    expect(safeRedirect("\\evil.example.com")).toBe("/");
+    expect(safeRedirect("/\\evil.example.com")).toBe("/");
+    expect(safeRedirect("https:%2F%2Fevil.example.com")).toBe("/");
+  });
+
+  it("blocks javascript: and data: URLs", () => {
+    expect(safeRedirect("javascript:alert(1)")).toBe("/");
+    expect(safeRedirect("data:text/html,<script>alert(1)</script>")).toBe("/");
+  });
+
+  it("falls back to / for control-character prefix tricks", () => {
+    expect(safeRedirect("\n//evil.example.com")).toBe("/");
+    expect(safeRedirect("\t/\\evil.example.com")).toBe("/");
+  });
+});
+
 describe("Login", () => {
   beforeEach(() => {
+    authState = { token: null, login: async () => {} };
     globalThis.fetch = vi.fn();
   });
 
@@ -67,4 +140,32 @@ describe("Login", () => {
       expect(screen.getByText("Login failed. Please try again.")).toBeInTheDocument();
     });
   });
+
+  it("navigates to an internal redirect after login", async () => {
+    authState.login = async () => {};
+    renderLoginWithAuth("/login?redirect=%2Fdashboard");
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Email"), "test@test.com");
+    await user.type(screen.getByLabelText("Password"), "test");
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+
+    expect(await screen.findByText("Dashboard page")).toBeInTheDocument();
+  });
+
+  it.each([
+    "/login?redirect=https%3A%2F%2Fevil.example.com%2Fphish",
+    "/login?redirect=%2F%2Fevil.example.com",
+  ])(
+    "falls back to home when redirect is external (%s)",
+    async (path) => {
+      authState.login = async () => {};
+      renderLoginWithAuth(path);
+      const user = userEvent.setup();
+      await user.type(screen.getByLabelText("Email"), "test@test.com");
+      await user.type(screen.getByLabelText("Password"), "test");
+      await user.click(screen.getByRole("button", { name: /sign in/i }));
+
+      expect(await screen.findByText("Home page")).toBeInTheDocument();
+    },
+  );
 });
