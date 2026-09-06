@@ -78,7 +78,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Use(AuthMiddleware(cfg.JWTAuth, apiKeyAuth))
 
 		r.Get("/api/v1/me", h.Me)
-		r.Get("/api/v1/scanners", h.ListScanners)
+		r.With(RequireRole(auth.RoleAdmin)).Get("/api/v1/scanners", h.ListScanners)
 		r.Get("/api/v1/projects", h.ListProjects)
 		r.With(RequireRole(auth.RoleAdmin)).Post("/api/v1/projects", h.CreateProject)
 		r.Get("/api/v1/projects/{slug}", h.GetProject)
@@ -115,7 +115,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Post("/api/v1/projects/{slug}/waivers/{id}/toggle", h.ToggleWaiver)
 		r.Get("/api/v1/projects/{slug}/waivers/{id}/events", h.ListWaiverEvents)
 		r.Post("/api/v1/projects/{slug}/waivers/check-match", h.CheckWaiverMatch)
-		r.Get("/api/v1/watcher/status", h.GetWatcherStatus)
+		r.With(RequireRole(auth.RoleAdmin)).Get("/api/v1/watcher/status", h.GetWatcherStatus)
 	})
 
 	return r

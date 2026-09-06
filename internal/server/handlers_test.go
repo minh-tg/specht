@@ -558,7 +558,9 @@ func testRouter(mock *mockUsecases) http.Handler {
 	// attaches an identity. Slug-scoped handlers enforce project access for
 	// API keys and deny nil identities, so the test router mirrors production
 	// by authenticating every request as a session user (global, not
-	// project-gated).
+	// project-gated). Admin-gated global endpoints (watcher status, scanners)
+	// are intentionally absent: role enforcement for them is covered against
+	// NewRouter, where a real admin bearer token can be presented.
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx := auth.ContextWithIdentity(r.Context(), &auth.Identity{UserID: "test-user"})
@@ -588,8 +590,6 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
 	r.Get("/api/v1/projects/{slug}/stats", h.GetProjectStats)
 	r.Get("/api/v1/projects/{slug}/aging", h.GetAging)
-	r.Get("/api/v1/watcher/status", h.GetWatcherStatus)
-	r.Get("/api/v1/scanners", h.ListScanners)
 	return r
 }
 
@@ -2173,8 +2173,9 @@ func TestWatcherStatusHandler(t *testing.T) {
 			}, nil
 		},
 	}
-	router := testRouter(mock)
+	router := NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth})
 	req := httptest.NewRequest("GET", "/api/v1/watcher/status", nil)
+	req.Header.Set("Authorization", "Bearer "+makeTestToken(t, auth.RoleAdmin))
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -2265,8 +2266,9 @@ func TestListScannersHandler(t *testing.T) {
 			}
 		},
 	}
-	router := testRouter(mock)
+	router := NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth})
 	req := httptest.NewRequest("GET", "/api/v1/scanners", nil)
+	req.Header.Set("Authorization", "Bearer "+makeTestToken(t, auth.RoleAdmin))
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -2278,6 +2280,94 @@ func TestListScannersHandler(t *testing.T) {
 	assert.Equal(t, "trivy", resp[0].Name)
 	assert.Equal(t, []string{"sca", "secret", "iac"}, resp[0].FindingKinds)
 	assert.Equal(t, "semgrep", resp[1].Name)
+}
+
+// TestGlobalStatusEndpoints_AdminOnly guards the fix for unscoped global
+// daemon state (watcher health, scanner capabilities): any authenticated
+// principal could previously read them. Non-admin session users and
+// project-scoped API keys must be denied; only admin session users pass.
+func TestGlobalStatusEndpoints_AdminOnly(t *testing.T) {
+	mock := &mockUsecases{
+		getWatcherStatusFn: func(ctx context.Context) (*usecase.WatcherStatusResponse, error) {
+			return &usecase.WatcherStatusResponse{Healthy: true}, nil
+		},
+		listScannersFn: func() []usecase.ScannerDescriptorResponse {
+			return []usecase.ScannerDescriptorResponse{{Name: "trivy"}}
+		},
+	}
+	router := NewRouter(RouterConfig{
+		Usecases: mock,
+		JWTAuth:  testJWTAuth,
+		APIKeyLookup: func(ctx context.Context, keyHash string) (string, string, error) {
+			return "key-user", "project-1", nil
+		},
+	})
+
+	tests := []struct {
+		name string
+		path string
+		auth func(*http.Request)
+		want int
+	}{
+		{
+			name: "watcher status non-admin session user forbidden",
+			path: "/api/v1/watcher/status",
+			auth: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer "+makeTestToken(t, auth.RoleViewer))
+			},
+			want: http.StatusForbidden,
+		},
+		{
+			name: "watcher status admin session user allowed",
+			path: "/api/v1/watcher/status",
+			auth: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer "+makeTestToken(t, auth.RoleAdmin))
+			},
+			want: http.StatusOK,
+		},
+		{
+			name: "watcher status API key forbidden",
+			path: "/api/v1/watcher/status",
+			auth: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer vuln_testapikey")
+			},
+			want: http.StatusForbidden,
+		},
+		{
+			name: "scanners non-admin session user forbidden",
+			path: "/api/v1/scanners",
+			auth: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer "+makeTestToken(t, auth.RoleViewer))
+			},
+			want: http.StatusForbidden,
+		},
+		{
+			name: "scanners admin session user allowed",
+			path: "/api/v1/scanners",
+			auth: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer "+makeTestToken(t, auth.RoleAdmin))
+			},
+			want: http.StatusOK,
+		},
+		{
+			name: "scanners API key forbidden",
+			path: "/api/v1/scanners",
+			auth: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer vuln_testapikey")
+			},
+			want: http.StatusForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", tt.path, nil)
+			tt.auth(req)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			assert.Equal(t, tt.want, w.Code)
+		})
+	}
 }
 
 func TestRequireRole_AdminAllowed(t *testing.T) {
