@@ -31,6 +31,9 @@ func NewJWTAuthenticator(secret string) (*JWTAuthenticator, error) {
 	if secret == "dev-only-change-me" {
 		return nil, fmt.Errorf("JWT_SECRET must not be the default value")
 	}
+	if len(secret) < 32 {
+		return nil, fmt.Errorf("JWT_SECRET must be at least 32 bytes")
+	}
 	return &JWTAuthenticator{secret: []byte(secret)}, nil
 }
 

@@ -60,6 +60,36 @@ func parseClaims(t *testing.T, a *JWTAuthenticator, raw string) jwt.MapClaims {
 	return claims
 }
 
+// Weak, guessable secrets must be rejected up front: HS256 forgery with a
+// short shared secret is game-over regardless of any other hardening.
+func TestJWT_NewJWTAuthenticator_RejectsWeakSecrets(t *testing.T) {
+	for _, secret := range []string{"secret", "changeme", "12345678"} {
+		t.Run(secret, func(t *testing.T) {
+			a, err := NewJWTAuthenticator(secret)
+			assert.Nil(t, a)
+			require.Error(t, err)
+			assert.ErrorContains(t, err, "JWT_SECRET must be at least 32 bytes")
+		})
+	}
+}
+
+func TestJWT_NewJWTAuthenticator_AcceptsLongRandomSecret(t *testing.T) {
+	secret := "correct-horse-battery-staple-9f2c1d7e"
+	require.Len(t, secret, 37)
+
+	a, err := NewJWTAuthenticator(secret)
+	require.NoError(t, err)
+	require.NotNil(t, a)
+
+	raw, err := a.CreateToken("user-1", "user@example.com", RoleViewer)
+	require.NoError(t, err)
+
+	ident, err := a.Authenticate(context.Background(), raw)
+	require.NoError(t, err)
+	require.NotNil(t, ident)
+	assert.Equal(t, "user-1", ident.UserID)
+}
+
 func TestJWT_CreateTokenIncludesBoundClaims(t *testing.T) {
 	a, err := NewJWTAuthenticator(jwtBindingTestSecret)
 	require.NoError(t, err)
