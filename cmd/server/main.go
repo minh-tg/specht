@@ -124,7 +124,10 @@ func main() {
 	// WATCHER_* variables are parsed inside the gate, so malformed values can
 	// never crash a server with the watcher disabled.
 	if cfg.Watcher.Enable {
-		runWatcherDaemon(ctx, stores, cfg)
+		if err := runWatcherDaemon(ctx, stores, cfg); err != nil {
+			slog.Error("start watcher daemon", "error", err)
+			os.Exit(1)
+		}
 	}
 
 	go func() {
@@ -213,8 +216,10 @@ func buildTrackerDispatcher() *tracker.Dispatcher {
 			slog.Warn("webhook tracker enabled but WATCHER_WEBHOOK_URLS is empty; falling back to noop")
 			tr = tracker.NoopTracker{}
 		} else {
-			tr = tracker.NewWebHookTracker(tracker.WebHookTrackerConfig{Endpoints: urls},
-				func(msg string, args ...any) { slog.Debug(msg, args...) })
+			tr = tracker.NewWebHookTracker(tracker.WebHookTrackerConfig{
+				Endpoints: urls,
+				Secret:    os.Getenv(tracker.EnvWebHookSecret),
+			}, func(msg string, args ...any) { slog.Debug(msg, args...) })
 		}
 	case "noop", "":
 		tr = tracker.NoopTracker{}
@@ -224,8 +229,11 @@ func buildTrackerDispatcher() *tracker.Dispatcher {
 
 // runWatcherDaemon starts the CVE watcher poll loop. All WATCHER_* variables
 // are parsed here, inside the enable gate, so malformed values can never
-// crash a server with the watcher disabled.
-func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Server) {
+// crash a server with the watcher disabled. An error is returned for
+// pre-loop setup failures (e.g. the project list cannot be loaded) so the
+// caller can abort from the main goroutine instead of inside a watcher
+// goroutine.
+func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Server) error {
 	watcherPollInterval := cfg.Watcher.PollInterval
 	watcherOSVEndpoint := cfg.Watcher.OSVEndpoint
 	watcherBatchSize := cfg.Watcher.BatchSize
@@ -259,8 +267,7 @@ func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Serv
 
 	projects, err := stores.Projects.List(ctx)
 	if err != nil {
-		slog.Error("watcher: list projects", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("watcher: list projects: %w", err)
 	}
 	// Per-project enable/interval config (migration 000020): watch
 	// only cve_watcher_enabled projects and schedule each project independently.
@@ -273,7 +280,7 @@ func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Serv
 	}
 	if len(watched) == 0 {
 		slog.Info("watcher: no enabled projects")
-		return
+		return nil
 	}
 	projectIDs := make([]string, len(watched))
 	projectNames := make(map[string]string, len(watched))
@@ -349,4 +356,5 @@ func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Serv
 		},
 		ProjectIntervals: projectIntervals,
 	})
+	return nil
 }
