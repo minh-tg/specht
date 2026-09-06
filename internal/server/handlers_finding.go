@@ -3,7 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -88,7 +88,7 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		ArtifactType:    req.ArtifactType,
 	})
 	if err != nil {
-		log.Printf("ingest report: %v", err)
+		slog.Error("ingest report", "error", err)
 		if errors.Is(err, usecase.ErrDuplicateReport) {
 			respondError(w, http.StatusConflict, "duplicate_report", "report already exists for this project and data")
 			h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
