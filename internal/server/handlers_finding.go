@@ -94,7 +94,7 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 			h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
 			return
 		}
-		respondError(w, http.StatusUnprocessableEntity, "ingest_failed", err.Error())
+		respondError(w, http.StatusUnprocessableEntity, "ingest_failed", "report ingestion failed")
 		h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
 		return
 	}

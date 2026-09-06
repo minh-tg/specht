@@ -42,7 +42,7 @@ func (h *Handler) CreateEvidence(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
 		default:
 			slog.Error("create evidence", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			respondError(w, http.StatusInternalServerError, "internal_error", "could not create evidence")
 		}
 		return
 	}
@@ -64,7 +64,7 @@ func (h *Handler) ListEvidence(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
 		default:
 			slog.Error("list evidence", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			respondError(w, http.StatusInternalServerError, "internal_error", "could not list evidence")
 		}
 		return
 	}
@@ -82,7 +82,7 @@ func (h *Handler) DeleteEvidence(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
 		} else {
 			slog.Error("delete evidence", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			respondError(w, http.StatusInternalServerError, "internal_error", "could not delete evidence")
 		}
 		return
 	}
@@ -114,7 +114,7 @@ func (h *Handler) UpsertReachability(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidReachabilityState):
-			respondError(w, http.StatusBadRequest, "invalid_state", err.Error())
+			respondError(w, http.StatusBadRequest, "invalid_state", "invalid reachability state")
 		case errors.Is(err, usecase.ErrInvalidFindingID):
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		case errors.Is(err, usecase.ErrFindingNotFound):
@@ -123,7 +123,7 @@ func (h *Handler) UpsertReachability(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
 		default:
 			slog.Error("upsert reachability", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			respondError(w, http.StatusInternalServerError, "internal_error", "could not update reachability state")
 		}
 		return
 	}
@@ -147,7 +147,7 @@ func (h *Handler) ListReachability(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
 		default:
 			slog.Error("list reachability", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			respondError(w, http.StatusInternalServerError, "internal_error", "could not list reachability states")
 		}
 		return
 	}
@@ -188,7 +188,7 @@ func (h *Handler) UpsertSignoff(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
 		default:
 			slog.Error("upsert signoff", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			respondError(w, http.StatusInternalServerError, "internal_error", "could not update signoff")
 		}
 		return
 	}
