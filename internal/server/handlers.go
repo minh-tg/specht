@@ -219,14 +219,22 @@ func respondError(w http.ResponseWriter, status int, code, message string) {
 	respondJSON(w, status, e)
 }
 
+// maxPageSize bounds a single paginated request; larger limits are clamped.
+const maxPageSize = 500
+
 func parseIntParam(r *http.Request, name string, defaultVal int32) int32 {
 	val := r.URL.Query().Get(name)
 	if val == "" {
 		return defaultVal
 	}
-	n, err := strconv.Atoi(val)
+	// Parse with 32-bit size so oversized values error out instead of silently
+	// truncating to a negative int32 (PostgreSQL LIMIT -1 means "no limit").
+	n, err := strconv.ParseInt(val, 10, 32)
 	if err != nil || n < 0 {
 		return defaultVal
+	}
+	if n > maxPageSize {
+		return maxPageSize
 	}
 	return int32(n)
 }

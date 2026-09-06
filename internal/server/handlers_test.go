@@ -1814,6 +1814,10 @@ func TestParseIntParam(t *testing.T) {
 		{"negative param", "/test?limit=-1", 20, 20},
 		{"non-numeric", "/test?limit=abc", 20, 20},
 		{"zero", "/test?limit=0", 20, 0},
+		{"int64 overflow truncated to int32 wraps negative", "/test?limit=4294967295", 20, 20},
+		{"int32 overflow", "/test?limit=2147483648", 20, 20},
+		{"above max clamps to 500", "/test?limit=1000", 20, 500},
+		{"at max allowed", "/test?limit=500", 20, 500},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
