@@ -194,7 +194,7 @@ func secureCookie(r *http.Request, c *http.Cookie) *http.Cookie {
 
 // CallbackHandler returns an http.HandlerFunc that the OAuth2 provider redirects to
 // after the user consents. It exchanges the code, extracts identity, and redirects
-// back with a session token.
+// back with a session token delivered as a URL fragment.
 func (a *OIDCAuthenticator) CallbackHandler(issuer func(userID, email string) (token string, err error)) http.HandlerFunc {
 	const stateCookieName = "sso_state"
 
@@ -252,17 +252,12 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(userID, email string) (t
 			return
 		}
 
-		// Deliver the session token as an httpOnly cookie instead of a URL
-		// query parameter so it never leaks through Referer headers, browser
-		// history, or server access logs.
-		http.SetCookie(w, secureCookie(r, &http.Cookie{
-			Name:     "token",
-			Value:    tok,
-			Path:     "/",
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-		}))
-		http.Redirect(w, r, "/", http.StatusFound)
+		// Deliver the session token in the redirect URL fragment (never a
+		// query parameter) so it does not leak through Referer headers,
+		// browser history, or server access logs. Fragments are not sent to
+		// the server, so nothing here ever reads it back; the SPA consumes
+		// the fragment on load and keeps the token in memory.
+		http.Redirect(w, r, "/#sso_token="+url.PathEscape(tok), http.StatusFound)
 	}
 }
 
