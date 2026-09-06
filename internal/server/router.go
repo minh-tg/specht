@@ -62,7 +62,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	if cfg.OIDCEnabled && cfg.OIDC != nil {
 		r.Get("/api/v1/auth/sso/login", ssoLoginHandler(cfg.OIDC))
 		r.Get("/api/v1/auth/sso/callback", cfg.OIDC.CallbackHandler(func(userID, email string) (string, error) {
-			return cfg.JWTAuth.(*auth.JWTAuthenticator).CreateToken(userID, email, auth.RoleViewer)
+			jwtAuth, ok := cfg.JWTAuth.(*auth.JWTAuthenticator)
+			if !ok {
+				return "", fmt.Errorf("OIDC enabled but JWTAuth is %T, not *auth.JWTAuthenticator", cfg.JWTAuth)
+			}
+			return jwtAuth.CreateToken(userID, email, auth.RoleViewer)
 		}))
 	}
 	r.Post("/api/v1/auth/register", h.Register)

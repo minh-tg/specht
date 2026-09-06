@@ -1,0 +1,64 @@
+package server
+
+import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/xMinhx/specht/internal/auth"
+)
+
+// TestNewRouter_SSOWithNonJWTAuth_NoPanic guards against a regression where
+// enabling OIDC with a JWTAuth that is not a *auth.JWTAuthenticator panicked
+// on an unchecked type assertion inside the SSO callback's token issuer.
+func TestNewRouter_SSOWithNonJWTAuth_NoPanic(t *testing.T) {
+	// Minimal fake provider: the token endpoint returns an access token with
+	// no id_token, so identity extraction falls back to the userinfo endpoint.
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/oauth/token":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"access_token":"acc-test","token_type":"Bearer"}`)
+		case "/userinfo":
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"sub":"oidc-user-1","email":"oidc@example.com"}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer provider.Close()
+
+	oidc := auth.NewOIDCAuthenticator(auth.OIDCConfig{
+		ClientID:     "test-client",
+		ClientSecret: "secret",
+		IssuerURL:    provider.URL,
+		RedirectURI:  "http://localhost:8080/api/v1/auth/sso/callback",
+	}, nil)
+
+	apiKeyAuth := auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, error) {
+		return "", "", nil
+	})
+
+	router := NewRouter(RouterConfig{
+		Usecases:    &mockUsecases{},
+		JWTAuth:     apiKeyAuth, // not a *auth.JWTAuthenticator
+		OIDC:        oidc,
+		OIDCEnabled: true,
+	})
+
+	// Drive the callback through a real code exchange so the token-issuer
+	// closure runs. The misconfigured JWTAuth must surface as the callback's
+	// clean 500 ("token issuance failed") rather than a recovered panic.
+	state := "test-state"
+	req := httptest.NewRequest("GET", "/api/v1/auth/sso/callback?code=test-code&state="+state, nil)
+	req.AddCookie(&http.Cookie{Name: "sso_state", Value: state})
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Contains(t, w.Body.String(), "token issuance failed")
+}
