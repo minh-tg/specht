@@ -7,12 +7,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/port"
 )
+
+// ErrRegistrationFailed is returned when a self-service registration cannot
+// be completed. It is deliberately generic: revealing whether the failure is
+// a duplicate email, a storage error, or anything else would let callers
+// enumerate registered accounts. Detail is written to the server log instead.
+var ErrRegistrationFailed = errors.New("registration failed")
 
 // UserProfile is the authenticated user's public profile.
 type UserProfile struct {
@@ -51,31 +58,39 @@ func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthR
 
 	_, err := u.deps.Stores.Users.GetByEmail(ctx, email)
 	if err == nil {
-		return nil, fmt.Errorf("email already registered")
+		// M8: the duplicate is a legitimate operational detail for operators,
+		// but must never reach the caller. Log it, return the generic error.
+		slog.Warn("register: email already registered", "email", email)
+		return nil, ErrRegistrationFailed
 	}
 	if !errors.Is(err, port.ErrNotFound) {
-		return nil, fmt.Errorf("lookup user: %w", err)
+		slog.Error("register: lookup user failed", "email", email, "error", err)
+		return nil, ErrRegistrationFailed
 	}
 
 	hash, err := u.deps.Passwords.Hash(password)
 	if err != nil {
-		return nil, fmt.Errorf("hash password: %w", err)
+		slog.Error("register: hash password failed", "email", email, "error", err)
+		return nil, ErrRegistrationFailed
 	}
 
 	user, err := u.deps.Stores.Users.Create(ctx, email, nil, &hash)
 	if err != nil {
-		return nil, fmt.Errorf("create user: %w", err)
+		slog.Error("register: create user failed", "email", email, "error", err)
+		return nil, ErrRegistrationFailed
 	}
 
 	userID := user.ID
 	token, err := u.deps.Tokens.CreateToken(userID, user.Email, auth.RoleViewer)
 	if err != nil {
-		return nil, fmt.Errorf("create token: %w", err)
+		slog.Error("register: create token failed", "email", email, "error", err)
+		return nil, ErrRegistrationFailed
 	}
 
 	resp, err := u.createSession(ctx, userID, user.Email)
 	if err != nil {
-		return nil, err
+		slog.Error("register: create session failed", "email", email, "error", err)
+		return nil, ErrRegistrationFailed
 	}
 	resp.Token = token
 	return resp, nil

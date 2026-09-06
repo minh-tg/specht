@@ -1290,7 +1290,12 @@ func TestRegister_ExistingEmail(t *testing.T) {
 	})
 
 	_, err := uc.Register(context.Background(), "test@example.com", "password123")
-	assert.EqualError(t, err, "email already registered")
+	require.Error(t, err)
+	// M8: a duplicate email must fail with the generic registration error so
+	// the endpoint cannot be used to enumerate registered accounts.
+	assert.ErrorIs(t, err, ErrRegistrationFailed)
+	assert.EqualError(t, err, "registration failed")
+	assert.NotContains(t, err.Error(), "already registered")
 }
 
 // ----- Login Tests -----

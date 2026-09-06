@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -21,7 +22,13 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.usecase.Register(r.Context(), req.Email, req.Password)
 	if err != nil {
-		respondError(w, http.StatusUnprocessableEntity, "registration_failed", err.Error())
+		// M8: never echo the underlying error — a duplicate email must be
+		// indistinguishable from any other registration failure, or this
+		// endpoint becomes an account-enumeration oracle. Detail goes to the
+		// server log only.
+		slog.Error("register failed", "email", req.Email, "error", err)
+		respondError(w, http.StatusUnprocessableEntity, "registration_failed", "registration failed")
+		h.audit.HTTP(r, audit.EventRegister, audit.OutcomeFailure, "", req.Email, err)
 		return
 	}
 	respondJSON(w, http.StatusCreated, result)
@@ -59,7 +66,11 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.usecase.Refresh(r.Context(), req.RefreshToken)
 	if err != nil {
-		respondError(w, http.StatusUnauthorized, "refresh_failed", err.Error())
+		// The refresh-token failure mode (invalid, revoked, expired, or an
+		// internal store error) is deliberately indistinguishable to clients:
+		// the only actionable response is to re-authenticate. Detail is logged.
+		slog.Error("refresh", "error", err)
+		respondError(w, http.StatusUnauthorized, "refresh_failed", "invalid or expired refresh token")
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -74,7 +85,8 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.usecase.Logout(r.Context(), req.RefreshToken); err != nil {
-		respondError(w, http.StatusInternalServerError, "logout_failed", err.Error())
+		slog.Error("logout", "error", err)
+		respondError(w, http.StatusInternalServerError, "logout_failed", "logout failed")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -122,7 +134,8 @@ func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.usecase.CreateAPIKey(r.Context(), req.Project, req.Name, ident.UserID)
 	if err != nil {
-		respondError(w, http.StatusUnprocessableEntity, "create_failed", err.Error())
+		slog.Error("create api key", "project", req.Project, "error", err)
+		respondError(w, http.StatusUnprocessableEntity, "create_failed", "could not create API key")
 		return
 	}
 	respondJSON(w, http.StatusCreated, result)
@@ -161,7 +174,8 @@ func (h *Handler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.usecase.RevokeAPIKey(r.Context(), project, keyID); err != nil {
-		respondError(w, http.StatusUnprocessableEntity, "revoke_failed", err.Error())
+		slog.Error("revoke api key", "project", project, "key_id", keyID, "error", err)
+		respondError(w, http.StatusUnprocessableEntity, "revoke_failed", "could not revoke API key")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

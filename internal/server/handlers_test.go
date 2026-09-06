@@ -1075,6 +1075,46 @@ func TestRegister_InvalidBody(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestRegister_FailureIsGeneric(t *testing.T) {
+	// M8: the register endpoint must not reveal whether an email is already
+	// registered. Every failure — duplicate email or any internal error —
+	// returns the same 422 code and message, so the response cannot be used
+	// as an account-enumeration oracle.
+	failureCauses := map[string]error{
+		"duplicate email": fmt.Errorf("email already registered"),
+		"lookup error":    fmt.Errorf("lookup user: connection refused"),
+		"internal error":  fmt.Errorf("create user: deadlock detected"),
+	}
+	for name, cause := range failureCauses {
+		t.Run(name, func(t *testing.T) {
+			mock := &mockUsecases{
+				registerFn: func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) {
+					return nil, cause
+				},
+			}
+			router := testRouter(mock)
+			body := strings.NewReader(`{"email":"a@b.com","password":"password123"}`)
+			req := httptest.NewRequest("POST", "/api/v1/auth/register", body)
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusUnprocessableEntity, w.Code)
+			var resp struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			err := json.Unmarshal(w.Body.Bytes(), &resp)
+			require.NoError(t, err)
+			assert.Equal(t, "registration_failed", resp.Error.Code)
+			assert.Equal(t, "registration failed", resp.Error.Message)
+			assert.NotContains(t, w.Body.String(), cause.Error())
+		})
+	}
+}
+
 func TestLogin_Success(t *testing.T) {
 	mock := &mockUsecases{
 		loginFn: func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) {
