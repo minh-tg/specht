@@ -554,6 +554,17 @@ func TestIngestReport_Duplicate(t *testing.T) {
 func testRouter(mock *mockUsecases) http.Handler {
 	r := chi.NewRouter()
 	h := NewHandler(mock)
+	// Real requests reach these handlers through AuthMiddleware, which always
+	// attaches an identity. Slug-scoped handlers enforce project access for
+	// API keys and deny nil identities, so the test router mirrors production
+	// by authenticating every request as a session user (global, not
+	// project-gated).
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := auth.ContextWithIdentity(r.Context(), &auth.Identity{UserID: "test-user"})
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	})
 	r.Get("/api/v1/projects", h.ListProjects)
 	r.Post("/api/v1/projects", h.CreateProject)
 	r.Get("/api/v1/projects/{slug}", h.GetProject)
@@ -1564,7 +1575,7 @@ func TestMe_Success(t *testing.T) {
 }
 
 func TestMe_NoIdentity(t *testing.T) {
-	router := testRouter(nil)
+	router := NewRouter(RouterConfig{Usecases: &mockUsecases{}, JWTAuth: testJWTAuth})
 	req := httptest.NewRequest("GET", "/api/v1/me", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -1878,6 +1889,7 @@ func TestCreateWaiver_MissingName(t *testing.T) {
 	handler := &Handler{}
 	body := strings.NewReader(`{"name":""}`)
 	req := httptest.NewRequest("POST", "/api/v1/projects/my-app/waivers", body)
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "test-user"}))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	handler.CreateWaiver(w, req)
@@ -1996,6 +2008,7 @@ func TestCheckWaiverMatch_MissingFindingID(t *testing.T) {
 	handler := &Handler{}
 	body := strings.NewReader(`{}`)
 	req := httptest.NewRequest("POST", "/api/v1/projects/my-app/waivers/check-match", body)
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "test-user"}))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	handler.CheckWaiverMatch(w, req)
@@ -2051,7 +2064,7 @@ func TestEnforceProjectAccess_NilIdentity(t *testing.T) {
 	h := &Handler{}
 	req := httptest.NewRequest("GET", "/api/v1/projects/my-app", nil)
 	err := h.enforceProjectAccess(req, "my-app")
-	assert.NoError(t, err)
+	assert.Error(t, err)
 }
 
 // ----- Handler-level enforcement test -----

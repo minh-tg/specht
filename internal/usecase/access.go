@@ -41,24 +41,26 @@ func (u *Usecases) checkFindingProjectAccess(ctx context.Context, findingID uuid
 }
 
 func checkFindingRowsProjectAccess(ctx context.Context, findings []port.Finding) error {
-	ident := auth.ContextIdentity(ctx)
-	if ident == nil || !ident.IsAPIKey {
-		return nil
-	}
 	for _, finding := range findings {
-		if finding.ProjectID != ident.ProjectID {
-			return ErrProjectAccessDenied
+		if err := checkFindingProjectIDAccess(ctx, finding.ProjectID); err != nil {
+			return err
 		}
 	}
 	return nil
 }
 
 func checkFindingProjectIDAccess(ctx context.Context, findingProjectID string) error {
+	// Deny unauthenticated principals outright: no identity means there is
+	// nothing to authorize against.
 	ident := auth.ContextIdentity(ctx)
-	if ident == nil || !ident.IsAPIKey {
-		return nil
+	if ident == nil {
+		return ErrProjectAccessDenied
 	}
-	if findingProjectID != ident.ProjectID {
+	// Project-scoped principals (API keys) must match the finding's project.
+	// Session users without a project scope are authenticated but global;
+	// cross-project access for them is enforced at the route level via
+	// RequireRole and enforceProjectAccess.
+	if ident.IsAPIKey && findingProjectID != ident.ProjectID {
 		return ErrProjectAccessDenied
 	}
 	return nil

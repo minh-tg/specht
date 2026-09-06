@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/port"
 )
 
@@ -88,19 +87,20 @@ func (u *Usecases) DeleteEvidence(ctx context.Context, evidenceID string) error 
 	if err != nil {
 		return fmt.Errorf("invalid evidence id: %w", err)
 	}
-	ident := auth.ContextIdentity(ctx)
-	if ident != nil && ident.IsAPIKey {
-		evidence, err := u.deps.Stores.Evidence.GetByID(ctx, eid.String())
-		if err != nil {
-			return fmt.Errorf("get evidence: %w", err)
-		}
-		fid, err := uuid.Parse(evidence.FindingID)
-		if err != nil {
-			return fmt.Errorf("evidence finding id is invalid")
-		}
-		if err := u.checkFindingProjectAccess(ctx, fid); err != nil {
-			return err
-		}
+	// Resolve the evidence to its finding and enforce the caller's project
+	// scope for every authenticated identity, not just API keys: the access
+	// checks fail closed, so an identity without a matching project scope is
+	// denied before the delete.
+	evidence, err := u.deps.Stores.Evidence.GetByID(ctx, eid.String())
+	if err != nil {
+		return fmt.Errorf("get evidence: %w", err)
+	}
+	fid, err := uuid.Parse(evidence.FindingID)
+	if err != nil {
+		return fmt.Errorf("evidence finding id is invalid")
+	}
+	if err := u.checkFindingProjectAccess(ctx, fid); err != nil {
+		return err
 	}
 	return u.deps.Stores.Evidence.Delete(ctx, eid.String())
 }
