@@ -70,24 +70,9 @@ SELECT
     ak.revoked_at,
     COALESCE(
         ak.created_by,
-        (SELECT pm.user_id
-         FROM project_members pm
-         WHERE pm.project_id = ak.project_id
-           AND pm.role = 'admin'
-         ORDER BY pm.created_at, pm.user_id
-         LIMIT 1),
-        (SELECT pm.user_id
-         FROM project_members pm
-         WHERE pm.project_id = ak.project_id
-         ORDER BY pm.created_at, pm.user_id
-         LIMIT 1),
         (SELECT u.id
          FROM users u
          WHERE u.email = 'system@specht.local'
-         LIMIT 1),
-        (SELECT u.id
-         FROM users u
-         ORDER BY u.created_at, u.id
          LIMIT 1)
     ) AS created_by
 FROM api_keys ak

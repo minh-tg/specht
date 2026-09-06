@@ -377,6 +377,82 @@ func TestAPIKeyRepo_CreateAndRevoke(t *testing.T) {
 	assert.Len(t, keysAfterRevoke, 0)
 }
 
+// TestAPIKeyRepo_GetByHash_NullCreatedByFallsBackOnlyToSystemUser pins the
+// actor-resolution contract for legacy API keys (created before migration
+// 000021 added created_by): a key whose created_by is NULL must resolve to
+// the system user and never to another tenant's user. The historical query
+// fell back through project members, then any member, then the system user,
+// then the oldest user in the whole database — misattributing cross-tenant
+// actors whenever the oldest account belonged to a different project.
+func TestAPIKeyRepo_GetByHash_NullCreatedByFallsBackOnlyToSystemUser(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	systemUser, err := repos.Users.GetByEmail(ctx, "system@specht.local")
+	require.NoError(t, err)
+
+	// Oldest user in the DB belongs to a different tenant: the flawed
+	// fallback chain's final rung would pick this account over the system
+	// user. Real deployments had users before migration 000021 inserted the
+	// system account, so backdate this user to predate it.
+	otherTenant, err := repos.Users.Create(ctx, "oldest-other-tenant@test.com",
+		pgtype.Text{Valid: false}, pgtype.Text{Valid: true, String: "unused-hash"})
+	require.NoError(t, err)
+	_, err = repos.pool.Exec(ctx,
+		`UPDATE users SET created_at = NOW() - interval '10 years' WHERE id = $1`,
+		uuid.UUID(otherTenant.ID.Bytes).String())
+	require.NoError(t, err)
+	otherProject := createTestProject(t, repos)
+	_, err = repos.Users.Create(ctx, "other-tenant-member@test.com",
+		pgtype.Text{Valid: false}, pgtype.Text{Valid: true, String: "unused-hash"})
+	require.NoError(t, err)
+
+	// Key's own project has an admin member the flawed chain preferred over
+	// the system user.
+	project := createTestProject(t, repos)
+	projectAdmin, err := repos.Users.Create(ctx, "admin@test.com",
+		pgtype.Text{Valid: false}, pgtype.Text{Valid: true, String: "unused-hash"})
+	require.NoError(t, err)
+
+	// Insert the project-member rows directly: repository methods for
+	// membership management do not exist yet.
+	for projectID, member := range map[pgtype.UUID]sqlc.User{
+		otherProject.ID: otherTenant,
+		project.ID:      projectAdmin,
+	} {
+		_, err := repos.pool.Exec(ctx, `
+			INSERT INTO project_members (project_id, user_id, role)
+			VALUES ($1, $2, 'admin')
+			ON CONFLICT (project_id, user_id) DO NOTHING`,
+			uuid.UUID(projectID.Bytes).String(), uuid.UUID(member.ID.Bytes).String())
+		require.NoError(t, err)
+	}
+
+	// Legacy key: created_by NULL (no created_by in CreateAPIKeyParams).
+	key, err := repos.APIKeys.Create(ctx, sqlc.CreateAPIKeyParams{
+		ProjectID: project.ID,
+		Name:      "legacy-ci-key",
+		KeyPrefix: "vuln_legacy",
+		KeyHash:   "legacyhash",
+		LastFour:  pgtype.Text{String: "9999", Valid: true},
+		Scopes:    []byte(`["ingest"]`),
+	})
+	require.NoError(t, err)
+	require.False(t, key.CreatedBy.Valid, "legacy key must be created without a creator")
+
+	fetched, err := repos.APIKeys.GetByHash(ctx, "legacyhash")
+	require.NoError(t, err)
+	require.True(t, fetched.CreatedBy.Valid, "lookup must always resolve an actor")
+
+	assert.Equal(t, systemUser.ID.Bytes, fetched.CreatedBy.Bytes,
+		"NULL created_by must resolve to the system user, never to the project admin or another tenant's user")
+
+	actor, err := repos.Users.GetByID(ctx, fetched.CreatedBy)
+	require.NoError(t, err)
+	assert.Equal(t, "system@specht.local", actor.Email)
+}
+
 func createTestProject(t *testing.T, repos *Repos) sqlc.Project {
 	t.Helper()
 	project, err := repos.Projects.Create(context.Background(), sqlc.CreateProjectParams{
