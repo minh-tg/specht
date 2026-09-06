@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -277,6 +278,7 @@ type mockRefreshTokenRepo struct {
 	createFn    func(context.Context, string, string, time.Time) (port.RefreshToken, error)
 	getByHashFn func(context.Context, string) (port.RefreshToken, error)
 	revokeFn    func(context.Context, string) (port.RefreshToken, error)
+	revokeAllFn func(context.Context, string) error
 }
 
 func (m *mockRefreshTokenRepo) Create(ctx context.Context, userID, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
@@ -298,6 +300,13 @@ func (m *mockRefreshTokenRepo) Revoke(ctx context.Context, id string) (port.Refr
 		return port.RefreshToken{}, fmt.Errorf("unexpected call to Revoke")
 	}
 	return m.revokeFn(ctx, id)
+}
+
+func (m *mockRefreshTokenRepo) RevokeAllForUser(ctx context.Context, userID string) error {
+	if m.revokeAllFn == nil {
+		return fmt.Errorf("unexpected call to RevokeAllForUser")
+	}
+	return m.revokeAllFn(ctx, userID)
 }
 
 type mockAPIKeyRepo struct {
@@ -1496,8 +1505,13 @@ func TestRefresh_InvalidToken(t *testing.T) {
 
 func TestRefresh_RevokedToken(t *testing.T) {
 	rr := &mockRefreshTokenRepo{}
+	var allRevoked bool
 	rr.getByHashFn = func(ctx context.Context, tokenHash string) (port.RefreshToken, error) {
 		return makeRefreshToken(true), nil
+	}
+	rr.revokeAllFn = func(ctx context.Context, userID string) error {
+		allRevoked = true
+		return nil
 	}
 
 	uc := New(Deps{
@@ -1506,6 +1520,7 @@ func TestRefresh_RevokedToken(t *testing.T) {
 
 	_, err := uc.Refresh(context.Background(), "revoked-token")
 	assert.EqualError(t, err, "refresh token has been revoked")
+	assert.True(t, allRevoked, "a revoked-token replay is reuse: the user's whole token family must be revoked")
 }
 
 func TestRefresh_ExpiredToken(t *testing.T) {
@@ -1525,6 +1540,128 @@ func TestRefresh_ExpiredToken(t *testing.T) {
 
 	_, err := uc.Refresh(context.Background(), "expired-token")
 	assert.EqualError(t, err, "refresh token has expired")
+}
+
+// simulateAtomicRevoke drives a mock that behaves like the guarded SQL
+// revoke-then-issue primitive: Revoke succeeds exactly once and fails with
+// port.ErrNotFound on every later attempt (as the atomic UPDATE ... WHERE
+// revoked_at IS NULL RETURNING does via pgx.ErrNoRows). The reuse flag
+// records whether the second path was entered.
+func simulateAtomicRevoke(rr *mockRefreshTokenRepo, userID string) *bool {
+	reuse := new(bool)
+	var mu sync.Mutex
+	revoked := false
+	rr.revokeFn = func(ctx context.Context, id string) (port.RefreshToken, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if revoked {
+			return port.RefreshToken{}, port.ErrNotFound
+		}
+		revoked = true
+		return makeRefreshToken(true), nil
+	}
+	rr.revokeAllFn = func(ctx context.Context, uid string) error {
+		mu.Lock()
+		defer mu.Unlock()
+		*reuse = true
+		return nil
+	}
+	rr.createFn = func(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
+		return makeRefreshToken(false), nil
+	}
+	return reuse
+}
+
+// TestRefresh_SecondUseFails pins the reuse-detection contract: a refresh
+// token must be usable exactly once. After a first successful rotation the
+// token is revoked, and any later attempt with the same token must fail even
+// though the row still exists (reuse of a stolen token is how an attacker is
+// detected and the user's whole session family is invalidated).
+func TestRefresh_SecondUseFails(t *testing.T) {
+	ur := &mockUserRepo{}
+	rr := &mockRefreshTokenRepo{}
+	jwt := testJWT(t)
+
+	token := makeRefreshToken(false)
+	rr.getByHashFn = func(ctx context.Context, tokenHash string) (port.RefreshToken, error) {
+		if token.RevokedAt != nil {
+			return port.RefreshToken{}, port.ErrNotFound
+		}
+		return token, nil
+	}
+	reuse := simulateAtomicRevoke(rr, token.UserID)
+	ur.getByIDFn = func(ctx context.Context, id string) (port.User, error) {
+		return makeUser("00000000-0000-0000-0000-000000000040"), nil
+	}
+
+	uc := New(Deps{
+		Stores:    &port.Stores{RefreshTokens: rr, Users: ur},
+		Tokens:    jwt,
+		Passwords: auth.NewPasswordHasher(),
+	})
+
+	resp, err := uc.Refresh(context.Background(), "some-valid-refresh-token")
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// The row is now revoked, so a second refresh with the same token is a
+	// replay of a rotated token: it must fail, not mint another session.
+	_, err = uc.Refresh(context.Background(), "some-valid-refresh-token")
+	require.Error(t, err)
+	assert.True(t, *reuse, "reuse of a rotated token must revoke all of the user's tokens")
+}
+
+// TestRefresh_ConcurrentOnlyOneSucceeds pins the atomicity contract: two
+// racing refreshes with the same token must produce exactly one success and
+// one failure. The revoke must behave as a single atomic compare-and-set on
+// the token row; both requests must never mint sessions.
+func TestRefresh_ConcurrentOnlyOneSucceeds(t *testing.T) {
+	ur := &mockUserRepo{}
+	rr := &mockRefreshTokenRepo{}
+	jwt := testJWT(t)
+
+	token := makeRefreshToken(false)
+	rr.getByHashFn = func(ctx context.Context, tokenHash string) (port.RefreshToken, error) {
+		return token, nil
+	}
+	reuse := simulateAtomicRevoke(rr, token.UserID)
+	ur.getByIDFn = func(ctx context.Context, id string) (port.User, error) {
+		return makeUser("00000000-0000-0000-0000-000000000040"), nil
+	}
+
+	uc := New(Deps{
+		Stores:    &port.Stores{RefreshTokens: rr, Users: ur},
+		Tokens:    jwt,
+		Passwords: auth.NewPasswordHasher(),
+	})
+
+	const n = 8
+	var wg sync.WaitGroup
+	errs := make([]error, n)
+	results := make([]*AuthResponse, n)
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			results[i], errs[i] = uc.Refresh(context.Background(), "some-valid-refresh-token")
+		}(i)
+	}
+	wg.Wait()
+
+	successes := 0
+	for i := 0; i < n; i++ {
+		if results[i] != nil && errs[i] == nil {
+			successes++
+		} else if errs[i] == nil {
+			t.Fatalf("goroutine %d returned a nil response with no error", i)
+		}
+	}
+	assert.Equal(t, 1, successes, "exactly one concurrent refresh may succeed")
+	// The losers raced a token that was already rotated: that is reuse, so
+	// the whole token family for the user must be revoked, not just the one
+	// row. Pre-fix the losers fail on a raw revoke error and never revoke
+	// the family.
+	assert.True(t, *reuse, "concurrent losers must be treated as reuse and revoke all of the user's tokens")
 }
 
 // ----- Logout Tests -----

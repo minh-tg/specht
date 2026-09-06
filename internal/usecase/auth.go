@@ -246,6 +246,12 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 	}
 
 	if stored.RevokedAt != nil {
+		// M3: presenting an already-revoked token is reuse of a rotated
+		// token. The family of tokens issued to this user may have been
+		// stolen, so revoke the whole family before failing.
+		if err := u.deps.Stores.RefreshTokens.RevokeAllForUser(ctx, stored.UserID); err != nil {
+			slog.Error("refresh: revoke family after reuse", "user_id", stored.UserID, "error", err)
+		}
 		return nil, fmt.Errorf("refresh token has been revoked")
 	}
 
@@ -253,7 +259,20 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 		return nil, fmt.Errorf("refresh token has expired")
 	}
 
+	// M3: rotation must be atomic. RevokeRefreshToken is a compare-and-swap
+	// (UPDATE ... WHERE id = $1 AND revoked_at IS NULL RETURNING); a second,
+	// concurrent rotation of the same token revokes zero rows and surfaces
+	// as ErrNotFound. Only the single winner proceeds to mint a new session.
 	if _, err := u.deps.Stores.RefreshTokens.Revoke(ctx, stored.ID); err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			// M3: another request rotated this token between our read and
+			// our revoke. Reuse of a rotated token means the family may be
+			// compromised: revoke every token issued to this user.
+			if err := u.deps.Stores.RefreshTokens.RevokeAllForUser(ctx, stored.UserID); err != nil {
+				slog.Error("refresh: revoke family after concurrent reuse", "user_id", stored.UserID, "error", err)
+			}
+			return nil, fmt.Errorf("refresh token has been revoked")
+		}
 		return nil, fmt.Errorf("revoke old token: %w", err)
 	}
 
@@ -289,7 +308,13 @@ func (u *Usecases) Logout(ctx context.Context, refreshToken string) error {
 		return nil
 	}
 
+	// Revoke is a guarded compare-and-swap: revoking an already-revoked
+	// token matches zero rows and reports ErrNotFound, which is the desired
+	// outcome for logout (the token is already unusable).
 	_, err = u.deps.Stores.RefreshTokens.Revoke(ctx, stored.ID)
+	if errors.Is(err, port.ErrNotFound) {
+		return nil
+	}
 	return err
 }
 
