@@ -48,9 +48,10 @@ type IngestReportInput struct {
 	ArtifactName    string
 	ArtifactVersion string
 	ArtifactType    string
-	// Owner names who is responsible for the scanned target. It is bound
-	// to the target row (last supplied wins); empty preserves the stored
-	// value. Free-text until gives it a structured identity.
+	// Owner is the repository identity in provider://owner/repo URI format
+	//. It is bound to the target row (last supplied wins); empty
+	// preserves the stored value. Used for finding context and CI/CD gate
+	// matching.
 	Owner string
 	// Digest is the content digest of the scanned artifact (e.g. an image
 	// sha256). Artifacts key on (type, name, digest) so rebuilds under one

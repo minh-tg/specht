@@ -9,10 +9,8 @@
 #
 # Required CI/CD variables (masked where secret):
 #   SPECHT_API_URL (variable), SPECHT_API_KEY (masked), SPECHT_PROJECT
-#   (variable). SPECHT_OWNER is optional and pins the responsible team.
-#
-# Local reproduction: same trivy + jq + specht-adapter lines with
-# API_URL/API_KEY exported.
+#   (variable). SPECHT_OWNER is optional; use the provider://owner/repo URI
+#   format (e.g. "gitlab://mygroup/myproject").
 
 stages: [scan, gate]
 
@@ -44,7 +42,7 @@ specht-gate:
         --arg branch "$CI_COMMIT_REF_NAME" \
         --arg commit "$CI_COMMIT_SHA" \
         --arg env "$SPECHT_ENVIRONMENT" \
-        --arg owner "$SPECHT_OWNER" \
+        --arg owner "gitlab://$CI_PROJECT_PATH" \
         --slurpfile raw trivy-results.json \
         '{project: $project, scanner: "trivy",
           branch: $branch, commit_sha: $commit,

@@ -165,16 +165,17 @@ type Target struct {
 	Name      string
 	Kind      string
 	Locator   *string
-	// Owner names who is responsible for the target. Free-text until the
-	// repository-provider decision gives it a structured identity.
-	Owner     *string
+	// Owner is the repository owner identity in provider://owner/repo URI
+	// format. nil when no owner was supplied. last supplied wins.
+	Owner *string
+
 	CreatedAt time.Time
 }
 
-// TargetStore persists scan targets.
 type TargetStore interface {
 	// Upsert inserts or updates a target. An empty owner preserves the
 	// stored value; a non-empty owner overwrites it (last supplied wins).
+	// Owner is expected in provider://owner/repo URI format.
 	Upsert(ctx context.Context, projectID, name, kind, locator, owner string) (Target, error)
 	List(ctx context.Context, projectID string) ([]Target, error)
 	GetByID(ctx context.Context, id, projectID string) (Target, error)

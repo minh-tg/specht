@@ -16,7 +16,9 @@
 #   SPECHT_API_URL - Specht server base URL (e.g. https://specht.example.com).
 #   SPECHT_API_KEY - API key for the target project (repo secret).
 #   SPECHT_PROJECT - project slug (repo var). SPECHT_ENVIRONMENT is optional
-#   (default: ci); SPECHT_OWNER pins the responsible team on the target row.
+#   (default: ci). The owner arg uses the provider://owner/repo URI format
+#   (e.g. "github://minhx/specht"); it pins the responsible team on the
+#   target row and enables CI/CD gate matching.
 #
 # Local reproduction: run the trivy + jq + specht-adapter lines below with
 # API_URL/API_KEY exported; identical envelope, identical gate decision.
@@ -62,7 +64,7 @@ jobs:
               --arg branch "${{ github.head_ref || github.ref_name }}" \
               --arg commit "${{ github.sha }}" \
               --arg env "${SPECHT_ENVIRONMENT}" \
-              --arg owner "${{ vars.SPECHT_OWNER }}" \
+              --arg owner "github://${{ github.repository }}" \
               --slurpfile raw trivy-results.json \
               '{project: $project, scanner: "trivy",
                 branch: $branch, commit_sha: $commit,
