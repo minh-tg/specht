@@ -22,6 +22,34 @@ function triageLabel(state: string): string {
   return TRIAGE_OPTIONS.find((o) => o.value === state)?.label ?? state;
 }
 
+const SOURCE_LINK_SCHEMES = new Set(["http:", "https:"]);
+
+/** Formats an API timestamp for display; a dash when absent or unparseable. */
+function formatTimestamp(value: string | undefined): string {
+  if (!value) return "–";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "–" : date.toLocaleString();
+}
+
+/** Parses a source link only when its scheme is http/https; otherwise null. */
+function parseSourceLink(value: string | undefined): URL | null {
+  if (!value) return null;
+  try {
+    const url = new URL(value);
+    return SOURCE_LINK_SCHEMES.has(url.protocol) ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Normalizes a date-input value to a server-accepted RFC3339 expiry. */
+function toExpiryTimestamp(value: string): string | undefined {
+  if (!value) return undefined;
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value;
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+}
+
 export function FindingDetail() {
   const { findingId } = useParams<{ findingId: string; }>();
   const { data: finding, isLoading, isError, error, refetch } = useFinding(findingId ?? "");
@@ -76,13 +104,17 @@ export function FindingDetail() {
         findingId: finding.id,
         analysisState: selectedState,
         reason: selectedOption?.requiresReason ? reason : undefined,
-        analysisExpiresAt: selectedOption?.requiresExpiry ? expiresAt || undefined : undefined,
+        analysisExpiresAt: selectedOption?.requiresExpiry
+          ? toExpiryTimestamp(expiresAt)
+          : undefined,
       });
       setSelectedState("");
       setReason("");
       setExpiresAt("");
     } catch {}
   }
+
+  const triageReady = selectedState !== "" && (!selectedOption?.requiresExpiry || expiresAt !== "");
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -122,11 +154,11 @@ export function FindingDetail() {
         </div>
         <div>
           <span className="text-muted-foreground">First Seen</span>
-          <p className="font-medium">{new Date(finding.first_seen_at).toLocaleString()}</p>
+          <p className="font-medium">{formatTimestamp(finding.first_seen_at)}</p>
         </div>
         <div>
           <span className="text-muted-foreground">Last Seen</span>
-          <p className="font-medium">{new Date(finding.last_seen_at).toLocaleString()}</p>
+          <p className="font-medium">{formatTimestamp(finding.last_seen_at)}</p>
         </div>
       </div>
 
@@ -158,7 +190,7 @@ export function FindingDetail() {
                   : "–"}
               </p>
             </div>
-            {finding.context.source_link && (
+            {parseSourceLink(finding.context.source_link) && (
               <div className="col-span-2">
                 <span className="text-muted-foreground">Source</span>
                 <p className="font-medium">
@@ -168,7 +200,8 @@ export function FindingDetail() {
                     rel="noreferrer"
                     className="text-primary hover:text-primary/80 text-sm underline underline-offset-4"
                   >
-                    View source at commit
+                    {parseSourceLink(finding.context.source_link)!.hostname}
+                    {parseSourceLink(finding.context.source_link)!.pathname}
                   </a>
                 </p>
               </div>
@@ -214,7 +247,7 @@ export function FindingDetail() {
           )}
           <button
             onClick={handleTriage}
-            disabled={!selectedState || triageMutation.isPending}
+            disabled={!triageReady || triageMutation.isPending}
             className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-1.5 text-sm font-medium disabled:opacity-50"
           >
             {triageMutation.isPending ? "Saving..." : "Apply"}
@@ -248,7 +281,7 @@ export function FindingDetail() {
                 {latestReachability.state.replaceAll("_", " ")}
               </span>
               {latestReachability.evidence ? ` — ${latestReachability.evidence}` : ""}{" "}
-              ({new Date(latestReachability.updated_at).toLocaleString()})
+              ({formatTimestamp(latestReachability.updated_at)})
             </p>
           )
           : reachabilityLoaded

@@ -89,6 +89,7 @@ export function useTriageFinding() {
         }),
       }),
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["reachability"] });
       queryClient.invalidateQueries({ queryKey: ["findings"] });
       queryClient.invalidateQueries({ queryKey: ["finding"] });
       queryClient.invalidateQueries({ queryKey: ["gate"] });
