@@ -78,10 +78,12 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 
 	total, err := u.ingestReportFindings(ctx, project, input, report, nr)
 	if err != nil {
+		u.markReportFailed(ctx, input, report, err)
 		return nil, err
 	}
 
 	if err := u.persistInventory(ctx, input, report, nr); err != nil {
+		u.markReportFailed(ctx, input, report, err)
 		return nil, err
 	}
 
@@ -466,6 +468,26 @@ func (u *Usecases) applyMaterialChange(ctx context.Context, project port.Project
 		return fmt.Errorf("scanner %s: log material change event: %w", input.Scanner, err)
 	}
 	return nil
+}
+
+// markReportFailed transitions a report created with status 'processing' to
+// 'failed' when a downstream ingest stage (finding persistence or inventory)
+// errors out. Without this the report row would stay stuck in 'processing'
+// forever — the unique dedup index only admits 'completed' reports, so a
+// terminal 'failed' row still lets a retry re-ingest the same raw content.
+// The status write is best-effort: the original ingest error is what the
+// caller returns.
+func (u *Usecases) markReportFailed(ctx context.Context, input IngestReportInput, report port.Report, cause error) {
+	if cause == nil {
+		return
+	}
+	msg := cause.Error()
+	_, err := u.deps.Stores.Reports.UpdateStatus(ctx, report.ID, report.ProjectID, "failed", 0, &msg)
+	if err != nil {
+		slog.Error("mark report failed errored", "scanner", input.Scanner, "report_id", report.ID, "error", err)
+		return
+	}
+	slog.Error("ingest failed; report marked failed", "scanner", input.Scanner, "report_id", report.ID, "error", cause)
 }
 
 // persistInventory writes the report's package references when any exist.

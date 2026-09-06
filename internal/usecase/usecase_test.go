@@ -1150,9 +1150,11 @@ func TestIngestReport_InventoryWriteFailure(t *testing.T) {
 		return nil
 	}
 
-	updateStatusCalled := false
+	var failedStatus string
+	var failedError *string
 	rr.updateStatusFn = func(ctx context.Context, id, projectID string, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
-		updateStatusCalled = true
+		failedStatus = status
+		failedError = errorMsg
 		r := makeReport()
 		r.Status = status
 		return r, nil
@@ -1201,7 +1203,84 @@ func TestIngestReport_InventoryWriteFailure(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "persist package inventory")
-	assert.False(t, updateStatusCalled, "a failed inventory batch must fail the ingest before status update")
+	assert.Equal(t, "failed", failedStatus, "a failed inventory batch must mark the report failed, not leave it processing")
+	require.NotNil(t, failedError, "a failed report must record why it failed")
+	assert.Contains(t, *failedError, "persist package inventory")
+}
+
+func TestIngestReport_FindingsFailureMarksReportFailed(t *testing.T) {
+	pr, rr, fr := makeTestRepos()
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
+		r := makeReport()
+		r.Status = "processing"
+		return r, nil
+	}
+
+	var updateCalls []string
+	rr.updateStatusFn = func(ctx context.Context, id, projectID string, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
+		updateCalls = append(updateCalls, status)
+		r := makeReport()
+		r.Status = status
+		return r, nil
+	}
+
+	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
+	}
+	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+		// Second finding fails to persist: the report row was already
+		// created with status 'processing'.
+		return port.Finding{}, fmt.Errorf("db unavailable")
+	}
+	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
+		return port.Occurrence{}, nil
+	}
+	fr.upsertDimensionFn = func(ctx context.Context, arg port.DimensionInput) error {
+		return nil
+	}
+
+	reg := scanner.NewRegistry()
+	require.NoError(t, reg.Register(&mockScanner{
+		name: "trivy",
+		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
+			return &domain.NormalizedReport{
+				ScanType: domain.ScanTypeImage,
+				Target:   &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings: []domain.NormalizedFinding{
+					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2026-0001", Severity: domain.SeverityHigh, Score: 7.5},
+					{Fingerprint: "fp2", FindingKind: "sca", Title: "CVE-2026-0002", Severity: domain.SeverityMedium, Score: 5.0},
+				},
+				ScanScope: &domain.ScanScope{},
+			}, nil
+		},
+	}))
+
+	uc := New(Deps{
+		Stores: &port.Stores{
+			Projects:     pr,
+			Reports:      rr,
+			Findings:     fr,
+			Targets:      stubTargetRepo(),
+			Artifacts:    stubArtifactRepo(),
+			Environments: &mockEnvironmentRepo{},
+		},
+		Registry: reg,
+	})
+
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app",
+		Scanner:     "trivy",
+		RawData:     json.RawMessage(`{"test": true}`),
+	})
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "upsert finding")
+	assert.Equal(t, []string{"failed"}, updateCalls,
+		"a findings-persistence failure must mark the report failed exactly once, never completed")
 }
 
 func testJWT(t *testing.T) *auth.JWTAuthenticator {
