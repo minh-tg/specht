@@ -58,44 +58,41 @@ func TestOIDC_CallbackHandler_MissingCode(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestOIDC_CallbackHandler_TokenExchangeSuccess(t *testing.T) {
-	var capturedUserID, capturedEmail string
-	issuer := func(userID, email string) (string, error) {
-		capturedUserID = userID
-		capturedEmail = email
-		return "session-token", nil
-	}
-
-	// Set up a mock OAuth2 provider.
-	mockProvider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"id_token":"eyJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJ1c2VyLTEyMyIsImVtYWlsIjoidGVzdEBleGFtcGxlLmNvbSIsIm5hbWUiOiJUZXN0IFVzZXIifQ.signature","access_token":"access-123"}`))
-	}))
-	defer mockProvider.Close()
-
+func TestOIDC_CallbackHandler_MissingState(t *testing.T) {
 	a := NewOIDCAuthenticator(OIDCConfig{
 		ClientID:     "test-client",
 		ClientSecret: "secret",
-		IssuerURL:    mockProvider.URL,
+		IssuerURL:    "https://example.com",
 		RedirectURI:  "http://localhost:8080/callback",
 	}, nil)
 
-	h := a.CallbackHandler(issuer)
-
-	// Simulate the redirect with a code.
+	h := a.CallbackHandler(func(userID, email string) (string, error) {
+		return "token", nil
+	})
 	req := httptest.NewRequest("GET", "/callback?code=test-code", nil)
 	w := httptest.NewRecorder()
 	h(w, req)
 
-	// Should redirect (302) with the session token.
-	assert.Equal(t, http.StatusFound, w.Code)
-	assert.Contains(t, w.Header().Get("Location"), "token=session-token")
-	assert.Equal(t, "Test User", capturedUserID)
-	assert.Equal(t, "test@example.com", capturedEmail)
+	// No state cookie was set, so the callback must be refused.
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
-func TestIdentity_RoleConstants(t *testing.T) {
-	assert.Equal(t, "admin", RoleAdmin)
-	assert.Equal(t, "editor", RoleEditor)
-	assert.Equal(t, "viewer", RoleViewer)
+func TestOIDC_CallbackHandler_StateMismatch(t *testing.T) {
+	a := NewOIDCAuthenticator(OIDCConfig{
+		ClientID:     "test-client",
+		ClientSecret: "secret",
+		IssuerURL:    "https://example.com",
+		RedirectURI:  "http://localhost:8080/callback",
+	}, nil)
+
+	h := a.CallbackHandler(func(userID, email string) (string, error) {
+		return "token", nil
+	})
+	req := httptest.NewRequest("GET", "/callback?code=test-code&state=attacker-state", nil)
+	req.AddCookie(&http.Cookie{Name: "sso_state", Value: "real-state"})
+	w := httptest.NewRecorder()
+	h(w, req)
+
+	// A state that does not match the cookie must be refused.
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

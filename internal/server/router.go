@@ -137,15 +137,26 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // ssoLoginHandler redirects unauthenticated users to the OIDC provider's
-// authorization endpoint. The state parameter is a CSRF token.
+// authorization endpoint. The state parameter is a CSRF token: it is bound to
+// an httpOnly cookie so the callback can verify the redirect really came from
+// a login flow this server started.
 func ssoLoginHandler(oidc *auth.OIDCAuthenticator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		state := stateToken()
+		state, err := auth.GenerateStateToken()
+		if err != nil {
+			http.Error(w, "failed to generate state", http.StatusInternalServerError)
+			return
+		}
+		secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+		http.SetCookie(w, &http.Cookie{
+			Name:     "sso_state",
+			Value:    state,
+			Path:     "/",
+			MaxAge:   600, // 10 minutes, matching a typical auth-code flow
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   secure,
+		})
 		http.Redirect(w, r, oidc.LoginURL(state), http.StatusFound)
 	}
-}
-
-// stateToken generates a random string for OAuth2 CSRF protection.
-func stateToken() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
