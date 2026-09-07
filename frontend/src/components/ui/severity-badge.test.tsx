@@ -16,4 +16,16 @@ describe("SeverityBadge", () => {
     render(<SeverityBadge severity="unknown" />);
     expect(screen.getByText("unknown")).toBeInTheDocument();
   });
+
+  it("renders a controlled label for out-of-vocabulary severities", () => {
+    // An unvalidated server value must never be rendered verbatim.
+    render(<SeverityBadge severity="explosive" />);
+    expect(screen.queryByText("explosive")).not.toBeInTheDocument();
+    expect(screen.getByText("Unknown")).toBeInTheDocument();
+  });
+
+  it("renders a controlled label for blank severities", () => {
+    render(<SeverityBadge severity="" />);
+    expect(screen.getByText("Unknown")).toBeInTheDocument();
+  });
 });

@@ -1,3 +1,11 @@
+import type {
+  AnalysisState,
+  GateEffect,
+  ReachabilityState,
+  Severity,
+  TechnicalState,
+} from "@/lib/enums";
+
 export interface ScannerDescriptor {
   name: string;
   version: string;
@@ -22,12 +30,12 @@ export interface Finding {
   finding_kind: string;
   fingerprint: string;
   current_title: string;
-  current_severity: string;
+  current_severity: Severity;
   current_score: number | null;
-  state: string;
+  state: TechnicalState;
   triage_status: string;
-  analysis_state: string;
-  gate_effect: string;
+  analysis_state: AnalysisState;
+  gate_effect: GateEffect;
   first_seen_at: string;
   last_seen_at: string;
   created_at: string;
@@ -83,14 +91,14 @@ export interface GateStatus {
   threshold_breached: boolean;
   blocking_count: number;
   blocked_by?: string[];
-  blocked_by_reachability?: Record<string, string>;
+  blocked_by_reachability?: Record<string, ReachabilityState>;
   waived_count?: number;
 }
 
 export interface ReachabilityAssessment {
   id: string;
   finding_id: string;
-  state: string;
+  state: ReachabilityState;
   evidence: string;
   assessed_by: string;
   created_at: string;
@@ -106,8 +114,8 @@ export interface RegisterResponse {
 
 export interface TriageResponse {
   finding_id: string;
-  analysis_state: string;
-  gate_effect: string;
+  analysis_state: AnalysisState;
+  gate_effect: GateEffect;
 }
 
 export interface LoginResponse {

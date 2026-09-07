@@ -1,5 +1,6 @@
 import { useFindings } from "@/api/hooks";
 import { SeverityBadge } from "@/components/ui/severity-badge";
+import { analysisStateLabel, technicalStateLabel } from "@/lib/enums";
 import type { Finding } from "@/types/api";
 import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -205,12 +206,12 @@ export function FindingsDashboard() {
                   </span>
                 </td>
                 <td className="px-3 py-2">{f.current_title}</td>
-                <td className="px-3 py-2 capitalize">{f.state}</td>
+                <td className="px-3 py-2 capitalize">{technicalStateLabel(f.state) ?? "–"}</td>
                 <td className="px-3 py-2 text-xs">
-                  {f.analysis_state
+                  {analysisStateLabel(f.analysis_state)
                     ? (
                       <span className="bg-muted rounded px-1.5 py-0.5 capitalize">
-                        {f.analysis_state}
+                        {analysisStateLabel(f.analysis_state)}
                       </span>
                     )
                     : <span className="text-muted-foreground">–</span>}
