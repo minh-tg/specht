@@ -269,18 +269,6 @@ func idTokenSubject(idToken string) (string, error) {
 	return sub, nil
 }
 
-// secureCookie marks a cookie Secure when the request arrived over TLS, either
-// directly or through a TLS-terminating proxy (matching realIPMiddleware's
-// X-Forwarded-* trust).
-func secureCookie(r *http.Request, c *http.Cookie) *http.Cookie {
-	secure := r.TLS != nil
-	if !secure && strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
-		secure = true
-	}
-	c.Secure = secure
-	return c
-}
-
 // CallbackHandler returns an http.HandlerFunc that the OAuth2 provider redirects to
 // after the user consents. It exchanges the code, extracts identity, and redirects
 // back with a session token delivered as a URL fragment.

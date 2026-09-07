@@ -203,7 +203,10 @@ func ssoLoginHandler(oidc *auth.OIDCAuthenticator) http.HandlerFunc {
 			http.Error(w, "failed to generate state", http.StatusInternalServerError)
 			return
 		}
-		secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+		// realIPMiddleware (registered before the routes) has already decided
+		// whether this connection is secure, consulting the configured trusted
+		// proxies. SecureTransport honors that verdict and never trusts a
+		// client-supplied X-Forwarded-Proto on its own.
 		http.SetCookie(w, &http.Cookie{
 			Name:     "sso_state",
 			Value:    state,
@@ -211,7 +214,7 @@ func ssoLoginHandler(oidc *auth.OIDCAuthenticator) http.HandlerFunc {
 			MaxAge:   600, // 10 minutes, matching a typical auth-code flow
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
-			Secure:   secure,
+			Secure:   auth.SecureTransport(r),
 		})
 		http.Redirect(w, r, oidc.LoginURL(state), http.StatusFound)
 	}

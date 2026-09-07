@@ -90,9 +90,10 @@ func main() {
 	}
 
 	handler := server.NewRouter(server.RouterConfig{
-		Usecases:    uc,
-		CORSOrigins: cfg.CORSOrigins,
-		JWTAuth:     jwtAuth,
+		Usecases:       uc,
+		CORSOrigins:    cfg.CORSOrigins,
+		TrustedProxies: cfg.TrustedProxies,
+		JWTAuth:        jwtAuth,
 		APIKeyLookup: func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
 			key, err := repos.APIKeys.GetByHash(ctx, keyHash)
 			if err != nil {
