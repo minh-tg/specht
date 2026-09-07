@@ -44,7 +44,7 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		slog.Error("create waiver", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not create waiver")
 		return
 	}
 	respondJSON(w, http.StatusCreated, result)
@@ -59,7 +59,7 @@ func (h *Handler) ListWaivers(w http.ResponseWriter, r *http.Request) {
 	waivers, err := h.usecase.ListWaivers(r.Context(), slug)
 	if err != nil {
 		slog.Error("list waivers", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not list waivers")
 		return
 	}
 	respondJSON(w, http.StatusOK, waivers)
@@ -78,7 +78,7 @@ func (h *Handler) GetWaiver(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
 		} else {
 			slog.Error("get waiver", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			respondError(w, http.StatusInternalServerError, "internal_error", "could not get waiver")
 		}
 		return
 	}
@@ -115,7 +115,7 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		slog.Error("update waiver", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not update waiver")
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
@@ -133,7 +133,7 @@ func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
 		} else {
 			slog.Error("delete waiver", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			respondError(w, http.StatusInternalServerError, "internal_error", "could not delete waiver")
 		}
 		return
 	}
@@ -153,7 +153,7 @@ func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
 		} else {
 			slog.Error("toggle waiver", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			respondError(w, http.StatusInternalServerError, "internal_error", "could not toggle waiver")
 		}
 		return
 	}
@@ -174,7 +174,7 @@ func (h *Handler) ListWaiverEvents(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
 		} else {
 			slog.Error("list waiver events", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			respondError(w, http.StatusInternalServerError, "internal_error", "could not list waiver events")
 		}
 		return
 	}
@@ -200,7 +200,7 @@ func (h *Handler) CheckWaiverMatch(w http.ResponseWriter, r *http.Request) {
 	matched, err := h.usecase.CheckWaiverMatch(r.Context(), slug, req.FindingID)
 	if err != nil {
 		slog.Error("check waiver match", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not check waiver match")
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]bool{"matched": matched})

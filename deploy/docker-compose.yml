@@ -23,7 +23,8 @@ services:
     ports:
       - "${SERVER_PORT:-8080}:8080"
     environment:
-      DATABASE_URL: postgres://specht:${POSTGRES_PASSWORD:-specht}@db:5432/specht?sslmode=disable
+      DATABASE_URL: >-
+        postgres://specht:${POSTGRES_PASSWORD:-specht}@db:5432/specht?sslmode=${POSTGRES_SSLMODE:-disable}
       JWT_SECRET: ${JWT_SECRET}
       SERVER_ADDR: :8080
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -33,7 +34,8 @@ services:
       WATCHER_ENABLE: ${WATCHER_ENABLE:-false}
       INVENTORY_TTL: ${INVENTORY_TTL:-2160h}
       WATCHER_POLL_INTERVAL: ${WATCHER_POLL_INTERVAL:-6h}
-      WATCHER_OSV_ENDPOINT: ${WATCHER_OSV_ENDPOINT:-https://api.osv.dev/v1/querybatch}
+      WATCHER_OSV_ENDPOINT: >-
+        ${WATCHER_OSV_ENDPOINT:-https://api.osv.dev/v1/querybatch}
       WATCHER_BATCH_SIZE: ${WATCHER_BATCH_SIZE:-100}
       WATCHER_COLD_START_WINDOW: ${WATCHER_COLD_START_WINDOW:-full}
       WATCHER_SLACK_URL: ${WATCHER_SLACK_URL:-}

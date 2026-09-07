@@ -183,3 +183,33 @@ func TestBulkTriage_MaxFindingIDsAccepted(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Len(t, got.FindingIDs, 1000)
 }
+
+// M1: AddProjectMember must enforce the standard JSON body cap as well.
+func TestAddProjectMember_BodyTooLarge(t *testing.T) {
+	var called bool
+	mock := &mockUsecases{
+		addProjectMemberFn: func(ctx context.Context, projectSlug, userID, role string) (*usecase.ProjectMemberResponse, error) {
+			called = true
+			return &usecase.ProjectMemberResponse{ProjectID: "p1", UserID: userID, Role: role}, nil
+		},
+		listProjectMembersFn: func(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error) {
+			return nil, nil
+		},
+		isProjectMemberFn: func(ctx context.Context, projectID, userID string) (bool, error) {
+			return true, nil
+		},
+		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			return &usecase.ProjectResponse{ID: "p1", Slug: slug}, nil
+		},
+	}
+	router := testRouter(mock)
+	body := `{"user_id":"` + strings.Repeat("a", 2<<20) + `","role":"viewer"}`
+	req := authRequest("POST", "/api/v1/projects/my-app/members", body)
+	req = addChiURLParam(req, "slug", "my-app")
+	w := httptest.NewRecorder()
+
+	router.ServeHTTP(w, req)
+
+	requireAPIError(t, w, http.StatusRequestEntityTooLarge, "body_too_large")
+	assert.False(t, called, "add project member use case must not run for an oversized body")
+}

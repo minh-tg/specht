@@ -620,6 +620,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
 	r.Get("/api/v1/projects/{slug}/stats", h.GetProjectStats)
 	r.Get("/api/v1/projects/{slug}/aging", h.GetAging)
+	r.Post("/api/v1/projects/{slug}/members", h.AddProjectMember)
 	return r
 }
 

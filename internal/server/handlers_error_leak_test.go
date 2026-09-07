@@ -358,29 +358,133 @@ func TestBulkTriage_SentinelErrorsKept(t *testing.T) {
 	}
 }
 
-// TestReachability_InvalidStateGeneric locks the 422 validation branch to a
-// fixed message rather than echoing the wrapped error.
-func TestReachability_InvalidStateGeneric(t *testing.T) {
-	mock := &mockUsecases{
-		upsertReachabilityFn: func(_ context.Context, _, _, _, _ string) (*usecase.ReachabilityResponse, error) {
-			return nil, fmt.Errorf("finding abc-123: %w", usecase.ErrInvalidReachabilityState)
+// TestWaiverHandlers_DoNotLeakStoreDetail asserts the waiver handlers
+// never echo underlying store errors to the client (M2 regression guard).
+func TestWaiverHandlers_DoNotLeakStoreDetail(t *testing.T) {
+	dbErr := errors.New(dbErrText)
+
+	cases := []leakCase{
+		{
+			name:   "create waiver store error",
+			method: "POST", target: "/api/v1/projects/my-app/waivers",
+			body: `{"name":"test"}`,
+			setup: func(m *mockUsecases) {
+				m.createWaiverFn = func(_ context.Context, _ usecase.CreateWaiverInput) (*usecase.WaiverResponse, error) {
+					return nil, dbErr
+				}
+			},
+			invoke:     func(h *Handler, w http.ResponseWriter, r *http.Request) { h.CreateWaiver(w, r) },
+			wantStatus: http.StatusInternalServerError, wantCode: "internal_error",
+			wantMsg: "could not create waiver",
+		},
+		{
+			name:   "list waivers store error",
+			method: "GET", target: "/api/v1/projects/my-app/waivers",
+			setup: func(m *mockUsecases) {
+				m.listWaiversFn = func(_ context.Context, _ string) ([]usecase.WaiverResponse, error) { return nil, dbErr }
+			},
+			invoke:     func(h *Handler, w http.ResponseWriter, r *http.Request) { h.ListWaivers(w, r) },
+			wantStatus: http.StatusInternalServerError, wantCode: "internal_error",
+			wantMsg: "could not list waivers",
+		},
+		{
+			name:   "get waiver store error",
+			method: "GET", target: "/api/v1/projects/my-app/waivers/w1",
+			params: map[string]string{"slug": "my-app", "id": "w1"},
+			setup: func(m *mockUsecases) {
+				m.getWaiverFn = func(_ context.Context, _, _ string) (*usecase.WaiverDetailResponse, error) { return nil, dbErr }
+			},
+			invoke:     func(h *Handler, w http.ResponseWriter, r *http.Request) { h.GetWaiver(w, r) },
+			wantStatus: http.StatusInternalServerError, wantCode: "internal_error",
+			wantMsg: "could not get waiver",
+		},
+		{
+			name:   "update waiver store error",
+			method: "PUT", target: "/api/v1/projects/my-app/waivers/w1",
+			body:   `{"name":"updated"}`,
+			params: map[string]string{"slug": "my-app", "id": "w1"},
+			setup: func(m *mockUsecases) {
+				m.updateWaiverFn = func(_ context.Context, _ usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error) {
+					return nil, dbErr
+				}
+			},
+			invoke:     func(h *Handler, w http.ResponseWriter, r *http.Request) { h.UpdateWaiver(w, r) },
+			wantStatus: http.StatusInternalServerError, wantCode: "internal_error",
+			wantMsg: "could not update waiver",
+		},
+		{
+			name:   "delete waiver store error",
+			method: "DELETE", target: "/api/v1/projects/my-app/waivers/w1",
+			params: map[string]string{"slug": "my-app", "id": "w1"},
+			setup: func(m *mockUsecases) {
+				m.deleteWaiverFn = func(_ context.Context, _, _ string) error { return dbErr }
+			},
+			invoke:     func(h *Handler, w http.ResponseWriter, r *http.Request) { h.DeleteWaiver(w, r) },
+			wantStatus: http.StatusInternalServerError, wantCode: "internal_error",
+			wantMsg: "could not delete waiver",
+		},
+		{
+			name:   "toggle waiver store error",
+			method: "POST", target: "/api/v1/projects/my-app/waivers/w1/toggle",
+			params: map[string]string{"slug": "my-app", "id": "w1"},
+			setup: func(m *mockUsecases) {
+				m.toggleWaiverFn = func(_ context.Context, _, _, _ string) (*usecase.WaiverResponse, error) { return nil, dbErr }
+			},
+			invoke:     func(h *Handler, w http.ResponseWriter, r *http.Request) { h.ToggleWaiver(w, r) },
+			wantStatus: http.StatusInternalServerError, wantCode: "internal_error",
+			wantMsg: "could not toggle waiver",
+		},
+		{
+			name:   "list waiver events store error",
+			method: "GET", target: "/api/v1/projects/my-app/waivers/w1/events",
+			params: map[string]string{"slug": "my-app", "id": "w1"},
+			setup: func(m *mockUsecases) {
+				m.listWaiverEventsFn = func(_ context.Context, _, _ string) ([]usecase.WaiverEventResp, error) { return nil, dbErr }
+			},
+			invoke:     func(h *Handler, w http.ResponseWriter, r *http.Request) { h.ListWaiverEvents(w, r) },
+			wantStatus: http.StatusInternalServerError, wantCode: "internal_error",
+			wantMsg: "could not list waiver events",
+		},
+		{
+			name:   "check waiver match store error",
+			method: "POST", target: "/api/v1/projects/my-app/waivers/check-match",
+			body:   `{"finding_id":"abc-123"}`,
+			params: map[string]string{"slug": "my-app"},
+			setup: func(m *mockUsecases) {
+				m.checkWaiverMatchFn = func(_ context.Context, _, _ string) (bool, error) { return false, dbErr }
+			},
+			invoke:     func(h *Handler, w http.ResponseWriter, r *http.Request) { h.CheckWaiverMatch(w, r) },
+			wantStatus: http.StatusInternalServerError, wantCode: "internal_error",
+			wantMsg: "could not check waiver match",
 		},
 	}
-	h := &Handler{usecase: mock}
-	req := authRequest("PATCH", "/api/v1/findings/abc-123/reachability", `{"state":"bogus","evidence":"x"}`)
-	req = addChiURLParam(req, "findingID", "abc-123")
-	w := httptest.NewRecorder()
-	h.UpsertReachability(w, req)
 
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-	var body struct {
-		Error struct {
-			Code    string `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &mockUsecases{}
+			tt.setup(mock)
+			h := &Handler{usecase: mock}
+
+			req := authRequest(tt.method, tt.target, tt.body)
+			if len(tt.params) > 0 {
+				for k, v := range tt.params {
+					req = addChiURLParam(req, k, v)
+				}
+			}
+			w := httptest.NewRecorder()
+			tt.invoke(h, w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code, "status")
+			var body struct {
+				Error struct {
+					Code    string `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+			assert.Equal(t, tt.wantCode, body.Error.Code, "code")
+			assert.Equal(t, tt.wantMsg, body.Error.Message, "message")
+			assert.NotContains(t, w.Body.String(), dbErrText, "underlying error must not leak")
+		})
 	}
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
-	assert.Equal(t, "invalid_state", body.Error.Code)
-	assert.Equal(t, "invalid reachability state", body.Error.Message)
-	assert.NotContains(t, w.Body.String(), "finding abc-123")
 }

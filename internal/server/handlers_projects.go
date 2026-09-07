@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"log/slog"
@@ -123,8 +122,7 @@ func (h *Handler) AddProjectMember(w http.ResponseWriter, r *http.Request) {
 		UserID string `json:"user_id"`
 		Role   string `json:"role"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
 		return
 	}
 	if req.UserID == "" || req.Role == "" {

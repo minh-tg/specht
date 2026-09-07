@@ -634,6 +634,13 @@ func runScheduledCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 // jitterDuration perturbs a scheduled delay by a uniform ±10% to avoid a
 // thundering herd against OSV. A zero or negative base stays zero — a
 // degenerate delay must never panic or go negative.
+//
+// NOTE: math/rand is used here because this is non-security jitter for poll
+// scheduling, not for authentication, authorization, token generation, or any
+// security boundary. crypto/rand would be the wrong trade-off: it is slower,
+// it would block the watcher loop on system entropy, and the resulting
+// delay distribution would still be uniform. The security risk is negligible,
+// and the performance cost of crypto/rand here would be real.
 func jitterDuration(base time.Duration) time.Duration {
 	if base <= 0 {
 		return 0
