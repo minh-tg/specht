@@ -77,6 +77,17 @@ func main() {
 		Tracker:      buildTrackerDispatcher(),
 	})
 
+	// SSO is optional: when disabled there is no issuer to validate, and the
+	// router treats a nil OIDC authenticator as "SSO off".
+	var oidcAuth *auth.OIDCAuthenticator
+	if cfg.SSO.Enabled {
+		oidcAuth, err = auth.NewOIDCAuthenticator(auth.OIDCConfig{ClientID: cfg.SSO.ClientID, ClientSecret: cfg.SSO.ClientSecret, IssuerURL: cfg.SSO.IssuerURL, RedirectURI: cfg.SSO.RedirectURI}, nil)
+		if err != nil {
+			slog.Error("auth setup", "error", err)
+			os.Exit(1)
+		}
+	}
+
 	handler := server.NewRouter(server.RouterConfig{
 		Usecases:    uc,
 		CORSOrigins: cfg.CORSOrigins,
@@ -96,7 +107,7 @@ func main() {
 			return actorID, uuid.UUID(key.ProjectID.Bytes).String(), nil
 		},
 		OIDCEnabled: cfg.SSO.Enabled,
-		OIDC:        auth.NewOIDCAuthenticator(auth.OIDCConfig{ClientID: cfg.SSO.ClientID, ClientSecret: cfg.SSO.ClientSecret, IssuerURL: cfg.SSO.IssuerURL, RedirectURI: cfg.SSO.RedirectURI}, nil),
+		OIDC:        oidcAuth,
 	})
 
 	srv := &http.Server{

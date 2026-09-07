@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/auth"
 )
 
@@ -31,12 +32,13 @@ func TestNewRouter_SSOWithNonJWTAuth_NoPanic(t *testing.T) {
 	}))
 	defer provider.Close()
 
-	oidc := auth.NewOIDCAuthenticator(auth.OIDCConfig{
+	oidc, err := auth.NewOIDCAuthenticator(auth.OIDCConfig{
 		ClientID:     "test-client",
 		ClientSecret: "secret",
 		IssuerURL:    provider.URL,
 		RedirectURI:  "http://localhost:8080/api/v1/auth/sso/callback",
 	}, nil)
+	require.NoError(t, err)
 
 	apiKeyAuth := auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, error) {
 		return "", "", nil
