@@ -7,8 +7,10 @@ package config
 
 import (
 	"fmt"
+	"net/netip"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -34,6 +36,12 @@ type Server struct {
 	LogLevel     string
 	InventoryTTL time.Duration
 	SSO          SSOConfig
+	// TrustedProxies lists the CIDR ranges of reverse proxies (or load
+	// balancers) in front of the server. Only requests whose RemoteAddr falls
+	// inside one of these ranges may supply X-Forwarded-For / X-Real-IP /
+	// X-Forwarded-Proto; empty (the default) means the server never trusts
+	// forwarding headers, e.g. when it is deployed directly on the internet.
+	TrustedProxies []netip.Prefix
 	// Watcher settings. Enable is the master switch; the remaining fields are
 	// only validated when Enable is true (a malformed optional setting must
 	// not crash a server with the watcher disabled).
@@ -84,6 +92,20 @@ func Load() (*Server, error) {
 		ClientSecret: os.Getenv("SSO_CLIENT_SECRET"),
 		IssuerURL:    os.Getenv("SSO_ISSUER_URL"),
 		RedirectURI:  os.Getenv("SSO_REDIRECT_URI"),
+	}
+
+	// Reverse-proxy trust: comma/space-separated CIDRs. A proxy inside one of
+	// these ranges may set X-Forwarded-* headers; any other peer is treated as
+	// the direct client. A malformed CIDR fails startup rather than silently
+	// weakening (or unexpectedly strengthening) header trust.
+	if v := os.Getenv("TRUSTED_PROXIES"); v != "" {
+		for _, part := range strings.FieldsFunc(v, func(c rune) bool { return c == ',' || c == ' ' }) {
+			p, err := netip.ParsePrefix(part)
+			if err != nil {
+				return nil, fmt.Errorf("TRUSTED_PROXIES contains invalid CIDR %q: %w", part, err)
+			}
+			s.TrustedProxies = append(s.TrustedProxies, p.Masked())
+		}
 	}
 
 	if v := os.Getenv("INVENTORY_TTL"); v != "" {

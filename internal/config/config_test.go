@@ -1,10 +1,12 @@
 package config
 
 import (
+	"net/netip"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDefaults(t *testing.T) {
@@ -13,6 +15,7 @@ func TestDefaults(t *testing.T) {
 	t.Setenv("SERVER_ADDR", "")
 	t.Setenv("DB_MIGRATE", "")
 	t.Setenv("WATCHER_POLL_INTERVAL", "")
+	t.Setenv("TRUSTED_PROXIES", "")
 
 	cfg, err := Load()
 	assert.NoError(t, err)
@@ -22,6 +25,27 @@ func TestDefaults(t *testing.T) {
 	assert.False(t, cfg.Watcher.Enable)
 	assert.Equal(t, DefaultWatcherPoll, cfg.Watcher.PollInterval)
 	assert.Equal(t, DefaultOSVEndpoint, cfg.Watcher.OSVEndpoint)
+	assert.Empty(t, cfg.TrustedProxies, "forwarded headers are never trusted by default")
+}
+
+func TestLoad_TrustedProxies(t *testing.T) {
+	t.Setenv("WATCHER_ENABLE", "")
+	t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8, 192.168.1.0/24")
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	require.Len(t, cfg.TrustedProxies, 2)
+	assert.Equal(t, netip.MustParsePrefix("10.0.0.0/8"), cfg.TrustedProxies[0])
+	assert.Equal(t, netip.MustParsePrefix("192.168.1.0/24"), cfg.TrustedProxies[1])
+}
+
+func TestLoad_InvalidTrustedProxiesFails(t *testing.T) {
+	t.Setenv("WATCHER_ENABLE", "")
+	t.Setenv("TRUSTED_PROXIES", "10.0.0.0/8,not-a-cidr")
+
+	_, err := Load()
+	assert.ErrorContains(t, err, "TRUSTED_PROXIES")
+	assert.ErrorContains(t, err, "not-a-cidr")
 }
 
 func TestLoad_MalformedWatcherSettingIgnoredWhenDisabled(t *testing.T) {

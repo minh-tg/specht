@@ -7,7 +7,9 @@ package server
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -26,6 +28,12 @@ type RouterConfig struct {
 	APIKeyLookup func(ctx context.Context, keyHash string) (userID, projectID string, scopes []string, expiresAt time.Time, err error)
 	OIDC         *auth.OIDCAuthenticator
 	OIDCEnabled  bool
+	// TrustedProxies lists the CIDR ranges of reverse proxies / load
+	// balancers in front of the API. Only requests whose peer address falls
+	// inside one of these ranges may supply X-Forwarded-For, X-Real-IP, or
+	// X-Forwarded-Proto; empty (default) means no peer is trusted and those
+	// headers are ignored entirely.
+	TrustedProxies []netip.Prefix
 }
 
 // NewRouter builds the chi router with middleware and all API routes.
@@ -51,7 +59,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 
 	r.Use(middleware.RequestID)
-	r.Use(realIPMiddleware)
+	r.Use(realIPMiddleware(cfg.TrustedProxies))
 	r.Use(LoggerMiddleware)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
@@ -121,17 +129,61 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	return r
 }
 
-func realIPMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-			if ip := strings.Split(fwd, ",")[0]; ip != "" {
-				r.RemoteAddr = strings.TrimSpace(ip)
+// realIPMiddleware resolves the client IP behind trusted reverse proxies and
+// records whether the transport is secure (TLS terminated in-process or by a
+// trusted proxy). Forwarding headers are only consulted when the direct peer
+// — the request's RemoteAddr — falls inside one of the configured trusted
+// ranges; otherwise X-Forwarded-For, X-Real-IP, and X-Forwarded-Proto are
+// ignored, so an arbitrary internet client cannot spoof its address in logs
+// or force Secure cookies. With no trusted ranges configured (the default)
+// the headers are never trusted and RemoteAddr is left untouched.
+func realIPMiddleware(trusted []netip.Prefix) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			peerHost, _, err := net.SplitHostPort(r.RemoteAddr)
+			if err != nil {
+				// RemoteAddr without a port (tests, unusual transports): treat
+				// the whole value as the host.
+				peerHost = r.RemoteAddr
 			}
-		} else if rip := r.Header.Get("X-Real-IP"); rip != "" {
-			r.RemoteAddr = rip
+			peerIP := net.ParseIP(peerHost)
+			if peerIP != nil && isTrustedProxy(peerIP, trusted) {
+				secure := false
+				if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+					if ip := strings.TrimSpace(strings.Split(fwd, ",")[0]); ip != "" {
+						r.RemoteAddr = ip
+					}
+				} else if rip := r.Header.Get("X-Real-IP"); rip != "" {
+					r.RemoteAddr = rip
+				}
+				if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+					secure = true
+				}
+				r = r.WithContext(auth.ContextWithSecureTransport(r.Context(), secure))
+			} else {
+				// Direct client (or an untrusted peer): the transport is
+				// secure only when TLS terminated in-process. Stamping the
+				// verdict also blocks header sniffing by any later consumer.
+				r = r.WithContext(auth.ContextWithSecureTransport(r.Context(), r.TLS != nil))
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// isTrustedProxy reports whether ip falls inside any of the trusted ranges.
+func isTrustedProxy(ip net.IP, trusted []netip.Prefix) bool {
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		return false
+	}
+	addr = addr.Unmap()
+	for _, p := range trusted {
+		if p.Contains(addr) {
+			return true
 		}
-		next.ServeHTTP(w, r)
-	})
+	}
+	return false
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
