@@ -96,6 +96,7 @@ func (m *mockUsecases) IsProjectMember(ctx context.Context, projectID, userID st
 	}
 	return m.isProjectMemberFn(ctx, projectID, userID)
 }
+
 func (m *mockUsecases) ListProjects(ctx context.Context) ([]usecase.ProjectResponse, error) {
 	if m.listProjectsFn == nil {
 		return nil, fmt.Errorf("unexpected call to ListProjects")

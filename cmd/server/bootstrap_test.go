@@ -33,7 +33,7 @@ func (f *fakeUserStore) SetRole(ctx context.Context, userID, role string) (port.
 
 func TestBootstrapAdmins_PromotesKnownSkipsUnknown(t *testing.T) {
 	store := &fakeUserStore{users: map[string]port.User{
-		"ops@example.com": {ID: "u-ops", Email: "ops@example.com", Role: "member"},
+		"ops@example.com":   {ID: "u-ops", Email: "ops@example.com", Role: "member"},
 		"admin@example.com": {ID: "u-admin", Email: "admin@example.com", Role: "admin"},
 	}}
 	stores := &port.Stores{Users: store}
