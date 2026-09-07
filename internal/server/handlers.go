@@ -219,8 +219,51 @@ func respondError(w http.ResponseWriter, status int, code, message string) {
 	respondJSON(w, status, e)
 }
 
+// decodeJSONBody decodes a JSON request body whose size is capped at
+// maxBytes. Oversized requests — whether by declared Content-Length or by
+// exceeding the cap mid-read on a chunked body — are rejected with 413
+// body_too_large; malformed JSON keeps the caller's own code and message.
+// It reports false when the request must not be processed further.
+func decodeJSONBody(w http.ResponseWriter, r *http.Request, v any, maxBytes int64, invalidCode, invalidMsg string) bool {
+	if r.Body == nil {
+		respondError(w, http.StatusBadRequest, invalidCode, invalidMsg)
+		return false
+	}
+	if r.ContentLength > maxBytes {
+		respondError(w, http.StatusRequestEntityTooLarge, "body_too_large", "request body too large")
+		return false
+	}
+	if maxBytes > 0 {
+		r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+	}
+	err := json.NewDecoder(r.Body).Decode(v)
+	if err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			respondError(w, http.StatusRequestEntityTooLarge, "body_too_large", "request body too large")
+			return false
+		}
+		respondError(w, http.StatusBadRequest, invalidCode, invalidMsg)
+		return false
+	}
+	return true
+}
+
 // maxPageSize bounds a single paginated request; larger limits are clamped.
 const maxPageSize = 500
+
+// Request-body size limits (M1). Ingest carries raw scanner output, so it
+// gets a generous cap; every other JSON body carries small, server-derived
+// fields and is capped at 1 MiB. All caps are absolute ceilings: a declared
+// Content-Length above the cap is rejected up front, and bodies that arrive
+// without a length (chunked) are still cut off mid-read by MaxBytesReader.
+const (
+	maxIngestBodyBytes = 25 << 20 // 25 MiB
+	maxJSONBodyBytes   = 1 << 20  // 1 MiB
+	// maxBulkFindingIDs bounds the finding_ids fan-out of BulkTriage so one
+	// request cannot drive unbounded per-id lookup and update work.
+	maxBulkFindingIDs = 1000
+)
 
 func parseIntParam(r *http.Request, name string, defaultVal int32) int32 {
 	val := r.URL.Query().Get(name)

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"log/slog"
 	"net/http"
 
@@ -15,8 +14,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
 		return
 	}
 
@@ -40,8 +38,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		Email    string `json:"email"`
 		Password string `json:"password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
 		return
 	}
 
@@ -59,8 +56,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		RefreshToken string `json:"refresh_token"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
 		return
 	}
 
@@ -80,8 +76,8 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		RefreshToken string `json:"refresh_token"`
 	}
-	if r.Body != nil {
-		json.NewDecoder(r.Body).Decode(&req)
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+		return
 	}
 
 	if err := h.usecase.Logout(r.Context(), req.RefreshToken); err != nil {
@@ -113,8 +109,7 @@ func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		Project string `json:"project"`
 		Name    string `json:"name"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
 		return
 	}
 	if req.Project == "" || req.Name == "" {

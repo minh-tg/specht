@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -25,8 +24,7 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 		Reason            string     `json:"reason"`
 		AnalysisExpiresAt *time.Time `json:"analysis_expires_at,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
 		return
 	}
 	if req.AnalysisState == "" {
@@ -94,8 +92,7 @@ func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
 		Reason            string     `json:"reason"`
 		AnalysisExpiresAt *time.Time `json:"analysis_expires_at,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
 		return
 	}
 	if len(req.FindingIDs) == 0 {

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -22,8 +21,7 @@ func (h *Handler) CreateEvidence(w http.ResponseWriter, r *http.Request) {
 		URL         string `json:"url"`
 		Description string `json:"description"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
 		return
 	}
 	if req.Type == "" {
@@ -99,8 +97,7 @@ func (h *Handler) UpsertReachability(w http.ResponseWriter, r *http.Request) {
 		State    string `json:"state"`
 		Evidence string `json:"evidence"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
 		return
 	}
 
@@ -164,8 +161,7 @@ func (h *Handler) UpsertSignoff(w http.ResponseWriter, r *http.Request) {
 		Status  string `json:"status"`
 		Comment string `json:"comment"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
 		return
 	}
 	if req.Status != "approved" && req.Status != "rejected" && req.Status != "pending" {

@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -26,8 +25,7 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 		Contexts    []usecase.CreateWaiverContextInput   `json:"contexts,omitempty"`
 		TargetIDs   []string                             `json:"target_ids,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_body", "invalid request body")
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_body", "invalid request body") {
 		return
 	}
 	if req.Name == "" {
@@ -101,8 +99,7 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 		Contexts    []usecase.CreateWaiverContextInput   `json:"contexts,omitempty"`
 		TargetIDs   []string                             `json:"target_ids,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_body", "invalid request body")
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_body", "invalid request body") {
 		return
 	}
 
@@ -193,8 +190,7 @@ func (h *Handler) CheckWaiverMatch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		FindingID string `json:"finding_id"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_body", "invalid request body")
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_body", "invalid request body") {
 		return
 	}
 	if req.FindingID == "" {

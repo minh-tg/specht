@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"log"
 	"net/http"
 
@@ -16,8 +15,7 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		Slug        string `json:"slug"`
 		Description string `json:"description,omitempty"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
 		return
 	}
 	if req.Name == "" || req.Slug == "" {
