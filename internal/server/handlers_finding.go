@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -40,8 +39,7 @@ func (h *Handler) GetFinding(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 	var req ingestRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+	if !decodeJSONBody(w, r, &req, maxIngestBodyBytes, "invalid_json", "invalid request body") {
 		return
 	}
 

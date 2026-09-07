@@ -99,6 +99,10 @@ func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing_field", "finding_ids is required")
 		return
 	}
+	if len(req.FindingIDs) > maxBulkFindingIDs {
+		respondError(w, http.StatusBadRequest, "too_many_ids", "finding_ids exceeds the maximum of 1000")
+		return
+	}
 	if req.AnalysisState == "" {
 		respondError(w, http.StatusBadRequest, "missing_field", "analysis_state is required")
 		return
