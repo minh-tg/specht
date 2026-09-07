@@ -138,7 +138,7 @@ func apiKeyRouter(t *testing.T, userID, projectID string, scopes []string, exp t
 		listAPIKeysFn: func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error) {
 			return []usecase.APIKeyResponse{}, nil
 		},
-		createAPIKeyFn: func(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error) {
+		createAPIKeyFn: func(ctx context.Context, projectSlug, name string, expiresAt *time.Time) (*usecase.APIKeyResponse, error) {
 			return &usecase.APIKeyResponse{ID: "k1", Name: name, KeyPrefix: "vuln_abc"}, nil
 		},
 	}

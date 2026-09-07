@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/xMinhx/specht/internal/audit"
@@ -72,7 +73,7 @@ type (
 	}
 
 	APIKeyUsecases interface {
-		CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string) (*usecase.APIKeyResponse, error)
+		CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string, expiresAt *time.Time) (*usecase.APIKeyResponse, error)
 		ListAPIKeys(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
 		RevokeAPIKey(ctx context.Context, projectSlug, keyID string) error
 	}

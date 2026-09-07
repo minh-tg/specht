@@ -30,7 +30,7 @@ type mockUsecases struct {
 	ingestReportFn       func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
 	registerFn           func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
 	loginFn              func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
-	createAPIKeyFn       func(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error)
+	createAPIKeyFn       func(ctx context.Context, projectSlug, name string, expiresAt *time.Time) (*usecase.APIKeyResponse, error)
 	listAPIKeysFn        func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
 	revokeAPIKeyFn       func(ctx context.Context, projectSlug, keyID string) error
 	triageFindingFn      func(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
@@ -136,11 +136,11 @@ func (m *mockUsecases) Login(ctx context.Context, email, password string) (*usec
 	return m.loginFn(ctx, email, password)
 }
 
-func (m *mockUsecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string) (*usecase.APIKeyResponse, error) {
+func (m *mockUsecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string, expiresAt *time.Time) (*usecase.APIKeyResponse, error) {
 	if m.createAPIKeyFn == nil {
 		return nil, fmt.Errorf("unexpected call to CreateAPIKey")
 	}
-	return m.createAPIKeyFn(ctx, projectSlug, name)
+	return m.createAPIKeyFn(ctx, projectSlug, name, expiresAt)
 }
 
 func (m *mockUsecases) ListAPIKeys(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error) {
@@ -933,10 +933,12 @@ func TestNewRouterRoutes(t *testing.T) {
 		listReportsFn: func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error) {
 			return nil, nil
 		},
-		getReportFn:    func(ctx context.Context, id string) (*usecase.ReportResponse, error) { return nil, nil },
-		registerFn:     func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) { return nil, nil },
-		loginFn:        func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) { return nil, nil },
-		createAPIKeyFn: func(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error) { return nil, nil },
+		getReportFn: func(ctx context.Context, id string) (*usecase.ReportResponse, error) { return nil, nil },
+		registerFn:  func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) { return nil, nil },
+		loginFn:     func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) { return nil, nil },
+		createAPIKeyFn: func(ctx context.Context, projectSlug, name string, expiresAt *time.Time) (*usecase.APIKeyResponse, error) {
+			return nil, nil
+		},
 		listAPIKeysFn:  func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error) { return nil, nil },
 		revokeAPIKeyFn: func(ctx context.Context, projectSlug, keyID string) error { return nil },
 		getFindingFn:   func(ctx context.Context, findingID string) (*usecase.FindingResponse, error) { return nil, nil },
@@ -1153,7 +1155,7 @@ func TestLogin_Failure(t *testing.T) {
 
 func TestCreateAPIKey_Success(t *testing.T) {
 	mock := &mockUsecases{
-		createAPIKeyFn: func(ctx context.Context, projectSlug, name string) (*usecase.APIKeyResponse, error) {
+		createAPIKeyFn: func(ctx context.Context, projectSlug, name string, expiresAt *time.Time) (*usecase.APIKeyResponse, error) {
 			return &usecase.APIKeyResponse{ID: "k1", Name: name, KeyPrefix: "vuln_abc", RawKey: "vuln_abc...", CreatedAt: "2026-06-30T12:00:00Z"}, nil
 		},
 	}
@@ -1180,6 +1182,52 @@ func TestCreateAPIKey_MissingFields(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestCreateAPIKey_InvalidExpiresAt(t *testing.T) {
+	mock := &mockUsecases{
+		createAPIKeyFn: func(ctx context.Context, projectSlug, name string, expiresAt *time.Time) (*usecase.APIKeyResponse, error) {
+			t.Fatal("usecase must not be called with an unparseable expires_at")
+			return nil, nil
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"project":"my-app","name":"ci-key","expires_at":"tomorrow"}`)
+	req := httptest.NewRequest("POST", "/api/v1/auth/apikeys", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "test-user"}))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	var resp struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "invalid_expires_at", resp.Error.Code)
+}
+
+func TestCreateAPIKey_ValidExpiresAtForwarded(t *testing.T) {
+	var gotExpiry *time.Time
+	mock := &mockUsecases{
+		createAPIKeyFn: func(ctx context.Context, projectSlug, name string, expiresAt *time.Time) (*usecase.APIKeyResponse, error) {
+			gotExpiry = expiresAt
+			return &usecase.APIKeyResponse{ID: "k1", Name: name, KeyPrefix: "vuln_abc", RawKey: "vuln_abc...", CreatedAt: "2026-06-30T12:00:00Z"}, nil
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"project":"my-app","name":"ci-key","expires_at":"2030-06-30T12:00:00Z"}`)
+	req := httptest.NewRequest("POST", "/api/v1/auth/apikeys", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "test-user"}))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusCreated, w.Code)
+	require.NotNil(t, gotExpiry)
+	assert.Equal(t, "2030-06-30T12:00:00Z", gotExpiry.UTC().Format(time.RFC3339))
 }
 
 func TestListAPIKeys_Success(t *testing.T) {

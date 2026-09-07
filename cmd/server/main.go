@@ -121,6 +121,12 @@ func main() {
 			if key.ExpiresAt.Valid {
 				expiresAt = key.ExpiresAt.Time
 			}
+			// Stamp last_used_at on every successful key authentication. This
+			// is best-effort observability: a failure must never deny a key
+			// that has already passed every gate.
+			if err := repos.APIKeys.TouchLastUsed(ctx, key.ID); err != nil {
+				slog.Warn("api key lookup: failed to update last_used_at", "error", err)
+			}
 			return actorID, uuid.UUID(key.ProjectID.Bytes).String(), scopes, expiresAt, nil
 		},
 		OIDCEnabled: cfg.SSO.Enabled,

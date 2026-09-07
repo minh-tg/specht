@@ -3,6 +3,7 @@ package server
 import (
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/xMinhx/specht/internal/audit"
@@ -106,8 +107,9 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Project string `json:"project"`
-		Name    string `json:"name"`
+		Project   string `json:"project"`
+		Name      string `json:"name"`
+		ExpiresAt string `json:"expires_at"`
 	}
 	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
 		return
@@ -115,6 +117,15 @@ func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	if req.Project == "" || req.Name == "" {
 		respondError(w, http.StatusBadRequest, "missing_field", "project and name are required")
 		return
+	}
+	var expiresAt *time.Time
+	if req.ExpiresAt != "" {
+		parsed, err := time.Parse(time.RFC3339, req.ExpiresAt)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "invalid_expires_at", "expires_at must be an RFC3339 timestamp")
+			return
+		}
+		expiresAt = &parsed
 	}
 	if err := h.enforceProjectAccess(r, req.Project); err != nil {
 		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
@@ -127,7 +138,7 @@ func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.usecase.CreateAPIKey(r.Context(), req.Project, req.Name, ident.UserID)
+	result, err := h.usecase.CreateAPIKey(r.Context(), req.Project, req.Name, ident.UserID, expiresAt)
 	if err != nil {
 		slog.Error("create api key", "project", req.Project, "error", err)
 		respondError(w, http.StatusUnprocessableEntity, "create_failed", "could not create API key")

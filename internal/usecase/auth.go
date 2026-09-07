@@ -46,6 +46,7 @@ type APIKeyResponse struct {
 	RawKey    string  `json:"raw_key,omitempty"`
 	LastFour  *string `json:"last_four"`
 	CreatedAt string  `json:"created_at"`
+	ExpiresAt *string `json:"expires_at,omitempty"`
 }
 
 func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthResponse, error) {
@@ -128,7 +129,7 @@ func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResp
 	return resp, nil
 }
 
-func (u *Usecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string) (*APIKeyResponse, error) {
+func (u *Usecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string, expiresAt *time.Time) (*APIKeyResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("project not found: %w", err)
@@ -151,19 +152,25 @@ func (u *Usecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdB
 		LastFour:  lastFour,
 		Scopes:    json.RawMessage(`["ingest"]`),
 		CreatedBy: creatorID.String(),
+		ExpiresAt: expiresAt,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("store key: %w", err)
 	}
 
-	return &APIKeyResponse{
+	resp := &APIKeyResponse{
 		ID:        key.ID,
 		Name:      key.Name,
 		KeyPrefix: key.KeyPrefix,
 		RawKey:    rawKey,
 		LastFour:  strPtr(lastFour),
 		CreatedAt: key.CreatedAt.Format(time.RFC3339),
-	}, nil
+	}
+	if key.ExpiresAt != nil {
+		exp := key.ExpiresAt.Format(time.RFC3339)
+		resp.ExpiresAt = &exp
+	}
+	return resp, nil
 }
 
 func (u *Usecases) ListAPIKeys(ctx context.Context, projectSlug string) ([]APIKeyResponse, error) {

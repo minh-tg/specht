@@ -2135,12 +2135,48 @@ func TestCreateAPIKey_Success(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, APIKeys: akr},
 	})
 
-	resp, err := uc.CreateAPIKey(context.Background(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001")
+	resp, err := uc.CreateAPIKey(context.Background(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001", nil)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, "ci-key", resp.Name)
 	assert.NotEmpty(t, resp.RawKey)
 	assert.True(t, len(resp.KeyPrefix) > 0)
+	assert.Nil(t, resp.ExpiresAt, "no expiry requested means no expires_at in the response")
+}
+
+func TestCreateAPIKey_ExpiresAtRoundTrip(t *testing.T) {
+	pr := &mockProjectRepo{}
+	akr := &mockAPIKeyRepo{}
+	expiry := time.Date(2030, 6, 30, 12, 0, 0, 0, time.UTC)
+	var gotExpiry *time.Time
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	akr.createFn = func(ctx context.Context, arg port.CreateAPIKeyInput) (port.APIKey, error) {
+		gotExpiry = arg.ExpiresAt
+		return port.APIKey{
+			ID:        "00000000-0000-0000-0000-000000000050",
+			Name:      arg.Name,
+			KeyPrefix: arg.KeyPrefix,
+			LastFour:  new(arg.LastFour),
+			ProjectID: arg.ProjectID,
+			CreatedBy: new(arg.CreatedBy),
+			CreatedAt: time.Now(),
+			ExpiresAt: arg.ExpiresAt,
+		}, nil
+	}
+
+	uc := New(Deps{
+		Stores: &port.Stores{Projects: pr, APIKeys: akr},
+	})
+
+	resp, err := uc.CreateAPIKey(context.Background(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001", &expiry)
+	require.NoError(t, err)
+	require.NotNil(t, gotExpiry, "expiry must be forwarded to the store")
+	assert.True(t, gotExpiry.Equal(expiry), "store must receive the requested expiry")
+	require.NotNil(t, resp.ExpiresAt, "expires_at must be present in the response")
+	assert.Equal(t, expiry.Format(time.RFC3339), *resp.ExpiresAt)
 }
 
 func TestCreateAPIKey_ProjectNotFound(t *testing.T) {
@@ -2153,7 +2189,7 @@ func TestCreateAPIKey_ProjectNotFound(t *testing.T) {
 		Stores: &port.Stores{Projects: pr},
 	})
 
-	_, err := uc.CreateAPIKey(context.Background(), "nonexistent", "ci-key", "00000000-0000-0000-0000-000000000001")
+	_, err := uc.CreateAPIKey(context.Background(), "nonexistent", "ci-key", "00000000-0000-0000-0000-000000000001", nil)
 	assert.ErrorContains(t, err, "project not found")
 }
 
@@ -2742,7 +2778,7 @@ func TestCreateAPIKey_RecordsCreator(t *testing.T) {
 	}
 
 	uc := New(Deps{Stores: &port.Stores{Projects: pr, APIKeys: akr}})
-	_, err := uc.CreateAPIKey(context.Background(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001")
+	_, err := uc.CreateAPIKey(context.Background(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "00000000-0000-0000-0000-000000000001", gotCreator)
 }

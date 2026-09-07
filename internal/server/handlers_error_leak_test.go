@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -193,7 +194,7 @@ func TestHandlerErrors_DoNotLeakStoreDetail(t *testing.T) {
 			method: "POST", target: "/api/v1/auth/apikeys",
 			body: `{"project":"my-app","name":"ci"}`,
 			setup: func(m *mockUsecases) {
-				m.createAPIKeyFn = func(_ context.Context, _, _ string) (*usecase.APIKeyResponse, error) { return nil, dbErr }
+				m.createAPIKeyFn = func(_ context.Context, _, _ string, _ *time.Time) (*usecase.APIKeyResponse, error) { return nil, dbErr }
 			},
 			invoke:     func(h *Handler, w http.ResponseWriter, r *http.Request) { h.CreateAPIKey(w, r) },
 			wantStatus: http.StatusUnprocessableEntity, wantCode: "create_failed",
