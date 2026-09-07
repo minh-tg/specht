@@ -44,6 +44,18 @@ func (r *pgUserPort) GetByID(ctx context.Context, id string) (port.User, error) 
 	return userToPort(row), nil
 }
 
+func (r *pgUserPort) SetRole(ctx context.Context, userID, role string) (port.User, error) {
+	uid, err := parseID(userID)
+	if err != nil {
+		return port.User{}, err
+	}
+	row, err := r.q.SetUserRole(ctx, sqlc.SetUserRoleParams{ID: uid, Role: role})
+	if err != nil {
+		return port.User{}, mappingErr(err)
+	}
+	return userToPort(row), nil
+}
+
 func userToPort(u sqlc.User) port.User {
 	return port.User{
 		ID:           toUUID(u.ID),

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -68,6 +69,12 @@ func main() {
 
 	repos := repo.NewRepos(pool)
 	stores := repo.NewPortStores(pool)
+
+	// Admin elevation path (H1/M9): ADMIN_EMAILS (comma-separated) promotes
+	// existing accounts to the global admin role at startup so tenant
+	// membership can be administered. Unknown addresses are skipped with a
+	// warning; the flag is otherwise a no-op.
+	bootstrapAdmins(context.Background(), stores)
 
 	uc := usecase.New(usecase.Deps{
 		Stores:       stores,
@@ -268,6 +275,34 @@ func buildTrackerDispatcher() *tracker.Dispatcher {
 // pre-loop setup failures (e.g. the project list cannot be loaded) so the
 // caller can abort from the main goroutine instead of inside a watcher
 // goroutine.
+// bootstrapAdmins promotes ADMIN_EMAILS accounts to global admin.
+// It is idempotent and never creates accounts.
+func bootstrapAdmins(ctx context.Context, stores *port.Stores) {
+	raw := os.Getenv("ADMIN_EMAILS")
+	if raw == "" {
+		return
+	}
+	for _, email := range strings.FieldsFunc(raw, func(c rune) bool { return c == ',' || c == ' ' }) {
+		email = strings.TrimSpace(email)
+		if email == "" {
+			continue
+		}
+		user, err := stores.Users.GetByEmail(ctx, email)
+		if err != nil {
+			slog.Warn("admin bootstrap: unknown account, skipping", "email", email)
+			continue
+		}
+		if user.Role == auth.RoleAdmin {
+			continue
+		}
+		if _, err := stores.Users.SetRole(ctx, user.ID, auth.RoleAdmin); err != nil {
+			slog.Error("admin bootstrap: promotion failed", "email", email, "error", err)
+			continue
+		}
+		slog.Info("admin bootstrap: promoted to admin", "email", email)
+	}
+}
+
 func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Server) error {
 	watcherPollInterval := cfg.Watcher.PollInterval
 	watcherOSVEndpoint := cfg.Watcher.OSVEndpoint

@@ -94,6 +94,9 @@ type UserStore interface {
 	Create(ctx context.Context, email string, displayName, passwordHash *string) (User, error)
 	GetByEmail(ctx context.Context, email string) (User, error)
 	GetByID(ctx context.Context, id string) (User, error)
+	// SetRole changes a user's global role (admin elevation path for H1
+	// tenant administration). Role must be a valid users.role value.
+	SetRole(ctx context.Context, userID, role string) (User, error)
 }
 
 // ---------- Refresh tokens ----------
