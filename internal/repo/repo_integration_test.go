@@ -344,6 +344,7 @@ func TestAPIKeyRepo_CreateAndRevoke(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	expiry := time.Date(2030, 6, 30, 12, 0, 0, 0, time.UTC)
 	key, err := repos.APIKeys.Create(context.Background(), sqlc.CreateAPIKeyParams{
 		ProjectID: project.ID,
 		Name:      "ci-key",
@@ -351,10 +352,14 @@ func TestAPIKeyRepo_CreateAndRevoke(t *testing.T) {
 		KeyHash:   "abc123hash",
 		LastFour:  pgtype.Text{String: "1234", Valid: true},
 		Scopes:    []byte(`["ingest"]`),
+		ExpiresAt: pgtype.Timestamptz{Time: expiry, Valid: true},
 	})
 	require.NoError(t, err)
 	assert.True(t, key.ID.Valid)
 	assert.False(t, key.RevokedAt.Valid)
+	assert.True(t, key.ExpiresAt.Valid)
+	assert.WithinDuration(t, expiry, key.ExpiresAt.Time, time.Second)
+	assert.False(t, key.LastUsedAt.Valid, "a fresh key has never been used")
 
 	keys, err := repos.APIKeys.ListByProject(context.Background(), project.ID)
 	require.NoError(t, err)
@@ -364,9 +369,20 @@ func TestAPIKeyRepo_CreateAndRevoke(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ci-key", fetched.Name)
 	require.True(t, fetched.CreatedBy.Valid)
+	assert.True(t, fetched.ExpiresAt.Valid)
+	assert.WithinDuration(t, expiry, fetched.ExpiresAt.Time, time.Second)
 	actor, err := repos.Users.GetByID(context.Background(), fetched.CreatedBy)
 	require.NoError(t, err)
 	assert.Equal(t, fetched.CreatedBy.Bytes, actor.ID.Bytes)
+
+	// TouchLastUsed stamps last_used_at and leaves the key usable; it is a
+	// no-op for revoked keys (guarded by revoked_at IS NULL).
+	err = repos.APIKeys.TouchLastUsed(context.Background(), key.ID)
+	require.NoError(t, err)
+	touched, err := repos.APIKeys.GetByHash(context.Background(), "abc123hash")
+	require.NoError(t, err)
+	assert.True(t, touched.LastUsedAt.Valid)
+	assert.WithinDuration(t, time.Now(), touched.LastUsedAt.Time, time.Minute)
 
 	revoked, err := repos.APIKeys.Revoke(context.Background(), key.ID, project.ID)
 	require.NoError(t, err)

@@ -128,11 +128,20 @@ func (r *pgAPIKeyPort) Create(ctx context.Context, input port.CreateAPIKeyInput)
 		LastFour:  textPtrFromString(&input.LastFour),
 		Scopes:    input.Scopes,
 		CreatedBy: uuidPtrFromString(&input.CreatedBy),
+		ExpiresAt: timestamptzPtrFromTime(input.ExpiresAt),
 	})
 	if err != nil {
 		return port.APIKey{}, err
 	}
 	return apiKeyToPort(row), nil
+}
+
+func (r *pgAPIKeyPort) TouchLastUsed(ctx context.Context, id string) error {
+	kid, err := parseID(id)
+	if err != nil {
+		return err
+	}
+	return r.q.TouchAPIKeyLastUsed(ctx, kid)
 }
 
 func (r *pgAPIKeyPort) ListByProject(ctx context.Context, projectID string) ([]port.APIKey, error) {
@@ -184,14 +193,16 @@ func (r *pgAPIKeyPort) Revoke(ctx context.Context, id, projectID string) (port.A
 
 func apiKeyToPort(k sqlc.ApiKey) port.APIKey {
 	return port.APIKey{
-		ID:        toUUID(k.ID),
-		ProjectID: toUUID(k.ProjectID),
-		Name:      k.Name,
-		KeyPrefix: k.KeyPrefix,
-		LastFour:  stringFromTextPtr(k.LastFour),
-		CreatedBy: stringPtrFromUUID(k.CreatedBy),
-		CreatedAt: k.CreatedAt.Time,
-		RevokedAt: timePtrFromTimestamptz(k.RevokedAt),
+		ID:         toUUID(k.ID),
+		ProjectID:  toUUID(k.ProjectID),
+		Name:       k.Name,
+		KeyPrefix:  k.KeyPrefix,
+		LastFour:   stringFromTextPtr(k.LastFour),
+		CreatedBy:  stringPtrFromUUID(k.CreatedBy),
+		CreatedAt:  k.CreatedAt.Time,
+		ExpiresAt:  timePtrFromTimestamptz(k.ExpiresAt),
+		LastUsedAt: timePtrFromTimestamptz(k.LastUsedAt),
+		RevokedAt:  timePtrFromTimestamptz(k.RevokedAt),
 	}
 }
 

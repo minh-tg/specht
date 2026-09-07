@@ -107,6 +107,7 @@ type APIKeyRepo interface {
 	ListByProject(ctx context.Context, projectID pgtype.UUID) ([]sqlc.ListAPIKeysByProjectRow, error)
 	GetByHash(ctx context.Context, keyHash string) (sqlc.ApiKey, error)
 	Revoke(ctx context.Context, id, projectID pgtype.UUID) (sqlc.ApiKey, error)
+	TouchLastUsed(ctx context.Context, id pgtype.UUID) error
 }
 
 // EnvironmentRepo persists deployment environments.

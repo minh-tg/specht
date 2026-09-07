@@ -1,7 +1,10 @@
 -- name: CreateAPIKey :one
-INSERT INTO api_keys (project_id, name, key_prefix, key_hash, last_four, scopes, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO api_keys (project_id, name, key_prefix, key_hash, last_four, scopes, created_by, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
+
+-- name: TouchAPIKeyLastUsed :exec
+UPDATE api_keys SET last_used_at = NOW() WHERE id = $1 AND revoked_at IS NULL;
 
 -- name: ListAPIKeysByProject :many
 SELECT id, name, key_prefix, last_four, scopes, created_at, revoked_at

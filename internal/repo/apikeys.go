@@ -29,3 +29,7 @@ func (r *pgAPIKeyRepo) Revoke(ctx context.Context, id, projectID pgtype.UUID) (s
 		ProjectID: projectID,
 	})
 }
+
+func (r *pgAPIKeyRepo) TouchLastUsed(ctx context.Context, id pgtype.UUID) error {
+	return r.q.TouchAPIKeyLastUsed(ctx, id)
+}

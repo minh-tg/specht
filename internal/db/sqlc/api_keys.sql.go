@@ -12,19 +12,20 @@ import (
 )
 
 const createAPIKey = `-- name: CreateAPIKey :one
-INSERT INTO api_keys (project_id, name, key_prefix, key_hash, last_four, scopes, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO api_keys (project_id, name, key_prefix, key_hash, last_four, scopes, created_by, expires_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING id, project_id, name, key_prefix, key_hash, last_four, scopes, expires_at, last_used_at, created_at, revoked_at, created_by
 `
 
 type CreateAPIKeyParams struct {
-	ProjectID pgtype.UUID `json:"project_id"`
-	Name      string      `json:"name"`
-	KeyPrefix string      `json:"key_prefix"`
-	KeyHash   string      `json:"key_hash"`
-	LastFour  pgtype.Text `json:"last_four"`
-	Scopes    []byte      `json:"scopes"`
-	CreatedBy pgtype.UUID `json:"created_by"`
+	ProjectID pgtype.UUID        `json:"project_id"`
+	Name      string             `json:"name"`
+	KeyPrefix string             `json:"key_prefix"`
+	KeyHash   string             `json:"key_hash"`
+	LastFour  pgtype.Text        `json:"last_four"`
+	Scopes    []byte             `json:"scopes"`
+	CreatedBy pgtype.UUID        `json:"created_by"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
 }
 
 func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error) {
@@ -36,6 +37,7 @@ func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (Api
 		arg.LastFour,
 		arg.Scopes,
 		arg.CreatedBy,
+		arg.ExpiresAt,
 	)
 	var i ApiKey
 	err := row.Scan(
@@ -172,4 +174,13 @@ func (q *Queries) RevokeAPIKey(ctx context.Context, arg RevokeAPIKeyParams) (Api
 		&i.CreatedBy,
 	)
 	return i, err
+}
+
+const touchAPIKeyLastUsed = `-- name: TouchAPIKeyLastUsed :exec
+UPDATE api_keys SET last_used_at = NOW() WHERE id = $1 AND revoked_at IS NULL
+`
+
+func (q *Queries) TouchAPIKeyLastUsed(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, touchAPIKeyLastUsed, id)
+	return err
 }

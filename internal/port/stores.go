@@ -106,14 +106,16 @@ type RefreshTokenStore interface {
 
 // APIKey is a project-scoped API key row.
 type APIKey struct {
-	ID        string
-	ProjectID string
-	Name      string
-	KeyPrefix string
-	LastFour  *string
-	CreatedBy *string
-	CreatedAt time.Time
-	RevokedAt *time.Time
+	ID         string
+	ProjectID  string
+	Name       string
+	KeyPrefix  string
+	LastFour   *string
+	CreatedBy  *string
+	CreatedAt  time.Time
+	ExpiresAt  *time.Time
+	LastUsedAt *time.Time
+	RevokedAt  *time.Time
 }
 
 // CreateAPIKeyInput carries create fields (hash is only ever stored).
@@ -125,6 +127,7 @@ type CreateAPIKeyInput struct {
 	LastFour  string
 	Scopes    json.RawMessage
 	CreatedBy string
+	ExpiresAt *time.Time
 }
 
 // APIKeyStore persists project API keys.
@@ -133,6 +136,8 @@ type APIKeyStore interface {
 	ListByProject(ctx context.Context, projectID string) ([]APIKey, error)
 	GetByHash(ctx context.Context, keyHash string) (APIKey, error)
 	Revoke(ctx context.Context, id, projectID string) (APIKey, error)
+	// TouchLastUsed stamps last_used_at on an active (unrevoked) key.
+	TouchLastUsed(ctx context.Context, id string) error
 }
 
 // ---------- Environments ----------
