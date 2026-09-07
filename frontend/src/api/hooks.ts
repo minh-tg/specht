@@ -1,3 +1,4 @@
+import type { AnalysisState, ReachabilityState } from "@/lib/enums";
 import type {
   Finding,
   GateStatus,
@@ -76,7 +77,7 @@ export function useTriageFinding() {
       analysisExpiresAt,
     }: {
       findingId: string;
-      analysisState: string;
+      analysisState: AnalysisState;
       reason?: string;
       analysisExpiresAt?: string;
     }) =>
@@ -109,7 +110,11 @@ export function useUpsertReachability() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (
-      { findingId, state, evidence }: { findingId: string; state: string; evidence?: string; },
+      { findingId, state, evidence }: {
+        findingId: string;
+        state: ReachabilityState;
+        evidence?: string;
+      },
     ) =>
       apiFetch<ReachabilityAssessment>(`/api/v1/findings/${findingId}/reachability`, {
         method: "POST",

@@ -1,7 +1,8 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useFinding, useReachability, useTriageFinding } from "./hooks";
+import { setAuthToken } from "./client";
+import { useFinding, useReachability, useTriageFinding, useUpsertReachability } from "./hooks";
 
 const ASSESSMENT = {
   id: "r1",
@@ -15,6 +16,9 @@ const ASSESSMENT = {
 
 let findingFetchCount: number;
 let reachabilityFetchCount: number;
+let mutationCalls: Array<
+  { method: string; url: string; headers: Record<string, string>; body: string; }
+>;
 
 function wrapper({ children }: { children: React.ReactNode; }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -28,6 +32,8 @@ function wrapper({ children }: { children: React.ReactNode; }) {
 beforeEach(() => {
   findingFetchCount = 0;
   reachabilityFetchCount = 0;
+  mutationCalls = [];
+  setAuthToken(null);
   globalThis.fetch = vi.fn().mockImplementation(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -39,6 +45,12 @@ beforeEach(() => {
         reachabilityFetchCount += 1;
       }
       if (url.endsWith("/findings/f1") && method === "PATCH") {
+        mutationCalls.push({
+          method,
+          url,
+          headers: (init?.headers as Record<string, string>) ?? {},
+          body: String(init?.body ?? ""),
+        });
         return {
           ok: true,
           json: () =>
@@ -49,12 +61,26 @@ beforeEach(() => {
             }),
         } as Response;
       }
+      if (url.endsWith("/reachability") && method === "POST") {
+        mutationCalls.push({
+          method,
+          url,
+          headers: (init?.headers as Record<string, string>) ?? {},
+          body: String(init?.body ?? ""),
+        });
+        return {
+          ok: true,
+          json: () =>
+            Promise.resolve({ ...ASSESSMENT, state: JSON.parse(String(init?.body)).state }),
+        } as Response;
+      }
       return { ok: true, json: () => Promise.resolve([]) } as Response;
     },
   );
 });
 
 afterEach(() => {
+  setAuthToken(null);
   vi.unstubAllGlobals();
 });
 
@@ -89,5 +115,60 @@ describe("useTriageFinding", () => {
     });
     // The triage PATCH must also re-fetch the finding detail it changed.
     expect(findingFetchCount).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("mutation CSRF hardening", () => {
+  it("sends the session token explicitly on every triage mutation", async () => {
+    setAuthToken("access-tok-1");
+    const { result } = renderHook(() => useTriageFinding(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        findingId: "f1",
+        analysisState: "accepted_risk",
+        reason: "acceptable",
+      });
+    });
+
+    expect(mutationCalls.length).toBeGreaterThanOrEqual(1);
+    for (const call of mutationCalls) {
+      expect(call.headers.Authorization).toBe("Bearer access-tok-1");
+    }
+  });
+
+  it("sends the session token explicitly on every reachability mutation", async () => {
+    setAuthToken("access-tok-2");
+    const { result } = renderHook(() => useUpsertReachability(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        findingId: "f1",
+        state: "not_reachable",
+        evidence: "traced to prod data flow",
+      });
+    });
+
+    expect(mutationCalls).toHaveLength(1);
+    expect(mutationCalls[0].method).toBe("POST");
+    expect(mutationCalls[0].headers.Authorization).toBe("Bearer access-tok-2");
+    expect(JSON.parse(mutationCalls[0].body)).toEqual({
+      state: "not_reachable",
+      evidence: "traced to prod data flow",
+    });
+  });
+
+  it("never relies on ambient credentials: an anonymous mutation sends no Authorization header", async () => {
+    const { result } = renderHook(() => useUpsertReachability(), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({ findingId: "f1", state: "unknown", evidence: "" });
+    });
+
+    expect(mutationCalls).toHaveLength(1);
+    // The request goes out without cookies or ambient credentials; the server
+    // rejects it (missing_token). A cookie-based CSRF can never be forged this way.
+    expect(mutationCalls[0].headers.Authorization).toBeUndefined();
+    expect(mutationCalls[0].headers.Cookie).toBeUndefined();
   });
 });
