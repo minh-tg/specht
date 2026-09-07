@@ -1,12 +1,14 @@
 package server
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/xMinhx/specht/internal/audit"
+	"github.com/xMinhx/specht/internal/auth"
 )
 
 func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
@@ -23,9 +25,14 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.usecase.CreateProject(r.Context(), req.Name, req.Slug, req.Description)
+	ident := auth.ContextIdentity(r.Context())
+	if ident == nil {
+		respondError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+	result, err := h.usecase.CreateProject(r.Context(), req.Name, req.Slug, req.Description, ident.UserID)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "creation_failed", err.Error())
+		respondError(w, http.StatusInternalServerError, "creation_failed", "could not create project")
 		return
 	}
 	respondJSON(w, http.StatusCreated, result)
@@ -87,4 +94,40 @@ func (h *Handler) GetReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, report)
+}
+
+func (h *Handler) ListProjectMembers(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "project access denied")
+		return
+	}
+	members, err := h.usecase.ListProjectMembers(r.Context(), slug)
+	if err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "project access denied")
+		return
+	}
+	respondJSON(w, http.StatusOK, members)
+}
+
+func (h *Handler) AddProjectMember(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	var req struct {
+		UserID string `json:"user_id"`
+		Role   string `json:"role"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+		return
+	}
+	if req.UserID == "" || req.Role == "" {
+		respondError(w, http.StatusBadRequest, "missing_field", "user_id and role are required")
+		return
+	}
+	member, err := h.usecase.AddProjectMember(r.Context(), slug, req.UserID, req.Role)
+	if err != nil {
+		respondError(w, http.StatusForbidden, "project_access_denied", "project access denied")
+		return
+	}
+	respondJSON(w, http.StatusCreated, member)
 }

@@ -21,7 +21,10 @@ import (
 )
 
 type mockUsecases struct {
-	createProjectFn      func(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error)
+	createProjectFn      func(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error)
+	listProjectMembersFn func(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error)
+	addProjectMemberFn   func(ctx context.Context, projectSlug, userID, role string) (*usecase.ProjectMemberResponse, error)
+	isProjectMemberFn    func(ctx context.Context, projectID, userID string) (bool, error)
 	listProjectsFn       func(ctx context.Context) ([]usecase.ProjectResponse, error)
 	getProjectFn         func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
 	listFindingsFn       func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error)
@@ -66,13 +69,33 @@ type mockUsecases struct {
 	getSignoffFn         func(ctx context.Context, findingID string) (*usecase.SignoffResponse, error)
 }
 
-func (m *mockUsecases) CreateProject(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error) {
+func (m *mockUsecases) CreateProject(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error) {
 	if m.createProjectFn == nil {
 		return nil, fmt.Errorf("unexpected call to CreateProject")
 	}
-	return m.createProjectFn(ctx, name, slug, description)
+	return m.createProjectFn(ctx, name, slug, description, creatorID)
 }
 
+func (m *mockUsecases) ListProjectMembers(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error) {
+	if m.listProjectMembersFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListProjectMembers")
+	}
+	return m.listProjectMembersFn(ctx, projectSlug)
+}
+
+func (m *mockUsecases) AddProjectMember(ctx context.Context, projectSlug, userID, role string) (*usecase.ProjectMemberResponse, error) {
+	if m.addProjectMemberFn == nil {
+		return nil, fmt.Errorf("unexpected call to AddProjectMember")
+	}
+	return m.addProjectMemberFn(ctx, projectSlug, userID, role)
+}
+
+func (m *mockUsecases) IsProjectMember(ctx context.Context, projectID, userID string) (bool, error) {
+	if m.isProjectMemberFn == nil {
+		return false, fmt.Errorf("unexpected call to IsProjectMember")
+	}
+	return m.isProjectMemberFn(ctx, projectID, userID)
+}
 func (m *mockUsecases) ListProjects(ctx context.Context) ([]usecase.ProjectResponse, error) {
 	if m.listProjectsFn == nil {
 		return nil, fmt.Errorf("unexpected call to ListProjects")
@@ -559,15 +582,17 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r := chi.NewRouter()
 	h := NewHandler(mock)
 	// Real requests reach these handlers through AuthMiddleware, which always
-	// attaches an identity. Slug-scoped handlers enforce project access for
-	// API keys and deny nil identities, so the test router mirrors production
-	// by authenticating every request as a session user (global, not
-	// project-gated). Admin-gated global endpoints (watcher status, scanners)
-	// are intentionally absent: role enforcement for them is covered against
+	// attaches an identity. Slug-scoped handlers enforce tenant membership
+	// (H1) for session users, so the test router mirrors an authorized
+	// operator by authenticating every request as a global admin: handler
+	// behavior stays under test while access control is covered by dedicated
+	// tests (usecase access_test.go, apikey_authz_test.go, and the admin
+	// matrix). Admin-gated global endpoints (watcher status, scanners) are
+	// intentionally absent: role enforcement for them is covered against
 	// NewRouter, where a real admin bearer token can be presented.
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := auth.ContextWithIdentity(r.Context(), &auth.Identity{UserID: "test-user"})
+			ctx := auth.ContextWithIdentity(r.Context(), &auth.Identity{UserID: "test-user", Role: auth.RoleAdmin})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
@@ -674,7 +699,7 @@ func TestGetProject_NotFound(t *testing.T) {
 
 func TestCreateProject_Success(t *testing.T) {
 	mock := &mockUsecases{
-		createProjectFn: func(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error) {
+		createProjectFn: func(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error) {
 			return &usecase.ProjectResponse{
 				ID:   "proj-1",
 				Slug: slug,
@@ -865,7 +890,7 @@ func testToken(t *testing.T) string {
 	t.Helper()
 	a, err := auth.NewJWTAuthenticator(testJWTSecret)
 	require.NoError(t, err)
-	tok, err := a.CreateToken("test-user", "test@example.com", auth.RoleViewer)
+	tok, err := a.CreateToken("test-user", "test@example.com", auth.RoleAdmin)
 	require.NoError(t, err)
 	return tok
 }
@@ -1275,7 +1300,7 @@ func TestRevokeAPIKey_Success(t *testing.T) {
 func authRequest(method, path, body string) *http.Request {
 	r := httptest.NewRequest(method, path, strings.NewReader(body))
 	r.Header.Set("Content-Type", "application/json")
-	ctx := auth.ContextWithIdentity(r.Context(), &auth.Identity{UserID: "test-user"})
+	ctx := auth.ContextWithIdentity(r.Context(), &auth.Identity{UserID: "test-user", Role: auth.RoleAdmin})
 	return r.WithContext(ctx)
 }
 
@@ -1935,14 +1960,19 @@ func sampleWaiverResponse() usecase.WaiverResponse {
 	}
 }
 
+// authRouter mirrors testRouter's authorized-operator identity for the
+// waiver routes (see testRouter): handler behavior under test, access
+// control covered elsewhere.
 func authRouter(h *Handler) http.Handler {
 	r := chi.NewRouter()
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := auth.ContextWithIdentity(r.Context(), &auth.Identity{UserID: "test-user"})
+			ctx := auth.ContextWithIdentity(r.Context(), &auth.Identity{UserID: "test-user", Role: auth.RoleAdmin})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	})
+	r.Get("/api/v1/projects/{slug}/members", h.ListProjectMembers)
+	r.Post("/api/v1/projects/{slug}/members", h.AddProjectMember)
 	r.Route("/api/v1/projects/{slug}/waivers", func(r chi.Router) {
 		r.Get("/", h.ListWaivers)
 		r.Post("/", h.CreateWaiver)
@@ -1985,7 +2015,7 @@ func TestCreateWaiver_MissingName(t *testing.T) {
 	handler := &Handler{}
 	body := strings.NewReader(`{"name":""}`)
 	req := httptest.NewRequest("POST", "/api/v1/projects/my-app/waivers", body)
-	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "test-user"}))
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "test-user", Role: auth.RoleAdmin}))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	handler.CreateWaiver(w, req)
@@ -2104,7 +2134,7 @@ func TestCheckWaiverMatch_MissingFindingID(t *testing.T) {
 	handler := &Handler{}
 	body := strings.NewReader(`{}`)
 	req := httptest.NewRequest("POST", "/api/v1/projects/my-app/waivers/check-match", body)
-	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "test-user"}))
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "test-user", Role: auth.RoleAdmin}))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	handler.CheckWaiverMatch(w, req)
@@ -2112,19 +2142,95 @@ func TestCheckWaiverMatch_MissingFindingID(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestListProjectMembers_Success(t *testing.T) {
+	mock := &mockUsecases{
+		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			return &usecase.ProjectResponse{ID: "00000000-0000-0000-0000-000000000001", Slug: slug}, nil
+		},
+		isProjectMemberFn: func(ctx context.Context, projectID, userID string) (bool, error) {
+			return true, nil
+		},
+		listProjectMembersFn: func(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error) {
+			return []usecase.ProjectMemberResponse{{ProjectID: "00000000-0000-0000-0000-000000000001", UserID: "u1", Role: auth.RoleViewer}}, nil
+		},
+	}
+	h := NewHandler(mock)
+	router := authRouter(h)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/members", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestAddProjectMember_Success(t *testing.T) {
+	mock := &mockUsecases{
+		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			return &usecase.ProjectResponse{ID: "00000000-0000-0000-0000-000000000001", Slug: slug}, nil
+		},
+		isProjectMemberFn: func(ctx context.Context, projectID, userID string) (bool, error) {
+			return true, nil
+		},
+		addProjectMemberFn: func(ctx context.Context, projectSlug, userID, role string) (*usecase.ProjectMemberResponse, error) {
+			return &usecase.ProjectMemberResponse{ProjectID: "00000000-0000-0000-0000-000000000001", UserID: userID, Role: role}, nil
+		},
+	}
+	h := NewHandler(mock)
+	router := authRouter(h)
+	body := strings.NewReader(`{"user_id":"new-1","role":"editor"}`)
+	req := httptest.NewRequest("POST", "/api/v1/projects/my-app/members", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusCreated, w.Code)
+}
+
+func TestListProjectMembers_NonMemberDenied(t *testing.T) {
+	mock := &mockUsecases{
+		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			return &usecase.ProjectResponse{ID: "00000000-0000-0000-0000-000000000001", Slug: slug}, nil
+		},
+		isProjectMemberFn: func(ctx context.Context, projectID, userID string) (bool, error) {
+			return false, nil
+		},
+	}
+	h := NewHandler(mock)
+	router := authRouter(h)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/members", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
 // ----- enforceProjectAccess Tests -----
 
-func TestEnforceProjectAccess_SessionAuthNoScope(t *testing.T) {
-	h := &Handler{}
-	req := httptest.NewRequest("GET", "/api/v1/projects/my-app", nil)
-	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "user-1", IsAPIKey: false}))
-	err := h.enforceProjectAccess(req, "my-app")
-	assert.NoError(t, err)
+// Session users are authorized by tenant membership (H1): members pass,
+// non-members are denied, global admins bypass, and nil identities are
+// denied outright.
+func TestEnforceProjectAccess_SessionMembership(t *testing.T) {
+	projectID := "00000000-0000-0000-0000-000000000001"
+	newHandler := func(isMember bool) *Handler {
+		return &Handler{usecase: &mockUsecases{
+			getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+				return &usecase.ProjectResponse{ID: projectID, Slug: slug}, nil
+			},
+			isProjectMemberFn: func(ctx context.Context, pid, uid string) (bool, error) {
+				assert.Equal(t, projectID, pid)
+				assert.Equal(t, "user-1", uid)
+				return isMember, nil
+			},
+		}}
+	}
+	withIdent := func(ident *auth.Identity) *http.Request {
+		req := httptest.NewRequest("GET", "/api/v1/projects/my-app", nil)
+		return req.WithContext(auth.ContextWithIdentity(req.Context(), ident))
+	}
+
+	assert.NoError(t, newHandler(true).enforceProjectAccess(withIdent(&auth.Identity{UserID: "user-1"}), "my-app"), "member passes")
+	assert.Error(t, newHandler(false).enforceProjectAccess(withIdent(&auth.Identity{UserID: "user-1"}), "my-app"), "non-member denied")
+	assert.NoError(t, newHandler(false).enforceProjectAccess(withIdent(&auth.Identity{UserID: "admin-1", Role: auth.RoleAdmin}), "my-app"), "global admin bypasses")
 
 	reqNil := httptest.NewRequest("GET", "/api/v1/projects/my-app", nil)
-	reqNil = reqNil.WithContext(auth.ContextWithIdentity(reqNil.Context(), &auth.Identity{UserID: "user-1", ProjectID: "", IsAPIKey: false}))
-	err = h.enforceProjectAccess(reqNil, "other-project")
-	assert.NoError(t, err)
+	assert.Error(t, newHandler(true).enforceProjectAccess(reqNil, "my-app"), "nil identity denied")
 }
 
 func TestEnforceProjectAccess_APIKeyMatching(t *testing.T) {

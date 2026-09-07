@@ -80,7 +80,10 @@ type (
 	}
 
 	ProjectUsecases interface {
-		CreateProject(ctx context.Context, name, slug, description string) (*usecase.ProjectResponse, error)
+		CreateProject(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error)
+		ListProjectMembers(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error)
+		AddProjectMember(ctx context.Context, projectSlug, userID, role string) (*usecase.ProjectMemberResponse, error)
+		IsProjectMember(ctx context.Context, projectID, userID string) (bool, error)
 		ListProjects(ctx context.Context) ([]usecase.ProjectResponse, error)
 		GetProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
 		ListEnvironments(ctx context.Context, projectSlug string) ([]usecase.EnvironmentResponse, error)
@@ -284,19 +287,38 @@ func parseIntParam(r *http.Request, name string, defaultVal int32) int32 {
 	return int32(n)
 }
 
+// enforceProjectAccess gates slug-scoped routes on tenant membership
+// (H1): unauthenticated callers are denied; API keys must match the
+// resolved project; global admins pass; other session users must hold a
+// membership row. The GetProject lookup itself enforces the same rule, so
+// this stays consistent if either layer is reached first.
 func (h *Handler) enforceProjectAccess(r *http.Request, projectSlug string) error {
 	ident := auth.ContextIdentity(r.Context())
 	if ident == nil {
 		return fmt.Errorf("project_access_denied")
 	}
-	if ident.ProjectID == "" || !ident.IsAPIKey {
-		return nil // session users are global
+	if ident.IsAPIKey {
+		if h.usecase == nil {
+			return fmt.Errorf("project_access_denied")
+		}
+		project, err := h.usecase.GetProject(r.Context(), projectSlug)
+		if err != nil || project == nil || project.ID != ident.ProjectID {
+			return fmt.Errorf("project_access_denied")
+		}
+		return nil
+	}
+	if ident.Role == auth.RoleAdmin {
+		return nil
 	}
 	if h.usecase == nil {
 		return fmt.Errorf("project_access_denied")
 	}
 	project, err := h.usecase.GetProject(r.Context(), projectSlug)
-	if err != nil || project == nil || project.ID != ident.ProjectID {
+	if err != nil || project == nil {
+		return fmt.Errorf("project_access_denied")
+	}
+	ok, err := h.usecase.IsProjectMember(r.Context(), project.ID, ident.UserID)
+	if err != nil || !ok {
 		return fmt.Errorf("project_access_denied")
 	}
 	return nil

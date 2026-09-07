@@ -122,6 +122,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
 		r.Get("/api/v1/projects/{slug}/environments", h.ListEnvironments)
 		r.Get("/api/v1/projects/{slug}/targets", h.ListTargets)
+		r.Get("/api/v1/projects/{slug}/members", h.ListProjectMembers)
+		r.Post("/api/v1/projects/{slug}/members", h.AddProjectMember)
 		r.Get("/api/v1/projects/{slug}/stats", h.GetProjectStats)
 		r.Get("/api/v1/projects/{slug}/aging", h.GetAging)
 		r.Get("/api/v1/projects/{slug}/artifacts", h.ListArtifacts)
