@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/remediate"
@@ -226,7 +227,12 @@ func toReport(r port.Report) ReportResponse {
 	}
 }
 
-func (u *Usecases) CreateProject(ctx context.Context, name, slug, description string) (*ProjectResponse, error) {
+// CreateProject creates a project and makes the creator its admin member,
+// establishing the tenant-isolation invariant that every project has an
+// admin (H1). Callers pass the authenticated session user ID as creatorID;
+// API keys cannot create projects (the route is admin-gated and API keys
+// never satisfy global-admin membership rules).
+func (u *Usecases) CreateProject(ctx context.Context, name, slug, description, creatorID string) (*ProjectResponse, error) {
 	p, err := u.deps.Stores.Projects.Create(ctx, port.CreateProjectInput{
 		Slug:                slug,
 		Name:                name,
@@ -237,26 +243,85 @@ func (u *Usecases) CreateProject(ctx context.Context, name, slug, description st
 	if err != nil {
 		return nil, fmt.Errorf("create project %q: %w", slug, err)
 	}
+	if _, err := u.deps.Stores.Projects.UpsertMember(ctx, p.ID, creatorID, auth.RoleAdmin); err != nil {
+		return nil, fmt.Errorf("grant creator admin membership: %w", err)
+	}
 	resp := toProject(p)
 	return &resp, nil
 }
 
+// ListProjects returns the projects the caller's identity may see (H1).
+// Global admins see everything; project-scoped API keys see only their own
+// project; other session users see only projects they belong to.
 func (u *Usecases) ListProjects(ctx context.Context) ([]ProjectResponse, error) {
 	projects, err := u.deps.Stores.Projects.List(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list projects: %w", err)
 	}
-	resp := make([]ProjectResponse, len(projects))
-	for i, p := range projects {
-		resp[i] = toProject(p)
+	ident := auth.ContextIdentity(ctx)
+	if ident == nil {
+		return nil, ErrProjectAccessDenied
+	}
+	if !ident.IsAPIKey && ident.Role == auth.RoleAdmin {
+		return toProjects(projects), nil
+	}
+	resp := make([]ProjectResponse, 0, len(projects))
+	for _, p := range projects {
+		if ident.IsAPIKey {
+			if p.ID == ident.ProjectID {
+				resp = append(resp, toProject(p))
+			}
+			continue
+		}
+		ok, err := u.deps.Stores.Projects.IsMember(ctx, p.ID, ident.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("check membership: %w", err)
+		}
+		if ok {
+			resp = append(resp, toProject(p))
+		}
 	}
 	return resp, nil
 }
 
+func toProjects(projects []port.Project) []ProjectResponse {
+	resp := make([]ProjectResponse, len(projects))
+	for i, p := range projects {
+		resp[i] = toProject(p)
+	}
+	return resp
+}
+
+// GetProject resolves a project by slug for principals authorized to see
+// it (H1): global admins, project members, or the project-scoped API key.
+// Everyone else — including unauthenticated callers — gets a denial that
+// does not disclose whether the slug exists.
 func (u *Usecases) GetProject(ctx context.Context, slug string) (*ProjectResponse, error) {
 	p, err := u.deps.Stores.Projects.GetBySlug(ctx, slug)
 	if err != nil {
 		return nil, fmt.Errorf("get project %q: %w", slug, err)
+	}
+	ident := auth.ContextIdentity(ctx)
+	if ident == nil {
+		return nil, ErrProjectAccessDenied
+	}
+	if ident.IsAPIKey {
+		if p.ID != ident.ProjectID {
+			return nil, ErrProjectAccessDenied
+		}
+		resp := toProject(p)
+		return &resp, nil
+	}
+	if ident.Role == auth.RoleAdmin {
+		resp := toProject(p)
+		return &resp, nil
+	}
+	ok, err := u.deps.Stores.Projects.IsMember(ctx, p.ID, ident.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("check membership: %w", err)
+	}
+	if !ok {
+		return nil, ErrProjectAccessDenied
 	}
 	resp := toProject(p)
 	return &resp, nil
@@ -300,7 +365,7 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 	if err != nil {
 		return nil, fmt.Errorf("get finding: %w", err)
 	}
-	if err := checkFindingProjectIDAccess(ctx, f.ProjectID); err != nil {
+	if err := u.checkFindingProjectIDAccess(ctx, f.ProjectID); err != nil {
 		return nil, err
 	}
 	resp := toFinding(f)
@@ -439,7 +504,7 @@ func (u *Usecases) GetReport(ctx context.Context, reportID string) (*ReportRespo
 	if err != nil {
 		return nil, fmt.Errorf("get report: %w", err)
 	}
-	if err := checkFindingProjectIDAccess(ctx, r.ProjectID); err != nil {
+	if err := u.checkFindingProjectIDAccess(ctx, r.ProjectID); err != nil {
 		return nil, err
 	}
 	resp := toReport(r)

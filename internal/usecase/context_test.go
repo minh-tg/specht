@@ -12,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/parser"
 	"github.com/xMinhx/specht/internal/port"
 	"github.com/xMinhx/specht/internal/scanner"
@@ -92,6 +93,24 @@ func TestIngestReport_BindsOwnerToTarget(t *testing.T) {
 	assert.Equal(t, "team-a", gotOwner, "supplied owner must reach the target upsert")
 }
 
+// memberFindingDeps returns stores with a Findings mock plus a Projects
+// mock reporting the caller as a member, so GetFinding passes the H1
+// membership gate in tests that exercise display-context attachment.
+func memberFindingDeps(fr *mockFindingRepo) *port.Stores {
+	pr := &mockProjectRepo{}
+	pr.isMemberFn = func(ctx context.Context, projectID, userID string) (bool, error) {
+		return true, nil
+	}
+	return &port.Stores{Findings: fr, Projects: pr}
+}
+
+func memberSessionCtx() context.Context {
+	return auth.ContextWithIdentity(context.Background(), &auth.Identity{
+		UserID: "00000000-0000-0000-0000-000000000040",
+		Role:   auth.RoleViewer,
+	})
+}
+
 func TestGetFinding_WithContext(t *testing.T) {
 	fr := &mockFindingRepo{}
 	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
@@ -105,8 +124,8 @@ func TestGetFinding_WithContext(t *testing.T) {
 		}, nil
 	}
 
-	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
-	finding, err := uc.GetFinding(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000021")
+	uc := New(Deps{Stores: memberFindingDeps(fr)})
+	finding, err := uc.GetFinding(memberSessionCtx(), "00000000-0000-0000-0000-000000000021")
 	require.NoError(t, err)
 	require.NotNil(t, finding.Context)
 	assert.Equal(t, "alpine:3.20", finding.Context.TargetName)
@@ -125,8 +144,8 @@ func TestGetFinding_NoContext(t *testing.T) {
 		return port.FindingDisplayContext{}, port.ErrNotFound
 	}
 
-	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
-	finding, err := uc.GetFinding(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000021")
+	uc := New(Deps{Stores: memberFindingDeps(fr)})
+	finding, err := uc.GetFinding(memberSessionCtx(), "00000000-0000-0000-0000-000000000021")
 	require.NoError(t, err)
 	assert.Nil(t, finding.Context, "missing context must be explicit nil, not zero fields")
 }
@@ -212,8 +231,8 @@ func TestGetFinding_RemediationFromSource(t *testing.T) {
 		}, nil
 	}
 
-	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
-	finding, err := uc.GetFinding(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000021")
+	uc := New(Deps{Stores: memberFindingDeps(fr)})
+	finding, err := uc.GetFinding(memberSessionCtx(), "00000000-0000-0000-0000-000000000021")
 	require.NoError(t, err)
 	require.NotNil(t, finding.Remediation)
 	assert.Equal(t, "Upgrade to 1.2.4", finding.Remediation.Summary)
@@ -238,8 +257,8 @@ func TestGetFinding_RemediationFallback(t *testing.T) {
 		return port.FindingDisplayContext{ToolName: "grype", LocationSummary: "pkg:x"}, nil
 	}
 
-	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
-	finding, err := uc.GetFinding(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000021")
+	uc := New(Deps{Stores: memberFindingDeps(fr)})
+	finding, err := uc.GetFinding(memberSessionCtx(), "00000000-0000-0000-0000-000000000021")
 	require.NoError(t, err)
 	require.NotNil(t, finding.Remediation)
 	assert.True(t, finding.Remediation.Fallback)
@@ -264,8 +283,8 @@ func TestGetFinding_SuggestionFromDims(t *testing.T) {
 		}, nil
 	}
 
-	uc := New(Deps{Stores: &port.Stores{Findings: fr}})
-	finding, err := uc.GetFinding(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000021")
+	uc := New(Deps{Stores: memberFindingDeps(fr)})
+	finding, err := uc.GetFinding(memberSessionCtx(), "00000000-0000-0000-0000-000000000021")
 	require.NoError(t, err)
 	require.NotNil(t, finding.Suggestion)
 	assert.Equal(t, "upgrade", finding.Suggestion.Action)

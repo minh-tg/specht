@@ -19,9 +19,33 @@ import (
 
 type mockProjectRepo struct {
 	port.ProjectStore
-	createFn    func(context.Context, port.CreateProjectInput) (port.Project, error)
-	listFn      func(context.Context) ([]port.Project, error)
-	getBySlugFn func(context.Context, string) (port.Project, error)
+	createFn       func(context.Context, port.CreateProjectInput) (port.Project, error)
+	listFn         func(context.Context) ([]port.Project, error)
+	getBySlugFn    func(context.Context, string) (port.Project, error)
+	upsertMemberFn func(context.Context, string, string, string) (port.ProjectMember, error)
+	listMembersFn  func(context.Context, string) ([]port.ProjectMember, error)
+	isMemberFn     func(context.Context, string, string) (bool, error)
+}
+
+func (m *mockProjectRepo) UpsertMember(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
+	if m.upsertMemberFn == nil {
+		return port.ProjectMember{}, fmt.Errorf("unexpected call to UpsertMember")
+	}
+	return m.upsertMemberFn(ctx, projectID, userID, role)
+}
+
+func (m *mockProjectRepo) ListMembers(ctx context.Context, projectID string) ([]port.ProjectMember, error) {
+	if m.listMembersFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListMembers")
+	}
+	return m.listMembersFn(ctx, projectID)
+}
+
+func (m *mockProjectRepo) IsMember(ctx context.Context, projectID, userID string) (bool, error) {
+	if m.isMemberFn == nil {
+		return false, fmt.Errorf("unexpected call to IsMember")
+	}
+	return m.isMemberFn(ctx, projectID, userID)
 }
 
 func (m *mockProjectRepo) Create(ctx context.Context, arg port.CreateProjectInput) (port.Project, error) {
@@ -614,8 +638,23 @@ func (m *mockInventoryRepo) DeleteReportPackages(ctx context.Context, reportID s
 	return m.deleteReportPackagesFn(ctx, reportID)
 }
 
+// memberProjects returns a project store mock reporting the caller as a
+// member of every project, for tests exercising membership-gated paths
+// where membership itself is not under test.
+func memberProjects() *mockProjectRepo {
+	pr := &mockProjectRepo{}
+	pr.isMemberFn = func(ctx context.Context, projectID, userID string) (bool, error) {
+		return true, nil
+	}
+	return pr
+}
+
 func makeTestRepos() (*mockProjectRepo, *mockReportRepo, *mockFindingRepo) {
-	return &mockProjectRepo{}, &mockReportRepo{}, &mockFindingRepo{}
+	pr := &mockProjectRepo{}
+	pr.isMemberFn = func(ctx context.Context, projectID, userID string) (bool, error) {
+		return true, nil
+	}
+	return pr, &mockReportRepo{}, &mockFindingRepo{}
 }
 
 func stubTargetRepo() *mockTargetRepo {
@@ -681,16 +720,22 @@ func TestCreateProject_Success(t *testing.T) {
 	pr.createFn = func(ctx context.Context, arg port.CreateProjectInput) (port.Project, error) {
 		return makeProject(true), nil
 	}
+	var gotRole string
+	pr.upsertMemberFn = func(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
+		gotRole = role
+		return port.ProjectMember{ProjectID: projectID, UserID: userID, Role: role}, nil
+	}
 
 	uc := New(Deps{
 		Stores: &port.Stores{Projects: pr},
 	})
 
-	result, err := uc.CreateProject(context.Background(), "My App", "my-app", "test description")
+	result, err := uc.CreateProject(context.Background(), "My App", "my-app", "test description", "creator-1")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, "my-app", result.Slug)
 	assert.Equal(t, "My App", result.Name)
+	assert.Equal(t, auth.RoleAdmin, gotRole, "project creator must become admin member")
 }
 
 func TestIngestReport_Success(t *testing.T) {
@@ -1836,7 +1881,7 @@ func TestGetFinding_Success(t *testing.T) {
 	}
 
 	uc := New(Deps{
-		Stores: &port.Stores{Findings: fr},
+		Stores: &port.Stores{Findings: fr, Projects: memberProjects()},
 	})
 
 	finding, err := uc.GetFinding(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000021")
@@ -1960,7 +2005,7 @@ func TestListProjects_Success(t *testing.T) {
 		Stores: &port.Stores{Projects: pr},
 	})
 
-	projects, err := uc.ListProjects(context.Background())
+	projects, err := uc.ListProjects(sessionCtx("admin-1", auth.RoleAdmin))
 	require.NoError(t, err)
 	assert.Len(t, projects, 1)
 	assert.Equal(t, "my-app", projects[0].Slug)
@@ -1973,12 +2018,15 @@ func TestGetProject_Success(t *testing.T) {
 	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
+	pr.isMemberFn = func(ctx context.Context, projectID, userID string) (bool, error) {
+		return true, nil
+	}
 
 	uc := New(Deps{
 		Stores: &port.Stores{Projects: pr},
 	})
 
-	proj, err := uc.GetProject(context.Background(), "my-app")
+	proj, err := uc.GetProject(sessionCtx("u1", auth.RoleViewer), "my-app")
 	require.NoError(t, err)
 	require.NotNil(t, proj)
 	assert.Equal(t, "my-app", proj.Slug)
@@ -2044,7 +2092,7 @@ func TestGetReport_Success(t *testing.T) {
 	}
 
 	uc := New(Deps{
-		Stores: &port.Stores{Reports: rr},
+		Stores: &port.Stores{Reports: rr, Projects: memberProjects()},
 	})
 
 	report, err := uc.GetReport(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000001")
@@ -2308,7 +2356,7 @@ func TestTriageFinding_Success(t *testing.T) {
 	}
 
 	uc := New(Deps{
-		Stores: &port.Stores{Findings: fr},
+		Stores: &port.Stores{Findings: fr, Projects: memberProjects()},
 	})
 
 	result, err := uc.TriageFinding(findingScopeCtx(findingFixtureProjectID), TriageInput{
@@ -2357,7 +2405,7 @@ func TestTriageFinding_MissingReason(t *testing.T) {
 	}
 
 	uc := New(Deps{
-		Stores: &port.Stores{Findings: fr},
+		Stores: &port.Stores{Findings: fr, Projects: memberProjects()},
 	})
 
 	_, err := uc.TriageFinding(findingScopeCtx(findingFixtureProjectID), TriageInput{
@@ -2375,7 +2423,7 @@ func TestTriageFinding_MissingExpiry(t *testing.T) {
 	}
 
 	uc := New(Deps{
-		Stores: &port.Stores{Findings: fr},
+		Stores: &port.Stores{Findings: fr, Projects: memberProjects()},
 	})
 
 	_, err := uc.TriageFinding(findingScopeCtx(findingFixtureProjectID), TriageInput{
@@ -2405,7 +2453,7 @@ func TestBulkTriage_Success(t *testing.T) {
 	}
 
 	uc := New(Deps{
-		Stores: &port.Stores{Findings: fr},
+		Stores: &port.Stores{Findings: fr, Projects: memberProjects()},
 	})
 
 	results, err := uc.BulkTriage(findingScopeCtx(findingFixtureProjectID), BulkTriageInput{
@@ -2462,7 +2510,7 @@ func TestGetFindingEvents_Success(t *testing.T) {
 	}
 
 	uc := New(Deps{
-		Stores: &port.Stores{Findings: fr},
+		Stores: &port.Stores{Findings: fr, Projects: memberProjects()},
 	})
 
 	events, err := uc.GetFindingEvents(findingScopeCtx(findingFixtureProjectID), "00000000-0000-0000-0000-000000000021", nil, 10, 0)
@@ -2591,7 +2639,7 @@ func TestUpsertReachability_UsesUpdatedAt(t *testing.T) {
 	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
 		return makeFindingRow(1), nil
 	}
-	uc := New(Deps{Stores: &port.Stores{Findings: fr, Reachability: rch}})
+	uc := New(Deps{Stores: &port.Stores{Findings: fr, Reachability: rch, Projects: memberProjects()}})
 
 	result, err := uc.UpsertReachability(findingScopeCtx(findingFixtureProjectID), findingID, userID, "reachable", "evidence")
 	require.NoError(t, err)

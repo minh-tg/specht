@@ -22,7 +22,8 @@ func verifyHarness(now time.Time) (*Usecases, *mockFindingRepo, *mockReportRepo,
 	fr.getDisplayContextFn = func(ctx context.Context, findingID string) (port.FindingDisplayContext, error) {
 		return port.FindingDisplayContext{ToolName: "trivy"}, nil
 	}
-	uc := New(Deps{Stores: &port.Stores{Findings: fr, Reports: rr}})
+	pr, _, _ := makeTestRepos()
+	uc := New(Deps{Stores: &port.Stores{Projects: pr, Findings: fr, Reports: rr}})
 	return uc, fr, rr, f
 }
 

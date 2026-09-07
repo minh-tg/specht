@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/xMinhx/specht/internal/auth"
@@ -30,7 +31,7 @@ func (u *Usecases) findingWithProjectAccess(ctx context.Context, findingID uuid.
 		// it to a 500 instead of a misleading 404.
 		return port.Finding{}, fmt.Errorf("check finding project: %w", err)
 	}
-	if err := checkFindingProjectIDAccess(ctx, finding.ProjectID); err != nil {
+	if err := u.checkFindingProjectIDAccess(ctx, finding.ProjectID); err != nil {
 		return port.Finding{}, err
 	}
 	return finding, nil
@@ -41,27 +42,42 @@ func (u *Usecases) checkFindingProjectAccess(ctx context.Context, findingID uuid
 	return err
 }
 
-func checkFindingRowsProjectAccess(ctx context.Context, findings []port.Finding) error {
+func (u *Usecases) checkFindingRowsProjectAccess(ctx context.Context, findings []port.Finding) error {
 	for _, finding := range findings {
-		if err := checkFindingProjectIDAccess(ctx, finding.ProjectID); err != nil {
+		if err := u.checkFindingProjectIDAccess(ctx, finding.ProjectID); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func checkFindingProjectIDAccess(ctx context.Context, findingProjectID string) error {
-	// Deny unauthenticated principals outright: no identity means there is
-	// nothing to authorize against.
+// checkFindingProjectIDAccess enforces tenant isolation on finding-scoped
+// reads and writes (H1). Unauthenticated principals are denied outright.
+// Project-scoped principals (API keys) must match the finding's project.
+// Session users are authorized by membership: global admins bypass project
+// scope, everyone else must hold a project_members row for the finding's
+// project. Membership-store failures deny access (fail closed) and are
+// logged for operators.
+func (u *Usecases) checkFindingProjectIDAccess(ctx context.Context, findingProjectID string) error {
 	ident := auth.ContextIdentity(ctx)
 	if ident == nil {
 		return ErrProjectAccessDenied
 	}
-	// Project-scoped principals (API keys) must match the finding's project.
-	// Session users without a project scope are authenticated but global;
-	// cross-project access for them is enforced at the route level via
-	// RequireRole and enforceProjectAccess.
-	if ident.IsAPIKey && findingProjectID != ident.ProjectID {
+	if ident.IsAPIKey {
+		if findingProjectID != ident.ProjectID {
+			return ErrProjectAccessDenied
+		}
+		return nil
+	}
+	if ident.Role == auth.RoleAdmin {
+		return nil
+	}
+	ok, err := u.deps.Stores.Projects.IsMember(ctx, findingProjectID, ident.UserID)
+	if err != nil {
+		slog.Error("check finding project: membership lookup failed", "error", err)
+		return ErrProjectAccessDenied
+	}
+	if !ok {
 		return ErrProjectAccessDenied
 	}
 	return nil

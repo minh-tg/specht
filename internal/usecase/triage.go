@@ -176,7 +176,7 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 	if len(findings) != len(input.FindingIDs) {
 		return nil, fmt.Errorf("%w: one or more findings not found", ErrFindingNotFound)
 	}
-	if err := checkFindingRowsProjectAccess(ctx, findings); err != nil {
+	if err := u.checkFindingRowsProjectAccess(ctx, findings); err != nil {
 		return nil, err
 	}
 
