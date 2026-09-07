@@ -105,7 +105,7 @@ func TestOIDC_LoginURL(t *testing.T) {
 func TestOIDC_CallbackHandler_MissingCode(t *testing.T) {
 	a := mustOIDC(t, "https://example.com")
 
-	h := a.CallbackHandler(func(userID, email string) (string, error) {
+	h := a.CallbackHandler(func(ctx context.Context, userID, email string) (string, error) {
 		return "token", nil
 	})
 	req := httptest.NewRequest("GET", "/api/v1/auth/sso/callback", nil)
@@ -118,7 +118,7 @@ func TestOIDC_CallbackHandler_MissingCode(t *testing.T) {
 func TestOIDC_CallbackHandler_MissingState(t *testing.T) {
 	a := mustOIDC(t, "https://example.com")
 
-	h := a.CallbackHandler(func(userID, email string) (string, error) {
+	h := a.CallbackHandler(func(ctx context.Context, userID, email string) (string, error) {
 		return "token", nil
 	})
 	req := httptest.NewRequest("GET", "/callback?code=test-code", nil)
@@ -132,7 +132,7 @@ func TestOIDC_CallbackHandler_MissingState(t *testing.T) {
 func TestOIDC_CallbackHandler_StateMismatch(t *testing.T) {
 	a := mustOIDC(t, "https://example.com")
 
-	h := a.CallbackHandler(func(userID, email string) (string, error) {
+	h := a.CallbackHandler(func(ctx context.Context, userID, email string) (string, error) {
 		return "token", nil
 	})
 	req := httptest.NewRequest("GET", "/callback?code=test-code&state=attacker-state", nil)
@@ -225,7 +225,7 @@ func newFakeOIDCProvider(t *testing.T, key *rsa.PrivateKey) *fakeOIDCProvider {
 func callbackResponse(t *testing.T, a *OIDCAuthenticator, state string) (*httptest.ResponseRecorder, string, string) {
 	t.Helper()
 	var gotUserID, gotEmail string
-	h := a.CallbackHandler(func(userID, email string) (string, error) {
+	h := a.CallbackHandler(func(ctx context.Context, userID, email string) (string, error) {
 		gotUserID, gotEmail = userID, email
 		return "test-session-token", nil
 	})
@@ -364,4 +364,32 @@ func TestOIDC_Callback_JWKSRefreshSingleflight(t *testing.T) {
 		require.NoError(t, <-results)
 	}
 	assert.Equal(t, 1, hits, "concurrent key misses must share one JWKS fetch")
+}
+
+func TestOIDC_Callback_NotProvisionedIsForbidden(t *testing.T) {
+	// The issuer gate rejects unknown IdP subjects: the callback must
+	// answer 403 with a generic message, never leaking account existence.
+	key := newOIDCTestKey(t)
+	state, err := GenerateStateToken()
+	require.NoError(t, err)
+	_, nonce := splitStateNonce(state)
+
+	prov := newFakeOIDCProvider(t, key)
+	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "unknown-sub", "stranger@evil.example", nonce)
+	prov.userSub = "unknown-sub"
+	a := mustOIDC(t, prov.srv.URL)
+
+	h := a.CallbackHandler(func(ctx context.Context, userID, email string) (string, error) {
+		assert.Equal(t, "unknown-sub", userID)
+		// The fake provider answers a fixed userinfo email; the 403 below
+		// is what this test pins, not the address value.
+		return "", ErrSSONotProvisioned
+	})
+	req := httptest.NewRequest("GET", "/callback?code=test-code&state="+url.QueryEscape(state), nil)
+	req.AddCookie(&http.Cookie{Name: "sso_state", Value: state})
+	w := httptest.NewRecorder()
+	h(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Contains(t, w.Body.String(), "sso account not provisioned")
 }

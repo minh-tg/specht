@@ -129,8 +129,9 @@ func main() {
 			}
 			return actorID, uuid.UUID(key.ProjectID.Bytes).String(), scopes, expiresAt, nil
 		},
-		OIDCEnabled: cfg.SSO.Enabled,
-		OIDC:        oidcAuth,
+		OIDCEnabled:       cfg.SSO.Enabled,
+		OIDC:              oidcAuth,
+		SSOAllowedDomains: cfg.SSO.AllowedDomains,
 	})
 
 	srv := &http.Server{

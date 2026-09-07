@@ -136,6 +136,10 @@ func (m *mockUsecases) Login(ctx context.Context, email, password string) (*usec
 	return m.loginFn(ctx, email, password)
 }
 
+func (m *mockUsecases) FindOrProvisionSSOUser(ctx context.Context, sub, email string, allowedDomains []string) (string, string, bool, error) {
+	return "", "", false, fmt.Errorf("unexpected call to FindOrProvisionSSOUser")
+}
+
 func (m *mockUsecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string, expiresAt *time.Time) (*usecase.APIKeyResponse, error) {
 	if m.createAPIKeyFn == nil {
 		return nil, fmt.Errorf("unexpected call to CreateAPIKey")

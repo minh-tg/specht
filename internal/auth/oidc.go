@@ -272,7 +272,11 @@ func idTokenSubject(idToken string) (string, error) {
 // CallbackHandler returns an http.HandlerFunc that the OAuth2 provider redirects to
 // after the user consents. It exchanges the code, extracts identity, and redirects
 // back with a session token delivered as a URL fragment.
-func (a *OIDCAuthenticator) CallbackHandler(issuer func(userID, email string) (token string, err error)) http.HandlerFunc {
+// The issuer callback mints the session token for the validated identity.
+// It receives the request context so it can resolve or provision the local
+// account. If it returns ErrSSONotProvisioned the callback answers 403
+// without disclosing whether the account exists.
+func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, userID, email string) (token string, err error)) http.HandlerFunc {
 	const stateCookieName = "sso_state"
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -338,8 +342,12 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(userID, email string) (t
 			return
 		}
 
-		tok, err := issuer(ident.UserID, ident.Email)
+		tok, err := issuer(r.Context(), ident.UserID, ident.Email)
 		if err != nil {
+			if errors.Is(err, ErrSSONotProvisioned) {
+				http.Error(w, "sso account not provisioned", http.StatusForbidden)
+				return
+			}
 			http.Error(w, "token issuance failed", http.StatusInternalServerError)
 			return
 		}

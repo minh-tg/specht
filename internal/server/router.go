@@ -28,6 +28,9 @@ type RouterConfig struct {
 	APIKeyLookup func(ctx context.Context, keyHash string) (userID, projectID string, scopes []string, expiresAt time.Time, err error)
 	OIDC         *auth.OIDCAuthenticator
 	OIDCEnabled  bool
+	// SSOAllowedDomains gates SSO auto-provisioning (H2): unknown IdP
+	// subjects are provisioned only for allowlisted email domains.
+	SSOAllowedDomains []string
 	// TrustedProxies lists the CIDR ranges of reverse proxies / load
 	// balancers in front of the API. Only requests whose peer address falls
 	// inside one of these ranges may supply X-Forwarded-For, X-Real-IP, or
@@ -69,12 +72,19 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	// SSO/OIDC entry point: redirect to the provider's authorization URL.
 	if cfg.OIDCEnabled && cfg.OIDC != nil {
 		r.Get("/api/v1/auth/sso/login", ssoLoginHandler(cfg.OIDC))
-		r.Get("/api/v1/auth/sso/callback", cfg.OIDC.CallbackHandler(func(userID, email string) (string, error) {
+		r.Get("/api/v1/auth/sso/callback", cfg.OIDC.CallbackHandler(func(ctx context.Context, sub, email string) (string, error) {
 			jwtAuth, ok := cfg.JWTAuth.(*auth.JWTAuthenticator)
 			if !ok {
 				return "", fmt.Errorf("OIDC enabled but JWTAuth is %T, not *auth.JWTAuthenticator", cfg.JWTAuth)
 			}
-			return jwtAuth.CreateToken(userID, email, auth.RoleViewer)
+			// Resolve the IdP subject to a local account: existing users
+			// keep their local role; unknown subjects are provisioned only
+			// for allowlisted domains, otherwise rejected (H2).
+			userID, role, _, err := cfg.Usecases.FindOrProvisionSSOUser(ctx, sub, email, cfg.SSOAllowedDomains)
+			if err != nil {
+				return "", err
+			}
+			return jwtAuth.CreateToken(userID, email, role)
 		}))
 	}
 	r.Post("/api/v1/auth/register", h.Register)

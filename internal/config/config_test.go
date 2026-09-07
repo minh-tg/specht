@@ -85,3 +85,21 @@ func TestWatcherConfig(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "https://example.test/querybatch", w.OSVEndpoint)
 }
+
+func TestLoad_SSOAllowedDomains(t *testing.T) {
+	t.Setenv("WATCHER_ENABLE", "")
+	t.Setenv("SSO_ALLOWED_DOMAINS", "Example.COM, example.org ")
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"example.com", "example.org"}, cfg.SSO.AllowedDomains)
+}
+
+func TestLoad_SSOAllowedDomainsEmpty(t *testing.T) {
+	t.Setenv("WATCHER_ENABLE", "")
+	t.Setenv("SSO_ALLOWED_DOMAINS", "")
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.Empty(t, cfg.SSO.AllowedDomains, "empty allowlist disables auto-provisioning")
+}

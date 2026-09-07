@@ -8,6 +8,11 @@ import (
 var (
 	ErrNotApplicable     = errors.New("authenticator not applicable for this credential")
 	ErrInvalidCredential = errors.New("invalid credential")
+	// ErrSSONotProvisioned is returned when an SSO-authenticated principal
+	// has no local account and the IdP domain is not allowlisted for
+	// auto-provisioning. Callers must map it to a generic 403 without
+	// distinguishing unknown accounts from disallowed domains.
+	ErrSSONotProvisioned = errors.New("sso account not provisioned")
 )
 
 // Roles for the RBAC model. These are the canonical role strings that may

@@ -67,6 +67,7 @@ type (
 	AuthUsecases interface {
 		Register(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
 		Login(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
+		FindOrProvisionSSOUser(ctx context.Context, sub, email string, allowedDomains []string) (userID, role string, provisioned bool, err error)
 		Refresh(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
 		Logout(ctx context.Context, refreshToken string) error
 		GetProfile(ctx context.Context, userID string) (*usecase.UserProfile, error)

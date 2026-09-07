@@ -55,6 +55,12 @@ type SSOConfig struct {
 	ClientSecret string
 	IssuerURL    string
 	RedirectURI  string
+	// AllowedDomains gates SSO auto-provisioning: when an IdP subject has
+	// no local account, one is created only if the account email domain
+	// matches (case-insensitively) an entry here. Empty (the default)
+	// disables auto-provisioning entirely — unknown IdP subjects are
+	// rejected with 403. Existing local accounts are unaffected.
+	AllowedDomains []string
 }
 
 // Watcher is the resolved CVE watcher configuration.
@@ -74,6 +80,18 @@ type Watcher struct {
 // Load reads the server environment, failing on invalid required values.
 // Optional watcher settings are parsed eagerly but their errors are only
 // reported when the watcher is enabled.
+// parseDomainAllowlist splits a comma/space-separated domain allowlist,
+// lowercasing and trimming each entry. Empty input yields nil (deny all).
+func parseDomainAllowlist(v string) []string {
+	var out []string
+	for _, part := range strings.FieldsFunc(v, func(c rune) bool { return c == ',' || c == ' ' }) {
+		if p := strings.ToLower(strings.TrimSpace(part)); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 func Load() (*Server, error) {
 	s := &Server{
 		Addr:         strOr(os.Getenv("SERVER_ADDR"), DefaultServerAddr),
@@ -87,11 +105,12 @@ func Load() (*Server, error) {
 
 	// SSO/OIDC configuration — omitted means SSO is disabled.
 	s.SSO = SSOConfig{
-		Enabled:      os.Getenv("SSO_ENABLE") == "true",
-		ClientID:     os.Getenv("SSO_CLIENT_ID"),
-		ClientSecret: os.Getenv("SSO_CLIENT_SECRET"),
-		IssuerURL:    os.Getenv("SSO_ISSUER_URL"),
-		RedirectURI:  os.Getenv("SSO_REDIRECT_URI"),
+		Enabled:        os.Getenv("SSO_ENABLE") == "true",
+		ClientID:       os.Getenv("SSO_CLIENT_ID"),
+		ClientSecret:   os.Getenv("SSO_CLIENT_SECRET"),
+		IssuerURL:      os.Getenv("SSO_ISSUER_URL"),
+		RedirectURI:    os.Getenv("SSO_REDIRECT_URI"),
+		AllowedDomains: parseDomainAllowlist(os.Getenv("SSO_ALLOWED_DOMAINS")),
 	}
 
 	// Reverse-proxy trust: comma/space-separated CIDRs. A proxy inside one of

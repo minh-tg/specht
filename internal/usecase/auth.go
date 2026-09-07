@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -95,6 +96,58 @@ func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthR
 	}
 	resp.Token = token
 	return resp, nil
+}
+
+// FindOrProvisionSSOUser resolves an SSO-authenticated principal (sub is the
+// stable IdP subject, email the asserted address) to a local account for
+// token issuance. Existing accounts keep their local role; unknown accounts
+// are provisioned only when the email domain is allowlisted, otherwise
+// auth.ErrSSONotProvisioned is returned (the caller maps it to a generic
+// 403). Provisioned accounts are created without a password hash, so they
+// can never use password login (Login rejects empty hashes); they receive
+// the default member role, mapped to viewer claims via auth.TokenRole.
+func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, sub, email string, allowedDomains []string) (userID, role string, provisioned bool, err error) {
+	if email == "" {
+		return "", "", false, auth.ErrSSONotProvisioned
+	}
+	user, err := u.deps.Stores.Users.GetByEmail(ctx, email)
+	if err == nil {
+		if sub != "" {
+			slog.Info("sso login: existing account", "email", email, "sub", sub)
+		}
+		return user.ID, auth.TokenRole(user.Role), false, nil
+	}
+	if !errors.Is(err, port.ErrNotFound) {
+		return "", "", false, fmt.Errorf("lookup sso user: %w", err)
+	}
+	domain := ssoEmailDomain(email)
+	allowed := false
+	for _, d := range allowedDomains {
+		if d != "" && domain == d {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		slog.Warn("sso login: account not provisioned", "email", email, "sub", sub)
+		return "", "", false, auth.ErrSSONotProvisioned
+	}
+	created, err := u.deps.Stores.Users.Create(ctx, email, nil, nil)
+	if err != nil {
+		return "", "", false, fmt.Errorf("provision sso user: %w", err)
+	}
+	slog.Info("sso login: provisioned account", "email", email, "sub", sub)
+	return created.ID, auth.TokenRole(created.Role), true, nil
+}
+
+// ssoEmailDomain returns the lowercased domain part of an email address,
+// or "" when the address has no domain part.
+func ssoEmailDomain(email string) string {
+	at := strings.LastIndex(email, "@")
+	if at < 0 || at+1 >= len(email) {
+		return ""
+	}
+	return strings.ToLower(email[at+1:])
 }
 
 func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResponse, error) {
