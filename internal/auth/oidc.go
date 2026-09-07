@@ -53,25 +53,12 @@ func NewOIDCAuthenticator(cfg OIDCConfig, logger func(msg string, args ...any)) 
 	}
 }
 
-// Authenticate exchanges an OAuth2 code (from the redirect callback) for an
-// OIDC Identity. The token is expected in the form "oidc:<code>".
+// Authenticate reports that OIDC credentials are not applicable to the
+// bearer-auth chain. Authorization codes flow only through the SSO callback
+// (CallbackHandler), never as bearer credentials: accepting "oidc:<code>"
+// here would put a one-time code into Authorization headers and logs.
 func (a *OIDCAuthenticator) Authenticate(ctx context.Context, token string) (*Identity, error) {
-	if !strings.HasPrefix(token, "oidc:") {
-		return nil, ErrNotApplicable
-	}
-	code := strings.TrimPrefix(token, "oidc:")
-
-	tokenResp, err := a.exchangeCode(ctx, code)
-	if err != nil {
-		return nil, ErrInvalidCredential
-	}
-
-	idToken, ok := tokenResp["id_token"].(string)
-	if !ok || idToken == "" {
-		return a.identityFromUserInfo(ctx, tokenResp)
-	}
-
-	return a.identityFromIDToken(ctx, idToken)
+	return nil, ErrNotApplicable
 }
 
 func (a *OIDCAuthenticator) exchangeCode(ctx context.Context, code string) (map[string]any, error) {

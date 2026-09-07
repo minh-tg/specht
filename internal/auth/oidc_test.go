@@ -144,3 +144,21 @@ func TestOIDC_CallbackHandler_DeliversTokenInFragment(t *testing.T) {
 		assert.NotEqual(t, "token", c.Name, "callback must not set a session cookie")
 	}
 }
+
+func TestOIDC_Authenticate_RejectsOIDCBearer(t *testing.T) {
+	a := NewOIDCAuthenticator(OIDCConfig{
+		ClientID:     "test-client",
+		ClientSecret: "secret",
+		IssuerURL:    "https://example.com",
+		RedirectURI:  "http://localhost:8080/callback",
+	}, nil)
+
+	// The OIDC authenticator is only wired to the SSO login/callback flow; it
+	// is never part of the bearer-auth chain. Treating "oidc:<code>" as a
+	// bearer credential would put a one-time code into Authorization headers
+	// and logs, so it must fall through like any other unrecognized token.
+	ident, err := a.Authenticate(context.Background(), "oidc:anything")
+	assert.Nil(t, ident)
+	assert.ErrorIs(t, err, ErrNotApplicable)
+	assert.NotErrorIs(t, err, ErrInvalidCredential)
+}
