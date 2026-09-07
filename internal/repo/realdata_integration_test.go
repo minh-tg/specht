@@ -38,13 +38,13 @@ const fixtureProjectID = "00000000-0000-0000-0000-000000000001"
 
 // findingScopeCtx returns a context carrying an authenticated session-user
 // identity. The finding access checks require an identity (nil is denied);
-// session users are global and pass regardless of the ProjectID field, which
-// only gates API-key principals. The project ID is supplied to keep the
-// fixture close to the real project-scoped shapes used elsewhere.
-func findingScopeCtx(projectID string) context.Context {
+// session users pass only with a membership row for the finding's project
+// (H1 tenant isolation). The caller passes a real member account, typically
+// the project creator (auto-admin at creation time).
+func findingScopeCtx(userID string) context.Context {
 	return auth.ContextWithIdentity(context.Background(), &auth.Identity{
-		UserID:    "00000000-0000-0000-0000-000000000040",
-		ProjectID: projectID,
+		UserID: userID,
+		Role:   auth.RoleViewer,
 	})
 }
 
@@ -100,7 +100,9 @@ func TestRealDataDoubleIngest_Idempotent(t *testing.T) {
 	}
 	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
 
-	_, err := uc.CreateProject(ctx, "My App", "my-app", "validation")
+	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
+	require.NoError(t, err)
+	_, err = uc.CreateProject(ctx, "My App", "my-app", "validation", creator.ID)
 	require.NoError(t, err)
 
 	raw1, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
@@ -143,7 +145,9 @@ func TestRealDataContext_EndToEnd(t *testing.T) {
 	}
 	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
 
-	_, err := uc.CreateProject(ctx, "My App", "my-app", "validation")
+	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
+	require.NoError(t, err)
+	_, err = uc.CreateProject(ctx, "My App", "my-app", "validation", creator.ID)
 	require.NoError(t, err)
 
 	raw1, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
@@ -190,7 +194,7 @@ func TestRealDataContext_EndToEnd(t *testing.T) {
 	require.Len(t, findings, 4, "context changes must not fork finding rows")
 
 	// Detail exposes the latest observed context.
-	detail, err := uc.GetFinding(findingScopeCtx(fixtureProjectID), findings[0].ID)
+	detail, err := uc.GetFinding(findingScopeCtx(creator.ID), findings[0].ID)
 	require.NoError(t, err)
 	require.NotNil(t, detail.Context)
 	assert.NotEmpty(t, detail.Context.TargetName)
@@ -235,7 +239,9 @@ func TestAgingRows_EndToEnd(t *testing.T) {
 	}
 	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
 
-	_, err := uc.CreateProject(ctx, "My App", "my-app", "validation")
+	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
+	require.NoError(t, err)
+	_, err = uc.CreateProject(ctx, "My App", "my-app", "validation", creator.ID)
 	require.NoError(t, err)
 	project, err := stores.Projects.GetBySlug(ctx, "my-app")
 	require.NoError(t, err)
@@ -319,7 +325,9 @@ func TestNucleiIngest_EndToEnd(t *testing.T) {
 	}
 	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
 
-	_, err := uc.CreateProject(ctx, "My App", "my-app", "validation")
+	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
+	require.NoError(t, err)
+	_, err = uc.CreateProject(ctx, "My App", "my-app", "validation", creator.ID)
 	require.NoError(t, err)
 
 	raw, err := os.ReadFile("../parser/nuclei/testdata/nuclei.jsonl")
@@ -356,7 +364,9 @@ func TestRemediation_EndToEnd(t *testing.T) {
 	}
 	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
 
-	_, err := uc.CreateProject(ctx, "My App", "my-app", "validation")
+	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
+	require.NoError(t, err)
+	_, err = uc.CreateProject(ctx, "My App", "my-app", "validation", creator.ID)
 	require.NoError(t, err)
 
 	raw, err := os.ReadFile("../parser/checkov/testdata/checkov-terraform.json")
@@ -373,7 +383,7 @@ func TestRemediation_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, findings, 3)
 
-	detail, err := uc.GetFinding(findingScopeCtx(fixtureProjectID), findings[0].ID)
+	detail, err := uc.GetFinding(findingScopeCtx(creator.ID), findings[0].ID)
 	require.NoError(t, err)
 	require.NotNil(t, detail.Remediation, "guideline-backed fix must surface on detail")
 	assert.False(t, detail.Remediation.Fallback)
@@ -396,7 +406,9 @@ func TestSuggestion_EndToEnd(t *testing.T) {
 	}
 	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
 
-	_, err := uc.CreateProject(ctx, "My App", "my-app", "validation")
+	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
+	require.NoError(t, err)
+	_, err = uc.CreateProject(ctx, "My App", "my-app", "validation", creator.ID)
 	require.NoError(t, err)
 
 	raw, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
@@ -415,7 +427,7 @@ func TestSuggestion_EndToEnd(t *testing.T) {
 
 	var upgraded bool
 	for _, f := range findings {
-		detail, err := uc.GetFinding(findingScopeCtx(fixtureProjectID), f.ID)
+		detail, err := uc.GetFinding(findingScopeCtx(creator.ID), f.ID)
 		require.NoError(t, err)
 		require.NotNil(t, detail.Suggestion)
 		if detail.Suggestion.Confidence == "high" {
@@ -439,7 +451,9 @@ func TestVerifyFix_FullCycle(t *testing.T) {
 	}
 	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
 
-	_, err := uc.CreateProject(ctx, "My App", "my-app", "validation")
+	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
+	require.NoError(t, err)
+	_, err = uc.CreateProject(ctx, "My App", "my-app", "validation", creator.ID)
 	require.NoError(t, err)
 
 	raw1, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
@@ -485,7 +499,7 @@ func TestVerifyFix_FullCycle(t *testing.T) {
 	}
 	require.NotEmpty(t, fixed.ID, "lodash finding must exist from the first scan")
 
-	verified, err := uc.VerifyFix(findingScopeCtx(fixtureProjectID), fixed.ID)
+	verified, err := uc.VerifyFix(findingScopeCtx(creator.ID), fixed.ID)
 	require.NoError(t, err)
 	assert.Equal(t, usecase.VerifyFixed, verified.Outcome)
 	require.NotNil(t, verified.ReportID)
@@ -498,7 +512,7 @@ func TestVerifyFix_FullCycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, events, 1, "closure records the verifying scan")
 
-	still, err := uc.VerifyFix(findingScopeCtx(fixtureProjectID), present.ID)
+	still, err := uc.VerifyFix(findingScopeCtx(creator.ID), present.ID)
 	require.NoError(t, err)
 	assert.Equal(t, usecase.VerifyPresent, still.Outcome)
 }
@@ -515,7 +529,9 @@ func TestRegression_DetectedAndReopened(t *testing.T) {
 	}
 	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
 
-	_, err := uc.CreateProject(ctx, "Regress App", "regress-app", "validation")
+	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
+	require.NoError(t, err)
+	_, err = uc.CreateProject(ctx, "Regress App", "regress-app", "validation", creator.ID)
 	require.NoError(t, err)
 
 	raw1, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
@@ -545,7 +561,7 @@ func TestRegression_DetectedAndReopened(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	verified, err := uc.VerifyFix(findingScopeCtx(fixtureProjectID), f)
+	verified, err := uc.VerifyFix(findingScopeCtx(creator.ID), f)
 	require.NoError(t, err)
 	assert.Equal(t, usecase.VerifyFixed, verified.Outcome)
 
@@ -649,7 +665,9 @@ func TestTracker_DispatchLifecycle(t *testing.T) {
 	}
 	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg, Tracker: dispatcher})
 
-	_, err := uc.CreateProject(ctx, "Tracker App", "tracker-app", "validation")
+	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
+	require.NoError(t, err)
+	_, err = uc.CreateProject(ctx, "Tracker App", "tracker-app", "validation", creator.ID)
 	require.NoError(t, err)
 
 	raw, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
@@ -677,7 +695,7 @@ func TestTracker_DispatchLifecycle(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	verified, err := uc.VerifyFix(findingScopeCtx(fixtureProjectID), f)
+	verified, err := uc.VerifyFix(findingScopeCtx(creator.ID), f)
 	require.NoError(t, err)
 	assert.Equal(t, usecase.VerifyFixed, verified.Outcome)
 
