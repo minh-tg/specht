@@ -300,19 +300,31 @@ func (h *Handler) enforceProjectAccess(r *http.Request, projectSlug string) erro
 	return nil
 }
 
-// RequireRole is a middleware that enforces a minimum role for session-authenticated
-// users. API keys bypass role checks (they are already project-scoped). Unauthenticated
-// requests fall through to 401.
+// RequireRole is a middleware that enforces a role for session-authenticated
+// users and the matching permission scope for API-key principals.
 //
-// The identity's role is validated against the canonical RBAC vocabulary
-// (auth.ValidRole) before the demanded-role check: a token carrying a role
-// outside admin/editor/viewer — the legacy DB role "member", an empty claim,
-// or garbage — is not a known principal and is denied 403, never admitted
-// just because no demanded role matched it.
+// Session users are authorized when their JWT role is one of the demanded
+// roles. The identity's role is validated against the canonical RBAC
+// vocabulary (auth.ValidRole) before the demanded-role check: a token
+// carrying a role outside admin/editor/viewer — the legacy DB role "member",
+// an empty claim, or garbage — is not a known principal and is denied 403,
+// never admitted just because no demanded role matched it.
+//
+// API keys are project-scoped and never carry session roles, so they cannot
+// satisfy a role gate by identity: the demanded roles are mapped to the
+// equivalent API-key permission scopes (admin routes → the "admin" scope),
+// and a key is admitted only when it holds that scope. An authentic key with
+// no matching scope is denied 403 — an ingest-only key must never reach an
+// admin-gated route (creating projects, managing API keys, triage, waivers,
+// global daemon state). Unauthenticated requests fall through to 401.
 func RequireRole(roles ...string) func(http.Handler) http.Handler {
 	allowed := make(map[string]bool, len(roles))
+	requiredScopes := make(map[string]bool, len(roles))
 	for _, r := range roles {
 		allowed[r] = true
+		if scope, ok := auth.RoleScope(r); ok {
+			requiredScopes[scope] = true
+		}
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -322,7 +334,15 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 				return
 			}
 			if ident.IsAPIKey {
-				next.ServeHTTP(w, r)
+				// API keys are never admitted by role alone: they must hold
+				// the permission scope the gate demands.
+				for scope := range requiredScopes {
+					if ident.HasScope(scope) {
+						next.ServeHTTP(w, r)
+						return
+					}
+				}
+				respondError(w, http.StatusForbidden, "insufficient_scope", "API key does not have the required scope for this route")
 				return
 			}
 			if !auth.ValidRole(ident.Role) || !allowed[ident.Role] {

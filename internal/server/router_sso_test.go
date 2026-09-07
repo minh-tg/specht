@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,8 +41,8 @@ func TestNewRouter_SSOWithNonJWTAuth_NoPanic(t *testing.T) {
 	}, nil)
 	require.NoError(t, err)
 
-	apiKeyAuth := auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, error) {
-		return "", "", nil
+	apiKeyAuth := auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
+		return "", "", nil, time.Time{}, nil
 	})
 
 	router := NewRouter(RouterConfig{

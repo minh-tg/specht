@@ -6,15 +6,20 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"time"
 )
 
 // APIKeyAuthenticator authenticates project-scoped API keys via a lookup callback.
 type APIKeyAuthenticator struct {
-	lookup func(ctx context.Context, keyHash string) (userID, projectID string, err error)
+	lookup func(ctx context.Context, keyHash string) (userID, projectID string, scopes []string, expiresAt time.Time, err error)
 }
 
 // NewAPIKeyAuthenticator builds an API key authenticator over the given key-hash lookup.
-func NewAPIKeyAuthenticator(lookup func(ctx context.Context, keyHash string) (userID, projectID string, err error)) *APIKeyAuthenticator {
+// The lookup resolves a stored key to its owning user and project, its
+// permission scopes, and its expiration time. A zero expiresAt means the key
+// never expires. Returning a time in the past marks the key expired and
+// Authenticate rejects it.
+func NewAPIKeyAuthenticator(lookup func(ctx context.Context, keyHash string) (userID, projectID string, scopes []string, expiresAt time.Time, err error)) *APIKeyAuthenticator {
 	return &APIKeyAuthenticator{lookup: lookup}
 }
 
@@ -22,12 +27,20 @@ func (a *APIKeyAuthenticator) Authenticate(ctx context.Context, token string) (*
 	hash := sha256.Sum256([]byte(token))
 	keyHash := hex.EncodeToString(hash[:])
 
-	userID, projectID, err := a.lookup(ctx, keyHash)
+	userID, projectID, scopes, expiresAt, err := a.lookup(ctx, keyHash)
 	if err != nil {
 		return nil, fmt.Errorf("invalid API key")
 	}
+	if !expiresAt.IsZero() && !expiresAt.After(time.Now()) {
+		return nil, fmt.Errorf("API key expired")
+	}
 
-	return &Identity{UserID: userID, ProjectID: projectID, IsAPIKey: true}, nil
+	return &Identity{
+		UserID:    userID,
+		ProjectID: projectID,
+		Scopes:    scopes,
+		IsAPIKey:  true,
+	}, nil
 }
 
 // GenerateAPIKey mints a new API key and returns the raw key plus its hash.

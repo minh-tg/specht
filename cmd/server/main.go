@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -92,19 +93,34 @@ func main() {
 		Usecases:    uc,
 		CORSOrigins: cfg.CORSOrigins,
 		JWTAuth:     jwtAuth,
-		APIKeyLookup: func(ctx context.Context, keyHash string) (string, string, error) {
+		APIKeyLookup: func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
 			key, err := repos.APIKeys.GetByHash(ctx, keyHash)
 			if err != nil {
-				return "", "", fmt.Errorf("key not found")
+				return "", "", nil, time.Time{}, fmt.Errorf("key not found")
 			}
 			if key.RevokedAt.Valid {
-				return "", "", fmt.Errorf("key revoked")
+				return "", "", nil, time.Time{}, fmt.Errorf("key revoked")
+			}
+			// An expired key is rejected at lookup time: it must never
+			// authenticate, so there is no window where a stale key keeps
+			// working. (The authenticator double-checks expiry as well.)
+			if key.ExpiresAt.Valid && !key.ExpiresAt.Time.After(time.Now()) {
+				return "", "", nil, time.Time{}, fmt.Errorf("key expired")
 			}
 			actorID := ""
 			if key.CreatedBy.Valid {
 				actorID = uuid.UUID(key.CreatedBy.Bytes).String()
 			}
-			return actorID, uuid.UUID(key.ProjectID.Bytes).String(), nil
+			scopes, err := apiKeyScopes(key.Scopes)
+			if err != nil {
+				slog.Warn("api key lookup: unreadable scopes; denying key", "error", err)
+				return "", "", nil, time.Time{}, fmt.Errorf("key scopes unreadable")
+			}
+			expiresAt := time.Time{}
+			if key.ExpiresAt.Valid {
+				expiresAt = key.ExpiresAt.Time
+			}
+			return actorID, uuid.UUID(key.ProjectID.Bytes).String(), scopes, expiresAt, nil
 		},
 		OIDCEnabled: cfg.SSO.Enabled,
 		OIDC:        oidcAuth,
@@ -368,4 +384,21 @@ func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Serv
 		ProjectIntervals: projectIntervals,
 	})
 	return nil
+}
+
+// apiKeyScopes decodes the stored scopes JSONB column of an API key into the
+// scope list the authenticator carries on the identity. Stored keys default
+// to ["ingest"] (schema default) and the create path always writes a JSON
+// array, but a malformed value must deny the key rather than panic or grant
+// implicit permissions: scope enforcement is a security boundary, so an
+// unreadable scope column fails closed.
+func apiKeyScopes(raw []byte) ([]string, error) {
+	scopes := []string{}
+	if len(raw) == 0 {
+		return scopes, nil
+	}
+	if err := json.Unmarshal(raw, &scopes); err != nil {
+		return nil, fmt.Errorf("decode key scopes: %w", err)
+	}
+	return scopes, nil
 }

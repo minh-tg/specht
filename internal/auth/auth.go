@@ -29,6 +29,48 @@ const (
 // documentation. New code should use RoleViewer.
 const RoleMember = "member"
 
+// API-key permission scopes (project-scoped keys, ADR 019). A key is granted
+// one or more of these at creation; authorization checks a key's scope list
+// against the scope the accessed operation demands.
+const (
+	ScopeIngest = "ingest" // ingest scan reports for the key's project
+	ScopeRead   = "read"   // read findings, reports, gate state, waivers
+	ScopeAdmin  = "admin"  // project administration: API keys, waivers, triage
+)
+
+// RoleScope maps a role demanded by RequireRole onto the API-key scope that
+// satisfies it. Role gates express human RBAC; an API key satisfies a gate
+// only when it holds the corresponding permission scope. Keys never map to
+// session roles — they are a parallel, project-scoped mechanism — so the
+// role → scope mapping is the only bridge between the two vocabularies.
+func RoleScope(role string) (string, bool) {
+	switch role {
+	case RoleAdmin:
+		return ScopeAdmin, true
+	case RoleEditor:
+		return ScopeAdmin, true // mutations beyond plain ingest are admin-level
+	case RoleViewer:
+		return ScopeRead, true
+	default:
+		return "", false
+	}
+}
+
+// HasScope reports whether the API-key principal holds the named permission
+// scope. Session principals are not scope-gated and report false; RequireRole
+// authorizes them via Role before consulting scopes.
+func (i *Identity) HasScope(scope string) bool {
+	if i == nil || !i.IsAPIKey {
+		return false
+	}
+	for _, s := range i.Scopes {
+		if s == scope {
+			return true
+		}
+	}
+	return false
+}
+
 // ValidRole reports whether role belongs to the canonical RBAC vocabulary.
 // Every role reaching authorization checks — from JWT claims or API-key
 // identities — must be one of admin/editor/viewer. Anything else (the
@@ -56,12 +98,15 @@ func TokenRole(role string) string {
 
 // Identity is the authenticated principal attached to a request context.
 // Role is populated from the JWT token claim (for session auth) or from the
-// user's global role (for API key auth).
+// user's global role (for API key auth). Scopes holds the permission scopes
+// granted to an API-key principal (e.g. "ingest", "read", "admin"); it is
+// empty for session principals, whose permissions come from Role.
 type Identity struct {
 	UserID    string
 	Email     string
 	ProjectID string
 	Role      string
+	Scopes    []string
 	IsAPIKey  bool
 }
 

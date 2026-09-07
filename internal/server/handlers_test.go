@@ -1666,8 +1666,8 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 }
 
 func TestAuthMiddleware_ExpiredJWTDoesNotFallThrough(t *testing.T) {
-	mw := AuthMiddleware(testJWTAuth, auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, error) {
-		return "user-1", "project-1", nil
+	mw := AuthMiddleware(testJWTAuth, auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
+		return "user-1", "project-1", nil, time.Time{}, nil
 	}))
 
 	// generate an expired JWT that is well-formed but past expiry
@@ -1695,8 +1695,8 @@ func TestAuthMiddleware_ExpiredJWTDoesNotFallThrough(t *testing.T) {
 }
 
 func TestAuthMiddleware_MalformedTokenFallsThrough(t *testing.T) {
-	mw := AuthMiddleware(testJWTAuth, auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, error) {
-		return "user-1", "project-1", nil
+	mw := AuthMiddleware(testJWTAuth, auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
+		return "user-1", "project-1", nil, time.Time{}, nil
 	}))
 	var capturedID string
 	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1727,8 +1727,8 @@ func TestAuthMiddleware_NoAuthenticators(t *testing.T) {
 }
 
 func TestAuthMiddleware_APIKeyAuth(t *testing.T) {
-	apiKeyAuth := auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, error) {
-		return "user-1", "project-1", nil
+	apiKeyAuth := auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
+		return "user-1", "project-1", nil, time.Time{}, nil
 	})
 	mw := AuthMiddleware(testJWTAuth, apiKeyAuth)
 	var capturedID string
@@ -1748,9 +1748,9 @@ func TestAuthMiddleware_APIKeyAuth(t *testing.T) {
 
 func TestAPIKeyAuthenticator_IdentitySemantics(t *testing.T) {
 	var capturedHash string
-	apiKeyAuth := auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, error) {
+	apiKeyAuth := auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
 		capturedHash = keyHash
-		return "key-1", "project-1", nil
+		return "key-1", "project-1", nil, time.Time{}, nil
 	})
 
 	ident, err := apiKeyAuth.Authenticate(context.Background(), "vuln_abc123keymaterial")
@@ -2298,8 +2298,8 @@ func TestGlobalStatusEndpoints_AdminOnly(t *testing.T) {
 	router := NewRouter(RouterConfig{
 		Usecases: mock,
 		JWTAuth:  testJWTAuth,
-		APIKeyLookup: func(ctx context.Context, keyHash string) (string, string, error) {
-			return "key-user", "project-1", nil
+		APIKeyLookup: func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
+			return "key-user", "project-1", nil, time.Time{}, nil
 		},
 	})
 
@@ -2410,24 +2410,6 @@ func TestRequireRole_UnauthenticatedDenied(t *testing.T) {
 	handler.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
-}
-
-func TestRequireRole_APIKeyBypass(t *testing.T) {
-	// API keys are project-scoped and bypass role checks.
-	roleMw := RequireRole(auth.RoleAdmin)
-	h := roleMw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	req := httptest.NewRequest("POST", "/api/v1/projects", nil)
-	ctx := auth.ContextWithIdentity(context.Background(), &auth.Identity{
-		UserID: "key-user", ProjectID: "proj-1", IsAPIKey: true,
-	})
-	// Simulate the identity being set by AuthMiddleware.
-	req = req.WithContext(ctx)
-	w := httptest.NewRecorder()
-	h.ServeHTTP(w, req)
-
-	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 // TestRequireRole_RejectsUnknownRole guards the RequireRole allowlist: a JWT

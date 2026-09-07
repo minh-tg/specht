@@ -23,7 +23,7 @@ type RouterConfig struct {
 	Usecases     usecaseInterface
 	CORSOrigins  string
 	JWTAuth      auth.Authenticator
-	APIKeyLookup func(ctx context.Context, keyHash string) (userID, projectID string, err error)
+	APIKeyLookup func(ctx context.Context, keyHash string) (userID, projectID string, scopes []string, expiresAt time.Time, err error)
 	OIDC         *auth.OIDCAuthenticator
 	OIDCEnabled  bool
 }
