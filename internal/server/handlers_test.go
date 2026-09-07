@@ -1655,6 +1655,27 @@ func TestLogout_Success(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, w.Code)
 }
 
+func TestLogout_EmptyBody(t *testing.T) {
+	// M1 regression: the body-size helper must tolerate empty bodies —
+	// logout historically ignored decode errors, so clients sending no
+	// body kept working.
+	var got string
+	mock := &mockUsecases{
+		logoutFn: func(ctx context.Context, refreshToken string) error {
+			got = refreshToken
+			return nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("POST", "/api/v1/auth/logout", nil)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+	assert.Equal(t, "", got)
+}
+
 func TestLogout_WithError(t *testing.T) {
 	mock := &mockUsecases{
 		logoutFn: func(ctx context.Context, refreshToken string) error {
@@ -1672,6 +1693,21 @@ func TestLogout_WithError(t *testing.T) {
 }
 
 // ----- Me Handler Tests -----
+
+func TestListProjects_AccessDenied(t *testing.T) {
+	// H1 second sweep: tenant denial surfaces as 403, never 500.
+	mock := &mockUsecases{
+		listProjectsFn: func(ctx context.Context) ([]usecase.ProjectResponse, error) {
+			return nil, usecase.ErrProjectAccessDenied
+		},
+	}
+	h := &Handler{usecase: mock}
+	req := httptest.NewRequest("GET", "/api/v1/projects", nil)
+	w := httptest.NewRecorder()
+	h.ListProjects(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
 
 func TestMe_Success(t *testing.T) {
 	mock := &mockUsecases{

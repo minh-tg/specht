@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"log/slog"
 	"net/http"
@@ -243,6 +244,11 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, v any, maxBytes int6
 	}
 	err := json.NewDecoder(r.Body).Decode(v)
 	if err != nil {
+		if errors.Is(err, io.EOF) {
+			// Empty body: leave the zero value in place. Callers with
+			// required fields validate them after decoding.
+			return true
+		}
 		var maxErr *http.MaxBytesError
 		if errors.As(err, &maxErr) {
 			respondError(w, http.StatusRequestEntityTooLarge, "body_too_large", "request body too large")

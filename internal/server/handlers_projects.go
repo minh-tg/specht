@@ -2,13 +2,16 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/xMinhx/specht/internal/audit"
 	"github.com/xMinhx/specht/internal/auth"
+	"github.com/xMinhx/specht/internal/usecase"
 )
 
 func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +45,11 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 	projects, err := h.usecase.ListProjects(r.Context())
 	if err != nil {
-		log.Printf("list projects: %v", err)
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			respondError(w, http.StatusForbidden, "project_access_denied", "project access denied")
+			return
+		}
+		slog.Error("list projects", "error", err)
 		respondError(w, http.StatusInternalServerError, "internal_error", "failed to list projects")
 		return
 	}
