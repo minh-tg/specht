@@ -8,10 +8,14 @@ import { FindingDetail } from "./FindingDetail";
 interface FindingFixture {
   first_seen_at?: string;
   last_seen_at?: string;
+  state?: string;
+  analysis_state?: string;
+  gate_effect?: string;
   context?: { source_link?: string; };
 }
 
 let findingFixture: FindingFixture;
+let reachabilityFixture: Array<Record<string, unknown>>;
 let triageCalls: Array<{ url: string; body: string; }>;
 
 function makeFinding(overrides: FindingFixture = {}): Record<string, unknown> {
@@ -50,13 +54,14 @@ function renderDetail() {
 
 beforeEach(() => {
   findingFixture = {};
+  reachabilityFixture = [];
   triageCalls = [];
   globalThis.fetch = vi.fn().mockImplementation(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = (init?.method ?? "GET").toUpperCase();
       if (url.endsWith("/reachability") && method === "GET") {
-        return { ok: true, json: () => Promise.resolve([]) } as Response;
+        return { ok: true, json: () => Promise.resolve(reachabilityFixture) } as Response;
       }
       if (url.endsWith("/findings/f1") && method === "PATCH") {
         triageCalls.push({ url, body: String(init?.body ?? "") });
@@ -147,5 +152,125 @@ describe("FindingDetail triage expiry", () => {
       reason: "",
       analysis_expires_at: "2025-06-01T23:59:59.999Z",
     });
+  });
+});
+
+describe("FindingDetail enum labels", () => {
+  it("labels the analysis state instead of rendering the raw enum", async () => {
+    findingFixture = { analysis_state: "accepted_risk" };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.getByText("Accepted Risk", { selector: "p" })).toBeInTheDocument();
+    expect(screen.queryByText("accepted_risk", { selector: "p" })).not.toBeInTheDocument();
+  });
+
+  it("renders a controlled label when analysis_state is unvalidated", async () => {
+    findingFixture = { analysis_state: "pending_review" };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.queryByText("pending_review")).not.toBeInTheDocument();
+    expect(screen.getByText("Unknown", { selector: "p" })).toBeInTheDocument();
+  });
+
+  it("labels the gate effect instead of rendering the raw enum", async () => {
+    findingFixture = { gate_effect: "ignore" };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.getByText("Ignore", { selector: "p" })).toBeInTheDocument();
+    expect(screen.queryByText("ignore", { selector: "p" })).not.toBeInTheDocument();
+  });
+
+  it("renders a controlled label when gate_effect is unvalidated", async () => {
+    findingFixture = { gate_effect: "defer" };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.queryByText("defer")).not.toBeInTheDocument();
+    expect(screen.getByText("Unknown", { selector: "p" })).toBeInTheDocument();
+  });
+
+  it("labels the technical state instead of rendering the raw enum", async () => {
+    findingFixture = { state: "reopened" };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.getByText("Reopened", { selector: "p" })).toBeInTheDocument();
+  });
+
+  it("renders a controlled label when state is unvalidated", async () => {
+    findingFixture = { state: "closed" };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.queryByText("closed")).not.toBeInTheDocument();
+    expect(screen.getByText("Unknown", { selector: "p" })).toBeInTheDocument();
+  });
+});
+
+describe("FindingDetail reachability rendering", () => {
+  const assessment = (overrides: Record<string, unknown> = {}) => ({
+    id: "r1",
+    finding_id: "f1",
+    state: "not_reachable",
+    evidence: "",
+    assessed_by: "u1",
+    created_at: "2025-01-01T00:00:00Z",
+    updated_at: "2025-01-03T00:00:00Z",
+    ...overrides,
+  });
+
+  function latestParagraph(): HTMLParagraphElement {
+    const p = [...document.querySelectorAll("p")]
+      .find((el) => el.textContent?.startsWith("Latest:"));
+    expect(p).toBeDefined();
+    return p as HTMLParagraphElement;
+  }
+
+  it("labels a reachability state instead of rendering the raw enum", async () => {
+    reachabilityFixture = [assessment({ state: "not_reachable" })];
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    const latest = latestParagraph();
+    expect(latest.textContent).toContain("Not Reachable");
+    expect(latest.textContent).not.toContain("not_reachable");
+  });
+
+  it("renders a controlled label when a reachability state is unvalidated", async () => {
+    reachabilityFixture = [assessment({ state: "maybe_reachable", evidence: "trace exists" })];
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    const latest = latestParagraph();
+    expect(latest.textContent).not.toContain("maybe_reachable");
+    expect(latest.textContent).not.toContain("maybe reachable");
+    expect(latest.textContent).toContain("Unknown");
+  });
+
+  it("truncates long evidence inline and keeps the full text reachable", async () => {
+    const fullEvidence = "x".repeat(2000);
+    reachabilityFixture = [assessment({ evidence: fullEvidence })];
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    const latest = latestParagraph();
+    // The 2000-char payload must not land in the layout.
+    expect(latest.textContent!.length).toBeLessThan(300);
+    expect(latest.textContent).toContain("…");
+    // The complete evidence stays available for inspection.
+    expect(screen.getByTitle(fullEvidence)).toBeInTheDocument();
+  });
+
+  it("keeps short evidence inline untruncated", async () => {
+    reachabilityFixture = [assessment({ evidence: "short reason" })];
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    const latest = latestParagraph();
+    expect(latest.textContent).toContain("— short reason");
+    expect(latest.textContent).not.toContain("…");
   });
 });

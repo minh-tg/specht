@@ -1,26 +1,43 @@
 import { useFinding, useReachability, useTriageFinding, useUpsertReachability } from "@/api/hooks";
 import { SeverityBadge } from "@/components/ui/severity-badge";
+import {
+  type AnalysisState,
+  analysisStateLabel,
+  gateEffectLabel,
+  isAnalysisState,
+  isReachabilityState,
+  type ReachabilityState,
+  reachabilityStateLabel,
+  technicalStateLabel,
+} from "@/lib/enums";
+import { truncateText } from "@/lib/utils";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-const REACHABILITY_OPTIONS = [
+/** Inline evidence is capped so an oversized payload cannot blow up layout. */
+const MAX_EVIDENCE_LENGTH = 240;
+
+const REACHABILITY_OPTIONS: Array<{ value: ReachabilityState; label: string; }> = [
   { value: "reachable", label: "Reachable" },
   { value: "not_reachable", label: "Not Reachable" },
   { value: "unknown", label: "Unknown" },
   { value: "not_applicable", label: "Not Applicable" },
 ];
 
-const TRIAGE_OPTIONS = [
+const TRIAGE_OPTIONS: Array<
+  {
+    value: AnalysisState;
+    label: string;
+    requiresReason: boolean;
+    requiresExpiry: boolean;
+  }
+> = [
   { value: "exploitable", label: "Confirmed", requiresReason: false, requiresExpiry: false },
   { value: "false_positive", label: "False Positive", requiresReason: true, requiresExpiry: false },
   { value: "not_affected", label: "Not Affected", requiresReason: true, requiresExpiry: false },
   { value: "accepted_risk", label: "Accepted Risk", requiresReason: true, requiresExpiry: true },
   { value: "wont_fix", label: "Won't Fix", requiresReason: true, requiresExpiry: true },
 ];
-
-function triageLabel(state: string): string {
-  return TRIAGE_OPTIONS.find((o) => o.value === state)?.label ?? state;
-}
 
 const SOURCE_LINK_SCHEMES = new Set(["http:", "https:"]);
 
@@ -63,13 +80,15 @@ export function FindingDetail() {
   } = useReachability(findingId ?? "");
   const reachabilityMutation = useUpsertReachability();
 
-  const [selectedState, setSelectedState] = useState("");
+  const [selectedState, setSelectedState] = useState<AnalysisState | "">("");
   const [reason, setReason] = useState("");
   const [expiresAt, setExpiresAt] = useState("");
-  const [reachState, setReachState] = useState("");
+  const [reachState, setReachState] = useState<ReachabilityState | "">("");
   const [reachEvidence, setReachEvidence] = useState("");
 
-  const latestReachability = reachability?.[0];
+  // The list is capped to the latest assessment for inline display; older
+  // history is not rendered in this view.
+  const latestReachability = reachability?.[0] ?? null;
 
   const selectedOption = TRIAGE_OPTIONS.find((o) => o.value === selectedState);
 
@@ -136,17 +155,17 @@ export function FindingDetail() {
       <div className="grid grid-cols-2 gap-4 text-sm">
         <div>
           <span className="text-muted-foreground">Status</span>
-          <p className="font-medium capitalize">{finding.state}</p>
+          <p className="font-medium">{technicalStateLabel(finding.state) ?? "–"}</p>
         </div>
         <div>
           <span className="text-muted-foreground">Analysis</span>
           <p className="font-medium">
-            {finding.analysis_state ? triageLabel(finding.analysis_state) : "Not triaged"}
+            {analysisStateLabel(finding.analysis_state) ?? "Not triaged"}
           </p>
         </div>
         <div>
           <span className="text-muted-foreground">Gate Effect</span>
-          <p className="font-medium">{finding.gate_effect || "–"}</p>
+          <p className="font-medium">{gateEffectLabel(finding.gate_effect) ?? "–"}</p>
         </div>
         <div>
           <span className="text-muted-foreground">Fingerprint</span>
@@ -217,7 +236,8 @@ export function FindingDetail() {
             className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
             value={selectedState}
             onChange={(e) => {
-              setSelectedState(e.target.value);
+              const value = e.target.value;
+              setSelectedState(isAnalysisState(value) ? value : "");
               setReason("");
               setExpiresAt("");
             }}
@@ -258,7 +278,7 @@ export function FindingDetail() {
         )}
         {triageMutation.isSuccess && (
           <p className="text-green-600 mt-2 text-xs">
-            Triage saved (effect: {triageMutation.data.gate_effect})
+            Triage saved (effect: {gateEffectLabel(triageMutation.data.gate_effect) ?? "Unknown"})
           </p>
         )}
       </div>
@@ -277,11 +297,20 @@ export function FindingDetail() {
           ? (
             <p className="text-muted-foreground mb-3 text-xs">
               Latest:{" "}
-              <span className="font-medium capitalize">
-                {latestReachability.state.replaceAll("_", " ")}
+              <span className="font-medium">
+                {reachabilityStateLabel(latestReachability.state) ?? "Unknown"}
               </span>
-              {latestReachability.evidence ? ` — ${latestReachability.evidence}` : ""}{" "}
-              ({formatTimestamp(latestReachability.updated_at)})
+              {(() => {
+                const evidence = latestReachability.evidence?.trim();
+                if (!evidence) return null;
+                const visible = truncateText(evidence, MAX_EVIDENCE_LENGTH);
+                return (
+                  <span title={evidence}>
+                    {" — "}
+                    {visible}
+                  </span>
+                );
+              })()} ({formatTimestamp(latestReachability.updated_at)})
             </p>
           )
           : reachabilityLoaded
@@ -297,7 +326,10 @@ export function FindingDetail() {
           <select
             className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
             value={reachState}
-            onChange={(e) => setReachState(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setReachState(isReachabilityState(value) ? value : "");
+            }}
           >
             <option value="">Select assessment...</option>
             {REACHABILITY_OPTIONS.map((opt) => (
@@ -313,12 +345,14 @@ export function FindingDetail() {
             onChange={(e) => setReachEvidence(e.target.value)}
           />
           <button
-            onClick={() =>
+            onClick={() => {
+              if (!reachState) return;
               reachabilityMutation.mutate({
                 findingId: findingId ?? "",
                 state: reachState,
                 evidence: reachEvidence,
-              })}
+              });
+            }}
             disabled={!reachState || reachabilityMutation.isPending}
             className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-1.5 text-sm font-medium disabled:opacity-50"
           >
