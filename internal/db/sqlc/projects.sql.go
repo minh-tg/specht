@@ -74,6 +74,53 @@ func (q *Queries) GetProjectBySlug(ctx context.Context, slug string) (Project, e
 	return i, err
 }
 
+const isProjectMember = `-- name: IsProjectMember :one
+SELECT EXISTS(SELECT 1 FROM project_members WHERE project_id = $1 AND user_id = $2)
+`
+
+type IsProjectMemberParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	UserID    pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) IsProjectMember(ctx context.Context, arg IsProjectMemberParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isProjectMember, arg.ProjectID, arg.UserID)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const listProjectMembers = `-- name: ListProjectMembers :many
+SELECT project_id, user_id, role, created_at FROM project_members
+WHERE project_id = $1
+ORDER BY created_at ASC
+`
+
+func (q *Queries) ListProjectMembers(ctx context.Context, projectID pgtype.UUID) ([]ProjectMember, error) {
+	rows, err := q.db.Query(ctx, listProjectMembers, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectMember
+	for rows.Next() {
+		var i ProjectMember
+		if err := rows.Scan(
+			&i.ProjectID,
+			&i.UserID,
+			&i.Role,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProjects = `-- name: ListProjects :many
 SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds FROM projects
 ORDER BY created_at DESC
@@ -109,4 +156,29 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const upsertProjectMember = `-- name: UpsertProjectMember :one
+INSERT INTO project_members (project_id, user_id, role)
+VALUES ($1, $2, $3)
+ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role
+RETURNING project_id, user_id, role, created_at
+`
+
+type UpsertProjectMemberParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	UserID    pgtype.UUID `json:"user_id"`
+	Role      string      `json:"role"`
+}
+
+func (q *Queries) UpsertProjectMember(ctx context.Context, arg UpsertProjectMemberParams) (ProjectMember, error) {
+	row := q.db.QueryRow(ctx, upsertProjectMember, arg.ProjectID, arg.UserID, arg.Role)
+	var i ProjectMember
+	err := row.Scan(
+		&i.ProjectID,
+		&i.UserID,
+		&i.Role,
+		&i.CreatedAt,
+	)
+	return i, err
 }

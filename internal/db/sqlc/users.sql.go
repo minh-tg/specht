@@ -78,3 +78,29 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	)
 	return i, err
 }
+
+const setUserRole = `-- name: SetUserRole :one
+UPDATE users SET role = $2 WHERE id = $1
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at
+`
+
+type SetUserRoleParams struct {
+	ID   pgtype.UUID `json:"id"`
+	Role string      `json:"role"`
+}
+
+func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (User, error) {
+	row := q.db.QueryRow(ctx, setUserRole, arg.ID, arg.Role)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.DisplayName,
+		&i.PasswordHash,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

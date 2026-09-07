@@ -57,11 +57,24 @@ type CreateProjectInput struct {
 }
 
 // ProjectStore is the consumer-facing project persistence contract.
+// ProjectMember binds a user to a project with a project-scoped role.
+// Membership is the tenant-isolation boundary (H1): session principals must
+// hold a membership row for every project they access.
+type ProjectMember struct {
+	ProjectID string
+	UserID    string
+	Role      string
+	CreatedAt time.Time
+}
+
 type ProjectStore interface {
 	Create(ctx context.Context, input CreateProjectInput) (Project, error)
 	List(ctx context.Context) ([]Project, error)
 	GetBySlug(ctx context.Context, slug string) (Project, error)
 	GetByID(ctx context.Context, id string) (Project, error)
+	UpsertMember(ctx context.Context, projectID, userID, role string) (ProjectMember, error)
+	ListMembers(ctx context.Context, projectID string) ([]ProjectMember, error)
+	IsMember(ctx context.Context, projectID, userID string) (bool, error)
 }
 
 // ---------- Users ----------

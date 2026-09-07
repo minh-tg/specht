@@ -144,6 +144,66 @@ func (r *pgProjectPort) GetByID(ctx context.Context, id string) (port.Project, e
 	return port.Project{}, port.ErrNotFound
 }
 
+func (r *pgProjectPort) UpsertMember(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.ProjectMember{}, err
+	}
+	uid, err := parseID(userID)
+	if err != nil {
+		return port.ProjectMember{}, err
+	}
+	row, err := r.q.UpsertProjectMember(ctx, sqlc.UpsertProjectMemberParams{
+		ProjectID: pid,
+		UserID:    uid,
+		Role:      role,
+	})
+	if err != nil {
+		return port.ProjectMember{}, err
+	}
+	return memberToPort(row), nil
+}
+
+func (r *pgProjectPort) ListMembers(ctx context.Context, projectID string) ([]port.ProjectMember, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListProjectMembers(ctx, pid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.ProjectMember, len(rows))
+	for i, row := range rows {
+		out[i] = memberToPort(row)
+	}
+	return out, nil
+}
+
+func (r *pgProjectPort) IsMember(ctx context.Context, projectID, userID string) (bool, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return false, err
+	}
+	uid, err := parseID(userID)
+	if err != nil {
+		return false, err
+	}
+	return r.q.IsProjectMember(ctx, sqlc.IsProjectMemberParams{
+		ProjectID: pid,
+		UserID:    uid,
+	})
+}
+
+func memberToPort(m sqlc.ProjectMember) port.ProjectMember {
+	return port.ProjectMember{
+		ProjectID: toUUID(m.ProjectID),
+		UserID:    toUUID(m.UserID),
+		Role:      m.Role,
+		CreatedAt: m.CreatedAt.Time,
+	}
+}
+
 func projectToPort(p sqlc.Project) port.Project {
 	return port.Project{
 		ID:                     toUUID(p.ID),
