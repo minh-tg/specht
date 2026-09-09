@@ -36,7 +36,7 @@ nix develop            # enter the dev shell (Go 1.26, sqlc, prek, frontend tool
 prek install           # enable commit hooks: format/lint/vet/secrets + conventional commits
 ```
 
-Commits are checked automatically once hooks are installed: gofumpt, staticcheck, `go vet`, `go mod tidy`, dprint/oxlint (frontend), hadolint, gitleaks, and conventional-commit message validation. 
+Commits are checked automatically once hooks are installed: gofumpt, staticcheck, `go vet`, `go mod tidy`, dprint/oxlint (frontend), hadolint, gitleaks, and conventional-commit message validation.
 
 Run the test suite with `go test ./... -count=1 -short` (unit) or `go test -tags integration ./internal/repo/ -count=1` (needs Docker for testcontainers).
 
