@@ -28,10 +28,6 @@ func (r *pgReportPort) Create(ctx context.Context, input port.CreateReportInput)
 	if completeness == "" {
 		completeness = "unknown"
 	}
-	status := input.Status
-	if status == "" {
-		status = "processing"
-	}
 	row, err := r.inner.Create(ctx, CreateReportParams{
 		ProjectID:        pid,
 		ToolName:         input.ToolName,

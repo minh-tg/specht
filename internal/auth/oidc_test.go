@@ -191,11 +191,10 @@ func signOIDCIDToken(t *testing.T, key *rsa.PrivateKey, issuer, aud, sub, email,
 // fakeOIDCProvider is a configurable OIDC provider: token endpoint, userinfo
 // endpoint (with the configured subject), and the JWKS for key.
 type fakeOIDCProvider struct {
-	t              *testing.T
-	srv            *httptest.Server
-	idToken        string
-	userSub        string
-	userSubChanger func() string
+	t       *testing.T
+	srv     *httptest.Server
+	idToken string
+	userSub string
 }
 
 func newFakeOIDCProvider(t *testing.T, key *rsa.PrivateKey) *fakeOIDCProvider {

@@ -229,7 +229,7 @@ func (f osvFinding) normalized() domain.NormalizedFinding {
 
 	var reachability *domain.ReachabilityHint
 	if f.analysis.Called != nil {
-		state := domain.ReachabilityUnknown
+		var state domain.ReachabilityState
 		if *f.analysis.Called {
 			state = domain.ReachabilityReachable
 		} else {
