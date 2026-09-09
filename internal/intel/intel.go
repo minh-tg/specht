@@ -130,7 +130,34 @@ func (s *Store) Refresh(ctx context.Context, cveIDs []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for id, rec := range merged {
-		s.cached[id] = rec
+		existing, exists := s.cached[id]
+		if !exists {
+			s.cached[id] = rec
+			continue
+		}
+		if rec.EPSS != nil {
+			existing.EPSS = rec.EPSS
+			existing.EPSSDate = rec.EPSSDate
+		}
+		if rec.KEV {
+			existing.KEV = true
+			existing.KEVAdded = rec.KEVAdded
+		}
+		for _, src := range rec.Sources {
+			found := false
+			for _, existingSrc := range existing.Sources {
+				if existingSrc == src {
+					found = true
+					break
+				}
+			}
+			if !found {
+				existing.Sources = append(existing.Sources, src)
+			}
+		}
+		existing.FetchedAt = rec.FetchedAt
+		existing.Stale = false
+		s.cached[id] = existing
 	}
 	return firstErr
 }

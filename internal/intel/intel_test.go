@@ -135,3 +135,48 @@ func TestStore_FailedRefreshKeepsLastKnown(t *testing.T) {
 	require.NotNil(t, rec.EPSS)
 	assert.InDelta(t, 0.5, *rec.EPSS, 1e-9)
 }
+
+func TestStore_PartialRefreshPreservesCachedSignals(t *testing.T) {
+	var failKEV bool
+	var epssVal float64 = 0.5
+	epssSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, `{"status":"OK","data":[{"cve":"CVE-2024-1111","epss":"`+`0.5`+`","percentile":"0.9","date":"2026-09-04"}]}`)
+	}))
+	defer epssSrv.Close()
+
+	kevSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if failKEV {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+		writeJSON(t, w, `{"title":"t","catalogVersion":"v","dateReleased":"d","count":1,"vulnerabilities":[{"cveID":"CVE-2024-1111","dateAdded":"2026-01-15"}]}`)
+	}))
+	defer kevSrv.Close()
+
+	now := time.Now()
+	s := NewStore(time.Hour, func() time.Time { return now },
+		&EPSSProvider{BaseURL: epssSrv.URL, Client: epssSrv.Client()},
+		&KEVProvider{CatalogURL: kevSrv.URL, Client: kevSrv.Client()},
+	)
+
+	// Step 1: Initial refresh populates both EPSS and KEV
+	require.NoError(t, s.Refresh(context.Background(), []string{"CVE-2024-1111"}))
+	rec, _, ok := s.Lookup("CVE-2024-1111")
+	require.True(t, ok)
+	require.NotNil(t, rec.EPSS)
+	assert.InDelta(t, epssVal, *rec.EPSS, 1e-9)
+	assert.True(t, rec.KEV)
+	assert.Equal(t, "2026-01-15", rec.KEVAdded)
+
+	// Step 2: KEV fails, EPSS succeeds. Cached KEV data must NOT be erased.
+	failKEV = true
+	err := s.Refresh(context.Background(), []string{"CVE-2024-1111"})
+	require.Error(t, err)
+
+	rec2, _, ok2 := s.Lookup("CVE-2024-1111")
+	require.True(t, ok2)
+	assert.True(t, rec2.KEV, "KEV membership must be preserved when KEV provider fails")
+	assert.Equal(t, "2026-01-15", rec2.KEVAdded)
+	require.NotNil(t, rec2.EPSS)
+	assert.InDelta(t, 0.5, *rec2.EPSS, 1e-9)
+}
