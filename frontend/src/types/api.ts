@@ -147,3 +147,9 @@ export interface Report {
   created_at: string;
   completed_at: string | null;
 }
+
+export interface IngestResponse {
+  report_id: string;
+  total_findings: number;
+  threshold_breached: boolean;
+}

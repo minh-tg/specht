@@ -60,6 +60,7 @@ describe("Ingest", () => {
           json: () =>
             Promise.resolve({
               id: "r1",
+              report_id: "r1",
               project_id: "p1",
               tool_name: "trivy",
               status: "completed",

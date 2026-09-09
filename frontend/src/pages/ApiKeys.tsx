@@ -34,7 +34,11 @@ export function ApiKeys() {
   function handleProjectChange(slug: string) {
     setSelectedProject(slug);
     setCreatedKey(null);
-    if (slug) loadKeys(slug);
+    if (slug) {
+      loadKeys(slug);
+    } else {
+      setKeys([]);
+    }
   }
 
   async function handleCreate(e: React.FormEvent) {

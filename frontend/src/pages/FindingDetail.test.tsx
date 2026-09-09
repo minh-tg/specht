@@ -63,6 +63,21 @@ beforeEach(() => {
       if (url.endsWith("/reachability") && method === "GET") {
         return { ok: true, json: () => Promise.resolve(reachabilityFixture) } as Response;
       }
+      if (url.endsWith("/reachability") && method === "POST") {
+        return {
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              id: "r2",
+              finding_id: "f1",
+              state: "reachable",
+              evidence: "trace confirmed",
+              assessed_by: "u1",
+              created_at: "2025-01-01T00:00:00Z",
+              updated_at: "2025-01-01T00:00:00Z",
+            }),
+        } as Response;
+      }
       if (url.endsWith("/findings/f1") && method === "PATCH") {
         triageCalls.push({ url, body: String(init?.body ?? "") });
         return {
@@ -126,8 +141,8 @@ describe("FindingDetail source link", () => {
   });
 });
 
-describe("FindingDetail triage expiry", () => {
-  it("blocks accepted_risk until an expiry date is chosen", async () => {
+describe("FindingDetail triage validation", () => {
+  it("blocks accepted_risk until both an expiry date and a reason are provided", async () => {
     const user = userEvent.setup();
     renderDetail();
     await screen.findByRole("heading", { name: "Test Vulnerability" });
@@ -142,16 +157,41 @@ describe("FindingDetail triage expiry", () => {
     const dateInput = document.querySelector("input[type=\"date\"]");
     expect(dateInput).not.toBeNull();
     await user.type(dateInput as HTMLInputElement, "2025-06-01");
+    // Still disabled because reason is required
+    expect(apply).toBeDisabled();
+
+    const reasonInput = screen.getByPlaceholderText("Reason");
+    await user.type(reasonInput, "risk accepted for Q3");
     expect(apply).toBeEnabled();
+
     await user.click(apply);
 
     expect(await screen.findByText(/triage saved/i)).toBeInTheDocument();
     expect(triageCalls).toHaveLength(1);
     expect(JSON.parse(triageCalls[0].body)).toEqual({
       analysis_state: "accepted_risk",
-      reason: "",
+      reason: "risk accepted for Q3",
       analysis_expires_at: "2025-06-01T23:59:59.999Z",
     });
+  });
+
+  it("blocks false_positive until a reason is provided", async () => {
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    const selects = screen.getAllByRole("combobox");
+    const triageSelect = selects[0];
+    await user.selectOptions(triageSelect, "false_positive");
+    const apply = screen.getByRole("button", { name: "Apply" });
+    expect(apply).toBeDisabled();
+
+    const reasonInput = screen.getByPlaceholderText("Reason");
+    await user.type(reasonInput, "   ");
+    expect(apply).toBeDisabled();
+
+    await user.type(reasonInput, "test code only");
+    expect(apply).toBeEnabled();
   });
 });
 
@@ -272,5 +312,36 @@ describe("FindingDetail reachability rendering", () => {
     const latest = latestParagraph();
     expect(latest.textContent).toContain("— short reason");
     expect(latest.textContent).not.toContain("…");
+  });
+
+  it("resets assessment inputs upon successful submission", async () => {
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    const selects = screen.getAllByRole("combobox");
+    const reachSelect = selects[1];
+    await user.selectOptions(reachSelect, "reachable");
+
+    const evidenceInput = screen.getByPlaceholderText("Evidence") as HTMLInputElement;
+    await user.type(evidenceInput, "trace confirmed");
+
+    const assessBtn = screen.getByRole("button", { name: "Assess" });
+    await user.click(assessBtn);
+
+    expect(await screen.findByText("Reachability saved")).toBeInTheDocument();
+    expect(reachSelect).toHaveValue("");
+    expect(evidenceInput.value).toBe("");
+  });
+});
+
+describe("FindingDetail back link", () => {
+  it("links back to findings list using relative path navigation", async () => {
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    const backLink = screen.getByRole("link", { name: /back to findings/i });
+    expect(backLink).toBeInTheDocument();
+    expect(backLink).toHaveAttribute("href", "/p1/findings");
   });
 });

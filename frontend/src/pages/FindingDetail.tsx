@@ -133,12 +133,15 @@ export function FindingDetail() {
     } catch {}
   }
 
-  const triageReady = selectedState !== "" && (!selectedOption?.requiresExpiry || expiresAt !== "");
+  const triageReady = selectedState !== ""
+    && (!selectedOption?.requiresExpiry || expiresAt !== "")
+    && (!selectedOption?.requiresReason || reason.trim() !== "");
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <Link
         to=".."
+        relative="path"
         className="text-muted-foreground hover:text-foreground mb-6 inline-block text-sm"
       >
         &larr; Back to findings
@@ -347,11 +350,19 @@ export function FindingDetail() {
           <button
             onClick={() => {
               if (!reachState) return;
-              reachabilityMutation.mutate({
-                findingId: findingId ?? "",
-                state: reachState,
-                evidence: reachEvidence,
-              });
+              reachabilityMutation.mutate(
+                {
+                  findingId: findingId ?? "",
+                  state: reachState,
+                  evidence: reachEvidence,
+                },
+                {
+                  onSuccess: () => {
+                    setReachState("");
+                    setReachEvidence("");
+                  },
+                },
+              );
             }}
             disabled={!reachState || reachabilityMutation.isPending}
             className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-1.5 text-sm font-medium disabled:opacity-50"

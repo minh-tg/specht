@@ -41,6 +41,7 @@ export function useFindings(
       const qs = params.toString();
       return apiFetch<Finding[]>(`/api/v1/projects/${projectSlug}/findings${qs ? `?${qs}` : ""}`);
     },
+    enabled: !!projectSlug,
   });
 }
 
@@ -56,6 +57,7 @@ export function useReports(projectSlug: string) {
   return useQuery({
     queryKey: ["reports", projectSlug],
     queryFn: () => apiFetch<Report[]>(`/api/v1/projects/${projectSlug}/reports`),
+    enabled: !!projectSlug,
   });
 }
 

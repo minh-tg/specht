@@ -1,6 +1,6 @@
 import { APIError, apiFetch } from "@/api/client";
 import { useProjects, useScanners } from "@/api/hooks";
-import type { Report } from "@/types/api";
+import type { IngestResponse } from "@/types/api";
 import { type ChangeEvent, type FormEvent, useRef, useState } from "react";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -81,7 +81,7 @@ export function Ingest() {
     setResult(null);
 
     try {
-      const report = await apiFetch<Report>("/api/v1/reports", {
+      const report = await apiFetch<IngestResponse>("/api/v1/reports", {
         method: "POST",
         body: JSON.stringify({
           project: selectedProject,
@@ -89,7 +89,7 @@ export function Ingest() {
           raw_data: fileContent,
         }),
       });
-      setResult({ success: true, reportId: report.id });
+      setResult({ success: true, reportId: report.report_id });
       setFileContent(null);
       setFileName(null);
       setFileError(null);

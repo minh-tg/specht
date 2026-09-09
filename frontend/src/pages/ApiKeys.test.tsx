@@ -120,4 +120,26 @@ describe("ApiKeys", () => {
     expect(screen.getByText("Confirm")).toBeInTheDocument();
     expect(screen.getByText("Cancel")).toBeInTheDocument();
   });
+
+  it("clears displayed keys when project selection is reset", async () => {
+    renderApiKeys();
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Project")).toBeInTheDocument();
+    });
+
+    const select = screen.getByRole("combobox", { name: /project/i });
+    await user.selectOptions(select, "test-project");
+
+    await waitFor(() => {
+      expect(screen.getByText("My Key")).toBeInTheDocument();
+    });
+
+    await user.selectOptions(select, "");
+
+    await waitFor(() => {
+      expect(screen.queryByText("My Key")).not.toBeInTheDocument();
+    });
+  });
 });
