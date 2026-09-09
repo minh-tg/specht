@@ -128,7 +128,7 @@ func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		expiresAt = &parsed
 	}
 	if err := h.enforceProjectAccess(r, req.Project); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 
@@ -155,7 +155,7 @@ func (h *Handler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, project); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 
@@ -176,7 +176,7 @@ func (h *Handler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, project); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	if err := h.usecase.RevokeAPIKey(r.Context(), project, keyID); err != nil {

@@ -156,7 +156,7 @@ func (h *Handler) GetGateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 
@@ -206,7 +206,7 @@ func (h *Handler) ListEnvironments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	envs, err := h.usecase.ListEnvironments(r.Context(), slug)
@@ -225,7 +225,7 @@ func (h *Handler) ListTargets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	targets, err := h.usecase.ListTargets(r.Context(), slug)
@@ -244,7 +244,7 @@ func (h *Handler) ListArtifacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	artifacts, err := h.usecase.ListArtifacts(r.Context(), slug)
@@ -263,7 +263,7 @@ func (h *Handler) GetProjectStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	stats, err := h.usecase.GetProjectStats(r.Context(), slug)
@@ -282,7 +282,7 @@ func (h *Handler) GetAging(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	resp, err := h.usecase.GetAging(r.Context(), slug)

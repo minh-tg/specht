@@ -15,7 +15,7 @@ import (
 func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	var req struct {
@@ -58,7 +58,7 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListWaivers(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	waivers, err := h.usecase.ListWaivers(r.Context(), slug)
@@ -73,7 +73,7 @@ func (h *Handler) ListWaivers(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -93,7 +93,7 @@ func (h *Handler) GetWaiver(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -134,7 +134,7 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -153,7 +153,7 @@ func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -178,7 +178,7 @@ func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListWaiverEvents(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -198,7 +198,7 @@ func (h *Handler) ListWaiverEvents(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CheckWaiverMatch(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	var req struct {

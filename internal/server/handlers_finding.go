@@ -56,7 +56,7 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, req.Project); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 

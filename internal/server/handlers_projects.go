@@ -58,7 +58,7 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	project, err := h.usecase.GetProject(r.Context(), slug)
@@ -72,7 +72,7 @@ func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	limit := parseIntParam(r, "limit", 20)
@@ -105,7 +105,7 @@ func (h *Handler) GetReport(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListProjectMembers(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "project access denied")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	members, err := h.usecase.ListProjectMembers(r.Context(), slug)

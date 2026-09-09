@@ -106,7 +106,7 @@ func (m *mockUsecases) ListProjects(ctx context.Context) ([]usecase.ProjectRespo
 
 func (m *mockUsecases) GetProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
 	if m.getProjectFn == nil {
-		return nil, fmt.Errorf("unexpected call to GetProject")
+		return &usecase.ProjectResponse{ID: "00000000-0000-0000-0000-000000000001", Slug: slug, Name: slug}, nil
 	}
 	return m.getProjectFn(ctx, slug)
 }
@@ -957,7 +957,9 @@ func TestCORS_HeadersOnGET(t *testing.T) {
 func TestNewRouterRoutes(t *testing.T) {
 	mock := &mockUsecases{
 		listProjectsFn: func(ctx context.Context) ([]usecase.ProjectResponse, error) { return nil, nil },
-		getProjectFn:   func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) { return nil, nil },
+		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			return &usecase.ProjectResponse{ID: "p1", Slug: slug}, nil
+		},
 		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
 			return nil, nil
 		},
@@ -1498,6 +1500,20 @@ func TestGateStatus_Breached(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGateStatus_ProjectNotFound(t *testing.T) {
+	mock := &mockUsecases{
+		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			return nil, fmt.Errorf("not found")
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/nonexistent/gate", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestStats_Success(t *testing.T) {
@@ -2304,6 +2320,9 @@ func TestEnforceProjectAccess_SessionMembership(t *testing.T) {
 	newHandler := func(isMember bool) *Handler {
 		return &Handler{usecase: &mockUsecases{
 			getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+				if slug == "nonexistent" {
+					return nil, fmt.Errorf("not found")
+				}
 				return &usecase.ProjectResponse{ID: projectID, Slug: slug}, nil
 			},
 			isProjectMemberFn: func(ctx context.Context, pid, uid string) (bool, error) {
@@ -2321,6 +2340,7 @@ func TestEnforceProjectAccess_SessionMembership(t *testing.T) {
 	assert.NoError(t, newHandler(true).enforceProjectAccess(withIdent(&auth.Identity{UserID: "user-1"}), "my-app"), "member passes")
 	assert.Error(t, newHandler(false).enforceProjectAccess(withIdent(&auth.Identity{UserID: "user-1"}), "my-app"), "non-member denied")
 	assert.NoError(t, newHandler(false).enforceProjectAccess(withIdent(&auth.Identity{UserID: "admin-1", Role: auth.RoleAdmin}), "my-app"), "global admin bypasses")
+	assert.ErrorIs(t, newHandler(false).enforceProjectAccess(withIdent(&auth.Identity{UserID: "admin-1", Role: auth.RoleAdmin}), "nonexistent"), errProjectNotFound, "admin on nonexistent project returns not found")
 
 	reqNil := httptest.NewRequest("GET", "/api/v1/projects/my-app", nil)
 	assert.Error(t, newHandler(true).enforceProjectAccess(reqNil, "my-app"), "nil identity denied")

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"log/slog"
@@ -293,39 +292,55 @@ func parseIntParam(r *http.Request, name string, defaultVal int32) int32 {
 	return int32(n)
 }
 
+var (
+	errProjectNotFound     = errors.New("project not found")
+	errProjectAccessDenied = errors.New("project access denied")
+)
+
+func (h *Handler) respondProjectAccessError(w http.ResponseWriter, err error) {
+	if errors.Is(err, errProjectNotFound) {
+		respondError(w, http.StatusNotFound, "not_found", "project not found")
+		return
+	}
+	respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+}
+
 // enforceProjectAccess gates slug-scoped routes on tenant membership
 // (H1): unauthenticated callers are denied; API keys must match the
-// resolved project; global admins pass; other session users must hold a
-// membership row. The GetProject lookup itself enforces the same rule, so
-// this stays consistent if either layer is reached first.
+// resolved project; global admins pass if the project exists; other session
+// users must hold a membership row. The GetProject lookup itself enforces the
+// same rule, so this stays consistent if either layer is reached first.
 func (h *Handler) enforceProjectAccess(r *http.Request, projectSlug string) error {
 	ident := auth.ContextIdentity(r.Context())
 	if ident == nil {
-		return fmt.Errorf("project_access_denied")
-	}
-	if ident.IsAPIKey {
-		if h.usecase == nil {
-			return fmt.Errorf("project_access_denied")
-		}
-		project, err := h.usecase.GetProject(r.Context(), projectSlug)
-		if err != nil || project == nil || project.ID != ident.ProjectID {
-			return fmt.Errorf("project_access_denied")
-		}
-		return nil
+		return errProjectAccessDenied
 	}
 	if ident.Role == auth.RoleAdmin {
+		if h.usecase == nil {
+			return nil
+		}
+		project, err := h.usecase.GetProject(r.Context(), projectSlug)
+		if err != nil || project == nil {
+			return errProjectNotFound
+		}
 		return nil
 	}
 	if h.usecase == nil {
-		return fmt.Errorf("project_access_denied")
+		return errProjectAccessDenied
 	}
 	project, err := h.usecase.GetProject(r.Context(), projectSlug)
 	if err != nil || project == nil {
-		return fmt.Errorf("project_access_denied")
+		return errProjectAccessDenied
+	}
+	if ident.IsAPIKey {
+		if project.ID != ident.ProjectID {
+			return errProjectAccessDenied
+		}
+		return nil
 	}
 	ok, err := h.usecase.IsProjectMember(r.Context(), project.ID, ident.UserID)
 	if err != nil || !ok {
-		return fmt.Errorf("project_access_denied")
+		return errProjectAccessDenied
 	}
 	return nil
 }
@@ -387,7 +402,7 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+		h.respondProjectAccessError(w, err)
 		return
 	}
 	limit := parseIntParam(r, "limit", 20)
