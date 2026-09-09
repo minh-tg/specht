@@ -73,6 +73,8 @@ type Finding struct {
 	// the watcher source category "cve_watcher"). Gate policies may treat
 	// sources differently; the core never hard-codes a source literal.
 	Source string
+	// Aliases carries alternate vulnerability identifiers (e.g. CVE aliases for a GHSA finding).
+	Aliases []string
 }
 
 // WaiverCondition is a predicate on a finding field: Field is one of
@@ -364,12 +366,35 @@ func matchCondition(f Finding, c WaiverCondition) bool {
 			return f.CurrentTitle == c.Value
 		}
 	case "cve_id":
-		if c.Operator == "contains" {
-			return strings.Contains(f.Fingerprint, c.Value)
+		target := strings.ToUpper(strings.TrimSpace(c.Value))
+		if target == "" {
+			return false
 		}
-		if c.Operator == "eq" {
-			return f.Fingerprint == c.Value
+		cveMatch := func(val string) bool {
+			if val == "" {
+				return false
+			}
+			u := strings.ToUpper(val)
+			if c.Operator == "eq" {
+				return u == target ||
+					strings.HasPrefix(u, target+":") ||
+					strings.HasPrefix(u, "SCA:"+target+":") ||
+					strings.HasSuffix(u, ":"+target)
+			}
+			if c.Operator == "contains" {
+				return strings.Contains(u, target)
+			}
+			return false
 		}
+		if cveMatch(f.Fingerprint) || cveMatch(f.CurrentTitle) {
+			return true
+		}
+		for _, a := range f.Aliases {
+			if cveMatch(a) {
+				return true
+			}
+		}
+		return false
 	}
 	return false
 }

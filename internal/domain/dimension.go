@@ -9,6 +9,8 @@
 // from Parse; producers and core consumers import this package directly.
 package domain
 
+import "strings"
+
 // ScanType classifies what kind of artifact a scan covered.
 type ScanType string
 
@@ -151,6 +153,23 @@ type Fingerprint string
 // normalized purl.
 func SCAFingerprint(vulnID, purl string) Fingerprint {
 	return Fingerprint(vulnID + ":" + purl)
+}
+
+// CanonicalVulnID resolves the canonical vulnerability identifier. CVE identifiers
+// (e.g. CVE-2024-1234) take precedence over tool-specific or ecosystem IDs (GHSA,
+// PYSEC, GO, RHSA) to ensure finding identity converges across scanners (RFC 0001).
+func CanonicalVulnID(primaryID string, aliases []string) string {
+	primaryUpper := strings.ToUpper(strings.TrimSpace(primaryID))
+	if strings.HasPrefix(primaryUpper, "CVE-") {
+		return primaryUpper
+	}
+	for _, a := range aliases {
+		aliasUpper := strings.ToUpper(strings.TrimSpace(a))
+		if strings.HasPrefix(aliasUpper, "CVE-") {
+			return aliasUpper
+		}
+	}
+	return primaryID
 }
 
 // Canonical dimension-key vocabulary. These keys are the persisted

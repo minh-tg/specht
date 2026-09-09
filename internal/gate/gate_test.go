@@ -432,3 +432,85 @@ func TestEvaluate_DefaultNoPoliciesMatchesEvaluateWithPoliciesNil(t *testing.T) 
 	require.NoError(t, err2)
 	assert.Equal(t, d1, d2)
 }
+
+func TestEvaluate_CVEIDWaiverMatching(t *testing.T) {
+	tests := []struct {
+		name      string
+		finding   Finding
+		condition WaiverCondition
+		wantPass  bool
+	}{
+		{
+			name: "exact match on compound SCA fingerprint",
+			finding: Finding{
+				ID:                  "f1",
+				CurrentSeverityRank: 4,
+				Fingerprint:         "CVE-2024-1234:pkg:npm/lodash@4.17.20",
+			},
+			condition: WaiverCondition{Field: "cve_id", Operator: "eq", Value: "CVE-2024-1234"},
+			wantPass:  true,
+		},
+		{
+			name: "exact match on prefixed sca fingerprint",
+			finding: Finding{
+				ID:                  "f2",
+				CurrentSeverityRank: 4,
+				Fingerprint:         "sca:CVE-2024-5678:pkg:npm/axios@0.21.1",
+			},
+			condition: WaiverCondition{Field: "cve_id", Operator: "eq", Value: "CVE-2024-5678"},
+			wantPass:  true,
+		},
+		{
+			name: "match via alias when primary fingerprint is GHSA",
+			finding: Finding{
+				ID:                  "f3",
+				CurrentSeverityRank: 4,
+				Fingerprint:         "GHSA-1234-5678:pkg:npm/express@4.16.0",
+				Aliases:             []string{"CVE-2024-9999"},
+			},
+			condition: WaiverCondition{Field: "cve_id", Operator: "eq", Value: "CVE-2024-9999"},
+			wantPass:  true,
+		},
+		{
+			name: "match via title",
+			finding: Finding{
+				ID:                  "f4",
+				CurrentSeverityRank: 4,
+				Fingerprint:         "custom-fingerprint-123",
+				CurrentTitle:        "CVE-2024-4321 in openssl",
+			},
+			condition: WaiverCondition{Field: "cve_id", Operator: "contains", Value: "CVE-2024-4321"},
+			wantPass:  true,
+		},
+		{
+			name: "no match on different CVE",
+			finding: Finding{
+				ID:                  "f5",
+				CurrentSeverityRank: 4,
+				Fingerprint:         "CVE-2024-0001:pkg:npm/lodash@4.17.20",
+			},
+			condition: WaiverCondition{Field: "cve_id", Operator: "eq", Value: "CVE-2024-9999"},
+			wantPass:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			g := New(
+				&mockFindingsRepo{findings: []Finding{tt.finding}},
+				&mockWaiversRepo{waivers: []Waiver{
+					{ID: "w1", Conditions: []WaiverCondition{tt.condition}},
+				}},
+			)
+			d, err := g.Evaluate(context.Background(), "p1", 3)
+			require.NoError(t, err)
+			if tt.wantPass {
+				assert.Equal(t, StatusPass, d.Status)
+				assert.Equal(t, 1, d.WaivedCount)
+			} else {
+				assert.Equal(t, StatusFail, d.Status)
+				assert.Equal(t, 0, d.WaivedCount)
+			}
+		})
+	}
+}

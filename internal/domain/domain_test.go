@@ -83,3 +83,9 @@ func TestSCAFingerprintVersion1(t *testing.T) {
 	// not change so existing finding rows and waivers do not fork.
 	assert.Equal(t, "CVE-2024-1234:pkg:npm/foo@1.0.0", string(domain.SCAFingerprint("CVE-2024-1234", "pkg:npm/foo@1.0.0")))
 }
+
+func TestCanonicalVulnID(t *testing.T) {
+	assert.Equal(t, "CVE-2024-1234", domain.CanonicalVulnID("cve-2024-1234", nil))
+	assert.Equal(t, "CVE-2024-1234", domain.CanonicalVulnID("GHSA-xxxx-yyyy", []string{"cve-2024-1234", "PYSEC-2024-1"}))
+	assert.Equal(t, "GHSA-xxxx-yyyy", domain.CanonicalVulnID("GHSA-xxxx-yyyy", []string{"OSV-123"}))
+}
