@@ -403,6 +403,10 @@ type RunCveWatcherConfig struct {
 	// project in PollDeps.Projects uses its mapped interval; missing or invalid
 	// entries fall back to PollInterval.
 	ProjectIntervals map[string]time.Duration
+	// ReloadProjects optionally reloads enabled projects dynamically.
+	// When provided, the scheduled watcher re-queries the project list to pick up
+	// newly enabled, disabled, or configured projects without restarting the server.
+	ReloadProjects func(ctx context.Context) ([]port.Project, error)
 	// InitialBackoff is the wait after the first failed poll; it doubles
 	// per failure up to MaxBackoff. Defaults to 30 seconds.
 	InitialBackoff time.Duration
@@ -452,7 +456,7 @@ func RunCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 
 	go func() {
 		logger := cfg.Logger
-		if len(cfg.ProjectIntervals) > 0 {
+		if len(cfg.ProjectIntervals) > 0 || cfg.ReloadProjects != nil {
 			logger.Info("cve watcher daemon started", "projects", len(cfg.PollDeps.Projects), "project_intervals", true)
 			runScheduledCveWatcher(ctx, cfg)
 			return
@@ -530,19 +534,78 @@ func runScheduledCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 		intervals[projectID] = interval
 		nextDue[projectID] = now
 	}
-	if len(nextDue) == 0 {
-		logger.Info("cve watcher daemon stopped")
-		return
-	}
 
 	backoffs := make(map[string]time.Duration, len(nextDue))
 	failedProjects := make(map[string]bool, len(nextDue))
+
+	reload := func() {
+		if cfg.ReloadProjects == nil {
+			return
+		}
+		projs, err := cfg.ReloadProjects(ctx)
+		if err != nil {
+			logger.Warn("cve watcher reload projects", "error", err)
+			return
+		}
+		activeIDs := make(map[string]bool, len(projs))
+		curNow := cfg.Now().UTC()
+		for _, p := range projs {
+			if !p.CveWatcherEnabled {
+				continue
+			}
+			activeIDs[p.ID] = true
+			interval := time.Duration(p.CveWatcherIntervalSecs) * time.Second
+			if interval <= 0 {
+				interval = cfg.PollInterval
+			}
+			if interval <= 0 {
+				interval = 6 * time.Hour
+			}
+			intervals[p.ID] = interval
+			if _, exists := nextDue[p.ID]; !exists {
+				nextDue[p.ID] = curNow
+			}
+		}
+		for id := range nextDue {
+			if !activeIDs[id] {
+				delete(nextDue, id)
+				delete(intervals, id)
+				delete(backoffs, id)
+				delete(failedProjects, id)
+			}
+		}
+	}
+
 	for {
+		reload()
+
+		if len(nextDue) == 0 {
+			if cfg.ReloadProjects == nil {
+				logger.Info("cve watcher daemon stopped")
+				return
+			}
+			idleDelay := cfg.PollInterval
+			if idleDelay <= 0 || idleDelay > time.Minute {
+				idleDelay = time.Minute
+			}
+			if err := cfg.Sleep(ctx, idleDelay); err != nil {
+				logger.Info("cve watcher daemon stopped")
+				return
+			}
+			continue
+		}
+
 		now = cfg.Now().UTC()
 
 		due := make([]string, 0, len(nextDue))
 		var earliest time.Time
-		for _, projectID := range cfg.PollDeps.Projects {
+		projectIDs := make([]string, 0, len(nextDue))
+		for pid := range nextDue {
+			projectIDs = append(projectIDs, pid)
+		}
+		sort.Strings(projectIDs)
+
+		for _, projectID := range projectIDs {
 			dueAt := nextDue[projectID]
 			if !now.Before(dueAt) {
 				due = append(due, projectID)

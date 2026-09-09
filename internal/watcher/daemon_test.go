@@ -1103,3 +1103,79 @@ func TestNotificationFromDecision_FallsBackGracefully(t *testing.T) {
 	assert.Equal(t, "pkg:npm/lodash@4.17.19", n.Package)
 	assert.Equal(t, "https://example.test/1", n.Link)
 }
+
+func TestRunCveWatcher_DynamicallyReloadsProjects(t *testing.T) {
+	deps := baseDeps()
+	deps.Projects = nil // Start with no projects
+
+	client := deps.Client.(*fakeClient)
+	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
+
+	var mu sync.Mutex
+	var polledProjects []string
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		mu.Lock()
+		polledProjects = append(polledProjects, pid)
+		mu.Unlock()
+		row := inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")
+		return []port.InventoryPackage{row}, nil
+	}
+
+	var projectsMu sync.Mutex
+	var currentProjects []port.Project
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	wakeSleep := make(chan struct{}, 10)
+	done := runDaemon(ctx, RunCveWatcherConfig{
+		PollDeps:     deps,
+		PollInterval: 10 * time.Millisecond,
+		ReloadProjects: func(ctx context.Context) ([]port.Project, error) {
+			projectsMu.Lock()
+			defer projectsMu.Unlock()
+			res := make([]port.Project, len(currentProjects))
+			copy(res, currentProjects)
+			return res, nil
+		},
+		Sleep: func(ctx context.Context, d time.Duration) error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-wakeSleep:
+				return nil
+			case <-time.After(20 * time.Millisecond):
+				return nil
+			}
+		},
+		Logger: testLogger(),
+	})
+
+	// Initially no projects polled
+	time.Sleep(50 * time.Millisecond)
+	mu.Lock()
+	assert.Empty(t, polledProjects)
+	mu.Unlock()
+
+	// Dynamically add an enabled project
+	projectsMu.Lock()
+	currentProjects = []port.Project{
+		{ID: "p1", Name: "Project 1", CveWatcherEnabled: true, CveWatcherIntervalSecs: 1},
+	}
+	projectsMu.Unlock()
+	wakeSleep <- struct{}{}
+
+	eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		for _, pid := range polledProjects {
+			if pid == "p1" {
+				return true
+			}
+		}
+		return false
+	}, 2*time.Second)
+
+	cancel()
+	<-done
+}

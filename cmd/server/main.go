@@ -348,10 +348,6 @@ func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Serv
 		}
 		watched = append(watched, p)
 	}
-	if len(watched) == 0 {
-		slog.Info("watcher: no enabled projects")
-		return nil
-	}
 	projectIDs := make([]string, len(watched))
 	projectNames := make(map[string]string, len(watched))
 	projectIntervals := make(map[string]time.Duration, len(watched))
@@ -375,7 +371,8 @@ func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Serv
 	}
 
 	watcher.RunCveWatcher(ctx, watcher.RunCveWatcherConfig{
-		PollInterval: watcherPollInterval,
+		PollInterval:   watcherPollInterval,
+		ReloadProjects: stores.Projects.List,
 		PollDeps: watcher.PollDeps{
 			Client: watcher.NewHTTPClient(watcher.HTTPClientConfig{
 				Endpoint:  watcherOSVEndpoint,
@@ -386,7 +383,14 @@ func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Serv
 			Projects: projectIDs,
 			Notifier: watcherNotifier,
 			ProjectName: func(ctx context.Context, projectID string) (string, error) {
-				return projectNames[projectID], nil
+				p, err := stores.Projects.GetByID(ctx, projectID)
+				if err == nil && p.Name != "" {
+					return p.Name, nil
+				}
+				if name, ok := projectNames[projectID]; ok {
+					return name, nil
+				}
+				return projectID, nil
 			},
 			Inventory: func(ctx context.Context, projectID string, since time.Duration) ([]port.InventoryPackage, error) {
 				return stores.Inventory.DistinctInventory(ctx, projectID, since)
