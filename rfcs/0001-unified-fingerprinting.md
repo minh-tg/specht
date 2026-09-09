@@ -1,11 +1,18 @@
-# RFC 0001: Unified Finding Fingerprinting & Identity Specification
-
-* Status: Proposed
-* Author: Specht Core Engineering
-* Created: 2026-09-09
-* Applies to: `internal/domain`, `internal/scanner`, `internal/gate`, `internal/correlate`
-
 ---
+rfc: 0001
+title: Unified Finding Fingerprinting & Identity Specification
+author: Specht Core Engineering
+status: Implemented
+created: 2026-09-09
+updated: 2026-09-09
+applies_to:
+  - internal/domain
+  - internal/scanner
+  - internal/gate
+  - internal/correlate
+---
+
+# RFC 0001: Unified Finding Fingerprinting & Identity Specification
 
 ## 1. Summary
 
