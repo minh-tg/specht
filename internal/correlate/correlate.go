@@ -4,17 +4,18 @@
 // triage and display.
 //
 // Rules, per //   - A group key always combines the vulnerability/rule identity with the
-//     affected subject (package, file, target, resource). A shared
-//     vulnerability identifier alone never groups two findings.
-//   - SCA findings converge across tools through alias expansion: two
-//     observations share a key when their identifier sets intersect on a
-//     canonical id and the ecosystem/package match.
-//   - SAST keys exclude line numbers (they shift between scans); IaC keys
-//     use rule + resource; secret keys use rule + target.
-//   - Near misses (same rule, different subject) are reported as Uncertain
-//     candidates for human review, never auto-grouped.
-//   - Groups and members are sorted; output is deterministic for the same
-//     input regardless of order.
+//
+//	  affected subject (package, file, target, resource). A shared
+//	  vulnerability identifier alone never groups two findings.
+//	- SCA findings converge across tools through alias expansion: two
+//	  observations share a key when their identifier sets intersect on a
+//	  canonical id and the ecosystem/package match.
+//	- SAST keys exclude line numbers (they shift between scans); IaC keys
+//	  use rule + resource; secret keys use rule + target.
+//	- Near misses (same rule, different subject) are reported as Uncertain
+//	  candidates for human review, never auto-grouped.
+//	- Groups and members are sorted; output is deterministic for the same
+//	  input regardless of order.
 package correlate
 
 import (

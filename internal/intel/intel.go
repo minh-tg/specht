@@ -3,15 +3,16 @@
 // accepted signals into the risk model.
 //
 // Design points, per //   - Provider is the seam: each feed implements Fetch; the store merges
-//     records per CVE. Tests inject httptest servers; production uses the
-//     public EPSS API and the CISA KEV catalog.
-//   - Records carry source, fetch time, and feed dates, so provenance is
-//     never separated from the value.
-//   - Refresh policy is TTL-based: stale records are still served but
-//     flagged, and a failed refresh never erases the last known record.
-//   - Only CVE identifiers are queryable; anything else is explicitly
-//     non-applicable (IsCVE). KEV absence is not a negative assertion:
-//     risk.HasKnownExploit is set only on positive membership.
+//
+//	  records per CVE. Tests inject httptest servers; production uses the
+//	  public EPSS API and the CISA KEV catalog.
+//	- Records carry source, fetch time, and feed dates, so provenance is
+//	  never separated from the value.
+//	- Refresh policy is TTL-based: stale records are still served but
+//	  flagged, and a failed refresh never erases the last known record.
+//	- Only CVE identifiers are queryable; anything else is explicitly
+//	  non-applicable (IsCVE). KEV absence is not a negative assertion:
+//	  risk.HasKnownExploit is set only on positive membership.
 //
 // The cache is in-memory. Intel is cheap to re-fetch and every record
 // carries its own timestamp, so no migration or persistence adapter is
