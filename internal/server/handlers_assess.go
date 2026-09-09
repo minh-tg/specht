@@ -29,7 +29,10 @@ func (h *Handler) CreateEvidence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := auth.ContextIdentity(r.Context()).UserID
+	var userID string
+	if ident := auth.ContextIdentity(r.Context()); ident != nil {
+		userID = ident.UserID
+	}
 
 	result, err := h.usecase.CreateEvidence(r.Context(), findingID, userID, req.Type, req.URL, req.Description)
 	if err != nil {
@@ -169,11 +172,12 @@ func (h *Handler) UpsertSignoff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := auth.ContextIdentity(r.Context()).UserID
-	if userID == "" {
+	ident := auth.ContextIdentity(r.Context())
+	if ident == nil || ident.UserID == "" {
 		respondError(w, http.StatusUnauthorized, "unauthorized", "user id required")
 		return
 	}
+	userID := ident.UserID
 
 	result, err := h.usecase.UpsertSignoff(r.Context(), findingID, userID, req.Status, req.Comment)
 	if err != nil {

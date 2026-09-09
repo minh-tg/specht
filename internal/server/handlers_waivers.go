@@ -33,6 +33,11 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var actorID string
+	if ident := auth.ContextIdentity(r.Context()); ident != nil {
+		actorID = ident.UserID
+	}
+
 	result, err := h.usecase.CreateWaiver(r.Context(), usecase.CreateWaiverInput{
 		ProjectSlug: slug,
 		Name:        req.Name,
@@ -40,7 +45,7 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 		Conditions:  req.Conditions,
 		Contexts:    req.Contexts,
 		TargetIDs:   req.TargetIDs,
-		ActorID:     auth.ContextIdentity(r.Context()).UserID,
+		ActorID:     actorID,
 	})
 	if err != nil {
 		slog.Error("create waiver", "error", err)
@@ -103,6 +108,11 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var actorID string
+	if ident := auth.ContextIdentity(r.Context()); ident != nil {
+		actorID = ident.UserID
+	}
+
 	result, err := h.usecase.UpdateWaiver(r.Context(), usecase.UpdateWaiverInput{
 		WaiverID:    id,
 		ProjectSlug: slug,
@@ -111,7 +121,7 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 		Conditions:  req.Conditions,
 		Contexts:    req.Contexts,
 		TargetIDs:   req.TargetIDs,
-		ActorID:     auth.ContextIdentity(r.Context()).UserID,
+		ActorID:     actorID,
 	})
 	if err != nil {
 		slog.Error("update waiver", "error", err)
@@ -147,7 +157,11 @@ func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	result, err := h.usecase.ToggleWaiver(r.Context(), slug, id, auth.ContextIdentity(r.Context()).UserID)
+	var actorID string
+	if ident := auth.ContextIdentity(r.Context()); ident != nil {
+		actorID = ident.UserID
+	}
+	result, err := h.usecase.ToggleWaiver(r.Context(), slug, id, actorID)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			respondError(w, http.StatusNotFound, "not_found", "waiver not found")

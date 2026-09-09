@@ -457,6 +457,16 @@ func TestWaiverHandlers_DoNotLeakStoreDetail(t *testing.T) {
 			wantStatus: http.StatusInternalServerError, wantCode: "internal_error",
 			wantMsg: "could not check waiver match",
 		},
+		{
+			name:   "get watcher status store error",
+			method: "GET", target: "/api/v1/watcher/status",
+			setup: func(m *mockUsecases) {
+				m.getWatcherStatusFn = func(_ context.Context) (*usecase.WatcherStatusResponse, error) { return nil, dbErr }
+			},
+			invoke:     func(h *Handler, w http.ResponseWriter, r *http.Request) { h.GetWatcherStatus(w, r) },
+			wantStatus: http.StatusInternalServerError, wantCode: "internal_error",
+			wantMsg: "could not get watcher status",
+		},
 	}
 
 	for _, tt := range cases {

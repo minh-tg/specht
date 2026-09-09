@@ -26,7 +26,7 @@ func (h *Handler) GetWatcherStatus(w http.ResponseWriter, r *http.Request) {
 	status, err := h.usecase.GetWatcherStatus(r.Context())
 	if err != nil {
 		slog.Error("get watcher status", "error", err)
-		respondError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not get watcher status")
 		return
 	}
 	respondJSON(w, http.StatusOK, status)

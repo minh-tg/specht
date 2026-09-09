@@ -32,7 +32,12 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := auth.ContextIdentity(r.Context()).UserID
+	ident := auth.ContextIdentity(r.Context())
+	if ident == nil || ident.UserID == "" {
+		respondError(w, http.StatusUnauthorized, "unauthorized", "user id required")
+		return
+	}
+	userID := ident.UserID
 
 	result, err := h.usecase.TriageFinding(r.Context(), usecase.TriageInput{
 		FindingID:         id,
@@ -108,7 +113,12 @@ func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := auth.ContextIdentity(r.Context()).UserID
+	ident := auth.ContextIdentity(r.Context())
+	if ident == nil || ident.UserID == "" {
+		respondError(w, http.StatusUnauthorized, "unauthorized", "user id required")
+		return
+	}
+	userID := ident.UserID
 
 	results, err := h.usecase.BulkTriage(r.Context(), usecase.BulkTriageInput{
 		FindingIDs:        req.FindingIDs,

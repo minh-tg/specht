@@ -1414,6 +1414,61 @@ func TestBulkTriage_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+func TestTriageFinding_NilOrEmptyIdentity(t *testing.T) {
+	h := &Handler{}
+
+	// nil identity
+	req := httptest.NewRequest("PATCH", "/api/v1/findings/abc-123", strings.NewReader(`{"analysis_state":"false_positive"}`))
+	req = addChiURLParam(req, "id", "abc-123")
+	w := httptest.NewRecorder()
+	h.TriageFinding(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	// empty UserID (e.g. API key identity)
+	ctx := auth.ContextWithIdentity(context.Background(), &auth.Identity{IsAPIKey: true, UserID: ""})
+	req2 := httptest.NewRequest("PATCH", "/api/v1/findings/abc-123", strings.NewReader(`{"analysis_state":"false_positive"}`)).WithContext(ctx)
+	req2 = addChiURLParam(req2, "id", "abc-123")
+	w2 := httptest.NewRecorder()
+	h.TriageFinding(w2, req2)
+	assert.Equal(t, http.StatusUnauthorized, w2.Code)
+}
+
+func TestBulkTriage_NilOrEmptyIdentity(t *testing.T) {
+	h := &Handler{}
+
+	// nil identity
+	req := httptest.NewRequest("POST", "/api/v1/findings/bulk-analysis", strings.NewReader(`{"finding_ids":["abc-123"],"analysis_state":"false_positive"}`))
+	w := httptest.NewRecorder()
+	h.BulkTriage(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	// empty UserID
+	ctx := auth.ContextWithIdentity(context.Background(), &auth.Identity{IsAPIKey: true, UserID: ""})
+	req2 := httptest.NewRequest("POST", "/api/v1/findings/bulk-analysis", strings.NewReader(`{"finding_ids":["abc-123"],"analysis_state":"false_positive"}`)).WithContext(ctx)
+	w2 := httptest.NewRecorder()
+	h.BulkTriage(w2, req2)
+	assert.Equal(t, http.StatusUnauthorized, w2.Code)
+}
+
+func TestUpsertSignoff_NilOrEmptyIdentity(t *testing.T) {
+	h := &Handler{}
+
+	// nil identity
+	req := httptest.NewRequest("POST", "/api/v1/findings/abc-123/signoff", strings.NewReader(`{"status":"approved","comment":"ok"}`))
+	req = addChiURLParam(req, "findingID", "abc-123")
+	w := httptest.NewRecorder()
+	h.UpsertSignoff(w, req)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	// empty UserID
+	ctx := auth.ContextWithIdentity(context.Background(), &auth.Identity{IsAPIKey: true, UserID: ""})
+	req2 := httptest.NewRequest("POST", "/api/v1/findings/abc-123/signoff", strings.NewReader(`{"status":"approved","comment":"ok"}`)).WithContext(ctx)
+	req2 = addChiURLParam(req2, "findingID", "abc-123")
+	w2 := httptest.NewRecorder()
+	h.UpsertSignoff(w2, req2)
+	assert.Equal(t, http.StatusUnauthorized, w2.Code)
+}
+
 func TestGateStatus_Success(t *testing.T) {
 	mock := &mockUsecases{
 		getGateStatusFn: func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error) {
