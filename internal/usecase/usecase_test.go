@@ -19,14 +19,15 @@ import (
 
 type mockProjectRepo struct {
 	port.ProjectStore
-	createFn       func(context.Context, port.CreateProjectInput) (port.Project, error)
-	listFn         func(context.Context) ([]port.Project, error)
-	getBySlugFn    func(context.Context, string) (port.Project, error)
-	updateFn       func(context.Context, string, string, *string) (port.Project, error)
-	deleteFn       func(context.Context, string) (port.Project, error)
-	upsertMemberFn func(context.Context, string, string, string) (port.ProjectMember, error)
-	listMembersFn  func(context.Context, string) ([]port.ProjectMember, error)
-	isMemberFn     func(context.Context, string, string) (bool, error)
+	createFn        func(context.Context, port.CreateProjectInput) (port.Project, error)
+	listFn          func(context.Context) ([]port.Project, error)
+	getBySlugFn     func(context.Context, string) (port.Project, error)
+	updateFn        func(context.Context, string, string, *string) (port.Project, error)
+	deleteFn        func(context.Context, string) (port.Project, error)
+	upsertMemberFn  func(context.Context, string, string, string) (port.ProjectMember, error)
+	listMembersFn   func(context.Context, string) ([]port.ProjectMember, error)
+	isMemberFn      func(context.Context, string, string) (bool, error)
+	listMemberIDsFn func(context.Context, string) ([]string, error)
 }
 
 func (m *mockProjectRepo) UpsertMember(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
@@ -48,6 +49,13 @@ func (m *mockProjectRepo) IsMember(ctx context.Context, projectID, userID string
 		return false, fmt.Errorf("unexpected call to IsMember")
 	}
 	return m.isMemberFn(ctx, projectID, userID)
+}
+
+func (m *mockProjectRepo) ListMemberProjectIDs(ctx context.Context, userID string) ([]string, error) {
+	if m.listMemberIDsFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListMemberProjectIDs")
+	}
+	return m.listMemberIDsFn(ctx, userID)
 }
 
 func (m *mockProjectRepo) Create(ctx context.Context, arg port.CreateProjectInput) (port.Project, error) {
@@ -2072,6 +2080,33 @@ func TestListProjects_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, projects, 1)
 	assert.Equal(t, "my-app", projects[0].Slug)
+}
+
+func TestListProjects_MemberBatchLookup(t *testing.T) {
+	pr := &mockProjectRepo{}
+	pr.listFn = func(ctx context.Context) ([]port.Project, error) {
+		return []port.Project{
+			{ID: "00000000-0000-0000-0000-000000000001", Slug: "mine", Name: "Mine"},
+			{ID: "00000000-0000-0000-0000-000000000002", Slug: "theirs", Name: "Theirs"},
+		}, nil
+	}
+	calls := 0
+	pr.listMemberIDsFn = func(ctx context.Context, userID string) ([]string, error) {
+		calls++
+		assert.Equal(t, "u1", userID)
+		return []string{"00000000-0000-0000-0000-000000000001"}, nil
+	}
+	// isMemberFn intentionally nil: any per-project lookup fails the test.
+
+	uc := New(Deps{
+		Stores: &port.Stores{Projects: pr},
+	})
+
+	projects, err := uc.ListProjects(sessionCtx("u1", auth.RoleViewer))
+	require.NoError(t, err)
+	require.Len(t, projects, 1)
+	assert.Equal(t, "mine", projects[0].Slug)
+	assert.Equal(t, 1, calls, "membership must resolve in a single batched query")
 }
 
 // ----- GetProject Tests -----

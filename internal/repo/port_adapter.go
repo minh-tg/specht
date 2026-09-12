@@ -215,6 +215,22 @@ func (r *pgProjectPort) IsMember(ctx context.Context, projectID, userID string) 
 	})
 }
 
+func (r *pgProjectPort) ListMemberProjectIDs(ctx context.Context, userID string) ([]string, error) {
+	uid, err := parseID(userID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListMemberProjectIDs(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(rows))
+	for i, row := range rows {
+		out[i] = toUUID(row)
+	}
+	return out, nil
+}
+
 func memberToPort(m sqlc.ProjectMember) port.ProjectMember {
 	return port.ProjectMember{
 		ProjectID: toUUID(m.ProjectID),

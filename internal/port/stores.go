@@ -77,6 +77,9 @@ type ProjectStore interface {
 	UpsertMember(ctx context.Context, projectID, userID, role string) (ProjectMember, error)
 	ListMembers(ctx context.Context, projectID string) ([]ProjectMember, error)
 	IsMember(ctx context.Context, projectID, userID string) (bool, error)
+	// ListMemberProjectIDs returns the IDs of all projects a user belongs
+	// to in a single query (batch alternative to per-project IsMember).
+	ListMemberProjectIDs(ctx context.Context, userID string) ([]string, error)
 }
 
 // ---------- Users ----------

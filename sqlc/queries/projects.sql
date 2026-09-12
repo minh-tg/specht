@@ -33,3 +33,6 @@ ORDER BY created_at ASC;
 
 -- name: IsProjectMember :one
 SELECT EXISTS(SELECT 1 FROM project_members WHERE project_id = $1 AND user_id = $2);
+
+-- name: ListMemberProjectIDs :many
+SELECT project_id FROM project_members WHERE user_id = $1;

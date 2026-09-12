@@ -114,6 +114,30 @@ func (q *Queries) IsProjectMember(ctx context.Context, arg IsProjectMemberParams
 	return exists, err
 }
 
+const listMemberProjectIDs = `-- name: ListMemberProjectIDs :many
+SELECT project_id FROM project_members WHERE user_id = $1
+`
+
+func (q *Queries) ListMemberProjectIDs(ctx context.Context, userID pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listMemberProjectIDs, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var project_id pgtype.UUID
+		if err := rows.Scan(&project_id); err != nil {
+			return nil, err
+		}
+		items = append(items, project_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProjectMembers = `-- name: ListProjectMembers :many
 SELECT project_id, user_id, role, created_at FROM project_members
 WHERE project_id = $1

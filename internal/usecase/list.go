@@ -319,6 +319,19 @@ func (u *Usecases) ListProjects(ctx context.Context) ([]ProjectResponse, error) 
 	if !ident.IsAPIKey && ident.Role == auth.RoleAdmin {
 		return toProjects(projects), nil
 	}
+	// Non-admin session users see only their own projects. Fetch the
+	// membership set once instead of one IsMember query per project (N+1).
+	var memberIDs map[string]bool
+	if !ident.IsAPIKey {
+		ids, err := u.deps.Stores.Projects.ListMemberProjectIDs(ctx, ident.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("list member projects: %w", err)
+		}
+		memberIDs = make(map[string]bool, len(ids))
+		for _, id := range ids {
+			memberIDs[id] = true
+		}
+	}
 	resp := make([]ProjectResponse, 0, len(projects))
 	for _, p := range projects {
 		if ident.IsAPIKey {
@@ -327,13 +340,10 @@ func (u *Usecases) ListProjects(ctx context.Context) ([]ProjectResponse, error) 
 			}
 			continue
 		}
-		ok, err := u.deps.Stores.Projects.IsMember(ctx, p.ID, ident.UserID)
-		if err != nil {
-			return nil, fmt.Errorf("check membership: %w", err)
+		if !memberIDs[p.ID] {
+			continue
 		}
-		if ok {
-			resp = append(resp, toProject(p))
-		}
+		resp = append(resp, toProject(p))
 	}
 	return resp, nil
 }
