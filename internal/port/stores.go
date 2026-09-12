@@ -97,6 +97,9 @@ type UserStore interface {
 	// SetRole changes a user's global role (admin elevation path for H1
 	// tenant administration). Role must be a valid users.role value.
 	SetRole(ctx context.Context, userID, role string) (User, error)
+	// UpdateDisplayName changes a user's display name. A nil displayName
+	// clears it.
+	UpdateDisplayName(ctx context.Context, userID string, displayName *string) (User, error)
 }
 
 // ---------- Refresh tokens ----------

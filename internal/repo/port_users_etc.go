@@ -56,6 +56,21 @@ func (r *pgUserPort) SetRole(ctx context.Context, userID, role string) (port.Use
 	return userToPort(row), nil
 }
 
+func (r *pgUserPort) UpdateDisplayName(ctx context.Context, userID string, displayName *string) (port.User, error) {
+	uid, err := parseID(userID)
+	if err != nil {
+		return port.User{}, err
+	}
+	row, err := r.q.UpdateUserDisplayName(ctx, sqlc.UpdateUserDisplayNameParams{
+		ID:          uid,
+		DisplayName: textPtrFromString(displayName),
+	})
+	if err != nil {
+		return port.User{}, mappingErr(err)
+	}
+	return userToPort(row), nil
+}
+
 func userToPort(u sqlc.User) port.User {
 	return port.User{
 		ID:           toUUID(u.ID),

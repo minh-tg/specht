@@ -403,4 +403,39 @@ func (u *Usecases) GetProfile(ctx context.Context, userID string) (*UserProfile,
 	}, nil
 }
 
+// UpdateProfile changes the caller's display name. A nil or blank
+// displayName clears it.
+func (u *Usecases) UpdateProfile(ctx context.Context, userID string, displayName *string) (*UserProfile, error) {
+	id, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user id: %w", err)
+	}
+	if displayName != nil {
+		trimmed := strings.TrimSpace(*displayName)
+		if trimmed == "" {
+			displayName = nil
+		} else {
+			displayName = &trimmed
+		}
+	}
+
+	user, err := u.deps.Stores.Users.UpdateDisplayName(ctx, id.String(), displayName)
+	if err != nil {
+		return nil, fmt.Errorf("user not found")
+	}
+
+	name := ""
+	if user.DisplayName != nil {
+		name = *user.DisplayName
+	}
+
+	return &UserProfile{
+		ID:          user.ID,
+		Email:       user.Email,
+		DisplayName: name,
+		Role:        user.Role,
+		CreatedAt:   user.CreatedAt.Format(time.RFC3339),
+	}, nil
+}
+
 func strPtr(s string) *string { return &s }

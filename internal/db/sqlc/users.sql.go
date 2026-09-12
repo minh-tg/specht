@@ -104,3 +104,29 @@ func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (User,
 	)
 	return i, err
 }
+
+const updateUserDisplayName = `-- name: UpdateUserDisplayName :one
+UPDATE users SET display_name = $2, updated_at = NOW() WHERE id = $1
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at
+`
+
+type UpdateUserDisplayNameParams struct {
+	ID          pgtype.UUID `json:"id"`
+	DisplayName pgtype.Text `json:"display_name"`
+}
+
+func (q *Queries) UpdateUserDisplayName(ctx context.Context, arg UpdateUserDisplayNameParams) (User, error) {
+	row := q.db.QueryRow(ctx, updateUserDisplayName, arg.ID, arg.DisplayName)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.DisplayName,
+		&i.PasswordHash,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}

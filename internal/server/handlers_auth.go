@@ -105,6 +105,28 @@ func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, profile)
 }
 
+func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		DisplayName *string `json:"display_name"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+		return
+	}
+
+	ident := auth.ContextIdentity(r.Context())
+	if ident == nil {
+		respondError(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+
+	profile, err := h.usecase.UpdateProfile(r.Context(), ident.UserID, req.DisplayName)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "not_found", "user not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, profile)
+}
+
 func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Project   string `json:"project"`

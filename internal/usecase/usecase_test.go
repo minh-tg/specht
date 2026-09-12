@@ -271,9 +271,10 @@ func (m *mockFindingRepo) CreateEvent(ctx context.Context, arg port.FindingEvent
 
 type mockUserRepo struct {
 	port.UserStore
-	createFn     func(context.Context, string, *string, *string) (port.User, error)
-	getByEmailFn func(context.Context, string) (port.User, error)
-	getByIDFn    func(context.Context, string) (port.User, error)
+	createFn            func(context.Context, string, *string, *string) (port.User, error)
+	getByEmailFn        func(context.Context, string) (port.User, error)
+	getByIDFn           func(context.Context, string) (port.User, error)
+	updateDisplayNameFn func(context.Context, string, *string) (port.User, error)
 }
 
 func (m *mockUserRepo) Create(ctx context.Context, email string, displayName, passwordHash *string) (port.User, error) {
@@ -295,6 +296,13 @@ func (m *mockUserRepo) GetByID(ctx context.Context, id string) (port.User, error
 		return port.User{}, fmt.Errorf("unexpected call to GetByID")
 	}
 	return m.getByIDFn(ctx, id)
+}
+
+func (m *mockUserRepo) UpdateDisplayName(ctx context.Context, userID string, displayName *string) (port.User, error) {
+	if m.updateDisplayNameFn == nil {
+		return port.User{}, fmt.Errorf("unexpected call to UpdateDisplayName")
+	}
+	return m.updateDisplayNameFn(ctx, userID, displayName)
 }
 
 type mockRefreshTokenRepo struct {
@@ -1864,6 +1872,45 @@ func TestGetProfile_UserNotFound(t *testing.T) {
 	})
 
 	_, err := uc.GetProfile(context.Background(), "00000000-0000-0000-0000-000000000001")
+	assert.EqualError(t, err, "user not found")
+}
+
+func TestUpdateProfile_Success(t *testing.T) {
+	ur := &mockUserRepo{}
+	ur.updateDisplayNameFn = func(ctx context.Context, userID string, displayName *string) (port.User, error) {
+		u := makeUser("00000000-0000-0000-0000-000000000040")
+		u.DisplayName = displayName
+		return u, nil
+	}
+
+	uc := New(Deps{
+		Stores: &port.Stores{Users: ur},
+	})
+
+	name := "Alice"
+	profile, err := uc.UpdateProfile(context.Background(), "00000000-0000-0000-0000-000000000040", &name)
+	require.NoError(t, err)
+	require.NotNil(t, profile)
+	assert.Equal(t, "Alice", profile.DisplayName)
+}
+
+func TestUpdateProfile_InvalidUUID(t *testing.T) {
+	uc := New(Deps{})
+	_, err := uc.UpdateProfile(context.Background(), "not-a-uuid", nil)
+	assert.ErrorContains(t, err, "invalid user id")
+}
+
+func TestUpdateProfile_UserNotFound(t *testing.T) {
+	ur := &mockUserRepo{}
+	ur.updateDisplayNameFn = func(ctx context.Context, userID string, displayName *string) (port.User, error) {
+		return port.User{}, port.ErrNotFound
+	}
+
+	uc := New(Deps{
+		Stores: &port.Stores{Users: ur},
+	})
+
+	_, err := uc.UpdateProfile(context.Background(), "00000000-0000-0000-0000-000000000001", nil)
 	assert.EqualError(t, err, "user not found")
 }
 

@@ -44,6 +44,7 @@ type mockUsecases struct {
 	refreshFn            func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
 	logoutFn             func(ctx context.Context, refreshToken string) error
 	getProfileFn         func(ctx context.Context, userID string) (*usecase.UserProfile, error)
+	updateProfileFn      func(ctx context.Context, userID string, displayName *string) (*usecase.UserProfile, error)
 	listEnvironmentsFn   func(ctx context.Context, slug string) ([]usecase.EnvironmentResponse, error)
 	listTargetsFn        func(ctx context.Context, slug string) ([]usecase.TargetResponse, error)
 	listArtifactsFn      func(ctx context.Context, slug string) ([]usecase.ArtifactResponse, error)
@@ -239,6 +240,13 @@ func (m *mockUsecases) GetProfile(ctx context.Context, userID string) (*usecase.
 		return nil, fmt.Errorf("unexpected call to GetProfile")
 	}
 	return m.getProfileFn(ctx, userID)
+}
+
+func (m *mockUsecases) UpdateProfile(ctx context.Context, userID string, displayName *string) (*usecase.UserProfile, error) {
+	if m.updateProfileFn == nil {
+		return nil, fmt.Errorf("unexpected call to UpdateProfile")
+	}
+	return m.updateProfileFn(ctx, userID, displayName)
 }
 
 func (m *mockUsecases) ListEnvironments(ctx context.Context, slug string) ([]usecase.EnvironmentResponse, error) {
@@ -617,6 +625,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Post("/api/v1/auth/refresh", h.Refresh)
 	r.Post("/api/v1/auth/logout", h.Logout)
 	r.Get("/api/v1/me", h.Me)
+	r.Put("/api/v1/me", h.UpdateMe)
 	r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
 	r.Get("/api/v1/projects/{slug}/stats", h.GetProjectStats)
 	r.Get("/api/v1/projects/{slug}/aging", h.GetAging)
@@ -1831,6 +1840,52 @@ func TestMe_UserNotFound(t *testing.T) {
 	}
 	router := testRouter(mock)
 	req := httptest.NewRequest("GET", "/api/v1/me", nil)
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "nonexistent"}))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestUpdateMe_Success(t *testing.T) {
+	mock := &mockUsecases{
+		updateProfileFn: func(ctx context.Context, userID string, displayName *string) (*usecase.UserProfile, error) {
+			require.NotNil(t, displayName)
+			return &usecase.UserProfile{ID: userID, Email: "test@example.com", DisplayName: *displayName, Role: "user"}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("PUT", "/api/v1/me", strings.NewReader(`{"display_name":"Alice"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "test-user"}))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.UserProfile
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "Alice", resp.DisplayName)
+}
+
+func TestUpdateMe_NoIdentity(t *testing.T) {
+	router := NewRouter(RouterConfig{Usecases: &mockUsecases{}, JWTAuth: testJWTAuth})
+	req := httptest.NewRequest("PUT", "/api/v1/me", strings.NewReader(`{"display_name":"Alice"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestUpdateMe_UserNotFound(t *testing.T) {
+	mock := &mockUsecases{
+		updateProfileFn: func(ctx context.Context, userID string, displayName *string) (*usecase.UserProfile, error) {
+			return nil, fmt.Errorf("user not found")
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("PUT", "/api/v1/me", strings.NewReader(`{"display_name":"Alice"}`))
+	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "nonexistent"}))
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
