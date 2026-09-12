@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # go.sum is untracked; resolve the module graph so the Dockerfile's
+      # go.sum is tracked; resolve the module graph so the Dockerfile's
       # go.mod-only flow (GOFLAGS=-mod=mod go mod download) is fast and
       # deterministic in the image build below.
       - uses: actions/setup-go@v5

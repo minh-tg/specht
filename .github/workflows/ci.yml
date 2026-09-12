@@ -68,6 +68,40 @@ jobs:
       - name: Build
         run: go build ./...
 
+  frontend:
+    name: frontend (vitest + tsc + dprint + oxlint)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Unit tests (vitest)
+        run: pnpm test
+
+      - name: Typecheck
+        run: npx tsc -b
+
+      - name: Format check (dprint)
+        run: npx dprint check
+
+      - name: Lint (oxlint)
+        run: pnpm lint
+
   build:
     name: docker build (clean clone)
     runs-on: ubuntu-latest
