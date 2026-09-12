@@ -15,6 +15,9 @@ go run ./cmd/server
 
 API starts at `http://localhost:8080`. Health check: `curl http://localhost:8080/api/v1/health`.
 
+Self-hosting in production (secrets, first admin, backups, upgrades):
+see [deploy/README.md](deploy/README.md).
+
 ## Project Layout
 
 ```

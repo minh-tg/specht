@@ -25,11 +25,22 @@ services:
     environment:
       DATABASE_URL: >-
         postgres://specht:${POSTGRES_PASSWORD:-specht}@db:5432/specht?sslmode=${POSTGRES_SSLMODE:-disable}
+      # Production must set JWT_SECRET (min 32 random bytes) and
+      # POSTGRES_PASSWORD via deploy/.env.prod (see deploy/README.md). Empty
+      # values fail fast: postgres refuses an empty password and the server
+      # refuses a missing/short JWT secret at startup.
       JWT_SECRET: ${JWT_SECRET}
       SERVER_ADDR: :8080
       LOG_LEVEL: ${LOG_LEVEL:-info}
       DB_MIGRATE: "true"
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      # Rate limiting: on by default in compose (self-host is internet-facing
+      # until proven otherwise). Dev `go run` stays unlimited unless enabled.
+      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
+      RATE_LIMIT_RPS: ${RATE_LIMIT_RPS:-10}
+      RATE_LIMIT_BURST: ${RATE_LIMIT_BURST:-20}
+      RATE_LIMIT_AUTH_RPS: ${RATE_LIMIT_AUTH_RPS:-1000}
+      RATE_LIMIT_AUTH_BURST: ${RATE_LIMIT_AUTH_BURST:-2000}
       # CVE Feed Watcher (opt-in; off by default)
       WATCHER_ENABLE: ${WATCHER_ENABLE:-false}
       INVENTORY_TTL: ${INVENTORY_TTL:-2160h}
