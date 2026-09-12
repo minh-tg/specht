@@ -69,6 +69,47 @@ func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, project)
 }
 
+func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	var req struct {
+		Name        *string `json:"name"`
+		Description *string `json:"description"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+		return
+	}
+	if req.Name == nil && req.Description == nil {
+		respondError(w, http.StatusBadRequest, "missing_field", "name or description is required")
+		return
+	}
+	project, err := h.usecase.UpdateProject(r.Context(), slug, req.Name, req.Description)
+	if err != nil {
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			respondError(w, http.StatusForbidden, "project_access_denied", "project access denied")
+			return
+		}
+		respondError(w, http.StatusNotFound, "not_found", "project not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, project)
+	h.audit.HTTP(r, audit.EventUpdateProject, audit.OutcomeSuccess, "", slug, nil)
+}
+
+func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	project, err := h.usecase.DeleteProject(r.Context(), slug)
+	if err != nil {
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			respondError(w, http.StatusForbidden, "project_access_denied", "project access denied")
+			return
+		}
+		respondError(w, http.StatusNotFound, "not_found", "project not found")
+		return
+	}
+	respondJSON(w, http.StatusOK, project)
+	h.audit.HTTP(r, audit.EventDeleteProject, audit.OutcomeSuccess, "", slug, nil)
+}
+
 func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {

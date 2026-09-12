@@ -135,6 +135,26 @@ func (r *pgProjectPort) GetBySlug(ctx context.Context, slug string) (port.Projec
 	return projectToPort(row), nil
 }
 
+func (r *pgProjectPort) Update(ctx context.Context, slug, name string, description *string) (port.Project, error) {
+	row, err := r.q.UpdateProject(ctx, sqlc.UpdateProjectParams{
+		Slug:        slug,
+		Name:        name,
+		Description: textPtrFromString(description),
+	})
+	if err != nil {
+		return port.Project{}, mappingErr(err)
+	}
+	return projectToPort(row), nil
+}
+
+func (r *pgProjectPort) Delete(ctx context.Context, slug string) (port.Project, error) {
+	row, err := r.q.DeleteProject(ctx, slug)
+	if err != nil {
+		return port.Project{}, mappingErr(err)
+	}
+	return projectToPort(row), nil
+}
+
 func (r *pgProjectPort) GetByID(ctx context.Context, id string) (port.Project, error) {
 	if _, err := parseID(id); err != nil {
 		return port.Project{}, err

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -247,6 +248,59 @@ func (u *Usecases) CreateProject(ctx context.Context, name, slug, description, c
 		return nil, fmt.Errorf("grant creator admin membership: %w", err)
 	}
 	resp := toProject(p)
+	return &resp, nil
+}
+
+// UpdateProject renames a project and/or changes its description. Only
+// global admins and project-admin members may mutate a project (the same
+// gate as member management); API keys never may. A nil name leaves the
+// name unchanged; a nil description leaves the description unchanged while
+// a blank description clears it.
+func (u *Usecases) UpdateProject(ctx context.Context, slug string, name, description *string) (*ProjectResponse, error) {
+	p, err := u.deps.Stores.Projects.GetBySlug(ctx, slug)
+	if err != nil {
+		return nil, fmt.Errorf("project not found: %w", err)
+	}
+	if err := u.requireProjectAdmin(ctx, p.ID); err != nil {
+		return nil, err
+	}
+	newName := p.Name
+	if name != nil && strings.TrimSpace(*name) != "" {
+		newName = strings.TrimSpace(*name)
+	}
+	newDesc := p.Description
+	if description != nil {
+		trimmed := strings.TrimSpace(*description)
+		if trimmed == "" {
+			newDesc = nil
+		} else {
+			newDesc = &trimmed
+		}
+	}
+	updated, err := u.deps.Stores.Projects.Update(ctx, slug, newName, newDesc)
+	if err != nil {
+		return nil, fmt.Errorf("update project %q: %w", slug, err)
+	}
+	resp := toProject(updated)
+	return &resp, nil
+}
+
+// DeleteProject removes a project and all its data (reports, findings,
+// waivers, members, API keys cascade via ON DELETE CASCADE). Gated like
+// UpdateProject. Returns the deleted project for audit purposes.
+func (u *Usecases) DeleteProject(ctx context.Context, slug string) (*ProjectResponse, error) {
+	p, err := u.deps.Stores.Projects.GetBySlug(ctx, slug)
+	if err != nil {
+		return nil, fmt.Errorf("project not found: %w", err)
+	}
+	if err := u.requireProjectAdmin(ctx, p.ID); err != nil {
+		return nil, err
+	}
+	deleted, err := u.deps.Stores.Projects.Delete(ctx, slug)
+	if err != nil {
+		return nil, fmt.Errorf("delete project %q: %w", slug, err)
+	}
+	resp := toProject(deleted)
 	return &resp, nil
 }
 

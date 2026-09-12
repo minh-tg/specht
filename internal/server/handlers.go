@@ -87,6 +87,8 @@ type (
 		IsProjectMember(ctx context.Context, projectID, userID string) (bool, error)
 		ListProjects(ctx context.Context) ([]usecase.ProjectResponse, error)
 		GetProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
+		UpdateProject(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error)
+		DeleteProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
 		ListEnvironments(ctx context.Context, projectSlug string) ([]usecase.EnvironmentResponse, error)
 		ListTargets(ctx context.Context, projectSlug string) ([]usecase.TargetResponse, error)
 		ListArtifacts(ctx context.Context, projectSlug string) ([]usecase.ArtifactResponse, error)

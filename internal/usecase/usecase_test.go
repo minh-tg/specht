@@ -22,6 +22,8 @@ type mockProjectRepo struct {
 	createFn       func(context.Context, port.CreateProjectInput) (port.Project, error)
 	listFn         func(context.Context) ([]port.Project, error)
 	getBySlugFn    func(context.Context, string) (port.Project, error)
+	updateFn       func(context.Context, string, string, *string) (port.Project, error)
+	deleteFn       func(context.Context, string) (port.Project, error)
 	upsertMemberFn func(context.Context, string, string, string) (port.ProjectMember, error)
 	listMembersFn  func(context.Context, string) ([]port.ProjectMember, error)
 	isMemberFn     func(context.Context, string, string) (bool, error)
@@ -67,6 +69,20 @@ func (m *mockProjectRepo) GetBySlug(ctx context.Context, slug string) (port.Proj
 		return port.Project{}, fmt.Errorf("unexpected call to GetBySlug")
 	}
 	return m.getBySlugFn(ctx, slug)
+}
+
+func (m *mockProjectRepo) Update(ctx context.Context, slug, name string, description *string) (port.Project, error) {
+	if m.updateFn == nil {
+		return port.Project{}, fmt.Errorf("unexpected call to Update")
+	}
+	return m.updateFn(ctx, slug, name, description)
+}
+
+func (m *mockProjectRepo) Delete(ctx context.Context, slug string) (port.Project, error) {
+	if m.deleteFn == nil {
+		return port.Project{}, fmt.Errorf("unexpected call to Delete")
+	}
+	return m.deleteFn(ctx, slug)
 }
 
 type mockReportRepo struct {

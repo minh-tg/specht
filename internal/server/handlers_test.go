@@ -27,6 +27,8 @@ type mockUsecases struct {
 	isProjectMemberFn    func(ctx context.Context, projectID, userID string) (bool, error)
 	listProjectsFn       func(ctx context.Context) ([]usecase.ProjectResponse, error)
 	getProjectFn         func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
+	updateProjectFn      func(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error)
+	deleteProjectFn      func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
 	listFindingsFn       func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error)
 	listReportsFn        func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
 	getReportFn          func(ctx context.Context, reportID string) (*usecase.ReportResponse, error)
@@ -110,6 +112,20 @@ func (m *mockUsecases) GetProject(ctx context.Context, slug string) (*usecase.Pr
 		return &usecase.ProjectResponse{ID: "00000000-0000-0000-0000-000000000001", Slug: slug, Name: slug}, nil
 	}
 	return m.getProjectFn(ctx, slug)
+}
+
+func (m *mockUsecases) UpdateProject(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error) {
+	if m.updateProjectFn == nil {
+		return nil, fmt.Errorf("unexpected call to UpdateProject")
+	}
+	return m.updateProjectFn(ctx, slug, name, description)
+}
+
+func (m *mockUsecases) DeleteProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+	if m.deleteProjectFn == nil {
+		return nil, fmt.Errorf("unexpected call to DeleteProject")
+	}
+	return m.deleteProjectFn(ctx, slug)
 }
 
 func (m *mockUsecases) ListFindings(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
@@ -608,6 +624,8 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/projects", h.ListProjects)
 	r.Post("/api/v1/projects", h.CreateProject)
 	r.Get("/api/v1/projects/{slug}", h.GetProject)
+	r.Put("/api/v1/projects/{slug}", h.UpdateProject)
+	r.Delete("/api/v1/projects/{slug}", h.DeleteProject)
 	r.Get("/api/v1/projects/{slug}/findings", h.ListFindings)
 	r.Get("/api/v1/projects/{slug}/reports", h.ListReports)
 	r.Get("/api/v1/reports/{id}", h.GetReport)
@@ -742,6 +760,113 @@ func TestCreateProject_MissingFields(t *testing.T) {
 	h.CreateProject(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateProject_Success(t *testing.T) {
+	mock := &mockUsecases{
+		updateProjectFn: func(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error) {
+			assert.Equal(t, "my-app", slug)
+			require.NotNil(t, name)
+			return &usecase.ProjectResponse{ID: "p1", Slug: slug, Name: *name}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("PUT", "/api/v1/projects/my-app", strings.NewReader(`{"name":"Renamed"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.ProjectResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "Renamed", resp.Name)
+}
+
+func TestUpdateProject_MissingFields(t *testing.T) {
+	mock := &mockUsecases{}
+	h := &Handler{usecase: mock}
+	req := httptest.NewRequest("PUT", "/api/v1/projects/my-app", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	h.UpdateProject(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestUpdateProject_Denied(t *testing.T) {
+	mock := &mockUsecases{
+		updateProjectFn: func(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error) {
+			return nil, usecase.ErrProjectAccessDenied
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("PUT", "/api/v1/projects/my-app", strings.NewReader(`{"name":"Renamed"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestUpdateProject_NotFound(t *testing.T) {
+	mock := &mockUsecases{
+		updateProjectFn: func(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error) {
+			return nil, fmt.Errorf("project not found: missing")
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("PUT", "/api/v1/projects/missing", strings.NewReader(`{"name":"Renamed"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestDeleteProject_Success(t *testing.T) {
+	mock := &mockUsecases{
+		deleteProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			assert.Equal(t, "my-app", slug)
+			return &usecase.ProjectResponse{ID: "p1", Slug: slug, Name: "My App"}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("DELETE", "/api/v1/projects/my-app", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.ProjectResponse
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "my-app", resp.Slug)
+}
+
+func TestDeleteProject_Denied(t *testing.T) {
+	mock := &mockUsecases{
+		deleteProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			return nil, usecase.ErrProjectAccessDenied
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("DELETE", "/api/v1/projects/my-app", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestDeleteProject_NotFound(t *testing.T) {
+	mock := &mockUsecases{
+		deleteProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			return nil, fmt.Errorf("project not found: missing")
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("DELETE", "/api/v1/projects/missing", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
 func TestListFindings_Success(t *testing.T) {

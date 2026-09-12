@@ -50,6 +50,30 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 	return i, err
 }
 
+const deleteProject = `-- name: DeleteProject :one
+DELETE FROM projects WHERE slug = $1
+RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds
+`
+
+func (q *Queries) DeleteProject(ctx context.Context, slug string) (Project, error) {
+	row := q.db.QueryRow(ctx, deleteProject, slug)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.DeploymentThreshold,
+		&i.Settings,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CveWatcherGate,
+		&i.CveWatcherEnabled,
+		&i.CveWatcherIntervalSeconds,
+	)
+	return i, err
+}
+
 const getProjectBySlug = `-- name: GetProjectBySlug :one
 SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds FROM projects
 WHERE slug = $1 LIMIT 1
@@ -156,6 +180,37 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateProject = `-- name: UpdateProject :one
+UPDATE projects SET name = $2, description = $3, updated_at = NOW()
+WHERE slug = $1
+RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds
+`
+
+type UpdateProjectParams struct {
+	Slug        string      `json:"slug"`
+	Name        string      `json:"name"`
+	Description pgtype.Text `json:"description"`
+}
+
+func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (Project, error) {
+	row := q.db.QueryRow(ctx, updateProject, arg.Slug, arg.Name, arg.Description)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.DeploymentThreshold,
+		&i.Settings,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CveWatcherGate,
+		&i.CveWatcherEnabled,
+		&i.CveWatcherIntervalSeconds,
+	)
+	return i, err
 }
 
 const upsertProjectMember = `-- name: UpsertProjectMember :one

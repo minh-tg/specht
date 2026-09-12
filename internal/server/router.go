@@ -102,6 +102,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Get("/api/v1/projects", h.ListProjects)
 		r.With(RequireRole(auth.RoleAdmin)).Post("/api/v1/projects", h.CreateProject)
 		r.Get("/api/v1/projects/{slug}", h.GetProject)
+		r.Put("/api/v1/projects/{slug}", h.UpdateProject)
+		r.Delete("/api/v1/projects/{slug}", h.DeleteProject)
 		r.Get("/api/v1/projects/{slug}/findings", h.ListFindings)
 		r.Get("/api/v1/projects/{slug}/reports", h.ListReports)
 		r.Get("/api/v1/reports/{id}", h.GetReport)

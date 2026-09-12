@@ -30,6 +30,8 @@ const (
 	EventTriageFinding = "finding.triage"
 	EventVerifyFix     = "finding.verify"
 	EventCreateProject = "project.create"
+	EventUpdateProject = "project.update"
+	EventDeleteProject = "project.delete"
 	EventUpdateWaiver  = "waiver.update"
 	EventToggleWaiver  = "waiver.toggle"
 )

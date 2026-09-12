@@ -72,6 +72,8 @@ type ProjectStore interface {
 	List(ctx context.Context) ([]Project, error)
 	GetBySlug(ctx context.Context, slug string) (Project, error)
 	GetByID(ctx context.Context, id string) (Project, error)
+	Update(ctx context.Context, slug, name string, description *string) (Project, error)
+	Delete(ctx context.Context, slug string) (Project, error)
 	UpsertMember(ctx context.Context, projectID, userID, role string) (ProjectMember, error)
 	ListMembers(ctx context.Context, projectID string) ([]ProjectMember, error)
 	IsMember(ctx context.Context, projectID, userID string) (bool, error)

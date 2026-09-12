@@ -11,6 +11,15 @@ INSERT INTO projects (slug, name, description, deployment_threshold, settings)
 VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
+-- name: UpdateProject :one
+UPDATE projects SET name = $2, description = $3, updated_at = NOW()
+WHERE slug = $1
+RETURNING *;
+
+-- name: DeleteProject :one
+DELETE FROM projects WHERE slug = $1
+RETURNING *;
+
 -- name: UpsertProjectMember :one
 INSERT INTO project_members (project_id, user_id, role)
 VALUES ($1, $2, $3)
