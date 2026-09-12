@@ -989,6 +989,20 @@ func TestNewRouterRoutes(t *testing.T) {
 		assert.Equal(t, http.StatusOK, w.Code)
 	})
 
+	t.Run("version endpoint returns build info", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/v1/version", nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusOK, w.Code)
+		var body struct {
+			Version string `json:"version"`
+			Commit  string `json:"commit"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.NotEmpty(t, body.Version)
+		assert.NotEmpty(t, body.Commit)
+	})
+
 	t.Run("reports POST endpoint exists", func(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/v1/reports", strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")

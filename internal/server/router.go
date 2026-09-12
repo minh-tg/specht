@@ -69,6 +69,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	h := NewHandler(cfg.Usecases)
 
 	r.Get("/api/v1/health", healthHandler)
+	r.Get("/api/v1/version", versionHandler)
 	// SSO/OIDC entry point: redirect to the provider's authorization URL.
 	if cfg.OIDCEnabled && cfg.OIDC != nil {
 		r.Get("/api/v1/auth/sso/login", ssoLoginHandler(cfg.OIDC))
@@ -202,6 +203,14 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, `{"status":"ok","version":%q,"commit":%q}`, version.Version, version.Commit)
+}
+
+// versionHandler reports the server build info. Unauthenticated so
+// deployment tooling and self-host operators can verify what is running.
+func versionHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, `{"version":%q,"commit":%q}`, version.Version, version.Commit)
 }
 
 // ssoLoginHandler redirects unauthenticated users to the OIDC provider's
