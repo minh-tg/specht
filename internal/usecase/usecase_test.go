@@ -770,6 +770,31 @@ func TestCreateProject_Success(t *testing.T) {
 	assert.Equal(t, auth.RoleAdmin, gotRole, "project creator must become admin member")
 }
 
+func TestCreateProject_MembershipFailureRollsBack(t *testing.T) {
+	pr, _, _ := makeTestRepos()
+
+	pr.createFn = func(ctx context.Context, arg port.CreateProjectInput) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	pr.upsertMemberFn = func(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
+		return port.ProjectMember{}, fmt.Errorf("db unavailable")
+	}
+	var gotDeleteSlug string
+	pr.deleteFn = func(ctx context.Context, slug string) (port.Project, error) {
+		gotDeleteSlug = slug
+		return makeProject(true), nil
+	}
+
+	uc := New(Deps{
+		Stores: &port.Stores{Projects: pr},
+	})
+
+	_, err := uc.CreateProject(context.Background(), "My App", "my-app", "test description", "creator-1")
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "grant creator admin membership")
+	assert.Equal(t, "my-app", gotDeleteSlug, "orphaned project must be removed when admin grant fails")
+}
+
 func TestIngestReport_Success(t *testing.T) {
 	pr, rr, fr := makeTestRepos()
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -245,6 +246,12 @@ func (u *Usecases) CreateProject(ctx context.Context, name, slug, description, c
 		return nil, fmt.Errorf("create project %q: %w", slug, err)
 	}
 	if _, err := u.deps.Stores.Projects.UpsertMember(ctx, p.ID, creatorID, auth.RoleAdmin); err != nil {
+		// No transaction spans project creation and member grant, so remove
+		// the orphaned project: an admin-less project would be unreachable
+		// to every non-global-admin (H1).
+		if delErr := u.deleteProjectBySlug(ctx, p.Slug); delErr != nil {
+			slog.Error("rollback project after admin-grant failure", "slug", p.Slug, "error", delErr)
+		}
 		return nil, fmt.Errorf("grant creator admin membership: %w", err)
 	}
 	resp := toProject(p)
@@ -302,6 +309,14 @@ func (u *Usecases) DeleteProject(ctx context.Context, slug string) (*ProjectResp
 	}
 	resp := toProject(deleted)
 	return &resp, nil
+}
+
+// deleteProjectBySlug removes a project without access checks. It is the
+// compensating action for CreateProject: only the creator flow uses it,
+// immediately after creating a project whose admin grant failed.
+func (u *Usecases) deleteProjectBySlug(ctx context.Context, slug string) error {
+	_, err := u.deps.Stores.Projects.Delete(ctx, slug)
+	return err
 }
 
 // ListProjects returns the projects the caller's identity may see (H1).
