@@ -1219,14 +1219,37 @@ func TestNewRouterRoutes(t *testing.T) {
 		router.ServeHTTP(w, req)
 		assert.NotEqual(t, http.StatusNotFound, w.Code)
 	})
+}
 
-	t.Run("auth apikeys endpoint exists", func(t *testing.T) {
-		req := httptest.NewRequest("POST", "/api/v1/auth/apikeys", strings.NewReader(`{}`))
+func TestNewRouter_RateLimit(t *testing.T) {
+	mock := &mockUsecases{
+		loginFn: func(ctx context.Context, email, password string) (*usecase.AuthResponse, error) {
+			return &usecase.AuthResponse{Token: "tok"}, nil
+		},
+	}
+	router := NewRouter(RouterConfig{
+		Usecases:  mock,
+		JWTAuth:   testJWTAuth,
+		RateLimit: RateLimitConfig{Enabled: true, RPS: 1, Burst: 2, AuthRPS: 1000, AuthBurst: 2000},
+	})
+
+	postLogin := func() *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(`{"email":"a@b.c","password":"secret123"}`))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
-		assert.NotEqual(t, http.StatusNotFound, w.Code)
-	})
+		return w
+	}
+	assert.Equal(t, http.StatusOK, postLogin().Code)
+	assert.Equal(t, http.StatusOK, postLogin().Code)
+	limited := postLogin()
+	assert.Equal(t, http.StatusTooManyRequests, limited.Code)
+	assert.NotEmpty(t, limited.Header().Get("Retry-After"))
+
+	req := httptest.NewRequest("GET", "/api/v1/health", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code, "health stays reachable under flood")
 }
 
 func TestRegister_Success(t *testing.T) {

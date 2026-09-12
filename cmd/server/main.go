@@ -100,7 +100,14 @@ func main() {
 		Usecases:       uc,
 		CORSOrigins:    cfg.CORSOrigins,
 		TrustedProxies: cfg.TrustedProxies,
-		JWTAuth:        jwtAuth,
+		RateLimit: server.RateLimitConfig{
+			Enabled:   cfg.RateLimit.Enable,
+			RPS:       cfg.RateLimit.RPS,
+			Burst:     cfg.RateLimit.Burst,
+			AuthRPS:   cfg.RateLimit.AuthRPS,
+			AuthBurst: cfg.RateLimit.AuthBurst,
+		},
+		JWTAuth: jwtAuth,
 		APIKeyLookup: func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
 			key, err := repos.APIKeys.GetByHash(ctx, keyHash)
 			if err != nil {

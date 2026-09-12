@@ -1,6 +1,6 @@
 module github.com/xMinhx/specht
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/go-chi/chi/v5 v5.3.0
@@ -15,6 +15,7 @@ require (
 	golang.org/x/crypto v0.51.0
 	golang.org/x/mod v0.40.0
 	golang.org/x/sync v0.20.0
+	golang.org/x/time v0.16.0
 )
 
 require (

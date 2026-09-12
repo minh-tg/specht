@@ -24,6 +24,12 @@ const (
 	DefaultOSVEndpoint   = "https://api.osv.dev/v1/querybatch"
 	DefaultDBMigrate     = true
 	DefaultStalenessMult = 2
+	// Rate limiting defaults (token bucket per key): strict for
+	// unauthenticated entry points, generous for authenticated callers.
+	DefaultRateLimitRPS       = 10
+	DefaultRateLimitBurst     = 20
+	DefaultRateLimitAuthRPS   = 1000
+	DefaultRateLimitAuthBurst = 2000
 )
 
 // Server is the resolved server configuration.
@@ -46,6 +52,9 @@ type Server struct {
 	// only validated when Enable is true (a malformed optional setting must
 	// not crash a server with the watcher disabled).
 	Watcher Watcher
+	// RateLimit guards the API against flooding. Disabled by default for
+	// dev UX; self-host production enables it via RATE_LIMIT_ENABLED.
+	RateLimit RateLimit
 }
 
 // SSOConfig configures OIDC single-sign-on login.
@@ -61,6 +70,17 @@ type SSOConfig struct {
 	// disables auto-provisioning entirely — unknown IdP subjects are
 	// rejected with 403. Existing local accounts are unaffected.
 	AllowedDomains []string
+}
+
+// RateLimit is the resolved rate limiter configuration: a strict per-IP
+// bucket for unauthenticated entry points and a generous per-caller bucket
+// for authenticated requests.
+type RateLimit struct {
+	Enable    bool
+	RPS       int
+	Burst     int
+	AuthRPS   int
+	AuthBurst int
 }
 
 // Watcher is the resolved CVE watcher configuration.
@@ -141,6 +161,52 @@ func Load() (*Server, error) {
 
 	// Watcher master switch.
 	s.Watcher.Enable = os.Getenv("WATCHER_ENABLE") == "true"
+
+	// Rate limiter: off by default; parsed values are validated only when
+	// enabled so a stray invalid var cannot crash a dev server.
+	s.RateLimit = RateLimit{
+		Enable:    os.Getenv("RATE_LIMIT_ENABLED") == "true",
+		RPS:       DefaultRateLimitRPS,
+		Burst:     DefaultRateLimitBurst,
+		AuthRPS:   DefaultRateLimitAuthRPS,
+		AuthBurst: DefaultRateLimitAuthBurst,
+	}
+	var rateLimitErrs []error
+	if v := os.Getenv("RATE_LIMIT_RPS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			rateLimitErrs = append(rateLimitErrs, fmt.Errorf("RATE_LIMIT_RPS is invalid: %q", v))
+		} else {
+			s.RateLimit.RPS = n
+		}
+	}
+	if v := os.Getenv("RATE_LIMIT_BURST"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			rateLimitErrs = append(rateLimitErrs, fmt.Errorf("RATE_LIMIT_BURST is invalid: %q", v))
+		} else {
+			s.RateLimit.Burst = n
+		}
+	}
+	if v := os.Getenv("RATE_LIMIT_AUTH_RPS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			rateLimitErrs = append(rateLimitErrs, fmt.Errorf("RATE_LIMIT_AUTH_RPS is invalid: %q", v))
+		} else {
+			s.RateLimit.AuthRPS = n
+		}
+	}
+	if v := os.Getenv("RATE_LIMIT_AUTH_BURST"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n <= 0 {
+			rateLimitErrs = append(rateLimitErrs, fmt.Errorf("RATE_LIMIT_AUTH_BURST is invalid: %q", v))
+		} else {
+			s.RateLimit.AuthBurst = n
+		}
+	}
+	if s.RateLimit.Enable && len(rateLimitErrs) > 0 {
+		return nil, rateLimitErrs[0]
+	}
 
 	// Parse watcher optionals; only surface errors when enabled.
 	var watcherErrs []error

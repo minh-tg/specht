@@ -28,6 +28,9 @@ type RouterConfig struct {
 	APIKeyLookup func(ctx context.Context, keyHash string) (userID, projectID string, scopes []string, expiresAt time.Time, err error)
 	OIDC         *auth.OIDCAuthenticator
 	OIDCEnabled  bool
+	// RateLimit, when Enabled, mounts a strict per-IP bucket on public
+	// routes and a generous per-caller bucket behind authentication.
+	RateLimit RateLimitConfig
 	// SSOAllowedDomains gates SSO auto-provisioning (H2): unknown IdP
 	// subjects are provisioned only for allowlisted email domains.
 	SSOAllowedDomains []string
@@ -63,6 +66,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	r.Use(middleware.RequestID)
 	r.Use(realIPMiddleware(cfg.TrustedProxies))
+	if cfg.RateLimit.Enabled {
+		// Shed unauthenticated floods before logging/auth: bearer requests
+		// pass through here and spend from the post-auth budget instead.
+		r.Use(NewRateLimiter(cfg.RateLimit.RPS, cfg.RateLimit.Burst).Middleware(false))
+	}
 	r.Use(LoggerMiddleware)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
@@ -95,6 +103,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	r.Group(func(r chi.Router) {
 		r.Use(AuthMiddleware(cfg.JWTAuth, apiKeyAuth))
+		if cfg.RateLimit.Enabled {
+			r.Use(NewRateLimiter(cfg.RateLimit.AuthRPS, cfg.RateLimit.AuthBurst).Middleware(true))
+		}
 
 		r.Get("/api/v1/me", h.Me)
 		r.Put("/api/v1/me", h.UpdateMe)

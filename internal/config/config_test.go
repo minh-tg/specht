@@ -103,3 +103,52 @@ func TestLoad_SSOAllowedDomainsEmpty(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Empty(t, cfg.SSO.AllowedDomains, "empty allowlist disables auto-provisioning")
 }
+
+func TestLoad_RateLimitDefaults(t *testing.T) {
+	t.Setenv("RATE_LIMIT_ENABLED", "")
+	t.Setenv("RATE_LIMIT_RPS", "")
+	t.Setenv("RATE_LIMIT_BURST", "")
+	t.Setenv("RATE_LIMIT_AUTH_RPS", "")
+	t.Setenv("RATE_LIMIT_AUTH_BURST", "")
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.False(t, cfg.RateLimit.Enable, "rate limiting is opt-in")
+	assert.Equal(t, DefaultRateLimitRPS, cfg.RateLimit.RPS)
+	assert.Equal(t, DefaultRateLimitBurst, cfg.RateLimit.Burst)
+	assert.Equal(t, DefaultRateLimitAuthRPS, cfg.RateLimit.AuthRPS)
+	assert.Equal(t, DefaultRateLimitAuthBurst, cfg.RateLimit.AuthBurst)
+}
+
+func TestLoad_RateLimitOverrides(t *testing.T) {
+	t.Setenv("RATE_LIMIT_ENABLED", "true")
+	t.Setenv("RATE_LIMIT_RPS", "50")
+	t.Setenv("RATE_LIMIT_BURST", "100")
+	t.Setenv("RATE_LIMIT_AUTH_RPS", "5000")
+	t.Setenv("RATE_LIMIT_AUTH_BURST", "10000")
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.True(t, cfg.RateLimit.Enable)
+	assert.Equal(t, 50, cfg.RateLimit.RPS)
+	assert.Equal(t, 100, cfg.RateLimit.Burst)
+	assert.Equal(t, 5000, cfg.RateLimit.AuthRPS)
+	assert.Equal(t, 10000, cfg.RateLimit.AuthBurst)
+}
+
+func TestLoad_RateLimitInvalidFailsWhenEnabled(t *testing.T) {
+	t.Setenv("RATE_LIMIT_ENABLED", "true")
+	t.Setenv("RATE_LIMIT_RPS", "not-a-number")
+
+	_, err := Load()
+	assert.ErrorContains(t, err, "RATE_LIMIT_RPS")
+}
+
+func TestLoad_RateLimitInvalidIgnoredWhenDisabled(t *testing.T) {
+	t.Setenv("RATE_LIMIT_ENABLED", "")
+	t.Setenv("RATE_LIMIT_RPS", "not-a-number")
+
+	cfg, err := Load()
+	assert.NoError(t, err, "a stray invalid var must not crash a dev server")
+	assert.False(t, cfg.RateLimit.Enable)
+}
