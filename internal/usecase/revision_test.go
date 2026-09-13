@@ -212,3 +212,142 @@ func TestToReport_MapsRevisionContext(t *testing.T) {
 	assert.Equal(t, "incremental", resp.ScanMode)
 	assert.Equal(t, []string{"app/main.go"}, resp.ChangedFiles)
 }
+
+// incrementalHarness builds an ingest stack whose scanner emits two
+// findings: fp-new (absent from the baseline) and fp-old (present in the
+// baseline). hasBase controls whether a baseline report resolves.
+func incrementalHarness(t *testing.T, hasBase bool) *Usecases {
+	t.Helper()
+	pr, rr, fr := makeTestRepos()
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
+		return makeReport(), nil
+	}
+	rr.updateStatusFn = func(ctx context.Context, id, projectID, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
+		return makeReport(), nil
+	}
+	if hasBase {
+		rr.byCommitFn = func(ctx context.Context, projectID, scanner, commit string) (port.CompletedReport, error) {
+			return port.CompletedReport{ID: "22222222-2222-2222-2222-222222222222", ToolName: scanner, Completeness: "complete"}, nil
+		}
+	}
+	fr.getByFingerprintFn = func(ctx context.Context, projectID, kind, fingerprint string) (port.Finding, error) {
+		if fingerprint == "fp-old" {
+			f := makeFinding(7)
+			f.ID = "00000000-0000-0000-0000-000000000007"
+			return f, nil
+		}
+		return port.Finding{}, port.ErrNotFound
+	}
+	fr.upsertFn = func(ctx context.Context, _, _, fingerprint, _, _ string, _ int16, _ float64, _, _ time.Time) (port.Finding, error) {
+		return port.Finding{
+			ID:          "finding-" + fingerprint,
+			ProjectID:   makeProject(true).ID,
+			FindingKind: "sast",
+			Fingerprint: fingerprint,
+		}, nil
+	}
+	fr.hasOccurrenceFn = func(ctx context.Context, findingID, reportID string) (bool, error) {
+		return findingID == "finding-fp-old" && reportID == "22222222-2222-2222-2222-222222222222", nil
+	}
+	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
+		return port.Occurrence{}, nil
+	}
+	fr.upsertDimensionFn = func(ctx context.Context, arg port.DimensionInput) error {
+		return nil
+	}
+	fr.updateAnalysisFn = func(ctx context.Context, arg port.UpdateAnalysisInput) (port.Finding, error) {
+		return makeFinding(7), nil
+	}
+
+	reg := scanner.NewRegistry()
+	require.NoError(t, reg.Register(&mockScanner{
+		name:        "semgrep",
+		incremental: true,
+		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
+			return &domain.NormalizedReport{
+				ContractVersion:    1,
+				FingerprintVersion: 1,
+				Completeness:       domain.CompletenessComplete,
+				ScanType:           domain.ScanTypeFilesystem,
+				Target:             &domain.TargetInfo{Kind: "repo", Identifier: "myapp"},
+				Findings: []domain.NormalizedFinding{
+					{Fingerprint: "fp-new", FindingKind: "sast", Title: "rule-a", Severity: domain.SeverityHigh, Score: 7.5},
+					{Fingerprint: "fp-old", FindingKind: "sast", Title: "rule-b", Severity: domain.SeverityMedium, Score: 5.0},
+				},
+			}, nil
+		},
+	}))
+
+	return New(Deps{
+		Stores: &port.Stores{
+			Projects:  pr,
+			Reports:   rr,
+			Findings:  fr,
+			Targets:   stubTargetRepo(),
+			Artifacts: stubArtifactRepo(),
+		},
+		Registry: reg,
+	})
+}
+
+func TestIngestReport_IncrementalUnsupportedScannerFallsBack(t *testing.T) {
+	uc, _, _, _ := revisionHarness(t, func(context.Context, string, string, string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
+	})
+
+	result, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug:  "my-app",
+		Scanner:      "trivy",
+		RawData:      json.RawMessage(`{"test": true}`),
+		CommitSha:    "abc123",
+		ScanMode:     "incremental",
+		BaseRevision: "base000",
+		ChangedFiles: []string{"app/main.go"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "full", result.ScanMode)
+	assert.Contains(t, result.FallbackReason, "full scan")
+}
+
+func TestIngestReport_IncrementalNoBaselineFallsBack(t *testing.T) {
+	uc := incrementalHarness(t, false)
+
+	result, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug:  "my-app",
+		Scanner:      "semgrep",
+		RawData:      json.RawMessage(`{"test": true}`),
+		CommitSha:    "abc123",
+		ScanMode:     "incremental",
+		BaseRevision: "missing-base",
+		ChangedFiles: []string{"app/main.go"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "full", result.ScanMode)
+	assert.Contains(t, result.FallbackReason, "baseline")
+}
+
+func TestIngestReport_IncrementalClassifiesIntroduced(t *testing.T) {
+	uc := incrementalHarness(t, true)
+
+	result, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug:  "my-app",
+		Scanner:      "semgrep",
+		RawData:      json.RawMessage(`{"test": true}`),
+		CommitSha:    "abc123",
+		ScanMode:     "incremental",
+		BaseRevision: "base000",
+		ChangedFiles: []string{"app/main.go"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "incremental", result.ScanMode)
+	assert.Empty(t, result.FallbackReason)
+	assert.Equal(t, 2, result.TotalFindings)
+	assert.Equal(t, 1, result.IntroducedCount)
+	assert.Equal(t, 1, result.PreExistingCount)
+}

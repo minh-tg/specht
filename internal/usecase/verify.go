@@ -33,10 +33,11 @@ type VerifyResponse struct {
 	Detail    string  `json:"detail"`
 }
 
-// VerifyFix checks a finding against the newest completed rescan from the
-// scanner that last observed it. Only a complete, newer, same-scanner
-// report that lacks the finding verifies the fix; anything else is an
-// explicit still_present or inconclusive verdict with the reason.
+// VerifyFix checks a finding against the newest completed full rescan from
+// the scanner that last observed it. Only a complete, newer, same-scanner
+// full report that lacks the finding verifies the fix — incremental scans
+// never qualify as a basis (their absence proves nothing); anything else
+// is an explicit still_present or inconclusive verdict with the reason.
 //
 // Verification moves the scan-derived technical state to fixed and logs a
 // verified_fixed event carrying the verifying report, branch, and commit.

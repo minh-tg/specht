@@ -462,8 +462,9 @@ func (m *mockWaiverRepo) ListFindingTargets(ctx context.Context, waiverID string
 }
 
 type mockScanner struct {
-	name    string
-	parseFn func(context.Context, []byte) (*domain.NormalizedReport, error)
+	name        string
+	parseFn     func(context.Context, []byte) (*domain.NormalizedReport, error)
+	incremental bool
 }
 
 func (m *mockScanner) Descriptor() scanner.Descriptor {
@@ -475,6 +476,7 @@ func (m *mockScanner) Descriptor() scanner.Descriptor {
 	}
 }
 func (m *mockScanner) DetectFormat(data []byte) bool { return true }
+func (m *mockScanner) SupportsIncremental() bool     { return m.incremental }
 func (m *mockScanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
 	if m.parseFn == nil {
 		return nil, fmt.Errorf("unexpected call to Parse")

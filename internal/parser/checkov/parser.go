@@ -68,6 +68,11 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 	}
 }
 
+// SupportsIncremental declares checkov safe for incremental analysis
+// (SOLO-165): IaC findings map to config files, so a changed-file scan
+// covers what it claims to cover.
+func (s *Scanner) SupportsIncremental() bool { return true }
+
 func (s *Scanner) DetectFormat(data []byte) bool {
 	var probe struct {
 		CheckType string          `json:"check_type"`

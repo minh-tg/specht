@@ -43,6 +43,11 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 	}
 }
 
+// SupportsIncremental declares gitleaks safe for incremental analysis
+// (SOLO-165): secret findings map to source files, so a changed-file scan
+// covers what it claims to cover.
+func (s *Scanner) SupportsIncremental() bool { return true }
+
 func (s *Scanner) DetectFormat(data []byte) bool {
 	var probe []gitleaksFinding
 	if err := json.Unmarshal(data, &probe); err != nil || len(probe) == 0 {

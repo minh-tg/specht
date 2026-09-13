@@ -101,12 +101,22 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, err
 	}
 
+	// Incremental scans (SOLO-165) resolve an effective mode before any
+	// row is written: unsupported scanners and missing baselines fall
+	// back to full with an explicit reason instead of recording partial
+	// coverage as if it were complete.
+	effectiveMode, fallbackReason, baselineID, err := u.resolveScanMode(ctx, project, sc, input)
+	if err != nil {
+		return nil, err
+	}
+	input.ScanMode = effectiveMode
+
 	report, err := u.createReport(ctx, project, input, nr, ctxInfo)
 	if err != nil {
 		return nil, err
 	}
 
-	total, err := u.ingestReportFindings(ctx, project, input, report, nr)
+	outcome, err := u.ingestReportFindings(ctx, project, input, report, nr, baselineID)
 	if err != nil {
 		u.markReportFailed(ctx, input, report, err)
 		return nil, err
@@ -117,16 +127,42 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, err
 	}
 
-	thresholdBreached, err := u.checkGateAfterIngest(ctx, project, input, report, total)
+	thresholdBreached, err := u.checkGateAfterIngest(ctx, project, input, report, outcome.total)
 	if err != nil {
 		return nil, err
 	}
 
 	return &IngestReportOutput{
 		ReportID:          report.ID,
-		TotalFindings:     total,
+		TotalFindings:     outcome.total,
 		ThresholdBreached: thresholdBreached,
+		ScanMode:          effectiveMode,
+		FallbackReason:    fallbackReason,
+		IntroducedCount:   outcome.introduced,
+		PreExistingCount:  outcome.preExisting,
 	}, nil
+}
+
+// resolveScanMode maps a requested scan mode to its effective mode. Full
+// scans pass through; incremental scans require a scanner that opted into
+// incremental analysis and a completed full baseline for the base revision.
+// Anything else degrades to a full scan with an explicit reason — gates
+// must never silently pass on omitted coverage.
+func (u *Usecases) resolveScanMode(ctx context.Context, project port.Project, sc scanner.Scanner, input IngestReportInput) (string, string, string, error) {
+	if input.ScanMode != ScanModeIncremental {
+		return ScanModeFull, "", "", nil
+	}
+	if !scanner.SupportsIncremental(sc) {
+		return ScanModeFull, fmt.Sprintf("scanner %q does not support incremental scans; recorded as full scan", input.Scanner), "", nil
+	}
+	base, err := u.deps.Stores.Reports.GetCompletedByCommit(ctx, project.ID, input.Scanner, input.BaseRevision)
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return ScanModeFull, fmt.Sprintf("no completed full baseline for base_revision %q; recorded as full scan", input.BaseRevision), "", nil
+		}
+		return "", "", "", fmt.Errorf("resolve incremental baseline: %w", err)
+	}
+	return ScanModeIncremental, "", base.ID, nil
 }
 
 // resolveReportContext upserts the target/artifact/environment rows a report
@@ -314,24 +350,40 @@ func scopeDocument(nr *domain.NormalizedReport) map[string]any {
 	return doc
 }
 
-// ingestReportFindings upserts each normalized finding and its occurrence,
-// dimensions, and material-change events. It returns the number of findings
-// ingested.
-func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, nr *domain.NormalizedReport) (int, error) {
-	nowTime := now()
-	total := 0
-
-	for _, f := range nr.Findings {
-		ingested, err := u.ingestOneFinding(ctx, project, input, report, f, nowTime)
-		if err != nil {
-			return 0, err
-		}
-		total += ingested
-	}
-	return total, nil
+// ingestOutcome tallies what one ingest observed: every finding ingested,
+// split into introduced (new to the change or project) and pre-existing.
+type ingestOutcome struct {
+	total       int
+	introduced  int
+	preExisting int
 }
 
-func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, f domain.NormalizedFinding, nowTime time.Time) (int, error) {
+// ingestReportFindings upserts each normalized finding and its occurrence,
+// dimensions, and material-change events. baselineID is the incremental
+// baseline report (empty for full scans); findings absent from it count as
+// introduced, the rest as pre-existing.
+func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, nr *domain.NormalizedReport, baselineID string) (ingestOutcome, error) {
+	nowTime := now()
+	var outcome ingestOutcome
+
+	for _, f := range nr.Findings {
+		ingested, introduced, err := u.ingestOneFinding(ctx, project, input, report, f, nowTime, baselineID)
+		if err != nil {
+			return ingestOutcome{}, err
+		}
+		outcome.total += ingested
+		if ingested > 0 {
+			if introduced {
+				outcome.introduced++
+			} else {
+				outcome.preExisting++
+			}
+		}
+	}
+	return outcome, nil
+}
+
+func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, f domain.NormalizedFinding, nowTime time.Time, baselineID string) (ingested int, introduced bool, err error) {
 	newRank := severityRank(f.Severity)
 
 	var oldRank int16
@@ -372,7 +424,7 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, i
 	)
 	if err != nil {
 		slog.Error("upsert finding failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
-		return 0, fmt.Errorf("scanner %s: upsert finding %q: %w", input.Scanner, f.Fingerprint, err)
+		return 0, false, fmt.Errorf("scanner %s: upsert finding %q: %w", input.Scanner, f.Fingerprint, err)
 	}
 
 	// Introduced-by-change attribution (SOLO-184): a finding observed for
@@ -383,8 +435,22 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, i
 	if lookupErr != nil || existing.IntroducedByReportID == nil {
 		if _, err := u.deps.Stores.Findings.SetFindingIntroducedBy(ctx, upserted.ID, report.ID, textPtr(input.CommitSha)); err != nil {
 			slog.Error("set introduced-by failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
-			return 0, fmt.Errorf("scanner %s: attribute finding %q: %w", input.Scanner, f.Fingerprint, err)
+			return 0, false, fmt.Errorf("scanner %s: attribute finding %q: %w", input.Scanner, f.Fingerprint, err)
 		}
+	}
+
+	// Change classification (SOLO-165): against an incremental baseline a
+	// finding counts as introduced only when the baseline never observed
+	// it; for full scans first-seen is the classifier. Absence from an
+	// incremental scan classifies nothing — partial coverage never closes.
+	introduced = lookupErr != nil
+	if baselineID != "" {
+		seen, err := u.deps.Stores.Findings.HasOccurrence(ctx, upserted.ID, baselineID)
+		if err != nil {
+			slog.Error("check baseline occurrence failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+			return 0, false, fmt.Errorf("scanner %s: compare finding %q to baseline: %w", input.Scanner, f.Fingerprint, err)
+		}
+		introduced = !seen
 	}
 
 	if regression {
@@ -435,7 +501,7 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, i
 	_, err = u.deps.Stores.Findings.CreateOccurrence(ctx, occ)
 	if err != nil {
 		slog.Error("create occurrence failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
-		return 0, fmt.Errorf("scanner %s: create occurrence for %q: %w", input.Scanner, f.Fingerprint, err)
+		return 0, false, fmt.Errorf("scanner %s: create occurrence for %q: %w", input.Scanner, f.Fingerprint, err)
 	}
 
 	source := textPtr(input.Scanner)
@@ -452,17 +518,17 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, i
 		})
 		if err != nil {
 			slog.Error("upsert dimension failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
-			return 0, fmt.Errorf("scanner %s: upsert dimension for %q: %w", input.Scanner, f.Fingerprint, err)
+			return 0, false, fmt.Errorf("scanner %s: upsert dimension for %q: %w", input.Scanner, f.Fingerprint, err)
 		}
 	}
 
 	if lookupErr == nil && (oldAnalysisState != string(finding.StateUnanalyzed) || oldGateEffect == string(finding.EffectIgnore)) {
 		if err := u.applyMaterialChange(ctx, project, input, upserted, f, oldRank, oldGateEffect, oldAnalysisState); err != nil {
-			return 0, err
+			return 0, false, err
 		}
 	}
 
-	return 1, nil
+	return 1, introduced, nil
 }
 
 // applyMaterialChange runs finding.EvaluateChange on a previously-known

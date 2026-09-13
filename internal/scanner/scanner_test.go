@@ -64,6 +64,19 @@ func (s *selectiveScanner) DetectFormat(data []byte) bool {
 	return len(s.matchPrefix) > 0 && len(data) > 0 && len(data) >= len(s.matchPrefix) && string(data[:len(s.matchPrefix)]) == string(s.matchPrefix)
 }
 
+// incrementalScanner opts into incremental analysis.
+type incrementalScanner struct {
+	testScanner
+}
+
+func (s *incrementalScanner) SupportsIncremental() bool { return true }
+
+func TestSupportsIncremental(t *testing.T) {
+	assert.False(t, scanner.SupportsIncremental(&testScanner{name: "full-only"}))
+	assert.True(t, scanner.SupportsIncremental(&incrementalScanner{testScanner{name: "sast"}}))
+	assert.False(t, scanner.SupportsIncremental(nil))
+}
+
 func TestSeverityValues(t *testing.T) {
 	tests := []struct {
 		severity domain.Severity

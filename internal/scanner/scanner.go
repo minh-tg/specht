@@ -76,6 +76,29 @@ type Scanner interface {
 	Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error)
 }
 
+// IncrementalScanner is optionally implemented by file-scoped scanners
+// (SAST, IaC, secrets) whose output can safely cover only changed files.
+// Scanners that do not implement it (SCA, container, DAST, generic
+// envelopes) require full scans: ingest records an incremental request
+// from them as a full scan with an explicit fallback reason instead of
+// silently accepting partial coverage.
+type IncrementalScanner interface {
+	Scanner
+	// SupportsIncremental reports whether the scanner can run incrementally.
+	SupportsIncremental() bool
+}
+
+// SupportsIncremental reports whether s can run incrementally: only
+// scanners that explicitly opt in via IncrementalScanner. A nil scanner
+// never supports it.
+func SupportsIncremental(s Scanner) bool {
+	if s == nil {
+		return false
+	}
+	incremental, ok := s.(IncrementalScanner)
+	return ok && incremental.SupportsIncremental()
+}
+
 var (
 	// ErrNoMatch is returned by Registry.Detect when no registered scanner
 	// recognizes the data.

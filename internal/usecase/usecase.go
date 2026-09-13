@@ -71,6 +71,16 @@ type IngestReportOutput struct {
 	ReportID          string
 	TotalFindings     int
 	ThresholdBreached bool
+	// ScanMode is the effective mode: full, or incremental when the
+	// scanner supports it and a full baseline resolved. Anything else
+	// falls back to full with FallbackReason set.
+	ScanMode       string
+	FallbackReason string
+	// IntroducedCount is the number of findings this report introduced
+	// (absent from the baseline for incremental scans, first-seen for
+	// full scans); PreExistingCount is the remainder.
+	IntroducedCount  int
+	PreExistingCount int
 }
 
 // Deps wires the dependencies a Usecases instance needs. Stores, Registry,

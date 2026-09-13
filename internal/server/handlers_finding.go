@@ -104,5 +104,9 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		ReportID:          result.ReportID,
 		TotalFindings:     result.TotalFindings,
 		ThresholdBreached: result.ThresholdBreached,
+		ScanMode:          result.ScanMode,
+		FallbackReason:    result.FallbackReason,
+		IntroducedCount:   result.IntroducedCount,
+		PreExistingCount:  result.PreExistingCount,
 	})
 }

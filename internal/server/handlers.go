@@ -209,6 +209,14 @@ type ingestResponse struct {
 	ReportID          string `json:"report_id"`
 	TotalFindings     int    `json:"total_findings"`
 	ThresholdBreached bool   `json:"threshold_breached"`
+	// ScanMode is the effective mode (full, or incremental when the
+	// scanner supports it and a baseline resolved); FallbackReason
+	// explains a downgrade to full; Introduced/PreExistingCount split
+	// the findings by change classification.
+	ScanMode         string `json:"scan_mode"`
+	FallbackReason   string `json:"fallback_reason,omitempty"`
+	IntroducedCount  int    `json:"introduced_count"`
+	PreExistingCount int    `json:"pre_existing_count"`
 }
 
 type apiError struct {

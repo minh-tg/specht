@@ -125,7 +125,7 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 const getCompletedReportByCommit = `-- name: GetCompletedReportByCommit :one
 SELECT id, tool_name, branch, commit_sha, base_revision, scan_mode, scan_completeness, created_at
 FROM reports
-WHERE project_id = $1 AND tool_name = $2 AND commit_sha = $3 AND status = 'completed'
+WHERE project_id = $1 AND tool_name = $2 AND commit_sha = $3 AND status = 'completed' AND scan_mode = 'full'
 ORDER BY created_at DESC
 LIMIT 1
 `
@@ -209,7 +209,7 @@ func (q *Queries) GetReportByID(ctx context.Context, id pgtype.UUID) (Report, er
 const latestCompletedReportByScanner = `-- name: LatestCompletedReportByScanner :one
 SELECT id, tool_name, branch, commit_sha, scan_completeness, created_at
 FROM reports
-WHERE project_id = $1 AND tool_name = $2 AND status = 'completed'
+WHERE project_id = $1 AND tool_name = $2 AND status = 'completed' AND scan_mode = 'full'
 ORDER BY created_at DESC
 LIMIT 1
 `

@@ -41,7 +41,7 @@ RETURNING *;
 -- name: LatestCompletedReportByScanner :one
 SELECT id, tool_name, branch, commit_sha, scan_completeness, created_at
 FROM reports
-WHERE project_id = $1 AND tool_name = $2 AND status = 'completed'
+WHERE project_id = $1 AND tool_name = $2 AND status = 'completed' AND scan_mode = 'full'
 ORDER BY created_at DESC
 LIMIT 1;
 
@@ -52,6 +52,6 @@ LIMIT 1;
 -- full scan instead of guessing.
 SELECT id, tool_name, branch, commit_sha, base_revision, scan_mode, scan_completeness, created_at
 FROM reports
-WHERE project_id = $1 AND tool_name = $2 AND commit_sha = $3 AND status = 'completed'
+WHERE project_id = $1 AND tool_name = $2 AND commit_sha = $3 AND status = 'completed' AND scan_mode = 'full'
 ORDER BY created_at DESC
 LIMIT 1;

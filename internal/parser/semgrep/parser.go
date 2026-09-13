@@ -111,6 +111,11 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 	}
 }
 
+// SupportsIncremental declares semgrep safe for incremental analysis
+// (SOLO-165): SAST findings map to source files, so a changed-file scan
+// covers what it claims to cover.
+func (s *Scanner) SupportsIncremental() bool { return true }
+
 func (s *Scanner) DetectFormat(data []byte) bool {
 	var probe sarifReport
 	if err := json.Unmarshal(data, &probe); err != nil {
