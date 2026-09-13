@@ -221,6 +221,32 @@ func (h *Handler) PreviewPRCheck(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, result)
 }
 
+func (h *Handler) PreviewPatch(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		return
+	}
+
+	result, err := h.usecase.PreviewPatch(r.Context(), id)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrInvalidFindingID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
+		case errors.Is(err, usecase.ErrFindingNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+		default:
+			slog.Error("preview patch", "finding_id", id, "error", err)
+			respondError(w, http.StatusInternalServerError, "patch_failed", "could not plan patch")
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
 func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {

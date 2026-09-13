@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/auth"
+	"github.com/xMinhx/specht/internal/patch"
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
@@ -43,6 +44,7 @@ type mockUsecases struct {
 	getGateStatusFn      func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error)
 	getIntroducedGateFn  func(ctx context.Context, slug string, minRank int16, reportID string) (*usecase.GateStatusOutput, error)
 	previewPRCheckFn     func(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error)
+	previewPatchFn       func(ctx context.Context, findingID string) (*patch.Outcome, error)
 	getFindingFn         func(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
 	getFindingEventsFn   func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
 	refreshFn            func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
@@ -244,6 +246,13 @@ func (m *mockUsecases) PreviewPRCheck(ctx context.Context, input usecase.PRCheck
 		return nil, fmt.Errorf("unexpected call to PreviewPRCheck")
 	}
 	return m.previewPRCheckFn(ctx, input)
+}
+
+func (m *mockUsecases) PreviewPatch(ctx context.Context, findingID string) (*patch.Outcome, error) {
+	if m.previewPatchFn == nil {
+		return nil, fmt.Errorf("unexpected call to PreviewPatch")
+	}
+	return m.previewPatchFn(ctx, findingID)
 }
 
 func (m *mockUsecases) GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error) {
@@ -653,6 +662,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Delete("/api/v1/auth/apikeys/{id}", h.RevokeAPIKey)
 	r.Patch("/api/v1/findings/{id}", h.TriageFinding)
 	r.Post("/api/v1/findings/{id}/verify", h.VerifyFinding)
+	r.Get("/api/v1/findings/{id}/patch-preview", h.PreviewPatch)
 	r.Post("/api/v1/findings/bulk-analysis", h.BulkTriage)
 	r.Get("/api/v1/findings/{id}/events", h.ListFindingEvents)
 	r.Get("/api/v1/findings/{id}", h.GetFinding)
@@ -1740,6 +1750,34 @@ func TestPreviewPRCheck_MissingCommit(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPreviewPatch_Success(t *testing.T) {
+	mock := &mockUsecases{
+		previewPatchFn: func(ctx context.Context, findingID string) (*patch.Outcome, error) {
+			return &patch.Outcome{Supported: true, Proposal: &patch.Proposal{ID: "patch-abc", Class: patch.ClassDependencyBump}}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/findings/f1/patch-preview", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestPreviewPatch_Unsupported(t *testing.T) {
+	mock := &mockUsecases{
+		previewPatchFn: func(ctx context.Context, findingID string) (*patch.Outcome, error) {
+			return &patch.Outcome{Reason: "secret findings are never auto-patched"}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/findings/f1/patch-preview", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestGateStatus_ProjectNotFound(t *testing.T) {

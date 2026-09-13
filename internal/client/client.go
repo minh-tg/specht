@@ -390,6 +390,16 @@ func (c *Client) PreviewPRCheck(projectSlug string, commit string, provider stri
 	return &resp, nil
 }
 
+// PreviewPatch plans (but never applies) the safe patch for a finding.
+func (c *Client) PreviewPatch(findingID string) (*PatchOutcome, error) {
+	path := "/api/v1/findings/" + url.PathEscape(findingID) + "/patch-preview"
+	var resp PatchOutcome
+	if err := c.do(context.Background(), "GET", path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // Environments, Targets, Artifacts.
 
 func (c *Client) ListEnvironments(projectSlug string) ([]Environment, error) {

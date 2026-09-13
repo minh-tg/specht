@@ -91,6 +91,8 @@ func TestCLI_ParseArgs(t *testing.T) {
 		{"pr preview", []string{"specht", "pr", "preview", "--project", "my-app", "--commit", "abc123"}, command{cmd: cmdPRPreview, project: "my-app", commit: "abc123", format: "human"}, ""},
 		{"pr preview full flags", []string{"specht", "pr", "preview", "--project", "my-app", "--commit", "abc123", "--provider", "github", "--report-id", "r1", "--severity", "critical", "--format", "json"}, command{cmd: cmdPRPreview, project: "my-app", commit: "abc123", provider: "github", reportID: "r1", severity: "critical", format: "json"}, ""},
 		{"pr preview missing commit", []string{"specht", "pr", "preview", "--project", "my-app"}, command{}, "--commit is required for pr preview"},
+		{"patch preview", []string{"specht", "patch", "preview", "--finding", "f1"}, command{cmd: cmdPatchPreview, findingID: "f1", format: "human"}, ""},
+		{"patch preview missing finding", []string{"specht", "patch", "preview"}, command{}, "--finding is required for patch preview"},
 		{"stats show", []string{"specht", "stats", "show", "my-app"}, command{cmd: cmdStats, slug: "my-app"}, ""},
 		{"stats aging", []string{"specht", "stats", "aging", "my-app"}, command{cmd: cmdStatsAging, slug: "my-app"}, ""},
 		{"findings verify", []string{"specht", "findings", "verify", "f1"}, command{cmd: cmdFindingsVerify, findingID: "f1"}, ""},

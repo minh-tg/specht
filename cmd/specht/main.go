@@ -31,6 +31,7 @@ const (
 	cmdFindingsReachability
 	cmdGateCheck
 	cmdPRPreview
+	cmdPatchPreview
 	cmdStats
 	cmdStatsAging
 	cmdWatcherBackfill
@@ -253,6 +254,37 @@ func parseArgs(args []string) (command, error) {
 			return c, nil
 		default:
 			return command{}, fmt.Errorf("unknown pr subcommand: %s", rest[1])
+		}
+
+	case "patch":
+		if len(rest) < 2 {
+			return command{}, fmt.Errorf("missing subcommand for patch")
+		}
+		switch rest[1] {
+		case "preview":
+			c := command{cmd: cmdPatchPreview}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--finding" && i+1 < len(rest):
+					c.findingID = rest[i+1]
+					i++
+				case rest[i] == "--format" && i+1 < len(rest):
+					c.format = rest[i+1]
+					i++
+				}
+			}
+			if c.findingID == "" {
+				return command{}, fmt.Errorf("--finding is required for patch preview")
+			}
+			if c.format == "" {
+				c.format = "human"
+			}
+			if c.format != "human" && c.format != "json" {
+				return command{}, fmt.Errorf("invalid --format %q: want human or json", c.format)
+			}
+			return c, nil
+		default:
+			return command{}, fmt.Errorf("unknown patch subcommand: %s", rest[1])
 		}
 
 	case "help":
@@ -492,6 +524,31 @@ func run(cl *client.Client, cmd command) error {
 		}
 		return nil
 
+	case cmdPatchPreview:
+		outcome, err := cl.PreviewPatch(cmd.findingID)
+		if err != nil {
+			return err
+		}
+		if cmd.format == "json" {
+			raw, err := json.MarshalIndent(outcome, "", "  ")
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(raw))
+			return nil
+		}
+		if !outcome.Supported || outcome.Proposal == nil {
+			fmt.Printf("no patch: %s\n", outcome.Reason)
+			return nil
+		}
+		p := outcome.Proposal
+		fmt.Printf("patch %s (%s, confidence %s)\n%s\n", p.ID, p.Class, p.Confidence, p.Rationale)
+		for _, e := range p.Edits {
+			fmt.Printf("  %s %s %s %s -> %s\n", e.Operation, e.File, e.Package, e.FromVersion, e.ToVersion)
+		}
+		fmt.Printf("verify: %s\n", p.VerifyBy)
+		return nil
+
 	case cmdStats:
 		stats, err := cl.GetProjectStats(cmd.slug)
 		if err != nil {
@@ -584,6 +641,8 @@ Commands:
   pr preview --project <slug> --commit <sha>
     [--provider github] [--report-id <id>] Preview pull-request check (dry-run; publishes nothing)
     [--severity critical] [--format human|json]
+  patch preview --finding <id>            Preview safe patch (dry-run; applies nothing)
+    [--format human|json]
   stats show <slug>                       Show project statistics
   stats aging <slug>                      Show aging buckets, SLA overdue, reopened
   watcher backfill [--since <ISO8601>]    Run one CVE watcher poll

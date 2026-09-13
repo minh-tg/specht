@@ -7,6 +7,8 @@ package client
 import (
 	"encoding/json"
 	"time"
+
+	"github.com/xMinhx/specht/internal/patch"
 )
 
 // IngestPayload is the request body for ingesting a scanner report.
@@ -73,6 +75,13 @@ type PRCheckPreview struct {
 	Supersedes    string              `json:"supersedes,omitempty"`
 	WaivedCount   int                 `json:"waived_count"`
 }
+
+// PatchOutcome aliases the patch planning outcome: a supported proposal
+// or an explicit refusal (never a partial patch).
+type PatchOutcome = patch.Outcome
+
+// PatchProposal aliases one reviewable remediation proposal.
+type PatchProposal = patch.Proposal
 
 // Project is a scan project (the top-level tenant of findings and reports).
 type Project struct {

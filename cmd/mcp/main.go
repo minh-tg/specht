@@ -18,6 +18,7 @@ type API interface {
 	GetGateStatus(projectSlug string, severity string) (*client.GateStatus, error)
 	GetIntroducedGateStatus(projectSlug string, severity string, reportID string) (*client.GateStatus, error)
 	PreviewPRCheck(projectSlug string, commit string, provider string, reportID string, severity string) (*client.PRCheckPreview, error)
+	PreviewPatch(findingID string) (*client.PatchOutcome, error)
 	UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error)
 	ListReachability(findingID string) ([]client.ReachabilityAssessment, error)
 	GetWatcherStatus() (*client.WatcherStatus, error)
@@ -136,6 +137,17 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 						"severity":  map[string]any{"type": "string", "description": "Severity threshold"},
 					},
 					"required": []string{"project", "commit"},
+				},
+			},
+			{
+				Name:        "patch_preview",
+				Description: "Preview the safe patch for a finding (dry-run; applies nothing)",
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"finding_id": map[string]any{"type": "string", "description": "Finding ID"},
+					},
+					"required": []string{"finding_id"},
 				},
 			},
 			{
@@ -261,6 +273,8 @@ func handleToolCall(api API, msg jsonRPCMessage) jsonRPCMessage {
 		return callGateCheck(api, msg.ID, params.Arguments)
 	case "pr_preview":
 		return callPRPreview(api, msg.ID, params.Arguments)
+	case "patch_preview":
+		return callPatchPreview(api, msg.ID, params.Arguments)
 	case "reachability_set":
 		return callReachabilitySet(api, msg.ID, params.Arguments)
 	case "watcher_status":
@@ -442,6 +456,38 @@ func callPRPreview(api API, id any, args *json.RawMessage) jsonRPCMessage {
 	previewResult, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
 	previewRaw := json.RawMessage(previewResult)
 	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &previewRaw}
+}
+
+func callPatchPreview(api API, id any, args *json.RawMessage) jsonRPCMessage {
+	a, err := readArgs[struct {
+		FindingID string `json:"finding_id"`
+	}](args)
+	if err != nil {
+		return errorResponse(id, -32602, "invalid arguments")
+	}
+	if a.FindingID == "" {
+		return errorResponse(id, -32602, "finding_id is required")
+	}
+
+	outcome, err := api.PreviewPatch(a.FindingID)
+	if err != nil {
+		return errorResponse(id, -32603, err.Error())
+	}
+
+	var text string
+	if !outcome.Supported || outcome.Proposal == nil {
+		text = fmt.Sprintf("no patch: %s", outcome.Reason)
+	} else {
+		p := outcome.Proposal
+		text = fmt.Sprintf("patch %s (%s, confidence %s)\n%s", p.ID, p.Class, p.Confidence, p.Rationale)
+		for _, e := range p.Edits {
+			text += fmt.Sprintf("\n  %s %s %s %s -> %s", e.Operation, e.File, e.Package, e.FromVersion, e.ToVersion)
+		}
+		text += fmt.Sprintf("\nverify: %s", p.VerifyBy)
+	}
+	patchResult, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
+	patchRaw := json.RawMessage(patchResult)
+	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &patchRaw}
 }
 
 func callReachabilitySet(api API, id any, args *json.RawMessage) jsonRPCMessage {

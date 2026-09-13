@@ -15,6 +15,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/xMinhx/specht/internal/audit"
 	"github.com/xMinhx/specht/internal/auth"
+	"github.com/xMinhx/specht/internal/patch"
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
@@ -101,6 +102,7 @@ type (
 		VerifyFix(ctx context.Context, findingID string) (*usecase.VerifyResponse, error)
 		BulkTriage(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
 		GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
+		PreviewPatch(ctx context.Context, findingID string) (*patch.Outcome, error)
 	}
 
 	ReportUsecases interface {

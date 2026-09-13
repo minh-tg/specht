@@ -21,6 +21,7 @@ type mockClient struct {
 	assessment       *client.ReachabilityAssessment
 	watcher          *client.WatcherStatus
 	preview          *client.PRCheckPreview
+	patch            *client.PatchOutcome
 	introducedReport string
 	err              error
 }
@@ -47,6 +48,10 @@ func (m *mockClient) GetIntroducedGateStatus(projectSlug string, severity string
 
 func (m *mockClient) PreviewPRCheck(projectSlug string, commit string, provider string, reportID string, severity string) (*client.PRCheckPreview, error) {
 	return m.preview, m.err
+}
+
+func (m *mockClient) PreviewPatch(findingID string) (*client.PatchOutcome, error) {
+	return m.patch, m.err
 }
 
 func (m *mockClient) UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error) {
@@ -222,6 +227,29 @@ func TestMCPPrPreview(t *testing.T) {
 
 func TestMCPPrPreviewMissingCommit(t *testing.T) {
 	raw := `{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"pr_preview","arguments":{"project":"my-app"}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(&mockClient{}, req)
+	require.NotNil(t, resp.Error)
+}
+
+func TestMCPPatchPreview(t *testing.T) {
+	mc := &mockClient{
+		patch: &client.PatchOutcome{Reason: "secret findings are never auto-patched"},
+	}
+	raw := `{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"patch_preview","arguments":{"finding_id":"f1"}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(mc, req)
+	require.Nil(t, resp.Error)
+	require.NotNil(t, resp.Result)
+	assert.True(t, strings.Contains(string(*resp.Result), "no patch"))
+}
+
+func TestMCPPatchPreviewMissingFinding(t *testing.T) {
+	raw := `{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"patch_preview","arguments":{}}}`
 	var req jsonRPCMessage
 	json.Unmarshal([]byte(raw), &req)
 
