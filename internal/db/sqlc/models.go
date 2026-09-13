@@ -147,32 +147,34 @@ type EvidenceArtifact struct {
 }
 
 type Finding struct {
-	ID                  pgtype.UUID        `json:"id"`
-	ProjectID           pgtype.UUID        `json:"project_id"`
-	FindingKind         string             `json:"finding_kind"`
-	Fingerprint         string             `json:"fingerprint"`
-	CurrentTitle        string             `json:"current_title"`
-	CurrentSeverity     string             `json:"current_severity"`
-	CurrentSeverityRank int16              `json:"current_severity_rank"`
-	CurrentScore        pgtype.Numeric     `json:"current_score"`
-	State               string             `json:"state"`
-	TriageStatus        string             `json:"triage_status"`
-	AssigneeID          pgtype.UUID        `json:"assignee_id"`
-	FirstSeenAt         pgtype.Timestamptz `json:"first_seen_at"`
-	LastSeenAt          pgtype.Timestamptz `json:"last_seen_at"`
-	FixedAt             pgtype.Timestamptz `json:"fixed_at"`
-	CreatedAt           pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
-	AnalysisState       string             `json:"analysis_state"`
-	GateEffect          string             `json:"gate_effect"`
-	AnalysisExpiresAt   pgtype.Timestamptz `json:"analysis_expires_at"`
-	AnalysisReason      pgtype.Text        `json:"analysis_reason"`
-	AnalysisSource      string             `json:"analysis_source"`
-	AnalysisUpdatedAt   pgtype.Timestamptz `json:"analysis_updated_at"`
-	AnalysisUpdatedBy   pgtype.UUID        `json:"analysis_updated_by"`
-	ManualOverride      bool               `json:"manual_override"`
-	ReviewRequired      bool               `json:"review_required"`
-	FingerprintVersion  int32              `json:"fingerprint_version"`
+	ID                   pgtype.UUID        `json:"id"`
+	ProjectID            pgtype.UUID        `json:"project_id"`
+	FindingKind          string             `json:"finding_kind"`
+	Fingerprint          string             `json:"fingerprint"`
+	CurrentTitle         string             `json:"current_title"`
+	CurrentSeverity      string             `json:"current_severity"`
+	CurrentSeverityRank  int16              `json:"current_severity_rank"`
+	CurrentScore         pgtype.Numeric     `json:"current_score"`
+	State                string             `json:"state"`
+	TriageStatus         string             `json:"triage_status"`
+	AssigneeID           pgtype.UUID        `json:"assignee_id"`
+	FirstSeenAt          pgtype.Timestamptz `json:"first_seen_at"`
+	LastSeenAt           pgtype.Timestamptz `json:"last_seen_at"`
+	FixedAt              pgtype.Timestamptz `json:"fixed_at"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+	AnalysisState        string             `json:"analysis_state"`
+	GateEffect           string             `json:"gate_effect"`
+	AnalysisExpiresAt    pgtype.Timestamptz `json:"analysis_expires_at"`
+	AnalysisReason       pgtype.Text        `json:"analysis_reason"`
+	AnalysisSource       string             `json:"analysis_source"`
+	AnalysisUpdatedAt    pgtype.Timestamptz `json:"analysis_updated_at"`
+	AnalysisUpdatedBy    pgtype.UUID        `json:"analysis_updated_by"`
+	ManualOverride       bool               `json:"manual_override"`
+	ReviewRequired       bool               `json:"review_required"`
+	FingerprintVersion   int32              `json:"fingerprint_version"`
+	IntroducedByReportID pgtype.UUID        `json:"introduced_by_report_id"`
+	IntroducedCommitSha  pgtype.Text        `json:"introduced_commit_sha"`
 }
 
 type FindingDimension struct {
@@ -288,6 +290,9 @@ type Report struct {
 	RawReportHash     pgtype.Text        `json:"raw_report_hash"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	RawData           []byte             `json:"raw_data"`
+	BaseRevision      pgtype.Text        `json:"base_revision"`
+	ChangedFiles      []byte             `json:"changed_files"`
+	ScanMode          string             `json:"scan_mode"`
 }
 
 type ReportPackage struct {

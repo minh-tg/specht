@@ -127,6 +127,21 @@ func (r *pgFindingRepo) MarkFixed(ctx context.Context, findingID pgtype.UUID) (s
 	return r.q.MarkFindingFixed(ctx, findingID)
 }
 
+func (r *pgFindingRepo) SetIntroducedBy(ctx context.Context, findingID, reportID pgtype.UUID, commit pgtype.Text) (sqlc.Finding, error) {
+	return r.q.SetFindingIntroducedBy(ctx, sqlc.SetFindingIntroducedByParams{
+		ID:                   findingID,
+		IntroducedByReportID: reportID,
+		IntroducedCommitSha:  commit,
+	})
+}
+
+func (r *pgFindingRepo) ListIntroducedByReport(ctx context.Context, projectID, reportID pgtype.UUID) ([]sqlc.Finding, error) {
+	return r.q.ListFindingsIntroducedByReport(ctx, sqlc.ListFindingsIntroducedByReportParams{
+		ProjectID:            projectID,
+		IntroducedByReportID: reportID,
+	})
+}
+
 // GetByFingerprintParams identifies a finding by project, kind, and fingerprint.
 type GetByFingerprintParams struct {
 	ProjectID   pgtype.UUID

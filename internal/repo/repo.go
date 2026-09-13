@@ -92,6 +92,7 @@ type ReportRepo interface {
 	ListByProject(ctx context.Context, projectID pgtype.UUID, limit, offset int32) ([]sqlc.Report, error)
 	UpdateStatus(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error)
 	LatestCompletedByScanner(ctx context.Context, projectID pgtype.UUID, toolName string) (sqlc.LatestCompletedReportByScannerRow, error)
+	GetCompletedByCommit(ctx context.Context, projectID pgtype.UUID, toolName string, commit pgtype.Text) (sqlc.GetCompletedReportByCommitRow, error)
 }
 
 // UserRepo persists user accounts.
@@ -213,5 +214,7 @@ type FindingRepo interface {
 	GetFindingDisplayContext(ctx context.Context, findingID pgtype.UUID) (sqlc.GetFindingDisplayContextRow, error)
 	HasOccurrence(ctx context.Context, findingID, reportID pgtype.UUID) (bool, error)
 	MarkFixed(ctx context.Context, findingID pgtype.UUID) (sqlc.Finding, error)
+	SetIntroducedBy(ctx context.Context, findingID, reportID pgtype.UUID, commit pgtype.Text) (sqlc.Finding, error)
+	ListIntroducedByReport(ctx context.Context, projectID, reportID pgtype.UUID) ([]sqlc.Finding, error)
 	FindScaFindingIdForPurlAndCve(ctx context.Context, projectID pgtype.UUID, purlName string, candidateIDs []string) (pgtype.UUID, error)
 }

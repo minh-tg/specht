@@ -24,6 +24,9 @@ type CreateReportParams struct {
 	EnvironmentID    pgtype.UUID
 	Branch           pgtype.Text
 	CommitSha        pgtype.Text
+	BaseRevision     pgtype.Text
+	ChangedFiles     []byte
+	ScanMode         string
 	ScanScope        []byte
 	ScanScopeHash    pgtype.Text
 	RawData          []byte
@@ -46,6 +49,9 @@ func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc
 		ScanScopeHash:    arg.ScanScopeHash,
 		Branch:           arg.Branch,
 		CommitSha:        arg.CommitSha,
+		BaseRevision:     arg.BaseRevision,
+		ChangedFiles:     arg.ChangedFiles,
+		ScanMode:         orFull(arg.ScanMode),
 		RawData:          arg.RawData,
 		RawReportHash:    arg.RawReportHash,
 		ParserVersion:    arg.ParserVersion,
@@ -58,6 +64,15 @@ func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc
 func orUnknown(s string) string {
 	if s == "" {
 		return "unknown"
+	}
+	return s
+}
+
+// orFull defaults an empty scan mode to a full scan. Unknown modes pass
+// through for the reports_scan_mode_check constraint to reject.
+func orFull(s string) string {
+	if s == "" {
+		return "full"
 	}
 	return s
 }
@@ -78,6 +93,14 @@ func (r *pgReportRepo) LatestCompletedByScanner(ctx context.Context, projectID p
 	return r.q.LatestCompletedReportByScanner(ctx, sqlc.LatestCompletedReportByScannerParams{
 		ProjectID: projectID,
 		ToolName:  toolName,
+	})
+}
+
+func (r *pgReportRepo) GetCompletedByCommit(ctx context.Context, projectID pgtype.UUID, toolName string, commit pgtype.Text) (sqlc.GetCompletedReportByCommitRow, error) {
+	return r.q.GetCompletedReportByCommit(ctx, sqlc.GetCompletedReportByCommitParams{
+		ProjectID: projectID,
+		ToolName:  toolName,
+		CommitSha: commit,
 	})
 }
 

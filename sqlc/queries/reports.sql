@@ -7,7 +7,8 @@ INSERT INTO reports (
     branch, commit_sha, status,
     total_findings, parser_version,
     started_at, error_message, raw_report_hash,
-    raw_data
+    raw_data,
+    base_revision, changed_files, scan_mode
 ) VALUES (
     $1, $2, $3, $4,
     $5, $6, $7,
@@ -16,7 +17,8 @@ INSERT INTO reports (
     $13, $14, $15,
     $16, $17,
     $18, $19, $20,
-    $21
+    $21,
+    $22, $23, $24
 ) RETURNING *;
 
 -- name: GetReportByID :one
@@ -40,5 +42,16 @@ RETURNING *;
 SELECT id, tool_name, branch, commit_sha, scan_completeness, created_at
 FROM reports
 WHERE project_id = $1 AND tool_name = $2 AND status = 'completed'
+ORDER BY created_at DESC
+LIMIT 1;
+
+-- name: GetCompletedReportByCommit :one
+-- Baseline resolution for incremental analysis (SOLO-165): the newest
+-- completed same-scanner report for an exact revision. pgx.ErrNoRows means
+-- no baseline exists for the base revision — the caller falls back to a
+-- full scan instead of guessing.
+SELECT id, tool_name, branch, commit_sha, base_revision, scan_mode, scan_completeness, created_at
+FROM reports
+WHERE project_id = $1 AND tool_name = $2 AND commit_sha = $3 AND status = 'completed'
 ORDER BY created_at DESC
 LIMIT 1;

@@ -217,6 +217,26 @@ UPDATE findings SET state = 'fixed', updated_at = NOW()
 WHERE id = $1
 RETURNING *;
 
+-- name: SetFindingIntroducedBy :one
+-- Materializes introduced-by-change attribution (SOLO-184): the report that
+-- first observed the finding and the revision it scanned. Set once at
+-- creation; refreshed only through this query when improved correlation
+-- evidence arrives, so history stays revisable without silent rewrites.
+UPDATE findings SET
+    introduced_by_report_id = $2,
+    introduced_commit_sha = $3,
+    updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
+-- name: ListFindingsIntroducedByReport :many
+-- Findings a single report introduced, for introduced-only gate views and
+-- change-scoped triage. Pre-existing findings observed (but not introduced)
+-- by the report are excluded by construction.
+SELECT * FROM findings
+WHERE project_id = $1 AND introduced_by_report_id = $2
+ORDER BY current_severity_rank DESC, created_at DESC;
+
 -- name: UpsertDimension :one
 INSERT INTO finding_dimensions (
     finding_id, dim_key, dim_value, source

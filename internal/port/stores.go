@@ -349,6 +349,12 @@ type Finding struct {
 	LastSeenAt          time.Time
 	CreatedAt           time.Time
 	UpdatedAt           time.Time
+	// IntroducedByReportID is the report that first observed the finding;
+	// nil means unattributed (e.g. watcher rows with no linked scan).
+	// IntroducedCommitSha is the revision that report scanned. Attribution
+	// is set at creation and refreshed only with improved evidence.
+	IntroducedByReportID *string
+	IntroducedCommitSha  *string
 }
 
 // Occurrence is one finding occurrence row.
@@ -455,6 +461,10 @@ type FindingStore interface {
 	// the only path to fixed: triage never sets it, only VerifyFix does,
 	// backed by a rescan that no longer observes the finding.
 	MarkFixed(ctx context.Context, findingID string) (Finding, error)
+	// SetFindingIntroducedBy materializes introduced-by-change attribution.
+	SetFindingIntroducedBy(ctx context.Context, findingID, reportID string, commitSha *string) (Finding, error)
+	// ListIntroducedByReport returns findings one report introduced.
+	ListIntroducedByReport(ctx context.Context, projectID, reportID string) ([]Finding, error)
 	HasDimension(ctx context.Context, findingID, key string) (bool, error)
 	CreateOccurrence(ctx context.Context, input OccurrenceInput) (Occurrence, error)
 	UpsertDimension(ctx context.Context, input DimensionInput) error
@@ -609,8 +619,14 @@ type Report struct {
 	TotalFindings *int32
 	Branch        *string
 	CommitSha     *string
-	CreatedAt     time.Time
-	CompletedAt   *time.Time
+	// BaseRevision is the revision an incremental scan was compared against
+	// (empty for full scans). ChangedFiles lists paths the scan covered.
+	// ScanMode is "full" or "incremental" as requested at ingest.
+	BaseRevision *string
+	ChangedFiles json.RawMessage
+	ScanMode     string
+	CreatedAt    time.Time
+	CompletedAt  *time.Time
 }
 
 // CreateReportInput carries report create fields.
@@ -627,6 +643,9 @@ type CreateReportInput struct {
 	ScanScopeHash    string
 	Branch           *string
 	CommitSha        *string
+	BaseRevision     *string
+	ChangedFiles     json.RawMessage
+	ScanMode         string
 	RawData          json.RawMessage
 	RawReportHash    string
 	ParserVersion    *string
@@ -643,6 +662,10 @@ type ReportStore interface {
 	// LatestCompletedByScanner returns the newest completed report from
 	// one scanner, or ErrNotFound when the scanner never completed.
 	LatestCompletedByScanner(ctx context.Context, projectID, scanner string) (CompletedReport, error)
+	// GetCompletedByCommit resolves the incremental-analysis baseline: the
+	// newest completed same-scanner report for an exact revision, or
+	// ErrNotFound when no baseline exists (caller falls back to full).
+	GetCompletedByCommit(ctx context.Context, projectID, scanner, commit string) (CompletedReport, error)
 }
 
 // CompletedReport is the verification basis: the newest completed scan
@@ -652,6 +675,8 @@ type CompletedReport struct {
 	ToolName     string
 	Branch       *string
 	CommitSha    *string
+	BaseRevision *string
+	ScanMode     string
 	Completeness string
 	CreatedAt    time.Time
 }

@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"math/big"
 	"time"
@@ -41,6 +42,9 @@ func (r *pgReportPort) Create(ctx context.Context, input port.CreateReportInput)
 		ScanScopeHash:    textPtrFromString(&input.ScanScopeHash),
 		Branch:           textPtrFromString(input.Branch),
 		CommitSha:        textPtrFromString(input.CommitSha),
+		BaseRevision:     textPtrFromString(input.BaseRevision),
+		ChangedFiles:     changedFilesParam(input.ChangedFiles),
+		ScanMode:         scanModeParam(input.ScanMode),
 		RawData:          input.RawData,
 		RawReportHash:    textPtrFromString(&input.RawReportHash),
 		ParserVersion:    textPtrFromString(input.ParserVersion),
@@ -114,6 +118,46 @@ func (r *pgReportPort) LatestCompletedByScanner(ctx context.Context, projectID, 
 		Completeness: row.ScanCompleteness,
 		CreatedAt:    row.CreatedAt.Time,
 	}, nil
+}
+
+func (r *pgReportPort) GetCompletedByCommit(ctx context.Context, projectID, scanner, commit string) (port.CompletedReport, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.CompletedReport{}, err
+	}
+	row, err := r.inner.GetCompletedByCommit(ctx, pid, scanner, textPtrFromString(&commit))
+	if err != nil {
+		return port.CompletedReport{}, mappingErr(err)
+	}
+	return port.CompletedReport{
+		ID:           toUUID(row.ID),
+		ToolName:     row.ToolName,
+		Branch:       stringFromTextPtr(row.Branch),
+		CommitSha:    stringFromTextPtr(row.CommitSha),
+		BaseRevision: stringFromTextPtr(row.BaseRevision),
+		ScanMode:     row.ScanMode,
+		Completeness: row.ScanCompleteness,
+		CreatedAt:    row.CreatedAt.Time,
+	}, nil
+}
+
+// scanModeParam normalizes the requested scan mode for storage: empty
+// means full, anything else passes through for the DB check constraint
+// to accept ("full", "incremental") or reject with a clear error.
+func scanModeParam(mode string) string {
+	if mode == "" {
+		return "full"
+	}
+	return mode
+}
+
+// changedFilesParam encodes the covered-path list for the JSONB column.
+// Empty encodes as [] (never NULL) so readers never branch on null.
+func changedFilesParam(files json.RawMessage) []byte {
+	if len(files) == 0 {
+		return []byte("[]")
+	}
+	return []byte(files)
 }
 
 func (r *pgReportPort) UpdateStatus(ctx context.Context, id, projectID, status string, totalFindings int32, errorMessage *string) (port.Report, error) {
@@ -417,6 +461,42 @@ func (r *pgFindingPort) MarkFixed(ctx context.Context, findingID string) (port.F
 	return findingRowToPort(row), nil
 }
 
+func (r *pgFindingPort) SetFindingIntroducedBy(ctx context.Context, findingID, reportID string, commitSha *string) (port.Finding, error) {
+	fid, err := parseID(findingID)
+	if err != nil {
+		return port.Finding{}, err
+	}
+	rid, err := parseID(reportID)
+	if err != nil {
+		return port.Finding{}, err
+	}
+	row, err := r.inner.SetIntroducedBy(ctx, fid, rid, textPtrFromString(commitSha))
+	if err != nil {
+		return port.Finding{}, mappingErr(err)
+	}
+	return findingRowToPort(row), nil
+}
+
+func (r *pgFindingPort) ListIntroducedByReport(ctx context.Context, projectID, reportID string) ([]port.Finding, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	rid, err := parseID(reportID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.inner.ListIntroducedByReport(ctx, pid, rid)
+	if err != nil {
+		return nil, mappingErr(err)
+	}
+	out := make([]port.Finding, len(rows))
+	for i, row := range rows {
+		out[i] = findingRowToPort(row)
+	}
+	return out, nil
+}
+
 func (r *pgFindingPort) GetFindingContext(ctx context.Context, findingID string) (port.FindingContext, error) {
 	fid, err := parseID(findingID)
 	if err != nil {
@@ -692,9 +772,23 @@ func reportRowToPort(re sqlc.Report) port.Report {
 		TotalFindings: int32PtrFromInt4(re.TotalFindings),
 		Branch:        stringFromTextPtr(re.Branch),
 		CommitSha:     stringFromTextPtr(re.CommitSha),
+		BaseRevision:  stringFromTextPtr(re.BaseRevision),
+		ChangedFiles:  changedFilesToPort(re.ChangedFiles),
+		ScanMode:      re.ScanMode,
 		CreatedAt:     re.CreatedAt.Time,
 		CompletedAt:   timePtrFromTimestamptz(re.CompletedAt),
 	}
+}
+
+// changedFilesToPort decodes the JSONB path list; nil/empty decodes as nil
+// so callers treat "no recorded files" and "empty list" identically.
+func changedFilesToPort(raw []byte) json.RawMessage {
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]byte, len(raw))
+	copy(out, raw)
+	return json.RawMessage(out)
 }
 
 func int32PtrFromInt4(i pgtype.Int4) *int32 {
@@ -707,28 +801,30 @@ func int32PtrFromInt4(i pgtype.Int4) *int32 {
 
 func findingRowToPort(f sqlc.Finding) port.Finding {
 	return port.Finding{
-		ID:                  toUUID(f.ID),
-		ProjectID:           toUUID(f.ProjectID),
-		FindingKind:         f.FindingKind,
-		Fingerprint:         f.Fingerprint,
-		CurrentTitle:        f.CurrentTitle,
-		CurrentSeverity:     f.CurrentSeverity,
-		CurrentSeverityRank: f.CurrentSeverityRank,
-		CurrentScore:        floatPtrFromNumeric(f.CurrentScore),
-		State:               f.State,
-		TriageStatus:        f.TriageStatus,
-		AnalysisState:       f.AnalysisState,
-		GateEffect:          f.GateEffect,
-		AnalysisExpiresAt:   timePtrFromTimestamptz(f.AnalysisExpiresAt),
-		AnalysisReason:      stringFromTextPtr(f.AnalysisReason),
-		AnalysisSource:      f.AnalysisSource,
-		ManualOverride:      f.ManualOverride,
-		ReviewRequired:      f.ReviewRequired,
-		FingerprintVersion:  f.FingerprintVersion,
-		FirstSeenAt:         f.FirstSeenAt.Time,
-		LastSeenAt:          f.LastSeenAt.Time,
-		CreatedAt:           f.CreatedAt.Time,
-		UpdatedAt:           f.UpdatedAt.Time,
+		ID:                   toUUID(f.ID),
+		ProjectID:            toUUID(f.ProjectID),
+		FindingKind:          f.FindingKind,
+		Fingerprint:          f.Fingerprint,
+		CurrentTitle:         f.CurrentTitle,
+		CurrentSeverity:      f.CurrentSeverity,
+		CurrentSeverityRank:  f.CurrentSeverityRank,
+		CurrentScore:         floatPtrFromNumeric(f.CurrentScore),
+		State:                f.State,
+		TriageStatus:         f.TriageStatus,
+		AnalysisState:        f.AnalysisState,
+		GateEffect:           f.GateEffect,
+		AnalysisExpiresAt:    timePtrFromTimestamptz(f.AnalysisExpiresAt),
+		AnalysisReason:       stringFromTextPtr(f.AnalysisReason),
+		AnalysisSource:       f.AnalysisSource,
+		ManualOverride:       f.ManualOverride,
+		ReviewRequired:       f.ReviewRequired,
+		FingerprintVersion:   f.FingerprintVersion,
+		FirstSeenAt:          f.FirstSeenAt.Time,
+		LastSeenAt:           f.LastSeenAt.Time,
+		CreatedAt:            f.CreatedAt.Time,
+		UpdatedAt:            f.UpdatedAt.Time,
+		IntroducedByReportID: stringPtrFromUUID(f.IntroducedByReportID),
+		IntroducedCommitSha:  stringFromTextPtr(f.IntroducedCommitSha),
 	}
 }
 
