@@ -80,22 +80,31 @@ type Finding struct {
 	LastSeenAt      time.Time `json:"last_seen_at"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+	// IntroducedByReportID and IntroducedCommitSha carry
+	// introduced-by-change attribution; both nil means unattributed.
+	IntroducedByReportID *string `json:"introduced_by_report_id,omitempty"`
+	IntroducedCommitSha  *string `json:"introduced_commit_sha,omitempty"`
 }
 
 // Report is an ingested scanner report (one scan run).
 type Report struct {
-	ID            string     `json:"id"`
-	ProjectID     string     `json:"project_id"`
-	ToolName      string     `json:"tool_name"`
-	ToolVersion   *string    `json:"tool_version"`
-	ScanType      string     `json:"scan_type"`
-	ScanTarget    *string    `json:"scan_target"`
-	Status        string     `json:"status"`
-	TotalFindings *int32     `json:"total_findings"`
-	Branch        *string    `json:"branch"`
-	CommitSha     *string    `json:"commit_sha"`
-	CreatedAt     time.Time  `json:"created_at"`
-	CompletedAt   *time.Time `json:"completed_at"`
+	ID            string  `json:"id"`
+	ProjectID     string  `json:"project_id"`
+	ToolName      string  `json:"tool_name"`
+	ToolVersion   *string `json:"tool_version"`
+	ScanType      string  `json:"scan_type"`
+	ScanTarget    *string `json:"scan_target"`
+	Status        string  `json:"status"`
+	TotalFindings *int32  `json:"total_findings"`
+	Branch        *string `json:"branch"`
+	CommitSha     *string `json:"commit_sha"`
+	// BaseRevision, ScanMode, and ChangedFiles describe incremental
+	// analysis context (SOLO-165).
+	BaseRevision *string    `json:"base_revision,omitempty"`
+	ScanMode     string     `json:"scan_mode,omitempty"`
+	ChangedFiles []string   `json:"changed_files,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	CompletedAt  *time.Time `json:"completed_at"`
 }
 
 // TriageRequest is the request body for setting a finding's analysis state.

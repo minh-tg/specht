@@ -363,6 +363,11 @@ func run(cl *client.Client, cmd command) error {
 			score = fmt.Sprintf("%.1f", *f.CurrentScore)
 		}
 		fmt.Printf("ID:           %s\nTitle:        %s\nSeverity:     %s\nScore:        %s\nState:        %s\nAnalysis:     %s\nGate Effect:  %s\nFingerprint:  %s\nKind:         %s\n", f.ID, f.CurrentTitle, f.CurrentSeverity, score, f.State, f.AnalysisState, f.GateEffect, f.Fingerprint, f.FindingKind)
+		if f.IntroducedCommitSha != nil && *f.IntroducedCommitSha != "" {
+			fmt.Printf("Introduced:   %s\n", *f.IntroducedCommitSha)
+		} else {
+			fmt.Printf("Introduced:   unattributed\n")
+		}
 		return nil
 
 	case cmdFindingsVerify:

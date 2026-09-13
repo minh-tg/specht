@@ -336,6 +336,11 @@ func callFindingsGet(api API, id any, args *json.RawMessage) jsonRPCMessage {
 	}
 	text := fmt.Sprintf("Finding: %s\nTitle: %s\nSeverity: %s\nScore: %s\nState: %s\nAnalysis: %s\nGate Effect: %s\nFingerprint: %s\nKind: %s",
 		f.ID, f.CurrentTitle, f.CurrentSeverity, score, f.State, f.AnalysisState, f.GateEffect, f.Fingerprint, f.FindingKind)
+	if f.IntroducedCommitSha != nil && *f.IntroducedCommitSha != "" {
+		text += fmt.Sprintf("\nIntroduced: %s", *f.IntroducedCommitSha)
+	} else {
+		text += "\nIntroduced: unattributed"
+	}
 
 	result, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
 	raw := json.RawMessage(result)
