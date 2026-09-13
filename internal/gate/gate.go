@@ -223,7 +223,9 @@ func (g *gate) EvaluateWithPolicies(ctx context.Context, projectID string, minSe
 
 func (g *gate) EvaluateIntroducedOnly(ctx context.Context, projectID string, minSeverityRank int16, reportID string, policies []GatePolicy) (Decision, error) {
 	return g.evaluate(ctx, projectID, minSeverityRank, policies, func(f Finding) bool {
-		return f.IntroducedByReportID == reportID
+		// An empty scope matches nothing: without the guard it would
+		// match every unattributed finding ("" == "").
+		return reportID != "" && f.IntroducedByReportID == reportID
 	})
 }
 

@@ -75,8 +75,16 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, err
 	}
 	input.ScanMode = scanMode
-	if scanMode == ScanModeIncremental && strings.TrimSpace(input.BaseRevision) == "" {
+	// Revision canonicalization (SOLO-165): SHAs compare case-insensitively
+	// everywhere, so store them canonical. Branches are case-sensitive and
+	// untouched.
+	input.CommitSha = normalizeRevision(input.CommitSha)
+	input.BaseRevision = normalizeRevision(input.BaseRevision)
+	if scanMode == ScanModeIncremental && input.BaseRevision == "" {
 		return nil, fmt.Errorf("incremental scan requires base_revision")
+	}
+	if scanMode == ScanModeIncremental && input.CommitSha != "" && input.BaseRevision == input.CommitSha {
+		return nil, fmt.Errorf("incremental scan requires base_revision to differ from commit_sha")
 	}
 
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, input.ProjectSlug)

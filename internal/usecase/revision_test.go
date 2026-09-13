@@ -179,6 +179,41 @@ func TestIngestReport_BackfillsMissingAttribution(t *testing.T) {
 	assert.Equal(t, 1, calls, "unattributed pre-existing findings gain attribution on observation")
 }
 
+func TestIngestReport_NormalizesRevisions(t *testing.T) {
+	uc, rr, _, _ := revisionHarness(t, func(context.Context, string, string, string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
+	})
+	var created port.CreateReportInput
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
+		created = arg
+		return makeReport(), nil
+	}
+
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app",
+		Scanner:     "trivy",
+		RawData:     json.RawMessage(`{"test": true}`),
+		CommitSha:   "  ABC123  ",
+	})
+	require.NoError(t, err)
+	require.NotNil(t, created.CommitSha)
+	assert.Equal(t, "abc123", *created.CommitSha, "SHAs store canonical so comparisons never miss on case")
+}
+
+func TestIngestReport_IncrementalBaseEqualsCommitRejected(t *testing.T) {
+	uc := New(Deps{})
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug:  "my-app",
+		Scanner:      "trivy",
+		RawData:      json.RawMessage(`{"test": true}`),
+		ScanMode:     "incremental",
+		BaseRevision: "abc123",
+		CommitSha:    "abc123",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "base_revision")
+}
+
 func TestToFinding_MapsIntroducedAttribution(t *testing.T) {
 	reportID := "11111111-1111-1111-1111-111111111111"
 	commit := "abc123"

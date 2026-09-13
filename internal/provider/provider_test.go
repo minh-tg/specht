@@ -86,6 +86,8 @@ func TestPlanCheck_CapsAnnotations(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, plan.Annotations, githubMaxAnnotations)
 	assert.True(t, plan.Truncated)
+	assert.Equal(t, 60, plan.TotalMappable)
+	assert.Contains(t, plan.Summary, "Showing 50 of 60")
 	assert.Equal(t, 60, plan.SummaryCounts["medium"], "summary still covers everything")
 }
 

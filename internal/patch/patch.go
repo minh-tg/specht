@@ -91,8 +91,9 @@ type Outcome struct {
 // Propose builds the patch outcome for one finding's evidence.
 func Propose(in Input) Outcome {
 	// Secrets are never patched: rotation handles credentials, and patch
-	// content must never carry secret material.
-	if in.FindingKind == "secret" {
+	// content must never carry secret material. Compared case-insensitively
+	// so no casing variant slips into the patchable path.
+	if strings.EqualFold(in.FindingKind, "secret") {
 		return Outcome{Reason: "secret findings are never auto-patched: rotate the credential with its provider, revoke the old value, and purge it from history"}
 	}
 	suggestion := remediate.Suggest(remediate.Input{

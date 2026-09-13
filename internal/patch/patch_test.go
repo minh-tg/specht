@@ -51,6 +51,17 @@ func TestPropose_SecretRefused(t *testing.T) {
 	assert.Contains(t, out.Reason, "never auto-patched")
 }
 
+func TestPropose_SecretCaseVariantsRefused(t *testing.T) {
+	out := Propose(Input{
+		FindingID: "f1", FindingKind: "Secret", Title: "AWS key",
+		Dims: map[string]string{
+			"package_name": "x", "fixed_version": "2",
+		}, Tool: "gitleaks",
+	})
+	assert.False(t, out.Supported, "no casing variant may enter the patchable path")
+	assert.Nil(t, out.Proposal)
+}
+
 func TestPropose_SastWithoutExactChangeRefused(t *testing.T) {
 	out := Propose(Input{
 		FindingID: "f1", FindingKind: "sast", Title: "XSS",

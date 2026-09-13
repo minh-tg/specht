@@ -68,3 +68,16 @@ func TestEvaluateIntroducedAtCommit_FiltersByCommit(t *testing.T) {
 	assert.Equal(t, []string{"f1"}, d.BlockedBy)
 	assert.Equal(t, 1, d.TotalBlocking)
 }
+
+func TestEvaluateIntroducedOnly_EmptyReportMatchesNothing(t *testing.T) {
+	g := New(
+		&mockFindingsRepo{findings: []Finding{
+			{ID: "f1", CurrentSeverityRank: 4, Fingerprint: "CVE-2024-0001"},
+		}},
+		&mockWaiversRepo{},
+	)
+	d, err := g.EvaluateIntroducedOnly(context.Background(), "proj-1", 3, "", nil)
+	require.NoError(t, err)
+	assert.Equal(t, StatusPass, d.Status, "empty scope must match nothing, not unattributed findings")
+	assert.Equal(t, 0, d.TotalBlocking)
+}

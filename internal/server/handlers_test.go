@@ -1752,6 +1752,20 @@ func TestPreviewPRCheck_MissingCommit(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestPreviewPRCheck_UnknownProvider(t *testing.T) {
+	mock := &mockUsecases{
+		previewPRCheckFn: func(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error) {
+			return nil, usecase.ErrUnknownProvider
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/pr-check?commit=abc123&provider=bitkeeper", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestPreviewPatch_Success(t *testing.T) {
 	mock := &mockUsecases{
 		previewPatchFn: func(ctx context.Context, findingID string) (*patch.Outcome, error) {

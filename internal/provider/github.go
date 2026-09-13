@@ -48,6 +48,7 @@ func (p *GitHubProvider) PlanCheck(input CheckInput) (CheckPlan, error) {
 		if f.File == "" {
 			continue
 		}
+		plan.TotalMappable++
 		if annotated >= githubMaxAnnotations {
 			plan.Truncated = true
 			continue
@@ -168,7 +169,7 @@ func checkSummary(input CheckInput, plan CheckPlan) string {
 		b.WriteString(".")
 	}
 	if plan.Truncated {
-		fmt.Fprintf(&b, " Showing %d of %d mappable annotations (provider cap).", len(plan.Annotations), len(plan.Annotations))
+		fmt.Fprintf(&b, " Showing %d of %d mappable annotations (provider cap).", len(plan.Annotations), plan.TotalMappable)
 	}
 	return b.String()
 }

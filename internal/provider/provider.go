@@ -77,6 +77,9 @@ type CheckPlan struct {
 	// Truncated is true when annotations hit the provider cap; the
 	// summary still covers everything.
 	Truncated bool
+	// TotalMappable counts findings with a mappable file location, so the
+	// truncation notice can state what was cut.
+	TotalMappable int
 	// Supersedes names the check run this plan updates on rerun, so
 	// platforms replace stale feedback instead of duplicating it.
 	Supersedes string

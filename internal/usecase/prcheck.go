@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -10,8 +11,23 @@ import (
 	"github.com/xMinhx/specht/internal/provider"
 )
 
+// ErrUnknownProvider is returned when a preview names a provider the
+// registry does not know. Callers map it to a client error (400).
+var ErrUnknownProvider = errors.New("unknown provider")
+
 // defaultProvider is the adapter used when callers name none.
 const defaultProvider = "github"
+
+// previewListPageSize bounds one finding-list page; listIntroducedAtCommit
+// walks pages so large projects never silently drop findings from a check.
+const previewListPageSize = 1000
+
+// normalizeRevision canonicalizes a commit SHA for storage and comparison:
+// surrounding whitespace dropped, hex lowercased. SHAs are
+// case-insensitive; branch names are not (and never pass through here).
+func normalizeRevision(rev string) string {
+	return strings.ToLower(strings.TrimSpace(rev))
+}
 
 // PRCheckPreviewInput scopes a pull-request check preview: the revision
 // under review and, optionally, the exact report that scanned it.
@@ -53,6 +69,7 @@ type PRCheckPreview struct {
 	Annotations   []PRCheckAnnotation `json:"annotations"`
 	SummaryCounts map[string]int      `json:"summary_counts"`
 	Truncated     bool                `json:"truncated"`
+	TotalMappable int                 `json:"total_mappable"`
 	Supersedes    string              `json:"supersedes,omitempty"`
 	WaivedCount   int                 `json:"waived_count"`
 }
@@ -64,6 +81,7 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 	if strings.TrimSpace(input.CommitSha) == "" {
 		return nil, fmt.Errorf("commit_sha is required")
 	}
+	input.CommitSha = normalizeRevision(input.CommitSha)
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, input.ProjectSlug)
 	if err != nil {
 		return nil, fmt.Errorf("lookup project %q: %w", input.ProjectSlug, err)
@@ -75,7 +93,7 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 	}
 	p, err := u.providers().Get(name)
 	if err != nil {
-		return nil, fmt.Errorf("unknown provider %q", name)
+		return nil, fmt.Errorf("%w %q", ErrUnknownProvider, name)
 	}
 
 	floor := input.MinSeverityRank
@@ -91,27 +109,32 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 	u.initGate()
 	policies := gatePoliciesForProject(project)
 	if input.ReportID != "" {
+		report, err := u.deps.Stores.Reports.GetByID(ctx, input.ReportID)
+		if err != nil {
+			return nil, fmt.Errorf("lookup report %q: %w", input.ReportID, err)
+		}
+		if report.ProjectID != project.ID {
+			return nil, ErrProjectAccessDenied
+		}
+		if report.CommitSha != nil && normalizeRevision(*report.CommitSha) != "" &&
+			normalizeRevision(*report.CommitSha) != input.CommitSha {
+			return nil, fmt.Errorf("report %q scanned commit %q, not %q", input.ReportID, *report.CommitSha, input.CommitSha)
+		}
+		if report.Branch != nil {
+			branch = *report.Branch
+		}
 		introduced, err = u.deps.Stores.Findings.ListIntroducedByReport(ctx, project.ID, input.ReportID)
 		if err != nil {
 			return nil, fmt.Errorf("list introduced findings: %w", err)
-		}
-		report, err := u.deps.Stores.Reports.GetByID(ctx, input.ReportID)
-		if err == nil && report.Branch != nil {
-			branch = *report.Branch
 		}
 		decision, err = u.gate.EvaluateIntroducedOnly(ctx, project.ID, floor, input.ReportID, policies)
 		if err != nil {
 			return nil, fmt.Errorf("gate eval: %w", err)
 		}
 	} else {
-		all, err := u.deps.Stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, nil, nil, 1000, 0)
+		introduced, err = u.listIntroducedAtCommit(ctx, project.ID, input.CommitSha)
 		if err != nil {
 			return nil, fmt.Errorf("list findings: %w", err)
-		}
-		for _, f := range all {
-			if f.IntroducedCommitSha != nil && *f.IntroducedCommitSha == input.CommitSha {
-				introduced = append(introduced, f)
-			}
 		}
 		decision, err = u.gate.EvaluateIntroducedAtCommit(ctx, project.ID, floor, input.CommitSha, policies)
 		if err != nil {
@@ -171,6 +194,7 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 		Summary:       plan.Summary,
 		SummaryCounts: plan.SummaryCounts,
 		Truncated:     plan.Truncated,
+		TotalMappable: plan.TotalMappable,
 		Supersedes:    plan.Supersedes,
 		WaivedCount:   decision.WaivedCount,
 	}
@@ -199,6 +223,29 @@ func (u *Usecases) providers() *provider.Registry {
 	reg := provider.NewRegistry()
 	_ = reg.Register(provider.NewGitHubProvider())
 	return reg
+}
+
+// listIntroducedAtCommit returns every finding a revision introduced,
+// walking list pages so large projects never silently drop findings from
+// a check. Stored commits are normalized at ingest; the input commit is
+// normalized by the caller.
+func (u *Usecases) listIntroducedAtCommit(ctx context.Context, projectID, commit string) ([]port.Finding, error) {
+	var out []port.Finding
+	for offset := int32(0); ; {
+		page, err := u.deps.Stores.Findings.ListByProject(ctx, projectID, nil, nil, nil, nil, nil, previewListPageSize, offset)
+		if err != nil {
+			return nil, err
+		}
+		for _, f := range page {
+			if f.IntroducedCommitSha != nil && normalizeRevision(*f.IntroducedCommitSha) == commit {
+				out = append(out, f)
+			}
+		}
+		if len(page) < previewListPageSize {
+			return out, nil
+		}
+		offset += int32(len(page))
+	}
 }
 
 // blockedSet indexes gate blockers for membership tests.

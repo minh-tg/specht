@@ -72,6 +72,7 @@ type PRCheckPreview struct {
 	Annotations   []PRCheckAnnotation `json:"annotations"`
 	SummaryCounts map[string]int      `json:"summary_counts"`
 	Truncated     bool                `json:"truncated"`
+	TotalMappable int                 `json:"total_mappable"`
 	Supersedes    string              `json:"supersedes,omitempty"`
 	WaivedCount   int                 `json:"waived_count"`
 }

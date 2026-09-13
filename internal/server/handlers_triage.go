@@ -213,6 +213,14 @@ func (h *Handler) PreviewPRCheck(w http.ResponseWriter, r *http.Request) {
 		MinSeverityRank: parseMinSeverityRank(q.Get("severity")),
 	})
 	if err != nil {
+		if errors.Is(err, usecase.ErrUnknownProvider) {
+			respondError(w, http.StatusBadRequest, "unknown_provider", "unknown provider")
+			return
+		}
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this report")
+			return
+		}
 		slog.Error("preview pr check", "project", slug, "error", err)
 		respondError(w, http.StatusInternalServerError, "pr_check_failed", "could not plan pull-request check")
 		return

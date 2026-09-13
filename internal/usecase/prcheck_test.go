@@ -22,6 +22,14 @@ func prcheckHarness(t *testing.T) (*Usecases, *mockFindingRepo) {
 	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
+	rr.getByIDFn = func(ctx context.Context, id string) (port.Report, error) {
+		branch, sha := "main", prcheckCommit
+		return port.Report{
+			ID: id, ProjectID: makeProject(true).ID,
+			ToolName: "semgrep", Status: "completed",
+			Branch: &branch, CommitSha: &sha,
+		}, nil
+	}
 	commit := prcheckCommit
 	older := "older000older000older000older000older000older0"
 	f1 := port.Finding{
@@ -162,4 +170,107 @@ func TestPreviewPRCheck_ReportScope(t *testing.T) {
 	assert.Equal(t, reportID, out.ReportID)
 	require.Len(t, out.Annotations, 1)
 	assert.Equal(t, reportID+":fp1", out.Annotations[0].ExternalID, "exact-scan tie keeps rerun updates stable")
+}
+
+func TestPreviewPRCheck_ReportCommitMismatch(t *testing.T) {
+	uc, _ := prcheckHarness(t)
+	ctx := findingScopeCtx(makeProject(true).ID)
+
+	_, err := uc.PreviewPRCheck(ctx, PRCheckPreviewInput{
+		ProjectSlug: "my-app", CommitSha: "different000different000different00000",
+		ReportID: "11111111-1111-1111-1111-111111111111",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not")
+}
+
+func TestPreviewPRCheck_MissingReport(t *testing.T) {
+	pr, rr, fr := makeTestRepos()
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	rr.getByIDFn = func(ctx context.Context, id string) (port.Report, error) {
+		return port.Report{}, port.ErrNotFound
+	}
+	uc := New(Deps{Stores: &port.Stores{
+		Projects: pr, Reports: rr, Findings: fr, Waivers: &mockWaiverRepo{},
+	}})
+
+	_, err := uc.PreviewPRCheck(findingScopeCtx(makeProject(true).ID), PRCheckPreviewInput{
+		ProjectSlug: "my-app", CommitSha: prcheckCommit,
+		ReportID: "33333333-3333-3333-3333-333333333333",
+	})
+	require.Error(t, err, "a bogus report must fail, not plan a vacuous success")
+}
+
+func TestPreviewPRCheck_ForeignReportDenied(t *testing.T) {
+	pr, rr, fr := makeTestRepos()
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	rr.getByIDFn = func(ctx context.Context, id string) (port.Report, error) {
+		return port.Report{ID: id, ProjectID: "99999999-9999-9999-9999-999999999999"}, nil
+	}
+	uc := New(Deps{Stores: &port.Stores{
+		Projects: pr, Reports: rr, Findings: fr, Waivers: &mockWaiverRepo{},
+	}})
+
+	_, err := uc.PreviewPRCheck(findingScopeCtx(makeProject(true).ID), PRCheckPreviewInput{
+		ProjectSlug: "my-app", CommitSha: prcheckCommit,
+		ReportID: "44444444-4444-4444-4444-444444444444",
+	})
+	assert.ErrorIs(t, err, ErrProjectAccessDenied)
+}
+
+func TestPreviewPRCheck_PaginatesLargeProjects(t *testing.T) {
+	pr, rr, fr := makeTestRepos()
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	commit := prcheckCommit
+	target := port.Finding{
+		ID: "00000000-0000-0000-0000-000000000021", ProjectID: makeProject(true).ID,
+		FindingKind: "sast", Fingerprint: "fp-target", CurrentTitle: "Deep cut",
+		CurrentSeverity: "high", CurrentSeverityRank: 4,
+		State: "open", IntroducedCommitSha: &commit,
+	}
+	fr.listByProjectFn = func(ctx context.Context, projectID string, severities, states, kinds, environments, targets []string, limit, offset int32) ([]port.Finding, error) {
+		if offset == 0 {
+			page := make([]port.Finding, 0, limit)
+			for i := int32(0); i < limit; i++ {
+				page = append(page, port.Finding{ID: "pad", ProjectID: projectID})
+			}
+			return page, nil
+		}
+		return []port.Finding{target}, nil
+	}
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
+		return target, nil
+	}
+	fr.getDisplayContextFn = func(ctx context.Context, findingID string) (port.FindingDisplayContext, error) {
+		return port.FindingDisplayContext{ToolName: "semgrep"}, nil
+	}
+	fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minRank int16) ([]port.GateCandidate, error) {
+		return []port.GateCandidate{{Finding: target}}, nil
+	}
+	uc := New(Deps{Stores: &port.Stores{
+		Projects: pr, Reports: rr, Findings: fr, Waivers: &mockWaiverRepo{},
+	}})
+
+	out, err := uc.PreviewPRCheck(findingScopeCtx(makeProject(true).ID), PRCheckPreviewInput{
+		ProjectSlug: "my-app", CommitSha: prcheckCommit,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "failure", out.Conclusion, "findings past the first page must not be silently dropped")
+}
+
+func TestPreviewPRCheck_CommitCaseInsensitive(t *testing.T) {
+	uc, _ := prcheckHarness(t)
+	ctx := findingScopeCtx(makeProject(true).ID)
+
+	out, err := uc.PreviewPRCheck(ctx, PRCheckPreviewInput{
+		ProjectSlug: "my-app", CommitSha: "ABC123ABC123ABC123ABC123ABC123ABC123ABC1",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "failure", out.Conclusion, "SHA case must not change the verdict")
 }
