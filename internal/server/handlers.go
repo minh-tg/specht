@@ -183,21 +183,27 @@ func NewHandler(uc usecaseInterface) *Handler {
 }
 
 type ingestRequest struct {
-	Project         string          `json:"project"`
-	Scanner         string          `json:"scanner"`
-	ScannerVersion  string          `json:"scanner_version,omitempty"`
-	ParserVersion   string          `json:"parser_version,omitempty"`
-	RawData         json.RawMessage `json:"raw_data"`
-	Branch          string          `json:"branch,omitempty"`
-	CommitSha       string          `json:"commit_sha,omitempty"`
-	GateSeverity    string          `json:"gate_severity,omitempty"`
-	GateStatus      string          `json:"gate_status,omitempty"`
-	Environment     string          `json:"environment,omitempty"`
-	Owner           string          `json:"owner,omitempty"`
-	Digest          string          `json:"digest,omitempty"`
-	ArtifactName    string          `json:"artifact_name,omitempty"`
-	ArtifactVersion string          `json:"artifact_version,omitempty"`
-	ArtifactType    string          `json:"artifact_type,omitempty"`
+	Project        string          `json:"project"`
+	Scanner        string          `json:"scanner"`
+	ScannerVersion string          `json:"scanner_version,omitempty"`
+	ParserVersion  string          `json:"parser_version,omitempty"`
+	RawData        json.RawMessage `json:"raw_data"`
+	Branch         string          `json:"branch,omitempty"`
+	CommitSha      string          `json:"commit_sha,omitempty"`
+	// BaseRevision is required when ScanMode is incremental; ChangedFiles
+	// lists the paths an incremental scan covered; ScanMode is full
+	// (default) or incremental.
+	BaseRevision    string   `json:"base_revision,omitempty"`
+	ChangedFiles    []string `json:"changed_files,omitempty"`
+	ScanMode        string   `json:"scan_mode,omitempty"`
+	GateSeverity    string   `json:"gate_severity,omitempty"`
+	GateStatus      string   `json:"gate_status,omitempty"`
+	Environment     string   `json:"environment,omitempty"`
+	Owner           string   `json:"owner,omitempty"`
+	Digest          string   `json:"digest,omitempty"`
+	ArtifactName    string   `json:"artifact_name,omitempty"`
+	ArtifactVersion string   `json:"artifact_version,omitempty"`
+	ArtifactType    string   `json:"artifact_type,omitempty"`
 }
 type ingestResponse struct {
 	ReportID          string `json:"report_id"`

@@ -19,6 +19,28 @@ import (
 	"github.com/xMinhx/specht/internal/tracker"
 )
 
+// Scan modes for report ingestion.
+const (
+	// ScanModeFull is a complete scan: absence of a finding verifies a fix.
+	ScanModeFull = "full"
+	// ScanModeIncremental covers only changed files: absence proves
+	// nothing, so nothing is ever marked fixed from an incremental scan.
+	ScanModeIncremental = "incremental"
+)
+
+// normalizeScanMode defaults an empty mode to full and rejects anything
+// outside the full/incremental vocabulary.
+func normalizeScanMode(mode string) (string, error) {
+	normalized := strings.ToLower(strings.TrimSpace(mode))
+	if normalized == "" {
+		return ScanModeFull, nil
+	}
+	if normalized != ScanModeFull && normalized != ScanModeIncremental {
+		return "", fmt.Errorf("invalid scan_mode %q: must be %q or %q", mode, ScanModeFull, ScanModeIncremental)
+	}
+	return normalized, nil
+}
+
 // reportContext carries the contextual ids resolved for an ingested report
 // and the target identifier used to derive the scan-scope hash.
 type reportContext struct {
@@ -47,6 +69,14 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	}
 	if len(input.RawData) == 0 {
 		return nil, fmt.Errorf("raw scan data is required")
+	}
+	scanMode, err := normalizeScanMode(input.ScanMode)
+	if err != nil {
+		return nil, err
+	}
+	input.ScanMode = scanMode
+	if scanMode == ScanModeIncremental && strings.TrimSpace(input.BaseRevision) == "" {
+		return nil, fmt.Errorf("incremental scan requires base_revision")
 	}
 
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, input.ProjectSlug)
@@ -197,6 +227,9 @@ func (u *Usecases) createReport(ctx context.Context, project port.Project, input
 		ScanScopeHash:    hex.EncodeToString(scopeHash[:]),
 		Branch:           textPtr(input.Branch),
 		CommitSha:        textPtr(input.CommitSha),
+		BaseRevision:     textPtr(input.BaseRevision),
+		ChangedFiles:     changedFilesDocument(input.ChangedFiles),
+		ScanMode:         input.ScanMode,
 		RawData:          input.RawData,
 		RawReportHash:    hex.EncodeToString(rawHash[:]),
 		ParserVersion:    textPtr(input.ParserVersion),
@@ -211,6 +244,15 @@ func (u *Usecases) createReport(ctx context.Context, project port.Project, input
 		return port.Report{}, fmt.Errorf("scanner %s: create report: %w", input.Scanner, err)
 	}
 	return report, nil
+}
+
+// changedFilesDocument encodes the covered-path list for storage. Empty
+// encodes as nil (the store persists []), so full scans carry no list.
+func changedFilesDocument(files []string) json.RawMessage {
+	if len(files) == 0 {
+		return nil
+	}
+	return mustMarshal(files)
 }
 
 // scopeHashMaterial is the deterministic, ordered material the scope hash is
@@ -331,6 +373,18 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, i
 	if err != nil {
 		slog.Error("upsert finding failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
 		return 0, fmt.Errorf("scanner %s: upsert finding %q: %w", input.Scanner, f.Fingerprint, err)
+	}
+
+	// Introduced-by-change attribution (SOLO-184): a finding observed for
+	// the first time is introduced by this report; a pre-existing finding
+	// with no attribution (pre-migration rows) gains it on observation.
+	// Existing attribution is never rewritten here — only the explicit
+	// refresh path revises it when improved evidence arrives.
+	if lookupErr != nil || existing.IntroducedByReportID == nil {
+		if _, err := u.deps.Stores.Findings.SetFindingIntroducedBy(ctx, upserted.ID, report.ID, textPtr(input.CommitSha)); err != nil {
+			slog.Error("set introduced-by failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+			return 0, fmt.Errorf("scanner %s: attribute finding %q: %w", input.Scanner, f.Fingerprint, err)
+		}
 	}
 
 	if regression {

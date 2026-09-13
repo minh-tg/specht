@@ -43,6 +43,12 @@ type FindingResponse struct {
 	LastSeenAt      time.Time `json:"last_seen_at"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+	// IntroducedByReportID and IntroducedCommitSha materialize
+	// introduced-by-change attribution (SOLO-184): the report that first
+	// observed the finding and the revision it scanned. Both nil means
+	// unattributed — never a guess.
+	IntroducedByReportID *string `json:"introduced_by_report_id,omitempty"`
+	IntroducedCommitSha  *string `json:"introduced_commit_sha,omitempty"`
 	// Context is the latest observed deployment context. Nil when the
 	// finding has no linked scan occurrence — missing context is explicit.
 	Context *FindingContextResponse `json:"context,omitempty"`
@@ -130,18 +136,25 @@ func suggestionFromEvidence(f port.Finding, dims []port.FindingDimension, tool s
 
 // ReportResponse is the API representation of an ingested report.
 type ReportResponse struct {
-	ID            string     `json:"id"`
-	ProjectID     string     `json:"project_id"`
-	ToolName      string     `json:"tool_name"`
-	ToolVersion   *string    `json:"tool_version"`
-	ScanType      string     `json:"scan_type"`
-	ScanTarget    *string    `json:"scan_target"`
-	Status        string     `json:"status"`
-	TotalFindings *int32     `json:"total_findings"`
-	Branch        *string    `json:"branch"`
-	CommitSha     *string    `json:"commit_sha"`
-	CreatedAt     time.Time  `json:"created_at"`
-	CompletedAt   *time.Time `json:"completed_at"`
+	ID            string  `json:"id"`
+	ProjectID     string  `json:"project_id"`
+	ToolName      string  `json:"tool_name"`
+	ToolVersion   *string `json:"tool_version"`
+	ScanType      string  `json:"scan_type"`
+	ScanTarget    *string `json:"scan_target"`
+	Status        string  `json:"status"`
+	TotalFindings *int32  `json:"total_findings"`
+	Branch        *string `json:"branch"`
+	CommitSha     *string `json:"commit_sha"`
+	// BaseRevision is the revision an incremental scan was compared
+	// against; ScanMode is full or incremental; ChangedFiles lists the
+	// paths an incremental scan covered. Together they keep incremental
+	// scans identified and reproducible (SOLO-165).
+	BaseRevision *string    `json:"base_revision,omitempty"`
+	ScanMode     string     `json:"scan_mode,omitempty"`
+	ChangedFiles []string   `json:"changed_files,omitempty"`
+	CreatedAt    time.Time  `json:"created_at"`
+	CompletedAt  *time.Time `json:"completed_at"`
 }
 
 // FindingEvent is the API representation of a finding audit event.
@@ -194,21 +207,23 @@ func toProject(p port.Project) ProjectResponse {
 
 func toFinding(f port.Finding) FindingResponse {
 	return FindingResponse{
-		ID:              uuidStr(f.ID),
-		ProjectID:       uuidStr(f.ProjectID),
-		FindingKind:     f.FindingKind,
-		Fingerprint:     f.Fingerprint,
-		CurrentTitle:    f.CurrentTitle,
-		CurrentSeverity: f.CurrentSeverity,
-		CurrentScore:    scoreOpt(f.CurrentScore),
-		State:           f.State,
-		TriageStatus:    f.TriageStatus,
-		AnalysisState:   f.AnalysisState,
-		GateEffect:      f.GateEffect,
-		FirstSeenAt:     timePtr(f.FirstSeenAt),
-		LastSeenAt:      timePtr(f.LastSeenAt),
-		CreatedAt:       timePtr(f.CreatedAt),
-		UpdatedAt:       timePtr(f.UpdatedAt),
+		ID:                   uuidStr(f.ID),
+		ProjectID:            uuidStr(f.ProjectID),
+		FindingKind:          f.FindingKind,
+		Fingerprint:          f.Fingerprint,
+		CurrentTitle:         f.CurrentTitle,
+		CurrentSeverity:      f.CurrentSeverity,
+		CurrentScore:         scoreOpt(f.CurrentScore),
+		State:                f.State,
+		TriageStatus:         f.TriageStatus,
+		AnalysisState:        f.AnalysisState,
+		GateEffect:           f.GateEffect,
+		FirstSeenAt:          timePtr(f.FirstSeenAt),
+		LastSeenAt:           timePtr(f.LastSeenAt),
+		CreatedAt:            timePtr(f.CreatedAt),
+		UpdatedAt:            timePtr(f.UpdatedAt),
+		IntroducedByReportID: strOpt(f.IntroducedByReportID),
+		IntroducedCommitSha:  strOpt(f.IntroducedCommitSha),
 	}
 }
 
@@ -224,9 +239,25 @@ func toReport(r port.Report) ReportResponse {
 		TotalFindings: intOpt(r.TotalFindings),
 		Branch:        strOpt(r.Branch),
 		CommitSha:     strOpt(r.CommitSha),
+		BaseRevision:  strOpt(r.BaseRevision),
+		ScanMode:      r.ScanMode,
+		ChangedFiles:  changedFilesOpt(r.ChangedFiles),
 		CreatedAt:     timePtr(r.CreatedAt),
 		CompletedAt:   timeOpt(r.CompletedAt),
 	}
+}
+
+// changedFilesOpt decodes the stored path list; corrupt or empty content
+// decodes as nil so readers never see a half-parsed list.
+func changedFilesOpt(raw json.RawMessage) []string {
+	if len(raw) == 0 {
+		return nil
+	}
+	var files []string
+	if err := json.Unmarshal(raw, &files); err != nil {
+		return nil
+	}
+	return files
 }
 
 // CreateProject creates a project and makes the creator its admin member,

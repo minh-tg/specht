@@ -37,6 +37,13 @@ type IngestReportInput struct {
 	RawData        json.RawMessage // raw scanner output, byte-for-byte
 	Branch         string
 	CommitSha      string
+	// BaseRevision is the revision an incremental scan is compared against
+	// (required when ScanMode is incremental, empty otherwise).
+	// ChangedFiles lists the paths an incremental scan covered.
+	// ScanMode is "full" (default) or "incremental".
+	BaseRevision string
+	ChangedFiles []string
+	ScanMode     string
 	// GateSeverity and GateStatus override which findings count as blocking
 	// for the post-ingest threshold check (defaults: high/critical, open).
 	GateSeverity []string

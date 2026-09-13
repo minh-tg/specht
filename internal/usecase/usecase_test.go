@@ -100,6 +100,7 @@ type mockReportRepo struct {
 	listByProjectFn func(context.Context, string, int32, int32) ([]port.Report, error)
 	updateStatusFn  func(context.Context, string, string, string, int32, *string) (port.Report, error)
 	latestReportFn  func(context.Context, string, string) (port.CompletedReport, error)
+	byCommitFn      func(context.Context, string, string, string) (port.CompletedReport, error)
 }
 
 func (m *mockReportRepo) Create(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
@@ -137,6 +138,13 @@ func (m *mockReportRepo) LatestCompletedByScanner(ctx context.Context, projectID
 	return m.latestReportFn(ctx, projectID, scanner)
 }
 
+func (m *mockReportRepo) GetCompletedByCommit(ctx context.Context, projectID, scanner, commit string) (port.CompletedReport, error) {
+	if m.byCommitFn == nil {
+		return port.CompletedReport{}, port.ErrNotFound
+	}
+	return m.byCommitFn(ctx, projectID, scanner, commit)
+}
+
 type mockFindingRepo struct {
 	port.FindingStore
 	hasOccurrenceFn        func(context.Context, string, string) (bool, error)
@@ -158,6 +166,8 @@ type mockFindingRepo struct {
 	listBlockingFindingsFn func(context.Context, string, int16) ([]port.Finding, error)
 	listGateCandidatesFn   func(context.Context, string, int16) ([]port.GateCandidate, error)
 	getFindingContextFn    func(context.Context, string) (port.FindingContext, error)
+	setIntroducedByFn      func(context.Context, string, string, *string) (port.Finding, error)
+	listIntroducedByFn     func(context.Context, string, string) ([]port.Finding, error)
 }
 
 func (m *mockFindingRepo) Upsert(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
@@ -263,6 +273,20 @@ func (m *mockFindingRepo) MarkFixed(ctx context.Context, findingID string) (port
 		return port.Finding{}, fmt.Errorf("unexpected call to MarkFixed")
 	}
 	return m.markFixedFn(ctx, findingID)
+}
+
+func (m *mockFindingRepo) SetFindingIntroducedBy(ctx context.Context, findingID, reportID string, commitSha *string) (port.Finding, error) {
+	if m.setIntroducedByFn == nil {
+		return port.Finding{ID: findingID}, nil
+	}
+	return m.setIntroducedByFn(ctx, findingID, reportID, commitSha)
+}
+
+func (m *mockFindingRepo) ListIntroducedByReport(ctx context.Context, projectID, reportID string) ([]port.Finding, error) {
+	if m.listIntroducedByFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListIntroducedByReport")
+	}
+	return m.listIntroducedByFn(ctx, projectID, reportID)
 }
 
 func (m *mockFindingRepo) GetByFingerprint(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
