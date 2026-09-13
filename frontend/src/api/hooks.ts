@@ -1,6 +1,7 @@
 import type { AnalysisState, ReachabilityState } from "@/lib/enums";
 import type {
   Finding,
+  FindingEvent,
   GateStatus,
   Project,
   ReachabilityAssessment,
@@ -104,6 +105,14 @@ export function useReachability(findingId: string) {
   return useQuery({
     queryKey: ["reachability", findingId],
     queryFn: () => apiFetch<ReachabilityAssessment[]>(`/api/v1/findings/${findingId}/reachability`),
+    enabled: !!findingId,
+  });
+}
+
+export function useFindingEvents(findingId: string) {
+  return useQuery({
+    queryKey: ["finding-events", findingId],
+    queryFn: () => apiFetch<FindingEvent[]>(`/api/v1/findings/${findingId}/events`),
     enabled: !!findingId,
   });
 }

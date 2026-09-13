@@ -49,6 +49,10 @@ export interface Finding {
   location?: FindingLocation;
   /** Reviewable remediation proposal built from dimensions + guidance. */
   suggestion?: FindingSuggestion;
+  /** Report that first observed the finding. Absent when unattributed. */
+  introduced_by_report_id?: string;
+  /** Revision the introducing report scanned. Absent when unattributed. */
+  introduced_commit_sha?: string;
 }
 
 export interface FindingContext {
@@ -103,6 +107,18 @@ export interface ReachabilityAssessment {
   assessed_by: string;
   created_at: string;
   updated_at: string;
+}
+
+/** One finding lifecycle audit event. */
+export interface FindingEvent {
+  id: string;
+  finding_id: string;
+  user_id: string;
+  event_type: string;
+  old_value?: string | null;
+  new_value?: string | null;
+  comment?: string | null;
+  created_at: string;
 }
 
 export interface RegisterResponse {

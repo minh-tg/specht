@@ -1,4 +1,10 @@
-import { useFinding, useReachability, useTriageFinding, useUpsertReachability } from "@/api/hooks";
+import {
+  useFinding,
+  useFindingEvents,
+  useReachability,
+  useTriageFinding,
+  useUpsertReachability,
+} from "@/api/hooks";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import {
   type AnalysisState,
@@ -59,6 +65,46 @@ function parseSourceLink(value: string | undefined): URL | null {
   }
 }
 
+/** Subject label per finding kind for the location section. */
+function locationSubjectLabel(kind: string | undefined): string {
+  switch (kind) {
+    case "sca":
+      return "Package";
+    case "sast":
+      return "File";
+    case "iac":
+      return "Resource";
+    case "secret":
+      return "File";
+    case "dast":
+      return "URL";
+    default:
+      return "Subject";
+  }
+}
+
+/** Humanizes a confidence value; unknown stays visible but unlabeled. */
+function confidenceLabel(value: string | undefined): string {
+  switch (value) {
+    case "high":
+      return "High";
+    case "medium":
+      return "Medium";
+    case "low":
+      return "Low";
+    default:
+      return "Unknown";
+  }
+}
+
+/** Humanizes a lifecycle event type for the history list. */
+function eventTypeLabel(value: string | undefined): string {
+  if (!value) return "Unknown";
+  return value
+    .split("_")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
 /** Normalizes a date-input value to a server-accepted RFC3339 expiry. */
 function toExpiryTimestamp(value: string): string | undefined {
   if (!value) return undefined;
@@ -79,6 +125,11 @@ export function FindingDetail() {
     isSuccess: reachabilityLoaded,
   } = useReachability(findingId ?? "");
   const reachabilityMutation = useUpsertReachability();
+  const {
+    data: events,
+    isLoading: eventsLoading,
+    isError: eventsIsError,
+  } = useFindingEvents(findingId ?? "");
 
   const [selectedState, setSelectedState] = useState<AnalysisState | "">("");
   const [reason, setReason] = useState("");
@@ -182,6 +233,14 @@ export function FindingDetail() {
           <span className="text-muted-foreground">Last Seen</span>
           <p className="font-medium">{formatTimestamp(finding.last_seen_at)}</p>
         </div>
+        <div>
+          <span className="text-muted-foreground">Introduced</span>
+          <p className="font-mono text-xs">
+            {finding.introduced_commit_sha
+              ? finding.introduced_commit_sha.slice(0, 12)
+              : "Unattributed"}
+          </p>
+        </div>
       </div>
 
       {finding.context && (
@@ -231,6 +290,117 @@ export function FindingDetail() {
           </div>
         </div>
       )}
+      <div className="mt-8 rounded-lg border p-4">
+        <h2 className="mb-3 text-sm font-semibold">Where it occurs</h2>
+        {finding.location
+            && (finding.location.file || finding.location.resource || finding.location.summary)
+          ? (
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-muted-foreground">
+                  {locationSubjectLabel(finding.finding_kind)}
+                </span>
+                <p className="font-mono text-xs select-all">
+                  {finding.location.file ?? finding.location.resource ?? finding.location.summary}
+                  {finding.location.file && finding.location.start_line
+                    ? `:${finding.location.start_line}${
+                      finding.location.end_line
+                        && finding.location.end_line !== finding.location.start_line
+                        ? `–${finding.location.end_line}`
+                        : ""
+                    }`
+                    : ""}
+                </p>
+              </div>
+              {finding.location.summary && (finding.location.file || finding.location.resource) && (
+                <div>
+                  <span className="text-muted-foreground">Detail</span>
+                  <p className="font-medium">{finding.location.summary}</p>
+                </div>
+              )}
+            </div>
+          )
+          : (
+            <p className="text-muted-foreground text-sm">
+              No location reported — the scanner gave no file, resource, or URL.
+            </p>
+          )}
+      </div>
+
+      <div className="mt-8 rounded-lg border p-4">
+        <h2 className="mb-3 text-sm font-semibold">How to fix</h2>
+        {finding.remediation?.summary
+          ? (
+            <div className="space-y-2 text-sm">
+              <p className="font-medium">{finding.remediation.summary}</p>
+              {finding.remediation.fallback && (
+                <p className="text-muted-foreground text-xs">
+                  General guidance — the scanner reported no specific fix.
+                </p>
+              )}
+              {finding.remediation.url && parseSourceLink(finding.remediation.url) && (
+                <p>
+                  <a
+                    href={finding.remediation.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary hover:text-primary/80 text-sm underline underline-offset-4"
+                  >
+                    Remediation reference
+                  </a>
+                </p>
+              )}
+              {finding.remediation.source && (
+                <p className="text-muted-foreground text-xs">
+                  Source: {finding.remediation.source}
+                </p>
+              )}
+              {finding.suggestion && (
+                <p className="text-muted-foreground text-xs">
+                  Suggested: {finding.suggestion.action}
+                  {finding.suggestion.target ? ` ${finding.suggestion.target}` : ""} (confidence
+                  {" "}
+                  {confidenceLabel(finding.suggestion.confidence)})
+                  {finding.suggestion.detail ? ` — ${finding.suggestion.detail}` : ""}
+                </p>
+              )}
+            </div>
+          )
+          : (
+            <p className="text-muted-foreground text-sm">
+              No remediation reported for this finding.
+            </p>
+          )}
+      </div>
+
+      <div className="mt-8 rounded-lg border p-4">
+        <h2 className="mb-3 text-sm font-semibold">History</h2>
+        {eventsLoading
+          ? <p className="text-muted-foreground text-sm">Loading history...</p>
+          : eventsIsError
+          ? <p className="text-destructive text-sm">Unable to load history.</p>
+          : events && events.length > 0
+          ? (
+            <ul className="space-y-2 text-sm">
+              {events.map((event) => (
+                <li key={event.id} className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="font-medium">{eventTypeLabel(event.event_type)}</span>
+                  {event.old_value || event.new_value
+                    ? (
+                      <span className="text-muted-foreground font-mono text-xs">
+                        {event.old_value ?? "–"} → {event.new_value ?? "–"}
+                      </span>
+                    )
+                    : null}
+                  <span className="text-muted-foreground text-xs">
+                    {formatTimestamp(event.created_at)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )
+          : <p className="text-muted-foreground text-sm">No history yet.</p>}
+      </div>
 
       <div className="mt-8 rounded-lg border p-4">
         <h2 className="mb-3 text-sm font-semibold">Triage</h2>

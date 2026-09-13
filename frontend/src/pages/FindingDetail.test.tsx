@@ -6,16 +6,35 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FindingDetail } from "./FindingDetail";
 
 interface FindingFixture {
+  finding_kind?: string;
   first_seen_at?: string;
   last_seen_at?: string;
   state?: string;
   analysis_state?: string;
   gate_effect?: string;
   context?: { source_link?: string; };
+  remediation?: { summary?: string; url?: string; source?: string; fallback?: boolean; };
+  location?: {
+    file?: string;
+    start_line?: number;
+    end_line?: number;
+    resource?: string;
+    summary?: string;
+  };
+  suggestion?: {
+    action?: string;
+    target?: string;
+    detail?: string;
+    confidence?: string;
+    source?: string;
+  };
+  introduced_by_report_id?: string;
+  introduced_commit_sha?: string;
 }
 
 let findingFixture: FindingFixture;
 let reachabilityFixture: Array<Record<string, unknown>>;
+let eventsFixture: Array<Record<string, unknown>>;
 let triageCalls: Array<{ url: string; body: string; }>;
 
 function makeFinding(overrides: FindingFixture = {}): Record<string, unknown> {
@@ -55,11 +74,15 @@ function renderDetail() {
 beforeEach(() => {
   findingFixture = {};
   reachabilityFixture = [];
+  eventsFixture = [];
   triageCalls = [];
   globalThis.fetch = vi.fn().mockImplementation(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = (init?.method ?? "GET").toUpperCase();
+      if (url.endsWith("/events") && method === "GET") {
+        return { ok: true, json: () => Promise.resolve(eventsFixture) } as Response;
+      }
       if (url.endsWith("/reachability") && method === "GET") {
         return { ok: true, json: () => Promise.resolve(reachabilityFixture) } as Response;
       }
@@ -343,5 +366,107 @@ describe("FindingDetail back link", () => {
     const backLink = screen.getByRole("link", { name: /back to findings/i });
     expect(backLink).toBeInTheDocument();
     expect(backLink).toHaveAttribute("href", "/p1/findings");
+  });
+});
+
+describe("FindingDetail remediation", () => {
+  it("renders the fix summary with its source", async () => {
+    findingFixture = {
+      remediation: { summary: "Upgrade lodash to 4.17.21 or later", source: "trivy" },
+    };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.getByText("Upgrade lodash to 4.17.21 or later")).toBeInTheDocument();
+    expect(screen.getByText(/trivy/)).toBeInTheDocument();
+  });
+
+  it("labels fallback guidance as general instead of implying certainty", async () => {
+    findingFixture = {
+      remediation: { summary: "No fixed version reported by the scanner", fallback: true },
+    };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.getByText(/general guidance/i)).toBeInTheDocument();
+  });
+
+  it("renders the remediation link when the URL is safe", async () => {
+    findingFixture = {
+      remediation: {
+        summary: "See advisory",
+        url: "https://example.com/advisory/1",
+        source: "trivy",
+      },
+    };
+    renderDetail();
+
+    const link = await screen.findByRole("link", { name: /remediation reference/i });
+    expect(link).toHaveAttribute("href", "https://example.com/advisory/1");
+  });
+});
+
+describe("FindingDetail location", () => {
+  it("renders the file with line range", async () => {
+    findingFixture = {
+      finding_kind: "sast",
+      location: { file: "app/main.go", start_line: 10, end_line: 12 },
+    };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.getByText(/app\/main\.go/)).toBeInTheDocument();
+    expect(screen.getByText(/10.*12/)).toBeInTheDocument();
+  });
+
+  it("states explicitly when no location was reported", async () => {
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.getByText(/no location reported/i)).toBeInTheDocument();
+  });
+});
+
+describe("FindingDetail provenance", () => {
+  it("renders the short introduced commit", async () => {
+    findingFixture = { introduced_commit_sha: "abc123def456789" };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.getByText(/abc123def456/)).toBeInTheDocument();
+  });
+
+  it("marks unattributed findings explicitly", async () => {
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.getByText(/unattributed/i)).toBeInTheDocument();
+  });
+});
+
+describe("FindingDetail history", () => {
+  it("renders lifecycle events with their transitions", async () => {
+    eventsFixture = [
+      {
+        id: "e1",
+        finding_id: "f1",
+        event_type: "regression",
+        old_value: "fixed",
+        new_value: "reopened",
+        created_at: "2025-02-01T00:00:00Z",
+      },
+    ];
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.getByText(/regression/i)).toBeInTheDocument();
+    expect(screen.getByText(/fixed.*reopened/)).toBeInTheDocument();
+  });
+
+  it("states explicitly when no history exists", async () => {
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.getByText(/no history yet/i)).toBeInTheDocument();
   });
 });
