@@ -91,10 +91,19 @@ func TestPlanCheck_CapsAnnotations(t *testing.T) {
 
 func TestPlanCheck_RequiresScope(t *testing.T) {
 	p := NewGitHubProvider()
-	_, err := p.PlanCheck(CheckInput{ReportID: "r1"})
+	_, err := p.PlanCheck(CheckInput{})
 	assert.ErrorContains(t, err, "commit_sha")
-	_, err = p.PlanCheck(CheckInput{CommitSha: "abc123"})
-	assert.ErrorContains(t, err, "report_id")
+
+	// Report scope is optional: external ids degrade to fingerprints.
+	plan, err := p.PlanCheck(CheckInput{
+		CommitSha: "abc123",
+		Findings: []Finding{
+			{ID: "f1", Title: "XSS", Severity: "high", SeverityRank: 3, Fingerprint: "fp1", File: "a.go", StartLine: 2},
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, plan.Annotations, 1)
+	assert.Equal(t, "fp1", plan.Annotations[0].ExternalID)
 }
 
 func TestPlanCheck_SuccessWhenClean(t *testing.T) {

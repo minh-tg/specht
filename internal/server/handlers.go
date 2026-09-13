@@ -112,6 +112,7 @@ type (
 	GateUsecases interface {
 		GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*usecase.GateStatusOutput, error)
 		GetIntroducedGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, reportID string) (*usecase.GateStatusOutput, error)
+		PreviewPRCheck(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error)
 	}
 
 	WaiverUsecases interface {

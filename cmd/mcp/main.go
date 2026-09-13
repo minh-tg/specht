@@ -17,6 +17,7 @@ type API interface {
 	GetFinding(findingID string) (*client.Finding, error)
 	GetGateStatus(projectSlug string, severity string) (*client.GateStatus, error)
 	GetIntroducedGateStatus(projectSlug string, severity string, reportID string) (*client.GateStatus, error)
+	PreviewPRCheck(projectSlug string, commit string, provider string, reportID string, severity string) (*client.PRCheckPreview, error)
 	UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error)
 	ListReachability(findingID string) ([]client.ReachabilityAssessment, error)
 	GetWatcherStatus() (*client.WatcherStatus, error)
@@ -123,9 +124,23 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				},
 			},
 			{
-				Name:        "reachability_set",
-				Description: "Set a finding's reachability assessment (reachable, not_reachable, unknown, not_applicable)",
+				Name:        "pr_preview",
+				Description: "Preview the pull-request check for a commit (dry-run; publishes nothing)",
 				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"project":   map[string]any{"type": "string", "description": "Project slug"},
+						"commit":    map[string]any{"type": "string", "description": "Commit SHA under review"},
+						"provider":  map[string]any{"type": "string", "description": "Provider (default: github)"},
+						"report_id": map[string]any{"type": "string", "description": "Report ID for an exact-scan tie"},
+						"severity":  map[string]any{"type": "string", "description": "Severity threshold"},
+					},
+					"required": []string{"project", "commit"},
+				},
+			},
+			{
+				Name:        "reachability_set",
+				Description: "Set a finding's reachability assessment (reachable, not_reachable, unknown, not_applicable)", InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
 						"finding_id": map[string]any{"type": "string", "description": "Finding ID"},
@@ -244,6 +259,8 @@ func handleToolCall(api API, msg jsonRPCMessage) jsonRPCMessage {
 		return callFindingsGet(api, msg.ID, params.Arguments)
 	case "gate_check":
 		return callGateCheck(api, msg.ID, params.Arguments)
+	case "pr_preview":
+		return callPRPreview(api, msg.ID, params.Arguments)
 	case "reachability_set":
 		return callReachabilitySet(api, msg.ID, params.Arguments)
 	case "watcher_status":
@@ -393,6 +410,38 @@ func callGateCheck(api API, id any, args *json.RawMessage) jsonRPCMessage {
 	result, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
 	raw := json.RawMessage(result)
 	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &raw}
+}
+
+func callPRPreview(api API, id any, args *json.RawMessage) jsonRPCMessage {
+	a, err := readArgs[struct {
+		Project  string `json:"project"`
+		Commit   string `json:"commit"`
+		Provider string `json:"provider"`
+		ReportID string `json:"report_id"`
+		Severity string `json:"severity"`
+	}](args)
+	if err != nil {
+		return errorResponse(id, -32602, "invalid arguments")
+	}
+	if a.Project == "" {
+		return errorResponse(id, -32602, "project is required")
+	}
+	if a.Commit == "" {
+		return errorResponse(id, -32602, "commit is required")
+	}
+
+	preview, err := api.PreviewPRCheck(a.Project, a.Commit, a.Provider, a.ReportID, a.Severity)
+	if err != nil {
+		return errorResponse(id, -32603, err.Error())
+	}
+
+	text := fmt.Sprintf("check %s: %s\n%s", preview.Conclusion, preview.Title, preview.Summary)
+	for _, an := range preview.Annotations {
+		text += fmt.Sprintf("\n  %s:%d %s", an.File, an.StartLine, an.Title)
+	}
+	previewResult, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
+	previewRaw := json.RawMessage(previewResult)
+	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &previewRaw}
 }
 
 func callReachabilitySet(api API, id any, args *json.RawMessage) jsonRPCMessage {

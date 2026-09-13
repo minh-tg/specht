@@ -368,6 +368,28 @@ func (c *Client) GetIntroducedGateStatus(projectSlug string, severity string, re
 	return &resp, nil
 }
 
+// PreviewPRCheck plans (but never publishes) the pull-request check for a
+// change.
+func (c *Client) PreviewPRCheck(projectSlug string, commit string, provider string, reportID string, severity string) (*PRCheckPreview, error) {
+	q := url.Values{}
+	q.Set("commit", commit)
+	if provider != "" {
+		q.Set("provider", provider)
+	}
+	if reportID != "" {
+		q.Set("report_id", reportID)
+	}
+	if severity != "" {
+		q.Set("severity", severity)
+	}
+	path := "/api/v1/projects/" + url.PathEscape(projectSlug) + "/pr-check?" + q.Encode()
+	var resp PRCheckPreview
+	if err := c.do(context.Background(), "GET", path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // Environments, Targets, Artifacts.
 
 func (c *Client) ListEnvironments(projectSlug string) ([]Environment, error) {

@@ -20,6 +20,7 @@ import (
 	"github.com/xMinhx/specht/internal/lifecycle"
 	"github.com/xMinhx/specht/internal/parser"
 	"github.com/xMinhx/specht/internal/port"
+	"github.com/xMinhx/specht/internal/provider"
 	"github.com/xMinhx/specht/internal/repo"
 	"github.com/xMinhx/specht/internal/scanner"
 	"github.com/xMinhx/specht/internal/server"
@@ -61,6 +62,15 @@ func main() {
 		}
 	}
 
+	// Repository providers (SOLO-196) are compile-time plugins like
+	// scanners: GitHub ships as the first adapter; previews plan checks
+	// without network I/O or credentials.
+	providers := provider.NewRegistry()
+	if err := providers.Register(provider.NewGitHubProvider()); err != nil {
+		slog.Error("register provider", "error", err)
+		os.Exit(1)
+	}
+
 	jwtAuth, err := auth.NewJWTAuthenticator(cfg.JWTSecret)
 	if err != nil {
 		slog.Error("auth setup", "error", err)
@@ -79,6 +89,7 @@ func main() {
 	uc := usecase.New(usecase.Deps{
 		Stores:       stores,
 		Registry:     reg,
+		Providers:    providers,
 		Tokens:       jwtAuth,
 		Passwords:    auth.NewPasswordHasher(),
 		InventoryTTL: cfg.InventoryTTL,

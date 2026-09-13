@@ -42,6 +42,7 @@ type mockUsecases struct {
 	bulkTriageFn         func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
 	getGateStatusFn      func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error)
 	getIntroducedGateFn  func(ctx context.Context, slug string, minRank int16, reportID string) (*usecase.GateStatusOutput, error)
+	previewPRCheckFn     func(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error)
 	getFindingFn         func(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
 	getFindingEventsFn   func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
 	refreshFn            func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
@@ -236,6 +237,13 @@ func (m *mockUsecases) GetIntroducedGateStatus(ctx context.Context, slug string,
 		return nil, fmt.Errorf("unexpected call to GetIntroducedGateStatus")
 	}
 	return m.getIntroducedGateFn(ctx, slug, minRank, reportID)
+}
+
+func (m *mockUsecases) PreviewPRCheck(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error) {
+	if m.previewPRCheckFn == nil {
+		return nil, fmt.Errorf("unexpected call to PreviewPRCheck")
+	}
+	return m.previewPRCheckFn(ctx, input)
 }
 
 func (m *mockUsecases) GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error) {
@@ -653,6 +661,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/me", h.Me)
 	r.Put("/api/v1/me", h.UpdateMe)
 	r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
+	r.Get("/api/v1/projects/{slug}/pr-check", h.PreviewPRCheck)
 	r.Get("/api/v1/projects/{slug}/stats", h.GetProjectStats)
 	r.Get("/api/v1/projects/{slug}/aging", h.GetAging)
 	r.Post("/api/v1/projects/{slug}/members", h.AddProjectMember)
@@ -1701,6 +1710,32 @@ func TestGateStatus_IntroducedOnly(t *testing.T) {
 func TestGateStatus_IntroducedOnlyMissingReport(t *testing.T) {
 	router := testRouter(&mockUsecases{})
 	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/gate?introduced_only=1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPreviewPRCheck_Success(t *testing.T) {
+	var got usecase.PRCheckPreviewInput
+	mock := &mockUsecases{
+		previewPRCheckFn: func(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error) {
+			got = input
+			return &usecase.PRCheckPreview{Provider: "github", CommitSha: "abc123", Conclusion: "failure"}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/pr-check?commit=abc123", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "abc123", got.CommitSha)
+}
+
+func TestPreviewPRCheck_MissingCommit(t *testing.T) {
+	router := testRouter(&mockUsecases{})
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/pr-check", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 

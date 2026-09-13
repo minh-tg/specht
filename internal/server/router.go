@@ -135,6 +135,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Post("/api/v1/findings/{findingID}/signoff", h.UpsertSignoff)
 		r.Get("/api/v1/findings/{findingID}/signoff", h.GetSignoff)
 		r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
+		r.Get("/api/v1/projects/{slug}/pr-check", h.PreviewPRCheck)
 		r.Get("/api/v1/projects/{slug}/environments", h.ListEnvironments)
 		r.Get("/api/v1/projects/{slug}/targets", h.ListTargets)
 		r.Get("/api/v1/projects/{slug}/members", h.ListProjectMembers)

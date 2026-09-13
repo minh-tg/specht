@@ -188,6 +188,39 @@ func (h *Handler) GetGateStatus(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, result)
 }
 
+func (h *Handler) PreviewPRCheck(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if slug == "" {
+		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		return
+	}
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		h.respondProjectAccessError(w, err)
+		return
+	}
+	q := r.URL.Query()
+	commit := q.Get("commit")
+	if commit == "" {
+		respondError(w, http.StatusBadRequest, "missing_commit", "commit is required")
+		return
+	}
+
+	result, err := h.usecase.PreviewPRCheck(r.Context(), usecase.PRCheckPreviewInput{
+		ProjectSlug:     slug,
+		Provider:        q.Get("provider"),
+		CommitSha:       commit,
+		ReportID:        q.Get("report_id"),
+		MinSeverityRank: parseMinSeverityRank(q.Get("severity")),
+	})
+	if err != nil {
+		slog.Error("preview pr check", "project", slug, "error", err)
+		respondError(w, http.StatusInternalServerError, "pr_check_failed", "could not plan pull-request check")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
 func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {

@@ -30,6 +30,7 @@ const (
 	cmdFindingsVerify
 	cmdFindingsReachability
 	cmdGateCheck
+	cmdPRPreview
 	cmdStats
 	cmdStatsAging
 	cmdWatcherBackfill
@@ -59,6 +60,8 @@ type command struct {
 	dryRun         bool
 	reportID       string
 	introducedOnly bool
+	commit         string
+	provider       string
 }
 
 func parseArgs(args []string) (command, error) {
@@ -204,6 +207,52 @@ func parseArgs(args []string) (command, error) {
 			return c, nil
 		default:
 			return command{}, fmt.Errorf("unknown gate subcommand: %s", rest[1])
+		}
+
+	case "pr":
+		if len(rest) < 2 {
+			return command{}, fmt.Errorf("missing subcommand for pr")
+		}
+		switch rest[1] {
+		case "preview":
+			c := command{cmd: cmdPRPreview}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--project" && i+1 < len(rest):
+					c.project = rest[i+1]
+					i++
+				case rest[i] == "--commit" && i+1 < len(rest):
+					c.commit = rest[i+1]
+					i++
+				case rest[i] == "--provider" && i+1 < len(rest):
+					c.provider = rest[i+1]
+					i++
+				case rest[i] == "--report-id" && i+1 < len(rest):
+					c.reportID = rest[i+1]
+					i++
+				case rest[i] == "--severity" && i+1 < len(rest):
+					c.severity = rest[i+1]
+					i++
+				case rest[i] == "--format" && i+1 < len(rest):
+					c.format = rest[i+1]
+					i++
+				}
+			}
+			if c.project == "" {
+				return command{}, fmt.Errorf("--project is required for pr preview")
+			}
+			if c.commit == "" {
+				return command{}, fmt.Errorf("--commit is required for pr preview")
+			}
+			if c.format == "" {
+				c.format = "human"
+			}
+			if c.format != "human" && c.format != "json" {
+				return command{}, fmt.Errorf("invalid --format %q: want human or json", c.format)
+			}
+			return c, nil
+		default:
+			return command{}, fmt.Errorf("unknown pr subcommand: %s", rest[1])
 		}
 
 	case "help":
@@ -424,6 +473,25 @@ func run(cl *client.Client, cmd command) error {
 		}
 		return nil
 
+	case cmdPRPreview:
+		preview, err := cl.PreviewPRCheck(cmd.project, cmd.commit, cmd.provider, cmd.reportID, cmd.severity)
+		if err != nil {
+			return err
+		}
+		if cmd.format == "json" {
+			raw, err := json.MarshalIndent(preview, "", "  ")
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(raw))
+			return nil
+		}
+		fmt.Printf("check %s: %s\n%s\n", preview.Conclusion, preview.Title, preview.Summary)
+		for _, a := range preview.Annotations {
+			fmt.Printf("  %s:%d %s\n", a.File, a.StartLine, a.Title)
+		}
+		return nil
+
 	case cmdStats:
 		stats, err := cl.GetProjectStats(cmd.slug)
 		if err != nil {
@@ -513,6 +581,9 @@ Commands:
     [--severity critical]                  Severity threshold
     [--format human|json]                  Output format (default human)
                                            Exit codes: 0 pass, 1 threshold breached, 2 error
+  pr preview --project <slug> --commit <sha>
+    [--provider github] [--report-id <id>] Preview pull-request check (dry-run; publishes nothing)
+    [--severity critical] [--format human|json]
   stats show <slug>                       Show project statistics
   stats aging <slug>                      Show aging buckets, SLA overdue, reopened
   watcher backfill [--since <ISO8601>]    Run one CVE watcher poll

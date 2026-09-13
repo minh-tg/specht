@@ -46,6 +46,34 @@ type GateStatus struct {
 	WaivedCount           int               `json:"waived_count,omitempty"`
 }
 
+// PRCheckAnnotation is one planned pull-request annotation.
+type PRCheckAnnotation struct {
+	ExternalID string `json:"external_id"`
+	FindingID  string `json:"finding_id"`
+	File       string `json:"file"`
+	StartLine  int    `json:"start_line"`
+	EndLine    int    `json:"end_line"`
+	Level      string `json:"level"`
+	Title      string `json:"title"`
+	Message    string `json:"message"`
+}
+
+// PRCheckPreview is a publishable pull-request check plan (preview only,
+// never published by this client).
+type PRCheckPreview struct {
+	Provider      string              `json:"provider"`
+	CommitSha     string              `json:"commit_sha"`
+	ReportID      string              `json:"report_id,omitempty"`
+	Conclusion    string              `json:"conclusion"`
+	Title         string              `json:"title"`
+	Summary       string              `json:"summary"`
+	Annotations   []PRCheckAnnotation `json:"annotations"`
+	SummaryCounts map[string]int      `json:"summary_counts"`
+	Truncated     bool                `json:"truncated"`
+	Supersedes    string              `json:"supersedes,omitempty"`
+	WaivedCount   int                 `json:"waived_count"`
+}
+
 // Project is a scan project (the top-level tenant of findings and reports).
 type Project struct {
 	ID          string    `json:"id"`

@@ -18,6 +18,7 @@ import (
 	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/gate"
 	"github.com/xMinhx/specht/internal/port"
+	"github.com/xMinhx/specht/internal/provider"
 	"github.com/xMinhx/specht/internal/scanner"
 	"github.com/xMinhx/specht/internal/tracker"
 )
@@ -93,6 +94,7 @@ type IngestReportOutput struct {
 type Deps struct {
 	Stores       *port.Stores
 	Registry     *scanner.Registry
+	Providers    *provider.Registry
 	Tokens       auth.TokenIssuer
 	Passwords    auth.PasswordHasher
 	InventoryTTL time.Duration
@@ -155,7 +157,8 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 			AnalysisState:        c.AnalysisState,
 			Reachability:         reachability,
 			Source:               c.FindingKind,
-			IntroducedByReportID: introducedReportID(c.IntroducedByReportID),
+			IntroducedByReportID: derefOrEmpty(c.IntroducedByReportID),
+			IntroducedCommitSha:  derefOrEmpty(c.IntroducedCommitSha),
 		}
 	}
 	return result, nil
@@ -215,9 +218,9 @@ func (a *gateWaiverRepo) ListActiveWaivers(ctx context.Context, projectID string
 	return result, nil
 }
 
-// introducedReportID dereferences an attribution pointer for the gate:
-// unattributed findings carry "" and never match an introduced-only filter.
-func introducedReportID(id *string) string {
+// derefOrEmpty dereferences an attribution pointer for the gate:
+// unattributed findings carry "" and never match a scoped filter.
+func derefOrEmpty(id *string) string {
 	if id == nil {
 		return ""
 	}

@@ -149,6 +149,7 @@ SELECT
     f.current_severity_rank,
     f.analysis_state,
     f.introduced_by_report_id,
+    f.introduced_commit_sha,
     COALESCE(ra.state, 'unknown'::reachability_state) AS reachability_state,
     ctx.environment_id,
     ctx.target_id,

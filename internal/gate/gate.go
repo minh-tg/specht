@@ -78,6 +78,9 @@ type Finding struct {
 	// IntroducedByReportID is the report that first observed the finding
 	// (empty when unattributed). Introduced-only evaluations match on it.
 	IntroducedByReportID string
+	// IntroducedCommitSha is the revision the introducing report scanned
+	// (empty when unattributed). Commit-scoped evaluations match on it.
+	IntroducedCommitSha string
 }
 
 // WaiverCondition is a predicate on a finding field: Field is one of
@@ -183,6 +186,10 @@ type Gate interface {
 	// existing debt (the full gate still covers it). Waivers, reachability
 	// exemptions, and source policies apply unchanged.
 	EvaluateIntroducedOnly(ctx context.Context, projectID string, minSeverityRank int16, reportID string, policies []GatePolicy) (Decision, error)
+	// EvaluateIntroducedAtCommit evaluates the gate over findings one
+	// revision introduced (change-scoped pull-request feedback). Findings
+	// without commit attribution never match.
+	EvaluateIntroducedAtCommit(ctx context.Context, projectID string, minSeverityRank int16, commit string, policies []GatePolicy) (Decision, error)
 }
 
 type gate struct {
@@ -217,6 +224,12 @@ func (g *gate) EvaluateWithPolicies(ctx context.Context, projectID string, minSe
 func (g *gate) EvaluateIntroducedOnly(ctx context.Context, projectID string, minSeverityRank int16, reportID string, policies []GatePolicy) (Decision, error) {
 	return g.evaluate(ctx, projectID, minSeverityRank, policies, func(f Finding) bool {
 		return f.IntroducedByReportID == reportID
+	})
+}
+
+func (g *gate) EvaluateIntroducedAtCommit(ctx context.Context, projectID string, minSeverityRank int16, commit string, policies []GatePolicy) (Decision, error) {
+	return g.evaluate(ctx, projectID, minSeverityRank, policies, func(f Finding) bool {
+		return commit != "" && f.IntroducedCommitSha == commit
 	})
 }
 

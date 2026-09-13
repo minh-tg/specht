@@ -587,6 +587,7 @@ func (r *pgFindingPort) ListGateCandidates(ctx context.Context, projectID string
 				CurrentSeverityRank:  row.CurrentSeverityRank,
 				AnalysisState:        row.AnalysisState,
 				IntroducedByReportID: stringPtrFromUUID(row.IntroducedByReportID),
+				IntroducedCommitSha:  stringFromTextPtr(row.IntroducedCommitSha),
 			},
 			Context: port.FindingContext{
 				EnvironmentID: toUUID(row.EnvironmentID),

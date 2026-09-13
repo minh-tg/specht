@@ -31,9 +31,6 @@ func (p *GitHubProvider) PlanCheck(input CheckInput) (CheckPlan, error) {
 	if strings.TrimSpace(input.CommitSha) == "" {
 		return CheckPlan{}, fmt.Errorf("commit_sha is required")
 	}
-	if strings.TrimSpace(input.ReportID) == "" {
-		return CheckPlan{}, fmt.Errorf("report_id is required")
-	}
 
 	findings := append([]Finding(nil), input.Findings...)
 	SortFindings(findings)
@@ -56,7 +53,7 @@ func (p *GitHubProvider) PlanCheck(input CheckInput) (CheckPlan, error) {
 			continue
 		}
 		plan.Annotations = append(plan.Annotations, Annotation{
-			ExternalID: fmt.Sprintf("%s:%s", input.ReportID, f.Fingerprint),
+			ExternalID: externalID(input.ReportID, f.Fingerprint),
 			FindingID:  f.ID,
 			File:       f.File,
 			StartLine:  normLine(f.StartLine),
@@ -174,6 +171,16 @@ func checkSummary(input CheckInput, plan CheckPlan) string {
 		fmt.Fprintf(&b, " Showing %d of %d mappable annotations (provider cap).", len(plan.Annotations), len(plan.Annotations))
 	}
 	return b.String()
+}
+
+// externalID is stable across reruns so repeated scans update existing
+// feedback instead of creating noise. Without a report scope it degrades
+// to the bare fingerprint.
+func externalID(reportID, fingerprint string) string {
+	if strings.TrimSpace(reportID) == "" {
+		return fingerprint
+	}
+	return fmt.Sprintf("%s:%s", reportID, fingerprint)
 }
 
 // supersedesID names the check run a rerun updates. Empty repository or

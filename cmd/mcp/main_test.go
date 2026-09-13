@@ -20,6 +20,7 @@ type mockClient struct {
 	events           []client.WaiverEvent
 	assessment       *client.ReachabilityAssessment
 	watcher          *client.WatcherStatus
+	preview          *client.PRCheckPreview
 	introducedReport string
 	err              error
 }
@@ -42,6 +43,10 @@ func (m *mockClient) GetGateStatus(projectSlug string, severity string) (*client
 func (m *mockClient) GetIntroducedGateStatus(projectSlug string, severity string, reportID string) (*client.GateStatus, error) {
 	m.introducedReport = reportID
 	return m.gate, m.err
+}
+
+func (m *mockClient) PreviewPRCheck(projectSlug string, commit string, provider string, reportID string, severity string) (*client.PRCheckPreview, error) {
+	return m.preview, m.err
 }
 
 func (m *mockClient) UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error) {
@@ -190,6 +195,33 @@ func TestMCPGateCheckIntroducedOnly(t *testing.T) {
 
 func TestMCPGateCheckIntroducedOnlyMissingReport(t *testing.T) {
 	raw := `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"gate_check","arguments":{"project":"my-app","introduced_only":true}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(&mockClient{}, req)
+	require.NotNil(t, resp.Error)
+}
+
+func TestMCPPrPreview(t *testing.T) {
+	mc := &mockClient{
+		preview: &client.PRCheckPreview{
+			Conclusion: "failure", Title: "Specht: 1 blocking finding(s)",
+			Annotations: []client.PRCheckAnnotation{{File: "app/main.go", StartLine: 10, Title: "XSS"}},
+		},
+	}
+	raw := `{"jsonrpc":"2.0","id":9,"method":"tools/call","params":{"name":"pr_preview","arguments":{"project":"my-app","commit":"abc123"}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(mc, req)
+	require.Nil(t, resp.Error)
+	require.NotNil(t, resp.Result)
+	assert.True(t, strings.Contains(string(*resp.Result), "failure"))
+	assert.True(t, strings.Contains(string(*resp.Result), "app/main.go:10"))
+}
+
+func TestMCPPrPreviewMissingCommit(t *testing.T) {
+	raw := `{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"pr_preview","arguments":{"project":"my-app"}}}`
 	var req jsonRPCMessage
 	json.Unmarshal([]byte(raw), &req)
 
