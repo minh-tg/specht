@@ -111,6 +111,7 @@ type (
 
 	GateUsecases interface {
 		GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*usecase.GateStatusOutput, error)
+		GetIntroducedGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, reportID string) (*usecase.GateStatusOutput, error)
 	}
 
 	WaiverUsecases interface {
@@ -193,17 +194,20 @@ type ingestRequest struct {
 	// BaseRevision is required when ScanMode is incremental; ChangedFiles
 	// lists the paths an incremental scan covered; ScanMode is full
 	// (default) or incremental.
-	BaseRevision    string   `json:"base_revision,omitempty"`
-	ChangedFiles    []string `json:"changed_files,omitempty"`
-	ScanMode        string   `json:"scan_mode,omitempty"`
-	GateSeverity    string   `json:"gate_severity,omitempty"`
-	GateStatus      string   `json:"gate_status,omitempty"`
-	Environment     string   `json:"environment,omitempty"`
-	Owner           string   `json:"owner,omitempty"`
-	Digest          string   `json:"digest,omitempty"`
-	ArtifactName    string   `json:"artifact_name,omitempty"`
-	ArtifactVersion string   `json:"artifact_version,omitempty"`
-	ArtifactType    string   `json:"artifact_type,omitempty"`
+	BaseRevision string   `json:"base_revision,omitempty"`
+	ChangedFiles []string `json:"changed_files,omitempty"`
+	ScanMode     string   `json:"scan_mode,omitempty"`
+	// GateIntroducedOnly scopes the post-ingest threshold check to
+	// findings this report introduced.
+	GateIntroducedOnly bool   `json:"gate_introduced_only,omitempty"`
+	GateSeverity       string `json:"gate_severity,omitempty"`
+	GateStatus         string `json:"gate_status,omitempty"`
+	Environment        string `json:"environment,omitempty"`
+	Owner              string `json:"owner,omitempty"`
+	Digest             string `json:"digest,omitempty"`
+	ArtifactName       string `json:"artifact_name,omitempty"`
+	ArtifactVersion    string `json:"artifact_version,omitempty"`
+	ArtifactType       string `json:"artifact_type,omitempty"`
 }
 type ingestResponse struct {
 	ReportID          string `json:"report_id"`

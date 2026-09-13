@@ -16,6 +16,7 @@ type API interface {
 	ListFindings(projectSlug string, severities, states []string, limit, offset int32) ([]client.Finding, error)
 	GetFinding(findingID string) (*client.Finding, error)
 	GetGateStatus(projectSlug string, severity string) (*client.GateStatus, error)
+	GetIntroducedGateStatus(projectSlug string, severity string, reportID string) (*client.GateStatus, error)
 	UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error)
 	ListReachability(findingID string) ([]client.ReachabilityAssessment, error)
 	GetWatcherStatus() (*client.WatcherStatus, error)
@@ -113,8 +114,10 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"project":  map[string]any{"type": "string", "description": "Project slug"},
-						"severity": map[string]any{"type": "string", "description": "Severity threshold (default: high,critical)"},
+						"project":         map[string]any{"type": "string", "description": "Project slug"},
+						"severity":        map[string]any{"type": "string", "description": "Severity threshold (default: high,critical)"},
+						"introduced_only": map[string]any{"type": "boolean", "description": "Only findings introduced by report_id"},
+						"report_id":       map[string]any{"type": "string", "description": "Report ID (required with introduced_only)"},
 					},
 					"required": []string{"project"},
 				},
@@ -341,8 +344,10 @@ func callFindingsGet(api API, id any, args *json.RawMessage) jsonRPCMessage {
 
 func callGateCheck(api API, id any, args *json.RawMessage) jsonRPCMessage {
 	a, err := readArgs[struct {
-		Project  string `json:"project"`
-		Severity string `json:"severity"`
+		Project        string `json:"project"`
+		Severity       string `json:"severity"`
+		IntroducedOnly bool   `json:"introduced_only"`
+		ReportID       string `json:"report_id"`
 	}](args)
 	if err != nil {
 		return errorResponse(id, -32602, "invalid arguments")
@@ -350,8 +355,16 @@ func callGateCheck(api API, id any, args *json.RawMessage) jsonRPCMessage {
 	if a.Project == "" {
 		return errorResponse(id, -32602, "project is required")
 	}
+	if a.IntroducedOnly && a.ReportID == "" {
+		return errorResponse(id, -32602, "report_id is required with introduced_only")
+	}
 
-	gs, err := api.GetGateStatus(a.Project, a.Severity)
+	var gs *client.GateStatus
+	if a.IntroducedOnly {
+		gs, err = api.GetIntroducedGateStatus(a.Project, a.Severity, a.ReportID)
+	} else {
+		gs, err = api.GetGateStatus(a.Project, a.Severity)
+	}
 	if err != nil {
 		return errorResponse(id, -32603, err.Error())
 	}

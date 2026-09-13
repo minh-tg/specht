@@ -86,6 +86,8 @@ func TestCLI_ParseArgs(t *testing.T) {
 		{"gate check with severity", []string{"specht", "gate", "check", "--project", "my-app", "--severity", "critical"}, command{cmd: cmdGateCheck, project: "my-app", severity: "critical", format: "human"}, ""},
 		{"gate check json", []string{"specht", "gate", "check", "--project", "my-app", "--format", "json"}, command{cmd: cmdGateCheck, project: "my-app", format: "json"}, ""},
 		{"gate check invalid format", []string{"specht", "gate", "check", "--project", "my-app", "--format", "yaml"}, command{}, `invalid --format "yaml"`},
+		{"gate check introduced-only", []string{"specht", "gate", "check", "--project", "my-app", "--introduced-only", "--report-id", "r1"}, command{cmd: cmdGateCheck, project: "my-app", format: "human", introducedOnly: true, reportID: "r1"}, ""},
+		{"gate check introduced-only missing report", []string{"specht", "gate", "check", "--project", "my-app", "--introduced-only"}, command{}, "--report-id is required with --introduced-only"},
 		{"stats show", []string{"specht", "stats", "show", "my-app"}, command{cmd: cmdStats, slug: "my-app"}, ""},
 		{"stats aging", []string{"specht", "stats", "aging", "my-app"}, command{cmd: cmdStatsAging, slug: "my-app"}, ""},
 		{"findings verify", []string{"specht", "findings", "verify", "f1"}, command{cmd: cmdFindingsVerify, findingID: "f1"}, ""},

@@ -279,6 +279,36 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 	}, nil
 }
 
+// GetIntroducedGateStatus evaluates the gate over findings one report
+// introduced (SOLO-184): change-scoped CI feedback that targets new risk
+// while the full gate keeps covering existing debt. An empty reportID
+// matches nothing and passes.
+func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, reportID string) (*GateStatusOutput, error) {
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
+	if err != nil {
+		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+	}
+
+	u.initGate()
+	decision, err := u.gate.EvaluateIntroducedOnly(ctx, project.ID, minSeverityRank, reportID, gatePoliciesForProject(project))
+	if err != nil {
+		return nil, fmt.Errorf("gate eval: %w", err)
+	}
+
+	reachability := make(map[string]string, len(decision.BlockedByReachability))
+	for id, state := range decision.BlockedByReachability {
+		reachability[id] = string(state)
+	}
+
+	return &GateStatusOutput{
+		ThresholdBreached:     decision.Status == gate.StatusFail,
+		BlockingCount:         int64(decision.TotalBlocking - decision.WaivedCount),
+		BlockedBy:             decision.BlockedBy,
+		BlockedByReachability: reachability,
+		WaivedCount:           decision.WaivedCount,
+	}, nil
+}
+
 func (u *Usecases) GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]FindingEvent, error) {
 	fID, err := uuid.Parse(findingID)
 	if err != nil {

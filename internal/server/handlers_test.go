@@ -41,6 +41,7 @@ type mockUsecases struct {
 	triageFindingFn      func(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
 	bulkTriageFn         func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
 	getGateStatusFn      func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error)
+	getIntroducedGateFn  func(ctx context.Context, slug string, minRank int16, reportID string) (*usecase.GateStatusOutput, error)
 	getFindingFn         func(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
 	getFindingEventsFn   func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
 	refreshFn            func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
@@ -228,6 +229,13 @@ func (m *mockUsecases) GetGateStatus(ctx context.Context, slug string, minRank i
 		return nil, fmt.Errorf("unexpected call to GetGateStatus")
 	}
 	return m.getGateStatusFn(ctx, slug, minRank)
+}
+
+func (m *mockUsecases) GetIntroducedGateStatus(ctx context.Context, slug string, minRank int16, reportID string) (*usecase.GateStatusOutput, error) {
+	if m.getIntroducedGateFn == nil {
+		return nil, fmt.Errorf("unexpected call to GetIntroducedGateStatus")
+	}
+	return m.getIntroducedGateFn(ctx, slug, minRank, reportID)
 }
 
 func (m *mockUsecases) GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error) {
@@ -1671,6 +1679,32 @@ func TestGateStatus_Breached(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestGateStatus_IntroducedOnly(t *testing.T) {
+	var gotReport string
+	mock := &mockUsecases{
+		getIntroducedGateFn: func(ctx context.Context, slug string, minRank int16, reportID string) (*usecase.GateStatusOutput, error) {
+			gotReport = reportID
+			return &usecase.GateStatusOutput{ThresholdBreached: false, BlockingCount: 0}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/gate?introduced_only=1&report_id=r1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "r1", gotReport)
+}
+
+func TestGateStatus_IntroducedOnlyMissingReport(t *testing.T) {
+	router := testRouter(&mockUsecases{})
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/gate?introduced_only=1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestGateStatus_ProjectNotFound(t *testing.T) {

@@ -579,13 +579,14 @@ func (r *pgFindingPort) ListGateCandidates(ctx context.Context, projectID string
 	for i, row := range rows {
 		out[i] = port.GateCandidate{
 			Finding: port.Finding{
-				ID:                  toUUID(row.ID),
-				ProjectID:           toUUID(row.ProjectID),
-				FindingKind:         row.FindingKind,
-				Fingerprint:         row.Fingerprint,
-				CurrentTitle:        row.CurrentTitle,
-				CurrentSeverityRank: row.CurrentSeverityRank,
-				AnalysisState:       row.AnalysisState,
+				ID:                   toUUID(row.ID),
+				ProjectID:            toUUID(row.ProjectID),
+				FindingKind:          row.FindingKind,
+				Fingerprint:          row.Fingerprint,
+				CurrentTitle:         row.CurrentTitle,
+				CurrentSeverityRank:  row.CurrentSeverityRank,
+				AnalysisState:        row.AnalysisState,
+				IntroducedByReportID: stringPtrFromUUID(row.IntroducedByReportID),
 			},
 			Context: port.FindingContext{
 				EnvironmentID: toUUID(row.EnvironmentID),

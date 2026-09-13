@@ -351,6 +351,23 @@ func (c *Client) GetGateStatus(projectSlug string, severity string) (*GateStatus
 	return &resp, nil
 }
 
+// GetIntroducedGateStatus evaluates the gate over findings one report
+// introduced (change-scoped CI feedback).
+func (c *Client) GetIntroducedGateStatus(projectSlug string, severity string, reportID string) (*GateStatus, error) {
+	q := url.Values{}
+	q.Set("introduced_only", "1")
+	q.Set("report_id", reportID)
+	if severity != "" {
+		q.Set("severity", severity)
+	}
+	path := "/api/v1/projects/" + url.PathEscape(projectSlug) + "/gate?" + q.Encode()
+	var resp GateStatus
+	if err := c.do(context.Background(), "GET", path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // Environments, Targets, Artifacts.
 
 func (c *Client) ListEnvironments(projectSlug string) ([]Environment, error) {

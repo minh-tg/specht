@@ -45,18 +45,20 @@ const (
 )
 
 type command struct {
-	cmd       cmd
-	project   string
-	slug      string
-	findingID string
-	severity  string
-	format    string
-	status    string
-	state     string
-	evidence  string
-	limit     int
-	since     string
-	dryRun    bool
+	cmd            cmd
+	project        string
+	slug           string
+	findingID      string
+	severity       string
+	format         string
+	status         string
+	state          string
+	evidence       string
+	limit          int
+	since          string
+	dryRun         bool
+	reportID       string
+	introducedOnly bool
 }
 
 func parseArgs(args []string) (command, error) {
@@ -180,10 +182,18 @@ func parseArgs(args []string) (command, error) {
 				case rest[i] == "--format" && i+1 < len(rest):
 					c.format = rest[i+1]
 					i++
+				case rest[i] == "--introduced-only":
+					c.introducedOnly = true
+				case rest[i] == "--report-id" && i+1 < len(rest):
+					c.reportID = rest[i+1]
+					i++
 				}
 			}
 			if c.project == "" {
 				return command{}, fmt.Errorf("--project is required for gate check")
+			}
+			if c.introducedOnly && c.reportID == "" {
+				return command{}, fmt.Errorf("--report-id is required with --introduced-only")
 			}
 			if c.format == "" {
 				c.format = "human"
@@ -389,7 +399,13 @@ func run(cl *client.Client, cmd command) error {
 		return nil
 
 	case cmdGateCheck:
-		gs, err := cl.GetGateStatus(cmd.project, cmd.severity)
+		var gs *client.GateStatus
+		var err error
+		if cmd.introducedOnly {
+			gs, err = cl.GetIntroducedGateStatus(cmd.project, cmd.severity, cmd.reportID)
+		} else {
+			gs, err = cl.GetGateStatus(cmd.project, cmd.severity)
+		}
 		if err != nil {
 			return err
 		}

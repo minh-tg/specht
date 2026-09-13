@@ -12,15 +12,16 @@ import (
 
 type mockClient struct {
 	client.Client
-	findings   []client.Finding
-	gate       *client.GateStatus
-	waivers    []client.Waiver
-	waiver     *client.Waiver
-	waiverDet  *client.WaiverDetail
-	events     []client.WaiverEvent
-	assessment *client.ReachabilityAssessment
-	watcher    *client.WatcherStatus
-	err        error
+	findings         []client.Finding
+	gate             *client.GateStatus
+	waivers          []client.Waiver
+	waiver           *client.Waiver
+	waiverDet        *client.WaiverDetail
+	events           []client.WaiverEvent
+	assessment       *client.ReachabilityAssessment
+	watcher          *client.WatcherStatus
+	introducedReport string
+	err              error
 }
 
 func (m *mockClient) ListFindings(projectSlug string, severities, states []string, limit, offset int32) ([]client.Finding, error) {
@@ -35,6 +36,11 @@ func (m *mockClient) GetFinding(findingID string) (*client.Finding, error) {
 }
 
 func (m *mockClient) GetGateStatus(projectSlug string, severity string) (*client.GateStatus, error) {
+	return m.gate, m.err
+}
+
+func (m *mockClient) GetIntroducedGateStatus(projectSlug string, severity string, reportID string) (*client.GateStatus, error) {
+	m.introducedReport = reportID
 	return m.gate, m.err
 }
 
@@ -165,6 +171,30 @@ func TestMCPGateCheck(t *testing.T) {
 	require.Nil(t, resp.Error)
 	require.NotNil(t, resp.Result)
 	assert.True(t, strings.Contains(string(*resp.Result), "FAILED"))
+}
+
+func TestMCPGateCheckIntroducedOnly(t *testing.T) {
+	mc := &mockClient{
+		gate: &client.GateStatus{ThresholdBreached: false, BlockingCount: 0},
+	}
+	raw := `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"gate_check","arguments":{"project":"my-app","introduced_only":true,"report_id":"r1"}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(mc, req)
+	require.Nil(t, resp.Error)
+	require.NotNil(t, resp.Result)
+	assert.Equal(t, "r1", mc.introducedReport)
+	assert.True(t, strings.Contains(string(*resp.Result), "PASSED"))
+}
+
+func TestMCPGateCheckIntroducedOnlyMissingReport(t *testing.T) {
+	raw := `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"gate_check","arguments":{"project":"my-app","introduced_only":true}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(&mockClient{}, req)
+	require.NotNil(t, resp.Error)
 }
 
 func TestMCPUnknownTool(t *testing.T) {

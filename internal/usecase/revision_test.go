@@ -351,3 +351,82 @@ func TestIngestReport_IncrementalClassifiesIntroduced(t *testing.T) {
 	assert.Equal(t, 1, result.IntroducedCount)
 	assert.Equal(t, 1, result.PreExistingCount)
 }
+
+func TestIngestReport_GateIntroducedOnly(t *testing.T) {
+	other := "99999999-9999-9999-9999-999999999999"
+	build := func() (*Usecases, string) {
+		pr, rr, fr := makeTestRepos()
+		pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+			return makeProject(true), nil
+		}
+		rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
+			return makeReport(), nil
+		}
+		rr.updateStatusFn = func(ctx context.Context, id, projectID, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
+			return makeReport(), nil
+		}
+		fr.getByFingerprintFn = func(context.Context, string, string, string) (port.Finding, error) {
+			return port.Finding{}, port.ErrNotFound
+		}
+		fr.upsertFn = func(ctx context.Context, _, _, _, _, _ string, _ int16, _ float64, _, _ time.Time) (port.Finding, error) {
+			return makeFinding(9), nil
+		}
+		fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
+			return port.Occurrence{}, nil
+		}
+		fr.upsertDimensionFn = func(ctx context.Context, arg port.DimensionInput) error {
+			return nil
+		}
+		fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minRank int16) ([]port.GateCandidate, error) {
+			return []port.GateCandidate{{
+				Finding: port.Finding{
+					ID: "00000000-0000-0000-0000-000000000099", ProjectID: makeProject(true).ID,
+					CurrentSeverityRank: 4, FindingKind: "sca", Fingerprint: "fp-debt",
+					CurrentTitle: "CVE-2023-0001", AnalysisState: "unanalyzed",
+					IntroducedByReportID: &other,
+				},
+			}}, nil
+		}
+
+		reg := scanner.NewRegistry()
+		require.NoError(t, reg.Register(&mockScanner{
+			name: "trivy",
+			parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
+				return &domain.NormalizedReport{
+					ContractVersion: 1, FingerprintVersion: 1,
+					Completeness: domain.CompletenessComplete, ScanType: domain.ScanTypeImage,
+					Target: &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+					Findings: []domain.NormalizedFinding{
+						{Fingerprint: "fp-new", FindingKind: "sca", Title: "CVE-2024-1234", Severity: domain.SeverityHigh, Score: 7.5},
+					},
+				}, nil
+			},
+		}))
+
+		uc := New(Deps{
+			Stores: &port.Stores{
+				Projects: pr, Reports: rr, Findings: fr,
+				Targets: stubTargetRepo(), Artifacts: stubArtifactRepo(),
+				Waivers: &mockWaiverRepo{},
+			},
+			Registry: reg,
+		})
+		return uc, makeReport().ID
+	}
+
+	full, _ := build()
+	fullOut, err := full.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy", RawData: json.RawMessage(`{"test": true}`),
+	})
+	require.NoError(t, err)
+	assert.True(t, fullOut.ThresholdBreached, "full gate sees pre-existing debt")
+
+	introduced, currentReport := build()
+	introducedOut, err := introduced.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy", RawData: json.RawMessage(`{"test": true}`),
+		GateIntroducedOnly: true,
+	})
+	require.NoError(t, err)
+	assert.False(t, introducedOut.ThresholdBreached, "introduced-only gate ignores debt from other reports")
+	assert.Equal(t, currentReport, introducedOut.ReportID)
+}

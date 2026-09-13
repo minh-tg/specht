@@ -162,6 +162,22 @@ func (h *Handler) GetGateStatus(w http.ResponseWriter, r *http.Request) {
 
 	minRank := parseMinSeverityRank(r.URL.Query().Get("severity"))
 
+	if r.URL.Query().Get("introduced_only") == "1" || r.URL.Query().Get("introduced_only") == "true" {
+		reportID := r.URL.Query().Get("report_id")
+		if reportID == "" {
+			respondError(w, http.StatusBadRequest, "missing_report_id", "report_id is required with introduced_only")
+			return
+		}
+		result, err := h.usecase.GetIntroducedGateStatus(r.Context(), slug, minRank, reportID)
+		if err != nil {
+			slog.Error("get introduced gate status", "project", slug, "error", err)
+			respondError(w, http.StatusInternalServerError, "gate_failed", "could not evaluate gate status")
+			return
+		}
+		respondJSON(w, http.StatusOK, result)
+		return
+	}
+
 	result, err := h.usecase.GetGateStatus(r.Context(), slug, minRank)
 	if err != nil {
 		slog.Error("get gate status", "project", slug, "error", err)

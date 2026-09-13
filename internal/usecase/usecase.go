@@ -48,6 +48,10 @@ type IngestReportInput struct {
 	// for the post-ingest threshold check (defaults: high/critical, open).
 	GateSeverity []string
 	GateStatus   []string
+	// GateIntroducedOnly scopes the post-ingest threshold check to findings
+	// this report introduced, letting CI target new risk without ignoring
+	// existing debt (the full gate still covers it).
+	GateIntroducedOnly bool
 	// Environment, ArtifactName, ArtifactVersion, and ArtifactType attach
 	// deployment context to the report. When empty, context is derived from
 	// the normalized scanner report when possible.
@@ -140,17 +144,18 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 			reachability = gate.ReachabilityUnknown
 		}
 		result[i] = gate.Finding{
-			ID:                  c.ID,
-			CurrentSeverityRank: c.CurrentSeverityRank,
-			FindingKind:         c.FindingKind,
-			Fingerprint:         c.Fingerprint,
-			CurrentTitle:        c.CurrentTitle,
-			EnvironmentID:       c.Context.EnvironmentID,
-			TargetID:            c.Context.TargetID,
-			ArtifactID:          c.Context.ArtifactID,
-			AnalysisState:       c.AnalysisState,
-			Reachability:        reachability,
-			Source:              c.FindingKind,
+			ID:                   c.ID,
+			CurrentSeverityRank:  c.CurrentSeverityRank,
+			FindingKind:          c.FindingKind,
+			Fingerprint:          c.Fingerprint,
+			CurrentTitle:         c.CurrentTitle,
+			EnvironmentID:        c.Context.EnvironmentID,
+			TargetID:             c.Context.TargetID,
+			ArtifactID:           c.Context.ArtifactID,
+			AnalysisState:        c.AnalysisState,
+			Reachability:         reachability,
+			Source:               c.FindingKind,
+			IntroducedByReportID: introducedReportID(c.IntroducedByReportID),
 		}
 	}
 	return result, nil
@@ -208,6 +213,15 @@ func (a *gateWaiverRepo) ListActiveWaivers(ctx context.Context, projectID string
 		result[i] = gw
 	}
 	return result, nil
+}
+
+// introducedReportID dereferences an attribution pointer for the gate:
+// unattributed findings carry "" and never match an introduced-only filter.
+func introducedReportID(id *string) string {
+	if id == nil {
+		return ""
+	}
+	return *id
 }
 
 func severityStr(s domain.Severity) string {

@@ -637,7 +637,13 @@ func (u *Usecases) checkGateAfterIngest(ctx context.Context, project port.Projec
 
 	u.initGate()
 	minRank := gateSeverityRank(input.GateSeverity, input.GateStatus)
-	decision, err := u.gate.EvaluateWithPolicies(ctx, project.ID, minRank, gatePoliciesForProject(project))
+	policies := gatePoliciesForProject(project)
+	var decision gate.Decision
+	if input.GateIntroducedOnly {
+		decision, err = u.gate.EvaluateIntroducedOnly(ctx, project.ID, minRank, report.ID, policies)
+	} else {
+		decision, err = u.gate.EvaluateWithPolicies(ctx, project.ID, minRank, policies)
+	}
 	if err != nil {
 		slog.Error("gate check failed", "scanner", input.Scanner, "project", project.ID, "error", err)
 		return false, fmt.Errorf("scanner %s: gate check: %w", input.Scanner, err)

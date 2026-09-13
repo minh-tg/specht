@@ -816,6 +816,7 @@ SELECT
     f.current_title,
     f.current_severity_rank,
     f.analysis_state,
+    f.introduced_by_report_id,
     COALESCE(ra.state, 'unknown'::reachability_state) AS reachability_state,
     ctx.environment_id,
     ctx.target_id,
@@ -849,17 +850,18 @@ type ListGateCandidatesParams struct {
 }
 
 type ListGateCandidatesRow struct {
-	ID                  pgtype.UUID       `json:"id"`
-	ProjectID           pgtype.UUID       `json:"project_id"`
-	FindingKind         string            `json:"finding_kind"`
-	Fingerprint         string            `json:"fingerprint"`
-	CurrentTitle        string            `json:"current_title"`
-	CurrentSeverityRank int16             `json:"current_severity_rank"`
-	AnalysisState       string            `json:"analysis_state"`
-	ReachabilityState   ReachabilityState `json:"reachability_state"`
-	EnvironmentID       pgtype.UUID       `json:"environment_id"`
-	TargetID            pgtype.UUID       `json:"target_id"`
-	ArtifactID          pgtype.UUID       `json:"artifact_id"`
+	ID                   pgtype.UUID       `json:"id"`
+	ProjectID            pgtype.UUID       `json:"project_id"`
+	FindingKind          string            `json:"finding_kind"`
+	Fingerprint          string            `json:"fingerprint"`
+	CurrentTitle         string            `json:"current_title"`
+	CurrentSeverityRank  int16             `json:"current_severity_rank"`
+	AnalysisState        string            `json:"analysis_state"`
+	IntroducedByReportID pgtype.UUID       `json:"introduced_by_report_id"`
+	ReachabilityState    ReachabilityState `json:"reachability_state"`
+	EnvironmentID        pgtype.UUID       `json:"environment_id"`
+	TargetID             pgtype.UUID       `json:"target_id"`
+	ArtifactID           pgtype.UUID       `json:"artifact_id"`
 }
 
 // Batch gate-candidate loader: one round trip returns every finding that may
@@ -885,6 +887,7 @@ func (q *Queries) ListGateCandidates(ctx context.Context, arg ListGateCandidates
 			&i.CurrentTitle,
 			&i.CurrentSeverityRank,
 			&i.AnalysisState,
+			&i.IntroducedByReportID,
 			&i.ReachabilityState,
 			&i.EnvironmentID,
 			&i.TargetID,

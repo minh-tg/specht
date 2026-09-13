@@ -75,6 +75,9 @@ type Finding struct {
 	Source string
 	// Aliases carries alternate vulnerability identifiers (e.g. CVE aliases for a GHSA finding).
 	Aliases []string
+	// IntroducedByReportID is the report that first observed the finding
+	// (empty when unattributed). Introduced-only evaluations match on it.
+	IntroducedByReportID string
 }
 
 // WaiverCondition is a predicate on a finding field: Field is one of
@@ -175,6 +178,11 @@ type Gate interface {
 	// admission policies. Policies decide which findings are gate candidates
 	// before waiver matching; findings from ungoverned sources always gate.
 	EvaluateWithPolicies(ctx context.Context, projectID string, minSeverityRank int16, policies []GatePolicy) (Decision, error)
+	// EvaluateIntroducedOnly evaluates the gate over findings one report
+	// introduced, letting policies target introduced risk without ignoring
+	// existing debt (the full gate still covers it). Waivers, reachability
+	// exemptions, and source policies apply unchanged.
+	EvaluateIntroducedOnly(ctx context.Context, projectID string, minSeverityRank int16, reportID string, policies []GatePolicy) (Decision, error)
 }
 
 type gate struct {
@@ -203,6 +211,16 @@ func (g *gate) Evaluate(ctx context.Context, projectID string, minSeverityRank i
 }
 
 func (g *gate) EvaluateWithPolicies(ctx context.Context, projectID string, minSeverityRank int16, policies []GatePolicy) (Decision, error) {
+	return g.evaluate(ctx, projectID, minSeverityRank, policies, nil)
+}
+
+func (g *gate) EvaluateIntroducedOnly(ctx context.Context, projectID string, minSeverityRank int16, reportID string, policies []GatePolicy) (Decision, error) {
+	return g.evaluate(ctx, projectID, minSeverityRank, policies, func(f Finding) bool {
+		return f.IntroducedByReportID == reportID
+	})
+}
+
+func (g *gate) evaluate(ctx context.Context, projectID string, minSeverityRank int16, policies []GatePolicy, keep func(Finding) bool) (Decision, error) {
 	p := sourcePolicies{}
 	for _, policy := range policies {
 		p[policy.Source] = policy.Mode
@@ -224,6 +242,9 @@ func (g *gate) EvaluateWithPolicies(ctx context.Context, projectID string, minSe
 			continue
 		}
 		if !p.admits(f) {
+			continue
+		}
+		if keep != nil && !keep(f) {
 			continue
 		}
 		applicableFindings = append(applicableFindings, f)
