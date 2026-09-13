@@ -36,6 +36,10 @@ type CreateReportParams struct {
 }
 
 func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc.Report, error) {
+	changedFiles := arg.ChangedFiles
+	if len(changedFiles) == 0 {
+		changedFiles = []byte("[]")
+	}
 	return r.q.CreateReport(ctx, sqlc.CreateReportParams{
 		ProjectID:        arg.ProjectID,
 		ToolName:         arg.ToolName,
@@ -50,7 +54,7 @@ func (r *pgReportRepo) Create(ctx context.Context, arg CreateReportParams) (sqlc
 		Branch:           arg.Branch,
 		CommitSha:        arg.CommitSha,
 		BaseRevision:     arg.BaseRevision,
-		ChangedFiles:     arg.ChangedFiles,
+		ChangedFiles:     changedFiles,
 		ScanMode:         orFull(arg.ScanMode),
 		RawData:          arg.RawData,
 		RawReportHash:    arg.RawReportHash,
