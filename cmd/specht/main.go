@@ -33,6 +33,9 @@ const (
 	cmdPRPreview
 	cmdPatchPreview
 	cmdNotifyPreview
+	cmdAdminStatus
+	cmdAdminRetentionPreview
+	cmdAdminRetentionPurge
 	cmdStats
 	cmdStatsAging
 	cmdWatcherBackfill
@@ -67,6 +70,7 @@ type command struct {
 	channel        string
 	target         string
 	linked         bool
+	days           int
 }
 
 func parseArgs(args []string) (command, error) {
@@ -334,6 +338,68 @@ func parseArgs(args []string) (command, error) {
 			return c, nil
 		default:
 			return command{}, fmt.Errorf("unknown notify subcommand: %s", rest[1])
+		}
+
+	case "admin":
+		if len(rest) < 2 {
+			return command{}, fmt.Errorf("missing subcommand for admin")
+		}
+		switch rest[1] {
+		case "status":
+			c := command{cmd: cmdAdminStatus}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--format" && i+1 < len(rest):
+					c.format = rest[i+1]
+					i++
+				}
+			}
+			if c.format == "" {
+				c.format = "human"
+			}
+			if c.format != "human" && c.format != "json" {
+				return command{}, fmt.Errorf("invalid --format %q: want human or json", c.format)
+			}
+			return c, nil
+		case "retention":
+			if len(rest) < 3 {
+				return command{}, fmt.Errorf("missing subcommand for admin retention")
+			}
+			switch rest[2] {
+			case "preview", "purge":
+				c := command{cmd: cmdAdminRetentionPreview}
+				if rest[2] == "purge" {
+					c.cmd = cmdAdminRetentionPurge
+				}
+				for i := 3; i < len(rest); i++ {
+					switch {
+					case rest[i] == "--days" && i+1 < len(rest):
+						n, err := strconv.Atoi(rest[i+1])
+						if err != nil {
+							return command{}, fmt.Errorf("invalid --days %q: want a positive integer", rest[i+1])
+						}
+						c.days = n
+						i++
+					case rest[i] == "--format" && i+1 < len(rest):
+						c.format = rest[i+1]
+						i++
+					}
+				}
+				if c.days <= 0 {
+					return command{}, fmt.Errorf("--days is required for admin retention (positive integer)")
+				}
+				if c.format == "" {
+					c.format = "human"
+				}
+				if c.format != "human" && c.format != "json" {
+					return command{}, fmt.Errorf("invalid --format %q: want human or json", c.format)
+				}
+				return c, nil
+			default:
+				return command{}, fmt.Errorf("unknown admin retention subcommand: %s", rest[2])
+			}
+		default:
+			return command{}, fmt.Errorf("unknown admin subcommand: %s", rest[1])
 		}
 
 	case "help":
@@ -620,6 +686,57 @@ func run(cl *client.Client, cmd command) error {
 		fmt.Printf("dedupe: %s\n", plan.DedupeKey)
 		return nil
 
+	case cmdAdminStatus:
+		status, err := cl.GetAdminStatus()
+		if err != nil {
+			return err
+		}
+		if cmd.format == "json" {
+			raw, err := json.MarshalIndent(status, "", "  ")
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(raw))
+			return nil
+		}
+		fmt.Printf(
+			"projects=%d users=%d open_findings=%d reports=%d\n",
+			status.Projects, status.Users, status.OpenFindings, status.Reports,
+		)
+		return nil
+
+	case cmdAdminRetentionPreview:
+		preview, err := cl.PreviewRetention(cmd.days)
+		if err != nil {
+			return err
+		}
+		if cmd.format == "json" {
+			raw, err := json.MarshalIndent(preview, "", "  ")
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(raw))
+			return nil
+		}
+		fmt.Printf("%d settled report(s) older than %d day(s) would be deleted\n", preview.StaleReports, preview.OlderThanDays)
+		return nil
+
+	case cmdAdminRetentionPurge:
+		result, err := cl.PurgeRetention(cmd.days)
+		if err != nil {
+			return err
+		}
+		if cmd.format == "json" {
+			raw, err := json.MarshalIndent(result, "", "  ")
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(raw))
+			return nil
+		}
+		fmt.Printf("deleted %d settled report(s) older than %d day(s)\n", result.DeletedReports, result.OlderThanDays)
+		return nil
+
 	case cmdStats:
 		stats, err := cl.GetProjectStats(cmd.slug)
 		if err != nil {
@@ -716,6 +833,9 @@ Commands:
     [--format human|json]
   notify preview --finding <id> --channel <issue|message> --target <id>
     [--linked] [--format human|json]  Preview tracker/messaging action (dry-run; sends nothing)
+  admin status [--format human|json]  Platform observability snapshot (admin only)
+  admin retention preview --days <n>  Count settled reports a purge would delete
+  admin retention purge --days <n>    Delete settled reports older than the window
   stats show <slug>                       Show project statistics
   stats aging <slug>                      Show aging buckets, SLA overdue, reopened
   watcher backfill [--since <ISO8601>]    Run one CVE watcher poll

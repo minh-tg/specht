@@ -92,6 +92,30 @@ type NotifyOutcome = notify.Outcome
 // NotifyPlan aliases one reviewable notification action.
 type NotifyPlan = notify.Plan
 
+// AdminStatus is the platform observability snapshot for admins.
+type AdminStatus struct {
+	Projects              int64      `json:"projects"`
+	Users                 int64      `json:"users"`
+	OpenFindings          int64      `json:"open_findings"`
+	Reports               int64      `json:"reports"`
+	OldestSettledReportAt *time.Time `json:"oldest_settled_report_at"`
+}
+
+// RetentionPreview counts settled reports a purge would delete.
+type RetentionPreview struct {
+	OlderThanDays int       `json:"older_than_days"`
+	Cutoff        time.Time `json:"cutoff"`
+	StaleReports  int64     `json:"stale_reports"`
+}
+
+// RetentionResult reports what a purge deleted.
+type RetentionResult struct {
+	OlderThanDays    int       `json:"older_than_days"`
+	Cutoff           time.Time `json:"cutoff"`
+	DeletedReports   int64     `json:"deleted_reports"`
+	DeletedReportIDs []string  `json:"deleted_report_ids,omitempty"`
+}
+
 // Project is a scan project (the top-level tenant of findings and reports).
 type Project struct {
 	ID          string    `json:"id"`

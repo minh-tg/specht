@@ -119,6 +119,12 @@ type (
 		PreviewPRCheck(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error)
 	}
 
+	AdminUsecases interface {
+		GetAdminStatus(ctx context.Context) (*usecase.AdminStatus, error)
+		PreviewRetention(ctx context.Context, olderThanDays int) (*usecase.RetentionPreview, error)
+		PurgeRetention(ctx context.Context, olderThanDays int) (*usecase.RetentionResult, error)
+	}
+
 	WaiverUsecases interface {
 		CreateWaiver(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error)
 		ListWaivers(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error)
@@ -174,6 +180,7 @@ type usecaseInterface interface {
 	FindingUsecases
 	ReportUsecases
 	GateUsecases
+	AdminUsecases
 	WaiverUsecases
 	EvidenceUsecases
 	ReachabilityUsecases

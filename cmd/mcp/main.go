@@ -20,6 +20,8 @@ type API interface {
 	PreviewPRCheck(projectSlug string, commit string, provider string, reportID string, severity string) (*client.PRCheckPreview, error)
 	PreviewPatch(findingID string) (*client.PatchOutcome, error)
 	PreviewNotification(findingID string, channel string, target string, linked bool) (*client.NotifyOutcome, error)
+	GetAdminStatus() (*client.AdminStatus, error)
+	PreviewRetention(days int) (*client.RetentionPreview, error)
 	UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error)
 	ListReachability(findingID string) ([]client.ReachabilityAssessment, error)
 	GetWatcherStatus() (*client.WatcherStatus, error)
@@ -159,10 +161,29 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 					"properties": map[string]any{
 						"finding_id": map[string]any{"type": "string", "description": "Finding ID"},
 						"channel":    map[string]any{"type": "string", "description": "issue or message"},
-						"target":     map[string]any{"type": "string", "description": "Integration and scope (project, channel)"},
+						"target":     map[string]any{"type": "string", "description": "Integration and scope"},
 						"linked":     map[string]any{"type": "boolean", "description": "Whether a work item is already linked"},
 					},
 					"required": []string{"finding_id", "channel", "target"},
+				},
+			},
+			{
+				Name:        "admin_status",
+				Description: "Platform observability snapshot (admin only)",
+				InputSchema: map[string]any{
+					"type":       "object",
+					"properties": map[string]any{},
+				},
+			},
+			{
+				Name:        "admin_retention_preview",
+				Description: "Count settled reports a purge would delete (dry-run; deletes nothing)",
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"days": map[string]any{"type": "integer", "description": "Window in days (1-3650)"},
+					},
+					"required": []string{"days"},
 				},
 			},
 			{
@@ -292,6 +313,10 @@ func handleToolCall(api API, msg jsonRPCMessage) jsonRPCMessage {
 		return callPatchPreview(api, msg.ID, params.Arguments)
 	case "notify_preview":
 		return callNotifyPreview(api, msg.ID, params.Arguments)
+	case "admin_status":
+		return callAdminStatus(api, msg.ID)
+	case "admin_retention_preview":
+		return callAdminRetentionPreview(api, msg.ID, params.Arguments)
 	case "reachability_set":
 		return callReachabilitySet(api, msg.ID, params.Arguments)
 	case "watcher_status":
@@ -542,6 +567,44 @@ func callNotifyPreview(api API, id any, args *json.RawMessage) jsonRPCMessage {
 	notifyResult, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
 	notifyRaw := json.RawMessage(notifyResult)
 	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &notifyRaw}
+}
+
+func callAdminStatus(api API, id any) jsonRPCMessage {
+	status, err := api.GetAdminStatus()
+	if err != nil {
+		return errorResponse(id, -32603, err.Error())
+	}
+	text := fmt.Sprintf(
+		"projects=%d users=%d open_findings=%d reports=%d",
+		status.Projects, status.Users, status.OpenFindings, status.Reports,
+	)
+	adminResult, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
+	adminRaw := json.RawMessage(adminResult)
+	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &adminRaw}
+}
+
+func callAdminRetentionPreview(api API, id any, args *json.RawMessage) jsonRPCMessage {
+	a, err := readArgs[struct {
+		Days int `json:"days"`
+	}](args)
+	if err != nil {
+		return errorResponse(id, -32602, "invalid arguments")
+	}
+	if a.Days <= 0 {
+		return errorResponse(id, -32602, "days is required")
+	}
+
+	preview, err := api.PreviewRetention(a.Days)
+	if err != nil {
+		return errorResponse(id, -32603, err.Error())
+	}
+	text := fmt.Sprintf(
+		"%d settled report(s) older than %d day(s) would be deleted",
+		preview.StaleReports, preview.OlderThanDays,
+	)
+	retentionResult, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
+	retentionRaw := json.RawMessage(retentionResult)
+	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &retentionRaw}
 }
 
 func callReachabilitySet(api API, id any, args *json.RawMessage) jsonRPCMessage {

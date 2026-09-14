@@ -24,6 +24,9 @@ type mockClient struct {
 	patch            *client.PatchOutcome
 	notification     *client.NotifyOutcome
 	notifiedLinked   bool
+	adminStatus      *client.AdminStatus
+	retention        *client.RetentionPreview
+	retentionDays    int
 	introducedReport string
 	err              error
 }
@@ -59,6 +62,15 @@ func (m *mockClient) PreviewPatch(findingID string) (*client.PatchOutcome, error
 func (m *mockClient) PreviewNotification(findingID string, channel string, target string, linked bool) (*client.NotifyOutcome, error) {
 	m.notifiedLinked = linked
 	return m.notification, m.err
+}
+
+func (m *mockClient) GetAdminStatus() (*client.AdminStatus, error) {
+	return m.adminStatus, m.err
+}
+
+func (m *mockClient) PreviewRetention(days int) (*client.RetentionPreview, error) {
+	m.retentionDays = days
+	return m.retention, m.err
 }
 
 func (m *mockClient) UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error) {
@@ -287,6 +299,44 @@ func TestMCPNotifyPreview(t *testing.T) {
 
 func TestMCPNotifyPreviewMissingTarget(t *testing.T) {
 	raw := `{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"notify_preview","arguments":{"finding_id":"f1","channel":"issue"}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(&mockClient{}, req)
+	require.NotNil(t, resp.Error)
+}
+
+func TestMCPAdminStatus(t *testing.T) {
+	mc := &mockClient{
+		adminStatus: &client.AdminStatus{Projects: 2, Users: 5, OpenFindings: 10, Reports: 20},
+	}
+	raw := `{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"admin_status","arguments":{}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(mc, req)
+	require.Nil(t, resp.Error)
+	require.NotNil(t, resp.Result)
+	assert.True(t, strings.Contains(string(*resp.Result), "open_findings=10"))
+}
+
+func TestMCPAdminRetentionPreview(t *testing.T) {
+	mc := &mockClient{
+		retention: &client.RetentionPreview{OlderThanDays: 30, StaleReports: 3},
+	}
+	raw := `{"jsonrpc":"2.0","id":16,"method":"tools/call","params":{"name":"admin_retention_preview","arguments":{"days":30}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(mc, req)
+	require.Nil(t, resp.Error)
+	require.NotNil(t, resp.Result)
+	assert.Equal(t, 30, mc.retentionDays)
+	assert.True(t, strings.Contains(string(*resp.Result), "3 settled"))
+}
+
+func TestMCPAdminRetentionPreviewMissingDays(t *testing.T) {
+	raw := `{"jsonrpc":"2.0","id":17,"method":"tools/call","params":{"name":"admin_retention_preview","arguments":{}}}`
 	var req jsonRPCMessage
 	json.Unmarshal([]byte(raw), &req)
 

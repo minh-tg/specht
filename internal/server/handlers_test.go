@@ -47,6 +47,9 @@ type mockUsecases struct {
 	previewPRCheckFn     func(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error)
 	previewPatchFn       func(ctx context.Context, findingID string) (*patch.Outcome, error)
 	previewNotifyFn      func(ctx context.Context, findingID, channel, target string, alreadyLinked bool) (*notify.Outcome, error)
+	adminStatusFn        func(ctx context.Context) (*usecase.AdminStatus, error)
+	previewRetentionFn   func(ctx context.Context, olderThanDays int) (*usecase.RetentionPreview, error)
+	purgeRetentionFn     func(ctx context.Context, olderThanDays int) (*usecase.RetentionResult, error)
 	getFindingFn         func(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
 	getFindingEventsFn   func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
 	refreshFn            func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
@@ -262,6 +265,27 @@ func (m *mockUsecases) PreviewNotification(ctx context.Context, findingID, chann
 		return nil, fmt.Errorf("unexpected call to PreviewNotification")
 	}
 	return m.previewNotifyFn(ctx, findingID, channel, target, alreadyLinked)
+}
+
+func (m *mockUsecases) GetAdminStatus(ctx context.Context) (*usecase.AdminStatus, error) {
+	if m.adminStatusFn == nil {
+		return nil, fmt.Errorf("unexpected call to GetAdminStatus")
+	}
+	return m.adminStatusFn(ctx)
+}
+
+func (m *mockUsecases) PreviewRetention(ctx context.Context, olderThanDays int) (*usecase.RetentionPreview, error) {
+	if m.previewRetentionFn == nil {
+		return nil, fmt.Errorf("unexpected call to PreviewRetention")
+	}
+	return m.previewRetentionFn(ctx, olderThanDays)
+}
+
+func (m *mockUsecases) PurgeRetention(ctx context.Context, olderThanDays int) (*usecase.RetentionResult, error) {
+	if m.purgeRetentionFn == nil {
+		return nil, fmt.Errorf("unexpected call to PurgeRetention")
+	}
+	return m.purgeRetentionFn(ctx, olderThanDays)
 }
 
 func (m *mockUsecases) GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error) {
@@ -673,6 +697,9 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Post("/api/v1/findings/{id}/verify", h.VerifyFinding)
 	r.Get("/api/v1/findings/{id}/patch-preview", h.PreviewPatch)
 	r.Get("/api/v1/findings/{id}/notify-preview", h.PreviewNotification)
+	r.Get("/api/v1/admin/status", h.GetAdminStatus)
+	r.Get("/api/v1/admin/retention/preview", h.PreviewRetention)
+	r.Post("/api/v1/admin/retention/purge", h.PurgeRetention)
 	r.Post("/api/v1/findings/bulk-analysis", h.BulkTriage)
 	r.Get("/api/v1/findings/{id}/events", h.ListFindingEvents)
 	r.Get("/api/v1/findings/{id}", h.GetFinding)
@@ -1836,6 +1863,69 @@ func TestPreviewNotification_MissingChannel(t *testing.T) {
 func TestPreviewNotification_MissingTarget(t *testing.T) {
 	router := testRouter(&mockUsecases{})
 	req := httptest.NewRequest("GET", "/api/v1/findings/f1/notify-preview?channel=issue", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestGetAdminStatus_Success(t *testing.T) {
+	mock := &mockUsecases{
+		adminStatusFn: func(ctx context.Context) (*usecase.AdminStatus, error) {
+			return &usecase.AdminStatus{Projects: 2, Users: 5, OpenFindings: 10, Reports: 20}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/admin/status", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestPreviewRetention_Success(t *testing.T) {
+	var gotDays int
+	mock := &mockUsecases{
+		previewRetentionFn: func(ctx context.Context, olderThanDays int) (*usecase.RetentionPreview, error) {
+			gotDays = olderThanDays
+			return &usecase.RetentionPreview{OlderThanDays: olderThanDays, StaleReports: 3}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/admin/retention/preview?days=30", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, 30, gotDays)
+}
+
+func TestPreviewRetention_BadWindow(t *testing.T) {
+	router := testRouter(&mockUsecases{})
+	req := httptest.NewRequest("GET", "/api/v1/admin/retention/preview?days=0", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPurgeRetention_Success(t *testing.T) {
+	mock := &mockUsecases{
+		purgeRetentionFn: func(ctx context.Context, olderThanDays int) (*usecase.RetentionResult, error) {
+			return &usecase.RetentionResult{OlderThanDays: olderThanDays, DeletedReports: 2}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("POST", "/api/v1/admin/retention/purge", strings.NewReader(`{"older_than_days":30}`))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestPurgeRetention_BadWindow(t *testing.T) {
+	router := testRouter(&mockUsecases{})
+	req := httptest.NewRequest("POST", "/api/v1/admin/retention/purge", strings.NewReader(`{"older_than_days":0}`))
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 

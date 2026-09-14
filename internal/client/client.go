@@ -417,6 +417,39 @@ func (c *Client) PreviewNotification(findingID string, channel string, target st
 	return &resp, nil
 }
 
+// GetAdminStatus returns the platform observability snapshot.
+func (c *Client) GetAdminStatus() (*AdminStatus, error) {
+	var resp AdminStatus
+	if err := c.do(context.Background(), "GET", "/api/v1/admin/status", nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// PreviewRetention counts settled reports a purge would delete.
+func (c *Client) PreviewRetention(days int) (*RetentionPreview, error) {
+	q := url.Values{}
+	q.Set("days", strconv.Itoa(days))
+	var resp RetentionPreview
+	if err := c.do(context.Background(), "GET", "/api/v1/admin/retention/preview?"+q.Encode(), nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// PurgeRetention deletes settled reports older than the window.
+func (c *Client) PurgeRetention(days int) (*RetentionResult, error) {
+	body, err := json.Marshal(map[string]any{"older_than_days": days})
+	if err != nil {
+		return nil, err
+	}
+	var resp RetentionResult
+	if err := c.do(context.Background(), "POST", "/api/v1/admin/retention/purge", body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // Environments, Targets, Artifacts.
 
 func (c *Client) ListEnvironments(projectSlug string) ([]Environment, error) {

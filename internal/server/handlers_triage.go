@@ -4,6 +4,8 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -291,6 +293,68 @@ func (h *Handler) PreviewNotification(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) GetAdminStatus(w http.ResponseWriter, r *http.Request) {
+	result, err := h.usecase.GetAdminStatus(r.Context())
+	if err != nil {
+		slog.Error("get admin status", "error", err)
+		respondError(w, http.StatusInternalServerError, "admin_failed", "could not load platform status")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) PreviewRetention(w http.ResponseWriter, r *http.Request) {
+	days, ok := parseRetentionDays(w, r)
+	if !ok {
+		return
+	}
+
+	result, err := h.usecase.PreviewRetention(r.Context(), days)
+	if err != nil {
+		slog.Error("preview retention", "error", err)
+		respondError(w, http.StatusInternalServerError, "retention_failed", "could not preview retention")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) PurgeRetention(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		OlderThanDays int `json:"older_than_days"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+		return
+	}
+	if req.OlderThanDays <= 0 || req.OlderThanDays > 3650 {
+		respondError(w, http.StatusBadRequest, "invalid_window", "older_than_days must be between 1 and 3650")
+		return
+	}
+
+	result, err := h.usecase.PurgeRetention(r.Context(), req.OlderThanDays)
+	if err != nil {
+		slog.Error("purge retention", "error", err)
+		respondError(w, http.StatusInternalServerError, "retention_failed", "could not purge reports")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
+// parseRetentionDays reads the days query parameter for retention preview.
+// It reports false after writing the error response when the window is
+// missing or out of range.
+func parseRetentionDays(w http.ResponseWriter, r *http.Request) (int, bool) {
+	raw := r.URL.Query().Get("days")
+	days, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || days <= 0 || days > 3650 {
+		respondError(w, http.StatusBadRequest, "invalid_window", "days must be between 1 and 3650")
+		return 0, false
+	}
+	return days, true
 }
 
 func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
