@@ -644,7 +644,7 @@ func (u *Usecases) checkGateAfterIngest(ctx context.Context, project port.Projec
 	}
 
 	u.initGate()
-	minRank := gateSeverityRank(input.GateSeverity, input.GateStatus)
+	minRank := u.effectiveSeverityFloor(ctx, project, input.GateSeverity)
 	policies := gatePoliciesForProject(project)
 	var decision gate.Decision
 	if input.GateIntroducedOnly {

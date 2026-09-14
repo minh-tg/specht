@@ -19,15 +19,16 @@ import (
 
 type mockProjectRepo struct {
 	port.ProjectStore
-	createFn        func(context.Context, port.CreateProjectInput) (port.Project, error)
-	listFn          func(context.Context) ([]port.Project, error)
-	getBySlugFn     func(context.Context, string) (port.Project, error)
-	updateFn        func(context.Context, string, string, *string) (port.Project, error)
-	deleteFn        func(context.Context, string) (port.Project, error)
-	upsertMemberFn  func(context.Context, string, string, string) (port.ProjectMember, error)
-	listMembersFn   func(context.Context, string) ([]port.ProjectMember, error)
-	isMemberFn      func(context.Context, string, string) (bool, error)
-	listMemberIDsFn func(context.Context, string) ([]string, error)
+	createFn         func(context.Context, port.CreateProjectInput) (port.Project, error)
+	listFn           func(context.Context) ([]port.Project, error)
+	getBySlugFn      func(context.Context, string) (port.Project, error)
+	updateFn         func(context.Context, string, string, *string) (port.Project, error)
+	updateSettingsFn func(context.Context, string, json.RawMessage) (port.Project, error)
+	deleteFn         func(context.Context, string) (port.Project, error)
+	upsertMemberFn   func(context.Context, string, string, string) (port.ProjectMember, error)
+	listMembersFn    func(context.Context, string) ([]port.ProjectMember, error)
+	isMemberFn       func(context.Context, string, string) (bool, error)
+	listMemberIDsFn  func(context.Context, string) ([]string, error)
 }
 
 func (m *mockProjectRepo) UpsertMember(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
@@ -84,6 +85,13 @@ func (m *mockProjectRepo) Update(ctx context.Context, slug, name string, descrip
 		return port.Project{}, fmt.Errorf("unexpected call to Update")
 	}
 	return m.updateFn(ctx, slug, name, description)
+}
+
+func (m *mockProjectRepo) UpdateSettings(ctx context.Context, projectID string, settings json.RawMessage) (port.Project, error) {
+	if m.updateSettingsFn == nil {
+		return port.Project{}, fmt.Errorf("unexpected call to UpdateSettings")
+	}
+	return m.updateSettingsFn(ctx, projectID, settings)
 }
 
 func (m *mockProjectRepo) Delete(ctx context.Context, slug string) (port.Project, error) {
@@ -159,6 +167,66 @@ func (m *mockReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Tim
 		return nil, fmt.Errorf("unexpected call to DeleteStaleReports")
 	}
 	return m.deleteStaleFn(ctx, cutoff)
+}
+
+type mockPolicyRepo struct {
+	port.PolicyStore
+	createFn     func(context.Context, port.PolicyTemplateInput) (port.PolicyTemplate, error)
+	getByIDFn    func(context.Context, string) (port.PolicyTemplate, error)
+	getByNameFn  func(context.Context, string) (port.PolicyTemplate, error)
+	listFn       func(context.Context) ([]port.PolicyTemplate, error)
+	updateFn     func(context.Context, string, port.PolicyTemplateInput) (port.PolicyTemplate, error)
+	deleteFn     func(context.Context, string) error
+	setProjectFn func(context.Context, string, *string) (port.Project, error)
+}
+
+func (m *mockPolicyRepo) CreateTemplate(ctx context.Context, input port.PolicyTemplateInput) (port.PolicyTemplate, error) {
+	if m.createFn == nil {
+		return port.PolicyTemplate{}, fmt.Errorf("unexpected call to CreateTemplate")
+	}
+	return m.createFn(ctx, input)
+}
+
+func (m *mockPolicyRepo) GetTemplateByID(ctx context.Context, id string) (port.PolicyTemplate, error) {
+	if m.getByIDFn == nil {
+		return port.PolicyTemplate{}, fmt.Errorf("unexpected call to GetTemplateByID")
+	}
+	return m.getByIDFn(ctx, id)
+}
+
+func (m *mockPolicyRepo) GetTemplateByName(ctx context.Context, name string) (port.PolicyTemplate, error) {
+	if m.getByNameFn == nil {
+		return port.PolicyTemplate{}, fmt.Errorf("unexpected call to GetTemplateByName")
+	}
+	return m.getByNameFn(ctx, name)
+}
+
+func (m *mockPolicyRepo) ListTemplates(ctx context.Context) ([]port.PolicyTemplate, error) {
+	if m.listFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListTemplates")
+	}
+	return m.listFn(ctx)
+}
+
+func (m *mockPolicyRepo) UpdateTemplate(ctx context.Context, id string, input port.PolicyTemplateInput) (port.PolicyTemplate, error) {
+	if m.updateFn == nil {
+		return port.PolicyTemplate{}, fmt.Errorf("unexpected call to UpdateTemplate")
+	}
+	return m.updateFn(ctx, id, input)
+}
+
+func (m *mockPolicyRepo) DeleteTemplate(ctx context.Context, id string) error {
+	if m.deleteFn == nil {
+		return fmt.Errorf("unexpected call to DeleteTemplate")
+	}
+	return m.deleteFn(ctx, id)
+}
+
+func (m *mockPolicyRepo) SetProjectTemplate(ctx context.Context, projectID string, templateID *string) (port.Project, error) {
+	if m.setProjectFn == nil {
+		return port.Project{}, fmt.Errorf("unexpected call to SetProjectTemplate")
+	}
+	return m.setProjectFn(ctx, projectID, templateID)
 }
 
 type mockAdminRepo struct {

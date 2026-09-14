@@ -54,6 +54,9 @@ type GateStatusOutput struct {
 	// reachability state. Callers can explain why each finding blocks the gate.
 	BlockedByReachability map[string]string `json:"blocked_by_reachability,omitempty"`
 	WaivedCount           int               `json:"waived_count,omitempty"`
+	// Policy is the project's effective policy with provenance: which
+	// baseline and overrides produced this verdict (SOLO-185).
+	Policy *PolicyEffectiveResponse `json:"policy,omitempty"`
 }
 
 // stateRequiresReason delegates to the canonical lifecycle vocabulary. The
@@ -259,8 +262,15 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 
+	// A non-positive floor means "no explicit severity": the project's
+	// effective policy decides. An explicit floor always wins.
+	floor := minSeverityRank
+	if floor <= 0 {
+		floor = u.effectiveSeverityFloor(ctx, project, nil)
+	}
+
 	u.initGate()
-	decision, err := u.gate.EvaluateWithPolicies(ctx, project.ID, minSeverityRank, gatePoliciesForProject(project))
+	decision, err := u.gate.EvaluateWithPolicies(ctx, project.ID, floor, gatePoliciesForProject(project))
 	if err != nil {
 		return nil, fmt.Errorf("gate eval: %w", err)
 	}
@@ -270,12 +280,18 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 		reachability[id] = string(state)
 	}
 
+	policy, err := u.effectivePolicy(ctx, project)
+	if err != nil {
+		return nil, fmt.Errorf("resolve policy: %w", err)
+	}
+
 	return &GateStatusOutput{
 		ThresholdBreached:     decision.Status == gate.StatusFail,
 		BlockingCount:         int64(decision.TotalBlocking - decision.WaivedCount),
 		BlockedBy:             decision.BlockedBy,
 		BlockedByReachability: reachability,
 		WaivedCount:           decision.WaivedCount,
+		Policy:                policy,
 	}, nil
 }
 

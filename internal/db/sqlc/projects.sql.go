@@ -14,7 +14,7 @@ import (
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (slug, name, description, deployment_threshold, settings)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds
+RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id
 `
 
 type CreateProjectParams struct {
@@ -46,13 +46,14 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.CveWatcherGate,
 		&i.CveWatcherEnabled,
 		&i.CveWatcherIntervalSeconds,
+		&i.PolicyTemplateID,
 	)
 	return i, err
 }
 
 const deleteProject = `-- name: DeleteProject :one
 DELETE FROM projects WHERE slug = $1
-RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds
+RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id
 `
 
 func (q *Queries) DeleteProject(ctx context.Context, slug string) (Project, error) {
@@ -70,12 +71,13 @@ func (q *Queries) DeleteProject(ctx context.Context, slug string) (Project, erro
 		&i.CveWatcherGate,
 		&i.CveWatcherEnabled,
 		&i.CveWatcherIntervalSeconds,
+		&i.PolicyTemplateID,
 	)
 	return i, err
 }
 
 const getProjectBySlug = `-- name: GetProjectBySlug :one
-SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds FROM projects
+SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id FROM projects
 WHERE slug = $1 LIMIT 1
 `
 
@@ -94,6 +96,7 @@ func (q *Queries) GetProjectBySlug(ctx context.Context, slug string) (Project, e
 		&i.CveWatcherGate,
 		&i.CveWatcherEnabled,
 		&i.CveWatcherIntervalSeconds,
+		&i.PolicyTemplateID,
 	)
 	return i, err
 }
@@ -170,7 +173,7 @@ func (q *Queries) ListProjectMembers(ctx context.Context, projectID pgtype.UUID)
 }
 
 const listProjects = `-- name: ListProjects :many
-SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds FROM projects
+SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id FROM projects
 ORDER BY created_at DESC
 `
 
@@ -195,6 +198,7 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 			&i.CveWatcherGate,
 			&i.CveWatcherEnabled,
 			&i.CveWatcherIntervalSeconds,
+			&i.PolicyTemplateID,
 		); err != nil {
 			return nil, err
 		}
@@ -209,7 +213,7 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 const updateProject = `-- name: UpdateProject :one
 UPDATE projects SET name = $2, description = $3, updated_at = NOW()
 WHERE slug = $1
-RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds
+RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id
 `
 
 type UpdateProjectParams struct {
@@ -233,6 +237,38 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.CveWatcherGate,
 		&i.CveWatcherEnabled,
 		&i.CveWatcherIntervalSeconds,
+		&i.PolicyTemplateID,
+	)
+	return i, err
+}
+
+const updateProjectSettings = `-- name: UpdateProjectSettings :one
+UPDATE projects SET settings = $2, updated_at = NOW()
+WHERE id = $1
+RETURNING id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id
+`
+
+type UpdateProjectSettingsParams struct {
+	ID       pgtype.UUID `json:"id"`
+	Settings []byte      `json:"settings"`
+}
+
+func (q *Queries) UpdateProjectSettings(ctx context.Context, arg UpdateProjectSettingsParams) (Project, error) {
+	row := q.db.QueryRow(ctx, updateProjectSettings, arg.ID, arg.Settings)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.DeploymentThreshold,
+		&i.Settings,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CveWatcherGate,
+		&i.CveWatcherEnabled,
+		&i.CveWatcherIntervalSeconds,
+		&i.PolicyTemplateID,
 	)
 	return i, err
 }

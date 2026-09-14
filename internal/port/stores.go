@@ -43,8 +43,12 @@ type Project struct {
 	CveWatcherGate         string
 	CveWatcherEnabled      bool
 	CveWatcherIntervalSecs int32
-	CreatedAt              time.Time
-	UpdatedAt              time.Time
+	// Settings carries namespaced project configuration; the "policy"
+	// object holds per-key policy overrides (SOLO-185).
+	Settings         json.RawMessage
+	PolicyTemplateID *string
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // CreateProjectInput carries the create-project fields.
@@ -57,8 +61,7 @@ type CreateProjectInput struct {
 }
 
 // ProjectStore is the consumer-facing project persistence contract.
-// ProjectMember binds a user to a project with a project-scoped role.
-// Membership is the tenant-isolation boundary (H1): session principals must
+// ProjectMember binds a user to a project with a project-scoped role.// Membership is the tenant-isolation boundary (H1): session principals must
 // hold a membership row for every project they access.
 type ProjectMember struct {
 	ProjectID string
@@ -74,6 +77,9 @@ type ProjectStore interface {
 	GetByID(ctx context.Context, id string) (Project, error)
 	Update(ctx context.Context, slug, name string, description *string) (Project, error)
 	Delete(ctx context.Context, slug string) (Project, error)
+	// UpdateSettings replaces the namespaced project configuration
+	// document (policy overrides live under "policy").
+	UpdateSettings(ctx context.Context, projectID string, settings json.RawMessage) (Project, error)
 	UpsertMember(ctx context.Context, projectID, userID, role string) (ProjectMember, error)
 	ListMembers(ctx context.Context, projectID string) ([]ProjectMember, error)
 	IsMember(ctx context.Context, projectID, userID string) (bool, error)
@@ -797,6 +803,36 @@ type Stores struct {
 	Stats         StatsStore
 	Watcher       WatcherStore
 	Admin         AdminStore
+	Policy        PolicyStore
+}
+
+// PolicyTemplate is a reusable organization-wide policy baseline.
+type PolicyTemplate struct {
+	ID          string
+	Name        string
+	Description string
+	Definition  json.RawMessage
+	Version     int32
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// PolicyTemplateInput carries template create/update fields.
+type PolicyTemplateInput struct {
+	Name        string
+	Description string
+	Definition  json.RawMessage
+}
+
+// PolicyStore persists policy templates and project assignments.
+type PolicyStore interface {
+	CreateTemplate(ctx context.Context, input PolicyTemplateInput) (PolicyTemplate, error)
+	GetTemplateByID(ctx context.Context, id string) (PolicyTemplate, error)
+	GetTemplateByName(ctx context.Context, name string) (PolicyTemplate, error)
+	ListTemplates(ctx context.Context) ([]PolicyTemplate, error)
+	UpdateTemplate(ctx context.Context, id string, input PolicyTemplateInput) (PolicyTemplate, error)
+	DeleteTemplate(ctx context.Context, id string) error
+	SetProjectTemplate(ctx context.Context, projectID string, templateID *string) (Project, error)
 }
 
 // AdminOverview is one row of platform-wide counts for the admin status

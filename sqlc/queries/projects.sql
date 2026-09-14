@@ -16,6 +16,11 @@ UPDATE projects SET name = $2, description = $3, updated_at = NOW()
 WHERE slug = $1
 RETURNING *;
 
+-- name: UpdateProjectSettings :one
+UPDATE projects SET settings = $2, updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
 -- name: DeleteProject :one
 DELETE FROM projects WHERE slug = $1
 RETURNING *;

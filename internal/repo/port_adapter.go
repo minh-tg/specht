@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -66,6 +67,17 @@ func stringPtrFromUUID(u pgtype.UUID) *string {
 	}
 	s := toUUID(u)
 	return &s
+}
+
+// rawOrNil copies a JSONB payload, preserving nil so absent settings stay
+// absent instead of degrading to an empty document.
+func rawOrNil(raw []byte) json.RawMessage {
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]byte, len(raw))
+	copy(out, raw)
+	return json.RawMessage(out)
 }
 
 func timestamptzPtrFromTime(t *time.Time) pgtype.Timestamptz {
@@ -140,6 +152,24 @@ func (r *pgProjectPort) Update(ctx context.Context, slug, name string, descripti
 		Slug:        slug,
 		Name:        name,
 		Description: textPtrFromString(description),
+	})
+	if err != nil {
+		return port.Project{}, mappingErr(err)
+	}
+	return projectToPort(row), nil
+}
+
+func (r *pgProjectPort) UpdateSettings(ctx context.Context, projectID string, settings json.RawMessage) (port.Project, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.Project{}, err
+	}
+	if len(settings) == 0 {
+		settings = json.RawMessage("{}")
+	}
+	row, err := r.q.UpdateProjectSettings(ctx, sqlc.UpdateProjectSettingsParams{
+		ID:       pid,
+		Settings: []byte(settings),
 	})
 	if err != nil {
 		return port.Project{}, mappingErr(err)
@@ -250,6 +280,8 @@ func projectToPort(p sqlc.Project) port.Project {
 		CveWatcherGate:         p.CveWatcherGate,
 		CveWatcherEnabled:      p.CveWatcherEnabled,
 		CveWatcherIntervalSecs: p.CveWatcherIntervalSeconds,
+		Settings:               rawOrNil(p.Settings),
+		PolicyTemplateID:       stringPtrFromUUID(p.PolicyTemplateID),
 		CreatedAt:              p.CreatedAt.Time,
 		UpdatedAt:              p.UpdatedAt.Time,
 	}
