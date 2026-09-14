@@ -127,6 +127,8 @@ jobs:
             --config p/secrets \
             --config p/security-audit \
             --config p/golang \
+            --config p/typescript \
+            --config p/javascript \
             --config p/dockerfile \
             --severity WARNING --severity ERROR \
             --json -o semgrep-results.json \
@@ -137,4 +139,48 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep-results.sarif
+        continue-on-error: true
+
+  govulncheck:
+    name: govulncheck (Go SCA)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # go.mod pins the toolchain floor (go1.26.6); setup-go plus
+      # GOTOOLCHAIN=auto resolves a patched toolchain, so the scan runs
+      # against fixed stdlib.
+      - name: govulncheck
+        run: |
+          go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+
+  trivy:
+    name: trivy (fs + misconfig)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scan filesystem
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          severity: HIGH,CRITICAL
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: "1"
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
         continue-on-error: true
