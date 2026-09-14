@@ -469,4 +469,23 @@ describe("FindingDetail history", () => {
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
     expect(screen.getByText(/no history yet/i)).toBeInTheDocument();
   });
+
+  it("renders a dash for empty transition values", async () => {
+    eventsFixture = [
+      {
+        id: "e1",
+        finding_id: "f1",
+        event_type: "commented",
+        old_value: "",
+        new_value: "",
+        created_at: "2025-02-01T00:00:00Z",
+      },
+    ];
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    const entry = screen.getByText(/commented/i).closest("li");
+    expect(entry).not.toBeNull();
+    expect(entry!.textContent).toContain("– → –");
+  });
 });

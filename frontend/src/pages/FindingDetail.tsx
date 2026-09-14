@@ -385,10 +385,10 @@ export function FindingDetail() {
               {events.map((event) => (
                 <li key={event.id} className="flex flex-wrap items-baseline gap-x-2">
                   <span className="font-medium">{eventTypeLabel(event.event_type)}</span>
-                  {event.old_value || event.new_value
+                  {event.old_value != null || event.new_value != null
                     ? (
                       <span className="text-muted-foreground font-mono text-xs">
-                        {event.old_value ?? "–"} → {event.new_value ?? "–"}
+                        {event.old_value || "–"} → {event.new_value || "–"}
                       </span>
                     )
                     : null}
