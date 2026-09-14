@@ -26,8 +26,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        if: matrix.language == 'go'
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
+          # Autobuild picks `make dev-api` (starts the server); build Go
+          # explicitly instead. JavaScript needs no build.
+          build-mode: ${{ matrix.language == 'go' && 'manual' || 'none' }}
+
+      - name: Build Go (manual extraction build)
+        if: matrix.language == 'go'
+        run: go build ./...
 
       - uses: github/codeql-action/analyze@v3
