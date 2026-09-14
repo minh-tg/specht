@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -163,6 +164,11 @@ func (h *Handler) GetGateStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	minRank := parseMinSeverityRank(r.URL.Query().Get("severity"))
+	if r.URL.Query().Get("severity") == "" {
+		// No explicit severity: the project's effective policy decides
+		// the floor (0 is the "use policy" sentinel in GetGateStatus).
+		minRank = 0
+	}
 
 	if r.URL.Query().Get("introduced_only") == "1" || r.URL.Query().Get("introduced_only") == "true" {
 		reportID := r.URL.Query().Get("report_id")
@@ -355,6 +361,173 @@ func parseRetentionDays(w http.ResponseWriter, r *http.Request) (int, bool) {
 		return 0, false
 	}
 	return days, true
+}
+
+func (h *Handler) ListPolicyTemplates(w http.ResponseWriter, r *http.Request) {
+	result, err := h.usecase.ListPolicyTemplates(r.Context())
+	if err != nil {
+		slog.Error("list policy templates", "error", err)
+		respondError(w, http.StatusInternalServerError, "policy_failed", "could not list policy templates")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) CreatePolicyTemplate(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name        string          `json:"name"`
+		Description string          `json:"description"`
+		Definition  json.RawMessage `json:"definition"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+		return
+	}
+
+	result, err := h.usecase.CreatePolicyTemplate(r.Context(), req.Name, req.Description, req.Definition)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrPolicyConflict):
+			respondError(w, http.StatusConflict, "policy_conflict", "a template with this name exists")
+		default:
+			slog.Error("create policy template", "error", err)
+			respondError(w, http.StatusBadRequest, "invalid_policy", "invalid policy template")
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, result)
+}
+
+func (h *Handler) UpdatePolicyTemplate(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", "template id is required")
+		return
+	}
+	var req struct {
+		Name        string          `json:"name"`
+		Description string          `json:"description"`
+		Definition  json.RawMessage `json:"definition"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+		return
+	}
+
+	result, err := h.usecase.UpdatePolicyTemplate(r.Context(), id, req.Name, req.Description, req.Definition)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrPolicyNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "policy template not found")
+		case errors.Is(err, usecase.ErrPolicyConflict):
+			respondError(w, http.StatusConflict, "policy_conflict", "a template with this name exists")
+		default:
+			slog.Error("update policy template", "error", err)
+			respondError(w, http.StatusBadRequest, "invalid_policy", "invalid policy template")
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) DeletePolicyTemplate(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", "template id is required")
+		return
+	}
+
+	if err := h.usecase.DeletePolicyTemplate(r.Context(), id); err != nil {
+		if errors.Is(err, usecase.ErrPolicyNotFound) {
+			respondError(w, http.StatusNotFound, "not_found", "policy template not found")
+			return
+		}
+		slog.Error("delete policy template", "error", err)
+		respondError(w, http.StatusInternalServerError, "policy_failed", "could not delete policy template")
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) SetProjectPolicy(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if slug == "" {
+		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		return
+	}
+	var req struct {
+		TemplateName string `json:"template_name"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+		return
+	}
+
+	result, err := h.usecase.SetProjectPolicy(r.Context(), slug, req.TemplateName)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "project_access_denied", "project admin is required")
+		case errors.Is(err, usecase.ErrPolicyNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "policy template not found")
+		default:
+			slog.Error("set project policy", "project", slug, "error", err)
+			respondError(w, http.StatusInternalServerError, "policy_failed", "could not assign policy template")
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) SetProjectPolicyOverrides(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if slug == "" {
+		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		return
+	}
+	var req struct {
+		Overrides map[string]string `json:"overrides"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+		return
+	}
+
+	result, err := h.usecase.SetProjectPolicyOverrides(r.Context(), slug, req.Overrides)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "project_access_denied", "project admin is required")
+		default:
+			slog.Error("set policy overrides", "project", slug, "error", err)
+			respondError(w, http.StatusBadRequest, "invalid_policy", "invalid policy overrides")
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) GetEffectivePolicy(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if slug == "" {
+		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		return
+	}
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		h.respondProjectAccessError(w, err)
+		return
+	}
+
+	result, err := h.usecase.EffectivePolicy(r.Context(), slug)
+	if err != nil {
+		slog.Error("get effective policy", "project", slug, "error", err)
+		respondError(w, http.StatusInternalServerError, "policy_failed", "could not resolve policy")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {

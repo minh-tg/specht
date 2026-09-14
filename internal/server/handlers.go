@@ -125,6 +125,16 @@ type (
 		PurgeRetention(ctx context.Context, olderThanDays int) (*usecase.RetentionResult, error)
 	}
 
+	PolicyUsecases interface {
+		CreatePolicyTemplate(ctx context.Context, name, description string, definition json.RawMessage) (*usecase.PolicyTemplateResponse, error)
+		ListPolicyTemplates(ctx context.Context) ([]usecase.PolicyTemplateResponse, error)
+		UpdatePolicyTemplate(ctx context.Context, id, name, description string, definition json.RawMessage) (*usecase.PolicyTemplateResponse, error)
+		DeletePolicyTemplate(ctx context.Context, id string) error
+		SetProjectPolicy(ctx context.Context, projectSlug, templateName string) (*usecase.PolicyEffectiveResponse, error)
+		SetProjectPolicyOverrides(ctx context.Context, projectSlug string, overrides map[string]string) (*usecase.PolicyEffectiveResponse, error)
+		EffectivePolicy(ctx context.Context, projectSlug string) (*usecase.PolicyEffectiveResponse, error)
+	}
+
 	WaiverUsecases interface {
 		CreateWaiver(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error)
 		ListWaivers(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error)
@@ -181,6 +191,7 @@ type usecaseInterface interface {
 	ReportUsecases
 	GateUsecases
 	AdminUsecases
+	PolicyUsecases
 	WaiverUsecases
 	EvidenceUsecases
 	ReachabilityUsecases

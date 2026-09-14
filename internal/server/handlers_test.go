@@ -50,6 +50,13 @@ type mockUsecases struct {
 	adminStatusFn        func(ctx context.Context) (*usecase.AdminStatus, error)
 	previewRetentionFn   func(ctx context.Context, olderThanDays int) (*usecase.RetentionPreview, error)
 	purgeRetentionFn     func(ctx context.Context, olderThanDays int) (*usecase.RetentionResult, error)
+	createPolicyFn       func(ctx context.Context, name, description string, definition json.RawMessage) (*usecase.PolicyTemplateResponse, error)
+	listPoliciesFn       func(ctx context.Context) ([]usecase.PolicyTemplateResponse, error)
+	updatePolicyFn       func(ctx context.Context, id, name, description string, definition json.RawMessage) (*usecase.PolicyTemplateResponse, error)
+	deletePolicyFn       func(ctx context.Context, id string) error
+	setProjectPolicyFn   func(ctx context.Context, projectSlug, templateName string) (*usecase.PolicyEffectiveResponse, error)
+	setPolicyOverridesFn func(ctx context.Context, projectSlug string, overrides map[string]string) (*usecase.PolicyEffectiveResponse, error)
+	effectivePolicyFn    func(ctx context.Context, projectSlug string) (*usecase.PolicyEffectiveResponse, error)
 	getFindingFn         func(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
 	getFindingEventsFn   func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
 	refreshFn            func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
@@ -286,6 +293,55 @@ func (m *mockUsecases) PurgeRetention(ctx context.Context, olderThanDays int) (*
 		return nil, fmt.Errorf("unexpected call to PurgeRetention")
 	}
 	return m.purgeRetentionFn(ctx, olderThanDays)
+}
+
+func (m *mockUsecases) CreatePolicyTemplate(ctx context.Context, name, description string, definition json.RawMessage) (*usecase.PolicyTemplateResponse, error) {
+	if m.createPolicyFn == nil {
+		return nil, fmt.Errorf("unexpected call to CreatePolicyTemplate")
+	}
+	return m.createPolicyFn(ctx, name, description, definition)
+}
+
+func (m *mockUsecases) ListPolicyTemplates(ctx context.Context) ([]usecase.PolicyTemplateResponse, error) {
+	if m.listPoliciesFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListPolicyTemplates")
+	}
+	return m.listPoliciesFn(ctx)
+}
+
+func (m *mockUsecases) UpdatePolicyTemplate(ctx context.Context, id, name, description string, definition json.RawMessage) (*usecase.PolicyTemplateResponse, error) {
+	if m.updatePolicyFn == nil {
+		return nil, fmt.Errorf("unexpected call to UpdatePolicyTemplate")
+	}
+	return m.updatePolicyFn(ctx, id, name, description, definition)
+}
+
+func (m *mockUsecases) DeletePolicyTemplate(ctx context.Context, id string) error {
+	if m.deletePolicyFn == nil {
+		return fmt.Errorf("unexpected call to DeletePolicyTemplate")
+	}
+	return m.deletePolicyFn(ctx, id)
+}
+
+func (m *mockUsecases) SetProjectPolicy(ctx context.Context, projectSlug, templateName string) (*usecase.PolicyEffectiveResponse, error) {
+	if m.setProjectPolicyFn == nil {
+		return nil, fmt.Errorf("unexpected call to SetProjectPolicy")
+	}
+	return m.setProjectPolicyFn(ctx, projectSlug, templateName)
+}
+
+func (m *mockUsecases) SetProjectPolicyOverrides(ctx context.Context, projectSlug string, overrides map[string]string) (*usecase.PolicyEffectiveResponse, error) {
+	if m.setPolicyOverridesFn == nil {
+		return nil, fmt.Errorf("unexpected call to SetProjectPolicyOverrides")
+	}
+	return m.setPolicyOverridesFn(ctx, projectSlug, overrides)
+}
+
+func (m *mockUsecases) EffectivePolicy(ctx context.Context, projectSlug string) (*usecase.PolicyEffectiveResponse, error) {
+	if m.effectivePolicyFn == nil {
+		return nil, fmt.Errorf("unexpected call to EffectivePolicy")
+	}
+	return m.effectivePolicyFn(ctx, projectSlug)
 }
 
 func (m *mockUsecases) GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error) {
@@ -700,6 +756,13 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/admin/status", h.GetAdminStatus)
 	r.Get("/api/v1/admin/retention/preview", h.PreviewRetention)
 	r.Post("/api/v1/admin/retention/purge", h.PurgeRetention)
+	r.Get("/api/v1/policy-templates", h.ListPolicyTemplates)
+	r.Post("/api/v1/policy-templates", h.CreatePolicyTemplate)
+	r.Put("/api/v1/policy-templates/{id}", h.UpdatePolicyTemplate)
+	r.Delete("/api/v1/policy-templates/{id}", h.DeletePolicyTemplate)
+	r.Put("/api/v1/projects/{slug}/policy", h.SetProjectPolicy)
+	r.Put("/api/v1/projects/{slug}/policy/overrides", h.SetProjectPolicyOverrides)
+	r.Get("/api/v1/projects/{slug}/policy", h.GetEffectivePolicy)
 	r.Post("/api/v1/findings/bulk-analysis", h.BulkTriage)
 	r.Get("/api/v1/findings/{id}/events", h.ListFindingEvents)
 	r.Get("/api/v1/findings/{id}", h.GetFinding)
@@ -1930,6 +1993,76 @@ func TestPurgeRetention_BadWindow(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPolicyTemplates_CRUD(t *testing.T) {
+	mock := &mockUsecases{
+		createPolicyFn: func(ctx context.Context, name, description string, definition json.RawMessage) (*usecase.PolicyTemplateResponse, error) {
+			return &usecase.PolicyTemplateResponse{ID: "t1", Name: name, Version: 1}, nil
+		},
+		listPoliciesFn: func(ctx context.Context) ([]usecase.PolicyTemplateResponse, error) {
+			return []usecase.PolicyTemplateResponse{{ID: "t1", Name: "strict"}}, nil
+		},
+		updatePolicyFn: func(ctx context.Context, id, name, description string, definition json.RawMessage) (*usecase.PolicyTemplateResponse, error) {
+			return &usecase.PolicyTemplateResponse{ID: id, Name: name, Version: 2}, nil
+		},
+		deletePolicyFn: func(ctx context.Context, id string) error {
+			assert.Equal(t, "t1", id)
+			return nil
+		},
+	}
+	router := testRouter(mock)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/policy-templates", strings.NewReader(`{"name":"strict","definition":{}}`)))
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/policy-templates", nil))
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("PUT", "/api/v1/policy-templates/t1", strings.NewReader(`{"name":"strict","definition":{}}`)))
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/v1/policy-templates/t1", nil))
+	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestPolicyTemplates_Conflict(t *testing.T) {
+	mock := &mockUsecases{
+		createPolicyFn: func(ctx context.Context, name, description string, definition json.RawMessage) (*usecase.PolicyTemplateResponse, error) {
+			return nil, usecase.ErrPolicyConflict
+		},
+	}
+	router := testRouter(mock)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/policy-templates", strings.NewReader(`{"name":"strict"}`)))
+	assert.Equal(t, http.StatusConflict, w.Code)
+}
+
+func TestProjectPolicy_Assign(t *testing.T) {
+	var gotTemplate string
+	mock := &mockUsecases{
+		setProjectPolicyFn: func(ctx context.Context, projectSlug, templateName string) (*usecase.PolicyEffectiveResponse, error) {
+			gotTemplate = templateName
+			return &usecase.PolicyEffectiveResponse{SeverityFloor: "critical", SeveritySource: "template"}, nil
+		},
+		effectivePolicyFn: func(ctx context.Context, projectSlug string) (*usecase.PolicyEffectiveResponse, error) {
+			return &usecase.PolicyEffectiveResponse{SeverityFloor: "high", SeveritySource: "default"}, nil
+		},
+	}
+	router := testRouter(mock)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("PUT", "/api/v1/projects/my-app/policy", strings.NewReader(`{"template_name":"strict"}`)))
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "strict", gotTemplate)
+
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/projects/my-app/policy", nil))
+	assert.Equal(t, http.StatusOK, w.Code)
 }
 
 func TestGateStatus_ProjectNotFound(t *testing.T) {

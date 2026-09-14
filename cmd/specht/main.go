@@ -36,6 +36,13 @@ const (
 	cmdAdminStatus
 	cmdAdminRetentionPreview
 	cmdAdminRetentionPurge
+	cmdPolicyTemplates
+	cmdPolicyCreate
+	cmdPolicyUpdate
+	cmdPolicyDelete
+	cmdPolicyApply
+	cmdPolicyOverrides
+	cmdPolicyEffective
 	cmdStats
 	cmdStatsAging
 	cmdWatcherBackfill
@@ -71,6 +78,12 @@ type command struct {
 	target         string
 	linked         bool
 	days           int
+	name           string
+	description    string
+	definition     string
+	templateID     string
+	template       string
+	overrides      string
 }
 
 func parseArgs(args []string) (command, error) {
@@ -400,6 +413,112 @@ func parseArgs(args []string) (command, error) {
 			}
 		default:
 			return command{}, fmt.Errorf("unknown admin subcommand: %s", rest[1])
+		}
+
+	case "policy":
+		if len(rest) < 2 {
+			return command{}, fmt.Errorf("missing subcommand for policy")
+		}
+		switch rest[1] {
+		case "templates":
+			return command{cmd: cmdPolicyTemplates}, nil
+		case "create", "update":
+			c := command{cmd: cmdPolicyCreate}
+			if rest[1] == "update" {
+				c.cmd = cmdPolicyUpdate
+			}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--id" && i+1 < len(rest):
+					c.templateID = rest[i+1]
+					i++
+				case rest[i] == "--name" && i+1 < len(rest):
+					c.name = rest[i+1]
+					i++
+				case rest[i] == "--description" && i+1 < len(rest):
+					c.description = rest[i+1]
+					i++
+				case rest[i] == "--definition" && i+1 < len(rest):
+					c.definition = rest[i+1]
+					i++
+				}
+			}
+			if rest[1] == "update" && c.templateID == "" {
+				return command{}, fmt.Errorf("--id is required for policy update")
+			}
+			if c.name == "" {
+				return command{}, fmt.Errorf("--name is required")
+			}
+			return c, nil
+		case "delete":
+			c := command{cmd: cmdPolicyDelete}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--id" && i+1 < len(rest):
+					c.templateID = rest[i+1]
+					i++
+				}
+			}
+			if c.templateID == "" {
+				return command{}, fmt.Errorf("--id is required for policy delete")
+			}
+			return c, nil
+		case "apply":
+			c := command{cmd: cmdPolicyApply}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--project" && i+1 < len(rest):
+					c.project = rest[i+1]
+					i++
+				case rest[i] == "--template" && i+1 < len(rest):
+					c.template = rest[i+1]
+					i++
+				}
+			}
+			if c.project == "" {
+				return command{}, fmt.Errorf("--project is required for policy apply")
+			}
+			return c, nil
+		case "overrides":
+			c := command{cmd: cmdPolicyOverrides}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--project" && i+1 < len(rest):
+					c.project = rest[i+1]
+					i++
+				case rest[i] == "--set" && i+1 < len(rest):
+					c.overrides = rest[i+1]
+					i++
+				}
+			}
+			if c.project == "" {
+				return command{}, fmt.Errorf("--project is required for policy overrides")
+			}
+			return c, nil
+		case "effective":
+			c := command{cmd: cmdPolicyEffective}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--project" && i+1 < len(rest):
+					c.project = rest[i+1]
+					i++
+				case rest[i] == "--format" && i+1 < len(rest):
+					c.format = rest[i+1]
+					i++
+				}
+			}
+			if c.project == "" {
+				return command{}, fmt.Errorf("--project is required for policy effective")
+			}
+			if c.format == "" {
+				c.format = "human"
+			}
+			if c.format != "human" && c.format != "json" {
+				return command{}, fmt.Errorf("invalid --format %q: want human or json", c.format)
+			}
+			return c, nil
+		default:
+			return command{}, fmt.Errorf("unknown policy subcommand: %s", rest[1])
 		}
 
 	case "help":
@@ -737,6 +856,91 @@ func run(cl *client.Client, cmd command) error {
 		fmt.Printf("deleted %d settled report(s) older than %d day(s)\n", result.DeletedReports, result.OlderThanDays)
 		return nil
 
+	case cmdPolicyTemplates:
+		templates, err := cl.ListPolicyTemplates()
+		if err != nil {
+			return err
+		}
+		if len(templates) == 0 {
+			fmt.Println("No policy templates.")
+			return nil
+		}
+		for _, t := range templates {
+			fmt.Printf("%s\t%s\tv%d\n", t.Name, t.ID, t.Version)
+		}
+		return nil
+
+	case cmdPolicyCreate, cmdPolicyUpdate:
+		var definition map[string]string
+		if cmd.definition != "" {
+			if err := json.Unmarshal([]byte(cmd.definition), &definition); err != nil {
+				return fmt.Errorf("invalid --definition %q: want a JSON object", cmd.definition)
+			}
+		}
+		if cmd.cmd == cmdPolicyCreate {
+			tmpl, err := cl.CreatePolicyTemplate(cmd.name, cmd.description, definition)
+			if err != nil {
+				return err
+			}
+			fmt.Printf("template %s (%s)\n", tmpl.Name, tmpl.ID)
+			return nil
+		}
+		tmpl, err := cl.UpdatePolicyTemplate(cmd.templateID, cmd.name, cmd.description, definition)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("template %s v%d\n", tmpl.Name, tmpl.Version)
+		return nil
+
+	case cmdPolicyDelete:
+		if err := cl.DeletePolicyTemplate(cmd.templateID); err != nil {
+			return err
+		}
+		fmt.Println("template deleted")
+		return nil
+
+	case cmdPolicyApply:
+		eff, err := cl.SetProjectPolicy(cmd.project, cmd.template)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("policy: floor=%s (%s) watcher=%s (%s)\n", eff.SeverityFloor, eff.SeveritySource, eff.WatcherGate, eff.WatcherSource)
+		return nil
+
+	case cmdPolicyOverrides:
+		var overrides map[string]string
+		if cmd.overrides != "" {
+			if err := json.Unmarshal([]byte(cmd.overrides), &overrides); err != nil {
+				return fmt.Errorf("invalid --set %q: want a JSON object", cmd.overrides)
+			}
+		}
+		eff, err := cl.SetProjectPolicyOverrides(cmd.project, overrides)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("policy: floor=%s (%s) watcher=%s (%s)\n", eff.SeverityFloor, eff.SeveritySource, eff.WatcherGate, eff.WatcherSource)
+		return nil
+
+	case cmdPolicyEffective:
+		eff, err := cl.GetEffectivePolicy(cmd.project)
+		if err != nil {
+			return err
+		}
+		if cmd.format == "json" {
+			raw, err := json.MarshalIndent(eff, "", "  ")
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(raw))
+			return nil
+		}
+		template := "(none)"
+		if eff.TemplateName != nil {
+			template = fmt.Sprintf("%s v%d", *eff.TemplateName, eff.TemplateVersion)
+		}
+		fmt.Printf("template: %s\nfloor=%s (%s) watcher=%s (%s)\n", template, eff.SeverityFloor, eff.SeveritySource, eff.WatcherGate, eff.WatcherSource)
+		return nil
+
 	case cmdStats:
 		stats, err := cl.GetProjectStats(cmd.slug)
 		if err != nil {
@@ -836,6 +1040,13 @@ Commands:
   admin status [--format human|json]  Platform observability snapshot (admin only)
   admin retention preview --days <n>  Count settled reports a purge would delete
   admin retention purge --days <n>    Delete settled reports older than the window
+  policy templates                    List policy baselines
+  policy create --name <n> [--description <d>] [--definition <json>]
+  policy update --id <id> --name <n> [--description <d>] [--definition <json>]
+  policy delete --id <id>
+  policy apply --project <slug> [--template <name>]  Link/unlink a baseline
+  policy overrides --project <slug> [--set <json>]   Replace per-key overrides
+  policy effective --project <slug>   Show resolved policy with provenance
   stats show <slug>                       Show project statistics
   stats aging <slug>                      Show aging buckets, SLA overdue, reopened
   watcher backfill [--since <ISO8601>]    Run one CVE watcher poll

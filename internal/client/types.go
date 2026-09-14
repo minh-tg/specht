@@ -116,6 +116,25 @@ type RetentionResult struct {
 	DeletedReportIDs []string  `json:"deleted_report_ids,omitempty"`
 }
 
+// PolicyTemplate is a reusable organization-wide policy baseline.
+type PolicyTemplate struct {
+	ID          string            `json:"id"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Definition  map[string]string `json:"definition"`
+	Version     int32             `json:"version"`
+}
+
+// PolicyEffective is one project's resolved policy with provenance.
+type PolicyEffective struct {
+	TemplateName    *string `json:"template_name"`
+	TemplateVersion int     `json:"template_version"`
+	SeverityFloor   string  `json:"severity_floor"`
+	SeveritySource  string  `json:"severity_source"`
+	WatcherGate     string  `json:"watcher_gate"`
+	WatcherSource   string  `json:"watcher_source"`
+}
+
 // Project is a scan project (the top-level tenant of findings and reports).
 type Project struct {
 	ID          string    `json:"id"`

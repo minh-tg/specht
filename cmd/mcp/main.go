@@ -22,6 +22,7 @@ type API interface {
 	PreviewNotification(findingID string, channel string, target string, linked bool) (*client.NotifyOutcome, error)
 	GetAdminStatus() (*client.AdminStatus, error)
 	PreviewRetention(days int) (*client.RetentionPreview, error)
+	GetEffectivePolicy(projectSlug string) (*client.PolicyEffective, error)
 	UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error)
 	ListReachability(findingID string) ([]client.ReachabilityAssessment, error)
 	GetWatcherStatus() (*client.WatcherStatus, error)
@@ -187,6 +188,17 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				},
 			},
 			{
+				Name:        "policy_effective",
+				Description: "Show a project's resolved policy with provenance",
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"project": map[string]any{"type": "string", "description": "Project slug"},
+					},
+					"required": []string{"project"},
+				},
+			},
+			{
 				Name:        "reachability_set",
 				Description: "Set a finding's reachability assessment (reachable, not_reachable, unknown, not_applicable)", InputSchema: map[string]any{
 					"type": "object",
@@ -317,6 +329,8 @@ func handleToolCall(api API, msg jsonRPCMessage) jsonRPCMessage {
 		return callAdminStatus(api, msg.ID)
 	case "admin_retention_preview":
 		return callAdminRetentionPreview(api, msg.ID, params.Arguments)
+	case "policy_effective":
+		return callPolicyEffective(api, msg.ID, params.Arguments)
 	case "reachability_set":
 		return callReachabilitySet(api, msg.ID, params.Arguments)
 	case "watcher_status":
@@ -605,6 +619,34 @@ func callAdminRetentionPreview(api API, id any, args *json.RawMessage) jsonRPCMe
 	retentionResult, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
 	retentionRaw := json.RawMessage(retentionResult)
 	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &retentionRaw}
+}
+
+func callPolicyEffective(api API, id any, args *json.RawMessage) jsonRPCMessage {
+	a, err := readArgs[struct {
+		Project string `json:"project"`
+	}](args)
+	if err != nil {
+		return errorResponse(id, -32602, "invalid arguments")
+	}
+	if a.Project == "" {
+		return errorResponse(id, -32602, "project is required")
+	}
+
+	eff, err := api.GetEffectivePolicy(a.Project)
+	if err != nil {
+		return errorResponse(id, -32603, err.Error())
+	}
+	template := "(none)"
+	if eff.TemplateName != nil {
+		template = fmt.Sprintf("%s v%d", *eff.TemplateName, eff.TemplateVersion)
+	}
+	text := fmt.Sprintf(
+		"template: %s\nfloor=%s (%s) watcher=%s (%s)",
+		template, eff.SeverityFloor, eff.SeveritySource, eff.WatcherGate, eff.WatcherSource,
+	)
+	policyResult, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
+	policyRaw := json.RawMessage(policyResult)
+	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &policyRaw}
 }
 
 func callReachabilitySet(api API, id any, args *json.RawMessage) jsonRPCMessage {

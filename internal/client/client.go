@@ -450,6 +450,81 @@ func (c *Client) PurgeRetention(days int) (*RetentionResult, error) {
 	return &resp, nil
 }
 
+// ListPolicyTemplates returns every policy baseline in name order.
+func (c *Client) ListPolicyTemplates() ([]PolicyTemplate, error) {
+	var resp []PolicyTemplate
+	if err := c.do(context.Background(), "GET", "/api/v1/policy-templates", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// CreatePolicyTemplate stores a reusable baseline.
+func (c *Client) CreatePolicyTemplate(name, description string, definition map[string]string) (*PolicyTemplate, error) {
+	body, err := json.Marshal(map[string]any{"name": name, "description": description, "definition": definition})
+	if err != nil {
+		return nil, err
+	}
+	var resp PolicyTemplate
+	if err := c.do(context.Background(), "POST", "/api/v1/policy-templates", body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// UpdatePolicyTemplate replaces a baseline (version bumps in storage).
+func (c *Client) UpdatePolicyTemplate(id, name, description string, definition map[string]string) (*PolicyTemplate, error) {
+	body, err := json.Marshal(map[string]any{"name": name, "description": description, "definition": definition})
+	if err != nil {
+		return nil, err
+	}
+	var resp PolicyTemplate
+	if err := c.do(context.Background(), "PUT", "/api/v1/policy-templates/"+url.PathEscape(id), body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// DeletePolicyTemplate removes a baseline; linked projects fall back.
+func (c *Client) DeletePolicyTemplate(id string) error {
+	return c.do(context.Background(), "DELETE", "/api/v1/policy-templates/"+url.PathEscape(id), nil, nil)
+}
+
+// SetProjectPolicy links a project to a baseline by name (empty unlinks).
+func (c *Client) SetProjectPolicy(projectSlug string, templateName string) (*PolicyEffective, error) {
+	body, err := json.Marshal(map[string]any{"template_name": templateName})
+	if err != nil {
+		return nil, err
+	}
+	var resp PolicyEffective
+	if err := c.do(context.Background(), "PUT", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/policy", body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// SetProjectPolicyOverrides replaces a project's per-key overrides.
+func (c *Client) SetProjectPolicyOverrides(projectSlug string, overrides map[string]string) (*PolicyEffective, error) {
+	body, err := json.Marshal(map[string]any{"overrides": overrides})
+	if err != nil {
+		return nil, err
+	}
+	var resp PolicyEffective
+	if err := c.do(context.Background(), "PUT", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/policy/overrides", body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GetEffectivePolicy resolves one project's policy with provenance.
+func (c *Client) GetEffectivePolicy(projectSlug string) (*PolicyEffective, error) {
+	var resp PolicyEffective
+	if err := c.do(context.Background(), "GET", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/policy", nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // Environments, Targets, Artifacts.
 
 func (c *Client) ListEnvironments(projectSlug string) ([]Environment, error) {

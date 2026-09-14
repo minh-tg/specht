@@ -27,6 +27,8 @@ type mockClient struct {
 	adminStatus      *client.AdminStatus
 	retention        *client.RetentionPreview
 	retentionDays    int
+	policy           *client.PolicyEffective
+	policyProject    string
 	introducedReport string
 	err              error
 }
@@ -71,6 +73,11 @@ func (m *mockClient) GetAdminStatus() (*client.AdminStatus, error) {
 func (m *mockClient) PreviewRetention(days int) (*client.RetentionPreview, error) {
 	m.retentionDays = days
 	return m.retention, m.err
+}
+
+func (m *mockClient) GetEffectivePolicy(projectSlug string) (*client.PolicyEffective, error) {
+	m.policyProject = projectSlug
+	return m.policy, m.err
 }
 
 func (m *mockClient) UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error) {
@@ -342,6 +349,26 @@ func TestMCPAdminRetentionPreviewMissingDays(t *testing.T) {
 
 	resp := handleMessage(&mockClient{}, req)
 	require.NotNil(t, resp.Error)
+}
+
+func TestMCPPolicyEffective(t *testing.T) {
+	name := "strict"
+	mc := &mockClient{
+		policy: &client.PolicyEffective{
+			TemplateName: &name, TemplateVersion: 2,
+			SeverityFloor: "critical", SeveritySource: "template",
+			WatcherGate: "immediate", WatcherSource: "default",
+		},
+	}
+	raw := `{"jsonrpc":"2.0","id":18,"method":"tools/call","params":{"name":"policy_effective","arguments":{"project":"my-app"}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(mc, req)
+	require.Nil(t, resp.Error)
+	require.NotNil(t, resp.Result)
+	assert.Equal(t, "my-app", mc.policyProject)
+	assert.True(t, strings.Contains(string(*resp.Result), "strict v2"))
 }
 
 func TestMCPUnknownTool(t *testing.T) {
