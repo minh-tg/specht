@@ -261,6 +261,60 @@ func (r *pgProjectPort) ListMemberProjectIDs(ctx context.Context, userID string)
 	return out, nil
 }
 
+func (r *pgProjectPort) IsMemberEffective(ctx context.Context, projectID, userID string) (bool, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return false, err
+	}
+	uid, err := parseID(userID)
+	if err != nil {
+		return false, err
+	}
+	ok, err := r.q.IsProjectMemberEffective(ctx, sqlc.IsProjectMemberEffectiveParams{
+		ProjectID: pid,
+		UserID:    uid,
+	})
+	if err != nil {
+		return false, err
+	}
+	return ok.Bool, nil
+}
+
+func (r *pgProjectPort) ListAccessibleProjectIDs(ctx context.Context, userID string) ([]string, error) {
+	uid, err := parseID(userID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListAccessibleProjectIDs(ctx, uid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(rows))
+	for i, row := range rows {
+		out[i] = toUUID(row)
+	}
+	return out, nil
+}
+
+func (r *pgProjectPort) EffectiveRole(ctx context.Context, projectID, userID string) (string, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return "", err
+	}
+	uid, err := parseID(userID)
+	if err != nil {
+		return "", err
+	}
+	role, err := r.q.EffectiveProjectRole(ctx, sqlc.EffectiveProjectRoleParams{
+		ProjectID: pid,
+		UserID:    uid,
+	})
+	if err != nil {
+		return "", mappingErr(err)
+	}
+	return role, nil
+}
+
 func memberToPort(m sqlc.ProjectMember) port.ProjectMember {
 	return port.ProjectMember{
 		ProjectID: toUUID(m.ProjectID),

@@ -32,6 +32,7 @@ func NewPortStores(pool *pgxpool.Pool) *port.Stores {
 		Stats:         &pgStatsPort{inner: repos.Stats},
 		Watcher:       &pgWatcherPort{inner: repos.Watcher},
 		Policy:        &pgPolicyPort{q: q},
+		Teams:         &pgTeamPort{q: q},
 		Admin:         &pgAdminPort{q: q},
 	}
 }
@@ -59,6 +60,7 @@ func PortStoresFromRepos(repos *Repos, q *sqlc.Queries) *port.Stores {
 		Stats:         &pgStatsPort{inner: repos.Stats},
 		Watcher:       &pgWatcherPort{inner: repos.Watcher},
 		Policy:        &pgPolicyPort{q: q},
+		Teams:         &pgTeamPort{q: q},
 		Admin:         &pgAdminPort{q: q},
 	}
 }

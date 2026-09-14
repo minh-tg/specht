@@ -257,6 +257,13 @@ type ProjectMember struct {
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
+type ProjectTeam struct {
+	ProjectID pgtype.UUID        `json:"project_id"`
+	TeamID    pgtype.UUID        `json:"team_id"`
+	Role      string             `json:"role"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type ReachabilityAssessment struct {
 	ID         pgtype.UUID        `json:"id"`
 	FindingID  pgtype.UUID        `json:"finding_id"`
@@ -335,6 +342,21 @@ type Target struct {
 	Locator   pgtype.Text        `json:"locator"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	Owner     pgtype.Text        `json:"owner"`
+}
+
+type Team struct {
+	ID          pgtype.UUID        `json:"id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type TeamMember struct {
+	TeamID    pgtype.UUID        `json:"team_id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	Role      string             `json:"role"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
 }
 
 type User struct {

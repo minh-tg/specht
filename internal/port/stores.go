@@ -86,6 +86,16 @@ type ProjectStore interface {
 	// ListMemberProjectIDs returns the IDs of all projects a user belongs
 	// to in a single query (batch alternative to per-project IsMember).
 	ListMemberProjectIDs(ctx context.Context, userID string) ([]string, error)
+	// IsMemberEffective reports direct OR team-conferred membership: the
+	// single choke point for session-user project access (H1 + SOLO-187).
+	IsMemberEffective(ctx context.Context, projectID, userID string) (bool, error)
+	// ListAccessibleProjectIDs returns every project a user reaches
+	// directly or through a team, for the batched list path.
+	ListAccessibleProjectIDs(ctx context.Context, userID string) ([]string, error)
+	// EffectiveRole returns the strongest role a user holds on a project
+	// across direct membership and team links (admin > editor > viewer),
+	// or ErrNotFound when the user has no access at all.
+	EffectiveRole(ctx context.Context, projectID, userID string) (string, error)
 }
 
 // ---------- Users ----------
@@ -804,6 +814,52 @@ type Stores struct {
 	Watcher       WatcherStore
 	Admin         AdminStore
 	Policy        PolicyStore
+	Teams         TeamStore
+}
+
+// Team is a named group of users that projects link for access.
+type Team struct {
+	ID          string
+	Name        string
+	Description string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// TeamMember binds a user to a team as admin (manages the team) or member.
+type TeamMember struct {
+	TeamID    string
+	UserID    string
+	UserEmail string
+	Role      string
+	CreatedAt time.Time
+}
+
+// ProjectTeam links a team to a project, conferring the link role on
+// every team member.
+type ProjectTeam struct {
+	ProjectID string
+	TeamID    string
+	TeamName  string
+	Role      string
+	CreatedAt time.Time
+}
+
+// TeamStore persists teams, their memberships, and project links.
+type TeamStore interface {
+	CreateTeam(ctx context.Context, name, description string) (Team, error)
+	GetTeamByID(ctx context.Context, id string) (Team, error)
+	GetTeamByName(ctx context.Context, name string) (Team, error)
+	ListTeams(ctx context.Context) ([]Team, error)
+	DeleteTeam(ctx context.Context, id string) error
+	UpsertTeamMember(ctx context.Context, teamID, userID, role string) (TeamMember, error)
+	ListTeamMembers(ctx context.Context, teamID string) ([]TeamMember, error)
+	RemoveTeamMember(ctx context.Context, teamID, userID string) error
+	IsTeamMember(ctx context.Context, teamID, userID string) (bool, error)
+	IsTeamAdmin(ctx context.Context, teamID, userID string) (bool, error)
+	LinkProjectTeam(ctx context.Context, projectID, teamID, role string) (ProjectTeam, error)
+	UnlinkProjectTeam(ctx context.Context, projectID, teamID string) error
+	ListProjectTeams(ctx context.Context, projectID string) ([]ProjectTeam, error)
 }
 
 // PolicyTemplate is a reusable organization-wide policy baseline.
