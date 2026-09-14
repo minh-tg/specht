@@ -19,6 +19,7 @@ type API interface {
 	GetIntroducedGateStatus(projectSlug string, severity string, reportID string) (*client.GateStatus, error)
 	PreviewPRCheck(projectSlug string, commit string, provider string, reportID string, severity string) (*client.PRCheckPreview, error)
 	PreviewPatch(findingID string) (*client.PatchOutcome, error)
+	PreviewNotification(findingID string, channel string, target string, linked bool) (*client.NotifyOutcome, error)
 	UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error)
 	ListReachability(findingID string) ([]client.ReachabilityAssessment, error)
 	GetWatcherStatus() (*client.WatcherStatus, error)
@@ -151,6 +152,20 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				},
 			},
 			{
+				Name:        "notify_preview",
+				Description: "Preview the tracker/messaging action for a finding (dry-run; sends nothing)",
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"finding_id": map[string]any{"type": "string", "description": "Finding ID"},
+						"channel":    map[string]any{"type": "string", "description": "issue or message"},
+						"target":     map[string]any{"type": "string", "description": "Integration and scope (project, channel)"},
+						"linked":     map[string]any{"type": "boolean", "description": "Whether a work item is already linked"},
+					},
+					"required": []string{"finding_id", "channel", "target"},
+				},
+			},
+			{
 				Name:        "reachability_set",
 				Description: "Set a finding's reachability assessment (reachable, not_reachable, unknown, not_applicable)", InputSchema: map[string]any{
 					"type": "object",
@@ -275,6 +290,8 @@ func handleToolCall(api API, msg jsonRPCMessage) jsonRPCMessage {
 		return callPRPreview(api, msg.ID, params.Arguments)
 	case "patch_preview":
 		return callPatchPreview(api, msg.ID, params.Arguments)
+	case "notify_preview":
+		return callNotifyPreview(api, msg.ID, params.Arguments)
 	case "reachability_set":
 		return callReachabilitySet(api, msg.ID, params.Arguments)
 	case "watcher_status":
@@ -488,6 +505,43 @@ func callPatchPreview(api API, id any, args *json.RawMessage) jsonRPCMessage {
 	patchResult, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
 	patchRaw := json.RawMessage(patchResult)
 	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &patchRaw}
+}
+
+func callNotifyPreview(api API, id any, args *json.RawMessage) jsonRPCMessage {
+	a, err := readArgs[struct {
+		FindingID string `json:"finding_id"`
+		Channel   string `json:"channel"`
+		Target    string `json:"target"`
+		Linked    bool   `json:"linked"`
+	}](args)
+	if err != nil {
+		return errorResponse(id, -32602, "invalid arguments")
+	}
+	if a.FindingID == "" {
+		return errorResponse(id, -32602, "finding_id is required")
+	}
+	if a.Channel == "" {
+		return errorResponse(id, -32602, "channel is required")
+	}
+	if a.Target == "" {
+		return errorResponse(id, -32602, "target is required")
+	}
+
+	outcome, err := api.PreviewNotification(a.FindingID, a.Channel, a.Target, a.Linked)
+	if err != nil {
+		return errorResponse(id, -32603, err.Error())
+	}
+
+	var text string
+	if !outcome.Supported || outcome.Plan == nil {
+		text = fmt.Sprintf("no notification: %s", outcome.Reason)
+	} else {
+		p := outcome.Plan
+		text = fmt.Sprintf("notify %s (%s -> %s): %s\n%s\ndedupe: %s", p.ID, p.Channel, p.Target, p.Title, p.Body, p.DedupeKey)
+	}
+	notifyResult, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
+	notifyRaw := json.RawMessage(notifyResult)
+	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &notifyRaw}
 }
 
 func callReachabilitySet(api API, id any, args *json.RawMessage) jsonRPCMessage {

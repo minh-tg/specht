@@ -400,6 +400,23 @@ func (c *Client) PreviewPatch(findingID string) (*PatchOutcome, error) {
 	return &resp, nil
 }
 
+// PreviewNotification plans (but never sends) the issue-tracker or
+// messaging action for a finding.
+func (c *Client) PreviewNotification(findingID string, channel string, target string, linked bool) (*NotifyOutcome, error) {
+	q := url.Values{}
+	q.Set("channel", channel)
+	q.Set("target", target)
+	if linked {
+		q.Set("linked", "1")
+	}
+	path := "/api/v1/findings/" + url.PathEscape(findingID) + "/notify-preview?" + q.Encode()
+	var resp NotifyOutcome
+	if err := c.do(context.Background(), "GET", path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 // Environments, Targets, Artifacts.
 
 func (c *Client) ListEnvironments(projectSlug string) ([]Environment, error) {

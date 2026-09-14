@@ -255,6 +255,44 @@ func (h *Handler) PreviewPatch(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, result)
 }
 
+func (h *Handler) PreviewNotification(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		return
+	}
+	q := r.URL.Query()
+	channel := q.Get("channel")
+	if channel == "" {
+		respondError(w, http.StatusBadRequest, "missing_channel", "channel is required (issue or message)")
+		return
+	}
+	target := q.Get("target")
+	if target == "" {
+		respondError(w, http.StatusBadRequest, "missing_target", "target is required (integration and scope)")
+		return
+	}
+	linked := q.Get("linked") == "1" || q.Get("linked") == "true"
+
+	result, err := h.usecase.PreviewNotification(r.Context(), id, channel, target, linked)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrInvalidFindingID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
+		case errors.Is(err, usecase.ErrFindingNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+		default:
+			slog.Error("preview notification", "finding_id", id, "error", err)
+			respondError(w, http.StatusInternalServerError, "notify_failed", "could not plan notification")
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
 func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {

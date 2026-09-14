@@ -126,6 +126,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Patch("/api/v1/findings/{id}", h.TriageFinding)
 		r.Post("/api/v1/findings/{id}/verify", h.VerifyFinding)
 		r.Get("/api/v1/findings/{id}/patch-preview", h.PreviewPatch)
+		r.Get("/api/v1/findings/{id}/notify-preview", h.PreviewNotification)
 		r.Post("/api/v1/findings/bulk-analysis", h.BulkTriage)
 		r.Get("/api/v1/findings/{id}/events", h.ListFindingEvents)
 		r.Post("/api/v1/findings/{findingID}/evidence", h.CreateEvidence)

@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/xMinhx/specht/internal/auth"
+	"github.com/xMinhx/specht/internal/notify"
 	"github.com/xMinhx/specht/internal/patch"
 	"github.com/xMinhx/specht/internal/usecase"
 )
@@ -45,6 +46,7 @@ type mockUsecases struct {
 	getIntroducedGateFn  func(ctx context.Context, slug string, minRank int16, reportID string) (*usecase.GateStatusOutput, error)
 	previewPRCheckFn     func(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error)
 	previewPatchFn       func(ctx context.Context, findingID string) (*patch.Outcome, error)
+	previewNotifyFn      func(ctx context.Context, findingID, channel, target string, alreadyLinked bool) (*notify.Outcome, error)
 	getFindingFn         func(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
 	getFindingEventsFn   func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
 	refreshFn            func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
@@ -253,6 +255,13 @@ func (m *mockUsecases) PreviewPatch(ctx context.Context, findingID string) (*pat
 		return nil, fmt.Errorf("unexpected call to PreviewPatch")
 	}
 	return m.previewPatchFn(ctx, findingID)
+}
+
+func (m *mockUsecases) PreviewNotification(ctx context.Context, findingID, channel, target string, alreadyLinked bool) (*notify.Outcome, error) {
+	if m.previewNotifyFn == nil {
+		return nil, fmt.Errorf("unexpected call to PreviewNotification")
+	}
+	return m.previewNotifyFn(ctx, findingID, channel, target, alreadyLinked)
 }
 
 func (m *mockUsecases) GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error) {
@@ -663,6 +672,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Patch("/api/v1/findings/{id}", h.TriageFinding)
 	r.Post("/api/v1/findings/{id}/verify", h.VerifyFinding)
 	r.Get("/api/v1/findings/{id}/patch-preview", h.PreviewPatch)
+	r.Get("/api/v1/findings/{id}/notify-preview", h.PreviewNotification)
 	r.Post("/api/v1/findings/bulk-analysis", h.BulkTriage)
 	r.Get("/api/v1/findings/{id}/events", h.ListFindingEvents)
 	r.Get("/api/v1/findings/{id}", h.GetFinding)
@@ -1792,6 +1802,44 @@ func TestPreviewPatch_Unsupported(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestPreviewNotification_Success(t *testing.T) {
+	var gotChannel, gotTarget string
+	var gotLinked bool
+	mock := &mockUsecases{
+		previewNotifyFn: func(ctx context.Context, findingID, channel, target string, alreadyLinked bool) (*notify.Outcome, error) {
+			gotChannel, gotTarget, gotLinked = channel, target, alreadyLinked
+			return &notify.Outcome{Supported: true, Plan: &notify.Plan{ID: "notify-abc", Action: notify.ActionCreate}}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/findings/f1/notify-preview?channel=issue&target=SEC&linked=1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "issue", gotChannel)
+	assert.Equal(t, "SEC", gotTarget)
+	assert.True(t, gotLinked)
+}
+
+func TestPreviewNotification_MissingChannel(t *testing.T) {
+	router := testRouter(&mockUsecases{})
+	req := httptest.NewRequest("GET", "/api/v1/findings/f1/notify-preview?target=SEC", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPreviewNotification_MissingTarget(t *testing.T) {
+	router := testRouter(&mockUsecases{})
+	req := httptest.NewRequest("GET", "/api/v1/findings/f1/notify-preview?channel=issue", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 func TestGateStatus_ProjectNotFound(t *testing.T) {

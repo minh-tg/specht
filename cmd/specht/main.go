@@ -32,6 +32,7 @@ const (
 	cmdGateCheck
 	cmdPRPreview
 	cmdPatchPreview
+	cmdNotifyPreview
 	cmdStats
 	cmdStatsAging
 	cmdWatcherBackfill
@@ -63,6 +64,9 @@ type command struct {
 	introducedOnly bool
 	commit         string
 	provider       string
+	channel        string
+	target         string
+	linked         bool
 }
 
 func parseArgs(args []string) (command, error) {
@@ -285,6 +289,51 @@ func parseArgs(args []string) (command, error) {
 			return c, nil
 		default:
 			return command{}, fmt.Errorf("unknown patch subcommand: %s", rest[1])
+		}
+
+	case "notify":
+		if len(rest) < 2 {
+			return command{}, fmt.Errorf("missing subcommand for notify")
+		}
+		switch rest[1] {
+		case "preview":
+			c := command{cmd: cmdNotifyPreview}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--finding" && i+1 < len(rest):
+					c.findingID = rest[i+1]
+					i++
+				case rest[i] == "--channel" && i+1 < len(rest):
+					c.channel = rest[i+1]
+					i++
+				case rest[i] == "--target" && i+1 < len(rest):
+					c.target = rest[i+1]
+					i++
+				case rest[i] == "--linked":
+					c.linked = true
+				case rest[i] == "--format" && i+1 < len(rest):
+					c.format = rest[i+1]
+					i++
+				}
+			}
+			if c.findingID == "" {
+				return command{}, fmt.Errorf("--finding is required for notify preview")
+			}
+			if c.channel == "" {
+				return command{}, fmt.Errorf("--channel is required for notify preview")
+			}
+			if c.target == "" {
+				return command{}, fmt.Errorf("--target is required for notify preview")
+			}
+			if c.format == "" {
+				c.format = "human"
+			}
+			if c.format != "human" && c.format != "json" {
+				return command{}, fmt.Errorf("invalid --format %q: want human or json", c.format)
+			}
+			return c, nil
+		default:
+			return command{}, fmt.Errorf("unknown notify subcommand: %s", rest[1])
 		}
 
 	case "help":
@@ -549,6 +598,28 @@ func run(cl *client.Client, cmd command) error {
 		fmt.Printf("verify: %s\n", p.VerifyBy)
 		return nil
 
+	case cmdNotifyPreview:
+		notification, err := cl.PreviewNotification(cmd.findingID, cmd.channel, cmd.target, cmd.linked)
+		if err != nil {
+			return err
+		}
+		if cmd.format == "json" {
+			raw, err := json.MarshalIndent(notification, "", "  ")
+			if err != nil {
+				return err
+			}
+			fmt.Println(string(raw))
+			return nil
+		}
+		if !notification.Supported || notification.Plan == nil {
+			fmt.Printf("no notification: %s\n", notification.Reason)
+			return nil
+		}
+		plan := notification.Plan
+		fmt.Printf("notify %s (%s -> %s): %s\n%s\n", plan.ID, plan.Channel, plan.Target, plan.Title, plan.Body)
+		fmt.Printf("dedupe: %s\n", plan.DedupeKey)
+		return nil
+
 	case cmdStats:
 		stats, err := cl.GetProjectStats(cmd.slug)
 		if err != nil {
@@ -643,6 +714,8 @@ Commands:
     [--severity critical] [--format human|json]
   patch preview --finding <id>            Preview safe patch (dry-run; applies nothing)
     [--format human|json]
+  notify preview --finding <id> --channel <issue|message> --target <id>
+    [--linked] [--format human|json]  Preview tracker/messaging action (dry-run; sends nothing)
   stats show <slug>                       Show project statistics
   stats aging <slug>                      Show aging buckets, SLA overdue, reopened
   watcher backfill [--since <ISO8601>]    Run one CVE watcher poll

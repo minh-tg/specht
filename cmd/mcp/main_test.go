@@ -22,6 +22,8 @@ type mockClient struct {
 	watcher          *client.WatcherStatus
 	preview          *client.PRCheckPreview
 	patch            *client.PatchOutcome
+	notification     *client.NotifyOutcome
+	notifiedLinked   bool
 	introducedReport string
 	err              error
 }
@@ -52,6 +54,11 @@ func (m *mockClient) PreviewPRCheck(projectSlug string, commit string, provider 
 
 func (m *mockClient) PreviewPatch(findingID string) (*client.PatchOutcome, error) {
 	return m.patch, m.err
+}
+
+func (m *mockClient) PreviewNotification(findingID string, channel string, target string, linked bool) (*client.NotifyOutcome, error) {
+	m.notifiedLinked = linked
+	return m.notification, m.err
 }
 
 func (m *mockClient) UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error) {
@@ -250,6 +257,36 @@ func TestMCPPatchPreview(t *testing.T) {
 
 func TestMCPPatchPreviewMissingFinding(t *testing.T) {
 	raw := `{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"patch_preview","arguments":{}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(&mockClient{}, req)
+	require.NotNil(t, resp.Error)
+}
+
+func TestMCPNotifyPreview(t *testing.T) {
+	mc := &mockClient{
+		notification: &client.NotifyOutcome{
+			Supported: true,
+			Plan: &client.NotifyPlan{
+				ID: "notify-abc", Channel: "issue", Target: "SEC",
+				Action: "create", Title: "[HIGH] XSS", DedupeKey: "notify-abc",
+			},
+		},
+	}
+	raw := `{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"notify_preview","arguments":{"finding_id":"f1","channel":"issue","target":"SEC","linked":true}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(mc, req)
+	require.Nil(t, resp.Error)
+	require.NotNil(t, resp.Result)
+	assert.True(t, mc.notifiedLinked)
+	assert.True(t, strings.Contains(string(*resp.Result), "notify-abc"))
+}
+
+func TestMCPNotifyPreviewMissingTarget(t *testing.T) {
+	raw := `{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"notify_preview","arguments":{"finding_id":"f1","channel":"issue"}}}`
 	var req jsonRPCMessage
 	json.Unmarshal([]byte(raw), &req)
 

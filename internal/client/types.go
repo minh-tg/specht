@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/xMinhx/specht/internal/notify"
 	"github.com/xMinhx/specht/internal/patch"
 )
 
@@ -83,6 +84,13 @@ type PatchOutcome = patch.Outcome
 
 // PatchProposal aliases one reviewable remediation proposal.
 type PatchProposal = patch.Proposal
+
+// NotifyOutcome aliases the notification planning outcome: a supported
+// plan or an explicit refusal (never a partial plan).
+type NotifyOutcome = notify.Outcome
+
+// NotifyPlan aliases one reviewable notification action.
+type NotifyPlan = notify.Plan
 
 // Project is a scan project (the top-level tenant of findings and reports).
 type Project struct {
