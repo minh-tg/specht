@@ -176,6 +176,22 @@ func (r *pgReportPort) UpdateStatus(ctx context.Context, id, projectID, status s
 	return reportRowToPort(row), nil
 }
 
+func (r *pgReportPort) CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error) {
+	return r.inner.CountStaleReports(ctx, cutoff)
+}
+
+func (r *pgReportPort) DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]string, error) {
+	ids, err := r.inner.DeleteStaleReports(ctx, cutoff)
+	if err != nil {
+		return nil, mappingErr(err)
+	}
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		out[i] = toUUID(id)
+	}
+	return out, nil
+}
+
 // ---------- Findings port over the existing repo methods ----------
 
 type pgFindingPort struct{ inner *pgFindingRepo }

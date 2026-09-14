@@ -11,6 +11,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countStaleReports = `-- name: CountStaleReports :one
+SELECT COUNT(*) FROM reports
+WHERE status IN ('completed', 'failed')
+  AND COALESCE(completed_at, created_at) < $1
+`
+
+// Retention preview (SOLO-188): settled (completed/failed) reports older
+// than the cutoff. Processing reports are never counted — an in-flight
+// scan must not look purgable.
+func (q *Queries) CountStaleReports(ctx context.Context, completedAt pgtype.Timestamptz) (int64, error) {
+	row := q.db.QueryRow(ctx, countStaleReports, completedAt)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createReport = `-- name: CreateReport :one
 INSERT INTO reports (
     project_id, tool_name, tool_version, scan_type,
@@ -120,6 +136,37 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 		&i.ScanMode,
 	)
 	return i, err
+}
+
+const deleteStaleReports = `-- name: DeleteStaleReports :many
+DELETE FROM reports
+WHERE status IN ('completed', 'failed')
+  AND COALESCE(completed_at, created_at) < $1
+RETURNING id
+`
+
+// Retention purge (SOLO-188): deletes settled reports older than the
+// cutoff, returning their ids. Occurrences, watcher rows, and package
+// inventory cascade; finding attribution nulls (SET NULL); findings
+// themselves survive. Returns zero rows when nothing qualifies.
+func (q *Queries) DeleteStaleReports(ctx context.Context, completedAt pgtype.Timestamptz) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, deleteStaleReports, completedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const getCompletedReportByCommit = `-- name: GetCompletedReportByCommit :one

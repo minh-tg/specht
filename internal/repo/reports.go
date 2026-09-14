@@ -108,6 +108,14 @@ func (r *pgReportRepo) GetCompletedByCommit(ctx context.Context, projectID pgtyp
 	})
 }
 
+func (r *pgReportRepo) CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error) {
+	return r.q.CountStaleReports(ctx, uuidFromTime(cutoff))
+}
+
+func (r *pgReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]pgtype.UUID, error) {
+	return r.q.DeleteStaleReports(ctx, uuidFromTime(cutoff))
+}
+
 func (r *pgReportRepo) UpdateStatus(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
 	return r.q.UpdateReportStatus(ctx, sqlc.UpdateReportStatusParams{
 		ID:            id,

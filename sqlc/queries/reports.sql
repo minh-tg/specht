@@ -55,3 +55,21 @@ FROM reports
 WHERE project_id = $1 AND tool_name = $2 AND commit_sha = $3 AND status = 'completed' AND scan_mode = 'full'
 ORDER BY created_at DESC
 LIMIT 1;
+
+-- name: CountStaleReports :one
+-- Retention preview (SOLO-188): settled (completed/failed) reports older
+-- than the cutoff. Processing reports are never counted — an in-flight
+-- scan must not look purgable.
+SELECT COUNT(*) FROM reports
+WHERE status IN ('completed', 'failed')
+  AND COALESCE(completed_at, created_at) < $1;
+
+-- name: DeleteStaleReports :many
+-- Retention purge (SOLO-188): deletes settled reports older than the
+-- cutoff, returning their ids. Occurrences, watcher rows, and package
+-- inventory cascade; finding attribution nulls (SET NULL); findings
+-- themselves survive. Returns zero rows when nothing qualifies.
+DELETE FROM reports
+WHERE status IN ('completed', 'failed')
+  AND COALESCE(completed_at, created_at) < $1
+RETURNING id;

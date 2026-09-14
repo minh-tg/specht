@@ -666,6 +666,13 @@ type ReportStore interface {
 	// newest completed same-scanner report for an exact revision, or
 	// ErrNotFound when no baseline exists (caller falls back to full).
 	GetCompletedByCommit(ctx context.Context, projectID, scanner, commit string) (CompletedReport, error)
+	// CountStaleReports counts settled (completed/failed) reports older
+	// than the cutoff. Processing reports are never counted.
+	CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error)
+	// DeleteStaleReports deletes settled reports older than the cutoff,
+	// returning their ids. Occurrences, watcher rows, and inventory
+	// cascade; finding attribution nulls; findings survive.
+	DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]string, error)
 }
 
 // CompletedReport is the verification basis: the newest completed scan
@@ -789,6 +796,22 @@ type Stores struct {
 	Inventory     InventoryStore
 	Stats         StatsStore
 	Watcher       WatcherStore
+	Admin         AdminStore
+}
+
+// AdminOverview is one row of platform-wide counts for the admin status
+// surface.
+type AdminOverview struct {
+	ProjectCount          int64
+	UserCount             int64
+	OpenFindingCount      int64
+	ReportCount           int64
+	OldestSettledReportAt *time.Time
+}
+
+// AdminStore serves platform observability aggregates.
+type AdminStore interface {
+	Overview(ctx context.Context) (AdminOverview, error)
 }
 
 // AnalysisExpiryStore is the persistence surface for the analysis-expiry

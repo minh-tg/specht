@@ -9,6 +9,7 @@ package repo
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -93,6 +94,8 @@ type ReportRepo interface {
 	UpdateStatus(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error)
 	LatestCompletedByScanner(ctx context.Context, projectID pgtype.UUID, toolName string) (sqlc.LatestCompletedReportByScannerRow, error)
 	GetCompletedByCommit(ctx context.Context, projectID pgtype.UUID, toolName string, commit pgtype.Text) (sqlc.GetCompletedReportByCommitRow, error)
+	CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error)
+	DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]pgtype.UUID, error)
 }
 
 // UserRepo persists user accounts.

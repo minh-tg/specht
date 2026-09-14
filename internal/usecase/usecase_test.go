@@ -101,6 +101,8 @@ type mockReportRepo struct {
 	updateStatusFn  func(context.Context, string, string, string, int32, *string) (port.Report, error)
 	latestReportFn  func(context.Context, string, string) (port.CompletedReport, error)
 	byCommitFn      func(context.Context, string, string, string) (port.CompletedReport, error)
+	countStaleFn    func(context.Context, time.Time) (int64, error)
+	deleteStaleFn   func(context.Context, time.Time) ([]string, error)
 }
 
 func (m *mockReportRepo) Create(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
@@ -143,6 +145,32 @@ func (m *mockReportRepo) GetCompletedByCommit(ctx context.Context, projectID, sc
 		return port.CompletedReport{}, port.ErrNotFound
 	}
 	return m.byCommitFn(ctx, projectID, scanner, commit)
+}
+
+func (m *mockReportRepo) CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error) {
+	if m.countStaleFn == nil {
+		return 0, fmt.Errorf("unexpected call to CountStaleReports")
+	}
+	return m.countStaleFn(ctx, cutoff)
+}
+
+func (m *mockReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]string, error) {
+	if m.deleteStaleFn == nil {
+		return nil, fmt.Errorf("unexpected call to DeleteStaleReports")
+	}
+	return m.deleteStaleFn(ctx, cutoff)
+}
+
+type mockAdminRepo struct {
+	port.AdminStore
+	overviewFn func(context.Context) (port.AdminOverview, error)
+}
+
+func (m *mockAdminRepo) Overview(ctx context.Context) (port.AdminOverview, error) {
+	if m.overviewFn == nil {
+		return port.AdminOverview{}, fmt.Errorf("unexpected call to Overview")
+	}
+	return m.overviewFn(ctx)
 }
 
 type mockFindingRepo struct {
