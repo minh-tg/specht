@@ -1,0 +1,33 @@
+name: codeql (weekly deep SAST)
+
+# Deep dataflow analysis Semgrep's pattern matching can't do. Runs weekly
+# rather than per-PR: a full CodeQL build takes an order of magnitude
+# longer than the merge pipeline, and its signal changes slowly. Fast
+# feedback stays with Semgrep; blocking SCA/misconfig stays with
+# govulncheck and Trivy.
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [go, javascript]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - uses: github/codeql-action/analyze@v3
