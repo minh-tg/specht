@@ -225,6 +225,16 @@ type FindingOccurrence struct {
 	ObservedAt      pgtype.Timestamptz `json:"observed_at"`
 }
 
+type PolicyTemplate struct {
+	ID          pgtype.UUID        `json:"id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	Definition  []byte             `json:"definition"`
+	Version     int32              `json:"version"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type Project struct {
 	ID                        pgtype.UUID        `json:"id"`
 	Slug                      string             `json:"slug"`
@@ -237,6 +247,7 @@ type Project struct {
 	CveWatcherGate            string             `json:"cve_watcher_gate"`
 	CveWatcherEnabled         bool               `json:"cve_watcher_enabled"`
 	CveWatcherIntervalSeconds int32              `json:"cve_watcher_interval_seconds"`
+	PolicyTemplateID          pgtype.UUID        `json:"policy_template_id"`
 }
 
 type ProjectMember struct {
