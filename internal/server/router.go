@@ -34,6 +34,10 @@ type RouterConfig struct {
 	// SSOAllowedDomains gates SSO auto-provisioning (H2): unknown IdP
 	// subjects are provisioned only for allowlisted email domains.
 	SSOAllowedDomains []string
+	// SSOAdminGroups grants provisioned admin to SSO principals whose IdP
+	// group membership matches (SOLO-189). Existing accounts never change
+	// role from IdP groups.
+	SSOAdminGroups []string
 	// TrustedProxies lists the CIDR ranges of reverse proxies / load
 	// balancers in front of the API. Only requests whose peer address falls
 	// inside one of these ranges may supply X-Forwarded-For, X-Real-IP, or
@@ -81,15 +85,16 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	// SSO/OIDC entry point: redirect to the provider's authorization URL.
 	if cfg.OIDCEnabled && cfg.OIDC != nil {
 		r.Get("/api/v1/auth/sso/login", ssoLoginHandler(cfg.OIDC))
-		r.Get("/api/v1/auth/sso/callback", cfg.OIDC.CallbackHandler(func(ctx context.Context, sub, email string) (string, error) {
+		r.Get("/api/v1/auth/sso/callback", cfg.OIDC.CallbackHandler(func(ctx context.Context, sub, email string, groups []string) (string, error) {
 			jwtAuth, ok := cfg.JWTAuth.(*auth.JWTAuthenticator)
 			if !ok {
 				return "", fmt.Errorf("OIDC enabled but JWTAuth is %T, not *auth.JWTAuthenticator", cfg.JWTAuth)
 			}
 			// Resolve the IdP subject to a local account: existing users
 			// keep their local role; unknown subjects are provisioned only
-			// for allowlisted domains, otherwise rejected (H2).
-			userID, role, _, err := cfg.Usecases.FindOrProvisionSSOUser(ctx, sub, email, cfg.SSOAllowedDomains)
+			// for allowlisted domains, otherwise rejected (H2). IdP admin
+			// groups elevate provisioned accounts (SOLO-189).
+			userID, role, _, err := cfg.Usecases.FindOrProvisionSSOUser(ctx, sub, email, groups, cfg.SSOAllowedDomains, cfg.SSOAdminGroups)
 			if err != nil {
 				return "", err
 			}

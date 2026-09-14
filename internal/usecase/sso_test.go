@@ -23,7 +23,7 @@ func TestFindOrProvisionSSOUser_ExistingKeepsLocalRole(t *testing.T) {
 		return u, nil
 	}
 	uc := New(ssoTestDeps(ur))
-	userID, role, provisioned, err := uc.FindOrProvisionSSOUser(context.Background(), "sub-1", "Ada@Example.COM", nil)
+	userID, role, provisioned, err := uc.FindOrProvisionSSOUser(context.Background(), "sub-1", "Ada@Example.COM", nil, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "user-1", userID)
 	assert.Equal(t, auth.RoleAdmin, role, "existing accounts keep their local role")
@@ -39,7 +39,7 @@ func TestFindOrProvisionSSOUser_UnknownDomainDenied(t *testing.T) {
 		return port.User{}, assert.AnError
 	}
 	uc := New(ssoTestDeps(ur))
-	_, _, _, err := uc.FindOrProvisionSSOUser(context.Background(), "sub-9", "mallory@evil.example", []string{"example.com"})
+	_, _, _, err := uc.FindOrProvisionSSOUser(context.Background(), "sub-9", "mallory@evil.example", nil, []string{"example.com"}, nil)
 	assert.ErrorIs(t, err, auth.ErrSSONotProvisioned)
 }
 
@@ -57,7 +57,7 @@ func TestFindOrProvisionSSOUser_AllowedDomainProvisions(t *testing.T) {
 		return u, nil
 	}
 	uc := New(ssoTestDeps(ur))
-	userID, role, provisioned, err := uc.FindOrProvisionSSOUser(context.Background(), "sub-9", "New@Example.COM", []string{"example.com"})
+	userID, role, provisioned, err := uc.FindOrProvisionSSOUser(context.Background(), "sub-9", "New@Example.COM", nil, []string{"example.com"}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "user-9", userID)
 	assert.Equal(t, auth.RoleViewer, role, "provisioned member accounts map to viewer claims")
@@ -67,6 +67,109 @@ func TestFindOrProvisionSSOUser_AllowedDomainProvisions(t *testing.T) {
 
 func TestFindOrProvisionSSOUser_EmptyEmailDenied(t *testing.T) {
 	uc := New(Deps{Stores: &port.Stores{Users: &mockUserRepo{}}})
-	_, _, _, err := uc.FindOrProvisionSSOUser(context.Background(), "sub-1", "", []string{"example.com"})
+	_, _, _, err := uc.FindOrProvisionSSOUser(context.Background(), "sub-1", "", nil, []string{"example.com"}, nil)
 	assert.ErrorIs(t, err, auth.ErrSSONotProvisioned)
+}
+
+func TestFindOrProvisionSSOUser_AdminGroupProvisionsAdmin(t *testing.T) {
+	ur := &mockUserRepo{}
+	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {
+		return port.User{}, port.ErrNotFound
+	}
+	ur.createFn = func(ctx context.Context, email string, displayName, passwordHash *string) (port.User, error) {
+		u := makeUser("user-9")
+		u.Email = email
+		u.Role = "member"
+		return u, nil
+	}
+	var gotRole string
+	ur.setRoleFn = func(ctx context.Context, userID, role string) (port.User, error) {
+		gotRole = role
+		u := makeUser(userID)
+		u.Role = role
+		return u, nil
+	}
+	uc := New(ssoTestDeps(ur))
+	userID, role, provisioned, err := uc.FindOrProvisionSSOUser(
+		context.Background(), "sub-9", "new@example.com",
+		[]string{"idp-viewers", "idp-admins"}, []string{"example.com"}, []string{"idp-admins"},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "user-9", userID)
+	assert.Equal(t, auth.RoleAdmin, gotRole, "IdP admin group must elevate")
+	assert.Equal(t, auth.RoleAdmin, role)
+	assert.True(t, provisioned)
+}
+
+func TestFindOrProvisionSSOUser_NonAdminGroupStaysMember(t *testing.T) {
+	ur := &mockUserRepo{}
+	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {
+		return port.User{}, port.ErrNotFound
+	}
+	ur.createFn = func(ctx context.Context, email string, displayName, passwordHash *string) (port.User, error) {
+		u := makeUser("user-9")
+		u.Email = email
+		u.Role = "member"
+		return u, nil
+	}
+	calls := 0
+	ur.setRoleFn = func(ctx context.Context, userID, role string) (port.User, error) {
+		calls++
+		return makeUser(userID), nil
+	}
+	uc := New(ssoTestDeps(ur))
+	_, role, provisioned, err := uc.FindOrProvisionSSOUser(
+		context.Background(), "sub-9", "new@example.com",
+		[]string{"idp-viewers"}, []string{"example.com"}, []string{"idp-admins"},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, auth.RoleViewer, role)
+	assert.True(t, provisioned)
+	assert.Zero(t, calls, "no elevation without a matching admin group")
+}
+
+func TestFindOrProvisionSSOUser_ExistingRoleNeverChanges(t *testing.T) {
+	ur := &mockUserRepo{}
+	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {
+		u := makeUser("user-1")
+		u.Email = email
+		u.Role = "member"
+		return u, nil
+	}
+	calls := 0
+	ur.setRoleFn = func(ctx context.Context, userID, role string) (port.User, error) {
+		calls++
+		return makeUser(userID), nil
+	}
+	uc := New(ssoTestDeps(ur))
+	_, role, provisioned, err := uc.FindOrProvisionSSOUser(
+		context.Background(), "sub-1", "ada@example.com",
+		[]string{"idp-admins"}, []string{"example.com"}, []string{"idp-admins"},
+	)
+	require.NoError(t, err)
+	assert.Equal(t, auth.RoleViewer, role, "IdP groups never change an established role")
+	assert.False(t, provisioned)
+	assert.Zero(t, calls)
+}
+
+func TestFindOrProvisionSSOUser_ElevationFailureFailsClosed(t *testing.T) {
+	ur := &mockUserRepo{}
+	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {
+		return port.User{}, port.ErrNotFound
+	}
+	ur.createFn = func(ctx context.Context, email string, displayName, passwordHash *string) (port.User, error) {
+		u := makeUser("user-9")
+		u.Email = email
+		u.Role = "member"
+		return u, nil
+	}
+	ur.setRoleFn = func(ctx context.Context, userID, role string) (port.User, error) {
+		return port.User{}, assert.AnError
+	}
+	uc := New(ssoTestDeps(ur))
+	_, _, _, err := uc.FindOrProvisionSSOUser(
+		context.Background(), "sub-9", "new@example.com",
+		[]string{"idp-admins"}, []string{"example.com"}, []string{"idp-admins"},
+	)
+	require.Error(t, err, "failed elevation must fail the login, not mint an admin token")
 }

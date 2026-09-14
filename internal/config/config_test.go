@@ -104,6 +104,28 @@ func TestLoad_SSOAllowedDomainsEmpty(t *testing.T) {
 	assert.Empty(t, cfg.SSO.AllowedDomains, "empty allowlist disables auto-provisioning")
 }
 
+func TestLoad_SSOGroupMapping(t *testing.T) {
+	t.Setenv("WATCHER_ENABLE", "")
+	t.Setenv("SSO_GROUPS_CLAIM", "roles")
+	t.Setenv("SSO_ADMIN_GROUPS", "idp-admins, Platform-Admins ")
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.Equal(t, "roles", cfg.SSO.GroupsClaim)
+	assert.Equal(t, []string{"idp-admins", "Platform-Admins"}, cfg.SSO.AdminGroups, "group names stay case-sensitive")
+}
+
+func TestLoad_SSOGroupMappingDefaults(t *testing.T) {
+	t.Setenv("WATCHER_ENABLE", "")
+	t.Setenv("SSO_GROUPS_CLAIM", "")
+	t.Setenv("SSO_ADMIN_GROUPS", "")
+
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.Empty(t, cfg.SSO.GroupsClaim, "empty claim means the default groups claim")
+	assert.Empty(t, cfg.SSO.AdminGroups, "empty admin groups disable elevation")
+}
+
 func TestLoad_RateLimitDefaults(t *testing.T) {
 	t.Setenv("RATE_LIMIT_ENABLED", "")
 	t.Setenv("RATE_LIMIT_RPS", "")

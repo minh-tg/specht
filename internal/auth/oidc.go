@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -25,6 +26,9 @@ type OIDCConfig struct {
 	ClientSecret string
 	IssuerURL    string // e.g. "https://accounts.google.com"
 	RedirectURI  string // OAuth2 callback URL registered with the provider
+	// GroupsClaim names the claim carrying IdP group membership for
+	// enterprise role mapping (SOLO-189). Empty means "groups".
+	GroupsClaim string
 }
 
 // jwksCacheTTL bounds how long a fetched JWKS key set is reused before a
@@ -183,7 +187,85 @@ func (a *OIDCAuthenticator) identityFromIDToken(ctx context.Context, idToken str
 	return &Identity{
 		UserID: sub,
 		Email:  email,
+		Groups: parseGroupsClaim(claims, a.groupsClaim()),
 	}, nil
+}
+
+// groupsClaim resolves the configured groups claim, defaulting to "groups".
+func (a *OIDCAuthenticator) groupsClaim() string {
+	if strings.TrimSpace(a.cfg.GroupsClaim) == "" {
+		return "groups"
+	}
+	return a.cfg.GroupsClaim
+}
+
+// maxSSOGroups and maxSSOGroupLength bound IdP group intake: groups ride
+// into logs and (via provisioning) stored roles, so an unbounded claim
+// must not become a bloat vector.
+const (
+	maxSSOGroups      = 100
+	maxSSOGroupLength = 256
+)
+
+// parseGroupsClaim extracts IdP group membership from a claims document.
+// Providers disagree on shape: a JSON array of strings, a single string,
+// or a space-separated string are all accepted. Anything else (numbers,
+// objects, nested arrays) is skipped, never coerced — group membership
+// gates admin elevation, so ambiguous values must not grant anything.
+func parseGroupsClaim(claims map[string]any, claim string) []string {
+	raw, ok := claims[claim]
+	if !ok || raw == nil {
+		return nil
+	}
+	var out []string
+	add := func(s string) {
+		s = strings.TrimSpace(s)
+		if s == "" || len(s) > maxSSOGroupLength {
+			return
+		}
+		if len(out) >= maxSSOGroups {
+			return
+		}
+		out = append(out, s)
+	}
+	switch v := raw.(type) {
+	case string:
+		for _, part := range strings.Fields(v) {
+			add(part)
+		}
+	case []string:
+		for _, s := range v {
+			add(s)
+		}
+	case []any:
+		for _, item := range v {
+			if s, ok := item.(string); ok {
+				add(s)
+			}
+		}
+	}
+	return out
+}
+
+// IsSSOAdmin reports whether IdP group membership elevates a principal to
+// admin under the configured admin groups. Matching is exact (IdP group
+// names are case-sensitive); empty inputs never match.
+func IsSSOAdmin(groups []string, adminGroups []string) bool {
+	if len(groups) == 0 || len(adminGroups) == 0 {
+		return false
+	}
+	admin := make(map[string]struct{}, len(adminGroups))
+	for _, g := range adminGroups {
+		if g != "" {
+			admin[g] = struct{}{}
+		}
+	}
+	for _, g := range groups {
+		if _, ok := admin[g]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // identityFromUserInfo fetches claims from the issuer's userinfo endpoint
@@ -229,7 +311,14 @@ func (a *OIDCAuthenticator) identityFromUserInfo(ctx context.Context, tokenResp 
 		Sub   string `json:"sub"`
 		Email string `json:"email"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+	// Bound the userinfo body before decoding twice (typed fields plus the
+	// configurable groups claim): providers answer small JSON here, and an
+	// unbounded read would turn a compromised endpoint into a memory hog.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return nil, fmt.Errorf("decode userinfo: %w", err)
+	}
+	if err := json.Unmarshal(body, &info); err != nil {
 		return nil, fmt.Errorf("decode userinfo: %w", err)
 	}
 	if info.Sub == "" {
@@ -249,10 +338,51 @@ func (a *OIDCAuthenticator) identityFromUserInfo(ctx context.Context, tokenResp 
 		}
 	}
 
+	// Group membership merges from both documents: the id_token is
+	// authoritative when present (its groups were validated above via
+	// identityFromIDToken), the userinfo endpoint supplements it. Either
+	// side may omit the claim; duplicates collapse.
+	seen := make(map[string]struct{})
+	var groups []string
+	addGroups := func(list []string) {
+		for _, g := range list {
+			if _, dup := seen[g]; dup {
+				continue
+			}
+			seen[g] = struct{}{}
+			groups = append(groups, g)
+		}
+	}
+	if idToken != "" {
+		if idGroups, err := idTokenGroups(idToken, a.groupsClaim()); err == nil {
+			addGroups(idGroups)
+		}
+	}
+	var rawClaims map[string]any
+	if err := json.Unmarshal(body, &rawClaims); err == nil {
+		addGroups(parseGroupsClaim(rawClaims, a.groupsClaim()))
+	}
+
 	return &Identity{
 		UserID: info.Sub,
 		Email:  info.Email,
+		Groups: groups,
 	}, nil
+}
+
+// idTokenGroups extracts the groups claim from an already-validated
+// id_token. Callers must have validated the token first; this only decodes
+// the payload.
+// idTokenGroups extracts the groups claim from an already-validated
+// id_token. Callers must have validated the token first; this only decodes
+// the payload.
+func idTokenGroups(idToken, groupsClaim string) ([]string, error) {
+	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
+	claims := jwt.MapClaims{}
+	if _, _, err := parser.ParseUnverified(idToken, claims); err != nil {
+		return nil, fmt.Errorf("decode id_token groups: %w", err)
+	}
+	return parseGroupsClaim(claims, groupsClaim), nil
 }
 
 // idTokenSubject returns the sub claim of an id_token without validating the
@@ -274,9 +404,10 @@ func idTokenSubject(idToken string) (string, error) {
 // back with a session token delivered as a URL fragment.
 // The issuer callback mints the session token for the validated identity.
 // It receives the request context so it can resolve or provision the local
-// account. If it returns ErrSSONotProvisioned the callback answers 403
-// without disclosing whether the account exists.
-func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, userID, email string) (token string, err error)) http.HandlerFunc {
+// account, plus the IdP group membership for enterprise role mapping. If it
+// returns ErrSSONotProvisioned the callback answers 403 without disclosing
+// whether the account exists.
+func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, userID, email string, groups []string) (token string, err error)) http.HandlerFunc {
 	const stateCookieName = "sso_state"
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -342,7 +473,7 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, use
 			return
 		}
 
-		tok, err := issuer(r.Context(), ident.UserID, ident.Email)
+		tok, err := issuer(r.Context(), ident.UserID, ident.Email, ident.Groups)
 		if err != nil {
 			if errors.Is(err, ErrSSONotProvisioned) {
 				http.Error(w, "sso account not provisioned", http.StatusForbidden)

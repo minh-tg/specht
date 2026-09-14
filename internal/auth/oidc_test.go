@@ -105,7 +105,7 @@ func TestOIDC_LoginURL(t *testing.T) {
 func TestOIDC_CallbackHandler_MissingCode(t *testing.T) {
 	a := mustOIDC(t, "https://example.com")
 
-	h := a.CallbackHandler(func(ctx context.Context, userID, email string) (string, error) {
+	h := a.CallbackHandler(func(ctx context.Context, userID, email string, groups []string) (string, error) {
 		return "token", nil
 	})
 	req := httptest.NewRequest("GET", "/api/v1/auth/sso/callback", nil)
@@ -118,7 +118,7 @@ func TestOIDC_CallbackHandler_MissingCode(t *testing.T) {
 func TestOIDC_CallbackHandler_MissingState(t *testing.T) {
 	a := mustOIDC(t, "https://example.com")
 
-	h := a.CallbackHandler(func(ctx context.Context, userID, email string) (string, error) {
+	h := a.CallbackHandler(func(ctx context.Context, userID, email string, groups []string) (string, error) {
 		return "token", nil
 	})
 	req := httptest.NewRequest("GET", "/callback?code=test-code", nil)
@@ -132,7 +132,7 @@ func TestOIDC_CallbackHandler_MissingState(t *testing.T) {
 func TestOIDC_CallbackHandler_StateMismatch(t *testing.T) {
 	a := mustOIDC(t, "https://example.com")
 
-	h := a.CallbackHandler(func(ctx context.Context, userID, email string) (string, error) {
+	h := a.CallbackHandler(func(ctx context.Context, userID, email string, groups []string) (string, error) {
 		return "token", nil
 	})
 	req := httptest.NewRequest("GET", "/callback?code=test-code&state=attacker-state", nil)
@@ -191,10 +191,11 @@ func signOIDCIDToken(t *testing.T, key *rsa.PrivateKey, issuer, aud, sub, email,
 // fakeOIDCProvider is a configurable OIDC provider: token endpoint, userinfo
 // endpoint (with the configured subject), and the JWKS for key.
 type fakeOIDCProvider struct {
-	t       *testing.T
-	srv     *httptest.Server
-	idToken string
-	userSub string
+	t          *testing.T
+	srv        *httptest.Server
+	idToken    string
+	userSub    string
+	userGroups string
 }
 
 func newFakeOIDCProvider(t *testing.T, key *rsa.PrivateKey) *fakeOIDCProvider {
@@ -207,7 +208,11 @@ func newFakeOIDCProvider(t *testing.T, key *rsa.PrivateKey) *fakeOIDCProvider {
 			fmt.Fprintf(w, `{"access_token":"acc-test","token_type":"Bearer","id_token":%q}`, p.idToken)
 		case "/userinfo":
 			sub := p.userSub
-			fmt.Fprintf(w, `{"sub":%q,"email":%q}`, sub, "oidc@example.com")
+			if p.userGroups != "" {
+				fmt.Fprintf(w, `{"sub":%q,"email":%q,"groups":%s}`, sub, "oidc@example.com", p.userGroups)
+			} else {
+				fmt.Fprintf(w, `{"sub":%q,"email":%q}`, sub, "oidc@example.com")
+			}
 		case "/.well-known/jwks.json":
 			fmt.Fprint(w, jwksBody(t, &key.PublicKey))
 		default:
@@ -224,7 +229,7 @@ func newFakeOIDCProvider(t *testing.T, key *rsa.PrivateKey) *fakeOIDCProvider {
 func callbackResponse(t *testing.T, a *OIDCAuthenticator, state string) (*httptest.ResponseRecorder, string, string) {
 	t.Helper()
 	var gotUserID, gotEmail string
-	h := a.CallbackHandler(func(ctx context.Context, userID, email string) (string, error) {
+	h := a.CallbackHandler(func(ctx context.Context, userID, email string, groups []string) (string, error) {
 		gotUserID, gotEmail = userID, email
 		return "test-session-token", nil
 	})
@@ -378,7 +383,7 @@ func TestOIDC_Callback_NotProvisionedIsForbidden(t *testing.T) {
 	prov.userSub = "unknown-sub"
 	a := mustOIDC(t, prov.srv.URL)
 
-	h := a.CallbackHandler(func(ctx context.Context, userID, email string) (string, error) {
+	h := a.CallbackHandler(func(ctx context.Context, userID, email string, groups []string) (string, error) {
 		assert.Equal(t, "unknown-sub", userID)
 		// The fake provider answers a fixed userinfo email; the 403 below
 		// is what this test pins, not the address value.

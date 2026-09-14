@@ -70,6 +70,14 @@ type SSOConfig struct {
 	// disables auto-provisioning entirely — unknown IdP subjects are
 	// rejected with 403. Existing local accounts are unaffected.
 	AllowedDomains []string
+	// GroupsClaim names the IdP claim carrying group membership for
+	// enterprise role mapping (SOLO-189). Empty means "groups".
+	GroupsClaim string
+	// AdminGroups elevates provisioned SSO accounts to admin when IdP
+	// group membership matches (exact, case-sensitive). Empty disables
+	// elevation — everyone provisions as member. Existing accounts never
+	// change role from IdP groups.
+	AdminGroups []string
 }
 
 // RateLimit is the resolved rate limiter configuration: a strict per-IP
@@ -112,6 +120,19 @@ func parseDomainAllowlist(v string) []string {
 	return out
 }
 
+// parseGroupAllowlist splits a comma/space-separated IdP group list.
+// Unlike domains, group names are case-sensitive and preserved verbatim;
+// empties are dropped.
+func parseGroupAllowlist(v string) []string {
+	var out []string
+	for _, part := range strings.FieldsFunc(v, func(c rune) bool { return c == ',' || c == ' ' }) {
+		if p := strings.TrimSpace(part); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 func Load() (*Server, error) {
 	s := &Server{
 		Addr:         strOr(os.Getenv("SERVER_ADDR"), DefaultServerAddr),
@@ -131,6 +152,8 @@ func Load() (*Server, error) {
 		IssuerURL:      os.Getenv("SSO_ISSUER_URL"),
 		RedirectURI:    os.Getenv("SSO_REDIRECT_URI"),
 		AllowedDomains: parseDomainAllowlist(os.Getenv("SSO_ALLOWED_DOMAINS")),
+		GroupsClaim:    strings.TrimSpace(os.Getenv("SSO_GROUPS_CLAIM")),
+		AdminGroups:    parseGroupAllowlist(os.Getenv("SSO_ADMIN_GROUPS")),
 	}
 
 	// Reverse-proxy trust: comma/space-separated CIDRs. A proxy inside one of

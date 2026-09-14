@@ -100,13 +100,16 @@ func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthR
 
 // FindOrProvisionSSOUser resolves an SSO-authenticated principal (sub is the
 // stable IdP subject, email the asserted address) to a local account for
-// token issuance. Existing accounts keep their local role; unknown accounts
-// are provisioned only when the email domain is allowlisted, otherwise
-// auth.ErrSSONotProvisioned is returned (the caller maps it to a generic
-// 403). Provisioned accounts are created without a password hash, so they
-// can never use password login (Login rejects empty hashes); they receive
-// the default member role, mapped to viewer claims via auth.TokenRole.
-func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, sub, email string, allowedDomains []string) (userID, role string, provisioned bool, err error) {
+// token issuance. Existing accounts keep their local role — IdP groups never
+// change an established role. Unknown accounts are provisioned only when the
+// email domain is allowlisted, otherwise auth.ErrSSONotProvisioned is
+// returned (the caller maps it to a generic 403). Provisioned accounts are
+// created without a password hash, so they can never use password login
+// (Login rejects empty hashes); they receive the default member role unless
+// IdP group membership matches adminGroups, in which case they are elevated
+// to admin via SetRole. A SetRole failure fails the login closed: the
+// account exists as a member and an operator can elevate it explicitly.
+func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, sub, email string, groups []string, allowedDomains []string, adminGroups []string) (userID, role string, provisioned bool, err error) {
 	if email == "" {
 		return "", "", false, auth.ErrSSONotProvisioned
 	}
@@ -137,6 +140,14 @@ func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, sub, email string
 		return "", "", false, fmt.Errorf("provision sso user: %w", err)
 	}
 	slog.Info("sso login: provisioned account", "email", email, "sub", sub)
+	if auth.IsSSOAdmin(groups, adminGroups) {
+		elevated, err := u.deps.Stores.Users.SetRole(ctx, created.ID, auth.RoleAdmin)
+		if err != nil {
+			return "", "", false, fmt.Errorf("elevate sso admin: %w", err)
+		}
+		slog.Info("sso login: elevated to admin by IdP group", "email", email, "sub", sub)
+		return elevated.ID, auth.TokenRole(elevated.Role), true, nil
+	}
 	return created.ID, auth.TokenRole(created.Role), true, nil
 }
 

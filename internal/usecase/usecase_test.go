@@ -323,6 +323,7 @@ type mockUserRepo struct {
 	getByEmailFn        func(context.Context, string) (port.User, error)
 	getByIDFn           func(context.Context, string) (port.User, error)
 	updateDisplayNameFn func(context.Context, string, *string) (port.User, error)
+	setRoleFn           func(context.Context, string, string) (port.User, error)
 }
 
 func (m *mockUserRepo) Create(ctx context.Context, email string, displayName, passwordHash *string) (port.User, error) {
@@ -351,6 +352,13 @@ func (m *mockUserRepo) UpdateDisplayName(ctx context.Context, userID string, dis
 		return port.User{}, fmt.Errorf("unexpected call to UpdateDisplayName")
 	}
 	return m.updateDisplayNameFn(ctx, userID, displayName)
+}
+
+func (m *mockUserRepo) SetRole(ctx context.Context, userID, role string) (port.User, error) {
+	if m.setRoleFn == nil {
+		return port.User{}, fmt.Errorf("unexpected call to SetRole")
+	}
+	return m.setRoleFn(ctx, userID, role)
 }
 
 type mockRefreshTokenRepo struct {

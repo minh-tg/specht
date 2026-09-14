@@ -100,7 +100,7 @@ func main() {
 	// router treats a nil OIDC authenticator as "SSO off".
 	var oidcAuth *auth.OIDCAuthenticator
 	if cfg.SSO.Enabled {
-		oidcAuth, err = auth.NewOIDCAuthenticator(auth.OIDCConfig{ClientID: cfg.SSO.ClientID, ClientSecret: cfg.SSO.ClientSecret, IssuerURL: cfg.SSO.IssuerURL, RedirectURI: cfg.SSO.RedirectURI}, nil)
+		oidcAuth, err = auth.NewOIDCAuthenticator(auth.OIDCConfig{ClientID: cfg.SSO.ClientID, ClientSecret: cfg.SSO.ClientSecret, IssuerURL: cfg.SSO.IssuerURL, RedirectURI: cfg.SSO.RedirectURI, GroupsClaim: cfg.SSO.GroupsClaim}, nil)
 		if err != nil {
 			slog.Error("auth setup", "error", err)
 			os.Exit(1)
@@ -157,6 +157,7 @@ func main() {
 		OIDCEnabled:       cfg.SSO.Enabled,
 		OIDC:              oidcAuth,
 		SSOAllowedDomains: cfg.SSO.AllowedDomains,
+		SSOAdminGroups:    cfg.SSO.AdminGroups,
 	})
 
 	srv := &http.Server{
