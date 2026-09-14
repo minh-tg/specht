@@ -52,6 +52,9 @@ func spaHandlerWithFS(apiHandler http.Handler, assets fs.FS) http.Handler {
 	}
 
 	fileServer := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Serving is jailed (http.FileServer over an fs.Sub root, which
+		// rejects escapes); Clean only selects Content-Type/cache headers.
+		// nosemgrep: go.lang.security.filepath-clean-misuse.filepath-clean-misuse
 		cleanPath := path.Clean(r.URL.Path)
 		if cleanPath == "." || cleanPath == "/" {
 			cleanPath = "index.html"

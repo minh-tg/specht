@@ -269,6 +269,8 @@ func ssoLoginHandler(oidc *auth.OIDCAuthenticator) http.HandlerFunc {
 		// whether this connection is secure, consulting the configured trusted
 		// proxies. SecureTransport honors that verdict and never trusts a
 		// client-supplied X-Forwarded-Proto on its own.
+		// Secure comes from the proxy-aware transport verdict below.
+		// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
 		http.SetCookie(w, &http.Cookie{
 			Name:     "sso_state",
 			Value:    state,

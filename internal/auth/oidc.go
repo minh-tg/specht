@@ -423,6 +423,8 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, use
 		}
 		// The state value is single-use: clear it before any further work so a
 		// replayed callback can never pass this check again.
+		// secureCookie sets Secure from the proxy-aware transport verdict.
+		// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
 		http.SetCookie(w, secureCookie(r, &http.Cookie{
 			Name:     stateCookieName,
 			Value:    "",
@@ -488,6 +490,9 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, use
 		// browser history, or server access logs. Fragments are not sent to
 		// the server, so nothing here ever reads it back; the SPA consumes
 		// the fragment on load and keeps the token in memory.
+		// Redirect target is the constant "/" with an escaped fragment;
+		// no user-controlled host or path.
+		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect
 		http.Redirect(w, r, "/#sso_token="+url.PathEscape(tok), http.StatusFound)
 	}
 }
