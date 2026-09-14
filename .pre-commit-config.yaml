@@ -65,6 +65,9 @@ repos:
       - id: oxlint
         name: oxlint
         entry: oxlint
+        # Non-source files (lockfiles, manifests) match ^frontend/ but give
+        # oxlint nothing to lint; don't fail those commits.
+        args: [--no-error-on-unmatched-pattern]
         language: system
         files: ^frontend/
 
