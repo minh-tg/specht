@@ -19,16 +19,19 @@ import (
 
 type mockProjectRepo struct {
 	port.ProjectStore
-	createFn         func(context.Context, port.CreateProjectInput) (port.Project, error)
-	listFn           func(context.Context) ([]port.Project, error)
-	getBySlugFn      func(context.Context, string) (port.Project, error)
-	updateFn         func(context.Context, string, string, *string) (port.Project, error)
-	updateSettingsFn func(context.Context, string, json.RawMessage) (port.Project, error)
-	deleteFn         func(context.Context, string) (port.Project, error)
-	upsertMemberFn   func(context.Context, string, string, string) (port.ProjectMember, error)
-	listMembersFn    func(context.Context, string) ([]port.ProjectMember, error)
-	isMemberFn       func(context.Context, string, string) (bool, error)
-	listMemberIDsFn  func(context.Context, string) ([]string, error)
+	createFn            func(context.Context, port.CreateProjectInput) (port.Project, error)
+	listFn              func(context.Context) ([]port.Project, error)
+	getBySlugFn         func(context.Context, string) (port.Project, error)
+	updateFn            func(context.Context, string, string, *string) (port.Project, error)
+	updateSettingsFn    func(context.Context, string, json.RawMessage) (port.Project, error)
+	deleteFn            func(context.Context, string) (port.Project, error)
+	upsertMemberFn      func(context.Context, string, string, string) (port.ProjectMember, error)
+	listMembersFn       func(context.Context, string) ([]port.ProjectMember, error)
+	isMemberFn          func(context.Context, string, string) (bool, error)
+	listMemberIDsFn     func(context.Context, string) ([]string, error)
+	isMemberEffectiveFn func(context.Context, string, string) (bool, error)
+	listAccessibleIDsFn func(context.Context, string) ([]string, error)
+	effectiveRoleFn     func(context.Context, string, string) (string, error)
 }
 
 func (m *mockProjectRepo) UpsertMember(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
@@ -50,6 +53,155 @@ func (m *mockProjectRepo) IsMember(ctx context.Context, projectID, userID string
 		return false, fmt.Errorf("unexpected call to IsMember")
 	}
 	return m.isMemberFn(ctx, projectID, userID)
+}
+
+func (m *mockProjectRepo) IsMemberEffective(ctx context.Context, projectID, userID string) (bool, error) {
+	if m.isMemberEffectiveFn != nil {
+		return m.isMemberEffectiveFn(ctx, projectID, userID)
+	}
+	// Compatibility shim: harnesses predating team-conferred access stub
+	// direct membership only.
+	if m.isMemberFn != nil {
+		return m.isMemberFn(ctx, projectID, userID)
+	}
+	return false, fmt.Errorf("unexpected call to IsMemberEffective")
+}
+
+func (m *mockProjectRepo) ListAccessibleProjectIDs(ctx context.Context, userID string) ([]string, error) {
+	if m.listAccessibleIDsFn != nil {
+		return m.listAccessibleIDsFn(ctx, userID)
+	}
+	if m.listMemberIDsFn != nil {
+		return m.listMemberIDsFn(ctx, userID)
+	}
+	return nil, fmt.Errorf("unexpected call to ListAccessibleProjectIDs")
+}
+
+func (m *mockProjectRepo) EffectiveRole(ctx context.Context, projectID, userID string) (string, error) {
+	if m.effectiveRoleFn != nil {
+		return m.effectiveRoleFn(ctx, projectID, userID)
+	}
+	if m.listMembersFn != nil {
+		members, err := m.listMembersFn(ctx, projectID)
+		if err != nil {
+			return "", err
+		}
+		for _, member := range members {
+			if member.UserID == userID {
+				return member.Role, nil
+			}
+		}
+		return "", port.ErrNotFound
+	}
+	return "", fmt.Errorf("unexpected call to EffectiveRole")
+}
+
+type mockTeamRepo struct {
+	port.TeamStore
+	createFn       func(context.Context, string, string) (port.Team, error)
+	getByIDFn      func(context.Context, string) (port.Team, error)
+	getByNameFn    func(context.Context, string) (port.Team, error)
+	listFn         func(context.Context) ([]port.Team, error)
+	deleteFn       func(context.Context, string) error
+	upsertMemberFn func(context.Context, string, string, string) (port.TeamMember, error)
+	listMembersFn  func(context.Context, string) ([]port.TeamMember, error)
+	removeMemberFn func(context.Context, string, string) error
+	isMemberFn     func(context.Context, string, string) (bool, error)
+	isAdminFn      func(context.Context, string, string) (bool, error)
+	linkFn         func(context.Context, string, string, string) (port.ProjectTeam, error)
+	unlinkFn       func(context.Context, string, string) error
+	listLinksFn    func(context.Context, string) ([]port.ProjectTeam, error)
+}
+
+func (m *mockTeamRepo) CreateTeam(ctx context.Context, name, description string) (port.Team, error) {
+	if m.createFn == nil {
+		return port.Team{}, fmt.Errorf("unexpected call to CreateTeam")
+	}
+	return m.createFn(ctx, name, description)
+}
+
+func (m *mockTeamRepo) GetTeamByID(ctx context.Context, id string) (port.Team, error) {
+	if m.getByIDFn == nil {
+		return port.Team{}, fmt.Errorf("unexpected call to GetTeamByID")
+	}
+	return m.getByIDFn(ctx, id)
+}
+
+func (m *mockTeamRepo) GetTeamByName(ctx context.Context, name string) (port.Team, error) {
+	if m.getByNameFn == nil {
+		return port.Team{}, fmt.Errorf("unexpected call to GetTeamByName")
+	}
+	return m.getByNameFn(ctx, name)
+}
+
+func (m *mockTeamRepo) ListTeams(ctx context.Context) ([]port.Team, error) {
+	if m.listFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListTeams")
+	}
+	return m.listFn(ctx)
+}
+
+func (m *mockTeamRepo) DeleteTeam(ctx context.Context, id string) error {
+	if m.deleteFn == nil {
+		return fmt.Errorf("unexpected call to DeleteTeam")
+	}
+	return m.deleteFn(ctx, id)
+}
+
+func (m *mockTeamRepo) UpsertTeamMember(ctx context.Context, teamID, userID, role string) (port.TeamMember, error) {
+	if m.upsertMemberFn == nil {
+		return port.TeamMember{}, fmt.Errorf("unexpected call to UpsertTeamMember")
+	}
+	return m.upsertMemberFn(ctx, teamID, userID, role)
+}
+
+func (m *mockTeamRepo) ListTeamMembers(ctx context.Context, teamID string) ([]port.TeamMember, error) {
+	if m.listMembersFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListTeamMembers")
+	}
+	return m.listMembersFn(ctx, teamID)
+}
+
+func (m *mockTeamRepo) RemoveTeamMember(ctx context.Context, teamID, userID string) error {
+	if m.removeMemberFn == nil {
+		return fmt.Errorf("unexpected call to RemoveTeamMember")
+	}
+	return m.removeMemberFn(ctx, teamID, userID)
+}
+
+func (m *mockTeamRepo) IsTeamMember(ctx context.Context, teamID, userID string) (bool, error) {
+	if m.isMemberFn == nil {
+		return false, fmt.Errorf("unexpected call to IsTeamMember")
+	}
+	return m.isMemberFn(ctx, teamID, userID)
+}
+
+func (m *mockTeamRepo) IsTeamAdmin(ctx context.Context, teamID, userID string) (bool, error) {
+	if m.isAdminFn == nil {
+		return false, fmt.Errorf("unexpected call to IsTeamAdmin")
+	}
+	return m.isAdminFn(ctx, teamID, userID)
+}
+
+func (m *mockTeamRepo) LinkProjectTeam(ctx context.Context, projectID, teamID, role string) (port.ProjectTeam, error) {
+	if m.linkFn == nil {
+		return port.ProjectTeam{}, fmt.Errorf("unexpected call to LinkProjectTeam")
+	}
+	return m.linkFn(ctx, projectID, teamID, role)
+}
+
+func (m *mockTeamRepo) UnlinkProjectTeam(ctx context.Context, projectID, teamID string) error {
+	if m.unlinkFn == nil {
+		return fmt.Errorf("unexpected call to UnlinkProjectTeam")
+	}
+	return m.unlinkFn(ctx, projectID, teamID)
+}
+
+func (m *mockTeamRepo) ListProjectTeams(ctx context.Context, projectID string) ([]port.ProjectTeam, error) {
+	if m.listLinksFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListProjectTeams")
+	}
+	return m.listLinksFn(ctx, projectID)
 }
 
 func (m *mockProjectRepo) ListMemberProjectIDs(ctx context.Context, userID string) ([]string, error) {

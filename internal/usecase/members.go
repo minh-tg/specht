@@ -2,9 +2,11 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/xMinhx/specht/internal/auth"
+	"github.com/xMinhx/specht/internal/port"
 )
 
 // ProjectMemberResponse is the API representation of a project membership.
@@ -34,20 +36,21 @@ func (u *Usecases) requireProjectAdmin(ctx context.Context, projectID string) er
 		return nil
 	}
 	// API keys never manage membership; non-admin session users must hold
-	// an admin membership row.
+	// an effective admin role (direct or team-conferred).
 	if ident.IsAPIKey {
 		return ErrProjectAccessDenied
 	}
-	members, err := u.deps.Stores.Projects.ListMembers(ctx, projectID)
+	role, err := u.deps.Stores.Projects.EffectiveRole(ctx, projectID, ident.UserID)
 	if err != nil {
-		return fmt.Errorf("list members: %w", err)
-	}
-	for _, m := range members {
-		if m.UserID == ident.UserID && m.Role == auth.RoleAdmin {
-			return nil
+		if errors.Is(err, port.ErrNotFound) {
+			return ErrProjectAccessDenied
 		}
+		return fmt.Errorf("resolve effective role: %w", err)
 	}
-	return ErrProjectAccessDenied
+	if role != auth.RoleAdmin {
+		return ErrProjectAccessDenied
+	}
+	return nil
 }
 
 // ListProjectMembers returns the membership roster for a project slug.
@@ -103,5 +106,5 @@ func (u *Usecases) AddProjectMember(ctx context.Context, projectSlug, userID, ro
 // IsProjectMember reports whether a user belongs to a project. It exists so
 // HTTP-layer guards can enforce membership without reaching into stores.
 func (u *Usecases) IsProjectMember(ctx context.Context, projectID, userID string) (bool, error) {
-	return u.deps.Stores.Projects.IsMember(ctx, projectID, userID)
+	return u.deps.Stores.Projects.IsMemberEffective(ctx, projectID, userID)
 }

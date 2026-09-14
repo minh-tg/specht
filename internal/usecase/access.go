@@ -72,7 +72,7 @@ func (u *Usecases) checkFindingProjectIDAccess(ctx context.Context, findingProje
 	if ident.Role == auth.RoleAdmin {
 		return nil
 	}
-	ok, err := u.deps.Stores.Projects.IsMember(ctx, findingProjectID, ident.UserID)
+	ok, err := u.deps.Stores.Projects.IsMemberEffective(ctx, findingProjectID, ident.UserID)
 	if err != nil {
 		slog.Error("check finding project: membership lookup failed", "error", err)
 		return ErrProjectAccessDenied

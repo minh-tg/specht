@@ -369,7 +369,7 @@ func (u *Usecases) ListProjects(ctx context.Context) ([]ProjectResponse, error) 
 	// membership set once instead of one IsMember query per project (N+1).
 	var memberIDs map[string]bool
 	if !ident.IsAPIKey {
-		ids, err := u.deps.Stores.Projects.ListMemberProjectIDs(ctx, ident.UserID)
+		ids, err := u.deps.Stores.Projects.ListAccessibleProjectIDs(ctx, ident.UserID)
 		if err != nil {
 			return nil, fmt.Errorf("list member projects: %w", err)
 		}
@@ -426,7 +426,7 @@ func (u *Usecases) GetProject(ctx context.Context, slug string) (*ProjectRespons
 		resp := toProject(p)
 		return &resp, nil
 	}
-	ok, err := u.deps.Stores.Projects.IsMember(ctx, p.ID, ident.UserID)
+	ok, err := u.deps.Stores.Projects.IsMemberEffective(ctx, p.ID, ident.UserID)
 	if err != nil {
 		return nil, fmt.Errorf("check membership: %w", err)
 	}
