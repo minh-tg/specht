@@ -29,6 +29,8 @@ type mockClient struct {
 	retentionDays    int
 	policy           *client.PolicyEffective
 	policyProject    string
+	teams            []client.Team
+	projectTeams     []client.ProjectTeam
 	introducedReport string
 	err              error
 }
@@ -78,6 +80,14 @@ func (m *mockClient) PreviewRetention(days int) (*client.RetentionPreview, error
 func (m *mockClient) GetEffectivePolicy(projectSlug string) (*client.PolicyEffective, error) {
 	m.policyProject = projectSlug
 	return m.policy, m.err
+}
+
+func (m *mockClient) ListTeams() ([]client.Team, error) {
+	return m.teams, m.err
+}
+
+func (m *mockClient) ListProjectTeams(projectSlug string) ([]client.ProjectTeam, error) {
+	return m.projectTeams, m.err
 }
 
 func (m *mockClient) UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error) {
@@ -369,6 +379,34 @@ func TestMCPPolicyEffective(t *testing.T) {
 	require.NotNil(t, resp.Result)
 	assert.Equal(t, "my-app", mc.policyProject)
 	assert.True(t, strings.Contains(string(*resp.Result), "strict v2"))
+}
+
+func TestMCPTeamsList(t *testing.T) {
+	mc := &mockClient{
+		teams: []client.Team{{ID: "t1", Name: "backend"}},
+	}
+	raw := `{"jsonrpc":"2.0","id":19,"method":"tools/call","params":{"name":"teams_list","arguments":{}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(mc, req)
+	require.Nil(t, resp.Error)
+	require.NotNil(t, resp.Result)
+	assert.True(t, strings.Contains(string(*resp.Result), "backend"))
+}
+
+func TestMCPProjectTeams(t *testing.T) {
+	mc := &mockClient{
+		projectTeams: []client.ProjectTeam{{TeamID: "t1", TeamName: "backend", Role: "editor"}},
+	}
+	raw := `{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"project_teams","arguments":{"project":"my-app"}}}`
+	var req jsonRPCMessage
+	json.Unmarshal([]byte(raw), &req)
+
+	resp := handleMessage(mc, req)
+	require.Nil(t, resp.Error)
+	require.NotNil(t, resp.Result)
+	assert.True(t, strings.Contains(string(*resp.Result), "backend"))
 }
 
 func TestMCPUnknownTool(t *testing.T) {

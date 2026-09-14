@@ -57,6 +57,15 @@ type mockUsecases struct {
 	setProjectPolicyFn   func(ctx context.Context, projectSlug, templateName string) (*usecase.PolicyEffectiveResponse, error)
 	setPolicyOverridesFn func(ctx context.Context, projectSlug string, overrides map[string]string) (*usecase.PolicyEffectiveResponse, error)
 	effectivePolicyFn    func(ctx context.Context, projectSlug string) (*usecase.PolicyEffectiveResponse, error)
+	createTeamFn         func(ctx context.Context, name, description string) (*usecase.TeamResponse, error)
+	listTeamsFn          func(ctx context.Context) ([]usecase.TeamResponse, error)
+	deleteTeamFn         func(ctx context.Context, teamID string) error
+	addTeamMemberFn      func(ctx context.Context, teamID, userID, role string) (*usecase.TeamMemberResponse, error)
+	listTeamMembersFn    func(ctx context.Context, teamID string) ([]usecase.TeamMemberResponse, error)
+	removeTeamMemberFn   func(ctx context.Context, teamID, userID string) error
+	linkProjectTeamFn    func(ctx context.Context, projectSlug, teamID, role string) (*usecase.ProjectTeamResponse, error)
+	unlinkProjectTeamFn  func(ctx context.Context, projectSlug, teamID string) error
+	listProjectTeamsFn   func(ctx context.Context, projectSlug string) ([]usecase.ProjectTeamResponse, error)
 	getFindingFn         func(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
 	getFindingEventsFn   func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
 	refreshFn            func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
@@ -342,6 +351,69 @@ func (m *mockUsecases) EffectivePolicy(ctx context.Context, projectSlug string) 
 		return nil, fmt.Errorf("unexpected call to EffectivePolicy")
 	}
 	return m.effectivePolicyFn(ctx, projectSlug)
+}
+
+func (m *mockUsecases) CreateTeam(ctx context.Context, name, description string) (*usecase.TeamResponse, error) {
+	if m.createTeamFn == nil {
+		return nil, fmt.Errorf("unexpected call to CreateTeam")
+	}
+	return m.createTeamFn(ctx, name, description)
+}
+
+func (m *mockUsecases) ListTeams(ctx context.Context) ([]usecase.TeamResponse, error) {
+	if m.listTeamsFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListTeams")
+	}
+	return m.listTeamsFn(ctx)
+}
+
+func (m *mockUsecases) DeleteTeam(ctx context.Context, teamID string) error {
+	if m.deleteTeamFn == nil {
+		return fmt.Errorf("unexpected call to DeleteTeam")
+	}
+	return m.deleteTeamFn(ctx, teamID)
+}
+
+func (m *mockUsecases) AddTeamMember(ctx context.Context, teamID, userID, role string) (*usecase.TeamMemberResponse, error) {
+	if m.addTeamMemberFn == nil {
+		return nil, fmt.Errorf("unexpected call to AddTeamMember")
+	}
+	return m.addTeamMemberFn(ctx, teamID, userID, role)
+}
+
+func (m *mockUsecases) ListTeamMembers(ctx context.Context, teamID string) ([]usecase.TeamMemberResponse, error) {
+	if m.listTeamMembersFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListTeamMembers")
+	}
+	return m.listTeamMembersFn(ctx, teamID)
+}
+
+func (m *mockUsecases) RemoveTeamMember(ctx context.Context, teamID, userID string) error {
+	if m.removeTeamMemberFn == nil {
+		return fmt.Errorf("unexpected call to RemoveTeamMember")
+	}
+	return m.removeTeamMemberFn(ctx, teamID, userID)
+}
+
+func (m *mockUsecases) LinkProjectTeam(ctx context.Context, projectSlug, teamID, role string) (*usecase.ProjectTeamResponse, error) {
+	if m.linkProjectTeamFn == nil {
+		return nil, fmt.Errorf("unexpected call to LinkProjectTeam")
+	}
+	return m.linkProjectTeamFn(ctx, projectSlug, teamID, role)
+}
+
+func (m *mockUsecases) UnlinkProjectTeam(ctx context.Context, projectSlug, teamID string) error {
+	if m.unlinkProjectTeamFn == nil {
+		return fmt.Errorf("unexpected call to UnlinkProjectTeam")
+	}
+	return m.unlinkProjectTeamFn(ctx, projectSlug, teamID)
+}
+
+func (m *mockUsecases) ListProjectTeams(ctx context.Context, projectSlug string) ([]usecase.ProjectTeamResponse, error) {
+	if m.listProjectTeamsFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListProjectTeams")
+	}
+	return m.listProjectTeamsFn(ctx, projectSlug)
 }
 
 func (m *mockUsecases) GetFindingEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error) {
@@ -763,6 +835,15 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Put("/api/v1/projects/{slug}/policy", h.SetProjectPolicy)
 	r.Put("/api/v1/projects/{slug}/policy/overrides", h.SetProjectPolicyOverrides)
 	r.Get("/api/v1/projects/{slug}/policy", h.GetEffectivePolicy)
+	r.Get("/api/v1/teams", h.ListTeams)
+	r.Post("/api/v1/teams", h.CreateTeam)
+	r.Delete("/api/v1/teams/{id}", h.DeleteTeam)
+	r.Get("/api/v1/teams/{id}/members", h.ListTeamMembers)
+	r.Post("/api/v1/teams/{id}/members", h.AddTeamMember)
+	r.Delete("/api/v1/teams/{id}/members/{userID}", h.RemoveTeamMember)
+	r.Get("/api/v1/projects/{slug}/teams", h.ListProjectTeams)
+	r.Post("/api/v1/projects/{slug}/teams", h.LinkProjectTeam)
+	r.Delete("/api/v1/projects/{slug}/teams/{teamID}", h.UnlinkProjectTeam)
 	r.Post("/api/v1/findings/bulk-analysis", h.BulkTriage)
 	r.Get("/api/v1/findings/{id}/events", h.ListFindingEvents)
 	r.Get("/api/v1/findings/{id}", h.GetFinding)
@@ -2063,6 +2144,77 @@ func TestProjectPolicy_Assign(t *testing.T) {
 	w = httptest.NewRecorder()
 	router.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/projects/my-app/policy", nil))
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestTeams_CRUD(t *testing.T) {
+	mock := &mockUsecases{
+		createTeamFn: func(ctx context.Context, name, description string) (*usecase.TeamResponse, error) {
+			return &usecase.TeamResponse{ID: "team-1", Name: name}, nil
+		},
+		listTeamsFn: func(ctx context.Context) ([]usecase.TeamResponse, error) {
+			return []usecase.TeamResponse{{ID: "team-1", Name: "backend"}}, nil
+		},
+		deleteTeamFn: func(ctx context.Context, teamID string) error {
+			assert.Equal(t, "team-1", teamID)
+			return nil
+		},
+	}
+	router := testRouter(mock)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/teams", strings.NewReader(`{"name":"backend"}`)))
+	assert.Equal(t, http.StatusCreated, w.Code)
+
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/teams", nil))
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/v1/teams/team-1", nil))
+	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestTeams_Conflict(t *testing.T) {
+	mock := &mockUsecases{
+		createTeamFn: func(ctx context.Context, name, description string) (*usecase.TeamResponse, error) {
+			return nil, usecase.ErrTeamConflict
+		},
+	}
+	router := testRouter(mock)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/teams", strings.NewReader(`{"name":"backend"}`)))
+	assert.Equal(t, http.StatusConflict, w.Code)
+}
+
+func TestProjectTeams_LinkUnlink(t *testing.T) {
+	var gotRole string
+	mock := &mockUsecases{
+		linkProjectTeamFn: func(ctx context.Context, projectSlug, teamID, role string) (*usecase.ProjectTeamResponse, error) {
+			gotRole = role
+			return &usecase.ProjectTeamResponse{ProjectID: "p1", TeamID: teamID, TeamName: "backend", Role: role}, nil
+		},
+		unlinkProjectTeamFn: func(ctx context.Context, projectSlug, teamID string) error {
+			assert.Equal(t, "team-1", teamID)
+			return nil
+		},
+		listProjectTeamsFn: func(ctx context.Context, projectSlug string) ([]usecase.ProjectTeamResponse, error) {
+			return []usecase.ProjectTeamResponse{{ProjectID: "p1", TeamID: "team-1", TeamName: "backend", Role: "editor"}}, nil
+		},
+	}
+	router := testRouter(mock)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/projects/my-app/teams", strings.NewReader(`{"team_id":"team-1","role":"editor"}`)))
+	assert.Equal(t, http.StatusCreated, w.Code)
+	assert.Equal(t, "editor", gotRole)
+
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/projects/my-app/teams", nil))
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/v1/projects/my-app/teams/team-1", nil))
+	assert.Equal(t, http.StatusNoContent, w.Code)
 }
 
 func TestGateStatus_ProjectNotFound(t *testing.T) {

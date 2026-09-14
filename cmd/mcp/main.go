@@ -23,6 +23,8 @@ type API interface {
 	GetAdminStatus() (*client.AdminStatus, error)
 	PreviewRetention(days int) (*client.RetentionPreview, error)
 	GetEffectivePolicy(projectSlug string) (*client.PolicyEffective, error)
+	ListTeams() ([]client.Team, error)
+	ListProjectTeams(projectSlug string) ([]client.ProjectTeam, error)
 	UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error)
 	ListReachability(findingID string) ([]client.ReachabilityAssessment, error)
 	GetWatcherStatus() (*client.WatcherStatus, error)
@@ -199,6 +201,25 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				},
 			},
 			{
+				Name:        "teams_list",
+				Description: "List all teams",
+				InputSchema: map[string]any{
+					"type":       "object",
+					"properties": map[string]any{},
+				},
+			},
+			{
+				Name:        "project_teams",
+				Description: "List teams linked to a project with conferred roles",
+				InputSchema: map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"project": map[string]any{"type": "string", "description": "Project slug"},
+					},
+					"required": []string{"project"},
+				},
+			},
+			{
 				Name:        "reachability_set",
 				Description: "Set a finding's reachability assessment (reachable, not_reachable, unknown, not_applicable)", InputSchema: map[string]any{
 					"type": "object",
@@ -331,6 +352,10 @@ func handleToolCall(api API, msg jsonRPCMessage) jsonRPCMessage {
 		return callAdminRetentionPreview(api, msg.ID, params.Arguments)
 	case "policy_effective":
 		return callPolicyEffective(api, msg.ID, params.Arguments)
+	case "teams_list":
+		return callTeamsList(api, msg.ID)
+	case "project_teams":
+		return callProjectTeams(api, msg.ID, params.Arguments)
 	case "reachability_set":
 		return callReachabilitySet(api, msg.ID, params.Arguments)
 	case "watcher_status":
@@ -647,6 +672,50 @@ func callPolicyEffective(api API, id any, args *json.RawMessage) jsonRPCMessage 
 	policyResult, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": text}}})
 	policyRaw := json.RawMessage(policyResult)
 	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &policyRaw}
+}
+
+func callTeamsList(api API, id any) jsonRPCMessage {
+	teams, err := api.ListTeams()
+	if err != nil {
+		return errorResponse(id, -32603, err.Error())
+	}
+	var text string
+	if len(teams) == 0 {
+		text = "No teams."
+	}
+	for _, t := range teams {
+		text += fmt.Sprintf("%s (%s)\n", t.Name, t.ID)
+	}
+	teamsResult, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": strings.TrimSpace(text)}}})
+	teamsRaw := json.RawMessage(teamsResult)
+	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &teamsRaw}
+}
+
+func callProjectTeams(api API, id any, args *json.RawMessage) jsonRPCMessage {
+	a, err := readArgs[struct {
+		Project string `json:"project"`
+	}](args)
+	if err != nil {
+		return errorResponse(id, -32602, "invalid arguments")
+	}
+	if a.Project == "" {
+		return errorResponse(id, -32602, "project is required")
+	}
+
+	links, err := api.ListProjectTeams(a.Project)
+	if err != nil {
+		return errorResponse(id, -32603, err.Error())
+	}
+	var text string
+	if len(links) == 0 {
+		text = "No linked teams."
+	}
+	for _, l := range links {
+		text += fmt.Sprintf("%s (%s) as %s\n", l.TeamName, l.TeamID, l.Role)
+	}
+	linksResult, _ := json.Marshal(map[string]any{"content": []map[string]string{{"type": "text", "text": strings.TrimSpace(text)}}})
+	linksRaw := json.RawMessage(linksResult)
+	return jsonRPCMessage{JSONRPC: "2.0", ID: id, Result: &linksRaw}
 }
 
 func callReachabilitySet(api API, id any, args *json.RawMessage) jsonRPCMessage {

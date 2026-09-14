@@ -135,6 +135,18 @@ type (
 		EffectivePolicy(ctx context.Context, projectSlug string) (*usecase.PolicyEffectiveResponse, error)
 	}
 
+	TeamUsecases interface {
+		CreateTeam(ctx context.Context, name, description string) (*usecase.TeamResponse, error)
+		ListTeams(ctx context.Context) ([]usecase.TeamResponse, error)
+		DeleteTeam(ctx context.Context, teamID string) error
+		AddTeamMember(ctx context.Context, teamID, userID, role string) (*usecase.TeamMemberResponse, error)
+		ListTeamMembers(ctx context.Context, teamID string) ([]usecase.TeamMemberResponse, error)
+		RemoveTeamMember(ctx context.Context, teamID, userID string) error
+		LinkProjectTeam(ctx context.Context, projectSlug, teamID, role string) (*usecase.ProjectTeamResponse, error)
+		UnlinkProjectTeam(ctx context.Context, projectSlug, teamID string) error
+		ListProjectTeams(ctx context.Context, projectSlug string) ([]usecase.ProjectTeamResponse, error)
+	}
+
 	WaiverUsecases interface {
 		CreateWaiver(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error)
 		ListWaivers(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error)
@@ -192,6 +204,7 @@ type usecaseInterface interface {
 	GateUsecases
 	AdminUsecases
 	PolicyUsecases
+	TeamUsecases
 	WaiverUsecases
 	EvidenceUsecases
 	ReachabilityUsecases

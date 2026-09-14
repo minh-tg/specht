@@ -525,6 +525,87 @@ func (c *Client) GetEffectivePolicy(projectSlug string) (*PolicyEffective, error
 	return &resp, nil
 }
 
+// ListTeams returns every team in name order.
+func (c *Client) ListTeams() ([]Team, error) {
+	var resp []Team
+	if err := c.do(context.Background(), "GET", "/api/v1/teams", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// CreateTeam creates a team; the creator becomes its admin.
+func (c *Client) CreateTeam(name, description string) (*Team, error) {
+	body, err := json.Marshal(map[string]any{"name": name, "description": description})
+	if err != nil {
+		return nil, err
+	}
+	var resp Team
+	if err := c.do(context.Background(), "POST", "/api/v1/teams", body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// DeleteTeam removes a team; project links cascade.
+func (c *Client) DeleteTeam(id string) error {
+	return c.do(context.Background(), "DELETE", "/api/v1/teams/"+url.PathEscape(id), nil, nil)
+}
+
+// ListTeamMembers returns a team's roster.
+func (c *Client) ListTeamMembers(teamID string) ([]TeamMember, error) {
+	var resp []TeamMember
+	if err := c.do(context.Background(), "GET", "/api/v1/teams/"+url.PathEscape(teamID)+"/members", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// AddTeamMember adds a user to a team.
+func (c *Client) AddTeamMember(teamID, userID, role string) (*TeamMember, error) {
+	body, err := json.Marshal(map[string]any{"user_id": userID, "role": role})
+	if err != nil {
+		return nil, err
+	}
+	var resp TeamMember
+	if err := c.do(context.Background(), "POST", "/api/v1/teams/"+url.PathEscape(teamID)+"/members", body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// RemoveTeamMember removes a user from a team.
+func (c *Client) RemoveTeamMember(teamID, userID string) error {
+	return c.do(context.Background(), "DELETE", "/api/v1/teams/"+url.PathEscape(teamID)+"/members/"+url.PathEscape(userID), nil, nil)
+}
+
+// ListProjectTeams returns every team linked to a project.
+func (c *Client) ListProjectTeams(projectSlug string) ([]ProjectTeam, error) {
+	var resp []ProjectTeam
+	if err := c.do(context.Background(), "GET", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/teams", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// LinkProjectTeam confers a project role on every team member.
+func (c *Client) LinkProjectTeam(projectSlug, teamID, role string) (*ProjectTeam, error) {
+	body, err := json.Marshal(map[string]any{"team_id": teamID, "role": role})
+	if err != nil {
+		return nil, err
+	}
+	var resp ProjectTeam
+	if err := c.do(context.Background(), "POST", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/teams", body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// UnlinkProjectTeam revokes the conferred role.
+func (c *Client) UnlinkProjectTeam(projectSlug, teamID string) error {
+	return c.do(context.Background(), "DELETE", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/teams/"+url.PathEscape(teamID), nil, nil)
+}
+
 // Environments, Targets, Artifacts.
 
 func (c *Client) ListEnvironments(projectSlug string) ([]Environment, error) {

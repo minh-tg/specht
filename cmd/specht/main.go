@@ -43,6 +43,15 @@ const (
 	cmdPolicyApply
 	cmdPolicyOverrides
 	cmdPolicyEffective
+	cmdTeamsList
+	cmdTeamsCreate
+	cmdTeamsDelete
+	cmdTeamMembers
+	cmdTeamAdd
+	cmdTeamRemove
+	cmdProjectTeams
+	cmdProjectLink
+	cmdProjectUnlink
 	cmdStats
 	cmdStatsAging
 	cmdWatcherBackfill
@@ -84,6 +93,9 @@ type command struct {
 	templateID     string
 	template       string
 	overrides      string
+	teamID         string
+	userID         string
+	teamRole       string
 }
 
 func parseArgs(args []string) (command, error) {
@@ -521,6 +533,151 @@ func parseArgs(args []string) (command, error) {
 			return command{}, fmt.Errorf("unknown policy subcommand: %s", rest[1])
 		}
 
+	case "teams":
+		if len(rest) < 2 {
+			return command{}, fmt.Errorf("missing subcommand for teams")
+		}
+		switch rest[1] {
+		case "list":
+			return command{cmd: cmdTeamsList}, nil
+		case "create":
+			c := command{cmd: cmdTeamsCreate}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--name" && i+1 < len(rest):
+					c.name = rest[i+1]
+					i++
+				case rest[i] == "--description" && i+1 < len(rest):
+					c.description = rest[i+1]
+					i++
+				}
+			}
+			if c.name == "" {
+				return command{}, fmt.Errorf("--name is required for teams create")
+			}
+			return c, nil
+		case "delete":
+			c := command{cmd: cmdTeamsDelete}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--id" && i+1 < len(rest):
+					c.teamID = rest[i+1]
+					i++
+				}
+			}
+			if c.teamID == "" {
+				return command{}, fmt.Errorf("--id is required for teams delete")
+			}
+			return c, nil
+		case "members":
+			c := command{cmd: cmdTeamMembers}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--id" && i+1 < len(rest):
+					c.teamID = rest[i+1]
+					i++
+				}
+			}
+			if c.teamID == "" {
+				return command{}, fmt.Errorf("--id is required for teams members")
+			}
+			return c, nil
+		case "add":
+			c := command{cmd: cmdTeamAdd}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--id" && i+1 < len(rest):
+					c.teamID = rest[i+1]
+					i++
+				case rest[i] == "--user" && i+1 < len(rest):
+					c.userID = rest[i+1]
+					i++
+				case rest[i] == "--role" && i+1 < len(rest):
+					c.teamRole = rest[i+1]
+					i++
+				}
+			}
+			if c.teamID == "" || c.userID == "" || c.teamRole == "" {
+				return command{}, fmt.Errorf("--id, --user, and --role are required for teams add")
+			}
+			return c, nil
+		case "remove":
+			c := command{cmd: cmdTeamRemove}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--id" && i+1 < len(rest):
+					c.teamID = rest[i+1]
+					i++
+				case rest[i] == "--user" && i+1 < len(rest):
+					c.userID = rest[i+1]
+					i++
+				}
+			}
+			if c.teamID == "" || c.userID == "" {
+				return command{}, fmt.Errorf("--id and --user are required for teams remove")
+			}
+			return c, nil
+		default:
+			return command{}, fmt.Errorf("unknown teams subcommand: %s", rest[1])
+		}
+
+	case "project-teams":
+		if len(rest) < 2 {
+			return command{}, fmt.Errorf("missing subcommand for project-teams")
+		}
+		switch rest[1] {
+		case "list":
+			c := command{cmd: cmdProjectTeams}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--project" && i+1 < len(rest):
+					c.project = rest[i+1]
+					i++
+				}
+			}
+			if c.project == "" {
+				return command{}, fmt.Errorf("--project is required for project-teams list")
+			}
+			return c, nil
+		case "link":
+			c := command{cmd: cmdProjectLink}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--project" && i+1 < len(rest):
+					c.project = rest[i+1]
+					i++
+				case rest[i] == "--team" && i+1 < len(rest):
+					c.teamID = rest[i+1]
+					i++
+				case rest[i] == "--role" && i+1 < len(rest):
+					c.teamRole = rest[i+1]
+					i++
+				}
+			}
+			if c.project == "" || c.teamID == "" || c.teamRole == "" {
+				return command{}, fmt.Errorf("--project, --team, and --role are required for project-teams link")
+			}
+			return c, nil
+		case "unlink":
+			c := command{cmd: cmdProjectUnlink}
+			for i := 2; i < len(rest); i++ {
+				switch {
+				case rest[i] == "--project" && i+1 < len(rest):
+					c.project = rest[i+1]
+					i++
+				case rest[i] == "--team" && i+1 < len(rest):
+					c.teamID = rest[i+1]
+					i++
+				}
+			}
+			if c.project == "" || c.teamID == "" {
+				return command{}, fmt.Errorf("--project and --team are required for project-teams unlink")
+			}
+			return c, nil
+		default:
+			return command{}, fmt.Errorf("unknown project-teams subcommand: %s", rest[1])
+		}
+
 	case "help":
 		return command{cmd: cmdHelp}, nil
 
@@ -941,6 +1098,93 @@ func run(cl *client.Client, cmd command) error {
 		fmt.Printf("template: %s\nfloor=%s (%s) watcher=%s (%s)\n", template, eff.SeverityFloor, eff.SeveritySource, eff.WatcherGate, eff.WatcherSource)
 		return nil
 
+	case cmdTeamsList:
+		teams, err := cl.ListTeams()
+		if err != nil {
+			return err
+		}
+		if len(teams) == 0 {
+			fmt.Println("No teams.")
+			return nil
+		}
+		for _, t := range teams {
+			fmt.Printf("%s\t%s\t%s\n", t.Name, t.ID, t.Description)
+		}
+		return nil
+
+	case cmdTeamsCreate:
+		team, err := cl.CreateTeam(cmd.name, cmd.description)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("team %s (%s)\n", team.Name, team.ID)
+		return nil
+
+	case cmdTeamsDelete:
+		if err := cl.DeleteTeam(cmd.teamID); err != nil {
+			return err
+		}
+		fmt.Println("team deleted")
+		return nil
+
+	case cmdTeamMembers:
+		members, err := cl.ListTeamMembers(cmd.teamID)
+		if err != nil {
+			return err
+		}
+		if len(members) == 0 {
+			fmt.Println("No members.")
+			return nil
+		}
+		for _, m := range members {
+			fmt.Printf("%s\t%s\t%s\n", m.UserEmail, m.UserID, m.Role)
+		}
+		return nil
+
+	case cmdTeamAdd:
+		member, err := cl.AddTeamMember(cmd.teamID, cmd.userID, cmd.teamRole)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("member %s (%s)\n", member.UserID, member.Role)
+		return nil
+
+	case cmdTeamRemove:
+		if err := cl.RemoveTeamMember(cmd.teamID, cmd.userID); err != nil {
+			return err
+		}
+		fmt.Println("member removed")
+		return nil
+
+	case cmdProjectTeams:
+		links, err := cl.ListProjectTeams(cmd.project)
+		if err != nil {
+			return err
+		}
+		if len(links) == 0 {
+			fmt.Println("No linked teams.")
+			return nil
+		}
+		for _, l := range links {
+			fmt.Printf("%s\t%s\t%s\n", l.TeamName, l.TeamID, l.Role)
+		}
+		return nil
+
+	case cmdProjectLink:
+		link, err := cl.LinkProjectTeam(cmd.project, cmd.teamID, cmd.teamRole)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("linked %s as %s\n", link.TeamName, link.Role)
+		return nil
+
+	case cmdProjectUnlink:
+		if err := cl.UnlinkProjectTeam(cmd.project, cmd.teamID); err != nil {
+			return err
+		}
+		fmt.Println("team unlinked")
+		return nil
+
 	case cmdStats:
 		stats, err := cl.GetProjectStats(cmd.slug)
 		if err != nil {
@@ -1047,6 +1291,11 @@ Commands:
   policy apply --project <slug> [--template <name>]  Link/unlink a baseline
   policy overrides --project <slug> [--set <json>]   Replace per-key overrides
   policy effective --project <slug>   Show resolved policy with provenance
+  teams list | create --name <n> | delete --id <id>
+  teams members --id <id> | add --id <id> --user <id> --role <admin|member>
+  teams remove --id <id> --user <id>
+  project-teams list --project <slug> | link --project <slug> --team <id> --role <r>
+  project-teams unlink --project <slug> --team <id>
   stats show <slug>                       Show project statistics
   stats aging <slug>                      Show aging buckets, SLA overdue, reopened
   watcher backfill [--since <ISO8601>]    Run one CVE watcher poll

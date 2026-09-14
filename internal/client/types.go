@@ -135,6 +135,29 @@ type PolicyEffective struct {
 	WatcherSource   string  `json:"watcher_source"`
 }
 
+// Team is a named group of users that projects link for access.
+type Team struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// TeamMember binds a user to a team.
+type TeamMember struct {
+	TeamID    string `json:"team_id"`
+	UserID    string `json:"user_id"`
+	UserEmail string `json:"user_email,omitempty"`
+	Role      string `json:"role"`
+}
+
+// ProjectTeam links a team to a project with the conferred role.
+type ProjectTeam struct {
+	ProjectID string `json:"project_id"`
+	TeamID    string `json:"team_id"`
+	TeamName  string `json:"team_name"`
+	Role      string `json:"role"`
+}
+
 // Project is a scan project (the top-level tenant of findings and reports).
 type Project struct {
 	ID          string    `json:"id"`

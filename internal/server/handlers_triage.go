@@ -530,6 +530,220 @@ func (h *Handler) GetEffectivePolicy(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, result)
 }
 
+func (h *Handler) ListTeams(w http.ResponseWriter, r *http.Request) {
+	result, err := h.usecase.ListTeams(r.Context())
+	if err != nil {
+		slog.Error("list teams", "error", err)
+		respondError(w, http.StatusInternalServerError, "teams_failed", "could not list teams")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) CreateTeam(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+		return
+	}
+
+	result, err := h.usecase.CreateTeam(r.Context(), req.Name, req.Description)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrTeamConflict):
+			respondError(w, http.StatusConflict, "team_conflict", "a team with this name exists")
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "forbidden", "session authentication is required")
+		default:
+			slog.Error("create team", "error", err)
+			respondError(w, http.StatusBadRequest, "invalid_team", "invalid team")
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, result)
+}
+
+func (h *Handler) DeleteTeam(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", "team id is required")
+		return
+	}
+
+	if err := h.usecase.DeleteTeam(r.Context(), id); err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrTeamNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "team not found")
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "forbidden", "global admin is required")
+		default:
+			slog.Error("delete team", "error", err)
+			respondError(w, http.StatusInternalServerError, "teams_failed", "could not delete team")
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) ListTeamMembers(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", "team id is required")
+		return
+	}
+
+	result, err := h.usecase.ListTeamMembers(r.Context(), id)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrTeamNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "team not found")
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "forbidden", "team admin is required")
+		default:
+			slog.Error("list team members", "error", err)
+			respondError(w, http.StatusInternalServerError, "teams_failed", "could not list team members")
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) AddTeamMember(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", "team id is required")
+		return
+	}
+	var req struct {
+		UserID string `json:"user_id"`
+		Role   string `json:"role"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+		return
+	}
+
+	result, err := h.usecase.AddTeamMember(r.Context(), id, req.UserID, req.Role)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrTeamNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "team not found")
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "forbidden", "team admin is required")
+		default:
+			slog.Error("add team member", "error", err)
+			respondError(w, http.StatusBadRequest, "invalid_member", "invalid team member")
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, result)
+}
+
+func (h *Handler) RemoveTeamMember(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	userID := chi.URLParam(r, "userID")
+	if id == "" || userID == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", "team id and user id are required")
+		return
+	}
+
+	if err := h.usecase.RemoveTeamMember(r.Context(), id, userID); err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrTeamNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "team not found")
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "forbidden", "team admin is required")
+		default:
+			slog.Error("remove team member", "error", err)
+			respondError(w, http.StatusInternalServerError, "teams_failed", "could not remove team member")
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) ListProjectTeams(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if slug == "" {
+		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		return
+	}
+
+	result, err := h.usecase.ListProjectTeams(r.Context(), slug)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "project_access_denied", "project admin is required")
+		default:
+			slog.Error("list project teams", "project", slug, "error", err)
+			respondError(w, http.StatusInternalServerError, "teams_failed", "could not list project teams")
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) LinkProjectTeam(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	if slug == "" {
+		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		return
+	}
+	var req struct {
+		TeamID string `json:"team_id"`
+		Role   string `json:"role"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+		return
+	}
+
+	result, err := h.usecase.LinkProjectTeam(r.Context(), slug, req.TeamID, req.Role)
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "project_access_denied", "project admin is required")
+		case errors.Is(err, usecase.ErrTeamNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "team not found")
+		default:
+			slog.Error("link project team", "project", slug, "error", err)
+			respondError(w, http.StatusBadRequest, "invalid_link", "invalid project team link")
+		}
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, result)
+}
+
+func (h *Handler) UnlinkProjectTeam(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	teamID := chi.URLParam(r, "teamID")
+	if slug == "" || teamID == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", "project slug and team id are required")
+		return
+	}
+
+	if err := h.usecase.UnlinkProjectTeam(r.Context(), slug, teamID); err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondError(w, http.StatusForbidden, "project_access_denied", "project admin is required")
+		default:
+			slog.Error("unlink project team", "project", slug, "error", err)
+			respondError(w, http.StatusInternalServerError, "teams_failed", "could not unlink project team")
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
