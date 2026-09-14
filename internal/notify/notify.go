@@ -95,7 +95,7 @@ func Build(in Input) Outcome {
 		Target:    strings.TrimSpace(in.Target),
 		Action:    action,
 		Title:     planTitle(channel, in),
-		Body:      planBody(channel, in, action),
+		Body:      planBody(in, action),
 		DedupeKey: dedupeKey(channel, in.Target, in.Fingerprint),
 		Reason:    planReason(channel, in, action),
 		Links: Links{
@@ -158,7 +158,7 @@ func actionVerb(action Action) string {
 
 // planBody renders the payload: what, where, fix, and introduced context.
 // State transitions ride along so updates never lose current state.
-func planBody(channel Channel, in Input, action Action) string {
+func planBody(in Input, action Action) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s [%s/%s] state=%s action=%s", in.Title, in.FindingKind, in.Fingerprint, in.State, action)
 	if in.Introduced != "" {
@@ -170,7 +170,6 @@ func planBody(channel Channel, in Input, action Action) string {
 	if in.FindingURL != "" {
 		fmt.Fprintf(&b, " finding=%s", in.FindingURL)
 	}
-	_ = channel
 	return b.String()
 }
 

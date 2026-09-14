@@ -63,8 +63,17 @@ func TestUpdatePolicyTemplate_NotFound(t *testing.T) {
 		return port.PolicyTemplate{}, port.ErrNotFound
 	}
 
-	_, err := uc.UpdatePolicyTemplate(context.Background(), "missing", "x", "d", json.RawMessage(`{}`))
+	_, err := uc.UpdatePolicyTemplate(context.Background(), "11111111-1111-1111-1111-111111111111", "x", "d", json.RawMessage(`{}`))
 	assert.ErrorIs(t, err, ErrPolicyNotFound)
+}
+
+func TestPolicyIDs_InvalidUUIDRejected(t *testing.T) {
+	uc, _, _ := policyHarness()
+
+	_, err := uc.UpdatePolicyTemplate(context.Background(), "not-a-uuid", "x", "d", json.RawMessage(`{}`))
+	assert.ErrorIs(t, err, ErrInvalidID)
+
+	assert.ErrorIs(t, uc.DeletePolicyTemplate(context.Background(), "not-a-uuid"), ErrInvalidID)
 }
 
 func TestSetProjectPolicy_AssignsAndResolves(t *testing.T) {

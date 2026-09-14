@@ -14,7 +14,19 @@ import (
 var (
 	ErrProjectAccessDenied = errors.New("project access denied")
 	ErrInvalidFindingID    = errors.New("invalid finding id")
+	// ErrInvalidID is returned when a UUID parameter is malformed.
+	// Handlers map it to 400.
+	ErrInvalidID = errors.New("invalid id")
 )
+
+// validID parses a UUID parameter, returning ErrInvalidID instead of a
+// driver-specific parse error so handlers answer 400, not 500.
+func validID(id string) (string, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return "", ErrInvalidID
+	}
+	return id, nil
+}
 
 func (u *Usecases) findingWithProjectAccess(ctx context.Context, findingID uuid.UUID) (port.Finding, error) {
 	if u.deps.Stores == nil || u.deps.Stores.Findings == nil {
@@ -55,9 +67,9 @@ func (u *Usecases) checkFindingRowsProjectAccess(ctx context.Context, findings [
 // reads and writes (H1). Unauthenticated principals are denied outright.
 // Project-scoped principals (API keys) must match the finding's project.
 // Session users are authorized by membership: global admins bypass project
-// scope, everyone else must hold a project_members row for the finding's
-// project. Membership-store failures deny access (fail closed) and are
-// logged for operators.
+// scope, everyone else must hold direct or team-conferred membership
+// (IsMemberEffective) for the finding's project. Membership-store failures
+// deny access (fail closed) and are logged for operators.
 func (u *Usecases) checkFindingProjectIDAccess(ctx context.Context, findingProjectID string) error {
 	ident := auth.ContextIdentity(ctx)
 	if ident == nil {

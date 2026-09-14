@@ -33,7 +33,7 @@ func TestCreateTeam_CreatorBecomesAdmin(t *testing.T) {
 	}
 	var created port.Team
 	tr.createFn = func(ctx context.Context, name, description string) (port.Team, error) {
-		created = port.Team{ID: "team-1", Name: name, Description: description}
+		created = port.Team{ID: "11111111-1111-1111-1111-111111111111", Name: name, Description: description}
 		return created, nil
 	}
 	var memberRole string
@@ -64,13 +64,13 @@ func TestCreateTeam_ConflictAndValidation(t *testing.T) {
 func TestAddTeamMember_TeamAdminGate(t *testing.T) {
 	uc, _, tr, ur := teamHarness()
 	tr.getByIDFn = func(ctx context.Context, id string) (port.Team, error) {
-		return port.Team{ID: "team-1", Name: "backend"}, nil
+		return port.Team{ID: "11111111-1111-1111-1111-111111111111", Name: "backend"}, nil
 	}
 	tr.isAdminFn = func(ctx context.Context, teamID, userID string) (bool, error) {
 		return false, nil
 	}
 
-	_, err := uc.AddTeamMember(teamMemberCtx(), "team-1", "user-9", "member")
+	_, err := uc.AddTeamMember(teamMemberCtx(), "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "member")
 	assert.ErrorIs(t, err, ErrProjectAccessDenied)
 
 	ur.getByIDFn = func(ctx context.Context, id string) (port.User, error) {
@@ -82,11 +82,11 @@ func TestAddTeamMember_TeamAdminGate(t *testing.T) {
 	tr.upsertMemberFn = func(ctx context.Context, teamID, userID, role string) (port.TeamMember, error) {
 		return port.TeamMember{TeamID: teamID, UserID: userID, Role: role}, nil
 	}
-	m, err := uc.AddTeamMember(teamMemberCtx(), "team-1", "user-9", "member")
+	m, err := uc.AddTeamMember(teamMemberCtx(), "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "member")
 	require.NoError(t, err)
 	assert.Equal(t, "member", m.Role)
 
-	_, err = uc.AddTeamMember(teamMemberCtx(), "team-1", "user-9", "superuser")
+	_, err = uc.AddTeamMember(teamMemberCtx(), "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "superuser")
 	require.Error(t, err, "link roles validate against the vocabulary")
 }
 
@@ -103,7 +103,7 @@ func TestLinkProjectTeam_ProjectAdminGate(t *testing.T) {
 		return "", port.ErrNotFound
 	}
 
-	_, err := uc.LinkProjectTeam(teamMemberCtx(), "my-app", "team-1", "editor")
+	_, err := uc.LinkProjectTeam(teamMemberCtx(), "my-app", "11111111-1111-1111-1111-111111111111", "editor")
 	assert.ErrorIs(t, err, ErrProjectAccessDenied)
 }
 
@@ -117,13 +117,13 @@ func TestLinkProjectTeam_ConfersAccess(t *testing.T) {
 		return auth.RoleAdmin, nil
 	}
 	tr.getByIDFn = func(ctx context.Context, id string) (port.Team, error) {
-		return port.Team{ID: "team-1", Name: "backend"}, nil
+		return port.Team{ID: "11111111-1111-1111-1111-111111111111", Name: "backend"}, nil
 	}
 	tr.linkFn = func(ctx context.Context, projectID, teamID, role string) (port.ProjectTeam, error) {
 		return port.ProjectTeam{ProjectID: projectID, TeamID: teamID, Role: role}, nil
 	}
 
-	link, err := uc.LinkProjectTeam(adminCtx(), "my-app", "team-1", "editor")
+	link, err := uc.LinkProjectTeam(adminCtx(), "my-app", "11111111-1111-1111-1111-111111111111", "editor")
 	require.NoError(t, err)
 	assert.Equal(t, "editor", link.Role)
 }
@@ -151,4 +151,18 @@ func TestRequireProjectAdmin_ViaTeamRole(t *testing.T) {
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
 
 	assert.NoError(t, uc.requireProjectAdmin(teamMemberCtx(), makeProject(true).ID))
+}
+
+func TestTeamIDs_InvalidUUIDRejected(t *testing.T) {
+	uc, _, _, _ := teamHarness()
+
+	_, err := uc.AddTeamMember(teamMemberCtx(), "not-a-uuid", "22222222-2222-2222-2222-222222222222", "member")
+	assert.ErrorIs(t, err, ErrInvalidID)
+
+	assert.ErrorIs(t, uc.RemoveTeamMember(teamMemberCtx(), "11111111-1111-1111-1111-111111111111", "not-a-uuid"), ErrInvalidID)
+	assert.ErrorIs(t, uc.DeleteTeam(teamMemberCtx(), "not-a-uuid"), ErrInvalidID)
+	assert.ErrorIs(t, uc.UnlinkProjectTeam(teamMemberCtx(), "my-app", "not-a-uuid"), ErrInvalidID)
+
+	_, err = uc.ListTeamMembers(teamMemberCtx(), "not-a-uuid")
+	assert.ErrorIs(t, err, ErrInvalidID)
 }

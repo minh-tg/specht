@@ -10,6 +10,11 @@ import (
 // certainly a caller bug, not a policy.
 const maxRetentionDays = 3650
 
+// maxPurgeIDs bounds the deleted-id list in purge responses: the count is
+// always exact, but shipping millions of UUIDs in one JSON body helps no
+// one. Callers that need the full set re-query by cutoff.
+const maxPurgeIDs = 1000
+
 // RetentionPreview counts settled reports a purge would delete, without
 // deleting anything.
 type RetentionPreview struct {
@@ -24,6 +29,9 @@ type RetentionResult struct {
 	Cutoff           time.Time `json:"cutoff"`
 	DeletedReports   int64     `json:"deleted_reports"`
 	DeletedReportIDs []string  `json:"deleted_report_ids,omitempty"`
+	// Truncated is true when the id list hit maxPurgeIDs; the count stays
+	// exact.
+	Truncated bool `json:"truncated,omitempty"`
 }
 
 // AdminStatus is the platform observability snapshot for admins.
@@ -72,7 +80,15 @@ func (u *Usecases) PurgeRetention(ctx context.Context, olderThanDays int) (*Rete
 	if err != nil {
 		return nil, fmt.Errorf("purge stale reports: %w", err)
 	}
-	return &RetentionResult{OlderThanDays: olderThanDays, Cutoff: cutoff, DeletedReports: int64(len(ids)), DeletedReportIDs: ids}, nil
+	total := len(ids)
+	truncated := total > maxPurgeIDs
+	if truncated {
+		ids = ids[:maxPurgeIDs]
+	}
+	return &RetentionResult{
+		OlderThanDays: olderThanDays, Cutoff: cutoff,
+		DeletedReports: int64(total), DeletedReportIDs: ids, Truncated: truncated,
+	}, nil
 }
 
 // GetAdminStatus returns the platform observability snapshot. Callers gate

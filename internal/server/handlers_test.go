@@ -2217,6 +2217,30 @@ func TestProjectTeams_LinkUnlink(t *testing.T) {
 	assert.Equal(t, http.StatusNoContent, w.Code)
 }
 
+func TestTeams_InvalidIDBadRequest(t *testing.T) {
+	mock := &mockUsecases{
+		deleteTeamFn: func(ctx context.Context, teamID string) error {
+			return usecase.ErrInvalidID
+		},
+	}
+	router := testRouter(mock)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/v1/teams/not-a-uuid", nil))
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPolicyTemplate_InvalidIDBadRequest(t *testing.T) {
+	mock := &mockUsecases{
+		deletePolicyFn: func(ctx context.Context, id string) error {
+			return usecase.ErrInvalidID
+		},
+	}
+	router := testRouter(mock)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("DELETE", "/api/v1/policy-templates/not-a-uuid", nil))
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
 func TestGateStatus_ProjectNotFound(t *testing.T) {
 	mock := &mockUsecases{
 		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {

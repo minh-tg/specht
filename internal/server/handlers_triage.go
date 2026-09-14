@@ -417,6 +417,8 @@ func (h *Handler) UpdatePolicyTemplate(w http.ResponseWriter, r *http.Request) {
 	result, err := h.usecase.UpdatePolicyTemplate(r.Context(), id, req.Name, req.Description, req.Definition)
 	if err != nil {
 		switch {
+		case errors.Is(err, usecase.ErrInvalidID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid template id format")
 		case errors.Is(err, usecase.ErrPolicyNotFound):
 			respondError(w, http.StatusNotFound, "not_found", "policy template not found")
 		case errors.Is(err, usecase.ErrPolicyConflict):
@@ -439,6 +441,10 @@ func (h *Handler) DeletePolicyTemplate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.usecase.DeletePolicyTemplate(r.Context(), id); err != nil {
+		if errors.Is(err, usecase.ErrInvalidID) {
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid template id format")
+			return
+		}
 		if errors.Is(err, usecase.ErrPolicyNotFound) {
 			respondError(w, http.StatusNotFound, "not_found", "policy template not found")
 			return
@@ -576,6 +582,8 @@ func (h *Handler) DeleteTeam(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.usecase.DeleteTeam(r.Context(), id); err != nil {
 		switch {
+		case errors.Is(err, usecase.ErrInvalidID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid team id format")
 		case errors.Is(err, usecase.ErrTeamNotFound):
 			respondError(w, http.StatusNotFound, "not_found", "team not found")
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
@@ -600,6 +608,8 @@ func (h *Handler) ListTeamMembers(w http.ResponseWriter, r *http.Request) {
 	result, err := h.usecase.ListTeamMembers(r.Context(), id)
 	if err != nil {
 		switch {
+		case errors.Is(err, usecase.ErrInvalidID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid team id format")
 		case errors.Is(err, usecase.ErrTeamNotFound):
 			respondError(w, http.StatusNotFound, "not_found", "team not found")
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
@@ -655,6 +665,8 @@ func (h *Handler) RemoveTeamMember(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.usecase.RemoveTeamMember(r.Context(), id, userID); err != nil {
 		switch {
+		case errors.Is(err, usecase.ErrInvalidID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid id format")
 		case errors.Is(err, usecase.ErrTeamNotFound):
 			respondError(w, http.StatusNotFound, "not_found", "team not found")
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
@@ -732,6 +744,8 @@ func (h *Handler) UnlinkProjectTeam(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.usecase.UnlinkProjectTeam(r.Context(), slug, teamID); err != nil {
 		switch {
+		case errors.Is(err, usecase.ErrInvalidID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid team id format")
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
 			respondError(w, http.StatusForbidden, "project_access_denied", "project admin is required")
 		default:

@@ -84,6 +84,9 @@ func (u *Usecases) ListPolicyTemplates(ctx context.Context) ([]PolicyTemplateRes
 // storage so consumers can tell the baseline moved). Renames conflict with
 // other templates.
 func (u *Usecases) UpdatePolicyTemplate(ctx context.Context, id, name, description string, definition json.RawMessage) (*PolicyTemplateResponse, error) {
+	if _, err := validID(id); err != nil {
+		return nil, err
+	}
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, fmt.Errorf("template name is required")
@@ -115,6 +118,9 @@ func (u *Usecases) UpdatePolicyTemplate(ctx context.Context, id, name, descripti
 // DeletePolicyTemplate removes a baseline; linked projects keep their
 // overrides and fall back to defaults (FK SET NULL).
 func (u *Usecases) DeletePolicyTemplate(ctx context.Context, id string) error {
+	if _, err := validID(id); err != nil {
+		return err
+	}
 	if _, err := u.deps.Stores.Policy.GetTemplateByID(ctx, id); err != nil {
 		return notFoundAsPolicy(err)
 	}
@@ -167,7 +173,11 @@ func (u *Usecases) SetProjectPolicyOverrides(ctx context.Context, projectSlug st
 	if _, err := policy.ParseDefinition(mustMarshal(normalized)); err != nil {
 		return nil, err
 	}
-	updated, err := u.deps.Stores.Projects.UpdateSettings(ctx, project.ID, projectSettingsWithPolicy(project.Settings, normalized))
+	merged, err := projectSettingsWithPolicy(project.Settings, normalized)
+	if err != nil {
+		return nil, err
+	}
+	updated, err := u.deps.Stores.Projects.UpdateSettings(ctx, project.ID, merged)
 	if err != nil {
 		return nil, fmt.Errorf("store overrides: %w", err)
 	}
@@ -246,11 +256,16 @@ func projectPolicyOverrides(settings json.RawMessage) (map[string]string, error)
 }
 
 // projectSettingsWithPolicy merges overrides into the settings document,
-// preserving every other namespace.
-func projectSettingsWithPolicy(settings json.RawMessage, overrides map[string]string) json.RawMessage {
+// preserving every other namespace. A settings document that fails to
+// decode errors out: silently replacing it would drop
+// enforcement-relevant configuration. (PostgreSQL JSONB always holds valid
+// JSON, so this path triggers only on driver-level corruption.)
+func projectSettingsWithPolicy(settings json.RawMessage, overrides map[string]string) (json.RawMessage, error) {
 	var doc map[string]any
 	if len(settings) > 0 {
-		_ = json.Unmarshal(settings, &doc)
+		if err := json.Unmarshal(settings, &doc); err != nil {
+			return nil, fmt.Errorf("invalid project settings: %w", err)
+		}
 	}
 	if doc == nil {
 		doc = map[string]any{}
@@ -260,7 +275,7 @@ func projectSettingsWithPolicy(settings json.RawMessage, overrides map[string]st
 	} else {
 		doc["policy"] = overrides
 	}
-	return mustMarshal(doc)
+	return mustMarshal(doc), nil
 }
 
 func toPolicyTemplate(t port.PolicyTemplate, def map[string]string) *PolicyTemplateResponse {

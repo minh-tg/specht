@@ -52,8 +52,22 @@ func TestPurgeRetention_Deletes(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), out.DeletedReports)
 	assert.Equal(t, []string{"r1", "r2"}, out.DeletedReportIDs)
+	assert.False(t, out.Truncated)
 	_, err = uc.PurgeRetention(context.Background(), 0)
 	require.Error(t, err)
+}
+
+func TestPurgeRetention_TruncatesLongIDLists(t *testing.T) {
+	ids := make([]string, 0, 1005)
+	for i := 0; i < 1005; i++ {
+		ids = append(ids, "r")
+	}
+	uc, _, _ := retentionHarness(t, 0, ids)
+	out, err := uc.PurgeRetention(context.Background(), 30)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1005), out.DeletedReports, "the count stays exact")
+	assert.Len(t, out.DeletedReportIDs, 1000)
+	assert.True(t, out.Truncated)
 }
 
 func TestGetAdminStatus_Maps(t *testing.T) {

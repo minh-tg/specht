@@ -95,6 +95,9 @@ func (u *Usecases) ListTeams(ctx context.Context) ([]TeamResponse, error) {
 // DeleteTeam removes a team; project links cascade. Global admins own
 // deletion — team admins manage membership, not the team's existence.
 func (u *Usecases) DeleteTeam(ctx context.Context, teamID string) error {
+	if _, err := validID(teamID); err != nil {
+		return err
+	}
 	ident := auth.ContextIdentity(ctx)
 	if ident == nil || ident.IsAPIKey || ident.Role != auth.RoleAdmin {
 		return ErrProjectAccessDenied
@@ -135,6 +138,12 @@ func (u *Usecases) requireTeamAdmin(ctx context.Context, teamID string) error {
 // alone would surface a raw constraint violation); the role validates
 // against the team vocabulary.
 func (u *Usecases) AddTeamMember(ctx context.Context, teamID, userID, role string) (*TeamMemberResponse, error) {
+	if _, err := validID(teamID); err != nil {
+		return nil, err
+	}
+	if _, err := validID(userID); err != nil {
+		return nil, err
+	}
 	if err := u.requireTeamAdmin(ctx, teamID); err != nil {
 		return nil, err
 	}
@@ -154,6 +163,9 @@ func (u *Usecases) AddTeamMember(ctx context.Context, teamID, userID, role strin
 
 // ListTeamMembers returns a team's roster with member emails.
 func (u *Usecases) ListTeamMembers(ctx context.Context, teamID string) ([]TeamMemberResponse, error) {
+	if _, err := validID(teamID); err != nil {
+		return nil, err
+	}
 	if err := u.requireTeamAdmin(ctx, teamID); err != nil {
 		return nil, err
 	}
@@ -171,6 +183,12 @@ func (u *Usecases) ListTeamMembers(ctx context.Context, teamID string) ([]TeamMe
 // RemoveTeamMember removes a user from a team. Removing the last admin is
 // allowed (a global admin can always recover the team).
 func (u *Usecases) RemoveTeamMember(ctx context.Context, teamID, userID string) error {
+	if _, err := validID(teamID); err != nil {
+		return err
+	}
+	if _, err := validID(userID); err != nil {
+		return err
+	}
 	if err := u.requireTeamAdmin(ctx, teamID); err != nil {
 		return err
 	}
@@ -188,6 +206,9 @@ func (u *Usecases) LinkProjectTeam(ctx context.Context, projectSlug, teamID, rol
 		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
 	}
 	if err := u.requireProjectAdmin(ctx, project.ID); err != nil {
+		return nil, err
+	}
+	if _, err := validID(teamID); err != nil {
 		return nil, err
 	}
 	if !validLinkRoles[role] {
@@ -210,6 +231,9 @@ func (u *Usecases) LinkProjectTeam(ctx context.Context, projectSlug, teamID, rol
 // UnlinkProjectTeam revokes the conferred role. Access granted through the
 // link ends with it; direct memberships are untouched.
 func (u *Usecases) UnlinkProjectTeam(ctx context.Context, projectSlug, teamID string) error {
+	if _, err := validID(teamID); err != nil {
+		return err
+	}
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return fmt.Errorf("lookup project %q: %w", projectSlug, err)

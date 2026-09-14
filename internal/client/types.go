@@ -114,6 +114,7 @@ type RetentionResult struct {
 	Cutoff           time.Time `json:"cutoff"`
 	DeletedReports   int64     `json:"deleted_reports"`
 	DeletedReportIDs []string  `json:"deleted_report_ids,omitempty"`
+	Truncated        bool      `json:"truncated,omitempty"`
 }
 
 // PolicyTemplate is a reusable organization-wide policy baseline.
