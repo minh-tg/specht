@@ -505,16 +505,14 @@ func TestVerifyFix_FullCycle(t *testing.T) {
 	require.Equal(t, 4, out1.TotalFindings)
 
 	// Rescan with the npm vulnerability fixed: drop it from the raw report.
-	var results []map[string]any
-	require.NoError(t, json.Unmarshal(raw1, &results))
-	for _, r := range results {
-		if class, _ := r["Class"].(string); class == "lang-pkgs" {
-			r["Vulnerabilities"] = []any{}
+	raw2, err := rewriteTrivyReport(raw1, func(results []map[string]any) {
+		for _, r := range results {
+			if class, _ := r["Class"].(string); class == "lang-pkgs" {
+				r["Vulnerabilities"] = []any{}
+			}
 		}
-	}
-	raw2, err := json.Marshal(results)
+	})
 	require.NoError(t, err)
-	raw2 = append(raw2, '\n')
 	out2, err := uc.IngestReport(ctx, usecase.IngestReportInput{
 		ProjectSlug: "my-app", Scanner: "trivy", RawData: raw2,
 		Branch: "main", CommitSha: "bbb",
