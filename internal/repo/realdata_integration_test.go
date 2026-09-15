@@ -9,6 +9,7 @@ package repo
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"strings"
@@ -636,43 +637,65 @@ func TestRegression_DetectedAndReopened(t *testing.T) {
 // removeFingerprint strips a vulnerability from the trivy multi-type fixture so
 // the resulting rescan no longer contains it — simulating a fix.
 func removeFingerprint(raw []byte, id string) ([]byte, error) {
-	var results []map[string]any
-	if err := json.Unmarshal(raw, &results); err != nil {
-		return nil, err
-	}
-	for _, r := range results {
-		if vulns, ok := r["Vulnerabilities"].([]any); ok {
-			kept := make([]any, 0, len(vulns))
-			for _, v := range vulns {
-				if vm, ok := v.(map[string]any); ok {
-					if vid, _ := vm["VulnerabilityID"].(string); vid == id {
-						continue
+	return rewriteTrivyReport(raw, func(results []map[string]any) {
+		for _, r := range results {
+			if vulns, ok := r["Vulnerabilities"].([]any); ok {
+				kept := make([]any, 0, len(vulns))
+				for _, v := range vulns {
+					if vm, ok := v.(map[string]any); ok {
+						if vid, _ := vm["VulnerabilityID"].(string); vid == id {
+							continue
+						}
 					}
+					kept = append(kept, v)
 				}
-				kept = append(kept, v)
+				r["Vulnerabilities"] = kept
 			}
-			r["Vulnerabilities"] = kept
 		}
-	}
-	out, err := json.MarshalIndent(results, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	return append(out, '\n'), nil
+	})
 }
 
 // appendComment injects a harmless top-level field into the trivy multi-type
 // fixture JSON so that the report hash differs and the dedup constraint does
 // not reject it as an identical re-ingest.
 func appendComment(raw []byte, marker string) ([]byte, error) {
+	return rewriteTrivyReport(raw, func(results []map[string]any) {
+		for _, r := range results {
+			r["_regression_marker"] = marker
+		}
+	})
+}
+
+func rewriteTrivyReport(raw []byte, mutate func([]map[string]any)) ([]byte, error) {
+	var envelope map[string]any
+	if err := json.Unmarshal(raw, &envelope); err == nil {
+		values, ok := envelope["Results"].([]any)
+		if !ok {
+			return nil, fmt.Errorf("trivy report has no Results array")
+		}
+		results := make([]map[string]any, 0, len(values))
+		for _, value := range values {
+			result, ok := value.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("trivy report result is not an object")
+			}
+			results = append(results, result)
+		}
+		mutate(results)
+		envelope["Results"] = results
+		out, err := json.MarshalIndent(envelope, "", "  ")
+		if err != nil {
+			return nil, err
+		}
+		return append(out, '\n'), nil
+	}
+
 	var results []map[string]any
 	if err := json.Unmarshal(raw, &results); err != nil {
 		return nil, err
 	}
-	for _, r := range results {
-		r["_regression_marker"] = marker
-	}
-	out, err := json.Marshal(results)
+	mutate(results)
+	out, err := json.MarshalIndent(results, "", "  ")
 	if err != nil {
 		return nil, err
 	}
