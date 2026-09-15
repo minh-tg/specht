@@ -13,12 +13,12 @@ jobs:
     name: build + publish versioned image
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # go.sum is tracked; resolve the module graph so the Dockerfile's
       # go.mod-only flow (GOFLAGS=-mod=mod go mod download) is fast and
       # deterministic in the image build below.
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -30,14 +30,14 @@ jobs:
         run: echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: deploy/Dockerfile

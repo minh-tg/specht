@@ -13,9 +13,9 @@ jobs:
     name: test (unit + integration)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -38,9 +38,9 @@ jobs:
     name: lint + format
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -75,13 +75,13 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         with:
           version: 11
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 26
           cache: pnpm
@@ -106,7 +106,7 @@ jobs:
     name: docker build (clean clone)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build image
         run: docker build -f deploy/Dockerfile -t specht:ci .
@@ -115,7 +115,7 @@ jobs:
     name: security scan (Semgrep)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install Semgrep
         run: |
@@ -136,13 +136,13 @@ jobs:
             .
 
       - name: Upload Semgrep SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep-results.sarif
         continue-on-error: true
 
       - name: Upload SARIF artifact (dogfood ingest)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: semgrep-sarif
           path: semgrep-results.sarif
@@ -152,9 +152,9 @@ jobs:
     name: govulncheck (Go SCA)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -173,7 +173,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Scan filesystem
         uses: aquasecurity/trivy-action@v0.36.0
@@ -193,13 +193,13 @@ jobs:
           exit-code: "1"
 
       - name: Upload Trivy SARIF
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-results.sarif
         continue-on-error: true
 
       - name: Upload SARIF artifact (dogfood ingest)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: trivy-sarif
           path: trivy-results.sarif
@@ -230,15 +230,15 @@ jobs:
     env:
       DATABASE_URL: postgres://specht:specht@localhost:5432/specht?sslmode=disable
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
 
       - name: Download scanner SARIF
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: sarif-reports
           pattern: "*-sarif"
