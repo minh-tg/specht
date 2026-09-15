@@ -14,4 +14,5 @@
 - [ ] Code follows project conventions (Clean Architecture, gofumpt, staticcheck, dprint, oxlint).
 - [ ] Tests have been added or updated (`go test ./...` and `pnpm -C frontend test`).
 - [ ] No temporary files or local environment configurations are committed.
+- [ ] All commits are signed off under the Developer Certificate of Origin (`git commit -s`).
 - [ ] Commit messages follow the conventional commits specification (`type(scope): description`).

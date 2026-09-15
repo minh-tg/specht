@@ -72,4 +72,4 @@ There is no stable release or compatibility promise yet. Expect incomplete featu
 
 [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0)
 
-Contributions are accepted under the project's [Developer Certificate of Origin](CONTRIBUTING.md#contributor-license-agreement).
+Contributions follow the [Developer Certificate of Origin](CONTRIBUTING.md#developer-certificate-of-origin).
