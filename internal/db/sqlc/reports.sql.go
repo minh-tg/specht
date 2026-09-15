@@ -138,6 +138,23 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 	return i, err
 }
 
+const deleteReport = `-- name: DeleteReport :exec
+DELETE FROM reports WHERE id = $1 AND project_id = $2
+`
+
+type DeleteReportParams struct {
+	ID        pgtype.UUID `json:"id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+// Removes one report row (duplicate-cleanup path). Occurrences, watcher
+// rows, and inventory cascade; finding attribution nulls; findings
+// themselves survive.
+func (q *Queries) DeleteReport(ctx context.Context, arg DeleteReportParams) error {
+	_, err := q.db.Exec(ctx, deleteReport, arg.ID, arg.ProjectID)
+	return err
+}
+
 const deleteStaleReports = `-- name: DeleteStaleReports :many
 DELETE FROM reports
 WHERE status IN ('completed', 'failed')
@@ -167,6 +184,27 @@ func (q *Queries) DeleteStaleReports(ctx context.Context, completedAt pgtype.Tim
 		return nil, err
 	}
 	return items, nil
+}
+
+const findCompletedByHash = `-- name: FindCompletedByHash :one
+SELECT id FROM reports
+WHERE project_id = $1 AND raw_report_hash = $2 AND status = 'completed'
+LIMIT 1
+`
+
+type FindCompletedByHashParams struct {
+	ProjectID     pgtype.UUID `json:"project_id"`
+	RawReportHash pgtype.Text `json:"raw_report_hash"`
+}
+
+// Duplicate-content guard: a completed report with the same raw-content
+// hash. pgx.ErrNoRows means this content is new (or only ever failed) —
+// the caller ingests normally.
+func (q *Queries) FindCompletedByHash(ctx context.Context, arg FindCompletedByHashParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, findCompletedByHash, arg.ProjectID, arg.RawReportHash)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getCompletedReportByCommit = `-- name: GetCompletedReportByCommit :one

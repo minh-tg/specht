@@ -171,6 +171,13 @@ func (r *pgReportPort) UpdateStatus(ctx context.Context, id, projectID, status s
 	}
 	row, err := r.inner.UpdateStatus(ctx, rid, pid, status, int(totalFindings), textPtrFromString(errorMessage))
 	if err != nil {
+		// A 23505 here is the duplicate-content race: two identical
+		// ingests both passed the pre-check, and the partial dedup index
+		// admits the loser only at completion. Translate it like Create
+		// does so callers see ErrDuplicateReport, not a raw constraint.
+		if isDuplicateReport(err) {
+			return port.Report{}, port.ErrDuplicateReport
+		}
 		return port.Report{}, err
 	}
 	return reportRowToPort(row), nil
@@ -190,6 +197,30 @@ func (r *pgReportPort) DeleteStaleReports(ctx context.Context, cutoff time.Time)
 		out[i] = toUUID(id)
 	}
 	return out, nil
+}
+
+func (r *pgReportPort) FindCompletedByHash(ctx context.Context, projectID, rawHash string) (string, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return "", err
+	}
+	id, err := r.inner.FindCompletedByHash(ctx, pid, textPtrFromString(&rawHash))
+	if err != nil {
+		return "", mappingErr(err)
+	}
+	return toUUID(id), nil
+}
+
+func (r *pgReportPort) DeleteReport(ctx context.Context, id, projectID string) error {
+	rid, err := parseID(id)
+	if err != nil {
+		return err
+	}
+	pid, err := parseID(projectID)
+	if err != nil {
+		return err
+	}
+	return mappingErr(r.inner.DeleteReport(ctx, rid, pid))
 }
 
 // ---------- Findings port over the existing repo methods ----------

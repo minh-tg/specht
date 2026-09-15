@@ -96,6 +96,8 @@ type ReportRepo interface {
 	GetCompletedByCommit(ctx context.Context, projectID pgtype.UUID, toolName string, commit pgtype.Text) (sqlc.GetCompletedReportByCommitRow, error)
 	CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error)
 	DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]pgtype.UUID, error)
+	FindCompletedByHash(ctx context.Context, projectID pgtype.UUID, rawHash pgtype.Text) (pgtype.UUID, error)
+	DeleteReport(ctx context.Context, id, projectID pgtype.UUID) error
 }
 
 // UserRepo persists user accounts.

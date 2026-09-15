@@ -465,3 +465,44 @@ func TestIngestReport_GateIntroducedOnly(t *testing.T) {
 	assert.False(t, introducedOut.ThresholdBreached, "introduced-only gate ignores debt from other reports")
 	assert.Equal(t, currentReport, introducedOut.ReportID)
 }
+
+func TestIngestReport_DuplicateContentRejected(t *testing.T) {
+	uc, rr, _, _ := revisionHarness(t, func(context.Context, string, string, string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
+	})
+	rr.findCompletedByHashFn = func(ctx context.Context, projectID, rawHash string) (string, error) {
+		return "existing-report", nil
+	}
+	created := false
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
+		created = true
+		return makeReport(), nil
+	}
+
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy", RawData: json.RawMessage(`{"test": true}`),
+	})
+	assert.ErrorIs(t, err, ErrDuplicateReport)
+	assert.False(t, created, "duplicates must not write a processing row")
+}
+
+func TestIngestReport_DuplicateRaceCleansUp(t *testing.T) {
+	uc, rr, _, _ := revisionHarness(t, func(context.Context, string, string, string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
+	})
+	rr.updateStatusFn = func(ctx context.Context, id, projectID, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
+		return port.Report{}, port.ErrDuplicateReport
+	}
+	var deletedID, deletedProject string
+	rr.deleteReportFn = func(ctx context.Context, id, projectID string) error {
+		deletedID, deletedProject = id, projectID
+		return nil
+	}
+
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy", RawData: json.RawMessage(`{"test": true}`),
+	})
+	assert.ErrorIs(t, err, ErrDuplicateReport)
+	assert.Equal(t, makeReport().ID, deletedID, "the orphaned processing row must go")
+	assert.Equal(t, makeProject(true).ID, deletedProject)
+}

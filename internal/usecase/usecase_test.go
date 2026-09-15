@@ -255,14 +255,16 @@ func (m *mockProjectRepo) Delete(ctx context.Context, slug string) (port.Project
 
 type mockReportRepo struct {
 	port.ReportStore
-	createFn        func(context.Context, port.CreateReportInput) (port.Report, error)
-	getByIDFn       func(context.Context, string) (port.Report, error)
-	listByProjectFn func(context.Context, string, int32, int32) ([]port.Report, error)
-	updateStatusFn  func(context.Context, string, string, string, int32, *string) (port.Report, error)
-	latestReportFn  func(context.Context, string, string) (port.CompletedReport, error)
-	byCommitFn      func(context.Context, string, string, string) (port.CompletedReport, error)
-	countStaleFn    func(context.Context, time.Time) (int64, error)
-	deleteStaleFn   func(context.Context, time.Time) ([]string, error)
+	createFn              func(context.Context, port.CreateReportInput) (port.Report, error)
+	getByIDFn             func(context.Context, string) (port.Report, error)
+	listByProjectFn       func(context.Context, string, int32, int32) ([]port.Report, error)
+	updateStatusFn        func(context.Context, string, string, string, int32, *string) (port.Report, error)
+	latestReportFn        func(context.Context, string, string) (port.CompletedReport, error)
+	byCommitFn            func(context.Context, string, string, string) (port.CompletedReport, error)
+	countStaleFn          func(context.Context, time.Time) (int64, error)
+	deleteStaleFn         func(context.Context, time.Time) ([]string, error)
+	findCompletedByHashFn func(context.Context, string, string) (string, error)
+	deleteReportFn        func(context.Context, string, string) error
 }
 
 func (m *mockReportRepo) Create(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
@@ -319,6 +321,20 @@ func (m *mockReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Tim
 		return nil, fmt.Errorf("unexpected call to DeleteStaleReports")
 	}
 	return m.deleteStaleFn(ctx, cutoff)
+}
+
+func (m *mockReportRepo) FindCompletedByHash(ctx context.Context, projectID, rawHash string) (string, error) {
+	if m.findCompletedByHashFn == nil {
+		return "", port.ErrNotFound
+	}
+	return m.findCompletedByHashFn(ctx, projectID, rawHash)
+}
+
+func (m *mockReportRepo) DeleteReport(ctx context.Context, id, projectID string) error {
+	if m.deleteReportFn == nil {
+		return fmt.Errorf("unexpected call to DeleteReport")
+	}
+	return m.deleteReportFn(ctx, id, projectID)
 }
 
 type mockPolicyRepo struct {

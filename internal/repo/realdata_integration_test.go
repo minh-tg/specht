@@ -133,6 +133,44 @@ func TestRealDataDoubleIngest_Idempotent(t *testing.T) {
 	}
 }
 
+func TestRealDataIdenticalIngest_Duplicate(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	stores := NewPortStores(pool)
+	reg := scanner.NewRegistry()
+	for _, s := range parser.Builtins() {
+		require.NoError(t, reg.Register(s))
+	}
+	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
+
+	creator, err := stores.Users.Create(ctx, "tester@example.com", nil, nil)
+	require.NoError(t, err)
+	_, err = uc.CreateProject(ctx, "My App", "my-app", "validation", creator.ID)
+	require.NoError(t, err)
+
+	raw, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
+	require.NoError(t, err)
+	_, err = uc.IngestReport(ctx, usecase.IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy", RawData: raw,
+	})
+	require.NoError(t, err)
+
+	_, err = uc.IngestReport(ctx, usecase.IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy", RawData: raw,
+	})
+	assert.ErrorIs(t, err, usecase.ErrDuplicateReport, "identical bytes ingest as a duplicate, not a 422")
+
+	project, err := stores.Projects.GetBySlug(ctx, "my-app")
+	require.NoError(t, err)
+	reports, err := stores.Reports.ListByProject(ctx, project.ID, 100, 0)
+	require.NoError(t, err)
+	for _, r := range reports {
+		assert.NotEqual(t, "processing", r.Status, "no stranded processing rows")
+	}
+}
+
 func TestRealDataContext_EndToEnd(t *testing.T) {
 	pool, cleanup := setupIngestPool(t)
 	defer cleanup()

@@ -116,6 +116,20 @@ func (r *pgReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Time)
 	return r.q.DeleteStaleReports(ctx, uuidFromTime(cutoff))
 }
 
+func (r *pgReportRepo) FindCompletedByHash(ctx context.Context, projectID pgtype.UUID, rawHash pgtype.Text) (pgtype.UUID, error) {
+	return r.q.FindCompletedByHash(ctx, sqlc.FindCompletedByHashParams{
+		ProjectID:     projectID,
+		RawReportHash: rawHash,
+	})
+}
+
+func (r *pgReportRepo) DeleteReport(ctx context.Context, id, projectID pgtype.UUID) error {
+	return r.q.DeleteReport(ctx, sqlc.DeleteReportParams{
+		ID:        id,
+		ProjectID: projectID,
+	})
+}
+
 func (r *pgReportRepo) UpdateStatus(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
 	return r.q.UpdateReportStatus(ctx, sqlc.UpdateReportStatusParams{
 		ID:            id,

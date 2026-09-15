@@ -73,3 +73,17 @@ DELETE FROM reports
 WHERE status IN ('completed', 'failed')
   AND COALESCE(completed_at, created_at) < $1
 RETURNING id;
+
+-- name: FindCompletedByHash :one
+-- Duplicate-content guard: a completed report with the same raw-content
+-- hash. pgx.ErrNoRows means this content is new (or only ever failed) —
+-- the caller ingests normally.
+SELECT id FROM reports
+WHERE project_id = $1 AND raw_report_hash = $2 AND status = 'completed'
+LIMIT 1;
+
+-- name: DeleteReport :exec
+-- Removes one report row (duplicate-cleanup path). Occurrences, watcher
+-- rows, and inventory cascade; finding attribution nulls; findings
+-- themselves survive.
+DELETE FROM reports WHERE id = $1 AND project_id = $2;

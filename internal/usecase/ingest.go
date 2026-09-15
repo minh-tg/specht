@@ -104,6 +104,18 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	}
 	input.RawData = redactRaw(sc, input.RawData)
 
+	// Duplicate-content guard: identical bytes already completed for this
+	// project ingest as a 409, before any row is written. The hash covers
+	// the redacted bytes (the stored form), so reporting the same scan
+	// twice collides here instead of stranding a processing row at
+	// completion time.
+	rawHash := sha256.Sum256(input.RawData)
+	if _, err := u.deps.Stores.Reports.FindCompletedByHash(ctx, project.ID, hex.EncodeToString(rawHash[:])); err == nil {
+		return nil, ErrDuplicateReport
+	} else if !errors.Is(err, port.ErrNotFound) {
+		return nil, fmt.Errorf("check duplicate report: %w", err)
+	}
+
 	ctxInfo, err := u.resolveReportContext(ctx, project, input, nr)
 	if err != nil {
 		return nil, err
@@ -639,6 +651,10 @@ func (u *Usecases) persistInventory(ctx context.Context, input IngestReportInput
 func (u *Usecases) checkGateAfterIngest(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, total int) (bool, error) {
 	_, err := u.deps.Stores.Reports.UpdateStatus(ctx, report.ID, project.ID, "completed", int32(total), nil)
 	if err != nil {
+		if errors.Is(err, port.ErrDuplicateReport) {
+			u.deleteDuplicateReport(ctx, project.ID, report.ID)
+			return false, ErrDuplicateReport
+		}
 		slog.Error("update report status failed", "scanner", input.Scanner, "report_id", report.ID, "error", err)
 		return false, fmt.Errorf("scanner %s: update report status: %w", input.Scanner, err)
 	}
@@ -653,10 +669,28 @@ func (u *Usecases) checkGateAfterIngest(ctx context.Context, project port.Projec
 		decision, err = u.gate.EvaluateWithPolicies(ctx, project.ID, minRank, policies)
 	}
 	if err != nil {
+		// Duplicate-content race: a twin ingest completed first, so the
+		// partial dedup index rejected this completion. Remove the
+		// orphaned processing row and report the duplicate.
+		if errors.Is(err, port.ErrDuplicateReport) {
+			u.deleteDuplicateReport(ctx, project.ID, report.ID)
+			return false, ErrDuplicateReport
+		}
 		slog.Error("gate check failed", "scanner", input.Scanner, "project", project.ID, "error", err)
 		return false, fmt.Errorf("scanner %s: gate check: %w", input.Scanner, err)
 	}
 	return decision.Status == gate.StatusFail, nil
+}
+
+// deleteDuplicateReport removes a processing row orphaned by a lost
+// duplicate race. Occurrences cascade; shared finding rows are untouched.
+// Failures log only: the row is garbage either way (retention purges
+// processing rows never, so leaving it would strand it permanently —
+// hence best-effort delete here, loud log on failure).
+func (u *Usecases) deleteDuplicateReport(ctx context.Context, projectID, reportID string) {
+	if err := u.deps.Stores.Reports.DeleteReport(ctx, reportID, projectID); err != nil {
+		slog.Error("delete duplicate report failed", "report", reportID, "error", err)
+	}
 }
 
 // gateSeverityRank resolves the ingest gate overrides into the severity-rank
