@@ -141,6 +141,13 @@ jobs:
           sarif_file: semgrep-results.sarif
         continue-on-error: true
 
+      - name: Upload SARIF artifact (dogfood ingest)
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-sarif
+          path: semgrep-results.sarif
+          retention-days: 1
+
   govulncheck:
     name: govulncheck (Go SCA)
     runs-on: ubuntu-latest
@@ -184,3 +191,85 @@ jobs:
         with:
           sarif_file: trivy-results.sarif
         continue-on-error: true
+
+      - name: Upload SARIF artifact (dogfood ingest)
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-sarif
+          path: trivy-results.sarif
+          retention-days: 1
+
+  dogfood:
+    # Specht scans itself: the scanner SARIF reports feed a live instance
+    # so introduced-by-change, gates, and verified-fixed closure run on
+    # real data every pipeline. Gate verdict is advisory until a green
+    # baseline is observed for a while; flip GATE_MODE to block after.
+    name: dogfood (self-ingest)
+    runs-on: ubuntu-latest
+    needs: [security-scan, trivy]
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: specht
+          POSTGRES_PASSWORD: specht
+          POSTGRES_DB: specht
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U specht"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://specht:specht@localhost:5432/specht?sslmode=disable
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download scanner SARIF
+        uses: actions/download-artifact@v4
+        with:
+          path: sarif-reports
+          pattern: "*-sarif"
+          merge-multiple: true
+
+      - name: Migrate and start server
+        run: |
+          go run ./cmd/server migrate
+          JWT_SECRET="$(openssl rand -hex 32)"
+          export JWT_SECRET
+          echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
+          go build -o /tmp/specht-ci ./cmd/server
+          DB_MIGRATE=true /tmp/specht-ci >> /tmp/specht-ci.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8080/api/v1/health && break
+            sleep 2
+          done
+
+      - name: Register admin and restart with bootstrap
+        run: |
+          curl -sf -X POST http://127.0.0.1:8080/api/v1/auth/register \
+            -H 'Content-Type: application/json' \
+            -d '{"email":"ci-dogfood@example.com","password":"ci-dogfood-password-123"}'
+          pkill -f specht-ci
+          sleep 2
+          ADMIN_EMAILS=ci-dogfood@example.com DB_MIGRATE=true /tmp/specht-ci >> /tmp/specht-ci.log 2>&1 &
+          for _ in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8080/api/v1/health && break
+            sleep 2
+          done
+
+      - name: Ingest scanner reports into Specht
+        env:
+          SPECHT_API_URL: http://127.0.0.1:8080
+          SPECHT_ADMIN_EMAIL: ci-dogfood@example.com
+          SPECHT_ADMIN_PASSWORD: ci-dogfood-password-123
+          SPECHT_PROJECT: specht-self
+          SARIF_FILES: sarif-reports/semgrep-results.sarif sarif-reports/trivy-results.sarif
+          GATE_MODE: advisory
+        run: bash scripts/ci-dogfood.sh
