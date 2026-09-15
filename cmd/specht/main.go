@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"os"
 	"strconv"
 	"strings"
@@ -146,9 +147,10 @@ func parseArgs(args []string) (command, error) {
 					i++
 				case rest[i] == "--limit" && i+1 < len(rest):
 					n, err := strconv.Atoi(rest[i+1])
-					if err == nil {
-						c.limit = n
+					if err != nil || n < 0 || n > math.MaxInt32 {
+						return command{}, fmt.Errorf("invalid --limit %q: want 0 to %d", rest[i+1], math.MaxInt32)
 					}
+					c.limit = n
 					i++
 				}
 			}

@@ -114,6 +114,8 @@ func TestCLI_ParseArgs(t *testing.T) {
 		{"teams add", []string{"specht", "teams", "add", "--id", "t1", "--user", "u1", "--role", "member"}, command{cmd: cmdTeamAdd, teamID: "t1", userID: "u1", teamRole: "member"}, ""},
 		{"project-teams link", []string{"specht", "project-teams", "link", "--project", "my-app", "--team", "t1", "--role", "editor"}, command{cmd: cmdProjectLink, project: "my-app", teamID: "t1", teamRole: "editor"}, ""},
 		{"project-teams link missing role", []string{"specht", "project-teams", "link", "--project", "my-app", "--team", "t1"}, command{}, "--project, --team, and --role are required for project-teams link"},
+		{"findings list bad limit", []string{"specht", "findings", "list", "--project", "my-app", "--limit", "9999999999"}, command{}, `invalid --limit "9999999999"`},
+		{"findings list negative limit", []string{"specht", "findings", "list", "--project", "my-app", "--limit", "-5"}, command{}, `invalid --limit "-5"`},
 		{"stats show", []string{"specht", "stats", "show", "my-app"}, command{cmd: cmdStats, slug: "my-app"}, ""},
 		{"stats aging", []string{"specht", "stats", "aging", "my-app"}, command{cmd: cmdStatsAging, slug: "my-app"}, ""},
 		{"findings verify", []string{"specht", "findings", "verify", "f1"}, command{cmd: cmdFindingsVerify, findingID: "f1"}, ""},
