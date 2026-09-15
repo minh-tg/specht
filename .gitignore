@@ -22,3 +22,6 @@ cmd/server/dist/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local tool output
+.codeql-results/
