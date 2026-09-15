@@ -60,10 +60,13 @@ func TestRealDataValidationSweep(t *testing.T) {
 		{"checkov", "checkov/testdata/checkov-terraform.json", 3, 0, false},
 		{"checkov", "checkov/testdata/checkov-kubernetes.json", 2, 0, false},
 		{"checkov", "checkov/testdata/checkov-cloudformation.json", 1, 0, false},
+		{"dependency-check", "dependencycheck/testdata/dependency-check-report.json", 2, 0, false},
+		{"semgrep", "semgrep/testdata/semgrep-sarif.json", 2, 0, false},
 		{"tfsec", "tfsec/testdata/tfsec.json", 2, 0, false},
 		{scanner: "nuclei", fixture: "nuclei/testdata/nuclei.jsonl", min: 3, allowDupFingerprints: true},
 		{"grype", "grype/testdata/grype-full.json", 105, 100, false},
 		{"sbom", "sbom/testdata/cyclonedx.json", 0, 3, false},
+		{"sbom", "sbom/testdata/spdx.json", 0, 2, false},
 		{"gitleaks", "gitleaks/testdata/gitleaks.json", 3, 0, false},
 		{"sarif", "sarif/testdata/multi-tool.sarif.json", 3, 0, false},
 	}

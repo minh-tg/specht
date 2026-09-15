@@ -153,6 +153,14 @@ func TestParse_InvalidJSON(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestParse_MissingAffectedRecordUsesPackageInventory(t *testing.T) {
+	data := []byte(`{"results":[{"source":{"path":"go.mod","type":"lockfile"},"packages":[{"package":{"name":"example.com/app","version":"v1.0.0","ecosystem":"Go","purl":"pkg:golang/example.com/app@v1.0.0"},"vulnerabilities":[{"id":"GO-2026-0001","summary":"missing affected record"}]}]}]}`)
+	report, err := osvscanner.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.Len(t, report.Findings, 1)
+	assert.Equal(t, "GO-2026-0001:pkg:golang/example.com/app@v1.0.0", report.Findings[0].Fingerprint)
+}
+
 func TestFindingKind(t *testing.T) {
 	s := osvscanner.NewScanner()
 	assert.Equal(t, "sca", string(s.Descriptor().FindingKinds[0]))

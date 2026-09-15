@@ -38,7 +38,7 @@ func TestParseCycloneDX(t *testing.T) {
 	rep, err := NewScanner().Parse(context.Background(), data)
 	require.NoError(t, err)
 	assert.Empty(t, rep.Findings)
-	require.Len(t, rep.Packages, 3, "nameless component skipped")
+	require.Len(t, rep.Packages, 4)
 	assert.Equal(t, domain.ScanTypeSBOM, rep.ScanType)
 	assert.Equal(t, domain.CompletenessComplete, rep.Completeness)
 	require.NotNil(t, rep.Target)
@@ -57,6 +57,13 @@ func TestParseCycloneDX(t *testing.T) {
 	assert.Equal(t, "internal-tool", bare.Name)
 	assert.Empty(t, bare.PURL)
 	assert.Empty(t, bare.Ecosystem)
+	assert.Equal(t, "unnamed-tool", rep.Packages[3].Name)
+}
+
+func TestParseCycloneDXSkipsNamelessComponent(t *testing.T) {
+	rep, err := NewScanner().Parse(context.Background(), []byte(`{"bomFormat":"CycloneDX","components":[{"type":"library","name":""}]}`))
+	require.NoError(t, err)
+	assert.Empty(t, rep.Packages)
 }
 
 func TestParseSPDX(t *testing.T) {

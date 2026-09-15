@@ -41,7 +41,7 @@
     },
     {
       "type": "library",
-      "name": "",
+      "name": "unnamed-tool",
       "version": "9.9.9"
     }
   ]

@@ -1,6 +1,7 @@
 package trivy
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -10,7 +11,14 @@ import (
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
-type trivyReport []trivyResult
+type trivyReport struct {
+	SchemaVersion int           `json:"SchemaVersion"`
+	ArtifactName  string        `json:"ArtifactName"`
+	ArtifactType  string        `json:"ArtifactType"`
+	Results       []trivyResult `json:"Results"`
+}
+
+type legacyTrivyReport []trivyResult
 
 type trivyResult struct {
 	Target          string           `json:"Target"`
@@ -120,11 +128,14 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 }
 
 func (s *Scanner) DetectFormat(data []byte) bool {
-	var probe []trivyResult
-	if err := json.Unmarshal(data, &probe); err != nil {
+	probe, err := decode(data)
+	if err != nil {
 		return false
 	}
-	for _, r := range probe {
+	if probe.ArtifactName != "" {
+		return true
+	}
+	for _, r := range probe.Results {
 		if r.Target != "" {
 			return true
 		}
@@ -133,12 +144,29 @@ func (s *Scanner) DetectFormat(data []byte) bool {
 }
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
-	var report trivyReport
-	if err := json.Unmarshal(data, &report); err != nil {
+	report, err := decode(data)
+	if err != nil {
 		return nil, fmt.Errorf("trivy: parse json: %w", err)
 	}
 
 	return convert(report), nil
+}
+
+func decode(data []byte) (trivyReport, error) {
+	var report trivyReport
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) > 0 && trimmed[0] == '{' {
+		if err := json.Unmarshal(trimmed, &report); err != nil {
+			return trivyReport{}, err
+		}
+		return report, nil
+	}
+
+	var legacy legacyTrivyReport
+	if err := json.Unmarshal(trimmed, &legacy); err != nil {
+		return trivyReport{}, err
+	}
+	return trivyReport{Results: legacy}, nil
 }
 
 func convert(report trivyReport) *domain.NormalizedReport {
@@ -154,11 +182,13 @@ func convert(report trivyReport) *domain.NormalizedReport {
 		Findings:     nil,
 	}
 
-	if len(report) > 0 {
-		nr.Target = resultTarget(report[0])
+	if len(report.Results) > 0 {
+		nr.Target = resultTarget(report.Results[0])
+	} else if report.ArtifactName != "" {
+		nr.Target = &domain.TargetInfo{Identifier: report.ArtifactName, Kind: report.ArtifactType}
 	}
 
-	for _, result := range report {
+	for _, result := range report.Results {
 		// full package inventory, vulnerable or not
 		addPackages(nr, result)
 		addVulns(nr, result)

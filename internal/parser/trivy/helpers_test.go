@@ -64,7 +64,7 @@ func TestConvertEdgeCases(t *testing.T) {
 			Target: "test:latest",
 			Class:  "os-pkgs",
 		}
-		nr := convert(trivyReport{result})
+		nr := convert(trivyReport{Results: []trivyResult{result}})
 		assert.Empty(t, nr.Findings)
 	})
 
@@ -73,7 +73,7 @@ func TestConvertEdgeCases(t *testing.T) {
 			Target: "some-target",
 			Class:  "custom-class",
 		}
-		nr := convert(trivyReport{result})
+		nr := convert(trivyReport{Results: []trivyResult{result}})
 		assert.Equal(t, "filesystem", nr.Target.Kind)
 	})
 }
@@ -96,7 +96,7 @@ func TestConvertScoreSelection(t *testing.T) {
 				},
 			},
 		}
-		nr := convert(trivyReport{result})
+		nr := convert(trivyReport{Results: []trivyResult{result}})
 		require.Len(t, nr.Findings, 1)
 		assert.Equal(t, 8.5, nr.Findings[0].Score)
 	})
@@ -118,7 +118,7 @@ func TestConvertScoreSelection(t *testing.T) {
 				},
 			},
 		}
-		nr := convert(trivyReport{result})
+		nr := convert(trivyReport{Results: []trivyResult{result}})
 		assert.Equal(t, 6.5, nr.Findings[0].Score)
 	})
 
@@ -139,7 +139,7 @@ func TestConvertScoreSelection(t *testing.T) {
 				},
 			},
 		}
-		nr := convert(trivyReport{result})
+		nr := convert(trivyReport{Results: []trivyResult{result}})
 		assert.Equal(t, 4.0, nr.Findings[0].Score)
 	})
 
@@ -157,7 +157,7 @@ func TestConvertScoreSelection(t *testing.T) {
 				},
 			},
 		}
-		nr := convert(trivyReport{result})
+		nr := convert(trivyReport{Results: []trivyResult{result}})
 		assert.Equal(t, 0.0, nr.Findings[0].Score)
 	})
 
@@ -178,7 +178,7 @@ func TestConvertScoreSelection(t *testing.T) {
 				},
 			},
 		}
-		nr := convert(trivyReport{result})
+		nr := convert(trivyReport{Results: []trivyResult{result}})
 		require.Len(t, nr.Findings, 1)
 		fp := string(domain.SCAFingerprint("CVE-2024-0005", "pkg:apk/test-pkg@1.0"))
 		assert.Equal(t, fp, nr.Findings[0].Fingerprint)

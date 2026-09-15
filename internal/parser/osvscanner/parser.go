@@ -219,9 +219,16 @@ type osvFinding struct {
 // normalized converts one OSV vulnerability into a NormalizedFinding.
 func (f osvFinding) normalized() domain.NormalizedFinding {
 	v := f.vuln
-	purl := v.Affected.Package.PURL
+	purl := f.pkg.PURL
+	if v.Affected != nil && v.Affected.Package.PURL != "" {
+		purl = v.Affected.Package.PURL
+	}
 	if purl == "" {
-		purl = "pkg:" + strings.ToLower(v.Affected.Package.Ecosystem) + "/" + v.Affected.Package.Name
+		ecosystem, name := f.pkg.Ecosystem, f.pkg.Name
+		if v.Affected != nil {
+			ecosystem, name = v.Affected.Package.Ecosystem, v.Affected.Package.Name
+		}
+		purl = "pkg:" + strings.ToLower(ecosystem) + "/" + name
 	}
 
 	fixedVersion := firstFixedVersion(v)

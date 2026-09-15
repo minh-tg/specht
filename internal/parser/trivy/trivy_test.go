@@ -96,6 +96,21 @@ func TestParse_EmptyScan(t *testing.T) {
 	assert.Empty(t, report.Findings)
 }
 
+func TestParse_CurrentCleanEnvelope(t *testing.T) {
+	report, err := trivy.NewScanner().Parse(context.Background(), []byte(`{"SchemaVersion":2,"ArtifactName":"alpine:3.20","ArtifactType":"container_image","Results":null}`))
+	require.NoError(t, err)
+	assert.Empty(t, report.Findings)
+	require.NotNil(t, report.Target)
+	assert.Equal(t, "alpine:3.20", report.Target.Identifier)
+}
+
+func TestParse_LegacyArrayEnvelope(t *testing.T) {
+	report, err := trivy.NewScanner().Parse(context.Background(), []byte(`[{"Target":"alpine:3.20","Class":"os-pkgs","Type":"alpine"}]`))
+	require.NoError(t, err)
+	require.NotNil(t, report.Target)
+	assert.Equal(t, "alpine:3.20", report.Target.Identifier)
+}
+
 func TestParse_AlpineFullScan(t *testing.T) {
 	s := trivy.NewScanner()
 	data, err := os.ReadFile("testdata/alpine-full.json")
