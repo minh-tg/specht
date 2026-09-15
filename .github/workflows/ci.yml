@@ -177,6 +177,11 @@ jobs:
 
       - name: Scan filesystem
         uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          # The chart deliberately requires an explicit database password.
+          # Trivy renders Helm charts during filesystem misconfiguration scans,
+          # so provide a throwaway scan-only value without weakening the chart.
+          TRIVY_HELM_SET_STRING: postgresql.password=ci-scan-placeholder
         with:
           scan-type: fs
           scan-ref: .
