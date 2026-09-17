@@ -18,6 +18,13 @@ func main() {
 	project := flag.String("project", "", "Project slug (overrides stdin)")
 	tool := flag.String("tool", "", "Scanner name (overrides scanner detected in stdin payload)")
 	excludeTool := flag.String("exclude-tool", "", "Skip if scanner matches this name")
+	file := flag.String("file", "", "Path to scan result file (default: read from stdin)")
+	introducedOnly := flag.Bool("introduced-only", false, "Gate strictly on introduced vulnerabilities")
+	baseRef := flag.String("base-ref", "", "Baseline git ref/branch/commit (e.g. main)")
+	commit := flag.String("commit", "", "Current commit SHA")
+	branch := flag.String("branch", "", "Current branch name")
+	scanMode := flag.String("scan-mode", "", "Scan mode: full or incremental")
+	baselinePolicy := flag.String("baseline-policy", "warn", "Missing baseline action: warn or fail (default: warn)")
 	help := flag.Bool("help", false, "Show usage")
 	flag.Parse()
 
@@ -25,6 +32,8 @@ func main() {
 		printUsage()
 		os.Exit(0)
 	}
+
+	detectCIEnvironment(baseRef, commit, branch)
 
 	apiURL := os.Getenv("API_URL")
 	if apiURL == "" {
@@ -38,24 +47,40 @@ func main() {
 		os.Exit(2)
 	}
 
-	stdin, err := io.ReadAll(os.Stdin)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: reading stdin: %v\n", err)
-		os.Exit(2)
+	var rawInput []byte
+	var err error
+	if *file != "" {
+		rawInput, err = os.ReadFile(*file)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: reading file %q: %v\n", *file, err)
+			os.Exit(2)
+		}
+	} else {
+		rawInput, err = io.ReadAll(os.Stdin)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "error: reading stdin: %v\n", err)
+			os.Exit(2)
+		}
 	}
-	if len(bytes.TrimSpace(stdin)) == 0 {
-		fmt.Fprintln(os.Stderr, "error: stdin is empty, pipe a scan result")
+
+	if len(bytes.TrimSpace(rawInput)) == 0 {
+		fmt.Fprintln(os.Stderr, "error: input is empty, provide a scan result file or pipe to stdin")
 		os.Exit(2)
 	}
 
 	var payload client.IngestPayload
-	if err := json.Unmarshal(stdin, &payload); err != nil {
-		fmt.Fprintf(os.Stderr, "error: invalid JSON on stdin: %v\n", err)
-		os.Exit(2)
+	_ = json.Unmarshal(rawInput, &payload)
+	if len(payload.RawData) == 0 {
+		payload.RawData = rawInput
 	}
 
 	if *project != "" {
 		payload.Project = *project
+	}
+	if payload.Project == "" {
+		if p := os.Getenv("SPECHT_PROJECT"); p != "" {
+			payload.Project = p
+		}
 	}
 
 	if *tool != "" {
@@ -63,7 +88,7 @@ func main() {
 	}
 
 	if payload.Scanner == "" {
-		fmt.Fprintln(os.Stderr, "error: scanner is required in stdin payload")
+		fmt.Fprintln(os.Stderr, "error: scanner is required (use -tool flag or specify in payload)")
 		os.Exit(2)
 	}
 
@@ -78,6 +103,23 @@ func main() {
 	if *status != "" {
 		payload.GateStatus = *status
 	}
+	if *baseRef != "" {
+		payload.BaseRevision = *baseRef
+	}
+	if *commit != "" {
+		payload.CommitSha = *commit
+	}
+	if *branch != "" {
+		payload.Branch = *branch
+	}
+	if *scanMode != "" {
+		payload.ScanMode = *scanMode
+	}
+
+	isIntroducedOnly := *introducedOnly || *baseRef != ""
+	if isIntroducedOnly {
+		payload.GateIntroducedOnly = true
+	}
 
 	cl := client.New(apiURL, client.WithToken(apiKey))
 
@@ -85,6 +127,33 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: ingest failed: %v\n", err)
 		os.Exit(2)
+	}
+
+	if resp.FallbackReason != "" {
+		fmt.Fprintf(os.Stderr, "⚠️  BASELINE WARNING: %s\n", resp.FallbackReason)
+		if strings.EqualFold(*baselinePolicy, "fail") {
+			fmt.Fprintln(os.Stderr, "gate FAILED: missing baseline under baseline-policy=fail")
+			os.Exit(1)
+		}
+	}
+
+	if isIntroducedOnly {
+		if resp.ThresholdBreached {
+			fmt.Fprintln(os.Stderr, "❌ SPECHT SECURITY GATE: FAILED")
+			printContextBanner(payload)
+			fmt.Fprintf(os.Stderr, "\n🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE: %d\n", resp.IntroducedCount)
+			if resp.PreExistingCount > 0 {
+				fmt.Fprintf(os.Stderr, "ℹ️  PRE-EXISTING DEBT IN BASELINE: %d findings ignored for this gate\n", resp.PreExistingCount)
+			}
+			os.Exit(1)
+		}
+
+		fmt.Fprintln(os.Stderr, "✅ SPECHT SECURITY GATE: PASSED")
+		printContextBanner(payload)
+		if resp.PreExistingCount > 0 {
+			fmt.Fprintf(os.Stderr, "ℹ️  PRE-EXISTING DEBT IN BASELINE: %d findings ignored\n", resp.PreExistingCount)
+		}
+		os.Exit(0)
 	}
 
 	fmt.Fprintf(os.Stderr, "report %s ingested, %d finding(s)\n", resp.ReportID, resp.TotalFindings)
@@ -104,32 +173,82 @@ func main() {
 	os.Exit(0)
 }
 
+func printContextBanner(p client.IngestPayload) {
+	fmt.Fprintf(os.Stderr, "Project: %s | Scanner: %s", p.Project, p.Scanner)
+	if p.Branch != "" || p.BaseRevision != "" {
+		target := p.BaseRevision
+		if target == "" {
+			target = "baseline"
+		}
+		src := p.Branch
+		if src == "" {
+			src = "head"
+		}
+		fmt.Fprintf(os.Stderr, " | Branch: %s -> %s", src, target)
+	}
+	fmt.Fprintln(os.Stderr)
+}
+
+func detectCIEnvironment(baseRef, commit, branch *string) {
+	if *baseRef == "" {
+		if v := os.Getenv("GITHUB_BASE_REF"); v != "" {
+			*baseRef = v
+		} else if v := os.Getenv("CI_MERGE_REQUEST_TARGET_BRANCH_NAME"); v != "" {
+			*baseRef = v
+		}
+	}
+	if *commit == "" {
+		if v := os.Getenv("GITHUB_SHA"); v != "" {
+			*commit = v
+		} else if v := os.Getenv("CI_COMMIT_SHA"); v != "" {
+			*commit = v
+		}
+	}
+	if *branch == "" {
+		if v := os.Getenv("GITHUB_REF_NAME"); v != "" {
+			*branch = v
+		} else if v := os.Getenv("CI_COMMIT_REF_NAME"); v != "" {
+			*branch = v
+		}
+	}
+}
+
 func printUsage() {
 	fmt.Fprintf(os.Stderr, `Usage: specht-adapter [flags]
 
-CI/CD gate-check adapter for Specht. Reads a scan result from stdin,
-ingests it, then checks project gate status and exits based on result.
+CI/CD gate-check adapter for Specht. Reads a scan result from stdin or a file,
+ingests it, then evaluates gate status (change-scoped or project-wide) and
+exits based on the policy result.
 
 Flags:
-  -project string     Project slug (overrides project in stdin payload)
-  -tool string        Scanner name (overrides scanner detected in stdin payload)
-  -exclude-tool string Skip if scanner name matches this value
-  -severity string    Severity threshold, comma-separated (default: high,critical)
-  -status string      Finding status filter (default: open)
-  -help               Show this usage message
+  -project string        Project slug (overrides payload)
+  -tool string           Scanner name (overrides payload)
+  -exclude-tool string   Skip if scanner name matches this value
+  -severity string       Severity threshold, comma-separated (default: high,critical)
+  -status string         Finding status filter (default: open)
+  -file string           Path to scan result file (default: read from stdin)
+  -introduced-only       Gate strictly on introduced vulnerabilities
+  -base-ref string       Baseline git ref/branch/commit (auto-detected in CI)
+  -commit string         Current commit SHA (auto-detected in CI)
+  -branch string         Current branch name (auto-detected in CI)
+  -scan-mode string      Scan mode: full or incremental
+  -baseline-policy string Missing baseline action: warn or fail (default: warn)
+  -help                  Show this usage message
 
 Environment:
-  API_URL   Specht API base URL (default "http://localhost:8080")
-  API_KEY   API key for authentication (required)
+  API_URL                Specht API base URL (default "http://localhost:8080")
+  API_KEY                API key for authentication (required)
+  GITHUB_BASE_REF        Auto-detected PR target branch in GitHub Actions
+  GITHUB_SHA             Auto-detected commit SHA in GitHub Actions
+  CI_MERGE_REQUEST_TARGET_BRANCH_NAME Auto-detected MR target in GitLab CI
 
 Exit codes:
   0  Pass - no blocking findings, or skipped by -exclude-tool
-  1  Fail - blocking findings exist (review required, expired waiver, etc.)
+  1  Fail - blocking findings exist in change scope
   2  Error - API unreachable, invalid input, or configuration error
 
 Examples:
-  trivy image --format json myapp:latest | specht-adapter -project=my-app
-  cat scan.json | specht-adapter -severity=critical -tool=trivy
-  find . -name 'results.json' -exec specht-adapter -tool=semgrep {} +
+  trivy image --format json myapp:latest | specht-adapter -project=my-app -introduced-only
+  specht-adapter -file=scan.json -tool=trivy -project=my-app -base-ref=main
 `)
 }

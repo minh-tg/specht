@@ -18,6 +18,22 @@ func (m *mockFindingsRepo) ListBlockingFindings(ctx context.Context, projectID s
 	return m.findings, m.err
 }
 
+func (m *mockFindingsRepo) ListIntroducedGateCandidates(ctx context.Context, reportID string, minSeverityRank int16) ([]Finding, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	if reportID == "" {
+		return nil, nil
+	}
+	var res []Finding
+	for _, f := range m.findings {
+		if f.IntroducedByReportID == reportID && f.CurrentSeverityRank >= minSeverityRank {
+			res = append(res, f)
+		}
+	}
+	return res, nil
+}
+
 type mockWaiversRepo struct {
 	WaiversRepo
 	waivers []Waiver

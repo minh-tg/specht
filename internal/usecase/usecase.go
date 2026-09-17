@@ -164,6 +164,40 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 	return result, nil
 }
 
+func (a *gateFindingRepo) ListIntroducedGateCandidates(ctx context.Context, reportID string, minSeverityRank int16) ([]gate.Finding, error) {
+	if a.stores == nil || a.stores.Findings == nil {
+		return nil, fmt.Errorf("finding store unavailable")
+	}
+	candidates, err := a.stores.Findings.ListIntroducedGateCandidates(ctx, reportID, minSeverityRank)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make([]gate.Finding, len(candidates))
+	for i, c := range candidates {
+		reachability := gate.ReachabilityState(c.Reachability)
+		if reachability == "" {
+			reachability = gate.ReachabilityUnknown
+		}
+		result[i] = gate.Finding{
+			ID:                   c.ID,
+			CurrentSeverityRank:  c.CurrentSeverityRank,
+			FindingKind:          c.FindingKind,
+			Fingerprint:          c.Fingerprint,
+			CurrentTitle:         c.CurrentTitle,
+			EnvironmentID:        c.Context.EnvironmentID,
+			TargetID:             c.Context.TargetID,
+			ArtifactID:           c.Context.ArtifactID,
+			AnalysisState:        c.AnalysisState,
+			Reachability:         reachability,
+			Source:               c.FindingKind,
+			IntroducedByReportID: derefOrEmpty(c.IntroducedByReportID),
+			IntroducedCommitSha:  derefOrEmpty(c.IntroducedCommitSha),
+		}
+	}
+	return result, nil
+}
+
 type gateWaiverRepo struct {
 	stores *port.Stores
 }

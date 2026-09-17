@@ -122,6 +122,9 @@ type FindingsRepo interface {
 	// are candidates for blocking the gate (severity and state already
 	// filtered by the query).
 	ListBlockingFindings(ctx context.Context, projectID string, minSeverityRank int16) ([]Finding, error)
+	// ListIntroducedGateCandidates returns findings introduced by reportID
+	// at or above minSeverityRank that are candidates for blocking the gate.
+	ListIntroducedGateCandidates(ctx context.Context, reportID string, minSeverityRank int16) ([]Finding, error)
 }
 
 // WaiversRepo supplies the active waivers for a project.
@@ -222,11 +225,14 @@ func (g *gate) EvaluateWithPolicies(ctx context.Context, projectID string, minSe
 }
 
 func (g *gate) EvaluateIntroducedOnly(ctx context.Context, projectID string, minSeverityRank int16, reportID string, policies []GatePolicy) (Decision, error) {
-	return g.evaluate(ctx, projectID, minSeverityRank, policies, func(f Finding) bool {
-		// An empty scope matches nothing: without the guard it would
-		// match every unattributed finding ("" == "").
-		return reportID != "" && f.IntroducedByReportID == reportID
-	})
+	if reportID == "" {
+		return Decision{Status: StatusPass}, nil
+	}
+	findings, err := g.findings.ListIntroducedGateCandidates(ctx, reportID, minSeverityRank)
+	if err != nil {
+		return Decision{Status: StatusError}, fmt.Errorf("list introduced gate candidates: %w", err)
+	}
+	return g.evaluateFindings(ctx, projectID, findings, policies, nil)
 }
 
 func (g *gate) EvaluateIntroducedAtCommit(ctx context.Context, projectID string, minSeverityRank int16, commit string, policies []GatePolicy) (Decision, error) {
@@ -236,18 +242,21 @@ func (g *gate) EvaluateIntroducedAtCommit(ctx context.Context, projectID string,
 }
 
 func (g *gate) evaluate(ctx context.Context, projectID string, minSeverityRank int16, policies []GatePolicy, keep func(Finding) bool) (Decision, error) {
-	p := sourcePolicies{}
-	for _, policy := range policies {
-		p[policy.Source] = policy.Mode
-	}
-
 	findings, err := g.findings.ListBlockingFindings(ctx, projectID, minSeverityRank)
 	if err != nil {
 		return Decision{Status: StatusError}, fmt.Errorf("list blocking findings: %w", err)
 	}
+	return g.evaluateFindings(ctx, projectID, findings, policies, keep)
+}
 
+func (g *gate) evaluateFindings(ctx context.Context, projectID string, findings []Finding, policies []GatePolicy, keep func(Finding) bool) (Decision, error) {
 	if len(findings) == 0 {
 		return Decision{Status: StatusPass}, nil
+	}
+
+	p := sourcePolicies{}
+	for _, policy := range policies {
+		p[policy.Source] = policy.Mode
 	}
 
 	applicableFindings := make([]Finding, 0, len(findings))

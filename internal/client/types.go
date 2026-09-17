@@ -14,21 +14,25 @@ import (
 
 // IngestPayload is the request body for ingesting a scanner report.
 type IngestPayload struct {
-	Project         string          `json:"project"`
-	Scanner         string          `json:"scanner"`
-	ScannerVersion  string          `json:"scanner_version,omitempty"`
-	ParserVersion   string          `json:"parser_version,omitempty"`
-	RawData         json.RawMessage `json:"raw_data"`
-	Branch          string          `json:"branch,omitempty"`
-	CommitSha       string          `json:"commit_sha,omitempty"`
-	GateSeverity    string          `json:"gate_severity,omitempty"`
-	GateStatus      string          `json:"gate_status,omitempty"`
-	Environment     string          `json:"environment,omitempty"`
-	Owner           string          `json:"owner,omitempty"`
-	Digest          string          `json:"digest,omitempty"`
-	ArtifactName    string          `json:"artifact_name,omitempty"`
-	ArtifactVersion string          `json:"artifact_version,omitempty"`
-	ArtifactType    string          `json:"artifact_type,omitempty"`
+	Project            string          `json:"project"`
+	Scanner            string          `json:"scanner"`
+	ScannerVersion     string          `json:"scanner_version,omitempty"`
+	ParserVersion      string          `json:"parser_version,omitempty"`
+	RawData            json.RawMessage `json:"raw_data"`
+	Branch             string          `json:"branch,omitempty"`
+	CommitSha          string          `json:"commit_sha,omitempty"`
+	BaseRevision       string          `json:"base_revision,omitempty"`
+	ChangedFiles       []string        `json:"changed_files,omitempty"`
+	ScanMode           string          `json:"scan_mode,omitempty"`
+	GateIntroducedOnly bool            `json:"gate_introduced_only,omitempty"`
+	GateSeverity       string          `json:"gate_severity,omitempty"`
+	GateStatus         string          `json:"gate_status,omitempty"`
+	Environment        string          `json:"environment,omitempty"`
+	Owner              string          `json:"owner,omitempty"`
+	Digest             string          `json:"digest,omitempty"`
+	ArtifactName       string          `json:"artifact_name,omitempty"`
+	ArtifactVersion    string          `json:"artifact_version,omitempty"`
+	ArtifactType       string          `json:"artifact_type,omitempty"`
 }
 
 // IngestResponse is the server reply to a report ingest.
@@ -36,6 +40,10 @@ type IngestResponse struct {
 	ReportID          string `json:"report_id"`
 	TotalFindings     int    `json:"total_findings"`
 	ThresholdBreached bool   `json:"threshold_breached"`
+	ScanMode          string `json:"scan_mode"`
+	FallbackReason    string `json:"fallback_reason,omitempty"`
+	IntroducedCount   int    `json:"introduced_count"`
+	PreExistingCount  int    `json:"pre_existing_count"`
 }
 
 // GateStatus is a project's current deployment-gate evaluation.

@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
-	"time"
 
 	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/finding"
@@ -130,6 +129,14 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, err
 	}
 	input.ScanMode = effectiveMode
+	if baselineID == "" && input.BaseRevision != "" {
+		base, err := u.deps.Stores.Reports.GetCompletedByCommit(ctx, project.ID, input.Scanner, input.BaseRevision)
+		if err == nil {
+			baselineID = base.ID
+		} else if !errors.Is(err, port.ErrNotFound) {
+			return nil, fmt.Errorf("resolve base revision: %w", err)
+		}
+	}
 
 	report, err := u.createReport(ctx, project, input, nr, ctxInfo)
 	if err != nil {
@@ -385,108 +392,151 @@ type ingestOutcome struct {
 func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, nr *domain.NormalizedReport, baselineID string) (ingestOutcome, error) {
 	nowTime := now()
 	var outcome ingestOutcome
+	if len(nr.Findings) == 0 {
+		return outcome, nil
+	}
+
+	// Phase 1: Pre-fetch known findings matching incoming fingerprints.
+	fingerprintsByKind := make(map[string][]string)
+	for _, f := range nr.Findings {
+		fingerprintsByKind[f.FindingKind] = append(fingerprintsByKind[f.FindingKind], f.Fingerprint)
+	}
+
+	knownMap := make(map[string]port.Finding)
+	var knownIDs []string
+	for kind, fps := range fingerprintsByKind {
+		known, err := u.deps.Stores.Findings.ListFindingsByFingerprints(ctx, project.ID, kind, fps)
+		if err != nil {
+			slog.Error("pre-fetch findings by fingerprints failed", "scanner", input.Scanner, "error", err)
+			return ingestOutcome{}, fmt.Errorf("scanner %s: pre-fetch findings: %w", input.Scanner, err)
+		}
+		for _, k := range known {
+			knownMap[k.FindingKind+"\x00"+k.Fingerprint] = k
+			knownIDs = append(knownIDs, k.ID)
+		}
+	}
+
+	// Pre-fetch baseline occurrences if baselineID is present.
+	baselineSeenIDs := make(map[string]bool)
+	if baselineID != "" && len(knownIDs) > 0 {
+		presentIDs, err := u.deps.Stores.Findings.ListFindingIDsPresentInReport(ctx, baselineID, knownIDs)
+		if err != nil {
+			slog.Error("pre-fetch baseline occurrences failed", "scanner", input.Scanner, "error", err)
+			return ingestOutcome{}, fmt.Errorf("scanner %s: pre-fetch baseline occurrences: %w", input.Scanner, err)
+		}
+		for _, id := range presentIDs {
+			baselineSeenIDs[id] = true
+		}
+	}
+
+	// Phase 2 & 3: In-memory classification, persistence, and event logging.
+	var introducedEntries []port.IntroducedFindingEntry
+	seenIntroduced := make(map[string]bool)
 
 	for _, f := range nr.Findings {
-		ingested, introduced, err := u.ingestOneFinding(ctx, project, input, report, f, nowTime, baselineID)
-		if err != nil {
-			return ingestOutcome{}, err
+		key := f.FindingKind + "\x00" + f.Fingerprint
+		existing, exists := knownMap[key]
+
+		newRank := severityRank(f.Severity)
+		var oldRank int16
+		var oldGateEffect string
+		var oldAnalysisState string
+		if exists {
+			oldRank = existing.CurrentSeverityRank
+			oldGateEffect = existing.GateEffect
+			oldAnalysisState = existing.AnalysisState
 		}
-		outcome.total += ingested
-		if ingested > 0 {
-			if introduced {
-				outcome.introduced++
-			} else {
-				outcome.preExisting++
+
+		var regression bool
+		var prevState string
+		if exists && existing.State == string(finding.TechFixed) {
+			regression = true
+			prevState = existing.State
+		}
+
+		upserted, err := u.deps.Stores.Findings.Upsert(ctx,
+			project.ID,
+			f.FindingKind,
+			f.Fingerprint,
+			f.Title,
+			severityStr(f.Severity),
+			newRank,
+			scoreToFloat(f.Score),
+			nowTime,
+			nowTime,
+		)
+		if err != nil {
+			slog.Error("upsert finding failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+			return ingestOutcome{}, fmt.Errorf("scanner %s: upsert finding %q: %w", input.Scanner, f.Fingerprint, err)
+		}
+
+		// Keep legacy attribution on finding row for unattributed findings.
+		if !exists || existing.IntroducedByReportID == nil {
+			if _, err := u.deps.Stores.Findings.SetFindingIntroducedBy(ctx, upserted.ID, report.ID, textPtr(input.CommitSha)); err != nil {
+				slog.Error("set introduced-by failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+				return ingestOutcome{}, fmt.Errorf("scanner %s: attribute finding %q: %w", input.Scanner, f.Fingerprint, err)
 			}
 		}
-	}
-	return outcome, nil
-}
 
-func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, f domain.NormalizedFinding, nowTime time.Time, baselineID string) (ingested int, introduced bool, err error) {
-	newRank := severityRank(f.Severity)
-
-	var oldRank int16
-	var oldGateEffect string
-	var oldAnalysisState string
-
-	existing, lookupErr := u.deps.Stores.Findings.GetByFingerprint(ctx, project.ID, f.FindingKind, f.Fingerprint)
-	// A lookup error (incl. port.ErrNotFound) means there is no existing
-	// finding yet; only carry forward gate state when one exists.
-	if lookupErr == nil {
-		oldRank = existing.CurrentSeverityRank
-		oldGateEffect = existing.GateEffect
-		oldAnalysisState = existing.AnalysisState
-	}
-
-	// A finding that was previously verified as fixed and is now observed
-	// again is a regression: the fix did not hold. The SQL upsert flips
-	// state 'fixed' -> 'reopened'; we detect the pre-upsert fixed state here
-	// and log an explicit regression event so consumers (gate, dashboards,
-	// watchers) can react to the backslide.
-	var regression bool
-	var prevState string
-	if lookupErr == nil && existing.State == string(finding.TechFixed) {
-		regression = true
-		prevState = existing.State
-	}
-
-	upserted, err := u.deps.Stores.Findings.Upsert(ctx,
-		project.ID,
-		f.FindingKind,
-		f.Fingerprint,
-		f.Title,
-		severityStr(f.Severity),
-		newRank,
-		scoreToFloat(f.Score),
-		nowTime,
-		nowTime,
-	)
-	if err != nil {
-		slog.Error("upsert finding failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
-		return 0, false, fmt.Errorf("scanner %s: upsert finding %q: %w", input.Scanner, f.Fingerprint, err)
-	}
-
-	// Introduced-by-change attribution (SOLO-184): a finding observed for
-	// the first time is introduced by this report; a pre-existing finding
-	// with no attribution (pre-migration rows) gains it on observation.
-	// Existing attribution is never rewritten here — only the explicit
-	// refresh path revises it when improved evidence arrives.
-	if lookupErr != nil || existing.IntroducedByReportID == nil {
-		if _, err := u.deps.Stores.Findings.SetFindingIntroducedBy(ctx, upserted.ID, report.ID, textPtr(input.CommitSha)); err != nil {
-			slog.Error("set introduced-by failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
-			return 0, false, fmt.Errorf("scanner %s: attribute finding %q: %w", input.Scanner, f.Fingerprint, err)
+		// Change classification (SOLO-165 & SOLO-184):
+		var introduced bool
+		var changeType string
+		if regression {
+			introduced = true
+			changeType = "regression"
+		} else if baselineID != "" {
+			if !exists || !baselineSeenIDs[existing.ID] {
+				introduced = true
+				changeType = "new"
+			}
+		} else if !exists {
+			introduced = true
+			changeType = "new"
 		}
-	}
 
-	// Change classification (SOLO-165): against an incremental baseline a
-	// finding counts as introduced only when the baseline never observed
-	// it; for full scans first-seen is the classifier. Absence from an
-	// incremental scan classifies nothing — partial coverage never closes.
-	introduced = lookupErr != nil
-	if baselineID != "" {
-		seen, err := u.deps.Stores.Findings.HasOccurrence(ctx, upserted.ID, baselineID)
-		if err != nil {
-			slog.Error("check baseline occurrence failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
-			return 0, false, fmt.Errorf("scanner %s: compare finding %q to baseline: %w", input.Scanner, f.Fingerprint, err)
+		if introduced {
+			if !seenIntroduced[upserted.ID] {
+				seenIntroduced[upserted.ID] = true
+				introducedEntries = append(introducedEntries, port.IntroducedFindingEntry{
+					FindingID:  upserted.ID,
+					ChangeType: changeType,
+				})
+			}
+			outcome.introduced++
+		} else {
+			outcome.preExisting++
 		}
-		introduced = !seen
-	}
+		outcome.total++
 
-	if regression {
-		changes := mustMarshal(map[string]any{"report_id": report.ID, "scanner": input.Scanner, "new_state": upserted.State})
-		if _, err := u.deps.Stores.Findings.CreateEvent(ctx, port.FindingEventInput{
-			FindingID: upserted.ID,
-			EventType: "regression",
-			OldValue:  &prevState,
-			NewValue:  strPtr(upserted.State),
-			Changes:   changes,
-		}); err != nil {
-			slog.Warn("log regression event failed", "finding", upserted.ID, "error", err)
+		if regression {
+			changes := mustMarshal(map[string]any{"report_id": report.ID, "scanner": input.Scanner, "new_state": upserted.State})
+			if _, err := u.deps.Stores.Findings.CreateEvent(ctx, port.FindingEventInput{
+				FindingID: upserted.ID,
+				EventType: "regression",
+				OldValue:  &prevState,
+				NewValue:  strPtr(upserted.State),
+				Changes:   changes,
+			}); err != nil {
+				slog.Warn("log regression event failed", "finding", upserted.ID, "error", err)
+			}
+			if u.deps.Tracker != nil {
+				u.deps.Tracker.Dispatch(ctx, tracker.Event{
+					Type:         tracker.EventRegression,
+					FindingID:    upserted.ID,
+					ProjectSlug:  input.ProjectSlug,
+					Severity:     severityStr(f.Severity),
+					SeverityRank: newRank,
+					Title:        f.Title,
+					Fingerprint:  f.Fingerprint,
+					FindingKind:  f.FindingKind,
+					OccurredAt:   nowTime,
+				})
+			}
 		}
-		if u.deps.Tracker != nil {
+
+		if !exists && u.deps.Tracker != nil {
 			u.deps.Tracker.Dispatch(ctx, tracker.Event{
-				Type:         tracker.EventRegression,
+				Type:         tracker.EventCreated,
 				FindingID:    upserted.ID,
 				ProjectSlug:  input.ProjectSlug,
 				Severity:     severityStr(f.Severity),
@@ -497,58 +547,56 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, project port.Project, i
 				OccurredAt:   nowTime,
 			})
 		}
-	}
-	// New findings trigger a tracker create; regressions trigger an update.
-	// Both are best-effort — the tracker swallows its own failures.
-	if lookupErr != nil && u.deps.Tracker != nil {
-		u.deps.Tracker.Dispatch(ctx, tracker.Event{
-			Type:         tracker.EventCreated,
-			FindingID:    upserted.ID,
-			ProjectSlug:  input.ProjectSlug,
-			Severity:     severityStr(f.Severity),
-			SeverityRank: newRank,
-			Title:        f.Title,
-			Fingerprint:  f.Fingerprint,
-			FindingKind:  f.FindingKind,
-			OccurredAt:   nowTime,
-		})
-	}
-	occ := toOccurrenceParams(f, input.Scanner)
-	occ.FindingID = upserted.ID
-	occ.ReportID = &report.ID
-	occ.ToolVersion = textPtr(input.ScannerVersion)
-	occ.ParserVersion = textPtr(input.ParserVersion)
-	_, err = u.deps.Stores.Findings.CreateOccurrence(ctx, occ)
-	if err != nil {
-		slog.Error("create occurrence failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
-		return 0, false, fmt.Errorf("scanner %s: create occurrence for %q: %w", input.Scanner, f.Fingerprint, err)
-	}
 
-	source := textPtr(input.Scanner)
-	for _, d := range f.Dimensions {
-		if !isCanonicalDimension(d.Key) {
-			slog.Warn("drop non-canonical dimension", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "key", d.Key)
-			continue
-		}
-		err = u.deps.Stores.Findings.UpsertDimension(ctx, port.DimensionInput{
-			FindingID: upserted.ID,
-			Key:       d.Key,
-			Value:     d.Value,
-			Source:    source,
-		})
+		occ := toOccurrenceParams(f, input.Scanner)
+		occ.FindingID = upserted.ID
+		occ.ReportID = &report.ID
+		occ.ToolVersion = textPtr(input.ScannerVersion)
+		occ.ParserVersion = textPtr(input.ParserVersion)
+		_, err = u.deps.Stores.Findings.CreateOccurrence(ctx, occ)
 		if err != nil {
-			slog.Error("upsert dimension failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
-			return 0, false, fmt.Errorf("scanner %s: upsert dimension for %q: %w", input.Scanner, f.Fingerprint, err)
+			slog.Error("create occurrence failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+			return ingestOutcome{}, fmt.Errorf("scanner %s: create occurrence for %q: %w", input.Scanner, f.Fingerprint, err)
+		}
+
+		source := textPtr(input.Scanner)
+		for _, d := range f.Dimensions {
+			if !isCanonicalDimension(d.Key) {
+				slog.Warn("drop non-canonical dimension", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "key", d.Key)
+				continue
+			}
+			err = u.deps.Stores.Findings.UpsertDimension(ctx, port.DimensionInput{
+				FindingID: upserted.ID,
+				Key:       d.Key,
+				Value:     d.Value,
+				Source:    source,
+			})
+			if err != nil {
+				slog.Error("upsert dimension failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+				return ingestOutcome{}, fmt.Errorf("scanner %s: upsert dimension for %q: %w", input.Scanner, f.Fingerprint, err)
+			}
+		}
+
+		if exists && (oldAnalysisState != string(finding.StateUnanalyzed) || oldGateEffect == string(finding.EffectIgnore)) {
+			if err := u.applyMaterialChange(ctx, project, input, upserted, f, oldRank, oldGateEffect, oldAnalysisState); err != nil {
+				return ingestOutcome{}, err
+			}
 		}
 	}
 
-	if lookupErr == nil && (oldAnalysisState != string(finding.StateUnanalyzed) || oldGateEffect == string(finding.EffectIgnore)) {
-		if err := u.applyMaterialChange(ctx, project, input, upserted, f, oldRank, oldGateEffect, oldAnalysisState); err != nil {
-			return 0, false, err
+	// Phase 4: Materialize introduced findings in report_introduced_findings.
+	if len(introducedEntries) > 0 {
+		var basePtr *string
+		if baselineID != "" {
+			basePtr = &baselineID
+		}
+		if err := u.deps.Stores.Findings.RecordReportIntroducedFindings(ctx, report.ID, basePtr, introducedEntries); err != nil {
+			slog.Error("record report introduced findings failed", "scanner", input.Scanner, "report_id", report.ID, "error", err)
+			return ingestOutcome{}, fmt.Errorf("scanner %s: record report introduced findings: %w", input.Scanner, err)
 		}
 	}
 
-	return 1, introduced, nil
+	return outcome, nil
 }
 
 // applyMaterialChange runs finding.EvaluateChange on a previously-known

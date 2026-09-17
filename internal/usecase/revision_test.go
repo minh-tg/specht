@@ -506,3 +506,212 @@ func TestIngestReport_DuplicateRaceCleansUp(t *testing.T) {
 	assert.Equal(t, makeReport().ID, deletedID, "the orphaned processing row must go")
 	assert.Equal(t, makeProject(true).ID, deletedProject)
 }
+
+func TestIngestReport_MaterializesIntroducedFindings(t *testing.T) {
+	pr, rr, fr := makeTestRepos()
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	reportID := "report-1111"
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
+		r := makeReport()
+		r.ID = reportID
+		return r, nil
+	}
+	rr.updateStatusFn = func(ctx context.Context, id, projectID, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
+		r := makeReport()
+		r.ID = reportID
+		return r, nil
+	}
+
+	// 3 findings:
+	// fp-new: never seen before -> new
+	// fp-regressed: state='fixed' -> regression
+	// fp-old: exists and present in baseline -> pre-existing (not recorded in report_introduced_findings)
+	baselineReportID := "baseline-2222"
+	rr.byCommitFn = func(ctx context.Context, projectID, scanner, commit string) (port.CompletedReport, error) {
+		return port.CompletedReport{ID: baselineReportID, ToolName: scanner, Completeness: "complete"}, nil
+	}
+
+	fr.listFindingsByFingerprintsFn = func(ctx context.Context, projectID, kind string, fps []string) ([]port.Finding, error) {
+		return []port.Finding{
+			{
+				ID: "f-regressed", ProjectID: makeProject(true).ID,
+				FindingKind: "sca", Fingerprint: "fp-regressed",
+				CurrentTitle: "Regressed Flaw", CurrentSeverityRank: 4,
+				State: "fixed",
+			},
+			{
+				ID: "f-old", ProjectID: makeProject(true).ID,
+				FindingKind: "sca", Fingerprint: "fp-old",
+				CurrentTitle: "Old Flaw", CurrentSeverityRank: 3,
+				State: "open",
+			},
+		}, nil
+	}
+	fr.listFindingIDsPresentInReportFn = func(ctx context.Context, repID string, findingIDs []string) ([]string, error) {
+		assert.Equal(t, baselineReportID, repID)
+		// Only f-old is in baseline
+		return []string{"f-old"}, nil
+	}
+	fr.upsertFn = func(ctx context.Context, _, _, fingerprint, _, _ string, _ int16, _ float64, _, _ time.Time) (port.Finding, error) {
+		return port.Finding{
+			ID:          "upserted-" + fingerprint,
+			ProjectID:   makeProject(true).ID,
+			FindingKind: "sca",
+			Fingerprint: fingerprint,
+		}, nil
+	}
+	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
+		return port.Occurrence{}, nil
+	}
+	fr.upsertDimensionFn = func(ctx context.Context, arg port.DimensionInput) error {
+		return nil
+	}
+
+	var recordedEntries []port.IntroducedFindingEntry
+	var recordedReportID string
+	var recordedBaseReportID *string
+	fr.recordReportIntroducedFindingsFn = func(ctx context.Context, repID string, baseID *string, entries []port.IntroducedFindingEntry) error {
+		recordedReportID = repID
+		recordedBaseReportID = baseID
+		recordedEntries = entries
+		return nil
+	}
+
+	reg := scanner.NewRegistry()
+	require.NoError(t, reg.Register(&mockScanner{
+		name:        "trivy",
+		incremental: true,
+		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
+			return &domain.NormalizedReport{
+				ContractVersion: 1, FingerprintVersion: 1,
+				Completeness: domain.CompletenessComplete, ScanType: domain.ScanTypeImage,
+				Target: &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings: []domain.NormalizedFinding{
+					{Fingerprint: "fp-new", FindingKind: "sca", Title: "New Flaw", Severity: domain.SeverityHigh, Score: 7.5},
+					{Fingerprint: "fp-regressed", FindingKind: "sca", Title: "Regressed Flaw", Severity: domain.SeverityCritical, Score: 9.8},
+					{Fingerprint: "fp-old", FindingKind: "sca", Title: "Old Flaw", Severity: domain.SeverityHigh, Score: 7.0},
+				},
+			}, nil
+		},
+	}))
+
+	uc := New(Deps{
+		Stores: &port.Stores{
+			Projects: pr, Reports: rr, Findings: fr,
+			Targets: stubTargetRepo(), Artifacts: stubArtifactRepo(),
+			Waivers: &mockWaiverRepo{},
+		},
+		Registry: reg,
+	})
+
+	out, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug:  "my-app",
+		Scanner:      "trivy",
+		RawData:      json.RawMessage(`{"test": true}`),
+		ScanMode:     "incremental",
+		BaseRevision: "main-sha",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 3, out.TotalFindings)
+	assert.Equal(t, 2, out.IntroducedCount)
+	assert.Equal(t, 1, out.PreExistingCount)
+
+	assert.Equal(t, reportID, recordedReportID)
+	require.NotNil(t, recordedBaseReportID)
+	assert.Equal(t, baselineReportID, *recordedBaseReportID)
+	require.Len(t, recordedEntries, 2)
+	assert.Equal(t, "upserted-fp-new", recordedEntries[0].FindingID)
+	assert.Equal(t, "new", recordedEntries[0].ChangeType)
+	assert.Equal(t, "upserted-fp-regressed", recordedEntries[1].FindingID)
+	assert.Equal(t, "regression", recordedEntries[1].ChangeType)
+}
+
+func TestIngestReport_RegressionFailsIntroducedGate(t *testing.T) {
+	pr, rr, fr := makeTestRepos()
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	reportID := "report-1111"
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
+		r := makeReport()
+		r.ID = reportID
+		return r, nil
+	}
+	rr.updateStatusFn = func(ctx context.Context, id, projectID, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
+		r := makeReport()
+		r.ID = reportID
+		return r, nil
+	}
+
+	fr.listFindingsByFingerprintsFn = func(ctx context.Context, projectID, kind string, fps []string) ([]port.Finding, error) {
+		return []port.Finding{
+			{
+				ID: "f-regressed", ProjectID: makeProject(true).ID,
+				FindingKind: "sca", Fingerprint: "fp-regressed",
+				CurrentTitle: "Regressed Flaw", CurrentSeverityRank: 4,
+				State: "fixed",
+			},
+		}, nil
+	}
+	fr.upsertFn = func(ctx context.Context, _, _, fingerprint, _, _ string, _ int16, _ float64, _, _ time.Time) (port.Finding, error) {
+		return port.Finding{
+			ID:          "f-regressed",
+			ProjectID:   makeProject(true).ID,
+			FindingKind: "sca",
+			Fingerprint: fingerprint,
+		}, nil
+	}
+	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
+		return port.Occurrence{}, nil
+	}
+	fr.upsertDimensionFn = func(ctx context.Context, arg port.DimensionInput) error {
+		return nil
+	}
+	fr.listIntroducedGateCandidatesFn = func(ctx context.Context, repID string, minRank int16) ([]port.GateCandidate, error) {
+		assert.Equal(t, reportID, repID)
+		return []port.GateCandidate{{
+			Finding: port.Finding{
+				ID: "f-regressed", ProjectID: makeProject(true).ID,
+				CurrentSeverityRank: 4, FindingKind: "sca", Fingerprint: "fp-regressed",
+				CurrentTitle: "Regressed Flaw", AnalysisState: "unanalyzed",
+			},
+		}}, nil
+	}
+
+	reg := scanner.NewRegistry()
+	require.NoError(t, reg.Register(&mockScanner{
+		name: "trivy",
+		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
+			return &domain.NormalizedReport{
+				ContractVersion: 1, FingerprintVersion: 1,
+				Completeness: domain.CompletenessComplete, ScanType: domain.ScanTypeImage,
+				Target: &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings: []domain.NormalizedFinding{
+					{Fingerprint: "fp-regressed", FindingKind: "sca", Title: "Regressed Flaw", Severity: domain.SeverityCritical, Score: 9.8},
+				},
+			}, nil
+		},
+	}))
+
+	uc := New(Deps{
+		Stores: &port.Stores{
+			Projects: pr, Reports: rr, Findings: fr,
+			Targets: stubTargetRepo(), Artifacts: stubArtifactRepo(),
+			Waivers: &mockWaiverRepo{},
+		},
+		Registry: reg,
+	})
+
+	out, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug:        "my-app",
+		Scanner:            "trivy",
+		RawData:            json.RawMessage(`{"test": true}`),
+		GateIntroducedOnly: true,
+	})
+	require.NoError(t, err)
+	assert.True(t, out.ThresholdBreached, "regressed vulnerability must block the introduced gate")
+	assert.Equal(t, 1, out.IntroducedCount)
+	assert.Equal(t, 0, out.PreExistingCount)
+}

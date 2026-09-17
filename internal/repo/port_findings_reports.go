@@ -647,6 +647,128 @@ func (r *pgFindingPort) ListGateCandidates(ctx context.Context, projectID string
 	return out, nil
 }
 
+func (r *pgFindingPort) ListIntroducedGateCandidates(ctx context.Context, reportID string, minSeverityRank int16) ([]port.GateCandidate, error) {
+	rid, err := parseID(reportID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.inner.ListIntroducedGateCandidates(ctx, rid, minSeverityRank)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.GateCandidate, len(rows))
+	for i, row := range rows {
+		out[i] = port.GateCandidate{
+			Finding: port.Finding{
+				ID:                   toUUID(row.ID),
+				ProjectID:            toUUID(row.ProjectID),
+				FindingKind:          row.FindingKind,
+				Fingerprint:          row.Fingerprint,
+				CurrentTitle:         row.CurrentTitle,
+				CurrentSeverityRank:  row.CurrentSeverityRank,
+				AnalysisState:        row.AnalysisState,
+				IntroducedByReportID: stringPtrFromUUID(row.IntroducedByReportID),
+				IntroducedCommitSha:  stringFromTextPtr(row.IntroducedCommitSha),
+			},
+			Context: port.FindingContext{
+				EnvironmentID: toUUID(row.EnvironmentID),
+				TargetID:      toUUID(row.TargetID),
+				ArtifactID:    toUUID(row.ArtifactID),
+			},
+			Reachability: string(row.ReachabilityState),
+		}
+	}
+	return out, nil
+}
+
+func (r *pgFindingPort) ListFindingsByFingerprints(ctx context.Context, projectID, findingKind string, fingerprints []string) ([]port.Finding, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.inner.ListFindingsByFingerprints(ctx, pid, findingKind, fingerprints)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.Finding, len(rows))
+	for i, row := range rows {
+		out[i] = findingRowToPort(row)
+	}
+	return out, nil
+}
+
+func (r *pgFindingPort) ListFindingIDsPresentInReport(ctx context.Context, reportID string, findingIDs []string) ([]string, error) {
+	rid, err := parseID(reportID)
+	if err != nil {
+		return nil, err
+	}
+	if len(findingIDs) == 0 {
+		return nil, nil
+	}
+	uuids := make([]pgtype.UUID, 0, len(findingIDs))
+	for _, id := range findingIDs {
+		u, err := parseID(id)
+		if err != nil {
+			return nil, err
+		}
+		uuids = append(uuids, u)
+	}
+	rows, err := r.inner.ListFindingIDsPresentInReport(ctx, rid, uuids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, len(rows))
+	for i, row := range rows {
+		out[i] = toUUID(row)
+	}
+	return out, nil
+}
+
+func (r *pgFindingPort) RecordReportIntroducedFindings(ctx context.Context, reportID string, baselineReportID *string, entries []port.IntroducedFindingEntry) error {
+	rid, err := parseID(reportID)
+	if err != nil {
+		return err
+	}
+	var baseUUID pgtype.UUID
+	if baselineReportID != nil && *baselineReportID != "" {
+		b, err := parseID(*baselineReportID)
+		if err != nil {
+			return err
+		}
+		baseUUID = b
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	findingIDs := make([]pgtype.UUID, 0, len(entries))
+	changeTypes := make([]string, 0, len(entries))
+	for _, e := range entries {
+		fid, err := parseID(e.FindingID)
+		if err != nil {
+			return err
+		}
+		findingIDs = append(findingIDs, fid)
+		changeTypes = append(changeTypes, e.ChangeType)
+	}
+	return r.inner.RecordReportIntroducedFindings(ctx, rid, baseUUID, findingIDs, changeTypes)
+}
+
+func (r *pgFindingPort) ListFindingsIntroducedByCommit(ctx context.Context, projectID, commitSha string) ([]port.Finding, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.inner.ListFindingsIntroducedByCommit(ctx, pid, textPtrFromString(&commitSha))
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.Finding, len(rows))
+	for i, row := range rows {
+		out[i] = findingRowToPort(row)
+	}
+	return out, nil
+}
+
 func (r *pgFindingPort) PersistWatcherFinding(ctx context.Context, input port.PersistWatcherFindingInput) (port.Finding, error) {
 	pid, err := parseID(input.Finding.ProjectID)
 	if err != nil {

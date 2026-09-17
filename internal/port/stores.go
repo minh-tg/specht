@@ -495,6 +495,11 @@ type FindingStore interface {
 	// latest reachability in one batch (kills the per-finding N+1 context
 	// lookups). Reachability is empty when no assessment exists.
 	ListGateCandidates(ctx context.Context, projectID string, minSeverityRank int16) ([]GateCandidate, error)
+	ListIntroducedGateCandidates(ctx context.Context, reportID string, minSeverityRank int16) ([]GateCandidate, error)
+	ListFindingsByFingerprints(ctx context.Context, projectID, findingKind string, fingerprints []string) ([]Finding, error)
+	ListFindingIDsPresentInReport(ctx context.Context, reportID string, findingIDs []string) ([]string, error)
+	RecordReportIntroducedFindings(ctx context.Context, reportID string, baselineReportID *string, entries []IntroducedFindingEntry) error
+	ListFindingsIntroducedByCommit(ctx context.Context, projectID, commitSha string) ([]Finding, error)
 	FindScaFindingIDForPurlAndCve(ctx context.Context, projectID, purlName string, candidateIDs []string) (string, error)
 
 	// Watcher unit-of-work: insert the finding and its dependent rows
@@ -504,6 +509,12 @@ type FindingStore interface {
 	// PersistWatcherSkipEvent appends an audit event to the suppressing
 	// finding.
 	PersistWatcherSkipEvent(ctx context.Context, findingID string, event FindingEventInput) error
+}
+
+// IntroducedFindingEntry associates a finding with a report that introduced or regressed it.
+type IntroducedFindingEntry struct {
+	FindingID  string
+	ChangeType string // "new" | "regression"
 }
 
 // FindingContext is the environment/target/artifact context of a finding.

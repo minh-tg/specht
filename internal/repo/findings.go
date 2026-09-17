@@ -408,3 +408,50 @@ func (r *pgFindingRepo) ListGateCandidates(ctx context.Context, projectID pgtype
 		CurrentSeverityRank: minSeverityRank,
 	})
 }
+
+func (r *pgFindingRepo) ListIntroducedGateCandidates(ctx context.Context, reportID pgtype.UUID, minSeverityRank int16) ([]sqlc.ListIntroducedGateCandidatesRow, error) {
+	return r.q.ListIntroducedGateCandidates(ctx, sqlc.ListIntroducedGateCandidatesParams{
+		ReportID:            reportID,
+		CurrentSeverityRank: minSeverityRank,
+	})
+}
+
+func (r *pgFindingRepo) ListFindingsByFingerprints(ctx context.Context, projectID pgtype.UUID, findingKind string, fingerprints []string) ([]sqlc.Finding, error) {
+	if len(fingerprints) == 0 {
+		return nil, nil
+	}
+	return r.q.ListFindingsByFingerprints(ctx, sqlc.ListFindingsByFingerprintsParams{
+		ProjectID:   projectID,
+		FindingKind: findingKind,
+		Column3:     fingerprints,
+	})
+}
+
+func (r *pgFindingRepo) ListFindingIDsPresentInReport(ctx context.Context, reportID pgtype.UUID, findingIDs []pgtype.UUID) ([]pgtype.UUID, error) {
+	if len(findingIDs) == 0 {
+		return nil, nil
+	}
+	return r.q.ListFindingIDsPresentInReport(ctx, sqlc.ListFindingIDsPresentInReportParams{
+		ReportID: reportID,
+		Column2:  findingIDs,
+	})
+}
+
+func (r *pgFindingRepo) RecordReportIntroducedFindings(ctx context.Context, reportID pgtype.UUID, baselineReportID pgtype.UUID, findingIDs []pgtype.UUID, changeTypes []string) error {
+	if len(findingIDs) == 0 {
+		return nil
+	}
+	return r.q.RecordReportIntroducedFindings(ctx, sqlc.RecordReportIntroducedFindingsParams{
+		Column1:          reportID,
+		BaselineReportID: baselineReportID,
+		Column3:          findingIDs,
+		Column4:          changeTypes,
+	})
+}
+
+func (r *pgFindingRepo) ListFindingsIntroducedByCommit(ctx context.Context, projectID pgtype.UUID, commit pgtype.Text) ([]sqlc.Finding, error) {
+	return r.q.ListFindingsIntroducedByCommit(ctx, sqlc.ListFindingsIntroducedByCommitParams{
+		ProjectID:           projectID,
+		IntroducedCommitSha: commit,
+	})
+}
