@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -138,4 +142,243 @@ func TestDetectCIEnvironment_GitLab(t *testing.T) {
 	assert.Equal(t, "master", baseRef)
 	assert.Equal(t, "commit456", commit)
 	assert.Equal(t, "mr-branch", branch)
+}
+
+func TestRun_Help(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-help"}, bytes.NewReader(nil), &stdout, &stderr, nil)
+	assert.Equal(t, 0, code)
+	assert.Contains(t, stderr.String(), "Usage: specht-adapter")
+}
+
+func TestRun_MissingAPIKey(t *testing.T) {
+	t.Setenv("API_KEY", "")
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=test", "-tool=trivy"}, strings.NewReader(`{}`), &stdout, &stderr, nil)
+	assert.Equal(t, 2, code)
+	assert.Contains(t, stderr.String(), "API_KEY environment variable is required")
+}
+
+func TestRun_ExcludeTool(t *testing.T) {
+	t.Setenv("API_KEY", "dummy")
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=test", "-tool=trivy", "-exclude-tool=trivy"}, strings.NewReader(`{}`), &stdout, &stderr, nil)
+	assert.Equal(t, 0, code)
+	assert.Contains(t, stderr.String(), `skipped: scanner "trivy" excluded`)
+}
+
+func TestRun_IntroducedOnly_Pass(t *testing.T) {
+	t.Setenv("API_KEY", "test-key")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/reports":
+			json.NewEncoder(w).Encode(client.IngestResponse{
+				ReportID:          "rep-pass",
+				TotalFindings:     10,
+				IntroducedCount:   0,
+				PreExistingCount:  10,
+				ThresholdBreached: false,
+			})
+		case "/api/v1/projects/my-app/pr-check":
+			json.NewEncoder(w).Encode(client.PRCheckPreview{
+				Conclusion:  "success",
+				Title:       "Specht Gate: 0 blocking findings",
+				Summary:     "No new vulnerabilities introduced.",
+				Annotations: []client.PRCheckAnnotation{},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	args := []string{
+		"-file=../../internal/parser/trivy/testdata/alpine-scan.json",
+		"-project=my-app",
+		"-tool=trivy",
+		"-base-ref=main",
+		"-commit=abc12345",
+		"-branch=feat/add-dep",
+	}
+	code := run(args, bytes.NewReader(nil), &stdout, &stderr, srv.Client())
+	assert.Equal(t, 0, code)
+	assert.Contains(t, stderr.String(), "✅ SPECHT SECURITY GATE: PASSED")
+	assert.Contains(t, stderr.String(), "PRE-EXISTING DEBT IN BASELINE: 10 findings ignored")
+}
+
+func TestRun_IntroducedOnly_Fail_WithAnnotations_And_Summary(t *testing.T) {
+	t.Setenv("API_KEY", "test-key")
+
+	tmpSummary, err := os.CreateTemp("", "github_step_summary_*.md")
+	require.NoError(t, err)
+	defer os.Remove(tmpSummary.Name())
+	tmpSummary.Close()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/reports":
+			json.NewEncoder(w).Encode(client.IngestResponse{
+				ReportID:          "rep-fail",
+				TotalFindings:     5,
+				IntroducedCount:   1,
+				PreExistingCount:  4,
+				ThresholdBreached: true,
+			})
+		case "/api/v1/projects/my-app/pr-check":
+			json.NewEncoder(w).Encode(client.PRCheckPreview{
+				Conclusion: "failure",
+				Title:      "Specht Gate: 1 blocking finding",
+				Summary:    "### Vulnerability Report\n- CVE-2023-45853 in zlib",
+				Annotations: []client.PRCheckAnnotation{
+					{
+						File:      "go.mod",
+						StartLine: 34,
+						EndLine:   34,
+						Level:     "error",
+						Title:     "CVE-2023-45853",
+						Message:   "Critical buffer overflow in zlib",
+					},
+				},
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	args := []string{
+		"-file=../../internal/parser/trivy/testdata/alpine-scan.json",
+		"-project=my-app",
+		"-tool=trivy",
+		"-base-ref=main",
+		"-commit=abc12345",
+		"-annotations=true",
+		"-summary-file=" + tmpSummary.Name(),
+	}
+	code := run(args, bytes.NewReader(nil), &stdout, &stderr, srv.Client())
+	assert.Equal(t, 1, code)
+	assert.Contains(t, stderr.String(), "❌ SPECHT SECURITY GATE: FAILED")
+	assert.Contains(t, stderr.String(), "🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE (1):")
+	assert.Contains(t, stderr.String(), "• [ERROR] CVE-2023-45853: go.mod:34")
+	assert.Contains(t, stderr.String(), "::error file=go.mod,line=34,endLine=34,title=CVE-2023-45853::Critical buffer overflow in zlib")
+
+	// Verify summary file content
+	summaryBytes, err := os.ReadFile(tmpSummary.Name())
+	require.NoError(t, err)
+	assert.Contains(t, string(summaryBytes), "### Vulnerability Report")
+	assert.Contains(t, string(summaryBytes), "CVE-2023-45853 in zlib")
+}
+
+func TestRun_BaselinePolicy_Warn_And_Fail(t *testing.T) {
+	t.Setenv("API_KEY", "test-key")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(client.IngestResponse{
+			ReportID:          "rep-fallback",
+			TotalFindings:     2,
+			ThresholdBreached: false,
+			FallbackReason:    "no baseline report found for branch 'main'",
+		})
+	}))
+	defer srv.Close()
+	t.Setenv("API_URL", srv.URL)
+
+	// Case 1: warn policy (default) -> exit 0
+	{
+		var stdout, stderr bytes.Buffer
+		code := run([]string{
+			"-file=../../internal/parser/trivy/testdata/alpine-scan.json",
+			"-project=my-app",
+			"-tool=trivy",
+			"-base-ref=main",
+			"-baseline-policy=warn",
+		}, bytes.NewReader(nil), &stdout, &stderr, srv.Client())
+		assert.Equal(t, 0, code)
+		assert.Contains(t, stderr.String(), "⚠️  BASELINE WARNING: no baseline report found for branch 'main'")
+	}
+
+	// Case 2: fail policy -> exit 1
+	{
+		var stdout, stderr bytes.Buffer
+		code := run([]string{
+			"-file=../../internal/parser/trivy/testdata/alpine-scan.json",
+			"-project=my-app",
+			"-tool=trivy",
+			"-base-ref=main",
+			"-baseline-policy=fail",
+		}, bytes.NewReader(nil), &stdout, &stderr, srv.Client())
+		assert.Equal(t, 1, code)
+		assert.Contains(t, stderr.String(), "gate FAILED: missing baseline under baseline-policy=fail")
+	}
+}
+
+func TestPublishGitHubCheckRun(t *testing.T) {
+	var capturedReq gitHubCheckRunRequest
+	var authHeader string
+
+	ghSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "POST", r.Method)
+		assert.Equal(t, "/repos/owner/repo/check-runs", r.URL.Path)
+		authHeader = r.Header.Get("Authorization")
+		err := json.NewDecoder(r.Body).Decode(&capturedReq)
+		require.NoError(t, err)
+
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"id": 12345}`))
+	}))
+	defer ghSrv.Close()
+
+	preview := &client.PRCheckPreview{
+		Conclusion: "failure",
+		Title:      "Specht Gate: 1 blocking finding",
+		Summary:    "Summary markdown",
+		Annotations: []client.PRCheckAnnotation{
+			{
+				File:      "src/main.go",
+				StartLine: 10,
+				EndLine:   12,
+				Level:     "error",
+				Title:     "SQL Injection",
+				Message:   "Unsanitized input query",
+			},
+		},
+	}
+
+	// Custom client routing to test server
+	customTransport := http.DefaultTransport
+	customHC := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			if strings.HasPrefix(req.URL.String(), "https://api.github.com/") {
+				req.URL.Scheme = "http"
+				req.URL.Host = ghSrv.Listener.Addr().String()
+			}
+			return customTransport.RoundTrip(req)
+		}),
+	}
+
+	err := publishGitHubCheckRun(context.Background(), customHC, "secret-token", "owner/repo", "sha123", preview)
+	require.NoError(t, err)
+	assert.Equal(t, "Bearer secret-token", authHeader)
+	assert.Equal(t, "Specht Security Gate", capturedReq.Name)
+	assert.Equal(t, "sha123", capturedReq.HeadSHA)
+	assert.Equal(t, "failure", capturedReq.Conclusion)
+	assert.Len(t, capturedReq.Output.Annotations, 1)
+	assert.Equal(t, "src/main.go", capturedReq.Output.Annotations[0].Path)
+	assert.Equal(t, "failure", capturedReq.Output.Annotations[0].AnnotationLevel)
+}
+
+type roundTripperFunc func(req *http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func TestEscapeWorkflowCommand(t *testing.T) {
+	assert.Equal(t, "foo%25bar%3Abaz%2Cqux%0Aline", escapeCommandProperty("foo%bar:baz,qux\nline"))
+	assert.Equal(t, "foo%25bar%0Aline", escapeCommandData("foo%bar\nline"))
 }
