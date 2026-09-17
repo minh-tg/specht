@@ -285,3 +285,153 @@ WHERE f.project_id = sqlc.arg(project_id)
   AND COALESCE(substring(dp.dim_value from '^(.*)@'), dp.dim_value) = sqlc.arg(purl_name)
   AND dv.dim_value = ANY(sqlc.arg(candidate_ids)::text[])
 LIMIT 1;
+
+-- name: ListFindingsByFingerprints :many
+SELECT * FROM findings
+WHERE project_id = $1
+  AND finding_kind = $2
+  AND fingerprint = ANY($3::text[]);
+
+-- name: ListFindingIDsPresentInReport :many
+SELECT finding_id FROM finding_occurrences
+WHERE report_id = $1
+  AND finding_id = ANY($2::uuid[]);
+
+-- name: BulkUpsertFindings :many
+WITH input_rows AS (
+    SELECT
+        $1::uuid AS project_id,
+        k.val::text AS finding_kind,
+        f.val::text AS fingerprint,
+        t.val::text AS title,
+        s.val::text AS severity,
+        sr.val::smallint AS severity_rank,
+        sc.val::numeric AS score,
+        $2::timestamptz AS observed_at
+    FROM unnest($3::text[]) WITH ORDINALITY AS k(val, ord)
+    JOIN unnest($4::text[]) WITH ORDINALITY AS f(val, ord) ON k.ord = f.ord
+    JOIN unnest($5::text[]) WITH ORDINALITY AS t(val, ord) ON k.ord = t.ord
+    JOIN unnest($6::text[]) WITH ORDINALITY AS s(val, ord) ON k.ord = s.ord
+    JOIN unnest($7::smallint[]) WITH ORDINALITY AS sr(val, ord) ON k.ord = sr.ord
+    JOIN unnest($8::numeric[]) WITH ORDINALITY AS sc(val, ord) ON k.ord = sc.ord
+    ORDER BY k.val, f.val
+)
+INSERT INTO findings (
+    project_id, finding_kind, fingerprint,
+    current_title, current_severity, current_severity_rank,
+    current_score, state, triage_status,
+    first_seen_at, last_seen_at
+)
+SELECT
+    ir.project_id, ir.finding_kind, ir.fingerprint,
+    ir.title, ir.severity, ir.severity_rank,
+    ir.score, 'open', 'untriaged',
+    ir.observed_at, ir.observed_at
+FROM input_rows ir
+ON CONFLICT (project_id, finding_kind, fingerprint) DO UPDATE SET
+    current_title = EXCLUDED.current_title,
+    current_severity = EXCLUDED.current_severity,
+    current_severity_rank = EXCLUDED.current_severity_rank,
+    current_score = EXCLUDED.current_score,
+    last_seen_at = GREATEST(findings.last_seen_at, EXCLUDED.last_seen_at),
+    state = CASE
+        WHEN findings.state = 'fixed' THEN 'reopened'
+        ELSE findings.state
+    END,
+    updated_at = NOW()
+RETURNING id, fingerprint, (xmax = 0) AS is_inserted, state;
+
+-- name: BulkInsertOccurrences :exec
+INSERT INTO finding_occurrences (
+    finding_id, report_id, title, description,
+    severity, severity_rank, score,
+    tool_name, tool_version, parser_version,
+    location_summary, subject_summary, remediation,
+    display, metadata, observed_at
+)
+SELECT
+    f.val::uuid, $1::uuid, t.val::text, d.val::text,
+    s.val::text, sr.val::smallint, sc.val::numeric,
+    $2::text, $3::text, $4::text,
+    loc.val::text, sub.val::text, rem.val::text,
+    disp.val::jsonb, meta.val::jsonb, $5::timestamptz
+FROM unnest($6::uuid[]) WITH ORDINALITY AS f(val, ord)
+JOIN unnest($7::text[]) WITH ORDINALITY AS t(val, ord) ON f.ord = t.ord
+JOIN unnest($8::text[]) WITH ORDINALITY AS d(val, ord) ON f.ord = d.ord
+JOIN unnest($9::text[]) WITH ORDINALITY AS s(val, ord) ON f.ord = s.ord
+JOIN unnest($10::smallint[]) WITH ORDINALITY AS sr(val, ord) ON f.ord = sr.ord
+JOIN unnest($11::numeric[]) WITH ORDINALITY AS sc(val, ord) ON f.ord = sc.ord
+JOIN unnest($12::text[]) WITH ORDINALITY AS loc(val, ord) ON f.ord = loc.ord
+JOIN unnest($13::text[]) WITH ORDINALITY AS sub(val, ord) ON f.ord = sub.ord
+JOIN unnest($14::text[]) WITH ORDINALITY AS rem(val, ord) ON f.ord = rem.ord
+JOIN unnest($15::jsonb[]) WITH ORDINALITY AS disp(val, ord) ON f.ord = disp.ord
+JOIN unnest($16::jsonb[]) WITH ORDINALITY AS meta(val, ord) ON f.ord = meta.ord
+ON CONFLICT (finding_id, report_id) DO UPDATE SET observed_at = NOW();
+
+-- name: BulkUpsertDimensions :exec
+INSERT INTO finding_dimensions (
+    finding_id, dim_key, dim_value, source
+)
+SELECT
+    f.val::uuid, k.val::text, v.val::text, $1::text
+FROM unnest($2::uuid[]) WITH ORDINALITY AS f(val, ord)
+JOIN unnest($3::text[]) WITH ORDINALITY AS k(val, ord) ON f.ord = k.ord
+JOIN unnest($4::text[]) WITH ORDINALITY AS v(val, ord) ON f.ord = v.ord
+ON CONFLICT (finding_id, dim_key, dim_value) DO UPDATE SET
+    source = EXCLUDED.source;
+
+-- name: RecordReportIntroducedFindings :exec
+INSERT INTO report_introduced_findings (
+    report_id, finding_id, baseline_report_id, change_type
+)
+SELECT
+    $1::uuid, f.val::uuid, $2, ct.val::text
+FROM unnest($3::uuid[]) WITH ORDINALITY AS f(val, ord)
+JOIN unnest($4::text[]) WITH ORDINALITY AS ct(val, ord) ON f.ord = ct.ord
+ON CONFLICT (report_id, finding_id) DO UPDATE SET
+    change_type = EXCLUDED.change_type;
+
+-- name: ListIntroducedGateCandidates :many
+SELECT
+    f.id,
+    f.project_id,
+    f.finding_kind,
+    f.fingerprint,
+    f.current_title,
+    f.current_severity_rank,
+    f.analysis_state,
+    f.introduced_by_report_id,
+    f.introduced_commit_sha,
+    COALESCE(ra.state, 'unknown'::reachability_state) AS reachability_state,
+    ctx.environment_id,
+    ctx.target_id,
+    ctx.artifact_id,
+    rif.change_type
+FROM report_introduced_findings rif
+JOIN findings f ON rif.finding_id = f.id
+LEFT JOIN LATERAL (
+    SELECT r.environment_id, r.target_id, r.artifact_id
+    FROM finding_occurrences fo
+    JOIN reports r ON fo.report_id = r.id
+    WHERE fo.finding_id = f.id
+    ORDER BY fo.observed_at DESC
+    LIMIT 1
+) ctx ON true
+LEFT JOIN LATERAL (
+    SELECT ra.state
+    FROM reachability_assessments ra
+    WHERE ra.finding_id = f.id
+    ORDER BY ra.updated_at DESC
+    LIMIT 1
+) ra ON true
+WHERE rif.report_id = $1
+  AND f.current_severity_rank >= $2
+  AND f.gate_effect = 'block'
+  AND f.state IN ('open', 'reopened')
+ORDER BY f.current_severity_rank DESC, f.created_at DESC;
+
+-- name: ListFindingsIntroducedByCommit :many
+SELECT * FROM findings
+WHERE project_id = $1
+  AND introduced_commit_sha = $2
+ORDER BY current_severity_rank DESC, created_at DESC;

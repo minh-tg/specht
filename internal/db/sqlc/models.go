@@ -313,6 +313,14 @@ type Report struct {
 	ScanMode          string             `json:"scan_mode"`
 }
 
+type ReportIntroducedFinding struct {
+	ReportID         pgtype.UUID        `json:"report_id"`
+	FindingID        pgtype.UUID        `json:"finding_id"`
+	BaselineReportID pgtype.UUID        `json:"baseline_report_id"`
+	ChangeType       string             `json:"change_type"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
 type ReportPackage struct {
 	ReportID     pgtype.UUID        `json:"report_id"`
 	Purl         string             `json:"purl"`

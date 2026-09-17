@@ -11,6 +11,75 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const bulkInsertOccurrences = `-- name: BulkInsertOccurrences :exec
+INSERT INTO finding_occurrences (
+    finding_id, report_id, title, description,
+    severity, severity_rank, score,
+    tool_name, tool_version, parser_version,
+    location_summary, subject_summary, remediation,
+    display, metadata, observed_at
+)
+SELECT
+    f.val::uuid, $1::uuid, t.val::text, d.val::text,
+    s.val::text, sr.val::smallint, sc.val::numeric,
+    $2::text, $3::text, $4::text,
+    loc.val::text, sub.val::text, rem.val::text,
+    disp.val::jsonb, meta.val::jsonb, $5::timestamptz
+FROM unnest($6::uuid[]) WITH ORDINALITY AS f(val, ord)
+JOIN unnest($7::text[]) WITH ORDINALITY AS t(val, ord) ON f.ord = t.ord
+JOIN unnest($8::text[]) WITH ORDINALITY AS d(val, ord) ON f.ord = d.ord
+JOIN unnest($9::text[]) WITH ORDINALITY AS s(val, ord) ON f.ord = s.ord
+JOIN unnest($10::smallint[]) WITH ORDINALITY AS sr(val, ord) ON f.ord = sr.ord
+JOIN unnest($11::numeric[]) WITH ORDINALITY AS sc(val, ord) ON f.ord = sc.ord
+JOIN unnest($12::text[]) WITH ORDINALITY AS loc(val, ord) ON f.ord = loc.ord
+JOIN unnest($13::text[]) WITH ORDINALITY AS sub(val, ord) ON f.ord = sub.ord
+JOIN unnest($14::text[]) WITH ORDINALITY AS rem(val, ord) ON f.ord = rem.ord
+JOIN unnest($15::jsonb[]) WITH ORDINALITY AS disp(val, ord) ON f.ord = disp.ord
+JOIN unnest($16::jsonb[]) WITH ORDINALITY AS meta(val, ord) ON f.ord = meta.ord
+ON CONFLICT (finding_id, report_id) DO UPDATE SET observed_at = NOW()
+`
+
+type BulkInsertOccurrencesParams struct {
+	Column1  pgtype.UUID        `json:"column_1"`
+	Column2  string             `json:"column_2"`
+	Column3  string             `json:"column_3"`
+	Column4  string             `json:"column_4"`
+	Column5  pgtype.Timestamptz `json:"column_5"`
+	Column6  []pgtype.UUID      `json:"column_6"`
+	Column7  []string           `json:"column_7"`
+	Column8  []string           `json:"column_8"`
+	Column9  []string           `json:"column_9"`
+	Column10 []int16            `json:"column_10"`
+	Column11 []pgtype.Numeric   `json:"column_11"`
+	Column12 []string           `json:"column_12"`
+	Column13 []string           `json:"column_13"`
+	Column14 []string           `json:"column_14"`
+	Column15 [][]byte           `json:"column_15"`
+	Column16 [][]byte           `json:"column_16"`
+}
+
+func (q *Queries) BulkInsertOccurrences(ctx context.Context, arg BulkInsertOccurrencesParams) error {
+	_, err := q.db.Exec(ctx, bulkInsertOccurrences,
+		arg.Column1,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+		arg.Column6,
+		arg.Column7,
+		arg.Column8,
+		arg.Column9,
+		arg.Column10,
+		arg.Column11,
+		arg.Column12,
+		arg.Column13,
+		arg.Column14,
+		arg.Column15,
+		arg.Column16,
+	)
+	return err
+}
+
 const bulkUpdateFindingAnalysis = `-- name: BulkUpdateFindingAnalysis :many
 UPDATE findings SET
     analysis_state = $2,
@@ -87,6 +156,133 @@ func (q *Queries) BulkUpdateFindingAnalysis(ctx context.Context, arg BulkUpdateF
 			&i.FingerprintVersion,
 			&i.IntroducedByReportID,
 			&i.IntroducedCommitSha,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const bulkUpsertDimensions = `-- name: BulkUpsertDimensions :exec
+INSERT INTO finding_dimensions (
+    finding_id, dim_key, dim_value, source
+)
+SELECT
+    f.val::uuid, k.val::text, v.val::text, $1::text
+FROM unnest($2::uuid[]) WITH ORDINALITY AS f(val, ord)
+JOIN unnest($3::text[]) WITH ORDINALITY AS k(val, ord) ON f.ord = k.ord
+JOIN unnest($4::text[]) WITH ORDINALITY AS v(val, ord) ON f.ord = v.ord
+ON CONFLICT (finding_id, dim_key, dim_value) DO UPDATE SET
+    source = EXCLUDED.source
+`
+
+type BulkUpsertDimensionsParams struct {
+	Column1 string        `json:"column_1"`
+	Column2 []pgtype.UUID `json:"column_2"`
+	Column3 []string      `json:"column_3"`
+	Column4 []string      `json:"column_4"`
+}
+
+func (q *Queries) BulkUpsertDimensions(ctx context.Context, arg BulkUpsertDimensionsParams) error {
+	_, err := q.db.Exec(ctx, bulkUpsertDimensions,
+		arg.Column1,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+	)
+	return err
+}
+
+const bulkUpsertFindings = `-- name: BulkUpsertFindings :many
+WITH input_rows AS (
+    SELECT
+        $1::uuid AS project_id,
+        k.val::text AS finding_kind,
+        f.val::text AS fingerprint,
+        t.val::text AS title,
+        s.val::text AS severity,
+        sr.val::smallint AS severity_rank,
+        sc.val::numeric AS score,
+        $2::timestamptz AS observed_at
+    FROM unnest($3::text[]) WITH ORDINALITY AS k(val, ord)
+    JOIN unnest($4::text[]) WITH ORDINALITY AS f(val, ord) ON k.ord = f.ord
+    JOIN unnest($5::text[]) WITH ORDINALITY AS t(val, ord) ON k.ord = t.ord
+    JOIN unnest($6::text[]) WITH ORDINALITY AS s(val, ord) ON k.ord = s.ord
+    JOIN unnest($7::smallint[]) WITH ORDINALITY AS sr(val, ord) ON k.ord = sr.ord
+    JOIN unnest($8::numeric[]) WITH ORDINALITY AS sc(val, ord) ON k.ord = sc.ord
+    ORDER BY k.val, f.val
+)
+INSERT INTO findings (
+    project_id, finding_kind, fingerprint,
+    current_title, current_severity, current_severity_rank,
+    current_score, state, triage_status,
+    first_seen_at, last_seen_at
+)
+SELECT
+    ir.project_id, ir.finding_kind, ir.fingerprint,
+    ir.title, ir.severity, ir.severity_rank,
+    ir.score, 'open', 'untriaged',
+    ir.observed_at, ir.observed_at
+FROM input_rows ir
+ON CONFLICT (project_id, finding_kind, fingerprint) DO UPDATE SET
+    current_title = EXCLUDED.current_title,
+    current_severity = EXCLUDED.current_severity,
+    current_severity_rank = EXCLUDED.current_severity_rank,
+    current_score = EXCLUDED.current_score,
+    last_seen_at = GREATEST(findings.last_seen_at, EXCLUDED.last_seen_at),
+    state = CASE
+        WHEN findings.state = 'fixed' THEN 'reopened'
+        ELSE findings.state
+    END,
+    updated_at = NOW()
+RETURNING id, fingerprint, (xmax = 0) AS is_inserted, state
+`
+
+type BulkUpsertFindingsParams struct {
+	Column1 pgtype.UUID        `json:"column_1"`
+	Column2 pgtype.Timestamptz `json:"column_2"`
+	Column3 []string           `json:"column_3"`
+	Column4 []string           `json:"column_4"`
+	Column5 []string           `json:"column_5"`
+	Column6 []string           `json:"column_6"`
+	Column7 []int16            `json:"column_7"`
+	Column8 []pgtype.Numeric   `json:"column_8"`
+}
+
+type BulkUpsertFindingsRow struct {
+	ID          pgtype.UUID `json:"id"`
+	Fingerprint string      `json:"fingerprint"`
+	IsInserted  bool        `json:"is_inserted"`
+	State       string      `json:"state"`
+}
+
+func (q *Queries) BulkUpsertFindings(ctx context.Context, arg BulkUpsertFindingsParams) ([]BulkUpsertFindingsRow, error) {
+	rows, err := q.db.Query(ctx, bulkUpsertFindings,
+		arg.Column1,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+		arg.Column6,
+		arg.Column7,
+		arg.Column8,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []BulkUpsertFindingsRow
+	for rows.Next() {
+		var i BulkUpsertFindingsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Fingerprint,
+			&i.IsInserted,
+			&i.State,
 		); err != nil {
 			return nil, err
 		}
@@ -602,6 +798,99 @@ func (q *Queries) ListFindingEvents(ctx context.Context, arg ListFindingEventsPa
 	return items, nil
 }
 
+const listFindingIDsPresentInReport = `-- name: ListFindingIDsPresentInReport :many
+SELECT finding_id FROM finding_occurrences
+WHERE report_id = $1
+  AND finding_id = ANY($2::uuid[])
+`
+
+type ListFindingIDsPresentInReportParams struct {
+	ReportID pgtype.UUID   `json:"report_id"`
+	Column2  []pgtype.UUID `json:"column_2"`
+}
+
+func (q *Queries) ListFindingIDsPresentInReport(ctx context.Context, arg ListFindingIDsPresentInReportParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, listFindingIDsPresentInReport, arg.ReportID, arg.Column2)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var finding_id pgtype.UUID
+		if err := rows.Scan(&finding_id); err != nil {
+			return nil, err
+		}
+		items = append(items, finding_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFindingsByFingerprints = `-- name: ListFindingsByFingerprints :many
+SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version, introduced_by_report_id, introduced_commit_sha FROM findings
+WHERE project_id = $1
+  AND finding_kind = $2
+  AND fingerprint = ANY($3::text[])
+`
+
+type ListFindingsByFingerprintsParams struct {
+	ProjectID   pgtype.UUID `json:"project_id"`
+	FindingKind string      `json:"finding_kind"`
+	Column3     []string    `json:"column_3"`
+}
+
+func (q *Queries) ListFindingsByFingerprints(ctx context.Context, arg ListFindingsByFingerprintsParams) ([]Finding, error) {
+	rows, err := q.db.Query(ctx, listFindingsByFingerprints, arg.ProjectID, arg.FindingKind, arg.Column3)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Finding
+	for rows.Next() {
+		var i Finding
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.FindingKind,
+			&i.Fingerprint,
+			&i.CurrentTitle,
+			&i.CurrentSeverity,
+			&i.CurrentSeverityRank,
+			&i.CurrentScore,
+			&i.State,
+			&i.TriageStatus,
+			&i.AssigneeID,
+			&i.FirstSeenAt,
+			&i.LastSeenAt,
+			&i.FixedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AnalysisState,
+			&i.GateEffect,
+			&i.AnalysisExpiresAt,
+			&i.AnalysisReason,
+			&i.AnalysisSource,
+			&i.AnalysisUpdatedAt,
+			&i.AnalysisUpdatedBy,
+			&i.ManualOverride,
+			&i.ReviewRequired,
+			&i.FingerprintVersion,
+			&i.IntroducedByReportID,
+			&i.IntroducedCommitSha,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFindingsByIDs = `-- name: ListFindingsByIDs :many
 SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version, introduced_by_report_id, introduced_commit_sha FROM findings WHERE id = ANY($1::uuid[])
 `
@@ -697,6 +986,67 @@ func (q *Queries) ListFindingsByProject(ctx context.Context, arg ListFindingsByP
 		arg.Limit,
 		arg.Offset,
 	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Finding
+	for rows.Next() {
+		var i Finding
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.FindingKind,
+			&i.Fingerprint,
+			&i.CurrentTitle,
+			&i.CurrentSeverity,
+			&i.CurrentSeverityRank,
+			&i.CurrentScore,
+			&i.State,
+			&i.TriageStatus,
+			&i.AssigneeID,
+			&i.FirstSeenAt,
+			&i.LastSeenAt,
+			&i.FixedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AnalysisState,
+			&i.GateEffect,
+			&i.AnalysisExpiresAt,
+			&i.AnalysisReason,
+			&i.AnalysisSource,
+			&i.AnalysisUpdatedAt,
+			&i.AnalysisUpdatedBy,
+			&i.ManualOverride,
+			&i.ReviewRequired,
+			&i.FingerprintVersion,
+			&i.IntroducedByReportID,
+			&i.IntroducedCommitSha,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFindingsIntroducedByCommit = `-- name: ListFindingsIntroducedByCommit :many
+SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version, introduced_by_report_id, introduced_commit_sha FROM findings
+WHERE project_id = $1
+  AND introduced_commit_sha = $2
+ORDER BY current_severity_rank DESC, created_at DESC
+`
+
+type ListFindingsIntroducedByCommitParams struct {
+	ProjectID           pgtype.UUID `json:"project_id"`
+	IntroducedCommitSha pgtype.Text `json:"introduced_commit_sha"`
+}
+
+func (q *Queries) ListFindingsIntroducedByCommit(ctx context.Context, arg ListFindingsIntroducedByCommitParams) ([]Finding, error) {
+	rows, err := q.db.Query(ctx, listFindingsIntroducedByCommit, arg.ProjectID, arg.IntroducedCommitSha)
 	if err != nil {
 		return nil, err
 	}
@@ -906,6 +1256,103 @@ func (q *Queries) ListGateCandidates(ctx context.Context, arg ListGateCandidates
 	return items, nil
 }
 
+const listIntroducedGateCandidates = `-- name: ListIntroducedGateCandidates :many
+SELECT
+    f.id,
+    f.project_id,
+    f.finding_kind,
+    f.fingerprint,
+    f.current_title,
+    f.current_severity_rank,
+    f.analysis_state,
+    f.introduced_by_report_id,
+    f.introduced_commit_sha,
+    COALESCE(ra.state, 'unknown'::reachability_state) AS reachability_state,
+    ctx.environment_id,
+    ctx.target_id,
+    ctx.artifact_id,
+    rif.change_type
+FROM report_introduced_findings rif
+JOIN findings f ON rif.finding_id = f.id
+LEFT JOIN LATERAL (
+    SELECT r.environment_id, r.target_id, r.artifact_id
+    FROM finding_occurrences fo
+    JOIN reports r ON fo.report_id = r.id
+    WHERE fo.finding_id = f.id
+    ORDER BY fo.observed_at DESC
+    LIMIT 1
+) ctx ON true
+LEFT JOIN LATERAL (
+    SELECT ra.state
+    FROM reachability_assessments ra
+    WHERE ra.finding_id = f.id
+    ORDER BY ra.updated_at DESC
+    LIMIT 1
+) ra ON true
+WHERE rif.report_id = $1
+  AND f.current_severity_rank >= $2
+  AND f.gate_effect = 'block'
+  AND f.state IN ('open', 'reopened')
+ORDER BY f.current_severity_rank DESC, f.created_at DESC
+`
+
+type ListIntroducedGateCandidatesParams struct {
+	ReportID            pgtype.UUID `json:"report_id"`
+	CurrentSeverityRank int16       `json:"current_severity_rank"`
+}
+
+type ListIntroducedGateCandidatesRow struct {
+	ID                   pgtype.UUID       `json:"id"`
+	ProjectID            pgtype.UUID       `json:"project_id"`
+	FindingKind          string            `json:"finding_kind"`
+	Fingerprint          string            `json:"fingerprint"`
+	CurrentTitle         string            `json:"current_title"`
+	CurrentSeverityRank  int16             `json:"current_severity_rank"`
+	AnalysisState        string            `json:"analysis_state"`
+	IntroducedByReportID pgtype.UUID       `json:"introduced_by_report_id"`
+	IntroducedCommitSha  pgtype.Text       `json:"introduced_commit_sha"`
+	ReachabilityState    ReachabilityState `json:"reachability_state"`
+	EnvironmentID        pgtype.UUID       `json:"environment_id"`
+	TargetID             pgtype.UUID       `json:"target_id"`
+	ArtifactID           pgtype.UUID       `json:"artifact_id"`
+	ChangeType           string            `json:"change_type"`
+}
+
+func (q *Queries) ListIntroducedGateCandidates(ctx context.Context, arg ListIntroducedGateCandidatesParams) ([]ListIntroducedGateCandidatesRow, error) {
+	rows, err := q.db.Query(ctx, listIntroducedGateCandidates, arg.ReportID, arg.CurrentSeverityRank)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIntroducedGateCandidatesRow
+	for rows.Next() {
+		var i ListIntroducedGateCandidatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.FindingKind,
+			&i.Fingerprint,
+			&i.CurrentTitle,
+			&i.CurrentSeverityRank,
+			&i.AnalysisState,
+			&i.IntroducedByReportID,
+			&i.IntroducedCommitSha,
+			&i.ReachabilityState,
+			&i.EnvironmentID,
+			&i.TargetID,
+			&i.ArtifactID,
+			&i.ChangeType,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markFindingFixed = `-- name: MarkFindingFixed :one
 UPDATE findings SET state = 'fixed', updated_at = NOW()
 WHERE id = $1
@@ -965,6 +1412,35 @@ func (q *Queries) OccurrenceExists(ctx context.Context, arg OccurrenceExistsPara
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
+}
+
+const recordReportIntroducedFindings = `-- name: RecordReportIntroducedFindings :exec
+INSERT INTO report_introduced_findings (
+    report_id, finding_id, baseline_report_id, change_type
+)
+SELECT
+    $1::uuid, f.val::uuid, $2, ct.val::text
+FROM unnest($3::uuid[]) WITH ORDINALITY AS f(val, ord)
+JOIN unnest($4::text[]) WITH ORDINALITY AS ct(val, ord) ON f.ord = ct.ord
+ON CONFLICT (report_id, finding_id) DO UPDATE SET
+    change_type = EXCLUDED.change_type
+`
+
+type RecordReportIntroducedFindingsParams struct {
+	Column1          pgtype.UUID   `json:"column_1"`
+	BaselineReportID pgtype.UUID   `json:"baseline_report_id"`
+	Column3          []pgtype.UUID `json:"column_3"`
+	Column4          []string      `json:"column_4"`
+}
+
+func (q *Queries) RecordReportIntroducedFindings(ctx context.Context, arg RecordReportIntroducedFindingsParams) error {
+	_, err := q.db.Exec(ctx, recordReportIntroducedFindings,
+		arg.Column1,
+		arg.BaselineReportID,
+		arg.Column3,
+		arg.Column4,
+	)
+	return err
 }
 
 const setFindingIntroducedBy = `-- name: SetFindingIntroducedBy :one

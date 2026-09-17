@@ -34,7 +34,9 @@ RETURNING *;
 
 -- name: ListActiveWaivers :many
 SELECT * FROM waivers
-WHERE project_id = $1 AND enabled = true
+WHERE project_id = $1
+  AND enabled = true
+  AND (expires_at IS NULL OR expires_at > NOW())
 ORDER BY created_at DESC;
 
 -- name: CreateWaiverCondition :one
