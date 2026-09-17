@@ -3,6 +3,7 @@ package lifecycle
 import (
 	"context"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,11 +15,11 @@ import (
 type fakeAnalysisExpiryStore struct {
 	expired []port.Finding
 	err     error
-	calls   int
+	calls   atomic.Int64
 }
 
 func (f *fakeAnalysisExpiryStore) ExpireExpired(ctx context.Context) ([]port.Finding, error) {
-	f.calls++
+	f.calls.Add(1)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -29,11 +30,11 @@ func (f *fakeAnalysisExpiryStore) ExpireExpired(ctx context.Context) ([]port.Fin
 type fakeWaiverExpiryStore struct {
 	expired []port.Waiver
 	err     error
-	calls   int
+	calls   atomic.Int64
 }
 
 func (f *fakeWaiverExpiryStore) ExpireExpired(ctx context.Context) ([]port.Waiver, error) {
-	f.calls++
+	f.calls.Add(1)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -52,7 +53,7 @@ func TestSweepExpiredFindings_StoreDriven(t *testing.T) {
 	n, err := SweepExpiredFindings(context.Background(), store, logger)
 	requireNoError(t, err)
 	assert.Equal(t, 2, n)
-	assert.Equal(t, 1, store.calls)
+	assert.Equal(t, int64(1), store.calls.Load())
 
 	// Error propagates from the store.
 	store.err = assertAnError("db down")
@@ -77,7 +78,7 @@ func TestRunAnalysisExpiry_CancellationStops(t *testing.T) {
 	cancel()
 	time.Sleep(20 * time.Millisecond)
 
-	assert.GreaterOrEqual(t, store.calls, 1, "ticker should have fired before cancellation")
+	assert.GreaterOrEqual(t, store.calls.Load(), int64(1), "ticker should have fired before cancellation")
 }
 
 func TestSweepExpiredWaivers_StoreDriven(t *testing.T) {
@@ -102,7 +103,7 @@ func TestRunWaiverExpiry_CancellationStops(t *testing.T) {
 	cancel()
 	time.Sleep(20 * time.Millisecond)
 
-	assert.GreaterOrEqual(t, store.calls, 1, "ticker should have fired before cancellation")
+	assert.GreaterOrEqual(t, store.calls.Load(), int64(1), "ticker should have fired before cancellation")
 }
 
 func requireNoError(t *testing.T, err error) {
