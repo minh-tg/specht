@@ -38,7 +38,7 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusCreated, result)
-	h.audit.HTTP(r, audit.EventCreateProject, audit.OutcomeSuccess, "", req.Slug, nil)
+	h.audit.HTTP(r, audit.EventCreateProject, audit.OutcomeSuccess, req.Slug, req.Slug, nil)
 }
 
 func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +92,7 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, project)
-	h.audit.HTTP(r, audit.EventUpdateProject, audit.OutcomeSuccess, "", slug, nil)
+	h.audit.HTTP(r, audit.EventUpdateProject, audit.OutcomeSuccess, slug, slug, nil)
 }
 
 func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
@@ -107,7 +107,7 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, project)
-	h.audit.HTTP(r, audit.EventDeleteProject, audit.OutcomeSuccess, "", slug, nil)
+	h.audit.HTTP(r, audit.EventDeleteProject, audit.OutcomeSuccess, slug, slug, nil)
 }
 
 func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
