@@ -63,3 +63,4 @@ The Specht RFC process provides a structured, collaborative path for substantial
 | RFC | Title | Author | Status | Created |
 |-----|-------|--------|--------|---------|
 | [0001](0001-unified-fingerprinting.md) | Unified Finding Fingerprinting & Identity Specification | Specht Core Engineering | Implemented | 2026-09-09 |
+| [0002](0002-staged-bulk-ingest-and-change-gating.md) | Staged Bulk Ingest Pipeline & Change-Scoped CI Gating | Specht Core Engineering | Accepted | 2026-09-17 |
