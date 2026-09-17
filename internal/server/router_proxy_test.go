@@ -157,3 +157,48 @@ func TestSSOLogin_SecureCookieRequiresTrustedProxy(t *testing.T) {
 		assert.False(t, ssoStateCookie(t, w).Secure)
 	})
 }
+
+func TestSecurityHeaders_ProxyAware(t *testing.T) {
+	router := NewRouter(RouterConfig{
+		Usecases:       &mockUsecases{},
+		JWTAuth:        testJWTAuth,
+		TrustedProxies: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+	})
+
+	t.Run("baseline security headers present on plain HTTP", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/v1/health", nil)
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"))
+		assert.Equal(t, "SAMEORIGIN", w.Header().Get("X-Frame-Options"))
+		assert.Equal(t, "strict-origin-when-cross-origin", w.Header().Get("Referrer-Policy"))
+		assert.Empty(t, w.Header().Get("Strict-Transport-Security"), "plain HTTP should not set HSTS")
+	})
+
+	t.Run("HSTS set when trusted proxy terminates HTTPS", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/v1/health", nil)
+		req.RemoteAddr = "10.0.0.1:443"
+		req.Header.Set("X-Forwarded-Proto", "https")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"))
+		assert.Equal(t, "SAMEORIGIN", w.Header().Get("X-Frame-Options"))
+		assert.Equal(t, "strict-origin-when-cross-origin", w.Header().Get("Referrer-Policy"))
+		assert.Equal(t, "max-age=31536000; includeSubDomains", w.Header().Get("Strict-Transport-Security"))
+	})
+
+	t.Run("untrusted peer cannot force HSTS with spoofed X-Forwarded-Proto", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/v1/health", nil)
+		req.RemoteAddr = "203.0.113.5:1234"
+		req.Header.Set("X-Forwarded-Proto", "https")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		assert.Empty(t, w.Header().Get("Strict-Transport-Security"), "untrusted peer must not force HSTS")
+	})
+}

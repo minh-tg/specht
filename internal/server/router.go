@@ -70,6 +70,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	r.Use(middleware.RequestID)
 	r.Use(realIPMiddleware(cfg.TrustedProxies))
+	r.Use(securityHeadersMiddleware)
 	if cfg.RateLimit.Enabled {
 		// Shed unauthenticated floods before logging/auth: bearer requests
 		// pass through here and spend from the post-auth budget instead.
@@ -282,4 +283,20 @@ func ssoLoginHandler(oidc *auth.OIDCAuthenticator) http.HandlerFunc {
 		})
 		http.Redirect(w, r, oidc.LoginURL(state), http.StatusFound)
 	}
+}
+
+// securityHeadersMiddleware adds baseline defensive HTTP headers to all
+// responses. Headers are proxy-aware: HSTS is emitted only when the transport
+// is verified secure (TLS in-process or X-Forwarded-Proto: https from a
+// trusted reverse proxy/load balancer), avoiding broken plain-HTTP dev sessions.
+func securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		if auth.SecureTransport(r) {
+			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		next.ServeHTTP(w, r)
+	})
 }
