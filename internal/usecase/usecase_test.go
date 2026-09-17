@@ -1755,6 +1755,43 @@ func TestRegister_EmptyEmail(t *testing.T) {
 	assert.EqualError(t, err, "email and password are required")
 }
 
+func TestRegister_InvalidEmail(t *testing.T) {
+	uc := New(Deps{})
+	for _, invalid := range []string{"not-an-email", "missingat.com", "@missinglocal.com", "spaces in@email.com"} {
+		_, err := uc.Register(context.Background(), invalid, "password123")
+		assert.EqualError(t, err, "invalid email address", "expected %q to be rejected", invalid)
+	}
+}
+
+func TestRegister_EmailNormalized(t *testing.T) {
+	ur := &mockUserRepo{}
+	var createdEmail string
+	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {
+		return port.User{}, port.ErrNotFound
+	}
+	ur.createFn = func(ctx context.Context, email string, displayName, passwordHash *string) (port.User, error) {
+		createdEmail = email
+		u := makeUser("00000000-0000-0000-0000-000000000041")
+		u.Email = email
+		return u, nil
+	}
+	rr := &mockRefreshTokenRepo{
+		createFn: func(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
+			return makeRefreshToken(false), nil
+		},
+	}
+	uc := New(Deps{
+		Stores:    &port.Stores{Users: ur, RefreshTokens: rr},
+		Tokens:    testJWT(t),
+		Passwords: auth.NewPasswordHasher(),
+	})
+
+	resp, err := uc.Register(context.Background(), "MixedCase@Example.COM", "password123")
+	require.NoError(t, err)
+	assert.Equal(t, "mixedcase@example.com", resp.Email)
+	assert.Equal(t, "mixedcase@example.com", createdEmail)
+}
+
 func TestRegister_EmptyPassword(t *testing.T) {
 	uc := New(Deps{})
 	_, err := uc.Register(context.Background(), "test@example.com", "")

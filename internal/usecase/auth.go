@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -54,11 +55,16 @@ func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthR
 	if email == "" || password == "" {
 		return nil, fmt.Errorf("email and password are required")
 	}
+	addr, err := mail.ParseAddress(email)
+	if err != nil || addr.Address != email || !strings.Contains(addr.Address, "@") {
+		return nil, fmt.Errorf("invalid email address")
+	}
+	email = strings.ToLower(strings.TrimSpace(addr.Address))
 	if len(password) < 8 {
 		return nil, fmt.Errorf("password must be at least 8 characters")
 	}
 
-	_, err := u.deps.Stores.Users.GetByEmail(ctx, email)
+	_, err = u.deps.Stores.Users.GetByEmail(ctx, email)
 	if err == nil {
 		// M8: the duplicate is a legitimate operational detail for operators,
 		// but must never reach the caller. Log it, return the generic error.
@@ -165,6 +171,7 @@ func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResp
 	if email == "" || password == "" {
 		return nil, fmt.Errorf("email and password are required")
 	}
+	email = strings.ToLower(strings.TrimSpace(email))
 
 	user, err := u.deps.Stores.Users.GetByEmail(ctx, email)
 	if err != nil {
