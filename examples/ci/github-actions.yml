@@ -56,15 +56,19 @@ jobs:
         env:
           API_URL: ${{ secrets.SPECHT_API_URL }}
           API_KEY: ${{ secrets.SPECHT_API_KEY }}
+          PROJECT: ${{ vars.SPECHT_PROJECT }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           go run ./cmd/adapter \
-            -project "${{ vars.SPECHT_PROJECT }}" \
+            -project "$PROJECT" \
             -tool trivy < <(jq -n \
-              --arg project "${{ vars.SPECHT_PROJECT }}" \
-              --arg branch "${{ github.head_ref || github.ref_name }}" \
-              --arg commit "${{ github.sha }}" \
+              --arg project "$PROJECT" \
+              --arg branch "$BRANCH" \
+              --arg commit "$COMMIT_SHA" \
               --arg env "${SPECHT_ENVIRONMENT}" \
-              --arg owner "github://${{ github.repository }}" \
+              --arg owner "github://$REPOSITORY" \
               --slurpfile raw trivy-results.json \
               '{project: $project, scanner: "trivy",
                 branch: $branch, commit_sha: $commit,
