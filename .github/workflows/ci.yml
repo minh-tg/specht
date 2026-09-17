@@ -27,7 +27,7 @@ jobs:
         run: go vet ./...
 
       - name: Unit tests (offline)
-        run: go test ./... -count=1 -short
+        run: go test -race ./... -count=1 -short
 
       - name: Integration tests (real Postgres via testcontainers)
         run: go test -tags integration ./internal/repo/ -count=1 -timeout 15m
