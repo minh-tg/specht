@@ -274,3 +274,40 @@ func TestPreviewPRCheck_CommitCaseInsensitive(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "failure", out.Conclusion, "SHA case must not change the verdict")
 }
+
+func TestPreviewPRCheck_BatchedDisplayContexts(t *testing.T) {
+	uc, fr := prcheckHarness(t)
+	ctx := findingScopeCtx(makeProject(true).ID)
+
+	f1ID := "00000000-0000-0000-0000-000000000021"
+	batchCalled := false
+	fr.listFindingDisplayContextsByIDsFn = func(ctx context.Context, ids []string) ([]port.FindingDisplayContext, error) {
+		batchCalled = true
+		assert.Contains(t, ids, f1ID)
+		return []port.FindingDisplayContext{
+			{
+				FindingID: f1ID,
+				ToolName:  "semgrep",
+				Metadata:  json.RawMessage(`{"specht":{"code_location":{"File":"batch/main.go","StartLine":20,"EndLine":25}}}`),
+			},
+		}, nil
+	}
+
+	getByIDCalled := false
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
+		getByIDCalled = true
+		return port.Finding{}, nil
+	}
+
+	out, err := uc.PreviewPRCheck(ctx, PRCheckPreviewInput{
+		ProjectSlug: "my-app",
+		CommitSha:   prcheckCommit,
+	})
+	require.NoError(t, err)
+	assert.True(t, batchCalled, "ListFindingDisplayContextsByIDs must be called in batch")
+	assert.False(t, getByIDCalled, "GetFinding/GetByID must not be called in a loop")
+	require.Len(t, out.Annotations, 1)
+	assert.Equal(t, "batch/main.go", out.Annotations[0].File)
+	assert.Equal(t, 20, out.Annotations[0].StartLine)
+	assert.Equal(t, 25, out.Annotations[0].EndLine)
+}

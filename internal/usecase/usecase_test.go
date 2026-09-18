@@ -411,33 +411,34 @@ func (m *mockAdminRepo) Overview(ctx context.Context) (port.AdminOverview, error
 
 type mockFindingRepo struct {
 	port.FindingStore
-	hasOccurrenceFn                  func(context.Context, string, string) (bool, error)
-	markFixedFn                      func(context.Context, string) (port.Finding, error)
-	createOccurrenceFn               func(context.Context, port.OccurrenceInput) (port.Occurrence, error)
-	upsertDimensionFn                func(context.Context, port.DimensionInput) error
-	listByProjectFn                  func(context.Context, string, []string, []string, []string, []string, []string, int32, int32) ([]port.Finding, error)
-	getDisplayContextFn              func(context.Context, string) (port.FindingDisplayContext, error)
-	listDimensionsFn                 func(context.Context, string) ([]port.FindingDimension, error)
-	upsertFn                         func(context.Context, string, string, string, string, string, int16, float64, time.Time, time.Time) (port.Finding, error)
-	getByFingerprintFn               func(context.Context, string, string, string) (port.Finding, error)
-	getByIDFn                        func(context.Context, string) (port.Finding, error)
-	listByIDsFn                      func(context.Context, []string) ([]port.Finding, error)
-	hasDimensionFn                   func(context.Context, string, string) (bool, error)
-	updateAnalysisFn                 func(context.Context, port.UpdateAnalysisInput) (port.Finding, error)
-	bulkUpdateAnalysisFn             func(context.Context, port.UpdateAnalysisInput, []string) ([]port.Finding, error)
-	createEventFn                    func(context.Context, port.FindingEventInput) (port.FindingEvent, error)
-	listEventsFn                     func(context.Context, string, []string, int32, int32) ([]port.FindingEvent, error)
-	listBlockingFindingsFn           func(context.Context, string, int16) ([]port.Finding, error)
-	listGateCandidatesFn             func(context.Context, string, int16) ([]port.GateCandidate, error)
-	listIntroducedGateCandidatesFn   func(context.Context, string, int16) ([]port.GateCandidate, error)
-	listFindingsByFingerprintsFn     func(context.Context, string, string, []string) ([]port.Finding, error)
-	listFindingIDsPresentInReportFn  func(context.Context, string, []string) ([]string, error)
-	recordReportIntroducedFindingsFn func(context.Context, string, *string, []port.IntroducedFindingEntry) error
-	listFindingsIntroducedByCommitFn func(context.Context, string, string) ([]port.Finding, error)
-	getFindingContextFn              func(context.Context, string) (port.FindingContext, error)
-	setIntroducedByFn                func(context.Context, string, string, *string) (port.Finding, error)
-	listIntroducedByFn               func(context.Context, string, string) ([]port.Finding, error)
-	knownFpByID                      map[string]string
+	hasOccurrenceFn                   func(context.Context, string, string) (bool, error)
+	markFixedFn                       func(context.Context, string) (port.Finding, error)
+	createOccurrenceFn                func(context.Context, port.OccurrenceInput) (port.Occurrence, error)
+	upsertDimensionFn                 func(context.Context, port.DimensionInput) error
+	listByProjectFn                   func(context.Context, string, []string, []string, []string, []string, []string, int32, int32) ([]port.Finding, error)
+	getDisplayContextFn               func(context.Context, string) (port.FindingDisplayContext, error)
+	listFindingDisplayContextsByIDsFn func(context.Context, []string) ([]port.FindingDisplayContext, error)
+	listDimensionsFn                  func(context.Context, string) ([]port.FindingDimension, error)
+	upsertFn                          func(context.Context, string, string, string, string, string, int16, float64, time.Time, time.Time) (port.Finding, error)
+	getByFingerprintFn                func(context.Context, string, string, string) (port.Finding, error)
+	getByIDFn                         func(context.Context, string) (port.Finding, error)
+	listByIDsFn                       func(context.Context, []string) ([]port.Finding, error)
+	hasDimensionFn                    func(context.Context, string, string) (bool, error)
+	updateAnalysisFn                  func(context.Context, port.UpdateAnalysisInput) (port.Finding, error)
+	bulkUpdateAnalysisFn              func(context.Context, port.UpdateAnalysisInput, []string) ([]port.Finding, error)
+	createEventFn                     func(context.Context, port.FindingEventInput) (port.FindingEvent, error)
+	listEventsFn                      func(context.Context, string, []string, int32, int32) ([]port.FindingEvent, error)
+	listBlockingFindingsFn            func(context.Context, string, int16) ([]port.Finding, error)
+	listGateCandidatesFn              func(context.Context, string, int16) ([]port.GateCandidate, error)
+	listIntroducedGateCandidatesFn    func(context.Context, string, int16) ([]port.GateCandidate, error)
+	listFindingsByFingerprintsFn      func(context.Context, string, string, []string) ([]port.Finding, error)
+	listFindingIDsPresentInReportFn   func(context.Context, string, []string) ([]string, error)
+	recordReportIntroducedFindingsFn  func(context.Context, string, *string, []port.IntroducedFindingEntry) error
+	listFindingsIntroducedByCommitFn  func(context.Context, string, string) ([]port.Finding, error)
+	getFindingContextFn               func(context.Context, string) (port.FindingContext, error)
+	setIntroducedByFn                 func(context.Context, string, string, *string) (port.Finding, error)
+	listIntroducedByFn                func(context.Context, string, string) ([]port.Finding, error)
+	knownFpByID                       map[string]string
 }
 
 func (m *mockFindingRepo) Upsert(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
@@ -609,6 +610,24 @@ func (m *mockFindingRepo) GetFindingDisplayContext(ctx context.Context, findingI
 		return port.FindingDisplayContext{}, nil
 	}
 	return m.getDisplayContextFn(ctx, findingID)
+}
+
+func (m *mockFindingRepo) ListFindingDisplayContextsByIDs(ctx context.Context, findingIDs []string) ([]port.FindingDisplayContext, error) {
+	if m.listFindingDisplayContextsByIDsFn != nil {
+		return m.listFindingDisplayContextsByIDsFn(ctx, findingIDs)
+	}
+	if m.getDisplayContextFn != nil {
+		var out []port.FindingDisplayContext
+		for _, id := range findingIDs {
+			dc, err := m.getDisplayContextFn(ctx, id)
+			if err == nil {
+				dc.FindingID = id
+				out = append(out, dc)
+			}
+		}
+		return out, nil
+	}
+	return []port.FindingDisplayContext{}, nil
 }
 
 func (m *mockFindingRepo) ListDimensions(ctx context.Context, findingID string) ([]port.FindingDimension, error) {

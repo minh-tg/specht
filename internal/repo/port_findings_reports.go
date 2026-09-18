@@ -570,6 +570,7 @@ func (r *pgFindingPort) GetFindingDisplayContext(ctx context.Context, findingID 
 		return port.FindingDisplayContext{}, mappingErr(err)
 	}
 	return port.FindingDisplayContext{
+		FindingID:       findingID,
 		TargetName:      strVal(row.TargetName),
 		TargetKind:      strVal(row.TargetKind),
 		TargetOwner:     strVal(row.TargetOwner),
@@ -580,6 +581,37 @@ func (r *pgFindingPort) GetFindingDisplayContext(ctx context.Context, findingID 
 		LocationSummary: strVal(row.LocationSummary),
 		Metadata:        append([]byte{}, row.Metadata...),
 	}, nil
+}
+
+func (r *pgFindingPort) ListFindingDisplayContextsByIDs(ctx context.Context, findingIDs []string) ([]port.FindingDisplayContext, error) {
+	uuids := make([]pgtype.UUID, 0, len(findingIDs))
+	for _, id := range findingIDs {
+		fid, err := parseID(id)
+		if err != nil {
+			return nil, err
+		}
+		uuids = append(uuids, fid)
+	}
+	rows, err := r.inner.ListFindingDisplayContextsByIDs(ctx, uuids)
+	if err != nil {
+		return nil, mappingErr(err)
+	}
+	out := make([]port.FindingDisplayContext, len(rows))
+	for i, row := range rows {
+		out[i] = port.FindingDisplayContext{
+			FindingID:       toUUID(row.FindingID),
+			TargetName:      strVal(row.TargetName),
+			TargetKind:      strVal(row.TargetKind),
+			TargetOwner:     strVal(row.TargetOwner),
+			EnvironmentName: strVal(row.EnvironmentName),
+			Branch:          strVal(row.Branch),
+			CommitSha:       strVal(row.CommitSha),
+			ToolName:        row.ToolName,
+			LocationSummary: strVal(row.LocationSummary),
+			Metadata:        append([]byte{}, row.Metadata...),
+		}
+	}
+	return out, nil
 }
 
 func (r *pgFindingPort) ListBlockingFindings(ctx context.Context, projectID string, minSeverityRank int16) ([]port.Finding, error) {

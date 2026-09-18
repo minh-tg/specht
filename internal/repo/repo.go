@@ -225,6 +225,7 @@ type FindingRepo interface {
 	ListEvents(ctx context.Context, findingID pgtype.UUID, eventTypes []string, limit, offset int32) ([]sqlc.FindingEvent, error)
 	GetFindingContext(ctx context.Context, findingID pgtype.UUID) (FindingContext, error)
 	GetFindingDisplayContext(ctx context.Context, findingID pgtype.UUID) (sqlc.GetFindingDisplayContextRow, error)
+	ListFindingDisplayContextsByIDs(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ListFindingDisplayContextsByIDsRow, error)
 	HasOccurrence(ctx context.Context, findingID, reportID pgtype.UUID) (bool, error)
 	MarkFixed(ctx context.Context, findingID pgtype.UUID) (sqlc.Finding, error)
 	SetIntroducedBy(ctx context.Context, findingID, reportID pgtype.UUID, commit pgtype.Text) (sqlc.Finding, error)

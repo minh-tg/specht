@@ -299,6 +299,10 @@ func (r *pgFindingRepo) GetFindingDisplayContext(ctx context.Context, findingID 
 	return r.q.GetFindingDisplayContext(ctx, findingID)
 }
 
+func (r *pgFindingRepo) ListFindingDisplayContextsByIDs(ctx context.Context, findingIDs []pgtype.UUID) ([]sqlc.ListFindingDisplayContextsByIDsRow, error) {
+	return r.q.ListFindingDisplayContextsByIDs(ctx, findingIDs)
+}
+
 // PersistWatcherFindingParams carries everything needed to persist one
 // watcher-created finding: the finding row, its dimensions, its occurrence
 // (report_id NULL), the auto_rule_applied event, and the provenance evidence

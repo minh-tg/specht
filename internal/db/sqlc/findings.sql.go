@@ -748,6 +748,65 @@ func (q *Queries) ListFindingDimensions(ctx context.Context, findingID pgtype.UU
 	return items, nil
 }
 
+const listFindingDisplayContextsByIDs = `-- name: ListFindingDisplayContextsByIDs :many
+SELECT DISTINCT ON (fo.finding_id)
+    fo.finding_id,
+    t.name AS target_name, t.kind AS target_kind, t.owner AS target_owner,
+    e.name AS environment_name, r.branch AS branch, r.commit_sha AS commit_sha,
+    fo.tool_name AS tool_name, fo.location_summary AS location_summary,
+    fo.metadata AS metadata
+FROM finding_occurrences fo
+JOIN reports r ON fo.report_id = r.id
+LEFT JOIN targets t ON r.target_id = t.id
+LEFT JOIN environments e ON r.environment_id = e.id
+WHERE fo.finding_id = ANY($1::uuid[])
+ORDER BY fo.finding_id, fo.observed_at DESC
+`
+
+type ListFindingDisplayContextsByIDsRow struct {
+	FindingID       pgtype.UUID `json:"finding_id"`
+	TargetName      pgtype.Text `json:"target_name"`
+	TargetKind      pgtype.Text `json:"target_kind"`
+	TargetOwner     pgtype.Text `json:"target_owner"`
+	EnvironmentName pgtype.Text `json:"environment_name"`
+	Branch          pgtype.Text `json:"branch"`
+	CommitSha       pgtype.Text `json:"commit_sha"`
+	ToolName        string      `json:"tool_name"`
+	LocationSummary pgtype.Text `json:"location_summary"`
+	Metadata        []byte      `json:"metadata"`
+}
+
+func (q *Queries) ListFindingDisplayContextsByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]ListFindingDisplayContextsByIDsRow, error) {
+	rows, err := q.db.Query(ctx, listFindingDisplayContextsByIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFindingDisplayContextsByIDsRow
+	for rows.Next() {
+		var i ListFindingDisplayContextsByIDsRow
+		if err := rows.Scan(
+			&i.FindingID,
+			&i.TargetName,
+			&i.TargetKind,
+			&i.TargetOwner,
+			&i.EnvironmentName,
+			&i.Branch,
+			&i.CommitSha,
+			&i.ToolName,
+			&i.LocationSummary,
+			&i.Metadata,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFindingEvents = `-- name: ListFindingEvents :many
 SELECT id, finding_id, user_id, event_type, old_value, new_value, comment, changes, created_at FROM finding_events
 WHERE finding_id = $1

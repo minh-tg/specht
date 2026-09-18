@@ -143,7 +143,8 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 	}
 
 	blocked := blockedSet(decision.BlockedBy)
-	var findings []provider.Finding
+	var blockedIntroduced []port.Finding
+	var blockedIDs []string
 	for _, f := range introduced {
 		if f.CurrentSeverityRank < floor {
 			continue
@@ -151,27 +152,45 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 		if _, ok := blocked[f.ID]; !ok {
 			continue
 		}
-		detail, err := u.GetFinding(ctx, f.ID)
+		blockedIntroduced = append(blockedIntroduced, f)
+		blockedIDs = append(blockedIDs, f.ID)
+	}
+
+	var findings []provider.Finding
+	if len(blockedIntroduced) > 0 {
+		dcList, err := u.deps.Stores.Findings.ListFindingDisplayContextsByIDs(ctx, blockedIDs)
 		if err != nil {
-			return nil, fmt.Errorf("expand finding %q: %w", f.ID, err)
+			return nil, fmt.Errorf("list finding display contexts: %w", err)
 		}
-		pf := provider.Finding{
-			ID:           f.ID,
-			Title:        f.CurrentTitle,
-			Severity:     f.CurrentSeverity,
-			SeverityRank: f.CurrentSeverityRank,
-			Fingerprint:  f.Fingerprint,
-			Introduced:   true,
+		dcMap := make(map[string]port.FindingDisplayContext, len(dcList))
+		for _, dc := range dcList {
+			dcMap[dc.FindingID] = dc
 		}
-		if detail.Location != nil {
-			pf.File = detail.Location.File
-			pf.StartLine = detail.Location.StartLine
-			pf.EndLine = detail.Location.EndLine
+
+		findings = make([]provider.Finding, 0, len(blockedIntroduced))
+		for _, f := range blockedIntroduced {
+			pf := provider.Finding{
+				ID:           f.ID,
+				Title:        f.CurrentTitle,
+				Severity:     f.CurrentSeverity,
+				SeverityRank: f.CurrentSeverityRank,
+				Fingerprint:  f.Fingerprint,
+				Introduced:   true,
+			}
+			if dc, ok := dcMap[f.ID]; ok {
+				loc := locationFromDisplay(dc.LocationSummary, dc.Metadata)
+				if loc != nil {
+					pf.File = loc.File
+					pf.StartLine = loc.StartLine
+					pf.EndLine = loc.EndLine
+				}
+				rem := remediationFromMetadata(dc.Metadata, dc.ToolName, f.FindingKind)
+				if rem != nil {
+					pf.RemediationURL = rem.URL
+				}
+			}
+			findings = append(findings, pf)
 		}
-		if detail.Remediation != nil {
-			pf.RemediationURL = detail.Remediation.URL
-		}
-		findings = append(findings, pf)
 	}
 
 	plan, err := p.PlanCheck(provider.CheckInput{

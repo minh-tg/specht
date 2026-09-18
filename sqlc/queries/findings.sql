@@ -196,6 +196,20 @@ WHERE fo.finding_id = $1
 ORDER BY fo.observed_at DESC
 LIMIT 1;
 
+-- name: ListFindingDisplayContextsByIDs :many
+SELECT DISTINCT ON (fo.finding_id)
+    fo.finding_id,
+    t.name AS target_name, t.kind AS target_kind, t.owner AS target_owner,
+    e.name AS environment_name, r.branch AS branch, r.commit_sha AS commit_sha,
+    fo.tool_name AS tool_name, fo.location_summary AS location_summary,
+    fo.metadata AS metadata
+FROM finding_occurrences fo
+JOIN reports r ON fo.report_id = r.id
+LEFT JOIN targets t ON r.target_id = t.id
+LEFT JOIN environments e ON r.environment_id = e.id
+WHERE fo.finding_id = ANY($1::uuid[])
+ORDER BY fo.finding_id, fo.observed_at DESC;
+
 
 
 -- name: HasDimension :one

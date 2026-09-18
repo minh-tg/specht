@@ -496,6 +496,7 @@ type FindingStore interface {
 	// and commit names. Every field is empty when the context is missing —
 	// missing context is explicit, never a placeholder string.
 	GetFindingDisplayContext(ctx context.Context, findingID string) (FindingDisplayContext, error)
+	ListFindingDisplayContextsByIDs(ctx context.Context, findingIDs []string) ([]FindingDisplayContext, error)
 	ListBlockingFindings(ctx context.Context, projectID string, minSeverityRank int16) ([]Finding, error)
 	// ListGateCandidates loads every gate candidate with its context and
 	// latest reachability in one batch (kills the per-finding N+1 context
@@ -533,6 +534,7 @@ type FindingContext struct {
 // FindingDisplayContext is the human-readable deployment context of a
 // finding's latest observation, for detail views and routing.
 type FindingDisplayContext struct {
+	FindingID       string
 	TargetName      string
 	TargetKind      string
 	TargetOwner     string
