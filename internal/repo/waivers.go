@@ -46,6 +46,10 @@ func (r *pgWaiverRepo) ListConditions(ctx context.Context, waiverID pgtype.UUID)
 	return r.q.ListWaiverConditions(ctx, waiverID)
 }
 
+func (r *pgWaiverRepo) ListConditionsByWaiverIDs(ctx context.Context, waiverIDs []pgtype.UUID) ([]sqlc.WaiverCondition, error) {
+	return r.q.ListWaiverConditionsByWaiverIDs(ctx, waiverIDs)
+}
+
 func (r *pgWaiverRepo) CreateCondition(ctx context.Context, arg sqlc.CreateWaiverConditionParams) (sqlc.WaiverCondition, error) {
 	return r.q.CreateWaiverCondition(ctx, arg)
 }
@@ -58,6 +62,10 @@ func (r *pgWaiverRepo) ListContexts(ctx context.Context, waiverID pgtype.UUID) (
 	return r.q.ListWaiverContexts(ctx, waiverID)
 }
 
+func (r *pgWaiverRepo) ListContextsByWaiverIDs(ctx context.Context, waiverIDs []pgtype.UUID) ([]sqlc.WaiverContext, error) {
+	return r.q.ListWaiverContextsByWaiverIDs(ctx, waiverIDs)
+}
+
 func (r *pgWaiverRepo) CreateContext(ctx context.Context, arg sqlc.CreateWaiverContextParams) (sqlc.WaiverContext, error) {
 	return r.q.CreateWaiverContext(ctx, arg)
 }
@@ -68,6 +76,10 @@ func (r *pgWaiverRepo) DeleteContexts(ctx context.Context, waiverID pgtype.UUID)
 
 func (r *pgWaiverRepo) ListFindingTargets(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverFindingTarget, error) {
 	return r.q.ListWaiverFindingTargets(ctx, waiverID)
+}
+
+func (r *pgWaiverRepo) ListFindingTargetsByWaiverIDs(ctx context.Context, waiverIDs []pgtype.UUID) ([]sqlc.WaiverFindingTarget, error) {
+	return r.q.ListWaiverFindingTargetsByWaiverIDs(ctx, waiverIDs)
 }
 
 func (r *pgWaiverRepo) CreateFindingTarget(ctx context.Context, arg sqlc.CreateWaiverFindingTargetParams) (sqlc.WaiverFindingTarget, error) {

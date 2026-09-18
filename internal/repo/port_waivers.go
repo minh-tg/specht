@@ -3,6 +3,7 @@ package repo
 import (
 	"context"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/xMinhx/specht/internal/db/sqlc"
 	"github.com/xMinhx/specht/internal/port"
 )
@@ -183,6 +184,33 @@ func (r *pgWaiverPort) ListConditions(ctx context.Context, waiverID string) ([]p
 	for i, row := range rows {
 		out[i] = port.WaiverCondition{
 			ID:       toUUID(row.ID),
+			WaiverID: toUUID(row.WaiverID),
+			Field:    row.Field,
+			Operator: row.Operator,
+			Value:    row.Value,
+		}
+	}
+	return out, nil
+}
+
+func (r *pgWaiverPort) ListConditionsByWaiverIDs(ctx context.Context, waiverIDs []string) ([]port.WaiverCondition, error) {
+	uuids := make([]pgtype.UUID, 0, len(waiverIDs))
+	for _, id := range waiverIDs {
+		wid, err := parseID(id)
+		if err != nil {
+			return nil, err
+		}
+		uuids = append(uuids, wid)
+	}
+	rows, err := r.inner.ListConditionsByWaiverIDs(ctx, uuids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.WaiverCondition, len(rows))
+	for i, row := range rows {
+		out[i] = port.WaiverCondition{
+			ID:       toUUID(row.ID),
+			WaiverID: toUUID(row.WaiverID),
 			Field:    row.Field,
 			Operator: row.Operator,
 			Value:    row.Value,
@@ -204,6 +232,33 @@ func (r *pgWaiverPort) ListContexts(ctx context.Context, waiverID string) ([]por
 	for i, row := range rows {
 		out[i] = port.WaiverContext{
 			ID:            toUUID(row.ID),
+			WaiverID:      toUUID(row.WaiverID),
+			EnvironmentID: toUUID(row.EnvironmentID),
+			TargetID:      toUUID(row.TargetID),
+			ArtifactID:    toUUID(row.ArtifactID),
+		}
+	}
+	return out, nil
+}
+
+func (r *pgWaiverPort) ListContextsByWaiverIDs(ctx context.Context, waiverIDs []string) ([]port.WaiverContext, error) {
+	uuids := make([]pgtype.UUID, 0, len(waiverIDs))
+	for _, id := range waiverIDs {
+		wid, err := parseID(id)
+		if err != nil {
+			return nil, err
+		}
+		uuids = append(uuids, wid)
+	}
+	rows, err := r.inner.ListContextsByWaiverIDs(ctx, uuids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.WaiverContext, len(rows))
+	for i, row := range rows {
+		out[i] = port.WaiverContext{
+			ID:            toUUID(row.ID),
+			WaiverID:      toUUID(row.WaiverID),
 			EnvironmentID: toUUID(row.EnvironmentID),
 			TargetID:      toUUID(row.TargetID),
 			ArtifactID:    toUUID(row.ArtifactID),
@@ -225,6 +280,31 @@ func (r *pgWaiverPort) ListFindingTargets(ctx context.Context, waiverID string) 
 	for i, row := range rows {
 		out[i] = port.WaiverFindingTarget{
 			ID:        toUUID(row.ID),
+			WaiverID:  toUUID(row.WaiverID),
+			FindingID: toUUID(row.FindingID),
+		}
+	}
+	return out, nil
+}
+
+func (r *pgWaiverPort) ListFindingTargetsByWaiverIDs(ctx context.Context, waiverIDs []string) ([]port.WaiverFindingTarget, error) {
+	uuids := make([]pgtype.UUID, 0, len(waiverIDs))
+	for _, id := range waiverIDs {
+		wid, err := parseID(id)
+		if err != nil {
+			return nil, err
+		}
+		uuids = append(uuids, wid)
+	}
+	rows, err := r.inner.ListFindingTargetsByWaiverIDs(ctx, uuids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.WaiverFindingTarget, len(rows))
+	for i, row := range rows {
+		out[i] = port.WaiverFindingTarget{
+			ID:        toUUID(row.ID),
+			WaiverID:  toUUID(row.WaiverID),
 			FindingID: toUUID(row.FindingID),
 		}
 	}

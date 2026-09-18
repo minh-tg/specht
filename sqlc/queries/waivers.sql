@@ -87,3 +87,18 @@ RETURNING *;
 SELECT * FROM waiver_events
 WHERE waiver_id = $1
 ORDER BY created_at DESC;
+
+-- name: ListWaiverConditionsByWaiverIDs :many
+SELECT * FROM waiver_conditions
+WHERE waiver_id = ANY($1::uuid[])
+ORDER BY created_at;
+
+-- name: ListWaiverContextsByWaiverIDs :many
+SELECT * FROM waiver_contexts
+WHERE waiver_id = ANY($1::uuid[])
+ORDER BY created_at;
+
+-- name: ListWaiverFindingTargetsByWaiverIDs :many
+SELECT * FROM waiver_finding_targets
+WHERE waiver_id = ANY($1::uuid[])
+ORDER BY created_at;

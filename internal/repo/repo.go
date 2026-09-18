@@ -144,12 +144,15 @@ type WaiverRepo interface {
 	Toggle(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Waiver, error)
 	ListActive(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Waiver, error)
 	ListConditions(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverCondition, error)
+	ListConditionsByWaiverIDs(ctx context.Context, waiverIDs []pgtype.UUID) ([]sqlc.WaiverCondition, error)
 	CreateCondition(ctx context.Context, arg sqlc.CreateWaiverConditionParams) (sqlc.WaiverCondition, error)
 	DeleteConditions(ctx context.Context, waiverID pgtype.UUID) error
 	ListContexts(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverContext, error)
+	ListContextsByWaiverIDs(ctx context.Context, waiverIDs []pgtype.UUID) ([]sqlc.WaiverContext, error)
 	CreateContext(ctx context.Context, arg sqlc.CreateWaiverContextParams) (sqlc.WaiverContext, error)
 	DeleteContexts(ctx context.Context, waiverID pgtype.UUID) error
 	ListFindingTargets(ctx context.Context, waiverID pgtype.UUID) ([]sqlc.WaiverFindingTarget, error)
+	ListFindingTargetsByWaiverIDs(ctx context.Context, waiverIDs []pgtype.UUID) ([]sqlc.WaiverFindingTarget, error)
 	CreateFindingTarget(ctx context.Context, arg sqlc.CreateWaiverFindingTargetParams) (sqlc.WaiverFindingTarget, error)
 	DeleteFindingTargets(ctx context.Context, waiverID pgtype.UUID) error
 	CreateEvent(ctx context.Context, arg sqlc.CreateWaiverEventParams) (sqlc.WaiverEvent, error)

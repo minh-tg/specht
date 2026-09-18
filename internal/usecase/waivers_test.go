@@ -100,3 +100,50 @@ func TestCheckWaiverMatch_InvalidFindingID(t *testing.T) {
 	_, err := uc.CheckWaiverMatch(context.Background(), "my-app", "not-a-uuid")
 	require.Error(t, err)
 }
+
+func TestGateWaiverRepo_ListActiveWaivers_Batched(t *testing.T) {
+	w1 := "00000000-0000-0000-0000-000000000001"
+	w2 := "00000000-0000-0000-0000-000000000002"
+
+	wr := &mockWaiverRepo{
+		listActiveFn: func(ctx context.Context, projectID string) ([]port.Waiver, error) {
+			return []port.Waiver{{ID: w1}, {ID: w2}}, nil
+		},
+		listConditionsByWaiverIDsFn: func(ctx context.Context, ids []string) ([]port.WaiverCondition, error) {
+			assert.ElementsMatch(t, []string{w1, w2}, ids)
+			return []port.WaiverCondition{
+				{ID: "c1", WaiverID: w1, Field: "cve_id", Operator: "eq", Value: "CVE-2024-1"},
+				{ID: "c2", WaiverID: w2, Field: "severity", Operator: "eq", Value: "critical"},
+			}, nil
+		},
+		listContextsByWaiverIDsFn: func(ctx context.Context, ids []string) ([]port.WaiverContext, error) {
+			return []port.WaiverContext{
+				{ID: "ctx1", WaiverID: w1, EnvironmentID: "env1"},
+			}, nil
+		},
+		listFindingTargetsByWaiverIDsFn: func(ctx context.Context, ids []string) ([]port.WaiverFindingTarget, error) {
+			return []port.WaiverFindingTarget{
+				{ID: "t1", WaiverID: w2, FindingID: "f99"},
+			}, nil
+		},
+	}
+
+	repo := &gateWaiverRepo{stores: &port.Stores{Waivers: wr}}
+	gateWaivers, err := repo.ListActiveWaivers(context.Background(), "proj1")
+	require.NoError(t, err)
+	require.Len(t, gateWaivers, 2)
+
+	assert.Equal(t, w1, gateWaivers[0].ID)
+	require.Len(t, gateWaivers[0].Conditions, 1)
+	assert.Equal(t, "CVE-2024-1", gateWaivers[0].Conditions[0].Value)
+	require.Len(t, gateWaivers[0].Contexts, 1)
+	assert.Equal(t, "env1", gateWaivers[0].Contexts[0].EnvironmentID)
+	assert.Empty(t, gateWaivers[0].Targets)
+
+	assert.Equal(t, w2, gateWaivers[1].ID)
+	require.Len(t, gateWaivers[1].Conditions, 1)
+	assert.Equal(t, "critical", gateWaivers[1].Conditions[0].Value)
+	assert.Empty(t, gateWaivers[1].Contexts)
+	require.Len(t, gateWaivers[1].Targets, 1)
+	assert.Equal(t, "f99", gateWaivers[1].Targets[0].FindingID)
+}

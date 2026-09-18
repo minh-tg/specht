@@ -210,44 +210,61 @@ func (a *gateWaiverRepo) ListActiveWaivers(ctx context.Context, projectID string
 	if err != nil {
 		return nil, err
 	}
+	if len(rows) == 0 {
+		return []gate.Waiver{}, nil
+	}
+
+	waiverIDs := make([]string, len(rows))
+	for i, w := range rows {
+		waiverIDs[i] = w.ID
+	}
+
+	conditions, err := a.stores.Waivers.ListConditionsByWaiverIDs(ctx, waiverIDs)
+	if err != nil {
+		slog.Warn("list waiver conditions batch", "error", err)
+	}
+	contexts, err := a.stores.Waivers.ListContextsByWaiverIDs(ctx, waiverIDs)
+	if err != nil {
+		slog.Warn("list waiver contexts batch", "error", err)
+	}
+	targets, err := a.stores.Waivers.ListFindingTargetsByWaiverIDs(ctx, waiverIDs)
+	if err != nil {
+		slog.Warn("list waiver finding targets batch", "error", err)
+	}
+
+	conditionsByWaiver := make(map[string][]gate.WaiverCondition, len(rows))
+	for _, c := range conditions {
+		conditionsByWaiver[c.WaiverID] = append(conditionsByWaiver[c.WaiverID], gate.WaiverCondition{
+			Field:    c.Field,
+			Operator: c.Operator,
+			Value:    c.Value,
+		})
+	}
+
+	contextsByWaiver := make(map[string][]gate.WaiverContext, len(rows))
+	for _, c := range contexts {
+		contextsByWaiver[c.WaiverID] = append(contextsByWaiver[c.WaiverID], gate.WaiverContext{
+			EnvironmentID: c.EnvironmentID,
+			TargetID:      c.TargetID,
+			ArtifactID:    c.ArtifactID,
+		})
+	}
+
+	targetsByWaiver := make(map[string][]gate.WaiverTarget, len(rows))
+	for _, t := range targets {
+		targetsByWaiver[t.WaiverID] = append(targetsByWaiver[t.WaiverID], gate.WaiverTarget{
+			FindingID: t.FindingID,
+		})
+	}
+
 	result := make([]gate.Waiver, len(rows))
 	for i, waiver := range rows {
-		gw := gate.Waiver{
+		result[i] = gate.Waiver{
 			ID:         waiver.ID,
-			Conditions: nil,
-			Contexts:   nil,
-			Targets:    nil,
+			Conditions: conditionsByWaiver[waiver.ID],
+			Contexts:   contextsByWaiver[waiver.ID],
+			Targets:    targetsByWaiver[waiver.ID],
 		}
-		conditions, err := a.stores.Waivers.ListConditions(ctx, waiver.ID)
-		if err != nil {
-			slog.Warn("list waiver conditions", "waiver_id", waiver.ID, "error", err)
-		}
-		for _, condition := range conditions {
-			gw.Conditions = append(gw.Conditions, gate.WaiverCondition{
-				Field:    condition.Field,
-				Operator: condition.Operator,
-				Value:    condition.Value,
-			})
-		}
-		contexts, err := a.stores.Waivers.ListContexts(ctx, waiver.ID)
-		if err != nil {
-			slog.Warn("list waiver contexts", "waiver_id", waiver.ID, "error", err)
-		}
-		for _, waiverContext := range contexts {
-			gw.Contexts = append(gw.Contexts, gate.WaiverContext{
-				EnvironmentID: waiverContext.EnvironmentID,
-				TargetID:      waiverContext.TargetID,
-				ArtifactID:    waiverContext.ArtifactID,
-			})
-		}
-		targets, err := a.stores.Waivers.ListFindingTargets(ctx, waiver.ID)
-		if err != nil {
-			slog.Warn("list waiver finding targets", "waiver_id", waiver.ID, "error", err)
-		}
-		for _, target := range targets {
-			gw.Targets = append(gw.Targets, gate.WaiverTarget{FindingID: target.FindingID})
-		}
-		result[i] = gw
 	}
 	return result, nil
 }

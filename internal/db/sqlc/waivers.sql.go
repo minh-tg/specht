@@ -314,6 +314,39 @@ func (q *Queries) ListWaiverConditions(ctx context.Context, waiverID pgtype.UUID
 	return items, nil
 }
 
+const listWaiverConditionsByWaiverIDs = `-- name: ListWaiverConditionsByWaiverIDs :many
+SELECT id, waiver_id, field, operator, value, created_at FROM waiver_conditions
+WHERE waiver_id = ANY($1::uuid[])
+ORDER BY created_at
+`
+
+func (q *Queries) ListWaiverConditionsByWaiverIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]WaiverCondition, error) {
+	rows, err := q.db.Query(ctx, listWaiverConditionsByWaiverIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WaiverCondition
+	for rows.Next() {
+		var i WaiverCondition
+		if err := rows.Scan(
+			&i.ID,
+			&i.WaiverID,
+			&i.Field,
+			&i.Operator,
+			&i.Value,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listWaiverContexts = `-- name: ListWaiverContexts :many
 SELECT id, waiver_id, environment_id, target_id, artifact_id, created_at FROM waiver_contexts
 WHERE waiver_id = $1
@@ -322,6 +355,39 @@ ORDER BY created_at
 
 func (q *Queries) ListWaiverContexts(ctx context.Context, waiverID pgtype.UUID) ([]WaiverContext, error) {
 	rows, err := q.db.Query(ctx, listWaiverContexts, waiverID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WaiverContext
+	for rows.Next() {
+		var i WaiverContext
+		if err := rows.Scan(
+			&i.ID,
+			&i.WaiverID,
+			&i.EnvironmentID,
+			&i.TargetID,
+			&i.ArtifactID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWaiverContextsByWaiverIDs = `-- name: ListWaiverContextsByWaiverIDs :many
+SELECT id, waiver_id, environment_id, target_id, artifact_id, created_at FROM waiver_contexts
+WHERE waiver_id = ANY($1::uuid[])
+ORDER BY created_at
+`
+
+func (q *Queries) ListWaiverContextsByWaiverIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]WaiverContext, error) {
+	rows, err := q.db.Query(ctx, listWaiverContextsByWaiverIDs, dollar_1)
 	if err != nil {
 		return nil, err
 	}
@@ -388,6 +454,37 @@ ORDER BY created_at
 
 func (q *Queries) ListWaiverFindingTargets(ctx context.Context, waiverID pgtype.UUID) ([]WaiverFindingTarget, error) {
 	rows, err := q.db.Query(ctx, listWaiverFindingTargets, waiverID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WaiverFindingTarget
+	for rows.Next() {
+		var i WaiverFindingTarget
+		if err := rows.Scan(
+			&i.ID,
+			&i.WaiverID,
+			&i.FindingID,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWaiverFindingTargetsByWaiverIDs = `-- name: ListWaiverFindingTargetsByWaiverIDs :many
+SELECT id, waiver_id, finding_id, created_at FROM waiver_finding_targets
+WHERE waiver_id = ANY($1::uuid[])
+ORDER BY created_at
+`
+
+func (q *Queries) ListWaiverFindingTargetsByWaiverIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]WaiverFindingTarget, error) {
+	rows, err := q.db.Query(ctx, listWaiverFindingTargetsByWaiverIDs, dollar_1)
 	if err != nil {
 		return nil, err
 	}

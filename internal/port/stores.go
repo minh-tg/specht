@@ -280,6 +280,7 @@ type Waiver struct {
 // WaiverCondition is one waiver predicate.
 type WaiverCondition struct {
 	ID       string
+	WaiverID string
 	Field    string
 	Operator string
 	Value    string
@@ -288,6 +289,7 @@ type WaiverCondition struct {
 // WaiverContext is one waiver scope. Empty IDs are wildcards.
 type WaiverContext struct {
 	ID            string
+	WaiverID      string
 	EnvironmentID string
 	TargetID      string
 	ArtifactID    string
@@ -296,6 +298,7 @@ type WaiverContext struct {
 // WaiverFindingTarget pins a waiver to a finding.
 type WaiverFindingTarget struct {
 	ID        string
+	WaiverID  string
 	FindingID string
 }
 
@@ -333,8 +336,11 @@ type WaiverStore interface {
 	Toggle(ctx context.Context, id, projectID string) (Waiver, error)
 	ListActive(ctx context.Context, projectID string) ([]Waiver, error)
 	ListConditions(ctx context.Context, waiverID string) ([]WaiverCondition, error)
+	ListConditionsByWaiverIDs(ctx context.Context, waiverIDs []string) ([]WaiverCondition, error)
 	ListContexts(ctx context.Context, waiverID string) ([]WaiverContext, error)
+	ListContextsByWaiverIDs(ctx context.Context, waiverIDs []string) ([]WaiverContext, error)
 	ListFindingTargets(ctx context.Context, waiverID string) ([]WaiverFindingTarget, error)
+	ListFindingTargetsByWaiverIDs(ctx context.Context, waiverIDs []string) ([]WaiverFindingTarget, error)
 	CreateEvent(ctx context.Context, event WaiverEvent) error
 	ListEvents(ctx context.Context, waiverID string) ([]WaiverEvent, error)
 }

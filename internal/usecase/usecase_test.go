@@ -792,10 +792,13 @@ func (m *mockAPIKeyRepo) GetByHash(ctx context.Context, keyHash string) (port.AP
 
 type mockWaiverRepo struct {
 	port.WaiverStore
-	listActiveFn         func(context.Context, string) ([]port.Waiver, error)
-	listConditionsFn     func(context.Context, string) ([]port.WaiverCondition, error)
-	listContextsFn       func(context.Context, string) ([]port.WaiverContext, error)
-	listFindingTargetsFn func(context.Context, string) ([]port.WaiverFindingTarget, error)
+	listActiveFn                    func(context.Context, string) ([]port.Waiver, error)
+	listConditionsFn                func(context.Context, string) ([]port.WaiverCondition, error)
+	listContextsFn                  func(context.Context, string) ([]port.WaiverContext, error)
+	listFindingTargetsFn            func(context.Context, string) ([]port.WaiverFindingTarget, error)
+	listConditionsByWaiverIDsFn     func(context.Context, []string) ([]port.WaiverCondition, error)
+	listContextsByWaiverIDsFn       func(context.Context, []string) ([]port.WaiverContext, error)
+	listFindingTargetsByWaiverIDsFn func(context.Context, []string) ([]port.WaiverFindingTarget, error)
 }
 
 func (m *mockWaiverRepo) ListActive(ctx context.Context, projectID string) ([]port.Waiver, error) {
@@ -812,6 +815,27 @@ func (m *mockWaiverRepo) ListConditions(ctx context.Context, waiverID string) ([
 	return m.listConditionsFn(ctx, waiverID)
 }
 
+func (m *mockWaiverRepo) ListConditionsByWaiverIDs(ctx context.Context, waiverIDs []string) ([]port.WaiverCondition, error) {
+	if m.listConditionsByWaiverIDsFn != nil {
+		return m.listConditionsByWaiverIDsFn(ctx, waiverIDs)
+	}
+	if m.listConditionsFn != nil {
+		var out []port.WaiverCondition
+		for _, wid := range waiverIDs {
+			conds, err := m.listConditionsFn(ctx, wid)
+			if err != nil {
+				return nil, err
+			}
+			for _, c := range conds {
+				c.WaiverID = wid
+				out = append(out, c)
+			}
+		}
+		return out, nil
+	}
+	return []port.WaiverCondition{}, nil
+}
+
 func (m *mockWaiverRepo) ListContexts(ctx context.Context, waiverID string) ([]port.WaiverContext, error) {
 	if m.listContextsFn == nil {
 		return []port.WaiverContext{}, nil
@@ -819,11 +843,53 @@ func (m *mockWaiverRepo) ListContexts(ctx context.Context, waiverID string) ([]p
 	return m.listContextsFn(ctx, waiverID)
 }
 
+func (m *mockWaiverRepo) ListContextsByWaiverIDs(ctx context.Context, waiverIDs []string) ([]port.WaiverContext, error) {
+	if m.listContextsByWaiverIDsFn != nil {
+		return m.listContextsByWaiverIDsFn(ctx, waiverIDs)
+	}
+	if m.listContextsFn != nil {
+		var out []port.WaiverContext
+		for _, wid := range waiverIDs {
+			contexts, err := m.listContextsFn(ctx, wid)
+			if err != nil {
+				return nil, err
+			}
+			for _, c := range contexts {
+				c.WaiverID = wid
+				out = append(out, c)
+			}
+		}
+		return out, nil
+	}
+	return []port.WaiverContext{}, nil
+}
+
 func (m *mockWaiverRepo) ListFindingTargets(ctx context.Context, waiverID string) ([]port.WaiverFindingTarget, error) {
 	if m.listFindingTargetsFn == nil {
 		return []port.WaiverFindingTarget{}, nil
 	}
 	return m.listFindingTargetsFn(ctx, waiverID)
+}
+
+func (m *mockWaiverRepo) ListFindingTargetsByWaiverIDs(ctx context.Context, waiverIDs []string) ([]port.WaiverFindingTarget, error) {
+	if m.listFindingTargetsByWaiverIDsFn != nil {
+		return m.listFindingTargetsByWaiverIDsFn(ctx, waiverIDs)
+	}
+	if m.listFindingTargetsFn != nil {
+		var out []port.WaiverFindingTarget
+		for _, wid := range waiverIDs {
+			targets, err := m.listFindingTargetsFn(ctx, wid)
+			if err != nil {
+				return nil, err
+			}
+			for _, t := range targets {
+				t.WaiverID = wid
+				out = append(out, t)
+			}
+		}
+		return out, nil
+	}
+	return []port.WaiverFindingTarget{}, nil
 }
 
 type mockScanner struct {
