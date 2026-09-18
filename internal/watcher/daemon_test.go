@@ -1179,3 +1179,109 @@ func TestRunCveWatcher_DynamicallyReloadsProjects(t *testing.T) {
 	cancel()
 	<-done
 }
+
+func TestPollOnce_WaitGroupTracksAsyncNotifier(t *testing.T) {
+	deps := baseDeps()
+	client := deps.Client.(*fakeClient)
+	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	}
+
+	blockNotify := make(chan struct{})
+	notifyStarted := make(chan struct{})
+	nf := &fakeNotifier{
+		notify: func(ctx context.Context, ns []Notification) error {
+			close(notifyStarted)
+			<-blockNotify
+			return nil
+		},
+	}
+	deps.Notifier = nf
+
+	var wg sync.WaitGroup
+	deps.WG = &wg
+
+	outcome, err := PollOnce(context.Background(), deps)
+	require.NoError(t, err)
+	assert.Equal(t, 1, outcome.Created)
+
+	// Wait until notifier has started execution
+	<-notifyStarted
+
+	doneWaiting := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(doneWaiting)
+	}()
+
+	// wg.Wait() should not return while blockNotify is still held
+	select {
+	case <-doneWaiting:
+		t.Fatal("wg.Wait() returned before notifier finished")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	// Release the notifier
+	close(blockNotify)
+
+	select {
+	case <-doneWaiting:
+	case <-time.After(2 * time.Second):
+		t.Fatal("wg.Wait() did not complete after notifier returned")
+	}
+
+	require.Len(t, nf.batches(), 1)
+}
+
+func TestRunCveWatcher_ConfigWGTracksNotifier(t *testing.T) {
+	deps := baseDeps()
+	client := deps.Client.(*fakeClient)
+	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	}
+
+	notified := make(chan struct{})
+	deps.Notifier = &fakeNotifier{
+		notify: func(ctx context.Context, ns []Notification) error {
+			close(notified)
+			return nil
+		},
+	}
+
+	var wg sync.WaitGroup
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	RunCveWatcher(ctx, RunCveWatcherConfig{
+		PollDeps:     deps,
+		PollInterval: 10 * time.Minute,
+		WG:           &wg,
+		Logger:       testLogger(),
+		Sleep: func(ctx context.Context, d time.Duration) error {
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	})
+
+	// Wait for the notifier hook to be entered
+	select {
+	case <-notified:
+	case <-time.After(2 * time.Second):
+		t.Fatal("notifier was not called")
+	}
+
+	// Wait for wg; it must succeed because the notifier goroutine was tracked by wg
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("wg.Wait() did not complete")
+	}
+}

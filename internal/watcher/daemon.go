@@ -103,6 +103,9 @@ type PollDeps struct {
 	// poll, clearing the consecutive-failure/error state. A nil hook
 	// disables the reset.
 	ResetFailure func(ctx context.Context) error
+	// WG optionally tracks background goroutines spawned during polling
+	// (e.g. asynchronous notification dispatch).
+	WG *sync.WaitGroup
 }
 
 // PollOutcome summarizes one poll for logging and tests.
@@ -241,9 +244,17 @@ func notifyCreated(ctx context.Context, deps PollDeps, created []Decision) {
 		}
 		notifications = append(notifications, NotificationFromDecision(d, project))
 	}
+	if deps.WG != nil {
+		deps.WG.Add(1)
+	}
 	// Copy the context's values; a cancelled parent mid-dispatch only aborts
 	// the notifier's own retry sleep, never this return.
-	go deps.Notifier.Notify(context.WithoutCancel(ctx), notifications)
+	go func() {
+		if deps.WG != nil {
+			defer deps.WG.Done()
+		}
+		deps.Notifier.Notify(context.WithoutCancel(ctx), notifications)
+	}()
 }
 
 // pollCutoff resolves one project's advisory published-date lower bound: the
@@ -425,6 +436,10 @@ type RunCveWatcherConfig struct {
 	Logger *slog.Logger
 	// Now supplies the scheduler clock. Defaults to time.Now.
 	Now func() time.Time
+	// WG optionally tracks background goroutines spawned by the daemon
+	// (e.g. asynchronous notification dispatch). Forwarded to PollDeps if
+	// PollDeps.WG is nil.
+	WG *sync.WaitGroup
 }
 
 // RunCveWatcher starts the daemon loop in a background goroutine. The first
@@ -454,6 +469,9 @@ func RunCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
+	}
+	if cfg.WG != nil && cfg.PollDeps.WG == nil {
+		cfg.PollDeps.WG = cfg.WG
 	}
 
 	go func() {
