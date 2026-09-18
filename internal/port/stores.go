@@ -73,6 +73,7 @@ type ProjectMember struct {
 type ProjectStore interface {
 	Create(ctx context.Context, input CreateProjectInput) (Project, error)
 	List(ctx context.Context) ([]Project, error)
+	ListByIDs(ctx context.Context, ids []string) ([]Project, error)
 	GetBySlug(ctx context.Context, slug string) (Project, error)
 	GetByID(ctx context.Context, id string) (Project, error)
 	Update(ctx context.Context, slug, name string, description *string) (Project, error)

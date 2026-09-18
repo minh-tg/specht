@@ -83,6 +83,7 @@ func (r *Repos) WithTx(ctx context.Context, fn func(q *sqlc.Queries) error) erro
 type ProjectRepo interface {
 	Create(ctx context.Context, arg sqlc.CreateProjectParams) (sqlc.Project, error)
 	List(ctx context.Context) ([]sqlc.Project, error)
+	ListByIDs(ctx context.Context, ids []pgtype.UUID) ([]sqlc.Project, error)
 	GetBySlug(ctx context.Context, slug string) (sqlc.Project, error)
 }
 

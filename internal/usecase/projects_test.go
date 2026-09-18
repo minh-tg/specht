@@ -111,3 +111,59 @@ func TestDeleteProject_NotFound(t *testing.T) {
 	_, err := uc.DeleteProject(sessionCtx("admin-1", auth.RoleAdmin), "missing")
 	assert.ErrorContains(t, err, "project not found")
 }
+
+func TestListProjects_NoIdentityDenied(t *testing.T) {
+	pr := &mockProjectRepo{
+		listFn: func(ctx context.Context) ([]port.Project, error) {
+			t.Fatal("List must not be called when unauthenticated")
+			return nil, nil
+		},
+	}
+	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+	_, err := uc.ListProjects(context.Background())
+	assert.ErrorIs(t, err, ErrProjectAccessDenied)
+}
+
+func TestListProjects_APIKeyScoped(t *testing.T) {
+	pr := &mockProjectRepo{
+		getByIDFn: func(ctx context.Context, id string) (port.Project, error) {
+			assert.Equal(t, "key-proj-1", id)
+			return port.Project{ID: id, Slug: "key-app", Name: "Key App"}, nil
+		},
+		listFn: func(ctx context.Context) ([]port.Project, error) {
+			t.Fatal("List must not be called for API key project listing")
+			return nil, nil
+		},
+	}
+	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+	projects, err := uc.ListProjects(apiKeyCtx("user-1", "key-proj-1"))
+	require.NoError(t, err)
+	require.Len(t, projects, 1)
+	assert.Equal(t, "key-app", projects[0].Slug)
+}
+
+func TestListProjects_MemberScopedByIDs(t *testing.T) {
+	listCalled := false
+	listByIDsCalled := false
+	pr := &mockProjectRepo{
+		listFn: func(ctx context.Context) ([]port.Project, error) {
+			listCalled = true
+			return nil, nil
+		},
+		listAccessibleIDsFn: func(ctx context.Context, userID string) ([]string, error) {
+			return []string{"p1"}, nil
+		},
+		listByIDsFn: func(ctx context.Context, ids []string) ([]port.Project, error) {
+			listByIDsCalled = true
+			assert.Equal(t, []string{"p1"}, ids)
+			return []port.Project{{ID: "p1", Slug: "my-p1", Name: "P1"}}, nil
+		},
+	}
+	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+	projects, err := uc.ListProjects(sessionCtx("u1", auth.RoleViewer))
+	require.NoError(t, err)
+	assert.False(t, listCalled, "full table List must not be called for session member")
+	assert.True(t, listByIDsCalled, "ListByIDs must be called with accessible IDs")
+	require.Len(t, projects, 1)
+	assert.Equal(t, "my-p1", projects[0].Slug)
+}

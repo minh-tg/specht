@@ -210,6 +210,45 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 	return items, nil
 }
 
+const listProjectsByIDs = `-- name: ListProjectsByIDs :many
+SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id FROM projects
+WHERE id = ANY($1::uuid[])
+ORDER BY created_at DESC
+`
+
+func (q *Queries) ListProjectsByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Project, error) {
+	rows, err := q.db.Query(ctx, listProjectsByIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Project
+	for rows.Next() {
+		var i Project
+		if err := rows.Scan(
+			&i.ID,
+			&i.Slug,
+			&i.Name,
+			&i.Description,
+			&i.DeploymentThreshold,
+			&i.Settings,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.CveWatcherGate,
+			&i.CveWatcherEnabled,
+			&i.CveWatcherIntervalSeconds,
+			&i.PolicyTemplateID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateProject = `-- name: UpdateProject :one
 UPDATE projects SET name = $2, description = $3, updated_at = NOW()
 WHERE slug = $1

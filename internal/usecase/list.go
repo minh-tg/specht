@@ -354,44 +354,45 @@ func (u *Usecases) deleteProjectBySlug(ctx context.Context, slug string) error {
 // Global admins see everything; project-scoped API keys see only their own
 // project; other session users see only projects they belong to.
 func (u *Usecases) ListProjects(ctx context.Context) ([]ProjectResponse, error) {
-	projects, err := u.deps.Stores.Projects.List(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list projects: %w", err)
-	}
 	ident := auth.ContextIdentity(ctx)
 	if ident == nil {
 		return nil, ErrProjectAccessDenied
 	}
-	if !ident.IsAPIKey && ident.Role == auth.RoleAdmin {
+	if ident.IsAPIKey {
+		if ident.ProjectID == "" {
+			return nil, ErrProjectAccessDenied
+		}
+		p, err := u.deps.Stores.Projects.GetByID(ctx, ident.ProjectID)
+		if err != nil {
+			if errors.Is(err, port.ErrNotFound) {
+				return []ProjectResponse{}, nil
+			}
+			return nil, fmt.Errorf("get api key project: %w", err)
+		}
+		return []ProjectResponse{toProject(p)}, nil
+	}
+	if ident.Role == auth.RoleAdmin {
+		projects, err := u.deps.Stores.Projects.List(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list projects: %w", err)
+		}
 		return toProjects(projects), nil
 	}
-	// Non-admin session users see only their own projects. Fetch the
-	// membership set once instead of one IsMember query per project (N+1).
-	var memberIDs map[string]bool
-	if !ident.IsAPIKey {
-		ids, err := u.deps.Stores.Projects.ListAccessibleProjectIDs(ctx, ident.UserID)
-		if err != nil {
-			return nil, fmt.Errorf("list member projects: %w", err)
-		}
-		memberIDs = make(map[string]bool, len(ids))
-		for _, id := range ids {
-			memberIDs[id] = true
-		}
+
+	// Non-admin session users see only accessible projects (direct or team).
+	ids, err := u.deps.Stores.Projects.ListAccessibleProjectIDs(ctx, ident.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("list member projects: %w", err)
 	}
-	resp := make([]ProjectResponse, 0, len(projects))
-	for _, p := range projects {
-		if ident.IsAPIKey {
-			if p.ID == ident.ProjectID {
-				resp = append(resp, toProject(p))
-			}
-			continue
-		}
-		if !memberIDs[p.ID] {
-			continue
-		}
-		resp = append(resp, toProject(p))
+	if len(ids) == 0 {
+		return []ProjectResponse{}, nil
 	}
-	return resp, nil
+
+	projects, err := u.deps.Stores.Projects.ListByIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list projects by ids: %w", err)
+	}
+	return toProjects(projects), nil
 }
 
 func toProjects(projects []port.Project) []ProjectResponse {

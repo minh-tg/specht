@@ -21,7 +21,9 @@ type mockProjectRepo struct {
 	port.ProjectStore
 	createFn            func(context.Context, port.CreateProjectInput) (port.Project, error)
 	listFn              func(context.Context) ([]port.Project, error)
+	listByIDsFn         func(context.Context, []string) ([]port.Project, error)
 	getBySlugFn         func(context.Context, string) (port.Project, error)
+	getByIDFn           func(context.Context, string) (port.Project, error)
 	updateFn            func(context.Context, string, string, *string) (port.Project, error)
 	updateSettingsFn    func(context.Context, string, json.RawMessage) (port.Project, error)
 	deleteFn            func(context.Context, string) (port.Project, error)
@@ -32,6 +34,37 @@ type mockProjectRepo struct {
 	isMemberEffectiveFn func(context.Context, string, string) (bool, error)
 	listAccessibleIDsFn func(context.Context, string) ([]string, error)
 	effectiveRoleFn     func(context.Context, string, string) (string, error)
+}
+
+func (m *mockProjectRepo) GetByID(ctx context.Context, id string) (port.Project, error) {
+	if m.getByIDFn != nil {
+		return m.getByIDFn(ctx, id)
+	}
+	return port.Project{}, fmt.Errorf("unexpected call to GetByID")
+}
+
+func (m *mockProjectRepo) ListByIDs(ctx context.Context, ids []string) ([]port.Project, error) {
+	if m.listByIDsFn != nil {
+		return m.listByIDsFn(ctx, ids)
+	}
+	if m.listFn != nil {
+		all, err := m.listFn(ctx)
+		if err != nil {
+			return nil, err
+		}
+		idMap := make(map[string]bool, len(ids))
+		for _, id := range ids {
+			idMap[id] = true
+		}
+		var out []port.Project
+		for _, p := range all {
+			if idMap[p.ID] {
+				out = append(out, p)
+			}
+		}
+		return out, nil
+	}
+	return []port.Project{}, nil
 }
 
 func (m *mockProjectRepo) UpsertMember(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {

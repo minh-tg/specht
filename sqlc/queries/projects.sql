@@ -2,6 +2,11 @@
 SELECT * FROM projects
 ORDER BY created_at DESC;
 
+-- name: ListProjectsByIDs :many
+SELECT * FROM projects
+WHERE id = ANY($1::uuid[])
+ORDER BY created_at DESC;
+
 -- name: GetProjectBySlug :one
 SELECT * FROM projects
 WHERE slug = $1 LIMIT 1;

@@ -139,6 +139,26 @@ func (r *pgProjectPort) List(ctx context.Context) ([]port.Project, error) {
 	return out, nil
 }
 
+func (r *pgProjectPort) ListByIDs(ctx context.Context, ids []string) ([]port.Project, error) {
+	uids := make([]pgtype.UUID, len(ids))
+	for i, id := range ids {
+		uid, err := parseID(id)
+		if err != nil {
+			return nil, err
+		}
+		uids[i] = uid
+	}
+	rows, err := r.q.ListProjectsByIDs(ctx, uids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.Project, len(rows))
+	for i, row := range rows {
+		out[i] = projectToPort(row)
+	}
+	return out, nil
+}
+
 func (r *pgProjectPort) GetBySlug(ctx context.Context, slug string) (port.Project, error) {
 	row, err := r.q.GetProjectBySlug(ctx, slug)
 	if err != nil {
