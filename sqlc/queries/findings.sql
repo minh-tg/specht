@@ -126,6 +126,14 @@ INSERT INTO finding_events (
     $1, $2, $3, $4, $5, $6, $7
 ) RETURNING *;
 
+-- name: BulkCreateFindingEvents :exec
+INSERT INTO finding_events (
+    finding_id, user_id, event_type, old_value, new_value, comment, changes
+)
+SELECT
+    f_id, $2, $3, $4, $5, $6, $7
+FROM UNNEST($1::uuid[]) AS f_id;
+
 -- name: ListFindingEvents :many
 SELECT * FROM finding_events
 WHERE finding_id = $1

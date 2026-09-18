@@ -11,6 +11,38 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const bulkCreateFindingEvents = `-- name: BulkCreateFindingEvents :exec
+INSERT INTO finding_events (
+    finding_id, user_id, event_type, old_value, new_value, comment, changes
+)
+SELECT
+    f_id, $2, $3, $4, $5, $6, $7
+FROM UNNEST($1::uuid[]) AS f_id
+`
+
+type BulkCreateFindingEventsParams struct {
+	Column1   []pgtype.UUID `json:"column_1"`
+	UserID    pgtype.UUID   `json:"user_id"`
+	EventType string        `json:"event_type"`
+	OldValue  pgtype.Text   `json:"old_value"`
+	NewValue  pgtype.Text   `json:"new_value"`
+	Comment   pgtype.Text   `json:"comment"`
+	Changes   []byte        `json:"changes"`
+}
+
+func (q *Queries) BulkCreateFindingEvents(ctx context.Context, arg BulkCreateFindingEventsParams) error {
+	_, err := q.db.Exec(ctx, bulkCreateFindingEvents,
+		arg.Column1,
+		arg.UserID,
+		arg.EventType,
+		arg.OldValue,
+		arg.NewValue,
+		arg.Comment,
+		arg.Changes,
+	)
+	return err
+}
+
 const bulkInsertOccurrences = `-- name: BulkInsertOccurrences :exec
 INSERT INTO finding_occurrences (
     finding_id, report_id, title, description,

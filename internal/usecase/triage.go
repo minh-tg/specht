@@ -195,7 +195,12 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 	gateEffect := stateToGateEffect(input.AnalysisState)
 	userIDStr := userID.String()
 
-	updated, err := u.deps.Stores.Findings.BulkUpdateAnalysis(ctx, port.UpdateAnalysisInput{
+	changes, _ := json.Marshal(map[string]any{
+		"to":     input.AnalysisState,
+		"reason": input.Reason,
+		"count":  len(input.FindingIDs),
+	})
+	updated, err := u.deps.Stores.Findings.BulkTriage(ctx, port.UpdateAnalysisInput{
 		AnalysisState:     input.AnalysisState,
 		GateEffect:        gateEffect,
 		AnalysisExpiresAt: input.AnalysisExpiresAt,
@@ -204,27 +209,14 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 		ManualOverride:    true,
 		ReviewRequired:    false,
 		AnalysisUpdatedBy: &userIDStr,
-	}, input.FindingIDs)
-	if err != nil {
-		return nil, fmt.Errorf("bulk update analysis: %w", err)
-	}
-
-	changes, _ := json.Marshal(map[string]any{
-		"to":     input.AnalysisState,
-		"reason": input.Reason,
-		"count":  len(updated),
+	}, input.FindingIDs, port.FindingEventInput{
+		UserID:    &userIDStr,
+		EventType: "bulk_triage_applied",
+		NewValue:  stringPtr(input.AnalysisState),
+		Changes:   changes,
 	})
-	for _, f := range updated {
-		_, err = u.deps.Stores.Findings.CreateEvent(ctx, port.FindingEventInput{
-			FindingID: f.ID,
-			UserID:    &userIDStr,
-			EventType: "bulk_triage_applied",
-			NewValue:  stringPtr(input.AnalysisState),
-			Changes:   changes,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("log bulk event: %w", err)
-		}
+	if err != nil {
+		return nil, fmt.Errorf("bulk triage: %w", err)
 	}
 
 	results := make([]TriageOutput, len(updated))

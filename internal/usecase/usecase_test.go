@@ -426,6 +426,7 @@ type mockFindingRepo struct {
 	hasDimensionFn                    func(context.Context, string, string) (bool, error)
 	updateAnalysisFn                  func(context.Context, port.UpdateAnalysisInput) (port.Finding, error)
 	bulkUpdateAnalysisFn              func(context.Context, port.UpdateAnalysisInput, []string) ([]port.Finding, error)
+	bulkTriageFn                      func(context.Context, port.UpdateAnalysisInput, []string, port.FindingEventInput) ([]port.Finding, error)
 	createEventFn                     func(context.Context, port.FindingEventInput) (port.FindingEvent, error)
 	listEventsFn                      func(context.Context, string, []string, int32, int32) ([]port.FindingEvent, error)
 	listBlockingFindingsFn            func(context.Context, string, int16) ([]port.Finding, error)
@@ -488,6 +489,24 @@ func (m *mockFindingRepo) BulkUpdateAnalysis(ctx context.Context, arg port.Updat
 		return nil, fmt.Errorf("unexpected call to BulkUpdateAnalysis")
 	}
 	return m.bulkUpdateAnalysisFn(ctx, arg, ids)
+}
+
+func (m *mockFindingRepo) BulkTriage(ctx context.Context, arg port.UpdateAnalysisInput, ids []string, event port.FindingEventInput) ([]port.Finding, error) {
+	if m.bulkTriageFn != nil {
+		return m.bulkTriageFn(ctx, arg, ids, event)
+	}
+	findings, err := m.BulkUpdateAnalysis(ctx, arg, ids)
+	if err != nil {
+		return nil, err
+	}
+	for _, f := range findings {
+		ev := event
+		ev.FindingID = f.ID
+		if _, err := m.CreateEvent(ctx, ev); err != nil {
+			return nil, err
+		}
+	}
+	return findings, nil
 }
 
 func (m *mockFindingRepo) ListEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]port.FindingEvent, error) {

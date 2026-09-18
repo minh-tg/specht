@@ -219,6 +219,53 @@ func (r *pgFindingRepo) BulkUpdateAnalysis(ctx context.Context, arg BulkUpdateAn
 	})
 }
 
+func (r *pgFindingRepo) BulkTriage(ctx context.Context, arg BulkUpdateAnalysisParams, event CreateEventParams) ([]sqlc.Finding, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	q := sqlc.New(tx)
+	updated, err := q.BulkUpdateFindingAnalysis(ctx, sqlc.BulkUpdateFindingAnalysisParams{
+		Column1:           arg.IDs,
+		AnalysisState:     arg.AnalysisState,
+		GateEffect:        arg.GateEffect,
+		AnalysisExpiresAt: arg.AnalysisExpiresAt,
+		AnalysisReason:    arg.AnalysisReason,
+		AnalysisSource:    arg.AnalysisSource,
+		ManualOverride:    arg.ManualOverride,
+		ReviewRequired:    arg.ReviewRequired,
+		AnalysisUpdatedBy: arg.AnalysisUpdatedBy,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("bulk update analysis: %w", err)
+	}
+
+	if len(updated) > 0 {
+		updatedIDs := make([]pgtype.UUID, len(updated))
+		for i, f := range updated {
+			updatedIDs[i] = f.ID
+		}
+		if err := q.BulkCreateFindingEvents(ctx, sqlc.BulkCreateFindingEventsParams{
+			Column1:   updatedIDs,
+			UserID:    event.UserID,
+			EventType: event.EventType,
+			OldValue:  event.OldValue,
+			NewValue:  event.NewValue,
+			Comment:   event.Comment,
+			Changes:   event.Changes,
+		}); err != nil {
+			return nil, fmt.Errorf("bulk create events: %w", err)
+		}
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("commit tx: %w", err)
+	}
+	return updated, nil
+}
+
 // CreateEventParams is the input to creating a finding audit event.
 type CreateEventParams struct {
 	FindingID pgtype.UUID

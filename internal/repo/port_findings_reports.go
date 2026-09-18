@@ -367,6 +367,51 @@ func (r *pgFindingPort) BulkUpdateAnalysis(ctx context.Context, input port.Updat
 	return out, nil
 }
 
+func (r *pgFindingPort) BulkTriage(ctx context.Context, input port.UpdateAnalysisInput, ids []string, event port.FindingEventInput) ([]port.Finding, error) {
+	uids := make([]pgtype.UUID, len(ids))
+	for i, id := range ids {
+		uid, err := parseID(id)
+		if err != nil {
+			return nil, err
+		}
+		uids[i] = uid
+	}
+	eventUserID := pgtype.UUID{}
+	if event.UserID != nil && *event.UserID != "" {
+		uid, err := parseID(*event.UserID)
+		if err != nil {
+			return nil, err
+		}
+		eventUserID = uid
+	}
+	rows, err := r.inner.BulkTriage(ctx, BulkUpdateAnalysisParams{
+		IDs:               uids,
+		AnalysisState:     input.AnalysisState,
+		GateEffect:        input.GateEffect,
+		AnalysisExpiresAt: timestamptzPtrFromTime(input.AnalysisExpiresAt),
+		AnalysisReason:    textPtrFromString(input.AnalysisReason),
+		AnalysisSource:    input.AnalysisSource,
+		ManualOverride:    input.ManualOverride,
+		ReviewRequired:    input.ReviewRequired,
+		AnalysisUpdatedBy: uuidPtrFromString(input.AnalysisUpdatedBy),
+	}, CreateEventParams{
+		UserID:    eventUserID,
+		EventType: event.EventType,
+		OldValue:  textPtrFromString(event.OldValue),
+		NewValue:  textPtrFromString(event.NewValue),
+		Comment:   textPtrFromString(event.Comment),
+		Changes:   event.Changes,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.Finding, len(rows))
+	for i, row := range rows {
+		out[i] = findingRowToPort(row)
+	}
+	return out, nil
+}
+
 func (r *pgFindingPort) CreateEvent(ctx context.Context, input port.FindingEventInput) (port.FindingEvent, error) {
 	fid, err := parseID(input.FindingID)
 	if err != nil {

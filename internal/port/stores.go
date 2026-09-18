@@ -472,6 +472,7 @@ type FindingStore interface {
 	ListByProject(ctx context.Context, projectID string, severities, states, kinds, environments, targets []string, limit, offset int32) ([]Finding, error)
 	UpdateAnalysis(ctx context.Context, input UpdateAnalysisInput) (Finding, error)
 	BulkUpdateAnalysis(ctx context.Context, input UpdateAnalysisInput, ids []string) ([]Finding, error)
+	BulkTriage(ctx context.Context, input UpdateAnalysisInput, ids []string, event FindingEventInput) ([]Finding, error)
 	CreateEvent(ctx context.Context, input FindingEventInput) (FindingEvent, error)
 	ListEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]FindingEvent, error)
 	// ListDimensions returns every persisted dimension of a finding,

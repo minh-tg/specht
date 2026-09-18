@@ -212,6 +212,7 @@ type FindingRepo interface {
 	ListByIDs(ctx context.Context, ids []pgtype.UUID) ([]sqlc.Finding, error)
 	UpdateAnalysis(ctx context.Context, arg UpdateAnalysisParams) (sqlc.Finding, error)
 	BulkUpdateAnalysis(ctx context.Context, arg BulkUpdateAnalysisParams) ([]sqlc.Finding, error)
+	BulkTriage(ctx context.Context, arg BulkUpdateAnalysisParams, event CreateEventParams) ([]sqlc.Finding, error)
 	ListBlockingFindings(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.Finding, error)
 	// ListGateCandidates loads every gate candidate with its context and
 	// latest reachability in one batch (the port batch method).
