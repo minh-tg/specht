@@ -101,3 +101,27 @@ func TestCheckFindingRowsProjectAccess_NoIdentityDenied(t *testing.T) {
 	err := uc.checkFindingRowsProjectAccess(context.Background(), []port.Finding{makeFindingRow(1)})
 	assert.ErrorIs(t, err, ErrProjectAccessDenied)
 }
+
+func TestCheckFindingRowsProjectAccess_DeduplicatesProjectChecks(t *testing.T) {
+	pr := &mockProjectRepo{}
+	queryCount := 0
+	pr.isMemberEffectiveFn = func(ctx context.Context, projectID, userID string) (bool, error) {
+		queryCount++
+		return true, nil
+	}
+	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+
+	// 10 findings belonging to 2 unique projects
+	findings := []port.Finding{
+		{ID: "f1", ProjectID: "p1"},
+		{ID: "f2", ProjectID: "p1"},
+		{ID: "f3", ProjectID: "p1"},
+		{ID: "f4", ProjectID: "p2"},
+		{ID: "f5", ProjectID: "p2"},
+		{ID: "f6", ProjectID: "p1"},
+	}
+
+	err := uc.checkFindingRowsProjectAccess(sessionCtx("u1", auth.RoleViewer), findings)
+	assert.NoError(t, err)
+	assert.Equal(t, 2, queryCount, "must only query membership once per unique project ID")
+}

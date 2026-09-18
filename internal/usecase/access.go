@@ -55,7 +55,12 @@ func (u *Usecases) checkFindingProjectAccess(ctx context.Context, findingID uuid
 }
 
 func (u *Usecases) checkFindingRowsProjectAccess(ctx context.Context, findings []port.Finding) error {
+	seen := make(map[string]bool, 2)
 	for _, finding := range findings {
+		if seen[finding.ProjectID] {
+			continue
+		}
+		seen[finding.ProjectID] = true
 		if err := u.checkFindingProjectIDAccess(ctx, finding.ProjectID); err != nil {
 			return err
 		}
