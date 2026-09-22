@@ -1,5 +1,7 @@
 # Specht
 
+[![ci](https://github.com/minh-tg/specht/actions/workflows/ci.yml/badge.svg)](https://github.com/minh-tg/specht/actions/workflows/ci.yml) [![CodeQL](https://github.com/minh-tg/specht/actions/workflows/codeql.yml/badge.svg)](https://github.com/minh-tg/specht/actions/workflows/codeql.yml) [![Go 1.26](https://img.shields.io/badge/Go-1.26.0-00ADD8?logo=go&logoColor=white)](go.mod) [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+
 Specht is a small, watchful vulnerability management platform. It ingests scan results from Trivy, OSV-Scanner, Semgrep, Checkov, and other tools into a PostgreSQL-backed API. CI/CD pipelines can gate on findings with dimension-based filtering and waiver support.
 
 > **Experimental / playtest project:** Specht is under active development and heavy change. APIs, database schemas, configuration, scanner normalization, and deployment behavior may change without notice. It is not production-ready and should not be used as the sole basis for critical security decisions.
@@ -63,6 +65,17 @@ Commits are checked automatically once hooks are installed: gofumpt, staticcheck
 Run the test suite with `go test ./... -count=1 -short` (unit) or `go test -tags integration ./internal/repo/ -count=1` (needs Docker for testcontainers). Frontend checks run with `pnpm -C frontend test`, `pnpm -C frontend exec tsc -b`, `pnpm -C frontend exec dprint check`, and `pnpm -C frontend lint`.
 
 Changes that add scanner kinds, alter normalized contracts, change database schemas, or change gate policy require an accepted RFC under `rfcs/`.
+
+## Engineering Process
+
+Development is gated rather than ad hoc:
+
+- **Design first** — changes to scanner kinds, normalized contracts, database schemas, or gate policy require an accepted [RFC](rfcs/) before implementation.
+- **Checked commits** — the pre-commit suite above gates every commit; CI repeats tests, Go lint, and frontend checks on each push ([ci.yml](.github/workflows/ci.yml)).
+- **Static analysis** — CodeQL runs through [codeql.yml](.github/workflows/codeql.yml); [Dependabot](.github/workflows/dependabot.yml) opens dependency PRs with a cooldown window.
+- **Tests** — 1,400+ Go tests (unit plus testcontainers-backed integration) and a frontend suite; committed fixtures under `examples/` are the parser compatibility contract.
+- **Releases** — pushing a `v*` tag triggers [release.yml](.github/workflows/release.yml) to build and publish a versioned container image.
+- **Contributions** — Developer Certificate of Origin sign-off; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Project Status
 
