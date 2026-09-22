@@ -27,9 +27,10 @@ const (
 // Deps carries command dependencies. Out and ErrW are injectable so
 // commands are testable with buffers.
 type Deps struct {
-	NewClient func() (*client.Client, error)
-	Out       io.Writer
-	ErrW      io.Writer
+	NewClient          func() (*client.Client, error)
+	RunWatcherBackfill func(WatcherBackfillOptions) (WatcherBackfillResult, error)
+	Out                io.Writer
+	ErrW               io.Writer
 }
 
 // settings holds flag values shared across the tree.
@@ -52,8 +53,9 @@ func DefaultDeps() Deps {
 			}
 			return client.New(apiURL, client.WithToken(token)), nil
 		},
-		Out:  os.Stdout,
-		ErrW: os.Stderr,
+		RunWatcherBackfill: runWatcherBackfill,
+		Out:                os.Stdout,
+		ErrW:               os.Stderr,
 	}
 }
 
@@ -81,6 +83,7 @@ func NewRootCmd(d Deps) *cobra.Command {
 	root.AddCommand(newPolicyCmd(d, s))
 	root.AddCommand(newProjectTeamsCmd(d, s))
 	root.AddCommand(newTeamsCmd(d, s))
+	root.AddCommand(newWatcherCmd(d, s))
 	return root
 }
 
