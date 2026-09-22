@@ -157,28 +157,47 @@ func NormalizeAliases(ids []string) (primary string, aliases []string) {
 // versionInRange reports whether the canonical version v falls inside any
 // interval expressed by the range's events. Events are evaluated in order:
 // introduced opens an interval, fixed / last_affected / limit closes it.
+// rangeCloseMatch reports whether the version v falls inside the interval
+// opened by introduced and closed by a single non-introduced event.
+func rangeCloseMatch(ev RangeEvent, introduced string, haveIntroduced bool, v string) bool {
+	switch {
+	case ev.Fixed != "":
+		return intervalContains(introduced, haveIntroduced, ev.Fixed, false, v)
+	case ev.LastAffected != "":
+		return intervalContains(introduced, haveIntroduced, ev.LastAffected, true, v)
+	case ev.Limit != "":
+		return intervalContains(introduced, haveIntroduced, ev.Limit, false, v)
+	default:
+		return false
+	}
+}
+
+// openEndedContains reports whether v is at or above a trailing introduced
+// bound with no closing event.
+func openEndedContains(introduced string, v string) bool {
+	if introduced == "0" {
+		return true
+	}
+	lower := normalizeVersion(introduced)
+	if lower == "" {
+		return false
+	}
+	return semver.Compare(v, lower) >= 0
+}
+
 func versionInRange(r VersionRange, v string) bool {
 	var introduced string // "" means the OSV default lower bound "0"
 	haveIntroduced := false
 	for _, ev := range r.Events {
-		switch {
-		case ev.Introduced != "":
+		if ev.Introduced != "" {
 			introduced = ev.Introduced
 			haveIntroduced = true
-		case ev.Fixed != "":
-			if intervalContains(introduced, haveIntroduced, ev.Fixed, false, v) {
-				return true
-			}
-			introduced, haveIntroduced = "", false
-		case ev.LastAffected != "":
-			if intervalContains(introduced, haveIntroduced, ev.LastAffected, true, v) {
-				return true
-			}
-			introduced, haveIntroduced = "", false
-		case ev.Limit != "":
-			if intervalContains(introduced, haveIntroduced, ev.Limit, false, v) {
-				return true
-			}
+			continue
+		}
+		if rangeCloseMatch(ev, introduced, haveIntroduced, v) {
+			return true
+		}
+		if ev.Fixed != "" || ev.LastAffected != "" || ev.Limit != "" {
 			introduced, haveIntroduced = "", false
 		}
 	}
@@ -188,14 +207,7 @@ func versionInRange(r VersionRange, v string) bool {
 	// unparseable bound cannot be judged (never a false positive), and
 	// anything else requires v >= introduced.
 	if haveIntroduced {
-		if introduced == "0" {
-			return true
-		}
-		lower := normalizeVersion(introduced)
-		if lower == "" {
-			return false
-		}
-		return semver.Compare(v, lower) >= 0
+		return openEndedContains(introduced, v)
 	}
 	return false
 }

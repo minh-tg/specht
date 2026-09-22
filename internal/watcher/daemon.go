@@ -221,7 +221,7 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 	}
 
 	notifyCreated(ctx, deps, created)
-	deps.Logger.Info("cve watcher poll complete", "projects", outcome.Projects, "queried", outcome.Queried, "created", outcome.Created, "skipped", outcome.Skipped, "unchanged", outcome.Unchanged)
+	deps.Logger.Info(msgPollComplete, "projects", outcome.Projects, "queried", outcome.Queried, "created", outcome.Created, "skipped", outcome.Skipped, "unchanged", outcome.Unchanged)
 	return outcome, nil
 }
 
@@ -303,14 +303,21 @@ const (
 	decisionIgnored
 )
 
+// Watcher log messages emitted from multiple poll paths.
+const (
+	msgPollComplete  = "cve watcher poll complete"
+	msgDaemonStopped = "cve watcher daemon stopped"
+)
+
 // decidePair evaluates one (advisory, inventory row) pair and persists the
 // outcome. The gap-check closure resolves the suppressing finding id so the
 // auto_rule_skipped event can be attached to it. It returns the outcome kind,
 // whether the skip was orphaned, and (when created) the decision that carries
 // the persisted finding payload for downstream notification.
-func decidePair(ctx context.Context, deps PollDeps, projectID string, g invGroup, row port.InventoryPackage, advisory Advisory) (decisionKind, bool, Decision, error) {
-	var suppressing string
-	gap := func(ctx context.Context, gapProjectID, purlName string, candidateIDs []string) (bool, error) {
+// pairGapCheck builds the gap-check callback for one pair, recording the
+// suppressing finding id for skip-event attachment.
+func pairGapCheck(deps PollDeps, suppressing *string) GapCheck {
+	return func(ctx context.Context, gapProjectID, purlName string, candidateIDs []string) (bool, error) {
 		id, err := deps.FindGap(ctx, gapProjectID, purlName, candidateIDs)
 		if err != nil {
 			return false, err
@@ -318,9 +325,42 @@ func decidePair(ctx context.Context, deps PollDeps, projectID string, g invGroup
 		if id == "" {
 			return false, nil
 		}
-		suppressing = id
+		*suppressing = id
 		return true, nil
 	}
+}
+
+// persistPairDecision writes a decided pair outcome to the store.
+func persistPairDecision(ctx context.Context, deps PollDeps, decision Decision, suppressing string) (decisionKind, bool, Decision, error) {
+	if decision.Created {
+		_, created, err := deps.Store.PersistFoundFinding(ctx, decision)
+		if err != nil {
+			return decisionIgnored, false, Decision{}, err
+		}
+		if !created {
+			// Re-poll hit of an existing watcher finding: the fingerprint is
+			// already persisted, so this is an unchanged outcome, not a new
+			// finding — backfill counters must stay honest.
+			return decisionUnchanged, false, Decision{}, nil
+		}
+		return decisionCreated, false, decision, nil
+	}
+	if decision.Event == nil {
+		return decisionIgnored, false, Decision{}, nil
+	}
+	// auto_rule_skipped: attach to the suppressing finding.
+	if suppressing == "" {
+		return decisionIgnored, true, Decision{}, nil
+	}
+	if err := deps.Store.PersistSkipEvent(ctx, suppressing, *decision.Event); err != nil {
+		return decisionIgnored, false, Decision{}, err
+	}
+	return decisionSkipped, false, Decision{}, nil
+}
+
+func decidePair(ctx context.Context, deps PollDeps, projectID string, g invGroup, row port.InventoryPackage, advisory Advisory) (decisionKind, bool, Decision, error) {
+	var suppressing string
+	gap := pairGapCheck(deps, &suppressing)
 
 	input := DecideInput{
 		ProjectID: projectID,
@@ -340,29 +380,7 @@ func decidePair(ctx context.Context, deps PollDeps, projectID string, g invGroup
 	if err != nil {
 		return decisionIgnored, false, Decision{}, err
 	}
-	if decision.Created {
-		_, created, err := deps.Store.PersistFoundFinding(ctx, decision)
-		if err != nil {
-			return decisionIgnored, false, Decision{}, err
-		}
-		if !created {
-			// Re-poll hit of an existing watcher finding: the fingerprint is
-			// already persisted, so this is an unchanged outcome, not a new
-			// finding — backfill counters must stay honest.
-			return decisionUnchanged, false, Decision{}, nil
-		}
-		return decisionCreated, false, decision, nil
-	}
-	if decision.Event != nil { // auto_rule_skipped: attach to the suppressing finding
-		if suppressing != "" {
-			if err := deps.Store.PersistSkipEvent(ctx, suppressing, *decision.Event); err != nil {
-				return decisionIgnored, false, Decision{}, err
-			}
-			return decisionSkipped, false, Decision{}, nil
-		}
-		return decisionIgnored, true, Decision{}, nil
-	}
-	return decisionIgnored, false, Decision{}, nil
+	return persistPairDecision(ctx, deps, decision, suppressing)
 }
 
 // invGroup is one OSV query key (ecosystem + name) with the inventory rows
@@ -510,7 +528,7 @@ func RunCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 						}
 					}
 				default:
-					logger.Info("cve watcher poll complete", "projects", outcome.Projects, "queried", outcome.Queried, "created", outcome.Created, "skipped", outcome.Skipped, "unchanged", outcome.Unchanged)
+					logger.Info(msgPollComplete, "projects", outcome.Projects, "queried", outcome.Queried, "created", outcome.Created, "skipped", outcome.Skipped, "unchanged", outcome.Unchanged)
 					backoff = 0
 					delay = cfg.Jitter(cfg.PollInterval)
 					if cfg.PollDeps.RecordSuccess != nil {
@@ -531,7 +549,7 @@ func RunCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 				delay = cfg.Jitter(cfg.PollInterval)
 			}
 			if err := cfg.Sleep(ctx, delay); err != nil {
-				logger.Info("cve watcher daemon stopped")
+				logger.Info(msgDaemonStopped)
 				return
 			}
 		}
@@ -601,7 +619,7 @@ func runScheduledCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 
 		if len(nextDue) == 0 {
 			if cfg.ReloadProjects == nil {
-				logger.Info("cve watcher daemon stopped")
+				logger.Info(msgDaemonStopped)
 				return
 			}
 			idleDelay := cfg.PollInterval
@@ -609,7 +627,7 @@ func runScheduledCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 				idleDelay = time.Minute
 			}
 			if err := cfg.Sleep(ctx, idleDelay); err != nil {
-				logger.Info("cve watcher daemon stopped")
+				logger.Info(msgDaemonStopped)
 				return
 			}
 			continue
@@ -642,7 +660,7 @@ func runScheduledCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 				delay = jittered
 			}
 			if err := cfg.Sleep(ctx, delay); err != nil {
-				logger.Info("cve watcher daemon stopped")
+				logger.Info(msgDaemonStopped)
 				return
 			}
 			continue
@@ -699,7 +717,7 @@ func runScheduledCveWatcher(ctx context.Context, cfg RunCveWatcherConfig) {
 			continue
 		}
 
-		logger.Info("cve watcher poll complete", "projects", outcome.Projects, "queried", outcome.Queried, "created", outcome.Created, "skipped", outcome.Skipped, "unchanged", outcome.Unchanged)
+		logger.Info(msgPollComplete, "projects", outcome.Projects, "queried", outcome.Queried, "created", outcome.Created, "skipped", outcome.Skipped, "unchanged", outcome.Unchanged)
 		successAt := cfg.Now().UTC()
 		if cfg.PollDeps.RecordSuccess != nil {
 			if herr := cfg.PollDeps.RecordSuccess(ctx, successAt); herr != nil {

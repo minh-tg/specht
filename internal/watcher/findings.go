@@ -159,6 +159,138 @@ type Event struct {
 //  5. Create: fingerprint sha256(purl|cve_id), severity from advisory CVSS
 //     ratings (unknown/rank 0 when unrated — still created), scan-equivalent
 //     dimensions, remediation from fixed versions and references.
+//
+// coveredSkipDecision assembles the gap-fill suppression outcome.
+func coveredSkipDecision(input DecideInput) Decision {
+	reason := "already covered by a scan-derived finding"
+	ev := &Event{
+		EventType: EventAutoRuleSkipped,
+		Changes:   eventChanges(input.Advisory.ID, reason),
+	}
+	return skipDecision(reason, ev)
+}
+
+// findingDimensions builds the scan-equivalent dimension set for a created
+// watcher finding.
+func findingDimensions(input DecideInput, primary string, aliases []string, ecosystem string, fixed []string) []domain.Dimension {
+	dims := []domain.Dimension{
+		{Key: domain.DimPURL, Value: input.Purl},
+		{Key: domain.DimVulnerabilityID, Value: primary},
+		{Key: domain.DimSource, Value: DimensionSourceValue},
+		{Key: domain.DimInstalledVer, Value: input.Version},
+	}
+	if ecosystem != "" {
+		dims = append(dims, domain.Dimension{Key: domain.DimEcosystem, Value: ecosystem})
+	}
+	for _, a := range aliases {
+		dims = append(dims, domain.Dimension{Key: domain.DimAlias, Value: a})
+	}
+	for _, fv := range fixed {
+		dims = append(dims, domain.Dimension{Key: domain.DimFixedVersion, Value: fv})
+	}
+	return dims
+}
+
+// findingDisplay carries the display/metadata inputs for a created watcher
+// finding, keeping findingExtensions under the parameter-count limit.
+type findingDisplay struct {
+	primary   string
+	aliases   []string
+	nameLevel string
+	ecosystem string
+	severity  string
+	vector    string
+	fixed     []string
+}
+
+// findingExtensions builds the display/metadata payload for a created
+// watcher finding.
+func findingExtensions(input DecideInput, d findingDisplay) map[string]any {
+	ext := map[string]any{
+		"purl":            input.Purl,
+		"package_name":    d.nameLevel,
+		"version":         input.Version,
+		"severity":        d.severity,
+		"advisory_id":     input.Advisory.ID,
+		"cve_id":          d.primary,
+		"component_name":  d.nameLevel,
+		"source":          DimensionSourceValue,
+		"aliases":         d.aliases,
+		"severity_src":    "osv",
+		"installed_range": d.fixed,
+	}
+	if d.ecosystem != "" {
+		ext["ecosystem"] = d.ecosystem
+	}
+	if input.Advisory.Published != "" {
+		ext["published"] = input.Advisory.Published
+	}
+	if input.Advisory.Modified != "" {
+		ext["modified"] = input.Advisory.Modified
+	}
+	if d.vector != "" {
+		ext["cvss_vector"] = d.vector
+	}
+	if urls := advisoryURLs(input.Advisory.Refs); len(urls) > 0 {
+		ext["references"] = urls
+	}
+	return ext
+}
+
+// assembleCreatedDecision builds the create outcome for one decided pair.
+func assembleCreatedDecision(input DecideInput, primary string, aliases []string, aff Affected, nameLevel string) Decision {
+	severity, rank, score, vector := advisorySeverity(input.Advisory.Severity)
+	fixed := fixedVersions([]Affected{aff})
+	remediation := remediationText(fixed, advisoryURLs(input.Advisory.Refs))
+
+	// Provenance: persist the raw upstream bytes when the client captured
+	// them; fall back to the decoded subset only for hand-built fixtures.
+	evidence := mustJSON(input.Advisory)
+	if len(input.Advisory.Raw) > 0 {
+		evidence = input.Advisory.Raw
+	}
+
+	title := strings.TrimSpace(input.Advisory.Summary)
+	if title == "" {
+		title = fmt.Sprintf("%s affects %s", primary, nameLevel)
+	}
+
+	ecosystem := normalizeEcosystem(input.Ecosystem)
+	ext := findingExtensions(input, findingDisplay{
+		primary:   primary,
+		aliases:   aliases,
+		nameLevel: nameLevel,
+		ecosystem: ecosystem,
+		severity:  severity,
+		vector:    vector,
+		fixed:     fixed,
+	})
+	finding := FindingPayload{
+		ProjectID:    input.ProjectID,
+		FindingKind:  FindingKindCVEWatcher,
+		Fingerprint:  fingerprint(input.Purl, primary),
+		Title:        title,
+		Description:  input.Advisory.Details,
+		Severity:     severity,
+		SeverityRank: rank,
+		Score:        score,
+		Remediation:  remediation,
+		Dimensions:   findingDimensions(input, primary, aliases, ecosystem, fixed),
+		Display:      ext,
+		Metadata:     ext,
+	}
+
+	return Decision{
+		Created: true,
+		Finding: finding,
+		Event: &Event{
+			EventType: EventAutoRuleApplied,
+			Changes:   eventChanges(input.Advisory.ID, ""),
+		},
+		Evidence: evidence,
+	}
+}
+
 func DecideFinding(ctx context.Context, input DecideInput, gapCheck GapCheck) (Decision, error) {
 	if gapCheck == nil {
 		return Decision{}, fmt.Errorf("gap check callback is required")
@@ -205,105 +337,11 @@ func DecideFinding(ctx context.Context, input DecideInput, gapCheck GapCheck) (D
 		return Decision{}, fmt.Errorf("gap check %s/%s: %w", input.Purl, primary, err)
 	}
 	if covered {
-		reason := "already covered by a scan-derived finding"
-		ev := &Event{
-			EventType: EventAutoRuleSkipped,
-			Changes:   eventChanges(input.Advisory.ID, reason),
-		}
-		return skipDecision(reason, ev), nil
+		return coveredSkipDecision(input), nil
 	}
 
 	// 5. Create.
-	severity, rank, score, vector := advisorySeverity(input.Advisory.Severity)
-	fixed := fixedVersions([]Affected{aff})
-	remediation := remediationText(fixed, advisoryURLs(input.Advisory.Refs))
-	fingerprint := fingerprint(input.Purl, primary)
-
-	// Provenance: persist the raw upstream bytes when the client captured
-	// them; fall back to the decoded subset only for hand-built fixtures.
-	evidence := mustJSON(input.Advisory)
-	if len(input.Advisory.Raw) > 0 {
-		evidence = input.Advisory.Raw
-	}
-
-	title := strings.TrimSpace(input.Advisory.Summary)
-	if title == "" {
-		title = fmt.Sprintf("%s affects %s", primary, nameLevel)
-	}
-
-	ecosystem := normalizeEcosystem(input.Ecosystem)
-
-	dims := []domain.Dimension{
-		{Key: domain.DimPURL, Value: input.Purl},
-		{Key: domain.DimVulnerabilityID, Value: primary},
-		{Key: domain.DimSource, Value: DimensionSourceValue},
-		{Key: domain.DimInstalledVer, Value: input.Version},
-	}
-	if ecosystem != "" {
-		dims = append(dims, domain.Dimension{Key: domain.DimEcosystem, Value: ecosystem})
-	}
-	for _, a := range aliases {
-		dims = append(dims, domain.Dimension{Key: domain.DimAlias, Value: a})
-	}
-	for _, fv := range fixed {
-		dims = append(dims, domain.Dimension{Key: domain.DimFixedVersion, Value: fv})
-	}
-	// The watcher has no versioned package_name for non-purl ecosystems; the
-	// name-level identity dimension is not canonical (dropped at persistence),
-	// so it lives in the extension payload instead of the dimension set.
-	ext := map[string]any{
-		"purl":            input.Purl,
-		"package_name":    nameLevel,
-		"version":         input.Version,
-		"severity":        severity,
-		"advisory_id":     input.Advisory.ID,
-		"cve_id":          primary,
-		"component_name":  nameLevel,
-		"source":          DimensionSourceValue,
-		"aliases":         aliases,
-		"severity_src":    "osv",
-		"installed_range": fixed,
-	}
-	if ecosystem != "" {
-		ext["ecosystem"] = ecosystem
-	}
-	if input.Advisory.Published != "" {
-		ext["published"] = input.Advisory.Published
-	}
-	if input.Advisory.Modified != "" {
-		ext["modified"] = input.Advisory.Modified
-	}
-	if vector != "" {
-		ext["cvss_vector"] = vector
-	}
-	if urls := advisoryURLs(input.Advisory.Refs); len(urls) > 0 {
-		ext["references"] = urls
-	}
-
-	finding := FindingPayload{
-		ProjectID:    input.ProjectID,
-		FindingKind:  FindingKindCVEWatcher,
-		Fingerprint:  fingerprint,
-		Title:        title,
-		Description:  input.Advisory.Details,
-		Severity:     severity,
-		SeverityRank: rank,
-		Score:        score,
-		Remediation:  remediation,
-		Dimensions:   dims,
-		Display:      ext,
-		Metadata:     ext,
-	}
-
-	return Decision{
-		Created: true,
-		Finding: finding,
-		Event: &Event{
-			EventType: EventAutoRuleApplied,
-			Changes:   eventChanges(input.Advisory.ID, ""),
-		},
-		Evidence: evidence,
-	}, nil
+	return assembleCreatedDecision(input, primary, aliases, aff, nameLevel), nil
 }
 
 // fingerprint is the cve_watcher identity formula from the design:
