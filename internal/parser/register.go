@@ -5,18 +5,18 @@
 package parser
 
 import (
-	"github.com/xMinhx/specht/internal/parser/checkov"
-	"github.com/xMinhx/specht/internal/parser/dependencycheck"
-	"github.com/xMinhx/specht/internal/parser/gitleaks"
-	"github.com/xMinhx/specht/internal/parser/grype"
-	"github.com/xMinhx/specht/internal/parser/nuclei"
-	"github.com/xMinhx/specht/internal/parser/osvscanner"
-	"github.com/xMinhx/specht/internal/parser/sarif"
-	"github.com/xMinhx/specht/internal/parser/sbom"
-	"github.com/xMinhx/specht/internal/parser/semgrep"
-	"github.com/xMinhx/specht/internal/parser/tfsec"
-	"github.com/xMinhx/specht/internal/parser/trivy"
-	"github.com/xMinhx/specht/internal/scanner"
+	"github.com/minh-tg/specht/internal/parser/checkov"
+	"github.com/minh-tg/specht/internal/parser/dependencycheck"
+	"github.com/minh-tg/specht/internal/parser/gitleaks"
+	"github.com/minh-tg/specht/internal/parser/grype"
+	"github.com/minh-tg/specht/internal/parser/nuclei"
+	"github.com/minh-tg/specht/internal/parser/osvscanner"
+	"github.com/minh-tg/specht/internal/parser/sarif"
+	"github.com/minh-tg/specht/internal/parser/sbom"
+	"github.com/minh-tg/specht/internal/parser/semgrep"
+	"github.com/minh-tg/specht/internal/parser/tfsec"
+	"github.com/minh-tg/specht/internal/parser/trivy"
+	"github.com/minh-tg/specht/internal/scanner"
 )
 
 // Builtins returns the concrete built-in scanner parser adapters in a stable

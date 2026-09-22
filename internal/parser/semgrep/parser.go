@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/xMinhx/specht/internal/domain"
-	"github.com/xMinhx/specht/internal/scanner"
+	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/scanner"
 )
 
 type sarifReport struct {

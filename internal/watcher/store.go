@@ -17,7 +17,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 const (

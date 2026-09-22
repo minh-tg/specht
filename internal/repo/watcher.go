@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/minh-tg/specht/internal/db/sqlc"
 )
 
 // WatcherRepo is the persistence surface for the CVE feed watcher's poll

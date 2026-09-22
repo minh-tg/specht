@@ -1,4 +1,4 @@
-module github.com/xMinhx/specht
+module github.com/minh-tg/specht
 
 go 1.26.0
 

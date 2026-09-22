@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/minh-tg/specht/internal/client"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/xMinhx/specht/internal/client"
 )
 
 type API interface {

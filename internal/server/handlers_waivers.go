@@ -6,10 +6,10 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/xMinhx/specht/internal/audit"
-	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/port"
-	"github.com/xMinhx/specht/internal/usecase"
+	"github.com/minh-tg/specht/internal/audit"
+	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/port"
+	"github.com/minh-tg/specht/internal/usecase"
 )
 
 const (

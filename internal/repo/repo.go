@@ -13,8 +13,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/xMinhx/specht/internal/db/sqlc"
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/db/sqlc"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 // Repos is the aggregate persistence handle: one field per domain repository,

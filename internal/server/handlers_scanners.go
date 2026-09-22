@@ -3,7 +3,7 @@ package server
 import (
 	"net/http"
 
-	"github.com/xMinhx/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/auth"
 )
 
 // ListScanners serves the deterministic scanner capability list. The route

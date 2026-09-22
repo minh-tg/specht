@@ -1,8 +1,8 @@
 package usecase
 
 import (
-	"github.com/xMinhx/specht/internal/domain"
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 // Extension namespace prefixes. The occurrence mapper preserves producer

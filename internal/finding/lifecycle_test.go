@@ -3,8 +3,8 @@ package finding_test
 import (
 	"testing"
 
+	"github.com/minh-tg/specht/internal/finding"
 	"github.com/stretchr/testify/assert"
-	"github.com/xMinhx/specht/internal/finding"
 )
 
 func TestParseAnalysisState_Valid(t *testing.T) {

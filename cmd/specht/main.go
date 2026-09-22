@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/xMinhx/specht/cmd/specht/cli"
+	"github.com/minh-tg/specht/cmd/specht/cli"
 )
 
 func main() {

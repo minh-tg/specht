@@ -3,8 +3,8 @@ package repo
 import (
 	"context"
 
-	"github.com/xMinhx/specht/internal/db/sqlc"
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/db/sqlc"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 // pgTeamPort persists teams, memberships, and project links directly over

@@ -21,8 +21,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/xMinhx/specht/internal/domain"
-	"github.com/xMinhx/specht/internal/scanner"
+	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/scanner"
 )
 
 // Scanner adapts Nuclei JSONL output to the normalized domain model.

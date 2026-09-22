@@ -14,9 +14,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/xMinhx/specht/internal/domain"
-	"github.com/xMinhx/specht/internal/parser"
-	"github.com/xMinhx/specht/internal/scanner"
+	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser"
+	"github.com/minh-tg/specht/internal/scanner"
 )
 
 var canonicalDims = map[string]struct{}{

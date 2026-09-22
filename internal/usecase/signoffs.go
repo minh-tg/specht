@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 // SignoffResponse is a signoff record attached to a finding.

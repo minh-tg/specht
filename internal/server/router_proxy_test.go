@@ -6,9 +6,9 @@ import (
 	"net/netip"
 	"testing"
 
+	"github.com/minh-tg/specht/internal/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/auth"
 )
 
 // testOIDC builds an OIDC authenticator for router-level SSO tests. The

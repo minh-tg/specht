@@ -10,7 +10,7 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 // SweepExpiredFindings performs a single sweep of findings with expired

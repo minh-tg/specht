@@ -7,8 +7,8 @@ import (
 	"sort"
 	"time"
 
-	"github.com/xMinhx/specht/internal/aging"
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/aging"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 // SeverityCount is one severity bucket of a project's finding breakdown.

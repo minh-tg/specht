@@ -16,8 +16,8 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/version"
+	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/version"
 )
 
 const (

@@ -8,8 +8,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/xMinhx/specht/internal/notify"
-	"github.com/xMinhx/specht/internal/patch"
+	"github.com/minh-tg/specht/internal/notify"
+	"github.com/minh-tg/specht/internal/patch"
 )
 
 // IngestPayload is the request body for ingesting a scanner report.

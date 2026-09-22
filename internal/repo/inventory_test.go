@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/minh-tg/specht/internal/db/sqlc"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/db/sqlc"
 )
 
 type mockInventoryQueries struct {

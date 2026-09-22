@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/minh-tg/specht/internal/client"
 	"github.com/spf13/cobra"
-	"github.com/xMinhx/specht/internal/client"
 )
 
 func newPatchCmd(d Deps, s *settings) *cobra.Command {

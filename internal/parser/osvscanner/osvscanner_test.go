@@ -5,11 +5,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/xMinhx/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/domain"
 
+	"github.com/minh-tg/specht/internal/parser/osvscanner"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/parser/osvscanner"
 )
 
 func TestName(t *testing.T) {

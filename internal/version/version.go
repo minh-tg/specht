@@ -4,7 +4,7 @@
 package version
 
 // Version is the semantic version of this build. Overridden at release time
-// with -ldflags "-X github.com/xMinhx/specht/internal/version.Version=vX.Y.Z".
+// with -ldflags "-X github.com/minh-tg/specht/internal/version.Version=vX.Y.Z".
 var Version = "dev"
 
 // Commit is the short git SHA this build was produced from. Overridden at

@@ -9,10 +9,10 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/xMinhx/specht/internal/domain"
-	"github.com/xMinhx/specht/internal/finding"
-	"github.com/xMinhx/specht/internal/port"
-	"github.com/xMinhx/specht/internal/scanner"
+	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/finding"
+	"github.com/minh-tg/specht/internal/port"
+	"github.com/minh-tg/specht/internal/scanner"
 )
 
 // TestIngestRegression_LogsEvent verifies that when a finding previously

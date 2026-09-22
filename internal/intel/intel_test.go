@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/xMinhx/specht/internal/risk"
+	"github.com/minh-tg/specht/internal/risk"
 )
 
 func writeJSON(t *testing.T, w http.ResponseWriter, body string) {

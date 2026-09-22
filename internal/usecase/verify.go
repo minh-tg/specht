@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/xMinhx/specht/internal/port"
-	"github.com/xMinhx/specht/internal/tracker"
+	"github.com/minh-tg/specht/internal/port"
+	"github.com/minh-tg/specht/internal/tracker"
 )
 
 // Verify outcomes for evidence-backed rescan verification.

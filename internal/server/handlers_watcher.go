@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/xMinhx/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/auth"
 )
 
 // GetWatcherStatus reports the CVE watcher daemon's health:

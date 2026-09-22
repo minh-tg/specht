@@ -15,7 +15,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/xMinhx/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/domain"
 )
 
 // ScanTypeSARIF classifies a SARIF-format scan (semgrep). It is the scanner

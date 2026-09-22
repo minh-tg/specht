@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/xMinhx/specht/internal/client"
+	"github.com/minh-tg/specht/internal/client"
 )
 
 func runStats(t *testing.T, d Deps, args ...string) error {

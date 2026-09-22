@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"testing"
 
+	"github.com/minh-tg/specht/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/domain"
 )
 
 func TestScopeHashMaterial_StableAndSensitive(t *testing.T) {

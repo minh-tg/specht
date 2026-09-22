@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/xMinhx/specht/internal/db/sqlc"
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/db/sqlc"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 // pgInventoryPort adapts InventoryStore over the existing repo.

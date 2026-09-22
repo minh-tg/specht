@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/xMinhx/specht/internal/client"
+	"github.com/minh-tg/specht/internal/client"
 )
 
 func main() {

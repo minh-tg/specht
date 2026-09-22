@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/xMinhx/specht/internal/client"
+	"github.com/minh-tg/specht/internal/client"
 )
 
 func testDeps(t *testing.T, mux *http.ServeMux) (Deps, *bytes.Buffer, *bytes.Buffer) {

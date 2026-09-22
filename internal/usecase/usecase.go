@@ -14,13 +14,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/domain"
-	"github.com/xMinhx/specht/internal/gate"
-	"github.com/xMinhx/specht/internal/port"
-	"github.com/xMinhx/specht/internal/provider"
-	"github.com/xMinhx/specht/internal/scanner"
-	"github.com/xMinhx/specht/internal/tracker"
+	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/gate"
+	"github.com/minh-tg/specht/internal/port"
+	"github.com/minh-tg/specht/internal/provider"
+	"github.com/minh-tg/specht/internal/scanner"
+	"github.com/minh-tg/specht/internal/tracker"
 )
 
 // ErrDuplicateReport is returned when a report with the same raw-content hash

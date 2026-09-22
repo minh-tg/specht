@@ -16,8 +16,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/xMinhx/specht/internal/cvss"
-	"github.com/xMinhx/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/cvss"
+	"github.com/minh-tg/specht/internal/domain"
 )
 
 const (

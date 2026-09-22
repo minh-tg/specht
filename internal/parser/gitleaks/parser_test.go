@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/xMinhx/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/domain"
 )
 
 // secretsInFixture returns every secret-material string in the fixture. The

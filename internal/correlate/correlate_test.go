@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/xMinhx/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/domain"
 )
 
 func sca(vuln, pkg, eco string, aliases ...string) domain.NormalizedFinding {

@@ -6,8 +6,8 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/xMinhx/specht/internal/audit"
-	"github.com/xMinhx/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/audit"
+	"github.com/minh-tg/specht/internal/auth"
 )
 
 // authMsgInvalidBody is the user-facing message for malformed auth payloads.

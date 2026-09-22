@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/xMinhx/specht/internal/notify"
+	"github.com/minh-tg/specht/internal/notify"
 )
 
 // PreviewNotification plans (but never sends) the issue-tracker or

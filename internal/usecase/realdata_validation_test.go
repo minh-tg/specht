@@ -14,12 +14,12 @@ import (
 	"os"
 	"testing"
 
+	"github.com/minh-tg/specht/internal/parser"
+	"github.com/minh-tg/specht/internal/parser/gitleaks"
+	"github.com/minh-tg/specht/internal/port"
+	"github.com/minh-tg/specht/internal/scanner"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/parser"
-	"github.com/xMinhx/specht/internal/parser/gitleaks"
-	"github.com/xMinhx/specht/internal/port"
-	"github.com/xMinhx/specht/internal/scanner"
 )
 
 type loopCase struct {

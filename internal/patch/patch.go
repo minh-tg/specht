@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/xMinhx/specht/internal/remediate"
+	"github.com/minh-tg/specht/internal/remediate"
 )
 
 // Class names a supported remediation class. Only listed classes ever

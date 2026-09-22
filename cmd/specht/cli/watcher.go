@@ -8,12 +8,12 @@ import (
 	"os"
 	"time"
 
+	"github.com/minh-tg/specht/internal/config"
+	"github.com/minh-tg/specht/internal/db"
+	"github.com/minh-tg/specht/internal/port"
+	"github.com/minh-tg/specht/internal/repo"
+	"github.com/minh-tg/specht/internal/watcher"
 	"github.com/spf13/cobra"
-	"github.com/xMinhx/specht/internal/config"
-	"github.com/xMinhx/specht/internal/db"
-	"github.com/xMinhx/specht/internal/port"
-	"github.com/xMinhx/specht/internal/repo"
-	"github.com/xMinhx/specht/internal/watcher"
 )
 
 // WatcherBackfillOptions controls one direct database/OSV watcher poll.

@@ -3,7 +3,7 @@ package trivy
 import (
 	"testing"
 
-	"github.com/xMinhx/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/domain"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

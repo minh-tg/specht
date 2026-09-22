@@ -8,10 +8,10 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/minh-tg/specht/internal/db/sqlc"
+	"github.com/minh-tg/specht/internal/port"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/db/sqlc"
-	"github.com/xMinhx/specht/internal/port"
 )
 
 // TestPolicyTemplate_CRUDEndToEnd proves template versioning and project

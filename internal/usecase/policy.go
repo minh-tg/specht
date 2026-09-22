@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/xMinhx/specht/internal/policy"
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/policy"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 // ErrPolicyConflict is returned when a template name is already taken.

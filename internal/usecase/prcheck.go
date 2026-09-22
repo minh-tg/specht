@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/xMinhx/specht/internal/gate"
-	"github.com/xMinhx/specht/internal/port"
-	"github.com/xMinhx/specht/internal/provider"
+	"github.com/minh-tg/specht/internal/gate"
+	"github.com/minh-tg/specht/internal/port"
+	"github.com/minh-tg/specht/internal/provider"
 )
 
 // ErrUnknownProvider is returned when a preview names a provider the

@@ -19,7 +19,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xMinhx/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/domain"
 )
 
 // testNotification builds a representative Notification for envelope tests.

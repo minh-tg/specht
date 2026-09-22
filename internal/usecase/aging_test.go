@@ -8,8 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/xMinhx/specht/internal/aging"
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/aging"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 type mockStatsRepo struct {

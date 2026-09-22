@@ -3,12 +3,12 @@ package parser_test
 import (
 	"testing"
 
-	"github.com/xMinhx/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/domain"
 
+	"github.com/minh-tg/specht/internal/parser"
+	"github.com/minh-tg/specht/internal/scanner"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/parser"
-	"github.com/xMinhx/specht/internal/scanner"
 )
 
 func TestBuiltinsIncludesExpectedParsers(t *testing.T) {

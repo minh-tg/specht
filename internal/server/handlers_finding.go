@@ -8,8 +8,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/xMinhx/specht/internal/audit"
-	"github.com/xMinhx/specht/internal/usecase"
+	"github.com/minh-tg/specht/internal/audit"
+	"github.com/minh-tg/specht/internal/usecase"
 )
 
 func (h *Handler) GetFinding(w http.ResponseWriter, r *http.Request) {

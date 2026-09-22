@@ -6,8 +6,8 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/minh-tg/specht/internal/port"
 	"github.com/stretchr/testify/assert"
-	"github.com/xMinhx/specht/internal/port"
 )
 
 func TestMappingErr_NoRowsToErrNotFound(t *testing.T) {

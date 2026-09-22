@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/xMinhx/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/auth"
 )
 
 // rateLimitBucketTTL bounds memory: per-key token buckets idle longer than

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 type fakeUserStore struct {

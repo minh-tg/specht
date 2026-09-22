@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/minh-tg/specht/internal/client"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
-	"github.com/xMinhx/specht/internal/client"
 )
 
 func connectMCPServer(t *testing.T, api API) *mcp.ClientSession {

@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/xMinhx/specht/internal/finding"
-	"github.com/xMinhx/specht/internal/gate"
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/finding"
+	"github.com/minh-tg/specht/internal/gate"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 var (

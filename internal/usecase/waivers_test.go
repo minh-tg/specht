@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/minh-tg/specht/internal/port"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/port"
 )
 
 // testCheckWaiverMatchDeps builds the store fakes a CheckWaiverMatch test needs

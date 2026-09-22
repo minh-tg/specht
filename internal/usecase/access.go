@@ -7,8 +7,8 @@ import (
 	"log/slog"
 
 	"github.com/google/uuid"
-	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 var (

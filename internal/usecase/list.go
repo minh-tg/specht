@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/domain"
-	"github.com/xMinhx/specht/internal/port"
-	"github.com/xMinhx/specht/internal/remediate"
+	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/port"
+	"github.com/minh-tg/specht/internal/remediate"
 )
 
 // ProjectResponse is the API representation of a project.

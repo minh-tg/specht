@@ -17,8 +17,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/xMinhx/specht/internal/domain"
-	"github.com/xMinhx/specht/internal/scanner"
+	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/scanner"
 )
 
 // redacted replaces secret material in raw evidence.

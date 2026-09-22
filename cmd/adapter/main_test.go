@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/minh-tg/specht/internal/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/client"
 )
 
 func TestIngestReport_Success(t *testing.T) {

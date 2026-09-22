@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 // ProjectMemberResponse is the API representation of a project membership.

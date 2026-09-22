@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/minh-tg/specht/internal/db/sqlc"
 )
 
 // CreateEvidenceParams is the input to creating an evidence artifact.

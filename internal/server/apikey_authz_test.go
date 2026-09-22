@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/usecase"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/usecase"
 )
 
 // apiKeyIdentity builds a project-scoped API-key identity carrying the given

@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/xMinhx/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/auth"
 )
 
 // Event names for the canonical security-relevant operations.

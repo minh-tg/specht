@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/minh-tg/specht/internal/usecase"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/usecase"
 )
 
 // requireAPIError asserts the response is an apiError with the given status,

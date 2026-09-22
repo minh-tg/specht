@@ -3,9 +3,9 @@ package cvss_test
 import (
 	"testing"
 
+	"github.com/minh-tg/specht/internal/cvss"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/cvss"
 )
 
 func TestCalculate_V3_Unknown(t *testing.T) {

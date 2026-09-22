@@ -25,7 +25,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xMinhx/specht/internal/risk"
+	"github.com/minh-tg/specht/internal/risk"
 )
 
 // Record is one CVE's merged intelligence with its provenance.

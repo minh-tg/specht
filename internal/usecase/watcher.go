@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 // WatcherStatusResponse reports the CVE watcher daemon's health so operators

@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
+	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/port"
 	"github.com/stretchr/testify/assert"
-	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/port"
 )
 
 // findingScopeCtx returns a context carrying an authenticated session-user

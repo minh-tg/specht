@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 // PollStore is the persistence surface a poll writes through. The production

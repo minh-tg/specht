@@ -13,11 +13,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/xMinhx/specht/internal/audit"
-	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/notify"
-	"github.com/xMinhx/specht/internal/patch"
-	"github.com/xMinhx/specht/internal/usecase"
+	"github.com/minh-tg/specht/internal/audit"
+	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/notify"
+	"github.com/minh-tg/specht/internal/patch"
+	"github.com/minh-tg/specht/internal/usecase"
 )
 
 // AuthMiddleware authenticates requests, trying each authenticator in order and storing the identity on the context.

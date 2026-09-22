@@ -5,11 +5,11 @@ import (
 	_ "embed"
 	"testing"
 
-	"github.com/xMinhx/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/domain"
 
+	"github.com/minh-tg/specht/internal/parser/checkov"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/parser/checkov"
 )
 
 //go:embed testdata/checkov-terraform.json

@@ -14,12 +14,12 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/notify"
+	"github.com/minh-tg/specht/internal/patch"
+	"github.com/minh-tg/specht/internal/usecase"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/notify"
-	"github.com/xMinhx/specht/internal/patch"
-	"github.com/xMinhx/specht/internal/usecase"
 )
 
 type mockUsecases struct {

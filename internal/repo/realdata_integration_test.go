@@ -22,13 +22,13 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
-	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/db"
-	"github.com/xMinhx/specht/internal/parser"
-	"github.com/xMinhx/specht/internal/port"
-	"github.com/xMinhx/specht/internal/scanner"
-	"github.com/xMinhx/specht/internal/tracker"
-	"github.com/xMinhx/specht/internal/usecase"
+	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/db"
+	"github.com/minh-tg/specht/internal/parser"
+	"github.com/minh-tg/specht/internal/port"
+	"github.com/minh-tg/specht/internal/scanner"
+	"github.com/minh-tg/specht/internal/tracker"
+	"github.com/minh-tg/specht/internal/usecase"
 )
 
 func strPtr(s string) *string { return &s }

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/google/uuid"
-	"github.com/xMinhx/specht/internal/patch"
+	"github.com/minh-tg/specht/internal/patch"
 )
 
 // PreviewPatch plans (but never applies) the safe patch for one finding.

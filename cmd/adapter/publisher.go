@@ -10,7 +10,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/xMinhx/specht/internal/client"
+	"github.com/minh-tg/specht/internal/client"
 )
 
 // escapeCommandProperty escapes special characters for GitHub Actions workflow command properties.

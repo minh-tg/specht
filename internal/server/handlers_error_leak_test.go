@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/minh-tg/specht/internal/usecase"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/usecase"
 )
 
 // dbErrText mimics a wrapped pgx/store failure whose internals must never

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/xMinhx/specht/internal/watcher"
+	"github.com/minh-tg/specht/internal/watcher"
 )
 
 func TestWatcherStatus(t *testing.T) {

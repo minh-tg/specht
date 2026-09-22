@@ -11,8 +11,8 @@ import (
 	"io"
 	"os"
 
+	"github.com/minh-tg/specht/internal/client"
 	"github.com/spf13/cobra"
-	"github.com/xMinhx/specht/internal/client"
 )
 
 // ErrThresholdBreached signals a breached gate check. Execute maps it to

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/minh-tg/specht/internal/port"
 	"github.com/stretchr/testify/assert"
-	"github.com/xMinhx/specht/internal/port"
 )
 
 // fakeAnalysisExpiryStore is an in-memory port.AnalysisExpiryStore.

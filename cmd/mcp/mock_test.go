@@ -1,6 +1,6 @@
 package main
 
-import "github.com/xMinhx/specht/internal/client"
+import "github.com/minh-tg/specht/internal/client"
 
 type mockClient struct {
 	client.Client

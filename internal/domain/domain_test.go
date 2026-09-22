@@ -3,8 +3,8 @@ package domain_test
 import (
 	"testing"
 
+	"github.com/minh-tg/specht/internal/domain"
 	"github.com/stretchr/testify/assert"
-	"github.com/xMinhx/specht/internal/domain"
 )
 
 func TestCanonicalDimensionKeys(t *testing.T) {

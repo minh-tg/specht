@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/minh-tg/specht/internal/auth"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/xMinhx/specht/internal/auth"
 )
 
 func okHandler() http.Handler {

@@ -24,7 +24,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/xMinhx/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/domain"
 )
 
 // Confidence grades a correlation.

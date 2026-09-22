@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/xMinhx/specht/internal/auth"
-	"github.com/xMinhx/specht/internal/port"
+	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 // ErrTeamConflict is returned when a team name is already taken.

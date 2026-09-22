@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/xMinhx/specht/internal/client"
+	"github.com/minh-tg/specht/internal/client"
 )
 
 func TestRootRegistersProjectTeams(t *testing.T) {
