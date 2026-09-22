@@ -68,6 +68,16 @@ type ToolListResult struct {
 	Tools []ToolSpec `json:"tools"`
 }
 
+const (
+	descProjectSlug        = "Project slug"
+	descFindingID          = "Finding ID"
+	descWaiverID           = "Waiver ID"
+	msgInvalidArguments    = "invalid arguments"
+	msgProjectRequired     = "project is required"
+	msgFindingIDRequired   = "finding_id is required"
+	msgProjectWaiverNeeded = "project and waiver_id are required"
+)
+
 func parseMessage(data []byte) (jsonRPCMessage, error) {
 	var msg jsonRPCMessage
 	if err := json.Unmarshal(data, &msg); err != nil {
@@ -97,7 +107,7 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"project":  map[string]any{"type": "string", "description": "Project slug"},
+						"project":  map[string]any{"type": "string", "description": descProjectSlug},
 						"severity": map[string]any{"type": "string", "description": "Comma-separated severity filter (e.g. high,critical)"},
 						"status":   map[string]any{"type": "string", "description": "Comma-separated status filter (e.g. open)"},
 						"limit":    map[string]any{"type": "integer", "description": "Max results"},
@@ -111,7 +121,7 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"finding_id": map[string]any{"type": "string", "description": "Finding ID"},
+						"finding_id": map[string]any{"type": "string", "description": descFindingID},
 					},
 					"required": []string{"finding_id"},
 				},
@@ -122,7 +132,7 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"project":         map[string]any{"type": "string", "description": "Project slug"},
+						"project":         map[string]any{"type": "string", "description": descProjectSlug},
 						"severity":        map[string]any{"type": "string", "description": "Severity threshold (default: high,critical)"},
 						"introduced_only": map[string]any{"type": "boolean", "description": "Only findings introduced by report_id"},
 						"report_id":       map[string]any{"type": "string", "description": "Report ID (required with introduced_only)"},
@@ -136,7 +146,7 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"project":   map[string]any{"type": "string", "description": "Project slug"},
+						"project":   map[string]any{"type": "string", "description": descProjectSlug},
 						"commit":    map[string]any{"type": "string", "description": "Commit SHA under review"},
 						"provider":  map[string]any{"type": "string", "description": "Provider (default: github)"},
 						"report_id": map[string]any{"type": "string", "description": "Report ID for an exact-scan tie"},
@@ -151,7 +161,7 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"finding_id": map[string]any{"type": "string", "description": "Finding ID"},
+						"finding_id": map[string]any{"type": "string", "description": descFindingID},
 					},
 					"required": []string{"finding_id"},
 				},
@@ -162,7 +172,7 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"finding_id": map[string]any{"type": "string", "description": "Finding ID"},
+						"finding_id": map[string]any{"type": "string", "description": descFindingID},
 						"channel":    map[string]any{"type": "string", "description": "issue or message"},
 						"target":     map[string]any{"type": "string", "description": "Integration and scope"},
 						"linked":     map[string]any{"type": "boolean", "description": "Whether a work item is already linked"},
@@ -195,7 +205,7 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"project": map[string]any{"type": "string", "description": "Project slug"},
+						"project": map[string]any{"type": "string", "description": descProjectSlug},
 					},
 					"required": []string{"project"},
 				},
@@ -214,7 +224,7 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"project": map[string]any{"type": "string", "description": "Project slug"},
+						"project": map[string]any{"type": "string", "description": descProjectSlug},
 					},
 					"required": []string{"project"},
 				},
@@ -224,7 +234,7 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				Description: "Set a finding's reachability assessment (reachable, not_reachable, unknown, not_applicable)", InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"finding_id": map[string]any{"type": "string", "description": "Finding ID"},
+						"finding_id": map[string]any{"type": "string", "description": descFindingID},
 						"state":      map[string]any{"type": "string", "description": "reachable | not_reachable | unknown | not_applicable"},
 						"evidence":   map[string]any{"type": "string", "description": "Optional evidence note"},
 					},
@@ -245,7 +255,7 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"project": map[string]any{"type": "string", "description": "Project slug"},
+						"project": map[string]any{"type": "string", "description": descProjectSlug},
 					},
 					"required": []string{"project"},
 				},
@@ -256,8 +266,8 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"project":   map[string]any{"type": "string", "description": "Project slug"},
-						"waiver_id": map[string]any{"type": "string", "description": "Waiver ID"},
+						"project":   map[string]any{"type": "string", "description": descProjectSlug},
+						"waiver_id": map[string]any{"type": "string", "description": descWaiverID},
 					},
 					"required": []string{"project", "waiver_id"},
 				},
@@ -268,7 +278,7 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"project":     map[string]any{"type": "string", "description": "Project slug"},
+						"project":     map[string]any{"type": "string", "description": descProjectSlug},
 						"name":        map[string]any{"type": "string", "description": "Waiver name"},
 						"description": map[string]any{"type": "string", "description": "Waiver description"},
 						"finding_ids": map[string]any{"type": "array", "items": map[string]any{"type": "string"}, "description": "Finding IDs to target"},
@@ -282,8 +292,8 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"project":   map[string]any{"type": "string", "description": "Project slug"},
-						"waiver_id": map[string]any{"type": "string", "description": "Waiver ID"},
+						"project":   map[string]any{"type": "string", "description": descProjectSlug},
+						"waiver_id": map[string]any{"type": "string", "description": descWaiverID},
 					},
 					"required": []string{"project", "waiver_id"},
 				},
@@ -294,8 +304,8 @@ func handleMessage(api API, msg jsonRPCMessage) jsonRPCMessage {
 				InputSchema: map[string]any{
 					"type": "object",
 					"properties": map[string]any{
-						"project":   map[string]any{"type": "string", "description": "Project slug"},
-						"waiver_id": map[string]any{"type": "string", "description": "Waiver ID"},
+						"project":   map[string]any{"type": "string", "description": descProjectSlug},
+						"waiver_id": map[string]any{"type": "string", "description": descWaiverID},
 					},
 					"required": []string{"project", "waiver_id"},
 				},
@@ -392,10 +402,10 @@ func callFindingsList(api API, id any, args *json.RawMessage) jsonRPCMessage {
 		Limit    int    `json:"limit"`
 	}](args)
 	if err != nil {
-		return errorResponse(id, -32602, "invalid arguments")
+		return errorResponse(id, -32602, msgInvalidArguments)
 	}
 	if a.Project == "" {
-		return errorResponse(id, -32602, "project is required")
+		return errorResponse(id, -32602, msgProjectRequired)
 	}
 
 	var severities, states []string
@@ -431,10 +441,10 @@ func callFindingsGet(api API, id any, args *json.RawMessage) jsonRPCMessage {
 		FindingID string `json:"finding_id"`
 	}](args)
 	if err != nil {
-		return errorResponse(id, -32602, "invalid arguments")
+		return errorResponse(id, -32602, msgInvalidArguments)
 	}
 	if a.FindingID == "" {
-		return errorResponse(id, -32602, "finding_id is required")
+		return errorResponse(id, -32602, msgFindingIDRequired)
 	}
 
 	f, err := api.GetFinding(a.FindingID)
@@ -467,10 +477,10 @@ func callGateCheck(api API, id any, args *json.RawMessage) jsonRPCMessage {
 		ReportID       string `json:"report_id"`
 	}](args)
 	if err != nil {
-		return errorResponse(id, -32602, "invalid arguments")
+		return errorResponse(id, -32602, msgInvalidArguments)
 	}
 	if a.Project == "" {
-		return errorResponse(id, -32602, "project is required")
+		return errorResponse(id, -32602, msgProjectRequired)
 	}
 	if a.IntroducedOnly && a.ReportID == "" {
 		return errorResponse(id, -32602, "report_id is required with introduced_only")
@@ -516,10 +526,10 @@ func callPRPreview(api API, id any, args *json.RawMessage) jsonRPCMessage {
 		Severity string `json:"severity"`
 	}](args)
 	if err != nil {
-		return errorResponse(id, -32602, "invalid arguments")
+		return errorResponse(id, -32602, msgInvalidArguments)
 	}
 	if a.Project == "" {
-		return errorResponse(id, -32602, "project is required")
+		return errorResponse(id, -32602, msgProjectRequired)
 	}
 	if a.Commit == "" {
 		return errorResponse(id, -32602, "commit is required")
@@ -544,10 +554,10 @@ func callPatchPreview(api API, id any, args *json.RawMessage) jsonRPCMessage {
 		FindingID string `json:"finding_id"`
 	}](args)
 	if err != nil {
-		return errorResponse(id, -32602, "invalid arguments")
+		return errorResponse(id, -32602, msgInvalidArguments)
 	}
 	if a.FindingID == "" {
-		return errorResponse(id, -32602, "finding_id is required")
+		return errorResponse(id, -32602, msgFindingIDRequired)
 	}
 
 	outcome, err := api.PreviewPatch(a.FindingID)
@@ -579,10 +589,10 @@ func callNotifyPreview(api API, id any, args *json.RawMessage) jsonRPCMessage {
 		Linked    bool   `json:"linked"`
 	}](args)
 	if err != nil {
-		return errorResponse(id, -32602, "invalid arguments")
+		return errorResponse(id, -32602, msgInvalidArguments)
 	}
 	if a.FindingID == "" {
-		return errorResponse(id, -32602, "finding_id is required")
+		return errorResponse(id, -32602, msgFindingIDRequired)
 	}
 	if a.Channel == "" {
 		return errorResponse(id, -32602, "channel is required")
@@ -627,7 +637,7 @@ func callAdminRetentionPreview(api API, id any, args *json.RawMessage) jsonRPCMe
 		Days int `json:"days"`
 	}](args)
 	if err != nil {
-		return errorResponse(id, -32602, "invalid arguments")
+		return errorResponse(id, -32602, msgInvalidArguments)
 	}
 	if a.Days <= 0 {
 		return errorResponse(id, -32602, "days is required")
@@ -651,10 +661,10 @@ func callPolicyEffective(api API, id any, args *json.RawMessage) jsonRPCMessage 
 		Project string `json:"project"`
 	}](args)
 	if err != nil {
-		return errorResponse(id, -32602, "invalid arguments")
+		return errorResponse(id, -32602, msgInvalidArguments)
 	}
 	if a.Project == "" {
-		return errorResponse(id, -32602, "project is required")
+		return errorResponse(id, -32602, msgProjectRequired)
 	}
 
 	eff, err := api.GetEffectivePolicy(a.Project)
@@ -696,10 +706,10 @@ func callProjectTeams(api API, id any, args *json.RawMessage) jsonRPCMessage {
 		Project string `json:"project"`
 	}](args)
 	if err != nil {
-		return errorResponse(id, -32602, "invalid arguments")
+		return errorResponse(id, -32602, msgInvalidArguments)
 	}
 	if a.Project == "" {
-		return errorResponse(id, -32602, "project is required")
+		return errorResponse(id, -32602, msgProjectRequired)
 	}
 
 	links, err := api.ListProjectTeams(a.Project)
@@ -725,7 +735,7 @@ func callReachabilitySet(api API, id any, args *json.RawMessage) jsonRPCMessage 
 		Evidence  string `json:"evidence"`
 	}](args)
 	if err != nil {
-		return errorResponse(id, -32602, "invalid arguments")
+		return errorResponse(id, -32602, msgInvalidArguments)
 	}
 	if a.FindingID == "" || a.State == "" {
 		return errorResponse(id, -32602, "finding_id and state are required")
@@ -781,10 +791,10 @@ func callWaiversList(api API, id any, args *json.RawMessage) jsonRPCMessage {
 		Project string `json:"project"`
 	}](args)
 	if err != nil {
-		return errorResponse(id, -32602, "invalid arguments")
+		return errorResponse(id, -32602, msgInvalidArguments)
 	}
 	if a.Project == "" {
-		return errorResponse(id, -32602, "project is required")
+		return errorResponse(id, -32602, msgProjectRequired)
 	}
 
 	waivers, err := api.ListWaivers(a.Project)
@@ -818,10 +828,10 @@ func callWaiversGet(api API, id any, args *json.RawMessage) jsonRPCMessage {
 		WaiverID string `json:"waiver_id"`
 	}](args)
 	if err != nil {
-		return errorResponse(id, -32602, "invalid arguments")
+		return errorResponse(id, -32602, msgInvalidArguments)
 	}
 	if a.Project == "" || a.WaiverID == "" {
-		return errorResponse(id, -32602, "project and waiver_id are required")
+		return errorResponse(id, -32602, msgProjectWaiverNeeded)
 	}
 
 	w, err := api.GetWaiver(a.Project, a.WaiverID)
@@ -849,7 +859,7 @@ func callWaiversCreate(api API, id any, args *json.RawMessage) jsonRPCMessage {
 		FindingIDs  []string `json:"finding_ids"`
 	}](args)
 	if err != nil {
-		return errorResponse(id, -32602, "invalid arguments")
+		return errorResponse(id, -32602, msgInvalidArguments)
 	}
 	if a.Project == "" || a.Name == "" {
 		return errorResponse(id, -32602, "project and name are required")
@@ -876,10 +886,10 @@ func callWaiversToggle(api API, id any, args *json.RawMessage) jsonRPCMessage {
 		WaiverID string `json:"waiver_id"`
 	}](args)
 	if err != nil {
-		return errorResponse(id, -32602, "invalid arguments")
+		return errorResponse(id, -32602, msgInvalidArguments)
 	}
 	if a.Project == "" || a.WaiverID == "" {
-		return errorResponse(id, -32602, "project and waiver_id are required")
+		return errorResponse(id, -32602, msgProjectWaiverNeeded)
 	}
 
 	w, err := api.ToggleWaiver(a.Project, a.WaiverID)
@@ -903,10 +913,10 @@ func callWaiverEvents(api API, id any, args *json.RawMessage) jsonRPCMessage {
 		WaiverID string `json:"waiver_id"`
 	}](args)
 	if err != nil {
-		return errorResponse(id, -32602, "invalid arguments")
+		return errorResponse(id, -32602, msgInvalidArguments)
 	}
 	if a.Project == "" || a.WaiverID == "" {
-		return errorResponse(id, -32602, "project and waiver_id are required")
+		return errorResponse(id, -32602, msgProjectWaiverNeeded)
 	}
 
 	events, err := api.ListWaiverEvents(a.Project, a.WaiverID)
