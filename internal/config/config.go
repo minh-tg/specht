@@ -105,9 +105,6 @@ type Watcher struct {
 	// Staleness window multiplier is applied by the watcher status surface.
 }
 
-// Load reads the server environment, failing on invalid required values.
-// Optional watcher settings are parsed eagerly but their errors are only
-// reported when the watcher is enabled.
 // parseDomainAllowlist splits a comma/space-separated domain allowlist,
 // lowercasing and trimming each entry. Empty input yields nil (deny all).
 func parseDomainAllowlist(v string) []string {
@@ -133,19 +130,9 @@ func parseGroupAllowlist(v string) []string {
 	return out
 }
 
-func Load() (*Server, error) {
-	s := &Server{
-		Addr:         strOr(os.Getenv("SERVER_ADDR"), DefaultServerAddr),
-		DBURL:        os.Getenv("DATABASE_URL"),
-		DBMigrate:    strOr(os.Getenv("DB_MIGRATE"), "true") == "true",
-		CORSOrigins:  os.Getenv("CORS_ORIGINS"),
-		JWTSecret:    os.Getenv("JWT_SECRET"),
-		LogLevel:     strOr(os.Getenv("LOG_LEVEL"), "info"),
-		InventoryTTL: DefaultInventoryTTL,
-	}
-
-	// SSO/OIDC configuration — omitted means SSO is disabled.
-	s.SSO = SSOConfig{
+// loadSSO reads the SSO/OIDC environment block; omitted means disabled.
+func loadSSO() SSOConfig {
+	return SSOConfig{
 		Enabled:        os.Getenv("SSO_ENABLE") == "true",
 		ClientID:       os.Getenv("SSO_CLIENT_ID"),
 		ClientSecret:   os.Getenv("SSO_CLIENT_SECRET"),
@@ -155,19 +142,133 @@ func Load() (*Server, error) {
 		GroupsClaim:    strings.TrimSpace(os.Getenv("SSO_GROUPS_CLAIM")),
 		AdminGroups:    parseGroupAllowlist(os.Getenv("SSO_ADMIN_GROUPS")),
 	}
+}
 
-	// Reverse-proxy trust: comma/space-separated CIDRs. A proxy inside one of
-	// these ranges may set X-Forwarded-* headers; any other peer is treated as
-	// the direct client. A malformed CIDR fails startup rather than silently
-	// weakening (or unexpectedly strengthening) header trust.
-	if v := os.Getenv("TRUSTED_PROXIES"); v != "" {
-		for _, part := range strings.FieldsFunc(v, func(c rune) bool { return c == ',' || c == ' ' }) {
-			p, err := netip.ParsePrefix(part)
-			if err != nil {
-				return nil, fmt.Errorf("TRUSTED_PROXIES contains invalid CIDR %q: %w", part, err)
-			}
-			s.TrustedProxies = append(s.TrustedProxies, p.Masked())
+// parseTrustedProxies parses comma/space-separated CIDRs. A malformed CIDR
+// fails startup rather than silently weakening (or unexpectedly
+// strengthening) header trust.
+func parseTrustedProxies(v string) ([]netip.Prefix, error) {
+	var out []netip.Prefix
+	for _, part := range strings.FieldsFunc(v, func(c rune) bool { return c == ',' || c == ' ' }) {
+		p, err := netip.ParsePrefix(part)
+		if err != nil {
+			return nil, fmt.Errorf("TRUSTED_PROXIES contains invalid CIDR %q: %w", part, err)
 		}
+		out = append(out, p.Masked())
+	}
+	return out, nil
+}
+
+// parsePositiveInt parses a positive-integer env var, reporting the given
+// label on failure.
+func parsePositiveInt(label, v string) (int, error) {
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("%s is invalid: %q", label, v)
+	}
+	return n, nil
+}
+
+// loadRateLimit reads limiter settings. Values are validated only when
+// enabled so a stray invalid var cannot crash a dev server.
+func loadRateLimit(s *Server) error {
+	s.RateLimit = RateLimit{
+		Enable:    os.Getenv("RATE_LIMIT_ENABLED") == "true",
+		RPS:       DefaultRateLimitRPS,
+		Burst:     DefaultRateLimitBurst,
+		AuthRPS:   DefaultRateLimitAuthRPS,
+		AuthBurst: DefaultRateLimitAuthBurst,
+	}
+	parsed := []struct {
+		label string
+		v     string
+		set   func(int)
+	}{
+		{"RATE_LIMIT_RPS", os.Getenv("RATE_LIMIT_RPS"), func(n int) { s.RateLimit.RPS = n }},
+		{"RATE_LIMIT_BURST", os.Getenv("RATE_LIMIT_BURST"), func(n int) { s.RateLimit.Burst = n }},
+		{"RATE_LIMIT_AUTH_RPS", os.Getenv("RATE_LIMIT_AUTH_RPS"), func(n int) { s.RateLimit.AuthRPS = n }},
+		{"RATE_LIMIT_AUTH_BURST", os.Getenv("RATE_LIMIT_AUTH_BURST"), func(n int) { s.RateLimit.AuthBurst = n }},
+	}
+	for _, p := range parsed {
+		if p.v == "" {
+			continue
+		}
+		n, err := parsePositiveInt(p.label, p.v)
+		if err != nil {
+			if s.RateLimit.Enable {
+				return err
+			}
+			continue
+		}
+		p.set(n)
+	}
+	return nil
+}
+
+// loadWatcher reads watcher settings; parse errors surface only when the
+// watcher is enabled (a malformed optional must not crash a server that
+// never runs the watcher).
+func loadWatcher(s *Server) error {
+	s.Watcher.Enable = os.Getenv("WATCHER_ENABLE") == "true"
+	s.Watcher.PollInterval = DefaultWatcherPoll
+	s.Watcher.OSVEndpoint = strOr(os.Getenv("WATCHER_OSV_ENDPOINT"), DefaultOSVEndpoint)
+	s.Watcher.SlackURL = os.Getenv("WATCHER_SLACK_URL")
+	s.Watcher.SlackSigning = os.Getenv("WATCHER_SLACK_SIGNING_SECRET")
+	s.Watcher.WebhookURL = os.Getenv("WATCHER_WEBHOOK_URL")
+	s.Watcher.WebhookSigning = os.Getenv("WATCHER_WEBHOOK_SIGNING_SECRET")
+
+	var errs []error
+	if v := os.Getenv("WATCHER_POLL_INTERVAL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("WATCHER_POLL_INTERVAL is invalid: %w", err))
+		} else {
+			s.Watcher.PollInterval = d
+		}
+	}
+	if v := os.Getenv("WATCHER_BATCH_SIZE"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("WATCHER_BATCH_SIZE is invalid: %w", err))
+		} else {
+			s.Watcher.BatchSize = n
+		}
+	}
+	if w := os.Getenv("WATCHER_COLD_START_WINDOW"); w != "" && w != "full" {
+		d, err := time.ParseDuration(w)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("WATCHER_COLD_START_WINDOW is invalid: %w", err))
+		} else {
+			s.Watcher.ColdStartWindow = d
+		}
+	}
+	if s.Watcher.Enable && len(errs) > 0 {
+		return errs[0]
+	}
+	return nil
+}
+
+// Load reads the server environment, failing on invalid required values.
+// Optional watcher settings are parsed eagerly but their errors are only
+// reported when the watcher is enabled.
+func Load() (*Server, error) {
+	s := &Server{
+		Addr:         strOr(os.Getenv("SERVER_ADDR"), DefaultServerAddr),
+		DBURL:        os.Getenv("DATABASE_URL"),
+		DBMigrate:    strOr(os.Getenv("DB_MIGRATE"), "true") == "true",
+		CORSOrigins:  strOr(os.Getenv("CORS_ORIGINS"), DefaultCORSOrigins),
+		JWTSecret:    os.Getenv("JWT_SECRET"),
+		LogLevel:     strOr(os.Getenv("LOG_LEVEL"), "info"),
+		InventoryTTL: DefaultInventoryTTL,
+		SSO:          loadSSO(),
+	}
+
+	if v := os.Getenv("TRUSTED_PROXIES"); v != "" {
+		proxies, err := parseTrustedProxies(v)
+		if err != nil {
+			return nil, err
+		}
+		s.TrustedProxies = proxies
 	}
 
 	if v := os.Getenv("INVENTORY_TTL"); v != "" {
@@ -178,94 +279,11 @@ func Load() (*Server, error) {
 		s.InventoryTTL = d
 	}
 
-	if s.CORSOrigins == "" {
-		s.CORSOrigins = DefaultCORSOrigins
+	if err := loadRateLimit(s); err != nil {
+		return nil, err
 	}
-
-	// Watcher master switch.
-	s.Watcher.Enable = os.Getenv("WATCHER_ENABLE") == "true"
-
-	// Rate limiter: off by default; parsed values are validated only when
-	// enabled so a stray invalid var cannot crash a dev server.
-	s.RateLimit = RateLimit{
-		Enable:    os.Getenv("RATE_LIMIT_ENABLED") == "true",
-		RPS:       DefaultRateLimitRPS,
-		Burst:     DefaultRateLimitBurst,
-		AuthRPS:   DefaultRateLimitAuthRPS,
-		AuthBurst: DefaultRateLimitAuthBurst,
-	}
-	var rateLimitErrs []error
-	if v := os.Getenv("RATE_LIMIT_RPS"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n <= 0 {
-			rateLimitErrs = append(rateLimitErrs, fmt.Errorf("RATE_LIMIT_RPS is invalid: %q", v))
-		} else {
-			s.RateLimit.RPS = n
-		}
-	}
-	if v := os.Getenv("RATE_LIMIT_BURST"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n <= 0 {
-			rateLimitErrs = append(rateLimitErrs, fmt.Errorf("RATE_LIMIT_BURST is invalid: %q", v))
-		} else {
-			s.RateLimit.Burst = n
-		}
-	}
-	if v := os.Getenv("RATE_LIMIT_AUTH_RPS"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n <= 0 {
-			rateLimitErrs = append(rateLimitErrs, fmt.Errorf("RATE_LIMIT_AUTH_RPS is invalid: %q", v))
-		} else {
-			s.RateLimit.AuthRPS = n
-		}
-	}
-	if v := os.Getenv("RATE_LIMIT_AUTH_BURST"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil || n <= 0 {
-			rateLimitErrs = append(rateLimitErrs, fmt.Errorf("RATE_LIMIT_AUTH_BURST is invalid: %q", v))
-		} else {
-			s.RateLimit.AuthBurst = n
-		}
-	}
-	if s.RateLimit.Enable && len(rateLimitErrs) > 0 {
-		return nil, rateLimitErrs[0]
-	}
-
-	// Parse watcher optionals; only surface errors when enabled.
-	var watcherErrs []error
-	s.Watcher.PollInterval = DefaultWatcherPoll
-	if v := os.Getenv("WATCHER_POLL_INTERVAL"); v != "" {
-		d, err := time.ParseDuration(v)
-		if err != nil {
-			watcherErrs = append(watcherErrs, fmt.Errorf("WATCHER_POLL_INTERVAL is invalid: %w", err))
-		} else {
-			s.Watcher.PollInterval = d
-		}
-	}
-	s.Watcher.OSVEndpoint = strOr(os.Getenv("WATCHER_OSV_ENDPOINT"), DefaultOSVEndpoint)
-	if v := os.Getenv("WATCHER_BATCH_SIZE"); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil {
-			watcherErrs = append(watcherErrs, fmt.Errorf("WATCHER_BATCH_SIZE is invalid: %w", err))
-		} else {
-			s.Watcher.BatchSize = n
-		}
-	}
-	if w := os.Getenv("WATCHER_COLD_START_WINDOW"); w != "" && w != "full" {
-		d, err := time.ParseDuration(w)
-		if err != nil {
-			watcherErrs = append(watcherErrs, fmt.Errorf("WATCHER_COLD_START_WINDOW is invalid: %w", err))
-		} else {
-			s.Watcher.ColdStartWindow = d
-		}
-	}
-	s.Watcher.SlackURL = os.Getenv("WATCHER_SLACK_URL")
-	s.Watcher.SlackSigning = os.Getenv("WATCHER_SLACK_SIGNING_SECRET")
-	s.Watcher.WebhookURL = os.Getenv("WATCHER_WEBHOOK_URL")
-	s.Watcher.WebhookSigning = os.Getenv("WATCHER_WEBHOOK_SIGNING_SECRET")
-
-	if s.Watcher.Enable && len(watcherErrs) > 0 {
-		return nil, watcherErrs[0]
+	if err := loadWatcher(s); err != nil {
+		return nil, err
 	}
 	return s, nil
 }
