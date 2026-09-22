@@ -62,13 +62,19 @@ func DefaultDeps() Deps {
 func NewRootCmd(d Deps) *cobra.Command {
 	s := &settings{}
 	root := &cobra.Command{
-		Use:   "specht",
-		Short: "Unified vulnerability management for SCA, SAST, and IaC",
+		Use:           "specht",
+		Short:         "Unified vulnerability management for SCA, SAST, and IaC",
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	root.PersistentFlags().StringVar(&s.format, "format", "", "output format: human or json")
 	root.SetOut(d.Out)
 	root.SetErr(d.ErrW)
 	root.AddCommand(newProjectsCmd(d, s))
+	root.AddCommand(newFindingsCmd(d, s))
+	// TEMP-DISABLED newGateCmd
+	// TEMP-DISABLED newStatsCmd
+	// TEMP-DISABLED newPrCmd
 	return root
 }
 
