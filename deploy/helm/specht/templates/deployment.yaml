@@ -17,6 +17,7 @@ spec:
         app.kubernetes.io/name: {{ include "specht.name" . }}
         app.kubernetes.io/instance: {{ .Release.Name }}
     spec:
+      automountServiceAccountToken: false
       # Pod-level defaults: the image already runs as non-root (USER specht),
       # so enforce it here too rather than relying on the default context
       # (KSV-0118). No runAsUser: the image-assigned UID is not fixed.
@@ -26,7 +27,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: {{ .Chart.Name }}
-          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          image: "{{ .Values.image.repository }}:{{ required "image.tag must be set to a pinned release tag" .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: 8080
