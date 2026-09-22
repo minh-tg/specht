@@ -69,17 +69,31 @@ func TestRealIP_TrustedProxyHeadersHonored(t *testing.T) {
 		netip.MustParsePrefix("192.168.0.0/16"),
 	})
 
-	t.Run("x-forwarded-for uses leftmost entry", func(t *testing.T) {
+	t.Run("x-forwarded-for selects nearest untrusted hop", func(t *testing.T) {
 		var got string
 		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			got = r.RemoteAddr
 		})
 		req := httptest.NewRequest("GET", "/", nil)
 		req.RemoteAddr = "10.0.0.5:8080"
-		req.Header.Set("X-Forwarded-For", "198.51.100.7, 10.0.0.5")
+		req.Header.Set("X-Forwarded-For", "203.0.113.66, 198.51.100.7, 192.168.1.5")
 		mw(next).ServeHTTP(httptest.NewRecorder(), req)
 
-		assert.Equal(t, "198.51.100.7", got)
+		assert.Equal(t, "198.51.100.7", got,
+			"the leftmost client-supplied prefix must not override the address appended by the trusted proxy")
+	})
+
+	t.Run("malformed rightmost XFF hop leaves peer unchanged", func(t *testing.T) {
+		var got string
+		next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			got = r.RemoteAddr
+		})
+		req := httptest.NewRequest("GET", "/", nil)
+		req.RemoteAddr = "10.0.0.5:8080"
+		req.Header.Set("X-Forwarded-For", "198.51.100.7,not-an-ip")
+		mw(next).ServeHTTP(httptest.NewRecorder(), req)
+
+		assert.Equal(t, "10.0.0.5:8080", got, "invalid chains must not fall back to a spoofable earlier entry")
 	})
 
 	t.Run("x-real-ip", func(t *testing.T) {

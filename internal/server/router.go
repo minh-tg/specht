@@ -44,11 +44,11 @@ type RouterConfig struct {
 	// group membership matches. Existing accounts never change
 	// role from IdP groups.
 	SSOAdminGroups []string
-	// TrustedProxies lists the CIDR ranges of reverse proxies / load
-	// balancers in front of the API. Only requests whose peer address falls
-	// inside one of these ranges may supply X-Forwarded-For, X-Real-IP, or
-	// X-Forwarded-Proto; empty (default) means no peer is trusted and those
-	// headers are ignored entirely.
+	// TrustedProxies lists only the CIDR ranges of reverse-proxy hops in front
+	// of the API. The nearest trusted proxy must append its observed peer to
+	// X-Forwarded-For and overwrite X-Real-IP / X-Forwarded-Proto; the server
+	// walks XFF right-to-left and skips trusted hops. Empty (default) means no
+	// peer is trusted and forwarding headers are ignored entirely.
 	TrustedProxies []netip.Prefix
 }
 
@@ -201,8 +201,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 // — the request's RemoteAddr — falls inside one of the configured trusted
 // ranges; otherwise X-Forwarded-For, X-Real-IP, and X-Forwarded-Proto are
 // ignored, so an arbitrary internet client cannot spoof its address in logs
-// or force Secure cookies. With no trusted ranges configured (the default)
-// the headers are never trusted and RemoteAddr is left untouched.
+// or force Secure cookies. Configure only proxy-hop ranges, and ensure the
+// nearest proxy appends to XFF and overwrites X-Real-IP / X-Forwarded-Proto.
+// With no trusted ranges configured (the default), forwarding headers are
+// never trusted and RemoteAddr is left untouched.
 func realIPMiddleware(trusted []netip.Prefix) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -221,30 +223,57 @@ func realIPMiddleware(trusted []netip.Prefix) func(http.Handler) http.Handler {
 				next.ServeHTTP(w, r)
 				return
 			}
-			r = applyTrustedProxyHeaders(r)
+			r = applyTrustedProxyHeaders(r, trusted)
 			next.ServeHTTP(w, r)
 		})
 	}
 }
 
 // applyTrustedProxyHeaders rewrites the peer address from forwarding
-// headers and stamps the trusted transport verdict onto the context.
-func applyTrustedProxyHeaders(r *http.Request) *http.Request {
+// headers and stamps the trusted transport verdict onto the context. XFF is
+// walked right-to-left, skipping configured proxies, so a client-supplied
+// prefix cannot override the address appended by the nearest trusted proxy.
+func applyTrustedProxyHeaders(r *http.Request, trusted []netip.Prefix) *http.Request {
 	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		if ip := strings.TrimSpace(strings.Split(fwd, ",")[0]); ip != "" {
+		if ip := forwardedClientIP(fwd, trusted); ip != "" {
 			r.RemoteAddr = ip
 		}
 	} else if rip := r.Header.Get("X-Real-IP"); rip != "" {
-		r.RemoteAddr = rip
+		if addr, err := netip.ParseAddr(strings.TrimSpace(rip)); err == nil && addr.Zone() == "" && !isTrustedProxyAddr(addr, trusted) {
+			r.RemoteAddr = addr.Unmap().String()
+		}
 	}
 	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 	return r.WithContext(auth.ContextWithSecureTransport(r.Context(), secure))
+}
+
+func forwardedClientIP(forwardedFor string, trusted []netip.Prefix) string {
+	hops := strings.Split(forwardedFor, ",")
+	for i := len(hops) - 1; i >= 0; i-- {
+		hop := strings.TrimSpace(hops[i])
+		addr, err := netip.ParseAddr(hop)
+		if err != nil || addr.Zone() != "" {
+			return ""
+		}
+		addr = addr.Unmap()
+		if !isTrustedProxyAddr(addr, trusted) {
+			return addr.String()
+		}
+	}
+	return ""
 }
 
 // isTrustedProxy reports whether ip falls inside any of the trusted ranges.
 func isTrustedProxy(ip net.IP, trusted []netip.Prefix) bool {
 	addr, ok := netip.AddrFromSlice(ip)
 	if !ok {
+		return false
+	}
+	return isTrustedProxyAddr(addr, trusted)
+}
+
+func isTrustedProxyAddr(addr netip.Addr, trusted []netip.Prefix) bool {
+	if !addr.IsValid() {
 		return false
 	}
 	addr = addr.Unmap()

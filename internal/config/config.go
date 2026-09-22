@@ -42,11 +42,10 @@ type Server struct {
 	LogLevel     string
 	InventoryTTL time.Duration
 	SSO          SSOConfig
-	// TrustedProxies lists the CIDR ranges of reverse proxies (or load
-	// balancers) in front of the server. Only requests whose RemoteAddr falls
-	// inside one of these ranges may supply X-Forwarded-For / X-Real-IP /
-	// X-Forwarded-Proto; empty (the default) means the server never trusts
-	// forwarding headers, e.g. when it is deployed directly on the internet.
+	// TrustedProxies lists only reverse-proxy hop CIDRs. The nearest trusted
+	// proxy must append its observed peer to X-Forwarded-For and overwrite
+	// X-Real-IP / X-Forwarded-Proto. Empty (the default) means forwarding
+	// headers are never trusted, e.g. when deployed directly on the internet.
 	TrustedProxies []netip.Prefix
 	// Watcher settings. Enable is the master switch; the remaining fields are
 	// only validated when Enable is true (a malformed optional setting must

@@ -36,10 +36,13 @@ administration needs a global admin.
 
 ## 4. Reverse proxy
 
-Terminate TLS at the proxy and forward plain HTTP. Only set
-`TRUSTED_PROXIES` to the proxy's CIDR(s) so `X-Forwarded-For/Proto` are
-honored; otherwise the server ignores them and `Secure` cookies follow the
-direct connection. Set `CORS_ORIGINS` to the public UI origin(s).
+Terminate TLS at the proxy and forward plain HTTP. Set `TRUSTED_PROXIES` to
+only the proxy-hop CIDRs. Configure the nearest proxy to append the observed
+client address to `X-Forwarded-For` and overwrite `X-Real-IP` and
+`X-Forwarded-Proto`; the server walks the forwarded chain from the right and
+skips trusted proxy hops. Otherwise, forwarding headers are ignored and
+`Secure` cookies follow the direct connection. Set `CORS_ORIGINS` to the
+public UI origin(s).
 
 ## 5. Backup and restore
 
