@@ -212,35 +212,38 @@ const (
 // or a space-separated string are all accepted. Anything else (numbers,
 // objects, nested arrays) is skipped, never coerced — group membership
 // gates admin elevation, so ambiguous values must not grant anything.
+// appendSSOGroup appends one group name subject to the intake bounds:
+// blank and overlong names are dropped, and the list is capped.
+func appendSSOGroup(out []string, s string) []string {
+	s = strings.TrimSpace(s)
+	if s == "" || len(s) > maxSSOGroupLength {
+		return out
+	}
+	if len(out) >= maxSSOGroups {
+		return out
+	}
+	return append(out, s)
+}
+
 func parseGroupsClaim(claims map[string]any, claim string) []string {
 	raw, ok := claims[claim]
 	if !ok || raw == nil {
 		return nil
 	}
 	var out []string
-	add := func(s string) {
-		s = strings.TrimSpace(s)
-		if s == "" || len(s) > maxSSOGroupLength {
-			return
-		}
-		if len(out) >= maxSSOGroups {
-			return
-		}
-		out = append(out, s)
-	}
 	switch v := raw.(type) {
 	case string:
 		for _, part := range strings.Fields(v) {
-			add(part)
+			out = appendSSOGroup(out, part)
 		}
 	case []string:
 		for _, s := range v {
-			add(s)
+			out = appendSSOGroup(out, s)
 		}
 	case []any:
 		for _, item := range v {
 			if s, ok := item.(string); ok {
-				add(s)
+				out = appendSSOGroup(out, s)
 			}
 		}
 	}
@@ -275,22 +278,9 @@ func IsSSOAdmin(groups []string, adminGroups []string) bool {
 // authenticated beyond the bearer access token, so binding its answer to the
 // verified id_token prevents an endpoint compromise (or confused-deputy
 // response) from minting an identity for a different subject.
-func (a *OIDCAuthenticator) identityFromUserInfo(ctx context.Context, tokenResp map[string]any, wantNonce string) (*Identity, error) {
-	accessToken, _ := tokenResp["access_token"].(string)
-	if accessToken == "" {
-		return nil, ErrInvalidCredential
-	}
-
-	idToken, _ := tokenResp["id_token"].(string)
-	if idToken != "" {
-		// id_token is optional here (some providers only hand it over when
-		// openid scope is requested), but when present it must be valid and
-		// carry the nonce we issued.
-		if _, err := a.identityFromIDToken(ctx, idToken, wantNonce); err != nil {
-			return nil, err
-		}
-	}
-
+// fetchUserInfoBody GETs the issuer's userinfo endpoint with the access
+// token and returns the bounded response body.
+func (a *OIDCAuthenticator) fetchUserInfoBody(ctx context.Context, accessToken string) ([]byte, error) {
 	userInfoURL := strings.TrimSuffix(a.cfg.IssuerURL, "/") + "/userinfo"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, userInfoURL, nil)
 	if err != nil {
@@ -307,16 +297,66 @@ func (a *OIDCAuthenticator) identityFromUserInfo(ctx context.Context, tokenResp 
 		return nil, fmt.Errorf("userinfo: HTTP %d", resp.StatusCode)
 	}
 
-	var info struct {
-		Sub   string `json:"sub"`
-		Email string `json:"email"`
-	}
 	// Bound the userinfo body before decoding twice (typed fields plus the
 	// configurable groups claim): providers answer small JSON here, and an
 	// unbounded read would turn a compromised endpoint into a memory hog.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if err != nil {
 		return nil, fmt.Errorf("decode userinfo: %w", err)
+	}
+	return body, nil
+}
+
+// mergeSSOGroups merges group membership from the validated id_token (when
+// present) and the userinfo body. Either side may omit the claim;
+// duplicates collapse.
+func mergeSSOGroups(idToken string, body []byte, groupsClaim string) []string {
+	seen := make(map[string]struct{})
+	var groups []string
+	addGroups := func(list []string) {
+		for _, g := range list {
+			if _, dup := seen[g]; dup {
+				continue
+			}
+			seen[g] = struct{}{}
+			groups = append(groups, g)
+		}
+	}
+	if idToken != "" {
+		if idGroups, err := idTokenGroups(idToken, groupsClaim); err == nil {
+			addGroups(idGroups)
+		}
+	}
+	var rawClaims map[string]any
+	if err := json.Unmarshal(body, &rawClaims); err == nil {
+		addGroups(parseGroupsClaim(rawClaims, groupsClaim))
+	}
+	return groups
+}
+
+func (a *OIDCAuthenticator) identityFromUserInfo(ctx context.Context, tokenResp map[string]any, wantNonce string) (*Identity, error) {
+	accessToken, _ := tokenResp["access_token"].(string)
+	if accessToken == "" {
+		return nil, ErrInvalidCredential
+	}
+
+	idToken, _ := tokenResp["id_token"].(string)
+	if idToken != "" {
+		// id_token is optional here (some providers only hand it over when
+		// openid scope is requested), but when present it must be valid and
+		// carry the nonce we issued.
+		if _, err := a.identityFromIDToken(ctx, idToken, wantNonce); err != nil {
+			return nil, err
+		}
+	}
+
+	body, err := a.fetchUserInfoBody(ctx, accessToken)
+	if err != nil {
+		return nil, err
+	}
+	var info struct {
+		Sub   string `json:"sub"`
+		Email string `json:"email"`
 	}
 	if err := json.Unmarshal(body, &info); err != nil {
 		return nil, fmt.Errorf("decode userinfo: %w", err)
@@ -338,35 +378,10 @@ func (a *OIDCAuthenticator) identityFromUserInfo(ctx context.Context, tokenResp 
 		}
 	}
 
-	// Group membership merges from both documents: the id_token is
-	// authoritative when present (its groups were validated above via
-	// identityFromIDToken), the userinfo endpoint supplements it. Either
-	// side may omit the claim; duplicates collapse.
-	seen := make(map[string]struct{})
-	var groups []string
-	addGroups := func(list []string) {
-		for _, g := range list {
-			if _, dup := seen[g]; dup {
-				continue
-			}
-			seen[g] = struct{}{}
-			groups = append(groups, g)
-		}
-	}
-	if idToken != "" {
-		if idGroups, err := idTokenGroups(idToken, a.groupsClaim()); err == nil {
-			addGroups(idGroups)
-		}
-	}
-	var rawClaims map[string]any
-	if err := json.Unmarshal(body, &rawClaims); err == nil {
-		addGroups(parseGroupsClaim(rawClaims, a.groupsClaim()))
-	}
-
 	return &Identity{
 		UserID: info.Sub,
 		Email:  info.Email,
-		Groups: groups,
+		Groups: mergeSSOGroups(idToken, body, a.groupsClaim()),
 	}, nil
 }
 
@@ -407,37 +422,93 @@ func idTokenSubject(idToken string) (string, error) {
 // account, plus the IdP group membership for enterprise role mapping. If it
 // returns ErrSSONotProvisioned the callback answers 403 without disclosing
 // whether the account exists.
+// verifySSOCallbackState validates the OAuth2 state parameter against the
+// single-use state cookie and clears the cookie. It returns the server-issued
+// nonce bound into the state value.
+func verifySSOCallbackState(w http.ResponseWriter, r *http.Request, cookieName string) (wantNonce string, ok bool) {
+	state := r.URL.Query().Get("state")
+	if state == "" {
+		http.Error(w, "missing state", http.StatusBadRequest)
+		return "", false
+	}
+	stateCookie, err := r.Cookie(cookieName)
+	if err != nil || !secureCompare(state, stateCookie.Value) {
+		http.Error(w, "state mismatch", http.StatusBadRequest)
+		return "", false
+	}
+	// The state value is single-use: clear it before any further work so a
+	// replayed callback can never pass this check again.
+	// secureCookie sets Secure from the proxy-aware transport verdict.
+	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
+	http.SetCookie(w, secureCookie(r, &http.Cookie{
+		Name:     cookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	}))
+
+	// The server-issued nonce rides inside the state cookie (see
+	// GenerateStateToken), so an id_token is only accepted when its nonce
+	// claim matches what this login flow actually sent to the provider.
+	_, wantNonce = splitStateNonce(stateCookie.Value)
+	return wantNonce, true
+}
+
+// extractCallbackIdentity resolves the callback identity from the token
+// response: id_token plus userinfo binding when both are present,
+// id_token alone, or userinfo alone.
+func (a *OIDCAuthenticator) extractCallbackIdentity(ctx context.Context, tokenResp map[string]any, wantNonce string) (*Identity, error) {
+	idToken, _ := tokenResp["id_token"].(string)
+	accessToken, _ := tokenResp["access_token"].(string)
+	switch {
+	case idToken != "" && accessToken != "":
+		// Standard OIDC code flow: validate the id_token (signature, iss,
+		// aud, exp, nonce) and bind the userinfo response to it by
+		// requiring the same sub before trusting userinfo claims.
+		return a.identityFromUserInfo(ctx, tokenResp, wantNonce)
+	case idToken != "":
+		return a.identityFromIDToken(ctx, idToken, wantNonce)
+	default:
+		// No id_token: the access token authorizes the userinfo fetch
+		// directly; there is no signed subject to cross-check against.
+		return a.identityFromUserInfo(ctx, tokenResp, wantNonce)
+	}
+}
+
+// issueCallbackSession mints the session token for the validated identity
+// and delivers it in the redirect URL fragment.
+func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ctx context.Context, userID, email string, groups []string) (token string, err error), ident *Identity) {
+	tok, err := issuer(r.Context(), ident.UserID, ident.Email, ident.Groups)
+	if err != nil {
+		if errors.Is(err, ErrSSONotProvisioned) {
+			http.Error(w, "sso account not provisioned", http.StatusForbidden)
+			return
+		}
+		http.Error(w, "token issuance failed", http.StatusInternalServerError)
+		return
+	}
+
+	// Deliver the session token in the redirect URL fragment (never a
+	// query parameter) so it does not leak through Referer headers,
+	// browser history, or server access logs. Fragments are not sent to
+	// the server, so nothing here ever reads it back; the SPA consumes
+	// the fragment on load and keeps the token in memory.
+	// Redirect target is the constant "/" with an escaped fragment;
+	// no user-controlled host or path.
+	// nosemgrep: go.lang.security.injection.open-redirect.open-redirect
+	http.Redirect(w, r, "/#sso_token="+url.PathEscape(tok), http.StatusFound)
+}
+
 func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, userID, email string, groups []string) (token string, err error)) http.HandlerFunc {
 	const stateCookieName = "sso_state"
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		state := r.URL.Query().Get("state")
-		if state == "" {
-			http.Error(w, "missing state", http.StatusBadRequest)
+		wantNonce, ok := verifySSOCallbackState(w, r, stateCookieName)
+		if !ok {
 			return
 		}
-		stateCookie, err := r.Cookie(stateCookieName)
-		if err != nil || !secureCompare(state, stateCookie.Value) {
-			http.Error(w, "state mismatch", http.StatusBadRequest)
-			return
-		}
-		// The state value is single-use: clear it before any further work so a
-		// replayed callback can never pass this check again.
-		// secureCookie sets Secure from the proxy-aware transport verdict.
-		// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
-		http.SetCookie(w, secureCookie(r, &http.Cookie{
-			Name:     stateCookieName,
-			Value:    "",
-			Path:     "/",
-			MaxAge:   -1,
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-		}))
-
-		// The server-issued nonce rides inside the state cookie (see
-		// GenerateStateToken), so an id_token is only accepted when its nonce
-		// claim matches what this login flow actually sent to the provider.
-		_, wantNonce := splitStateNonce(stateCookie.Value)
 
 		code := r.URL.Query().Get("code")
 		if code == "" {
@@ -454,46 +525,13 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, use
 			return
 		}
 
-		var ident *Identity
-		idToken, _ := tokenResp["id_token"].(string)
-		accessToken, _ := tokenResp["access_token"].(string)
-		switch {
-		case idToken != "" && accessToken != "":
-			// Standard OIDC code flow: validate the id_token (signature, iss,
-			// aud, exp, nonce) and bind the userinfo response to it by
-			// requiring the same sub before trusting userinfo claims.
-			ident, err = a.identityFromUserInfo(r.Context(), tokenResp, wantNonce)
-		case idToken != "":
-			ident, err = a.identityFromIDToken(r.Context(), idToken, wantNonce)
-		default:
-			// No id_token: the access token authorizes the userinfo fetch
-			// directly; there is no signed subject to cross-check against.
-			ident, err = a.identityFromUserInfo(r.Context(), tokenResp, wantNonce)
-		}
+		ident, err := a.extractCallbackIdentity(r.Context(), tokenResp, wantNonce)
 		if err != nil {
 			http.Error(w, "identity extraction failed", http.StatusInternalServerError)
 			return
 		}
 
-		tok, err := issuer(r.Context(), ident.UserID, ident.Email, ident.Groups)
-		if err != nil {
-			if errors.Is(err, ErrSSONotProvisioned) {
-				http.Error(w, "sso account not provisioned", http.StatusForbidden)
-				return
-			}
-			http.Error(w, "token issuance failed", http.StatusInternalServerError)
-			return
-		}
-
-		// Deliver the session token in the redirect URL fragment (never a
-		// query parameter) so it does not leak through Referer headers,
-		// browser history, or server access logs. Fragments are not sent to
-		// the server, so nothing here ever reads it back; the SPA consumes
-		// the fragment on load and keeps the token in memory.
-		// Redirect target is the constant "/" with an escaped fragment;
-		// no user-controlled host or path.
-		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect
-		http.Redirect(w, r, "/#sso_token="+url.PathEscape(tok), http.StatusFound)
+		issueCallbackSession(w, r, issuer, ident)
 	}
 }
 
@@ -559,6 +597,46 @@ func secureCompare(a, b string) bool {
 	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
+// jwksKey is one JSON Web Key in the issuer's key set.
+type jwksKey struct {
+	Kid string `json:"kid"`
+	Kty string `json:"kty"`
+	Alg string `json:"alg"`
+	Use string `json:"use"`
+	N   string `json:"n"`
+	E   string `json:"e"`
+	Crv string `json:"crv"`
+	X   string `json:"x"`
+	Y   string `json:"y"`
+}
+
+// jwksKeyToPublicKey converts one JWKS entry to a usable public key,
+// logging and skipping invalid entries.
+func jwksKeyToPublicKey(k jwksKey, logger func(msg string, args ...any)) (any, bool) {
+	switch k.Kty {
+	case "RSA":
+		key, err := parseRSAPublicKey(k.N, k.E)
+		if err != nil {
+			if logger != nil {
+				logger("oidc jwks: skipping invalid RSA key", "kid", k.Kid, "error", err)
+			}
+			return nil, false
+		}
+		return key, true
+	case "EC":
+		key, err := parseECDSAPublicKey(k.Crv, k.X, k.Y)
+		if err != nil {
+			if logger != nil {
+				logger("oidc jwks: skipping invalid EC key", "kid", k.Kid, "error", err)
+			}
+			return nil, false
+		}
+		return key, true
+	default:
+		return nil, false
+	}
+}
+
 // fetchJWKS downloads the issuer's JSON Web Key Set and caches the keys it
 // contains until jwksCacheTTL elapses.
 func (a *OIDCAuthenticator) fetchJWKS(ctx context.Context) error {
@@ -577,17 +655,7 @@ func (a *OIDCAuthenticator) fetchJWKS(ctx context.Context) error {
 	}
 
 	var jwks struct {
-		Keys []struct {
-			Kid string `json:"kid"`
-			Kty string `json:"kty"`
-			Alg string `json:"alg"`
-			Use string `json:"use"`
-			N   string `json:"n"`
-			E   string `json:"e"`
-			Crv string `json:"crv"`
-			X   string `json:"x"`
-			Y   string `json:"y"`
-		} `json:"keys"`
+		Keys []jwksKey `json:"keys"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&jwks); err != nil {
 		return fmt.Errorf("decode jwks: %w", err)
@@ -598,24 +666,7 @@ func (a *OIDCAuthenticator) fetchJWKS(ctx context.Context) error {
 		if k.Kid == "" {
 			continue
 		}
-		switch k.Kty {
-		case "RSA":
-			key, err := parseRSAPublicKey(k.N, k.E)
-			if err != nil {
-				if a.logger != nil {
-					a.logger("oidc jwks: skipping invalid RSA key", "kid", k.Kid, "error", err)
-				}
-				continue
-			}
-			keys[k.Kid] = key
-		case "EC":
-			key, err := parseECDSAPublicKey(k.Crv, k.X, k.Y)
-			if err != nil {
-				if a.logger != nil {
-					a.logger("oidc jwks: skipping invalid EC key", "kid", k.Kid, "error", err)
-				}
-				continue
-			}
+		if key, ok := jwksKeyToPublicKey(k, a.logger); ok {
 			keys[k.Kid] = key
 		}
 	}
