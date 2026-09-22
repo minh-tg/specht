@@ -33,6 +33,13 @@ func connectMCPServer(t *testing.T, api API) *mcp.ClientSession {
 
 func TestMCPServerTools(t *testing.T) {
 	session := connectMCPServer(t, &mockClient{})
+	initialize := session.InitializeResult()
+	if initialize == nil {
+		t.Fatal("server did not complete initialization")
+	}
+	if initialize.ServerInfo.Name != "specht-mcp" {
+		t.Fatalf("server name = %q, want specht-mcp", initialize.ServerInfo.Name)
+	}
 	result, err := session.ListTools(context.Background(), nil)
 	if err != nil {
 		t.Fatal(err)

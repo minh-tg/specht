@@ -9,6 +9,29 @@ import (
 	"github.com/xMinhx/specht/internal/client"
 )
 
+type API interface {
+	ListFindings(projectSlug string, severities, states []string, limit, offset int32) ([]client.Finding, error)
+	GetFinding(findingID string) (*client.Finding, error)
+	GetGateStatus(projectSlug string, severity string) (*client.GateStatus, error)
+	GetIntroducedGateStatus(projectSlug string, severity string, reportID string) (*client.GateStatus, error)
+	PreviewPRCheck(projectSlug string, commit string, provider string, reportID string, severity string) (*client.PRCheckPreview, error)
+	PreviewPatch(findingID string) (*client.PatchOutcome, error)
+	PreviewNotification(findingID string, channel string, target string, linked bool) (*client.NotifyOutcome, error)
+	GetAdminStatus() (*client.AdminStatus, error)
+	PreviewRetention(days int) (*client.RetentionPreview, error)
+	GetEffectivePolicy(projectSlug string) (*client.PolicyEffective, error)
+	ListTeams() ([]client.Team, error)
+	ListProjectTeams(projectSlug string) ([]client.ProjectTeam, error)
+	UpsertReachability(findingID, state, evidence string) (*client.ReachabilityAssessment, error)
+	ListReachability(findingID string) ([]client.ReachabilityAssessment, error)
+	GetWatcherStatus() (*client.WatcherStatus, error)
+	ListWaivers(projectSlug string) ([]client.Waiver, error)
+	GetWaiver(projectSlug, waiverID string) (*client.WaiverDetail, error)
+	CreateWaiver(projectSlug string, req *client.CreateWaiverRequest) (*client.Waiver, error)
+	ToggleWaiver(projectSlug, waiverID string) (*client.Waiver, error)
+	ListWaiverEvents(projectSlug, waiverID string) ([]client.WaiverEvent, error)
+}
+
 type findingsListInput struct {
 	Project  string `json:"project" jsonschema:"project slug"`
 	Severity string `json:"severity,omitempty" jsonschema:"comma-separated severity filter"`
