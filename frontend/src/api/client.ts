@@ -170,15 +170,69 @@ export async function revokeRefreshToken(refreshToken: string): Promise<void> {
   }
 }
 
-/** Tears the session down and bounces to the sign-in page. */
-function sessionExpired(): never {
+/** Tears the session down, bounces to the sign-in page, and rethrows. */
+function endSession(err: unknown): never {
   setAuthToken(null);
   clearStoredSession();
   onUnauthorized?.();
   onRefreshFailed?.();
   const redirect = encodeURIComponent(window.location.pathname + window.location.search);
   window.location.href = `/login?redirect=${redirect}`;
-  throw new APIError(401, "unauthorized", "Session expired");
+  throw err;
+}
+
+function sessionExpired(): never {
+  endSession(new APIError(401, "unauthorized", "Session expired"));
+}
+
+const unauthorized = (err: unknown): boolean => err instanceof APIError && err.status === 401;
+
+/** Refreshes the access token once and retries; a rejected retry with a 401
+ * means the refresh itself was rejected — end the session and surface the
+ * original retry error to the caller. */
+async function refreshAndRetry<T>(
+  attempt: (token: string | null) => Promise<T>,
+  refreshToken: string,
+): Promise<T> {
+  try {
+    const session = await refreshAccessToken(refreshToken);
+    setAuthToken(session.token);
+    return await attempt(session.token);
+  } catch (err) {
+    if (!unauthorized(err)) throw err;
+    endSession(err);
+  }
+}
+
+async function withAuth<T>(
+  attempt: (token: string | null) => Promise<T>,
+  skipAuthRedirect: boolean,
+): Promise<T> {
+  const token = authToken ?? getStoredSession()?.token ?? null;
+
+  // Anonymous request: a 401 redirects to sign-in unless opted out
+  // (e.g. login/register, which surface the error inline).
+  if (!token) {
+    try {
+      return await attempt(null);
+    } catch (err) {
+      if (unauthorized(err) && !skipAuthRedirect) sessionExpired();
+      throw err;
+    }
+  }
+
+  try {
+    return await attempt(token);
+  } catch (err) {
+    // An authenticated 401 means the access token expired: refresh once
+    // and retry before falling back to the sign-in redirect. Request
+    // errors opt out of the redirect when they opted out of auth.
+    if (!unauthorized(err) || skipAuthRedirect) throw err;
+  }
+
+  const refreshToken = getStoredRefreshToken();
+  if (!refreshToken) sessionExpired();
+  return refreshAndRetry(attempt, refreshToken);
 }
 
 export async function apiFetch<T>(
@@ -187,49 +241,5 @@ export async function apiFetch<T>(
 ): Promise<T> {
   const { skipAuthRedirect = false, ...fetchOptions } = options;
   const attempt = (token: string | null): Promise<T> => send<T>(path, fetchOptions, token);
-  const unauthorized = (err: unknown): boolean => err instanceof APIError && err.status === 401;
-
-  const token = authToken ?? getStoredSession()?.token ?? null;
-  if (token) {
-    try {
-      return await attempt(token);
-    } catch (err) {
-      // An authenticated 401 means the access token expired: refresh once
-      // and retry before falling back to the sign-in redirect. Request
-      // errors opt out of the redirect when they opted out of auth.
-      if (!unauthorized(err) || skipAuthRedirect) throw err;
-    }
-
-    const refreshToken = getStoredRefreshToken();
-    if (refreshToken) {
-      try {
-        const session = await refreshAccessToken(refreshToken);
-        setAuthToken(session.token);
-        return await attempt(session.token);
-      } catch (err) {
-        // A failed refresh (network, invalid, revoked) or a retried request
-        // the server still rejects ends the session. Clear local state via
-        // the callbacks, bounce to sign-in, and surface the error to the
-        // caller that triggered it.
-        if (!unauthorized(err)) throw err;
-        setAuthToken(null);
-        clearStoredSession();
-        onUnauthorized?.();
-        onRefreshFailed?.();
-        const redirect = encodeURIComponent(window.location.pathname + window.location.search);
-        window.location.href = `/login?redirect=${redirect}`;
-        throw err;
-      }
-    }
-    return sessionExpired();
-  }
-
-  // Anonymous request: a 401 redirects to sign-in unless opted out
-  // (e.g. login/register, which surface the error inline).
-  try {
-    return await attempt(null);
-  } catch (err) {
-    if (unauthorized(err) && !skipAuthRedirect) return sessionExpired();
-    throw err;
-  }
+  return withAuth(attempt, skipAuthRedirect);
 }

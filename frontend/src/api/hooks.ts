@@ -40,7 +40,8 @@ export function useFindings(
       if (filters.offset != null) params.set("offset", String(filters.offset));
       if (filters.limit != null) params.set("limit", String(filters.limit));
       const qs = params.toString();
-      return apiFetch<Finding[]>(`/api/v1/projects/${projectSlug}/findings${qs ? `?${qs}` : ""}`);
+      const query = qs ? `?${qs}` : "";
+      return apiFetch<Finding[]>(`/api/v1/projects/${projectSlug}/findings${query}`);
     },
     enabled: !!projectSlug,
   });

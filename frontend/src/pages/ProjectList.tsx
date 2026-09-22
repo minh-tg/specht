@@ -49,7 +49,11 @@ export function ProjectList() {
 }
 
 function ProjectCard(
-  { slug, name, description }: { slug: string; name: string; description: string | null; },
+  { slug, name, description }: {
+    readonly slug: string;
+    readonly name: string;
+    readonly description: string | null;
+  },
 ) {
   const navigate = useNavigate();
   const { data: gate } = useGateStatus(slug);
@@ -59,7 +63,7 @@ function ProjectCard(
       onClick={() => navigate(`/${slug}/findings`)}
       className="bg-card hover:bg-muted/50 dark:bg-muted/10 relative cursor-pointer rounded-lg border p-4 text-left transition-colors"
     >
-      {gate && gate.threshold_breached && (
+      {gate?.threshold_breached && (
         <span className="bg-destructive text-destructive-foreground absolute right-2 top-2 rounded px-1.5 py-0.5 text-[10px] font-medium">
           BLOCKING
         </span>

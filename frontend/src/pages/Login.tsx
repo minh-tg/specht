@@ -1,6 +1,6 @@
 import { APIError } from "@/api/client";
 import { useAuth } from "@/auth/useAuth";
-import { type FormEvent, useState } from "react";
+import { type SubmitEvent, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 export function safeRedirect(redirect: string | null): string {
@@ -28,7 +28,7 @@ export function Login() {
     return null;
   }
 
-  async function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);

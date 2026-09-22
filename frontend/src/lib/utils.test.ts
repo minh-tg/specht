@@ -26,7 +26,7 @@ describe("truncateText", () => {
     for (const ch of out) {
       expect(ch.codePointAt(0)).toBeGreaterThanOrEqual(0);
     }
-    expect([...out].length).toBe(120);
+    expect([...out]).toHaveLength(120);
   });
 
   it("returns empty input unchanged", () => {

@@ -43,7 +43,7 @@ export function FindingsDashboard() {
   const severity = searchParams.get("severity") ?? "";
   const status = searchParams.get("status") ?? "";
   const kind = searchParams.get("kind") ?? "";
-  const offset = parseInt(searchParams.get("offset") ?? "0", 10);
+  const offset = Number.parseInt(searchParams.get("offset") ?? "0", 10);
 
   const [sortBy, setSortBy] = useState("severity");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");

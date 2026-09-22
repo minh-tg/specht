@@ -10,7 +10,7 @@ import {
 } from "@/api/client";
 import { SSO_SESSION_KEY, ssoTokenFromHash } from "@/auth/sso";
 import type { LoginResponse } from "@/types/api";
-import { createContext, type ReactNode, useCallback, useEffect, useState } from "react";
+import { createContext, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
 interface AuthState {
   token: string | null;
@@ -27,7 +27,7 @@ export interface AuthContextValue extends AuthState {
 
 export const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children }: { children: ReactNode; }) {
+export function AuthProvider({ children }: { readonly children: ReactNode; }) {
   // Restore a persisted session before the first render: a mount effect
   // would race child effects (route guards, data fetches) that already saw
   // a null session. The SSO callback fragment takes precedence, and a
@@ -115,9 +115,10 @@ export function AuthProvider({ children }: { children: ReactNode; }) {
     setState({ token: null, refreshToken: null, userId: null, email: null });
   }, []);
 
-  return (
-    <AuthContext.Provider value={{ ...state, login, logout, loading }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({ ...state, login, logout, loading }),
+    [state, login, logout, loading],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

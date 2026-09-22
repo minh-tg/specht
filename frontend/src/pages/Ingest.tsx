@@ -1,7 +1,7 @@
 import { APIError, apiFetch } from "@/api/client";
 import { useProjects, useScanners } from "@/api/hooks";
 import type { IngestResponse } from "@/types/api";
-import { type ChangeEvent, type FormEvent, useRef, useState } from "react";
+import { type ChangeEvent, type ReactNode, type SubmitEvent, useRef, useState } from "react";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -44,7 +44,7 @@ export function Ingest() {
   >(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -66,14 +66,10 @@ export function Ingest() {
     }
 
     setFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => {
-      setFileContent(reader.result as string);
-    };
-    reader.readAsText(file);
+    setFileContent(await file.text());
   }
 
-  async function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     if (!selectedProject || !selectedScanner || !fileContent) return;
 
@@ -103,6 +99,37 @@ export function Ingest() {
   }
 
   const selected = scanners?.find((s) => s.name === selectedScanner);
+
+  let scannerPicker: ReactNode;
+  if (scannersLoading) {
+    scannerPicker = <div className="text-muted-foreground mt-1 text-sm">Loading scanners…</div>;
+  } else if (scannersError) {
+    scannerPicker = (
+      <div className="text-destructive mt-1 text-sm">
+        Failed to load scanners. Refresh to retry.
+      </div>
+    );
+  } else if (!scanners || scanners.length === 0) {
+    scannerPicker = (
+      <div className="text-muted-foreground mt-1 text-sm">No scanners available.</div>
+    );
+  } else {
+    scannerPicker = (
+      <select
+        id="ingest-scanner"
+        className="border-input bg-background mt-1 block w-full rounded-md border px-3 py-2 text-sm"
+        value={selectedScanner}
+        onChange={(e) => setSelectedScanner(e.target.value)}
+      >
+        <option value="">Select a scanner</option>
+        {scanners.map((s) => (
+          <option key={s.name} value={s.name}>
+            {s.name} ({s.version})
+          </option>
+        ))}
+      </select>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8">
@@ -141,31 +168,7 @@ export function Ingest() {
 
         <div>
           <label htmlFor="ingest-scanner" className="text-sm font-medium">Scanner</label>
-          {scannersLoading
-            ? <div className="text-muted-foreground mt-1 text-sm">Loading scanners…</div>
-            : scannersError
-            ? (
-              <div className="text-destructive mt-1 text-sm">
-                Failed to load scanners. Refresh to retry.
-              </div>
-            )
-            : !scanners || scanners.length === 0
-            ? <div className="text-muted-foreground mt-1 text-sm">No scanners available.</div>
-            : (
-              <select
-                id="ingest-scanner"
-                className="border-input bg-background mt-1 block w-full rounded-md border px-3 py-2 text-sm"
-                value={selectedScanner}
-                onChange={(e) => setSelectedScanner(e.target.value)}
-              >
-                <option value="">Select a scanner</option>
-                {scanners.map((s) => (
-                  <option key={s.name} value={s.name}>
-                    {s.name} ({s.version})
-                  </option>
-                ))}
-              </select>
-            )}
+          {scannerPicker}
           {selected && (
             <p className="text-muted-foreground mt-2 flex items-center gap-2 text-xs">
               <span

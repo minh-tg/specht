@@ -9,7 +9,7 @@ const severityColors: Record<Severity, string> = {
   unknown: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400",
 };
 
-export function SeverityBadge({ severity }: { severity: string; }) {
+export function SeverityBadge({ severity }: { readonly severity: string; }) {
   // The wire is untrusted: match case-insensitively, and never render an
   // out-of-vocabulary value verbatim — show a controlled "Unknown" instead.
   const normalized = severity.trim().toLowerCase();

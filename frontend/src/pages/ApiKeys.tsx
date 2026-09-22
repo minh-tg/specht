@@ -1,7 +1,7 @@
 import { APIError, apiFetch } from "@/api/client";
 import { useProjects } from "@/api/hooks";
 import type { ApiKey } from "@/types/api";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 
 export function ApiKeys() {
   const { data: projects } = useProjects();
@@ -41,7 +41,7 @@ export function ApiKeys() {
     }
   }
 
-  async function handleCreate(e: React.FormEvent) {
+  async function handleCreate(e: React.SubmitEvent) {
     e.preventDefault();
     if (!newKeyName.trim() || !selectedProject) {
       setCreateError(newKeyName.trim() ? "Project is required" : "Name is required");
@@ -77,6 +77,62 @@ export function ApiKeys() {
       setRevokingId(null);
       setConfirmRevoke(null);
     }
+  }
+
+  let keysBody: ReactNode;
+  if (loadingKeys) {
+    keysBody = <div className="bg-muted h-20 animate-pulse rounded" />;
+  } else if (keys.length === 0) {
+    keysBody = (
+      <div className="flex flex-col items-center gap-2 py-8">
+        <p className="text-muted-foreground text-sm">No API keys yet</p>
+        <p className="text-muted-foreground text-xs">Create one above</p>
+      </div>
+    );
+  } else {
+    keysBody = (
+      <div className="space-y-2">
+        {keys.map((k) => (
+          <div
+            key={k.id}
+            className="bg-card flex items-center justify-between rounded-lg border p-3"
+          >
+            <div>
+              <p className="text-sm font-medium">{k.name}</p>
+              <p className="text-muted-foreground text-xs">
+                {k.key_prefix}... &middot; {new Date(k.created_at).toLocaleDateString()}
+              </p>
+            </div>
+            {confirmRevoke === k.id
+              ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    className="text-destructive hover:text-destructive/80 text-xs font-medium"
+                    onClick={() => handleRevoke(k.id)}
+                    disabled={revokingId === k.id}
+                  >
+                    {revokingId === k.id ? "Revoking..." : "Confirm"}
+                  </button>
+                  <button
+                    className="text-muted-foreground hover:text-foreground text-xs"
+                    onClick={() => setConfirmRevoke(null)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )
+              : (
+                <button
+                  className="text-destructive hover:text-destructive/80 text-xs font-medium"
+                  onClick={() => setConfirmRevoke(k.id)}
+                >
+                  Revoke
+                </button>
+              )}
+          </div>
+        ))}
+      </div>
+    );
   }
 
   return (
@@ -148,58 +204,7 @@ export function ApiKeys() {
 
           <section>
             <h2 className="mb-3 text-lg font-semibold">Active Keys</h2>
-            {loadingKeys
-              ? <div className="bg-muted h-20 animate-pulse rounded" />
-              : keys.length === 0
-              ? (
-                <div className="flex flex-col items-center gap-2 py-8">
-                  <p className="text-muted-foreground text-sm">No API keys yet</p>
-                  <p className="text-muted-foreground text-xs">Create one above</p>
-                </div>
-              )
-              : (
-                <div className="space-y-2">
-                  {keys.map((k) => (
-                    <div
-                      key={k.id}
-                      className="bg-card flex items-center justify-between rounded-lg border p-3"
-                    >
-                      <div>
-                        <p className="text-sm font-medium">{k.name}</p>
-                        <p className="text-muted-foreground text-xs">
-                          {k.key_prefix}... &middot; {new Date(k.created_at).toLocaleDateString()}
-                        </p>
-                      </div>
-                      {confirmRevoke === k.id
-                        ? (
-                          <div className="flex items-center gap-2">
-                            <button
-                              className="text-destructive hover:text-destructive/80 text-xs font-medium"
-                              onClick={() => handleRevoke(k.id)}
-                              disabled={revokingId === k.id}
-                            >
-                              {revokingId === k.id ? "Revoking..." : "Confirm"}
-                            </button>
-                            <button
-                              className="text-muted-foreground hover:text-foreground text-xs"
-                              onClick={() => setConfirmRevoke(null)}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        )
-                        : (
-                          <button
-                            className="text-destructive hover:text-destructive/80 text-xs font-medium"
-                            onClick={() => setConfirmRevoke(k.id)}
-                          >
-                            Revoke
-                          </button>
-                        )}
-                    </div>
-                  ))}
-                </div>
-              )}
+            {keysBody}
           </section>
         </>
       )}

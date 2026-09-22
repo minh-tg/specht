@@ -2,7 +2,7 @@ import { type ReactNode, useContext } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { AuthContext } from "./AuthContext";
 
-export function ProtectedRoute({ children }: { children: ReactNode; }) {
+export function ProtectedRoute({ children }: { readonly children: ReactNode; }) {
   const auth = useContext(AuthContext);
   const location = useLocation();
 

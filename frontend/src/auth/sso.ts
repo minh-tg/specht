@@ -16,7 +16,7 @@ function decodePayload(token: string): SsoTokenClaims | null {
   const end = token.indexOf(".", dot + 1);
   if (end <= dot + 1) return null;
   try {
-    const json = atob(token.slice(dot + 1, end).replace(/-/g, "+").replace(/_/g, "/"));
+    const json = atob(token.slice(dot + 1, end).replaceAll("-", "+").replaceAll("_", "/"));
     return JSON.parse(json) as SsoTokenClaims;
   } catch {
     return null;

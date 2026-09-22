@@ -170,7 +170,7 @@ describe("AuthProvider refresh flow", () => {
 
     // The original request was retried with the new access token.
     const dataCalls = calls.filter((c) => c.url === "/api/v1/data");
-    expect(dataCalls.length).toBe(2);
+    expect(dataCalls).toHaveLength(2);
     expect((dataCalls[1].init?.headers as Record<string, string> | undefined)?.Authorization).toBe(
       "Bearer access-2",
     );

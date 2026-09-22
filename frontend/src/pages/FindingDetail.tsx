@@ -17,7 +17,8 @@ import {
   technicalStateLabel,
 } from "@/lib/enums";
 import { truncateText } from "@/lib/utils";
-import { useState } from "react";
+import type { FindingEvent, FindingLocation, ReachabilityAssessment } from "@/types/api";
+import { type ReactNode, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 /** Inline evidence is capped so an oversized payload cannot blow up layout. */
@@ -113,10 +114,269 @@ function toExpiryTimestamp(value: string): string | undefined {
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
 
+/** ":start" or ":start–end" when lines are known; empty otherwise. */
+function locationLineRange(location: FindingLocation): string {
+  if (!location.file || !location.start_line) return "";
+  let range = `:${location.start_line}`;
+  if (location.end_line && location.end_line !== location.start_line) {
+    range += `–${location.end_line}`;
+  }
+  return range;
+}
+
+/** Lifecycle event history for one finding. */
+function HistorySection({
+  events,
+  isLoading,
+  isError,
+}: {
+  events?: FindingEvent[];
+  isLoading: boolean;
+  isError: boolean;
+}) {
+  let body: ReactNode;
+  if (isLoading) {
+    body = <p className="text-muted-foreground text-sm">Loading history...</p>;
+  } else if (isError) {
+    body = <p className="text-destructive text-sm">Unable to load history.</p>;
+  } else if (!Array.isArray(events) || events.length === 0) {
+    body = <p className="text-muted-foreground text-sm">No history yet.</p>;
+  } else {
+    body = (
+      <ul className="space-y-2 text-sm">
+        {events.map((event) => (
+          <li key={event.id} className="flex flex-wrap items-baseline gap-x-2">
+            <span className="font-medium">{eventTypeLabel(event.event_type)}</span>
+            {event.old_value != null || event.new_value != null
+              ? (
+                <span className="text-muted-foreground font-mono text-xs">
+                  {event.old_value || "–"} → {event.new_value || "–"}
+                </span>
+              )
+              : null}
+            <span className="text-muted-foreground text-xs">
+              {formatTimestamp(event.created_at)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    );
+  }
+
+  return (
+    <div className="mt-8 rounded-lg border p-4">
+      <h2 className="mb-3 text-sm font-semibold">History</h2>
+      {body}
+    </div>
+  );
+}
+
+/** Triage controls and status feedback for one finding. */
+function TriageSection({ findingId }: { findingId: string; }) {
+  const triageMutation = useTriageFinding();
+  const [selectedState, setSelectedState] = useState<AnalysisState | "">("");
+  const [reason, setReason] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
+
+  const selectedOption = TRIAGE_OPTIONS.find((o) => o.value === selectedState);
+
+  async function handleTriage() {
+    if (!selectedState) return;
+    try {
+      await triageMutation.mutateAsync({
+        findingId,
+        analysisState: selectedState,
+        reason: selectedOption?.requiresReason ? reason : undefined,
+        analysisExpiresAt: selectedOption?.requiresExpiry
+          ? toExpiryTimestamp(expiresAt)
+          : undefined,
+      });
+      setSelectedState("");
+      setReason("");
+      setExpiresAt("");
+    } catch {}
+  }
+
+  const triageReady = selectedState !== ""
+    && (!selectedOption?.requiresExpiry || expiresAt !== "")
+    && (!selectedOption?.requiresReason || reason.trim() !== "");
+
+  return (
+    <div className="mt-8 rounded-lg border p-4">
+      <h2 className="mb-3 text-sm font-semibold">Triage</h2>
+      <div className="flex flex-wrap gap-2">
+        <select
+          className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
+          value={selectedState}
+          onChange={(e) => {
+            const value = e.target.value;
+            setSelectedState(isAnalysisState(value) ? value : "");
+            setReason("");
+            setExpiresAt("");
+          }}
+        >
+          <option value="">Select action...</option>
+          {TRIAGE_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        {selectedOption?.requiresReason && (
+          <input
+            className="border-input bg-background min-w-[200px] rounded-md border px-3 py-1.5 text-sm"
+            placeholder="Reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+          />
+        )}
+        {selectedOption?.requiresExpiry && (
+          <input
+            type="date"
+            className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
+            value={expiresAt}
+            onChange={(e) => setExpiresAt(e.target.value)}
+          />
+        )}
+        <button
+          onClick={handleTriage}
+          disabled={!triageReady || triageMutation.isPending}
+          className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-1.5 text-sm font-medium disabled:opacity-50"
+        >
+          {triageMutation.isPending ? "Saving..." : "Apply"}
+        </button>
+      </div>
+      {triageMutation.isError && (
+        <p className="text-destructive mt-2 text-xs">{triageMutation.error.message}</p>
+      )}
+      {triageMutation.isSuccess && (
+        <p className="text-green-600 mt-2 text-xs">
+          Triage saved (effect: {gateEffectLabel(triageMutation.data.gate_effect) ?? "Unknown"})
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** The latest assessment line, with truncated inline evidence. */
+function latestAssessmentLine(latest: ReachabilityAssessment | null): ReactNode {
+  if (!latest) {
+    return (
+      <>
+        Latest: <span className="font-medium">Unknown</span>{" "}
+        — no assessment yet; an unassessed finding still blocks the gate until marked not reachable
+        or not applicable.
+      </>
+    );
+  }
+  const evidence = latest.evidence?.trim();
+  return (
+    <>
+      Latest:{" "}
+      <span className="font-medium">
+        {reachabilityStateLabel(latest.state) ?? "Unknown"}
+      </span>
+      {evidence && (
+        <span title={evidence}>{" — "}{truncateText(evidence, MAX_EVIDENCE_LENGTH)}</span>
+      )} ({formatTimestamp(latest.updated_at)})
+    </>
+  );
+}
+
+/** Reachability assessment controls and latest status for one finding. */
+function ReachabilitySection({
+  findingId,
+  reachability,
+  isLoading,
+  isError,
+  error,
+  isSuccess,
+}: {
+  findingId: string;
+  reachability?: ReachabilityAssessment[];
+  isLoading: boolean;
+  isError: boolean;
+  error: Error | null;
+  isSuccess: boolean;
+}) {
+  const mutation = useUpsertReachability();
+  const [reachState, setReachState] = useState<ReachabilityState | "">("");
+  const [reachEvidence, setReachEvidence] = useState("");
+
+  // The list is capped to the latest assessment for inline display; older
+  // history is not rendered in this view.
+  const latest = reachability?.[0] ?? null;
+
+  let body: ReactNode;
+  if (isLoading) {
+    body = <p className="text-muted-foreground mb-3 text-xs">Latest: Loading...</p>;
+  } else if (isError) {
+    body = (
+      <p className="text-destructive mb-3 text-xs">
+        Unable to load reachability: {error?.message ?? "request failed"}
+      </p>
+    );
+  } else if (!isSuccess) {
+    body = <p className="text-muted-foreground mb-3 text-xs">Latest: Loading...</p>;
+  } else {
+    body = <p className="text-muted-foreground mb-3 text-xs">{latestAssessmentLine(latest)}</p>;
+  }
+
+  return (
+    <div className="mt-8 rounded-lg border p-4">
+      <h2 className="mb-3 text-sm font-semibold">Reachability</h2>
+      {body}
+      <div className="flex flex-wrap gap-2">
+        <select
+          className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
+          value={reachState}
+          onChange={(e) => {
+            const value = e.target.value;
+            setReachState(isReachabilityState(value) ? value : "");
+          }}
+        >
+          <option value="">Select assessment...</option>
+          {REACHABILITY_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+        <input
+          className="border-input bg-background min-w-[200px] rounded-md border px-3 py-1.5 text-sm"
+          placeholder="Evidence"
+          value={reachEvidence}
+          onChange={(e) => setReachEvidence(e.target.value)}
+        />
+        <button
+          onClick={() => {
+            if (!reachState) return;
+            mutation.mutate(
+              { findingId, state: reachState, evidence: reachEvidence },
+              {
+                onSuccess: () => {
+                  setReachState("");
+                  setReachEvidence("");
+                },
+              },
+            );
+          }}
+          disabled={!reachState || mutation.isPending}
+          className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-1.5 text-sm font-medium disabled:opacity-50"
+        >
+          {mutation.isPending ? "Saving..." : "Assess"}
+        </button>
+      </div>
+      {mutation.isError && <p className="text-destructive mt-2 text-xs">{mutation.error.message}
+      </p>}
+      {mutation.isSuccess && <p className="text-green-600 mt-2 text-xs">Reachability saved</p>}
+    </div>
+  );
+}
+
 export function FindingDetail() {
   const { findingId } = useParams<{ findingId: string; }>();
   const { data: finding, isLoading, isError, error, refetch } = useFinding(findingId ?? "");
-  const triageMutation = useTriageFinding();
   const {
     data: reachability,
     isLoading: reachabilityLoading,
@@ -124,24 +384,9 @@ export function FindingDetail() {
     error: reachabilityError,
     isSuccess: reachabilityLoaded,
   } = useReachability(findingId ?? "");
-  const reachabilityMutation = useUpsertReachability();
-  const {
-    data: events,
-    isLoading: eventsLoading,
-    isError: eventsIsError,
-  } = useFindingEvents(findingId ?? "");
-
-  const [selectedState, setSelectedState] = useState<AnalysisState | "">("");
-  const [reason, setReason] = useState("");
-  const [expiresAt, setExpiresAt] = useState("");
-  const [reachState, setReachState] = useState<ReachabilityState | "">("");
-  const [reachEvidence, setReachEvidence] = useState("");
-
-  // The list is capped to the latest assessment for inline display; older
-  // history is not rendered in this view.
-  const latestReachability = reachability?.[0] ?? null;
-
-  const selectedOption = TRIAGE_OPTIONS.find((o) => o.value === selectedState);
+  const { data: events, isLoading: eventsLoading, isError: eventsIsError } = useFindingEvents(
+    findingId ?? "",
+  );
 
   if (isLoading) {
     return (
@@ -166,27 +411,6 @@ export function FindingDetail() {
       </div>
     );
   }
-
-  async function handleTriage() {
-    if (!selectedState || !finding) return;
-    try {
-      await triageMutation.mutateAsync({
-        findingId: finding.id,
-        analysisState: selectedState,
-        reason: selectedOption?.requiresReason ? reason : undefined,
-        analysisExpiresAt: selectedOption?.requiresExpiry
-          ? toExpiryTimestamp(expiresAt)
-          : undefined,
-      });
-      setSelectedState("");
-      setReason("");
-      setExpiresAt("");
-    } catch {}
-  }
-
-  const triageReady = selectedState !== ""
-    && (!selectedOption?.requiresExpiry || expiresAt !== "")
-    && (!selectedOption?.requiresReason || reason.trim() !== "");
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
@@ -302,14 +526,7 @@ export function FindingDetail() {
                 </span>
                 <p className="font-mono text-xs select-all">
                   {finding.location.file ?? finding.location.resource ?? finding.location.summary}
-                  {finding.location.file && finding.location.start_line
-                    ? `:${finding.location.start_line}${
-                      finding.location.end_line
-                        && finding.location.end_line !== finding.location.start_line
-                        ? `–${finding.location.end_line}`
-                        : ""
-                    }`
-                    : ""}
+                  {locationLineRange(finding.location)}
                 </p>
               </div>
               {finding.location.summary && (finding.location.file || finding.location.resource) && (
@@ -373,180 +590,20 @@ export function FindingDetail() {
           )}
       </div>
 
-      <div className="mt-8 rounded-lg border p-4">
-        <h2 className="mb-3 text-sm font-semibold">History</h2>
-        {eventsLoading
-          ? <p className="text-muted-foreground text-sm">Loading history...</p>
-          : eventsIsError
-          ? <p className="text-destructive text-sm">Unable to load history.</p>
-          : events && events.length > 0
-          ? (
-            <ul className="space-y-2 text-sm">
-              {events.map((event) => (
-                <li key={event.id} className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="font-medium">{eventTypeLabel(event.event_type)}</span>
-                  {event.old_value != null || event.new_value != null
-                    ? (
-                      <span className="text-muted-foreground font-mono text-xs">
-                        {event.old_value || "–"} → {event.new_value || "–"}
-                      </span>
-                    )
-                    : null}
-                  <span className="text-muted-foreground text-xs">
-                    {formatTimestamp(event.created_at)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )
-          : <p className="text-muted-foreground text-sm">No history yet.</p>}
-      </div>
-
-      <div className="mt-8 rounded-lg border p-4">
-        <h2 className="mb-3 text-sm font-semibold">Triage</h2>
-        <div className="flex flex-wrap gap-2">
-          <select
-            className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
-            value={selectedState}
-            onChange={(e) => {
-              const value = e.target.value;
-              setSelectedState(isAnalysisState(value) ? value : "");
-              setReason("");
-              setExpiresAt("");
-            }}
-          >
-            <option value="">Select action...</option>
-            {TRIAGE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          {selectedOption?.requiresReason && (
-            <input
-              className="border-input bg-background min-w-[200px] rounded-md border px-3 py-1.5 text-sm"
-              placeholder="Reason"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-            />
-          )}
-          {selectedOption?.requiresExpiry && (
-            <input
-              type="date"
-              className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
-              value={expiresAt}
-              onChange={(e) => setExpiresAt(e.target.value)}
-            />
-          )}
-          <button
-            onClick={handleTriage}
-            disabled={!triageReady || triageMutation.isPending}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-1.5 text-sm font-medium disabled:opacity-50"
-          >
-            {triageMutation.isPending ? "Saving..." : "Apply"}
-          </button>
-        </div>
-        {triageMutation.isError && (
-          <p className="text-destructive mt-2 text-xs">{triageMutation.error.message}</p>
-        )}
-        {triageMutation.isSuccess && (
-          <p className="text-green-600 mt-2 text-xs">
-            Triage saved (effect: {gateEffectLabel(triageMutation.data.gate_effect) ?? "Unknown"})
-          </p>
-        )}
-      </div>
-
-      <div className="mt-8 rounded-lg border p-4">
-        <h2 className="mb-3 text-sm font-semibold">Reachability</h2>
-        {reachabilityLoading
-          ? <p className="text-muted-foreground mb-3 text-xs">Latest: Loading...</p>
-          : reachabilityIsError
-          ? (
-            <p className="text-destructive mb-3 text-xs">
-              Unable to load reachability: {reachabilityError?.message ?? "request failed"}
-            </p>
-          )
-          : reachabilityLoaded && latestReachability
-          ? (
-            <p className="text-muted-foreground mb-3 text-xs">
-              Latest:{" "}
-              <span className="font-medium">
-                {reachabilityStateLabel(latestReachability.state) ?? "Unknown"}
-              </span>
-              {(() => {
-                const evidence = latestReachability.evidence?.trim();
-                if (!evidence) return null;
-                const visible = truncateText(evidence, MAX_EVIDENCE_LENGTH);
-                return (
-                  <span title={evidence}>
-                    {" — "}
-                    {visible}
-                  </span>
-                );
-              })()} ({formatTimestamp(latestReachability.updated_at)})
-            </p>
-          )
-          : reachabilityLoaded
-          ? (
-            <p className="text-muted-foreground mb-3 text-xs">
-              Latest: <span className="font-medium">Unknown</span>{" "}
-              — no assessment yet; an unassessed finding still blocks the gate until marked not
-              reachable or not applicable.
-            </p>
-          )
-          : <p className="text-muted-foreground mb-3 text-xs">Latest: Loading...</p>}
-        <div className="flex flex-wrap gap-2">
-          <select
-            className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
-            value={reachState}
-            onChange={(e) => {
-              const value = e.target.value;
-              setReachState(isReachabilityState(value) ? value : "");
-            }}
-          >
-            <option value="">Select assessment...</option>
-            {REACHABILITY_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          <input
-            className="border-input bg-background min-w-[200px] rounded-md border px-3 py-1.5 text-sm"
-            placeholder="Evidence"
-            value={reachEvidence}
-            onChange={(e) => setReachEvidence(e.target.value)}
-          />
-          <button
-            onClick={() => {
-              if (!reachState) return;
-              reachabilityMutation.mutate(
-                {
-                  findingId: findingId ?? "",
-                  state: reachState,
-                  evidence: reachEvidence,
-                },
-                {
-                  onSuccess: () => {
-                    setReachState("");
-                    setReachEvidence("");
-                  },
-                },
-              );
-            }}
-            disabled={!reachState || reachabilityMutation.isPending}
-            className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-1.5 text-sm font-medium disabled:opacity-50"
-          >
-            {reachabilityMutation.isPending ? "Saving..." : "Assess"}
-          </button>
-        </div>
-        {reachabilityMutation.isError && (
-          <p className="text-destructive mt-2 text-xs">{reachabilityMutation.error.message}</p>
-        )}
-        {reachabilityMutation.isSuccess && (
-          <p className="text-green-600 mt-2 text-xs">Reachability saved</p>
-        )}
-      </div>
+      <HistorySection
+        events={events}
+        isLoading={eventsLoading}
+        isError={eventsIsError}
+      />
+      <TriageSection findingId={finding.id} />
+      <ReachabilitySection
+        findingId={finding.id}
+        reachability={reachability}
+        isLoading={reachabilityLoading}
+        isError={reachabilityIsError}
+        error={reachabilityError}
+        isSuccess={reachabilityLoaded}
+      />
     </div>
   );
 }

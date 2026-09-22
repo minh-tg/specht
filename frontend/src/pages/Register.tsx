@@ -1,7 +1,7 @@
 import { APIError, apiFetch } from "@/api/client";
 import { useAuth } from "@/auth/useAuth";
 import type { RegisterResponse } from "@/types/api";
-import { type FormEvent, useState } from "react";
+import { type SubmitEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 export function Register() {
@@ -18,7 +18,7 @@ export function Register() {
     return null;
   }
 
-  async function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     setError(null);
     setSubmitting(true);
