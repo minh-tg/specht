@@ -10,36 +10,36 @@ import (
 
 type pgWaiverPort struct{ inner *pgWaiverRepo }
 
-func (r *pgWaiverPort) CreateWithDetails(ctx context.Context, projectID, name, description string, enabled bool, conditions []port.WaiverCondition, contexts []port.WaiverContext, targets []port.WaiverFindingTarget, event port.WaiverEventInput) (port.Waiver, error) {
-	pid, err := parseID(projectID)
+func (r *pgWaiverPort) CreateWithDetails(ctx context.Context, input port.CreateWaiverInput) (port.Waiver, error) {
+	pid, err := parseID(input.ProjectID)
 	if err != nil {
 		return port.Waiver{}, err
 	}
-	conds := make([]WaiverConditionInput, len(conditions))
-	for i, c := range conditions {
+	conds := make([]WaiverConditionInput, len(input.Conditions))
+	for i, c := range input.Conditions {
 		conds[i] = WaiverConditionInput{Field: c.Field, Operator: c.Operator, Value: c.Value}
 	}
-	ctxs := make([]WaiverContextInput, len(contexts))
-	for i, c := range contexts {
+	ctxs := make([]WaiverContextInput, len(input.Contexts))
+	for i, c := range input.Contexts {
 		ctxs[i] = WaiverContextInput{
 			EnvironmentID: uuidFromString(c.EnvironmentID),
 			TargetID:      uuidFromString(c.TargetID),
 			ArtifactID:    uuidFromString(c.ArtifactID),
 		}
 	}
-	tgts := make([]WaiverTargetInput, len(targets))
-	for i, t := range targets {
+	tgts := make([]WaiverTargetInput, len(input.Targets))
+	for i, t := range input.Targets {
 		tgts[i] = WaiverTargetInput{FindingID: uuidFromString(t.FindingID)}
 	}
 	row, err := r.inner.CreateWithDetails(ctx, CreateWaiverDetailsParams{
 		ProjectID:   pid,
-		Name:        name,
-		Description: description,
-		Enabled:     enabled,
+		Name:        input.Name,
+		Description: input.Description,
+		Enabled:     input.Enabled,
 		Conditions:  conds,
 		Contexts:    ctxs,
 		Targets:     tgts,
-		Event:       waiverEventInputToRepo(event),
+		Event:       waiverEventInputToRepo(input.Event),
 	})
 	if err != nil {
 		return port.Waiver{}, err

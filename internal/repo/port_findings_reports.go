@@ -229,21 +229,21 @@ type pgFindingPort struct{ inner *pgFindingRepo }
 
 func newFindingPort(r *pgFindingRepo) *pgFindingPort { return &pgFindingPort{inner: r} }
 
-func (r *pgFindingPort) Upsert(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
-	pid, err := parseID(projectID)
+func (r *pgFindingPort) Upsert(ctx context.Context, input port.UpsertFindingInput) (port.Finding, error) {
+	pid, err := parseID(input.ProjectID)
 	if err != nil {
 		return port.Finding{}, err
 	}
 	row, err := r.inner.Upsert(ctx, UpsertFindingParams{
 		ProjectID:    pid,
-		FindingKind:  findingKind,
-		Fingerprint:  fingerprint,
-		CurrentTitle: title,
-		Severity:     severity,
-		SeverityRank: severityRank,
-		Score:        floatToNumeric(score),
-		FirstSeenAt:  uuidFromTime(firstSeen),
-		LastSeenAt:   uuidFromTime(lastSeen),
+		FindingKind:  input.FindingKind,
+		Fingerprint:  input.Fingerprint,
+		CurrentTitle: input.Title,
+		Severity:     input.Severity,
+		SeverityRank: input.SeverityRank,
+		Score:        floatToNumeric(input.Score),
+		FirstSeenAt:  uuidFromTime(input.FirstSeen),
+		LastSeenAt:   uuidFromTime(input.LastSeen),
 	})
 	if err != nil {
 		return port.Finding{}, err
@@ -299,12 +299,12 @@ func (r *pgFindingPort) ListByIDs(ctx context.Context, ids []string) ([]port.Fin
 	return out, nil
 }
 
-func (r *pgFindingPort) ListByProject(ctx context.Context, projectID string, severities, states, kinds, environments, targets []string, limit, offset int32) ([]port.Finding, error) {
+func (r *pgFindingPort) ListByProject(ctx context.Context, projectID string, params port.ListFindingsParams) ([]port.Finding, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.inner.ListByProject(ctx, pid, severities, states, kinds, environments, targets, limit, offset)
+	rows, err := r.inner.ListByProject(ctx, pid, params)
 	if err != nil {
 		return nil, err
 	}

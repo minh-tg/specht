@@ -327,9 +327,22 @@ type WaiverEventInput struct {
 	Metadata  json.RawMessage
 }
 
+// CreateWaiverInput carries a waiver and its children plus the audit event
+// written in the same transaction.
+type CreateWaiverInput struct {
+	ProjectID   string
+	Name        string
+	Description string
+	Enabled     bool
+	Conditions  []WaiverCondition
+	Contexts    []WaiverContext
+	Targets     []WaiverFindingTarget
+	Event       WaiverEventInput
+}
+
 // WaiverStore persists waivers and their children/events atomically.
 type WaiverStore interface {
-	CreateWithDetails(ctx context.Context, projectID, name, description string, enabled bool, conditions []WaiverCondition, contexts []WaiverContext, targets []WaiverFindingTarget, event WaiverEventInput) (Waiver, error)
+	CreateWithDetails(ctx context.Context, input CreateWaiverInput) (Waiver, error)
 	List(ctx context.Context, projectID string) ([]Waiver, error)
 	GetByID(ctx context.Context, id, projectID string) (Waiver, error)
 	UpdateWithDetails(ctx context.Context, waiver Waiver, conditions *[]WaiverCondition, contexts *[]WaiverContext, targets *[]WaiverFindingTarget, event WaiverEventInput) (Waiver, error)
@@ -463,14 +476,39 @@ type UpdateAnalysisInput struct {
 	AnalysisUpdatedBy *string
 }
 
+// UpsertFindingInput carries the fields of one finding upsert.
+type UpsertFindingInput struct {
+	ProjectID    string
+	FindingKind  string
+	Fingerprint  string
+	Title        string
+	Severity     string
+	SeverityRank int16
+	Score        float64
+	FirstSeen    time.Time
+	LastSeen     time.Time
+}
+
+// ListFindingsParams filters and pages the project finding list. Empty
+// slices mean no filter.
+type ListFindingsParams struct {
+	Severities   []string
+	States       []string
+	Kinds        []string
+	Environments []string
+	Targets      []string
+	Limit        int32
+	Offset       int32
+}
+
 // FindingStore persists findings, occurrences, dimensions, events, and the
 // watcher finding unit-of-work.
 type FindingStore interface {
-	Upsert(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (Finding, error)
+	Upsert(ctx context.Context, input UpsertFindingInput) (Finding, error)
 	GetByID(ctx context.Context, id string) (Finding, error)
 	GetByFingerprint(ctx context.Context, projectID, findingKind, fingerprint string) (Finding, error)
 	ListByIDs(ctx context.Context, ids []string) ([]Finding, error)
-	ListByProject(ctx context.Context, projectID string, severities, states, kinds, environments, targets []string, limit, offset int32) ([]Finding, error)
+	ListByProject(ctx context.Context, projectID string, params ListFindingsParams) ([]Finding, error)
 	UpdateAnalysis(ctx context.Context, input UpdateAnalysisInput) (Finding, error)
 	BulkUpdateAnalysis(ctx context.Context, input UpdateAnalysisInput, ids []string) ([]Finding, error)
 	BulkTriage(ctx context.Context, input UpdateAnalysisInput, ids []string, event FindingEventInput) ([]Finding, error)

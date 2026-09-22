@@ -302,7 +302,7 @@ func (u *Usecases) providers() *provider.Registry {
 func (u *Usecases) listIntroducedAtCommit(ctx context.Context, projectID, commit string) ([]port.Finding, error) {
 	var out []port.Finding
 	for offset := int32(0); ; {
-		page, err := u.deps.Stores.Findings.ListByProject(ctx, projectID, nil, nil, nil, nil, nil, previewListPageSize, offset)
+		page, err := u.deps.Stores.Findings.ListByProject(ctx, projectID, port.ListFindingsParams{Limit: previewListPageSize, Offset: offset})
 		if err != nil {
 			return nil, err
 		}

@@ -213,10 +213,19 @@ func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*
 	}
 
 	actorID := stringPtr(input.ActorID)
-	w, err := u.deps.Stores.Waivers.CreateWithDetails(ctx, project.ID, input.Name, input.Description, true, conditions, contexts, targets, port.WaiverEventInput{
-		EventType: "created",
-		ActorID:   actorID,
-		Metadata:  waiverCreatedEvent,
+	w, err := u.deps.Stores.Waivers.CreateWithDetails(ctx, port.CreateWaiverInput{
+		ProjectID:   project.ID,
+		Name:        input.Name,
+		Description: input.Description,
+		Enabled:     true,
+		Conditions:  conditions,
+		Contexts:    contexts,
+		Targets:     targets,
+		Event: port.WaiverEventInput{
+			EventType: "created",
+			ActorID:   actorID,
+			Metadata:  waiverCreatedEvent,
+		},
 	})
 	if err != nil {
 		return nil, err

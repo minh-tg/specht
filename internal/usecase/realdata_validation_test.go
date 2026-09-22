@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -59,12 +58,12 @@ func TestRealDataFullLoopParity(t *testing.T) {
 			fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
 				return port.Finding{}, port.ErrNotFound
 			}
-			fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+			fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 				f := port.Finding{
 					ID:        fmt.Sprintf("00000000-0000-0000-0000-%012d", len(retained)+1),
-					ProjectID: projectID, FindingKind: findingKind,
-					Fingerprint: fingerprint, CurrentTitle: title,
-					CurrentSeverityRank: severityRank,
+					ProjectID: in.ProjectID, FindingKind: in.FindingKind,
+					Fingerprint: in.Fingerprint, CurrentTitle: in.Title,
+					CurrentSeverityRank: in.SeverityRank,
 					State:               "open", AnalysisState: "unanalyzed", GateEffect: "block",
 				}
 				retained = append(retained, f)
@@ -156,7 +155,7 @@ func TestIngestReport_RedactsSecretRaw(t *testing.T) {
 	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
 		return port.Finding{}, port.ErrNotFound
 	}
-	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 		return makeFinding(1), nil
 	}
 	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {

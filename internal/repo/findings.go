@@ -10,6 +10,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/port"
 )
 
 type pgFindingRepo struct {
@@ -30,16 +31,16 @@ type UpsertFindingParams struct {
 	LastSeenAt   pgtype.Timestamptz
 }
 
-func (r *pgFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, severities, states, kinds, environments, targets []string, limit, offset int32) ([]sqlc.Finding, error) {
+func (r *pgFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, params port.ListFindingsParams) ([]sqlc.Finding, error) {
 	return r.q.ListFindingsByProject(ctx, sqlc.ListFindingsByProjectParams{
 		ProjectID: projectID,
-		Column2:   severities,
-		Column3:   states,
-		Column4:   kinds,
-		Column5:   environments,
-		Column6:   targets,
-		Limit:     limit,
-		Offset:    offset,
+		Column2:   params.Severities,
+		Column3:   params.States,
+		Column4:   params.Kinds,
+		Column5:   params.Environments,
+		Column6:   params.Targets,
+		Limit:     params.Limit,
+		Offset:    params.Offset,
 	})
 }
 

@@ -44,7 +44,7 @@ func prcheckHarness(t *testing.T) (*Usecases, *mockFindingRepo) {
 		CurrentSeverity: "medium", CurrentSeverityRank: 2,
 		State: "open", IntroducedCommitSha: &older,
 	}
-	fr.listByProjectFn = func(ctx context.Context, projectID string, severities, states, kinds, environments, targets []string, limit, offset int32) ([]port.Finding, error) {
+	fr.listByProjectFn = func(ctx context.Context, projectID string, params port.ListFindingsParams) ([]port.Finding, error) {
 		return []port.Finding{f1, f2}, nil
 	}
 	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
@@ -234,10 +234,10 @@ func TestPreviewPRCheck_PaginatesLargeProjects(t *testing.T) {
 		CurrentSeverity: "high", CurrentSeverityRank: 4,
 		State: "open", IntroducedCommitSha: &commit,
 	}
-	fr.listByProjectFn = func(ctx context.Context, projectID string, severities, states, kinds, environments, targets []string, limit, offset int32) ([]port.Finding, error) {
-		if offset == 0 {
-			page := make([]port.Finding, 0, limit)
-			for i := int32(0); i < limit; i++ {
+	fr.listByProjectFn = func(ctx context.Context, projectID string, params port.ListFindingsParams) ([]port.Finding, error) {
+		if params.Offset == 0 {
+			page := make([]port.Finding, 0, params.Limit)
+			for i := int32(0); i < params.Limit; i++ {
 				page = append(page, port.Finding{ID: "pad", ProjectID: projectID})
 			}
 			return page, nil

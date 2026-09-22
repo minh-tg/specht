@@ -455,7 +455,15 @@ func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, filter 
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 
-	findings, err := u.deps.Stores.Findings.ListByProject(ctx, project.ID, filter.Severities, filter.States, filter.Kinds, filter.Environments, filter.Targets, limit, offset)
+	findings, err := u.deps.Stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{
+		Severities:   filter.Severities,
+		States:       filter.States,
+		Kinds:        filter.Kinds,
+		Environments: filter.Environments,
+		Targets:      filter.Targets,
+		Limit:        limit,
+		Offset:       offset,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("list findings: %w", err)
 	}

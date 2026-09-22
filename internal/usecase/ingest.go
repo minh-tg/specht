@@ -609,17 +609,17 @@ func (s *ingestFindingsState) tallyIngest(introduced bool, changeType, upsertedI
 
 // upsertFindingRow writes the finding row and returns what was written.
 func (u *Usecases) upsertFindingRow(ctx context.Context, st *ingestFindingsState, f domain.NormalizedFinding, newRank int16) (port.Finding, error) {
-	upserted, err := u.deps.Stores.Findings.Upsert(ctx,
-		st.project.ID,
-		f.FindingKind,
-		f.Fingerprint,
-		f.Title,
-		severityStr(f.Severity),
-		newRank,
-		scoreToFloat(f.Score),
-		st.nowTime,
-		st.nowTime,
-	)
+	upserted, err := u.deps.Stores.Findings.Upsert(ctx, port.UpsertFindingInput{
+		ProjectID:    st.project.ID,
+		FindingKind:  f.FindingKind,
+		Fingerprint:  f.Fingerprint,
+		Title:        f.Title,
+		Severity:     severityStr(f.Severity),
+		SeverityRank: newRank,
+		Score:        scoreToFloat(f.Score),
+		FirstSeen:    st.nowTime,
+		LastSeen:     st.nowTime,
+	})
 	if err != nil {
 		slog.Error("upsert finding failed", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "error", err)
 		return port.Finding{}, fmt.Errorf("scanner %s: upsert finding %q: %w", st.input.Scanner, f.Fingerprint, err)

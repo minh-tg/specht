@@ -448,11 +448,11 @@ type mockFindingRepo struct {
 	markFixedFn                       func(context.Context, string) (port.Finding, error)
 	createOccurrenceFn                func(context.Context, port.OccurrenceInput) (port.Occurrence, error)
 	upsertDimensionFn                 func(context.Context, port.DimensionInput) error
-	listByProjectFn                   func(context.Context, string, []string, []string, []string, []string, []string, int32, int32) ([]port.Finding, error)
+	listByProjectFn                   func(context.Context, string, port.ListFindingsParams) ([]port.Finding, error)
 	getDisplayContextFn               func(context.Context, string) (port.FindingDisplayContext, error)
 	listFindingDisplayContextsByIDsFn func(context.Context, []string) ([]port.FindingDisplayContext, error)
 	listDimensionsFn                  func(context.Context, string) ([]port.FindingDimension, error)
-	upsertFn                          func(context.Context, string, string, string, string, string, int16, float64, time.Time, time.Time) (port.Finding, error)
+	upsertFn                          func(context.Context, port.UpsertFindingInput) (port.Finding, error)
 	getByFingerprintFn                func(context.Context, string, string, string) (port.Finding, error)
 	getByIDFn                         func(context.Context, string) (port.Finding, error)
 	listByIDsFn                       func(context.Context, []string) ([]port.Finding, error)
@@ -475,11 +475,11 @@ type mockFindingRepo struct {
 	knownFpByID                       map[string]string
 }
 
-func (m *mockFindingRepo) Upsert(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+func (m *mockFindingRepo) Upsert(ctx context.Context, input port.UpsertFindingInput) (port.Finding, error) {
 	if m.upsertFn == nil {
 		return port.Finding{}, fmt.Errorf("unexpected call to Upsert")
 	}
-	return m.upsertFn(ctx, projectID, findingKind, fingerprint, title, severity, severityRank, score, firstSeen, lastSeen)
+	return m.upsertFn(ctx, input)
 }
 
 func (m *mockFindingRepo) CreateOccurrence(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
@@ -496,11 +496,11 @@ func (m *mockFindingRepo) UpsertDimension(ctx context.Context, arg port.Dimensio
 	return m.upsertDimensionFn(ctx, arg)
 }
 
-func (m *mockFindingRepo) ListByProject(ctx context.Context, projectID string, severities, states, kinds, environments, targets []string, limit, offset int32) ([]port.Finding, error) {
+func (m *mockFindingRepo) ListByProject(ctx context.Context, projectID string, params port.ListFindingsParams) ([]port.Finding, error) {
 	if m.listByProjectFn == nil {
 		return []port.Finding{}, nil
 	}
-	return m.listByProjectFn(ctx, projectID, severities, states, kinds, environments, targets, limit, offset)
+	return m.listByProjectFn(ctx, projectID, params)
 }
 
 func (m *mockFindingRepo) GetByID(ctx context.Context, id string) (port.Finding, error) {
@@ -1344,7 +1344,7 @@ func TestIngestReport_Success(t *testing.T) {
 	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
 		return port.Finding{}, port.ErrNotFound
 	}
-	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 		callCount++
 		return makeFinding(callCount), nil
 	}
@@ -1590,7 +1590,7 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 		return port.Finding{}, port.ErrNotFound
 	}
 
-	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 		return makeFinding(1), nil
 	}
 
@@ -1602,7 +1602,7 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 		return nil
 	}
 
-	fr.listByProjectFn = func(ctx context.Context, projectID string, severities, states, kinds, environments, targets []string, limit, offset int32) ([]port.Finding, error) {
+	fr.listByProjectFn = func(ctx context.Context, projectID string, params port.ListFindingsParams) ([]port.Finding, error) {
 		return []port.Finding{makeFinding(1)}, nil
 	}
 
@@ -1701,7 +1701,7 @@ func TestIngestReport_PartialFailure(t *testing.T) {
 	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
 		return port.Finding{}, port.ErrNotFound
 	}
-	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 		callCount++
 		if callCount == 2 {
 			return port.Finding{}, fmt.Errorf("db unavailable")
@@ -1770,7 +1770,7 @@ func TestIngestReport_InventoryWriteFailure(t *testing.T) {
 	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
 		return port.Finding{}, port.ErrNotFound
 	}
-	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 		return makeFinding(1), nil
 	}
 	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
@@ -1862,7 +1862,7 @@ func TestIngestReport_FindingsFailureMarksReportFailed(t *testing.T) {
 	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
 		return port.Finding{}, port.ErrNotFound
 	}
-	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 		// Second finding fails to persist: the report row was already
 		// created with status 'processing'.
 		return port.Finding{}, fmt.Errorf("db unavailable")
@@ -2627,7 +2627,7 @@ func TestListFindings_Success(t *testing.T) {
 	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
-	fr.listByProjectFn = func(ctx context.Context, projectID string, severities, states, kinds, environments, targets []string, limit, offset int32) ([]port.Finding, error) {
+	fr.listByProjectFn = func(ctx context.Context, projectID string, params port.ListFindingsParams) ([]port.Finding, error) {
 		return []port.Finding{makeFindingRow(1), makeFindingRow(2)}, nil
 	}
 
@@ -3543,7 +3543,7 @@ func TestIngestGateParity_GetGateStatusAgrees(t *testing.T) {
 	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
 		return port.Finding{}, port.ErrNotFound
 	}
-	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 		return makeFinding(1), nil
 	}
 	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
@@ -3720,13 +3720,13 @@ func TestIngestUnknownScan_CannotCloseUnseenFinding(t *testing.T) {
 		return port.Finding{}, port.ErrNotFound
 	}
 	var upsertedSeverity string
-	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
-		upsertedSeverity = severity
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
+		upsertedSeverity = in.Severity
 		return port.Finding{
-			ID: "find-1", ProjectID: projectID, FindingKind: findingKind,
-			Fingerprint: fingerprint, CurrentTitle: title, CurrentSeverity: severity,
-			CurrentSeverityRank: severityRank, State: "open", AnalysisState: "unanalyzed",
-			GateEffect: "block", FirstSeenAt: firstSeen, LastSeenAt: lastSeen,
+			ID: "find-1", ProjectID: in.ProjectID, FindingKind: in.FindingKind,
+			Fingerprint: in.Fingerprint, CurrentTitle: in.Title, CurrentSeverity: in.Severity,
+			CurrentSeverityRank: in.SeverityRank, State: "open", AnalysisState: "unanalyzed",
+			GateEffect: "block", FirstSeenAt: in.FirstSeen, LastSeenAt: in.LastSeen,
 		}, nil
 	}
 	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {

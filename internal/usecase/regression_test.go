@@ -39,7 +39,7 @@ func TestIngestRegression_LogsEvent(t *testing.T) {
 		return existing, nil
 	}
 	var upsertedState string
-	fr.upsertFn = func(ctx context.Context, _, _, _, _, _ string, _ int16, _ float64, _, _ time.Time) (port.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 		f := makeFinding(9)
 		f.State = string(finding.TechReopened)
 		upsertedState = f.State
@@ -133,7 +133,7 @@ func TestIngestRegression_NoEventForOpenFinding(t *testing.T) {
 	fr.getByFingerprintFn = func(ctx context.Context, _, _, _ string) (port.Finding, error) {
 		return existing, nil
 	}
-	fr.upsertFn = func(ctx context.Context, _, _, _, _, _ string, _ int16, _ float64, _, _ time.Time) (port.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 		return makeFinding(1), nil
 	}
 	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {

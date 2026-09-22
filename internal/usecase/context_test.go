@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -46,7 +45,7 @@ func TestIngestReport_BindsOwnerToTarget(t *testing.T) {
 	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
 		return port.Finding{}, port.ErrNotFound
 	}
-	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 		return makeFinding(1), nil
 	}
 	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
@@ -169,7 +168,7 @@ func TestIngestReport_BindsDigestToArtifact(t *testing.T) {
 	fr.getByFingerprintFn = func(ctx context.Context, projectID, findingKind, fingerprint string) (port.Finding, error) {
 		return port.Finding{}, port.ErrNotFound
 	}
-	fr.upsertFn = func(ctx context.Context, projectID, findingKind, fingerprint, title, severity string, severityRank int16, score float64, firstSeen, lastSeen time.Time) (port.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 		return makeFinding(1), nil
 	}
 	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {

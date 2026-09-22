@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,7 +32,7 @@ func revisionHarness(t *testing.T, getByFingerprint func(context.Context, string
 		return makeReport(), nil
 	}
 	fr.getByFingerprintFn = getByFingerprint
-	fr.upsertFn = func(ctx context.Context, _, _, _, _, _ string, _ int16, _ float64, _, _ time.Time) (port.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 		return makeFinding(9), nil
 	}
 	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
@@ -276,12 +275,12 @@ func incrementalHarness(t *testing.T, hasBase bool) *Usecases {
 		}
 		return port.Finding{}, port.ErrNotFound
 	}
-	fr.upsertFn = func(ctx context.Context, _, _, fingerprint, _, _ string, _ int16, _ float64, _, _ time.Time) (port.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 		return port.Finding{
-			ID:          "finding-" + fingerprint,
+			ID:          "finding-" + in.Fingerprint,
 			ProjectID:   makeProject(true).ID,
 			FindingKind: "sast",
-			Fingerprint: fingerprint,
+			Fingerprint: in.Fingerprint,
 		}, nil
 	}
 	fr.hasOccurrenceFn = func(ctx context.Context, findingID, reportID string) (bool, error) {
@@ -403,7 +402,7 @@ func TestIngestReport_GateIntroducedOnly(t *testing.T) {
 		fr.getByFingerprintFn = func(context.Context, string, string, string) (port.Finding, error) {
 			return port.Finding{}, port.ErrNotFound
 		}
-		fr.upsertFn = func(ctx context.Context, _, _, _, _, _ string, _ int16, _ float64, _, _ time.Time) (port.Finding, error) {
+		fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 			return makeFinding(9), nil
 		}
 		fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
@@ -554,12 +553,12 @@ func TestIngestReport_MaterializesIntroducedFindings(t *testing.T) {
 		// Only f-old is in baseline
 		return []string{"f-old"}, nil
 	}
-	fr.upsertFn = func(ctx context.Context, _, _, fingerprint, _, _ string, _ int16, _ float64, _, _ time.Time) (port.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 		return port.Finding{
-			ID:          "upserted-" + fingerprint,
+			ID:          "upserted-" + in.Fingerprint,
 			ProjectID:   makeProject(true).ID,
 			FindingKind: "sca",
-			Fingerprint: fingerprint,
+			Fingerprint: in.Fingerprint,
 		}, nil
 	}
 	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
@@ -655,12 +654,12 @@ func TestIngestReport_RegressionFailsIntroducedGate(t *testing.T) {
 			},
 		}, nil
 	}
-	fr.upsertFn = func(ctx context.Context, _, _, fingerprint, _, _ string, _ int16, _ float64, _, _ time.Time) (port.Finding, error) {
+	fr.upsertFn = func(ctx context.Context, in port.UpsertFindingInput) (port.Finding, error) {
 		return port.Finding{
 			ID:          "f-regressed",
 			ProjectID:   makeProject(true).ID,
 			FindingKind: "sca",
-			Fingerprint: fingerprint,
+			Fingerprint: in.Fingerprint,
 		}, nil
 	}
 	fr.createOccurrenceFn = func(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
