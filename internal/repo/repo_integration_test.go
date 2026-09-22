@@ -18,6 +18,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/xMinhx/specht/internal/db"
 	"github.com/xMinhx/specht/internal/db/sqlc"
+	"github.com/xMinhx/specht/internal/port"
 )
 
 func setupTestDB(t *testing.T) (*Repos, func()) {
@@ -318,15 +319,15 @@ func TestFindingRepo_UpsertAndList(t *testing.T) {
 	assert.Equal(t, "open", upsertedAgain.State)
 	assert.Equal(t, "CVE-2026-1234 (updated)", upsertedAgain.CurrentTitle)
 
-	findings, err := repos.Findings.ListByProject(context.Background(), project.ID, nil, nil, nil, nil, nil, 10, 0)
+	findings, err := repos.Findings.ListByProject(context.Background(), project.ID, port.ListFindingsParams{Limit: 10, Offset: 0})
 	require.NoError(t, err)
 	assert.Len(t, findings, 1)
 
-	criticalFindings, err := repos.Findings.ListByProject(context.Background(), project.ID, []string{"critical"}, nil, nil, nil, nil, 10, 0)
+	criticalFindings, err := repos.Findings.ListByProject(context.Background(), project.ID, port.ListFindingsParams{Severities: []string{"critical"}, Limit: 10, Offset: 0})
 	require.NoError(t, err)
 	assert.Len(t, criticalFindings, 1)
 
-	lowFindings, err := repos.Findings.ListByProject(context.Background(), project.ID, []string{"low"}, nil, nil, nil, nil, 10, 0)
+	lowFindings, err := repos.Findings.ListByProject(context.Background(), project.ID, port.ListFindingsParams{Severities: []string{"low"}, Limit: 10, Offset: 0})
 	require.NoError(t, err)
 	assert.Len(t, lowFindings, 0)
 }

@@ -610,30 +610,34 @@ func (m *mockFindingRepo) ListFindingIDsPresentInReport(ctx context.Context, rep
 	if m.listFindingIDsPresentInReportFn != nil {
 		return m.listFindingIDsPresentInReportFn(ctx, reportID, findingIDs)
 	}
-	if m.hasOccurrenceFn != nil {
-		var res []string
-		for _, fid := range findingIDs {
-			has, err := m.hasOccurrenceFn(ctx, fid, reportID)
-			if err == nil && has {
-				res = append(res, fid)
-				continue
-			}
-			if h, _ := m.hasOccurrenceFn(ctx, "finding-"+fid, reportID); h {
-				res = append(res, fid)
-				continue
-			}
-			if m.knownFpByID != nil {
-				if fp, ok := m.knownFpByID[fid]; ok {
-					if h, _ := m.hasOccurrenceFn(ctx, "finding-"+fp, reportID); h {
-						res = append(res, fid)
-						continue
-					}
-				}
-			}
-		}
-		return res, nil
+	if m.hasOccurrenceFn == nil {
+		return nil, nil
 	}
-	return nil, nil
+	var res []string
+	for _, fid := range findingIDs {
+		if m.findingIDInReport(ctx, fid, reportID) {
+			res = append(res, fid)
+		}
+	}
+	return res, nil
+}
+
+// findingIDInReport probes the occurrence hook under the id variants the
+// fixtures use: the raw id, the "finding-"+id synthetic id, and the known
+// fingerprint mapping when present.
+func (m *mockFindingRepo) findingIDInReport(ctx context.Context, fid, reportID string) bool {
+	if has, err := m.hasOccurrenceFn(ctx, fid, reportID); err == nil && has {
+		return true
+	}
+	if h, _ := m.hasOccurrenceFn(ctx, "finding-"+fid, reportID); h {
+		return true
+	}
+	if fp, ok := m.knownFpByID[fid]; ok {
+		if h, _ := m.hasOccurrenceFn(ctx, "finding-"+fp, reportID); h {
+			return true
+		}
+	}
+	return false
 }
 
 func (m *mockFindingRepo) RecordReportIntroducedFindings(ctx context.Context, reportID string, baselineReportID *string, entries []port.IntroducedFindingEntry) error {

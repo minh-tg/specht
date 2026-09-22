@@ -221,7 +221,7 @@ func pollProject(
 	}
 	outcome.Queried += len(queries)
 	for i, res := range results {
-		if err := applyAdvisories(ctx, deps, projectID, groups[i], res.Advisories, cutoff, outcome, created); err != nil {
+		if err := applyAdvisories(ctx, deps, projectID, groups[i], res.Advisories, cutoff, &pollTally{outcome: outcome, created: created}); err != nil {
 			return err
 		}
 	}
@@ -235,6 +235,12 @@ func pollProject(
 	return nil
 }
 
+// pollTally carries the mutable counters a project poll accumulates.
+type pollTally struct {
+	outcome *PollOutcome
+	created *[]Decision
+}
+
 // applyAdvisories decides every (advisory, inventory row) pair for one
 // query result and tallies the outcome counters.
 func applyAdvisories(
@@ -244,12 +250,11 @@ func applyAdvisories(
 	group invGroup,
 	advisories []Advisory,
 	cutoff time.Time,
-	outcome *PollOutcome,
-	created *[]Decision,
+	tally *pollTally,
 ) *pollDepsError {
 	for _, advisory := range advisories {
 		if !afterCutoff(advisory, cutoff) {
-			outcome.Ignored++
+			tally.outcome.Ignored++
 			continue
 		}
 		for _, row := range group.rows {
@@ -259,16 +264,16 @@ func applyAdvisories(
 			}
 			switch kind {
 			case decisionCreated:
-				outcome.Created++
-				*created = append(*created, decision)
+				tally.outcome.Created++
+				*tally.created = append(*tally.created, decision)
 			case decisionSkipped:
-				outcome.Skipped++
+				tally.outcome.Skipped++
 			case decisionUnchanged:
-				outcome.Unchanged++
+				tally.outcome.Unchanged++
 			default:
-				outcome.Ignored++
+				tally.outcome.Ignored++
 				if skipped {
-					outcome.OrphanSkips++
+					tally.outcome.OrphanSkips++
 				}
 			}
 		}

@@ -139,11 +139,22 @@ func TestQueryBatch_OKParsesAndCapturesRawBytes(t *testing.T) {
 	if len(results) != 1 || len(results[0].Advisories) != 1 {
 		t.Fatalf("results = %+v, want 1 result with 1 advisory", results)
 	}
-	a := results[0].Advisories[0]
+	assertFullRecordAdvisory(t, results[0].Advisories[0])
+
+	// The request body must use the querybatch envelope.
+	qs, ok := gotBody["queries"].([]any)
+	if !ok || len(qs) != 1 {
+		t.Fatalf("request body = %v, want queries: [package query]", gotBody)
+	}
+}
+
+// assertFullRecordAdvisory checks that the GET full record populated every
+// structured field and that the raw bytes round-trip the upstream JSON.
+func assertFullRecordAdvisory(t *testing.T, a Advisory) {
+	t.Helper()
 	if a.ID != "GHSA-test-1" {
 		t.Errorf("id = %q, want GHSA-test-1", a.ID)
 	}
-	// The full record (from the GET) must populate the structured fields.
 	if len(a.Affected) != 1 || a.Affected[0].Ecosystem != "npm" {
 		t.Errorf("affected = %+v, want npm ecosystem populated from full record", a.Affected)
 	}
@@ -164,11 +175,6 @@ func TestQueryBatch_OKParsesAndCapturesRawBytes(t *testing.T) {
 	}
 	if !strings.Contains(rawStr, `"credits"`) {
 		t.Errorf("Raw missing credits: %s", rawStr)
-	}
-	// The request body must use the querybatch envelope.
-	qs, ok := gotBody["queries"].([]any)
-	if !ok || len(qs) != 1 {
-		t.Fatalf("request body = %v, want queries: [package query]", gotBody)
 	}
 }
 

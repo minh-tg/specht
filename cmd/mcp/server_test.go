@@ -86,25 +86,31 @@ func TestMCPServerSchemasKeepOptionalFieldsOptional(t *testing.T) {
 		if !ok {
 			continue
 		}
-		schema, ok := tool.InputSchema.(map[string]any)
-		if !ok {
-			t.Fatalf("%s schema has type %T, want map", tool.Name, tool.InputSchema)
-		}
-		fields, ok := schema["required"].([]any)
-		if !ok {
-			t.Fatalf("%s required schema has type %T", tool.Name, schema["required"])
-		}
-		got := make(map[string]bool, len(fields))
-		for _, field := range fields {
-			got[field.(string)] = true
-		}
-		if len(got) != len(want) {
-			t.Fatalf("%s required fields = %v, want %v", tool.Name, got, want)
-		}
-		for field := range want {
-			if !got[field] {
-				t.Errorf("%s required fields = %v, missing %q", tool.Name, got, field)
-			}
+		assertRequiredFields(t, tool, want)
+	}
+}
+
+// assertRequiredFields checks one tool's required list against the want set.
+func assertRequiredFields(t *testing.T, tool *mcp.Tool, want map[string]bool) {
+	t.Helper()
+	schema, ok := tool.InputSchema.(map[string]any)
+	if !ok {
+		t.Fatalf("%s schema has type %T, want map", tool.Name, tool.InputSchema)
+	}
+	fields, ok := schema["required"].([]any)
+	if !ok {
+		t.Fatalf("%s required schema has type %T", tool.Name, schema["required"])
+	}
+	got := make(map[string]bool, len(fields))
+	for _, field := range fields {
+		got[field.(string)] = true
+	}
+	if len(got) != len(want) {
+		t.Fatalf("%s required fields = %v, want %v", tool.Name, got, want)
+	}
+	for field := range want {
+		if !got[field] {
+			t.Errorf("%s required fields = %v, missing %q", tool.Name, got, field)
 		}
 	}
 }

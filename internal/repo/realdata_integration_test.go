@@ -126,7 +126,7 @@ func TestRealDataDoubleIngest_Idempotent(t *testing.T) {
 
 	project, err := stores.Projects.GetBySlug(ctx, "my-app")
 	require.NoError(t, err)
-	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, nil, nil, 100, 0)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{Limit: 100, Offset: 0})
 	require.NoError(t, err)
 	require.Len(t, findings, 4, "re-ingest must not duplicate finding rows")
 	for _, f := range findings {
@@ -228,7 +228,7 @@ func TestRealDataContext_EndToEnd(t *testing.T) {
 
 	project, err := stores.Projects.GetBySlug(ctx, "my-app")
 	require.NoError(t, err)
-	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, nil, nil, 100, 0)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{Limit: 100, Offset: 0})
 	require.NoError(t, err)
 	require.Len(t, findings, 4, "context changes must not fork finding rows")
 
@@ -245,16 +245,16 @@ func TestRealDataContext_EndToEnd(t *testing.T) {
 	// Name filters match against linked observations.
 	targets, err := stores.Targets.List(ctx, project.ID)
 	require.NoError(t, err)
-	prod, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, []string{"production"}, nil, 100, 0)
+	prod, err := stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{Environments: []string{"production"}, Limit: 100, Offset: 0})
 	require.NoError(t, err)
 	assert.Len(t, prod, 4)
-	staging, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, []string{"staging"}, nil, 100, 0)
+	staging, err := stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{Environments: []string{"staging"}, Limit: 100, Offset: 0})
 	require.NoError(t, err)
 	assert.Empty(t, staging)
-	byTarget, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, nil, []string{targets[0].Name}, 100, 0)
+	byTarget, err := stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{Targets: []string{targets[0].Name}, Limit: 100, Offset: 0})
 	require.NoError(t, err)
 	assert.Len(t, byTarget, 4)
-	byMissing, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, nil, []string{"does-not-exist"}, 100, 0)
+	byMissing, err := stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{Targets: []string{"does-not-exist"}, Limit: 100, Offset: 0})
 	require.NoError(t, err)
 	assert.Empty(t, byMissing)
 }
@@ -289,7 +289,7 @@ func TestAgingRows_EndToEnd(t *testing.T) {
 	seed := func(fp string, rank int16, daysAgo int) string {
 		t.Helper()
 		ts := now.AddDate(0, 0, -daysAgo)
-		f, err := stores.Findings.Upsert(ctx, project.ID, "sca", fp, fp, "critical", rank, 9.0, ts, now)
+		f, err := stores.Findings.Upsert(ctx, port.UpsertFindingInput{ProjectID: project.ID, FindingKind: "sca", Fingerprint: fp, Title: fp, Severity: "critical", SeverityRank: rank, Score: 9.0, FirstSeen: ts, LastSeen: now})
 		require.NoError(t, err)
 		return f.ID
 	}
@@ -379,7 +379,7 @@ func TestNucleiIngest_EndToEnd(t *testing.T) {
 	require.Equal(t, 3, out.TotalFindings)
 	project, err := stores.Projects.GetBySlug(ctx, "my-app")
 	require.NoError(t, err)
-	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, []string{"dast"}, nil, nil, 100, 0)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{Kinds: []string{"dast"}, Limit: 100, Offset: 0})
 	require.NoError(t, err)
 	require.Len(t, findings, 2, "dast kind must satisfy the finding_kinds FK and dast scan_type the reports CHECK; two events share one identity")
 	for _, f := range findings {
@@ -418,7 +418,7 @@ func TestRemediation_EndToEnd(t *testing.T) {
 
 	project, err := stores.Projects.GetBySlug(ctx, "my-app")
 	require.NoError(t, err)
-	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, []string{"iac"}, nil, nil, 100, 0)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{Kinds: []string{"iac"}, Limit: 100, Offset: 0})
 	require.NoError(t, err)
 	require.Len(t, findings, 3)
 
@@ -460,7 +460,7 @@ func TestSuggestion_EndToEnd(t *testing.T) {
 
 	project, err := stores.Projects.GetBySlug(ctx, "my-app")
 	require.NoError(t, err)
-	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, []string{"sca"}, nil, nil, 100, 0)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{Kinds: []string{"sca"}, Limit: 100, Offset: 0})
 	require.NoError(t, err)
 	require.NotEmpty(t, findings)
 
@@ -522,7 +522,7 @@ func TestVerifyFix_FullCycle(t *testing.T) {
 
 	project, err := stores.Projects.GetBySlug(ctx, "my-app")
 	require.NoError(t, err)
-	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, nil, nil, nil, 100, 0)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{Limit: 100, Offset: 0})
 	require.NoError(t, err)
 	require.Len(t, findings, 4)
 
@@ -581,7 +581,7 @@ func TestRegression_DetectedAndReopened(t *testing.T) {
 
 	project, err := stores.Projects.GetBySlug(ctx, "regress-app")
 	require.NoError(t, err)
-	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, []string{"sca"}, nil, nil, 100, 0)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{Kinds: []string{"sca"}, Limit: 100, Offset: 0})
 	require.NoError(t, err)
 	require.NotEmpty(t, findings)
 
@@ -637,20 +637,28 @@ func TestRegression_DetectedAndReopened(t *testing.T) {
 func removeFingerprint(raw []byte, id string) ([]byte, error) {
 	return rewriteTrivyReport(raw, func(results []map[string]any) {
 		for _, r := range results {
-			if vulns, ok := r["Vulnerabilities"].([]any); ok {
-				kept := make([]any, 0, len(vulns))
-				for _, v := range vulns {
-					if vm, ok := v.(map[string]any); ok {
-						if vid, _ := vm["VulnerabilityID"].(string); vid == id {
-							continue
-						}
-					}
-					kept = append(kept, v)
-				}
-				r["Vulnerabilities"] = kept
-			}
+			r["Vulnerabilities"] = filterOutVulnID(r["Vulnerabilities"], id)
 		}
 	})
+}
+
+// filterOutVulnID drops the vulnerability entry carrying id from a raw
+// Vulnerabilities array; non-array input passes through unchanged.
+func filterOutVulnID(value any, id string) any {
+	vulns, ok := value.([]any)
+	if !ok {
+		return value
+	}
+	kept := make([]any, 0, len(vulns))
+	for _, v := range vulns {
+		if vm, ok := v.(map[string]any); ok {
+			if vid, _ := vm["VulnerabilityID"].(string); vid == id {
+				continue
+			}
+		}
+		kept = append(kept, v)
+	}
+	return kept
 }
 
 // appendComment injects a harmless top-level field into the trivy multi-type
@@ -741,7 +749,7 @@ func TestTracker_DispatchLifecycle(t *testing.T) {
 	// Verify fix for the lodash finding, then re-ingest to trigger regression.
 	project, err := stores.Projects.GetBySlug(ctx, "tracker-app")
 	require.NoError(t, err)
-	findings, err := stores.Findings.ListByProject(ctx, project.ID, nil, nil, []string{"sca"}, nil, nil, 100, 0)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{Kinds: []string{"sca"}, Limit: 100, Offset: 0})
 	require.NoError(t, err)
 	f := findingIDFor(findings, "lodash")
 	require.NotEmpty(t, f)

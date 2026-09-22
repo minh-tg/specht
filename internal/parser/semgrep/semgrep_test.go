@@ -72,31 +72,39 @@ func TestParse_SemgrepScan(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			found := false
-			for _, f := range report.Findings {
-				if f.Fingerprint == tt.fingerprint {
-					found = true
-					assert.Equal(t, tt.findingKind, f.FindingKind)
-					assert.Equal(t, tt.severity, f.Severity)
-					assert.Equal(t, tt.location, f.Location)
+			f := findByFingerprint(t, report.Findings, tt.fingerprint)
+			assert.Equal(t, tt.findingKind, f.FindingKind)
+			assert.Equal(t, tt.severity, f.Severity)
+			assert.Equal(t, tt.location, f.Location)
+			assert.Equal(t, tt.ruleID, dimensionValue(f.Dimensions, "rule_id"))
 
-					hasRuleID := false
-					for _, d := range f.Dimensions {
-						if d.Key == "rule_id" && d.Value == tt.ruleID {
-							hasRuleID = true
-						}
-					}
-					assert.True(t, hasRuleID, "finding missing rule_id dimension")
-
-					if tt.cwe != nil {
-						assert.Equal(t, tt.cwe, f.Extensions["cwe"])
-					}
-					break
-				}
+			if tt.cwe != nil {
+				assert.Equal(t, tt.cwe, f.Extensions["cwe"])
 			}
-			assert.True(t, found, "finding with fingerprint %q not found", tt.fingerprint)
 		})
 	}
+}
+
+// findByFingerprint returns the matching finding or fails the test.
+func findByFingerprint(t *testing.T, findings []domain.NormalizedFinding, fingerprint string) domain.NormalizedFinding {
+	t.Helper()
+	for _, f := range findings {
+		if f.Fingerprint == fingerprint {
+			return f
+		}
+	}
+	t.Fatalf("finding with fingerprint %q not found", fingerprint)
+	return domain.NormalizedFinding{}
+}
+
+// dimensionValue returns the value of the named dimension, or "".
+func dimensionValue(dims []domain.Dimension, key string) string {
+	for _, d := range dims {
+		if d.Key == key {
+			return d.Value
+		}
+	}
+	return ""
 }
 
 func TestParse_InvalidJSON(t *testing.T) {

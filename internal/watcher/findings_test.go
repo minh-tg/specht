@@ -76,6 +76,36 @@ func TestDecideFinding_CreatesFinding(t *testing.T) {
 	}
 
 	f := dec.Finding
+	assertCreatedFindingFields(t, f, wantFingerprint)
+	assertCreatedFindingDims(t, f)
+
+	// Event: auto_rule_applied carrying source/advisory_id.
+	if dec.Event == nil || dec.Event.EventType != EventAutoRuleApplied {
+		t.Fatalf("event = %+v, want auto_rule_applied", dec.Event)
+	}
+	var changes map[string]any
+	if err := json.Unmarshal(dec.Event.Changes, &changes); err != nil {
+		t.Fatalf("unmarshal event changes: %v", err)
+	}
+	if changes["source"] != "cve_watcher" || changes["advisory_id"] != "OSV-2021-1627" {
+		t.Errorf("event changes = %v, want source/advisory_id metadata", changes)
+	}
+	assertEvidenceRoundTrips(t, dec.Evidence)
+
+	// Gap check ran once with the project, name-level purl, and full
+	// candidate id set (primary + aliases).
+	if len(calls) != 1 {
+		t.Fatalf("gap check calls = %d, want 1", len(calls))
+	}
+	wantCall := "6f0f5f2e-8b3a-4c1d-9e7a-2b4c6d8e0f10|pkg:maven/org.apache.logging.log4j/log4j-core|CVE-2021-44228,GHSA-jfh8-c2jp-5v3q,OSV-2021-1627"
+	if calls[0] != wantCall {
+		t.Errorf("gap check call = %q, want %q", calls[0], wantCall)
+	}
+}
+
+// assertCreatedFindingFields checks the scalar payload of the created finding.
+func assertCreatedFindingFields(t *testing.T, f FindingPayload, wantFingerprint string) {
+	t.Helper()
 	if f.FindingKind != "cve_watcher" {
 		t.Errorf("FindingKind = %q, want cve_watcher", f.FindingKind)
 	}
@@ -94,7 +124,17 @@ func TestDecideFinding_CreatesFinding(t *testing.T) {
 	if !strings.Contains(f.Remediation, "https://nvd.nist.gov/vuln/detail/CVE-2021-44228") {
 		t.Errorf("remediation = %q, want reference URL", f.Remediation)
 	}
+	if f.Display["advisory_id"] != "OSV-2021-1627" {
+		t.Errorf("metadata advisory_id = %v", f.Metadata["advisory_id"])
+	}
+	if f.Display["cvss_vector"] != "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H" {
+		t.Errorf("metadata cvss_vector = %v", f.Metadata["cvss_vector"])
+	}
+}
 
+// assertCreatedFindingDims checks the exact dimension set of the created finding.
+func assertCreatedFindingDims(t *testing.T, f FindingPayload) {
+	t.Helper()
 	dims := dimsMap(f)
 	wantDims := map[string][]string{
 		"purl":              {"pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1"},
@@ -113,46 +153,20 @@ func TestDecideFinding_CreatesFinding(t *testing.T) {
 	if len(dims) != len(wantDims) {
 		t.Errorf("dims = %d keys, want %d: %v", len(dims), len(wantDims), dims)
 	}
+}
 
-	if f.Display["advisory_id"] != "OSV-2021-1627" {
-		t.Errorf("metadata advisory_id = %v", f.Metadata["advisory_id"])
-	}
-	if f.Display["cvss_vector"] != "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H" {
-		t.Errorf("metadata cvss_vector = %v", f.Metadata["cvss_vector"])
-	}
-
-	// Event: auto_rule_applied carrying source/advisory_id.
-	if dec.Event == nil || dec.Event.EventType != EventAutoRuleApplied {
-		t.Fatalf("event = %+v, want auto_rule_applied", dec.Event)
-	}
-	var changes map[string]any
-	if err := json.Unmarshal(dec.Event.Changes, &changes); err != nil {
-		t.Fatalf("unmarshal event changes: %v", err)
-	}
-	if changes["source"] != "cve_watcher" || changes["advisory_id"] != "OSV-2021-1627" {
-		t.Errorf("event changes = %v, want source/advisory_id metadata", changes)
-	}
-
-	// Evidence: the advisory JSON is present and round-trips.
-	if len(dec.Evidence) == 0 {
+// assertEvidenceRoundTrips checks the stored advisory JSON round-trips.
+func assertEvidenceRoundTrips(t *testing.T, evidence []byte) {
+	t.Helper()
+	if len(evidence) == 0 {
 		t.Fatal("Evidence is empty, want advisory JSON")
 	}
 	var back Advisory
-	if err := json.Unmarshal(dec.Evidence, &back); err != nil {
+	if err := json.Unmarshal(evidence, &back); err != nil {
 		t.Fatalf("unmarshal evidence: %v", err)
 	}
 	if back.ID != "OSV-2021-1627" || len(back.Affected) != 1 {
 		t.Errorf("evidence round-trip = %+v", back)
-	}
-
-	// Gap check ran once with the project, name-level purl, and full
-	// candidate id set (primary + aliases).
-	if len(calls) != 1 {
-		t.Fatalf("gap check calls = %d, want 1", len(calls))
-	}
-	wantCall := "6f0f5f2e-8b3a-4c1d-9e7a-2b4c6d8e0f10|pkg:maven/org.apache.logging.log4j/log4j-core|CVE-2021-44228,GHSA-jfh8-c2jp-5v3q,OSV-2021-1627"
-	if calls[0] != wantCall {
-		t.Errorf("gap check call = %q, want %q", calls[0], wantCall)
 	}
 }
 

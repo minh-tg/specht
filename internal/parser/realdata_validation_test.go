@@ -95,21 +95,38 @@ func TestRealDataValidationSweep(t *testing.T) {
 
 			seen := map[string]string{}
 			for i, f := range rep.Findings {
-				require.NotEmpty(t, f.Fingerprint, "finding %d missing fingerprint", i)
-				if prev, dup := seen[f.Fingerprint]; dup && !tc.allowDupFingerprints {
-					t.Fatalf("duplicate fingerprint %q (findings %q and %q)", f.Fingerprint, prev, f.Title)
-				}
-				seen[f.Fingerprint] = f.Title
-				assert.GreaterOrEqual(t, int(f.Severity), int(domain.SeverityUnknown))
-				assert.LessOrEqual(t, int(f.Severity), int(domain.SeverityCritical))
-				_, ok := declared[f.FindingKind]
-				assert.True(t, ok, "finding kind %q not in descriptor %v", f.FindingKind, desc.FindingKinds)
-				for _, d := range f.Dimensions {
-					_, ok := canonicalDims[d.Key]
-					assert.True(t, ok, "non-canonical dimension key %q", d.Key)
-					assert.NotEmpty(t, d.Value, "empty value for dimension %q", d.Key)
-				}
+				validateSweepFinding(t, f, i, &sweepState{seen: seen, declared: declared, desc: desc, allowDups: tc.allowDupFingerprints})
 			}
 		})
+	}
+}
+
+// sweepState carries the cross-finding sweep bookkeeping: fingerprints seen
+// so far, the descriptor's declared kinds, and the duplicate policy.
+type sweepState struct {
+	seen      map[string]string
+	declared  map[string]struct{}
+	desc      scanner.Descriptor
+	allowDups bool
+}
+
+// validateSweepFinding applies the per-finding invariants of the sweep:
+// non-empty unique fingerprint, in-range severity, declared finding kind,
+// and canonical non-empty dimensions.
+func validateSweepFinding(t *testing.T, f domain.NormalizedFinding, i int, st *sweepState) {
+	t.Helper()
+	require.NotEmpty(t, f.Fingerprint, "finding %d missing fingerprint", i)
+	if prev, dup := st.seen[f.Fingerprint]; dup && !st.allowDups {
+		t.Fatalf("duplicate fingerprint %q (findings %q and %q)", f.Fingerprint, prev, f.Title)
+	}
+	st.seen[f.Fingerprint] = f.Title
+	assert.GreaterOrEqual(t, int(f.Severity), int(domain.SeverityUnknown))
+	assert.LessOrEqual(t, int(f.Severity), int(domain.SeverityCritical))
+	_, ok := st.declared[f.FindingKind]
+	assert.True(t, ok, "finding kind %q not in descriptor %v", f.FindingKind, st.desc.FindingKinds)
+	for _, d := range f.Dimensions {
+		_, ok := canonicalDims[d.Key]
+		assert.True(t, ok, "non-canonical dimension key %q", d.Key)
+		assert.NotEmpty(t, d.Value, "empty value for dimension %q", d.Key)
 	}
 }

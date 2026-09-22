@@ -75,28 +75,33 @@ func TestParse_GrypeReport(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			found := false
-			for _, f := range report.Findings {
-				if f.Fingerprint == tt.fingerprint {
-					found = true
-					assert.Equal(t, tt.severity, f.Severity)
-					assert.Equal(t, tt.findingKind, f.FindingKind)
-					assert.Equal(t, tt.score, f.Score)
-					assert.Len(t, f.Aliases, tt.aliasesLen)
-					if tt.cvssVersion != "" {
-						require.NotNil(t, f.CVSS)
-						assert.Equal(t, tt.cvssVersion, f.CVSS.Version)
-					}
-					if tt.fixSummary != "" {
-						require.NotNil(t, f.Fix)
-						assert.Equal(t, tt.fixSummary, f.Fix.Summary)
-					}
-					break
-				}
+			f := grypeFindingByFingerprint(t, report.Findings, tt.fingerprint)
+			assert.Equal(t, tt.severity, f.Severity)
+			assert.Equal(t, tt.findingKind, f.FindingKind)
+			assert.Equal(t, tt.score, f.Score)
+			assert.Len(t, f.Aliases, tt.aliasesLen)
+			if tt.cvssVersion != "" {
+				require.NotNil(t, f.CVSS)
+				assert.Equal(t, tt.cvssVersion, f.CVSS.Version)
 			}
-			assert.True(t, found, "finding with fingerprint %q not found", tt.fingerprint)
+			if tt.fixSummary != "" {
+				require.NotNil(t, f.Fix)
+				assert.Equal(t, tt.fixSummary, f.Fix.Summary)
+			}
 		})
 	}
+}
+
+// grypeFindingByFingerprint returns the matching finding or fails the test.
+func grypeFindingByFingerprint(t *testing.T, findings []domain.NormalizedFinding, fingerprint string) domain.NormalizedFinding {
+	t.Helper()
+	for _, f := range findings {
+		if f.Fingerprint == fingerprint {
+			return f
+		}
+	}
+	t.Fatalf("finding with fingerprint %q not found", fingerprint)
+	return domain.NormalizedFinding{}
 }
 
 func TestParse_GrypeFullReport(t *testing.T) {
