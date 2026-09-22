@@ -60,20 +60,19 @@ type Result struct {
 	Uncertain []Candidate `json:"uncertain,omitempty"`
 }
 
-// Correlate groups equivalent findings in observations.
-func Correlate(observations []domain.NormalizedFinding) Result {
-	var res Result
+// collectGroupMembers buckets observation indices by correlation key and
+// records the first-seen confidence metadata per key.
+func collectGroupMembers(observations []domain.NormalizedFinding, keys []groupKey) (map[string][]int, map[string]struct {
+	confidence Confidence
+	reason     string
+}, map[string][]int,
+) {
 	byKey := map[string][]int{}
 	meta := map[string]struct {
 		confidence Confidence
 		reason     string
 	}{}
 	near := map[string][]int{}
-
-	keys := make([]groupKey, len(observations))
-	for i, f := range observations {
-		keys[i] = keyFor(f)
-	}
 	for i, k := range keys {
 		if k.key == "" {
 			continue
@@ -89,7 +88,17 @@ func Correlate(observations []domain.NormalizedFinding) Result {
 			near[k.near] = append(near[k.near], i)
 		}
 	}
+	return byKey, meta, near
+}
 
+// buildCorrelationGroups emits the deterministic groups for keys seen at
+// least twice.
+func buildCorrelationGroups(byKey map[string][]int, meta map[string]struct {
+	confidence Confidence
+	reason     string
+},
+) []Group {
+	var groups []Group
 	for key, members := range byKey {
 		if len(members) < 2 {
 			continue
@@ -97,20 +106,20 @@ func Correlate(observations []domain.NormalizedFinding) Result {
 		sort.Ints(members)
 		m := meta[key]
 		sum := sha256.Sum256([]byte(key))
-		res.Groups = append(res.Groups, Group{
+		groups = append(groups, Group{
 			ID:  "corr:" + hex.EncodeToString(sum[:])[:16],
 			Key: key, Confidence: m.confidence, Reason: m.reason,
 			Members: members,
 		})
 	}
-	sort.Slice(res.Groups, func(i, j int) bool { return res.Groups[i].Key < res.Groups[j].Key })
+	sort.Slice(groups, func(i, j int) bool { return groups[i].Key < groups[j].Key })
+	return groups
+}
 
-	grouped := map[int]bool{}
-	for _, g := range res.Groups {
-		for _, m := range g.Members {
-			grouped[m] = true
-		}
-	}
+// buildUncertainCandidates emits near-miss candidates for ungrouped members
+// sharing a near key.
+func buildUncertainCandidates(near map[string][]int, grouped map[int]bool) []Candidate {
+	var uncertain []Candidate
 	for key, members := range near {
 		var free []int
 		for _, m := range members {
@@ -122,12 +131,32 @@ func Correlate(observations []domain.NormalizedFinding) Result {
 			continue
 		}
 		sort.Ints(free)
-		res.Uncertain = append(res.Uncertain, Candidate{
+		uncertain = append(uncertain, Candidate{
 			Reason:  "shared " + key + " across different subjects",
 			Members: free,
 		})
 	}
-	sort.Slice(res.Uncertain, func(i, j int) bool { return res.Uncertain[i].Reason < res.Uncertain[j].Reason })
+	sort.Slice(uncertain, func(i, j int) bool { return uncertain[i].Reason < uncertain[j].Reason })
+	return uncertain
+}
+
+// Correlate groups equivalent findings in observations.
+func Correlate(observations []domain.NormalizedFinding) Result {
+	keys := make([]groupKey, len(observations))
+	for i, f := range observations {
+		keys[i] = keyFor(f)
+	}
+	byKey, meta, near := collectGroupMembers(observations, keys)
+
+	res := Result{Groups: buildCorrelationGroups(byKey, meta)}
+
+	grouped := map[int]bool{}
+	for _, g := range res.Groups {
+		for _, m := range g.Members {
+			grouped[m] = true
+		}
+	}
+	res.Uncertain = buildUncertainCandidates(near, grouped)
 	return res
 }
 
@@ -136,6 +165,53 @@ type groupKey struct {
 	near       string
 	confidence Confidence
 	reason     string
+}
+
+func sastGroupKey(f domain.NormalizedFinding, dims map[string]string) groupKey {
+	rule := dims[domain.DimRuleID]
+	file := dims[domain.DimFile]
+	if f.CodeLocation != nil && f.CodeLocation.File != "" {
+		file = f.CodeLocation.File
+	}
+	if rule == "" || file == "" {
+		return groupKey{}
+	}
+	return groupKey{
+		key:        "sast:" + rule + ":" + file,
+		near:       "rule " + rule,
+		confidence: ConfidenceHigh,
+		reason:     "same SAST rule on the same file (line shifts ignored)",
+	}
+}
+
+func iacGroupKey(f domain.NormalizedFinding, dims map[string]string) groupKey {
+	rule := dims[domain.DimRuleID]
+	resource := dims[domain.DimResource]
+	if resource == "" {
+		resource = f.Resource
+	}
+	if rule == "" || resource == "" {
+		return groupKey{}
+	}
+	return groupKey{
+		key:        "iac:" + rule + ":" + resource,
+		near:       "rule " + rule,
+		confidence: ConfidenceHigh,
+		reason:     "same IaC rule on the same resource",
+	}
+}
+
+func secretGroupKey(f domain.NormalizedFinding, dims map[string]string) groupKey {
+	rule := dims[domain.DimRuleID]
+	if rule == "" || f.Location == "" {
+		return groupKey{}
+	}
+	return groupKey{
+		key:        "secret:" + rule + ":" + f.Location,
+		near:       "rule " + rule,
+		confidence: ConfidenceHigh,
+		reason:     "same secret rule on the same target",
+	}
 }
 
 func keyFor(f domain.NormalizedFinding) groupKey {
@@ -149,46 +225,11 @@ func keyFor(f domain.NormalizedFinding) groupKey {
 	case "sca":
 		return scaKey(f, dims)
 	case "sast":
-		rule := dims[domain.DimRuleID]
-		file := dims[domain.DimFile]
-		if f.CodeLocation != nil && f.CodeLocation.File != "" {
-			file = f.CodeLocation.File
-		}
-		if rule == "" || file == "" {
-			return groupKey{}
-		}
-		return groupKey{
-			key:        "sast:" + rule + ":" + file,
-			near:       "rule " + rule,
-			confidence: ConfidenceHigh,
-			reason:     "same SAST rule on the same file (line shifts ignored)",
-		}
+		return sastGroupKey(f, dims)
 	case "iac":
-		rule := dims[domain.DimRuleID]
-		resource := dims[domain.DimResource]
-		if resource == "" {
-			resource = f.Resource
-		}
-		if rule == "" || resource == "" {
-			return groupKey{}
-		}
-		return groupKey{
-			key:        "iac:" + rule + ":" + resource,
-			near:       "rule " + rule,
-			confidence: ConfidenceHigh,
-			reason:     "same IaC rule on the same resource",
-		}
+		return iacGroupKey(f, dims)
 	case "secret":
-		rule := dims[domain.DimRuleID]
-		if rule == "" || f.Location == "" {
-			return groupKey{}
-		}
-		return groupKey{
-			key:        "secret:" + rule + ":" + f.Location,
-			near:       "rule " + rule,
-			confidence: ConfidenceHigh,
-			reason:     "same secret rule on the same target",
-		}
+		return secretGroupKey(f, dims)
 	default:
 		return groupKey{}
 	}
