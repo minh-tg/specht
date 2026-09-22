@@ -48,7 +48,7 @@ func newProjectTeamsListCmd(d Deps) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&project, "project", "", "project slug")
+	cmd.Flags().StringVar(&project, "project", "", flagProjectSlugUsage)
 	return cmd
 }
 
@@ -74,7 +74,7 @@ func newProjectTeamsLinkCmd(d Deps) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&project, "project", "", "project slug")
+	cmd.Flags().StringVar(&project, "project", "", flagProjectSlugUsage)
 	cmd.Flags().StringVar(&teamID, "team", "", "team ID")
 	cmd.Flags().StringVar(&role, "role", "", "project role")
 	return cmd
@@ -101,7 +101,7 @@ func newProjectTeamsUnlinkCmd(d Deps) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&project, "project", "", "project slug")
+	cmd.Flags().StringVar(&project, "project", "", flagProjectSlugUsage)
 	cmd.Flags().StringVar(&teamID, "team", "", "team ID")
 	return cmd
 }

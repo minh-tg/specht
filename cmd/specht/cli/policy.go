@@ -169,7 +169,7 @@ func newPolicyApplyCmd(d Deps) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&project, "project", "", "project slug")
+	cmd.Flags().StringVar(&project, "project", "", flagProjectSlugUsage)
 	cmd.Flags().StringVar(&template, "template", "", "baseline name (empty unlinks)")
 	return cmd
 }
@@ -202,7 +202,7 @@ func newPolicyOverridesCmd(d Deps) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&project, "project", "", "project slug")
+	cmd.Flags().StringVar(&project, "project", "", flagProjectSlugUsage)
 	cmd.Flags().StringVar(&overrides, "set", "", "overrides as JSON object")
 	return cmd
 }
@@ -248,6 +248,6 @@ func newPolicyEffectiveCmd(d Deps, s *settings) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&project, "project", "", "project slug")
+	cmd.Flags().StringVar(&project, "project", "", flagProjectSlugUsage)
 	return cmd
 }

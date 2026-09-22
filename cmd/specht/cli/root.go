@@ -24,6 +24,12 @@ const (
 	exitFailure = 2
 )
 
+// Shared flag descriptions reused across commands.
+const (
+	flagProjectSlugUsage = "project slug"
+	flagTeamIDUsage      = "team ID"
+)
+
 // Deps carries command dependencies. Out and ErrW are injectable so
 // commands are testable with buffers.
 type Deps struct {

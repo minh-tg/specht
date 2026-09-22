@@ -96,7 +96,7 @@ func newTeamsDeleteCmd(d Deps) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&id, "id", "", "team ID")
+	cmd.Flags().StringVar(&id, "id", "", flagTeamIDUsage)
 	return cmd
 }
 
@@ -128,7 +128,7 @@ func newTeamsMembersCmd(d Deps) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&id, "id", "", "team ID")
+	cmd.Flags().StringVar(&id, "id", "", flagTeamIDUsage)
 	return cmd
 }
 
@@ -154,7 +154,7 @@ func newTeamsAddCmd(d Deps) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&id, "id", "", "team ID")
+	cmd.Flags().StringVar(&id, "id", "", flagTeamIDUsage)
 	cmd.Flags().StringVar(&user, "user", "", "user ID")
 	cmd.Flags().StringVar(&role, "role", "", "team role")
 	return cmd
@@ -181,7 +181,7 @@ func newTeamsRemoveCmd(d Deps) *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&id, "id", "", "team ID")
+	cmd.Flags().StringVar(&id, "id", "", flagTeamIDUsage)
 	cmd.Flags().StringVar(&user, "user", "", "user ID")
 	return cmd
 }
