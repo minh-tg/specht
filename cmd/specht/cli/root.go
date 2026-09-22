@@ -77,7 +77,7 @@ func NewRootCmd(d Deps) *cobra.Command {
 	root.AddCommand(newPrCmd(d, s))
 	root.AddCommand(newPatchCmd(d, s))
 	root.AddCommand(newNotifyCmd(d, s))
-	// TEMP newAdminCmd
+	root.AddCommand(newAdminCmd(d, s))
 	// TEMP newPolicyCmd
 	return root
 }
