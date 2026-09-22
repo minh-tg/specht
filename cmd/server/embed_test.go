@@ -4,6 +4,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -74,6 +75,20 @@ func TestSPAHandler_servesRoot(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200 for root, got %d", resp.StatusCode)
+	}
+}
+
+func TestSPAHandler_fallbackDocumentHasMetadata(t *testing.T) {
+	body, err := frontendDist.ReadFile("dist/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bodyString := string(body)
+	if !strings.Contains(bodyString, `<html lang="en">`) {
+		t.Fatalf("fallback document has no language metadata: %s", bodyString)
+	}
+	if !strings.Contains(bodyString, `<title>Specht</title>`) {
+		t.Fatalf("fallback document has no title: %s", bodyString)
 	}
 }
 
