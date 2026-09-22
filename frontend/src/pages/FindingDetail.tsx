@@ -130,7 +130,7 @@ function HistorySection({
   isLoading,
   isError,
 }: {
-  events?: FindingEvent[];
+  readonly events?: FindingEvent[];
   readonly isLoading: boolean;
   readonly isError: boolean;
 }) {
