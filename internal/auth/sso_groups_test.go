@@ -59,22 +59,31 @@ func TestIsSSOAdmin(t *testing.T) {
 	assert.False(t, IsSSOAdmin([]string{"admins"}, []string{""}), "empty admin entries never match")
 }
 
+// oidcGroupClaims carries the per-subject claims signOIDCIDTokenWithGroups
+// signs beyond issuer/audience.
+type oidcGroupClaims struct {
+	sub    string
+	email  string
+	nonce  string
+	groups []string
+}
+
 // signOIDCIDTokenWithGroups signs an id_token carrying extra claims
 // (groups) for enterprise mapping tests, mirroring signOIDCIDToken.
-func signOIDCIDTokenWithGroups(t *testing.T, key *rsa.PrivateKey, issuer, aud, sub, email, nonce string, groups []string) string {
+func signOIDCIDTokenWithGroups(t *testing.T, key *rsa.PrivateKey, issuer, aud string, c oidcGroupClaims) string {
 	t.Helper()
 	now := time.Now()
 	claims := jwt.MapClaims{
 		"iss":    issuer,
 		"aud":    aud,
-		"sub":    sub,
-		"email":  email,
+		"sub":    c.sub,
+		"email":  c.email,
 		"iat":    now.Unix(),
 		"exp":    now.Add(time.Hour).Unix(),
-		"groups": groups,
+		"groups": c.groups,
 	}
-	if nonce != "" {
-		claims["nonce"] = nonce
+	if c.nonce != "" {
+		claims["nonce"] = c.nonce
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	tok.Header["kid"] = testOIDCKid
@@ -91,7 +100,7 @@ func TestOIDC_Callback_ForwardsGroups(t *testing.T) {
 
 	prov := newFakeOIDCProvider(t, key)
 	auth := mustOIDC(t, prov.srv.URL)
-	prov.idToken = signOIDCIDTokenWithGroups(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", nonce, []string{"idp-admins"})
+	prov.idToken = signOIDCIDTokenWithGroups(t, key, prov.srv.URL, "test-client", oidcGroupClaims{sub: "oidc-user-1", email: "oidc@example.com", nonce: nonce, groups: []string{"idp-admins"}})
 
 	var gotGroups []string
 	h := auth.CallbackHandler(func(ctx context.Context, userID, email string, groups []string) (string, error) {
@@ -116,7 +125,7 @@ func TestOIDC_Callback_MergesUserinfoGroups(t *testing.T) {
 	prov := newFakeOIDCProvider(t, key)
 	prov.userGroups = `["idp-viewers"]`
 	auth := mustOIDC(t, prov.srv.URL)
-	prov.idToken = signOIDCIDTokenWithGroups(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", nonce, []string{"idp-admins"})
+	prov.idToken = signOIDCIDTokenWithGroups(t, key, prov.srv.URL, "test-client", oidcGroupClaims{sub: "oidc-user-1", email: "oidc@example.com", nonce: nonce, groups: []string{"idp-admins"}})
 
 	var gotGroups []string
 	h := auth.CallbackHandler(func(ctx context.Context, userID, email string, groups []string) (string, error) {
