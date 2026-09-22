@@ -208,28 +208,32 @@ func realIPMiddleware(trusted []netip.Prefix) func(http.Handler) http.Handler {
 				peerHost = r.RemoteAddr
 			}
 			peerIP := net.ParseIP(peerHost)
-			if peerIP != nil && isTrustedProxy(peerIP, trusted) {
-				secure := false
-				if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-					if ip := strings.TrimSpace(strings.Split(fwd, ",")[0]); ip != "" {
-						r.RemoteAddr = ip
-					}
-				} else if rip := r.Header.Get("X-Real-IP"); rip != "" {
-					r.RemoteAddr = rip
-				}
-				if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
-					secure = true
-				}
-				r = r.WithContext(auth.ContextWithSecureTransport(r.Context(), secure))
-			} else {
+			if peerIP == nil || !isTrustedProxy(peerIP, trusted) {
 				// Direct client (or an untrusted peer): the transport is
 				// secure only when TLS terminated in-process. Stamping the
 				// verdict also blocks header sniffing by any later consumer.
 				r = r.WithContext(auth.ContextWithSecureTransport(r.Context(), r.TLS != nil))
+				next.ServeHTTP(w, r)
+				return
 			}
+			r = applyTrustedProxyHeaders(r)
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// applyTrustedProxyHeaders rewrites the peer address from forwarding
+// headers and stamps the trusted transport verdict onto the context.
+func applyTrustedProxyHeaders(r *http.Request) *http.Request {
+	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+		if ip := strings.TrimSpace(strings.Split(fwd, ",")[0]); ip != "" {
+			r.RemoteAddr = ip
+		}
+	} else if rip := r.Header.Get("X-Real-IP"); rip != "" {
+		r.RemoteAddr = rip
+	}
+	secure := r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	return r.WithContext(auth.ContextWithSecureTransport(r.Context(), secure))
 }
 
 // isTrustedProxy reports whether ip falls inside any of the trusted ranges.

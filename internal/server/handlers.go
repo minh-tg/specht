@@ -455,23 +455,31 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 				respondError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 				return
 			}
-			if ident.IsAPIKey {
-				// API keys are never admitted by role alone: they must hold
-				// the permission scope the gate demands.
-				if apiKeyRoleAdmitted(ident, requiredScopes) {
-					next.ServeHTTP(w, r)
-					return
-				}
-				respondError(w, http.StatusForbidden, "insufficient_scope", "API key does not have the required scope for this route")
-				return
-			}
-			if !sessionRoleAdmitted(ident, allowed) {
-				respondError(w, http.StatusForbidden, "insufficient_role", "requires admin role")
+			if !identityAdmitted(ident, allowed, requiredScopes) {
+				respondRoleError(w, ident)
 				return
 			}
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// identityAdmitted decides access for one identity: API keys must hold the
+// permission scope the route demands, sessions must hold an allowed role.
+func identityAdmitted(ident *auth.Identity, allowed, requiredScopes map[string]bool) bool {
+	if ident.IsAPIKey {
+		return apiKeyRoleAdmitted(ident, requiredScopes)
+	}
+	return sessionRoleAdmitted(ident, allowed)
+}
+
+// respondRoleError picks the refusal detail for the identity type.
+func respondRoleError(w http.ResponseWriter, ident *auth.Identity) {
+	if ident.IsAPIKey {
+		respondError(w, http.StatusForbidden, "insufficient_scope", "API key does not have the required scope for this route")
+		return
+	}
+	respondError(w, http.StatusForbidden, "insufficient_role", "requires admin role")
 }
 
 func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {

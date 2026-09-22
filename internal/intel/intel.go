@@ -100,6 +100,17 @@ func (s *Store) Refresh(ctx context.Context, cveIDs []string) error {
 	if len(want) == 0 {
 		return nil
 	}
+	merged, firstErr := s.fetchProviders(ctx, want)
+	if len(merged) == 0 {
+		return firstErr
+	}
+	s.mergeCached(merged)
+	return firstErr
+}
+
+// fetchProviders queries every provider and merges their records per CVE;
+// provider failures are collected into firstErr and do not abort the rest.
+func (s *Store) fetchProviders(ctx context.Context, want []string) (map[string]Record, error) {
 	merged := make(map[string]Record, len(want))
 	var firstErr error
 	for _, p := range s.providers {
@@ -124,9 +135,11 @@ func (s *Store) Refresh(ctx context.Context, cveIDs []string) error {
 			merged[id] = m
 		}
 	}
-	if len(merged) == 0 {
-		return firstErr
-	}
+	return merged, firstErr
+}
+
+// mergeCached folds fetched records into the cache under the write lock.
+func (s *Store) mergeCached(merged map[string]Record) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for id, rec := range merged {
@@ -143,23 +156,28 @@ func (s *Store) Refresh(ctx context.Context, cveIDs []string) error {
 			existing.KEV = true
 			existing.KEVAdded = rec.KEVAdded
 		}
-		for _, src := range rec.Sources {
-			found := false
-			for _, existingSrc := range existing.Sources {
-				if existingSrc == src {
-					found = true
-					break
-				}
-			}
-			if !found {
-				existing.Sources = append(existing.Sources, src)
-			}
-		}
+		existing.Sources = unionStrings(existing.Sources, rec.Sources)
 		existing.FetchedAt = rec.FetchedAt
 		existing.Stale = false
 		s.cached[id] = existing
 	}
-	return firstErr
+}
+
+// unionStrings appends the members of add that base does not already hold.
+func unionStrings(base, add []string) []string {
+	for _, s := range add {
+		found := false
+		for _, b := range base {
+			if b == s {
+				found = true
+				break
+			}
+		}
+		if !found {
+			base = append(base, s)
+		}
+	}
+	return base
 }
 
 // ApplyToSignals feeds a cached record into risk signals: positive KEV

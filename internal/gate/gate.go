@@ -346,32 +346,35 @@ func contextMatchesContexts(f Finding, contexts []WaiverContext) bool {
 // this helper so the two paths can never drift apart.
 func IsFindingWaived(f Finding, waivers []Waiver) bool {
 	for _, w := range waivers {
-		if len(w.Contexts) > 0 && !contextMatchesContexts(f, w.Contexts) {
-			continue
+		if waiverCovers(f, w) {
+			return true
 		}
+	}
+	return false
+}
 
-		if len(w.Targets) > 0 {
-			targetMatch := false
-			for _, t := range w.Targets {
-				if t.FindingID == f.ID {
-					targetMatch = true
-					break
-				}
-			}
-			if !targetMatch {
-				continue
-			}
+// waiverCovers reports whether one waiver applies to the finding: its
+// context and target scopes accept the finding and every condition matches.
+func waiverCovers(f Finding, w Waiver) bool {
+	if len(w.Contexts) > 0 && !contextMatchesContexts(f, w.Contexts) {
+		return false
+	}
+	if len(w.Targets) > 0 && !waiverTargetsFinding(f, w.Targets) {
+		return false
+	}
+	for _, c := range w.Conditions {
+		if !matchCondition(f, c) {
+			return false
 		}
+	}
+	return true
+}
 
-		allMatch := true
-		for _, c := range w.Conditions {
-			if !matchCondition(f, c) {
-				allMatch = false
-				break
-			}
-		}
-
-		if allMatch {
+// waiverTargetsFinding reports whether the waiver explicitly names the
+// finding ID.
+func waiverTargetsFinding(f Finding, targets []WaiverTarget) bool {
+	for _, t := range targets {
+		if t.FindingID == f.ID {
 			return true
 		}
 	}
@@ -381,75 +384,101 @@ func IsFindingWaived(f Finding, waivers []Waiver) bool {
 func matchCondition(f Finding, c WaiverCondition) bool {
 	switch c.Field {
 	case "severity_rank":
-		threshold, err := strconv.Atoi(c.Value)
-		if err != nil {
-			return false
-		}
-		switch c.Operator {
-		case "eq":
-			return int(f.CurrentSeverityRank) == threshold
-		case "neq":
-			return int(f.CurrentSeverityRank) != threshold
-		case "lt":
-			return int(f.CurrentSeverityRank) < threshold
-		case "lte":
-			return int(f.CurrentSeverityRank) <= threshold
-		case "gt":
-			return int(f.CurrentSeverityRank) > threshold
-		case "gte":
-			return int(f.CurrentSeverityRank) >= threshold
-		}
+		return matchSeverityRank(f, c)
 	case "finding_kind":
-		if c.Operator == "eq" {
-			return f.FindingKind == c.Value
-		}
-		if c.Operator == "neq" {
-			return f.FindingKind != c.Value
-		}
+		return matchStringOp(f.FindingKind, c.Operator, c.Value)
 	case "fingerprint":
-		if c.Operator == "eq" {
-			return f.Fingerprint == c.Value
-		}
-		if c.Operator == "neq" {
-			return f.Fingerprint != c.Value
-		}
+		return matchStringOp(f.Fingerprint, c.Operator, c.Value)
 	case "title_pattern":
-		if c.Operator == "contains" {
-			return strings.Contains(f.CurrentTitle, c.Value)
-		}
-		if c.Operator == "matches" {
-			return f.CurrentTitle == c.Value
-		}
+		return matchTitlePattern(f.CurrentTitle, c)
 	case "cve_id":
-		target := strings.ToUpper(strings.TrimSpace(c.Value))
-		if target == "" {
-			return false
-		}
-		cveMatch := func(val string) bool {
-			if val == "" {
-				return false
-			}
-			u := strings.ToUpper(val)
-			if c.Operator == "eq" {
-				return u == target ||
-					strings.HasPrefix(u, target+":") ||
-					strings.HasPrefix(u, "SCA:"+target+":") ||
-					strings.HasSuffix(u, ":"+target)
-			}
-			if c.Operator == "contains" {
-				return strings.Contains(u, target)
-			}
-			return false
-		}
-		if cveMatch(f.Fingerprint) || cveMatch(f.CurrentTitle) {
+		return matchCVEID(f, c)
+	}
+	return false
+}
+
+// matchSeverityRank compares the numeric severity rank against a parsed
+// threshold; an unparseable value never matches.
+func matchSeverityRank(f Finding, c WaiverCondition) bool {
+	threshold, err := strconv.Atoi(c.Value)
+	if err != nil {
+		return false
+	}
+	rank := int(f.CurrentSeverityRank)
+	switch c.Operator {
+	case "eq":
+		return rank == threshold
+	case "neq":
+		return rank != threshold
+	case "lt":
+		return rank < threshold
+	case "lte":
+		return rank <= threshold
+	case "gt":
+		return rank > threshold
+	case "gte":
+		return rank >= threshold
+	}
+	return false
+}
+
+// matchStringOp applies an eq/neq operator to a plain string field.
+func matchStringOp(value, operator, expected string) bool {
+	switch operator {
+	case "eq":
+		return value == expected
+	case "neq":
+		return value != expected
+	}
+	return false
+}
+
+// matchTitlePattern applies the title operators: contains for substring,
+// matches for exact equality.
+func matchTitlePattern(title string, c WaiverCondition) bool {
+	switch c.Operator {
+	case "contains":
+		return strings.Contains(title, c.Value)
+	case "matches":
+		return title == c.Value
+	}
+	return false
+}
+
+// matchCVEID reports whether the finding's fingerprint, title, or any alias
+// carries the target CVE under the requested operator. Values are compared
+// uppercased and whitespace-trimmed; bare IDs also match colon-delimited
+// compounds (e.g. "pkg:CVE-…").
+func matchCVEID(f Finding, c WaiverCondition) bool {
+	target := strings.ToUpper(strings.TrimSpace(c.Value))
+	if target == "" {
+		return false
+	}
+	if cveMatch(f.Fingerprint, c.Operator, target) || cveMatch(f.CurrentTitle, c.Operator, target) {
+		return true
+	}
+	for _, a := range f.Aliases {
+		if cveMatch(a, c.Operator, target) {
 			return true
 		}
-		for _, a := range f.Aliases {
-			if cveMatch(a) {
-				return true
-			}
-		}
+	}
+	return false
+}
+
+// cveMatch tests one value against the target CVE.
+func cveMatch(value, operator, target string) bool {
+	if value == "" {
 		return false
+	}
+	u := strings.ToUpper(value)
+	switch operator {
+	case "eq":
+		return u == target ||
+			strings.HasPrefix(u, target+":") ||
+			strings.HasPrefix(u, "SCA:"+target+":") ||
+			strings.HasSuffix(u, ":"+target)
+	case "contains":
+		return strings.Contains(u, target)
 	}
 	return false
 }

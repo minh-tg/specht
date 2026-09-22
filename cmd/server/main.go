@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/xMinhx/specht/internal/auth"
 	"github.com/xMinhx/specht/internal/config"
 	"github.com/xMinhx/specht/internal/db"
@@ -29,53 +30,120 @@ import (
 	"github.com/xMinhx/specht/internal/watcher"
 )
 
-func main() {
-	cfg, err := config.Load()
+// exitOnError logs err and terminates with exit code 1; nil is a no-op.
+func exitOnError(stage string, err error) {
 	if err != nil {
-		slog.Error("config", "error", err)
+		slog.Error(stage, "error", err)
 		os.Exit(1)
 	}
+}
+
+// connectDB runs configured migrations and opens the pool.
+func connectDB(cfg *config.Server) *pgxpool.Pool {
+	if cfg.DBMigrate && cfg.DBURL != "" {
+		exitOnError("startup migration failed", db.RunMigrations(cfg.DBURL, "migrations"))
+	}
+	pool, err := db.ConnectPool(context.Background(), cfg.DBURL)
+	exitOnError("connect db", err)
+	return pool
+}
+
+// buildScannerRegistry registers every builtin parser as a scanner adapter.
+func buildScannerRegistry() *scanner.Registry {
+	reg := scanner.NewRegistry()
+	for _, s := range parser.Builtins() {
+		exitOnError("register scanner", reg.Register(s))
+	}
+	return reg
+}
+
+// buildProviders assembles the repository provider registry (SOLO-196):
+// compile-time plugins like scanners — GitHub ships as the first adapter;
+// previews plan checks without network I/O or credentials.
+func buildProviders() *provider.Registry {
+	providers := provider.NewRegistry()
+	exitOnError("register provider", providers.Register(provider.NewGitHubProvider()))
+	return providers
+}
+
+// resolveOIDCAuth builds the OIDC authenticator when SSO is enabled. SSO is
+// optional: when disabled there is no issuer to validate, and the router
+// treats a nil OIDC authenticator as "SSO off".
+func resolveOIDCAuth(cfg *config.Server) *auth.OIDCAuthenticator {
+	if !cfg.SSO.Enabled {
+		return nil
+	}
+	oidcAuth, err := auth.NewOIDCAuthenticator(auth.OIDCConfig{ClientID: cfg.SSO.ClientID, ClientSecret: cfg.SSO.ClientSecret, IssuerURL: cfg.SSO.IssuerURL, RedirectURI: cfg.SSO.RedirectURI, GroupsClaim: cfg.SSO.GroupsClaim}, nil)
+	exitOnError("auth setup", err)
+	return oidcAuth
+}
+
+// apiKeyLookup adapts the API key repository to the router's lookup
+// contract.
+func apiKeyLookup(repos *repo.Repos) func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
+	return func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
+		key, err := repos.APIKeys.GetByHash(ctx, keyHash)
+		if err != nil {
+			return "", "", nil, time.Time{}, fmt.Errorf("key not found")
+		}
+		if key.RevokedAt.Valid {
+			return "", "", nil, time.Time{}, fmt.Errorf("key revoked")
+		}
+		// An expired key is rejected at lookup time: it must never
+		// authenticate, so there is no window where a stale key keeps
+		// working. (The authenticator double-checks expiry as well.)
+		if key.ExpiresAt.Valid && !key.ExpiresAt.Time.After(time.Now()) {
+			return "", "", nil, time.Time{}, fmt.Errorf("key expired")
+		}
+		actorID := ""
+		if key.CreatedBy.Valid {
+			actorID = uuid.UUID(key.CreatedBy.Bytes).String()
+		}
+		scopes, err := apiKeyScopes(key.Scopes)
+		if err != nil {
+			slog.Warn("api key lookup: unreadable scopes; denying key", "error", err)
+			return "", "", nil, time.Time{}, fmt.Errorf("key scopes unreadable")
+		}
+		expiresAt := time.Time{}
+		if key.ExpiresAt.Valid {
+			expiresAt = key.ExpiresAt.Time
+		}
+		// Stamp last_used_at on every successful key authentication. This
+		// is best-effort observability: a failure must never deny a key
+		// that has already passed every gate.
+		if err := repos.APIKeys.TouchLastUsed(ctx, key.ID); err != nil {
+			slog.Warn("api key lookup: failed to update last_used_at", "error", err)
+		}
+		return actorID, uuid.UUID(key.ProjectID.Bytes).String(), scopes, expiresAt, nil
+	}
+}
+
+// startLifecycle starts the analysis/waiver expiry sweepers and, when
+// enabled, the CVE watcher daemon — all bound to ctx so they stop with the
+// server.
+func startLifecycle(ctx context.Context, stores *port.Stores, pool *pgxpool.Pool, cfg *config.Server) {
+	go lifecycle.RunWaiverExpiry(ctx, repo.NewWaiverExpiryStore(pool), 5*time.Minute, slog.Default())
+	go lifecycle.RunAnalysisExpiry(ctx, repo.NewAnalysisExpiryStore(pool), 5*time.Minute, slog.Default())
+	if cfg.Watcher.Enable {
+		exitOnError("start watcher daemon", runWatcherDaemon(ctx, stores, cfg))
+	}
+}
+
+func main() {
+	cfg, err := config.Load()
+	exitOnError("config", err)
 	setupLogging(cfg.LogLevel)
 	if handled := handleSubcommand(cfg); handled {
 		return
 	}
 
-	if cfg.DBMigrate && cfg.DBURL != "" {
-		if err := db.RunMigrations(cfg.DBURL, "migrations"); err != nil {
-			slog.Error("startup migration failed", "error", err)
-			os.Exit(1)
-		}
-	}
-
-	pool, err := db.ConnectPool(context.Background(), cfg.DBURL)
-	if err != nil {
-		slog.Error("connect db", "error", err)
-		os.Exit(1)
-	}
+	pool := connectDB(cfg)
 	defer pool.Close()
 
-	reg := scanner.NewRegistry()
-	for _, s := range parser.Builtins() {
-		if err := reg.Register(s); err != nil {
-			slog.Error("register scanner", "error", err)
-			os.Exit(1)
-		}
-	}
-
-	// Repository providers (SOLO-196) are compile-time plugins like
-	// scanners: GitHub ships as the first adapter; previews plan checks
-	// without network I/O or credentials.
-	providers := provider.NewRegistry()
-	if err := providers.Register(provider.NewGitHubProvider()); err != nil {
-		slog.Error("register provider", "error", err)
-		os.Exit(1)
-	}
-
+	reg := buildScannerRegistry()
+	providers := buildProviders()
 	jwtAuth, err := auth.NewJWTAuthenticator(cfg.JWTSecret)
-	if err != nil {
-		slog.Error("auth setup", "error", err)
-		os.Exit(1)
-	}
+	exitOnError("auth setup", err)
 
 	repos := repo.NewRepos(pool)
 	stores := repo.NewPortStores(pool)
@@ -96,17 +164,6 @@ func main() {
 		Tracker:      buildTrackerDispatcher(),
 	})
 
-	// SSO is optional: when disabled there is no issuer to validate, and the
-	// router treats a nil OIDC authenticator as "SSO off".
-	var oidcAuth *auth.OIDCAuthenticator
-	if cfg.SSO.Enabled {
-		oidcAuth, err = auth.NewOIDCAuthenticator(auth.OIDCConfig{ClientID: cfg.SSO.ClientID, ClientSecret: cfg.SSO.ClientSecret, IssuerURL: cfg.SSO.IssuerURL, RedirectURI: cfg.SSO.RedirectURI, GroupsClaim: cfg.SSO.GroupsClaim}, nil)
-		if err != nil {
-			slog.Error("auth setup", "error", err)
-			os.Exit(1)
-		}
-	}
-
 	handler := server.NewRouter(server.RouterConfig{
 		Usecases:       uc,
 		CORSOrigins:    cfg.CORSOrigins,
@@ -118,44 +175,10 @@ func main() {
 			AuthRPS:   cfg.RateLimit.AuthRPS,
 			AuthBurst: cfg.RateLimit.AuthBurst,
 		},
-		JWTAuth: jwtAuth,
-		APIKeyLookup: func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
-			key, err := repos.APIKeys.GetByHash(ctx, keyHash)
-			if err != nil {
-				return "", "", nil, time.Time{}, fmt.Errorf("key not found")
-			}
-			if key.RevokedAt.Valid {
-				return "", "", nil, time.Time{}, fmt.Errorf("key revoked")
-			}
-			// An expired key is rejected at lookup time: it must never
-			// authenticate, so there is no window where a stale key keeps
-			// working. (The authenticator double-checks expiry as well.)
-			if key.ExpiresAt.Valid && !key.ExpiresAt.Time.After(time.Now()) {
-				return "", "", nil, time.Time{}, fmt.Errorf("key expired")
-			}
-			actorID := ""
-			if key.CreatedBy.Valid {
-				actorID = uuid.UUID(key.CreatedBy.Bytes).String()
-			}
-			scopes, err := apiKeyScopes(key.Scopes)
-			if err != nil {
-				slog.Warn("api key lookup: unreadable scopes; denying key", "error", err)
-				return "", "", nil, time.Time{}, fmt.Errorf("key scopes unreadable")
-			}
-			expiresAt := time.Time{}
-			if key.ExpiresAt.Valid {
-				expiresAt = key.ExpiresAt.Time
-			}
-			// Stamp last_used_at on every successful key authentication. This
-			// is best-effort observability: a failure must never deny a key
-			// that has already passed every gate.
-			if err := repos.APIKeys.TouchLastUsed(ctx, key.ID); err != nil {
-				slog.Warn("api key lookup: failed to update last_used_at", "error", err)
-			}
-			return actorID, uuid.UUID(key.ProjectID.Bytes).String(), scopes, expiresAt, nil
-		},
+		JWTAuth:           jwtAuth,
+		APIKeyLookup:      apiKeyLookup(repos),
 		OIDCEnabled:       cfg.SSO.Enabled,
-		OIDC:              oidcAuth,
+		OIDC:              resolveOIDCAuth(cfg),
 		SSOAllowedDomains: cfg.SSO.AllowedDomains,
 		SSOAdminGroups:    cfg.SSO.AdminGroups,
 	})
@@ -175,21 +198,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Lifecycle sweepers: analysis expiry and waiver expiry. Both stop when
-	// ctx is cancelled.
-	go lifecycle.RunWaiverExpiry(ctx, repo.NewWaiverExpiryStore(pool), 5*time.Minute, slog.Default())
-	go lifecycle.RunAnalysisExpiry(ctx, repo.NewAnalysisExpiryStore(pool), 5*time.Minute, slog.Default())
-
-	// Start the CVE watcher daemon on the same context so it shuts down with
-	// the server. Off by default; enable with WATCHER_ENABLE=true. All
-	// WATCHER_* variables are parsed inside the gate, so malformed values can
-	// never crash a server with the watcher disabled.
-	if cfg.Watcher.Enable {
-		if err := runWatcherDaemon(ctx, stores, cfg); err != nil {
-			slog.Error("start watcher daemon", "error", err)
-			os.Exit(1)
-		}
-	}
+	startLifecycle(ctx, stores, pool, cfg)
 
 	go func() {
 		slog.Info("server starting", "addr", cfg.Addr)
@@ -322,23 +331,11 @@ func bootstrapAdmins(ctx context.Context, stores *port.Stores) {
 	}
 }
 
-func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Server) error {
-	watcherPollInterval := cfg.Watcher.PollInterval
-	watcherOSVEndpoint := cfg.Watcher.OSVEndpoint
-	watcherBatchSize := cfg.Watcher.BatchSize
-
-	// WATCHER_COLD_START_WINDOW bounds the daemon's first (watermark-less)
-	// poll: advisories published before now-window are skipped. The default
-	// "full" applies no bound — everything OSV knows about the inventory.
-	var watcherSince time.Time
-	if cfg.Watcher.ColdStartWindow > 0 {
-		watcherSince = time.Now().UTC().Add(-cfg.Watcher.ColdStartWindow)
-	}
-
-	// Notification channels: each configured channel delivers every batch;
-	// no channel configured leaves a nil Notifier, which the daemon treats
-	// as a no-op. Failures never propagate by Notifier contract.
-	var watcherNotifier watcher.Notifier
+// buildWatcherNotifier assembles the notification fanout from the configured
+// channels; each configured channel delivers every batch, and no channel
+// configured leaves a nil Notifier, which the daemon treats as a no-op.
+// Failures never propagate by Notifier contract.
+func buildWatcherNotifier() watcher.Notifier {
 	var channels []watcher.Notifier
 	if slackURL := os.Getenv(watcher.EnvSlackURL); slackURL != "" {
 		channels = append(channels, watcher.NewSlackNotifier(
@@ -348,106 +345,133 @@ func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Serv
 		channels = append(channels, watcher.NewWebhookNotifier(
 			webhookURL, os.Getenv(watcher.EnvWebhookSigningSecret), slog.Default()))
 	}
-	if len(channels) == 1 {
-		watcherNotifier = channels[0]
-	} else if len(channels) > 1 {
-		watcherNotifier = watcher.NewFanoutNotifier(channels...)
+	switch len(channels) {
+	case 0:
+		return nil
+	case 1:
+		return channels[0]
+	default:
+		return watcher.NewFanoutNotifier(channels...)
 	}
+}
 
+// watchedProjects loads the per-project watch schedule (migration 000020):
+// only cve_watcher_enabled projects, each with its own interval, plus the
+// name map notifications use for display.
+func watchedProjects(ctx context.Context, stores *port.Stores, fallbackInterval time.Duration) (ids []string, names map[string]string, intervals map[string]time.Duration, err error) {
 	projects, err := stores.Projects.List(ctx)
 	if err != nil {
-		return fmt.Errorf("watcher: list projects: %w", err)
+		return nil, nil, nil, fmt.Errorf("watcher: list projects: %w", err)
 	}
-	// Per-project enable/interval config (migration 000020): watch
-	// only cve_watcher_enabled projects and schedule each project independently.
-	watched := make([]port.Project, 0, len(projects))
+	names = make(map[string]string, len(projects))
+	intervals = make(map[string]time.Duration, len(projects))
 	for _, p := range projects {
 		if !p.CveWatcherEnabled {
 			continue
 		}
-		watched = append(watched, p)
-	}
-	projectIDs := make([]string, len(watched))
-	projectNames := make(map[string]string, len(watched))
-	projectIntervals := make(map[string]time.Duration, len(watched))
-	for i, p := range watched {
-		projectIDs[i] = p.ID
-		projectNames[p.ID] = p.Name
+		ids = append(ids, p.ID)
+		names[p.ID] = p.Name
 		if p.CveWatcherIntervalSecs > 0 {
-			projectIntervals[p.ID] = time.Duration(p.CveWatcherIntervalSecs) * time.Second
+			intervals[p.ID] = time.Duration(p.CveWatcherIntervalSecs) * time.Second
 		} else {
-			projectIntervals[p.ID] = watcherPollInterval
+			intervals[p.ID] = fallbackInterval
 		}
 	}
-	cacheTTL := watcherPollInterval
-	if cacheTTL <= 0 {
-		cacheTTL = 6 * time.Hour
-	}
-	for _, interval := range projectIntervals {
-		if interval > 0 && interval < cacheTTL {
-			cacheTTL = interval
-		}
-	}
+	return ids, names, intervals, nil
+}
 
-	watcher.RunCveWatcher(ctx, watcher.RunCveWatcherConfig{
-		PollInterval:   watcherPollInterval,
-		ReloadProjects: stores.Projects.List,
-		PollDeps: watcher.PollDeps{
-			Client: watcher.NewHTTPClient(watcher.HTTPClientConfig{
-				Endpoint:  watcherOSVEndpoint,
-				BatchSize: watcherBatchSize,
-				CacheTTL:  cacheTTL,
-			}),
-			Store:    watcher.NewPollStore(stores),
-			Projects: projectIDs,
-			Notifier: watcherNotifier,
-			ProjectName: func(ctx context.Context, projectID string) (string, error) {
-				p, err := stores.Projects.GetByID(ctx, projectID)
-				if err == nil && p.Name != "" {
-					return p.Name, nil
-				}
-				if name, ok := projectNames[projectID]; ok {
-					return name, nil
-				}
-				return projectID, nil
-			},
-			Inventory: func(ctx context.Context, projectID string, since time.Duration) ([]port.InventoryPackage, error) {
-				return stores.Inventory.DistinctInventory(ctx, projectID, since)
-			},
-			FindGap: stores.Findings.FindScaFindingIDForPurlAndCve,
-			GetWatermark: func(ctx context.Context, projectID string) (time.Time, bool, error) {
-				st, err := stores.Watcher.GetProjectState(ctx, projectID)
-				if errors.Is(err, port.ErrNotFound) {
-					return time.Time{}, false, nil
-				}
-				if err != nil {
-					return time.Time{}, false, err
-				}
-				if st.LastSuccessfulPollAt == nil {
-					return time.Time{}, false, nil
-				}
-				return *st.LastSuccessfulPollAt, true, nil
-			},
-			SetWatermark: func(ctx context.Context, projectID string, ts time.Time) error {
-				return stores.Watcher.UpsertProjectState(ctx, projectID, ts)
-			},
-			// Health hooks: record attempt/failure state so operators can
-			// see whether the watcher is healthy or failing.
-			RecordAttempt: func(ctx context.Context, ts time.Time) error {
-				return stores.Watcher.RecordAttempt(ctx, ts)
-			},
-			RecordFailure: func(ctx context.Context, errText string, ts time.Time) error {
-				return stores.Watcher.RecordFailure(ctx, errText, ts)
-			},
-			RecordSuccess: func(ctx context.Context, ts time.Time) error {
-				return stores.Watcher.UpdateState(ctx, ts)
-			},
-			ResetFailure: stores.Watcher.ResetFailure,
-			Logger:       slog.Default(),
-			InventoryTTL: cfg.InventoryTTL,
-			Since:        watcherSince,
+// watcherCacheTTL bounds the OSV HTTP cache to the tightest project
+// interval (never below the daemon default).
+func watcherCacheTTL(intervals map[string]time.Duration, fallback time.Duration) time.Duration {
+	ttl := fallback
+	if ttl <= 0 {
+		ttl = 6 * time.Hour
+	}
+	for _, interval := range intervals {
+		if interval > 0 && interval < ttl {
+			ttl = interval
+		}
+	}
+	return ttl
+}
+
+// watcherPollDeps wires the daemon's poll dependencies to the stores.
+func watcherPollDeps(stores *port.Stores, cfg *config.Server, ids []string, names map[string]string, notifier watcher.Notifier, cacheTTL time.Duration) watcher.PollDeps {
+	// WATCHER_COLD_START_WINDOW bounds the daemon's first (watermark-less)
+	// poll: advisories published before now-window are skipped. The default
+	// "full" applies no bound — everything OSV knows about the inventory.
+	var since time.Time
+	if cfg.Watcher.ColdStartWindow > 0 {
+		since = time.Now().UTC().Add(-cfg.Watcher.ColdStartWindow)
+	}
+	return watcher.PollDeps{
+		Client: watcher.NewHTTPClient(watcher.HTTPClientConfig{
+			Endpoint:  cfg.Watcher.OSVEndpoint,
+			BatchSize: cfg.Watcher.BatchSize,
+			CacheTTL:  cacheTTL,
+		}),
+		Store:    watcher.NewPollStore(stores),
+		Projects: ids,
+		Notifier: notifier,
+		ProjectName: func(ctx context.Context, projectID string) (string, error) {
+			p, err := stores.Projects.GetByID(ctx, projectID)
+			if err == nil && p.Name != "" {
+				return p.Name, nil
+			}
+			if name, ok := names[projectID]; ok {
+				return name, nil
+			}
+			return projectID, nil
 		},
-		ProjectIntervals: projectIntervals,
+		Inventory: func(ctx context.Context, projectID string, since time.Duration) ([]port.InventoryPackage, error) {
+			return stores.Inventory.DistinctInventory(ctx, projectID, since)
+		},
+		FindGap: stores.Findings.FindScaFindingIDForPurlAndCve,
+		GetWatermark: func(ctx context.Context, projectID string) (time.Time, bool, error) {
+			st, err := stores.Watcher.GetProjectState(ctx, projectID)
+			if errors.Is(err, port.ErrNotFound) {
+				return time.Time{}, false, nil
+			}
+			if err != nil {
+				return time.Time{}, false, err
+			}
+			if st.LastSuccessfulPollAt == nil {
+				return time.Time{}, false, nil
+			}
+			return *st.LastSuccessfulPollAt, true, nil
+		},
+		SetWatermark: func(ctx context.Context, projectID string, ts time.Time) error {
+			return stores.Watcher.UpsertProjectState(ctx, projectID, ts)
+		},
+		// Health hooks: record attempt/failure state so operators can
+		// see whether the watcher is healthy or failing.
+		RecordAttempt: func(ctx context.Context, ts time.Time) error {
+			return stores.Watcher.RecordAttempt(ctx, ts)
+		},
+		RecordFailure: func(ctx context.Context, errText string, ts time.Time) error {
+			return stores.Watcher.RecordFailure(ctx, errText, ts)
+		},
+		RecordSuccess: func(ctx context.Context, ts time.Time) error {
+			return stores.Watcher.UpdateState(ctx, ts)
+		},
+		ResetFailure: stores.Watcher.ResetFailure,
+		Logger:       slog.Default(),
+		InventoryTTL: cfg.InventoryTTL,
+		Since:        since,
+	}
+}
+
+func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Server) error {
+	ids, names, intervals, err := watchedProjects(ctx, stores, cfg.Watcher.PollInterval)
+	if err != nil {
+		return err
+	}
+	deps := watcherPollDeps(stores, cfg, ids, names, buildWatcherNotifier(), watcherCacheTTL(intervals, cfg.Watcher.PollInterval))
+	watcher.RunCveWatcher(ctx, watcher.RunCveWatcherConfig{
+		PollInterval:     cfg.Watcher.PollInterval,
+		ReloadProjects:   stores.Projects.List,
+		PollDeps:         deps,
+		ProjectIntervals: intervals,
 	})
 	return nil
 }

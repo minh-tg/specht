@@ -110,42 +110,54 @@ func (l *RateLimiter) Middleware(useIdentity bool) func(http.Handler) http.Handl
 				next.ServeHTTP(w, r)
 				return
 			}
-			key := ""
-			if useIdentity {
-				if ident := auth.ContextIdentity(r.Context()); ident != nil {
-					key = "user:" + ident.UserID
-				}
-			} else if r.Header.Get("Authorization") != "" {
+			key, ok := l.rateLimitKey(r, useIdentity)
+			if !ok {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if key == "" {
-				key = "ip:" + clientHost(r)
-			}
 			limiter := l.limiterFor(key, l.now())
+			w.Header().Set("X-RateLimit-Limit", strconv.Itoa(l.rps))
 			if limiter.Allow() {
 				remaining := int(math.Floor(limiter.Tokens()))
 				if remaining < 0 {
 					remaining = 0
 				}
-				w.Header().Set("X-RateLimit-Limit", strconv.Itoa(l.rps))
 				w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
 				next.ServeHTTP(w, r)
 				return
 			}
-			reservation := limiter.Reserve()
-			delay := reservation.Delay()
-			reservation.Cancel()
-			secs := int(math.Ceil(delay.Seconds()))
-			if secs < 1 {
-				secs = 1
-			}
-			w.Header().Set("X-RateLimit-Limit", strconv.Itoa(l.rps))
-			w.Header().Set("X-RateLimit-Remaining", "0")
-			w.Header().Set("Retry-After", strconv.Itoa(secs))
-			respondError(w, http.StatusTooManyRequests, "rate_limited", "rate limit exceeded, retry later")
+			writeRateLimited(w, limiter)
 		})
 	}
+}
+
+// rateLimitKey resolves the bucket key for a request. It reports false when
+// the request passes through unlimited (authenticated traffic on an
+// anonymous-scoped route).
+func (l *RateLimiter) rateLimitKey(r *http.Request, useIdentity bool) (string, bool) {
+	if useIdentity {
+		if ident := auth.ContextIdentity(r.Context()); ident != nil {
+			return "user:" + ident.UserID, true
+		}
+	} else if r.Header.Get("Authorization") != "" {
+		return "", false
+	}
+	return "ip:" + clientHost(r), true
+}
+
+// writeRateLimited emits the 429 response with a Retry-After hint derived
+// from the limiter's next reservation.
+func writeRateLimited(w http.ResponseWriter, limiter *rate.Limiter) {
+	reservation := limiter.Reserve()
+	delay := reservation.Delay()
+	reservation.Cancel()
+	secs := int(math.Ceil(delay.Seconds()))
+	if secs < 1 {
+		secs = 1
+	}
+	w.Header().Set("X-RateLimit-Remaining", "0")
+	w.Header().Set("Retry-After", strconv.Itoa(secs))
+	respondError(w, http.StatusTooManyRequests, "rate_limited", "rate limit exceeded, retry later")
 }
 
 // clientHost returns the remote host without port. realIPMiddleware (which
