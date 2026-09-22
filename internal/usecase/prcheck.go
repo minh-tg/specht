@@ -84,7 +84,7 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 	input.CommitSha = normalizeRevision(input.CommitSha)
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, input.ProjectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", input.ProjectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, input.ProjectSlug, err)
 	}
 
 	name := input.Provider

@@ -17,6 +17,12 @@ import (
 	"github.com/xMinhx/specht/internal/port"
 )
 
+const (
+	authMsgInvalidCredentials = "invalid email or password"
+	authMsgProjectNotFound    = "project not found: %w"
+	authMsgUserNotFound       = "user not found"
+)
+
 // ErrRegistrationFailed is returned when a self-service registration cannot
 // be completed. It is deliberately generic: revealing whether the failure is
 // a duplicate email, a storage error, or anything else would let callers
@@ -175,15 +181,15 @@ func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResp
 
 	user, err := u.deps.Stores.Users.GetByEmail(ctx, email)
 	if err != nil {
-		return nil, fmt.Errorf("invalid email or password")
+		return nil, errors.New(authMsgInvalidCredentials)
 	}
 
 	if user.PasswordHash == "" {
-		return nil, fmt.Errorf("invalid email or password")
+		return nil, errors.New(authMsgInvalidCredentials)
 	}
 
 	if !u.deps.Passwords.Verify(password, user.PasswordHash) {
-		return nil, fmt.Errorf("invalid email or password")
+		return nil, errors.New(authMsgInvalidCredentials)
 	}
 
 	userID := user.ID
@@ -203,7 +209,7 @@ func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResp
 func (u *Usecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string, expiresAt *time.Time) (*APIKeyResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("project not found: %w", err)
+		return nil, fmt.Errorf(authMsgProjectNotFound, err)
 	}
 	creatorID, err := uuid.Parse(createdBy)
 	if err != nil {
@@ -247,7 +253,7 @@ func (u *Usecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdB
 func (u *Usecases) ListAPIKeys(ctx context.Context, projectSlug string) ([]APIKeyResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("project not found: %w", err)
+		return nil, fmt.Errorf(authMsgProjectNotFound, err)
 	}
 
 	keys, err := u.deps.Stores.APIKeys.ListByProject(ctx, project.ID)
@@ -275,7 +281,7 @@ func (u *Usecases) ListAPIKeys(ctx context.Context, projectSlug string) ([]APIKe
 func (u *Usecases) RevokeAPIKey(ctx context.Context, projectSlug, keyID string) error {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return fmt.Errorf("project not found: %w", err)
+		return fmt.Errorf(authMsgProjectNotFound, err)
 	}
 
 	id, err := uuid.Parse(keyID)
@@ -357,7 +363,7 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 	userID := stored.UserID
 	user, err := u.deps.Stores.Users.GetByID(ctx, userID)
 	if err != nil {
-		return nil, fmt.Errorf("user not found")
+		return nil, errors.New(authMsgUserNotFound)
 	}
 
 	token, err := u.deps.Tokens.CreateToken(userID, user.Email, auth.TokenRole(user.Role))
@@ -404,7 +410,7 @@ func (u *Usecases) GetProfile(ctx context.Context, userID string) (*UserProfile,
 
 	user, err := u.deps.Stores.Users.GetByID(ctx, id.String())
 	if err != nil {
-		return nil, fmt.Errorf("user not found")
+		return nil, errors.New(authMsgUserNotFound)
 	}
 
 	name := ""
@@ -439,7 +445,7 @@ func (u *Usecases) UpdateProfile(ctx context.Context, userID string, displayName
 
 	user, err := u.deps.Stores.Users.UpdateDisplayName(ctx, id.String(), displayName)
 	if err != nil {
-		return nil, fmt.Errorf("user not found")
+		return nil, errors.New(authMsgUserNotFound)
 	}
 
 	name := ""

@@ -251,7 +251,7 @@ func gatePoliciesForProject(p port.Project) []gate.GatePolicy {
 func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*GateStatusOutput, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 
 	// A non-positive floor means "no explicit severity": the project's
@@ -294,7 +294,7 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, reportID string) (*GateStatusOutput, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 
 	u.initGate()

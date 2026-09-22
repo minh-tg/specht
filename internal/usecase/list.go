@@ -452,7 +452,7 @@ type FindingFilter struct {
 func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, filter FindingFilter, limit, offset int32) ([]FindingResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 
 	findings, err := u.deps.Stores.Findings.ListByProject(ctx, project.ID, filter.Severities, filter.States, filter.Kinds, filter.Environments, filter.Targets, limit, offset)
@@ -595,7 +595,7 @@ func fixFallback(kind string) string {
 func (u *Usecases) ListReports(ctx context.Context, projectSlug string, limit, offset int32) ([]ReportResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 
 	reports, err := u.deps.Stores.Reports.ListByProject(ctx, project.ID, limit, offset)
@@ -700,7 +700,7 @@ func toArtifact(a port.Artifact) ArtifactResponse {
 func (u *Usecases) ListEnvironments(ctx context.Context, projectSlug string) ([]EnvironmentResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 	envs, err := u.deps.Stores.Environments.List(ctx, project.ID)
 	if err != nil {
@@ -716,7 +716,7 @@ func (u *Usecases) ListEnvironments(ctx context.Context, projectSlug string) ([]
 func (u *Usecases) ListTargets(ctx context.Context, projectSlug string) ([]TargetResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 	targets, err := u.deps.Stores.Targets.List(ctx, project.ID)
 	if err != nil {
@@ -732,7 +732,7 @@ func (u *Usecases) ListTargets(ctx context.Context, projectSlug string) ([]Targe
 func (u *Usecases) ListArtifacts(ctx context.Context, projectSlug string) ([]ArtifactResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 	artifacts, err := u.deps.Stores.Artifacts.List(ctx, project.ID)
 	if err != nil {

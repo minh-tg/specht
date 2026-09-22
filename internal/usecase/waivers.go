@@ -11,6 +11,9 @@ import (
 	"github.com/xMinhx/specht/internal/port"
 )
 
+// errInvalidWaiverIDFormat wraps waiver-id parse failures.
+const errInvalidWaiverIDFormat = "invalid waiver id: %w"
+
 // WaiverResponse is the API representation of a waiver with its condition,
 // context, and target rows attached.
 type WaiverResponse struct {
@@ -183,7 +186,7 @@ var waiverCreatedEvent = []byte("{}")
 func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*WaiverResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, input.ProjectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", input.ProjectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, input.ProjectSlug, err)
 	}
 
 	conditions := make([]port.WaiverCondition, len(input.Conditions))
@@ -226,7 +229,7 @@ func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*
 func (u *Usecases) ListWaivers(ctx context.Context, projectSlug string) ([]WaiverResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 
 	waivers, err := u.deps.Stores.Waivers.List(ctx, project.ID)
@@ -244,12 +247,12 @@ func (u *Usecases) ListWaivers(ctx context.Context, projectSlug string) ([]Waive
 func (u *Usecases) GetWaiver(ctx context.Context, projectSlug, waiverID string) (*WaiverDetailResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 
 	id, err := uuid.Parse(waiverID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid waiver id: %w", err)
+		return nil, fmt.Errorf(errInvalidWaiverIDFormat, err)
 	}
 
 	w, err := u.deps.Stores.Waivers.GetByID(ctx, id.String(), project.ID)
@@ -279,12 +282,12 @@ func (u *Usecases) GetWaiver(ctx context.Context, projectSlug, waiverID string) 
 func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*WaiverResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, input.ProjectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", input.ProjectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, input.ProjectSlug, err)
 	}
 
 	id, err := uuid.Parse(input.WaiverID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid waiver id: %w", err)
+		return nil, fmt.Errorf(errInvalidWaiverIDFormat, err)
 	}
 	waiver := port.Waiver{
 		ID:          id.String(),
@@ -371,12 +374,12 @@ func waiverContextInputs(inputs []CreateWaiverContextInput) ([]port.WaiverContex
 func (u *Usecases) DeleteWaiver(ctx context.Context, projectSlug, waiverID string) error {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 
 	id, err := uuid.Parse(waiverID)
 	if err != nil {
-		return fmt.Errorf("invalid waiver id: %w", err)
+		return fmt.Errorf(errInvalidWaiverIDFormat, err)
 	}
 
 	if err := u.deps.Stores.Waivers.Delete(ctx, id.String(), project.ID); err != nil {
@@ -388,12 +391,12 @@ func (u *Usecases) DeleteWaiver(ctx context.Context, projectSlug, waiverID strin
 func (u *Usecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID, actorID string) (*WaiverResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 
 	id, err := uuid.Parse(waiverID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid waiver id: %w", err)
+		return nil, fmt.Errorf(errInvalidWaiverIDFormat, err)
 	}
 
 	w, err := u.deps.Stores.Waivers.Toggle(ctx, id.String(), project.ID)
@@ -419,12 +422,12 @@ func (u *Usecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID, acto
 func (u *Usecases) ListWaiverEvents(ctx context.Context, projectSlug, waiverID string) ([]WaiverEventResp, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 
 	id, err := uuid.Parse(waiverID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid waiver id: %w", err)
+		return nil, fmt.Errorf(errInvalidWaiverIDFormat, err)
 	}
 
 	if _, err := u.deps.Stores.Waivers.GetByID(ctx, id.String(), project.ID); err != nil {
@@ -446,7 +449,7 @@ func (u *Usecases) ListWaiverEvents(ctx context.Context, projectSlug, waiverID s
 func (u *Usecases) CheckWaiverMatch(ctx context.Context, projectSlug, findingID string) (bool, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return false, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return false, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 
 	fid, err := uuid.Parse(findingID)

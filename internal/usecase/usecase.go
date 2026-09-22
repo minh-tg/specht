@@ -27,6 +27,9 @@ import (
 // has already been ingested for the project.
 var ErrDuplicateReport = errors.New("duplicate report")
 
+// Shared error-message formats used across use cases.
+const errLookupProjectFormat = "lookup project %q: %w"
+
 // IngestReportInput is a scanner report to ingest for a project.
 type IngestReportInput struct {
 	ProjectSlug string // slug of the target project

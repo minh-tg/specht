@@ -203,7 +203,7 @@ func (u *Usecases) RemoveTeamMember(ctx context.Context, teamID, userID string) 
 func (u *Usecases) LinkProjectTeam(ctx context.Context, projectSlug, teamID, role string) (*ProjectTeamResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 	if err := u.requireProjectAdmin(ctx, project.ID); err != nil {
 		return nil, err
@@ -236,7 +236,7 @@ func (u *Usecases) UnlinkProjectTeam(ctx context.Context, projectSlug, teamID st
 	}
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 	if err := u.requireProjectAdmin(ctx, project.ID); err != nil {
 		return err
@@ -251,7 +251,7 @@ func (u *Usecases) UnlinkProjectTeam(ctx context.Context, projectSlug, teamID st
 func (u *Usecases) ListProjectTeams(ctx context.Context, projectSlug string) ([]ProjectTeamResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 	if err := u.requireProjectAdmin(ctx, project.ID); err != nil {
 		return nil, err

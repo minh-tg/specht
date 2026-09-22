@@ -31,7 +31,7 @@ type ProjectStats struct {
 func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*ProjectStats, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 
 	rows, err := u.deps.Stores.Stats.GetProjectStats(ctx, project.ID)
@@ -137,7 +137,7 @@ const maxOverdueListed = 100
 func (u *Usecases) GetAging(ctx context.Context, projectSlug string) (*AgingResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 	rows, err := u.deps.Stores.Stats.GetAgingRows(ctx, project.ID)
 	if err != nil {

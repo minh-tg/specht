@@ -88,7 +88,7 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, input.ProjectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", input.ProjectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, input.ProjectSlug, err)
 	}
 
 	sc, err := u.deps.Registry.Get(input.Scanner)

@@ -136,7 +136,7 @@ func (u *Usecases) DeletePolicyTemplate(ctx context.Context, id string) error {
 func (u *Usecases) SetProjectPolicy(ctx context.Context, projectSlug, templateName string) (*PolicyEffectiveResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 	if err := u.requireProjectAdmin(ctx, project.ID); err != nil {
 		return nil, err
@@ -161,7 +161,7 @@ func (u *Usecases) SetProjectPolicy(ctx context.Context, projectSlug, templateNa
 func (u *Usecases) SetProjectPolicyOverrides(ctx context.Context, projectSlug string, overrides map[string]string) (*PolicyEffectiveResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 	if err := u.requireProjectAdmin(ctx, project.ID); err != nil {
 		return nil, err
@@ -188,7 +188,7 @@ func (u *Usecases) SetProjectPolicyOverrides(ctx context.Context, projectSlug st
 func (u *Usecases) EffectivePolicy(ctx context.Context, projectSlug string) (*PolicyEffectiveResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf("lookup project %q: %w", projectSlug, err)
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 	return u.effectivePolicy(ctx, project)
 }
