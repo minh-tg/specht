@@ -80,6 +80,7 @@ func NewRootCmd(d Deps) *cobra.Command {
 	root.AddCommand(newAdminCmd(d, s))
 	root.AddCommand(newPolicyCmd(d, s))
 	root.AddCommand(newProjectTeamsCmd(d, s))
+	root.AddCommand(newTeamsCmd(d, s))
 	return root
 }
 
