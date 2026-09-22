@@ -14,9 +14,9 @@ CI when the gate says so.
 ## What it does
 
 - Normalizes SCA, SAST, IaC, secret and SBOM reports into a single finding
-  model — 11 parsers today: Trivy, OSV-Scanner, Grype, Semgrep, Checkov, tfsec,
-  Gitleaks, Dependency-Check, Nuclei, SARIF, and CycloneDX/SPDX SBOMs.
-- Tracks the whole lifecycle: new, fixed, reopened, triaged, waived — with
+  model, built from 11 parsers: Trivy, OSV-Scanner, Grype, Semgrep, Checkov,
+  tfsec, Gitleaks, Dependency-Check, Nuclei, SARIF, and CycloneDX/SPDX SBOMs.
+- Tracks the whole lifecycle (new, fixed, reopened, triaged, waived), with
   package inventory, gate effects and remediation context attached.
 - HTTP API plus a `specht` CLI, and `specht-adapter` for CI: exits non-zero
   when the gate is breached, prints annotations, publishes GitHub check runs.
@@ -49,9 +49,9 @@ The API comes up on `http://localhost:8080`. Check it:
 curl http://localhost:8080/api/v1/health
 ```
 
-That's the product. There's a React frontend in `frontend/` too — `make build`
-compiles it into the server binary — but it's rough and there's no real
-dashboard yet, so you'll probably want the API anyway.
+That's the product. There's a React frontend in `frontend/` too: run
+`make build` to compile it into the server binary. It's rough and there's no
+real dashboard yet, so you'll probably want the API anyway.
 
 ## Self-Hosting
 
@@ -96,8 +96,8 @@ pnpm -C frontend lint
 ## How development works
 
 - Touching scanner kinds, the normalized contract, database schemas, or gate
-  policy means writing an RFC first and getting it accepted — see
-  [`rfcs/`](rfcs/). Yes, it's bureaucracy. It's still cheaper than breaking
+  policy means writing an RFC first and getting it accepted (see
+  [`rfcs/`](rfcs/)). Yes, it's bureaucracy. It's still cheaper than breaking
   everyone's ingest.
 - CI repeats the test/lint/frontend checks on every push
   ([ci.yml](.github/workflows/ci.yml)), CodeQL runs separately
@@ -113,7 +113,7 @@ pnpm -C frontend lint
 
 ## Project Status
 
-No releases or tags exist yet — once they do, the release workflow above
+No releases or tags exist yet. Once they do, the release workflow above
 starts publishing images. The API side works; the web UI is half-built.
 Expect breaking changes. Bug reports and playtest feedback are welcome via
 [GitHub issues](https://github.com/minh-tg/specht/issues); security reports
