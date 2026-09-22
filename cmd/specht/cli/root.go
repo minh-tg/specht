@@ -5,6 +5,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -29,6 +30,40 @@ const (
 	flagProjectSlugUsage = "project slug"
 	flagTeamIDUsage      = "team ID"
 )
+
+// resolveFormat normalizes the shared --format flag: empty means "human",
+// and only "human" and "json" are accepted.
+func resolveFormat(s *settings) (string, error) {
+	format := s.format
+	if format == "" {
+		format = "human"
+	}
+	if format != "human" && format != "json" {
+		return "", fmt.Errorf("invalid --format %q: want human or json", format)
+	}
+	return format, nil
+}
+
+// requireFlag reports a missing required flag for the named subcommand.
+func requireFlag(value, flag, subcommand string) error {
+	if value != "" {
+		return nil
+	}
+	if subcommand == "" {
+		return fmt.Errorf("%s is required", flag)
+	}
+	return fmt.Errorf("%s is required for %s", flag, subcommand)
+}
+
+// writeJSONOut pretty-prints v as JSON for machine-readable output.
+func writeJSONOut(out io.Writer, v any) error {
+	raw, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(out, string(raw))
+	return err
+}
 
 // Deps carries command dependencies. Out and ErrW are injectable so
 // commands are testable with buffers.

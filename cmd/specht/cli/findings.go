@@ -31,25 +31,15 @@ func newFindingsListCmd(d Deps) *cobra.Command {
 		Short: "List findings",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if project == "" {
-				return fmt.Errorf("--project is required for findings list")
+			if err := requireFlag(project, "--project", "findings list"); err != nil {
+				return err
 			}
-			limit := 0
-			if limitStr != "" {
-				n, err := strconv.Atoi(limitStr)
-				if err != nil || n < 0 || n > math.MaxInt32 {
-					return fmt.Errorf("invalid --limit %q: want 0 to %d", limitStr, math.MaxInt32)
-				}
-				limit = n
+			limit, err := parseLimit(limitStr)
+			if err != nil {
+				return err
 			}
-			var severities []string
-			if severity != "" {
-				severities = strings.Split(severity, ",")
-			}
-			var statuses []string
-			if status != "" {
-				statuses = strings.Split(status, ",")
-			}
+			severities := splitList(severity)
+			statuses := splitList(status)
 			cl, err := d.NewClient()
 			if err != nil {
 				return err
@@ -172,4 +162,24 @@ func newFindingsReachabilityCmd(d Deps) *cobra.Command {
 	cmd.Flags().StringVar(&state, "state", "", "reachability state")
 	cmd.Flags().StringVar(&evidence, "evidence", "", "reachability evidence")
 	return cmd
+}
+
+// parseLimit parses the --limit flag: empty means no limit (0).
+func parseLimit(limitStr string) (int, error) {
+	if limitStr == "" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(limitStr)
+	if err != nil || n < 0 || n > math.MaxInt32 {
+		return 0, fmt.Errorf("invalid --limit %q: want 0 to %d", limitStr, math.MaxInt32)
+	}
+	return n, nil
+}
+
+// splitList splits a comma-separated flag value; empty means no filter.
+func splitList(value string) []string {
+	if value == "" {
+		return nil
+	}
+	return strings.Split(value, ",")
 }

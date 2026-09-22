@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -22,18 +21,15 @@ func newPrPreviewCmd(d Deps, s *settings) *cobra.Command {
 		Use:   "preview",
 		Short: "Preview pull-request check (dry-run; publishes nothing)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if project == "" {
-				return fmt.Errorf("--project is required for pr preview")
+			if err := requireFlag(project, "--project", "pr preview"); err != nil {
+				return err
 			}
-			if commit == "" {
-				return fmt.Errorf("--commit is required for pr preview")
+			if err := requireFlag(commit, "--commit", "pr preview"); err != nil {
+				return err
 			}
-			format := s.format
-			if format == "" {
-				format = "human"
-			}
-			if format != "human" && format != "json" {
-				return fmt.Errorf("invalid --format %q: want human or json", format)
+			format, err := resolveFormat(s)
+			if err != nil {
+				return err
 			}
 			cl, err := d.NewClient()
 			if err != nil {
@@ -44,12 +40,7 @@ func newPrPreviewCmd(d Deps, s *settings) *cobra.Command {
 				return err
 			}
 			if format == "json" {
-				raw, err := json.MarshalIndent(preview, "", "  ")
-				if err != nil {
-					return err
-				}
-				fmt.Fprintln(d.Out, string(raw))
-				return nil
+				return writeJSONOut(d.Out, preview)
 			}
 			fmt.Fprintf(d.Out, "check %s: %s\n%s\n", preview.Conclusion, preview.Title, preview.Summary)
 			for _, a := range preview.Annotations {

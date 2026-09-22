@@ -131,28 +131,64 @@ func runWatcherBackfill(options WatcherBackfillOptions) (WatcherBackfillResult, 
 		store = watcher.NewPollStore(stores)
 	}
 
-	projects, err := stores.Projects.List(ctx)
+	projectIDs, err := projectIDList(ctx, stores)
 	if err != nil {
-		return WatcherBackfillResult{}, fmt.Errorf("list projects: %w", err)
+		return WatcherBackfillResult{}, err
 	}
-	projectIDs := make([]string, len(projects))
-	for i, project := range projects {
-		projectIDs[i] = project.ID
-	}
-
-	inventoryTTL := config.DefaultInventoryTTL
-	if value := os.Getenv("INVENTORY_TTL"); value != "" {
-		inventoryTTL, err = time.ParseDuration(value)
-		if err != nil {
-			return WatcherBackfillResult{}, fmt.Errorf("INVENTORY_TTL is invalid: %w", err)
-		}
+	inventoryTTL, err := resolveInventoryTTL()
+	if err != nil {
+		return WatcherBackfillResult{}, err
 	}
 	watcherConfig, err := config.WatcherConfig()
 	if err != nil {
 		return WatcherBackfillResult{}, err
 	}
 
-	deps := watcher.PollDeps{
+	deps := buildPollDeps(stores, store, projectIDs, inventoryTTL, watcherConfig, options)
+	outcome, err := watcher.PollOnce(ctx, deps)
+	if err != nil {
+		return WatcherBackfillResult{}, fmt.Errorf("watcher backfill: %w", err)
+	}
+	return WatcherBackfillResult{Outcome: outcome}, nil
+}
+
+// projectIDList loads every project ID for the backfill sweep.
+func projectIDList(ctx context.Context, stores *port.Stores) ([]string, error) {
+	projects, err := stores.Projects.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list projects: %w", err)
+	}
+	projectIDs := make([]string, len(projects))
+	for i, project := range projects {
+		projectIDs[i] = project.ID
+	}
+	return projectIDs, nil
+}
+
+// resolveInventoryTTL reads the optional INVENTORY_TTL override.
+func resolveInventoryTTL() (time.Duration, error) {
+	value := os.Getenv("INVENTORY_TTL")
+	if value == "" {
+		return config.DefaultInventoryTTL, nil
+	}
+	ttl, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("INVENTORY_TTL is invalid: %w", err)
+	}
+	return ttl, nil
+}
+
+// buildPollDeps assembles the poll dependencies, wiring the dry-run store
+// and watermark persistence policy.
+func buildPollDeps(
+	stores *port.Stores,
+	store watcher.PollStore,
+	projectIDs []string,
+	inventoryTTL time.Duration,
+	watcherConfig *config.Watcher,
+	options WatcherBackfillOptions,
+) watcher.PollDeps {
+	return watcher.PollDeps{
 		Client: watcher.NewHTTPClient(watcher.HTTPClientConfig{
 			Endpoint: watcherConfig.OSVEndpoint,
 			CacheTTL: 0,
@@ -186,12 +222,6 @@ func runWatcherBackfill(options WatcherBackfillOptions) (WatcherBackfillResult, 
 		InventoryTTL: inventoryTTL,
 		Since:        options.Since,
 	}
-
-	outcome, err := watcher.PollOnce(ctx, deps)
-	if err != nil {
-		return WatcherBackfillResult{}, fmt.Errorf("watcher backfill: %w", err)
-	}
-	return WatcherBackfillResult{Outcome: outcome}, nil
 }
 
 type discardStore struct{}

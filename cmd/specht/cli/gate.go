@@ -32,29 +32,17 @@ func newGateCheckCmd(d Deps, s *settings) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if project == "" {
-				return fmt.Errorf("--project is required for gate check")
+			if err := requireFlag(project, "--project", "gate check"); err != nil {
+				return err
 			}
 			if introducedOnly && reportID == "" {
 				return fmt.Errorf("--report-id is required with --introduced-only")
 			}
-			format := s.format
-			if format == "" {
-				format = "human"
-			}
-			if format != "human" && format != "json" {
-				return fmt.Errorf("invalid --format %q: want human or json", format)
-			}
-			cl, err := d.NewClient()
+			format, err := resolveFormat(s)
 			if err != nil {
 				return err
 			}
-			var gs *client.GateStatus
-			if introducedOnly {
-				gs, err = cl.GetIntroducedGateStatus(project, severity, reportID)
-			} else {
-				gs, err = cl.GetGateStatus(project, severity)
-			}
+			gs, err := fetchGateStatus(d, project, severity, reportID, introducedOnly)
 			if err != nil {
 				return err
 			}
@@ -74,6 +62,19 @@ func newGateCheckCmd(d Deps, s *settings) *cobra.Command {
 	cmd.Flags().BoolVar(&introducedOnly, "introduced-only", false, "evaluate only findings introduced by a report")
 	cmd.Flags().StringVar(&reportID, "report-id", "", "report ID for --introduced-only")
 	return cmd
+}
+
+// fetchGateStatus loads the project gate, scoped to a introducing report
+// when --introduced-only is set.
+func fetchGateStatus(d Deps, project, severity, reportID string, introducedOnly bool) (*client.GateStatus, error) {
+	cl, err := d.NewClient()
+	if err != nil {
+		return nil, err
+	}
+	if introducedOnly {
+		return cl.GetIntroducedGateStatus(project, severity, reportID)
+	}
+	return cl.GetGateStatus(project, severity)
 }
 
 // formatGateStatus renders a gate evaluation for CLI output. "human" is the

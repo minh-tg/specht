@@ -1,10 +1,11 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
+	"github.com/xMinhx/specht/internal/client"
 )
 
 func newNotifyCmd(d Deps, s *settings) *cobra.Command {
@@ -23,21 +24,18 @@ func newNotifyPreviewCmd(d Deps, s *settings) *cobra.Command {
 		Use:   "preview",
 		Short: "Preview tracker/messaging action (dry-run; sends nothing)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if findingID == "" {
-				return fmt.Errorf("--finding is required for notify preview")
+			if err := requireFlag(findingID, "--finding", "notify preview"); err != nil {
+				return err
 			}
-			if channel == "" {
-				return fmt.Errorf("--channel is required for notify preview")
+			if err := requireFlag(channel, "--channel", "notify preview"); err != nil {
+				return err
 			}
-			if target == "" {
-				return fmt.Errorf("--target is required for notify preview")
+			if err := requireFlag(target, "--target", "notify preview"); err != nil {
+				return err
 			}
-			format := s.format
-			if format == "" {
-				format = "human"
-			}
-			if format != "human" && format != "json" {
-				return fmt.Errorf("invalid --format %q: want human or json", format)
+			format, err := resolveFormat(s)
+			if err != nil {
+				return err
 			}
 			cl, err := d.NewClient()
 			if err != nil {
@@ -48,21 +46,9 @@ func newNotifyPreviewCmd(d Deps, s *settings) *cobra.Command {
 				return err
 			}
 			if format == "json" {
-				raw, err := json.MarshalIndent(notification, "", "  ")
-				if err != nil {
-					return err
-				}
-				fmt.Fprintln(d.Out, string(raw))
-				return nil
+				return writeJSONOut(d.Out, notification)
 			}
-			if !notification.Supported || notification.Plan == nil {
-				fmt.Fprintf(d.Out, "no notification: %s\n", notification.Reason)
-				return nil
-			}
-			plan := notification.Plan
-			fmt.Fprintf(d.Out, "notify %s (%s -> %s): %s\n%s\n", plan.ID, plan.Channel, plan.Target, plan.Title, plan.Body)
-			fmt.Fprintf(d.Out, "dedupe: %s\n", plan.DedupeKey)
-			return nil
+			return renderNotifyPreview(d.Out, notification)
 		},
 	}
 	cmd.Flags().StringVar(&findingID, "finding", "", "finding ID")
@@ -70,4 +56,18 @@ func newNotifyPreviewCmd(d Deps, s *settings) *cobra.Command {
 	cmd.Flags().StringVar(&target, "target", "", "integration and scope target")
 	cmd.Flags().BoolVar(&linked, "linked", false, "include already-linked context")
 	return cmd
+}
+
+// renderNotifyPreview prints the human-readable form of a notify preview.
+func renderNotifyPreview(out io.Writer, notification *client.NotifyOutcome) error {
+	if !notification.Supported || notification.Plan == nil {
+		_, err := fmt.Fprintf(out, "no notification: %s\n", notification.Reason)
+		return err
+	}
+	plan := notification.Plan
+	if _, err := fmt.Fprintf(out, "notify %s (%s -> %s): %s\n%s\n", plan.ID, plan.Channel, plan.Target, plan.Title, plan.Body); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(out, "dedupe: %s\n", plan.DedupeKey)
+	return err
 }

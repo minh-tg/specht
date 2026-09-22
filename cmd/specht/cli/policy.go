@@ -214,15 +214,12 @@ func newPolicyEffectiveCmd(d Deps, s *settings) *cobra.Command {
 		Short: "Show resolved policy with provenance",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if project == "" {
-				return fmt.Errorf("--project is required for policy effective")
+			if err := requireFlag(project, "--project", "policy effective"); err != nil {
+				return err
 			}
-			format := s.format
-			if format == "" {
-				format = "human"
-			}
-			if format != "human" && format != "json" {
-				return fmt.Errorf("invalid --format %q: want human or json", format)
+			format, err := resolveFormat(s)
+			if err != nil {
+				return err
 			}
 			cl, err := d.NewClient()
 			if err != nil {
@@ -233,12 +230,7 @@ func newPolicyEffectiveCmd(d Deps, s *settings) *cobra.Command {
 				return err
 			}
 			if format == "json" {
-				raw, err := json.MarshalIndent(eff, "", "  ")
-				if err != nil {
-					return err
-				}
-				fmt.Fprintln(d.Out, string(raw))
-				return nil
+				return writeJSONOut(d.Out, eff)
 			}
 			template := "(none)"
 			if eff.TemplateName != nil {

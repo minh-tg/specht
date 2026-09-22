@@ -1,10 +1,11 @@
 package cli
 
 import (
-	"encoding/json"
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
+	"github.com/xMinhx/specht/internal/client"
 )
 
 func newPatchCmd(d Deps, s *settings) *cobra.Command {
@@ -23,15 +24,12 @@ func newPatchPreviewCmd(d Deps, s *settings) *cobra.Command {
 		Short: "Preview safe patch (dry-run; applies nothing)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if findingID == "" {
-				return fmt.Errorf("--finding is required for patch preview")
+			if err := requireFlag(findingID, "--finding", "patch preview"); err != nil {
+				return err
 			}
-			format := s.format
-			if format == "" {
-				format = "human"
-			}
-			if format != "human" && format != "json" {
-				return fmt.Errorf("invalid --format %q: want human or json", format)
+			format, err := resolveFormat(s)
+			if err != nil {
+				return err
 			}
 			cl, err := d.NewClient()
 			if err != nil {
@@ -42,26 +40,30 @@ func newPatchPreviewCmd(d Deps, s *settings) *cobra.Command {
 				return err
 			}
 			if format == "json" {
-				raw, err := json.MarshalIndent(outcome, "", "  ")
-				if err != nil {
-					return err
-				}
-				fmt.Fprintln(d.Out, string(raw))
-				return nil
+				return writeJSONOut(d.Out, outcome)
 			}
-			if !outcome.Supported || outcome.Proposal == nil {
-				fmt.Fprintf(d.Out, "no patch: %s\n", outcome.Reason)
-				return nil
-			}
-			p := outcome.Proposal
-			fmt.Fprintf(d.Out, "patch %s (%s, confidence %s)\n%s\n", p.ID, p.Class, p.Confidence, p.Rationale)
-			for _, e := range p.Edits {
-				fmt.Fprintf(d.Out, "  %s %s %s %s -> %s\n", e.Operation, e.File, e.Package, e.FromVersion, e.ToVersion)
-			}
-			fmt.Fprintf(d.Out, "verify: %s\n", p.VerifyBy)
-			return nil
+			return renderPatchPreview(d.Out, outcome)
 		},
 	}
 	cmd.Flags().StringVar(&findingID, "finding", "", "finding ID")
 	return cmd
+}
+
+// renderPatchPreview prints the human-readable form of a patch preview.
+func renderPatchPreview(out io.Writer, outcome *client.PatchOutcome) error {
+	if !outcome.Supported || outcome.Proposal == nil {
+		_, err := fmt.Fprintf(out, "no patch: %s\n", outcome.Reason)
+		return err
+	}
+	p := outcome.Proposal
+	if _, err := fmt.Fprintf(out, "patch %s (%s, confidence %s)\n%s\n", p.ID, p.Class, p.Confidence, p.Rationale); err != nil {
+		return err
+	}
+	for _, e := range p.Edits {
+		if _, err := fmt.Fprintf(out, "  %s %s %s %s -> %s\n", e.Operation, e.File, e.Package, e.FromVersion, e.ToVersion); err != nil {
+			return err
+		}
+	}
+	_, err := fmt.Fprintf(out, "verify: %s\n", p.VerifyBy)
+	return err
 }
