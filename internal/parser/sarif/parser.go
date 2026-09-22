@@ -40,6 +40,8 @@ import (
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
+const unknownFile = "(unknown)"
+
 // Scanner adapts SARIF 2.1.0 output to the normalized domain model.
 type Scanner struct{}
 
@@ -223,7 +225,7 @@ func convertResult(result sarifResult, rule sarifRule, ruleID, ns string) domain
 	}
 	var dims []domain.Dimension
 	dims = append(dims, domain.Dimension{Key: domain.DimRuleID, Value: ruleID})
-	if file != "(unknown)" {
+	if file != unknownFile {
 		dims = append(dims, domain.Dimension{Key: domain.DimFile, Value: file})
 		if line > 0 {
 			dims = append(dims, domain.Dimension{Key: domain.DimLine, Value: strconv.Itoa(line)})
@@ -277,7 +279,7 @@ func convertResult(result sarifResult, rule sarifRule, ruleID, ns string) domain
 		Dimensions:  dims,
 		Extensions:  meta,
 	}
-	if file != "(unknown)" {
+	if file != unknownFile {
 		f.CodeLocation = &domain.CodeLocation{File: file, StartLine: line}
 	}
 	return f
@@ -285,11 +287,11 @@ func convertResult(result sarifResult, rule sarifRule, ruleID, ns string) domain
 
 func resultFile(result sarifResult) string {
 	if len(result.Locations) == 0 {
-		return "(unknown)"
+		return unknownFile
 	}
 	uri := result.Locations[0].PhysicalLocation.ArtifactLocation.URI
 	if uri == "" {
-		return "(unknown)"
+		return unknownFile
 	}
 	return uri
 }

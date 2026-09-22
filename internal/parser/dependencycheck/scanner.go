@@ -83,6 +83,72 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	return convert(report), nil
 }
 
+// dcComponentDims builds the component identity dimensions for one
+// Dependency-Check vulnerability: the purl when present, else the stable
+// filename-derived package name fallback.
+func dcComponentDims(purl, fileName string) []domain.Dimension {
+	dims := []domain.Dimension{}
+	if purl != "" {
+		return append(dims, domain.Dimension{Key: domain.DimPURL, Value: purl})
+	}
+	if name := packageNameFromFile(fileName); name != "" {
+		dims = append(dims, domain.Dimension{Key: domain.DimPackageName, Value: name})
+	}
+	return dims
+}
+
+// dcCVSSInfo builds the CVSS detail block when a vector is present.
+func dcCVSSInfo(score float64, cvssVec, cvssVer string) *domain.CVSSInfo {
+	if cvssVec == "" {
+		return nil
+	}
+	return &domain.CVSSInfo{Version: cvssVer, Vector: cvssVec, Score: score}
+}
+
+func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) domain.NormalizedFinding {
+	severity := normalizeDCSeverity(v.Severity)
+	score, cvssVec, cvssVer := extractCVSS(v)
+	dims := append(
+		[]domain.Dimension{{Key: domain.DimVulnerabilityID, Value: v.Name}},
+		dcComponentDims(purl, dep.FileName)...,
+	)
+	return domain.NormalizedFinding{
+		Fingerprint: createFingerprint(v.Name, purl),
+		FindingKind: "sca",
+		Title:       v.Name,
+		Description: v.Description,
+		Severity:    severity,
+		Score:       score,
+		Location:    dep.FilePath,
+		CVSS:        dcCVSSInfo(score, cvssVec, cvssVer),
+		Dimensions:  dims,
+		Extensions: map[string]any{
+			"file_name": dep.FileName,
+			"file_path": dep.FilePath,
+			"cve":       v.Name,
+			"severity":  v.Severity,
+		},
+	}
+}
+
+// appendDCPackages records the full package inventory of one dependency.
+func appendDCPackages(nr *domain.NormalizedReport, dep dcDependency) {
+	for _, p := range dep.Packages {
+		purl := domain.NormalizePURL(p.ID)
+		if purl == "" {
+			continue
+		}
+		pkgType, name, version := domain.SplitPURL(purl)
+		nr.Packages = append(nr.Packages, domain.PackageRef{
+			PURL:         purl,
+			Ecosystem:    pkgType,
+			Name:         name,
+			Version:      version,
+			ManifestPath: dep.FilePath,
+		})
+	}
+}
+
 func convert(report dcReport) *domain.NormalizedReport {
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
@@ -100,21 +166,7 @@ func convert(report dcReport) *domain.NormalizedReport {
 	}
 
 	for _, dep := range report.Dependencies {
-		// full package inventory, vulnerable or not
-		for _, p := range dep.Packages {
-			purl := domain.NormalizePURL(p.ID)
-			if purl == "" {
-				continue
-			}
-			pkgType, name, version := domain.SplitPURL(purl)
-			nr.Packages = append(nr.Packages, domain.PackageRef{
-				PURL:         purl,
-				Ecosystem:    pkgType,
-				Name:         name,
-				Version:      version,
-				ManifestPath: dep.FilePath,
-			})
-		}
+		appendDCPackages(nr, dep)
 
 		purl := ""
 		if len(dep.Packages) > 0 {
@@ -122,49 +174,7 @@ func convert(report dcReport) *domain.NormalizedReport {
 		}
 
 		for _, v := range dep.Vulnerabilities {
-			severity := normalizeDCSeverity(v.Severity)
-			score, cvssVec, cvssVer := extractCVSS(v)
-
-			fingerprint := createFingerprint(v.Name, purl)
-
-			dims := []domain.Dimension{
-				{Key: domain.DimVulnerabilityID, Value: v.Name},
-			}
-			if purl != "" {
-				dims = append(dims, domain.Dimension{Key: domain.DimPURL, Value: purl})
-			} else if name := packageNameFromFile(dep.FileName); name != "" {
-				// Stable fallback component identity for Dependency-Check
-				// records without a purl: waivers and dedupe need a stable
-				// component key even when the report omits purls.
-				dims = append(dims, domain.Dimension{Key: domain.DimPackageName, Value: name})
-			}
-
-			var cvss *domain.CVSSInfo
-			if cvssVec != "" {
-				cvss = &domain.CVSSInfo{
-					Version: cvssVer,
-					Vector:  cvssVec,
-					Score:   score,
-				}
-			}
-
-			nr.Findings = append(nr.Findings, domain.NormalizedFinding{
-				Fingerprint: fingerprint,
-				FindingKind: "sca",
-				Title:       v.Name,
-				Description: v.Description,
-				Severity:    severity,
-				Score:       score,
-				Location:    dep.FilePath,
-				CVSS:        cvss,
-				Dimensions:  dims,
-				Extensions: map[string]any{
-					"file_name": dep.FileName,
-					"file_path": dep.FilePath,
-					"cve":       v.Name,
-					"severity":  v.Severity,
-				},
-			})
+			nr.Findings = append(nr.Findings, convertDCVulnerability(dep, v, purl))
 		}
 	}
 

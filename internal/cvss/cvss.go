@@ -13,6 +13,9 @@ import (
 	gocvss40 "github.com/pandatix/go-cvss/40"
 )
 
+// errWrapFormat wraps go-cvss parse errors with the package prefix.
+const errWrapFormat = "cvss: %w"
+
 // Calculate scores a CVSS vector, auto-detecting the version from its prefix.
 func Calculate(vector string) (float64, error) {
 	switch {
@@ -32,7 +35,7 @@ func Calculate(vector string) (float64, error) {
 func calculate20(vector string) (float64, error) {
 	v, err := gocvss20.ParseVector(vector[len("CVSS:2.0/"):])
 	if err != nil {
-		return 0, fmt.Errorf("cvss: %w", err)
+		return 0, fmt.Errorf(errWrapFormat, err)
 	}
 	return v.BaseScore(), nil
 }
@@ -40,7 +43,7 @@ func calculate20(vector string) (float64, error) {
 func calculate30(vector string) (float64, error) {
 	v, err := gocvss30.ParseVector(vector)
 	if err != nil {
-		return 0, fmt.Errorf("cvss: %w", err)
+		return 0, fmt.Errorf(errWrapFormat, err)
 	}
 	return v.BaseScore(), nil
 }
@@ -48,7 +51,7 @@ func calculate30(vector string) (float64, error) {
 func calculate31(vector string) (float64, error) {
 	v, err := gocvss31.ParseVector(vector)
 	if err != nil {
-		return 0, fmt.Errorf("cvss: %w", err)
+		return 0, fmt.Errorf(errWrapFormat, err)
 	}
 	return v.BaseScore(), nil
 }
@@ -56,7 +59,7 @@ func calculate31(vector string) (float64, error) {
 func calculate40(vector string) (float64, error) {
 	v, err := gocvss40.ParseVector(vector)
 	if err != nil {
-		return 0, fmt.Errorf("cvss: %w", err)
+		return 0, fmt.Errorf(errWrapFormat, err)
 	}
 	return v.Score(), nil
 }

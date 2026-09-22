@@ -376,29 +376,24 @@ func extractSeverity(v osvVuln) domain.Severity {
 	return domain.SeverityUnknown
 }
 
+// scoreForSeverityType returns the first parseable score for one severity
+// type across the vulnerability's severity entries.
+func scoreForSeverityType(v osvVuln, typ string) (float64, bool) {
+	for _, s := range v.Severity {
+		if s.Type != typ {
+			continue
+		}
+		if score, _, ok := parseCVSSScore(s.Score); ok {
+			return score, true
+		}
+	}
+	return 0, false
+}
+
 func extractScore(v osvVuln) float64 {
-	for _, s := range v.Severity {
-		if s.Type == "CVSS_V4" {
-			score, _, ok := parseCVSSScore(s.Score)
-			if ok {
-				return score
-			}
-		}
-	}
-	for _, s := range v.Severity {
-		if s.Type == "CVSS_V3" {
-			score, _, ok := parseCVSSScore(s.Score)
-			if ok {
-				return score
-			}
-		}
-	}
-	for _, s := range v.Severity {
-		if s.Type == "CVSS_V2" {
-			score, _, ok := parseCVSSScore(s.Score)
-			if ok {
-				return score
-			}
+	for _, typ := range []string{"CVSS_V4", "CVSS_V3", "CVSS_V2"} {
+		if score, ok := scoreForSeverityType(v, typ); ok {
+			return score
 		}
 	}
 	return 0

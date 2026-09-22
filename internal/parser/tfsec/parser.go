@@ -16,6 +16,8 @@ import (
 	"github.com/xMinhx/specht/internal/scanner"
 )
 
+const unknownFile = "(unknown)"
+
 // Scanner adapts tfsec JSON output to the normalized domain model.
 type Scanner struct{}
 
@@ -94,15 +96,22 @@ type tfsecResult struct {
 	Links []string `json:"links"`
 }
 
-func convert(r tfsecResult) domain.NormalizedFinding {
+// tfsecFileLocation resolves the display file and location strings.
+func tfsecFileLocation(r tfsecResult) (string, string) {
 	file := r.Location.Filename
 	if file == "" {
-		file = "(unknown)"
+		file = unknownFile
 	}
 	location := file
 	if r.Location.StartLine > 0 {
 		location = file + ":" + strconv.Itoa(r.Location.StartLine)
 	}
+	return file, location
+}
+
+// tfsecDescriptionText builds the description from the check text, rule
+// description fallback, and impact note.
+func tfsecDescriptionText(r tfsecResult) string {
 	description := r.Description
 	if description == "" {
 		description = r.RuleDescription
@@ -110,28 +119,46 @@ func convert(r tfsecResult) domain.NormalizedFinding {
 	if r.Impact != "" {
 		description += " Impact: " + r.Impact
 	}
-	var dims []domain.Dimension
-	dims = append(dims, domain.Dimension{Key: domain.DimRuleID, Value: r.RuleID})
+	return description
+}
+
+// tfsecDimensions builds the rule/resource/file/line dimensions.
+func tfsecDimensions(r tfsecResult, file string) []domain.Dimension {
+	dims := []domain.Dimension{{Key: domain.DimRuleID, Value: r.RuleID}}
 	if r.Resource != "" {
 		dims = append(dims, domain.Dimension{Key: domain.DimResource, Value: r.Resource})
 	}
-	if file != "(unknown)" {
-		dims = append(dims, domain.Dimension{Key: domain.DimFile, Value: file})
-		if r.Location.StartLine > 0 {
-			dims = append(dims, domain.Dimension{Key: domain.DimLine, Value: strconv.Itoa(r.Location.StartLine)})
-		}
+	if file == unknownFile {
+		return dims
 	}
+	dims = append(dims, domain.Dimension{Key: domain.DimFile, Value: file})
+	if r.Location.StartLine > 0 {
+		dims = append(dims, domain.Dimension{Key: domain.DimLine, Value: strconv.Itoa(r.Location.StartLine)})
+	}
+	return dims
+}
+
+// tfsecFixInfo builds the fix guidance from resolution text and links.
+func tfsecFixInfo(r tfsecResult) *domain.FixInfo {
+	if r.Resolution == "" && len(r.Links) == 0 {
+		return nil
+	}
+	fix := &domain.FixInfo{Summary: r.Resolution}
+	if len(r.Links) > 0 {
+		fix.URL = r.Links[0]
+	}
+	return fix
+}
+
+func convert(r tfsecResult) domain.NormalizedFinding {
+	file, location := tfsecFileLocation(r)
+	description := tfsecDescriptionText(r)
+	dims := tfsecDimensions(r, file)
 	meta := map[string]any{}
 	if r.LongID != "" && r.LongID != r.RuleID {
 		meta["long_id"] = r.LongID
 	}
-	var fix *domain.FixInfo
-	if r.Resolution != "" || len(r.Links) > 0 {
-		fix = &domain.FixInfo{Summary: r.Resolution}
-		if len(r.Links) > 0 {
-			fix.URL = r.Links[0]
-		}
-	}
+	fix := tfsecFixInfo(r)
 	title := r.RuleDescription
 	if title == "" {
 		title = r.RuleID
@@ -148,7 +175,7 @@ func convert(r tfsecResult) domain.NormalizedFinding {
 		Dimensions:  dims,
 		Extensions:  meta,
 	}
-	if file != "(unknown)" {
+	if file != unknownFile {
 		f.CodeLocation = &domain.CodeLocation{
 			File:      file,
 			StartLine: r.Location.StartLine,
