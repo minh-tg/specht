@@ -15,10 +15,24 @@ import (
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
+const (
+	triageMsgInvalidBody          = "invalid request body"
+	triageMsgFindingIDRequired    = "finding id is required"
+	triageMsgFindingNotFound      = "finding not found"
+	triageMsgFindingAccessDenied  = "API key does not have access to this finding"
+	triageMsgSlugRequired         = "project slug is required"
+	triageMsgProjectAdminRequired = "project admin is required"
+	triageMsgPolicyTemplateAbsent = "policy template not found"
+	triageMsgTeamIDRequired       = "team id is required"
+	triageMsgInvalidTeamID        = "invalid team id format"
+	triageMsgTeamNotFound         = "team not found"
+	triageMsgTeamAdminRequired    = "team admin is required"
+)
+
 func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		respondError(w, http.StatusBadRequest, "missing_id", triageMsgFindingIDRequired)
 		return
 	}
 
@@ -27,7 +41,7 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 		Reason            string     `json:"reason"`
 		AnalysisExpiresAt *time.Time `json:"analysis_expires_at,omitempty"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", triageMsgInvalidBody) {
 		return
 	}
 	if req.AnalysisState == "" {
@@ -52,9 +66,9 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrFindingNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+			respondError(w, http.StatusNotFound, "not_found", triageMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
 		case errors.Is(err, usecase.ErrReasonRequired):
 			respondError(w, http.StatusUnprocessableEntity, "reason_required", "reason is required for this analysis state")
 		case errors.Is(err, usecase.ErrExpiryRequired):
@@ -74,16 +88,16 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) VerifyFinding(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		respondError(w, http.StatusBadRequest, "missing_id", triageMsgFindingIDRequired)
 		return
 	}
 	result, err := h.usecase.VerifyFix(r.Context(), id)
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrFindingNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+			respondError(w, http.StatusNotFound, "not_found", triageMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
 		default:
 			slog.Error("verify finding fix", "finding_id", id, "error", err)
 			respondError(w, http.StatusInternalServerError, "verify_failed", "could not verify finding fix")
@@ -100,7 +114,7 @@ func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
 		Reason            string     `json:"reason"`
 		AnalysisExpiresAt *time.Time `json:"analysis_expires_at,omitempty"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", triageMsgInvalidBody) {
 		return
 	}
 	if len(req.FindingIDs) == 0 {
@@ -135,7 +149,7 @@ func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrFindingNotFound):
 			respondError(w, http.StatusNotFound, "not_found", "one or more findings not found")
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
 		case errors.Is(err, usecase.ErrReasonRequired):
 			respondError(w, http.StatusUnprocessableEntity, "reason_required", "reason is required for this analysis state")
 		case errors.Is(err, usecase.ErrExpiryRequired):
@@ -155,7 +169,7 @@ func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetGateStatus(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
-		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
@@ -199,7 +213,7 @@ func (h *Handler) GetGateStatus(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) PreviewPRCheck(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
-		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
@@ -240,7 +254,7 @@ func (h *Handler) PreviewPRCheck(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) PreviewPatch(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		respondError(w, http.StatusBadRequest, "missing_id", triageMsgFindingIDRequired)
 		return
 	}
 
@@ -250,9 +264,9 @@ func (h *Handler) PreviewPatch(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrInvalidFindingID):
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		case errors.Is(err, usecase.ErrFindingNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+			respondError(w, http.StatusNotFound, "not_found", triageMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
 		default:
 			slog.Error("preview patch", "finding_id", id, "error", err)
 			respondError(w, http.StatusInternalServerError, "patch_failed", "could not plan patch")
@@ -266,7 +280,7 @@ func (h *Handler) PreviewPatch(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) PreviewNotification(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		respondError(w, http.StatusBadRequest, "missing_id", triageMsgFindingIDRequired)
 		return
 	}
 	q := r.URL.Query()
@@ -288,9 +302,9 @@ func (h *Handler) PreviewNotification(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrInvalidFindingID):
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		case errors.Is(err, usecase.ErrFindingNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+			respondError(w, http.StatusNotFound, "not_found", triageMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
 		default:
 			slog.Error("preview notification", "finding_id", id, "error", err)
 			respondError(w, http.StatusInternalServerError, "notify_failed", "could not plan notification")
@@ -332,7 +346,7 @@ func (h *Handler) PurgeRetention(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		OlderThanDays int `json:"older_than_days"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", triageMsgInvalidBody) {
 		return
 	}
 	if req.OlderThanDays <= 0 || req.OlderThanDays > 3650 {
@@ -380,7 +394,7 @@ func (h *Handler) CreatePolicyTemplate(w http.ResponseWriter, r *http.Request) {
 		Description string          `json:"description"`
 		Definition  json.RawMessage `json:"definition"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", triageMsgInvalidBody) {
 		return
 	}
 
@@ -410,7 +424,7 @@ func (h *Handler) UpdatePolicyTemplate(w http.ResponseWriter, r *http.Request) {
 		Description string          `json:"description"`
 		Definition  json.RawMessage `json:"definition"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", triageMsgInvalidBody) {
 		return
 	}
 
@@ -420,7 +434,7 @@ func (h *Handler) UpdatePolicyTemplate(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrInvalidID):
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid template id format")
 		case errors.Is(err, usecase.ErrPolicyNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "policy template not found")
+			respondError(w, http.StatusNotFound, "not_found", triageMsgPolicyTemplateAbsent)
 		case errors.Is(err, usecase.ErrPolicyConflict):
 			respondError(w, http.StatusConflict, "policy_conflict", "a template with this name exists")
 		default:
@@ -446,7 +460,7 @@ func (h *Handler) DeletePolicyTemplate(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, usecase.ErrPolicyNotFound) {
-			respondError(w, http.StatusNotFound, "not_found", "policy template not found")
+			respondError(w, http.StatusNotFound, "not_found", triageMsgPolicyTemplateAbsent)
 			return
 		}
 		slog.Error("delete policy template", "error", err)
@@ -460,13 +474,13 @@ func (h *Handler) DeletePolicyTemplate(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) SetProjectPolicy(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
-		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
 		return
 	}
 	var req struct {
 		TemplateName string `json:"template_name"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", triageMsgInvalidBody) {
 		return
 	}
 
@@ -474,9 +488,9 @@ func (h *Handler) SetProjectPolicy(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "project admin is required")
+			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgProjectAdminRequired)
 		case errors.Is(err, usecase.ErrPolicyNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "policy template not found")
+			respondError(w, http.StatusNotFound, "not_found", triageMsgPolicyTemplateAbsent)
 		default:
 			slog.Error("set project policy", "project", slug, "error", err)
 			respondError(w, http.StatusInternalServerError, "policy_failed", "could not assign policy template")
@@ -490,13 +504,13 @@ func (h *Handler) SetProjectPolicy(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) SetProjectPolicyOverrides(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
-		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
 		return
 	}
 	var req struct {
 		Overrides map[string]string `json:"overrides"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", triageMsgInvalidBody) {
 		return
 	}
 
@@ -504,7 +518,7 @@ func (h *Handler) SetProjectPolicyOverrides(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "project admin is required")
+			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgProjectAdminRequired)
 		default:
 			slog.Error("set policy overrides", "project", slug, "error", err)
 			respondError(w, http.StatusBadRequest, "invalid_policy", "invalid policy overrides")
@@ -518,7 +532,7 @@ func (h *Handler) SetProjectPolicyOverrides(w http.ResponseWriter, r *http.Reque
 func (h *Handler) GetEffectivePolicy(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
-		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
@@ -552,7 +566,7 @@ func (h *Handler) CreateTeam(w http.ResponseWriter, r *http.Request) {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", triageMsgInvalidBody) {
 		return
 	}
 
@@ -576,16 +590,16 @@ func (h *Handler) CreateTeam(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteTeam(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		respondError(w, http.StatusBadRequest, "missing_id", "team id is required")
+		respondError(w, http.StatusBadRequest, "missing_id", triageMsgTeamIDRequired)
 		return
 	}
 
 	if err := h.usecase.DeleteTeam(r.Context(), id); err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidID):
-			respondError(w, http.StatusBadRequest, "invalid_id", "invalid team id format")
+			respondError(w, http.StatusBadRequest, "invalid_id", triageMsgInvalidTeamID)
 		case errors.Is(err, usecase.ErrTeamNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "team not found")
+			respondError(w, http.StatusNotFound, "not_found", triageMsgTeamNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
 			respondError(w, http.StatusForbidden, "forbidden", "global admin is required")
 		default:
@@ -601,7 +615,7 @@ func (h *Handler) DeleteTeam(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListTeamMembers(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		respondError(w, http.StatusBadRequest, "missing_id", "team id is required")
+		respondError(w, http.StatusBadRequest, "missing_id", triageMsgTeamIDRequired)
 		return
 	}
 
@@ -609,11 +623,11 @@ func (h *Handler) ListTeamMembers(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidID):
-			respondError(w, http.StatusBadRequest, "invalid_id", "invalid team id format")
+			respondError(w, http.StatusBadRequest, "invalid_id", triageMsgInvalidTeamID)
 		case errors.Is(err, usecase.ErrTeamNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "team not found")
+			respondError(w, http.StatusNotFound, "not_found", triageMsgTeamNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "forbidden", "team admin is required")
+			respondError(w, http.StatusForbidden, "forbidden", triageMsgTeamAdminRequired)
 		default:
 			slog.Error("list team members", "error", err)
 			respondError(w, http.StatusInternalServerError, "teams_failed", "could not list team members")
@@ -627,14 +641,14 @@ func (h *Handler) ListTeamMembers(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) AddTeamMember(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		respondError(w, http.StatusBadRequest, "missing_id", "team id is required")
+		respondError(w, http.StatusBadRequest, "missing_id", triageMsgTeamIDRequired)
 		return
 	}
 	var req struct {
 		UserID string `json:"user_id"`
 		Role   string `json:"role"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", triageMsgInvalidBody) {
 		return
 	}
 
@@ -642,9 +656,9 @@ func (h *Handler) AddTeamMember(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrTeamNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "team not found")
+			respondError(w, http.StatusNotFound, "not_found", triageMsgTeamNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "forbidden", "team admin is required")
+			respondError(w, http.StatusForbidden, "forbidden", triageMsgTeamAdminRequired)
 		default:
 			slog.Error("add team member", "error", err)
 			respondError(w, http.StatusBadRequest, "invalid_member", "invalid team member")
@@ -668,9 +682,9 @@ func (h *Handler) RemoveTeamMember(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrInvalidID):
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid id format")
 		case errors.Is(err, usecase.ErrTeamNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "team not found")
+			respondError(w, http.StatusNotFound, "not_found", triageMsgTeamNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "forbidden", "team admin is required")
+			respondError(w, http.StatusForbidden, "forbidden", triageMsgTeamAdminRequired)
 		default:
 			slog.Error("remove team member", "error", err)
 			respondError(w, http.StatusInternalServerError, "teams_failed", "could not remove team member")
@@ -684,7 +698,7 @@ func (h *Handler) RemoveTeamMember(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListProjectTeams(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
-		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
 		return
 	}
 
@@ -692,7 +706,7 @@ func (h *Handler) ListProjectTeams(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "project admin is required")
+			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgProjectAdminRequired)
 		default:
 			slog.Error("list project teams", "project", slug, "error", err)
 			respondError(w, http.StatusInternalServerError, "teams_failed", "could not list project teams")
@@ -706,14 +720,14 @@ func (h *Handler) ListProjectTeams(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) LinkProjectTeam(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
-		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
 		return
 	}
 	var req struct {
 		TeamID string `json:"team_id"`
 		Role   string `json:"role"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", triageMsgInvalidBody) {
 		return
 	}
 
@@ -721,9 +735,9 @@ func (h *Handler) LinkProjectTeam(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "project admin is required")
+			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgProjectAdminRequired)
 		case errors.Is(err, usecase.ErrTeamNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "team not found")
+			respondError(w, http.StatusNotFound, "not_found", triageMsgTeamNotFound)
 		default:
 			slog.Error("link project team", "project", slug, "error", err)
 			respondError(w, http.StatusBadRequest, "invalid_link", "invalid project team link")
@@ -745,9 +759,9 @@ func (h *Handler) UnlinkProjectTeam(w http.ResponseWriter, r *http.Request) {
 	if err := h.usecase.UnlinkProjectTeam(r.Context(), slug, teamID); err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrInvalidID):
-			respondError(w, http.StatusBadRequest, "invalid_id", "invalid team id format")
+			respondError(w, http.StatusBadRequest, "invalid_id", triageMsgInvalidTeamID)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "project admin is required")
+			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgProjectAdminRequired)
 		default:
 			slog.Error("unlink project team", "project", slug, "error", err)
 			respondError(w, http.StatusInternalServerError, "teams_failed", "could not unlink project team")
@@ -761,7 +775,7 @@ func (h *Handler) UnlinkProjectTeam(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {
-		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		respondError(w, http.StatusBadRequest, "missing_id", triageMsgFindingIDRequired)
 		return
 	}
 
@@ -772,9 +786,9 @@ func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrFindingNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+			respondError(w, http.StatusNotFound, "not_found", triageMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
 		default:
 			slog.Error("list finding events", "finding_id", id, "error", err)
 			respondError(w, http.StatusInternalServerError, "events_failed", "could not list finding events")
@@ -788,7 +802,7 @@ func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListEnvironments(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
-		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
@@ -807,7 +821,7 @@ func (h *Handler) ListEnvironments(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListTargets(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
-		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
@@ -826,7 +840,7 @@ func (h *Handler) ListTargets(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListArtifacts(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
-		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
@@ -845,7 +859,7 @@ func (h *Handler) ListArtifacts(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetProjectStats(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
-		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
@@ -864,7 +878,7 @@ func (h *Handler) GetProjectStats(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetAging(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
-		respondError(w, http.StatusBadRequest, "missing_slug", "project slug is required")
+		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {

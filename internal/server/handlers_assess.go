@@ -10,10 +10,17 @@ import (
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
+const (
+	assessMsgFindingIDRequired   = "finding id is required"
+	assessMsgInvalidBody         = "invalid request body"
+	assessMsgFindingNotFound     = "finding not found"
+	assessMsgFindingAccessDenied = "API key does not have access to this finding"
+)
+
 func (h *Handler) CreateEvidence(w http.ResponseWriter, r *http.Request) {
 	findingID := chi.URLParam(r, "findingID")
 	if findingID == "" {
-		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		respondError(w, http.StatusBadRequest, "missing_id", assessMsgFindingIDRequired)
 		return
 	}
 	var req struct {
@@ -21,7 +28,7 @@ func (h *Handler) CreateEvidence(w http.ResponseWriter, r *http.Request) {
 		URL         string `json:"url"`
 		Description string `json:"description"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", assessMsgInvalidBody) {
 		return
 	}
 	if req.Type == "" {
@@ -38,9 +45,9 @@ func (h *Handler) CreateEvidence(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrFindingNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+			respondError(w, http.StatusNotFound, "not_found", assessMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+			respondError(w, http.StatusForbidden, "project_access_denied", assessMsgFindingAccessDenied)
 		default:
 			slog.Error("create evidence", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not create evidence")
@@ -53,16 +60,16 @@ func (h *Handler) CreateEvidence(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListEvidence(w http.ResponseWriter, r *http.Request) {
 	findingID := chi.URLParam(r, "findingID")
 	if findingID == "" {
-		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		respondError(w, http.StatusBadRequest, "missing_id", assessMsgFindingIDRequired)
 		return
 	}
 	result, err := h.usecase.ListEvidence(r.Context(), findingID)
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrFindingNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+			respondError(w, http.StatusNotFound, "not_found", assessMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+			respondError(w, http.StatusForbidden, "project_access_denied", assessMsgFindingAccessDenied)
 		default:
 			slog.Error("list evidence", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not list evidence")
@@ -80,7 +87,7 @@ func (h *Handler) DeleteEvidence(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.usecase.DeleteEvidence(r.Context(), evidenceID); err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
-			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+			respondError(w, http.StatusForbidden, "project_access_denied", assessMsgFindingAccessDenied)
 		} else {
 			slog.Error("delete evidence", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not delete evidence")
@@ -93,14 +100,14 @@ func (h *Handler) DeleteEvidence(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) UpsertReachability(w http.ResponseWriter, r *http.Request) {
 	findingID := chi.URLParam(r, "findingID")
 	if findingID == "" {
-		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		respondError(w, http.StatusBadRequest, "missing_id", assessMsgFindingIDRequired)
 		return
 	}
 	var req struct {
 		State    string `json:"state"`
 		Evidence string `json:"evidence"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", assessMsgInvalidBody) {
 		return
 	}
 
@@ -118,9 +125,9 @@ func (h *Handler) UpsertReachability(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrInvalidFindingID):
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		case errors.Is(err, usecase.ErrFindingNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+			respondError(w, http.StatusNotFound, "not_found", assessMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+			respondError(w, http.StatusForbidden, "project_access_denied", assessMsgFindingAccessDenied)
 		default:
 			slog.Error("upsert reachability", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not update reachability state")
@@ -133,7 +140,7 @@ func (h *Handler) UpsertReachability(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListReachability(w http.ResponseWriter, r *http.Request) {
 	findingID := chi.URLParam(r, "findingID")
 	if findingID == "" {
-		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		respondError(w, http.StatusBadRequest, "missing_id", assessMsgFindingIDRequired)
 		return
 	}
 	result, err := h.usecase.ListReachability(r.Context(), findingID)
@@ -142,9 +149,9 @@ func (h *Handler) ListReachability(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrInvalidFindingID):
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		case errors.Is(err, usecase.ErrFindingNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+			respondError(w, http.StatusNotFound, "not_found", assessMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+			respondError(w, http.StatusForbidden, "project_access_denied", assessMsgFindingAccessDenied)
 		default:
 			slog.Error("list reachability", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not list reachability states")
@@ -157,14 +164,14 @@ func (h *Handler) ListReachability(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) UpsertSignoff(w http.ResponseWriter, r *http.Request) {
 	findingID := chi.URLParam(r, "findingID")
 	if findingID == "" {
-		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		respondError(w, http.StatusBadRequest, "missing_id", assessMsgFindingIDRequired)
 		return
 	}
 	var req struct {
 		Status  string `json:"status"`
 		Comment string `json:"comment"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", assessMsgInvalidBody) {
 		return
 	}
 	if req.Status != "approved" && req.Status != "rejected" && req.Status != "pending" {
@@ -183,9 +190,9 @@ func (h *Handler) UpsertSignoff(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrFindingNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "finding not found")
+			respondError(w, http.StatusNotFound, "not_found", assessMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+			respondError(w, http.StatusForbidden, "project_access_denied", assessMsgFindingAccessDenied)
 		default:
 			slog.Error("upsert signoff", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not update signoff")
@@ -198,13 +205,13 @@ func (h *Handler) UpsertSignoff(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetSignoff(w http.ResponseWriter, r *http.Request) {
 	findingID := chi.URLParam(r, "findingID")
 	if findingID == "" {
-		respondError(w, http.StatusBadRequest, "missing_id", "finding id is required")
+		respondError(w, http.StatusBadRequest, "missing_id", assessMsgFindingIDRequired)
 		return
 	}
 	result, err := h.usecase.GetSignoff(r.Context(), findingID)
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
-			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+			respondError(w, http.StatusForbidden, "project_access_denied", assessMsgFindingAccessDenied)
 		} else {
 			slog.Error("get signoff", "error", err)
 			respondError(w, http.StatusNotFound, "not_found", "signoff not found")

@@ -319,6 +319,9 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, v any, maxBytes int6
 // maxPageSize bounds a single paginated request; larger limits are clamped.
 const maxPageSize = 500
 
+// msgProjectNotFound is the shared not-found message for project responses.
+const msgProjectNotFound = "project not found"
+
 // Request-body size limits (M1). Ingest carries raw scanner output, so it
 // gets a generous cap; every other JSON body carries small, server-derived
 // fields and is capped at 1 MiB. All caps are absolute ceilings: a declared
@@ -350,13 +353,13 @@ func parseIntParam(r *http.Request, name string, defaultVal int32) int32 {
 }
 
 var (
-	errProjectNotFound     = errors.New("project not found")
+	errProjectNotFound     = errors.New(msgProjectNotFound)
 	errProjectAccessDenied = errors.New("project access denied")
 )
 
 func (h *Handler) respondProjectAccessError(w http.ResponseWriter, err error) {
 	if errors.Is(err, errProjectNotFound) {
-		respondError(w, http.StatusNotFound, "not_found", "project not found")
+		respondError(w, http.StatusNotFound, "not_found", msgProjectNotFound)
 		return
 	}
 	respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
@@ -419,6 +422,23 @@ func (h *Handler) enforceProjectAccess(r *http.Request, projectSlug string) erro
 // no matching scope is denied 403 — an ingest-only key must never reach an
 // admin-gated route (creating projects, managing API keys, triage, waivers,
 // global daemon state). Unauthenticated requests fall through to 401.
+// apiKeyRoleAdmitted reports whether an API-key identity holds one of the
+// permission scopes the role gate demands.
+func apiKeyRoleAdmitted(ident *auth.Identity, requiredScopes map[string]bool) bool {
+	for scope := range requiredScopes {
+		if ident.HasScope(scope) {
+			return true
+		}
+	}
+	return false
+}
+
+// sessionRoleAdmitted reports whether a session identity carries a known
+// role within the demanded set.
+func sessionRoleAdmitted(ident *auth.Identity, allowed map[string]bool) bool {
+	return auth.ValidRole(ident.Role) && allowed[ident.Role]
+}
+
 func RequireRole(roles ...string) func(http.Handler) http.Handler {
 	allowed := make(map[string]bool, len(roles))
 	requiredScopes := make(map[string]bool, len(roles))
@@ -438,16 +458,14 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 			if ident.IsAPIKey {
 				// API keys are never admitted by role alone: they must hold
 				// the permission scope the gate demands.
-				for scope := range requiredScopes {
-					if ident.HasScope(scope) {
-						next.ServeHTTP(w, r)
-						return
-					}
+				if apiKeyRoleAdmitted(ident, requiredScopes) {
+					next.ServeHTTP(w, r)
+					return
 				}
 				respondError(w, http.StatusForbidden, "insufficient_scope", "API key does not have the required scope for this route")
 				return
 			}
-			if !auth.ValidRole(ident.Role) || !allowed[ident.Role] {
+			if !sessionRoleAdmitted(ident, allowed) {
 				respondError(w, http.StatusForbidden, "insufficient_role", "requires admin role")
 				return
 			}
@@ -485,36 +503,36 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 	findings, err := h.usecase.ListFindings(r.Context(), slug, filter, limit, offset)
 	if err != nil {
 		log.Printf("list findings: %v", err)
-		respondError(w, http.StatusNotFound, "not_found", "project not found")
+		respondError(w, http.StatusNotFound, "not_found", msgProjectNotFound)
 		return
 	}
 	respondJSON(w, http.StatusOK, findings)
+}
+
+// severityRankToken maps one severity name to its gate rank (0 when unknown).
+func severityRankToken(token string) int16 {
+	switch strings.TrimSpace(token) {
+	case "critical":
+		return 4
+	case "high":
+		return 3
+	case "medium":
+		return 2
+	case "low":
+		return 1
+	default:
+		return 0
+	}
 }
 
 func parseMinSeverityRank(severities string) int16 {
 	if severities == "" {
 		return 3 // default: high+
 	}
-	parts := strings.Split(severities, ",")
 	minRank := int16(0)
-	for _, p := range parts {
-		switch strings.TrimSpace(p) {
-		case "critical":
-			if 4 > minRank {
-				minRank = 4
-			}
-		case "high":
-			if 3 > minRank {
-				minRank = 3
-			}
-		case "medium":
-			if 2 > minRank {
-				minRank = 2
-			}
-		case "low":
-			if 1 > minRank {
-				minRank = 1
-			}
+	for _, p := range strings.Split(severities, ",") {
+		if rank := severityRankToken(p); rank > minRank {
+			minRank = rank
 		}
 	}
 	if minRank == 0 {

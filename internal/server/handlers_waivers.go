@@ -12,6 +12,11 @@ import (
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
+const (
+	waiversMsgInvalidBody = "invalid request body"
+	waiversMsgNotFound    = "waiver not found"
+)
+
 func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
@@ -25,7 +30,7 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 		Contexts    []usecase.CreateWaiverContextInput   `json:"contexts,omitempty"`
 		TargetIDs   []string                             `json:"target_ids,omitempty"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_body", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_body", waiversMsgInvalidBody) {
 		return
 	}
 	if req.Name == "" {
@@ -80,7 +85,7 @@ func (h *Handler) GetWaiver(w http.ResponseWriter, r *http.Request) {
 	waiver, err := h.usecase.GetWaiver(r.Context(), slug, id)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
-			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
+			respondError(w, http.StatusNotFound, "not_found", waiversMsgNotFound)
 		} else {
 			slog.Error("get waiver", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not get waiver")
@@ -104,7 +109,7 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 		Contexts    []usecase.CreateWaiverContextInput   `json:"contexts,omitempty"`
 		TargetIDs   []string                             `json:"target_ids,omitempty"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_body", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_body", waiversMsgInvalidBody) {
 		return
 	}
 
@@ -140,7 +145,7 @@ func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := h.usecase.DeleteWaiver(r.Context(), slug, id); err != nil {
 		if errors.Is(err, port.ErrNotFound) {
-			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
+			respondError(w, http.StatusNotFound, "not_found", waiversMsgNotFound)
 		} else {
 			slog.Error("delete waiver", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not delete waiver")
@@ -164,7 +169,7 @@ func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 	result, err := h.usecase.ToggleWaiver(r.Context(), slug, id, actorID)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
-			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
+			respondError(w, http.StatusNotFound, "not_found", waiversMsgNotFound)
 		} else {
 			slog.Error("toggle waiver", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not toggle waiver")
@@ -185,7 +190,7 @@ func (h *Handler) ListWaiverEvents(w http.ResponseWriter, r *http.Request) {
 	events, err := h.usecase.ListWaiverEvents(r.Context(), slug, id)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
-			respondError(w, http.StatusNotFound, "not_found", "waiver not found")
+			respondError(w, http.StatusNotFound, "not_found", waiversMsgNotFound)
 		} else {
 			slog.Error("list waiver events", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not list waiver events")
@@ -204,7 +209,7 @@ func (h *Handler) CheckWaiverMatch(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		FindingID string `json:"finding_id"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_body", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_body", waiversMsgInvalidBody) {
 		return
 	}
 	if req.FindingID == "" {

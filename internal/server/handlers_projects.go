@@ -13,13 +13,19 @@ import (
 	"github.com/xMinhx/specht/internal/usecase"
 )
 
+const (
+	projectsMsgInvalidBody  = "invalid request body"
+	projectsMsgAccessDenied = "project access denied"
+	projectsMsgNotFound     = "project not found"
+)
+
 func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name        string `json:"name"`
 		Slug        string `json:"slug"`
 		Description string `json:"description,omitempty"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", projectsMsgInvalidBody) {
 		return
 	}
 	if req.Name == "" || req.Slug == "" {
@@ -45,7 +51,7 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 	projects, err := h.usecase.ListProjects(r.Context())
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
-			respondError(w, http.StatusForbidden, "project_access_denied", "project access denied")
+			respondError(w, http.StatusForbidden, "project_access_denied", projectsMsgAccessDenied)
 			return
 		}
 		slog.Error("list projects", "error", err)
@@ -63,7 +69,7 @@ func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 	}
 	project, err := h.usecase.GetProject(r.Context(), slug)
 	if err != nil {
-		respondError(w, http.StatusNotFound, "not_found", "project not found")
+		respondError(w, http.StatusNotFound, "not_found", projectsMsgNotFound)
 		return
 	}
 	respondJSON(w, http.StatusOK, project)
@@ -75,7 +81,7 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		Name        *string `json:"name"`
 		Description *string `json:"description"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", projectsMsgInvalidBody) {
 		return
 	}
 	if req.Name == nil && req.Description == nil {
@@ -85,10 +91,10 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 	project, err := h.usecase.UpdateProject(r.Context(), slug, req.Name, req.Description)
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
-			respondError(w, http.StatusForbidden, "project_access_denied", "project access denied")
+			respondError(w, http.StatusForbidden, "project_access_denied", projectsMsgAccessDenied)
 			return
 		}
-		respondError(w, http.StatusNotFound, "not_found", "project not found")
+		respondError(w, http.StatusNotFound, "not_found", projectsMsgNotFound)
 		return
 	}
 	respondJSON(w, http.StatusOK, project)
@@ -100,10 +106,10 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 	project, err := h.usecase.DeleteProject(r.Context(), slug)
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
-			respondError(w, http.StatusForbidden, "project_access_denied", "project access denied")
+			respondError(w, http.StatusForbidden, "project_access_denied", projectsMsgAccessDenied)
 			return
 		}
-		respondError(w, http.StatusNotFound, "not_found", "project not found")
+		respondError(w, http.StatusNotFound, "not_found", projectsMsgNotFound)
 		return
 	}
 	respondJSON(w, http.StatusOK, project)
@@ -122,7 +128,7 @@ func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
 	reports, err := h.usecase.ListReports(r.Context(), slug, limit, offset)
 	if err != nil {
 		log.Printf("list reports: %v", err)
-		respondError(w, http.StatusNotFound, "not_found", "project not found")
+		respondError(w, http.StatusNotFound, "not_found", projectsMsgNotFound)
 		return
 	}
 	respondJSON(w, http.StatusOK, reports)
@@ -151,7 +157,7 @@ func (h *Handler) ListProjectMembers(w http.ResponseWriter, r *http.Request) {
 	}
 	members, err := h.usecase.ListProjectMembers(r.Context(), slug)
 	if err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "project access denied")
+		respondError(w, http.StatusForbidden, "project_access_denied", projectsMsgAccessDenied)
 		return
 	}
 	respondJSON(w, http.StatusOK, members)
@@ -163,7 +169,7 @@ func (h *Handler) AddProjectMember(w http.ResponseWriter, r *http.Request) {
 		UserID string `json:"user_id"`
 		Role   string `json:"role"`
 	}
-	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", "invalid request body") {
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", projectsMsgInvalidBody) {
 		return
 	}
 	if req.UserID == "" || req.Role == "" {
@@ -172,7 +178,7 @@ func (h *Handler) AddProjectMember(w http.ResponseWriter, r *http.Request) {
 	}
 	member, err := h.usecase.AddProjectMember(r.Context(), slug, req.UserID, req.Role)
 	if err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", "project access denied")
+		respondError(w, http.StatusForbidden, "project_access_denied", projectsMsgAccessDenied)
 		return
 	}
 	respondJSON(w, http.StatusCreated, member)

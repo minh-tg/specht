@@ -20,6 +20,12 @@ import (
 	"github.com/xMinhx/specht/internal/version"
 )
 
+const (
+	routeProjectsSlug  = "/api/v1/projects/{slug}"
+	routeProjectWaiver = "/api/v1/projects/{slug}/waivers/{id}"
+	headerContentType  = "Content-Type"
+)
+
 // RouterConfig wires the dependencies the API router needs.
 type RouterConfig struct {
 	Usecases     usecaseInterface
@@ -57,7 +63,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   origins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
+		AllowedHeaders:   []string{"Accept", "Authorization", headerContentType},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: true,
 		MaxAge:           300,
@@ -118,9 +124,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(RequireRole(auth.RoleAdmin)).Get("/api/v1/scanners", h.ListScanners)
 		r.Get("/api/v1/projects", h.ListProjects)
 		r.With(RequireRole(auth.RoleAdmin)).Post("/api/v1/projects", h.CreateProject)
-		r.Get("/api/v1/projects/{slug}", h.GetProject)
-		r.Put("/api/v1/projects/{slug}", h.UpdateProject)
-		r.Delete("/api/v1/projects/{slug}", h.DeleteProject)
+		r.Get(routeProjectsSlug, h.GetProject)
+		r.Put(routeProjectsSlug, h.UpdateProject)
+		r.Delete(routeProjectsSlug, h.DeleteProject)
 		r.Get("/api/v1/projects/{slug}/findings", h.ListFindings)
 		r.Get("/api/v1/projects/{slug}/reports", h.ListReports)
 		r.Get("/api/v1/reports/{id}", h.GetReport)
@@ -172,9 +178,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.Get("/api/v1/projects/{slug}/artifacts", h.ListArtifacts)
 		r.Get("/api/v1/projects/{slug}/waivers", h.ListWaivers)
 		r.Post("/api/v1/projects/{slug}/waivers", h.CreateWaiver)
-		r.Get("/api/v1/projects/{slug}/waivers/{id}", h.GetWaiver)
-		r.Put("/api/v1/projects/{slug}/waivers/{id}", h.UpdateWaiver)
-		r.Delete("/api/v1/projects/{slug}/waivers/{id}", h.DeleteWaiver)
+		r.Get(routeProjectWaiver, h.GetWaiver)
+		r.Put(routeProjectWaiver, h.UpdateWaiver)
+		r.Delete(routeProjectWaiver, h.DeleteWaiver)
 		r.Post("/api/v1/projects/{slug}/waivers/{id}/toggle", h.ToggleWaiver)
 		r.Get("/api/v1/projects/{slug}/waivers/{id}/events", h.ListWaiverEvents)
 		r.Post("/api/v1/projects/{slug}/waivers/check-match", h.CheckWaiverMatch)
@@ -242,7 +248,7 @@ func isTrustedProxy(ip net.IP, trusted []netip.Prefix) bool {
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(headerContentType, "application/json")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, `{"status":"ok","version":%q,"commit":%q}`, version.Version, version.Commit)
 }
@@ -250,7 +256,7 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 // versionHandler reports the server build info. Unauthenticated so
 // deployment tooling and self-host operators can verify what is running.
 func versionHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(headerContentType, "application/json")
 	w.WriteHeader(http.StatusOK)
 	fmt.Fprintf(w, `{"version":%q,"commit":%q}`, version.Version, version.Commit)
 }
