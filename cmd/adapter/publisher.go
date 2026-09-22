@@ -107,6 +107,43 @@ type gitHubCheckRunAnnotation struct {
 	Title           string `json:"title,omitempty"`
 }
 
+// checkRunAnnotationLevel maps a preview annotation level to the Checks API
+// annotation level.
+func checkRunAnnotationLevel(level string) string {
+	switch strings.ToLower(level) {
+	case "warning":
+		return "warning"
+	case "info", "notice":
+		return "notice"
+	default:
+		return "failure"
+	}
+}
+
+// toCheckRunAnnotation converts one preview annotation, skipping entries
+// without a file path.
+func toCheckRunAnnotation(a client.PRCheckAnnotation) (gitHubCheckRunAnnotation, bool) {
+	if a.File == "" {
+		return gitHubCheckRunAnnotation{}, false
+	}
+	startLine := a.StartLine
+	if startLine <= 0 {
+		startLine = 1
+	}
+	endLine := a.EndLine
+	if endLine < startLine {
+		endLine = startLine
+	}
+	return gitHubCheckRunAnnotation{
+		Path:            a.File,
+		StartLine:       startLine,
+		EndLine:         endLine,
+		AnnotationLevel: checkRunAnnotationLevel(a.Level),
+		Message:         a.Message,
+		Title:           a.Title,
+	}, true
+}
+
 // publishGitHubCheckRun posts a check run to the GitHub Checks API.
 func publishGitHubCheckRun(ctx context.Context, hc *http.Client, token, repo, commit string, preview *client.PRCheckPreview) error {
 	if token == "" || repo == "" || commit == "" || preview == nil {
@@ -123,34 +160,9 @@ func publishGitHubCheckRun(ctx context.Context, hc *http.Client, token, repo, co
 
 	var ghAnnotations []gitHubCheckRunAnnotation
 	for _, a := range preview.Annotations {
-		if a.File == "" {
-			continue
+		if ann, ok := toCheckRunAnnotation(a); ok {
+			ghAnnotations = append(ghAnnotations, ann)
 		}
-		level := "failure"
-		switch strings.ToLower(a.Level) {
-		case "warning":
-			level = "warning"
-		case "info", "notice":
-			level = "notice"
-		}
-
-		startLine := a.StartLine
-		if startLine <= 0 {
-			startLine = 1
-		}
-		endLine := a.EndLine
-		if endLine < startLine {
-			endLine = startLine
-		}
-
-		ghAnnotations = append(ghAnnotations, gitHubCheckRunAnnotation{
-			Path:            a.File,
-			StartLine:       startLine,
-			EndLine:         endLine,
-			AnnotationLevel: level,
-			Message:         a.Message,
-			Title:           a.Title,
-		})
 	}
 
 	payload := gitHubCheckRunRequest{
