@@ -1,7 +1,7 @@
 ---
 rfc: 0001
 title: Unified Finding Fingerprinting & Identity Specification
-author: Specht Core Engineering
+author: minh-tg
 status: Implemented
 created: 2026-09-09
 updated: 2026-09-09

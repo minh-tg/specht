@@ -1,7 +1,7 @@
 ---
 rfc: 0002
 title: Staged Bulk Ingest Pipeline & Change-Scoped CI Gating
-author: Specht Core Engineering
+author: minh-tg
 status: Accepted
 created: 2026-09-17
 updated: 2026-09-17
