@@ -18,197 +18,170 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, nil))
 }
 
-func run(args []string, stdin io.Reader, stdout, stderr io.Writer, hc *http.Client) int {
+// adapterFlags holds the parsed command-line flags for one adapter run.
+type adapterFlags struct {
+	severity        string
+	status          string
+	project         string
+	tool            string
+	excludeTool     string
+	file            string
+	introducedOnly  bool
+	baseRef         string
+	commit          string
+	branch          string
+	scanMode        string
+	baselinePolicy  string
+	annotations     bool
+	publishCheck    bool
+	githubToken     string
+	githubRepo      string
+	summaryFile     string
+	help            bool
+	inGitHubActions bool
+}
+
+// parseFlags defines and parses the adapter flag set. It returns nil when
+// parsing failed (flag already wrote the error to stderr).
+func parseFlags(args []string, stderr io.Writer, inGitHubActions bool) *adapterFlags {
 	fs := flag.NewFlagSet("specht-adapter", flag.ContinueOnError)
 	fs.SetOutput(stderr)
+	f := &adapterFlags{inGitHubActions: inGitHubActions}
 
-	severity := fs.String("severity", "", "Severity threshold (comma-separated, default: high,critical)")
-	status := fs.String("status", "", "Finding status filter (default: open)")
-	project := fs.String("project", "", "Project slug (overrides stdin)")
-	tool := fs.String("tool", "", "Scanner name (overrides scanner detected in stdin payload)")
-	excludeTool := fs.String("exclude-tool", "", "Skip if scanner matches this name")
-	file := fs.String("file", "", "Path to scan result file (default: read from stdin)")
-	introducedOnly := fs.Bool("introduced-only", false, "Gate strictly on introduced vulnerabilities")
-	baseRef := fs.String("base-ref", "", "Baseline git ref/branch/commit (e.g. main)")
-	commit := fs.String("commit", "", "Current commit SHA")
-	branch := fs.String("branch", "", "Current branch name")
-	scanMode := fs.String("scan-mode", "", "Scan mode: full or incremental")
-	baselinePolicy := fs.String("baseline-policy", "warn", "Missing baseline action: warn or fail (default: warn)")
-
-	// CI & PR Check Publisher flags
-	inGitHubActions := os.Getenv("GITHUB_ACTIONS") == "true"
-	annotations := fs.Bool("annotations", inGitHubActions, "Emit GitHub Actions workflow command annotations")
-	publishCheck := fs.Bool("publish-check", false, "Publish GitHub check run via API (default: true if GITHUB_TOKEN & GITHUB_REPOSITORY are set in CI)")
-	githubToken := fs.String("github-token", getEnvAny("GITHUB_TOKEN", "GH_TOKEN"), "GitHub token for check-runs API")
-	githubRepo := fs.String("github-repo", os.Getenv("GITHUB_REPOSITORY"), "GitHub repository (owner/repo)")
-	summaryFile := fs.String("summary-file", os.Getenv("GITHUB_STEP_SUMMARY"), "Path to write Markdown summary (e.g. GITHUB_STEP_SUMMARY)")
-	help := fs.Bool("help", false, "Show usage")
+	fs.StringVar(&f.severity, "severity", "", "Severity threshold (comma-separated, default: high,critical)")
+	fs.StringVar(&f.status, "status", "", "Finding status filter (default: open)")
+	fs.StringVar(&f.project, "project", "", "Project slug (overrides stdin)")
+	fs.StringVar(&f.tool, "tool", "", "Scanner name (overrides scanner detected in stdin payload)")
+	fs.StringVar(&f.excludeTool, "exclude-tool", "", "Skip if scanner matches this name")
+	fs.StringVar(&f.file, "file", "", "Path to scan result file (default: read from stdin)")
+	fs.BoolVar(&f.introducedOnly, "introduced-only", false, "Gate strictly on introduced vulnerabilities")
+	fs.StringVar(&f.baseRef, "base-ref", "", "Baseline git ref/branch/commit (e.g. main)")
+	fs.StringVar(&f.commit, "commit", "", "Current commit SHA")
+	fs.StringVar(&f.branch, "branch", "", "Current branch name")
+	fs.StringVar(&f.scanMode, "scan-mode", "", "Scan mode: full or incremental")
+	fs.StringVar(&f.baselinePolicy, "baseline-policy", "warn", "Missing baseline action: warn or fail (default: warn)")
+	fs.BoolVar(&f.annotations, "annotations", inGitHubActions, "Emit GitHub Actions workflow command annotations")
+	fs.BoolVar(&f.publishCheck, "publish-check", false, "Publish GitHub check run via API (default: true if GITHUB_TOKEN & GITHUB_REPOSITORY are set in CI)")
+	fs.StringVar(&f.githubToken, "github-token", getEnvAny("GITHUB_TOKEN", "GH_TOKEN"), "GitHub token for check-runs API")
+	fs.StringVar(&f.githubRepo, "github-repo", os.Getenv("GITHUB_REPOSITORY"), "GitHub repository (owner/repo)")
+	fs.StringVar(&f.summaryFile, "summary-file", os.Getenv("GITHUB_STEP_SUMMARY"), "Path to write Markdown summary (e.g. GITHUB_STEP_SUMMARY)")
+	fs.BoolVar(&f.help, "help", false, "Show usage")
 
 	if err := fs.Parse(args); err != nil {
-		return 2
+		return nil
 	}
+	return f
+}
 
-	if *help {
-		printUsage(stderr)
-		return 0
-	}
-
-	detectCIEnvironment(baseRef, commit, branch)
-
-	apiURL := os.Getenv("API_URL")
-	if apiURL == "" {
-		apiURL = "http://localhost:8080"
-	}
-	apiURL = strings.TrimRight(apiURL, "/")
-
-	apiKey := os.Getenv("API_KEY")
-	if apiKey == "" {
-		fmt.Fprintln(stderr, "error: API_KEY environment variable is required")
-		return 2
-	}
-
+// readRawInput loads the scan result from the file flag or stdin.
+func readRawInput(file string, stdin io.Reader, stderr io.Writer) ([]byte, int) {
 	var rawInput []byte
 	var err error
-	if *file != "" {
-		rawInput, err = os.ReadFile(*file)
+	if file != "" {
+		rawInput, err = os.ReadFile(file)
 		if err != nil {
-			fmt.Fprintf(stderr, "error: reading file %q: %v\n", *file, err)
-			return 2
+			fmt.Fprintf(stderr, "error: reading file %q: %v\n", file, err)
+			return nil, 2
 		}
 	} else {
 		rawInput, err = io.ReadAll(stdin)
 		if err != nil {
 			fmt.Fprintf(stderr, "error: reading stdin: %v\n", err)
-			return 2
+			return nil, 2
 		}
 	}
-
 	if len(bytes.TrimSpace(rawInput)) == 0 {
 		fmt.Fprintln(stderr, "error: input is empty, provide a scan result file or pipe to stdin")
-		return 2
+		return nil, 2
 	}
+	return rawInput, 0
+}
 
+// buildPayload decodes the raw input and layers flag/env overrides on top.
+// A non-zero code means the caller should exit (2 = validation failure
+// already printed on stderr; 1 = skipped by -exclude-tool).
+func buildPayload(rawInput []byte, f *adapterFlags, stderr io.Writer) (client.IngestPayload, int) {
 	var payload client.IngestPayload
 	_ = json.Unmarshal(rawInput, &payload)
 	if len(payload.RawData) == 0 {
 		payload.RawData = rawInput
 	}
 
-	if *project != "" {
-		payload.Project = *project
+	if f.project != "" {
+		payload.Project = f.project
 	}
 	if payload.Project == "" {
 		if p := os.Getenv("SPECHT_PROJECT"); p != "" {
 			payload.Project = p
 		}
 	}
-
-	if *tool != "" {
-		payload.Scanner = *tool
+	if f.tool != "" {
+		payload.Scanner = f.tool
 	}
-
 	if payload.Scanner == "" {
 		fmt.Fprintln(stderr, "error: scanner is required (use -tool flag or specify in payload)")
-		return 2
+		return payload, 2
 	}
-
-	if *excludeTool != "" && strings.EqualFold(payload.Scanner, *excludeTool) {
+	if f.excludeTool != "" && strings.EqualFold(payload.Scanner, f.excludeTool) {
 		fmt.Fprintf(stderr, "skipped: scanner %q excluded by -exclude-tool flag\n", payload.Scanner)
-		return 0
+		return payload, -1
 	}
 
-	if *severity != "" {
-		payload.GateSeverity = *severity
-	}
-	if *status != "" {
-		payload.GateStatus = *status
-	}
-	if *baseRef != "" {
-		payload.BaseRevision = *baseRef
-	}
-	if *commit != "" {
-		payload.CommitSha = *commit
-	}
-	if *branch != "" {
-		payload.Branch = *branch
-	}
-	if *scanMode != "" {
-		payload.ScanMode = *scanMode
-	}
+	applyGateFlags(&payload, f)
+	return payload, 0
+}
 
-	isIntroducedOnly := *introducedOnly || *baseRef != ""
-	if isIntroducedOnly {
+// applyGateFlags copies the gate-scope flags onto the payload.
+func applyGateFlags(payload *client.IngestPayload, f *adapterFlags) {
+	if f.severity != "" {
+		payload.GateSeverity = f.severity
+	}
+	if f.status != "" {
+		payload.GateStatus = f.status
+	}
+	if f.baseRef != "" {
+		payload.BaseRevision = f.baseRef
+	}
+	if f.commit != "" {
+		payload.CommitSha = f.commit
+	}
+	if f.branch != "" {
+		payload.Branch = f.branch
+	}
+	if f.scanMode != "" {
+		payload.ScanMode = f.scanMode
+	}
+	if f.introducedOnly || f.baseRef != "" {
 		payload.GateIntroducedOnly = true
 	}
+}
 
-	opts := []client.Option{client.WithToken(apiKey)}
-	if hc != nil {
-		opts = append(opts, client.WithHTTPClient(hc))
+// publishPreview emits the CI-side outputs (annotations, step summary,
+// check run) for a resolved PR check preview.
+func publishPreview(f *adapterFlags, payload client.IngestPayload, preview *client.PRCheckPreview, stderr io.Writer, hc *http.Client) {
+	if preview == nil {
+		return
 	}
-	cl := client.New(apiURL, opts...)
-
-	resp, err := cl.IngestReport(&payload)
-	if err != nil {
-		fmt.Fprintf(stderr, "error: ingest failed: %v\n", err)
-		return 2
-	}
-
-	if resp.FallbackReason != "" {
-		fmt.Fprintf(stderr, "⚠️  BASELINE WARNING: %s\n", resp.FallbackReason)
-		if strings.EqualFold(*baselinePolicy, "fail") {
-			fmt.Fprintln(stderr, "gate FAILED: missing baseline under baseline-policy=fail")
-			return 1
-		}
-	}
-
-	// Fetch PR Check Preview for detailed annotations and summary if commit SHA is present
-	var preview *client.PRCheckPreview
-	if payload.CommitSha != "" {
-		preview, _ = cl.PreviewPRCheck(payload.Project, payload.CommitSha, "github", resp.ReportID, *severity)
-	}
-
-	// Emit inline GitHub Actions annotations if enabled
-	if *annotations && preview != nil && len(preview.Annotations) > 0 {
+	if f.annotations && len(preview.Annotations) > 0 {
 		emitGitHubWorkflowAnnotations(stderr, preview.Annotations)
 	}
-
-	// Write Markdown Step Summary if target is provided
-	if *summaryFile != "" && preview != nil && preview.Summary != "" {
-		if err := writeStepSummary(*summaryFile, preview.Summary); err != nil {
+	if f.summaryFile != "" && preview.Summary != "" {
+		if err := writeStepSummary(f.summaryFile, preview.Summary); err != nil {
 			fmt.Fprintf(stderr, "⚠️  could not write step summary: %v\n", err)
 		}
 	}
-
-	// Publish GitHub Check Run if explicitly requested or auto-configured with token & repo
-	shouldPublish := *publishCheck || (inGitHubActions && *githubToken != "" && *githubRepo != "")
-	if shouldPublish && *githubToken != "" && *githubRepo != "" && preview != nil {
-		if err := publishGitHubCheckRun(context.Background(), hc, *githubToken, *githubRepo, payload.CommitSha, preview); err != nil {
+	shouldPublish := f.publishCheck || (f.inGitHubActions && f.githubToken != "" && f.githubRepo != "")
+	if shouldPublish && f.githubToken != "" && f.githubRepo != "" {
+		if err := publishGitHubCheckRun(context.Background(), hc, f.githubToken, f.githubRepo, payload.CommitSha, preview); err != nil {
 			fmt.Fprintf(stderr, "⚠️  could not publish github check run: %v\n", err)
 		}
 	}
+}
 
-	if isIntroducedOnly {
-		if resp.ThresholdBreached {
-			fmt.Fprintln(stderr, "❌ SPECHT SECURITY GATE: FAILED")
-			printContextBanner(stderr, payload)
-			if preview != nil && len(preview.Annotations) > 0 {
-				fmt.Fprintf(stderr, "\n🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE (%d):\n", len(preview.Annotations))
-				for _, a := range preview.Annotations {
-					loc := a.File
-					if a.StartLine > 0 {
-						loc = fmt.Sprintf("%s:%d", a.File, a.StartLine)
-					}
-					fmt.Fprintf(stderr, "  • [%s] %s: %s\n", strings.ToUpper(a.Level), a.Title, loc)
-				}
-			} else {
-				fmt.Fprintf(stderr, "\n🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE: %d\n", resp.IntroducedCount)
-			}
-			if resp.PreExistingCount > 0 {
-				fmt.Fprintf(stderr, "ℹ️  PRE-EXISTING DEBT IN BASELINE: %d findings ignored for this gate\n", resp.PreExistingCount)
-			}
-			return 1
-		}
-
+// reportIntroducedGate prints the change-scoped verdict and returns its
+// exit code (0 pass, 1 breached).
+func reportIntroducedGate(resp *client.IngestResponse, preview *client.PRCheckPreview, payload client.IngestPayload, stderr io.Writer) int {
+	if !resp.ThresholdBreached {
 		fmt.Fprintln(stderr, "✅ SPECHT SECURITY GATE: PASSED")
 		printContextBanner(stderr, payload)
 		if resp.PreExistingCount > 0 {
@@ -217,21 +190,106 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, hc *http.Clie
 		return 0
 	}
 
-	fmt.Fprintf(stderr, "report %s ingested, %d finding(s)\n", resp.ReportID, resp.TotalFindings)
+	fmt.Fprintln(stderr, "❌ SPECHT SECURITY GATE: FAILED")
+	printContextBanner(stderr, payload)
+	if preview != nil && len(preview.Annotations) > 0 {
+		fmt.Fprintf(stderr, "\n🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE (%d):\n", len(preview.Annotations))
+		for _, a := range preview.Annotations {
+			loc := a.File
+			if a.StartLine > 0 {
+				loc = fmt.Sprintf("%s:%d", a.File, a.StartLine)
+			}
+			fmt.Fprintf(stderr, "  • [%s] %s: %s\n", strings.ToUpper(a.Level), a.Title, loc)
+		}
+	} else {
+		fmt.Fprintf(stderr, "\n🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE: %d\n", resp.IntroducedCount)
+	}
+	if resp.PreExistingCount > 0 {
+		fmt.Fprintf(stderr, "ℹ️  PRE-EXISTING DEBT IN BASELINE: %d findings ignored for this gate\n", resp.PreExistingCount)
+	}
+	return 1
+}
 
-	gate, err := cl.GetGateStatus(payload.Project, *severity)
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer, hc *http.Client) int {
+	inGitHubActions := os.Getenv("GITHUB_ACTIONS") == "true"
+	f := parseFlags(args, stderr, inGitHubActions)
+	if f == nil {
+		return 2
+	}
+	if f.help {
+		printUsage(stderr)
+		return 0
+	}
+	detectCIEnvironment(&f.baseRef, &f.commit, &f.branch)
+
+	apiURL := strings.TrimRight(envOr("API_URL", "http://localhost:8080"), "/")
+	apiKey := os.Getenv("API_KEY")
+	if apiKey == "" {
+		fmt.Fprintln(stderr, "error: API_KEY environment variable is required")
+		return 2
+	}
+
+	rawInput, code := readRawInput(f.file, stdin, stderr)
+	if code != 0 {
+		return code
+	}
+	payload, code := buildPayload(rawInput, f, stderr)
+	if code == -1 {
+		return 0 // skipped by -exclude-tool
+	}
+	if code != 0 {
+		return code
+	}
+
+	cl := client.New(apiURL, client.WithToken(apiKey))
+	if hc != nil {
+		cl = client.New(apiURL, client.WithToken(apiKey), client.WithHTTPClient(hc))
+	}
+
+	resp, err := cl.IngestReport(&payload)
+	if err != nil {
+		fmt.Fprintf(stderr, "error: ingest failed: %v\n", err)
+		return 2
+	}
+	if resp.FallbackReason != "" {
+		fmt.Fprintf(stderr, "⚠️  BASELINE WARNING: %s\n", resp.FallbackReason)
+		if strings.EqualFold(f.baselinePolicy, "fail") {
+			fmt.Fprintln(stderr, "gate FAILED: missing baseline under baseline-policy=fail")
+			return 1
+		}
+	}
+
+	// Fetch PR Check Preview for detailed annotations and summary if commit SHA is present
+	var preview *client.PRCheckPreview
+	if payload.CommitSha != "" {
+		preview, _ = cl.PreviewPRCheck(payload.Project, payload.CommitSha, "github", resp.ReportID, f.severity)
+	}
+	publishPreview(f, payload, preview, stderr, hc)
+
+	if payload.GateIntroducedOnly {
+		return reportIntroducedGate(resp, preview, payload, stderr)
+	}
+
+	fmt.Fprintf(stderr, "report %s ingested, %d finding(s)\n", resp.ReportID, resp.TotalFindings)
+	gateResp, err := cl.GetGateStatus(payload.Project, f.severity)
 	if err != nil {
 		fmt.Fprintf(stderr, "error: gate check failed: %v\n", err)
 		return 2
 	}
-
-	if gate.ThresholdBreached {
-		fmt.Fprintf(stderr, "gate FAILED: %d blocking finding(s)\n", gate.BlockingCount)
+	if gateResp.ThresholdBreached {
+		fmt.Fprintf(stderr, "gate FAILED: %d blocking finding(s)\n", gateResp.BlockingCount)
 		return 1
 	}
-
 	fmt.Fprintln(stderr, "gate PASSED: no blocking findings")
 	return 0
+}
+
+// envOr reads an environment variable, falling back to a default.
+func envOr(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 
 func printContextBanner(w io.Writer, p client.IngestPayload) {
