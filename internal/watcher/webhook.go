@@ -100,7 +100,10 @@ func (n *WebhookNotifier) Notify(ctx context.Context, notifications []Notificati
 		n.logger.Error("webhook payload build failed", "error", err, "count", len(notifications))
 		return nil
 	}
-	postNotifications(ctx, n.logger, n.client, n.sleeper, "webhook", n.webhookURL, n.secret, body, len(notifications))
+	postNotifications(ctx, postRequest{
+		logger: n.logger, client: n.client, sleeper: n.sleeper,
+		channel: "webhook", webhookURL: n.webhookURL, secret: n.secret,
+	}, body, len(notifications))
 	return nil
 }
 
@@ -129,23 +132,35 @@ func (f *FanoutNotifier) Notify(ctx context.Context, notifications []Notificatio
 	return nil
 }
 
+// postRequest carries the shared delivery parameters for postNotifications.
+type postRequest struct {
+	logger     *slog.Logger
+	client     *http.Client
+	sleeper    func(ctx context.Context, d time.Duration) error
+	channel    string
+	webhookURL string
+	secret     string
+}
+
 // postNotifications is the shared delivery loop behind every channel:
 // sign, POST up to notifierMaxAttempts times with doubling backoff, log and
 // swallow everything. 2xx stops the loop.
-func postNotifications(ctx context.Context, logger *slog.Logger, client *http.Client, sleeper func(ctx context.Context, d time.Duration) error, channel, webhookURL, secret string, body []byte, count int) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, webhookURL, bytes.NewReader(body))
+func postNotifications(ctx context.Context, p postRequest, body []byte, count int) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.webhookURL, bytes.NewReader(body))
 	if err != nil {
-		logger.Error(channel+" notification request build failed", "error", err)
+		p.logger.Error(p.channel+" notification request build failed", "error", err)
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if secret != "" {
-		req.Header.Set(SlackSignatureHeader, SignSlackBody(body, secret))
+	if p.secret != "" {
+		req.Header.Set(SlackSignatureHeader, SignSlackBody(body, p.secret))
 	}
 
+	logger := p.logger
+	channel := p.channel
 	backoff := notifierBaseBackoff
 	for attempt := 1; attempt <= notifierMaxAttempts; attempt++ {
-		resp, err := client.Do(req)
+		resp, err := p.client.Do(req)
 		switch {
 		case err == nil && resp.StatusCode >= 200 && resp.StatusCode < 300:
 			io.Copy(io.Discard, resp.Body)
@@ -163,7 +178,7 @@ func postNotifications(ctx context.Context, logger *slog.Logger, client *http.Cl
 				"attempt", attempt, "error", err)
 		}
 		if attempt < notifierMaxAttempts {
-			if err := sleeper(ctx, backoff); err != nil {
+			if err := p.sleeper(ctx, backoff); err != nil {
 				logger.Warn(channel+" notification aborted", "error", err)
 				return
 			}

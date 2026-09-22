@@ -132,7 +132,10 @@ func (n *SlackNotifier) Notify(ctx context.Context, notifications []Notification
 		return nil
 	}
 
-	postNotifications(ctx, n.logger, n.client, n.sleeper, "slack", n.webhookURL, n.secret, body, len(notifications))
+	postNotifications(ctx, postRequest{
+		logger: n.logger, client: n.client, sleeper: n.sleeper,
+		channel: "slack", webhookURL: n.webhookURL, secret: n.secret,
+	}, body, len(notifications))
 	return nil
 }
 
