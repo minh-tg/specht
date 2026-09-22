@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"net/http"
 	"testing"
@@ -93,6 +94,47 @@ func TestRootRegistersWatcher(t *testing.T) {
 	}
 	if gotPath != "/api/v1/watcher/status" {
 		t.Fatalf("request path = %q", gotPath)
+	}
+}
+
+func TestExecuteMapsExitCodes(t *testing.T) {
+	tests := []struct {
+		name     string
+		response string
+		newError error
+		want     int
+	}{
+		{name: "passed gate", response: `{"threshold_breached":false,"blocking_count":0}`, want: 0},
+		{name: "breached gate", response: `{"threshold_breached":true,"blocking_count":1}`, want: 1},
+		{name: "runtime error", newError: errors.New("client unavailable"), want: 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var out, errW bytes.Buffer
+			d := Deps{
+				NewClient: func() (*client.Client, error) {
+					if tt.newError != nil {
+						return nil, tt.newError
+					}
+					transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+						return &http.Response{
+							StatusCode: http.StatusOK,
+							Body:       io.NopCloser(bytes.NewBufferString(tt.response)),
+							Header:     make(http.Header),
+						}, nil
+					})
+					return client.New("http://test", client.WithHTTPClient(&http.Client{Transport: transport})), nil
+				},
+				Out:  &out,
+				ErrW: &errW,
+			}
+
+			got := Execute([]string{"gate", "check", "--project", "demo"}, d)
+			if got != tt.want {
+				t.Fatalf("exit code = %d, want %d; stderr = %q", got, tt.want, errW.String())
+			}
+		})
 	}
 }
 
