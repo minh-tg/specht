@@ -77,6 +77,15 @@ type PRCheckPreview struct {
 // PreviewPRCheck plans (but never publishes) the pull-request check for a
 // change. Findings without a mappable location degrade to summary counts;
 // waived findings never annotate.
+// previewScope is the resolved introduced-set + gate-verdict pair for one
+// PR check preview: report scope ties to one exact scan, commit scope to
+// the change.
+type previewScope struct {
+	introduced []port.Finding
+	decision   gate.Decision
+	branch     string
+}
+
 func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput) (*PRCheckPreview, error) {
 	if strings.TrimSpace(input.CommitSha) == "" {
 		return nil, fmt.Errorf("commit_sha is required")
@@ -101,51 +110,94 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 		floor = 3
 	}
 
-	// Resolve the introduced set and the breach verdict together: report
-	// scope ties to one exact scan, commit scope to the change.
-	var introduced []port.Finding
-	var decision gate.Decision
-	branch := ""
 	u.initGate()
-	policies := gatePoliciesForProject(project)
-	if input.ReportID != "" {
-		report, err := u.deps.Stores.Reports.GetByID(ctx, input.ReportID)
-		if err != nil {
-			return nil, fmt.Errorf("lookup report %q: %w", input.ReportID, err)
-		}
-		if report.ProjectID != project.ID {
-			return nil, ErrProjectAccessDenied
-		}
-		if report.CommitSha != nil && normalizeRevision(*report.CommitSha) != "" &&
-			normalizeRevision(*report.CommitSha) != input.CommitSha {
-			return nil, fmt.Errorf("report %q scanned commit %q, not %q", input.ReportID, *report.CommitSha, input.CommitSha)
-		}
-		if report.Branch != nil {
-			branch = *report.Branch
-		}
-		introduced, err = u.deps.Stores.Findings.ListIntroducedByReport(ctx, project.ID, input.ReportID)
-		if err != nil {
-			return nil, fmt.Errorf("list introduced findings: %w", err)
-		}
-		decision, err = u.gate.EvaluateIntroducedOnly(ctx, project.ID, floor, input.ReportID, policies)
-		if err != nil {
-			return nil, fmt.Errorf("gate eval: %w", err)
-		}
-	} else {
-		introduced, err = u.listIntroducedAtCommit(ctx, project.ID, input.CommitSha)
-		if err != nil {
-			return nil, fmt.Errorf("list findings: %w", err)
-		}
-		decision, err = u.gate.EvaluateIntroducedAtCommit(ctx, project.ID, floor, input.CommitSha, policies)
-		if err != nil {
-			return nil, fmt.Errorf("gate eval: %w", err)
-		}
+	scope, err := u.resolvePreviewScope(ctx, project, input, floor)
+	if err != nil {
+		return nil, err
 	}
 
-	blocked := blockedSet(decision.BlockedBy)
+	findings, err := u.blockedProviderFindings(ctx, scope, floor)
+	if err != nil {
+		return nil, err
+	}
+
+	plan, err := p.PlanCheck(provider.CheckInput{
+		CommitSha: input.CommitSha,
+		ReportID:  input.ReportID,
+		Branch:    scope.branch,
+		Breached:  scope.decision.Status == gate.StatusFail,
+		Findings:  findings,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("plan check: %w", err)
+	}
+
+	return buildPRCheckPreview(&plan, scope.decision), nil
+}
+
+// resolvePreviewScope resolves the introduced set and the breach verdict
+// together for the requested scope (report ID or commit).
+func (u *Usecases) resolvePreviewScope(ctx context.Context, project port.Project, input PRCheckPreviewInput, floor int16) (previewScope, error) {
+	var scope previewScope
+	policies := gatePoliciesForProject(project)
+	var err error
+	if input.ReportID == "" {
+		scope.introduced, err = u.listIntroducedAtCommit(ctx, project.ID, input.CommitSha)
+		if err != nil {
+			return scope, fmt.Errorf("list findings: %w", err)
+		}
+		scope.decision, err = u.gate.EvaluateIntroducedAtCommit(ctx, project.ID, floor, input.CommitSha, policies)
+		if err != nil {
+			return scope, fmt.Errorf("gate eval: %w", err)
+		}
+		return scope, nil
+	}
+	return u.resolveReportScope(ctx, project, input, floor, policies)
+}
+
+// resolveReportScope resolves the introduced set and verdict for one exact
+// report, validating that the report belongs to the project and scanned
+// the requested commit.
+func (u *Usecases) resolveReportScope(
+	ctx context.Context,
+	project port.Project,
+	input PRCheckPreviewInput,
+	floor int16,
+	policies []gate.GatePolicy,
+) (previewScope, error) {
+	var scope previewScope
+	report, err := u.deps.Stores.Reports.GetByID(ctx, input.ReportID)
+	if err != nil {
+		return scope, fmt.Errorf("lookup report %q: %w", input.ReportID, err)
+	}
+	if report.ProjectID != project.ID {
+		return scope, ErrProjectAccessDenied
+	}
+	if report.CommitSha != nil && normalizeRevision(*report.CommitSha) != "" &&
+		normalizeRevision(*report.CommitSha) != input.CommitSha {
+		return scope, fmt.Errorf("report %q scanned commit %q, not %q", input.ReportID, *report.CommitSha, input.CommitSha)
+	}
+	if report.Branch != nil {
+		scope.branch = *report.Branch
+	}
+	scope.introduced, err = u.deps.Stores.Findings.ListIntroducedByReport(ctx, project.ID, input.ReportID)
+	if err != nil {
+		return scope, fmt.Errorf("list introduced findings: %w", err)
+	}
+	scope.decision, err = u.gate.EvaluateIntroducedOnly(ctx, project.ID, floor, input.ReportID, policies)
+	if err != nil {
+		return scope, fmt.Errorf("gate eval: %w", err)
+	}
+	return scope, nil
+}
+
+// blockedProviderFindings maps the gate-blocked introduced findings (at or
+// above the floor) into provider findings with display context attached.
+func (u *Usecases) blockedProviderFindings(ctx context.Context, scope previewScope, floor int16) ([]provider.Finding, error) {
+	blocked := blockedSet(scope.decision.BlockedBy)
 	var blockedIntroduced []port.Finding
 	var blockedIDs []string
-	for _, f := range introduced {
+	for _, f := range scope.introduced {
 		if f.CurrentSeverityRank < floor {
 			continue
 		}
@@ -155,55 +207,54 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 		blockedIntroduced = append(blockedIntroduced, f)
 		blockedIDs = append(blockedIDs, f.ID)
 	}
-
-	var findings []provider.Finding
-	if len(blockedIntroduced) > 0 {
-		dcList, err := u.deps.Stores.Findings.ListFindingDisplayContextsByIDs(ctx, blockedIDs)
-		if err != nil {
-			return nil, fmt.Errorf("list finding display contexts: %w", err)
-		}
-		dcMap := make(map[string]port.FindingDisplayContext, len(dcList))
-		for _, dc := range dcList {
-			dcMap[dc.FindingID] = dc
-		}
-
-		findings = make([]provider.Finding, 0, len(blockedIntroduced))
-		for _, f := range blockedIntroduced {
-			pf := provider.Finding{
-				ID:           f.ID,
-				Title:        f.CurrentTitle,
-				Severity:     f.CurrentSeverity,
-				SeverityRank: f.CurrentSeverityRank,
-				Fingerprint:  f.Fingerprint,
-				Introduced:   true,
-			}
-			if dc, ok := dcMap[f.ID]; ok {
-				loc := locationFromDisplay(dc.LocationSummary, dc.Metadata)
-				if loc != nil {
-					pf.File = loc.File
-					pf.StartLine = loc.StartLine
-					pf.EndLine = loc.EndLine
-				}
-				rem := remediationFromMetadata(dc.Metadata, dc.ToolName, f.FindingKind)
-				if rem != nil {
-					pf.RemediationURL = rem.URL
-				}
-			}
-			findings = append(findings, pf)
-		}
+	if len(blockedIntroduced) == 0 {
+		return nil, nil
 	}
 
-	plan, err := p.PlanCheck(provider.CheckInput{
-		CommitSha: input.CommitSha,
-		ReportID:  input.ReportID,
-		Branch:    branch,
-		Breached:  decision.Status == gate.StatusFail,
-		Findings:  findings,
-	})
+	dcList, err := u.deps.Stores.Findings.ListFindingDisplayContextsByIDs(ctx, blockedIDs)
 	if err != nil {
-		return nil, fmt.Errorf("plan check: %w", err)
+		return nil, fmt.Errorf("list finding display contexts: %w", err)
+	}
+	dcMap := make(map[string]port.FindingDisplayContext, len(dcList))
+	for _, dc := range dcList {
+		dcMap[dc.FindingID] = dc
 	}
 
+	findings := make([]provider.Finding, 0, len(blockedIntroduced))
+	for _, f := range blockedIntroduced {
+		pf := provider.Finding{
+			ID:           f.ID,
+			Title:        f.CurrentTitle,
+			Severity:     f.CurrentSeverity,
+			SeverityRank: f.CurrentSeverityRank,
+			Fingerprint:  f.Fingerprint,
+			Introduced:   true,
+		}
+		applyDisplayContext(&pf, dcMap[f.ID], f.FindingKind)
+		findings = append(findings, pf)
+	}
+	return findings, nil
+}
+
+// applyDisplayContext fills location and remediation from the finding's
+// stored display context when present.
+func applyDisplayContext(pf *provider.Finding, dc port.FindingDisplayContext, findingKind string) {
+	if dc.FindingID == "" {
+		return
+	}
+	if loc := locationFromDisplay(dc.LocationSummary, dc.Metadata); loc != nil {
+		pf.File = loc.File
+		pf.StartLine = loc.StartLine
+		pf.EndLine = loc.EndLine
+	}
+	if rem := remediationFromMetadata(dc.Metadata, dc.ToolName, findingKind); rem != nil {
+		pf.RemediationURL = rem.URL
+	}
+}
+
+// buildPRCheckPreview projects a provider plan plus the gate decision onto
+// the CLI/API preview shape.
+func buildPRCheckPreview(plan *provider.CheckPlan, decision gate.Decision) *PRCheckPreview {
 	out := &PRCheckPreview{
 		Provider:      plan.Provider,
 		CommitSha:     plan.CommitSha,
@@ -229,7 +280,7 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 			Message:    a.Message,
 		})
 	}
-	return out, nil
+	return out
 }
 
 // providers returns the configured provider registry, defaulting to a

@@ -161,15 +161,8 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 	if err != nil {
 		return nil, fmt.Errorf("invalid user id: %w", err)
 	}
-
-	if !finding.ValidateAnalysisState(input.AnalysisState) {
-		return nil, fmt.Errorf("%w: %q", ErrInvalidState, input.AnalysisState)
-	}
-
-	for _, id := range input.FindingIDs {
-		if _, err := uuid.Parse(id); err != nil {
-			return nil, fmt.Errorf("invalid finding id %q: %w", id, err)
-		}
+	if err := validateBulkTriage(input); err != nil {
+		return nil, err
 	}
 
 	findings, err := u.deps.Stores.Findings.ListByIDs(ctx, input.FindingIDs)
@@ -182,14 +175,8 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 	if err := u.checkFindingRowsProjectAccess(ctx, findings); err != nil {
 		return nil, err
 	}
-
-	for _, f := range findings {
-		if stateRequiresReason(input.AnalysisState) && input.Reason == "" {
-			return nil, fmt.Errorf("finding %s: %w", f.ID, ErrReasonRequired)
-		}
-		if stateRequiresExpiry(input.AnalysisState) && input.AnalysisExpiresAt == nil {
-			return nil, fmt.Errorf("finding %s: %w", f.ID, ErrExpiryRequired)
-		}
+	if err := validateBulkTriageRequirements(input, findings); err != nil {
+		return nil, err
 	}
 
 	gateEffect := stateToGateEffect(input.AnalysisState)
@@ -228,6 +215,33 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 		}
 	}
 	return results, nil
+}
+
+// validateBulkTriage checks the analysis state and finding-ID list before
+// any lookup, then the per-finding reason/expiry requirements after.
+func validateBulkTriage(input BulkTriageInput) error {
+	if !finding.ValidateAnalysisState(input.AnalysisState) {
+		return fmt.Errorf("%w: %q", ErrInvalidState, input.AnalysisState)
+	}
+	for _, id := range input.FindingIDs {
+		if _, err := uuid.Parse(id); err != nil {
+			return fmt.Errorf("invalid finding id %q: %w", id, err)
+		}
+	}
+	return nil
+}
+
+// validateBulkTriageRequirements enforces reason/expiry rules per finding.
+func validateBulkTriageRequirements(input BulkTriageInput, findings []port.Finding) error {
+	for _, f := range findings {
+		if stateRequiresReason(input.AnalysisState) && input.Reason == "" {
+			return fmt.Errorf("finding %s: %w", f.ID, ErrReasonRequired)
+		}
+		if stateRequiresExpiry(input.AnalysisState) && input.AnalysisExpiresAt == nil {
+			return fmt.Errorf("finding %s: %w", f.ID, ErrExpiryRequired)
+		}
+	}
+	return nil
 }
 
 // gatePoliciesForProject translates a project's stored cve_watcher_gate mode

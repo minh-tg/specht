@@ -148,6 +148,41 @@ func (u *Usecases) GetAging(ctx context.Context, projectSlug string) (*AgingResp
 
 // AssembleAging folds aging rows into a response at now. Pure, so tests
 // and callers can pin exact snapshots.
+// agingOverdue is one overdue row accumulated while classifying.
+type agingOverdue struct {
+	row port.AgingRow
+	age int
+	sla int
+	due time.Time
+}
+
+// tallyAgingRow folds one classified row into the bucket, overdue, reopened,
+// and weekly counters.
+func tallyAgingRow(
+	resp *AgingResponse,
+	buckets map[string]*AgingBucketCount,
+	overdueRows *[]agingOverdue,
+	weeks map[string]int32,
+	row port.AgingRow,
+	c aging.Classification,
+) {
+	b := buckets[c.Bucket]
+	b.Count++
+	if c.Overdue {
+		b.Overdue++
+		resp.OverdueTotal++
+		*overdueRows = append(*overdueRows, agingOverdue{row: row, age: c.AgeDays, sla: c.SLADays, due: c.DueDate})
+	}
+	if row.Reopened {
+		resp.Reopened++
+	}
+	if wk := weekStart(row.FirstSeen.UTC()).Format("2006-01-02"); true {
+		if _, ok := weeks[wk]; ok {
+			weeks[wk]++
+		}
+	}
+}
+
 func AssembleAging(rows []port.AgingRow, now time.Time) *AgingResponse {
 	now = now.UTC()
 	buckets := map[string]*AgingBucketCount{}
@@ -156,13 +191,7 @@ func AssembleAging(rows []port.AgingRow, now time.Time) *AgingResponse {
 		buckets[b] = &AgingBucketCount{Bucket: b}
 	}
 	resp := &AgingResponse{}
-	type overdue struct {
-		row port.AgingRow
-		age int
-		sla int
-		due time.Time
-	}
-	var overdueRows []overdue
+	var overdueRows []agingOverdue
 	weeks := map[string]int32{}
 	weekKeys := make([]string, 0, 12)
 	monday := weekStart(now)
@@ -173,21 +202,7 @@ func AssembleAging(rows []port.AgingRow, now time.Time) *AgingResponse {
 	}
 	for _, row := range rows {
 		c := aging.Classify(row.FirstSeen, now, row.SeverityRank, row.State, row.Reopened)
-		b := buckets[c.Bucket]
-		b.Count++
-		if c.Overdue {
-			b.Overdue++
-			resp.OverdueTotal++
-			overdueRows = append(overdueRows, overdue{row: row, age: c.AgeDays, sla: c.SLADays, due: c.DueDate})
-		}
-		if row.Reopened {
-			resp.Reopened++
-		}
-		if wk := weekStart(row.FirstSeen.UTC()).Format("2006-01-02"); true {
-			if _, ok := weeks[wk]; ok {
-				weeks[wk]++
-			}
-		}
+		tallyAgingRow(resp, buckets, &overdueRows, weeks, row, c)
 	}
 	for _, b := range order {
 		resp.Buckets = append(resp.Buckets, *buckets[b])

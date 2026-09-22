@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/xMinhx/specht/internal/domain"
 	"github.com/xMinhx/specht/internal/finding"
@@ -59,19 +60,21 @@ func redactRaw(sc scanner.Scanner, raw []byte) []byte {
 	return raw
 }
 
-func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*IngestReportOutput, error) {
+// validateIngestInput checks required fields, canonicalizes the scan mode
+// and revisions, and rejects incomplete incremental scans.
+func validateIngestInput(input IngestReportInput) (IngestReportInput, error) {
 	if input.ProjectSlug == "" {
-		return nil, fmt.Errorf("project slug is required")
+		return input, fmt.Errorf("project slug is required")
 	}
 	if input.Scanner == "" {
-		return nil, fmt.Errorf("scanner name is required")
+		return input, fmt.Errorf("scanner name is required")
 	}
 	if len(input.RawData) == 0 {
-		return nil, fmt.Errorf("raw scan data is required")
+		return input, fmt.Errorf("raw scan data is required")
 	}
 	scanMode, err := normalizeScanMode(input.ScanMode)
 	if err != nil {
-		return nil, err
+		return input, err
 	}
 	input.ScanMode = scanMode
 	// Revision canonicalization (SOLO-165): SHAs compare case-insensitively
@@ -80,10 +83,18 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	input.CommitSha = normalizeRevision(input.CommitSha)
 	input.BaseRevision = normalizeRevision(input.BaseRevision)
 	if scanMode == ScanModeIncremental && input.BaseRevision == "" {
-		return nil, fmt.Errorf("incremental scan requires base_revision")
+		return input, fmt.Errorf("incremental scan requires base_revision")
 	}
 	if scanMode == ScanModeIncremental && input.CommitSha != "" && input.BaseRevision == input.CommitSha {
-		return nil, fmt.Errorf("incremental scan requires base_revision to differ from commit_sha")
+		return input, fmt.Errorf("incremental scan requires base_revision to differ from commit_sha")
+	}
+	return input, nil
+}
+
+func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*IngestReportOutput, error) {
+	input, err := validateIngestInput(input)
+	if err != nil {
+		return nil, err
 	}
 
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, input.ProjectSlug)
@@ -108,11 +119,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	// the redacted bytes (the stored form), so reporting the same scan
 	// twice collides here instead of stranding a processing row at
 	// completion time.
-	rawHash := sha256.Sum256(input.RawData)
-	if _, err := u.deps.Stores.Reports.FindCompletedByHash(ctx, project.ID, hex.EncodeToString(rawHash[:])); err == nil {
-		return nil, ErrDuplicateReport
-	} else if !errors.Is(err, port.ErrNotFound) {
-		return nil, fmt.Errorf("check duplicate report: %w", err)
+	if err := u.rejectDuplicateContent(ctx, project.ID, input.RawData); err != nil {
+		return nil, err
 	}
 
 	ctxInfo, err := u.resolveReportContext(ctx, project, input, nr)
@@ -129,13 +137,9 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, err
 	}
 	input.ScanMode = effectiveMode
-	if baselineID == "" && input.BaseRevision != "" {
-		base, err := u.deps.Stores.Reports.GetCompletedByCommit(ctx, project.ID, input.Scanner, input.BaseRevision)
-		if err == nil {
-			baselineID = base.ID
-		} else if !errors.Is(err, port.ErrNotFound) {
-			return nil, fmt.Errorf("resolve base revision: %w", err)
-		}
+	baselineID, err = u.resolveBaseRevision(ctx, project, input, baselineID)
+	if err != nil {
+		return nil, err
 	}
 
 	report, err := u.createReport(ctx, project, input, nr, ctxInfo)
@@ -170,6 +174,34 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	}, nil
 }
 
+// rejectDuplicateContent returns ErrDuplicateReport when identical (redacted)
+// bytes already completed an ingest for this project.
+func (u *Usecases) rejectDuplicateContent(ctx context.Context, projectID string, rawData []byte) error {
+	rawHash := sha256.Sum256(rawData)
+	if _, err := u.deps.Stores.Reports.FindCompletedByHash(ctx, projectID, hex.EncodeToString(rawHash[:])); err == nil {
+		return ErrDuplicateReport
+	} else if !errors.Is(err, port.ErrNotFound) {
+		return fmt.Errorf("check duplicate report: %w", err)
+	}
+	return nil
+}
+
+// resolveBaseRevision fills the baseline from the base revision when scan
+// mode resolution did not already provide one.
+func (u *Usecases) resolveBaseRevision(ctx context.Context, project port.Project, input IngestReportInput, baselineID string) (string, error) {
+	if baselineID != "" || input.BaseRevision == "" {
+		return baselineID, nil
+	}
+	base, err := u.deps.Stores.Reports.GetCompletedByCommit(ctx, project.ID, input.Scanner, input.BaseRevision)
+	if err == nil {
+		return base.ID, nil
+	}
+	if errors.Is(err, port.ErrNotFound) {
+		return "", nil
+	}
+	return "", fmt.Errorf("resolve base revision: %w", err)
+}
+
 // resolveScanMode maps a requested scan mode to its effective mode. Full
 // scans pass through; incremental scans require a scanner that opted into
 // incremental analysis and a completed full baseline for the base revision.
@@ -197,70 +229,85 @@ func (u *Usecases) resolveScanMode(ctx context.Context, project port.Project, sc
 // ingest) and returns their ids plus the target identifier for the scope hash.
 func (u *Usecases) resolveReportContext(ctx context.Context, project port.Project, input IngestReportInput, nr *domain.NormalizedReport) (reportContext, error) {
 	var out reportContext
+	out.targetID, out.targetIdentifier = u.resolveTarget(ctx, project, input, nr)
+	out.artifactID = u.resolveArtifact(ctx, project, input, nr, out.targetID)
+	out.environmentID = u.resolveEnvironment(ctx, project, input)
+	return out, nil
+}
 
-	if nr.Target != nil && nr.Target.Identifier != "" {
-		out.targetIdentifier = nr.Target.Identifier
-		kind := nr.Target.Kind
-		if kind == "" {
-			kind = string(nr.ScanType)
-		}
-		t, err := u.deps.Stores.Targets.Upsert(ctx, project.ID, nr.Target.Identifier, kind, nr.Target.Identifier, input.Owner)
-		if err != nil {
-			slog.Warn("upsert target failed", "project", project.ID, "target", nr.Target.Identifier, "error", err)
-		} else {
-			out.targetID = t.ID
-		}
+// resolveTarget upserts the scan target (best-effort; failures log only).
+func (u *Usecases) resolveTarget(ctx context.Context, project port.Project, input IngestReportInput, nr *domain.NormalizedReport) (id, identifier string) {
+	if nr.Target == nil || nr.Target.Identifier == "" {
+		return "", ""
 	}
+	identifier = nr.Target.Identifier
+	kind := nr.Target.Kind
+	if kind == "" {
+		kind = string(nr.ScanType)
+	}
+	t, err := u.deps.Stores.Targets.Upsert(ctx, project.ID, identifier, kind, identifier, input.Owner)
+	if err != nil {
+		slog.Warn("upsert target failed", "project", project.ID, "target", identifier, "error", err)
+		return "", identifier
+	}
+	return t.ID, identifier
+}
 
+// resolveArtifact upserts the scanned artifact, falling back to the report
+// payload for identity fields the input omits (best-effort; failures log only).
+func (u *Usecases) resolveArtifact(ctx context.Context, project port.Project, input IngestReportInput, nr *domain.NormalizedReport, targetID string) string {
 	artifactName := input.ArtifactName
 	if artifactName == "" && nr.Artifact != nil {
 		artifactName = nr.Artifact.Identifier
 	}
-	if artifactName != "" {
-		artifactType := input.ArtifactType
-		if artifactType == "" && nr.Artifact != nil {
-			artifactType = nr.Artifact.Kind
-		}
-		if artifactType == "" {
-			artifactType = string(nr.ScanType)
-		}
-		metadata := []byte("{}")
-		if nr.Artifact != nil {
-			metadata = mustMarshal(nr.Artifact.Metadata)
-			if metadata == nil {
-				metadata = []byte("{}")
-			}
-		}
-		digest := input.Digest
-		if digest == "" && nr.Artifact != nil {
-			digest = nr.Artifact.Digest
-		}
-		a, err := u.deps.Stores.Artifacts.Upsert(ctx, port.ArtifactInput{
-			ProjectID:    project.ID,
-			TargetID:     out.targetID,
-			ArtifactType: artifactType,
-			Name:         artifactName,
-			Version:      textPtr(input.ArtifactVersion),
-			Digest:       textPtr(digest),
-			Metadata:     metadata,
-		})
-		if err != nil {
-			slog.Warn("upsert artifact failed", "project", project.ID, "artifact", artifactName, "error", err)
-		} else {
-			out.artifactID = a.ID
+	if artifactName == "" {
+		return ""
+	}
+	artifactType := input.ArtifactType
+	if artifactType == "" && nr.Artifact != nil {
+		artifactType = nr.Artifact.Kind
+	}
+	if artifactType == "" {
+		artifactType = string(nr.ScanType)
+	}
+	metadata := []byte("{}")
+	if nr.Artifact != nil {
+		if m := mustMarshal(nr.Artifact.Metadata); m != nil {
+			metadata = m
 		}
 	}
-
-	if input.Environment != "" {
-		e, err := u.deps.Stores.Environments.Upsert(ctx, project.ID, input.Environment, "development", false, "internal")
-		if err != nil {
-			slog.Warn("upsert environment failed", "project", project.ID, "environment", input.Environment, "error", err)
-		} else {
-			out.environmentID = e.ID
-		}
+	digest := input.Digest
+	if digest == "" && nr.Artifact != nil {
+		digest = nr.Artifact.Digest
 	}
+	a, err := u.deps.Stores.Artifacts.Upsert(ctx, port.ArtifactInput{
+		ProjectID:    project.ID,
+		TargetID:     targetID,
+		ArtifactType: artifactType,
+		Name:         artifactName,
+		Version:      textPtr(input.ArtifactVersion),
+		Digest:       textPtr(digest),
+		Metadata:     metadata,
+	})
+	if err != nil {
+		slog.Warn("upsert artifact failed", "project", project.ID, "artifact", artifactName, "error", err)
+		return ""
+	}
+	return a.ID
+}
 
-	return out, nil
+// resolveEnvironment upserts the scan environment (best-effort; failures
+// log only).
+func (u *Usecases) resolveEnvironment(ctx context.Context, project port.Project, input IngestReportInput) string {
+	if input.Environment == "" {
+		return ""
+	}
+	e, err := u.deps.Stores.Environments.Upsert(ctx, project.ID, input.Environment, "development", false, "internal")
+	if err != nil {
+		slog.Warn("upsert environment failed", "project", project.ID, "environment", input.Environment, "error", err)
+		return ""
+	}
+	return e.ID
 }
 
 // createReport persists the report row, returning ErrDuplicateReport on a
@@ -385,224 +432,312 @@ type ingestOutcome struct {
 	preExisting int
 }
 
+// ingestFindingsState accumulates the ingest's cross-finding state: the
+// prefetched known findings, baseline occurrences, introduced entries, and
+// outcome tallies.
+type ingestFindingsState struct {
+	project      port.Project
+	input        IngestReportInput
+	report       port.Report
+	baselineID   string
+	nowTime      time.Time
+	known        map[string]port.Finding
+	knownIDs     []string
+	baselineSeen map[string]bool
+
+	seenIntroduced    map[string]bool
+	introducedEntries []port.IntroducedFindingEntry
+	outcome           ingestOutcome
+}
+
 // ingestReportFindings upserts each normalized finding and its occurrence,
 // dimensions, and material-change events. baselineID is the incremental
 // baseline report (empty for full scans); findings absent from it count as
 // introduced, the rest as pre-existing.
 func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, nr *domain.NormalizedReport, baselineID string) (ingestOutcome, error) {
-	nowTime := now()
-	var outcome ingestOutcome
 	if len(nr.Findings) == 0 {
-		return outcome, nil
+		return ingestOutcome{}, nil
+	}
+	st := &ingestFindingsState{
+		project:        project,
+		input:          input,
+		report:         report,
+		baselineID:     baselineID,
+		nowTime:        now(),
+		known:          make(map[string]port.Finding),
+		baselineSeen:   make(map[string]bool),
+		seenIntroduced: make(map[string]bool),
+	}
+	if err := u.prefetchKnownFindings(ctx, st, nr); err != nil {
+		return ingestOutcome{}, err
+	}
+	if err := u.prefetchBaselineOccurrences(ctx, st); err != nil {
+		return ingestOutcome{}, err
 	}
 
-	// Phase 1: Pre-fetch known findings matching incoming fingerprints.
+	for _, f := range nr.Findings {
+		if err := u.ingestOneFinding(ctx, st, f); err != nil {
+			return ingestOutcome{}, err
+		}
+	}
+
+	// Phase 4: Materialize introduced findings in report_introduced_findings.
+	if err := u.recordIntroducedFindings(ctx, st); err != nil {
+		return ingestOutcome{}, err
+	}
+	return st.outcome, nil
+}
+
+// prefetchKnownFindings loads every already-tracked finding whose
+// fingerprint appears in the incoming report (Phase 1).
+func (u *Usecases) prefetchKnownFindings(ctx context.Context, st *ingestFindingsState, nr *domain.NormalizedReport) error {
 	fingerprintsByKind := make(map[string][]string)
 	for _, f := range nr.Findings {
 		fingerprintsByKind[f.FindingKind] = append(fingerprintsByKind[f.FindingKind], f.Fingerprint)
 	}
 
-	knownMap := make(map[string]port.Finding)
 	var knownIDs []string
 	for kind, fps := range fingerprintsByKind {
-		known, err := u.deps.Stores.Findings.ListFindingsByFingerprints(ctx, project.ID, kind, fps)
+		known, err := u.deps.Stores.Findings.ListFindingsByFingerprints(ctx, st.project.ID, kind, fps)
 		if err != nil {
-			slog.Error("pre-fetch findings by fingerprints failed", "scanner", input.Scanner, "error", err)
-			return ingestOutcome{}, fmt.Errorf("scanner %s: pre-fetch findings: %w", input.Scanner, err)
+			slog.Error("pre-fetch findings by fingerprints failed", "scanner", st.input.Scanner, "error", err)
+			return fmt.Errorf("scanner %s: pre-fetch findings: %w", st.input.Scanner, err)
 		}
 		for _, k := range known {
-			knownMap[k.FindingKind+"\x00"+k.Fingerprint] = k
+			st.known[k.FindingKind+"\x00"+k.Fingerprint] = k
 			knownIDs = append(knownIDs, k.ID)
 		}
 	}
+	st.knownIDs = knownIDs
+	return nil
+}
 
-	// Pre-fetch baseline occurrences if baselineID is present.
-	baselineSeenIDs := make(map[string]bool)
-	if baselineID != "" && len(knownIDs) > 0 {
-		presentIDs, err := u.deps.Stores.Findings.ListFindingIDsPresentInReport(ctx, baselineID, knownIDs)
-		if err != nil {
-			slog.Error("pre-fetch baseline occurrences failed", "scanner", input.Scanner, "error", err)
-			return ingestOutcome{}, fmt.Errorf("scanner %s: pre-fetch baseline occurrences: %w", input.Scanner, err)
+// prefetchBaselineOccurrences marks which known findings the baseline report
+// already saw (empty baselineID skips the query).
+func (u *Usecases) prefetchBaselineOccurrences(ctx context.Context, st *ingestFindingsState) error {
+	if st.baselineID == "" || len(st.knownIDs) == 0 {
+		return nil
+	}
+	presentIDs, err := u.deps.Stores.Findings.ListFindingIDsPresentInReport(ctx, st.baselineID, st.knownIDs)
+	if err != nil {
+		slog.Error("pre-fetch baseline occurrences failed", "scanner", st.input.Scanner, "error", err)
+		return fmt.Errorf("scanner %s: pre-fetch baseline occurrences: %w", st.input.Scanner, err)
+	}
+	for _, id := range presentIDs {
+		st.baselineSeen[id] = true
+	}
+	return nil
+}
+
+// classifyIngestChange decides whether a finding counts as introduced for
+// this report (SOLO-165 & SOLO-184): regressions and baseline-absent or
+// unseen findings are introduced; everything else pre-existed.
+func classifyIngestChange(exists, regression bool, baselineID string, baselineSeen bool) (introduced bool, changeType string) {
+	if regression {
+		return true, "regression"
+	}
+	if baselineID != "" {
+		if !exists || !baselineSeen {
+			return true, "new"
 		}
-		for _, id := range presentIDs {
-			baselineSeenIDs[id] = true
-		}
+		return false, ""
+	}
+	if !exists {
+		return true, "new"
+	}
+	return false, ""
+}
+
+// ingestOneFinding upserts one normalized finding plus its attribution,
+// occurrence, dimensions, events, and material-change evaluation.
+func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState, f domain.NormalizedFinding) error {
+	existing, exists := st.known[f.FindingKind+"\x00"+f.Fingerprint]
+	newRank := severityRank(f.Severity)
+
+	upserted, err := u.upsertFindingRow(ctx, st, f, newRank)
+	if err != nil {
+		return err
+	}
+	if err := u.attributeFinding(ctx, st, upserted, exists, existing); err != nil {
+		return err
 	}
 
-	// Phase 2 & 3: In-memory classification, persistence, and event logging.
-	var introducedEntries []port.IntroducedFindingEntry
-	seenIntroduced := make(map[string]bool)
+	regression := exists && existing.State == string(finding.TechFixed)
+	introduced, changeType := classifyIngestChange(
+		exists, regression, st.baselineID,
+		exists && st.baselineSeen[existing.ID],
+	)
+	st.tallyIngest(introduced, changeType, upserted.ID)
 
-	for _, f := range nr.Findings {
-		key := f.FindingKind + "\x00" + f.Fingerprint
-		existing, exists := knownMap[key]
+	if regression {
+		u.logRegressionEvent(ctx, st, upserted, f, newRank, existing.State)
+	}
+	u.dispatchCreatedEvent(ctx, st, upserted, f, newRank, !exists)
 
-		newRank := severityRank(f.Severity)
-		var oldRank int16
-		var oldGateEffect string
-		var oldAnalysisState string
-		if exists {
-			oldRank = existing.CurrentSeverityRank
-			oldGateEffect = existing.GateEffect
-			oldAnalysisState = existing.AnalysisState
-		}
-
-		var regression bool
-		var prevState string
-		if exists && existing.State == string(finding.TechFixed) {
-			regression = true
-			prevState = existing.State
-		}
-
-		upserted, err := u.deps.Stores.Findings.Upsert(ctx,
-			project.ID,
-			f.FindingKind,
-			f.Fingerprint,
-			f.Title,
-			severityStr(f.Severity),
-			newRank,
-			scoreToFloat(f.Score),
-			nowTime,
-			nowTime,
-		)
-		if err != nil {
-			slog.Error("upsert finding failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
-			return ingestOutcome{}, fmt.Errorf("scanner %s: upsert finding %q: %w", input.Scanner, f.Fingerprint, err)
-		}
-
-		// Keep legacy attribution on finding row for unattributed findings.
-		if !exists || existing.IntroducedByReportID == nil {
-			if _, err := u.deps.Stores.Findings.SetFindingIntroducedBy(ctx, upserted.ID, report.ID, textPtr(input.CommitSha)); err != nil {
-				slog.Error("set introduced-by failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
-				return ingestOutcome{}, fmt.Errorf("scanner %s: attribute finding %q: %w", input.Scanner, f.Fingerprint, err)
-			}
-		}
-
-		// Change classification (SOLO-165 & SOLO-184):
-		var introduced bool
-		var changeType string
-		if regression {
-			introduced = true
-			changeType = "regression"
-		} else if baselineID != "" {
-			if !exists || !baselineSeenIDs[existing.ID] {
-				introduced = true
-				changeType = "new"
-			}
-		} else if !exists {
-			introduced = true
-			changeType = "new"
-		}
-
-		if introduced {
-			if !seenIntroduced[upserted.ID] {
-				seenIntroduced[upserted.ID] = true
-				introducedEntries = append(introducedEntries, port.IntroducedFindingEntry{
-					FindingID:  upserted.ID,
-					ChangeType: changeType,
-				})
-			}
-			outcome.introduced++
-		} else {
-			outcome.preExisting++
-		}
-		outcome.total++
-
-		if regression {
-			changes := mustMarshal(map[string]any{"report_id": report.ID, "scanner": input.Scanner, "new_state": upserted.State})
-			if _, err := u.deps.Stores.Findings.CreateEvent(ctx, port.FindingEventInput{
-				FindingID: upserted.ID,
-				EventType: "regression",
-				OldValue:  &prevState,
-				NewValue:  strPtr(upserted.State),
-				Changes:   changes,
-			}); err != nil {
-				slog.Warn("log regression event failed", "finding", upserted.ID, "error", err)
-			}
-			if u.deps.Tracker != nil {
-				u.deps.Tracker.Dispatch(ctx, tracker.Event{
-					Type:         tracker.EventRegression,
-					FindingID:    upserted.ID,
-					ProjectSlug:  input.ProjectSlug,
-					Severity:     severityStr(f.Severity),
-					SeverityRank: newRank,
-					Title:        f.Title,
-					Fingerprint:  f.Fingerprint,
-					FindingKind:  f.FindingKind,
-					OccurredAt:   nowTime,
-				})
-			}
-		}
-
-		if !exists && u.deps.Tracker != nil {
-			u.deps.Tracker.Dispatch(ctx, tracker.Event{
-				Type:         tracker.EventCreated,
-				FindingID:    upserted.ID,
-				ProjectSlug:  input.ProjectSlug,
-				Severity:     severityStr(f.Severity),
-				SeverityRank: newRank,
-				Title:        f.Title,
-				Fingerprint:  f.Fingerprint,
-				FindingKind:  f.FindingKind,
-				OccurredAt:   nowTime,
-			})
-		}
-
-		occ := toOccurrenceParams(f, input.Scanner)
-		occ.FindingID = upserted.ID
-		occ.ReportID = &report.ID
-		occ.ToolVersion = textPtr(input.ScannerVersion)
-		occ.ParserVersion = textPtr(input.ParserVersion)
-		_, err = u.deps.Stores.Findings.CreateOccurrence(ctx, occ)
-		if err != nil {
-			slog.Error("create occurrence failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
-			return ingestOutcome{}, fmt.Errorf("scanner %s: create occurrence for %q: %w", input.Scanner, f.Fingerprint, err)
-		}
-
-		source := textPtr(input.Scanner)
-		for _, d := range f.Dimensions {
-			if !isCanonicalDimension(d.Key) {
-				slog.Warn("drop non-canonical dimension", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "key", d.Key)
-				continue
-			}
-			err = u.deps.Stores.Findings.UpsertDimension(ctx, port.DimensionInput{
-				FindingID: upserted.ID,
-				Key:       d.Key,
-				Value:     d.Value,
-				Source:    source,
-			})
-			if err != nil {
-				slog.Error("upsert dimension failed", "scanner", input.Scanner, "fingerprint", f.Fingerprint, "error", err)
-				return ingestOutcome{}, fmt.Errorf("scanner %s: upsert dimension for %q: %w", input.Scanner, f.Fingerprint, err)
-			}
-		}
-
-		if exists && (oldAnalysisState != string(finding.StateUnanalyzed) || oldGateEffect == string(finding.EffectIgnore)) {
-			if err := u.applyMaterialChange(ctx, project, input, upserted, f, oldRank, oldGateEffect, oldAnalysisState); err != nil {
-				return ingestOutcome{}, err
-			}
-		}
+	if err := u.createFindingOccurrence(ctx, st, upserted, f); err != nil {
+		return err
+	}
+	if err := u.upsertFindingDimensions(ctx, st, upserted, f); err != nil {
+		return err
 	}
 
-	// Phase 4: Materialize introduced findings in report_introduced_findings.
-	if len(introducedEntries) > 0 {
-		var basePtr *string
-		if baselineID != "" {
-			basePtr = &baselineID
+	if exists && (existing.AnalysisState != string(finding.StateUnanalyzed) || existing.GateEffect == string(finding.EffectIgnore)) {
+		return u.applyMaterialChange(ctx, st.input, upserted, f,
+			existing.CurrentSeverityRank, existing.GateEffect, existing.AnalysisState)
+	}
+	return nil
+}
+
+// tallyIngest records the introduced/pre-existing counters, deduplicating
+// introduced entries by finding ID.
+func (s *ingestFindingsState) tallyIngest(introduced bool, changeType, upsertedID string) {
+	if !introduced {
+		s.outcome.preExisting++
+		s.outcome.total++
+		return
+	}
+	if !s.seenIntroduced[upsertedID] {
+		s.seenIntroduced[upsertedID] = true
+		s.introducedEntries = append(s.introducedEntries, port.IntroducedFindingEntry{
+			FindingID:  upsertedID,
+			ChangeType: changeType,
+		})
+	}
+	s.outcome.introduced++
+	s.outcome.total++
+}
+
+// upsertFindingRow writes the finding row and returns what was written.
+func (u *Usecases) upsertFindingRow(ctx context.Context, st *ingestFindingsState, f domain.NormalizedFinding, newRank int16) (port.Finding, error) {
+	upserted, err := u.deps.Stores.Findings.Upsert(ctx,
+		st.project.ID,
+		f.FindingKind,
+		f.Fingerprint,
+		f.Title,
+		severityStr(f.Severity),
+		newRank,
+		scoreToFloat(f.Score),
+		st.nowTime,
+		st.nowTime,
+	)
+	if err != nil {
+		slog.Error("upsert finding failed", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+		return port.Finding{}, fmt.Errorf("scanner %s: upsert finding %q: %w", st.input.Scanner, f.Fingerprint, err)
+	}
+	return upserted, nil
+}
+
+// attributeFinding keeps legacy attribution on the finding row for
+// unattributed findings.
+func (u *Usecases) attributeFinding(ctx context.Context, st *ingestFindingsState, upserted port.Finding, exists bool, existing port.Finding) error {
+	if exists && existing.IntroducedByReportID != nil {
+		return nil
+	}
+	if _, err := u.deps.Stores.Findings.SetFindingIntroducedBy(ctx, upserted.ID, st.report.ID, textPtr(st.input.CommitSha)); err != nil {
+		slog.Error("set introduced-by failed", "scanner", st.input.Scanner, "fingerprint", upserted.Fingerprint, "error", err)
+		return fmt.Errorf("scanner %s: attribute finding %q: %w", st.input.Scanner, upserted.Fingerprint, err)
+	}
+	return nil
+}
+
+// logRegressionEvent records the regression audit event and dispatches the
+// tracker notification (best-effort event, dispatch honors the tracker nil).
+func (u *Usecases) logRegressionEvent(ctx context.Context, st *ingestFindingsState, upserted port.Finding, f domain.NormalizedFinding, newRank int16, prevState string) {
+	changes := mustMarshal(map[string]any{"report_id": st.report.ID, "scanner": st.input.Scanner, "new_state": upserted.State})
+	if _, err := u.deps.Stores.Findings.CreateEvent(ctx, port.FindingEventInput{
+		FindingID: upserted.ID,
+		EventType: "regression",
+		OldValue:  &prevState,
+		NewValue:  strPtr(upserted.State),
+		Changes:   changes,
+	}); err != nil {
+		slog.Warn("log regression event failed", "finding", upserted.ID, "error", err)
+	}
+	u.trackerDispatch(ctx, st, upserted, f, newRank, tracker.EventRegression)
+}
+
+// dispatchCreatedEvent notifies the tracker about a newly created finding.
+func (u *Usecases) dispatchCreatedEvent(ctx context.Context, st *ingestFindingsState, upserted port.Finding, f domain.NormalizedFinding, newRank int16, created bool) {
+	if created {
+		u.trackerDispatch(ctx, st, upserted, f, newRank, tracker.EventCreated)
+	}
+}
+
+// trackerDispatch emits one finding event to the tracker when configured.
+func (u *Usecases) trackerDispatch(ctx context.Context, st *ingestFindingsState, upserted port.Finding, f domain.NormalizedFinding, newRank int16, eventType string) {
+	if u.deps.Tracker == nil {
+		return
+	}
+	u.deps.Tracker.Dispatch(ctx, tracker.Event{
+		Type:         eventType,
+		FindingID:    upserted.ID,
+		ProjectSlug:  st.input.ProjectSlug,
+		Severity:     severityStr(f.Severity),
+		SeverityRank: newRank,
+		Title:        f.Title,
+		Fingerprint:  f.Fingerprint,
+		FindingKind:  f.FindingKind,
+		OccurredAt:   st.nowTime,
+	})
+}
+
+// createFindingOccurrence writes the scan occurrence for this finding.
+func (u *Usecases) createFindingOccurrence(ctx context.Context, st *ingestFindingsState, upserted port.Finding, f domain.NormalizedFinding) error {
+	occ := toOccurrenceParams(f, st.input.Scanner)
+	occ.FindingID = upserted.ID
+	occ.ReportID = &st.report.ID
+	occ.ToolVersion = textPtr(st.input.ScannerVersion)
+	occ.ParserVersion = textPtr(st.input.ParserVersion)
+	if _, err := u.deps.Stores.Findings.CreateOccurrence(ctx, occ); err != nil {
+		slog.Error("create occurrence failed", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+		return fmt.Errorf("scanner %s: create occurrence for %q: %w", st.input.Scanner, f.Fingerprint, err)
+	}
+	return nil
+}
+
+// upsertFindingDimensions stores canonical dimensions, dropping (with a
+// warning) anything the fingerprint contract does not recognize.
+func (u *Usecases) upsertFindingDimensions(ctx context.Context, st *ingestFindingsState, upserted port.Finding, f domain.NormalizedFinding) error {
+	source := textPtr(st.input.Scanner)
+	for _, d := range f.Dimensions {
+		if !isCanonicalDimension(d.Key) {
+			slog.Warn("drop non-canonical dimension", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "key", d.Key)
+			continue
 		}
-		if err := u.deps.Stores.Findings.RecordReportIntroducedFindings(ctx, report.ID, basePtr, introducedEntries); err != nil {
-			slog.Error("record report introduced findings failed", "scanner", input.Scanner, "report_id", report.ID, "error", err)
-			return ingestOutcome{}, fmt.Errorf("scanner %s: record report introduced findings: %w", input.Scanner, err)
+		if err := u.deps.Stores.Findings.UpsertDimension(ctx, port.DimensionInput{
+			FindingID: upserted.ID,
+			Key:       d.Key,
+			Value:     d.Value,
+			Source:    source,
+		}); err != nil {
+			slog.Error("upsert dimension failed", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+			return fmt.Errorf("scanner %s: upsert dimension for %q: %w", st.input.Scanner, f.Fingerprint, err)
 		}
 	}
+	return nil
+}
 
-	return outcome, nil
+// recordIntroducedFindings materializes introduced findings in
+// report_introduced_findings (Phase 4).
+func (u *Usecases) recordIntroducedFindings(ctx context.Context, st *ingestFindingsState) error {
+	if len(st.introducedEntries) == 0 {
+		return nil
+	}
+	var basePtr *string
+	if st.baselineID != "" {
+		basePtr = &st.baselineID
+	}
+	if err := u.deps.Stores.Findings.RecordReportIntroducedFindings(ctx, st.report.ID, basePtr, st.introducedEntries); err != nil {
+		slog.Error("record report introduced findings failed", "scanner", st.input.Scanner, "report_id", st.report.ID, "error", err)
+		return fmt.Errorf("scanner %s: record report introduced findings: %w", st.input.Scanner, err)
+	}
+	return nil
 }
 
 // applyMaterialChange runs finding.EvaluateChange on a previously-known
 // finding and, when the change demands review, marks review_required and logs
 // the material-change event.
-func (u *Usecases) applyMaterialChange(ctx context.Context, project port.Project, input IngestReportInput, upserted port.Finding, f domain.NormalizedFinding, oldRank int16, oldGateEffect, oldAnalysisState string) error {
+func (u *Usecases) applyMaterialChange(ctx context.Context, input IngestReportInput, upserted port.Finding, f domain.NormalizedFinding, oldRank int16, oldGateEffect, oldAnalysisState string) error {
 	hasNewFix := false
 	for _, d := range f.Dimensions {
 		if d.Key == domain.DimFixedVersion && d.Value != "" {
@@ -746,33 +881,23 @@ func (u *Usecases) deleteDuplicateReport(ctx context.Context, projectID, reportI
 // service's candidate prefilter (the candidate SQL already scopes to
 // open/reopened state); the rank floor maps the severity strings, defaulting
 // to high (rank 3) like parseMinSeverityRank.
-func gateSeverityRank(severities, statuses []string) int16 {
-	if len(severities) == 0 {
-		return 3
-	}
+func gateSeverityRank(severities, _ []string) int16 {
 	minRank := int16(0)
 	for _, s := range severities {
-		switch s {
-		case "critical":
-			if 4 > minRank {
-				minRank = 4
-			}
-		case "high":
-			if 3 > minRank {
-				minRank = 3
-			}
-		case "medium":
-			if 2 > minRank {
-				minRank = 2
-			}
-		case "low":
-			if 1 > minRank {
-				minRank = 1
-			}
+		if r, ok := severityLabelRank[s]; ok && r > minRank {
+			minRank = r
 		}
 	}
 	if minRank == 0 {
 		return 3
 	}
 	return minRank
+}
+
+// severityLabelRank maps known severity labels to their rank.
+var severityLabelRank = map[string]int16{
+	"critical": 4,
+	"high":     3,
+	"medium":   2,
+	"low":      1,
 }

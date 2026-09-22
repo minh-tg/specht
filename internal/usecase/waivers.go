@@ -346,29 +346,38 @@ func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*
 func waiverContextInputs(inputs []CreateWaiverContextInput) ([]port.WaiverContext, error) {
 	out := make([]port.WaiverContext, len(inputs))
 	for i, c := range inputs {
-		if c.EnvironmentID != "" {
-			id, err := uuid.Parse(c.EnvironmentID)
-			if err != nil {
-				return nil, fmt.Errorf("invalid environment_id %q: %w", c.EnvironmentID, err)
-			}
-			out[i].EnvironmentID = id.String()
+		envID, err := parseOptionalUUID(c.EnvironmentID, "environment_id")
+		if err != nil {
+			return nil, err
 		}
-		if c.TargetID != "" {
-			id, err := uuid.Parse(c.TargetID)
-			if err != nil {
-				return nil, fmt.Errorf("invalid target_id %q: %w", c.TargetID, err)
-			}
-			out[i].TargetID = id.String()
+		targetID, err := parseOptionalUUID(c.TargetID, "target_id")
+		if err != nil {
+			return nil, err
 		}
-		if c.ArtifactID != "" {
-			id, err := uuid.Parse(c.ArtifactID)
-			if err != nil {
-				return nil, fmt.Errorf("invalid artifact_id %q: %w", c.ArtifactID, err)
-			}
-			out[i].ArtifactID = id.String()
+		artifactID, err := parseOptionalUUID(c.ArtifactID, "artifact_id")
+		if err != nil {
+			return nil, err
+		}
+		out[i] = port.WaiverContext{
+			EnvironmentID: envID,
+			TargetID:      targetID,
+			ArtifactID:    artifactID,
 		}
 	}
 	return out, nil
+}
+
+// parseOptionalUUID validates an optional UUID field, returning an error
+// labeled with the field name when the value is present but malformed.
+func parseOptionalUUID(value, field string) (string, error) {
+	if value == "" {
+		return "", nil
+	}
+	id, err := uuid.Parse(value)
+	if err != nil {
+		return "", fmt.Errorf("invalid %s %q: %w", field, value, err)
+	}
+	return id.String(), nil
 }
 
 func (u *Usecases) DeleteWaiver(ctx context.Context, projectSlug, waiverID string) error {
