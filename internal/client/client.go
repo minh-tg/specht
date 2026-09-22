@@ -12,6 +12,14 @@ import (
 	"strings"
 )
 
+// API path prefixes centralize route construction for the Specht API.
+const (
+	apiProjectsPrefix = "/api/v1/projects/"
+	apiFindingsPrefix = "/api/v1/findings/"
+	apiTeamsPrefix    = "/api/v1/teams/"
+	waiverSegment     = "/waivers/"
+)
+
 // Client is a typed HTTP client for the Specht API.
 type Client struct {
 	baseURL    string
@@ -48,27 +56,55 @@ func WithToken(token string) Option {
 	}
 }
 
-func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
+// newClientRequest builds an authenticated JSON request for the Specht API.
+func (c *Client) newClientRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {
 	var reqBody io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
 		if err != nil {
-			return fmt.Errorf("marshal request: %w", err)
+			return nil, fmt.Errorf("marshal request: %w", err)
 		}
 		reqBody = bytes.NewReader(data)
 	}
-
 	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reqBody)
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return nil, fmt.Errorf("create request: %w", err)
 	}
-
 	if c.token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
-
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	return req, nil
+}
+
+// apiResponseError maps a non-2xx response body to a typed Error.
+func apiResponseError(statusCode int, respBody []byte) *Error {
+	var wrapper apiErrorWrapper
+	if json.Unmarshal(respBody, &wrapper) == nil && wrapper.Error.Code != "" {
+		return &Error{Code: wrapper.Error.Code, Message: wrapper.Error.Message, StatusCode: statusCode}
+	}
+	return &Error{
+		StatusCode: statusCode,
+		Message:    strings.TrimSpace(string(respBody)),
+	}
+}
+
+// decodeAPIResponse unmarshals a non-empty success body into out.
+func decodeAPIResponse(respBody []byte, out any) error {
+	if out != nil && len(respBody) > 0 {
+		if err := json.Unmarshal(respBody, out); err != nil {
+			return fmt.Errorf("decode response: %w", err)
+		}
+	}
+	return nil
+}
+
+func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
+	req, err := c.newClientRequest(ctx, method, path, body)
+	if err != nil {
+		return err
 	}
 
 	resp, err := c.httpClient.Do(req)
@@ -83,23 +119,10 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	}
 
 	if resp.StatusCode >= 400 {
-		var wrapper apiErrorWrapper
-		if json.Unmarshal(respBody, &wrapper) == nil && wrapper.Error.Code != "" {
-			return &Error{Code: wrapper.Error.Code, Message: wrapper.Error.Message, StatusCode: resp.StatusCode}
-		}
-		return &Error{
-			StatusCode: resp.StatusCode,
-			Message:    strings.TrimSpace(string(respBody)),
-		}
+		return apiResponseError(resp.StatusCode, respBody)
 	}
 
-	if out != nil && len(respBody) > 0 {
-		if err := json.Unmarshal(respBody, out); err != nil {
-			return fmt.Errorf("decode response: %w", err)
-		}
-	}
-
-	return nil
+	return decodeAPIResponse(respBody, out)
 }
 
 // Error is a non-2xx API response, carrying the server error code when present.
@@ -221,7 +244,7 @@ func (c *Client) ListProjects() ([]Project, error) {
 
 func (c *Client) GetProject(slug string) (*Project, error) {
 	var resp Project
-	if err := c.do(context.Background(), "GET", "/api/v1/projects/"+url.PathEscape(slug), nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(slug), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -239,7 +262,7 @@ func (c *Client) IngestReport(payload *IngestPayload) (*IngestResponse, error) {
 
 func (c *Client) ListReports(projectSlug string, limit, offset int32) ([]Report, error) {
 	var resp []Report
-	path := "/api/v1/projects/" + url.PathEscape(projectSlug) + "/reports"
+	path := apiProjectsPrefix + url.PathEscape(projectSlug) + "/reports"
 	if limit > 0 || offset > 0 {
 		q := url.Values{}
 		if limit > 0 {
@@ -280,7 +303,7 @@ func (c *Client) ListFindings(projectSlug string, severities, states []string, l
 	if offset > 0 {
 		q.Set("offset", strconv.Itoa(int(offset)))
 	}
-	path := "/api/v1/projects/" + url.PathEscape(projectSlug) + "/findings"
+	path := apiProjectsPrefix + url.PathEscape(projectSlug) + "/findings"
 	if len(q) > 0 {
 		path += "?" + q.Encode()
 	}
@@ -293,7 +316,7 @@ func (c *Client) ListFindings(projectSlug string, severities, states []string, l
 
 func (c *Client) GetFinding(findingID string) (*Finding, error) {
 	var resp Finding
-	if err := c.do(context.Background(), "GET", "/api/v1/findings/"+url.PathEscape(findingID), nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiFindingsPrefix+url.PathEscape(findingID), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -301,7 +324,7 @@ func (c *Client) GetFinding(findingID string) (*Finding, error) {
 
 func (c *Client) TriageFinding(findingID string, req *TriageRequest) (*TriageResponse, error) {
 	var resp TriageResponse
-	if err := c.do(context.Background(), "PATCH", "/api/v1/findings/"+url.PathEscape(findingID), req, &resp); err != nil {
+	if err := c.do(context.Background(), "PATCH", apiFindingsPrefix+url.PathEscape(findingID), req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -326,7 +349,7 @@ func (c *Client) ListFindingEvents(findingID string, eventTypes []string, limit,
 	if offset > 0 {
 		q.Set("offset", strconv.Itoa(int(offset)))
 	}
-	path := "/api/v1/findings/" + url.PathEscape(findingID) + "/events"
+	path := apiFindingsPrefix + url.PathEscape(findingID) + "/events"
 	if len(q) > 0 {
 		path += "?" + q.Encode()
 	}
@@ -340,7 +363,7 @@ func (c *Client) ListFindingEvents(findingID string, eventTypes []string, limit,
 // Gate.
 
 func (c *Client) GetGateStatus(projectSlug string, severity string) (*GateStatus, error) {
-	path := "/api/v1/projects/" + url.PathEscape(projectSlug) + "/gate"
+	path := apiProjectsPrefix + url.PathEscape(projectSlug) + "/gate"
 	if severity != "" {
 		path += "?severity=" + url.QueryEscape(severity)
 	}
@@ -360,7 +383,7 @@ func (c *Client) GetIntroducedGateStatus(projectSlug string, severity string, re
 	if severity != "" {
 		q.Set("severity", severity)
 	}
-	path := "/api/v1/projects/" + url.PathEscape(projectSlug) + "/gate?" + q.Encode()
+	path := apiProjectsPrefix + url.PathEscape(projectSlug) + "/gate?" + q.Encode()
 	var resp GateStatus
 	if err := c.do(context.Background(), "GET", path, nil, &resp); err != nil {
 		return nil, err
@@ -382,7 +405,7 @@ func (c *Client) PreviewPRCheck(projectSlug string, commit string, provider stri
 	if severity != "" {
 		q.Set("severity", severity)
 	}
-	path := "/api/v1/projects/" + url.PathEscape(projectSlug) + "/pr-check?" + q.Encode()
+	path := apiProjectsPrefix + url.PathEscape(projectSlug) + "/pr-check?" + q.Encode()
 	var resp PRCheckPreview
 	if err := c.do(context.Background(), "GET", path, nil, &resp); err != nil {
 		return nil, err
@@ -392,7 +415,7 @@ func (c *Client) PreviewPRCheck(projectSlug string, commit string, provider stri
 
 // PreviewPatch plans (but never applies) the safe patch for a finding.
 func (c *Client) PreviewPatch(findingID string) (*PatchOutcome, error) {
-	path := "/api/v1/findings/" + url.PathEscape(findingID) + "/patch-preview"
+	path := apiFindingsPrefix + url.PathEscape(findingID) + "/patch-preview"
 	var resp PatchOutcome
 	if err := c.do(context.Background(), "GET", path, nil, &resp); err != nil {
 		return nil, err
@@ -409,7 +432,7 @@ func (c *Client) PreviewNotification(findingID string, channel string, target st
 	if linked {
 		q.Set("linked", "1")
 	}
-	path := "/api/v1/findings/" + url.PathEscape(findingID) + "/notify-preview?" + q.Encode()
+	path := apiFindingsPrefix + url.PathEscape(findingID) + "/notify-preview?" + q.Encode()
 	var resp NotifyOutcome
 	if err := c.do(context.Background(), "GET", path, nil, &resp); err != nil {
 		return nil, err
@@ -497,7 +520,7 @@ func (c *Client) SetProjectPolicy(projectSlug string, templateName string) (*Pol
 		return nil, err
 	}
 	var resp PolicyEffective
-	if err := c.do(context.Background(), "PUT", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/policy", body, &resp); err != nil {
+	if err := c.do(context.Background(), "PUT", apiProjectsPrefix+url.PathEscape(projectSlug)+"/policy", body, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -510,7 +533,7 @@ func (c *Client) SetProjectPolicyOverrides(projectSlug string, overrides map[str
 		return nil, err
 	}
 	var resp PolicyEffective
-	if err := c.do(context.Background(), "PUT", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/policy/overrides", body, &resp); err != nil {
+	if err := c.do(context.Background(), "PUT", apiProjectsPrefix+url.PathEscape(projectSlug)+"/policy/overrides", body, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -519,7 +542,7 @@ func (c *Client) SetProjectPolicyOverrides(projectSlug string, overrides map[str
 // GetEffectivePolicy resolves one project's policy with provenance.
 func (c *Client) GetEffectivePolicy(projectSlug string) (*PolicyEffective, error) {
 	var resp PolicyEffective
-	if err := c.do(context.Background(), "GET", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/policy", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(projectSlug)+"/policy", nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -549,13 +572,13 @@ func (c *Client) CreateTeam(name, description string) (*Team, error) {
 
 // DeleteTeam removes a team; project links cascade.
 func (c *Client) DeleteTeam(id string) error {
-	return c.do(context.Background(), "DELETE", "/api/v1/teams/"+url.PathEscape(id), nil, nil)
+	return c.do(context.Background(), "DELETE", apiTeamsPrefix+url.PathEscape(id), nil, nil)
 }
 
 // ListTeamMembers returns a team's roster.
 func (c *Client) ListTeamMembers(teamID string) ([]TeamMember, error) {
 	var resp []TeamMember
-	if err := c.do(context.Background(), "GET", "/api/v1/teams/"+url.PathEscape(teamID)+"/members", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiTeamsPrefix+url.PathEscape(teamID)+"/members", nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -568,7 +591,7 @@ func (c *Client) AddTeamMember(teamID, userID, role string) (*TeamMember, error)
 		return nil, err
 	}
 	var resp TeamMember
-	if err := c.do(context.Background(), "POST", "/api/v1/teams/"+url.PathEscape(teamID)+"/members", body, &resp); err != nil {
+	if err := c.do(context.Background(), "POST", apiTeamsPrefix+url.PathEscape(teamID)+"/members", body, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -576,13 +599,13 @@ func (c *Client) AddTeamMember(teamID, userID, role string) (*TeamMember, error)
 
 // RemoveTeamMember removes a user from a team.
 func (c *Client) RemoveTeamMember(teamID, userID string) error {
-	return c.do(context.Background(), "DELETE", "/api/v1/teams/"+url.PathEscape(teamID)+"/members/"+url.PathEscape(userID), nil, nil)
+	return c.do(context.Background(), "DELETE", apiTeamsPrefix+url.PathEscape(teamID)+"/members/"+url.PathEscape(userID), nil, nil)
 }
 
 // ListProjectTeams returns every team linked to a project.
 func (c *Client) ListProjectTeams(projectSlug string) ([]ProjectTeam, error) {
 	var resp []ProjectTeam
-	if err := c.do(context.Background(), "GET", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/teams", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(projectSlug)+"/teams", nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -595,7 +618,7 @@ func (c *Client) LinkProjectTeam(projectSlug, teamID, role string) (*ProjectTeam
 		return nil, err
 	}
 	var resp ProjectTeam
-	if err := c.do(context.Background(), "POST", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/teams", body, &resp); err != nil {
+	if err := c.do(context.Background(), "POST", apiProjectsPrefix+url.PathEscape(projectSlug)+"/teams", body, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -603,14 +626,14 @@ func (c *Client) LinkProjectTeam(projectSlug, teamID, role string) (*ProjectTeam
 
 // UnlinkProjectTeam revokes the conferred role.
 func (c *Client) UnlinkProjectTeam(projectSlug, teamID string) error {
-	return c.do(context.Background(), "DELETE", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/teams/"+url.PathEscape(teamID), nil, nil)
+	return c.do(context.Background(), "DELETE", apiProjectsPrefix+url.PathEscape(projectSlug)+"/teams/"+url.PathEscape(teamID), nil, nil)
 }
 
 // Environments, Targets, Artifacts.
 
 func (c *Client) ListEnvironments(projectSlug string) ([]Environment, error) {
 	var resp []Environment
-	if err := c.do(context.Background(), "GET", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/environments", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(projectSlug)+"/environments", nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -618,7 +641,7 @@ func (c *Client) ListEnvironments(projectSlug string) ([]Environment, error) {
 
 func (c *Client) ListTargets(projectSlug string) ([]Target, error) {
 	var resp []Target
-	if err := c.do(context.Background(), "GET", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/targets", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(projectSlug)+"/targets", nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -626,7 +649,7 @@ func (c *Client) ListTargets(projectSlug string) ([]Target, error) {
 
 func (c *Client) ListArtifacts(projectSlug string) ([]Artifact, error) {
 	var resp []Artifact
-	if err := c.do(context.Background(), "GET", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/artifacts", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(projectSlug)+"/artifacts", nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -634,7 +657,7 @@ func (c *Client) ListArtifacts(projectSlug string) ([]Artifact, error) {
 
 func (c *Client) GetProjectStats(projectSlug string) (*ProjectStats, error) {
 	var resp ProjectStats
-	if err := c.do(context.Background(), "GET", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/stats", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(projectSlug)+"/stats", nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -642,7 +665,7 @@ func (c *Client) GetProjectStats(projectSlug string) (*ProjectStats, error) {
 
 func (c *Client) GetAging(projectSlug string) (*AgingResponse, error) {
 	var resp AgingResponse
-	if err := c.do(context.Background(), "GET", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/aging", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(projectSlug)+"/aging", nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -650,7 +673,7 @@ func (c *Client) GetAging(projectSlug string) (*AgingResponse, error) {
 
 func (c *Client) VerifyFinding(findingID string) (*VerifyResponse, error) {
 	var resp VerifyResponse
-	if err := c.do(context.Background(), "POST", "/api/v1/findings/"+url.PathEscape(findingID)+"/verify", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "POST", apiFindingsPrefix+url.PathEscape(findingID)+"/verify", nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -660,7 +683,7 @@ func (c *Client) VerifyFinding(findingID string) (*VerifyResponse, error) {
 
 func (c *Client) CreateWaiver(projectSlug string, req *CreateWaiverRequest) (*Waiver, error) {
 	var resp Waiver
-	if err := c.do(context.Background(), "POST", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/waivers", req, &resp); err != nil {
+	if err := c.do(context.Background(), "POST", apiProjectsPrefix+url.PathEscape(projectSlug)+"/waivers", req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -668,7 +691,7 @@ func (c *Client) CreateWaiver(projectSlug string, req *CreateWaiverRequest) (*Wa
 
 func (c *Client) ListWaivers(projectSlug string) ([]Waiver, error) {
 	var resp []Waiver
-	if err := c.do(context.Background(), "GET", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/waivers", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(projectSlug)+"/waivers", nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -676,7 +699,7 @@ func (c *Client) ListWaivers(projectSlug string) ([]Waiver, error) {
 
 func (c *Client) GetWaiver(projectSlug, waiverID string) (*WaiverDetail, error) {
 	var resp WaiverDetail
-	if err := c.do(context.Background(), "GET", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/waivers/"+url.PathEscape(waiverID), nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(projectSlug)+waiverSegment+url.PathEscape(waiverID), nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -684,19 +707,19 @@ func (c *Client) GetWaiver(projectSlug, waiverID string) (*WaiverDetail, error) 
 
 func (c *Client) UpdateWaiver(projectSlug, waiverID string, req *UpdateWaiverRequest) (*Waiver, error) {
 	var resp Waiver
-	if err := c.do(context.Background(), "PUT", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/waivers/"+url.PathEscape(waiverID), req, &resp); err != nil {
+	if err := c.do(context.Background(), "PUT", apiProjectsPrefix+url.PathEscape(projectSlug)+waiverSegment+url.PathEscape(waiverID), req, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
 }
 
 func (c *Client) DeleteWaiver(projectSlug, waiverID string) error {
-	return c.do(context.Background(), "DELETE", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/waivers/"+url.PathEscape(waiverID), nil, nil)
+	return c.do(context.Background(), "DELETE", apiProjectsPrefix+url.PathEscape(projectSlug)+waiverSegment+url.PathEscape(waiverID), nil, nil)
 }
 
 func (c *Client) ToggleWaiver(projectSlug, waiverID string) (*Waiver, error) {
 	var resp Waiver
-	if err := c.do(context.Background(), "POST", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/waivers/"+url.PathEscape(waiverID)+"/toggle", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "POST", apiProjectsPrefix+url.PathEscape(projectSlug)+waiverSegment+url.PathEscape(waiverID)+"/toggle", nil, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -704,7 +727,7 @@ func (c *Client) ToggleWaiver(projectSlug, waiverID string) (*Waiver, error) {
 
 func (c *Client) ListWaiverEvents(projectSlug, waiverID string) ([]WaiverEvent, error) {
 	var resp []WaiverEvent
-	if err := c.do(context.Background(), "GET", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/waivers/"+url.PathEscape(waiverID)+"/events", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(projectSlug)+waiverSegment+url.PathEscape(waiverID)+"/events", nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -712,7 +735,7 @@ func (c *Client) ListWaiverEvents(projectSlug, waiverID string) ([]WaiverEvent, 
 
 func (c *Client) CheckWaiverMatch(projectSlug, findingID string) (bool, error) {
 	var resp CheckWaiverMatchResponse
-	if err := c.do(context.Background(), "POST", "/api/v1/projects/"+url.PathEscape(projectSlug)+"/waivers/check-match", map[string]string{"finding_id": findingID}, &resp); err != nil {
+	if err := c.do(context.Background(), "POST", apiProjectsPrefix+url.PathEscape(projectSlug)+"/waivers/check-match", map[string]string{"finding_id": findingID}, &resp); err != nil {
 		return false, err
 	}
 	return resp.Matched, nil
@@ -722,7 +745,7 @@ func (c *Client) CheckWaiverMatch(projectSlug, findingID string) (bool, error) {
 // of reachable, not_reachable, unknown, not_applicable).
 func (c *Client) UpsertReachability(findingID, state, evidence string) (*ReachabilityAssessment, error) {
 	var resp ReachabilityAssessment
-	if err := c.do(context.Background(), "POST", "/api/v1/findings/"+url.PathEscape(findingID)+"/reachability", &UpsertReachabilityRequest{State: state, Evidence: evidence}, &resp); err != nil {
+	if err := c.do(context.Background(), "POST", apiFindingsPrefix+url.PathEscape(findingID)+"/reachability", &UpsertReachabilityRequest{State: state, Evidence: evidence}, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -731,7 +754,7 @@ func (c *Client) UpsertReachability(findingID, state, evidence string) (*Reachab
 // ListReachability returns a finding's reachability assessment history.
 func (c *Client) ListReachability(findingID string) ([]ReachabilityAssessment, error) {
 	var resp []ReachabilityAssessment
-	if err := c.do(context.Background(), "GET", "/api/v1/findings/"+url.PathEscape(findingID)+"/reachability", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiFindingsPrefix+url.PathEscape(findingID)+"/reachability", nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
