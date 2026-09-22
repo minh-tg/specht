@@ -67,6 +67,17 @@ const (
 	exitGateError    = 2
 )
 
+// CLI flag names and shared CLI output formats.
+const (
+	flagProject       = "--project"
+	flagFormat        = "--format"
+	flagFinding       = "--finding"
+	flagSeverity      = "--severity"
+	errInvalidFormat  = "invalid --format %q: want human or json"
+	rowFormat3        = "%s\t%s\t%s\n"
+	stderrErrorFormat = "error: %v\n"
+)
+
 type command struct {
 	cmd            cmd
 	project        string
@@ -136,10 +147,10 @@ func parseArgs(args []string) (command, error) {
 			c := command{cmd: cmdFindingsList}
 			for i := 2; i < len(rest); i++ {
 				switch {
-				case rest[i] == "--project" && i+1 < len(rest):
+				case rest[i] == flagProject && i+1 < len(rest):
 					c.project = rest[i+1]
 					i++
-				case rest[i] == "--severity" && i+1 < len(rest):
+				case rest[i] == flagSeverity && i+1 < len(rest):
 					c.severity = rest[i+1]
 					i++
 				case rest[i] == "--status" && i+1 < len(rest):
@@ -172,7 +183,7 @@ func parseArgs(args []string) (command, error) {
 			c := command{cmd: cmdFindingsReachability}
 			for i := 2; i < len(rest); i++ {
 				switch {
-				case rest[i] == "--finding" && i+1 < len(rest):
+				case rest[i] == flagFinding && i+1 < len(rest):
 					c.findingID = rest[i+1]
 					i++
 				case rest[i] == "--state" && i+1 < len(rest):
@@ -212,13 +223,13 @@ func parseArgs(args []string) (command, error) {
 			c := command{cmd: cmdGateCheck}
 			for i := 2; i < len(rest); i++ {
 				switch {
-				case rest[i] == "--project" && i+1 < len(rest):
+				case rest[i] == flagProject && i+1 < len(rest):
 					c.project = rest[i+1]
 					i++
-				case rest[i] == "--severity" && i+1 < len(rest):
+				case rest[i] == flagSeverity && i+1 < len(rest):
 					c.severity = rest[i+1]
 					i++
-				case rest[i] == "--format" && i+1 < len(rest):
+				case rest[i] == flagFormat && i+1 < len(rest):
 					c.format = rest[i+1]
 					i++
 				case rest[i] == "--introduced-only":
@@ -238,7 +249,7 @@ func parseArgs(args []string) (command, error) {
 				c.format = "human"
 			}
 			if c.format != "human" && c.format != "json" {
-				return command{}, fmt.Errorf("invalid --format %q: want human or json", c.format)
+				return command{}, fmt.Errorf(errInvalidFormat, c.format)
 			}
 			return c, nil
 		default:
@@ -254,7 +265,7 @@ func parseArgs(args []string) (command, error) {
 			c := command{cmd: cmdPRPreview}
 			for i := 2; i < len(rest); i++ {
 				switch {
-				case rest[i] == "--project" && i+1 < len(rest):
+				case rest[i] == flagProject && i+1 < len(rest):
 					c.project = rest[i+1]
 					i++
 				case rest[i] == "--commit" && i+1 < len(rest):
@@ -266,10 +277,10 @@ func parseArgs(args []string) (command, error) {
 				case rest[i] == "--report-id" && i+1 < len(rest):
 					c.reportID = rest[i+1]
 					i++
-				case rest[i] == "--severity" && i+1 < len(rest):
+				case rest[i] == flagSeverity && i+1 < len(rest):
 					c.severity = rest[i+1]
 					i++
-				case rest[i] == "--format" && i+1 < len(rest):
+				case rest[i] == flagFormat && i+1 < len(rest):
 					c.format = rest[i+1]
 					i++
 				}
@@ -284,7 +295,7 @@ func parseArgs(args []string) (command, error) {
 				c.format = "human"
 			}
 			if c.format != "human" && c.format != "json" {
-				return command{}, fmt.Errorf("invalid --format %q: want human or json", c.format)
+				return command{}, fmt.Errorf(errInvalidFormat, c.format)
 			}
 			return c, nil
 		default:
@@ -300,10 +311,10 @@ func parseArgs(args []string) (command, error) {
 			c := command{cmd: cmdPatchPreview}
 			for i := 2; i < len(rest); i++ {
 				switch {
-				case rest[i] == "--finding" && i+1 < len(rest):
+				case rest[i] == flagFinding && i+1 < len(rest):
 					c.findingID = rest[i+1]
 					i++
-				case rest[i] == "--format" && i+1 < len(rest):
+				case rest[i] == flagFormat && i+1 < len(rest):
 					c.format = rest[i+1]
 					i++
 				}
@@ -315,7 +326,7 @@ func parseArgs(args []string) (command, error) {
 				c.format = "human"
 			}
 			if c.format != "human" && c.format != "json" {
-				return command{}, fmt.Errorf("invalid --format %q: want human or json", c.format)
+				return command{}, fmt.Errorf(errInvalidFormat, c.format)
 			}
 			return c, nil
 		default:
@@ -331,7 +342,7 @@ func parseArgs(args []string) (command, error) {
 			c := command{cmd: cmdNotifyPreview}
 			for i := 2; i < len(rest); i++ {
 				switch {
-				case rest[i] == "--finding" && i+1 < len(rest):
+				case rest[i] == flagFinding && i+1 < len(rest):
 					c.findingID = rest[i+1]
 					i++
 				case rest[i] == "--channel" && i+1 < len(rest):
@@ -342,7 +353,7 @@ func parseArgs(args []string) (command, error) {
 					i++
 				case rest[i] == "--linked":
 					c.linked = true
-				case rest[i] == "--format" && i+1 < len(rest):
+				case rest[i] == flagFormat && i+1 < len(rest):
 					c.format = rest[i+1]
 					i++
 				}
@@ -360,7 +371,7 @@ func parseArgs(args []string) (command, error) {
 				c.format = "human"
 			}
 			if c.format != "human" && c.format != "json" {
-				return command{}, fmt.Errorf("invalid --format %q: want human or json", c.format)
+				return command{}, fmt.Errorf(errInvalidFormat, c.format)
 			}
 			return c, nil
 		default:
@@ -376,7 +387,7 @@ func parseArgs(args []string) (command, error) {
 			c := command{cmd: cmdAdminStatus}
 			for i := 2; i < len(rest); i++ {
 				switch {
-				case rest[i] == "--format" && i+1 < len(rest):
+				case rest[i] == flagFormat && i+1 < len(rest):
 					c.format = rest[i+1]
 					i++
 				}
@@ -385,7 +396,7 @@ func parseArgs(args []string) (command, error) {
 				c.format = "human"
 			}
 			if c.format != "human" && c.format != "json" {
-				return command{}, fmt.Errorf("invalid --format %q: want human or json", c.format)
+				return command{}, fmt.Errorf(errInvalidFormat, c.format)
 			}
 			return c, nil
 		case "retention":
@@ -407,7 +418,7 @@ func parseArgs(args []string) (command, error) {
 						}
 						c.days = n
 						i++
-					case rest[i] == "--format" && i+1 < len(rest):
+					case rest[i] == flagFormat && i+1 < len(rest):
 						c.format = rest[i+1]
 						i++
 					}
@@ -419,7 +430,7 @@ func parseArgs(args []string) (command, error) {
 					c.format = "human"
 				}
 				if c.format != "human" && c.format != "json" {
-					return command{}, fmt.Errorf("invalid --format %q: want human or json", c.format)
+					return command{}, fmt.Errorf(errInvalidFormat, c.format)
 				}
 				return c, nil
 			default:
@@ -481,7 +492,7 @@ func parseArgs(args []string) (command, error) {
 			c := command{cmd: cmdPolicyApply}
 			for i := 2; i < len(rest); i++ {
 				switch {
-				case rest[i] == "--project" && i+1 < len(rest):
+				case rest[i] == flagProject && i+1 < len(rest):
 					c.project = rest[i+1]
 					i++
 				case rest[i] == "--template" && i+1 < len(rest):
@@ -497,7 +508,7 @@ func parseArgs(args []string) (command, error) {
 			c := command{cmd: cmdPolicyOverrides}
 			for i := 2; i < len(rest); i++ {
 				switch {
-				case rest[i] == "--project" && i+1 < len(rest):
+				case rest[i] == flagProject && i+1 < len(rest):
 					c.project = rest[i+1]
 					i++
 				case rest[i] == "--set" && i+1 < len(rest):
@@ -513,10 +524,10 @@ func parseArgs(args []string) (command, error) {
 			c := command{cmd: cmdPolicyEffective}
 			for i := 2; i < len(rest); i++ {
 				switch {
-				case rest[i] == "--project" && i+1 < len(rest):
+				case rest[i] == flagProject && i+1 < len(rest):
 					c.project = rest[i+1]
 					i++
-				case rest[i] == "--format" && i+1 < len(rest):
+				case rest[i] == flagFormat && i+1 < len(rest):
 					c.format = rest[i+1]
 					i++
 				}
@@ -528,7 +539,7 @@ func parseArgs(args []string) (command, error) {
 				c.format = "human"
 			}
 			if c.format != "human" && c.format != "json" {
-				return command{}, fmt.Errorf("invalid --format %q: want human or json", c.format)
+				return command{}, fmt.Errorf(errInvalidFormat, c.format)
 			}
 			return c, nil
 		default:
@@ -632,7 +643,7 @@ func parseArgs(args []string) (command, error) {
 			c := command{cmd: cmdProjectTeams}
 			for i := 2; i < len(rest); i++ {
 				switch {
-				case rest[i] == "--project" && i+1 < len(rest):
+				case rest[i] == flagProject && i+1 < len(rest):
 					c.project = rest[i+1]
 					i++
 				}
@@ -645,7 +656,7 @@ func parseArgs(args []string) (command, error) {
 			c := command{cmd: cmdProjectLink}
 			for i := 2; i < len(rest); i++ {
 				switch {
-				case rest[i] == "--project" && i+1 < len(rest):
+				case rest[i] == flagProject && i+1 < len(rest):
 					c.project = rest[i+1]
 					i++
 				case rest[i] == "--team" && i+1 < len(rest):
@@ -664,7 +675,7 @@ func parseArgs(args []string) (command, error) {
 			c := command{cmd: cmdProjectUnlink}
 			for i := 2; i < len(rest); i++ {
 				switch {
-				case rest[i] == "--project" && i+1 < len(rest):
+				case rest[i] == flagProject && i+1 < len(rest):
 					c.project = rest[i+1]
 					i++
 				case rest[i] == "--team" && i+1 < len(rest):
@@ -725,7 +736,7 @@ func formatGateStatus(gs *client.GateStatus, format string) (string, error) {
 		}
 		return string(buf), nil
 	default:
-		return "", fmt.Errorf("invalid --format %q: want human or json", format)
+		return "", fmt.Errorf(errInvalidFormat, format)
 	}
 }
 
@@ -785,7 +796,7 @@ func run(cl *client.Client, cmd command) error {
 			if p.Description != nil {
 				desc = *p.Description
 			}
-			fmt.Printf("%s\t%s\t%s\n", p.Slug, p.Name, desc)
+			fmt.Printf(rowFormat3, p.Slug, p.Name, desc)
 		}
 		return nil
 
@@ -1110,7 +1121,7 @@ func run(cl *client.Client, cmd command) error {
 			return nil
 		}
 		for _, t := range teams {
-			fmt.Printf("%s\t%s\t%s\n", t.Name, t.ID, t.Description)
+			fmt.Printf(rowFormat3, t.Name, t.ID, t.Description)
 		}
 		return nil
 
@@ -1139,7 +1150,7 @@ func run(cl *client.Client, cmd command) error {
 			return nil
 		}
 		for _, m := range members {
-			fmt.Printf("%s\t%s\t%s\n", m.UserEmail, m.UserID, m.Role)
+			fmt.Printf(rowFormat3, m.UserEmail, m.UserID, m.Role)
 		}
 		return nil
 
@@ -1168,7 +1179,7 @@ func run(cl *client.Client, cmd command) error {
 			return nil
 		}
 		for _, l := range links {
-			fmt.Printf("%s\t%s\t%s\n", l.TeamName, l.TeamID, l.Role)
+			fmt.Printf(rowFormat3, l.TeamName, l.TeamID, l.Role)
 		}
 		return nil
 
@@ -1315,7 +1326,7 @@ Environment:
 func main() {
 	cmd, err := parseArgs(os.Args)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		fmt.Fprintf(os.Stderr, stderrErrorFormat, err)
 		os.Exit(2)
 	}
 
@@ -1323,7 +1334,7 @@ func main() {
 	// not use the API client, so it is dispatched before the API_KEY gate.
 	if cmd.cmd == cmdWatcherBackfill {
 		if err := runWatcherBackfill(cmd); err != nil {
-			fmt.Fprintf(os.Stderr, "error: %v\n", err)
+			fmt.Fprintf(os.Stderr, stderrErrorFormat, err)
 			os.Exit(2)
 		}
 		return
@@ -1343,7 +1354,7 @@ func main() {
 	cl := client.New(apiURL, client.WithToken(token))
 
 	if err := run(cl, cmd); err != nil {
-		fmt.Fprintf(os.Stderr, "error: %v\n", err)
+		fmt.Fprintf(os.Stderr, stderrErrorFormat, err)
 		os.Exit(2)
 	}
 }
