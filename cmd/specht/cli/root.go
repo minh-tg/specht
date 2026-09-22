@@ -72,7 +72,7 @@ func NewRootCmd(d Deps) *cobra.Command {
 	root.SetErr(d.ErrW)
 	root.AddCommand(newProjectsCmd(d, s))
 	root.AddCommand(newFindingsCmd(d, s))
-	// TEMP-DISABLED newGateCmd
+	root.AddCommand(newGateCmd(d, s))
 	// TEMP-DISABLED newStatsCmd
 	// TEMP-DISABLED newPrCmd
 	return root
