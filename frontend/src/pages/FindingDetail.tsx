@@ -131,8 +131,8 @@ function HistorySection({
   isError,
 }: {
   events?: FindingEvent[];
-  isLoading: boolean;
-  isError: boolean;
+  readonly isLoading: boolean;
+  readonly isError: boolean;
 }) {
   let body: ReactNode;
   if (isLoading) {
@@ -172,7 +172,7 @@ function HistorySection({
 }
 
 /** Triage controls and status feedback for one finding. */
-function TriageSection({ findingId }: { findingId: string; }) {
+function TriageSection({ findingId }: { readonly findingId: string; }) {
   const triageMutation = useTriageFinding();
   const [selectedState, setSelectedState] = useState<AnalysisState | "">("");
   const [reason, setReason] = useState("");
@@ -292,12 +292,12 @@ function ReachabilitySection({
   error,
   isSuccess,
 }: {
-  findingId: string;
-  reachability?: ReachabilityAssessment[];
-  isLoading: boolean;
-  isError: boolean;
-  error: Error | null;
-  isSuccess: boolean;
+  readonly findingId: string;
+  readonly reachability?: ReachabilityAssessment[];
+  readonly isLoading: boolean;
+  readonly isError: boolean;
+  readonly error: Error | null;
+  readonly isSuccess: boolean;
 }) {
   const mutation = useUpsertReachability();
   const [reachState, setReachState] = useState<ReachabilityState | "">("");

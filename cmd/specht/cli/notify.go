@@ -17,6 +17,9 @@ func newNotifyCmd(d Deps, s *settings) *cobra.Command {
 	return cmd
 }
 
+// notifyPreviewCmd is the subcommand name shared by its flag requirements.
+const notifyPreviewCmd = "notify preview"
+
 func newNotifyPreviewCmd(d Deps, s *settings) *cobra.Command {
 	var findingID, channel, target string
 	var linked bool
@@ -24,13 +27,13 @@ func newNotifyPreviewCmd(d Deps, s *settings) *cobra.Command {
 		Use:   "preview",
 		Short: "Preview tracker/messaging action (dry-run; sends nothing)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := requireFlag(findingID, "--finding", "notify preview"); err != nil {
+			if err := requireFlag(findingID, "--finding", notifyPreviewCmd); err != nil {
 				return err
 			}
-			if err := requireFlag(channel, "--channel", "notify preview"); err != nil {
+			if err := requireFlag(channel, "--channel", notifyPreviewCmd); err != nil {
 				return err
 			}
-			if err := requireFlag(target, "--target", "notify preview"); err != nil {
+			if err := requireFlag(target, "--target", notifyPreviewCmd); err != nil {
 				return err
 			}
 			format, err := resolveFormat(s)
