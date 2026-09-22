@@ -116,13 +116,15 @@ type sarifRule struct {
 	DefaultConfiguration struct {
 		Level string `json:"level"`
 	} `json:"defaultConfiguration"`
-	Relationships []struct {
-		Target struct {
-			ID string `json:"id"`
-		} `json:"target"`
-		Kinds []string `json:"kinds"`
-	} `json:"relationships"`
-	Properties map[string]any `json:"properties"`
+	Relationships []sarifRelationship `json:"relationships"`
+	Properties    map[string]any      `json:"properties"`
+}
+
+type sarifRelationship struct {
+	Target struct {
+		ID string `json:"id"`
+	} `json:"target"`
+	Kinds []string `json:"kinds"`
 }
 
 type sarifResult struct {
@@ -177,26 +179,10 @@ func convert(log sarifLog) *domain.NormalizedReport {
 		if len(nr.ScanScope.Ext) == 0 && run.Tool.Driver.Version != "" {
 			nr.ScanScope.Ext[ns+"_tool_version"] = run.Tool.Driver.Version
 		}
-		rules := map[string]sarifRule{}
-		for _, r := range run.Tool.Driver.Rules {
-			if _, ok := rules[r.ID]; !ok && r.ID != "" {
-				rules[r.ID] = r
-			}
-		}
+		rules := indexRules(run.Tool.Driver.Rules)
 		for _, result := range run.Results {
-			rule := rules[result.RuleID]
-			if rule.ID == "" && result.RuleIndex != nil && *result.RuleIndex >= 0 && *result.RuleIndex < len(run.Tool.Driver.Rules) {
-				rule = run.Tool.Driver.Rules[*result.RuleIndex]
-			}
-			ruleID := result.RuleID
-			if ruleID == "" {
-				ruleID = rule.ID
-			}
-			if ruleID == "" {
-				skipped++
-				continue
-			}
-			if suppressedAccepted(result) {
+			rule, ruleID := resolveRule(run.Tool.Driver.Rules, rules, result)
+			if ruleID == "" || suppressedAccepted(result) {
 				skipped++
 				continue
 			}
@@ -212,6 +198,31 @@ func convert(log sarifLog) *domain.NormalizedReport {
 	return nr
 }
 
+// indexRules indexes rules by ID, keeping the first occurrence.
+func indexRules(rules []sarifRule) map[string]sarifRule {
+	byID := map[string]sarifRule{}
+	for _, r := range rules {
+		if _, ok := byID[r.ID]; !ok && r.ID != "" {
+			byID[r.ID] = r
+		}
+	}
+	return byID
+}
+
+// resolveRule maps a result to its rule and effective rule ID. Results with
+// no resolvable ID are reported with an empty ID for the caller to skip.
+func resolveRule(rules []sarifRule, byID map[string]sarifRule, result sarifResult) (sarifRule, string) {
+	rule := byID[result.RuleID]
+	if rule.ID == "" && result.RuleIndex != nil && *result.RuleIndex >= 0 && *result.RuleIndex < len(rules) {
+		rule = rules[*result.RuleIndex]
+	}
+	ruleID := result.RuleID
+	if ruleID == "" {
+		ruleID = rule.ID
+	}
+	return rule, ruleID
+}
+
 func convertResult(result sarifResult, rule sarifRule, ruleID, ns string) domain.NormalizedFinding {
 	file := resultFile(result)
 	line := resultLine(result)
@@ -223,14 +234,49 @@ func convertResult(result sarifResult, rule sarifRule, ruleID, ns string) domain
 	if line > 0 {
 		location = fmt.Sprintf("%s:%d", file, line)
 	}
-	var dims []domain.Dimension
-	dims = append(dims, domain.Dimension{Key: domain.DimRuleID, Value: ruleID})
-	if file != unknownFile {
-		dims = append(dims, domain.Dimension{Key: domain.DimFile, Value: file})
-		if line > 0 {
-			dims = append(dims, domain.Dimension{Key: domain.DimLine, Value: strconv.Itoa(line)})
-		}
+
+	title := result.Message.Text
+	if title == "" {
+		title = ruleID
 	}
+	description := rule.FullDescription.Text
+	if description == "" {
+		description = rule.ShortDescription.Text
+	}
+
+	f := domain.NormalizedFinding{
+		Fingerprint: fingerprint,
+		FindingKind: "sast",
+		Title:       title,
+		Description: description,
+		Severity:    severityFor(result, rule),
+		Location:    location,
+		Fix:         resultFix(result),
+		Dimensions:  resultDims(ruleID, file, line),
+		Extensions:  resultMeta(result, rule, ns),
+	}
+	if file != unknownFile {
+		f.CodeLocation = &domain.CodeLocation{File: file, StartLine: line}
+	}
+	return f
+}
+
+// resultDims builds the stable dimension set for a SARIF result.
+func resultDims(ruleID, file string, line int) []domain.Dimension {
+	dims := []domain.Dimension{{Key: domain.DimRuleID, Value: ruleID}}
+	if file == unknownFile {
+		return dims
+	}
+	dims = append(dims, domain.Dimension{Key: domain.DimFile, Value: file})
+	if line > 0 {
+		dims = append(dims, domain.Dimension{Key: domain.DimLine, Value: strconv.Itoa(line)})
+	}
+	return dims
+}
+
+// resultMeta collects producer-specific extension keys from the rule and
+// result (properties, fingerprints, suppressions, baseline state).
+func resultMeta(result sarifResult, rule sarifRule, ns string) map[string]any {
 	meta := map[string]any{ns + "_tool": ns}
 	if cwes := cweIDs(rule); len(cwes) > 0 {
 		meta["cwe"] = cwes
@@ -256,33 +302,15 @@ func convertResult(result sarifResult, rule sarifRule, ruleID, ns string) domain
 	if result.BaselineState != "" {
 		meta["baseline_state"] = result.BaselineState
 	}
-	var fix *domain.FixInfo
-	if len(result.Fixes) > 0 && result.Fixes[0].Description.Text != "" {
-		fix = &domain.FixInfo{Summary: result.Fixes[0].Description.Text}
+	return meta
+}
+
+// resultFix extracts the first non-empty fix description.
+func resultFix(result sarifResult) *domain.FixInfo {
+	if len(result.Fixes) == 0 || result.Fixes[0].Description.Text == "" {
+		return nil
 	}
-	title := result.Message.Text
-	if title == "" {
-		title = ruleID
-	}
-	description := rule.FullDescription.Text
-	if description == "" {
-		description = rule.ShortDescription.Text
-	}
-	f := domain.NormalizedFinding{
-		Fingerprint: fingerprint,
-		FindingKind: "sast",
-		Title:       title,
-		Description: description,
-		Severity:    severityFor(result, rule),
-		Location:    location,
-		Fix:         fix,
-		Dimensions:  dims,
-		Extensions:  meta,
-	}
-	if file != unknownFile {
-		f.CodeLocation = &domain.CodeLocation{File: file, StartLine: line}
-	}
-	return f
+	return &domain.FixInfo{Summary: result.Fixes[0].Description.Text}
 }
 
 func resultFile(result sarifResult) string {
@@ -403,16 +431,31 @@ func cweIDs(rule sarifRule) []string {
 		out = append(out, id)
 	}
 	for _, rel := range rule.Relationships {
-		relevant := len(rel.Kinds) == 0
-		for _, k := range rel.Kinds {
-			if strings.EqualFold(k, "relevant") {
-				relevant = true
-			}
-		}
-		if relevant && strings.HasPrefix(rel.Target.ID, "CWE-") {
+		if isRelevantCWE(rel) {
 			add(rel.Target.ID)
 		}
 	}
+	addPropertyCWEs(rule, add)
+	sort.Strings(out)
+	return out
+}
+
+// isRelevantCWE reports whether a rule relationship points at a CWE that is
+// kind-relevant (or declares no kinds at all).
+func isRelevantCWE(rel sarifRelationship) bool {
+	if !strings.HasPrefix(rel.Target.ID, "CWE-") {
+		return false
+	}
+	for _, k := range rel.Kinds {
+		if strings.EqualFold(k, "relevant") {
+			return true
+		}
+	}
+	return len(rel.Kinds) == 0
+}
+
+// addPropertyCWEs feeds every string in the cwe rule property to add.
+func addPropertyCWEs(rule sarifRule, add func(string)) {
 	switch v := rule.Properties["cwe"].(type) {
 	case string:
 		add(v)
@@ -423,8 +466,6 @@ func cweIDs(rule sarifRule) []string {
 			}
 		}
 	}
-	sort.Strings(out)
-	return out
 }
 
 // extensionNS namespaces producer-specific extensions by tool name.

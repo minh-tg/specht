@@ -151,85 +151,77 @@ func convert(report sarifReport) *domain.NormalizedReport {
 
 	run := report.Runs[0]
 
-	ruleMap := make(map[string]sarifRule, len(run.Tool.Driver.Rules))
-	for _, rule := range run.Tool.Driver.Rules {
-		ruleMap[rule.ID] = rule
-	}
-
 	for _, result := range run.Results {
-		rule, hasRule := ruleMap[result.RuleID]
-		if !hasRule {
-			for _, r := range run.Tool.Driver.Rules {
-				if r.ID == result.RuleID {
-					rule = r
-					hasRule = true
-					break
-				}
-			}
-		}
-
+		rule, hasRule := findRule(run.Tool.Driver.Rules, result.RuleID)
 		file := extractFile(result)
 		line := extractLine(result)
 		location := fmt.Sprintf("%s:%d", file, line)
-
 		fingerprint := "sast:" + result.RuleID + ":" + file + ":" + strconv.Itoa(line)
-
-		severity := mapSarifLevel(result.Level, rule)
-
-		title := extractTitle(result, rule)
-		description := extractDescription(result, rule)
-
-		dims := []domain.Dimension{
-			{Key: "rule_id", Value: result.RuleID},
-			{Key: "file", Value: file},
-			{Key: "line", Value: strconv.Itoa(line)},
-		}
-
-		meta := map[string]any{}
-		if hasRule && rule.Properties != nil {
-			if cwe, ok := rule.Properties["cwe"]; ok {
-				meta["cwe"] = cwe
-			}
-			if tags, ok := rule.Properties["tags"]; ok {
-				meta["tags"] = tags
-			}
-			if precision, ok := rule.Properties["precision"]; ok {
-				meta["precision"] = precision
-			}
-			if category, ok := rule.Properties["category"]; ok {
-				meta["category"] = category
-			}
-		}
-		if matchFP, ok := result.Fingerprints["matchBasedFingerprint/v1"]; ok {
-			meta["semgrep_fingerprint"] = matchFP
-		}
-		if result.Properties != nil {
-			if sv, ok := result.Properties["severity"]; ok {
-				meta["semgrep_severity"] = sv
-			}
-			if fix, ok := result.Properties["fix"]; ok {
-				meta["fix"] = fix
-			}
-		}
-		if !hasRule && result.Properties != nil {
-			if cwe, ok := result.Properties["cwe"]; ok {
-				meta["cwe"] = cwe
-			}
-		}
 
 		nr.Findings = append(nr.Findings, domain.NormalizedFinding{
 			Fingerprint: fingerprint,
 			FindingKind: "sast",
-			Title:       title,
-			Description: description,
-			Severity:    severity,
+			Title:       extractTitle(result, rule),
+			Description: extractDescription(result, rule),
+			Severity:    mapSarifLevel(result.Level, rule),
 			Location:    location,
-			Dimensions:  dims,
-			Extensions:  meta,
+			Dimensions: []domain.Dimension{
+				{Key: "rule_id", Value: result.RuleID},
+				{Key: "file", Value: file},
+				{Key: "line", Value: strconv.Itoa(line)},
+			},
+			Extensions: resultMeta(result, rule, hasRule),
 		})
 	}
 
 	return nr
+}
+
+// findRule looks up a rule by ID, reporting whether it was present.
+func findRule(rules []sarifRule, ruleID string) (sarifRule, bool) {
+	for _, r := range rules {
+		if r.ID == ruleID {
+			return r, true
+		}
+	}
+	return sarifRule{}, false
+}
+
+// resultMeta collects scanner-specific extension keys from the rule and the
+// result (semgrep emits its own fingerprint/severity/fix properties).
+func resultMeta(result sarifResult, rule sarifRule, hasRule bool) map[string]any {
+	meta := map[string]any{}
+	if hasRule && rule.Properties != nil {
+		for _, key := range []string{"cwe", "tags", "precision", "category"} {
+			if v, ok := rule.Properties[key]; ok {
+				meta[key] = v
+			}
+		}
+	}
+	if matchFP, ok := result.Fingerprints["matchBasedFingerprint/v1"]; ok {
+		meta["semgrep_fingerprint"] = matchFP
+	}
+	if result.Properties != nil {
+		if sv, ok := result.Properties["severity"]; ok {
+			meta["semgrep_severity"] = sv
+		}
+		if fix, ok := result.Properties["fix"]; ok {
+			meta["fix"] = fix
+		}
+		addResultCWE(meta, result, hasRule)
+	}
+	return meta
+}
+
+// addResultCWE copies the result-level cwe only when the rule did not
+// already supply one.
+func addResultCWE(meta map[string]any, result sarifResult, hasRule bool) {
+	if hasRule || result.Properties == nil {
+		return
+	}
+	if cwe, ok := result.Properties["cwe"]; ok {
+		meta["cwe"] = cwe
+	}
 }
 
 func extractFile(result sarifResult) string {

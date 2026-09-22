@@ -147,8 +147,19 @@ func convert(doc grypeDoc) *domain.NormalizedReport {
 	// packages that carry at least one vulnerability. The package inventory is
 	// therefore limited to those artifacts; projects that need a complete
 	// dependency tree should pair grype with a syft SBOM scan.
-	seen := make(map[string]struct{})
+	nr.Packages = collectPackages(doc.Matches)
 	for _, match := range doc.Matches {
+		nr.Findings = append(nr.Findings, convertMatch(match))
+	}
+
+	return nr
+}
+
+// collectPackages deduplicates matched artifacts into package refs by PURL.
+func collectPackages(matches []grypeMatch) []domain.PackageRef {
+	seen := make(map[string]struct{})
+	var packages []domain.PackageRef
+	for _, match := range matches {
 		artifact := match.Artifact
 		purl := domain.NormalizePURL(artifact.PURL)
 		if purl == "" {
@@ -165,7 +176,7 @@ func convert(doc grypeDoc) *domain.NormalizedReport {
 		}
 		pkgType, _, _ := domain.SplitPURL(purl)
 
-		nr.Packages = append(nr.Packages, domain.PackageRef{
+		packages = append(packages, domain.PackageRef{
 			PURL:         purl,
 			Ecosystem:    pkgType,
 			Name:         artifact.Name,
@@ -173,99 +184,99 @@ func convert(doc grypeDoc) *domain.NormalizedReport {
 			ManifestPath: manifestPath,
 		})
 	}
+	return packages
+}
 
-	for _, match := range doc.Matches {
-		vuln := match.Vulnerability
-		artifact := match.Artifact
+// convertMatch maps a single grype match to a normalized SCA finding.
+func convertMatch(match grypeMatch) domain.NormalizedFinding {
+	vuln := match.Vulnerability
+	artifact := match.Artifact
+	purl := artifact.PURL
 
-		purl := artifact.PURL
-		fingerprint := string(domain.SCAFingerprint(vuln.ID, purl))
+	score, cvssVec, cvssVer := pickCVSS(vuln.CVSS)
+	aliases := extractAliases(match.RelatedVulnerabilities)
 
-		severity := normalizeGrypeSeverity(vuln.Severity)
-
-		score, cvssVec, cvssVer := pickCVSS(vuln.CVSS)
-		aliases := extractAliases(match.RelatedVulnerabilities)
-
-		// If no CVSS on primary, check relatedVulnerabilities
-		if score == 0 {
-			for _, rv := range match.RelatedVulnerabilities {
-				if len(rv.CVSS) > 0 {
-					s, vec, ver := pickCVSS(rv.CVSS)
-					if s > 0 {
-						score = s
-						cvssVec = vec
-						cvssVer = ver
-						break
-					}
-				}
-			}
-		}
-
-		var cvss *domain.CVSSInfo
-		if cvssVec != "" {
-			cvss = &domain.CVSSInfo{
-				Version: cvssVer,
-				Vector:  cvssVec,
-				Score:   score,
-			}
-		}
-
-		var fix *domain.FixInfo
-		if vuln.Fix != nil && len(vuln.Fix.Versions) > 0 {
-			summary := strings.Join(vuln.Fix.Versions, ", ")
-			fix = &domain.FixInfo{Summary: summary}
-		}
-
-		dims := []domain.Dimension{
-			{Key: "vulnerability_id", Value: vuln.ID},
-			{Key: "package_name", Value: artifact.Name},
-			{Key: "installed_version", Value: artifact.Version},
-			{Key: "purl", Value: purl},
-		}
-		if fix != nil {
-			dims = append(dims, domain.Dimension{Key: "fixed_version", Value: fix.Summary})
-		}
-
-		location := ""
-		if len(artifact.Locations) > 0 {
-			location = artifact.Locations[0].Path
-		}
-
-		nr.Findings = append(nr.Findings, domain.NormalizedFinding{
-			Fingerprint: fingerprint,
-			FindingKind: "sca",
-			Title:       vuln.ID + " in " + artifact.Name,
-			Description: vuln.Description,
-			Severity:    severity,
-			Score:       score,
-			Location:    location,
-			Resource:    artifact.Name + "@" + artifact.Version,
-			Aliases:     aliases,
-			CVSS:        cvss,
-			Fix:         fix,
-			Dimensions:  dims,
-			Extensions: map[string]any{
-				"package": map[string]any{
-					"name":    artifact.Name,
-					"version": artifact.Version,
-					"type":    artifact.Type,
-				},
-				"namespace":     vuln.Namespace,
-				"severity_raw":  vuln.Severity,
-				"purl":          purl,
-				"artifact_type": artifact.Type,
-				"language":      artifact.Language,
-			},
-		})
+	// If no CVSS on primary, check relatedVulnerabilities
+	if score == 0 {
+		score, cvssVec, cvssVer = relatedCVSS(match.RelatedVulnerabilities)
 	}
 
-	return nr
+	var cvss *domain.CVSSInfo
+	if cvssVec != "" {
+		cvss = &domain.CVSSInfo{
+			Version: cvssVer,
+			Vector:  cvssVec,
+			Score:   score,
+		}
+	}
+
+	var fix *domain.FixInfo
+	if vuln.Fix != nil && len(vuln.Fix.Versions) > 0 {
+		fix = &domain.FixInfo{Summary: strings.Join(vuln.Fix.Versions, ", ")}
+	}
+
+	dims := []domain.Dimension{
+		{Key: "vulnerability_id", Value: vuln.ID},
+		{Key: "package_name", Value: artifact.Name},
+		{Key: "installed_version", Value: artifact.Version},
+		{Key: "purl", Value: purl},
+	}
+	if fix != nil {
+		dims = append(dims, domain.Dimension{Key: "fixed_version", Value: fix.Summary})
+	}
+
+	location := ""
+	if len(artifact.Locations) > 0 {
+		location = artifact.Locations[0].Path
+	}
+
+	return domain.NormalizedFinding{
+		Fingerprint: string(domain.SCAFingerprint(vuln.ID, purl)),
+		FindingKind: "sca",
+		Title:       vuln.ID + " in " + artifact.Name,
+		Description: vuln.Description,
+		Severity:    normalizeGrypeSeverity(vuln.Severity),
+		Score:       score,
+		Location:    location,
+		Resource:    artifact.Name + "@" + artifact.Version,
+		Aliases:     aliases,
+		CVSS:        cvss,
+		Fix:         fix,
+		Dimensions:  dims,
+		Extensions: map[string]any{
+			"package": map[string]any{
+				"name":    artifact.Name,
+				"version": artifact.Version,
+				"type":    artifact.Type,
+			},
+			"namespace":     vuln.Namespace,
+			"severity_raw":  vuln.Severity,
+			"purl":          purl,
+			"artifact_type": artifact.Type,
+			"language":      artifact.Language,
+		},
+	}
 }
 
 func pickCVSS(cvssList []grypeCVSS) (score float64, vector string, version string) {
 	for _, c := range cvssList {
 		if c.Metrics.BaseScore > 0 {
 			return c.Metrics.BaseScore, c.Vector, c.Version
+		}
+	}
+	return 0, "", ""
+}
+
+// relatedCVSS falls back to the first related vulnerability that carries a
+// usable CVSS score.
+func relatedCVSS(related []grypeRelatedVuln) (score float64, vector string, version string) {
+	for _, rv := range related {
+		if len(rv.CVSS) == 0 {
+			continue
+		}
+		s, vec, ver := pickCVSS(rv.CVSS)
+		if s > 0 {
+			return s, vec, ver
 		}
 	}
 	return 0, "", ""

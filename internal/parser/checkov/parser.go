@@ -111,79 +111,83 @@ func convert(report checkovReport) *domain.NormalizedReport {
 	}
 
 	for _, f := range report.Results.FailedChecks {
-		file := f.FilePath
-		if file == "" {
-			file = "unknown"
-		}
-
-		fingerprint := "iac:" + f.CheckID + ":" + f.Resource + ":" + file
-
-		severity := normalizeSeverity(f.Severity)
-
-		dims := []domain.Dimension{
-			{Key: "rule_id", Value: f.CheckID},
-		}
-		if f.Resource != "" {
-			dims = append(dims, domain.Dimension{Key: "resource", Value: f.Resource})
-		}
-		ext := map[string]any{
-			"file":        file,
-			"check_class": f.CheckClass,
-			"check_type":  report.CheckType,
-		}
-		var aliases []string
-		if f.BcCheckID != "" && f.BcCheckID != f.CheckID {
-			aliases = append(aliases, f.BcCheckID)
-			ext["bc_check_id"] = f.BcCheckID
-		}
-		if f.Guideline != "" {
-			ext["guideline"] = f.Guideline
-		}
-		if len(f.CodeBlock) > 0 {
-			ext["code_block"] = string(f.CodeBlock)
-		}
-
-		var fix *domain.FixInfo
-		if f.Guideline != "" {
-			fix = &domain.FixInfo{URL: f.Guideline}
-		}
-
-		var codeLoc *domain.CodeLocation
-		if len(f.FileLineRange) >= 2 {
-			codeLoc = &domain.CodeLocation{
-				File:      file,
-				StartLine: f.FileLineRange[0],
-				EndLine:   f.FileLineRange[1],
-			}
-		} else if len(f.FileLineRange) == 1 {
-			codeLoc = &domain.CodeLocation{
-				File:      file,
-				StartLine: f.FileLineRange[0],
-			}
-		}
-
-		location := file
-		if codeLoc != nil && codeLoc.StartLine > 0 {
-			location = fmt.Sprintf("%s:%d", file, codeLoc.StartLine)
-		}
-
-		nr.Findings = append(nr.Findings, domain.NormalizedFinding{
-			Fingerprint:  fingerprint,
-			FindingKind:  "iac",
-			Title:        f.CheckName,
-			Description:  f.CheckName,
-			Severity:     severity,
-			Location:     location,
-			Resource:     f.Resource,
-			Aliases:      aliases,
-			Fix:          fix,
-			CodeLocation: codeLoc,
-			Dimensions:   dims,
-			Extensions:   ext,
-		})
+		nr.Findings = append(nr.Findings, convertCheck(f, report.CheckType))
 	}
 
 	return nr
+}
+
+// convertCheck maps one failed checkov check to a normalized IaC finding.
+func convertCheck(f checkovFinding, checkType string) domain.NormalizedFinding {
+	file := f.FilePath
+	if file == "" {
+		file = "unknown"
+	}
+
+	dims := []domain.Dimension{
+		{Key: "rule_id", Value: f.CheckID},
+	}
+	if f.Resource != "" {
+		dims = append(dims, domain.Dimension{Key: "resource", Value: f.Resource})
+	}
+	ext := map[string]any{
+		"file":        file,
+		"check_class": f.CheckClass,
+		"check_type":  checkType,
+	}
+	var aliases []string
+	if f.BcCheckID != "" && f.BcCheckID != f.CheckID {
+		aliases = append(aliases, f.BcCheckID)
+		ext["bc_check_id"] = f.BcCheckID
+	}
+	if f.Guideline != "" {
+		ext["guideline"] = f.Guideline
+	}
+	if len(f.CodeBlock) > 0 {
+		ext["code_block"] = string(f.CodeBlock)
+	}
+
+	var fix *domain.FixInfo
+	if f.Guideline != "" {
+		fix = &domain.FixInfo{URL: f.Guideline}
+	}
+
+	codeLoc := checkCodeLocation(f, file)
+	location := file
+	if codeLoc != nil && codeLoc.StartLine > 0 {
+		location = fmt.Sprintf("%s:%d", file, codeLoc.StartLine)
+	}
+
+	return domain.NormalizedFinding{
+		Fingerprint:  "iac:" + f.CheckID + ":" + f.Resource + ":" + file,
+		FindingKind:  "iac",
+		Title:        f.CheckName,
+		Description:  f.CheckName,
+		Severity:     normalizeSeverity(f.Severity),
+		Location:     location,
+		Resource:     f.Resource,
+		Aliases:      aliases,
+		Fix:          fix,
+		CodeLocation: codeLoc,
+		Dimensions:   dims,
+		Extensions:   ext,
+	}
+}
+
+// checkCodeLocation maps the check's line range onto a code location.
+func checkCodeLocation(f checkovFinding, file string) *domain.CodeLocation {
+	switch len(f.FileLineRange) {
+	case 0:
+		return nil
+	case 1:
+		return &domain.CodeLocation{File: file, StartLine: f.FileLineRange[0]}
+	default:
+		return &domain.CodeLocation{
+			File:      file,
+			StartLine: f.FileLineRange[0],
+			EndLine:   f.FileLineRange[1],
+		}
+	}
 }
 
 func normalizeSeverity(s string) domain.Severity {
