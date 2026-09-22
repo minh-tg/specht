@@ -249,17 +249,10 @@ func (g *gate) evaluate(ctx context.Context, projectID string, minSeverityRank i
 	return g.evaluateFindings(ctx, projectID, findings, policies, keep)
 }
 
-func (g *gate) evaluateFindings(ctx context.Context, projectID string, findings []Finding, policies []GatePolicy, keep func(Finding) bool) (Decision, error) {
-	if len(findings) == 0 {
-		return Decision{Status: StatusPass}, nil
-	}
-
-	p := sourcePolicies{}
-	for _, policy := range policies {
-		p[policy.Source] = policy.Mode
-	}
-
-	applicableFindings := make([]Finding, 0, len(findings))
+// filterGateFindings drops findings exempted by reachability, unadmitted by
+// source policy, or rejected by the keep predicate.
+func filterGateFindings(findings []Finding, p sourcePolicies, keep func(Finding) bool) []Finding {
+	applicable := make([]Finding, 0, len(findings))
 	for _, f := range findings {
 		f.Reachability = normalizeReachabilityState(f.Reachability)
 		if reachabilityExemptsFromGate(f.Reachability) {
@@ -271,8 +264,36 @@ func (g *gate) evaluateFindings(ctx context.Context, projectID string, findings 
 		if keep != nil && !keep(f) {
 			continue
 		}
-		applicableFindings = append(applicableFindings, f)
+		applicable = append(applicable, f)
 	}
+	return applicable
+}
+
+// partitionGateFindings splits applicable findings into waived and blocking.
+func partitionGateFindings(applicable []Finding, waivers []Waiver) (blockedBy []string, reach map[string]ReachabilityState, waivedCount int) {
+	reach = make(map[string]ReachabilityState, len(applicable))
+	for _, f := range applicable {
+		if IsFindingWaived(f, waivers) {
+			waivedCount++
+		} else {
+			blockedBy = append(blockedBy, f.ID)
+			reach[f.ID] = f.Reachability
+		}
+	}
+	return blockedBy, reach, waivedCount
+}
+
+func (g *gate) evaluateFindings(ctx context.Context, projectID string, findings []Finding, policies []GatePolicy, keep func(Finding) bool) (Decision, error) {
+	if len(findings) == 0 {
+		return Decision{Status: StatusPass}, nil
+	}
+
+	p := sourcePolicies{}
+	for _, policy := range policies {
+		p[policy.Source] = policy.Mode
+	}
+
+	applicableFindings := filterGateFindings(findings, p, keep)
 	if len(applicableFindings) == 0 {
 		return Decision{Status: StatusPass}, nil
 	}
@@ -282,18 +303,7 @@ func (g *gate) evaluateFindings(ctx context.Context, projectID string, findings 
 		return Decision{Status: StatusError}, fmt.Errorf("list active waivers: %w", err)
 	}
 
-	var blockedBy []string
-	blockedByReachability := make(map[string]ReachabilityState, len(applicableFindings))
-	waivedCount := 0
-
-	for _, f := range applicableFindings {
-		if IsFindingWaived(f, waivers) {
-			waivedCount++
-		} else {
-			blockedBy = append(blockedBy, f.ID)
-			blockedByReachability[f.ID] = f.Reachability
-		}
-	}
+	blockedBy, blockedByReachability, waivedCount := partitionGateFindings(applicableFindings, waivers)
 
 	if len(blockedBy) == 0 {
 		return Decision{
