@@ -17,7 +17,7 @@ WHERE status IN ('completed', 'failed')
   AND COALESCE(completed_at, created_at) < $1
 `
 
-// Retention preview (SOLO-188): settled (completed/failed) reports older
+// Retention preview: settled (completed/failed) reports older
 // than the cutoff. Processing reports are never counted — an in-flight
 // scan must not look purgable.
 func (q *Queries) CountStaleReports(ctx context.Context, completedAt pgtype.Timestamptz) (int64, error) {
@@ -162,7 +162,7 @@ WHERE status IN ('completed', 'failed')
 RETURNING id
 `
 
-// Retention purge (SOLO-188): deletes settled reports older than the
+// Retention purge: deletes settled reports older than the
 // cutoff, returning their ids. Occurrences, watcher rows, and package
 // inventory cascade; finding attribution nulls (SET NULL); findings
 // themselves survive. Returns zero rows when nothing qualifies.
@@ -232,7 +232,7 @@ type GetCompletedReportByCommitRow struct {
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 }
 
-// Baseline resolution for incremental analysis (SOLO-165): the newest
+// Baseline resolution for incremental analysis: the newest
 // completed same-scanner report for an exact revision. pgx.ErrNoRows means
 // no baseline exists for the base revision — the caller falls back to a
 // full scan instead of guessing.

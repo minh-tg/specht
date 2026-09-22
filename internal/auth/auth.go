@@ -113,7 +113,7 @@ type Identity struct {
 	Role      string
 	Scopes    []string
 	IsAPIKey  bool
-	// Groups carries IdP group membership for SSO principals (SOLO-189):
+	// Groups carries IdP group membership for SSO principals:
 	// enterprise role mapping consumes it at provisioning time. Empty
 	// for password and API-key principals.
 	Groups []string

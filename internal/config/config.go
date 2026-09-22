@@ -71,7 +71,7 @@ type SSOConfig struct {
 	// rejected with 403. Existing local accounts are unaffected.
 	AllowedDomains []string
 	// GroupsClaim names the IdP claim carrying group membership for
-	// enterprise role mapping (SOLO-189). Empty means "groups".
+	// enterprise role mapping. Empty means "groups".
 	GroupsClaim string
 	// AdminGroups elevates provisioned SSO accounts to admin when IdP
 	// group membership matches (exact, case-sensitive). Empty disables

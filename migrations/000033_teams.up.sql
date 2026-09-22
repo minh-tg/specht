@@ -1,4 +1,4 @@
--- Multi-team ownership (SOLO-187): teams group users, projects link teams
+-- Multi-team ownership: teams group users, projects link teams
 -- with a conferred role. Effective access is direct membership OR team
 -- membership; the effective role is the strongest of both. Deleting a team
 -- or project removes its links and memberships; deleting a user removes

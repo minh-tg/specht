@@ -1,8 +1,8 @@
 // Package provider defines the repository-provider seam between Specht's
-// core and code-hosting platforms (SOLO-196): the Provider interface a
+// core and code-hosting platforms: the Provider interface a
 // platform adapter implements, the deterministic registry that maps
 // provider names to implementations, and the provider-neutral
-// pull-request check and annotation model (SOLO-164).
+// pull-request check and annotation model.
 //
 // The seam is pure planning: adapters transform findings into check plans
 // (conclusion, summary, inline annotations) with no network I/O, no

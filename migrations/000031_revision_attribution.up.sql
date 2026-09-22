@@ -1,5 +1,5 @@
--- Revision attribution for introduced-by-change (SOLO-184) and incremental
--- analysis (SOLO-165). Reports carry the revision they scanned plus the base
+-- Revision attribution for introduced-by-change and incremental
+-- analysis. Reports carry the revision they scanned plus the base
 -- they were compared against; findings materialize their introducing report
 -- so gates, CLI, MCP, and PR views can target introduced risk without
 -- ignoring existing debt. Findings with no linked scan (e.g. watcher rows)

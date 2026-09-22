@@ -26,7 +26,7 @@ type AdminOverviewRow struct {
 	OldestSettledReportAt interface{} `json:"oldest_settled_report_at"`
 }
 
-// Platform observability (SOLO-188): one row with global counts and the
+// Platform observability: one row with global counts and the
 // oldest settled report, for the admin status surface.
 func (q *Queries) AdminOverview(ctx context.Context) (AdminOverviewRow, error) {
 	row := q.db.QueryRow(ctx, adminOverview)

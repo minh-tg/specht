@@ -27,7 +27,7 @@ type OIDCConfig struct {
 	IssuerURL    string // e.g. "https://accounts.google.com"
 	RedirectURI  string // OAuth2 callback URL registered with the provider
 	// GroupsClaim names the claim carrying IdP group membership for
-	// enterprise role mapping (SOLO-189). Empty means "groups".
+	// enterprise role mapping. Empty means "groups".
 	GroupsClaim string
 }
 

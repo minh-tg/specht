@@ -1,5 +1,5 @@
 -- name: AdminOverview :one
--- Platform observability (SOLO-188): one row with global counts and the
+-- Platform observability: one row with global counts and the
 -- oldest settled report, for the admin status surface.
 SELECT
     (SELECT COUNT(*) FROM projects) AS project_count,

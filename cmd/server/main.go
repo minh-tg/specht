@@ -57,7 +57,7 @@ func buildScannerRegistry() *scanner.Registry {
 	return reg
 }
 
-// buildProviders assembles the repository provider registry (SOLO-196):
+// buildProviders assembles the repository provider registry:
 // compile-time plugins like scanners — GitHub ships as the first adapter;
 // previews plan checks without network I/O or credentials.
 func buildProviders() *provider.Registry {
@@ -148,7 +148,7 @@ func main() {
 	repos := repo.NewRepos(pool)
 	stores := repo.NewPortStores(pool)
 
-	// Admin elevation path (H1/M9): ADMIN_EMAILS (comma-separated) promotes
+	// Admin elevation path: ADMIN_EMAILS (comma-separated) promotes
 	// existing accounts to the global admin role at startup so tenant
 	// membership can be administered. Unknown addresses are skipped with a
 	// warning; the flag is otherwise a no-op.

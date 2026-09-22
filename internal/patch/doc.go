@@ -1,4 +1,4 @@
-// Package patch plans safe, deterministic remediation proposals (SOLO-182)
+// Package patch plans safe, deterministic remediation proposals
 // as pure data: affected files, rationale, confidence, and source evidence.
 // Proposals are preview-only — automation is opt-in at a higher layer and
 // can never merge or deploy by itself. Anything outside the explicitly

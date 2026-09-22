@@ -220,7 +220,7 @@ type Report struct {
 	Branch        *string `json:"branch"`
 	CommitSha     *string `json:"commit_sha"`
 	// BaseRevision, ScanMode, and ChangedFiles describe incremental
-	// analysis context (SOLO-165).
+	// analysis context.
 	BaseRevision *string    `json:"base_revision,omitempty"`
 	ScanMode     string     `json:"scan_mode,omitempty"`
 	ChangedFiles []string   `json:"changed_files,omitempty"`

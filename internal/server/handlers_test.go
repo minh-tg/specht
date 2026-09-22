@@ -794,7 +794,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	h := NewHandler(mock)
 	// Real requests reach these handlers through AuthMiddleware, which always
 	// attaches an identity. Slug-scoped handlers enforce tenant membership
-	// (H1) for session users, so the test router mirrors an authorized
+	// for session users, so the test router mirrors an authorized
 	// operator by authenticating every request as a global admin: handler
 	// behavior stays under test while access control is covered by dedicated
 	// tests (usecase access_test.go, apikey_authz_test.go, and the admin
@@ -2467,7 +2467,7 @@ func TestLogout_Success(t *testing.T) {
 }
 
 func TestLogout_EmptyBody(t *testing.T) {
-	// M1 regression: the body-size helper must tolerate empty bodies —
+	// Regression: the body-size helper must tolerate empty bodies —
 	// logout historically ignored decode errors, so clients sending no
 	// body kept working.
 	var got string
@@ -2506,7 +2506,7 @@ func TestLogout_WithError(t *testing.T) {
 // ----- Me Handler Tests -----
 
 func TestListProjects_AccessDenied(t *testing.T) {
-	// H1 second sweep: tenant denial surfaces as 403, never 500.
+	// Second sweep: tenant denial surfaces as 403, never 500.
 	mock := &mockUsecases{
 		listProjectsFn: func(ctx context.Context) ([]usecase.ProjectResponse, error) {
 			return nil, usecase.ErrProjectAccessDenied
@@ -3097,7 +3097,7 @@ func TestListProjectMembers_NonMemberDenied(t *testing.T) {
 
 // ----- enforceProjectAccess Tests -----
 
-// Session users are authorized by tenant membership (H1): members pass,
+// Session users are authorized by tenant membership: members pass,
 // non-members are denied, global admins bypass, and nil identities are
 // denied outright.
 func TestEnforceProjectAccess_SessionMembership(t *testing.T) {

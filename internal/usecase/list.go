@@ -44,7 +44,7 @@ type FindingResponse struct {
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
 	// IntroducedByReportID and IntroducedCommitSha materialize
-	// introduced-by-change attribution (SOLO-184): the report that first
+	// introduced-by-change attribution: the report that first
 	// observed the finding and the revision it scanned. Both nil means
 	// unattributed — never a guess.
 	IntroducedByReportID *string `json:"introduced_by_report_id,omitempty"`
@@ -149,7 +149,7 @@ type ReportResponse struct {
 	// BaseRevision is the revision an incremental scan was compared
 	// against; ScanMode is full or incremental; ChangedFiles lists the
 	// paths an incremental scan covered. Together they keep incremental
-	// scans identified and reproducible (SOLO-165).
+	// scans identified and reproducible.
 	BaseRevision *string    `json:"base_revision,omitempty"`
 	ScanMode     string     `json:"scan_mode,omitempty"`
 	ChangedFiles []string   `json:"changed_files,omitempty"`
@@ -262,7 +262,7 @@ func changedFilesOpt(raw json.RawMessage) []string {
 
 // CreateProject creates a project and makes the creator its admin member,
 // establishing the tenant-isolation invariant that every project has an
-// admin (H1). Callers pass the authenticated session user ID as creatorID;
+// admin. Callers pass the authenticated session user ID as creatorID;
 // API keys cannot create projects (the route is admin-gated and API keys
 // never satisfy global-admin membership rules).
 func (u *Usecases) CreateProject(ctx context.Context, name, slug, description, creatorID string) (*ProjectResponse, error) {
@@ -279,7 +279,7 @@ func (u *Usecases) CreateProject(ctx context.Context, name, slug, description, c
 	if _, err := u.deps.Stores.Projects.UpsertMember(ctx, p.ID, creatorID, auth.RoleAdmin); err != nil {
 		// No transaction spans project creation and member grant, so remove
 		// the orphaned project: an admin-less project would be unreachable
-		// to every non-global-admin (H1).
+		// to every non-global-admin.
 		if delErr := u.deleteProjectBySlug(ctx, p.Slug); delErr != nil {
 			slog.Error("rollback project after admin-grant failure", "slug", p.Slug, "error", delErr)
 		}
@@ -350,7 +350,7 @@ func (u *Usecases) deleteProjectBySlug(ctx context.Context, slug string) error {
 	return err
 }
 
-// ListProjects returns the projects the caller's identity may see (H1).
+// ListProjects returns the projects the caller's identity may see.
 // Global admins see everything; project-scoped API keys see only their own
 // project; other session users see only projects they belong to.
 func (u *Usecases) ListProjects(ctx context.Context) ([]ProjectResponse, error) {
@@ -404,7 +404,7 @@ func toProjects(projects []port.Project) []ProjectResponse {
 }
 
 // GetProject resolves a project by slug for principals authorized to see
-// it (H1): global admins, project members, or the project-scoped API key.
+// it: global admins, project members, or the project-scoped API key.
 // Everyone else — including unauthenticated callers — gets a denial that
 // does not disclose whether the slug exists.
 func (u *Usecases) GetProject(ctx context.Context, slug string) (*ProjectResponse, error) {

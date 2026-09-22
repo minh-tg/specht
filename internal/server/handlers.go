@@ -322,7 +322,7 @@ const maxPageSize = 500
 // msgProjectNotFound is the shared not-found message for project responses.
 const msgProjectNotFound = "project not found"
 
-// Request-body size limits (M1). Ingest carries raw scanner output, so it
+// Request-body size limits. Ingest carries raw scanner output, so it
 // gets a generous cap; every other JSON body carries small, server-derived
 // fields and is capped at 1 MiB. All caps are absolute ceilings: a declared
 // Content-Length above the cap is rejected up front, and bodies that arrive
@@ -366,7 +366,7 @@ func (h *Handler) respondProjectAccessError(w http.ResponseWriter, err error) {
 }
 
 // enforceProjectAccess gates slug-scoped routes on tenant membership
-// (H1): unauthenticated callers are denied; API keys must match the
+// unauthenticated callers are denied; API keys must match the
 // resolved project; global admins pass if the project exists; other session
 // users must hold a membership row. The GetProject lookup itself enforces the
 // same rule, so this stays consistent if either layer is reached first.

@@ -37,11 +37,11 @@ type RouterConfig struct {
 	// RateLimit, when Enabled, mounts a strict per-IP bucket on public
 	// routes and a generous per-caller bucket behind authentication.
 	RateLimit RateLimitConfig
-	// SSOAllowedDomains gates SSO auto-provisioning (H2): unknown IdP
+	// SSOAllowedDomains gates SSO auto-provisioning: unknown IdP
 	// subjects are provisioned only for allowlisted email domains.
 	SSOAllowedDomains []string
 	// SSOAdminGroups grants provisioned admin to SSO principals whose IdP
-	// group membership matches (SOLO-189). Existing accounts never change
+	// group membership matches. Existing accounts never change
 	// role from IdP groups.
 	SSOAdminGroups []string
 	// TrustedProxies lists the CIDR ranges of reverse proxies / load
@@ -99,8 +99,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 			}
 			// Resolve the IdP subject to a local account: existing users
 			// keep their local role; unknown subjects are provisioned only
-			// for allowlisted domains, otherwise rejected (H2). IdP admin
-			// groups elevate provisioned accounts (SOLO-189).
+			// for allowlisted domains, otherwise rejected. IdP admin
+			// groups elevate provisioned accounts.
 			userID, role, _, err := cfg.Usecases.FindOrProvisionSSOUser(ctx, sub, email, groups, cfg.SSOAllowedDomains, cfg.SSOAdminGroups)
 			if err != nil {
 				return "", err

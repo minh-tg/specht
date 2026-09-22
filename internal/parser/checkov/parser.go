@@ -69,7 +69,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 }
 
 // SupportsIncremental declares checkov safe for incremental analysis
-// (SOLO-165): IaC findings map to config files, so a changed-file scan
+// IaC findings map to config files, so a changed-file scan
 // covers what it claims to cover.
 func (s *Scanner) SupportsIncremental() bool { return true }
 

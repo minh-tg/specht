@@ -1,4 +1,4 @@
--- Organization-wide policy templates (SOLO-185): reusable baselines a
+-- Organization-wide policy templates: reusable baselines a
 -- platform team applies to many repositories. Projects link a template and
 -- override individual keys in their settings JSON; effective resolution is
 -- template <- project override <- built-in default, with per-key provenance

@@ -55,7 +55,7 @@ type GateStatusOutput struct {
 	BlockedByReachability map[string]string `json:"blocked_by_reachability,omitempty"`
 	WaivedCount           int               `json:"waived_count,omitempty"`
 	// Policy is the project's effective policy with provenance: which
-	// baseline and overrides produced this verdict (SOLO-185).
+	// baseline and overrides produced this verdict.
 	Policy *PolicyEffectiveResponse `json:"policy,omitempty"`
 }
 
@@ -302,7 +302,7 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 }
 
 // GetIntroducedGateStatus evaluates the gate over findings one report
-// introduced (SOLO-184): change-scoped CI feedback that targets new risk
+// introduced: change-scoped CI feedback that targets new risk
 // while the full gate keeps covering existing debt. An empty reportID
 // matches nothing and passes.
 func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, reportID string) (*GateStatusOutput, error) {

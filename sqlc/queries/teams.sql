@@ -61,7 +61,7 @@ ORDER BY t.name ASC;
 -- name: IsProjectMemberEffective :one
 -- Effective membership: a direct project_members row OR membership in any
 -- team linked to the project. The single choke point for session-user
--- project access (H1 + SOLO-187).
+-- project access.
 SELECT EXISTS (
     SELECT 1 FROM project_members pm WHERE pm.project_id = $1 AND pm.user_id = $2
 ) OR EXISTS (

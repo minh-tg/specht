@@ -55,7 +55,7 @@ func bulkBody(n int) string {
 	return b.String()
 }
 
-// M1: ingest raw_data is scanner-supplied and unbounded; an oversized payload
+// Ingest raw_data is scanner-supplied and unbounded; an oversized payload
 // must be rejected before the use case sees it. With the Content-Length the
 // client declares, the cap is enforceable up front.
 func TestIngestReport_BodyTooLarge(t *testing.T) {
@@ -123,7 +123,7 @@ func TestIngestReport_LargePayloadAccepted(t *testing.T) {
 	assert.Len(t, got.RawData, 5<<20+2, "raw_data must round-trip intact")
 }
 
-// M1: auth endpoints are public (no auth middleware in front), so their body
+// Auth endpoints are public (no auth middleware in front), so their body
 // cap is the only defence against unbounded credential fields.
 func TestLogin_BodyTooLarge(t *testing.T) {
 	var called bool
@@ -145,7 +145,7 @@ func TestLogin_BodyTooLarge(t *testing.T) {
 	assert.False(t, called, "login use case must not run for an oversized body")
 }
 
-// M1: bulk triage fans out over finding_ids; an unbounded array would let a
+// Bulk triage fans out over finding_ids; an unbounded array would let a
 // request drive unbounded per-id work.
 func TestBulkTriage_TooManyFindingIDs(t *testing.T) {
 	var called bool
@@ -184,7 +184,7 @@ func TestBulkTriage_MaxFindingIDsAccepted(t *testing.T) {
 	assert.Len(t, got.FindingIDs, 1000)
 }
 
-// M1: AddProjectMember must enforce the standard JSON body cap as well.
+// AddProjectMember must enforce the standard JSON body cap as well.
 func TestAddProjectMember_BodyTooLarge(t *testing.T) {
 	var called bool
 	mock := &mockUsecases{

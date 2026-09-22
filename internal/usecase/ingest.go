@@ -77,7 +77,7 @@ func validateIngestInput(input IngestReportInput) (IngestReportInput, error) {
 		return input, err
 	}
 	input.ScanMode = scanMode
-	// Revision canonicalization (SOLO-165): SHAs compare case-insensitively
+	// Revision canonicalization: SHAs compare case-insensitively
 	// everywhere, so store them canonical. Branches are case-sensitive and
 	// untouched.
 	input.CommitSha = normalizeRevision(input.CommitSha)
@@ -128,7 +128,7 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, err
 	}
 
-	// Incremental scans (SOLO-165) resolve an effective mode before any
+	// Incremental scans resolve an effective mode before any
 	// row is written: unsupported scanners and missing baselines fall
 	// back to full with an explicit reason instead of recording partial
 	// coverage as if it were complete.
@@ -530,7 +530,7 @@ func (u *Usecases) prefetchBaselineOccurrences(ctx context.Context, st *ingestFi
 }
 
 // classifyIngestChange decides whether a finding counts as introduced for
-// this report (SOLO-165 & SOLO-184): regressions and baseline-absent or
+// this report: regressions and baseline-absent or
 // unseen findings are introduced; everything else pre-existed.
 func classifyIngestChange(exists, regression bool, baselineID string, baselineSeen bool) (introduced bool, changeType string) {
 	if regression {

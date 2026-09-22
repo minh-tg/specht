@@ -1549,7 +1549,7 @@ type SetFindingIntroducedByParams struct {
 	IntroducedCommitSha  pgtype.Text `json:"introduced_commit_sha"`
 }
 
-// Materializes introduced-by-change attribution (SOLO-184): the report that
+// Materializes introduced-by-change attribution: the report that
 // first observed the finding and the revision it scanned. Set once at
 // creation; refreshed only through this query when improved correlation
 // evidence arrives, so history stays revisable without silent rewrites.

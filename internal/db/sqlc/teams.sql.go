@@ -126,7 +126,7 @@ type IsProjectMemberEffectiveParams struct {
 
 // Effective membership: a direct project_members row OR membership in any
 // team linked to the project. The single choke point for session-user
-// project access (H1 + SOLO-187).
+// project access.
 func (q *Queries) IsProjectMemberEffective(ctx context.Context, arg IsProjectMemberEffectiveParams) (pgtype.Bool, error) {
 	row := q.db.QueryRow(ctx, isProjectMemberEffective, arg.ProjectID, arg.UserID)
 	var is_member pgtype.Bool

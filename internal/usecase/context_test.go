@@ -93,7 +93,7 @@ func TestIngestReport_BindsOwnerToTarget(t *testing.T) {
 }
 
 // memberFindingDeps returns stores with a Findings mock plus a Projects
-// mock reporting the caller as a member, so GetFinding passes the H1
+// mock reporting the caller as a member, so GetFinding passes the
 // membership gate in tests that exercise display-context attachment.
 func memberFindingDeps(fr *mockFindingRepo) *port.Stores {
 	pr := &mockProjectRepo{}

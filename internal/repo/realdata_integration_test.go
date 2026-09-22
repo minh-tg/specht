@@ -40,7 +40,7 @@ const fixtureProjectID = "00000000-0000-0000-0000-000000000001"
 // findingScopeCtx returns a context carrying an authenticated session-user
 // identity. The finding access checks require an identity (nil is denied);
 // session users pass only with a membership row for the finding's project
-// (H1 tenant isolation). The caller passes a real member account, typically
+// The caller passes a real member account, typically
 // the project creator (auto-admin at creation time).
 func findingScopeCtx(userID string) context.Context {
 	return auth.ContextWithIdentity(context.Background(), &auth.Identity{

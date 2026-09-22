@@ -1,4 +1,4 @@
--- Backfill project membership for the H1 tenant-isolation enforcement.
+-- Backfill project membership for the tenant-isolation enforcement.
 -- Every pre-existing user keeps access to every pre-existing project as a
 -- viewer (the least privilege preserving current read behavior; mutations
 -- were never role-gated for session users). Users created after this

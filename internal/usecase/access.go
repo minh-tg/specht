@@ -69,7 +69,7 @@ func (u *Usecases) checkFindingRowsProjectAccess(ctx context.Context, findings [
 }
 
 // checkFindingProjectIDAccess enforces tenant isolation on finding-scoped
-// reads and writes (H1). Unauthenticated principals are denied outright.
+// reads and writes. Unauthenticated principals are denied outright.
 // Project-scoped principals (API keys) must match the finding's project.
 // Session users are authorized by membership: global admins bypass project
 // scope, everyone else must hold direct or team-conferred membership

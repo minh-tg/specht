@@ -6,7 +6,7 @@ import (
 )
 
 // githubProviderName is the canonical name of the GitHub adapter: the
-// first repository-provider adapter (SOLO-164).
+// first repository-provider adapter.
 const githubProviderName = "github"
 
 // githubMaxAnnotations bounds inline annotations per check run, matching

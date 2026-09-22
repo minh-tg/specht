@@ -44,7 +44,7 @@ type Project struct {
 	CveWatcherEnabled      bool
 	CveWatcherIntervalSecs int32
 	// Settings carries namespaced project configuration; the "policy"
-	// object holds per-key policy overrides (SOLO-185).
+	// object holds per-key policy overrides.
 	Settings         json.RawMessage
 	PolicyTemplateID *string
 	CreatedAt        time.Time
@@ -61,7 +61,8 @@ type CreateProjectInput struct {
 }
 
 // ProjectStore is the consumer-facing project persistence contract.
-// ProjectMember binds a user to a project with a project-scoped role.// Membership is the tenant-isolation boundary (H1): session principals must
+// ProjectMember binds a user to a project with a project-scoped role.
+// Membership is the tenant-isolation boundary: session principals must
 // hold a membership row for every project they access.
 type ProjectMember struct {
 	ProjectID string
@@ -88,7 +89,7 @@ type ProjectStore interface {
 	// to in a single query (batch alternative to per-project IsMember).
 	ListMemberProjectIDs(ctx context.Context, userID string) ([]string, error)
 	// IsMemberEffective reports direct OR team-conferred membership: the
-	// single choke point for session-user project access (H1 + SOLO-187).
+	// single choke point for session-user project access.
 	IsMemberEffective(ctx context.Context, projectID, userID string) (bool, error)
 	// ListAccessibleProjectIDs returns every project a user reaches
 	// directly or through a team, for the batched list path.
@@ -116,8 +117,7 @@ type UserStore interface {
 	Create(ctx context.Context, email string, displayName, passwordHash *string) (User, error)
 	GetByEmail(ctx context.Context, email string) (User, error)
 	GetByID(ctx context.Context, id string) (User, error)
-	// SetRole changes a user's global role (admin elevation path for H1
-	// tenant administration). Role must be a valid users.role value.
+	// SetRole changes a user's global role. Role must be a valid users.role value.
 	SetRole(ctx context.Context, userID, role string) (User, error)
 	// UpdateDisplayName changes a user's display name. A nil displayName
 	// clears it.
