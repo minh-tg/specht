@@ -3,7 +3,7 @@ services:
     image: postgres:17-alpine
     environment:
       POSTGRES_USER: specht
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-specht}
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}"
       POSTGRES_DB: specht
     ports:
       - "127.0.0.1:5432:5432"
@@ -24,7 +24,7 @@ services:
       - "${SERVER_PORT:-8080}:8080"
     environment:
       DATABASE_URL: >-
-        postgres://specht:${POSTGRES_PASSWORD:-specht}@db:5432/specht?sslmode=${POSTGRES_SSLMODE:-disable}
+        postgres://specht:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/specht?sslmode=${POSTGRES_SSLMODE:-disable}
       # Production must set JWT_SECRET (min 32 random bytes) and
       # POSTGRES_PASSWORD via deploy/.env.prod (see deploy/README.md). Empty
       # values fail fast: postgres refuses an empty password and the server
