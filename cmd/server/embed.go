@@ -40,6 +40,28 @@ func spaHandler(apiHandler http.Handler) http.Handler {
 	return spaHandlerWithFS(apiHandler, frontendDist)
 }
 
+func cleanSPAPath(p string) string {
+	cleanPath := path.Clean(p)
+	if cleanPath == "." || cleanPath == "/" {
+		return "index.html"
+	}
+	return strings.TrimPrefix(cleanPath, "/")
+}
+
+func setSPAHeaders(w http.ResponseWriter, cleanPath string) {
+	ext := path.Ext(cleanPath)
+	if ct, ok := mimeTypes[ext]; ok {
+		w.Header().Set("Content-Type", ct)
+	} else if mimeType := mime.TypeByExtension(ext); mimeType != "" {
+		w.Header().Set("Content-Type", mimeType)
+	}
+	if ext != "" && ext != ".html" {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else {
+		w.Header().Set("Cache-Control", "no-cache")
+	}
+}
+
 func spaHandlerWithFS(apiHandler http.Handler, assets fs.FS) http.Handler {
 	root := "dist"
 	if _, err := fs.Stat(assets, "dist/dist/index.html"); err == nil {
@@ -55,25 +77,8 @@ func spaHandlerWithFS(apiHandler http.Handler, assets fs.FS) http.Handler {
 		// Serving is jailed (http.FileServer over an fs.Sub root, which
 		// rejects escapes); Clean only selects Content-Type/cache headers.
 		// nosemgrep: go.lang.security.filepath-clean-misuse.filepath-clean-misuse
-		cleanPath := path.Clean(r.URL.Path)
-		if cleanPath == "." || cleanPath == "/" {
-			cleanPath = "index.html"
-		} else {
-			cleanPath = strings.TrimPrefix(cleanPath, "/")
-		}
-
-		ext := path.Ext(cleanPath)
-		if ct, ok := mimeTypes[ext]; ok {
-			w.Header().Set("Content-Type", ct)
-		} else if mimeType := mime.TypeByExtension(ext); mimeType != "" {
-			w.Header().Set("Content-Type", mimeType)
-		}
-
-		if ext != "" && ext != ".html" {
-			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-		} else {
-			w.Header().Set("Cache-Control", "no-cache")
-		}
+		cleanPath := cleanSPAPath(r.URL.Path)
+		setSPAHeaders(w, cleanPath)
 
 		http.StripPrefix("/", http.FileServer(http.FS(spaFileSystem{sub}))).ServeHTTP(w, r)
 	})
