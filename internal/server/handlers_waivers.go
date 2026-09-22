@@ -53,6 +53,10 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 		ActorID:     actorID,
 	})
 	if err != nil {
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			h.respondProjectAccessError(w, errProjectAccessDenied)
+			return
+		}
 		slog.Error("create waiver", "error", err)
 		respondError(w, http.StatusInternalServerError, "internal_error", "could not create waiver")
 		return
@@ -129,6 +133,10 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 		ActorID:     actorID,
 	})
 	if err != nil {
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			h.respondProjectAccessError(w, errProjectAccessDenied)
+			return
+		}
 		slog.Error("update waiver", "error", err)
 		respondError(w, http.StatusInternalServerError, "internal_error", "could not update waiver")
 		return
@@ -144,6 +152,10 @@ func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 	if err := h.usecase.DeleteWaiver(r.Context(), slug, id); err != nil {
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			h.respondProjectAccessError(w, errProjectAccessDenied)
+			return
+		}
 		if errors.Is(err, port.ErrNotFound) {
 			respondError(w, http.StatusNotFound, "not_found", waiversMsgNotFound)
 		} else {
@@ -168,6 +180,10 @@ func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.usecase.ToggleWaiver(r.Context(), slug, id, actorID)
 	if err != nil {
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			h.respondProjectAccessError(w, errProjectAccessDenied)
+			return
+		}
 		if errors.Is(err, port.ErrNotFound) {
 			respondError(w, http.StatusNotFound, "not_found", waiversMsgNotFound)
 		} else {
@@ -218,6 +234,10 @@ func (h *Handler) CheckWaiverMatch(w http.ResponseWriter, r *http.Request) {
 	}
 	matched, err := h.usecase.CheckWaiverMatch(r.Context(), slug, req.FindingID)
 	if err != nil {
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			h.respondProjectAccessError(w, errProjectAccessDenied)
+			return
+		}
 		slog.Error("check waiver match", "error", err)
 		respondError(w, http.StatusInternalServerError, "internal_error", "could not check waiver match")
 		return

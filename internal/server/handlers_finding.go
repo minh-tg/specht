@@ -90,6 +90,11 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		ArtifactType:       req.ArtifactType,
 	})
 	if err != nil {
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			respondError(w, http.StatusForbidden, "project_access_denied", "project role cannot ingest reports")
+			h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
+			return
+		}
 		slog.Error("ingest report", "error", err)
 		if errors.Is(err, usecase.ErrDuplicateReport) {
 			respondError(w, http.StatusConflict, "duplicate_report", "report already exists for this project and data")

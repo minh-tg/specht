@@ -99,3 +99,83 @@ func (u *Usecases) checkFindingProjectIDAccess(ctx context.Context, findingProje
 	}
 	return nil
 }
+
+// requireProjectRole checks a minimum project permission using the effective
+// membership role, including team-conferred membership. API keys must match the
+// project and carry the operation's explicit scope.
+func (u *Usecases) requireProjectRole(ctx context.Context, projectID, apiKeyScope string, allowedRoles ...string) error {
+	ident := auth.ContextIdentity(ctx)
+	if ident == nil {
+		return ErrProjectAccessDenied
+	}
+	if ident.IsAPIKey {
+		if ident.ProjectID != projectID || !ident.HasScope(apiKeyScope) {
+			return ErrProjectAccessDenied
+		}
+		return nil
+	}
+	if ident.Role == auth.RoleAdmin {
+		return nil
+	}
+	role, err := u.deps.Stores.Projects.EffectiveRole(ctx, projectID, ident.UserID)
+	if err != nil {
+		if !errors.Is(err, port.ErrNotFound) {
+			slog.Error("resolve project role: lookup failed", "error", err)
+		}
+		return ErrProjectAccessDenied
+	}
+	for _, allowed := range allowedRoles {
+		if role == allowed {
+			return nil
+		}
+	}
+	return ErrProjectAccessDenied
+}
+
+func (u *Usecases) requireProjectEditor(ctx context.Context, projectID string) error {
+	return u.requireProjectRole(ctx, projectID, auth.ScopeAdmin, auth.RoleAdmin, auth.RoleEditor)
+}
+
+func (u *Usecases) requireProjectIngest(ctx context.Context, projectID string) error {
+	return u.requireProjectRole(ctx, projectID, auth.ScopeIngest, auth.RoleAdmin, auth.RoleEditor)
+}
+
+func (u *Usecases) requireProjectAdminForWaiver(ctx context.Context, projectID string) error {
+	return u.requireProjectRole(ctx, projectID, auth.ScopeAdmin, auth.RoleAdmin)
+}
+
+func (u *Usecases) findingWithProjectEditor(ctx context.Context, findingID uuid.UUID) (port.Finding, error) {
+	if u.deps.Stores == nil || u.deps.Stores.Findings == nil {
+		return port.Finding{}, fmt.Errorf("check finding project role: finding store unavailable")
+	}
+	finding, err := u.deps.Stores.Findings.GetByID(ctx, findingID.String())
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return port.Finding{}, ErrFindingNotFound
+		}
+		return port.Finding{}, fmt.Errorf("check finding project role: %w", err)
+	}
+	if err := u.requireProjectEditor(ctx, finding.ProjectID); err != nil {
+		return port.Finding{}, err
+	}
+	return finding, nil
+}
+
+func (u *Usecases) checkFindingProjectEditor(ctx context.Context, findingID uuid.UUID) error {
+	_, err := u.findingWithProjectEditor(ctx, findingID)
+	return err
+}
+
+func (u *Usecases) checkFindingRowsProjectEditor(ctx context.Context, findings []port.Finding) error {
+	seen := make(map[string]bool, 2)
+	for _, finding := range findings {
+		if seen[finding.ProjectID] {
+			continue
+		}
+		seen[finding.ProjectID] = true
+		if err := u.requireProjectEditor(ctx, finding.ProjectID); err != nil {
+			return err
+		}
+	}
+	return nil
+}

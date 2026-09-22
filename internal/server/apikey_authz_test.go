@@ -132,11 +132,17 @@ func apiKeyRouter(t *testing.T, userID, projectID string, scopes []string, exp t
 		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
 			return &usecase.ProjectResponse{ID: projectID, Slug: slug}, nil
 		},
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
+			return []usecase.FindingResponse{}, nil
+		},
 		ingestReportFn: func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
 			return &usecase.IngestReportOutput{ReportID: "rep-1", TotalFindings: 1}, nil
 		},
 		listAPIKeysFn: func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error) {
 			return []usecase.APIKeyResponse{}, nil
+		},
+		createWaiverFn: func(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error) {
+			return &usecase.WaiverResponse{Name: input.Name}, nil
 		},
 		createAPIKeyFn: func(ctx context.Context, projectSlug, name string, expiresAt *time.Time) (*usecase.APIKeyResponse, error) {
 			return &usecase.APIKeyResponse{ID: "k1", Name: name, KeyPrefix: "vuln_abc"}, nil
@@ -194,11 +200,44 @@ func TestRoutes_APIKeyScopeEnforcement(t *testing.T) {
 	})
 }
 
+func TestRoutes_APIKeyScopesSeparateReadIngestAndAdmin(t *testing.T) {
+	const projectID = "00000000-0000-0000-0000-000000000001"
+	request := func(scopes []string, method, path, body string) *httptest.ResponseRecorder {
+		router := apiKeyRouter(t, "key-1", projectID, scopes, time.Time{})
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer vuln_scoped_key")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	t.Run("ingest-only key cannot read findings", func(t *testing.T) {
+		w := request([]string{auth.ScopeIngest}, http.MethodGet, "/api/v1/projects/my-app/findings", "")
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+	t.Run("read key can read findings", func(t *testing.T) {
+		w := request([]string{auth.ScopeRead}, http.MethodGet, "/api/v1/projects/my-app/findings", "")
+		assert.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	})
+	t.Run("read key cannot ingest reports", func(t *testing.T) {
+		w := request([]string{auth.ScopeRead}, http.MethodPost, "/api/v1/reports", `{"project":"my-app","scanner":"trivy","raw_data":{"Results":[]}}`)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+	t.Run("ingest-only key cannot create waivers", func(t *testing.T) {
+		w := request([]string{auth.ScopeIngest}, http.MethodPost, "/api/v1/projects/my-app/waivers", `{"name":"temporary"}`)
+		assert.Equal(t, http.StatusForbidden, w.Code)
+	})
+	t.Run("admin key can create a project waiver", func(t *testing.T) {
+		w := request([]string{auth.ScopeAdmin}, http.MethodPost, "/api/v1/projects/my-app/waivers", `{"name":"temporary"}`)
+		assert.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+	})
+}
+
 // TestRoutes_AdminScopedKeyAllowedOnAdminRoutes is the positive control:
 // a key carrying the admin scope is admitted to the project-scoped admin
 // routes (the RequireRole admin gates a project API key can legitimately
-// exercise). Global operator endpoints (watcher status, scanners) remain
-// session-admin-only by design — see TestGlobalStatusEndpoints_AdminOnly.
+// exercise). Platform-wide endpoints remain session-admin-only by design.
 func TestRoutes_AdminScopedKeyAllowedOnAdminRoutes(t *testing.T) {
 	router := apiKeyRouter(t, "key-1", "00000000-0000-0000-0000-000000000001", []string{"admin", "ingest"}, time.Time{})
 
@@ -220,6 +259,15 @@ func TestRoutes_AdminScopedKeyAllowedOnAdminRoutes(t *testing.T) {
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusCreated, w.Code)
+	})
+	t.Run("admin key cannot create a platform project", func(t *testing.T) {
+		assert.Equal(t, http.StatusForbidden, keyed("POST", "/api/v1/projects").Code)
+	})
+	t.Run("admin key cannot inspect global retention state", func(t *testing.T) {
+		assert.Equal(t, http.StatusForbidden, keyed("GET", "/api/v1/admin/retention/preview?days=30").Code)
+	})
+	t.Run("admin key cannot modify global policy templates", func(t *testing.T) {
+		assert.Equal(t, http.StatusForbidden, keyed("DELETE", "/api/v1/policy-templates/00000000-0000-0000-0000-000000000099").Code)
 	})
 }
 

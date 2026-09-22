@@ -49,7 +49,7 @@ func (u *Usecases) VerifyFix(ctx context.Context, findingID string) (*VerifyResp
 	if err != nil {
 		return nil, fmt.Errorf("invalid finding id: %w", err)
 	}
-	f, err := u.findingWithProjectAccess(ctx, fid)
+	f, err := u.findingWithProjectEditor(ctx, fid)
 	if err != nil {
 		return nil, err
 	}

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/domain"
 	"github.com/minh-tg/specht/internal/finding"
 	"github.com/minh-tg/specht/internal/gate"
@@ -100,6 +101,13 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, input.ProjectSlug)
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, input.ProjectSlug, err)
+	}
+	// HTTP requests always carry an authenticated identity. Identity-less
+	// calls are reserved for trusted internal ingestion jobs.
+	if auth.ContextIdentity(ctx) != nil {
+		if err := u.requireProjectIngest(ctx, project.ID); err != nil {
+			return nil, err
+		}
 	}
 
 	sc, err := u.deps.Registry.Get(input.Scanner)

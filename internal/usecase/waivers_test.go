@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/port"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -25,7 +26,7 @@ func testCheckWaiverMatchDeps(t *testing.T) (*mockProjectRepo, *mockFindingRepo,
 
 	findingID := "00000000-0000-0000-0000-0000000000a1"
 	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
-		return port.Finding{ID: findingID, FindingKind: "sca", CurrentSeverityRank: 3}, nil
+		return port.Finding{ID: findingID, ProjectID: project.ID, FindingKind: "sca", CurrentSeverityRank: 3}, nil
 	}
 
 	uc := New(Deps{
@@ -40,7 +41,7 @@ func TestCheckWaiverMatch_NoActiveWaiver(t *testing.T) {
 		return nil, nil
 	}
 
-	matched, err := uc.CheckWaiverMatch(context.Background(), "my-app", "00000000-0000-0000-0000-0000000000a1")
+	matched, err := uc.CheckWaiverMatch(sessionCtx("admin", auth.RoleAdmin), "my-app", "00000000-0000-0000-0000-0000000000a1")
 	require.NoError(t, err)
 	assert.False(t, matched)
 }
@@ -59,7 +60,7 @@ func TestCheckWaiverMatch_SeverityCondition(t *testing.T) {
 		}}, nil
 	}
 
-	matched, err := uc.CheckWaiverMatch(context.Background(), "my-app", "00000000-0000-0000-0000-0000000000a1")
+	matched, err := uc.CheckWaiverMatch(sessionCtx("admin", auth.RoleAdmin), "my-app", "00000000-0000-0000-0000-0000000000a1")
 	require.NoError(t, err)
 	assert.True(t, matched, "finding severity 3 must match a severity_rank gte 3 waiver")
 }
@@ -89,7 +90,7 @@ func TestCheckWaiverMatch_ContextOR(t *testing.T) {
 		}, nil
 	}
 
-	matched, err := uc.CheckWaiverMatch(context.Background(), "my-app", "00000000-0000-0000-0000-0000000000a1")
+	matched, err := uc.CheckWaiverMatch(sessionCtx("admin", auth.RoleAdmin), "my-app", "00000000-0000-0000-0000-0000000000a1")
 	require.NoError(t, err)
 	assert.True(t, matched, "waiver contexts must OR together: env A finding matches the A context even with a B context present")
 }
@@ -99,6 +100,16 @@ func TestCheckWaiverMatch_InvalidFindingID(t *testing.T) {
 
 	_, err := uc.CheckWaiverMatch(context.Background(), "my-app", "not-a-uuid")
 	require.Error(t, err)
+}
+
+func TestCheckWaiverMatch_RejectsFindingFromAnotherProject(t *testing.T) {
+	_, fr, _, uc := testCheckWaiverMatchDeps(t)
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
+		return port.Finding{ID: id, ProjectID: "00000000-0000-0000-0000-000000000099"}, nil
+	}
+
+	_, err := uc.CheckWaiverMatch(sessionCtx("admin", auth.RoleAdmin), "my-app", "00000000-0000-0000-0000-0000000000a1")
+	require.ErrorIs(t, err, ErrProjectAccessDenied)
 }
 
 func TestGateWaiverRepo_ListActiveWaivers_Batched(t *testing.T) {

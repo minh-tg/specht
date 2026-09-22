@@ -419,9 +419,10 @@ func (h *Handler) enforceProjectAccess(r *http.Request, projectSlug string) erro
 // satisfy a role gate by identity: the demanded roles are mapped to the
 // equivalent API-key permission scopes (admin routes → the "admin" scope),
 // and a key is admitted only when it holds that scope. An authentic key with
-// no matching scope is denied 403 — an ingest-only key must never reach an
-// admin-gated route (creating projects, managing API keys, triage, waivers,
-// global daemon state). Unauthenticated requests fall through to 401.
+// no matching scope is denied 403. Platform-wide operations such as project
+// creation and global administration use RequireSessionRole instead, so a
+// project-scoped key cannot gain platform authority from its admin scope.
+// Unauthenticated requests fall through to 401.
 // apiKeyRoleAdmitted reports whether an API-key identity holds one of the
 // permission scopes the role gate demands.
 func apiKeyRoleAdmitted(ident *auth.Identity, requiredScopes map[string]bool) bool {
@@ -457,6 +458,78 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 			}
 			if !identityAdmitted(ident, allowed, requiredScopes) {
 				respondRoleError(w, ident)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequireAPIKeyScopes restricts project-scoped API keys to any one of the
+// listed scopes. Session identities pass through for project-membership
+// checks in the handler or use case.
+func RequireAPIKeyScopes(scopes ...string) func(http.Handler) http.Handler {
+	allowed := make(map[string]bool, len(scopes))
+	for _, scope := range scopes {
+		allowed[scope] = true
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ident := auth.ContextIdentity(r.Context())
+			if ident == nil {
+				respondError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+				return
+			}
+			if ident.IsAPIKey {
+				for scope := range allowed {
+					if ident.HasScope(scope) {
+						next.ServeHTTP(w, r)
+						return
+					}
+				}
+				respondError(w, http.StatusForbidden, "insufficient_scope", "API key does not have the required scope for this route")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequireSession excludes project-scoped API keys from user or organization
+// endpoints whose authority cannot be represented by a project key.
+func RequireSession() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ident := auth.ContextIdentity(r.Context())
+			if ident == nil {
+				respondError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+				return
+			}
+			if ident.IsAPIKey || !auth.ValidRole(ident.Role) {
+				respondError(w, http.StatusForbidden, "insufficient_role", "session authentication required")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RequireSessionRole enforces a role for session identities only. It is used
+// for platform-wide operations that a project-scoped admin key must not reach.
+func RequireSessionRole(roles ...string) func(http.Handler) http.Handler {
+	allowed := make(map[string]bool, len(roles))
+	for _, role := range roles {
+		allowed[role] = true
+	}
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ident := auth.ContextIdentity(r.Context())
+			if ident == nil {
+				respondError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+				return
+			}
+			if ident.IsAPIKey || !sessionRoleAdmitted(ident, allowed) {
+				respondError(w, http.StatusForbidden, "insufficient_role", "requires admin session")
 				return
 			}
 			next.ServeHTTP(w, r)

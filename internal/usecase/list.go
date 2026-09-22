@@ -260,12 +260,14 @@ func changedFilesOpt(raw json.RawMessage) []string {
 	return files
 }
 
-// CreateProject creates a project and makes the creator its admin member,
-// establishing the tenant-isolation invariant that every project has an
-// admin. Callers pass the authenticated session user ID as creatorID;
-// API keys cannot create projects (the route is admin-gated and API keys
-// never satisfy global-admin membership rules).
+// CreateProject creates a project and makes the authenticated global admin
+// its admin member, establishing the tenant-isolation invariant that every
+// project has an admin. Project-scoped API keys cannot create projects.
 func (u *Usecases) CreateProject(ctx context.Context, name, slug, description, creatorID string) (*ProjectResponse, error) {
+	ident := auth.ContextIdentity(ctx)
+	if ident == nil || ident.IsAPIKey || ident.Role != auth.RoleAdmin || ident.UserID != creatorID {
+		return nil, ErrProjectAccessDenied
+	}
 	p, err := u.deps.Stores.Projects.Create(ctx, port.CreateProjectInput{
 		Slug:                slug,
 		Name:                name,

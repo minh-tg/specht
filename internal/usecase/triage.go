@@ -100,7 +100,7 @@ func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*Triag
 		return nil, fmt.Errorf("%w: %q", ErrInvalidState, input.AnalysisState)
 	}
 
-	f, err := u.findingWithProjectAccess(ctx, findingID)
+	f, err := u.findingWithProjectEditor(ctx, findingID)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +172,7 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 	if len(findings) != len(input.FindingIDs) {
 		return nil, fmt.Errorf("%w: one or more findings not found", ErrFindingNotFound)
 	}
-	if err := u.checkFindingRowsProjectAccess(ctx, findings); err != nil {
+	if err := u.checkFindingRowsProjectEditor(ctx, findings); err != nil {
 		return nil, err
 	}
 	if err := validateBulkTriageRequirements(input, findings); err != nil {

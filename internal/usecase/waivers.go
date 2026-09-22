@@ -188,6 +188,9 @@ func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, input.ProjectSlug, err)
 	}
+	if err := u.requireProjectAdminForWaiver(ctx, project.ID); err != nil {
+		return nil, err
+	}
 
 	conditions := make([]port.WaiverCondition, len(input.Conditions))
 	for i, c := range input.Conditions {
@@ -293,6 +296,9 @@ func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, input.ProjectSlug, err)
 	}
+	if err := u.requireProjectAdminForWaiver(ctx, project.ID); err != nil {
+		return nil, err
+	}
 
 	id, err := uuid.Parse(input.WaiverID)
 	if err != nil {
@@ -394,6 +400,9 @@ func (u *Usecases) DeleteWaiver(ctx context.Context, projectSlug, waiverID strin
 	if err != nil {
 		return fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
+	if err := u.requireProjectAdminForWaiver(ctx, project.ID); err != nil {
+		return err
+	}
 
 	id, err := uuid.Parse(waiverID)
 	if err != nil {
@@ -410,6 +419,9 @@ func (u *Usecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID, acto
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
+	}
+	if err := u.requireProjectAdminForWaiver(ctx, project.ID); err != nil {
+		return nil, err
 	}
 
 	id, err := uuid.Parse(waiverID)
@@ -478,6 +490,12 @@ func (u *Usecases) CheckWaiverMatch(ctx context.Context, projectSlug, findingID 
 	finding, err := u.deps.Stores.Findings.GetByID(ctx, fid.String())
 	if err != nil {
 		return false, fmt.Errorf("get finding: %w", err)
+	}
+	if finding.ProjectID != project.ID {
+		return false, ErrProjectAccessDenied
+	}
+	if err := u.checkFindingProjectIDAccess(ctx, finding.ProjectID); err != nil {
+		return false, err
 	}
 
 	gf := gate.Finding{

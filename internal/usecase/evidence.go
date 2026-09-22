@@ -25,7 +25,7 @@ func (u *Usecases) CreateEvidence(ctx context.Context, findingID, userID string,
 	if err != nil {
 		return EvidenceResponse{}, fmt.Errorf("invalid finding id: %w", err)
 	}
-	if err := u.checkFindingProjectAccess(ctx, fid); err != nil {
+	if err := u.checkFindingProjectEditor(ctx, fid); err != nil {
 		return EvidenceResponse{}, err
 	}
 
@@ -99,7 +99,7 @@ func (u *Usecases) DeleteEvidence(ctx context.Context, evidenceID string) error 
 	if err != nil {
 		return fmt.Errorf("evidence finding id is invalid")
 	}
-	if err := u.checkFindingProjectAccess(ctx, fid); err != nil {
+	if err := u.checkFindingProjectEditor(ctx, fid); err != nil {
 		return err
 	}
 	return u.deps.Stores.Evidence.Delete(ctx, eid.String())

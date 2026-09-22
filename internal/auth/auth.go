@@ -40,7 +40,7 @@ const RoleMember = "member"
 const (
 	ScopeIngest = "ingest" // ingest scan reports for the key's project
 	ScopeRead   = "read"   // read findings, reports, gate state, waivers
-	ScopeAdmin  = "admin"  // project administration: API keys, waivers, triage
+	ScopeAdmin  = "admin"  // project mutations: API keys, waivers, triage, evidence, reachability, sign-offs
 )
 
 // RoleScope maps a role demanded by RequireRole onto the API-key scope that

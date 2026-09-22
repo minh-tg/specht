@@ -126,6 +126,26 @@ func (m *mockProjectRepo) EffectiveRole(ctx context.Context, projectID, userID s
 		}
 		return "", port.ErrNotFound
 	}
+	if m.isMemberEffectiveFn != nil {
+		member, err := m.isMemberEffectiveFn(ctx, projectID, userID)
+		if err != nil {
+			return "", err
+		}
+		if !member {
+			return "", port.ErrNotFound
+		}
+		return auth.RoleEditor, nil
+	}
+	if m.isMemberFn != nil {
+		member, err := m.isMemberFn(ctx, projectID, userID)
+		if err != nil {
+			return "", err
+		}
+		if !member {
+			return "", port.ErrNotFound
+		}
+		return auth.RoleEditor, nil
+	}
 	return "", fmt.Errorf("unexpected call to EffectiveRole")
 }
 
@@ -1294,12 +1314,20 @@ func TestCreateProject_Success(t *testing.T) {
 		Stores: &port.Stores{Projects: pr},
 	})
 
-	result, err := uc.CreateProject(context.Background(), "My App", "my-app", "test description", "creator-1")
+	result, err := uc.CreateProject(sessionCtx("creator-1", auth.RoleAdmin), "My App", "my-app", "test description", "creator-1")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, "my-app", result.Slug)
 	assert.Equal(t, "My App", result.Name)
 	assert.Equal(t, auth.RoleAdmin, gotRole, "project creator must become admin member")
+}
+
+func TestCreateProject_APIKeyCannotCreatePlatformProject(t *testing.T) {
+	pr, _, _ := makeTestRepos()
+	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+
+	_, err := uc.CreateProject(apiKeyCtx("key-1", findingFixtureProjectID), "My App", "my-app", "description", "key-1")
+	require.ErrorIs(t, err, ErrProjectAccessDenied)
 }
 
 func TestCreateProject_MembershipFailureRollsBack(t *testing.T) {
@@ -1321,10 +1349,27 @@ func TestCreateProject_MembershipFailureRollsBack(t *testing.T) {
 		Stores: &port.Stores{Projects: pr},
 	})
 
-	_, err := uc.CreateProject(context.Background(), "My App", "my-app", "test description", "creator-1")
+	_, err := uc.CreateProject(sessionCtx("creator-1", auth.RoleAdmin), "My App", "my-app", "test description", "creator-1")
 	require.Error(t, err)
 	assert.ErrorContains(t, err, "grant creator admin membership")
 	assert.Equal(t, "my-app", gotDeleteSlug, "orphaned project must be removed when admin grant fails")
+}
+
+func TestIngestReport_ProjectViewerCannotIngest(t *testing.T) {
+	pr := &mockProjectRepo{}
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	pr.effectiveRoleFn = func(ctx context.Context, projectID, userID string) (string, error) {
+		return auth.RoleViewer, nil
+	}
+	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+
+	result, err := uc.IngestReport(sessionCtx("viewer", auth.RoleViewer), IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy", RawData: []byte(`{"Results":[]}`),
+	})
+	assert.ErrorIs(t, err, ErrProjectAccessDenied)
+	assert.Nil(t, result)
 }
 
 func TestIngestReport_Success(t *testing.T) {

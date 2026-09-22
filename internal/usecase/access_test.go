@@ -47,6 +47,7 @@ func apiKeyCtx(userID, projectID string) context.Context {
 	return auth.ContextWithIdentity(context.Background(), &auth.Identity{
 		UserID:    userID,
 		ProjectID: projectID,
+		Scopes:    []string{auth.ScopeRead, auth.ScopeAdmin},
 		IsAPIKey:  true,
 	})
 }
@@ -100,6 +101,58 @@ func TestCheckFindingRowsProjectAccess_NoIdentityDenied(t *testing.T) {
 	uc := memberUsecases(map[string]bool{})
 	err := uc.checkFindingRowsProjectAccess(context.Background(), []port.Finding{makeFindingRow(1)})
 	assert.ErrorIs(t, err, ErrProjectAccessDenied)
+}
+
+func TestRequireProjectEditor_UsesEffectiveProjectRole(t *testing.T) {
+	pr := &mockProjectRepo{}
+	pr.effectiveRoleFn = func(ctx context.Context, projectID, userID string) (string, error) {
+		return auth.RoleViewer, nil
+	}
+	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+	assert.ErrorIs(t, uc.requireProjectEditor(sessionCtx("u1", auth.RoleViewer), findingFixtureProjectID), ErrProjectAccessDenied)
+
+	pr.effectiveRoleFn = func(ctx context.Context, projectID, userID string) (string, error) {
+		return auth.RoleEditor, nil
+	}
+	assert.NoError(t, uc.requireProjectEditor(sessionCtx("u1", auth.RoleViewer), findingFixtureProjectID))
+}
+
+func TestRequireProjectIngest_RequiresEditorRoleOrIngestScope(t *testing.T) {
+	pr := &mockProjectRepo{}
+	pr.effectiveRoleFn = func(ctx context.Context, projectID, userID string) (string, error) {
+		return auth.RoleViewer, nil
+	}
+	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+	assert.ErrorIs(t, uc.requireProjectIngest(sessionCtx("u1", auth.RoleViewer), findingFixtureProjectID), ErrProjectAccessDenied)
+
+	ingestKey := auth.ContextWithIdentity(context.Background(), &auth.Identity{
+		UserID: "key-1", ProjectID: findingFixtureProjectID, IsAPIKey: true,
+		Scopes: []string{auth.ScopeIngest},
+	})
+	assert.NoError(t, uc.requireProjectIngest(ingestKey, findingFixtureProjectID))
+	assert.ErrorIs(t, uc.requireProjectIngest(apiKeyCtx("key-1", findingFixtureProjectID), findingFixtureProjectID), ErrProjectAccessDenied)
+}
+
+func TestRequireProjectAdminForWaiver_EnforcesRoleAndKeyScope(t *testing.T) {
+	pr := &mockProjectRepo{}
+	pr.effectiveRoleFn = func(ctx context.Context, projectID, userID string) (string, error) {
+		return auth.RoleEditor, nil
+	}
+	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+	assert.ErrorIs(t, uc.requireProjectAdminForWaiver(sessionCtx("u1", auth.RoleEditor), findingFixtureProjectID), ErrProjectAccessDenied)
+
+	adminKey := auth.ContextWithIdentity(context.Background(), &auth.Identity{
+		UserID: "key-1", ProjectID: findingFixtureProjectID, IsAPIKey: true,
+		Scopes: []string{auth.ScopeAdmin},
+	})
+	assert.NoError(t, uc.requireProjectAdminForWaiver(adminKey, findingFixtureProjectID))
+
+	readKey := auth.ContextWithIdentity(context.Background(), &auth.Identity{
+		UserID: "key-1", ProjectID: findingFixtureProjectID, IsAPIKey: true,
+		Scopes: []string{auth.ScopeRead},
+	})
+	assert.ErrorIs(t, uc.requireProjectAdminForWaiver(readKey, findingFixtureProjectID), ErrProjectAccessDenied)
+	assert.ErrorIs(t, uc.requireProjectAdminForWaiver(apiKeyCtx("key-1", "other-project"), findingFixtureProjectID), ErrProjectAccessDenied)
 }
 
 func TestCheckFindingRowsProjectAccess_DeduplicatesProjectChecks(t *testing.T) {

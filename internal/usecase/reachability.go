@@ -51,7 +51,7 @@ func (u *Usecases) UpsertReachability(ctx context.Context, findingID, userID, st
 	if err != nil {
 		return nil, fmt.Errorf("invalid user id: %w", err)
 	}
-	if err := u.checkFindingProjectAccess(ctx, fid); err != nil {
+	if err := u.checkFindingProjectEditor(ctx, fid); err != nil {
 		return nil, err
 	}
 
