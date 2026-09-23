@@ -34,6 +34,8 @@ const (
 	// DefaultBatchSize is the default number of package queries packed into
 	// one querybatch HTTP request (WATCHER_BATCH_SIZE). Design spec default 100.
 	DefaultBatchSize = 100
+	// DefaultVulnFetchConcurrency bounds simultaneous full-advisory requests.
+	DefaultVulnFetchConcurrency = 5
 )
 
 // Query is one entry of the querybatch "queries" array. Ecosystem carries
@@ -121,6 +123,9 @@ type HTTPClientConfig struct {
 	// CacheTTL is how long a raw batch response is cached before a re-poll
 	// refetches it; typically the poll interval. Zero disables caching.
 	CacheTTL time.Duration
+	// MaxConcurrentVulnFetches bounds simultaneous full-advisory GETs. Values
+	// less than one use DefaultVulnFetchConcurrency.
+	MaxConcurrentVulnFetches int
 	// HTTP is the underlying transport. Defaults to a 30s-timeout client.
 	HTTP *http.Client
 	// Now supplies the cache clock; nil means time.Now.
@@ -128,15 +133,17 @@ type HTTPClientConfig struct {
 }
 
 // HTTPClient is the production Client: POSTs querybatch requests to discover
-// matched advisory IDs, GETs the full record for each ID, batches queries by
-// BatchSize, and caches raw querybatch responses keyed by batch (TTL =
-// CacheTTL) so repeated polls do not refetch unchanged history.
+// matched advisory IDs, GETs the full record for each ID with bounded
+// concurrency, batches queries by BatchSize, and caches raw querybatch
+// responses keyed by batch (TTL = CacheTTL) so repeated polls do not refetch
+// unchanged history.
 type HTTPClient struct {
-	endpoint  string
-	vulnURL   string
-	http      *http.Client
-	batchSize int
-	cache     *responseCache
+	endpoint                 string
+	vulnURL                  string
+	http                     *http.Client
+	batchSize                int
+	maxConcurrentVulnFetches int
+	cache                    *responseCache
 }
 
 // NewHTTPClient builds an HTTPClient from cfg, applying defaults.
@@ -150,6 +157,9 @@ func NewHTTPClient(cfg HTTPClientConfig) *HTTPClient {
 	if cfg.BatchSize <= 0 {
 		cfg.BatchSize = DefaultBatchSize
 	}
+	if cfg.MaxConcurrentVulnFetches <= 0 {
+		cfg.MaxConcurrentVulnFetches = DefaultVulnFetchConcurrency
+	}
 	if cfg.HTTP == nil {
 		cfg.HTTP = &http.Client{Timeout: 30 * time.Second}
 	}
@@ -157,11 +167,12 @@ func NewHTTPClient(cfg HTTPClientConfig) *HTTPClient {
 		cfg.Now = time.Now
 	}
 	return &HTTPClient{
-		endpoint:  cfg.Endpoint,
-		vulnURL:   cfg.VulnEndpoint,
-		http:      cfg.HTTP,
-		batchSize: cfg.BatchSize,
-		cache:     newResponseCache(cfg.CacheTTL, cfg.Now),
+		endpoint:                 cfg.Endpoint,
+		vulnURL:                  cfg.VulnEndpoint,
+		http:                     cfg.HTTP,
+		batchSize:                cfg.BatchSize,
+		maxConcurrentVulnFetches: cfg.MaxConcurrentVulnFetches,
+		cache:                    newResponseCache(cfg.CacheTTL, cfg.Now),
 	}
 }
 
@@ -171,10 +182,9 @@ func (c *HTTPClient) endpointVuln(id string) string {
 	return strings.ReplaceAll(c.vulnURL, "{id}", id)
 }
 
-// QueryBatch implements Client. Queries are split into BatchSize chunks
-// executed sequentially (upstream rate limits are not documented, so the
-// client stays conservative), and results are merged back into the original
-// query order.
+// QueryBatch implements Client. Querybatch POSTs are split into BatchSize
+// chunks executed sequentially; full advisory records are fetched with bounded
+// concurrency. Results are merged back into the original query order.
 func (c *HTTPClient) QueryBatch(ctx context.Context, queries []Query) ([]QueryResult, error) {
 	results := make([]QueryResult, len(queries))
 	// Phase 1: querybatch — returns only the matching vulnerability IDs per
@@ -268,6 +278,7 @@ func (c *HTTPClient) queryBatchChunk(ctx context.Context, queries []Query) ([][]
 // fetchFullRecords fetches the full advisory record for every distinct ID
 // across all per-query ID slices, returning a map keyed by ID. IDs are
 // deduped across queries so a package matched many times is fetched once.
+// Concurrent GETs are bounded by maxConcurrentVulnFetches.
 func (c *HTTPClient) fetchFullRecords(ctx context.Context, idBatches [][]string) (map[string]Advisory, error) {
 	seen := make(map[string]bool)
 	var ids []string
@@ -283,12 +294,65 @@ func (c *HTTPClient) fetchFullRecords(ctx context.Context, idBatches [][]string)
 	}
 
 	records := make(map[string]Advisory, len(ids))
-	for _, id := range ids {
-		a, err := c.fetchVuln(ctx, id)
-		if err != nil {
-			return nil, err
+	if len(ids) == 0 {
+		return records, nil
+	}
+
+	workers := min(c.maxConcurrentVulnFetches, len(ids))
+	fetchCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	jobs := make(chan int)
+	var workersWG sync.WaitGroup
+	var recordsMu sync.Mutex
+	var errorOnce sync.Once
+	var firstErr error
+
+	for range workers {
+		workersWG.Add(1)
+		go func() {
+			defer workersWG.Done()
+			for {
+				select {
+				case <-fetchCtx.Done():
+					return
+				case index, ok := <-jobs:
+					if !ok || fetchCtx.Err() != nil {
+						return
+					}
+					id := ids[index]
+					record, err := c.fetchVuln(fetchCtx, id)
+					if err != nil {
+						errorOnce.Do(func() {
+							firstErr = err
+							cancel()
+						})
+						return
+					}
+					recordsMu.Lock()
+					records[id] = record
+					recordsMu.Unlock()
+				}
+			}
+		}()
+	}
+
+sendJobs:
+	for index := range ids {
+		select {
+		case jobs <- index:
+		case <-fetchCtx.Done():
+			break sendJobs
 		}
-		records[id] = a
+	}
+	close(jobs)
+	workersWG.Wait()
+
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	return records, nil
 }

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -99,6 +100,24 @@ func mockOSV(t *testing.T, registry map[string]map[string]any, idFor func(name s
 		}
 	}))
 	return srv, &posts, &gets
+}
+
+func writeQuerybatchIDs(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Queries []Query `json:"queries"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	idLists := make([][]map[string]any, 0, len(body.Queries))
+	for _, query := range body.Queries {
+		idLists = append(idLists, []map[string]any{{
+			"id": "GHSA-" + query.Package.Name, "modified": "2024-01-01T00:00:00Z",
+		}})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(querybatchResponse(idLists...))
 }
 
 func TestQueryBatch_OKParsesAndCapturesRawBytes(t *testing.T) {
@@ -207,6 +226,170 @@ func TestQueryBatch_BatchesAndPreservesOrder(t *testing.T) {
 		if len(r.Advisories) != 1 || r.Advisories[0].ID != "GHSA-"+string(rune('a'+i)) {
 			t.Errorf("result %d = %+v, want advisory GHSA-%c", i, r.Advisories, 'a'+i)
 		}
+	}
+}
+
+func TestQueryBatch_FullFetchConcurrencyBoundedAndOrderPreserved(t *testing.T) {
+	var inFlight, maxInFlight, gets atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			writeQuerybatchIDs(w, r)
+		case http.MethodGet:
+			gets.Add(1)
+			current := inFlight.Add(1)
+			defer inFlight.Add(-1)
+			for previous := maxInFlight.Load(); current > previous; previous = maxInFlight.Load() {
+				if maxInFlight.CompareAndSwap(previous, current) {
+					break
+				}
+			}
+			select {
+			case <-time.After(20 * time.Millisecond):
+			case <-r.Context().Done():
+				return
+			}
+			id := strings.TrimPrefix(r.URL.Path, "/v1/vulns/")
+			_ = json.NewEncoder(w).Encode(cannedAdvisory(id, "2024-01-01T00:00:00Z"))
+		default:
+			t.Errorf("unexpected method %s", r.Method)
+		}
+	}))
+	defer srv.Close()
+
+	const concurrency = 3
+	c := NewHTTPClient(HTTPClientConfig{
+		Endpoint: srv.URL, VulnEndpoint: srv.URL + "/v1/vulns/{id}",
+		MaxConcurrentVulnFetches: concurrency,
+	})
+	queries := make([]Query, 12)
+	for i := range queries {
+		queries[i] = queryFor(string(rune('a' + i)))
+	}
+	results, err := c.QueryBatch(context.Background(), queries)
+	if err != nil {
+		t.Fatalf("QueryBatch: %v", err)
+	}
+	if got := maxInFlight.Load(); got != concurrency {
+		t.Errorf("maximum concurrent GETs = %d, want %d", got, concurrency)
+	}
+	if gets.Load() != int32(len(queries)) {
+		t.Errorf("full-record GETs = %d, want %d", gets.Load(), len(queries))
+	}
+	if len(results) != len(queries) {
+		t.Fatalf("results = %d, want %d", len(results), len(queries))
+	}
+	for i, result := range results {
+		wantID := "GHSA-" + string(rune('a'+i))
+		if len(result.Advisories) != 1 || result.Advisories[0].ID != wantID {
+			t.Errorf("result %d = %+v, want advisory %s", i, result.Advisories, wantID)
+		}
+	}
+}
+
+func TestQueryBatch_FetchErrorCancelsInflightWorkers(t *testing.T) {
+	var inFlight, gets, canceled atomic.Int32
+	allStarted := make(chan struct{})
+	var startedOnce sync.Once
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			writeQuerybatchIDs(w, r)
+			return
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("unexpected method %s", r.Method)
+			return
+		}
+		gets.Add(1)
+		current := inFlight.Add(1)
+		defer inFlight.Add(-1)
+		if current == 3 {
+			startedOnce.Do(func() { close(allStarted) })
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/v1/vulns/")
+		if id == "GHSA-a" {
+			select {
+			case <-allStarted:
+				w.WriteHeader(http.StatusInternalServerError)
+			case <-r.Context().Done():
+				canceled.Add(1)
+			}
+			return
+		}
+		<-r.Context().Done()
+		canceled.Add(1)
+	}))
+	defer srv.Close()
+
+	c := NewHTTPClient(HTTPClientConfig{
+		Endpoint: srv.URL, VulnEndpoint: srv.URL + "/v1/vulns/{id}",
+		MaxConcurrentVulnFetches: 3,
+	})
+	_, err := c.QueryBatch(context.Background(), []Query{queryFor("a"), queryFor("b"), queryFor("c"), queryFor("d")})
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) || httpErr.Status != http.StatusInternalServerError {
+		t.Fatalf("error = %v, want HTTP 500 from an advisory GET", err)
+	}
+	if gets.Load() != 3 {
+		t.Errorf("full-record GETs started = %d, want exactly the three in-flight workers", gets.Load())
+	}
+	if canceled.Load() != 2 {
+		t.Errorf("other in-flight GETs canceled = %d, want 2", canceled.Load())
+	}
+}
+
+func TestQueryBatch_ContextCancellationStopsFetchWorkers(t *testing.T) {
+	var gets atomic.Int32
+	started := make(chan struct{}, 3)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			writeQuerybatchIDs(w, r)
+			return
+		}
+		gets.Add(1)
+		select {
+		case started <- struct{}{}:
+		case <-r.Context().Done():
+			return
+		}
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	c := NewHTTPClient(HTTPClientConfig{
+		Endpoint: srv.URL, VulnEndpoint: srv.URL + "/v1/vulns/{id}",
+		MaxConcurrentVulnFetches: 3,
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := c.QueryBatch(ctx, []Query{queryFor("a"), queryFor("b"), queryFor("c"), queryFor("d")})
+		done <- err
+	}()
+
+	timer := time.NewTimer(time.Second)
+	defer timer.Stop()
+	for range 3 {
+		select {
+		case <-started:
+		case err := <-done:
+			t.Fatalf("QueryBatch returned before all fetch workers started: %v", err)
+		case <-timer.C:
+			t.Fatal("timed out waiting for fetch workers")
+		}
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("QueryBatch error = %v, want context.Canceled", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("QueryBatch did not return after context cancellation")
+	}
+	if gets.Load() != 3 {
+		t.Errorf("full-record GETs started = %d, want exactly the configured concurrency", gets.Load())
 	}
 }
 
