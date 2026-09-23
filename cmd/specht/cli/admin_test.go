@@ -28,7 +28,9 @@ const adminStatusBody = `{"projects":2,"users":3,"open_findings":5,"reports":7}`
 func TestAdminStatusHuman(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/admin/status", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(adminStatusBody))
+		if _, err := w.Write([]byte(adminStatusBody)); err != nil {
+			t.Errorf("write admin status response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runAdminCmd(t, d, "admin", "status"); err != nil {
@@ -42,7 +44,9 @@ func TestAdminStatusHuman(t *testing.T) {
 func TestAdminStatusJSON(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/admin/status", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(adminStatusBody))
+		if _, err := w.Write([]byte(adminStatusBody)); err != nil {
+			t.Errorf("write admin status response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runAdminCmd(t, d, "admin", "status", "--format", "json"); err != nil {
@@ -79,7 +83,9 @@ func TestAdminRetentionPreviewHuman(t *testing.T) {
 		if got := r.URL.Query().Get("days"); got != "30" {
 			t.Errorf("days = %q, want 30", got)
 		}
-		w.Write([]byte(`{"older_than_days":30,"cutoff":"2026-01-01T00:00:00Z","stale_reports":4}`))
+		if _, err := w.Write([]byte(`{"older_than_days":30,"cutoff":"2026-01-01T00:00:00Z","stale_reports":4}`)); err != nil {
+			t.Errorf("write retention preview response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runAdminCmd(t, d, "admin", "retention", "preview", "--days", "30"); err != nil {
@@ -93,7 +99,9 @@ func TestAdminRetentionPreviewHuman(t *testing.T) {
 func TestAdminRetentionPreviewJSON(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/admin/retention/preview", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"older_than_days":30,"cutoff":"2026-01-01T00:00:00Z","stale_reports":4}`))
+		if _, err := w.Write([]byte(`{"older_than_days":30,"cutoff":"2026-01-01T00:00:00Z","stale_reports":4}`)); err != nil {
+			t.Errorf("write retention preview response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runAdminCmd(t, d, "admin", "retention", "preview", "--days", "30", "--format", "json"); err != nil {
@@ -110,7 +118,9 @@ func TestAdminRetentionPurgeHuman(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s, want POST", r.Method)
 		}
-		w.Write([]byte(`{"older_than_days":30,"cutoff":"2026-01-01T00:00:00Z","deleted_reports":4}`))
+		if _, err := w.Write([]byte(`{"older_than_days":30,"cutoff":"2026-01-01T00:00:00Z","deleted_reports":4}`)); err != nil {
+			t.Errorf("write retention purge response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runAdminCmd(t, d, "admin", "retention", "purge", "--days", "30"); err != nil {
@@ -124,7 +134,9 @@ func TestAdminRetentionPurgeHuman(t *testing.T) {
 func TestAdminRetentionPurgeJSON(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/admin/retention/purge", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"older_than_days":30,"cutoff":"2026-01-01T00:00:00Z","deleted_reports":4}`))
+		if _, err := w.Write([]byte(`{"older_than_days":30,"cutoff":"2026-01-01T00:00:00Z","deleted_reports":4}`)); err != nil {
+			t.Errorf("write retention purge response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runAdminCmd(t, d, "admin", "retention", "purge", "--days", "30", "--format", "json"); err != nil {

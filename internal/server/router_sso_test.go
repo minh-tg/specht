@@ -23,10 +23,14 @@ func TestNewRouter_SSOWithNonJWTAuth_NoPanic(t *testing.T) {
 		switch r.URL.Path {
 		case "/oauth/token":
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"access_token":"acc-test","token_type":"Bearer"}`)
+			if _, err := fmt.Fprint(w, `{"access_token":"acc-test","token_type":"Bearer"}`); err != nil {
+				t.Errorf("write token response: %v", err)
+			}
 		case "/userinfo":
 			w.Header().Set("Content-Type", "application/json")
-			fmt.Fprint(w, `{"sub":"oidc-user-1","email":"oidc@example.com"}`)
+			if _, err := fmt.Fprint(w, `{"sub":"oidc-user-1","email":"oidc@example.com"}`); err != nil {
+				t.Errorf("write userinfo response: %v", err)
+			}
 		default:
 			http.NotFound(w, r)
 		}

@@ -62,7 +62,10 @@ func (p *EPSSProvider) fetchBatch(ctx context.Context, cveIDs []string, out map[
 	if err != nil {
 		return fmt.Errorf("epss fetch: %w", err)
 	}
-	defer resp.Body.Close()
+	// Close errors cannot change the fetch result and are best-effort cleanup.
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("epss fetch: status %d", resp.StatusCode)
 	}

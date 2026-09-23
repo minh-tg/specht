@@ -14,7 +14,9 @@ import (
 
 func TestHealth(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+			t.Errorf("encode health response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -27,11 +29,13 @@ func TestHealth(t *testing.T) {
 func TestAuth(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "POST", r.Method)
-		json.NewEncoder(w).Encode(AuthResponse{
+		if err := json.NewEncoder(w).Encode(AuthResponse{
 			Token:  "tok",
 			UserID: "uid",
 			Email:  "a@b.com",
-		})
+		}); err != nil {
+			t.Errorf("encode auth response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -56,11 +60,17 @@ func TestProjects(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method + " " + r.URL.Path {
 		case "GET /api/v1/projects":
-			json.NewEncoder(w).Encode([]Project{{Slug: "my-app"}})
+			if err := json.NewEncoder(w).Encode([]Project{{Slug: "my-app"}}); err != nil {
+				t.Errorf("encode project list: %v", err)
+			}
 		case "POST /api/v1/projects":
-			json.NewEncoder(w).Encode(Project{Slug: "new-app"})
+			if err := json.NewEncoder(w).Encode(Project{Slug: "new-app"}); err != nil {
+				t.Errorf("encode created project: %v", err)
+			}
 		case "GET /api/v1/projects/test-app":
-			json.NewEncoder(w).Encode(Project{Slug: "test-app"})
+			if err := json.NewEncoder(w).Encode(Project{Slug: "test-app"}); err != nil {
+				t.Errorf("encode project response: %v", err)
+			}
 		}
 	}))
 	defer srv.Close()
@@ -81,7 +91,9 @@ func TestProjects(t *testing.T) {
 
 func TestGateStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(GateStatus{ThresholdBreached: true, BlockingCount: 5})
+		if err := json.NewEncoder(w).Encode(GateStatus{ThresholdBreached: true, BlockingCount: 5}); err != nil {
+			t.Errorf("encode gate status response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -96,17 +108,29 @@ func TestFindings(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method + " " + r.URL.Path {
 		case "GET /api/v1/projects/my-app/findings":
-			json.NewEncoder(w).Encode([]Finding{{ID: "f1"}})
+			if err := json.NewEncoder(w).Encode([]Finding{{ID: "f1"}}); err != nil {
+				t.Errorf("encode findings response: %v", err)
+			}
 		case "GET /api/v1/findings/f1":
-			json.NewEncoder(w).Encode(Finding{ID: "f1", CurrentSeverity: "high"})
+			if err := json.NewEncoder(w).Encode(Finding{ID: "f1", CurrentSeverity: "high"}); err != nil {
+				t.Errorf("encode finding response: %v", err)
+			}
 		case "PATCH /api/v1/findings/f1":
-			json.NewEncoder(w).Encode(TriageResponse{FindingID: "f1", AnalysisState: "false_positive"})
+			if err := json.NewEncoder(w).Encode(TriageResponse{FindingID: "f1", AnalysisState: "false_positive"}); err != nil {
+				t.Errorf("encode triage response: %v", err)
+			}
 		case "POST /api/v1/findings/bulk-analysis":
-			json.NewEncoder(w).Encode([]TriageResponse{{FindingID: "f1"}})
+			if err := json.NewEncoder(w).Encode([]TriageResponse{{FindingID: "f1"}}); err != nil {
+				t.Errorf("encode bulk triage response: %v", err)
+			}
 		case "GET /api/v1/findings/f1/events":
-			json.NewEncoder(w).Encode([]FindingEvent{{EventType: "analysis_changed"}})
+			if err := json.NewEncoder(w).Encode([]FindingEvent{{EventType: "analysis_changed"}}); err != nil {
+				t.Errorf("encode finding events response: %v", err)
+			}
 		case "POST /api/v1/findings/f1/verify":
-			json.NewEncoder(w).Encode(VerifyResponse{FindingID: "f1", Outcome: "verified_fixed"})
+			if err := json.NewEncoder(w).Encode(VerifyResponse{FindingID: "f1", Outcome: "verified_fixed"}); err != nil {
+				t.Errorf("encode verify response: %v", err)
+			}
 		}
 	}))
 	defer srv.Close()
@@ -142,9 +166,13 @@ func TestAPIKeyEndpoints(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method + " " + r.URL.Path {
 		case "POST /api/v1/auth/apikeys":
-			json.NewEncoder(w).Encode(APIKey{Name: "test"})
+			if err := json.NewEncoder(w).Encode(APIKey{Name: "test"}); err != nil {
+				t.Errorf("encode API key response: %v", err)
+			}
 		case "GET /api/v1/auth/apikeys":
-			json.NewEncoder(w).Encode([]APIKey{{Name: "test"}})
+			if err := json.NewEncoder(w).Encode([]APIKey{{Name: "test"}}); err != nil {
+				t.Errorf("encode API key list response: %v", err)
+			}
 		case "DELETE /api/v1/auth/apikeys/key-1":
 			w.WriteHeader(http.StatusNoContent)
 		}
@@ -168,15 +196,25 @@ func TestListEndpoints(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/projects/my-app/reports":
-			json.NewEncoder(w).Encode([]Report{{ID: "r1"}})
+			if err := json.NewEncoder(w).Encode([]Report{{ID: "r1"}}); err != nil {
+				t.Errorf("encode report list response: %v", err)
+			}
 		case "/api/v1/reports/r1":
-			json.NewEncoder(w).Encode(Report{ID: "r1", ToolName: "trivy"})
+			if err := json.NewEncoder(w).Encode(Report{ID: "r1", ToolName: "trivy"}); err != nil {
+				t.Errorf("encode report response: %v", err)
+			}
 		case "/api/v1/projects/my-app/environments":
-			json.NewEncoder(w).Encode([]Environment{{Name: "prod"}})
+			if err := json.NewEncoder(w).Encode([]Environment{{Name: "prod"}}); err != nil {
+				t.Errorf("encode environments response: %v", err)
+			}
 		case "/api/v1/projects/my-app/targets":
-			json.NewEncoder(w).Encode([]Target{{Name: "app"}})
+			if err := json.NewEncoder(w).Encode([]Target{{Name: "app"}}); err != nil {
+				t.Errorf("encode targets response: %v", err)
+			}
 		case "/api/v1/projects/my-app/artifacts":
-			json.NewEncoder(w).Encode([]Artifact{{Name: "img"}})
+			if err := json.NewEncoder(w).Encode([]Artifact{{Name: "img"}}); err != nil {
+				t.Errorf("encode artifacts response: %v", err)
+			}
 		}
 	}))
 	defer srv.Close()
@@ -208,21 +246,35 @@ func TestWaivers(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method + " " + r.URL.Path {
 		case "POST /api/v1/projects/my-app/waivers":
-			json.NewEncoder(w).Encode(Waiver{Name: "w1"})
+			if err := json.NewEncoder(w).Encode(Waiver{Name: "w1"}); err != nil {
+				t.Errorf("encode waiver response: %v", err)
+			}
 		case "GET /api/v1/projects/my-app/waivers":
-			json.NewEncoder(w).Encode([]Waiver{{Name: "w1"}})
+			if err := json.NewEncoder(w).Encode([]Waiver{{Name: "w1"}}); err != nil {
+				t.Errorf("encode waivers response: %v", err)
+			}
 		case "GET /api/v1/projects/my-app/waivers/w-1":
-			json.NewEncoder(w).Encode(WaiverDetail{})
+			if err := json.NewEncoder(w).Encode(WaiverDetail{}); err != nil {
+				t.Errorf("encode waiver detail response: %v", err)
+			}
 		case "PUT /api/v1/projects/my-app/waivers/w-1":
-			json.NewEncoder(w).Encode(Waiver{Name: "updated"})
+			if err := json.NewEncoder(w).Encode(Waiver{Name: "updated"}); err != nil {
+				t.Errorf("encode updated waiver response: %v", err)
+			}
 		case "DELETE /api/v1/projects/my-app/waivers/w-1":
 			w.WriteHeader(http.StatusNoContent)
 		case "POST /api/v1/projects/my-app/waivers/w-1/toggle":
-			json.NewEncoder(w).Encode(Waiver{Enabled: false})
+			if err := json.NewEncoder(w).Encode(Waiver{Enabled: false}); err != nil {
+				t.Errorf("encode toggled waiver response: %v", err)
+			}
 		case "GET /api/v1/projects/my-app/waivers/w-1/events":
-			json.NewEncoder(w).Encode([]WaiverEvent{{EventType: "created"}})
+			if err := json.NewEncoder(w).Encode([]WaiverEvent{{EventType: "created"}}); err != nil {
+				t.Errorf("encode waiver events response: %v", err)
+			}
 		case "POST /api/v1/projects/my-app/waivers/check-match":
-			json.NewEncoder(w).Encode(CheckWaiverMatchResponse{Matched: true})
+			if err := json.NewEncoder(w).Encode(CheckWaiverMatchResponse{Matched: true}); err != nil {
+				t.Errorf("encode waiver match response: %v", err)
+			}
 		}
 	}))
 	defer srv.Close()

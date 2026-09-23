@@ -254,7 +254,10 @@ func (c *HTTPClient) queryBatchChunk(ctx context.Context, queries []Query) ([][]
 		// Transport failure (connection, DNS, timeout): retryable.
 		return nil, err
 	}
-	defer resp.Body.Close()
+	// Closing the upstream response is best-effort after reading its body.
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {
@@ -370,7 +373,10 @@ func (c *HTTPClient) fetchVuln(ctx context.Context, id string) (Advisory, error)
 	if err != nil {
 		return Advisory{}, err
 	}
-	defer resp.Body.Close()
+	// Closing the upstream response is best-effort after reading its body.
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
 	if err != nil {

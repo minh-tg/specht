@@ -43,13 +43,17 @@ func newAdminStatusCmd(d Deps, s *settings) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Fprintln(d.Out, string(raw))
+				if _, err := fmt.Fprintln(d.Out, string(raw)); err != nil {
+					return err
+				}
 				return nil
 			}
-			fmt.Fprintf(d.Out,
+			if _, err := fmt.Fprintf(d.Out,
 				"projects=%d users=%d open_findings=%d reports=%d\n",
 				status.Projects, status.Users, status.OpenFindings, status.Reports,
-			)
+			); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -118,10 +122,14 @@ func newAdminRetentionPreviewCmd(d Deps, s *settings) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Fprintln(d.Out, string(raw))
+				if _, err := fmt.Fprintln(d.Out, string(raw)); err != nil {
+					return err
+				}
 				return nil
 			}
-			fmt.Fprintf(d.Out, "%d settled report(s) older than %d day(s) would be deleted\n", preview.StaleReports, preview.OlderThanDays)
+			if _, err := fmt.Fprintf(d.Out, "%d settled report(s) older than %d day(s) would be deleted\n", preview.StaleReports, preview.OlderThanDays); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -157,10 +165,14 @@ func newAdminRetentionPurgeCmd(d Deps, s *settings) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Fprintln(d.Out, string(raw))
+				if _, err := fmt.Fprintln(d.Out, string(raw)); err != nil {
+					return err
+				}
 				return nil
 			}
-			fmt.Fprintf(d.Out, "deleted %d settled report(s) older than %d day(s)\n", result.DeletedReports, result.OlderThanDays)
+			if _, err := fmt.Fprintf(d.Out, "deleted %d settled report(s) older than %d day(s)\n", result.DeletedReports, result.OlderThanDays); err != nil {
+				return err
+			}
 			return nil
 		},
 	}

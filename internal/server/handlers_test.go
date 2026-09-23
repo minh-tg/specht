@@ -1705,7 +1705,7 @@ func TestTriageFinding_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp usecase.TriageOutput
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, "false_positive", resp.AnalysisState)
 }
 
@@ -1723,7 +1723,7 @@ func TestVerifyFinding_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp usecase.VerifyResponse
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, usecase.VerifyFixed, resp.Outcome)
 }
 
@@ -1868,7 +1868,7 @@ func TestGateStatus_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp usecase.GateStatusOutput
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.False(t, resp.ThresholdBreached)
 }
 
@@ -2282,7 +2282,7 @@ func TestStats_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 	var resp usecase.ProjectStats
-	json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
 	assert.Equal(t, int32(42), resp.TotalFindings)
 	assert.Equal(t, int32(3), resp.BlockingCount)
 	assert.Equal(t, int32(5), resp.WaiverCount)

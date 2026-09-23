@@ -239,7 +239,10 @@ func (r *pgFindingRepo) BulkTriage(ctx context.Context, arg BulkUpdateAnalysisPa
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	// Rollback is best-effort; after Commit the transaction is already closed.
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	q := sqlc.New(tx)
 	updated, err := q.BulkUpdateFindingAnalysis(ctx, sqlc.BulkUpdateFindingAnalysisParams{
@@ -386,7 +389,10 @@ func (r *pgFindingRepo) PersistWatcherFinding(ctx context.Context, arg PersistWa
 	if err != nil {
 		return sqlc.Finding{}, false, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	// Rollback is best-effort; after Commit the transaction is already closed.
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	q := sqlc.New(tx)
 	f, err := q.CreateFindingIfAbsent(ctx, arg.Finding)

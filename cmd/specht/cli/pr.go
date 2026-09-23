@@ -42,9 +42,13 @@ func newPrPreviewCmd(d Deps, s *settings) *cobra.Command {
 			if format == "json" {
 				return writeJSONOut(d.Out, preview)
 			}
-			fmt.Fprintf(d.Out, "check %s: %s\n%s\n", preview.Conclusion, preview.Title, preview.Summary)
+			if _, err := fmt.Fprintf(d.Out, "check %s: %s\n%s\n", preview.Conclusion, preview.Title, preview.Summary); err != nil {
+				return err
+			}
 			for _, a := range preview.Annotations {
-				fmt.Fprintf(d.Out, "  %s:%d %s\n", a.File, a.StartLine, a.Title)
+				if _, err := fmt.Fprintf(d.Out, "  %s:%d %s\n", a.File, a.StartLine, a.Title); err != nil {
+					return err
+				}
 			}
 			return nil
 		},

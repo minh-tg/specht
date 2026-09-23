@@ -135,8 +135,9 @@ func (t *WebHookTracker) post(ctx context.Context, url, eventType string, payloa
 		}
 		return
 	}
-	io.Copy(io.Discard, resp.Body)
-	resp.Body.Close()
+	// Draining and closing are best-effort; the HTTP status is the delivery result.
+	_, _ = io.Copy(io.Discard, resp.Body)
+	_ = resp.Body.Close()
 	if t.logger != nil {
 		t.logger("webhook dispatched", "url", url, "event", eventType, "status", resp.StatusCode)
 	}

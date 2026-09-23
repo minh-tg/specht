@@ -207,7 +207,8 @@ func TestNotify_TransportErrorRetried(t *testing.T) {
 		if err != nil {
 			return
 		}
-		conn.Close()
+		// Closing the hijacked connection intentionally simulates a transport failure.
+		_ = conn.Close()
 	}))
 	defer srv.Close()
 

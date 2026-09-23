@@ -9,7 +9,9 @@ import (
 func TestFindingsList(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/findings", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{"id":"f1","current_title":"T","current_severity":"high","current_score":7.5,"state":"open","analysis_state":"unreviewed","gate_effect":"blocking","fingerprint":"fp","finding_kind":"sca"}]`))
+		if _, err := w.Write([]byte(`[{"id":"f1","current_title":"T","current_severity":"high","current_score":7.5,"state":"open","analysis_state":"unreviewed","gate_effect":"blocking","fingerprint":"fp","finding_kind":"sca"}]`)); err != nil {
+			t.Errorf("write findings response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runCmd(t, d, "findings", "list", "--project", "demo"); err != nil {
@@ -23,7 +25,9 @@ func TestFindingsList(t *testing.T) {
 func TestFindingsListEmpty(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/findings", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[]`))
+		if _, err := w.Write([]byte(`[]`)); err != nil {
+			t.Errorf("write findings response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runCmd(t, d, "findings", "list", "--project", "demo"); err != nil {
@@ -53,7 +57,9 @@ func TestFindingsListInvalidLimit(t *testing.T) {
 func TestFindingsGet(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/findings/f1", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"id":"f1","current_title":"T","current_severity":"high","current_score":7.5,"state":"open","analysis_state":"unreviewed","gate_effect":"blocking","fingerprint":"fp","finding_kind":"sca","introduced_commit_sha":"abc"}`))
+		if _, err := w.Write([]byte(`{"id":"f1","current_title":"T","current_severity":"high","current_score":7.5,"state":"open","analysis_state":"unreviewed","gate_effect":"blocking","fingerprint":"fp","finding_kind":"sca","introduced_commit_sha":"abc"}`)); err != nil {
+			t.Errorf("write finding response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runCmd(t, d, "findings", "get", "f1"); err != nil {
@@ -75,7 +81,9 @@ func TestFindingsGetMissingArg(t *testing.T) {
 func TestFindingsVerify(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/findings/f1/verify", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"finding_id":"f1","outcome":"fixed","report_id":"r1","detail":"gone"}`))
+		if _, err := w.Write([]byte(`{"finding_id":"f1","outcome":"fixed","report_id":"r1","detail":"gone"}`)); err != nil {
+			t.Errorf("write verify response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runCmd(t, d, "findings", "verify", "f1"); err != nil {

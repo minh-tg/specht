@@ -343,8 +343,9 @@ func stableProducerFingerprint(result sarifResult) string {
 	}
 	sort.Strings(keys)
 	h := sha256.New()
+	// hash.Hash.Write is specified never to return an error.
 	for _, k := range keys {
-		fmt.Fprintf(h, "%s=%s;", k, result.PartialFingerprints[k])
+		_, _ = fmt.Fprintf(h, "%s=%s;", k, result.PartialFingerprints[k])
 	}
 	return hex.EncodeToString(h.Sum(nil))[:16]
 }

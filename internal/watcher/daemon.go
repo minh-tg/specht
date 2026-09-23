@@ -284,8 +284,8 @@ func applyAdvisories(
 // notifyCreated hands the newly created findings to the payload notifier.
 // It is deliberately best-effort and non-blocking: notifications are built
 // synchronously, then the Notify call is dispatched on a fresh goroutine so a
-// slow or dead webhook (which Notify itself swallows after retries) can never
-// stall or fail the poll. A nil Notifier is a no-op.
+// slow or dead webhook can never stall or fail the poll. Notifier errors are
+// logged but remain best-effort. A nil Notifier is a no-op.
 func notifyCreated(ctx context.Context, deps PollDeps, created []Decision) {
 	if deps.Notifier == nil || len(created) == 0 {
 		return
@@ -309,7 +309,9 @@ func notifyCreated(ctx context.Context, deps PollDeps, created []Decision) {
 		if deps.WG != nil {
 			defer deps.WG.Done()
 		}
-		deps.Notifier.Notify(context.WithoutCancel(ctx), notifications)
+		if err := deps.Notifier.Notify(context.WithoutCancel(ctx), notifications); err != nil && deps.Logger != nil {
+			deps.Logger.Warn("watcher notification failed", "error", err)
+		}
 	}()
 }
 

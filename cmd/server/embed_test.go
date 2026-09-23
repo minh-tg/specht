@@ -12,7 +12,9 @@ import (
 func TestSPAHandler_apiRoutesPassThrough(t *testing.T) {
 	mockAPI := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
+			t.Errorf("write health response: %v", err)
+		}
 	})
 
 	handler := spaHandler(mockAPI)
@@ -24,7 +26,10 @@ func TestSPAHandler_apiRoutesPassThrough(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	// Closing an HTTP response body is best-effort test cleanup.
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
@@ -45,7 +50,10 @@ func TestSPAHandler_servesIndexForSPARoutes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	// Closing an HTTP response body is best-effort test cleanup.
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200 for SPA fallback, got %d", resp.StatusCode)
@@ -71,7 +79,10 @@ func TestSPAHandler_servesRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	// Closing an HTTP response body is best-effort test cleanup.
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200 for root, got %d", resp.StatusCode)
@@ -109,7 +120,10 @@ func TestSPAHandler_prefersBuiltFrontend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer resp.Body.Close()
+	// Closing an HTTP response body is best-effort test cleanup.
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

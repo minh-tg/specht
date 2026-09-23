@@ -30,7 +30,10 @@ func (s *pgAnalysisExpiryStore) ExpireExpired(ctx context.Context) ([]port.Findi
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	// Rollback is best-effort; after Commit the transaction is already closed.
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	q := sqlc.New(tx)
 	expired, err := q.ExpireFindings(ctx)
@@ -90,7 +93,10 @@ func (s *pgWaiverExpiryStore) ExpireExpired(ctx context.Context) ([]port.Waiver,
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	// Rollback is best-effort; after Commit the transaction is already closed.
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	q := sqlc.New(tx)
 	expired, err := q.ExpireWaivers(ctx)

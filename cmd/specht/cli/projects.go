@@ -30,7 +30,9 @@ func newProjectsListCmd(d Deps) *cobra.Command {
 				return err
 			}
 			if len(projects) == 0 {
-				fmt.Fprintln(d.Out, "No projects found.")
+				if _, err := fmt.Fprintln(d.Out, "No projects found."); err != nil {
+					return err
+				}
 				return nil
 			}
 			for _, p := range projects {
@@ -38,7 +40,9 @@ func newProjectsListCmd(d Deps) *cobra.Command {
 				if p.Description != nil {
 					desc = *p.Description
 				}
-				fmt.Fprintf(d.Out, "%s\t%s\t%s\n", p.Slug, p.Name, desc)
+				if _, err := fmt.Fprintf(d.Out, "%s\t%s\t%s\n", p.Slug, p.Name, desc); err != nil {
+					return err
+				}
 			}
 			return nil
 		},

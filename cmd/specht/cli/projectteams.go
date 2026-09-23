@@ -38,11 +38,15 @@ func newProjectTeamsListCmd(d Deps) *cobra.Command {
 				return err
 			}
 			if len(links) == 0 {
-				fmt.Fprintln(d.Out, "No linked teams.")
+				if _, err := fmt.Fprintln(d.Out, "No linked teams."); err != nil {
+					return err
+				}
 				return nil
 			}
 			for _, l := range links {
-				fmt.Fprintf(d.Out, "%s\t%s\t%s\n", l.TeamName, l.TeamID, l.Role)
+				if _, err := fmt.Fprintf(d.Out, "%s\t%s\t%s\n", l.TeamName, l.TeamID, l.Role); err != nil {
+					return err
+				}
 			}
 			return nil
 		},
@@ -96,7 +100,9 @@ func newProjectTeamsUnlinkCmd(d Deps) *cobra.Command {
 			if err := cl.UnlinkProjectTeam(project, teamID); err != nil {
 				return err
 			}
-			fmt.Fprintln(d.Out, "team unlinked")
+			if _, err := fmt.Fprintln(d.Out, "team unlinked"); err != nil {
+				return err
+			}
 			return nil
 		},
 	}

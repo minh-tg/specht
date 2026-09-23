@@ -160,14 +160,16 @@ func postNotifications(ctx context.Context, p postRequest, body []byte, count in
 		resp, err := p.client.Do(req)
 		switch {
 		case err == nil && resp.StatusCode >= 200 && resp.StatusCode < 300:
-			io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
+			// Draining and closing are best-effort after delivery succeeds.
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
 			logger.Info(channel+" notification delivered", "attempt", attempt, "count", count)
 			return
 		case err == nil:
 			drain := io.LimitReader(resp.Body, 1024)
 			msg, _ := io.ReadAll(drain)
-			resp.Body.Close()
+			// The response status and body are authoritative; close is cleanup.
+			_ = resp.Body.Close()
 			logger.Warn(channel+" notification rejected",
 				"attempt", attempt, "status", resp.StatusCode, "body", strings.TrimSpace(string(msg)))
 		default:

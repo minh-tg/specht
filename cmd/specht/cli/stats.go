@@ -29,18 +29,34 @@ func newStatsShowCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(d.Out, "Project Stats for %s:\n", args[0])
-			fmt.Fprintf(d.Out, "  Total Findings:  %d\n", stats.TotalFindings)
-			fmt.Fprintf(d.Out, "  Blocking:        %d\n", stats.BlockingCount)
-			fmt.Fprintf(d.Out, "  Active Waivers:  %d\n", stats.WaiverCount)
-			fmt.Fprintf(d.Out, "  Reports:         %d\n", stats.ReportCount)
-			fmt.Fprintln(d.Out, "  By Severity:")
+			if _, err := fmt.Fprintf(d.Out, "Project Stats for %s:\n", args[0]); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(d.Out, "  Total Findings:  %d\n", stats.TotalFindings); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(d.Out, "  Blocking:        %d\n", stats.BlockingCount); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(d.Out, "  Active Waivers:  %d\n", stats.WaiverCount); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintf(d.Out, "  Reports:         %d\n", stats.ReportCount); err != nil {
+				return err
+			}
+			if _, err := fmt.Fprintln(d.Out, "  By Severity:"); err != nil {
+				return err
+			}
 			for _, s := range stats.BySeverity {
-				fmt.Fprintf(d.Out, "    %s: %d total, %d blocking\n", s.Severity, s.Count, s.BlockingCount)
+				if _, err := fmt.Fprintf(d.Out, "    %s: %d total, %d blocking\n", s.Severity, s.Count, s.BlockingCount); err != nil {
+					return err
+				}
 			}
 			if stats.LatestReport != nil {
-				fmt.Fprintf(d.Out, "  Latest Scan:     %s by %s (%s)\n",
-					stats.LatestReport.ID, stats.LatestReport.ToolName, stats.LatestReport.Status)
+				if _, err := fmt.Fprintf(d.Out, "  Latest Scan:     %s by %s (%s)\n",
+					stats.LatestReport.ID, stats.LatestReport.ToolName, stats.LatestReport.Status); err != nil {
+					return err
+				}
 			}
 			return nil
 		},
@@ -61,17 +77,27 @@ func newStatsAgingCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(d.Out, "Aging for %s (SLA: critical 7d, high 30d, medium 90d, low 180d):\n", args[0])
-			for _, b := range aging.Buckets {
-				fmt.Fprintf(d.Out, "  %-6s %4d finding(s), %d overdue\n", b.Bucket, b.Count, b.Overdue)
+			if _, err := fmt.Fprintf(d.Out, "Aging for %s (SLA: critical 7d, high 30d, medium 90d, low 180d):\n", args[0]); err != nil {
+				return err
 			}
-			fmt.Fprintf(d.Out, "  reopened ever: %d\n", aging.Reopened)
+			for _, b := range aging.Buckets {
+				if _, err := fmt.Fprintf(d.Out, "  %-6s %4d finding(s), %d overdue\n", b.Bucket, b.Count, b.Overdue); err != nil {
+					return err
+				}
+			}
+			if _, err := fmt.Fprintf(d.Out, "  reopened ever: %d\n", aging.Reopened); err != nil {
+				return err
+			}
 			if len(aging.Overdue) > 0 {
-				fmt.Fprintln(d.Out, "  Oldest overdue:")
+				if _, err := fmt.Fprintln(d.Out, "  Oldest overdue:"); err != nil {
+					return err
+				}
 				for _, o := range aging.Overdue {
-					fmt.Fprintf(d.Out, "    %s [%s] %dd (SLA %dd, due %s)%s\n",
+					if _, err := fmt.Fprintf(d.Out, "    %s [%s] %dd (SLA %dd, due %s)%s\n",
 						o.Title, o.Severity, o.AgeDays, o.SLADays,
-						o.DueDate.Format("2006-01-02"), reopenedMark(o.Reopened))
+						o.DueDate.Format("2006-01-02"), reopenedMark(o.Reopened)); err != nil {
+						return err
+					}
 				}
 			}
 			return nil

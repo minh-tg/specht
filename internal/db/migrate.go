@@ -10,12 +10,20 @@ import (
 )
 
 // RunMigrations applies all pending migrations in the given directory.
-func RunMigrations(databaseURL, migrationsPath string) error {
+func RunMigrations(databaseURL, migrationsPath string) (retErr error) {
 	m, err := migrate.New("file://"+migrationsPath, databaseURL)
 	if err != nil {
 		return fmt.Errorf("migration init: %w", err)
 	}
-	defer m.Close()
+	defer func() {
+		sourceErr, databaseErr := m.Close()
+		if sourceErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("migration source close: %w", sourceErr))
+		}
+		if databaseErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("migration database close: %w", databaseErr))
+		}
+	}()
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("migration up: %w", err)
@@ -25,12 +33,20 @@ func RunMigrations(databaseURL, migrationsPath string) error {
 }
 
 // RollbackMigrations rolls back the most recent migration batch.
-func RollbackMigrations(databaseURL, migrationsPath string) error {
+func RollbackMigrations(databaseURL, migrationsPath string) (retErr error) {
 	m, err := migrate.New("file://"+migrationsPath, databaseURL)
 	if err != nil {
 		return fmt.Errorf("migration init: %w", err)
 	}
-	defer m.Close()
+	defer func() {
+		sourceErr, databaseErr := m.Close()
+		if sourceErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("migration source close: %w", sourceErr))
+		}
+		if databaseErr != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("migration database close: %w", databaseErr))
+		}
+	}()
 
 	if err := m.Down(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("migration down: %w", err)

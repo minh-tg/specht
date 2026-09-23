@@ -198,6 +198,13 @@ type fakeOIDCProvider struct {
 	userGroups string
 }
 
+func writeFakeOIDCResponse(t *testing.T, w http.ResponseWriter, format string, args ...any) {
+	t.Helper()
+	if _, err := fmt.Fprintf(w, format, args...); err != nil {
+		t.Errorf("write fake OIDC response: %v", err)
+	}
+}
+
 func newFakeOIDCProvider(t *testing.T, key *rsa.PrivateKey) *fakeOIDCProvider {
 	t.Helper()
 	p := &fakeOIDCProvider{t: t, userSub: "oidc-user-1"}
@@ -205,16 +212,16 @@ func newFakeOIDCProvider(t *testing.T, key *rsa.PrivateKey) *fakeOIDCProvider {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/oauth/token":
-			fmt.Fprintf(w, `{"access_token":"acc-test","token_type":"Bearer","id_token":%q}`, p.idToken)
+			writeFakeOIDCResponse(t, w, `{"access_token":"acc-test","token_type":"Bearer","id_token":%q}`, p.idToken)
 		case "/userinfo":
 			sub := p.userSub
 			if p.userGroups != "" {
-				fmt.Fprintf(w, `{"sub":%q,"email":%q,"groups":%s}`, sub, "oidc@example.com", p.userGroups)
+				writeFakeOIDCResponse(t, w, `{"sub":%q,"email":%q,"groups":%s}`, sub, "oidc@example.com", p.userGroups)
 			} else {
-				fmt.Fprintf(w, `{"sub":%q,"email":%q}`, sub, "oidc@example.com")
+				writeFakeOIDCResponse(t, w, `{"sub":%q,"email":%q}`, sub, "oidc@example.com")
 			}
 		case "/.well-known/jwks.json":
-			fmt.Fprint(w, jwksBody(t, &key.PublicKey))
+			writeFakeOIDCResponse(t, w, "%s", jwksBody(t, &key.PublicKey))
 		default:
 			http.NotFound(w, r)
 		}
@@ -345,7 +352,7 @@ func TestOIDC_Callback_JWKSRefreshSingleflight(t *testing.T) {
 		hits++
 		time.Sleep(50 * time.Millisecond) // widen the race window
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprint(w, jwksBody(t, &key.PublicKey))
+		writeFakeOIDCResponse(t, w, "%s", jwksBody(t, &key.PublicKey))
 	}))
 	defer srv.Close()
 

@@ -157,7 +157,10 @@ func TestWebHookTracker_DeadEndpointDoesNotBlockCreateIssue(t *testing.T) {
 	// so the caller returns promptly regardless.
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer l.Close()
+	// Closing the listener is test teardown; Accept exits when it is closed.
+	defer func() {
+		_ = l.Close()
+	}()
 	go func() {
 		for {
 			c, err := l.Accept()
@@ -165,9 +168,12 @@ func TestWebHookTracker_DeadEndpointDoesNotBlockCreateIssue(t *testing.T) {
 				return
 			}
 			go func(c net.Conn) {
-				defer c.Close()
+				// The client timeout closes this test connection; cleanup is best-effort.
+				defer func() {
+					_ = c.Close()
+				}()
 				// Read the request, then stall until the server closes.
-				io.Copy(io.Discard, c)
+				_, _ = io.Copy(io.Discard, c)
 			}(c)
 		}
 	}()

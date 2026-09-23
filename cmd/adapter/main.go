@@ -78,6 +78,17 @@ func parseFlags(args []string, stderr io.Writer, inGitHubActions bool) *adapterF
 	return f
 }
 
+// writeDiagnostic makes CLI output best-effort; the process exit code carries
+// the gate or input-validation result if the writer itself fails.
+func writeDiagnostic(w io.Writer, format string, args ...any) {
+	_, _ = fmt.Fprintf(w, format, args...)
+}
+
+// writeDiagnosticLine writes one best-effort CLI diagnostic line.
+func writeDiagnosticLine(w io.Writer, message string) {
+	_, _ = fmt.Fprintln(w, message)
+}
+
 // readRawInput loads the scan result from the file flag or stdin.
 func readRawInput(file string, stdin io.Reader, stderr io.Writer) ([]byte, int) {
 	var rawInput []byte
@@ -85,18 +96,18 @@ func readRawInput(file string, stdin io.Reader, stderr io.Writer) ([]byte, int) 
 	if file != "" {
 		rawInput, err = os.ReadFile(file)
 		if err != nil {
-			fmt.Fprintf(stderr, "error: reading file %q: %v\n", file, err)
+			writeDiagnostic(stderr, "error: reading file %q: %v\n", file, err)
 			return nil, 2
 		}
 	} else {
 		rawInput, err = io.ReadAll(stdin)
 		if err != nil {
-			fmt.Fprintf(stderr, "error: reading stdin: %v\n", err)
+			writeDiagnostic(stderr, "error: reading stdin: %v\n", err)
 			return nil, 2
 		}
 	}
 	if len(bytes.TrimSpace(rawInput)) == 0 {
-		fmt.Fprintln(stderr, "error: input is empty, provide a scan result file or pipe to stdin")
+		writeDiagnostic(stderr, "error: input is empty, provide a scan result file or pipe to stdin\n")
 		return nil, 2
 	}
 	return rawInput, 0
@@ -126,11 +137,11 @@ func buildPayload(rawInput []byte, f *adapterFlags, stderr io.Writer) (client.In
 		payload.Scanner = f.tool
 	}
 	if payload.Scanner == "" {
-		fmt.Fprintln(stderr, "error: scanner is required (use -tool flag or specify in payload)")
+		writeDiagnostic(stderr, "error: scanner is required (use -tool flag or specify in payload)\n")
 		return payload, 2
 	}
 	if f.excludeTool != "" && strings.EqualFold(payload.Scanner, f.excludeTool) {
-		fmt.Fprintf(stderr, "skipped: scanner %q excluded by -exclude-tool flag\n", payload.Scanner)
+		writeDiagnostic(stderr, "skipped: scanner %q excluded by -exclude-tool flag\n", payload.Scanner)
 		return payload, -1
 	}
 
@@ -174,13 +185,13 @@ func publishPreview(ctx context.Context, f *adapterFlags, payload client.IngestP
 	}
 	if f.summaryFile != "" && preview.Summary != "" {
 		if err := writeStepSummary(f.summaryFile, preview.Summary); err != nil {
-			fmt.Fprintf(stderr, "⚠️  could not write step summary: %v\n", err)
+			writeDiagnostic(stderr, "⚠️  could not write step summary: %v\n", err)
 		}
 	}
 	shouldPublish := f.publishCheck || (f.inGitHubActions && f.githubToken != "" && f.githubRepo != "")
 	if shouldPublish && f.githubToken != "" && f.githubRepo != "" {
 		if err := publishGitHubCheckRun(ctx, hc, f.githubToken, f.githubRepo, payload.CommitSha, preview); err != nil {
-			fmt.Fprintf(stderr, "⚠️  could not publish github check run: %v\n", err)
+			writeDiagnostic(stderr, "⚠️  could not publish github check run: %v\n", err)
 		}
 	}
 }
@@ -189,30 +200,30 @@ func publishPreview(ctx context.Context, f *adapterFlags, payload client.IngestP
 // exit code (0 pass, 1 breached).
 func reportIntroducedGate(resp *client.IngestResponse, preview *client.PRCheckPreview, payload client.IngestPayload, stderr io.Writer) int {
 	if !resp.ThresholdBreached {
-		fmt.Fprintln(stderr, "✅ SPECHT SECURITY GATE: PASSED")
+		writeDiagnostic(stderr, "✅ SPECHT SECURITY GATE: PASSED\n")
 		printContextBanner(stderr, payload)
 		if resp.PreExistingCount > 0 {
-			fmt.Fprintf(stderr, "ℹ️  PRE-EXISTING DEBT IN BASELINE: %d findings ignored\n", resp.PreExistingCount)
+			writeDiagnostic(stderr, "ℹ️  PRE-EXISTING DEBT IN BASELINE: %d findings ignored\n", resp.PreExistingCount)
 		}
 		return 0
 	}
 
-	fmt.Fprintln(stderr, "❌ SPECHT SECURITY GATE: FAILED")
+	writeDiagnosticLine(stderr, "❌ SPECHT SECURITY GATE: FAILED")
 	printContextBanner(stderr, payload)
 	if preview != nil && len(preview.Annotations) > 0 {
-		fmt.Fprintf(stderr, "\n🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE (%d):\n", len(preview.Annotations))
+		writeDiagnostic(stderr, "\n🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE (%d):\n", len(preview.Annotations))
 		for _, a := range preview.Annotations {
 			loc := a.File
 			if a.StartLine > 0 {
 				loc = fmt.Sprintf("%s:%d", a.File, a.StartLine)
 			}
-			fmt.Fprintf(stderr, "  • [%s] %s: %s\n", strings.ToUpper(a.Level), a.Title, loc)
+			writeDiagnostic(stderr, "  • [%s] %s: %s\n", strings.ToUpper(a.Level), a.Title, loc)
 		}
 	} else {
-		fmt.Fprintf(stderr, "\n🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE: %d\n", resp.IntroducedCount)
+		writeDiagnostic(stderr, "\n🚨 NEW BLOCKING FINDINGS INTRODUCED IN THIS CHANGE: %d\n", resp.IntroducedCount)
 	}
 	if resp.PreExistingCount > 0 {
-		fmt.Fprintf(stderr, "ℹ️  PRE-EXISTING DEBT IN BASELINE: %d findings ignored for this gate\n", resp.PreExistingCount)
+		writeDiagnostic(stderr, "ℹ️  PRE-EXISTING DEBT IN BASELINE: %d findings ignored for this gate\n", resp.PreExistingCount)
 	}
 	return 1
 }
@@ -236,7 +247,7 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 	apiURL := strings.TrimRight(envOr("API_URL", "http://localhost:8080"), "/")
 	apiKey := os.Getenv("API_KEY")
 	if apiKey == "" {
-		fmt.Fprintln(stderr, "error: API_KEY environment variable is required")
+		writeDiagnosticLine(stderr, "error: API_KEY environment variable is required")
 		return 2
 	}
 
@@ -260,13 +271,13 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 
 	resp, err := cl.IngestReport(&payload)
 	if err != nil {
-		fmt.Fprintf(stderr, "error: ingest failed: %v\n", err)
+		writeDiagnostic(stderr, "error: ingest failed: %v\n", err)
 		return 2
 	}
 	if resp.FallbackReason != "" {
-		fmt.Fprintf(stderr, "⚠️  BASELINE WARNING: %s\n", resp.FallbackReason)
+		writeDiagnostic(stderr, "⚠️  BASELINE WARNING: %s\n", resp.FallbackReason)
 		if strings.EqualFold(f.baselinePolicy, "fail") {
-			fmt.Fprintln(stderr, "gate FAILED: missing baseline under baseline-policy=fail")
+			writeDiagnosticLine(stderr, "gate FAILED: missing baseline under baseline-policy=fail")
 			return 1
 		}
 	}
@@ -276,7 +287,7 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 	if payload.CommitSha != "" {
 		preview, err = cl.PreviewPRCheck(payload.Project, payload.CommitSha, "github", resp.ReportID, f.severity)
 		if err != nil {
-			fmt.Fprintf(stderr, "⚠️  could not fetch PR check preview: %v\n", err)
+			writeDiagnostic(stderr, "⚠️  could not fetch PR check preview: %v\n", err)
 		}
 	}
 	publishPreview(ctx, f, payload, preview, stderr, hc)
@@ -285,17 +296,17 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 		return reportIntroducedGate(resp, preview, payload, stderr)
 	}
 
-	fmt.Fprintf(stderr, "report %s ingested, %d finding(s)\n", resp.ReportID, resp.TotalFindings)
+	writeDiagnostic(stderr, "report %s ingested, %d finding(s)\n", resp.ReportID, resp.TotalFindings)
 	gateResp, err := cl.GetGateStatus(payload.Project, f.severity)
 	if err != nil {
-		fmt.Fprintf(stderr, "error: gate check failed: %v\n", err)
+		writeDiagnostic(stderr, "error: gate check failed: %v\n", err)
 		return 2
 	}
 	if gateResp.ThresholdBreached {
-		fmt.Fprintf(stderr, "gate FAILED: %d blocking finding(s)\n", gateResp.BlockingCount)
+		writeDiagnostic(stderr, "gate FAILED: %d blocking finding(s)\n", gateResp.BlockingCount)
 		return 1
 	}
-	fmt.Fprintln(stderr, "gate PASSED: no blocking findings")
+	writeDiagnosticLine(stderr, "gate PASSED: no blocking findings")
 	return 0
 }
 
@@ -308,7 +319,7 @@ func envOr(key, def string) string {
 }
 
 func printContextBanner(w io.Writer, p client.IngestPayload) {
-	fmt.Fprintf(w, "Project: %s | Scanner: %s", p.Project, p.Scanner)
+	writeDiagnostic(w, "Project: %s | Scanner: %s", p.Project, p.Scanner)
 	if p.Branch != "" || p.BaseRevision != "" {
 		target := p.BaseRevision
 		if target == "" {
@@ -318,9 +329,9 @@ func printContextBanner(w io.Writer, p client.IngestPayload) {
 		if src == "" {
 			src = "head"
 		}
-		fmt.Fprintf(w, " | Branch: %s -> %s", src, target)
+		writeDiagnostic(w, " | Branch: %s -> %s", src, target)
 	}
-	fmt.Fprintln(w)
+	writeDiagnosticLine(w, "")
 }
 
 func detectCIEnvironment(baseRef, commit, branch *string) {
@@ -357,7 +368,7 @@ func getEnvAny(keys ...string) string {
 }
 
 func printUsage(w io.Writer) {
-	fmt.Fprintf(w, `Usage: specht-adapter [flags]
+	writeDiagnostic(w, `Usage: specht-adapter [flags]
 
 CI/CD gate-check adapter for Specht. Reads a scan result from stdin or a file,
 ingests it, then evaluates gate status (change-scoped or project-wide) and

@@ -133,7 +133,10 @@ func (a *OIDCAuthenticator) exchangeCode(ctx context.Context, code string) (map[
 	if err != nil {
 		return nil, fmt.Errorf("token exchange: %w", err)
 	}
-	defer resp.Body.Close()
+	// Close errors are best-effort cleanup; HTTP and body-read errors are returned separately.
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("token exchange: HTTP %d", resp.StatusCode)
@@ -291,7 +294,10 @@ func (a *OIDCAuthenticator) fetchUserInfoBody(ctx context.Context, accessToken s
 	if err != nil {
 		return nil, fmt.Errorf("userinfo: %w", err)
 	}
-	defer resp.Body.Close()
+	// Close errors are best-effort cleanup; HTTP and body-read errors are returned separately.
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("userinfo: HTTP %d", resp.StatusCode)
@@ -648,7 +654,10 @@ func (a *OIDCAuthenticator) fetchJWKS(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("jwks: %w", err)
 	}
-	defer resp.Body.Close()
+	// Close errors are best-effort cleanup; HTTP and body-read errors are returned separately.
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("jwks: HTTP %d", resp.StatusCode)

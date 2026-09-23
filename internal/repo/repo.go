@@ -70,7 +70,10 @@ func (r *Repos) WithTx(ctx context.Context, fn func(q *sqlc.Queries) error) erro
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	// Rollback is best-effort; after Commit the transaction is already closed.
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	q := sqlc.New(tx)
 	if err := fn(q); err != nil {

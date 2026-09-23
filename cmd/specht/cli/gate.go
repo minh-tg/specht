@@ -50,7 +50,9 @@ func newGateCheckCmd(d Deps, s *settings) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(d.Out, out)
+			if _, err := fmt.Fprintln(d.Out, out); err != nil {
+				return err
+			}
 			if gs.ThresholdBreached {
 				return ErrThresholdBreached
 			}

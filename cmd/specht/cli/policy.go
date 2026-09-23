@@ -39,11 +39,15 @@ func newPolicyTemplatesCmd(d Deps) *cobra.Command {
 				return err
 			}
 			if len(templates) == 0 {
-				fmt.Fprintln(d.Out, "No policy templates.")
+				if _, err := fmt.Fprintln(d.Out, "No policy templates."); err != nil {
+					return err
+				}
 				return nil
 			}
 			for _, t := range templates {
-				fmt.Fprintf(d.Out, "%s\t%s\tv%d\n", t.Name, t.ID, t.Version)
+				if _, err := fmt.Fprintf(d.Out, "%s\t%s\tv%d\n", t.Name, t.ID, t.Version); err != nil {
+					return err
+				}
 			}
 			return nil
 		},
@@ -74,7 +78,9 @@ func newPolicyCreateCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(d.Out, "template %s (%s)\n", tmpl.Name, tmpl.ID)
+			if _, err := fmt.Fprintf(d.Out, "template %s (%s)\n", tmpl.Name, tmpl.ID); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -111,7 +117,9 @@ func newPolicyUpdateCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(d.Out, "template %s v%d\n", tmpl.Name, tmpl.Version)
+			if _, err := fmt.Fprintf(d.Out, "template %s v%d\n", tmpl.Name, tmpl.Version); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -139,7 +147,9 @@ func newPolicyDeleteCmd(d Deps) *cobra.Command {
 			if err := cl.DeletePolicyTemplate(templateID); err != nil {
 				return err
 			}
-			fmt.Fprintln(d.Out, "template deleted")
+			if _, err := fmt.Fprintln(d.Out, "template deleted"); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -165,7 +175,9 @@ func newPolicyApplyCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(d.Out, "policy: floor=%s (%s) watcher=%s (%s)\n", eff.SeverityFloor, eff.SeveritySource, eff.WatcherGate, eff.WatcherSource)
+			if _, err := fmt.Fprintf(d.Out, "policy: floor=%s (%s) watcher=%s (%s)\n", eff.SeverityFloor, eff.SeveritySource, eff.WatcherGate, eff.WatcherSource); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -198,7 +210,9 @@ func newPolicyOverridesCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(d.Out, "policy: floor=%s (%s) watcher=%s (%s)\n", eff.SeverityFloor, eff.SeveritySource, eff.WatcherGate, eff.WatcherSource)
+			if _, err := fmt.Fprintf(d.Out, "policy: floor=%s (%s) watcher=%s (%s)\n", eff.SeverityFloor, eff.SeveritySource, eff.WatcherGate, eff.WatcherSource); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -236,7 +250,9 @@ func newPolicyEffectiveCmd(d Deps, s *settings) *cobra.Command {
 			if eff.TemplateName != nil {
 				template = fmt.Sprintf("%s v%d", *eff.TemplateName, eff.TemplateVersion)
 			}
-			fmt.Fprintf(d.Out, "template: %s\nfloor=%s (%s) watcher=%s (%s)\n", template, eff.SeverityFloor, eff.SeveritySource, eff.WatcherGate, eff.WatcherSource)
+			if _, err := fmt.Fprintf(d.Out, "template: %s\nfloor=%s (%s) watcher=%s (%s)\n", template, eff.SeverityFloor, eff.SeveritySource, eff.WatcherGate, eff.WatcherSource); err != nil {
+				return err
+			}
 			return nil
 		},
 	}

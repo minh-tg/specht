@@ -37,11 +37,15 @@ func newTeamsListCmd(d Deps) *cobra.Command {
 				return err
 			}
 			if len(teams) == 0 {
-				fmt.Fprintln(d.Out, "No teams.")
+				if _, err := fmt.Fprintln(d.Out, "No teams."); err != nil {
+					return err
+				}
 				return nil
 			}
 			for _, team := range teams {
-				fmt.Fprintf(d.Out, "%s\t%s\t%s\n", team.Name, team.ID, team.Description)
+				if _, err := fmt.Fprintf(d.Out, "%s\t%s\t%s\n", team.Name, team.ID, team.Description); err != nil {
+					return err
+				}
 			}
 			return nil
 		},

@@ -16,6 +16,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func writeTestJSONResponse(t *testing.T, w http.ResponseWriter, value any) {
+	t.Helper()
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		t.Errorf("encode test response: %v", err)
+	}
+}
+
 func TestBuildPayload_PreservesNonEnvelopeScannerOutput(t *testing.T) {
 	raw := []byte(`{"Results":`)
 	flags := &adapterFlags{project: "my-app", tool: "trivy"}
@@ -35,11 +42,13 @@ func TestIngestReport_Success(t *testing.T) {
 		assert.Equal(t, "/api/v1/reports", r.URL.Path)
 		assert.Equal(t, "Bearer test-key", r.Header.Get("Authorization"))
 
-		json.NewEncoder(w).Encode(client.IngestResponse{
+		if err := json.NewEncoder(w).Encode(client.IngestResponse{
 			ReportID:          "rep-123",
 			TotalFindings:     3,
 			ThresholdBreached: false,
-		})
+		}); err != nil {
+			t.Errorf("encode ingest response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -57,11 +66,13 @@ func TestIngestReport_Success(t *testing.T) {
 
 func TestIngestReport_ThresholdBreached(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(client.IngestResponse{
+		if err := json.NewEncoder(w).Encode(client.IngestResponse{
 			ReportID:          "rep-123",
 			TotalFindings:     1,
 			ThresholdBreached: true,
-		})
+		}); err != nil {
+			t.Errorf("encode ingest response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -78,9 +89,11 @@ func TestIngestReport_ThresholdBreached(t *testing.T) {
 func TestIngestReport_Error(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnprocessableEntity)
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{"code": "ingest_failed", "message": "unknown scanner"},
-		})
+		}); err != nil {
+			t.Errorf("encode error response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -101,7 +114,7 @@ func TestIngestReport_IntroducedOnly_Payload(t *testing.T) {
 		err := json.NewDecoder(r.Body).Decode(&captured)
 		require.NoError(t, err)
 
-		json.NewEncoder(w).Encode(client.IngestResponse{
+		writeTestJSONResponse(t, w, client.IngestResponse{
 			ReportID:          "rep-456",
 			TotalFindings:     5,
 			ThresholdBreached: false,
@@ -199,7 +212,7 @@ func TestRun_IntroducedOnly_Pass(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/reports":
-			json.NewEncoder(w).Encode(client.IngestResponse{
+			writeTestJSONResponse(t, w, client.IngestResponse{
 				ReportID:          "rep-pass",
 				TotalFindings:     10,
 				IntroducedCount:   0,
@@ -207,7 +220,7 @@ func TestRun_IntroducedOnly_Pass(t *testing.T) {
 				ThresholdBreached: false,
 			})
 		case "/api/v1/projects/my-app/pr-check":
-			json.NewEncoder(w).Encode(client.PRCheckPreview{
+			writeTestJSONResponse(t, w, client.PRCheckPreview{
 				Conclusion:  "success",
 				Title:       "Specht Gate: 0 blocking findings",
 				Summary:     "No new vulnerabilities introduced.",
@@ -275,7 +288,7 @@ func TestRun_IntroducedOnly_PreviewFailureWarnsWithoutChangingVerdict(t *testing
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/reports":
-			json.NewEncoder(w).Encode(client.IngestResponse{
+			writeTestJSONResponse(t, w, client.IngestResponse{
 				ReportID:          "rep-pass",
 				ThresholdBreached: false,
 			})
@@ -306,13 +319,18 @@ func TestRun_IntroducedOnly_Fail_WithAnnotations_And_Summary(t *testing.T) {
 
 	tmpSummary, err := os.CreateTemp("", "github_step_summary_*.md")
 	require.NoError(t, err)
-	defer os.Remove(tmpSummary.Name())
-	tmpSummary.Close()
+	summaryPath := tmpSummary.Name()
+	t.Cleanup(func() {
+		if err := os.Remove(summaryPath); err != nil {
+			t.Errorf("remove temporary summary file: %v", err)
+		}
+	})
+	require.NoError(t, tmpSummary.Close())
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/reports":
-			json.NewEncoder(w).Encode(client.IngestResponse{
+			writeTestJSONResponse(t, w, client.IngestResponse{
 				ReportID:          "rep-fail",
 				TotalFindings:     5,
 				IntroducedCount:   1,
@@ -320,7 +338,7 @@ func TestRun_IntroducedOnly_Fail_WithAnnotations_And_Summary(t *testing.T) {
 				ThresholdBreached: true,
 			})
 		case "/api/v1/projects/my-app/pr-check":
-			json.NewEncoder(w).Encode(client.PRCheckPreview{
+			writeTestJSONResponse(t, w, client.PRCheckPreview{
 				Conclusion: "failure",
 				Title:      "Specht Gate: 1 blocking finding",
 				Summary:    "### Vulnerability Report\n- CVE-2023-45853 in zlib",
@@ -370,7 +388,7 @@ func TestRun_BaselinePolicy_Warn_And_Fail(t *testing.T) {
 	t.Setenv("API_KEY", "test-key")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(client.IngestResponse{
+		writeTestJSONResponse(t, w, client.IngestResponse{
 			ReportID:          "rep-fallback",
 			TotalFindings:     2,
 			ThresholdBreached: false,
@@ -421,7 +439,9 @@ func TestPublishGitHubCheckRun(t *testing.T) {
 		require.NoError(t, err)
 
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte(`{"id": 12345}`))
+		if _, err := w.Write([]byte(`{"id": 12345}`)); err != nil {
+			t.Errorf("write check-run response: %v", err)
+		}
 	}))
 	defer ghSrv.Close()
 

@@ -83,7 +83,9 @@ func mockOSV(t *testing.T, registry map[string]map[string]any, idFor func(name s
 				}})
 			}
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(querybatchResponse(idLists...))
+			if _, err := w.Write(querybatchResponse(idLists...)); err != nil {
+				t.Errorf("write querybatch response: %v", err)
+			}
 		case http.MethodGet:
 			gets.Add(1)
 			id := strings.TrimPrefix(r.URL.Path, "/v1/vulns/")
@@ -94,7 +96,9 @@ func mockOSV(t *testing.T, registry map[string]map[string]any, idFor func(name s
 			}
 			b, _ := json.Marshal(adv)
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(b)
+			if _, err := w.Write(b); err != nil {
+				t.Errorf("write advisory response: %v", err)
+			}
 		default:
 			t.Errorf("unexpected method %s on %s", r.Method, r.URL.Path)
 		}
@@ -139,11 +143,15 @@ func TestQueryBatch_OKParsesAndCapturesRawBytes(t *testing.T) {
 			// querybatch returns only the matched ID (id+modified), not the
 			// full record — the full advisory is fetched via GET /v1/vulns/{id}.
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-test-1", "modified": "2024-01-01T00:00:00Z"}}))
+			if _, err := w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-test-1", "modified": "2024-01-01T00:00:00Z"}})); err != nil {
+				t.Errorf("write querybatch response: %v", err)
+			}
 		case http.MethodGet:
 			b, _ := json.Marshal(advisory)
 			w.Header().Set("Content-Type", "application/json")
-			w.Write(b)
+			if _, err := w.Write(b); err != nil {
+				t.Errorf("write advisory response: %v", err)
+			}
 		default:
 			t.Errorf("method = %s, want POST or GET", r.Method)
 		}
@@ -450,7 +458,9 @@ func TestQueryBatch_CacheHitsSkipQuerybatchNetwork(t *testing.T) {
 func TestQueryBatch_429IsRetryable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
-		w.Write([]byte(`{"code":1,"message":"rate limited"}`))
+		if _, err := w.Write([]byte(`{"code":1,"message":"rate limited"}`)); err != nil {
+			t.Errorf("write rate-limit response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -487,7 +497,9 @@ func TestQueryBatch_500IsRetryable(t *testing.T) {
 func TestQueryBatch_400NotRetryable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"code":3,"message":"bad request"}`))
+		if _, err := w.Write([]byte(`{"code":3,"message":"bad request"}`)); err != nil {
+			t.Errorf("write bad-request response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -503,7 +515,9 @@ func TestQueryBatch_400NotRetryable(t *testing.T) {
 
 func TestQueryBatch_MalformedBody(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"results": [{"vulns": [{"id": `)) // truncated JSON
+		if _, err := w.Write([]byte(`{"results": [{"vulns": [{"id": `)); err != nil {
+			t.Errorf("write malformed response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -570,7 +584,9 @@ func TestQueryBatch_VulnGET429IsRetryable(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusTooManyRequests)
-		w.Write([]byte(`{"code":1,"message":"rate limited"}`))
+		if _, err := w.Write([]byte(`{"code":1,"message":"rate limited"}`)); err != nil {
+			t.Errorf("write rate-limit response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -615,7 +631,9 @@ func TestQueryBatch_VulnGET400NotRetryable(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"code":3,"message":"bad request"}`))
+		if _, err := w.Write([]byte(`{"code":3,"message":"bad request"}`)); err != nil {
+			t.Errorf("write bad-request response: %v", err)
+		}
 	}))
 	defer srv.Close()
 

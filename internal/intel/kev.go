@@ -46,7 +46,10 @@ func (p *KEVProvider) Fetch(ctx context.Context, cveIDs []string) (map[string]Re
 	if err != nil {
 		return nil, fmt.Errorf("kev fetch: %w", err)
 	}
-	defer resp.Body.Close()
+	// Close errors cannot change the fetch result and are best-effort cleanup.
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("kev fetch: status %d", resp.StatusCode)
 	}

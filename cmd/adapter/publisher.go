@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -63,12 +64,13 @@ func emitGitHubWorkflowAnnotations(w io.Writer, annotations []client.PRCheckAnno
 		}
 
 		msg := escapeCommandData(a.Message)
-		fmt.Fprintf(w, "::%s%s::%s\n", cmd, propStr, msg)
+		// Workflow-command output is best-effort; the gate exit status is authoritative.
+		_, _ = fmt.Fprintf(w, "::%s%s::%s\n", cmd, propStr, msg)
 	}
 }
 
 // writeStepSummary writes or appends the check markdown summary to the specified file (typically GITHUB_STEP_SUMMARY).
-func writeStepSummary(filePath string, summary string) error {
+func writeStepSummary(filePath string, summary string) (retErr error) {
 	if filePath == "" || summary == "" {
 		return nil
 	}
@@ -76,7 +78,11 @@ func writeStepSummary(filePath string, summary string) error {
 	if err != nil {
 		return fmt.Errorf("open summary file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		if err := f.Close(); err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("close summary file: %w", err))
+		}
+	}()
 
 	if _, err := fmt.Fprintf(f, "%s\n\n", strings.TrimSpace(summary)); err != nil {
 		return fmt.Errorf("write summary: %w", err)
@@ -197,7 +203,10 @@ func publishGitHubCheckRun(ctx context.Context, hc *http.Client, token, repo, co
 	if err != nil {
 		return fmt.Errorf("post check run: %w", err)
 	}
-	defer resp.Body.Close()
+	// Closing the GitHub API response is best-effort after reading its body.
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode >= 400 {
 		respBody, _ := io.ReadAll(resp.Body)

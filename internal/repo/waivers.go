@@ -46,7 +46,10 @@ func (r *pgWaiverRepo) ToggleWithEvent(ctx context.Context, id, projectID pgtype
 	if err != nil {
 		return sqlc.Waiver{}, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	// Rollback is best-effort; after Commit the transaction is already closed.
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	q := sqlc.New(tx)
 	waiver, err := q.ToggleWaiver(ctx, sqlc.ToggleWaiverParams{ID: id, ProjectID: projectID})
@@ -196,7 +199,10 @@ func (r *pgWaiverRepo) CreateWithDetails(ctx context.Context, arg CreateWaiverDe
 	if err != nil {
 		return sqlc.Waiver{}, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	// Rollback is best-effort; after Commit the transaction is already closed.
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	q := sqlc.New(tx)
 	w, err := q.CreateWaiver(ctx, sqlc.CreateWaiverParams{
@@ -236,7 +242,10 @@ func (r *pgWaiverRepo) UpdateWithDetails(ctx context.Context, arg UpdateWaiverDe
 	if err != nil {
 		return sqlc.Waiver{}, fmt.Errorf("begin tx: %w", err)
 	}
-	defer tx.Rollback(ctx)
+	// Rollback is best-effort; after Commit the transaction is already closed.
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
 
 	q := sqlc.New(tx)
 	w, err := updateWaiverRow(ctx, q, arg)

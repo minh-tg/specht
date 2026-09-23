@@ -4,6 +4,7 @@
 package watcher
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -1073,6 +1074,30 @@ func TestPollOnce_NotifiesOnlyCreatedDecisions(t *testing.T) {
 	assert.Equal(t, "acme", n.Project)
 	assert.Equal(t, "CVE-2024-0001", n.CVE)
 	assert.Equal(t, "test advisory GHSA-aaaa-bbbb-cccc", n.Title)
+}
+
+func TestPollOnce_NotifierErrorIsLoggedAndBestEffort(t *testing.T) {
+	deps := baseDeps()
+	client := deps.Client.(*fakeClient)
+	client.results["npm\x00lodash"] = []Advisory{testAdvisory("GHSA-aaaa-bbbb-cccc", "2026-06-01T00:00:00Z")}
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	}
+
+	var logs bytes.Buffer
+	deps.Logger = slog.New(slog.NewTextHandler(&logs, nil))
+	var wg sync.WaitGroup
+	deps.WG = &wg
+	deps.Notifier = &fakeNotifier{notify: func(context.Context, []Notification) error {
+		return errors.New("delivery failed")
+	}}
+
+	outcome, err := PollOnce(context.Background(), deps)
+	require.NoError(t, err, "best-effort notification failure must not fail the poll")
+	assert.Equal(t, 1, outcome.Created)
+	wg.Wait()
+	assert.Contains(t, logs.String(), "watcher notification failed")
+	assert.Contains(t, logs.String(), "delivery failed")
 }
 
 func TestPollOnce_NilOrDisabledNotifierIsNoOp(t *testing.T) {
