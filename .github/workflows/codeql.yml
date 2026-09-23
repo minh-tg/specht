@@ -1,4 +1,4 @@
-name: codeql (weekly deep SAST)
+name: CodeQL
 
 # Deep dataflow analysis Semgrep's pattern matching can't do. Runs weekly
 # rather than per-PR: a full CodeQL build takes an order of magnitude

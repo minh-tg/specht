@@ -1,14 +1,15 @@
 # Specht
 
-[![ci](https://github.com/minh-tg/specht/actions/workflows/ci.yml/badge.svg)](https://github.com/minh-tg/specht/actions/workflows/ci.yml) [![CodeQL](https://github.com/minh-tg/specht/actions/workflows/codeql.yml/badge.svg)](https://github.com/minh-tg/specht/actions/workflows/codeql.yml) [![Go 1.26](https://img.shields.io/badge/Go-1.26.0-00ADD8?logo=go&logoColor=white)](go.mod) [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![CI](https://github.com/minh-tg/specht/actions/workflows/ci.yml/badge.svg)](https://github.com/minh-tg/specht/actions/workflows/ci.yml) [![CodeQL](https://github.com/minh-tg/specht/actions/workflows/codeql.yml/badge.svg)](https://github.com/minh-tg/specht/actions/workflows/codeql.yml) [![Downloads](https://img.shields.io/github/downloads/minh-tg/specht/total?label=downloads&logo=github)](https://github.com/minh-tg/specht/releases) [![Stars](https://img.shields.io/github/stars/minh-tg/specht?label=stars&logo=github)](https://github.com/minh-tg/specht/stargazers) [![Commit activity](https://img.shields.io/github/commit-activity/m/minh-tg/specht?label=commit%20activity)](https://github.com/minh-tg/specht/graphs/commit-activity) [![Last commit](https://img.shields.io/github/last-commit/minh-tg/specht?label=last%20commit)](https://github.com/minh-tg/specht/commits/master/) [![Go 1.26](https://img.shields.io/badge/Go-1.26.0-00ADD8?logo=go&logoColor=white)](go.mod) [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
 Specht collects reports from security scanners in one place. It tracks findings
 across scans and lets teams apply project rules in CI, so they can see what
 changed and decide whether a change should pass.
 
 > [!WARNING]
-> **Early preview.** APIs, database schemas, and settings may change. Specht is
-> not production-ready and should not be your only security control.
+> **Hobby project · early preview.** Specht is not production-ready; APIs,
+> database schemas, and settings may change. Do not use it as your only
+> security control.
 
 ## What it does
 
