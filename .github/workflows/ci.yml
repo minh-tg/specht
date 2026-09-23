@@ -217,7 +217,7 @@ jobs:
         image: postgres:17-alpine
         env:
           POSTGRES_USER: specht
-          POSTGRES_PASSWORD: specht
+          POSTGRES_PASSWORD: ${{ github.run_id }}
           POSTGRES_DB: specht
         ports:
           - 5432:5432
@@ -227,7 +227,7 @@ jobs:
           --health-timeout 3s
           --health-retries 5
     env:
-      DATABASE_URL: postgres://specht:specht@localhost:5432/specht?sslmode=disable
+      DATABASE_URL: postgres://specht:${{ github.run_id }}@localhost:5432/specht?sslmode=disable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 

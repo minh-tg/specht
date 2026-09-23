@@ -1,4 +1,4 @@
-.PHONY: dev-api dev-web db-up db-down migrate-up migrate-down sqlc test build clean
+.PHONY: dev-api dev-web db-up db-down migrate-up migrate-down sqlc test test-race lsp-check sonar build clean
 
 dev-api:
 	go run ./cmd/server
@@ -26,6 +26,12 @@ test:
 
 test-race:
 	go test -race ./... -count=1 -short
+
+lsp-check:
+	gopls check $$(git ls-files --cached --others --exclude-standard -- '*.go')
+
+sonar:
+	./scripts/sonar-scan.sh
 
 build:
 	cd frontend && npm run build

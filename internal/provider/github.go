@@ -132,7 +132,8 @@ func annotationMessage(f Finding) string {
 		b.WriteString(" (introduced by this change)")
 	}
 	if f.RemediationURL != "" {
-		b.WriteString("\nRemediation: " + f.RemediationURL)
+		b.WriteString("\nRemediation: ")
+		b.WriteString(f.RemediationURL)
 	}
 	return b.String()
 }

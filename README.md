@@ -89,7 +89,7 @@ examples/ci/     Ready-made GitHub Actions / GitLab CI pipelines
 ## Development
 
 ```bash
-nix develop            # enter the dev shell (Go 1.26, sqlc, prek, frontend toolchain)
+nix develop            # enter the dev shell (Go 1.26, gopls, SonarQube scanner, frontend toolchain)
 prek install           # commit hooks: format/lint/vet/secrets + conventional commits
 ```
 
@@ -99,6 +99,8 @@ conventional-commit validation. Useful commands:
 
 ```bash
 go test ./... -count=1 -short                     # unit tests
+make lsp-check                                      # Go diagnostics from gopls
+SONAR_ADMIN_PASSWORD=admin make sonar               # disposable local SonarQube scan; needs Docker/Podman
 go test -tags integration ./internal/repo/ -count=1   # integration, needs Docker
 pnpm -C frontend test                             # frontend tests
 pnpm -C frontend exec tsc -b
