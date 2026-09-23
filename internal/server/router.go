@@ -286,17 +286,20 @@ func isTrustedProxyAddr(addr netip.Addr, trusted []netip.Prefix) bool {
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set(headerContentType, "application/json")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"status":"ok","version":%q,"commit":%q}`, version.Version, version.Commit)
+	respondJSON(w, http.StatusOK, struct {
+		Status  string `json:"status"`
+		Version string `json:"version"`
+		Commit  string `json:"commit"`
+	}{Status: "ok", Version: version.Version, Commit: version.Commit})
 }
 
 // versionHandler reports the server build info. Unauthenticated so
 // deployment tooling and self-host operators can verify what is running.
 func versionHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set(headerContentType, "application/json")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"version":%q,"commit":%q}`, version.Version, version.Commit)
+	respondJSON(w, http.StatusOK, struct {
+		Version string `json:"version"`
+		Commit  string `json:"commit"`
+	}{Version: version.Version, Commit: version.Commit})
 }
 
 // ssoLoginHandler redirects unauthenticated users to the OIDC provider's

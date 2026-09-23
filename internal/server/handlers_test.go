@@ -1324,11 +1324,16 @@ func TestNewRouterRoutes(t *testing.T) {
 	router := NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth})
 	require.NotNil(t, router)
 
-	t.Run("health endpoint exists", func(t *testing.T) {
+	t.Run("health endpoint returns valid JSON", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/v1/health", nil)
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 		assert.Equal(t, http.StatusOK, w.Code)
+		var body struct {
+			Status string `json:"status"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		assert.Equal(t, "ok", body.Status)
 	})
 
 	t.Run("version endpoint returns build info", func(t *testing.T) {
