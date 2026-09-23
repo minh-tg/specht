@@ -25,29 +25,22 @@ changed and decide whether a change should pass.
 
 ## Supported inputs
 
-| Area | Inputs |
+| Report category | Supported tools and formats |
 | --- | --- |
-| Dependencies and container images | Trivy, OSV-Scanner, Grype, OWASP Dependency-Check |
-| Source-code findings | Semgrep; SARIF 2.1.0 reports from compatible tools such as CodeQL |
-| Infrastructure checks | Trivy, Checkov, tfsec |
-| Secrets | Trivy, Gitleaks |
-| Web application checks | Nuclei |
-| Software bills of materials (SBOMs) | CycloneDX 1.x JSON and SPDX 2.x JSON |
+| **Dependencies & container images** | Trivy · OSV-Scanner · Grype · OWASP Dependency-Check |
+| **Source-code findings** | Semgrep · SARIF 2.1.0 (for example, CodeQL) |
+| **Infrastructure checks** | Trivy · Checkov · tfsec |
+| **Secrets** | Trivy · Gitleaks |
+| **Web application checks** | Nuclei |
+| **Software bills of materials** | CycloneDX 1.x JSON · SPDX 2.x JSON |
 
-SARIF input is treated as source-code findings. The SBOM parser records package
-identity, but does not currently normalize every SBOM field, such as dependency
-graphs, licenses, hashes, or signatures. Tools that emit compatible SARIF or
-SBOM JSON can use the shared adapters; other formats need a Go parser with
-fixtures and tests under `internal/parser/`.
+> **SARIF is classified as source-code findings.** The SBOM adapter records
+> package identity, but does not currently normalize every SBOM field—for
+> example, dependency graphs, licenses, hashes, or signatures.
 
-## Where Specht fits
-
-[Dependency-Track](https://docs.dependencytrack.org/) focuses on SBOMs and
-risk from software components. [DefectDojo](https://docs.defectdojo.com/) is a broad
-platform for importing and managing findings from many tools. Specht is an
-early, smaller project that brings several kinds of scanner reports together
-and focuses on team policy and CI decisions. It overlaps with both, but is not
-a drop-in replacement.
+Tools that emit compatible SARIF or SBOM JSON can use the shared adapters.
+Other formats need a Go parser with fixtures and tests under
+[`internal/parser/`](internal/parser/).
 
 ## Quick start
 
@@ -122,7 +115,7 @@ pnpm -C frontend lint
   ([codeql.yml](.github/workflows/codeql.yml)), and Dependabot opens dependency
   PRs with a cooldown window
   ([dependabot.yml](.github/workflows/dependabot.yml)).
-- About 1,500 Go tests, including integration tests that run against
+- About 1,000 Go test functions, including integration tests that run against
   PostgreSQL in Docker, plus a frontend test suite. We expect tests for code
   changes.
 - Contributions follow the
