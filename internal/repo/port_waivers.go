@@ -139,7 +139,7 @@ func (r *pgWaiverPort) Delete(ctx context.Context, id, projectID string) error {
 	return nil
 }
 
-func (r *pgWaiverPort) Toggle(ctx context.Context, id, projectID string) (port.Waiver, error) {
+func (r *pgWaiverPort) ToggleWithEvent(ctx context.Context, id, projectID, actorID string) (port.Waiver, error) {
 	wid, err := parseID(id)
 	if err != nil {
 		return port.Waiver{}, err
@@ -148,7 +148,7 @@ func (r *pgWaiverPort) Toggle(ctx context.Context, id, projectID string) (port.W
 	if err != nil {
 		return port.Waiver{}, err
 	}
-	row, err := r.inner.Toggle(ctx, wid, pid)
+	row, err := r.inner.ToggleWithEvent(ctx, wid, pid, actorID)
 	if err != nil {
 		return port.Waiver{}, mappingErr(err)
 	}
@@ -309,20 +309,6 @@ func (r *pgWaiverPort) ListFindingTargetsByWaiverIDs(ctx context.Context, waiver
 		}
 	}
 	return out, nil
-}
-
-func (r *pgWaiverPort) CreateEvent(ctx context.Context, event port.WaiverEvent) error {
-	wid, err := parseID(event.WaiverID)
-	if err != nil {
-		return err
-	}
-	_, err = r.inner.CreateEvent(ctx, sqlc.CreateWaiverEventParams{
-		WaiverID:  wid,
-		EventType: event.EventType,
-		ActorID:   textPtrFromString(&event.ActorID),
-		Metadata:  event.Metadata,
-	})
-	return err
 }
 
 func (r *pgWaiverPort) ListEvents(ctx context.Context, waiverID string) ([]port.WaiverEvent, error) {

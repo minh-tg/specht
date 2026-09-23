@@ -589,6 +589,58 @@ func TestWaiverTableRoundTrip(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestWaiverToggleAndAuditEventAreAtomic(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	project := createTestProject(t, repos)
+	waiver, err := repos.Waivers.Create(ctx, sqlc.CreateWaiverParams{
+		ProjectID: project.ID,
+		Name:      "atomic-toggle",
+		Enabled:   true,
+	})
+	require.NoError(t, err)
+
+	_, err = repos.pool.Exec(ctx, `
+		ALTER TABLE waiver_events
+		ADD CONSTRAINT test_reject_toggle_events CHECK (event_type NOT IN ('enabled', 'disabled'))
+	`)
+	require.NoError(t, err)
+
+	stores := NewPortStores(repos.pool)
+	_, err = stores.Waivers.ToggleWithEvent(ctx, toUUID(waiver.ID), toUUID(project.ID), "actor-1")
+	require.Error(t, err, "the audit insert constraint must fail the combined operation")
+
+	unchanged, err := repos.Waivers.GetByID(ctx, waiver.ID, project.ID)
+	require.NoError(t, err)
+	assert.True(t, unchanged.Enabled, "a failed audit write must roll back the waiver toggle")
+	events, err := repos.Waivers.ListEvents(ctx, waiver.ID)
+	require.NoError(t, err)
+	assert.Empty(t, events, "a failed transaction must not leave a partial audit event")
+
+	_, err = repos.pool.Exec(ctx, `ALTER TABLE waiver_events DROP CONSTRAINT test_reject_toggle_events`)
+	require.NoError(t, err)
+
+	disabled, err := stores.Waivers.ToggleWithEvent(ctx, toUUID(waiver.ID), toUUID(project.ID), "actor-1")
+	require.NoError(t, err)
+	assert.False(t, disabled.Enabled)
+	enabled, err := stores.Waivers.ToggleWithEvent(ctx, toUUID(waiver.ID), toUUID(project.ID), "actor-1")
+	require.NoError(t, err)
+	assert.True(t, enabled.Enabled)
+
+	events, err = repos.Waivers.ListEvents(ctx, waiver.ID)
+	require.NoError(t, err)
+	require.Len(t, events, 2)
+	eventTypes := map[string]bool{}
+	for _, event := range events {
+		eventTypes[event.EventType] = true
+		assert.Equal(t, "actor-1", event.ActorID.String)
+	}
+	assert.True(t, eventTypes["disabled"])
+	assert.True(t, eventTypes["enabled"])
+}
+
 func TestScanScopeHashRoundTrip(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()

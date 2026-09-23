@@ -890,6 +890,7 @@ func (m *mockAPIKeyRepo) GetByHash(ctx context.Context, keyHash string) (port.AP
 
 type mockWaiverRepo struct {
 	port.WaiverStore
+	toggleWithEventFn               func(context.Context, string, string, string) (port.Waiver, error)
 	listActiveFn                    func(context.Context, string) ([]port.Waiver, error)
 	listConditionsFn                func(context.Context, string) ([]port.WaiverCondition, error)
 	listContextsFn                  func(context.Context, string) ([]port.WaiverContext, error)
@@ -897,6 +898,13 @@ type mockWaiverRepo struct {
 	listConditionsByWaiverIDsFn     func(context.Context, []string) ([]port.WaiverCondition, error)
 	listContextsByWaiverIDsFn       func(context.Context, []string) ([]port.WaiverContext, error)
 	listFindingTargetsByWaiverIDsFn func(context.Context, []string) ([]port.WaiverFindingTarget, error)
+}
+
+func (m *mockWaiverRepo) ToggleWithEvent(ctx context.Context, id, projectID, actorID string) (port.Waiver, error) {
+	if m.toggleWithEventFn == nil {
+		return port.Waiver{}, fmt.Errorf("unexpected call to ToggleWithEvent")
+	}
+	return m.toggleWithEventFn(ctx, id, projectID, actorID)
 }
 
 func (m *mockWaiverRepo) ListActive(ctx context.Context, projectID string) ([]port.Waiver, error) {

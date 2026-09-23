@@ -429,21 +429,10 @@ func (u *Usecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID, acto
 		return nil, fmt.Errorf(errInvalidWaiverIDFormat, err)
 	}
 
-	w, err := u.deps.Stores.Waivers.Toggle(ctx, id.String(), project.ID)
+	w, err := u.deps.Stores.Waivers.ToggleWithEvent(ctx, id.String(), project.ID, actorID)
 	if err != nil {
 		return nil, fmt.Errorf("toggle waiver: %w", err)
 	}
-
-	eventType := "enabled"
-	if !w.Enabled {
-		eventType = "disabled"
-	}
-	_ = u.deps.Stores.Waivers.CreateEvent(ctx, port.WaiverEvent{
-		WaiverID:  w.ID,
-		EventType: eventType,
-		ActorID:   actorID,
-		Metadata:  waiverCreatedEvent,
-	})
 
 	resp := toWaiver(w)
 	return &resp, nil

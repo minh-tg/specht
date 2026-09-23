@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/minh-tg/specht/internal/auth"
@@ -33,6 +34,55 @@ func testCheckWaiverMatchDeps(t *testing.T) (*mockProjectRepo, *mockFindingRepo,
 		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: wr},
 	})
 	return pr, fr, wr, uc
+}
+
+func TestToggleWaiverUsesAtomicAuditStoreOperation(t *testing.T) {
+	project := makeProject(true)
+	projectID := project.ID
+	waiverID := "00000000-0000-0000-0000-0000000000b1"
+	const actorID = "00000000-0000-0000-0000-000000000040"
+
+	pr := &mockProjectRepo{
+		getBySlugFn: func(context.Context, string) (port.Project, error) {
+			return project, nil
+		},
+	}
+	wr := &mockWaiverRepo{
+		toggleWithEventFn: func(_ context.Context, id, gotProjectID, gotActorID string) (port.Waiver, error) {
+			assert.Equal(t, waiverID, id)
+			assert.Equal(t, projectID, gotProjectID)
+			assert.Equal(t, actorID, gotActorID)
+			return port.Waiver{ID: id, ProjectID: gotProjectID, Name: "test-waiver", Enabled: false}, nil
+		},
+	}
+	uc := New(Deps{Stores: &port.Stores{Projects: pr, Waivers: wr}})
+
+	resp, err := uc.ToggleWaiver(sessionCtx("admin", auth.RoleAdmin), "my-app", waiverID, actorID)
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+	assert.Equal(t, waiverID, resp.ID)
+	assert.False(t, resp.Enabled)
+}
+
+func TestToggleWaiverPropagatesAuditTransactionFailure(t *testing.T) {
+	project := makeProject(true)
+	waiverID := "00000000-0000-0000-0000-0000000000b1"
+	storeErr := errors.New("audit insert failed")
+	pr := &mockProjectRepo{
+		getBySlugFn: func(context.Context, string) (port.Project, error) {
+			return project, nil
+		},
+	}
+	wr := &mockWaiverRepo{
+		toggleWithEventFn: func(context.Context, string, string, string) (port.Waiver, error) {
+			return port.Waiver{}, storeErr
+		},
+	}
+	uc := New(Deps{Stores: &port.Stores{Projects: pr, Waivers: wr}})
+
+	resp, err := uc.ToggleWaiver(sessionCtx("admin", auth.RoleAdmin), "my-app", waiverID, "actor-1")
+	assert.Nil(t, resp)
+	require.ErrorIs(t, err, storeErr)
 }
 
 func TestCheckWaiverMatch_NoActiveWaiver(t *testing.T) {

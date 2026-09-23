@@ -38,6 +38,41 @@ func (r *pgWaiverRepo) Toggle(ctx context.Context, id, projectID pgtype.UUID) (s
 	return r.q.ToggleWaiver(ctx, sqlc.ToggleWaiverParams{ID: id, ProjectID: projectID})
 }
 
+// ToggleWithEvent changes a waiver's enabled state and records the matching
+// audit event in one transaction. A failed event insert leaves the waiver
+// unchanged rather than silently losing its audit history.
+func (r *pgWaiverRepo) ToggleWithEvent(ctx context.Context, id, projectID pgtype.UUID, actorID string) (sqlc.Waiver, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	q := sqlc.New(tx)
+	waiver, err := q.ToggleWaiver(ctx, sqlc.ToggleWaiverParams{ID: id, ProjectID: projectID})
+	if err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("toggle waiver: %w", err)
+	}
+
+	eventType := "enabled"
+	if !waiver.Enabled {
+		eventType = "disabled"
+	}
+	if _, err := q.CreateWaiverEvent(ctx, sqlc.CreateWaiverEventParams{
+		WaiverID:  waiver.ID,
+		EventType: eventType,
+		ActorID:   textPtrFromString(&actorID),
+		Metadata:  []byte(`{}`),
+	}); err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("create waiver toggle event: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("commit tx: %w", err)
+	}
+	return waiver, nil
+}
+
 func (r *pgWaiverRepo) ListActive(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Waiver, error) {
 	return r.q.ListActiveWaivers(ctx, projectID)
 }
