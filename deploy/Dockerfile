@@ -1,19 +1,23 @@
-FROM node:22-alpine AS frontend-builder
+FROM docker.io/library/node:22-alpine AS frontend-builder
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
 COPY frontend/ .
 RUN pnpm run build
 
-FROM golang:1.26-alpine AS builder
+FROM docker.io/library/golang:1.26-alpine AS builder
+ARG VERSION=dev
+ARG COMMIT=unknown
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend-builder /src/frontend/dist/ ./cmd/server/dist/dist/
-RUN CGO_ENABLED=0 go build -o /bin/server ./cmd/server
+RUN CGO_ENABLED=0 go build \
+    -ldflags "-X github.com/minh-tg/specht/internal/version.Version=${VERSION} -X github.com/minh-tg/specht/internal/version.Commit=${COMMIT}" \
+    -o /bin/server ./cmd/server
 
-FROM alpine:3.21
+FROM docker.io/library/alpine:3.21
 # Install runtime deps without hard-pinning patch versions: pinning an exact
 # Alpine package version (e.g. tzdata=2026b-r0) breaks the image build the
 # moment the distro bumps the rebuild (2026b -> 2026c), which is not what a

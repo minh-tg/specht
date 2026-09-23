@@ -1,8 +1,11 @@
 # Self-hosting Specht with Docker Compose
 
-The Compose stack (`deploy/docker-compose.yml`) is the supported single-node
-production path: Postgres 17 + the Specht server (UI embedded in the binary).
-Migrations run automatically at startup (`DB_MIGRATE=true`).
+Specht is an early preview and is not production-ready. Docker Compose
+(`deploy/docker-compose.yml`) is the documented single-node self-hosting path
+for evaluation: Postgres 17 + the Specht server. Migrations run automatically
+at startup (`DB_MIGRATE=true`). The web UI is unfinished; use the API and CLI
+for now. No Helm deployment or standalone binary package is currently
+provided.
 
 ## 1. Secrets
 
@@ -67,9 +70,9 @@ git pull
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod up -d --build
 ```
 
-Migrations are forward-only and run at startup. Roll back by checking out the
-previous tag and re-running `up -d --build` (schema never migrates down
-automatically — restore from backup if a migration must be undone).
+Migrations are forward-only and run at startup. To roll back, restore a
+compatible database backup and redeploy a compatible revision. Schema
+migrations never migrate down automatically.
 
 ## 7. Hardening checklist
 

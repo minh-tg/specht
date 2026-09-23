@@ -67,8 +67,9 @@ API and CLI for now.
 
 ## Self-Hosting
 
-[`deploy/README.md`](deploy/README.md) covers the supported Docker Compose
-path: production environment, TLS, backups, upgrades, hardening.
+[`deploy/README.md`](deploy/README.md) covers the Docker Compose self-hosting
+path for evaluation, including secrets, TLS, backups, and upgrades. Specht is
+still an early preview, not production-ready.
 
 ## Project Layout
 
@@ -120,14 +121,16 @@ pnpm -C frontend lint
   changes.
 - Contributions follow the
   [Developer Certificate of Origin](CONTRIBUTING.md#developer-certificate-of-origin).
-- Push a `v*` tag and [release.yml](.github/workflows/release.yml) builds and
-  publishes a versioned container image.
+- Push a semantic-version tag and [release.yml](.github/workflows/release.yml)
+  publishes a version-tagged container image. It does not create a GitHub
+  Release or provide standalone CLI binaries.
 
 ## Project Status
 
-No releases or tags exist yet. Once they do, the release workflow above
-starts publishing images. The API works, but the web UI is unfinished and
-there is no dashboard yet.
+No releases or tags exist yet. The release workflow is limited to
+version-tagged container images; it does not publish a mutable `latest` image
+or standalone binaries. The API and CLI are the useful interfaces for now: the
+web UI is unfinished and there is no dashboard yet.
 Expect breaking changes. Bug reports and general feedback are welcome via
 [GitHub issues](https://github.com/minh-tg/specht/issues); security reports
 should follow [SECURITY.md](SECURITY.md).

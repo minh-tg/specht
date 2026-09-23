@@ -108,8 +108,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - name: Build image
-        run: docker build -f deploy/Dockerfile -t specht:ci .
+      - name: Build image with version metadata
+        run: |
+          docker build -f deploy/Dockerfile \
+            --build-arg VERSION=ci-validation \
+            --build-arg COMMIT="$(git rev-parse --short HEAD)" \
+            -t specht:ci .
 
   security-scan:
     name: security scan (Semgrep)
