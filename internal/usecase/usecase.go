@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"sync"
 	"time"
 
@@ -224,15 +223,15 @@ func (a *gateWaiverRepo) ListActiveWaivers(ctx context.Context, projectID string
 
 	conditions, err := a.stores.Waivers.ListConditionsByWaiverIDs(ctx, waiverIDs)
 	if err != nil {
-		slog.Warn("list waiver conditions batch", "error", err)
+		return nil, fmt.Errorf("list waiver conditions: %w", err)
 	}
 	contexts, err := a.stores.Waivers.ListContextsByWaiverIDs(ctx, waiverIDs)
 	if err != nil {
-		slog.Warn("list waiver contexts batch", "error", err)
+		return nil, fmt.Errorf("list waiver contexts: %w", err)
 	}
 	targets, err := a.stores.Waivers.ListFindingTargetsByWaiverIDs(ctx, waiverIDs)
 	if err != nil {
-		slog.Warn("list waiver finding targets batch", "error", err)
+		return nil, fmt.Errorf("list waiver finding targets: %w", err)
 	}
 
 	conditionsByWaiver := make(map[string][]gate.WaiverCondition, len(rows))
