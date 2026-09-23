@@ -81,7 +81,7 @@ internal/        Go packages (handlers, usecases, repos, auth, scanners)
 frontend/        React SPA (Vite, shadcn/ui)
 migrations/      SQL migrations (golang-migrate)
 sqlc/            Type-safe SQL queries
-deploy/          Docker Compose + Helm chart
+deploy/          Docker Compose deployment files
 examples/ci/     Ready-made GitHub Actions / GitLab CI pipelines
 ```
 

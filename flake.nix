@@ -22,7 +22,6 @@
           prek
           hadolint
           gitleaks
-          helm
         ];
 
         shellHook = ''

@@ -14,7 +14,6 @@ repos:
       - id: check-added-large-files
       - id: check-yaml
         args: [--unsafe]
-        exclude: ^deploy/helm/
 
   - repo: local
     hooks:
