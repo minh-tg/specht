@@ -58,7 +58,7 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 		Evidence:      newEvidenceRepo(q),
 		Reachability:  newReachabilityRepo(q),
 		Signoffs:      newSignoffRepo(q),
-		Inventory:     &pgInventoryRepo{query: q, pool: pool},
+		Inventory:     &pgInventoryRepo{query: q},
 		Watcher:       newWatcherRepo(q),
 		pool:          pool,
 	}

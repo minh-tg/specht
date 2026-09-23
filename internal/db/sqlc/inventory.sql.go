@@ -82,30 +82,24 @@ func (q *Queries) DistinctInventory(ctx context.Context, arg DistinctInventoryPa
 const upsertReportPackages = `-- name: UpsertReportPackages :exec
 INSERT INTO report_packages (
     report_id, purl, ecosystem, name, version, manifest_path
-) VALUES (
-    $1, $2, $3, $4, $5, $6
 )
+SELECT
+    $1, package.purl, package.ecosystem,
+    package.name, package.version, package.manifest_path
+FROM jsonb_to_recordset($2::jsonb) AS package(
+    purl text, ecosystem text, name text, version text, manifest_path text
+)
+WHERE true
 ON CONFLICT (report_id, purl) DO UPDATE SET
     last_seen_at = NOW()
 `
 
 type UpsertReportPackagesParams struct {
-	ReportID     pgtype.UUID `json:"report_id"`
-	Purl         string      `json:"purl"`
-	Ecosystem    pgtype.Text `json:"ecosystem"`
-	Name         pgtype.Text `json:"name"`
-	Version      pgtype.Text `json:"version"`
-	ManifestPath pgtype.Text `json:"manifest_path"`
+	ReportID pgtype.UUID `json:"report_id"`
+	Packages []byte      `json:"packages"`
 }
 
 func (q *Queries) UpsertReportPackages(ctx context.Context, arg UpsertReportPackagesParams) error {
-	_, err := q.db.Exec(ctx, upsertReportPackages,
-		arg.ReportID,
-		arg.Purl,
-		arg.Ecosystem,
-		arg.Name,
-		arg.Version,
-		arg.ManifestPath,
-	)
+	_, err := q.db.Exec(ctx, upsertReportPackages, arg.ReportID, arg.Packages)
 	return err
 }

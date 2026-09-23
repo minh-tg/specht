@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -45,20 +46,21 @@ func testUUID(t *testing.T, s string) pgtype.UUID {
 	return id
 }
 
-// TestInventoryRepo_UpsertReportPackages_PassesParams verifies every input
-// package becomes one query call carrying the report id and normalized fields,
-// in order, with no client-supplied timestamps (bumping lives in SQL: NOW()).
-func TestInventoryRepo_UpsertReportPackages_PassesParams(t *testing.T) {
+// TestInventoryRepo_UpsertReportPackages_BatchesRows verifies every unique
+// package is encoded into one query, with nullable fields preserved and the
+// first metadata row retained when a report repeats a PURL.
+func TestInventoryRepo_UpsertReportPackages_BatchesRows(t *testing.T) {
 	q := &mockInventoryQueries{}
-	var got []sqlc.UpsertReportPackagesParams
+	var got sqlc.UpsertReportPackagesParams
+	calls := 0
 	q.upsertReportPackagesFn = func(_ context.Context, arg sqlc.UpsertReportPackagesParams) error {
-		got = append(got, arg)
+		calls++
+		got = arg
 		return nil
 	}
 
 	repo := &pgInventoryRepo{query: q}
 	reportID := testUUID(t, "00000000-0000-0000-0000-0000000000ab")
-
 	pkgs := []UpsertReportPackageParams{
 		{
 			PURL:         "pkg:npm/lodash@4.17.20",
@@ -67,8 +69,8 @@ func TestInventoryRepo_UpsertReportPackages_PassesParams(t *testing.T) {
 			Version:      pgtype.Text{String: "4.17.20", Valid: true},
 			ManifestPath: pgtype.Text{String: "package-lock.json", Valid: true},
 		},
-		// Duplicate PURL within one report: the repo must forward it — the
-		// (report_id, purl) primary key is what collapses it, not the repo.
+		// The old sequential INSERT preserved the first row's metadata when a
+		// duplicate PURL reached its ON CONFLICT path.
 		{
 			PURL:         "pkg:npm/lodash@4.17.20",
 			Ecosystem:    pgtype.Text{String: "npm", Valid: true},
@@ -81,41 +83,36 @@ func TestInventoryRepo_UpsertReportPackages_PassesParams(t *testing.T) {
 
 	err := repo.upsertPackages(context.Background(), q, reportID, pkgs)
 	require.NoError(t, err)
-	require.Len(t, got, len(pkgs))
-	for i, want := range pkgs {
-		assert.Equal(t, reportID, got[i].ReportID)
-		assert.Equal(t, want.PURL, got[i].Purl)
-		assert.Equal(t, want.Ecosystem, got[i].Ecosystem)
-		assert.Equal(t, want.Name, got[i].Name)
-		assert.Equal(t, want.Version, got[i].Version)
-		assert.Equal(t, want.ManifestPath, got[i].ManifestPath)
-	}
+	assert.Equal(t, 1, calls, "all packages must use one database query")
+	assert.Equal(t, reportID, got.ReportID)
+
+	var rows []inventoryPackageRecord
+	require.NoError(t, json.Unmarshal(got.Packages, &rows))
+	require.Len(t, rows, 2, "duplicate package URLs must collapse before the bulk upsert")
+	assert.Equal(t, "pkg:npm/lodash@4.17.20", rows[0].PURL)
+	assert.Equal(t, "npm", *rows[0].Ecosystem)
+	assert.Equal(t, "package-lock.json", *rows[0].ManifestPath)
+	assert.Equal(t, "pkg:golang/example.com/x@v1.0.0", rows[1].PURL)
+	assert.Nil(t, rows[1].Ecosystem)
+	assert.Nil(t, rows[1].ManifestPath)
 }
 
-// TestInventoryRepo_UpsertReportPackages_FailureAbortsBatch verifies a failing
-// row stops the batch (the transaction wrapper will then roll everything back).
-func TestInventoryRepo_UpsertReportPackages_FailureAbortsBatch(t *testing.T) {
+func TestInventoryRepo_UpsertReportPackages_QueryFailure(t *testing.T) {
 	q := &mockInventoryQueries{}
 	calls := 0
-	q.upsertReportPackagesFn = func(_ context.Context, arg sqlc.UpsertReportPackagesParams) error {
+	q.upsertReportPackagesFn = func(_ context.Context, _ sqlc.UpsertReportPackagesParams) error {
 		calls++
-		if calls == 2 {
-			return errors.New("db unavailable")
-		}
-		return nil
+		return errors.New("db unavailable")
 	}
-
 	repo := &pgInventoryRepo{query: q}
-	pkgs := []UpsertReportPackageParams{
+
+	err := repo.upsertPackages(context.Background(), q, testUUID(t, "00000000-0000-0000-0000-0000000000ab"), []UpsertReportPackageParams{
 		{PURL: "pkg:npm/a@1.0.0"},
 		{PURL: "pkg:npm/b@1.0.0"},
-		{PURL: "pkg:npm/c@1.0.0"},
-	}
-
-	err := repo.upsertPackages(context.Background(), q, testUUID(t, "00000000-0000-0000-0000-0000000000ab"), pkgs)
+	})
 	require.Error(t, err)
-	assert.ErrorContains(t, err, "pkg:npm/b@1.0.0")
-	assert.Equal(t, 2, calls, "batch must stop at the first failing row")
+	assert.ErrorContains(t, err, "upsert report packages")
+	assert.Equal(t, 1, calls, "the batch should execute one atomic query")
 }
 
 func TestInventoryRepo_DistinctInventory(t *testing.T) {

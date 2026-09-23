@@ -1,9 +1,14 @@
 -- name: UpsertReportPackages :exec
 INSERT INTO report_packages (
     report_id, purl, ecosystem, name, version, manifest_path
-) VALUES (
-    $1, $2, $3, $4, $5, $6
 )
+SELECT
+    sqlc.arg(report_id), package.purl, package.ecosystem,
+    package.name, package.version, package.manifest_path
+FROM jsonb_to_recordset(sqlc.arg(packages)::jsonb) AS package(
+    purl text, ecosystem text, name text, version text, manifest_path text
+)
+WHERE true
 ON CONFLICT (report_id, purl) DO UPDATE SET
     last_seen_at = NOW();
 

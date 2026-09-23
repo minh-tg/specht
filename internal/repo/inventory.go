@@ -2,10 +2,10 @@ package repo
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minh-tg/specht/internal/db/sqlc"
 )
 
@@ -20,7 +20,6 @@ type inventoryQueries interface {
 
 type pgInventoryRepo struct {
 	query inventoryQueries
-	pool  *pgxpool.Pool
 }
 
 // UpsertReportPackageParams identifies one inventory row to persist for a
@@ -33,39 +32,62 @@ type UpsertReportPackageParams struct {
 	ManifestPath pgtype.Text
 }
 
-// UpsertReportPackages persists the report's package inventory atomically: all
-// rows are written in a single transaction, and a repeated (report_id, purl)
-// updates last_seen_at (server-side NOW()) instead of duplicating. Any failure
-// rolls back the whole batch.
+// UpsertReportPackages persists the report's package inventory in one atomic
+// statement. Duplicate PURLs within a report retain the first package's
+// metadata, matching the former sequential conflict behavior.
 func (r *pgInventoryRepo) UpsertReportPackages(ctx context.Context, reportID pgtype.UUID, packages []UpsertReportPackageParams) error {
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
+	if len(packages) == 0 {
+		return nil
 	}
-	defer tx.Rollback(ctx)
-
-	if err := r.upsertPackages(ctx, sqlc.New(tx), reportID, packages); err != nil {
-		return err
-	}
-
-	return tx.Commit(ctx)
+	return r.upsertPackages(ctx, r.query, reportID, packages)
 }
 
-// upsertPackages is the per-row write loop, kept separate from the transaction
-// plumbing so it can be exercised against a mocked queries interface.
+type inventoryPackageRecord struct {
+	PURL         string  `json:"purl"`
+	Ecosystem    *string `json:"ecosystem"`
+	Name         *string `json:"name"`
+	Version      *string `json:"version"`
+	ManifestPath *string `json:"manifest_path"`
+}
+
+func inventoryTextValue(value pgtype.Text) *string {
+	if !value.Valid {
+		return nil
+	}
+	return &value.String
+}
+
+// upsertPackages converts nullable package fields to JSON and sends one
+// jsonb_to_recordset statement, avoiding a database round trip per package.
 func (r *pgInventoryRepo) upsertPackages(ctx context.Context, q inventoryQueries, reportID pgtype.UUID, packages []UpsertReportPackageParams) error {
+	rows := make([]inventoryPackageRecord, 0, len(packages))
+	seen := make(map[string]struct{}, len(packages))
 	for _, p := range packages {
-		err := q.UpsertReportPackages(ctx, sqlc.UpsertReportPackagesParams{
-			ReportID:     reportID,
-			Purl:         p.PURL,
-			Ecosystem:    p.Ecosystem,
-			Name:         p.Name,
-			Version:      p.Version,
-			ManifestPath: p.ManifestPath,
-		})
-		if err != nil {
-			return fmt.Errorf("upsert report package %q: %w", p.PURL, err)
+		if _, exists := seen[p.PURL]; exists {
+			continue
 		}
+		seen[p.PURL] = struct{}{}
+		rows = append(rows, inventoryPackageRecord{
+			PURL:         p.PURL,
+			Ecosystem:    inventoryTextValue(p.Ecosystem),
+			Name:         inventoryTextValue(p.Name),
+			Version:      inventoryTextValue(p.Version),
+			ManifestPath: inventoryTextValue(p.ManifestPath),
+		})
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+
+	payload, err := json.Marshal(rows)
+	if err != nil {
+		return fmt.Errorf("encode report packages: %w", err)
+	}
+	if err := q.UpsertReportPackages(ctx, sqlc.UpsertReportPackagesParams{
+		ReportID: reportID,
+		Packages: payload,
+	}); err != nil {
+		return fmt.Errorf("upsert report packages: %w", err)
 	}
 	return nil
 }
