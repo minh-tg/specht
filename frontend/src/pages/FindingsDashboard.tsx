@@ -8,17 +8,17 @@ import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 const PAGE_SIZE = 20;
 
 const severityOrder: Record<string, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
+  critical: 3,
+  high: 2,
+  medium: 1,
+  low: 0,
 };
 
 function sortFindings(findings: Finding[], by: string, dir: "asc" | "desc") {
   return [...findings].sort((a, b) => {
     let cmp = 0;
     if (by === "severity") {
-      cmp = (severityOrder[a.current_severity] ?? 99) - (severityOrder[b.current_severity] ?? 99);
+      cmp = (severityOrder[a.current_severity] ?? -1) - (severityOrder[b.current_severity] ?? -1);
     } else if (by === "title") {
       cmp = a.current_title.localeCompare(b.current_title);
     } else {
@@ -126,6 +126,7 @@ export function FindingsDashboard() {
     <div className="space-y-4">
       <div className="flex flex-wrap gap-2">
         <select
+          aria-label="Filter by severity"
           className="border-input bg-background rounded-md border px-3 py-1 text-sm"
           value={severity}
           onChange={(e) => updateFilter("severity", e.target.value)}
@@ -137,6 +138,7 @@ export function FindingsDashboard() {
           <option value="low">Low</option>
         </select>
         <select
+          aria-label="Filter by status"
           className="border-input bg-background rounded-md border px-3 py-1 text-sm"
           value={status}
           onChange={(e) => updateFilter("status", e.target.value)}
@@ -147,6 +149,7 @@ export function FindingsDashboard() {
           <option value="reopened">Reopened</option>
         </select>
         <select
+          aria-label="Filter by finding type"
           className="border-input bg-background rounded-md border px-3 py-1 text-sm"
           value={kind}
           onChange={(e) => updateFilter("kind", e.target.value)}
