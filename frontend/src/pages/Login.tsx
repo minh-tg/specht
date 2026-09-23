@@ -2,15 +2,7 @@ import { APIError } from "@/api/client";
 import { useAuth } from "@/auth/useAuth";
 import { type SubmitEvent, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-
-export function safeRedirect(redirect: string | null): string {
-  if (!redirect) return "/";
-  if (!redirect.startsWith("/")) return "/";
-  const second = redirect[1];
-  // Block "//evil.com" (protocol-relative) and "/\evil.com" (backslash trick).
-  if (second === "/" || second === "\\") return "/";
-  return redirect;
-}
+import { safeRedirect } from "./safeRedirect";
 
 export function Login() {
   const auth = useAuth();

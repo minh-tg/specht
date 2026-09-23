@@ -1,10 +1,12 @@
-import { AuthContext, type AuthContextValue, AuthProvider } from "@/auth/AuthContext";
+import { AuthProvider } from "@/auth/AuthContext";
+import { AuthContext, type AuthContextValue } from "@/auth/context";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { vi } from "vitest";
-import { Login, safeRedirect } from "./Login";
+import { Login } from "./Login";
+import { safeRedirect } from "./safeRedirect";
 
 function renderLogin() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });

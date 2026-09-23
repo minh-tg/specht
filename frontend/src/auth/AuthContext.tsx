@@ -10,22 +10,8 @@ import {
 } from "@/api/client";
 import { SSO_SESSION_KEY, ssoTokenFromHash } from "@/auth/sso";
 import type { LoginResponse } from "@/types/api";
-import { createContext, type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
-
-interface AuthState {
-  token: string | null;
-  refreshToken: string | null;
-  userId: string | null;
-  email: string | null;
-}
-
-export interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
-  loading: boolean;
-}
-
-export const AuthContext = createContext<AuthContextValue | null>(null);
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { AuthContext, type AuthState } from "./context";
 
 export function AuthProvider({ children }: { readonly children: ReactNode; }) {
   // Restore a persisted session before the first render: a mount effect

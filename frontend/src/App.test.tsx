@@ -1,4 +1,4 @@
-import { AuthContext, type AuthContextValue } from "@/auth/AuthContext";
+import { AuthContext, type AuthContextValue } from "@/auth/context";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";

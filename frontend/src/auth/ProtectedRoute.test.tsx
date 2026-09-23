@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { AuthContext, type AuthContextValue } from "./AuthContext";
+import { AuthContext, type AuthContextValue } from "./context";
 import { ProtectedRoute } from "./ProtectedRoute";
 
 function renderProtected(token: string | null) {
