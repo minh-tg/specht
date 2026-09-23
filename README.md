@@ -2,33 +2,52 @@
 
 [![ci](https://github.com/minh-tg/specht/actions/workflows/ci.yml/badge.svg)](https://github.com/minh-tg/specht/actions/workflows/ci.yml) [![CodeQL](https://github.com/minh-tg/specht/actions/workflows/codeql.yml/badge.svg)](https://github.com/minh-tg/specht/actions/workflows/codeql.yml) [![Go 1.26](https://img.shields.io/badge/Go-1.26.0-00ADD8?logo=go&logoColor=white)](go.mod) [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
-Specht is a vulnerability management platform. It takes scan output from Trivy,
-OSV-Scanner, Semgrep, Checkov (and seven other parsers), puts everything in
-Postgres, and gives you one place to triage findings, waive the noise, and fail
-CI when the gate says so.
+Specht collects reports from security scanners in one place. It tracks findings
+across scans and lets teams apply project rules in CI, so they can see what
+changed and decide whether a change should pass.
 
-> This is a side project that's still changing quickly. Schemas, APIs, and
-> config may change. It is not production-ready and should not be your only
-> security control.
+> This side project is changing quickly. APIs, database schemas, and settings
+> may change. It is not production-ready and should not be your only security
+> control.
 
 ## What it does
 
-- Normalizes SCA, SAST, IaC, secret and SBOM reports into a single finding
-  model, built from 11 parsers: Trivy, OSV-Scanner, Grype, Semgrep, Checkov,
-  tfsec, Gitleaks, Dependency-Check, Nuclei, SARIF, and CycloneDX/SPDX SBOMs.
-- Tracks the whole lifecycle (new, fixed, reopened, triaged, waived), with
-  package inventory, gate effects and remediation context attached.
-- HTTP API plus a `specht` CLI, and `specht-adapter` for CI: exits non-zero
-  when the gate is breached, prints annotations, publishes GitHub check runs.
-  Drop-in pipeline templates for GitHub Actions and GitLab are in
+- Tracks findings as they appear, are fixed, return, or are waived. It keeps
+  package inventory and remediation details with them.
+- Provides an HTTP API, a `specht` CLI, and `specht-adapter` for CI. The adapter
+  can fail a build when policy blocks a change, print annotations, and publish
+  GitHub check runs. Pipeline examples for GitHub Actions and GitLab are in
   [`examples/ci/`](examples/ci/).
-- Optionally watches the OSV feed for new CVEs against your inventory and pings
-  Slack or a webhook.
-- SSO, teams, org-wide policy baselines, waivers with conditions and expiry.
+- Can check tracked packages against OSV for newly published advisories and
+  send notifications to Slack or a webhook.
+- Supports single sign-on, teams, shared organization policies, and waivers
+  with conditions and expiry dates.
 
-Parsers live in `internal/parser/`; the fixtures in
-`internal/parser/*/testdata/` together with their tests are what "supported"
-actually means.
+## Supported inputs
+
+| Area | Inputs |
+| --- | --- |
+| Dependencies and container images | Trivy, OSV-Scanner, Grype, OWASP Dependency-Check |
+| Source-code findings | Semgrep; SARIF 2.1.0 reports from compatible tools such as CodeQL |
+| Infrastructure checks | Trivy, Checkov, tfsec |
+| Secrets | Trivy, Gitleaks |
+| Web application checks | Nuclei |
+| Software bills of materials (SBOMs) | CycloneDX 1.x JSON and SPDX 2.x JSON |
+
+SARIF input is treated as source-code findings. The SBOM parser records package
+identity, but does not currently normalize every SBOM field, such as dependency
+graphs, licenses, hashes, or signatures. Tools that emit compatible SARIF or
+SBOM JSON can use the shared adapters; other formats need a Go parser with
+fixtures and tests under `internal/parser/`.
+
+## Where Specht fits
+
+[Dependency-Track](https://docs.dependencytrack.org/) focuses on SBOMs and
+risk from software components. [DefectDojo](https://docs.defectdojo.com/) is a broad
+platform for importing and managing findings from many tools. Specht is an
+early, smaller project that brings several kinds of scanner reports together
+and focuses on team policy and CI decisions. It overlaps with both, but is not
+a drop-in replacement.
 
 ## Quick start
 
@@ -49,10 +68,9 @@ The API comes up on `http://localhost:8080`. Check it:
 curl http://localhost:8080/api/v1/health
 ```
 
-The quickstart serves a placeholder page at `/` until you run `make build`.
-That builds and embeds the React frontend from `frontend/`. The UI is still
-rough, and there is no dashboard yet, so the API and CLI are the useful
-interfaces for now.
+The server shows a placeholder at `/` until you run `make build`, which builds
+and embeds the React frontend from `frontend/`. The UI is unfinished; use the
+API and CLI for now.
 
 ## Self-Hosting
 
@@ -96,17 +114,17 @@ pnpm -C frontend lint
 
 ## How development works
 
-- Touching scanner kinds, the normalized contract, database schemas, or gate
-  policy means writing an RFC first and getting it accepted (see
-  [`rfcs/`](rfcs/)). This adds a review step, but helps avoid breaking
-  everyone's ingest.
+- Changes to supported scanner kinds, the finding format, database schemas, or
+  CI policy need an approved RFC first (see [`rfcs/`](rfcs/)). This adds a
+  review step, but helps avoid breaking report ingestion.
 - CI repeats the test/lint/frontend checks on every push
   ([ci.yml](.github/workflows/ci.yml)), CodeQL runs separately
   ([codeql.yml](.github/workflows/codeql.yml)), and Dependabot opens dependency
   PRs with a cooldown window
   ([dependabot.yml](.github/workflows/dependabot.yml)).
-- Around 1,400 Go tests (unit plus testcontainers-backed integration) and a
-  frontend suite. We expect tests for code changes.
+- About 1,500 Go tests, including integration tests that run against
+  PostgreSQL in Docker, plus a frontend test suite. We expect tests for code
+  changes.
 - Contributions follow the
   [Developer Certificate of Origin](CONTRIBUTING.md#developer-certificate-of-origin).
 - Push a `v*` tag and [release.yml](.github/workflows/release.yml) builds and
@@ -116,7 +134,8 @@ pnpm -C frontend lint
 
 No releases or tags exist yet. Once they do, the release workflow above
 starts publishing images. The API works, but the web UI is unfinished and
-there is no dashboard yet. Expect breaking changes. Bug reports and playtest feedback are welcome via
+there is no dashboard yet.
+Expect breaking changes. Bug reports and general feedback are welcome via
 [GitHub issues](https://github.com/minh-tg/specht/issues); security reports
 should follow [SECURITY.md](SECURITY.md).
 
