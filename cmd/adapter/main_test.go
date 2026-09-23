@@ -118,7 +118,18 @@ func TestIngestReport_IntroducedOnly_Payload(t *testing.T) {
 	assert.False(t, resp.ThresholdBreached)
 }
 
+func clearCIEnvironment(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{
+		"GITHUB_BASE_REF", "GITHUB_SHA", "GITHUB_REF_NAME",
+		"CI_MERGE_REQUEST_TARGET_BRANCH_NAME", "CI_COMMIT_SHA", "CI_COMMIT_REF_NAME",
+	} {
+		t.Setenv(key, "")
+	}
+}
+
 func TestDetectCIEnvironment_GitHub(t *testing.T) {
+	clearCIEnvironment(t)
 	t.Setenv("GITHUB_BASE_REF", "main")
 	t.Setenv("GITHUB_SHA", "commit123")
 	t.Setenv("GITHUB_REF_NAME", "feature-branch")
@@ -132,6 +143,7 @@ func TestDetectCIEnvironment_GitHub(t *testing.T) {
 }
 
 func TestDetectCIEnvironment_GitLab(t *testing.T) {
+	clearCIEnvironment(t)
 	t.Setenv("CI_MERGE_REQUEST_TARGET_BRANCH_NAME", "master")
 	t.Setenv("CI_COMMIT_SHA", "commit456")
 	t.Setenv("CI_COMMIT_REF_NAME", "mr-branch")

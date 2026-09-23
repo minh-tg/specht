@@ -289,6 +289,7 @@ func TestQueryBatch_FullFetchConcurrencyBoundedAndOrderPreserved(t *testing.T) {
 
 func TestQueryBatch_FetchErrorCancelsInflightWorkers(t *testing.T) {
 	var inFlight, gets, canceled atomic.Int32
+	canceledRequests := make(chan struct{}, 3)
 	allStarted := make(chan struct{})
 	var startedOnce sync.Once
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -313,11 +314,13 @@ func TestQueryBatch_FetchErrorCancelsInflightWorkers(t *testing.T) {
 				w.WriteHeader(http.StatusInternalServerError)
 			case <-r.Context().Done():
 				canceled.Add(1)
+				canceledRequests <- struct{}{}
 			}
 			return
 		}
 		<-r.Context().Done()
 		canceled.Add(1)
+		canceledRequests <- struct{}{}
 	}))
 	defer srv.Close()
 
@@ -332,6 +335,13 @@ func TestQueryBatch_FetchErrorCancelsInflightWorkers(t *testing.T) {
 	}
 	if gets.Load() != 3 {
 		t.Errorf("full-record GETs started = %d, want exactly the three in-flight workers", gets.Load())
+	}
+	for range 2 {
+		select {
+		case <-canceledRequests:
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for in-flight server requests to observe cancellation")
+		}
 	}
 	if canceled.Load() != 2 {
 		t.Errorf("other in-flight GETs canceled = %d, want 2", canceled.Load())
