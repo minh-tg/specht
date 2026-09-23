@@ -2,10 +2,12 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/minh-tg/specht/internal/client"
 )
@@ -94,6 +96,47 @@ func TestRootRegistersWatcher(t *testing.T) {
 	}
 	if gotPath != "/api/v1/watcher/status" {
 		t.Fatalf("request path = %q", gotPath)
+	}
+}
+
+func TestExecuteContextCancelsAPIRequest(t *testing.T) {
+	requestStarted := make(chan struct{})
+	transport := roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		close(requestStarted)
+		<-r.Context().Done()
+		return nil, r.Context().Err()
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var errW bytes.Buffer
+	d := Deps{
+		NewClient: func() (*client.Client, error) {
+			return client.New("http://test", client.WithHTTPClient(&http.Client{Transport: transport})), nil
+		},
+		Out:  io.Discard,
+		ErrW: &errW,
+	}
+
+	done := make(chan int, 1)
+	go func() {
+		done <- ExecuteContext(ctx, []string{"projects", "list"}, d)
+	}()
+	select {
+	case <-requestStarted:
+	case <-time.After(time.Second):
+		t.Fatal("API request did not start")
+	}
+	cancel()
+	select {
+	case code := <-done:
+		if code != exitFailure {
+			t.Fatalf("exit code = %d, want %d; stderr = %q", code, exitFailure, errW.String())
+		}
+		if !bytes.Contains(errW.Bytes(), []byte("context canceled")) {
+			t.Fatalf("stderr does not report cancellation: %q", errW.String())
+		}
+	case <-time.After(time.Second):
+		t.Fatal("command did not stop after context cancellation")
 	}
 }
 

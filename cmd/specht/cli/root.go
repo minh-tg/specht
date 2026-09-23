@@ -5,6 +5,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -110,6 +111,15 @@ func NewRootCmd(d Deps) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	if newClient := d.NewClient; newClient != nil {
+		d.NewClient = func() (*client.Client, error) {
+			cl, err := newClient()
+			if err != nil {
+				return nil, err
+			}
+			return cl.WithContext(root.Context()), nil
+		}
+	}
 	root.PersistentFlags().StringVar(&s.format, "format", "", "output format: human or json")
 	root.SetOut(d.Out)
 	root.SetErr(d.ErrW)
@@ -131,7 +141,17 @@ func NewRootCmd(d Deps) *cobra.Command {
 // Execute runs the tree with args and maps the result to a process exit
 // code: 0 pass, 1 gate breached, 2 usage or runtime error.
 func Execute(args []string, d Deps) int {
+	return ExecuteContext(context.Background(), args, d)
+}
+
+// ExecuteContext runs the command tree with ctx as its root context. Requests
+// made by a command inherit its cancellation and deadline.
+func ExecuteContext(ctx context.Context, args []string, d Deps) int {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	root := NewRootCmd(d)
+	root.SetContext(ctx)
 	root.SetArgs(args)
 	if err := root.Execute(); err != nil {
 		if errors.Is(err, ErrThresholdBreached) {

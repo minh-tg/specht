@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/minh-tg/specht/internal/client"
 	"github.com/stretchr/testify/assert"
@@ -232,6 +233,40 @@ func TestRun_IntroducedOnly_Pass(t *testing.T) {
 	assert.Equal(t, 0, code)
 	assert.Contains(t, stderr.String(), "✅ SPECHT SECURITY GATE: PASSED")
 	assert.Contains(t, stderr.String(), "PRE-EXISTING DEBT IN BASELINE: 10 findings ignored")
+}
+
+func TestRunWithContextCancelsAPIRequest(t *testing.T) {
+	clearCIEnvironment(t)
+	t.Setenv("API_KEY", "test-key")
+	t.Setenv("API_URL", "http://test")
+	requestStarted := make(chan struct{})
+	transport := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		close(requestStarted)
+		<-req.Context().Done()
+		return nil, req.Context().Err()
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var stdout, stderr bytes.Buffer
+	done := make(chan int, 1)
+	go func() {
+		hc := &http.Client{Transport: transport}
+		done <- runWithContext(ctx, []string{"-project=my-app", "-tool=trivy"}, strings.NewReader(`{"Results":[]}`), &stdout, &stderr, hc)
+	}()
+	select {
+	case <-requestStarted:
+	case <-time.After(time.Second):
+		t.Fatal("API request did not start")
+	}
+	cancel()
+	select {
+	case code := <-done:
+		assert.Equal(t, 2, code)
+		assert.Contains(t, stderr.String(), "context canceled")
+	case <-time.After(time.Second):
+		t.Fatal("adapter did not stop after context cancellation")
+	}
 }
 
 func TestRun_IntroducedOnly_PreviewFailureWarnsWithoutChangingVerdict(t *testing.T) {

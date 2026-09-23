@@ -9,13 +9,18 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"github.com/minh-tg/specht/internal/client"
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr, nil))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	code := runWithContext(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr, nil)
+	stop()
+	os.Exit(code)
 }
 
 // adapterFlags holds the parsed command-line flags for one adapter run.
@@ -160,7 +165,7 @@ func applyGateFlags(payload *client.IngestPayload, f *adapterFlags) {
 
 // publishPreview emits the CI-side outputs (annotations, step summary,
 // check run) for a resolved PR check preview.
-func publishPreview(f *adapterFlags, payload client.IngestPayload, preview *client.PRCheckPreview, stderr io.Writer, hc *http.Client) {
+func publishPreview(ctx context.Context, f *adapterFlags, payload client.IngestPayload, preview *client.PRCheckPreview, stderr io.Writer, hc *http.Client) {
 	if preview == nil {
 		return
 	}
@@ -174,7 +179,7 @@ func publishPreview(f *adapterFlags, payload client.IngestPayload, preview *clie
 	}
 	shouldPublish := f.publishCheck || (f.inGitHubActions && f.githubToken != "" && f.githubRepo != "")
 	if shouldPublish && f.githubToken != "" && f.githubRepo != "" {
-		if err := publishGitHubCheckRun(context.Background(), hc, f.githubToken, f.githubRepo, payload.CommitSha, preview); err != nil {
+		if err := publishGitHubCheckRun(ctx, hc, f.githubToken, f.githubRepo, payload.CommitSha, preview); err != nil {
 			fmt.Fprintf(stderr, "⚠️  could not publish github check run: %v\n", err)
 		}
 	}
@@ -213,6 +218,10 @@ func reportIntroducedGate(resp *client.IngestResponse, preview *client.PRCheckPr
 }
 
 func run(args []string, stdin io.Reader, stdout, stderr io.Writer, hc *http.Client) int {
+	return runWithContext(context.Background(), args, stdin, stdout, stderr, hc)
+}
+
+func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer, hc *http.Client) int {
 	inGitHubActions := os.Getenv("GITHUB_ACTIONS") == "true"
 	f := parseFlags(args, stderr, inGitHubActions)
 	if f == nil {
@@ -243,10 +252,11 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, hc *http.Clie
 		return code
 	}
 
-	cl := client.New(apiURL, client.WithToken(apiKey))
+	clientOptions := []client.Option{client.WithToken(apiKey)}
 	if hc != nil {
-		cl = client.New(apiURL, client.WithToken(apiKey), client.WithHTTPClient(hc))
+		clientOptions = append(clientOptions, client.WithHTTPClient(hc))
 	}
+	cl := client.New(apiURL, clientOptions...).WithContext(ctx)
 
 	resp, err := cl.IngestReport(&payload)
 	if err != nil {
@@ -269,7 +279,7 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, hc *http.Clie
 			fmt.Fprintf(stderr, "⚠️  could not fetch PR check preview: %v\n", err)
 		}
 	}
-	publishPreview(f, payload, preview, stderr, hc)
+	publishPreview(ctx, f, payload, preview, stderr, hc)
 
 	if payload.GateIntroducedOnly {
 		return reportIntroducedGate(resp, preview, payload, stderr)

@@ -1,10 +1,12 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -276,6 +278,47 @@ func TestErrorHandling(t *testing.T) {
 	assert.True(t, ce.Unauthorized())
 	assert.Equal(t, "invalid_token", ce.Code)
 	assert.Contains(t, ce.Message, "bad key")
+}
+
+func TestDefaultHTTPClientHasTimeout(t *testing.T) {
+	assert.Equal(t, defaultRequestTimeout, New("http://localhost").httpClient.Timeout)
+}
+
+func TestWithContextCancelsInFlightRequest(t *testing.T) {
+	transport := &waitForContextTransport{started: make(chan struct{})}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cl := New("http://example.test", WithHTTPClient(&http.Client{Transport: transport})).WithContext(ctx)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := cl.Health()
+		done <- err
+	}()
+
+	select {
+	case <-transport.started:
+	case <-time.After(time.Second):
+		t.Fatal("request did not reach transport")
+	}
+	cancel()
+
+	select {
+	case err := <-done:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-time.After(time.Second):
+		t.Fatal("request did not stop after context cancellation")
+	}
+}
+
+type waitForContextTransport struct {
+	started chan struct{}
+}
+
+func (t *waitForContextTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	close(t.started)
+	<-req.Context().Done()
+	return nil, req.Context().Err()
 }
 
 func TestWithHTTPClient(t *testing.T) {

@@ -10,7 +10,11 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
+
+// defaultRequestTimeout bounds API requests made by the default HTTP client.
+const defaultRequestTimeout = 60 * time.Second
 
 // API path prefixes centralize route construction for the Specht API.
 const (
@@ -22,16 +26,18 @@ const (
 
 // Client is a typed HTTP client for the Specht API.
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
-	token      string
+	baseURL        string
+	httpClient     *http.Client
+	token          string
+	requestContext context.Context
 }
 
 // New builds a client for the given base URL (e.g. http://localhost:8080).
+// Requests use a 60-second timeout unless WithHTTPClient replaces the default.
 func New(baseURL string, opts ...Option) *Client {
 	c := &Client{
 		baseURL:    strings.TrimRight(baseURL, "/"),
-		httpClient: http.DefaultClient,
+		httpClient: &http.Client{Timeout: defaultRequestTimeout},
 	}
 	for _, o := range opts {
 		o(c)
@@ -54,6 +60,18 @@ func WithToken(token string) Option {
 	return func(c *Client) {
 		c.token = token
 	}
+}
+
+// WithContext returns a shallow copy of c whose requests are canceled when
+// ctx is done. It is useful for binding all requests made by one CLI command
+// to that command's context; the original client remains unchanged.
+func (c *Client) WithContext(ctx context.Context) *Client {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	bound := *c
+	bound.requestContext = ctx
+	return &bound
 }
 
 // newClientRequest builds an authenticated JSON request for the Specht API.
@@ -102,6 +120,9 @@ func decodeAPIResponse(respBody []byte, out any) error {
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
+	if c.requestContext != nil {
+		ctx = c.requestContext
+	}
 	req, err := c.newClientRequest(ctx, method, path, body)
 	if err != nil {
 		return err
