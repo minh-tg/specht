@@ -237,35 +237,65 @@ func TestQueryBatch_BatchesAndPreservesOrder(t *testing.T) {
 	}
 }
 
-func TestQueryBatch_FullFetchConcurrencyBoundedAndOrderPreserved(t *testing.T) {
-	var inFlight, maxInFlight, gets atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+type fullFetchConcurrencyMetrics struct {
+	inFlight    atomic.Int32
+	maxInFlight atomic.Int32
+	gets        atomic.Int32
+}
+
+func newFullFetchConcurrencyServer(t *testing.T, metrics *fullFetchConcurrencyMetrics) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
 			writeQuerybatchIDs(w, r)
 		case http.MethodGet:
-			gets.Add(1)
-			current := inFlight.Add(1)
-			defer inFlight.Add(-1)
-			for previous := maxInFlight.Load(); current > previous; previous = maxInFlight.Load() {
-				if maxInFlight.CompareAndSwap(previous, current) {
-					break
-				}
-			}
+			metrics.gets.Add(1)
+			current := metrics.inFlight.Add(1)
+			defer metrics.inFlight.Add(-1)
+			updateMaximum(&metrics.maxInFlight, current)
 			select {
 			case <-time.After(20 * time.Millisecond):
 			case <-r.Context().Done():
 				return
 			}
 			id := strings.TrimPrefix(r.URL.Path, "/v1/vulns/")
-			_ = json.NewEncoder(w).Encode(cannedAdvisory(id, "2024-01-01T00:00:00Z"))
+			if err := json.NewEncoder(w).Encode(cannedAdvisory(id, "2024-01-01T00:00:00Z")); err != nil {
+				t.Errorf("encode advisory response: %v", err)
+			}
 		default:
 			t.Errorf("unexpected method %s", r.Method)
 		}
 	}))
+}
+
+func updateMaximum(maximum *atomic.Int32, current int32) {
+	for previous := maximum.Load(); current > previous; previous = maximum.Load() {
+		if maximum.CompareAndSwap(previous, current) {
+			return
+		}
+	}
+}
+
+func assertFullFetchResultsInQueryOrder(t *testing.T, results []QueryResult, wantCount int) {
+	t.Helper()
+	if len(results) != wantCount {
+		t.Fatalf("results = %d, want %d", len(results), wantCount)
+	}
+	for i, result := range results {
+		wantID := "GHSA-" + string(rune('a'+i))
+		if len(result.Advisories) != 1 || result.Advisories[0].ID != wantID {
+			t.Errorf("result %d = %+v, want advisory %s", i, result.Advisories, wantID)
+		}
+	}
+}
+
+func TestQueryBatch_FullFetchConcurrencyBoundedAndOrderPreserved(t *testing.T) {
+	const concurrency = 3
+	metrics := &fullFetchConcurrencyMetrics{}
+	srv := newFullFetchConcurrencyServer(t, metrics)
 	defer srv.Close()
 
-	const concurrency = 3
 	c := NewHTTPClient(HTTPClientConfig{
 		Endpoint: srv.URL, VulnEndpoint: srv.URL + "/v1/vulns/{id}",
 		MaxConcurrentVulnFetches: concurrency,
@@ -278,21 +308,13 @@ func TestQueryBatch_FullFetchConcurrencyBoundedAndOrderPreserved(t *testing.T) {
 	if err != nil {
 		t.Fatalf("QueryBatch: %v", err)
 	}
-	if got := maxInFlight.Load(); got != concurrency {
+	if got := metrics.maxInFlight.Load(); got != concurrency {
 		t.Errorf("maximum concurrent GETs = %d, want %d", got, concurrency)
 	}
-	if gets.Load() != int32(len(queries)) {
-		t.Errorf("full-record GETs = %d, want %d", gets.Load(), len(queries))
+	if got := metrics.gets.Load(); got != int32(len(queries)) {
+		t.Errorf("full-record GETs = %d, want %d", got, len(queries))
 	}
-	if len(results) != len(queries) {
-		t.Fatalf("results = %d, want %d", len(results), len(queries))
-	}
-	for i, result := range results {
-		wantID := "GHSA-" + string(rune('a'+i))
-		if len(result.Advisories) != 1 || result.Advisories[0].ID != wantID {
-			t.Errorf("result %d = %+v, want advisory %s", i, result.Advisories, wantID)
-		}
-	}
+	assertFullFetchResultsInQueryOrder(t, results, len(queries))
 }
 
 func TestQueryBatch_FetchErrorCancelsInflightWorkers(t *testing.T) {

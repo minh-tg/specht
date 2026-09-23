@@ -268,7 +268,10 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 		clientOptions = append(clientOptions, client.WithHTTPClient(hc))
 	}
 	cl := client.New(apiURL, clientOptions...).WithContext(ctx)
+	return runReportWorkflow(ctx, cl, f, payload, stderr, hc)
+}
 
+func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, payload client.IngestPayload, stderr io.Writer, hc *http.Client) int {
 	resp, err := cl.IngestReport(&payload)
 	if err != nil {
 		writeDiagnostic(stderr, "error: ingest failed: %v\n", err)
@@ -282,7 +285,7 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 		}
 	}
 
-	// Fetch PR Check Preview for detailed annotations and summary if commit SHA is present
+	// Fetch PR Check Preview for detailed annotations and summary if commit SHA is present.
 	var preview *client.PRCheckPreview
 	if payload.CommitSha != "" {
 		preview, err = cl.PreviewPRCheck(payload.Project, payload.CommitSha, "github", resp.ReportID, f.severity)

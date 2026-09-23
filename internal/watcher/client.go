@@ -283,81 +283,108 @@ func (c *HTTPClient) queryBatchChunk(ctx context.Context, queries []Query) ([][]
 // deduped across queries so a package matched many times is fetched once.
 // Concurrent GETs are bounded by maxConcurrentVulnFetches.
 func (c *HTTPClient) fetchFullRecords(ctx context.Context, idBatches [][]string) (map[string]Advisory, error) {
-	seen := make(map[string]bool)
-	var ids []string
-	for _, batch := range idBatches {
-		for _, id := range batch {
-			id = strings.TrimSpace(id)
-			if id == "" || seen[id] {
-				continue
-			}
-			seen[id] = true
-			ids = append(ids, id)
-		}
-	}
-
+	ids := uniqueVulnIDs(idBatches)
 	records := make(map[string]Advisory, len(ids))
 	if len(ids) == 0 {
 		return records, nil
 	}
 
-	workers := min(c.maxConcurrentVulnFetches, len(ids))
+	fetcher := fullRecordFetcher{
+		client:  c,
+		ids:     ids,
+		records: records,
+	}
+	return fetcher.run(ctx)
+}
+
+func uniqueVulnIDs(idBatches [][]string) []string {
+	seen := make(map[string]struct{})
+	var ids []string
+	for _, batch := range idBatches {
+		for _, id := range batch {
+			id = strings.TrimSpace(id)
+			if id == "" {
+				continue
+			}
+			if _, exists := seen[id]; exists {
+				continue
+			}
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// fullRecordFetcher coordinates one bounded set of advisory fetch workers.
+type fullRecordFetcher struct {
+	client    *HTTPClient
+	ids       []string
+	records   map[string]Advisory
+	recordsMu sync.Mutex
+	errorOnce sync.Once
+	firstErr  error
+}
+
+func (f *fullRecordFetcher) run(ctx context.Context) (map[string]Advisory, error) {
+	workers := min(f.client.maxConcurrentVulnFetches, len(f.ids))
 	fetchCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	jobs := make(chan int)
 	var workersWG sync.WaitGroup
-	var recordsMu sync.Mutex
-	var errorOnce sync.Once
-	var firstErr error
-
 	for range workers {
 		workersWG.Add(1)
-		go func() {
-			defer workersWG.Done()
-			for {
-				select {
-				case <-fetchCtx.Done():
-					return
-				case index, ok := <-jobs:
-					if !ok || fetchCtx.Err() != nil {
-						return
-					}
-					id := ids[index]
-					record, err := c.fetchVuln(fetchCtx, id)
-					if err != nil {
-						errorOnce.Do(func() {
-							firstErr = err
-							cancel()
-						})
-						return
-					}
-					recordsMu.Lock()
-					records[id] = record
-					recordsMu.Unlock()
-				}
-			}
-		}()
+		go f.fetchWorker(fetchCtx, cancel, jobs, &workersWG)
 	}
 
-sendJobs:
-	for index := range ids {
-		select {
-		case jobs <- index:
-		case <-fetchCtx.Done():
-			break sendJobs
-		}
-	}
+	dispatchFullRecordJobs(fetchCtx, jobs, len(f.ids))
 	close(jobs)
 	workersWG.Wait()
 
-	if firstErr != nil {
-		return nil, firstErr
+	if f.firstErr != nil {
+		return nil, f.firstErr
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return records, nil
+	return f.records, nil
+}
+
+func (f *fullRecordFetcher) fetchWorker(ctx context.Context, cancel context.CancelFunc, jobs <-chan int, workersWG *sync.WaitGroup) {
+	defer workersWG.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case index, ok := <-jobs:
+			if !ok || ctx.Err() != nil {
+				return
+			}
+			id := f.ids[index]
+			record, err := f.client.fetchVuln(ctx, id)
+			if err != nil {
+				f.errorOnce.Do(func() {
+					f.firstErr = err
+					cancel()
+				})
+				return
+			}
+			f.recordsMu.Lock()
+			f.records[id] = record
+			f.recordsMu.Unlock()
+		}
+	}
+}
+
+func dispatchFullRecordJobs(ctx context.Context, jobs chan<- int, count int) {
+	for index := range count {
+		select {
+		case jobs <- index:
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 // fetchVuln fetches one full advisory record via GET /v1/vulns/{id}. OSV's
