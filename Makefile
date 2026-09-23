@@ -1,4 +1,4 @@
-.PHONY: dev-api dev-web db-up db-down migrate-up migrate-down sqlc test test-race lsp-check sonar build clean
+.PHONY: dev-api dev-web db-up db-down migrate-up migrate-down sqlc test test-race lsp-check sonar coverage build clean
 
 dev-api:
 	go run ./cmd/server
@@ -32,6 +32,13 @@ lsp-check:
 
 sonar:
 	./scripts/sonar-scan.sh
+
+coverage:
+	mkdir -p .coverage
+	go test ./... -count=1 -short -coverpkg=./... -coverprofile=.coverage/go-unit.out
+	TESTCONTAINERS_RYUK_DISABLED=true go test -tags integration ./internal/repo/ -count=1 -coverpkg=./... -coverprofile=.coverage/go-integration.out
+	pnpm --dir frontend run test:coverage
+	python3 scripts/coverage_report.py --go-profile .coverage/go-unit.out --go-profile .coverage/go-integration.out --frontend-json frontend/coverage/coverage-final.json
 
 build:
 	cd frontend && npm run build

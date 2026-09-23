@@ -100,6 +100,7 @@ conventional-commit validation. Useful commands:
 
 ```bash
 go test ./... -count=1 -short                     # unit tests
+make coverage                                       # combined per-file + statement coverage; needs Docker
 make lsp-check                                      # Go diagnostics from gopls
 SONAR_ADMIN_PASSWORD=admin make sonar               # disposable local SonarQube scan; needs Docker/Podman
 go test -tags integration ./internal/repo/ -count=1   # integration, needs Docker

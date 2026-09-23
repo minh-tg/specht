@@ -7,7 +7,12 @@ vendor/
 # Node
 node_modules/
 frontend/dist/
+frontend/coverage/
 cmd/server/dist/dist/
+
+# Coverage profiles and reports
+.coverage/
+coverage/
 
 # IDE
 .vscode/
