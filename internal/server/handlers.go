@@ -425,13 +425,21 @@ func (h *Handler) enforceProjectAccess(r *http.Request, projectSlug string) erro
 // Unauthenticated requests fall through to 401.
 // apiKeyRoleAdmitted reports whether an API-key identity holds one of the
 // permission scopes the role gate demands.
-func apiKeyRoleAdmitted(ident *auth.Identity, requiredScopes map[string]bool) bool {
-	for scope := range requiredScopes {
+func hasAnyScope(ident *auth.Identity, scopes map[string]bool) bool {
+	for scope := range scopes {
 		if ident.HasScope(scope) {
 			return true
 		}
 	}
 	return false
+}
+
+func apiKeyRoleAdmitted(ident *auth.Identity, requiredScopes map[string]bool) bool {
+	return hasAnyScope(ident, requiredScopes)
+}
+
+func respondAuthRequired(w http.ResponseWriter) {
+	respondError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 }
 
 // sessionRoleAdmitted reports whether a session identity carries a known
@@ -453,7 +461,7 @@ func RequireRole(roles ...string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ident := auth.ContextIdentity(r.Context())
 			if ident == nil {
-				respondError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+				respondAuthRequired(w)
 				return
 			}
 			if !identityAdmitted(ident, allowed, requiredScopes) {
@@ -477,16 +485,10 @@ func RequireAPIKeyScopes(scopes ...string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ident := auth.ContextIdentity(r.Context())
 			if ident == nil {
-				respondError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+				respondAuthRequired(w)
 				return
 			}
-			if ident.IsAPIKey {
-				for scope := range allowed {
-					if ident.HasScope(scope) {
-						next.ServeHTTP(w, r)
-						return
-					}
-				}
+			if ident.IsAPIKey && !hasAnyScope(ident, allowed) {
 				respondError(w, http.StatusForbidden, "insufficient_scope", "API key does not have the required scope for this route")
 				return
 			}
@@ -502,7 +504,7 @@ func RequireSession() func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ident := auth.ContextIdentity(r.Context())
 			if ident == nil {
-				respondError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+				respondAuthRequired(w)
 				return
 			}
 			if ident.IsAPIKey || !auth.ValidRole(ident.Role) {
@@ -525,7 +527,7 @@ func RequireSessionRole(roles ...string) func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ident := auth.ContextIdentity(r.Context())
 			if ident == nil {
-				respondError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+				respondAuthRequired(w)
 				return
 			}
 			if ident.IsAPIKey || !sessionRoleAdmitted(ident, allowed) {
