@@ -6,9 +6,9 @@ Specht collects reports from security scanners in one place. It tracks findings
 across scans and lets teams apply project rules in CI, so they can see what
 changed and decide whether a change should pass.
 
-> This side project is changing quickly. APIs, database schemas, and settings
-> may change. It is not production-ready and should not be your only security
-> control.
+> [!WARNING]
+> **Early preview.** APIs, database schemas, and settings may change. Specht is
+> not production-ready and should not be your only security control.
 
 ## What it does
 
@@ -34,6 +34,7 @@ changed and decide whether a change should pass.
 | **Web application checks** | Nuclei |
 | **Software bills of materials** | CycloneDX 1.x JSON · SPDX 2.x JSON |
 
+> [!NOTE]
 > **SARIF is classified as source-code findings.** The SBOM adapter records
 > package identity, but does not currently normalize every SBOM field—for
 > example, dependency graphs, licenses, hashes, or signatures.
