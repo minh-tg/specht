@@ -7,9 +7,9 @@ OSV-Scanner, Semgrep, Checkov (and seven other parsers), puts everything in
 Postgres, and gives you one place to triage findings, waive the noise, and fail
 CI when the gate says so.
 
-> Fair warning: this is a play project under heavy change. Schemas move, APIs
-> break, config comes and goes. It is not production-ready, and it should never
-> be the only thing standing between you and a bad day.
+> This is a side project that's still changing quickly. Schemas, APIs, and
+> config may change. It is not production-ready and should not be your only
+> security control.
 
 ## What it does
 
@@ -49,9 +49,10 @@ The API comes up on `http://localhost:8080`. Check it:
 curl http://localhost:8080/api/v1/health
 ```
 
-That's the product. There's a React frontend in `frontend/` too: run
-`make build` to compile it into the server binary. It's rough and there's no
-real dashboard yet, so you'll probably want the API anyway.
+The quickstart serves a placeholder page at `/` until you run `make build`.
+That builds and embeds the React frontend from `frontend/`. The UI is still
+rough, and there is no dashboard yet, so the API and CLI are the useful
+interfaces for now.
 
 ## Self-Hosting
 
@@ -97,7 +98,7 @@ pnpm -C frontend lint
 
 - Touching scanner kinds, the normalized contract, database schemas, or gate
   policy means writing an RFC first and getting it accepted (see
-  [`rfcs/`](rfcs/)). Yes, it's bureaucracy. It's still cheaper than breaking
+  [`rfcs/`](rfcs/)). This adds a review step, but helps avoid breaking
   everyone's ingest.
 - CI repeats the test/lint/frontend checks on every push
   ([ci.yml](.github/workflows/ci.yml)), CodeQL runs separately
@@ -105,7 +106,7 @@ pnpm -C frontend lint
   PRs with a cooldown window
   ([dependabot.yml](.github/workflows/dependabot.yml)).
 - Around 1,400 Go tests (unit plus testcontainers-backed integration) and a
-  frontend suite. Changes without tests aren't done.
+  frontend suite. We expect tests for code changes.
 - Contributions follow the
   [Developer Certificate of Origin](CONTRIBUTING.md#developer-certificate-of-origin).
 - Push a `v*` tag and [release.yml](.github/workflows/release.yml) builds and
@@ -114,8 +115,8 @@ pnpm -C frontend lint
 ## Project Status
 
 No releases or tags exist yet. Once they do, the release workflow above
-starts publishing images. The API side works; the web UI is half-built.
-Expect breaking changes. Bug reports and playtest feedback are welcome via
+starts publishing images. The API works, but the web UI is unfinished and
+there is no dashboard yet. Expect breaking changes. Bug reports and playtest feedback are welcome via
 [GitHub issues](https://github.com/minh-tg/specht/issues); security reports
 should follow [SECURITY.md](SECURITY.md).
 
