@@ -34,6 +34,45 @@ jobs:
         env:
           DOCKER_HOST: unix:///var/run/docker.sock
 
+  helm-chart:
+    name: Helm chart (lint + render)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Install Kubernetes Helm
+        env:
+          HELM_VERSION: v4.3.0
+          HELM_SHA256: 86584a54def73570558f66f5111cc53dfed56689637ae32c1201205d494f54fb
+        run: |
+          archive="helm-${HELM_VERSION}-linux-amd64.tar.gz"
+          curl --fail --silent --show-error --location --retry 3 \
+            "https://get.helm.sh/${archive}" \
+            --output "$RUNNER_TEMP/${archive}"
+          printf '%s  %s\n' "$HELM_SHA256" "$RUNNER_TEMP/${archive}" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/helm-bin"
+          tar -xzf "$RUNNER_TEMP/${archive}" \
+            --directory "$RUNNER_TEMP/helm-bin" \
+            --strip-components=1 linux-amd64/helm
+          echo "$RUNNER_TEMP/helm-bin" >> "$GITHUB_PATH"
+
+      - name: Check Helm version
+        run: helm version --short
+
+      - name: Lint chart
+        run: >-
+          helm lint --strict deploy/helm/specht
+          --set image.tag=ci
+          --set postgresql.password=ci-scan-placeholder
+
+      - name: Render chart
+        run: >-
+          helm template specht deploy/helm/specht
+          --namespace specht-ci
+          --set image.tag=ci
+          --set postgresql.password=ci-scan-placeholder
+          > "$RUNNER_TEMP/specht-chart.yaml"
+
   lint:
     name: lint + format
     runs-on: ubuntu-latest
