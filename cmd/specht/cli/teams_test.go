@@ -23,7 +23,9 @@ func runTeamsCmd(t *testing.T, d Deps, args ...string) error {
 func TestTeamsList(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/teams", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{"id":"t1","name":"Backend","description":"service owners"}]`))
+		if _, err := w.Write([]byte(`[{"id":"t1","name":"Backend","description":"service owners"}]`)); err != nil {
+			t.Errorf("write teams response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 
@@ -38,7 +40,9 @@ func TestTeamsList(t *testing.T) {
 func TestTeamsListEmpty(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/teams", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[]`))
+		if _, err := w.Write([]byte(`[]`)); err != nil {
+			t.Errorf("write empty teams response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 
@@ -56,7 +60,9 @@ func TestTeamsCreate(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s, want POST", r.Method)
 		}
-		w.Write([]byte(`{"id":"t1","name":"Backend"}`))
+		if _, err := w.Write([]byte(`{"id":"t1","name":"Backend"}`)); err != nil {
+			t.Errorf("write created team response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 
@@ -89,7 +95,9 @@ func TestTeamsDelete(t *testing.T) {
 func TestTeamsMembers(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/teams/t1/members", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{"team_id":"t1","user_id":"u1","user_email":"dev@example.com","role":"member"}]`))
+		if _, err := w.Write([]byte(`[{"team_id":"t1","user_id":"u1","user_email":"dev@example.com","role":"member"}]`)); err != nil {
+			t.Errorf("write team members response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 
@@ -107,7 +115,9 @@ func TestTeamsAdd(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s, want POST", r.Method)
 		}
-		w.Write([]byte(`{"team_id":"t1","user_id":"u1","role":"admin"}`))
+		if _, err := w.Write([]byte(`{"team_id":"t1","user_id":"u1","role":"admin"}`)); err != nil {
+			t.Errorf("write added team member response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 

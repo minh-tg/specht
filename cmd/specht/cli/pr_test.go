@@ -34,7 +34,9 @@ func TestPrPreviewHuman(t *testing.T) {
 		if got := r.URL.Query().Get("commit"); got != "abc123" {
 			t.Errorf("commit = %q, want abc123", got)
 		}
-		w.Write([]byte(prPreviewBody))
+		if _, err := w.Write([]byte(prPreviewBody)); err != nil {
+			t.Errorf("write PR preview response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runPrCmd(t, d, "pr", "preview", "--project", "demo", "--commit", "abc123"); err != nil {
@@ -52,7 +54,9 @@ func TestPrPreviewHuman(t *testing.T) {
 func TestPrPreviewJSON(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/pr-check", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(prPreviewBody))
+		if _, err := w.Write([]byte(prPreviewBody)); err != nil {
+			t.Errorf("write PR preview response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runPrCmd(t, d, "pr", "preview", "--project", "demo", "--commit", "abc123", "--format", "json"); err != nil {

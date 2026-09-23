@@ -30,7 +30,9 @@ const policyEffectiveBody = `{"template_name":"baseline","template_version":2,` 
 func TestPolicyTemplates(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/policy-templates", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{"id":"t1","name":"baseline","description":"d","version":2}]`))
+		if _, err := w.Write([]byte(`[{"id":"t1","name":"baseline","description":"d","version":2}]`)); err != nil {
+			t.Errorf("write policy templates response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runPolicyCmd(t, d, "policy", "templates"); err != nil {
@@ -44,7 +46,9 @@ func TestPolicyTemplates(t *testing.T) {
 func TestPolicyTemplatesEmpty(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/policy-templates", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[]`))
+		if _, err := w.Write([]byte(`[]`)); err != nil {
+			t.Errorf("write empty policy templates response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runPolicyCmd(t, d, "policy", "templates"); err != nil {
@@ -58,7 +62,9 @@ func TestPolicyTemplatesEmpty(t *testing.T) {
 func TestPolicyCreate(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/policy-templates", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"id":"t1","name":"baseline","version":1}`))
+		if _, err := w.Write([]byte(`{"id":"t1","name":"baseline","version":1}`)); err != nil {
+			t.Errorf("write created policy template response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runPolicyCmd(t, d, "policy", "create", "--name", "baseline"); err != nil {
@@ -90,7 +96,9 @@ func TestPolicyCreateBadDefinition(t *testing.T) {
 func TestPolicyUpdate(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/policy-templates/t1", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"id":"t1","name":"baseline","version":3}`))
+		if _, err := w.Write([]byte(`{"id":"t1","name":"baseline","version":3}`)); err != nil {
+			t.Errorf("write updated policy template response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runPolicyCmd(t, d, "policy", "update", "--id", "t1", "--name", "baseline"); err != nil {
@@ -145,7 +153,9 @@ func TestPolicyDeleteMissingID(t *testing.T) {
 func TestPolicyApply(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/policy", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(policyEffectiveBody))
+		if _, err := w.Write([]byte(policyEffectiveBody)); err != nil {
+			t.Errorf("write effective policy response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runPolicyCmd(t, d, "policy", "apply", "--project", "demo", "--template", "baseline"); err != nil {
@@ -168,7 +178,9 @@ func TestPolicyApplyMissingProject(t *testing.T) {
 func TestPolicyOverrides(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/policy/overrides", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(policyEffectiveBody))
+		if _, err := w.Write([]byte(policyEffectiveBody)); err != nil {
+			t.Errorf("write effective policy response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runPolicyCmd(t, d, "policy", "overrides", "--project", "demo", "--set", `{"severity_floor":"high"}`); err != nil {
@@ -200,7 +212,9 @@ func TestPolicyOverridesBadSet(t *testing.T) {
 func TestPolicyEffectiveHuman(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/policy", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(policyEffectiveBody))
+		if _, err := w.Write([]byte(policyEffectiveBody)); err != nil {
+			t.Errorf("write effective policy response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runPolicyCmd(t, d, "policy", "effective", "--project", "demo"); err != nil {
@@ -218,8 +232,10 @@ func TestPolicyEffectiveHuman(t *testing.T) {
 func TestPolicyEffectiveNoTemplate(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/policy", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"severity_floor":"high","severity_source":"default",` +
-			`"watcher_gate":"warn","watcher_source":"default"}`))
+		if _, err := w.Write([]byte(`{"severity_floor":"high","severity_source":"default",` +
+			`"watcher_gate":"warn","watcher_source":"default"}`)); err != nil {
+			t.Errorf("write policy without template response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runPolicyCmd(t, d, "policy", "effective", "--project", "demo"); err != nil {
@@ -233,7 +249,9 @@ func TestPolicyEffectiveNoTemplate(t *testing.T) {
 func TestPolicyEffectiveJSON(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/policy", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(policyEffectiveBody))
+		if _, err := w.Write([]byte(policyEffectiveBody)); err != nil {
+			t.Errorf("write effective policy response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runPolicyCmd(t, d, "policy", "effective", "--project", "demo", "--format", "json"); err != nil {

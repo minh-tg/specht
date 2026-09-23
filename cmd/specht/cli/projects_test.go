@@ -36,7 +36,9 @@ func runCmd(t *testing.T, d Deps, args ...string) error {
 func TestProjectsList(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{"slug":"demo","name":"Demo","description":"d"}]`))
+		if _, err := w.Write([]byte(`[{"slug":"demo","name":"Demo","description":"d"}]`)); err != nil {
+			t.Errorf("write projects response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runCmd(t, d, "projects", "list"); err != nil {
@@ -50,7 +52,9 @@ func TestProjectsList(t *testing.T) {
 func TestProjectsListEmpty(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[]`))
+		if _, err := w.Write([]byte(`[]`)); err != nil {
+			t.Errorf("write empty projects response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runCmd(t, d, "projects", "list"); err != nil {
@@ -64,7 +68,9 @@ func TestProjectsListEmpty(t *testing.T) {
 func TestProjectsGet(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"slug":"demo","name":"Demo","description":"d"}`))
+		if _, err := w.Write([]byte(`{"slug":"demo","name":"Demo","description":"d"}`)); err != nil {
+			t.Errorf("write project response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runCmd(t, d, "projects", "get", "demo"); err != nil {

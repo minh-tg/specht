@@ -22,10 +22,12 @@ func runStats(t *testing.T, d Deps, args ...string) error {
 func TestStatsShow(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/stats", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"total_findings":10,"blocking_count":3,"waiver_count":1,"report_count":2,` +
+		if _, err := w.Write([]byte(`{"total_findings":10,"blocking_count":3,"waiver_count":1,"report_count":2,` +
 			`"by_severity":[{"severity":"critical","count":2,"blocking_count":2}],` +
 			`"latest_report":{"id":"r1","project_id":"p1","tool_name":"trivy","scan_type":"sca",` +
-			`"status":"completed","created_at":"2026-01-01T00:00:00Z"}}`))
+			`"status":"completed","created_at":"2026-01-01T00:00:00Z"}}`)); err != nil {
+			t.Errorf("write project stats response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runStats(t, d, "show", "demo"); err != nil {
@@ -50,7 +52,9 @@ func TestStatsShow(t *testing.T) {
 func TestStatsShowNoLatestReport(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/stats", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"total_findings":0,"blocking_count":0,"waiver_count":0,"report_count":0,"by_severity":[]}`))
+		if _, err := w.Write([]byte(`{"total_findings":0,"blocking_count":0,"waiver_count":0,"report_count":0,"by_severity":[]}`)); err != nil {
+			t.Errorf("write empty project stats response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runStats(t, d, "show", "demo"); err != nil {
@@ -83,10 +87,12 @@ func TestStatsShowClientError(t *testing.T) {
 func TestStatsAging(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/aging", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"buckets":[{"bucket":"0-7d","count":5,"overdue":1}],"overdue_total":1,` +
+		if _, err := w.Write([]byte(`{"buckets":[{"bucket":"0-7d","count":5,"overdue":1}],"overdue_total":1,` +
 			`"overdue":[{"id":"f1","title":"CVE-2026-1","severity":"critical","age_days":10,` +
 			`"sla_days":7,"due_date":"2026-02-01T00:00:00Z","reopened":true}],` +
-			`"reopened":2,"new_per_week":[]}`))
+			`"reopened":2,"new_per_week":[]}`)); err != nil {
+			t.Errorf("write project aging response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runStats(t, d, "aging", "demo"); err != nil {
@@ -109,7 +115,9 @@ func TestStatsAging(t *testing.T) {
 func TestStatsAgingNoOverdue(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/aging", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"buckets":[],"overdue_total":0,"overdue":[],"reopened":0,"new_per_week":[]}`))
+		if _, err := w.Write([]byte(`{"buckets":[],"overdue_total":0,"overdue":[],"reopened":0,"new_per_week":[]}`)); err != nil {
+			t.Errorf("write empty project aging response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runStats(t, d, "aging", "demo"); err != nil {

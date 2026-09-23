@@ -51,24 +51,40 @@ func newWatcherStatusCmd(d Deps) *cobra.Command {
 				return err
 			}
 			if status.LastSuccessfulPollAt != "" {
-				fmt.Fprintf(d.Out, "Last Successful Poll:  %s\n", status.LastSuccessfulPollAt)
+				if _, err := fmt.Fprintf(d.Out, "Last Successful Poll:  %s\n", status.LastSuccessfulPollAt); err != nil {
+					return err
+				}
 			} else {
-				fmt.Fprintln(d.Out, "Last Successful Poll:  never (cold start)")
+				if _, err := fmt.Fprintln(d.Out, "Last Successful Poll:  never (cold start)"); err != nil {
+					return err
+				}
 			}
 			if status.LastPollAttemptAt != "" {
-				fmt.Fprintf(d.Out, "Last Poll Attempt:     %s\n", status.LastPollAttemptAt)
+				if _, err := fmt.Fprintf(d.Out, "Last Poll Attempt:     %s\n", status.LastPollAttemptAt); err != nil {
+					return err
+				}
 			}
 			if status.LastError != "" {
-				fmt.Fprintf(d.Out, "Last Error:            %s\n", status.LastError)
+				if _, err := fmt.Fprintf(d.Out, "Last Error:            %s\n", status.LastError); err != nil {
+					return err
+				}
 			}
-			fmt.Fprintf(d.Out, "Consecutive Failures:  %d\n", status.ConsecutiveFailures)
+			if _, err := fmt.Fprintf(d.Out, "Consecutive Failures:  %d\n", status.ConsecutiveFailures); err != nil {
+				return err
+			}
 			switch {
 			case status.Healthy:
-				fmt.Fprintln(d.Out, "Status:                healthy")
+				if _, err := fmt.Fprintln(d.Out, "Status:                healthy"); err != nil {
+					return err
+				}
 			case status.Stale:
-				fmt.Fprintf(d.Out, "Status:                STALE (no successful poll within %s)\n", status.StalenessWindow)
+				if _, err := fmt.Fprintf(d.Out, "Status:                STALE (no successful poll within %s)\n", status.StalenessWindow); err != nil {
+					return err
+				}
 			default:
-				fmt.Fprintln(d.Out, "Status:                FAILING")
+				if _, err := fmt.Fprintln(d.Out, "Status:                FAILING"); err != nil {
+					return err
+				}
 			}
 			return nil
 		},
@@ -99,9 +115,13 @@ func newWatcherBackfillCmd(d Deps) *cobra.Command {
 				return err
 			}
 			o := result.Outcome
-			fmt.Fprintf(d.Out, "watcher backfill: projects=%d queried=%d created=%d skipped=%d unchanged=%d ignored=%d orphan_skips=%d\n", o.Projects, o.Queried, o.Created, o.Skipped, o.Unchanged, o.Ignored, o.OrphanSkips)
+			if _, err := fmt.Fprintf(d.Out, "watcher backfill: projects=%d queried=%d created=%d skipped=%d unchanged=%d ignored=%d orphan_skips=%d\n", o.Projects, o.Queried, o.Created, o.Skipped, o.Unchanged, o.Ignored, o.OrphanSkips); err != nil {
+				return err
+			}
 			if dryRun {
-				fmt.Fprintln(d.Out, "dry-run: nothing was written")
+				if _, err := fmt.Fprintln(d.Out, "dry-run: nothing was written"); err != nil {
+					return err
+				}
 			}
 			return nil
 		},

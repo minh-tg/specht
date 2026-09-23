@@ -14,7 +14,9 @@ import (
 func TestWatcherStatus(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/watcher/status", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"last_successful_poll_at":"2026-09-22T12:00:00Z","last_poll_attempt_at":"2026-09-22T12:01:00Z","consecutive_failures":0,"healthy":true}`))
+		if _, err := w.Write([]byte(`{"last_successful_poll_at":"2026-09-22T12:00:00Z","last_poll_attempt_at":"2026-09-22T12:01:00Z","consecutive_failures":0,"healthy":true}`)); err != nil {
+			t.Errorf("write watcher status response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 

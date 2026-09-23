@@ -39,7 +39,9 @@ func TestNotifyPreviewHuman(t *testing.T) {
 		if got := q.Get("target"); got != "ORG/REPO" {
 			t.Errorf("target = %q, want ORG/REPO", got)
 		}
-		w.Write([]byte(notifyPreviewBody))
+		if _, err := w.Write([]byte(notifyPreviewBody)); err != nil {
+			t.Errorf("write notify preview response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runNotifyCmd(t, d, "notify", "preview", "--finding", "f1", "--channel", "issue", "--target", "ORG/REPO"); err != nil {
@@ -60,7 +62,9 @@ func TestNotifyPreviewLinked(t *testing.T) {
 		if got := r.URL.Query().Get("linked"); got != "1" {
 			t.Errorf("linked = %q, want 1", got)
 		}
-		w.Write([]byte(notifyPreviewBody))
+		if _, err := w.Write([]byte(notifyPreviewBody)); err != nil {
+			t.Errorf("write notify preview response: %v", err)
+		}
 	})
 	d, _, _ := testDeps(t, mux)
 	if err := runNotifyCmd(t, d, "notify", "preview", "--finding", "f1", "--channel", "issue", "--target", "ORG/REPO", "--linked"); err != nil {
@@ -71,7 +75,9 @@ func TestNotifyPreviewLinked(t *testing.T) {
 func TestNotifyPreviewUnsupported(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/findings/f1/notify-preview", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(notifyUnsupportedBody))
+		if _, err := w.Write([]byte(notifyUnsupportedBody)); err != nil {
+			t.Errorf("write unsupported notify response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runNotifyCmd(t, d, "notify", "preview", "--finding", "f1", "--channel", "issue", "--target", "ORG/REPO"); err != nil {
@@ -85,7 +91,9 @@ func TestNotifyPreviewUnsupported(t *testing.T) {
 func TestNotifyPreviewJSON(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/findings/f1/notify-preview", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(notifyPreviewBody))
+		if _, err := w.Write([]byte(notifyPreviewBody)); err != nil {
+			t.Errorf("write notify preview response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runNotifyCmd(t, d, "notify", "preview", "--finding", "f1", "--channel", "issue", "--target", "ORG/REPO", "--format", "json"); err != nil {

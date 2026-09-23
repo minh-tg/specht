@@ -70,7 +70,9 @@ func newTeamsCreateCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(d.Out, "team %s (%s)\n", team.Name, team.ID)
+			if _, err := fmt.Fprintf(d.Out, "team %s (%s)\n", team.Name, team.ID); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -96,7 +98,9 @@ func newTeamsDeleteCmd(d Deps) *cobra.Command {
 			if err := cl.DeleteTeam(id); err != nil {
 				return err
 			}
-			fmt.Fprintln(d.Out, "team deleted")
+			if _, err := fmt.Fprintln(d.Out, "team deleted"); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -123,11 +127,15 @@ func newTeamsMembersCmd(d Deps) *cobra.Command {
 				return err
 			}
 			if len(members) == 0 {
-				fmt.Fprintln(d.Out, "No members.")
+				if _, err := fmt.Fprintln(d.Out, "No members."); err != nil {
+					return err
+				}
 				return nil
 			}
 			for _, member := range members {
-				fmt.Fprintf(d.Out, "%s\t%s\t%s\n", member.UserEmail, member.UserID, member.Role)
+				if _, err := fmt.Fprintf(d.Out, "%s\t%s\t%s\n", member.UserEmail, member.UserID, member.Role); err != nil {
+					return err
+				}
 			}
 			return nil
 		},
@@ -154,7 +162,9 @@ func newTeamsAddCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(d.Out, "member %s (%s)\n", member.UserID, member.Role)
+			if _, err := fmt.Fprintf(d.Out, "member %s (%s)\n", member.UserID, member.Role); err != nil {
+				return err
+			}
 			return nil
 		},
 	}
@@ -181,7 +191,9 @@ func newTeamsRemoveCmd(d Deps) *cobra.Command {
 			if err := cl.RemoveTeamMember(id, user); err != nil {
 				return err
 			}
-			fmt.Fprintln(d.Out, "member removed")
+			if _, err := fmt.Fprintln(d.Out, "member removed"); err != nil {
+				return err
+			}
 			return nil
 		},
 	}

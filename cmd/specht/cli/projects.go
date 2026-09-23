@@ -67,7 +67,9 @@ func newProjectsGetCmd(d Deps) *cobra.Command {
 			if p.Description != nil {
 				desc = *p.Description
 			}
-			fmt.Fprintf(d.Out, "Slug:       %s\nName:       %s\nDescription: %s\n", p.Slug, p.Name, desc)
+			if _, err := fmt.Fprintf(d.Out, "Slug:       %s\nName:       %s\nDescription: %s\n", p.Slug, p.Name, desc); err != nil {
+				return err
+			}
 			return nil
 		},
 	}

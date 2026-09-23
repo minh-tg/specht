@@ -540,7 +540,9 @@ func TestQueryBatch_ShortResultsMalformedNotRetryable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		hits.Add(1)
 		// 2 queries in, but only 1 result out.
-		w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-short-1"}}))
+		if _, err := w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-short-1"}})); err != nil {
+			t.Errorf("write short-results response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -580,7 +582,9 @@ func TestQueryBatch_TransportFailureIsRetryable(t *testing.T) {
 func TestQueryBatch_VulnGET429IsRetryable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-get-429"}}))
+			if _, err := w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-get-429"}})); err != nil {
+				t.Errorf("write full-record 429 test response: %v", err)
+			}
 			return
 		}
 		w.WriteHeader(http.StatusTooManyRequests)
@@ -607,7 +611,9 @@ func TestQueryBatch_VulnGET429IsRetryable(t *testing.T) {
 func TestQueryBatch_VulnGET500IsRetryable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-get-500"}}))
+			if _, err := w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-get-500"}})); err != nil {
+				t.Errorf("write full-record 500 test response: %v", err)
+			}
 			return
 		}
 		w.WriteHeader(http.StatusInternalServerError)
@@ -627,7 +633,9 @@ func TestQueryBatch_VulnGET500IsRetryable(t *testing.T) {
 func TestQueryBatch_VulnGET400NotRetryable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-get-400"}}))
+			if _, err := w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-get-400"}})); err != nil {
+				t.Errorf("write full-record 400 test response: %v", err)
+			}
 			return
 		}
 		w.WriteHeader(http.StatusBadRequest)
@@ -650,10 +658,14 @@ func TestQueryBatch_VulnGET400NotRetryable(t *testing.T) {
 func TestQueryBatch_VulnGETMalformedNotRetryable(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-get-malformed"}}))
+			if _, err := w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-get-malformed"}})); err != nil {
+				t.Errorf("write malformed full-record test response: %v", err)
+			}
 			return
 		}
-		w.Write([]byte(`{"id": `)) // truncated full record
+		if _, err := w.Write([]byte(`{"id": `)); err != nil {
+			t.Errorf("write truncated full-record response: %v", err)
+		}
 	}))
 	defer srv.Close()
 

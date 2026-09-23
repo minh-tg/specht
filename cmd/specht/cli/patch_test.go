@@ -32,7 +32,9 @@ const patchPreviewBody = `{"supported":true,"proposal":{"id":"p1","finding_id":"
 func TestPatchPreviewHuman(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/findings/f1/patch-preview", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(patchPreviewBody))
+		if _, err := w.Write([]byte(patchPreviewBody)); err != nil {
+			t.Errorf("write patch preview response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runPatchCmd(t, d, "patch", "preview", "--finding", "f1"); err != nil {
@@ -53,7 +55,9 @@ func TestPatchPreviewHuman(t *testing.T) {
 func TestPatchPreviewUnsupported(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/findings/f1/patch-preview", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"supported":false,"reason":"no deterministic transformation"}`))
+		if _, err := w.Write([]byte(`{"supported":false,"reason":"no deterministic transformation"}`)); err != nil {
+			t.Errorf("write unsupported patch response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runPatchCmd(t, d, "patch", "preview", "--finding", "f1"); err != nil {
@@ -67,7 +71,9 @@ func TestPatchPreviewUnsupported(t *testing.T) {
 func TestPatchPreviewJSON(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/findings/f1/patch-preview", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(patchPreviewBody))
+		if _, err := w.Write([]byte(patchPreviewBody)); err != nil {
+			t.Errorf("write patch preview response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runPatchCmd(t, d, "patch", "preview", "--finding", "f1", "--format", "json"); err != nil {

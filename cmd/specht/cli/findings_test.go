@@ -97,7 +97,9 @@ func TestFindingsVerify(t *testing.T) {
 func TestFindingsReachabilityList(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/findings/f1/reachability", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[{"id":"a1","finding_id":"f1","state":"reachable","evidence":"e","assessed_by":"u","created_at":"t","updated_at":"t"}]`))
+		if _, err := w.Write([]byte(`[{"id":"a1","finding_id":"f1","state":"reachable","evidence":"e","assessed_by":"u","created_at":"t","updated_at":"t"}]`)); err != nil {
+			t.Errorf("write reachability response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runCmd(t, d, "findings", "reachability", "--finding", "f1"); err != nil {

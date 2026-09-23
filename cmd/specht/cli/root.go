@@ -157,7 +157,8 @@ func ExecuteContext(ctx context.Context, args []string, d Deps) int {
 		if errors.Is(err, ErrThresholdBreached) {
 			return exitBreach
 		}
-		fmt.Fprintf(d.ErrW, "error: %v\n", err)
+		// Reporting is best-effort here: ErrW is already the failing output path.
+		_, _ = fmt.Fprintf(d.ErrW, "error: %v\n", err)
 		return exitFailure
 	}
 	return exitPass

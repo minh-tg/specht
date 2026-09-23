@@ -73,7 +73,9 @@ func newProjectTeamsLinkCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(d.Out, "linked %s as %s\n", link.TeamName, link.Role)
+			if _, err := fmt.Fprintf(d.Out, "linked %s as %s\n", link.TeamName, link.Role); err != nil {
+				return err
+			}
 			return nil
 		},
 	}

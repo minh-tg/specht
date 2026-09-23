@@ -315,9 +315,11 @@ func TestWaivers(t *testing.T) {
 func TestErrorHandling(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]any{
+		if err := json.NewEncoder(w).Encode(map[string]any{
 			"error": map[string]string{"code": "invalid_token", "message": "bad key"},
-		})
+		}); err != nil {
+			t.Errorf("encode error response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -381,7 +383,9 @@ func TestWithHTTPClient(t *testing.T) {
 
 func TestMe(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(UserProfile{Email: "a@b.com"})
+		if err := json.NewEncoder(w).Encode(UserProfile{Email: "a@b.com"}); err != nil {
+			t.Errorf("encode profile response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -397,10 +401,12 @@ func TestListScanners(t *testing.T) {
 			http.NotFound(w, r)
 			return
 		}
-		json.NewEncoder(w).Encode([]ScannerDescriptor{
+		if err := json.NewEncoder(w).Encode([]ScannerDescriptor{
 			{Name: "trivy", Version: "2", FindingKinds: []string{"sca", "secret", "iac"}, ProvidesPackages: true},
 			{Name: "semgrep", Version: "2.1", FindingKinds: []string{"sast"}},
-		})
+		}); err != nil {
+			t.Errorf("encode scanners response: %v", err)
+		}
 	}))
 	defer srv.Close()
 

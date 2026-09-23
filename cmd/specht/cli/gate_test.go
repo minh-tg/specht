@@ -27,7 +27,9 @@ func runGateCmd(t *testing.T, d Deps, args ...string) error {
 func TestGateCheckPass(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/gate", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"threshold_breached":false,"blocking_count":0}`))
+		if _, err := w.Write([]byte(`{"threshold_breached":false,"blocking_count":0}`)); err != nil {
+			t.Errorf("write gate response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runGateCmd(t, d, "gate", "check", "--project", "demo"); err != nil {
@@ -41,9 +43,11 @@ func TestGateCheckPass(t *testing.T) {
 func TestGateCheckBreach(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/gate", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"threshold_breached":true,"blocking_count":2,` +
+		if _, err := w.Write([]byte(`{"threshold_breached":true,"blocking_count":2,` +
 			`"blocked_by":["id-1","id-2"],` +
-			`"blocked_by_reachability":{"id-1":"reachable"},"waived_count":1}`))
+			`"blocked_by_reachability":{"id-1":"reachable"},"waived_count":1}`)); err != nil {
+			t.Errorf("write breached gate response: %v", err)
+		}
 	})
 	d, out, errW := testDeps(t, mux)
 	err := runGateCmd(t, d, "gate", "check", "--project", "demo")
@@ -65,7 +69,9 @@ func TestGateCheckBreach(t *testing.T) {
 func TestGateCheckJSON(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/gate", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"threshold_breached":false,"blocking_count":0}`))
+		if _, err := w.Write([]byte(`{"threshold_breached":false,"blocking_count":0}`)); err != nil {
+			t.Errorf("write gate response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runGateCmd(t, d, "gate", "check", "--project", "demo", "--format", "json"); err != nil {
@@ -83,7 +89,9 @@ func TestGateCheckIntroducedOnly(t *testing.T) {
 		if q.Get("introduced_only") != "1" || q.Get("report_id") != "r1" {
 			t.Errorf("query = %q, want introduced_only=1&report_id=r1", r.URL.RawQuery)
 		}
-		w.Write([]byte(`{"threshold_breached":false,"blocking_count":0}`))
+		if _, err := w.Write([]byte(`{"threshold_breached":false,"blocking_count":0}`)); err != nil {
+			t.Errorf("write gate response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	args := []string{"gate", "check", "--project", "demo", "--introduced-only", "--report-id", "r1"}

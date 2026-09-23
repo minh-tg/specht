@@ -28,7 +28,9 @@ func TestProjectTeamsList(t *testing.T) {
 		if r.Method != http.MethodGet {
 			t.Errorf("method = %s, want GET", r.Method)
 		}
-		w.Write([]byte(`[{"project_id":"p1","team_id":"t1","team_name":"Backend","role":"viewer"}]`))
+		if _, err := w.Write([]byte(`[{"project_id":"p1","team_id":"t1","team_name":"Backend","role":"viewer"}]`)); err != nil {
+			t.Errorf("write project teams response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runProjectTeamsCmd(t, d, "project-teams", "list", "--project", "demo"); err != nil {
@@ -42,7 +44,9 @@ func TestProjectTeamsList(t *testing.T) {
 func TestProjectTeamsListEmpty(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/teams", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`[]`))
+		if _, err := w.Write([]byte(`[]`)); err != nil {
+			t.Errorf("write empty project teams response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runProjectTeamsCmd(t, d, "project-teams", "list", "--project", "demo"); err != nil {
@@ -68,7 +72,9 @@ func TestProjectTeamsLink(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("method = %s, want POST", r.Method)
 		}
-		w.Write([]byte(`{"project_id":"p1","team_id":"t1","team_name":"Backend","role":"editor"}`))
+		if _, err := w.Write([]byte(`{"project_id":"p1","team_id":"t1","team_name":"Backend","role":"editor"}`)); err != nil {
+			t.Errorf("write linked project team response: %v", err)
+		}
 	})
 	d, out, _ := testDeps(t, mux)
 	if err := runProjectTeamsCmd(t, d, "project-teams", "link", "--project", "demo", "--team", "t1", "--role", "editor"); err != nil {
