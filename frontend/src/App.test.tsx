@@ -1,6 +1,7 @@
 import { AuthContext, type AuthContextValue } from "@/auth/context";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { vi } from "vitest";
 import { AppRoutes } from "./App";
@@ -15,30 +16,56 @@ const auth: AuthContextValue = {
 };
 
 beforeEach(() => {
+  const finding = {
+    id: "f1",
+    project_id: "p1",
+    finding_kind: "sca",
+    fingerprint: "fp1",
+    current_title: "Test Vulnerability",
+    current_severity: "high",
+    current_score: null,
+    state: "open",
+    triage_status: "untriaged",
+    analysis_state: "unanalyzed",
+    gate_effect: "block",
+    first_seen_at: "2025-01-01T00:00:00Z",
+    last_seen_at: "2025-01-01T00:00:00Z",
+    created_at: "2025-01-01T00:00:00Z",
+    updated_at: "2025-01-01T00:00:00Z",
+  };
   globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
-    const url = String(input);
-    const data = url.endsWith("/reachability")
-      ? []
-      : {
-        id: "f1",
-        project_id: "p1",
-        finding_kind: "sca",
-        fingerprint: "fp1",
-        current_title: "Test Vulnerability",
-        current_severity: "high",
-        current_score: null,
-        state: "open",
-        triage_status: "untriaged",
-        analysis_state: "unanalyzed",
-        gate_effect: "block",
-        first_seen_at: "2025-01-01T00:00:00Z",
-        last_seen_at: "2025-01-01T00:00:00Z",
-        created_at: "2025-01-01T00:00:00Z",
-        updated_at: "2025-01-01T00:00:00Z",
-      };
+    const path = String(input).split("?")[0];
+    let data: unknown = {};
+    if (path.endsWith("/reachability") || path.endsWith("/projects") || path.endsWith("/reports")) {
+      data = [];
+    } else if (path.endsWith("/findings")) {
+      data = [];
+    } else if (path.includes("/findings/")) {
+      data = finding;
+    }
     return Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response);
   });
 });
+
+function renderRoutes(initialPath: string, token: string | null = auth.token) {
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const value: AuthContextValue = {
+    ...auth,
+    token,
+    userId: token ? auth.userId : null,
+    email: token ? auth.email : null,
+  };
+
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <AuthContext.Provider value={value}>
+        <MemoryRouter initialEntries={[initialPath]}>
+          <AppRoutes />
+        </MemoryRouter>
+      </AuthContext.Provider>
+    </QueryClientProvider>,
+  );
+}
 
 it("renders the finding detail route", async () => {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -55,4 +82,30 @@ it("renders the finding detail route", async () => {
 
   expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
   expect(screen.getByText("Reachability")).toBeInTheDocument();
+});
+
+it("sends anonymous visitors from a protected project page to sign in", async () => {
+  renderRoutes("/test-project/findings", null);
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+  expect(screen.getByLabelText("Email")).toBeInTheDocument();
+});
+
+it("keeps project navigation in sync with the selected tab", async () => {
+  renderRoutes("/test-project/findings");
+
+  expect(await screen.findByText("No findings found")).toBeInTheDocument();
+  await userEvent.setup().click(screen.getByRole("link", { name: "Reports" }));
+  expect(await screen.findByText("No reports yet")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Findings" })).toHaveAttribute(
+    "href",
+    "/test-project/findings",
+  );
+});
+
+it("returns unknown routes to the projects page", async () => {
+  renderRoutes("/unknown-route");
+
+  expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
+  expect(await screen.findByText("No projects yet")).toBeInTheDocument();
 });
