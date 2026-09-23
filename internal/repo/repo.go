@@ -206,7 +206,9 @@ type FindingRepo interface {
 	PersistWatcherFinding(ctx context.Context, arg PersistWatcherFindingParams) (sqlc.Finding, bool, error)
 	PersistWatcherSkipEvent(ctx context.Context, arg sqlc.CreateFindingEventParams) error
 	CreateOccurrence(ctx context.Context, arg CreateOccurrenceParams) (sqlc.FindingOccurrence, error)
+	BulkInsertOccurrences(ctx context.Context, occurrences []byte) error
 	UpsertDimension(ctx context.Context, arg UpsertDimensionParams) (sqlc.FindingDimension, error)
+	BulkUpsertDimensions(ctx context.Context, arg sqlc.BulkUpsertDimensionsParams) error
 	ListDimensions(ctx context.Context, findingID pgtype.UUID) ([]sqlc.ListFindingDimensionsRow, error)
 	ListByProject(ctx context.Context, projectID pgtype.UUID, params port.ListFindingsParams) ([]sqlc.Finding, error)
 	GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Finding, error)

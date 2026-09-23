@@ -141,6 +141,130 @@ func TestRealDataDoubleIngest_Idempotent(t *testing.T) {
 	}
 }
 
+func TestIngestBatchPreservesDuplicateAndNullableOccurrenceData(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	stores := NewPortStores(pool)
+	reg := scanner.NewRegistry()
+	for _, s := range parser.Builtins() {
+		require.NoError(t, reg.Register(s))
+	}
+	uc := usecase.New(usecase.Deps{Stores: stores, Registry: reg})
+
+	creator, err := stores.Users.Create(ctx, "batch@example.com", nil, nil)
+	require.NoError(t, err)
+	_, err = uc.CreateProject(globalAdminCtx(creator.ID), "Batch App", "batch-app", "validation", creator.ID)
+	require.NoError(t, err)
+
+	raw := []byte(`{
+		"SchemaVersion": 2,
+		"ArtifactName": "batch-fixture",
+		"ArtifactType": "filesystem",
+		"Results": [{
+			"Target": "package-lock.json",
+			"Class": "lang-pkgs",
+			"Type": "npm",
+			"Vulnerabilities": [
+				{
+					"VulnerabilityID": "CVE-2026-9001",
+					"PkgName": "demo-package",
+					"PkgIdentifier": {"PURL": "pkg:npm/demo-package@1.0.0"},
+					"InstalledVersion": "1.0.0",
+					"FixedVersion": "1.0.1",
+					"Severity": "MEDIUM",
+					"Title": "first title",
+					"CVSS": {"test": {"V3Score": 5.59}}
+				},
+				{
+					"VulnerabilityID": "CVE-2026-9001",
+					"PkgName": "demo-package",
+					"PkgIdentifier": {"PURL": "pkg:npm/demo-package@1.0.0"},
+					"InstalledVersion": "1.0.0",
+					"FixedVersion": "1.0.2",
+					"Severity": "CRITICAL",
+					"Title": "second title",
+					"CVSS": {"test": {"V3Score": 9.99}}
+				},
+				{
+					"VulnerabilityID": "CVE-2026-9002",
+					"PkgName": "unscored-package",
+					"PkgIdentifier": {"PURL": "pkg:npm/unscored-package@1.0.0"},
+					"InstalledVersion": "1.0.0",
+					"Severity": "LOW",
+					"Title": "no score"
+				}
+			]
+		}]
+	}`)
+	out, err := uc.IngestReport(ctx, usecase.IngestReportInput{
+		ProjectSlug: "batch-app", Scanner: "trivy", RawData: raw,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 3, out.TotalFindings, "all normalized report entries remain reflected in the count")
+
+	project, err := stores.Projects.GetBySlug(ctx, "batch-app")
+	require.NoError(t, err)
+	findings, err := stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{Limit: 100})
+	require.NoError(t, err)
+	require.Len(t, findings, 2, "identical fingerprints still resolve to one finding")
+	assert.Equal(t, "second title", findings[0].CurrentTitle, "finding upserts retain input order")
+	assert.Equal(t, "critical", findings[0].CurrentSeverity)
+
+	findingID, err := parseID(findings[0].ID)
+	require.NoError(t, err)
+	reportID, err := parseID(out.ReportID)
+	require.NoError(t, err)
+	var occurrenceTitle string
+	var descriptionIsNull bool
+	var locationSummary string
+	var occurrenceScore string
+	var toolVersionIsNull, parserVersionIsNull, subjectSummaryIsNull, remediationIsNull bool
+	err = pool.QueryRow(ctx, `
+		SELECT title, description IS NULL, location_summary, COALESCE(score::text, 'NULL'),
+		       tool_version IS NULL, parser_version IS NULL, subject_summary IS NULL, remediation IS NULL
+		FROM finding_occurrences
+		WHERE finding_id = $1 AND report_id = $2
+	`, findingID, reportID).Scan(
+		&occurrenceTitle, &descriptionIsNull, &locationSummary, &occurrenceScore,
+		&toolVersionIsNull, &parserVersionIsNull, &subjectSummaryIsNull, &remediationIsNull,
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "first title", occurrenceTitle, "the first occurrence remains canonical on a report conflict")
+	assert.True(t, descriptionIsNull, "JSON nullability must survive bulk persistence")
+	assert.Equal(t, "package-lock.json", locationSummary)
+	assert.Equal(t, "5.5", occurrenceScore, "bulk persistence must preserve the existing one-decimal truncation")
+	assert.True(t, toolVersionIsNull)
+	assert.True(t, parserVersionIsNull)
+	assert.True(t, subjectSummaryIsNull)
+	assert.True(t, remediationIsNull)
+
+	var noScoreIsNull bool
+	err = pool.QueryRow(ctx, `
+		SELECT score IS NULL
+		FROM finding_occurrences
+		WHERE report_id = $1 AND title = 'no score'
+	`, reportID).Scan(&noScoreIsNull)
+	require.NoError(t, err)
+	assert.True(t, noScoreIsNull, "zero scores remain SQL NULL")
+
+	dimensions, err := stores.Findings.ListDimensions(ctx, findings[0].ID)
+	require.NoError(t, err)
+	fixedVersions := map[string]bool{}
+	for _, dimension := range dimensions {
+		if dimension.Key == "fixed_version" {
+			fixedVersions[dimension.Value] = true
+		}
+	}
+	assert.True(t, fixedVersions["1.0.1"])
+	assert.True(t, fixedVersions["1.0.2"])
+
+	introduced, err := stores.Findings.ListIntroducedByReport(ctx, project.ID, out.ReportID)
+	require.NoError(t, err)
+	assert.Len(t, introduced, 2, "duplicate finding IDs are deduplicated in report attribution")
+}
+
 func TestRealDataIdenticalIngest_Duplicate(t *testing.T) {
 	pool, cleanup := setupIngestPool(t)
 	defer cleanup()

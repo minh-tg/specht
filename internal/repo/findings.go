@@ -96,6 +96,13 @@ func (r *pgFindingRepo) CreateOccurrence(ctx context.Context, arg CreateOccurren
 	})
 }
 
+func (r *pgFindingRepo) BulkInsertOccurrences(ctx context.Context, occurrences []byte) error {
+	if len(occurrences) == 0 {
+		return nil
+	}
+	return r.q.BulkInsertOccurrences(ctx, occurrences)
+}
+
 // UpsertDimensionParams is the input to upserting a finding dimension.
 type UpsertDimensionParams struct {
 	FindingID pgtype.UUID
@@ -111,6 +118,13 @@ func (r *pgFindingRepo) UpsertDimension(ctx context.Context, arg UpsertDimension
 		DimValue:  arg.Value,
 		Source:    arg.Source,
 	})
+}
+
+func (r *pgFindingRepo) BulkUpsertDimensions(ctx context.Context, arg sqlc.BulkUpsertDimensionsParams) error {
+	if len(arg.FindingIds) == 0 {
+		return nil
+	}
+	return r.q.BulkUpsertDimensions(ctx, arg)
 }
 
 func (r *pgFindingRepo) ListDimensions(ctx context.Context, findingID pgtype.UUID) ([]sqlc.ListFindingDimensionsRow, error) {

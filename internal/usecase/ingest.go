@@ -455,6 +455,9 @@ type ingestFindingsState struct {
 
 	seenIntroduced    map[string]bool
 	introducedEntries []port.IntroducedFindingEntry
+	batchStore        port.FindingIngestBatchStore
+	occurrences       []port.OccurrenceInput
+	dimensions        []port.DimensionInput
 	outcome           ingestOutcome
 }
 
@@ -466,6 +469,7 @@ func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Projec
 	if len(nr.Findings) == 0 {
 		return ingestOutcome{}, nil
 	}
+	batchStore, _ := u.deps.Stores.Findings.(port.FindingIngestBatchStore)
 	st := &ingestFindingsState{
 		project:        project,
 		input:          input,
@@ -475,6 +479,7 @@ func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Projec
 		known:          make(map[string]port.Finding),
 		baselineSeen:   make(map[string]bool),
 		seenIntroduced: make(map[string]bool),
+		batchStore:     batchStore,
 	}
 	if err := u.prefetchKnownFindings(ctx, st, nr); err != nil {
 		return ingestOutcome{}, err
@@ -487,6 +492,9 @@ func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Projec
 		if err := u.ingestOneFinding(ctx, st, f); err != nil {
 			return ingestOutcome{}, err
 		}
+	}
+	if err := u.flushIngestBatches(ctx, st); err != nil {
+		return ingestOutcome{}, err
 	}
 
 	// Phase 4: Materialize introduced findings in report_introduced_findings.
@@ -582,8 +590,12 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 	}
 	u.dispatchCreatedEvent(ctx, st, upserted, f, newRank, !exists)
 
-	if err := u.createFindingOccurrence(ctx, st, upserted, f); err != nil {
-		return err
+	if st.batchStore == nil {
+		if err := u.createFindingOccurrence(ctx, st, upserted, f); err != nil {
+			return err
+		}
+	} else {
+		st.occurrences = append(st.occurrences, findingOccurrenceInput(st, upserted, f))
 	}
 	if err := u.upsertFindingDimensions(ctx, st, upserted, f); err != nil {
 		return err
@@ -689,13 +701,19 @@ func (u *Usecases) trackerDispatch(ctx context.Context, st *ingestFindingsState,
 	})
 }
 
-// createFindingOccurrence writes the scan occurrence for this finding.
-func (u *Usecases) createFindingOccurrence(ctx context.Context, st *ingestFindingsState, upserted port.Finding, f domain.NormalizedFinding) error {
+// findingOccurrenceInput builds the scan occurrence for this finding.
+func findingOccurrenceInput(st *ingestFindingsState, upserted port.Finding, f domain.NormalizedFinding) port.OccurrenceInput {
 	occ := toOccurrenceParams(f, st.input.Scanner)
 	occ.FindingID = upserted.ID
 	occ.ReportID = &st.report.ID
 	occ.ToolVersion = textPtr(st.input.ScannerVersion)
 	occ.ParserVersion = textPtr(st.input.ParserVersion)
+	return occ
+}
+
+// createFindingOccurrence writes one scan occurrence for stores without batch support.
+func (u *Usecases) createFindingOccurrence(ctx context.Context, st *ingestFindingsState, upserted port.Finding, f domain.NormalizedFinding) error {
+	occ := findingOccurrenceInput(st, upserted, f)
 	if _, err := u.deps.Stores.Findings.CreateOccurrence(ctx, occ); err != nil {
 		slog.Error("create occurrence failed", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "error", err)
 		return fmt.Errorf("scanner %s: create occurrence for %q: %w", st.input.Scanner, f.Fingerprint, err)
@@ -712,12 +730,17 @@ func (u *Usecases) upsertFindingDimensions(ctx context.Context, st *ingestFindin
 			slog.Warn("drop non-canonical dimension", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "key", d.Key)
 			continue
 		}
-		if err := u.deps.Stores.Findings.UpsertDimension(ctx, port.DimensionInput{
+		dimension := port.DimensionInput{
 			FindingID: upserted.ID,
 			Key:       d.Key,
 			Value:     d.Value,
 			Source:    source,
-		}); err != nil {
+		}
+		if st.batchStore != nil && d.Key != domain.DimFixedVersion {
+			st.dimensions = append(st.dimensions, dimension)
+			continue
+		}
+		if err := u.deps.Stores.Findings.UpsertDimension(ctx, dimension); err != nil {
 			slog.Error("upsert dimension failed", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "error", err)
 			return fmt.Errorf("scanner %s: upsert dimension for %q: %w", st.input.Scanner, f.Fingerprint, err)
 		}
@@ -725,8 +748,27 @@ func (u *Usecases) upsertFindingDimensions(ctx context.Context, st *ingestFindin
 	return nil
 }
 
-// recordIntroducedFindings materializes introduced findings in
-// report_introduced_findings (Phase 4).
+// flushIngestBatches persists staged occurrences and non-fixed dimensions for batch-capable stores.
+func (u *Usecases) flushIngestBatches(ctx context.Context, st *ingestFindingsState) error {
+	if st.batchStore == nil {
+		return nil
+	}
+	if len(st.occurrences) > 0 {
+		if err := st.batchStore.BulkCreateOccurrences(ctx, st.occurrences); err != nil {
+			slog.Error("bulk create occurrences failed", "scanner", st.input.Scanner, "error", err)
+			return fmt.Errorf("scanner %s: bulk create occurrences: %w", st.input.Scanner, err)
+		}
+	}
+	if len(st.dimensions) > 0 {
+		if err := st.batchStore.BulkUpsertDimensions(ctx, st.input.Scanner, st.dimensions); err != nil {
+			slog.Error("bulk upsert dimensions failed", "scanner", st.input.Scanner, "error", err)
+			return fmt.Errorf("scanner %s: bulk upsert dimensions: %w", st.input.Scanner, err)
+		}
+	}
+	return nil
+}
+
+// recordIntroducedFindings materializes introduced findings in report_introduced_findings.
 func (u *Usecases) recordIntroducedFindings(ctx context.Context, st *ingestFindingsState) error {
 	if len(st.introducedEntries) == 0 {
 		return nil

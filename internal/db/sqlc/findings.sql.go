@@ -52,63 +52,33 @@ INSERT INTO finding_occurrences (
     display, metadata, observed_at
 )
 SELECT
-    f.val::uuid, $1::uuid, t.val::text, d.val::text,
-    s.val::text, sr.val::smallint, sc.val::numeric,
-    $2::text, $3::text, $4::text,
-    loc.val::text, sub.val::text, rem.val::text,
-    disp.val::jsonb, meta.val::jsonb, $5::timestamptz
-FROM unnest($6::uuid[]) WITH ORDINALITY AS f(val, ord)
-JOIN unnest($7::text[]) WITH ORDINALITY AS t(val, ord) ON f.ord = t.ord
-JOIN unnest($8::text[]) WITH ORDINALITY AS d(val, ord) ON f.ord = d.ord
-JOIN unnest($9::text[]) WITH ORDINALITY AS s(val, ord) ON f.ord = s.ord
-JOIN unnest($10::smallint[]) WITH ORDINALITY AS sr(val, ord) ON f.ord = sr.ord
-JOIN unnest($11::numeric[]) WITH ORDINALITY AS sc(val, ord) ON f.ord = sc.ord
-JOIN unnest($12::text[]) WITH ORDINALITY AS loc(val, ord) ON f.ord = loc.ord
-JOIN unnest($13::text[]) WITH ORDINALITY AS sub(val, ord) ON f.ord = sub.ord
-JOIN unnest($14::text[]) WITH ORDINALITY AS rem(val, ord) ON f.ord = rem.ord
-JOIN unnest($15::jsonb[]) WITH ORDINALITY AS disp(val, ord) ON f.ord = disp.ord
-JOIN unnest($16::jsonb[]) WITH ORDINALITY AS meta(val, ord) ON f.ord = meta.ord
+    occurrence.finding_id, occurrence.report_id, occurrence.title, occurrence.description,
+    occurrence.severity, occurrence.severity_rank, occurrence.score,
+    occurrence.tool_name, occurrence.tool_version, occurrence.parser_version,
+    occurrence.location_summary, occurrence.subject_summary, occurrence.remediation,
+    occurrence.display, occurrence.metadata, NOW()
+FROM jsonb_to_recordset($1::jsonb) AS occurrence(
+    finding_id uuid,
+    report_id uuid,
+    title text,
+    description text,
+    severity text,
+    severity_rank smallint,
+    score numeric,
+    tool_name text,
+    tool_version text,
+    parser_version text,
+    location_summary text,
+    subject_summary text,
+    remediation text,
+    display jsonb,
+    metadata jsonb
+)
 ON CONFLICT (finding_id, report_id) DO UPDATE SET observed_at = NOW()
 `
 
-type BulkInsertOccurrencesParams struct {
-	Column1  pgtype.UUID        `json:"column_1"`
-	Column2  string             `json:"column_2"`
-	Column3  string             `json:"column_3"`
-	Column4  string             `json:"column_4"`
-	Column5  pgtype.Timestamptz `json:"column_5"`
-	Column6  []pgtype.UUID      `json:"column_6"`
-	Column7  []string           `json:"column_7"`
-	Column8  []string           `json:"column_8"`
-	Column9  []string           `json:"column_9"`
-	Column10 []int16            `json:"column_10"`
-	Column11 []pgtype.Numeric   `json:"column_11"`
-	Column12 []string           `json:"column_12"`
-	Column13 []string           `json:"column_13"`
-	Column14 []string           `json:"column_14"`
-	Column15 [][]byte           `json:"column_15"`
-	Column16 [][]byte           `json:"column_16"`
-}
-
-func (q *Queries) BulkInsertOccurrences(ctx context.Context, arg BulkInsertOccurrencesParams) error {
-	_, err := q.db.Exec(ctx, bulkInsertOccurrences,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
-		arg.Column5,
-		arg.Column6,
-		arg.Column7,
-		arg.Column8,
-		arg.Column9,
-		arg.Column10,
-		arg.Column11,
-		arg.Column12,
-		arg.Column13,
-		arg.Column14,
-		arg.Column15,
-		arg.Column16,
-	)
+func (q *Queries) BulkInsertOccurrences(ctx context.Context, occurrences []byte) error {
+	_, err := q.db.Exec(ctx, bulkInsertOccurrences, occurrences)
 	return err
 }
 
@@ -200,31 +170,34 @@ func (q *Queries) BulkUpdateFindingAnalysis(ctx context.Context, arg BulkUpdateF
 }
 
 const bulkUpsertDimensions = `-- name: BulkUpsertDimensions :exec
+WITH input_rows AS (
+    SELECT DISTINCT f.val::uuid AS finding_id, k.val::text AS dim_key, v.val::text AS dim_value
+    FROM unnest($2::uuid[]) WITH ORDINALITY AS f(val, ord)
+    JOIN unnest($3::text[]) WITH ORDINALITY AS k(val, ord) ON f.ord = k.ord
+    JOIN unnest($4::text[]) WITH ORDINALITY AS v(val, ord) ON f.ord = v.ord
+)
 INSERT INTO finding_dimensions (
     finding_id, dim_key, dim_value, source
 )
-SELECT
-    f.val::uuid, k.val::text, v.val::text, $1::text
-FROM unnest($2::uuid[]) WITH ORDINALITY AS f(val, ord)
-JOIN unnest($3::text[]) WITH ORDINALITY AS k(val, ord) ON f.ord = k.ord
-JOIN unnest($4::text[]) WITH ORDINALITY AS v(val, ord) ON f.ord = v.ord
+SELECT finding_id, dim_key, dim_value, $1::text
+FROM input_rows
 ON CONFLICT (finding_id, dim_key, dim_value) DO UPDATE SET
     source = EXCLUDED.source
 `
 
 type BulkUpsertDimensionsParams struct {
-	Column1 string        `json:"column_1"`
-	Column2 []pgtype.UUID `json:"column_2"`
-	Column3 []string      `json:"column_3"`
-	Column4 []string      `json:"column_4"`
+	Source     string        `json:"source"`
+	FindingIds []pgtype.UUID `json:"finding_ids"`
+	DimKeys    []string      `json:"dim_keys"`
+	DimValues  []string      `json:"dim_values"`
 }
 
 func (q *Queries) BulkUpsertDimensions(ctx context.Context, arg BulkUpsertDimensionsParams) error {
 	_, err := q.db.Exec(ctx, bulkUpsertDimensions,
-		arg.Column1,
-		arg.Column2,
-		arg.Column3,
-		arg.Column4,
+		arg.Source,
+		arg.FindingIds,
+		arg.DimKeys,
+		arg.DimValues,
 	)
 	return err
 }

@@ -558,6 +558,14 @@ type FindingStore interface {
 	PersistWatcherSkipEvent(ctx context.Context, findingID string, event FindingEventInput) error
 }
 
+// FindingIngestBatchStore is an optional bulk-write capability for report
+// ingestion. Stores that implement it can persist independent occurrences and
+// dimensions in set-based queries without changing the FindingStore contract.
+type FindingIngestBatchStore interface {
+	BulkCreateOccurrences(ctx context.Context, occurrences []OccurrenceInput) error
+	BulkUpsertDimensions(ctx context.Context, source string, dimensions []DimensionInput) error
+}
+
 // IntroducedFindingEntry associates a finding with a report that introduced or regressed it.
 type IntroducedFindingEntry struct {
 	FindingID  string

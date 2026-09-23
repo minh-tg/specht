@@ -225,6 +225,8 @@ func (r *pgReportPort) DeleteReport(ctx context.Context, id, projectID string) e
 
 // ---------- Findings port over the existing repo methods ----------
 
+const findingIngestBatchSize = 500
+
 type pgFindingPort struct{ inner *pgFindingRepo }
 
 func newFindingPort(r *pgFindingRepo) *pgFindingPort { return &pgFindingPort{inner: r} }
@@ -499,6 +501,82 @@ func (r *pgFindingPort) CreateOccurrence(ctx context.Context, input port.Occurre
 	}, nil
 }
 
+func (r *pgFindingPort) BulkCreateOccurrences(ctx context.Context, occurrences []port.OccurrenceInput) error {
+	if len(occurrences) == 0 {
+		return nil
+	}
+
+	type occurrenceRecord struct {
+		FindingID       string          `json:"finding_id"`
+		ReportID        string          `json:"report_id"`
+		Title           string          `json:"title"`
+		Description     *string         `json:"description"`
+		Severity        string          `json:"severity"`
+		SeverityRank    int16           `json:"severity_rank"`
+		Score           *float64        `json:"score"`
+		ToolName        string          `json:"tool_name"`
+		ToolVersion     *string         `json:"tool_version"`
+		ParserVersion   *string         `json:"parser_version"`
+		LocationSummary *string         `json:"location_summary"`
+		SubjectSummary  *string         `json:"subject_summary"`
+		Remediation     *string         `json:"remediation"`
+		Display         json.RawMessage `json:"display"`
+		Metadata        json.RawMessage `json:"metadata"`
+	}
+
+	records := make([]occurrenceRecord, 0, len(occurrences))
+	seen := make(map[string]struct{}, len(occurrences))
+	for _, occurrence := range occurrences {
+		if occurrence.ReportID == nil || *occurrence.ReportID == "" {
+			return errors.New("bulk occurrence requires a report ID")
+		}
+		findingID, err := parseID(occurrence.FindingID)
+		if err != nil {
+			return err
+		}
+		reportID, err := parseID(*occurrence.ReportID)
+		if err != nil {
+			return err
+		}
+		findingIDString := toUUID(findingID)
+		reportIDString := toUUID(reportID)
+		key := findingIDString + "\x00" + reportIDString
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		records = append(records, occurrenceRecord{
+			FindingID:       findingIDString,
+			ReportID:        reportIDString,
+			Title:           occurrence.Title,
+			Description:     stringFromTextPtr(textPtrFromString(occurrence.Description)),
+			Severity:        occurrence.Severity,
+			SeverityRank:    occurrence.SeverityRank,
+			Score:           occurrenceScoreForJSON(occurrence.Score),
+			ToolName:        occurrence.ToolName,
+			ToolVersion:     stringFromTextPtr(textPtrFromString(occurrence.ToolVersion)),
+			ParserVersion:   stringFromTextPtr(textPtrFromString(occurrence.ParserVersion)),
+			LocationSummary: stringFromTextPtr(textPtrFromString(occurrence.LocationSummary)),
+			SubjectSummary:  stringFromTextPtr(textPtrFromString(occurrence.SubjectSummary)),
+			Remediation:     stringFromTextPtr(textPtrFromString(occurrence.Remediation)),
+			Display:         occurrence.Display,
+			Metadata:        occurrence.Metadata,
+		})
+	}
+
+	for start := 0; start < len(records); start += findingIngestBatchSize {
+		end := min(start+findingIngestBatchSize, len(records))
+		payload, err := json.Marshal(records[start:end])
+		if err != nil {
+			return err
+		}
+		if err := r.inner.BulkInsertOccurrences(ctx, payload); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *pgFindingPort) UpsertDimension(ctx context.Context, input port.DimensionInput) error {
 	fid, err := parseID(input.FindingID)
 	if err != nil {
@@ -511,6 +589,47 @@ func (r *pgFindingPort) UpsertDimension(ctx context.Context, input port.Dimensio
 		Source:    textPtrFromString(input.Source),
 	})
 	return err
+}
+
+func occurrenceScoreForJSON(score float64) *float64 {
+	numeric := floatToNumeric(score)
+	if !numeric.Valid {
+		return nil
+	}
+	value := float64(numeric.Int.Int64()) / 10
+	return &value
+}
+
+func (r *pgFindingPort) BulkUpsertDimensions(ctx context.Context, source string, dimensions []port.DimensionInput) error {
+	if len(dimensions) == 0 {
+		return nil
+	}
+
+	findingIDs := make([]pgtype.UUID, 0, len(dimensions))
+	keys := make([]string, 0, len(dimensions))
+	values := make([]string, 0, len(dimensions))
+	for _, dimension := range dimensions {
+		findingID, err := parseID(dimension.FindingID)
+		if err != nil {
+			return err
+		}
+		findingIDs = append(findingIDs, findingID)
+		keys = append(keys, dimension.Key)
+		values = append(values, dimension.Value)
+	}
+
+	for start := 0; start < len(findingIDs); start += findingIngestBatchSize {
+		end := min(start+findingIngestBatchSize, len(findingIDs))
+		if err := r.inner.BulkUpsertDimensions(ctx, sqlc.BulkUpsertDimensionsParams{
+			Source:     source,
+			FindingIds: findingIDs[start:end],
+			DimKeys:    keys[start:end],
+			DimValues:  values[start:end],
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r *pgFindingPort) ListDimensions(ctx context.Context, findingID string) ([]port.FindingDimension, error) {

@@ -372,33 +372,42 @@ INSERT INTO finding_occurrences (
     display, metadata, observed_at
 )
 SELECT
-    f.val::uuid, $1::uuid, t.val::text, d.val::text,
-    s.val::text, sr.val::smallint, sc.val::numeric,
-    $2::text, $3::text, $4::text,
-    loc.val::text, sub.val::text, rem.val::text,
-    disp.val::jsonb, meta.val::jsonb, $5::timestamptz
-FROM unnest($6::uuid[]) WITH ORDINALITY AS f(val, ord)
-JOIN unnest($7::text[]) WITH ORDINALITY AS t(val, ord) ON f.ord = t.ord
-JOIN unnest($8::text[]) WITH ORDINALITY AS d(val, ord) ON f.ord = d.ord
-JOIN unnest($9::text[]) WITH ORDINALITY AS s(val, ord) ON f.ord = s.ord
-JOIN unnest($10::smallint[]) WITH ORDINALITY AS sr(val, ord) ON f.ord = sr.ord
-JOIN unnest($11::numeric[]) WITH ORDINALITY AS sc(val, ord) ON f.ord = sc.ord
-JOIN unnest($12::text[]) WITH ORDINALITY AS loc(val, ord) ON f.ord = loc.ord
-JOIN unnest($13::text[]) WITH ORDINALITY AS sub(val, ord) ON f.ord = sub.ord
-JOIN unnest($14::text[]) WITH ORDINALITY AS rem(val, ord) ON f.ord = rem.ord
-JOIN unnest($15::jsonb[]) WITH ORDINALITY AS disp(val, ord) ON f.ord = disp.ord
-JOIN unnest($16::jsonb[]) WITH ORDINALITY AS meta(val, ord) ON f.ord = meta.ord
+    occurrence.finding_id, occurrence.report_id, occurrence.title, occurrence.description,
+    occurrence.severity, occurrence.severity_rank, occurrence.score,
+    occurrence.tool_name, occurrence.tool_version, occurrence.parser_version,
+    occurrence.location_summary, occurrence.subject_summary, occurrence.remediation,
+    occurrence.display, occurrence.metadata, NOW()
+FROM jsonb_to_recordset(sqlc.arg(occurrences)::jsonb) AS occurrence(
+    finding_id uuid,
+    report_id uuid,
+    title text,
+    description text,
+    severity text,
+    severity_rank smallint,
+    score numeric,
+    tool_name text,
+    tool_version text,
+    parser_version text,
+    location_summary text,
+    subject_summary text,
+    remediation text,
+    display jsonb,
+    metadata jsonb
+)
 ON CONFLICT (finding_id, report_id) DO UPDATE SET observed_at = NOW();
 
 -- name: BulkUpsertDimensions :exec
+WITH input_rows AS (
+    SELECT DISTINCT f.val::uuid AS finding_id, k.val::text AS dim_key, v.val::text AS dim_value
+    FROM unnest(sqlc.arg(finding_ids)::uuid[]) WITH ORDINALITY AS f(val, ord)
+    JOIN unnest(sqlc.arg(dim_keys)::text[]) WITH ORDINALITY AS k(val, ord) ON f.ord = k.ord
+    JOIN unnest(sqlc.arg(dim_values)::text[]) WITH ORDINALITY AS v(val, ord) ON f.ord = v.ord
+)
 INSERT INTO finding_dimensions (
     finding_id, dim_key, dim_value, source
 )
-SELECT
-    f.val::uuid, k.val::text, v.val::text, $1::text
-FROM unnest($2::uuid[]) WITH ORDINALITY AS f(val, ord)
-JOIN unnest($3::text[]) WITH ORDINALITY AS k(val, ord) ON f.ord = k.ord
-JOIN unnest($4::text[]) WITH ORDINALITY AS v(val, ord) ON f.ord = v.ord
+SELECT finding_id, dim_key, dim_value, sqlc.arg(source)::text
+FROM input_rows
 ON CONFLICT (finding_id, dim_key, dim_value) DO UPDATE SET
     source = EXCLUDED.source;
 
