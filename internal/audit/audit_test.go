@@ -62,7 +62,7 @@ func TestLoggerErrorPropagated(t *testing.T) {
 	})
 
 	var entry map[string]any
-	if err := json.Unmarshal([]byte(buf.String()), &entry); err != nil {
+	if err := json.Unmarshal(buf.Bytes(), &entry); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
 	if entry["outcome"] != "failure" {

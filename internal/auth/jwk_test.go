@@ -40,8 +40,7 @@ func TestParseECDSAPublicKeyAcceptsStandardCurves(t *testing.T) {
 				base64.RawURLEncoding.EncodeToString(privateKey.Y.Bytes()),
 			)
 			require.NoError(t, err)
-			assert.Equal(t, privateKey.X, publicKey.X)
-			assert.Equal(t, privateKey.Y, publicKey.Y)
+			assert.True(t, publicKey.Equal(&privateKey.PublicKey))
 
 			message := sha256.Sum256([]byte("public key conversion"))
 			r, s, err := ecdsa.Sign(rand.Reader, privateKey, message[:])

@@ -66,8 +66,8 @@ func mockOSV(t *testing.T, registry map[string]map[string]any, idFor func(name s
 	}
 	var posts, gets atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost:
+		switch r.Method {
+		case http.MethodPost:
 			posts.Add(1)
 			var body struct {
 				Queries []Query `json:"queries"`
@@ -84,7 +84,7 @@ func mockOSV(t *testing.T, registry map[string]map[string]any, idFor func(name s
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.Write(querybatchResponse(idLists...))
-		case r.Method == http.MethodGet:
+		case http.MethodGet:
 			gets.Add(1)
 			id := strings.TrimPrefix(r.URL.Path, "/v1/vulns/")
 			adv, ok := registry[id]
@@ -128,8 +128,8 @@ func TestQueryBatch_OKParsesAndCapturesRawBytes(t *testing.T) {
 
 	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch {
-		case r.Method == http.MethodPost:
+		switch r.Method {
+		case http.MethodPost:
 			if got := r.Header.Get("Content-Type"); got != "application/json" {
 				t.Errorf("content-type = %q, want application/json", got)
 			}
@@ -140,7 +140,7 @@ func TestQueryBatch_OKParsesAndCapturesRawBytes(t *testing.T) {
 			// full record — the full advisory is fetched via GET /v1/vulns/{id}.
 			w.Header().Set("Content-Type", "application/json")
 			w.Write(querybatchResponse([]map[string]any{{"id": "GHSA-test-1", "modified": "2024-01-01T00:00:00Z"}}))
-		case r.Method == http.MethodGet:
+		case http.MethodGet:
 			b, _ := json.Marshal(advisory)
 			w.Header().Set("Content-Type", "application/json")
 			w.Write(b)
@@ -680,8 +680,7 @@ func TestQueryBatch_CacheKeyIgnoresQueryOrder(t *testing.T) {
 }
 
 func TestResponseCache_BoundedOnPutEvictsOldest(t *testing.T) {
-	// Whole-branch review Minor finding: the cache must be bounded so batch
-	// keys that are never re-queried after expiry cannot grow without limit.
+	// Expired batch keys can become unreachable, so keep cache growth bounded.
 	// With maxEntries = 2, inserting a third entry evicts the oldest.
 	clock := time.Unix(1_000_000, 0)
 	c := &responseCache{

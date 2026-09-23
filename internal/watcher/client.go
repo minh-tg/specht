@@ -494,11 +494,9 @@ type responseCache struct {
 	entries    map[string]cacheEntry
 }
 
-// responseCacheMaxEntries caps the number of cached batch bodies. Without a
-// cap the cache would only ever evict on access-after-expiry, so batch keys a
-// changing inventory stops re-querying would linger for the process lifetime
-// (whole-branch review, Minor finding). 4096 raw batch bodies is generous for
-// the largest plausible query space while firmly bounding memory.
+// responseCacheMaxEntries caps retained query-batch responses. Keys that
+// disappear from a changing inventory would otherwise linger until reused;
+// 4096 entries bounds memory while accommodating the expected query set.
 const responseCacheMaxEntries = 4096
 
 type cacheEntry struct {

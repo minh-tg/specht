@@ -138,7 +138,7 @@ func TestStore_FailedRefreshKeepsLastKnown(t *testing.T) {
 
 func TestStore_PartialRefreshPreservesCachedSignals(t *testing.T) {
 	var failKEV bool
-	var epssVal float64 = 0.5
+	epssScore := 0.5
 	epssSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(t, w, `{"status":"OK","data":[{"cve":"CVE-2024-1111","epss":"`+`0.5`+`","percentile":"0.9","date":"2026-09-04"}]}`)
 	}))
@@ -164,7 +164,7 @@ func TestStore_PartialRefreshPreservesCachedSignals(t *testing.T) {
 	rec, _, ok := s.Lookup("CVE-2024-1111")
 	require.True(t, ok)
 	require.NotNil(t, rec.EPSS)
-	assert.InDelta(t, epssVal, *rec.EPSS, 1e-9)
+	assert.InDelta(t, epssScore, *rec.EPSS, 1e-9)
 	assert.True(t, rec.KEV)
 	assert.Equal(t, "2026-01-15", rec.KEVAdded)
 

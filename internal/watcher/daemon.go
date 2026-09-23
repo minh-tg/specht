@@ -429,7 +429,7 @@ func decidePair(ctx context.Context, deps PollDeps, projectID string, g invGroup
 		// canonical name (grype stores purl type "golang", OSV returns
 		// "Go"); passing the raw stored value here made matchAffected
 		// compare "golang" against the advisory's "go" and silently skip
-		// every match (whole-branch review, Important finding).
+		// every matching vulnerability.
 		Ecosystem: g.ecosystem,
 	}
 	decision, err := DecideFinding(ctx, input, gap)

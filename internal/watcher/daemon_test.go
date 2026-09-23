@@ -426,7 +426,7 @@ func TestPollOnce_RepollHitCountedUnchangedNotCreated(t *testing.T) {
 }
 
 func TestPollOnce_GrypeGolangStoredEcosystemMatchesOSVGoAdvisory(t *testing.T) {
-	// Regression for the whole-branch review's Important finding: grype
+	// Regression for Go ecosystem alias handling: grype
 	// stores the purl type "golang", while OSV returns the canonical "Go"
 	// ecosystem. The daemon groups and queries under the OSV-canonical name
 	// (groupInventory -> OSVEcosystem("golang") = "Go"); it MUST hand that
