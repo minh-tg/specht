@@ -27,14 +27,19 @@ UPDATE findings SET
     updated_at = NOW()
 FROM expired
 WHERE findings.id = expired.id
-RETURNING expired.id, expired.project_id, expired.analysis_state, expired.gate_effect
+RETURNING expired.id, expired.project_id,
+    expired.analysis_state AS old_analysis_state,
+    expired.gate_effect AS old_gate_effect,
+    findings.analysis_state, findings.gate_effect
 `
 
 type ExpireFindingsRow struct {
-	ID            pgtype.UUID `json:"id"`
-	ProjectID     pgtype.UUID `json:"project_id"`
-	AnalysisState string      `json:"analysis_state"`
-	GateEffect    string      `json:"gate_effect"`
+	ID               pgtype.UUID `json:"id"`
+	ProjectID        pgtype.UUID `json:"project_id"`
+	OldAnalysisState string      `json:"old_analysis_state"`
+	OldGateEffect    string      `json:"old_gate_effect"`
+	AnalysisState    string      `json:"analysis_state"`
+	GateEffect       string      `json:"gate_effect"`
 }
 
 func (q *Queries) ExpireFindings(ctx context.Context) ([]ExpireFindingsRow, error) {
@@ -49,6 +54,8 @@ func (q *Queries) ExpireFindings(ctx context.Context) ([]ExpireFindingsRow, erro
 		if err := rows.Scan(
 			&i.ID,
 			&i.ProjectID,
+			&i.OldAnalysisState,
+			&i.OldGateEffect,
 			&i.AnalysisState,
 			&i.GateEffect,
 		); err != nil {

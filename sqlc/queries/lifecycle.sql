@@ -14,4 +14,7 @@ UPDATE findings SET
     updated_at = NOW()
 FROM expired
 WHERE findings.id = expired.id
-RETURNING expired.id, expired.project_id, expired.analysis_state, expired.gate_effect;
+RETURNING expired.id, expired.project_id,
+    expired.analysis_state AS old_analysis_state,
+    expired.gate_effect AS old_gate_effect,
+    findings.analysis_state, findings.gate_effect;

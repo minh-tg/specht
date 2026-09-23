@@ -43,8 +43,8 @@ func (s *pgAnalysisExpiryStore) ExpireExpired(ctx context.Context) ([]port.Findi
 
 	for _, f := range expired {
 		changes, err := json.Marshal(map[string]map[string]string{
-			"analysis_state": {"old": f.AnalysisState, "new": "unanalyzed"},
-			"gate_effect":    {"old": f.GateEffect, "new": "block"},
+			"analysis_state": {"old": f.OldAnalysisState, "new": "unanalyzed"},
+			"gate_effect":    {"old": f.OldGateEffect, "new": "block"},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("marshal changes: %w", err)
