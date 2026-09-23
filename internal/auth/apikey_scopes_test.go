@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"testing"
 	"time"
 
@@ -19,12 +21,14 @@ import (
 // had every permission.
 func TestAPIKeyAuthenticator_CarriesStoredScopes(t *testing.T) {
 	scopes := []string{"ingest", "read"}
+	rawKey := "vuln_scopeplumbingtestkey"
+	expectedHash := sha256.Sum256([]byte(rawKey))
 	a := NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
-		assert.NotEmpty(t, keyHash)
+		assert.Equal(t, hex.EncodeToString(expectedHash[:]), keyHash, "lookups must use the stored SHA-256 hash, never raw key material")
 		return "key-1", "project-1", scopes, time.Time{}, nil
 	})
 
-	ident, err := a.Authenticate(context.Background(), "vuln_scopeplumbingtestkey")
+	ident, err := a.Authenticate(context.Background(), rawKey)
 	require.NoError(t, err)
 	require.NotNil(t, ident)
 	assert.Equal(t, "key-1", ident.UserID)

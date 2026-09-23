@@ -122,7 +122,7 @@ func NewRootCmd(d Deps) *cobra.Command {
 	root.AddCommand(newNotifyCmd(d, s))
 	root.AddCommand(newAdminCmd(d, s))
 	root.AddCommand(newPolicyCmd(d, s))
-	root.AddCommand(newProjectTeamsCmd(d, s))
+	root.AddCommand(newProjectTeamsCmd(d))
 	root.AddCommand(newTeamsCmd(d, s))
 	root.AddCommand(newWatcherCmd(d, s))
 	return root

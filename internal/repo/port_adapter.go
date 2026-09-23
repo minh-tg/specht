@@ -373,8 +373,3 @@ func mappingErr(err error) error {
 	}
 	return err
 }
-
-var (
-	_ = context.Background
-	_ = port.Project{}
-)

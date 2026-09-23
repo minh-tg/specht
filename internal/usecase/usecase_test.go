@@ -2,8 +2,11 @@ package usecase
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -2907,7 +2910,9 @@ func TestCreateAPIKey_Success(t *testing.T) {
 	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
+	var storedKey port.CreateAPIKeyInput
 	akr.createFn = func(ctx context.Context, arg port.CreateAPIKeyInput) (port.APIKey, error) {
+		storedKey = arg
 		now := time.Now()
 		return port.APIKey{
 			ID:   "00000000-0000-0000-0000-000000000050",
@@ -2924,8 +2929,20 @@ func TestCreateAPIKey_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, "ci-key", resp.Name)
-	assert.NotEmpty(t, resp.RawKey)
-	assert.True(t, len(resp.KeyPrefix) > 0)
+	require.Len(t, resp.RawKey, len("vuln_")+64)
+	assert.Equal(t, "vuln_", resp.RawKey[:len("vuln_")])
+	keySuffix := resp.RawKey[len("vuln_"):]
+	_, err = hex.DecodeString(keySuffix)
+	require.NoError(t, err, "the secret suffix must be hexadecimal key material")
+	assert.Equal(t, strings.ToLower(keySuffix), keySuffix)
+	keyHash := sha256.Sum256([]byte(resp.RawKey))
+	assert.Equal(t, hex.EncodeToString(keyHash[:]), storedKey.KeyHash, "only the hash of the one-time raw key is persisted")
+	assert.Equal(t, resp.RawKey[:12], storedKey.KeyPrefix)
+	assert.Equal(t, storedKey.KeyPrefix, resp.KeyPrefix)
+	assert.Equal(t, resp.RawKey[len(resp.RawKey)-4:], storedKey.LastFour)
+	require.NotNil(t, resp.LastFour)
+	assert.Equal(t, storedKey.LastFour, *resp.LastFour)
+	assert.JSONEq(t, `["ingest"]`, string(storedKey.Scopes))
 	assert.Nil(t, resp.ExpiresAt, "no expiry requested means no expires_at in the response")
 }
 
@@ -3002,6 +3019,7 @@ func TestListAPIKeys_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, keys, 1)
 	assert.Equal(t, "ci-key", keys[0].Name)
+	assert.Empty(t, keys[0].RawKey, "listing keys must never reveal the one-time secret")
 }
 
 func TestListAPIKeys_ProjectNotFound(t *testing.T) {

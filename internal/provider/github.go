@@ -77,7 +77,7 @@ func (p *GitHubProvider) PlanCheck(input CheckInput) (CheckPlan, error) {
 	default:
 		plan.Conclusion = ConclusionSuccess
 	}
-	plan.Title = checkTitle(plan.Conclusion, len(findings), annotated)
+	plan.Title = checkTitle(plan.Conclusion, len(findings))
 	plan.Summary = checkSummary(input, plan)
 	return plan, nil
 }
@@ -138,14 +138,13 @@ func annotationMessage(f Finding) string {
 }
 
 // checkTitle summarizes the verdict in one line.
-func checkTitle(conclusion Conclusion, total, annotated int) string {
+func checkTitle(conclusion Conclusion, total int) string {
 	switch conclusion {
 	case ConclusionFailure:
 		return fmt.Sprintf("Specht: %d blocking finding(s)", total)
 	case ConclusionNeutral:
 		return fmt.Sprintf("Specht: %d finding(s), none mappable to files", total)
 	default:
-		_ = annotated
 		return "Specht: no blocking findings"
 	}
 }

@@ -6,8 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newProjectTeamsCmd(d Deps, s *settings) *cobra.Command {
-	_ = s
+func newProjectTeamsCmd(d Deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project-teams",
 		Short: "Manage project team links",

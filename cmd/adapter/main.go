@@ -102,6 +102,8 @@ func readRawInput(file string, stdin io.Reader, stderr io.Writer) ([]byte, int) 
 // already printed on stderr; 1 = skipped by -exclude-tool).
 func buildPayload(rawInput []byte, f *adapterFlags, stderr io.Writer) (client.IngestPayload, int) {
 	var payload client.IngestPayload
+	// Non-envelope input is scanner output; preserve it and let the selected
+	// scanner parser report any format error after ingestion.
 	_ = json.Unmarshal(rawInput, &payload)
 	if len(payload.RawData) == 0 {
 		payload.RawData = rawInput
@@ -262,7 +264,10 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer, hc *http.Clie
 	// Fetch PR Check Preview for detailed annotations and summary if commit SHA is present
 	var preview *client.PRCheckPreview
 	if payload.CommitSha != "" {
-		preview, _ = cl.PreviewPRCheck(payload.Project, payload.CommitSha, "github", resp.ReportID, f.severity)
+		preview, err = cl.PreviewPRCheck(payload.Project, payload.CommitSha, "github", resp.ReportID, f.severity)
+		if err != nil {
+			fmt.Fprintf(stderr, "⚠️  could not fetch PR check preview: %v\n", err)
+		}
 	}
 	publishPreview(f, payload, preview, stderr, hc)
 

@@ -15,6 +15,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestBuildPayload_PreservesNonEnvelopeScannerOutput(t *testing.T) {
+	raw := []byte(`{"Results":`)
+	flags := &adapterFlags{project: "my-app", tool: "trivy"}
+	var stderr bytes.Buffer
+
+	payload, code := buildPayload(raw, flags, &stderr)
+	require.Zero(t, code)
+	assert.Equal(t, "my-app", payload.Project)
+	assert.Equal(t, "trivy", payload.Scanner)
+	assert.Equal(t, json.RawMessage(raw), payload.RawData)
+	assert.Empty(t, stderr.String())
+}
+
 func TestIngestReport_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "POST", r.Method)
@@ -219,6 +232,38 @@ func TestRun_IntroducedOnly_Pass(t *testing.T) {
 	assert.Equal(t, 0, code)
 	assert.Contains(t, stderr.String(), "✅ SPECHT SECURITY GATE: PASSED")
 	assert.Contains(t, stderr.String(), "PRE-EXISTING DEBT IN BASELINE: 10 findings ignored")
+}
+
+func TestRun_IntroducedOnly_PreviewFailureWarnsWithoutChangingVerdict(t *testing.T) {
+	t.Setenv("API_KEY", "test-key")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/reports":
+			json.NewEncoder(w).Encode(client.IngestResponse{
+				ReportID:          "rep-pass",
+				ThresholdBreached: false,
+			})
+		case "/api/v1/projects/my-app/pr-check":
+			http.Error(w, "preview temporarily unavailable", http.StatusServiceUnavailable)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	args := []string{
+		"-project=my-app",
+		"-tool=trivy",
+		"-base-ref=main",
+		"-commit=abc12345",
+	}
+	code := run(args, strings.NewReader(`{"Results":[]}`), &stdout, &stderr, srv.Client())
+	assert.Equal(t, 0, code)
+	assert.Contains(t, stderr.String(), "could not fetch PR check preview")
+	assert.Contains(t, stderr.String(), "✅ SPECHT SECURITY GATE: PASSED")
 }
 
 func TestRun_IntroducedOnly_Fail_WithAnnotations_And_Summary(t *testing.T) {

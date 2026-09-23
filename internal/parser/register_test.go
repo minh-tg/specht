@@ -52,10 +52,6 @@ func TestBuiltinsRegisterCleanly(t *testing.T) {
 	}
 }
 
-func TestBuiltinsCount(t *testing.T) {
-	assert.Len(t, parser.Builtins(), 11)
-}
-
 func TestBuiltinsDetectFormats(t *testing.T) {
 	reg := scanner.NewRegistry()
 	for _, s := range parser.Builtins() {

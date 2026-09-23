@@ -798,7 +798,11 @@ func (u *Usecases) applyMaterialChange(ctx context.Context, input IngestReportIn
 
 	var hadOldFix bool
 	if hasNewFix {
-		hadOldFix, _ = u.deps.Stores.Findings.HasDimension(ctx, upserted.ID, domain.DimFixedVersion)
+		var err error
+		hadOldFix, err = u.deps.Stores.Findings.HasDimension(ctx, upserted.ID, domain.DimFixedVersion)
+		if err != nil {
+			return fmt.Errorf("check previous fixed version for finding %q: %w", upserted.ID, err)
+		}
 	}
 
 	change := finding.EvaluateChange(finding.PreviousFinding{
