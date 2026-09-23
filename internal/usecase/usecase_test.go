@@ -890,6 +890,11 @@ func (m *mockAPIKeyRepo) GetByHash(ctx context.Context, keyHash string) (port.AP
 
 type mockWaiverRepo struct {
 	port.WaiverStore
+	createWithDetailsFn             func(context.Context, port.CreateWaiverInput) (port.Waiver, error)
+	listFn                          func(context.Context, string) ([]port.Waiver, error)
+	getByIDFn                       func(context.Context, string, string) (port.Waiver, error)
+	updateWithDetailsFn             func(context.Context, port.Waiver, *[]port.WaiverCondition, *[]port.WaiverContext, *[]port.WaiverFindingTarget, port.WaiverEventInput) (port.Waiver, error)
+	deleteFn                        func(context.Context, string, string) error
 	toggleWithEventFn               func(context.Context, string, string, string) (port.Waiver, error)
 	listActiveFn                    func(context.Context, string) ([]port.Waiver, error)
 	listConditionsFn                func(context.Context, string) ([]port.WaiverCondition, error)
@@ -898,6 +903,49 @@ type mockWaiverRepo struct {
 	listConditionsByWaiverIDsFn     func(context.Context, []string) ([]port.WaiverCondition, error)
 	listContextsByWaiverIDsFn       func(context.Context, []string) ([]port.WaiverContext, error)
 	listFindingTargetsByWaiverIDsFn func(context.Context, []string) ([]port.WaiverFindingTarget, error)
+	listEventsFn                    func(context.Context, string) ([]port.WaiverEvent, error)
+}
+
+func (m *mockWaiverRepo) CreateWithDetails(ctx context.Context, input port.CreateWaiverInput) (port.Waiver, error) {
+	if m.createWithDetailsFn == nil {
+		return port.Waiver{}, fmt.Errorf("unexpected call to CreateWithDetails")
+	}
+	return m.createWithDetailsFn(ctx, input)
+}
+
+func (m *mockWaiverRepo) List(ctx context.Context, projectID string) ([]port.Waiver, error) {
+	if m.listFn == nil {
+		return nil, fmt.Errorf("unexpected call to List")
+	}
+	return m.listFn(ctx, projectID)
+}
+
+func (m *mockWaiverRepo) GetByID(ctx context.Context, id, projectID string) (port.Waiver, error) {
+	if m.getByIDFn == nil {
+		return port.Waiver{}, fmt.Errorf("unexpected call to GetByID")
+	}
+	return m.getByIDFn(ctx, id, projectID)
+}
+
+func (m *mockWaiverRepo) UpdateWithDetails(ctx context.Context, waiver port.Waiver, conditions *[]port.WaiverCondition, contexts *[]port.WaiverContext, targets *[]port.WaiverFindingTarget, event port.WaiverEventInput) (port.Waiver, error) {
+	if m.updateWithDetailsFn == nil {
+		return port.Waiver{}, fmt.Errorf("unexpected call to UpdateWithDetails")
+	}
+	return m.updateWithDetailsFn(ctx, waiver, conditions, contexts, targets, event)
+}
+
+func (m *mockWaiverRepo) Delete(ctx context.Context, id, projectID string) error {
+	if m.deleteFn == nil {
+		return fmt.Errorf("unexpected call to Delete")
+	}
+	return m.deleteFn(ctx, id, projectID)
+}
+
+func (m *mockWaiverRepo) ListEvents(ctx context.Context, waiverID string) ([]port.WaiverEvent, error) {
+	if m.listEventsFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListEvents")
+	}
+	return m.listEventsFn(ctx, waiverID)
 }
 
 func (m *mockWaiverRepo) ToggleWithEvent(ctx context.Context, id, projectID, actorID string) (port.Waiver, error) {
