@@ -1,7 +1,7 @@
 import { APIError } from "@/api/client";
 import { useAuth } from "@/auth/useAuth";
 import { type SubmitEvent, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { safeRedirect } from "./safeRedirect";
 
 export function Login() {
@@ -16,8 +16,7 @@ export function Login() {
   const [submitting, setSubmitting] = useState(false);
 
   if (auth.token) {
-    navigate("/", { replace: true });
-    return null;
+    return <Navigate to="/" replace />;
   }
 
   async function handleSubmit(e: SubmitEvent) {

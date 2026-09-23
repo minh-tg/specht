@@ -106,6 +106,13 @@ describe("Login", () => {
     expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
   });
 
+  it("returns an authenticated user to the home page", async () => {
+    authState.token = "session-token";
+    renderLoginWithAuth();
+
+    expect(await screen.findByText("Home page")).toBeInTheDocument();
+  });
+
   it("shows error on invalid credentials", async () => {
     const res = new Response(
       JSON.stringify({

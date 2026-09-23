@@ -2,7 +2,7 @@ import { APIError, apiFetch } from "@/api/client";
 import { useAuth } from "@/auth/useAuth";
 import type { RegisterResponse } from "@/types/api";
 import { type SubmitEvent, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 
 export function Register() {
   const auth = useAuth();
@@ -14,8 +14,7 @@ export function Register() {
   const [submitting, setSubmitting] = useState(false);
 
   if (auth.token) {
-    navigate("/", { replace: true });
-    return null;
+    return <Navigate to="/" replace />;
   }
 
   async function handleSubmit(e: SubmitEvent) {
