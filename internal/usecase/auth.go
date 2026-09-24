@@ -289,11 +289,14 @@ func (u *Usecases) RevokeAPIKey(ctx context.Context, projectSlug, keyID string) 
 
 	id, err := uuid.Parse(keyID)
 	if err != nil {
-		return fmt.Errorf("invalid key id: %w", err)
+		return ErrInvalidID
 	}
 
 	_, err = u.deps.Stores.APIKeys.Revoke(ctx, id.String(), project.ID)
 	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return ErrAPIKeyNotFound
+		}
 		return fmt.Errorf("revoke key: %w", err)
 	}
 	return nil

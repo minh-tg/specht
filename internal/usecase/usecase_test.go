@@ -3141,7 +3141,26 @@ func TestRevokeAPIKey_InvalidID(t *testing.T) {
 	})
 
 	err := uc.RevokeAPIKey(context.Background(), "my-app", "not-a-uuid")
-	assert.ErrorContains(t, err, "invalid key id")
+	assert.ErrorIs(t, err, ErrInvalidID)
+}
+
+func TestRevokeAPIKey_NotFound(t *testing.T) {
+	pr := &mockProjectRepo{}
+	akr := &mockAPIKeyRepo{}
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	akr.revokeFn = func(ctx context.Context, id, projectID string) (port.APIKey, error) {
+		return port.APIKey{}, port.ErrNotFound
+	}
+
+	uc := New(Deps{
+		Stores: &port.Stores{Projects: pr, APIKeys: akr},
+	})
+
+	err := uc.RevokeAPIKey(context.Background(), "my-app", "00000000-0000-0000-0000-000000000099")
+	assert.ErrorIs(t, err, ErrAPIKeyNotFound)
 }
 
 // ----- TriageFinding Tests -----

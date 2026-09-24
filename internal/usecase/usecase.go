@@ -30,6 +30,10 @@ var ErrDuplicateReport = errors.New("duplicate report")
 // it to an HTTP conflict.
 var ErrSlugTaken = errors.New("slug already taken")
 
+// ErrAPIKeyNotFound is returned when an API key does not exist (or belongs
+// to another project). Handlers map it to a 404.
+var ErrAPIKeyNotFound = errors.New("api key not found")
+
 // Shared error-message formats used across use cases.
 const errLookupProjectFormat = "lookup project %q: %w"
 

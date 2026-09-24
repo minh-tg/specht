@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/minh-tg/specht/internal/audit"
 	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/usecase"
 )
 
 // authMsgInvalidBody is the user-facing message for malformed auth payloads.
@@ -205,8 +207,15 @@ func (h *Handler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.usecase.RevokeAPIKey(r.Context(), project, keyID); err != nil {
-		slog.Error("revoke api key", "project", project, "key_id", keyID, "error", err)
-		respondError(w, http.StatusUnprocessableEntity, "revoke_failed", "could not revoke API key")
+		switch {
+		case errors.Is(err, usecase.ErrInvalidID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid key id format")
+		case errors.Is(err, usecase.ErrAPIKeyNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "API key not found")
+		default:
+			slog.Error("revoke api key", "project", project, "key_id", keyID, "error", err)
+			respondError(w, http.StatusUnprocessableEntity, "revoke_failed", "could not revoke API key")
+		}
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
