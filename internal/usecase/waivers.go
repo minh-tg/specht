@@ -22,6 +22,7 @@ type WaiverResponse struct {
 	Name        string                    `json:"name"`
 	Description string                    `json:"description"`
 	Enabled     bool                      `json:"enabled"`
+	ExpiresAt   *string                   `json:"expires_at,omitempty"`
 	Conditions  []WaiverConditionResp     `json:"conditions"`
 	Contexts    []WaiverContextResp       `json:"contexts"`
 	Targets     []WaiverFindingTargetResp `json:"targets"`
@@ -69,10 +70,13 @@ type CreateWaiverInput struct {
 	ProjectSlug string
 	Name        string
 	Description string
-	Conditions  []CreateWaiverConditionInput
-	Contexts    []CreateWaiverContextInput
-	TargetIDs   []string
-	ActorID     string
+	// ExpiresAt optionally bounds the waiver (RFC3339 at the API edge);
+	// nil creates a waiver that never expires.
+	ExpiresAt  *time.Time
+	Conditions []CreateWaiverConditionInput
+	Contexts   []CreateWaiverContextInput
+	TargetIDs  []string
+	ActorID    string
 }
 
 // CreateWaiverConditionInput is a condition input for waiver create/update.
@@ -112,12 +116,18 @@ type WaiverDetailResponse struct {
 }
 
 func toWaiver(w port.Waiver) WaiverResponse {
+	var expiresAt *string
+	if w.ExpiresAt != nil {
+		s := w.ExpiresAt.Format(time.RFC3339)
+		expiresAt = &s
+	}
 	return WaiverResponse{
 		ID:          w.ID,
 		ProjectID:   w.ProjectID,
 		Name:        w.Name,
 		Description: w.Description,
 		Enabled:     w.Enabled,
+		ExpiresAt:   expiresAt,
 		Conditions:  make([]WaiverConditionResp, 0),
 		Contexts:    make([]WaiverContextResp, 0),
 		Targets:     make([]WaiverFindingTargetResp, 0),
@@ -221,6 +231,7 @@ func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*
 		Name:        input.Name,
 		Description: input.Description,
 		Enabled:     true,
+		ExpiresAt:   input.ExpiresAt,
 		Conditions:  conditions,
 		Contexts:    contexts,
 		Targets:     targets,

@@ -171,6 +171,7 @@ type CreateWaiverDetailsParams struct {
 	Name        string
 	Description string
 	Enabled     bool
+	ExpiresAt   pgtype.Timestamptz
 	Conditions  []WaiverConditionInput
 	Contexts    []WaiverContextInput
 	Targets     []WaiverTargetInput
@@ -210,6 +211,7 @@ func (r *pgWaiverRepo) CreateWithDetails(ctx context.Context, arg CreateWaiverDe
 		Name:        arg.Name,
 		Description: arg.Description,
 		Enabled:     arg.Enabled,
+		ExpiresAt:   arg.ExpiresAt,
 	})
 	if err != nil {
 		return sqlc.Waiver{}, fmt.Errorf("create waiver: %w", err)

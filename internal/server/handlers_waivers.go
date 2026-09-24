@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/minh-tg/specht/internal/audit"
@@ -26,6 +27,7 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name        string                               `json:"name"`
 		Description string                               `json:"description"`
+		ExpiresAt   string                               `json:"expires_at,omitempty"`
 		Conditions  []usecase.CreateWaiverConditionInput `json:"conditions,omitempty"`
 		Contexts    []usecase.CreateWaiverContextInput   `json:"contexts,omitempty"`
 		TargetIDs   []string                             `json:"target_ids,omitempty"`
@@ -37,6 +39,15 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid_body", "name is required")
 		return
 	}
+	var expiresAt *time.Time
+	if req.ExpiresAt != "" {
+		parsed, err := time.Parse(time.RFC3339, req.ExpiresAt)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "invalid_expires_at", "expires_at must be an RFC3339 timestamp")
+			return
+		}
+		expiresAt = &parsed
+	}
 
 	var actorID string
 	if ident := auth.ContextIdentity(r.Context()); ident != nil {
@@ -47,6 +58,7 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 		ProjectSlug: slug,
 		Name:        req.Name,
 		Description: req.Description,
+		ExpiresAt:   expiresAt,
 		Conditions:  req.Conditions,
 		Contexts:    req.Contexts,
 		TargetIDs:   req.TargetIDs,

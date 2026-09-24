@@ -12,16 +12,17 @@ import (
 )
 
 const createWaiver = `-- name: CreateWaiver :one
-INSERT INTO waivers (project_id, name, description, enabled)
-VALUES ($1, $2, $3, $4)
+INSERT INTO waivers (project_id, name, description, enabled, expires_at)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at
 `
 
 type CreateWaiverParams struct {
-	ProjectID   pgtype.UUID `json:"project_id"`
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Enabled     bool        `json:"enabled"`
+	ProjectID   pgtype.UUID        `json:"project_id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	Enabled     bool               `json:"enabled"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
 }
 
 func (q *Queries) CreateWaiver(ctx context.Context, arg CreateWaiverParams) (Waiver, error) {
@@ -30,6 +31,7 @@ func (q *Queries) CreateWaiver(ctx context.Context, arg CreateWaiverParams) (Wai
 		arg.Name,
 		arg.Description,
 		arg.Enabled,
+		arg.ExpiresAt,
 	)
 	var i Waiver
 	err := row.Scan(

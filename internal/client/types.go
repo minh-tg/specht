@@ -359,6 +359,7 @@ type Waiver struct {
 	Name        string                `json:"name"`
 	Description string                `json:"description"`
 	Enabled     bool                  `json:"enabled"`
+	ExpiresAt   string                `json:"expires_at,omitempty"`
 	Conditions  []WaiverCondition     `json:"conditions"`
 	Contexts    []WaiverContext       `json:"contexts"`
 	Targets     []WaiverFindingTarget `json:"targets"`
@@ -410,6 +411,7 @@ type WaiverEvent struct {
 type CreateWaiverRequest struct {
 	Name        string                  `json:"name"`
 	Description string                  `json:"description"`
+	ExpiresAt   string                  `json:"expires_at,omitempty"`
 	Conditions  []CreateWaiverCondition `json:"conditions,omitempty"`
 	Contexts    []CreateWaiverContext   `json:"contexts,omitempty"`
 	TargetIDs   []string                `json:"target_ids,omitempty"`

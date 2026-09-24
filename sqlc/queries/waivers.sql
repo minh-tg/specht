@@ -1,6 +1,6 @@
 -- name: CreateWaiver :one
-INSERT INTO waivers (project_id, name, description, enabled)
-VALUES ($1, $2, $3, $4)
+INSERT INTO waivers (project_id, name, description, enabled, expires_at)
+VALUES ($1, $2, $3, $4, $5)
 RETURNING *;
 
 -- name: ListWaivers :many

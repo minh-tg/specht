@@ -274,8 +274,10 @@ type Waiver struct {
 	Name        string
 	Description string
 	Enabled     bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// ExpiresAt bounds an auto-disabled waiver; nil means it never expires.
+	ExpiresAt *time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // WaiverCondition is one waiver predicate.
@@ -334,10 +336,12 @@ type CreateWaiverInput struct {
 	Name        string
 	Description string
 	Enabled     bool
-	Conditions  []WaiverCondition
-	Contexts    []WaiverContext
-	Targets     []WaiverFindingTarget
-	Event       WaiverEventInput
+	// ExpiresAt optionally bounds the waiver; nil creates a permanent one.
+	ExpiresAt  *time.Time
+	Conditions []WaiverCondition
+	Contexts   []WaiverContext
+	Targets    []WaiverFindingTarget
+	Event      WaiverEventInput
 }
 
 // WaiverStore persists waivers and their children/events atomically.

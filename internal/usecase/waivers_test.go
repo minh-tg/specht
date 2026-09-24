@@ -222,6 +222,63 @@ func waiverUsecaseForProject(project port.Project, waivers *mockWaiverRepo, effe
 	return New(Deps{Stores: &port.Stores{Projects: projects, Waivers: waivers}})
 }
 
+// TestCreateWaiverForwardsExpiryToStoreAndResponse pins the expiry contract
+// the sweeper and gate consume: an expiry set at create must reach the store
+// input verbatim and round-trip as RFC3339 in the public response.
+func TestCreateWaiverForwardsExpiryToStoreAndResponse(t *testing.T) {
+	project := makeProject(true)
+	expiresAt := time.Date(2030, 6, 30, 12, 0, 0, 0, time.UTC)
+	var gotExpiry *time.Time
+
+	wr := &mockWaiverRepo{
+		createWithDetailsFn: func(_ context.Context, input port.CreateWaiverInput) (port.Waiver, error) {
+			gotExpiry = input.ExpiresAt
+			return port.Waiver{
+				ID: "00000000-0000-0000-0000-0000000000b2", ProjectID: project.ID,
+				Name: input.Name, Description: input.Description, Enabled: true,
+				ExpiresAt: input.ExpiresAt,
+				CreatedAt: time.Now(), UpdatedAt: time.Now(),
+			}, nil
+		},
+	}
+	uc := waiverUsecaseForProject(project, wr, "")
+
+	got, err := uc.CreateWaiver(sessionCtx("admin", auth.RoleAdmin), CreateWaiverInput{
+		ProjectSlug: "my-app",
+		Name:        "release exception",
+		ExpiresAt:   &expiresAt,
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, gotExpiry, "expiry must be forwarded to the store")
+	require.True(t, gotExpiry.Equal(expiresAt), "store must receive the requested expiry")
+	require.NotNil(t, got.ExpiresAt, "expires_at must appear in the response")
+	assert.Equal(t, expiresAt.Format(time.RFC3339), *got.ExpiresAt)
+}
+
+// TestCreateWaiverWithoutExpiryOmitsField: a permanent waiver must not carry
+// an expires_at key (omitempty), so clients can tell the two apart.
+func TestCreateWaiverWithoutExpiryOmitsField(t *testing.T) {
+	project := makeProject(true)
+	wr := &mockWaiverRepo{
+		createWithDetailsFn: func(_ context.Context, input port.CreateWaiverInput) (port.Waiver, error) {
+			require.Nil(t, input.ExpiresAt)
+			return port.Waiver{
+				ID: "00000000-0000-0000-0000-0000000000b3", ProjectID: project.ID,
+				Name: input.Name, Enabled: true, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+			}, nil
+		},
+	}
+	uc := waiverUsecaseForProject(project, wr, "")
+
+	got, err := uc.CreateWaiver(sessionCtx("admin", auth.RoleAdmin), CreateWaiverInput{
+		ProjectSlug: "my-app", Name: "permanent waiver",
+	})
+
+	require.NoError(t, err)
+	assert.Nil(t, got.ExpiresAt, "a permanent waiver carries no expires_at")
+}
+
 func TestCreateWaiverPersistsScopedDetailsAndReturnsPublicRepresentation(t *testing.T) {
 	project := makeProject(true)
 	waiverID := "00000000-0000-0000-0000-0000000000b1"

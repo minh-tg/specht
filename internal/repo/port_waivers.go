@@ -36,6 +36,7 @@ func (r *pgWaiverPort) CreateWithDetails(ctx context.Context, input port.CreateW
 		Name:        input.Name,
 		Description: input.Description,
 		Enabled:     input.Enabled,
+		ExpiresAt:   timestamptzPtrFromTime(input.ExpiresAt),
 		Conditions:  conds,
 		Contexts:    ctxs,
 		Targets:     tgts,
@@ -353,6 +354,7 @@ func waiverRowToPort(w sqlc.Waiver) port.Waiver {
 		Name:        w.Name,
 		Description: w.Description,
 		Enabled:     w.Enabled,
+		ExpiresAt:   timePtrFromTimestamptz(w.ExpiresAt),
 		CreatedAt:   w.CreatedAt.Time,
 		UpdatedAt:   w.UpdatedAt.Time,
 	}
