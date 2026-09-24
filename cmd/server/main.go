@@ -122,8 +122,8 @@ func apiKeyLookup(repos *repo.Repos) func(ctx context.Context, keyHash string) (
 // enabled, the CVE watcher daemon — all bound to ctx so they stop with the
 // server.
 func startLifecycle(ctx context.Context, stores *port.Stores, pool *pgxpool.Pool, cfg *config.Server) {
-	go lifecycle.RunWaiverExpiry(ctx, repo.NewWaiverExpiryStore(pool), 5*time.Minute, slog.Default())
-	go lifecycle.RunAnalysisExpiry(ctx, repo.NewAnalysisExpiryStore(pool), 5*time.Minute, slog.Default())
+	go lifecycle.RunWaiverExpiry(ctx, repo.NewWaiverExpiryStore(pool), cfg.SweepInterval, slog.Default())
+	go lifecycle.RunAnalysisExpiry(ctx, repo.NewAnalysisExpiryStore(pool), cfg.SweepInterval, slog.Default())
 	if cfg.Watcher.Enable {
 		exitOnError("start watcher daemon", runWatcherDaemon(ctx, stores, cfg))
 	}

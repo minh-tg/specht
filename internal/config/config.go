@@ -16,13 +16,17 @@ import (
 
 // Defaults shared by the server, watcher, and CLI.
 const (
-	DefaultServerAddr    = ":8080"
-	DefaultInventoryTTL  = 2160 * time.Hour // 90d
-	DefaultWatcherPoll   = 6 * time.Hour
-	DefaultWatcherBatch  = 0 // unlimited
-	DefaultCORSOrigins   = "http://localhost:5173"
-	DefaultOSVEndpoint   = "https://api.osv.dev/v1/querybatch"
-	DefaultDBMigrate     = true
+	DefaultServerAddr   = ":8080"
+	DefaultInventoryTTL = 2160 * time.Hour // 90d
+	DefaultWatcherPoll  = 6 * time.Hour
+	DefaultWatcherBatch = 0 // unlimited
+	DefaultCORSOrigins  = "http://localhost:5173"
+	DefaultOSVEndpoint  = "https://api.osv.dev/v1/querybatch"
+	DefaultDBMigrate    = true
+	// DefaultSweepInterval is how often the analysis/waiver expiry
+	// sweepers look for expired rows. Tests shorten it via
+	// LIFECYCLE_SWEEP_INTERVAL to observe sweeps in seconds.
+	DefaultSweepInterval = 5 * time.Minute
 	DefaultStalenessMult = 2
 	// Rate limiting defaults (token bucket per key): strict for
 	// unauthenticated entry points, generous for authenticated callers.
@@ -41,7 +45,10 @@ type Server struct {
 	JWTSecret    string
 	LogLevel     string
 	InventoryTTL time.Duration
-	SSO          SSOConfig
+	// SweepInterval is the period of the analysis-expiry and waiver-expiry
+	// background sweepers. Must be positive.
+	SweepInterval time.Duration
+	SSO           SSOConfig
 	// TrustedProxies lists only reverse-proxy hop CIDRs. The nearest trusted
 	// proxy must append its observed peer to X-Forwarded-For and overwrite
 	// X-Real-IP / X-Forwarded-Proto. Empty (the default) means forwarding
@@ -252,14 +259,15 @@ func loadWatcher(s *Server) error {
 // reported when the watcher is enabled.
 func Load() (*Server, error) {
 	s := &Server{
-		Addr:         strOr(os.Getenv("SERVER_ADDR"), DefaultServerAddr),
-		DBURL:        os.Getenv("DATABASE_URL"),
-		DBMigrate:    strOr(os.Getenv("DB_MIGRATE"), "true") == "true",
-		CORSOrigins:  strOr(os.Getenv("CORS_ORIGINS"), DefaultCORSOrigins),
-		JWTSecret:    os.Getenv("JWT_SECRET"),
-		LogLevel:     strOr(os.Getenv("LOG_LEVEL"), "info"),
-		InventoryTTL: DefaultInventoryTTL,
-		SSO:          loadSSO(),
+		Addr:          strOr(os.Getenv("SERVER_ADDR"), DefaultServerAddr),
+		DBURL:         os.Getenv("DATABASE_URL"),
+		DBMigrate:     strOr(os.Getenv("DB_MIGRATE"), "true") == "true",
+		CORSOrigins:   strOr(os.Getenv("CORS_ORIGINS"), DefaultCORSOrigins),
+		JWTSecret:     os.Getenv("JWT_SECRET"),
+		LogLevel:      strOr(os.Getenv("LOG_LEVEL"), "info"),
+		InventoryTTL:  DefaultInventoryTTL,
+		SweepInterval: DefaultSweepInterval,
+		SSO:           loadSSO(),
 	}
 
 	if v := os.Getenv("TRUSTED_PROXIES"); v != "" {
@@ -276,6 +284,14 @@ func Load() (*Server, error) {
 			return nil, fmt.Errorf("INVENTORY_TTL is invalid: %w", err)
 		}
 		s.InventoryTTL = d
+	}
+
+	if v := os.Getenv("LIFECYCLE_SWEEP_INTERVAL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 {
+			return nil, fmt.Errorf("LIFECYCLE_SWEEP_INTERVAL must be a positive duration, got %q", v)
+		}
+		s.SweepInterval = d
 	}
 
 	if err := loadRateLimit(s); err != nil {

@@ -16,12 +16,14 @@ func TestDefaults(t *testing.T) {
 	t.Setenv("DB_MIGRATE", "")
 	t.Setenv("WATCHER_POLL_INTERVAL", "")
 	t.Setenv("TRUSTED_PROXIES", "")
+	t.Setenv("LIFECYCLE_SWEEP_INTERVAL", "")
 
 	cfg, err := Load()
 	assert.NoError(t, err)
 	assert.Equal(t, ":8080", cfg.Addr)
 	assert.True(t, cfg.DBMigrate, "DB_MIGRATE defaults to true")
 	assert.Equal(t, DefaultInventoryTTL, cfg.InventoryTTL)
+	assert.Equal(t, DefaultSweepInterval, cfg.SweepInterval)
 	assert.False(t, cfg.Watcher.Enable)
 	assert.Equal(t, DefaultWatcherPoll, cfg.Watcher.PollInterval)
 	assert.Equal(t, DefaultOSVEndpoint, cfg.Watcher.OSVEndpoint)
@@ -71,6 +73,25 @@ func TestLoad_InventoryTTLAndAddrOverrides(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, time.Hour*48, cfg.InventoryTTL)
 	assert.Equal(t, ":9999", cfg.Addr)
+}
+
+func TestLoad_SweepIntervalOverride(t *testing.T) {
+	t.Setenv("WATCHER_ENABLE", "")
+	t.Setenv("LIFECYCLE_SWEEP_INTERVAL", "1s")
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.Equal(t, time.Second, cfg.SweepInterval)
+}
+
+func TestLoad_MalformedSweepIntervalFails(t *testing.T) {
+	for _, bad := range []string{"not-a-duration", "0s", "-5s"} {
+		t.Run(bad, func(t *testing.T) {
+			t.Setenv("WATCHER_ENABLE", "")
+			t.Setenv("LIFECYCLE_SWEEP_INTERVAL", bad)
+			_, err := Load()
+			assert.ErrorContains(t, err, "LIFECYCLE_SWEEP_INTERVAL")
+		})
+	}
 }
 
 func TestWatcherConfig(t *testing.T) {
