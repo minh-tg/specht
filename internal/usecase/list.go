@@ -487,6 +487,9 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 	}
 	f, err := u.deps.Stores.Findings.GetByID(ctx, id.String())
 	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return nil, fmt.Errorf("get finding: %w", ErrFindingNotFound)
+		}
 		return nil, fmt.Errorf("get finding: %w", err)
 	}
 	if err := u.checkFindingProjectIDAccess(ctx, f.ProjectID); err != nil {
