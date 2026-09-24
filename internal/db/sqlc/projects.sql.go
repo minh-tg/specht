@@ -76,6 +76,31 @@ func (q *Queries) DeleteProject(ctx context.Context, slug string) (Project, erro
 	return i, err
 }
 
+const getProjectByID = `-- name: GetProjectByID :one
+SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id FROM projects
+WHERE id = $1 LIMIT 1
+`
+
+func (q *Queries) GetProjectByID(ctx context.Context, id pgtype.UUID) (Project, error) {
+	row := q.db.QueryRow(ctx, getProjectByID, id)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.Description,
+		&i.DeploymentThreshold,
+		&i.Settings,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.CveWatcherGate,
+		&i.CveWatcherEnabled,
+		&i.CveWatcherIntervalSeconds,
+		&i.PolicyTemplateID,
+	)
+	return i, err
+}
+
 const getProjectBySlug = `-- name: GetProjectBySlug :one
 SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id FROM projects
 WHERE slug = $1 LIMIT 1

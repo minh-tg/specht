@@ -210,12 +210,15 @@ func (r *pgProjectPort) Delete(ctx context.Context, slug string) (port.Project, 
 }
 
 func (r *pgProjectPort) GetByID(ctx context.Context, id string) (port.Project, error) {
-	if _, err := parseID(id); err != nil {
+	pid, err := parseID(id)
+	if err != nil {
 		return port.Project{}, err
 	}
-	// No GetProjectByID query exists in sqlc; the watcher resolves project
-	// config through its own query. Return not-found until a caller needs it.
-	return port.Project{}, port.ErrNotFound
+	row, err := r.q.GetProjectByID(ctx, pid)
+	if err != nil {
+		return port.Project{}, mappingErr(err)
+	}
+	return projectToPort(row), nil
 }
 
 func (r *pgProjectPort) UpsertMember(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
