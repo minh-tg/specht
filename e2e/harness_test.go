@@ -451,12 +451,20 @@ type findingResponse struct {
 	GateEffect      string `json:"gate_effect"`
 }
 
+// policyProvenance is the resolved-policy slice the gate response carries.
+type policyProvenance struct {
+	TemplateName   *string `json:"template_name"`
+	SeverityFloor  string  `json:"severity_floor"`
+	SeveritySource string  `json:"severity_source"`
+}
+
 type gateStatus struct {
 	ThresholdBreached     bool              `json:"threshold_breached"`
 	BlockingCount         int64             `json:"blocking_count"`
 	BlockedBy             []string          `json:"blocked_by"`
 	BlockedByReachability map[string]string `json:"blocked_by_reachability"`
 	WaivedCount           int               `json:"waived_count"`
+	Policy                *policyProvenance `json:"policy"`
 }
 
 type ingestResponse struct {
