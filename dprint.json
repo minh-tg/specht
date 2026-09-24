@@ -10,6 +10,8 @@
   },
   "includes": [
     "frontend/src/**/*.{ts,tsx,js,jsx,json}",
+    "frontend/e2e/**/*.ts",
+    "frontend/playwright.config.ts",
     "frontend/*.{json}"
   ],
   "excludes": [

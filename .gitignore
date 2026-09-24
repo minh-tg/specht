@@ -8,6 +8,8 @@ vendor/
 node_modules/
 frontend/dist/
 frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
 cmd/server/dist/dist/
 
 # Coverage profiles and reports
