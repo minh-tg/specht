@@ -27,6 +27,10 @@ var ErrNotFound = errors.New("not found")
 // hash has already been ingested for the project.
 var ErrDuplicateReport = errors.New("duplicate report")
 
+// ErrSlugTaken is returned when a project slug already exists. The
+// Postgres adapter maps the unique-violation at the boundary.
+var ErrSlugTaken = errors.New("slug already taken")
+
 // ErrFindingSuppressed is returned by the watcher finding persist path when
 // the finding fingerprint already exists (a re-poll hit) and no row changed.
 var ErrFindingSuppressed = errors.New("finding already exists")

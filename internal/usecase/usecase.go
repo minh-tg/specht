@@ -26,6 +26,10 @@ import (
 // has already been ingested for the project.
 var ErrDuplicateReport = errors.New("duplicate report")
 
+// ErrSlugTaken is returned when a project slug already exists. Handlers map
+// it to an HTTP conflict.
+var ErrSlugTaken = errors.New("slug already taken")
+
 // Shared error-message formats used across use cases.
 const errLookupProjectFormat = "lookup project %q: %w"
 

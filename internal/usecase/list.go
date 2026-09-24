@@ -276,6 +276,9 @@ func (u *Usecases) CreateProject(ctx context.Context, name, slug, description, c
 		Settings:            []byte("{}"),
 	})
 	if err != nil {
+		if errors.Is(err, port.ErrSlugTaken) {
+			return nil, ErrSlugTaken
+		}
 		return nil, fmt.Errorf("create project %q: %w", slug, err)
 	}
 	if _, err := u.deps.Stores.Projects.UpsertMember(ctx, p.ID, creatorID, auth.RoleAdmin); err != nil {

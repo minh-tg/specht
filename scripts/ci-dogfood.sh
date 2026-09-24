@@ -55,8 +55,8 @@ out=$(api -X POST "$SPECHT_API_URL/api/v1/projects" \
   -d "$(jq -n --arg s "$SPECHT_PROJECT" '{name:$s,slug:$s}')")
 split_body "$out"
 if [ "$CODE" != "201" ] && [ "$CODE" != "200" ]; then
-  # Reruns reuse the slug: confirm the project exists before failing.
-  # (Duplicate slugs currently answer 500 instead of 409 server-side.)
+  # Reruns reuse the slug: a duplicate answers 409; confirm the project
+  # exists before failing.
   out=$(api "$SPECHT_API_URL/api/v1/projects/$SPECHT_PROJECT" \
     -H "Authorization: Bearer $TOKEN")
   split_body "$out"

@@ -40,6 +40,10 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.usecase.CreateProject(r.Context(), req.Name, req.Slug, req.Description, ident.UserID)
 	if err != nil {
+		if errors.Is(err, usecase.ErrSlugTaken) {
+			respondError(w, http.StatusConflict, "slug_taken", "project slug already exists")
+			return
+		}
 		respondError(w, http.StatusInternalServerError, "creation_failed", "could not create project")
 		return
 	}

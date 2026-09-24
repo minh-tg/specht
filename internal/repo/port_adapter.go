@@ -9,6 +9,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/minh-tg/specht/internal/db/sqlc"
 	"github.com/minh-tg/specht/internal/port"
@@ -122,6 +123,9 @@ func (r *pgProjectPort) Create(ctx context.Context, input port.CreateProjectInpu
 		Settings:            settings,
 	})
 	if err != nil {
+		if isDuplicateSlug(err) {
+			return port.Project{}, port.ErrSlugTaken
+		}
 		return port.Project{}, err
 	}
 	return projectToPort(row), nil
@@ -359,6 +363,16 @@ func projectToPort(p sqlc.Project) port.Project {
 		CreatedAt:              p.CreatedAt.Time,
 		UpdatedAt:              p.UpdatedAt.Time,
 	}
+}
+
+// isDuplicateSlug reports whether err is a PostgreSQL unique-violation on
+// the project row (slug collision).
+func isDuplicateSlug(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		return pgErr.Code == "23505"
+	}
+	return false
 }
 
 // mappingErr adapts pgx no-rows to port.ErrNotFound. It uses errors.Is so

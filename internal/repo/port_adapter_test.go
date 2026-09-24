@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/minh-tg/specht/internal/port"
 	"github.com/stretchr/testify/assert"
 )
@@ -37,4 +38,22 @@ func TestMappingErr_PreservesOtherErrors(t *testing.T) {
 
 func TestMappingErr_Nil(t *testing.T) {
 	assert.Nil(t, mappingErr(nil))
+}
+
+func TestIsDuplicateSlug(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"unique violation", &pgconn.PgError{Code: "23505"}, true},
+		{"wrapped unique violation", fmt.Errorf("create: %w", &pgconn.PgError{Code: "23505"}), true},
+		{"foreign key violation", &pgconn.PgError{Code: "23503"}, false},
+		{"non-pg error", errors.New("connection lost"), false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isDuplicateSlug(tt.err))
+		})
+	}
 }
