@@ -463,6 +463,9 @@ type ingestResponse struct {
 	TotalFindings     int    `json:"total_findings"`
 	ThresholdBreached bool   `json:"threshold_breached"`
 	ScanMode          string `json:"scan_mode"`
+	FallbackReason    string `json:"fallback_reason"`
+	IntroducedCount   int    `json:"introduced_count"`
+	PreExistingCount  int    `json:"pre_existing_count"`
 }
 
 type triageOutput struct {
@@ -521,6 +524,14 @@ func mintKey(t *testing.T, slug string) string {
 	return resp.RawKey
 }
 
+// Revision literals shared by change-scoped and incremental scenarios:
+// baseSHA anchors baseline reports that PR reports resolve through
+// base_revision; deadSHA names a revision with no baseline at all.
+const (
+	baseSHA = "1111111111111111111111111111111111111111"
+	deadSHA = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+)
+
 // ingestBody builds the wire payload for a fixture so a test can post the
 // same bytes twice (duplicate detection) without re-reading the file.
 func ingestBody(t *testing.T, slug, fixture string) map[string]any {
@@ -539,6 +550,18 @@ func ingestFixture(t *testing.T, slug, token, fixture string) ingestResponse {
 	t.Helper()
 	return request[ingestResponse](t, http.MethodPost, "/api/v1/reports", token,
 		ingestBody(t, slug, fixture), http.StatusCreated)
+}
+
+// ingestBodyWith returns the fixture wire payload plus extra top-level fields
+// (commit_sha, base_revision, gate_introduced_only, scan_mode) so a test can
+// exercise change-scoped and incremental ingest contracts.
+func ingestBodyWith(t *testing.T, slug, fixture string, extra map[string]any) map[string]any {
+	t.Helper()
+	body := ingestBody(t, slug, fixture)
+	for k, v := range extra {
+		body[k] = v
+	}
+	return body
 }
 
 // listFindings returns the project's findings via the admin session.
