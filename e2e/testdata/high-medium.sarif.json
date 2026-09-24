@@ -1,0 +1,55 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "e2e-scanner",
+          "version": "1.0.0",
+          "rules": [
+            {
+              "id": "E2E-HIGH-001",
+              "name": "HardcodedCredentials",
+              "shortDescription": { "text": "Hardcoded credentials in app config" },
+              "defaultConfiguration": { "level": "error" }
+            },
+            {
+              "id": "E2E-MED-002",
+              "name": "OutdatedDependency",
+              "shortDescription": { "text": "Outdated dependency urllib3" },
+              "defaultConfiguration": { "level": "warning" }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "E2E-HIGH-001",
+          "level": "error",
+          "message": { "text": "Hardcoded credentials in app config" },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/config.go" },
+                "region": { "startLine": 12 }
+              }
+            }
+          ]
+        },
+        {
+          "ruleId": "E2E-MED-002",
+          "level": "warning",
+          "message": { "text": "Outdated dependency urllib3" },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "requirements.txt" },
+                "region": { "startLine": 3 }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

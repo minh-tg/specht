@@ -34,6 +34,25 @@ jobs:
         env:
           DOCKER_HOST: unix:///var/run/docker.sock
 
+  e2e:
+    name: "e2e (full stack: API + adapter + CLI)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Real PostgreSQL (testcontainers), real server/adapter/CLI
+      # binaries, HTTP contracts and documented exit codes end to end.
+      - name: Full-stack E2E suite
+        run: make e2e
+        env:
+          DOCKER_HOST: unix:///var/run/docker.sock
+
   lint:
     name: lint + format
     runs-on: ubuntu-latest

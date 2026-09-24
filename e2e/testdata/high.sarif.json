@@ -1,0 +1,36 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "e2e-scanner",
+          "version": "1.0.0",
+          "rules": [
+            {
+              "id": "E2E-HIGH-001",
+              "name": "HardcodedCredentials",
+              "shortDescription": { "text": "Hardcoded credentials in app config" },
+              "defaultConfiguration": { "level": "error" }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "E2E-HIGH-001",
+          "level": "error",
+          "message": { "text": "Hardcoded credentials in app config" },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": { "uri": "src/config.go" },
+                "region": { "startLine": 12 }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

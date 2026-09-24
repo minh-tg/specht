@@ -1,4 +1,4 @@
-.PHONY: dev-api dev-web db-up db-down migrate-up migrate-down sqlc test test-race lsp-check sonar coverage build clean
+.PHONY: dev-api dev-web db-up db-down migrate-up migrate-down sqlc test test-race e2e lsp-check sonar coverage build clean
 
 dev-api:
 	go run ./cmd/server
@@ -26,6 +26,11 @@ test:
 
 test-race:
 	go test -race ./... -count=1 -short
+
+# Full-stack E2E: real Postgres (testcontainers), real server/adapter/CLI
+# binaries, HTTP + exit-code contracts. Needs Docker; ~1-3 minutes.
+e2e:
+	TESTCONTAINERS_RYUK_DISABLED=true go test -tags e2e ./e2e/ -count=1 -timeout 15m
 
 lsp-check:
 	gopls check $$(git ls-files --cached --others --exclude-standard -- '*.go')
