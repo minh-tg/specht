@@ -526,10 +526,17 @@ type FindingStore interface {
 	ListDimensions(ctx context.Context, findingID string) ([]FindingDimension, error)
 	// HasOccurrence reports whether a finding was observed in a report.
 	HasOccurrence(ctx context.Context, findingID, reportID string) (bool, error)
-	// MarkFixed moves a finding to the scan-derived fixed state. It is
-	// the only path to fixed: triage never sets it, only VerifyFix does,
-	// backed by a rescan that no longer observes the finding.
+	// MarkFixed moves a finding to the scan-derived fixed state. Triage
+	// never sets it: VerifyFix is the analyst-facing path, backed by a
+	// rescan that no longer observes the finding.
 	MarkFixed(ctx context.Context, findingID string) (Finding, error)
+	// MarkAbsentFindingsFixed is the ingest-time auto-fix writer
+	// (ADR-018): it closes open or reopened findings whose most recent
+	// observation came from an equivalent complete scan (same project
+	// and scope hash) and that reportID does not observe, returning the
+	// closed findings. Callers gate it to full scans whose parsed
+	// completeness is "complete".
+	MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string) ([]Finding, error)
 	// SetFindingIntroducedBy materializes introduced-by-change attribution.
 	SetFindingIntroducedBy(ctx context.Context, findingID, reportID string, commitSha *string) (Finding, error)
 	// ListIntroducedByReport returns findings one report introduced.

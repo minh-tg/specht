@@ -166,6 +166,13 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, err
 	}
 
+	// ADR-018 auto-fix: runs after every finding is persisted and before
+	// the threshold check so the response reflects the post-fix state.
+	if err := u.autoFixAbsentFindings(ctx, project, input, report, nr, ctxInfo); err != nil {
+		u.markReportFailed(ctx, input, report, err)
+		return nil, err
+	}
+
 	thresholdBreached, err := u.checkGateAfterIngest(ctx, project, input, report, outcome.total)
 	if err != nil {
 		return nil, err
@@ -180,6 +187,49 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		IntroducedCount:   outcome.introduced,
 		PreExistingCount:  outcome.preExisting,
 	}, nil
+}
+
+// autoFixAbsentFindings is the ADR-018 auto-fix writer: when a full scan
+// normalized to completeness "complete", findings whose most recent
+// observation came from an equivalent complete scan of the same scope and
+// that this report no longer observes move to fixed, each with a
+// state_changed event naming the source report. Incremental scans prove
+// nothing by absence, and parsers that cannot vouch for completeness
+// default to unknown — neither ever reaches the store.
+func (u *Usecases) autoFixAbsentFindings(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, nr *domain.NormalizedReport, ctxInfo reportContext) error {
+	if input.ScanMode != ScanModeFull || nr.Completeness != domain.CompletenessComplete {
+		return nil
+	}
+	scopeHash := sha256.Sum256([]byte(scopeHashMaterial(input, nr, ctxInfo)))
+	fixed, err := u.deps.Stores.Findings.MarkAbsentFindingsFixed(ctx, project.ID, hex.EncodeToString(scopeHash[:]), report.ID)
+	if err != nil {
+		return fmt.Errorf("auto-fix absent findings: %w", err)
+	}
+	for _, f := range fixed {
+		changes := mustMarshal(map[string]any{"report_id": report.ID, "scanner": input.Scanner, "new_state": f.State})
+		if _, err := u.deps.Stores.Findings.CreateEvent(ctx, port.FindingEventInput{
+			FindingID: f.ID,
+			EventType: "state_changed",
+			NewValue:  strPtr(f.State),
+			Changes:   changes,
+		}); err != nil {
+			slog.Warn("log auto-fix event failed", "finding", f.ID, "error", err)
+		}
+		if u.deps.Tracker != nil {
+			u.deps.Tracker.Dispatch(ctx, tracker.Event{
+				Type:         tracker.EventVerifiedFixed,
+				FindingID:    f.ID,
+				ProjectSlug:  input.ProjectSlug,
+				Severity:     f.CurrentSeverity,
+				SeverityRank: f.CurrentSeverityRank,
+				Title:        f.CurrentTitle,
+				Fingerprint:  f.Fingerprint,
+				FindingKind:  f.FindingKind,
+				OccurredAt:   time.Now(),
+			})
+		}
+	}
+	return nil
 }
 
 // rejectDuplicateContent returns ErrDuplicateReport when identical (redacted)

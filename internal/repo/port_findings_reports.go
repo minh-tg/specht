@@ -672,6 +672,32 @@ func (r *pgFindingPort) MarkFixed(ctx context.Context, findingID string) (port.F
 	return findingRowToPort(row), nil
 }
 
+// MarkAbsentFindingsFixed implements the ADR-018 auto-fix writer: the SQL
+// closes qualifying rows and returns them so the caller can log events.
+func (r *pgFindingPort) MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	rid, err := parseID(reportID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.inner.MarkAbsentScopedFindingsFixed(ctx, sqlc.MarkAbsentScopedFindingsFixedParams{
+		ProjectID:     pid,
+		ScanScopeHash: textPtrFromString(&scopeHash),
+		ReportID:      rid,
+	})
+	if err != nil {
+		return nil, mappingErr(err)
+	}
+	findings := make([]port.Finding, 0, len(rows))
+	for _, row := range rows {
+		findings = append(findings, findingRowToPort(row))
+	}
+	return findings, nil
+}
+
 func (r *pgFindingPort) SetFindingIntroducedBy(ctx context.Context, findingID, reportID string, commitSha *string) (port.Finding, error) {
 	fid, err := parseID(findingID)
 	if err != nil {

@@ -142,6 +142,10 @@ func (r *pgFindingRepo) MarkFixed(ctx context.Context, findingID pgtype.UUID) (s
 	return r.q.MarkFindingFixed(ctx, findingID)
 }
 
+func (r *pgFindingRepo) MarkAbsentScopedFindingsFixed(ctx context.Context, arg sqlc.MarkAbsentScopedFindingsFixedParams) ([]sqlc.Finding, error) {
+	return r.q.MarkAbsentScopedFindingsFixed(ctx, arg)
+}
+
 func (r *pgFindingRepo) SetIntroducedBy(ctx context.Context, findingID, reportID pgtype.UUID, commit pgtype.Text) (sqlc.Finding, error) {
 	return r.q.SetFindingIntroducedBy(ctx, sqlc.SetFindingIntroducedByParams{
 		ID:                   findingID,

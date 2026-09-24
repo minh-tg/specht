@@ -466,3 +466,36 @@ SELECT * FROM findings
 WHERE project_id = $1
   AND introduced_commit_sha = $2
 ORDER BY current_severity_rank DESC, created_at DESC;
+
+-- name: MarkAbsentScopedFindingsFixed :many
+-- ADR-018 auto-fix writer: closes findings whose most recent observation
+-- came from an equivalent complete scan of the same scope and that the
+-- current report ($3) no longer observes. The EXISTS pair below means
+-- "some observation is equivalent-complete and nothing is newer", i.e.
+-- the latest observation satisfies the scope guard. Incremental and
+-- incomplete scans never reach this query — the caller only invokes it
+-- for full scans whose parsed completeness is 'complete'.
+UPDATE findings
+SET state = 'fixed', updated_at = NOW()
+WHERE findings.project_id = $1
+  AND findings.state IN ('open', 'reopened')
+  AND NOT EXISTS (
+      SELECT 1 FROM finding_occurrences occ
+      WHERE occ.finding_id = findings.id
+        AND occ.report_id = $3
+  )
+  AND EXISTS (
+      SELECT 1 FROM finding_occurrences fo
+      JOIN reports r ON r.id = fo.report_id
+      WHERE fo.finding_id = findings.id
+        AND r.scan_scope_hash = $2
+        AND r.scan_completeness = 'complete'
+        AND r.status = 'completed'
+        AND NOT EXISTS (
+            SELECT 1 FROM finding_occurrences nf
+            JOIN reports nr ON nr.id = nf.report_id
+            WHERE nf.finding_id = findings.id
+              AND (nf.observed_at, nr.id) > (fo.observed_at, r.id)
+        )
+  )
+RETURNING *;

@@ -1417,6 +1417,95 @@ func (q *Queries) ListIntroducedGateCandidates(ctx context.Context, arg ListIntr
 	return items, nil
 }
 
+const markAbsentScopedFindingsFixed = `-- name: MarkAbsentScopedFindingsFixed :many
+UPDATE findings
+SET state = 'fixed', updated_at = NOW()
+WHERE findings.project_id = $1
+  AND findings.state IN ('open', 'reopened')
+  AND NOT EXISTS (
+      SELECT 1 FROM finding_occurrences occ
+      WHERE occ.finding_id = findings.id
+        AND occ.report_id = $3
+  )
+  AND EXISTS (
+      SELECT 1 FROM finding_occurrences fo
+      JOIN reports r ON r.id = fo.report_id
+      WHERE fo.finding_id = findings.id
+        AND r.scan_scope_hash = $2
+        AND r.scan_completeness = 'complete'
+        AND r.status = 'completed'
+        AND NOT EXISTS (
+            SELECT 1 FROM finding_occurrences nf
+            JOIN reports nr ON nr.id = nf.report_id
+            WHERE nf.finding_id = findings.id
+              AND (nf.observed_at, nr.id) > (fo.observed_at, r.id)
+        )
+  )
+RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version, introduced_by_report_id, introduced_commit_sha
+`
+
+type MarkAbsentScopedFindingsFixedParams struct {
+	ProjectID     pgtype.UUID `json:"project_id"`
+	ScanScopeHash pgtype.Text `json:"scan_scope_hash"`
+	ReportID      pgtype.UUID `json:"report_id"`
+}
+
+// ADR-018 auto-fix writer: closes findings whose most recent observation
+// came from an equivalent complete scan of the same scope and that the
+// current report ($3) no longer observes. The EXISTS pair below means
+// "some observation is equivalent-complete and nothing is newer", i.e.
+// the latest observation satisfies the scope guard. Incremental and
+// incomplete scans never reach this query — the caller only invokes it
+// for full scans whose parsed completeness is 'complete'.
+func (q *Queries) MarkAbsentScopedFindingsFixed(ctx context.Context, arg MarkAbsentScopedFindingsFixedParams) ([]Finding, error) {
+	rows, err := q.db.Query(ctx, markAbsentScopedFindingsFixed, arg.ProjectID, arg.ScanScopeHash, arg.ReportID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Finding
+	for rows.Next() {
+		var i Finding
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.FindingKind,
+			&i.Fingerprint,
+			&i.CurrentTitle,
+			&i.CurrentSeverity,
+			&i.CurrentSeverityRank,
+			&i.CurrentScore,
+			&i.State,
+			&i.TriageStatus,
+			&i.AssigneeID,
+			&i.FirstSeenAt,
+			&i.LastSeenAt,
+			&i.FixedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.AnalysisState,
+			&i.GateEffect,
+			&i.AnalysisExpiresAt,
+			&i.AnalysisReason,
+			&i.AnalysisSource,
+			&i.AnalysisUpdatedAt,
+			&i.AnalysisUpdatedBy,
+			&i.ManualOverride,
+			&i.ReviewRequired,
+			&i.FingerprintVersion,
+			&i.IntroducedByReportID,
+			&i.IntroducedCommitSha,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markFindingFixed = `-- name: MarkFindingFixed :one
 UPDATE findings SET state = 'fixed', updated_at = NOW()
 WHERE id = $1

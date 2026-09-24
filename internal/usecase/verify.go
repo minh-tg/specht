@@ -42,8 +42,9 @@ type VerifyResponse struct {
 // Verification moves the scan-derived technical state to fixed and logs a
 // verified_fixed event carrying the verifying report, branch, and commit.
 // It never touches analyst state: triage standing is preserved. Triage
-// cannot produce fixed — this is its only path, so a status edit alone
-// can never claim a verified fix.
+// cannot produce fixed — only a rescan-derived path (this endpoint or
+// the ingest-time auto-fix writer) can, so a status edit alone can never
+// claim a verified fix.
 func (u *Usecases) VerifyFix(ctx context.Context, findingID string) (*VerifyResponse, error) {
 	fid, err := uuid.Parse(findingID)
 	if err != nil {

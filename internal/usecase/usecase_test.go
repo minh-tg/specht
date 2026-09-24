@@ -469,6 +469,7 @@ type mockFindingRepo struct {
 	port.FindingStore
 	hasOccurrenceFn                   func(context.Context, string, string) (bool, error)
 	markFixedFn                       func(context.Context, string) (port.Finding, error)
+	markAbsentFixedFn                 func(context.Context, string, string, string) ([]port.Finding, error)
 	createOccurrenceFn                func(context.Context, port.OccurrenceInput) (port.Occurrence, error)
 	upsertDimensionFn                 func(context.Context, port.DimensionInput) error
 	listByProjectFn                   func(context.Context, string, port.ListFindingsParams) ([]port.Finding, error)
@@ -728,6 +729,16 @@ func (m *mockFindingRepo) MarkFixed(ctx context.Context, findingID string) (port
 		return port.Finding{}, fmt.Errorf("unexpected call to MarkFixed")
 	}
 	return m.markFixedFn(ctx, findingID)
+}
+
+// MarkAbsentFindingsFixed defaults to a no-op: every full ingest whose
+// parser vouches for completeness reaches the auto-fix writer, and for
+// most tests nothing qualifies as fixed.
+func (m *mockFindingRepo) MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
+	if m.markAbsentFixedFn == nil {
+		return nil, nil
+	}
+	return m.markAbsentFixedFn(ctx, projectID, scopeHash, reportID)
 }
 
 func (m *mockFindingRepo) SetFindingIntroducedBy(ctx context.Context, findingID, reportID string, commitSha *string) (port.Finding, error) {
@@ -3841,8 +3852,9 @@ func TestGetGateStatus_WatcherOffDropsAll(t *testing.T) {
 // TestIngestUnknownScan_CannotCloseUnseenFinding is the no-auto-fix
 // regression: an unknown-completeness scan of a new fingerprint must leave
 // the finding open/unanalyzed — no fixed-state write and no silent expiry
-// path may close an unseen finding. (The auto-fix writer does not exist;
-// SQL has no state='fixed' update, and upsert reopens on reappearance.)
+// path may close an unseen finding. (The ADR-018 auto-fix writer only runs
+// for full scans whose parser vouches completeness "complete"; unknown
+// scans never reach it, and upsert reopens on reappearance.)
 func TestIngestUnknownScan_CannotCloseUnseenFinding(t *testing.T) {
 	pr, rr, fr := makeTestRepos()
 	wr := &mockWaiverRepo{}
