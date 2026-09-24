@@ -2,12 +2,17 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/minh-tg/specht/internal/port"
 )
+
+// ErrEvidenceNotFound is returned when the evidence row does not exist.
+// Handlers map it to a 404.
+var ErrEvidenceNotFound = errors.New("evidence not found")
 
 // EvidenceResponse is an evidence artifact attached to a finding.
 type EvidenceResponse struct {
@@ -23,7 +28,7 @@ type EvidenceResponse struct {
 func (u *Usecases) CreateEvidence(ctx context.Context, findingID, userID string, typ, url, description string) (EvidenceResponse, error) {
 	fid, err := uuid.Parse(findingID)
 	if err != nil {
-		return EvidenceResponse{}, fmt.Errorf("invalid finding id: %w", err)
+		return EvidenceResponse{}, fmt.Errorf("%w: %v", ErrInvalidFindingID, err)
 	}
 	if err := u.checkFindingProjectEditor(ctx, fid); err != nil {
 		return EvidenceResponse{}, err
@@ -66,7 +71,7 @@ func evidenceToResponse(e port.Evidence) EvidenceResponse {
 func (u *Usecases) ListEvidence(ctx context.Context, findingID string) ([]EvidenceResponse, error) {
 	fid, err := uuid.Parse(findingID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid finding id: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidFindingID, err)
 	}
 	if err := u.checkFindingProjectAccess(ctx, fid); err != nil {
 		return nil, err
@@ -85,7 +90,7 @@ func (u *Usecases) ListEvidence(ctx context.Context, findingID string) ([]Eviden
 func (u *Usecases) DeleteEvidence(ctx context.Context, evidenceID string) error {
 	eid, err := uuid.Parse(evidenceID)
 	if err != nil {
-		return fmt.Errorf("invalid evidence id: %w", err)
+		return ErrInvalidID
 	}
 	// Resolve the evidence to its finding and enforce the caller's project
 	// scope for every authenticated identity, not just API keys: the access
@@ -93,6 +98,9 @@ func (u *Usecases) DeleteEvidence(ctx context.Context, evidenceID string) error 
 	// denied before the delete.
 	evidence, err := u.deps.Stores.Evidence.GetByID(ctx, eid.String())
 	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return ErrEvidenceNotFound
+		}
 		return fmt.Errorf("get evidence: %w", err)
 	}
 	fid, err := uuid.Parse(evidence.FindingID)

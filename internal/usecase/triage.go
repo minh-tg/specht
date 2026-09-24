@@ -89,7 +89,7 @@ func stateToGateEffect(s string) string {
 func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*TriageOutput, error) {
 	findingID, err := uuid.Parse(input.FindingID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid finding id: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidFindingID, err)
 	}
 	userID, err := uuid.Parse(input.UserID)
 	if err != nil {
@@ -225,7 +225,7 @@ func validateBulkTriage(input BulkTriageInput) error {
 	}
 	for _, id := range input.FindingIDs {
 		if _, err := uuid.Parse(id); err != nil {
-			return fmt.Errorf("invalid finding id %q: %w", id, err)
+			return fmt.Errorf("%w: %q", ErrInvalidFindingID, id)
 		}
 	}
 	return nil

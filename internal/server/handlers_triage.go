@@ -69,6 +69,8 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusNotFound, "not_found", triageMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
 			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
+		case errors.Is(err, usecase.ErrInvalidFindingID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		case errors.Is(err, usecase.ErrReasonRequired):
 			respondError(w, http.StatusUnprocessableEntity, "reason_required", "reason is required for this analysis state")
 		case errors.Is(err, usecase.ErrExpiryRequired):
@@ -98,6 +100,8 @@ func (h *Handler) VerifyFinding(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusNotFound, "not_found", triageMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
 			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
+		case errors.Is(err, usecase.ErrInvalidFindingID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		default:
 			slog.Error("verify finding fix", "finding_id", id, "error", err)
 			respondError(w, http.StatusInternalServerError, "verify_failed", "could not verify finding fix")
@@ -148,6 +152,8 @@ func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, usecase.ErrFindingNotFound):
 			respondError(w, http.StatusNotFound, "not_found", "one or more findings not found")
+		case errors.Is(err, usecase.ErrInvalidFindingID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
 			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
 		case errors.Is(err, usecase.ErrReasonRequired):

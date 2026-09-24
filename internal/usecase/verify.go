@@ -47,7 +47,7 @@ type VerifyResponse struct {
 func (u *Usecases) VerifyFix(ctx context.Context, findingID string) (*VerifyResponse, error) {
 	fid, err := uuid.Parse(findingID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid finding id: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidFindingID, err)
 	}
 	f, err := u.findingWithProjectEditor(ctx, fid)
 	if err != nil {

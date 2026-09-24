@@ -48,6 +48,8 @@ func (h *Handler) CreateEvidence(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusNotFound, "not_found", assessMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
 			respondError(w, http.StatusForbidden, "project_access_denied", assessMsgFindingAccessDenied)
+		case errors.Is(err, usecase.ErrInvalidFindingID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		default:
 			slog.Error("create evidence", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not create evidence")
@@ -86,9 +88,14 @@ func (h *Handler) DeleteEvidence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.usecase.DeleteEvidence(r.Context(), evidenceID); err != nil {
-		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+		switch {
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
 			respondError(w, http.StatusForbidden, "project_access_denied", assessMsgFindingAccessDenied)
-		} else {
+		case errors.Is(err, usecase.ErrInvalidID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid evidence id format")
+		case errors.Is(err, usecase.ErrEvidenceNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "evidence not found")
+		default:
 			slog.Error("delete evidence", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not delete evidence")
 		}
@@ -193,6 +200,8 @@ func (h *Handler) UpsertSignoff(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusNotFound, "not_found", assessMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
 			respondError(w, http.StatusForbidden, "project_access_denied", assessMsgFindingAccessDenied)
+		case errors.Is(err, usecase.ErrInvalidFindingID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		default:
 			slog.Error("upsert signoff", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not update signoff")

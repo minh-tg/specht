@@ -23,7 +23,7 @@ type SignoffResponse struct {
 func (u *Usecases) UpsertSignoff(ctx context.Context, findingID, userID, status, comment string) (*SignoffResponse, error) {
 	fid, err := uuid.Parse(findingID)
 	if err != nil {
-		return nil, fmt.Errorf("invalid finding id: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidFindingID, err)
 	}
 	uid, err := uuid.Parse(userID)
 	if err != nil {
