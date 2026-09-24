@@ -1,0 +1,59 @@
+{
+  "check_type": "terraform",
+  "results": {
+    "passed_checks": [],
+    "failed_checks": [
+      {
+        "check_id": "CKV_AZURE_41",
+        "check_name": "Ensure the key vault is recoverable",
+        "check_result": {
+          "result": "FAILED"
+        },
+        "file_path": "/terraform/main.tf",
+        "file_line_range": [1, 16],
+        "resource": "azurerm_key_vault.main",
+        "check_class": "checkov.terraform.checks.resource.azure.KeyvaultRecoveryEnabled",
+        "guideline": "https://docs.bridgecrew.io/docs/ensure-the-key-vault-is-recoverable",
+        "severity": "HIGH"
+      },
+      {
+        "check_id": "CKV_AZURE_5",
+        "check_name": "Ensure that the network interface doesn't have public IP",
+        "check_result": {
+          "result": "FAILED"
+        },
+        "code_block": [
+          [42, "resource \"azurerm_network_interface\" \"main\" {"]
+        ],
+        "file_path": "/terraform/network.tf",
+        "file_line_range": [42, 55],
+        "resource": "azurerm_network_interface.main",
+        "check_class": "checkov.terraform.checks.resource.azure.AzurePublicIP",
+        "guideline": "https://docs.bridgecrew.io/docs/ensure-azure-network-interface-doesnt-have-public-ip",
+        "severity": "MEDIUM"
+      },
+      {
+        "check_id": "CKV_AWS_1",
+        "check_name": "Ensure IAM password policy requires at least one uppercase letter",
+        "check_result": {
+          "result": "FAILED"
+        },
+        "file_path": "/terraform/iam.tf",
+        "file_line_range": [10, 20],
+        "resource": "aws_iam_account_password_policy.password_policy",
+        "check_class": "checkov.terraform.checks.resource.aws.IAMPasswordPolicyUppercase",
+        "guideline": "https://docs.bridgecrew.io/docs/ensure-iam-password-policy-requires-at-least-one-uppercase-letter",
+        "severity": "MEDIUM"
+      }
+    ],
+    "skipped_checks": [],
+    "parsing_errors": []
+  },
+  "summary": {
+    "passed": 10,
+    "failed": 3,
+    "skipped": 0,
+    "parsing_errors": 0,
+    "checkov_version": "3.2.344"
+  }
+}

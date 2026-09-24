@@ -1,0 +1,60 @@
+{
+  "results": [
+    {
+      "rule_id": "aws-s3-enable-versioning",
+      "long_id": "aws-s3-enable-versioning",
+      "rule_description": "S3 buckets should have versioning enabled",
+      "description": "Versioning protects against accidental deletion.",
+      "impact": "Data loss on overwrite or delete.",
+      "resolution": "Enable versioning on the S3 bucket.",
+      "severity": "HIGH",
+      "warning": false,
+      "status": 1,
+      "resource": "aws_s3_bucket.data",
+      "location": {
+        "filename": "main.tf",
+        "start_line": 10,
+        "end_line": 14
+      },
+      "links": ["https://tfsec.dev/docs/aws/s3/enable-versioning"]
+    },
+    {
+      "rule_id": "aws-ec2-no-public-ip",
+      "long_id": "aws-ec2-no-public-ip",
+      "rule_description": "Instances should not have public IPs",
+      "severity": "CRITICAL",
+      "warning": false,
+      "status": 0,
+      "resource": "aws_instance.web",
+      "location": {
+        "filename": "main.tf",
+        "start_line": 30,
+        "end_line": 40
+      },
+      "links": []
+    },
+    {
+      "rule_id": "general-secrets-sensitive-in-variable",
+      "long_id": "general-secrets-sensitive-in-variable",
+      "rule_description": "Variables should be marked sensitive",
+      "description": "",
+      "impact": "",
+      "resolution": "Set sensitive = true.",
+      "severity": "MEDIUM",
+      "warning": false,
+      "status": 1,
+      "resource": "var.db_password",
+      "location": {
+        "filename": "variables.tf",
+        "start_line": 3,
+        "end_line": 6
+      },
+      "links": []
+    }
+  ],
+  "statistics": {
+    "passed": 1,
+    "failed": 2,
+    "ignored": 0
+  }
+}

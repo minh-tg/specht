@@ -1,0 +1,172 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "semgrep",
+          "version": "1.72.0",
+          "semanticVersion": "1.72.0",
+          "informationUri": "https://semgrep.dev",
+          "rules": [
+            {
+              "id": "go.jwt-hardcoded-secret",
+              "name": "go.jwt-hardcoded-secret",
+              "shortDescription": {
+                "text": "Hardcoded JWT secret detected"
+              },
+              "fullDescription": {
+                "text": "A hardcoded JWT secret or API key was detected in the source code. This is a security risk as it allows anyone with access to the source code to forge tokens."
+              },
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "properties": {
+                "precision": "high",
+                "category": "security",
+                "cwe": ["CWE-798"],
+                "tags": ["security", "cwe-798", "jwt"]
+              }
+            },
+            {
+              "id": "python.flask.debug-enabled",
+              "name": "python.flask.debug-enabled",
+              "shortDescription": {
+                "text": "Flask debug mode enabled"
+              },
+              "fullDescription": {
+                "text": "Flask application has debug mode enabled. This can expose sensitive information and allow arbitrary code execution in production."
+              },
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "properties": {
+                "precision": "high",
+                "category": "security",
+                "cwe": ["CWE-489"],
+                "tags": ["security", "cwe-489", "flask"]
+              }
+            }
+          ]
+        }
+      },
+      "artifacts": [
+        {
+          "location": {
+            "uri": "src/auth/login.go",
+            "uriBaseId": "%SRCROOT%"
+          }
+        },
+        {
+          "location": {
+            "uri": "src/app.py",
+            "uriBaseId": "%SRCROOT%"
+          }
+        }
+      ],
+      "results": [
+        {
+          "ruleId": "go.jwt-hardcoded-secret",
+          "ruleIndex": 0,
+          "level": "error",
+          "message": {
+            "text": "Hardcoded JWT secret 'my-secret-key' detected in variable 'jwtSecret'."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/auth/login.go",
+                  "uriBaseId": "%SRCROOT%",
+                  "index": 0
+                },
+                "region": {
+                  "startLine": 42,
+                  "startColumn": 9,
+                  "endLine": 42,
+                  "endColumn": 52,
+                  "snippet": {
+                    "text": "jwtSecret := \"my-secret-key\""
+                  }
+                }
+              }
+            }
+          ],
+          "codeFlows": [
+            {
+              "threadFlows": [
+                {
+                  "locations": [
+                    {
+                      "location": {
+                        "physicalLocation": {
+                          "artifactLocation": {
+                            "uri": "src/auth/login.go",
+                            "uriBaseId": "%SRCROOT%"
+                          },
+                          "region": {
+                            "startLine": 42,
+                            "startColumn": 9
+                          }
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "fingerprints": {
+            "matchBasedFingerprint/v1": "b5e2b6c7d8e9f0a1b2c3d4e5f6a7b8c9"
+          },
+          "properties": {
+            "severity": "HIGH",
+            "fix": "jwtSecret := os.Getenv(\"JWT_SECRET\")"
+          }
+        },
+        {
+          "ruleId": "python.flask.debug-enabled",
+          "ruleIndex": 1,
+          "level": "warning",
+          "message": {
+            "text": "Flask app.run() called with debug=True in production code."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "src/app.py",
+                  "uriBaseId": "%SRCROOT%",
+                  "index": 1
+                },
+                "region": {
+                  "startLine": 15,
+                  "startColumn": 5,
+                  "endLine": 15,
+                  "endColumn": 48,
+                  "snippet": {
+                    "text": "app.run(debug=True, host='0.0.0.0')"
+                  }
+                }
+              }
+            }
+          ],
+          "fingerprints": {
+            "matchBasedFingerprint/v1": "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6"
+          },
+          "properties": {
+            "severity": "MEDIUM",
+            "fix": "app.run(debug=False)"
+          }
+        }
+      ],
+      "columnKind": "utf16CodeUnits",
+      "originalUriBaseIds": {
+        "%SRCROOT%": {
+          "uri": "file:///home/user/project/"
+        }
+      }
+    }
+  ]
+}
