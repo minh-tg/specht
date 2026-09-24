@@ -50,6 +50,9 @@ func (h *Handler) CreateEvidence(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusForbidden, "project_access_denied", assessMsgFindingAccessDenied)
 		case errors.Is(err, usecase.ErrInvalidFindingID):
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
+		case errors.Is(err, usecase.ErrInvalidEvidenceType):
+			respondError(w, http.StatusBadRequest, "invalid_type",
+				"type must be screenshot, log, reference, or automated")
 		default:
 			slog.Error("create evidence", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not create evidence")

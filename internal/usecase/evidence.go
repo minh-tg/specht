@@ -14,6 +14,20 @@ import (
 // Handlers map it to a 404.
 var ErrEvidenceNotFound = errors.New("evidence not found")
 
+// ErrInvalidEvidenceType is returned when the evidence type is outside the
+// persistence vocabulary. Handlers map it to a 400.
+var ErrInvalidEvidenceType = errors.New("invalid evidence type")
+
+// evidenceTypes is the allowed evidence type vocabulary (migration 000013
+// CHECK constraint). CreateEvidence rejects anything else at the boundary
+// instead of letting the driver error surface as a 500.
+var evidenceTypes = map[string]bool{
+	"screenshot": true,
+	"log":        true,
+	"reference":  true,
+	"automated":  true,
+}
+
 // EvidenceResponse is an evidence artifact attached to a finding.
 type EvidenceResponse struct {
 	ID          string  `json:"id"`
@@ -32,6 +46,9 @@ func (u *Usecases) CreateEvidence(ctx context.Context, findingID, userID string,
 	}
 	if err := u.checkFindingProjectEditor(ctx, fid); err != nil {
 		return EvidenceResponse{}, err
+	}
+	if !evidenceTypes[typ] {
+		return EvidenceResponse{}, ErrInvalidEvidenceType
 	}
 
 	var uploadedBy *string
