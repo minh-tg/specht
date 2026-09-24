@@ -452,10 +452,11 @@ type findingResponse struct {
 }
 
 type gateStatus struct {
-	ThresholdBreached bool     `json:"threshold_breached"`
-	BlockingCount     int64    `json:"blocking_count"`
-	BlockedBy         []string `json:"blocked_by"`
-	WaivedCount       int      `json:"waived_count"`
+	ThresholdBreached     bool              `json:"threshold_breached"`
+	BlockingCount         int64             `json:"blocking_count"`
+	BlockedBy             []string          `json:"blocked_by"`
+	BlockedByReachability map[string]string `json:"blocked_by_reachability"`
+	WaivedCount           int               `json:"waived_count"`
 }
 
 type ingestResponse struct {
