@@ -102,6 +102,10 @@ echo "== gate status ==" >&2
 out=$(api "$SPECHT_API_URL/api/v1/projects/$SPECHT_PROJECT/gate" \
   -H "Authorization: Bearer $KEY")
 split_body "$out"
+if [ "$CODE" != "200" ]; then
+  echo "gate check failed (HTTP $CODE): $BODY" >&2
+  exit 1
+fi
 echo "$BODY"
 breached=$(printf '%s' "$BODY" | jq -r .threshold_breached)
 if [ "$breached" = "true" ]; then
