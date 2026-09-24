@@ -608,13 +608,21 @@ func severityRankToken(token string) int16 {
 	}
 }
 
+// parseMinSeverityRank resolves a comma-separated severity list to the
+// blocking floor: the LOWEST severity named, so every listed severity blocks.
+// Unknown tokens are ignored; an empty or wholly unknown list floors at the
+// default of high.
 func parseMinSeverityRank(severities string) int16 {
 	if severities == "" {
 		return 3 // default: high+
 	}
 	minRank := int16(0)
 	for _, p := range strings.Split(severities, ",") {
-		if rank := severityRankToken(p); rank > minRank {
+		rank := severityRankToken(p)
+		if rank == 0 {
+			continue
+		}
+		if minRank == 0 || rank < minRank {
 			minRank = rank
 		}
 	}

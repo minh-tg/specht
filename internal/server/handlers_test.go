@@ -2804,8 +2804,8 @@ func TestParseMinSeverityRank(t *testing.T) {
 		{"critical", 4},
 		{"medium", 2},
 		{"low", 1},
-		{"high,critical", 4},
-		{"low,medium", 2},
+		{"high,critical", 3},
+		{"low,medium", 1},
 		{"unknown", 3},
 	}
 	for _, tt := range tests {

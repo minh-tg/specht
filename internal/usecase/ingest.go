@@ -935,10 +935,18 @@ func (u *Usecases) deleteDuplicateReport(ctx context.Context, projectID, reportI
 // service's candidate prefilter (the candidate SQL already scopes to
 // open/reopened state); the rank floor maps the severity strings, defaulting
 // to high (rank 3) like parseMinSeverityRank.
+// gateSeverityRank maps the caller's severity list to the blocking floor:
+// the LOWEST severity named, so every listed severity blocks (parity with
+// parseMinSeverityRank). Unknown labels are skipped; an empty or wholly
+// unknown list floors at high (rank 3), failing closed toward blocking.
 func gateSeverityRank(severities, _ []string) int16 {
 	minRank := int16(0)
 	for _, s := range severities {
-		if r, ok := severityLabelRank[s]; ok && r > minRank {
+		r, ok := severityLabelRank[s]
+		if !ok || r == 0 {
+			continue
+		}
+		if minRank == 0 || r < minRank {
 			minRank = r
 		}
 	}
