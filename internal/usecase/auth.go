@@ -227,7 +227,10 @@ func (u *Usecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdB
 		KeyPrefix: prefix,
 		KeyHash:   hash,
 		LastFour:  lastFour,
-		Scopes:    json.RawMessage(`["ingest"]`),
+		// ingest+read is the documented CI contract: the adapter and CLI
+		// ingest a report and then read the gate/findings back with the
+		// same key (see cmd/adapter and the dogfood pipeline).
+		Scopes:    json.RawMessage(`["ingest","read"]`),
 		CreatedBy: creatorID.String(),
 		ExpiresAt: expiresAt,
 	})

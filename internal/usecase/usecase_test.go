@@ -2998,7 +2998,7 @@ func TestCreateAPIKey_Success(t *testing.T) {
 	assert.Equal(t, resp.RawKey[len(resp.RawKey)-4:], storedKey.LastFour)
 	require.NotNil(t, resp.LastFour)
 	assert.Equal(t, storedKey.LastFour, *resp.LastFour)
-	assert.JSONEq(t, `["ingest"]`, string(storedKey.Scopes))
+	assert.JSONEq(t, `["ingest","read"]`, string(storedKey.Scopes), "a CI key must both ingest and read back its own gate")
 	assert.Nil(t, resp.ExpiresAt, "no expiry requested means no expires_at in the response")
 }
 
