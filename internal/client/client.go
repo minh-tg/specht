@@ -486,12 +486,9 @@ func (c *Client) PreviewRetention(days int) (*RetentionPreview, error) {
 
 // PurgeRetention deletes settled reports older than the window.
 func (c *Client) PurgeRetention(days int) (*RetentionResult, error) {
-	body, err := json.Marshal(map[string]any{"older_than_days": days})
-	if err != nil {
-		return nil, err
-	}
 	var resp RetentionResult
-	if err := c.do(context.Background(), "POST", "/api/v1/admin/retention/purge", body, &resp); err != nil {
+	if err := c.do(context.Background(), "POST", "/api/v1/admin/retention/purge",
+		map[string]any{"older_than_days": days}, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
