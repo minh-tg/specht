@@ -205,16 +205,23 @@ func (u *Usecases) autoFixAbsentFindings(ctx context.Context, project port.Proje
 	if err != nil {
 		return fmt.Errorf("auto-fix absent findings: %w", err)
 	}
-	for _, f := range fixed {
-		changes := mustMarshal(map[string]any{"report_id": report.ID, "scanner": input.Scanner, "new_state": f.State})
-		if _, err := u.deps.Stores.Findings.CreateEvent(ctx, port.FindingEventInput{
-			FindingID: f.ID,
+	if len(fixed) > 0 {
+		ids := make([]string, 0, len(fixed))
+		for _, f := range fixed {
+			ids = append(ids, f.ID)
+		}
+		changes := mustMarshal(map[string]any{"report_id": report.ID, "scanner": input.Scanner, "new_state": "fixed"})
+		// One statement for the whole closure keeps the ingest
+		// query-count budget independent of how many findings close.
+		if err := u.deps.Stores.Findings.BulkCreateEvents(ctx, ids, port.FindingEventInput{
 			EventType: "state_changed",
-			NewValue:  strPtr(f.State),
+			NewValue:  strPtr("fixed"),
 			Changes:   changes,
 		}); err != nil {
-			slog.Warn("log auto-fix event failed", "finding", f.ID, "error", err)
+			slog.Warn("log auto-fix events failed", "count", len(ids), "error", err)
 		}
+	}
+	for _, f := range fixed {
 		if u.deps.Tracker != nil {
 			u.deps.Tracker.Dispatch(ctx, tracker.Event{
 				Type:         tracker.EventVerifiedFixed,

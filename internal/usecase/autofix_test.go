@@ -96,10 +96,12 @@ func TestIngestReport_AutoFixClosesAbsentFindings(t *testing.T) {
 			State: "fixed", AnalysisState: "unanalyzed", GateEffect: "block",
 		}}, nil
 	}
-	var events []port.FindingEventInput
-	fr.createEventFn = func(ctx context.Context, input port.FindingEventInput) (port.FindingEvent, error) {
-		events = append(events, input)
-		return port.FindingEvent{FindingID: input.FindingID, EventType: input.EventType}, nil
+	var eventIDs []string
+	var eventInput port.FindingEventInput
+	fr.bulkCreateEventsFn = func(ctx context.Context, ids []string, input port.FindingEventInput) error {
+		eventIDs = append(eventIDs, ids...)
+		eventInput = input
+		return nil
 	}
 
 	out, err := uc.IngestReport(context.Background(), IngestReportInput{
@@ -114,14 +116,12 @@ func TestIngestReport_AutoFixClosesAbsentFindings(t *testing.T) {
 	assert.Len(t, call.scopeHash, 64, "scope hash is the hex digest of the scan-scope material")
 	assert.Equal(t, makeProject(true).ID, call.projectID)
 
-	require.Len(t, events, 1, "one state_changed event per closed finding")
-	ev := events[0]
-	assert.Equal(t, "find-fixed", ev.FindingID)
-	assert.Equal(t, "state_changed", ev.EventType)
-	require.NotNil(t, ev.NewValue)
-	assert.Equal(t, "fixed", *ev.NewValue)
+	require.Equal(t, []string{"find-fixed"}, eventIDs, "one event id per closed finding")
+	assert.Equal(t, "state_changed", eventInput.EventType)
+	require.NotNil(t, eventInput.NewValue)
+	assert.Equal(t, "fixed", *eventInput.NewValue)
 	var changes map[string]any
-	require.NoError(t, json.Unmarshal(ev.Changes, &changes))
+	require.NoError(t, json.Unmarshal(eventInput.Changes, &changes))
 	assert.Equal(t, out.ReportID, changes["report_id"])
 	assert.Equal(t, "trivy", changes["scanner"])
 }

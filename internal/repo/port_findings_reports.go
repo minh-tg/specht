@@ -434,6 +434,31 @@ func (r *pgFindingPort) CreateEvent(ctx context.Context, input port.FindingEvent
 	return findingEventRowToPort(row), nil
 }
 
+// BulkCreateEvents writes one event shape for many findings in a single
+// statement (FindingID is unused — every listed finding gets the event).
+func (r *pgFindingPort) BulkCreateEvents(ctx context.Context, findingIDs []string, input port.FindingEventInput) error {
+	if len(findingIDs) == 0 {
+		return nil
+	}
+	ids := make([]pgtype.UUID, 0, len(findingIDs))
+	for _, id := range findingIDs {
+		fid, err := parseID(id)
+		if err != nil {
+			return err
+		}
+		ids = append(ids, fid)
+	}
+	return r.inner.BulkCreateFindingEvents(ctx, sqlc.BulkCreateFindingEventsParams{
+		Column1:   ids,
+		UserID:    uuidPtrFromString(input.UserID),
+		EventType: input.EventType,
+		OldValue:  textPtrFromString(input.OldValue),
+		NewValue:  textPtrFromString(input.NewValue),
+		Comment:   textPtrFromString(input.Comment),
+		Changes:   input.Changes,
+	})
+}
+
 func (r *pgFindingPort) ListEvents(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]port.FindingEvent, error) {
 	fid, err := parseID(findingID)
 	if err != nil {

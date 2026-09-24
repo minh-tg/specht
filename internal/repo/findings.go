@@ -146,6 +146,10 @@ func (r *pgFindingRepo) MarkAbsentScopedFindingsFixed(ctx context.Context, arg s
 	return r.q.MarkAbsentScopedFindingsFixed(ctx, arg)
 }
 
+func (r *pgFindingRepo) BulkCreateFindingEvents(ctx context.Context, arg sqlc.BulkCreateFindingEventsParams) error {
+	return r.q.BulkCreateFindingEvents(ctx, arg)
+}
+
 func (r *pgFindingRepo) SetIntroducedBy(ctx context.Context, findingID, reportID pgtype.UUID, commit pgtype.Text) (sqlc.Finding, error) {
 	return r.q.SetFindingIntroducedBy(ctx, sqlc.SetFindingIntroducedByParams{
 		ID:                   findingID,

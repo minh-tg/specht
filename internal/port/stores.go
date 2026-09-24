@@ -537,6 +537,10 @@ type FindingStore interface {
 	// closed findings. Callers gate it to full scans whose parsed
 	// completeness is "complete".
 	MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string) ([]Finding, error)
+	// BulkCreateEvents records one event shape for many findings in a
+	// single statement, keeping large closures (the auto-fix writer)
+	// O(1) in queries instead of O(findings).
+	BulkCreateEvents(ctx context.Context, findingIDs []string, input FindingEventInput) error
 	// SetFindingIntroducedBy materializes introduced-by-change attribution.
 	SetFindingIntroducedBy(ctx context.Context, findingID, reportID string, commitSha *string) (Finding, error)
 	// ListIntroducedByReport returns findings one report introduced.

@@ -470,6 +470,7 @@ type mockFindingRepo struct {
 	hasOccurrenceFn                   func(context.Context, string, string) (bool, error)
 	markFixedFn                       func(context.Context, string) (port.Finding, error)
 	markAbsentFixedFn                 func(context.Context, string, string, string) ([]port.Finding, error)
+	bulkCreateEventsFn                func(context.Context, []string, port.FindingEventInput) error
 	createOccurrenceFn                func(context.Context, port.OccurrenceInput) (port.Occurrence, error)
 	upsertDimensionFn                 func(context.Context, port.DimensionInput) error
 	listByProjectFn                   func(context.Context, string, port.ListFindingsParams) ([]port.Finding, error)
@@ -739,6 +740,14 @@ func (m *mockFindingRepo) MarkAbsentFindingsFixed(ctx context.Context, projectID
 		return nil, nil
 	}
 	return m.markAbsentFixedFn(ctx, projectID, scopeHash, reportID)
+}
+
+// BulkCreateEvents defaults to a no-op, matching CreateEvent.
+func (m *mockFindingRepo) BulkCreateEvents(ctx context.Context, findingIDs []string, input port.FindingEventInput) error {
+	if m.bulkCreateEventsFn == nil {
+		return nil
+	}
+	return m.bulkCreateEventsFn(ctx, findingIDs, input)
 }
 
 func (m *mockFindingRepo) SetFindingIntroducedBy(ctx context.Context, findingID, reportID string, commitSha *string) (port.Finding, error) {

@@ -237,6 +237,7 @@ type FindingRepo interface {
 	HasOccurrence(ctx context.Context, findingID, reportID pgtype.UUID) (bool, error)
 	MarkFixed(ctx context.Context, findingID pgtype.UUID) (sqlc.Finding, error)
 	MarkAbsentScopedFindingsFixed(ctx context.Context, arg sqlc.MarkAbsentScopedFindingsFixedParams) ([]sqlc.Finding, error)
+	BulkCreateFindingEvents(ctx context.Context, arg sqlc.BulkCreateFindingEventsParams) error
 	SetIntroducedBy(ctx context.Context, findingID, reportID pgtype.UUID, commit pgtype.Text) (sqlc.Finding, error)
 	ListIntroducedByReport(ctx context.Context, projectID, reportID pgtype.UUID) ([]sqlc.Finding, error)
 	FindScaFindingIdForPurlAndCve(ctx context.Context, projectID pgtype.UUID, purlName string, candidateIDs []string) (pgtype.UUID, error)
