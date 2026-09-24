@@ -57,6 +57,11 @@ func (a *JWTAuthenticator) CreateToken(userID, email, role string) (string, erro
 func (a *JWTAuthenticator) CreateRefreshToken(userID string) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
+		// jti keeps every mint unique: the refresh-token store keys on the
+		// SHA-256 of the whole token, so two mints for one user in the same
+		// second would otherwise be byte-identical and collide on the unique
+		// hash index (surfacing as a generic login/refresh failure).
+		"jti":  uuid.NewString(),
 		"sub":  userID,
 		"type": "refresh",
 		"iat":  now.Unix(),

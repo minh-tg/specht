@@ -191,3 +191,29 @@ func TestJWT_Authenticate_RejectsWrongSignature(t *testing.T) {
 	assert.Nil(t, ident)
 	assert.ErrorIs(t, err, ErrInvalidCredential)
 }
+
+// Refresh tokens are looked up by the SHA-256 of the whole token, so two
+// mints for the same user must never be byte-identical — even when they land
+// in the same wall-clock second (login retry, login→refresh rotation). The
+// unique jti claim is what guarantees that; without it the store's unique
+// hash index rejects the second token and the user gets a generic 401.
+func TestJWT_CreateRefreshToken_MintsUniqueTokens(t *testing.T) {
+	a, err := NewJWTAuthenticator(jwtBindingTestSecret)
+	require.NoError(t, err)
+
+	first, err := a.CreateRefreshToken("user-1")
+	require.NoError(t, err)
+	second, err := a.CreateRefreshToken("user-1")
+	require.NoError(t, err)
+
+	firstClaims := parseClaims(t, a, first)
+	secondClaims := parseClaims(t, a, second)
+
+	firstJTI, _ := firstClaims["jti"].(string)
+	secondJTI, _ := secondClaims["jti"].(string)
+	require.NotEmpty(t, firstJTI, "refresh token must carry a jti claim")
+	require.NotEmpty(t, secondJTI, "refresh token must carry a jti claim")
+	assert.NotEqual(t, firstJTI, secondJTI, "jti must differ between mints")
+	assert.NotEqual(t, first, second, "tokens must differ so their hashes cannot collide")
+	assert.Equal(t, "refresh", firstClaims["type"], "refresh tokens keep their type claim")
+}
