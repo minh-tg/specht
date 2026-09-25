@@ -1,0 +1,31 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "alpine:3.20",
+  "ArtifactType": "container_image",
+  "Results": [
+    {
+      "Target": "alpine:3.20 (alpine 3.20.3)",
+      "Class": "os-pkgs",
+      "Type": "alpine",
+      "Packages": [
+        {
+          "Name": "musl",
+          "Version": "1.2.4-r3",
+          "PkgID": "musl@1.2.4-r3",
+          "Identifier": {
+            "PURL": "pkg:apk/alpine/musl@1.2.4-r3?arch=aarch64"
+          }
+        },
+        {
+          "Name": "busybox",
+          "Version": "1.36.1-r5",
+          "PkgID": "busybox@1.36.1-r5",
+          "Identifier": {
+            "PURL": "pkg:apk/alpine/busybox@1.36.1-r5?arch=aarch64"
+          }
+        }
+      ],
+      "Vulnerabilities": null
+    }
+  ]
+}

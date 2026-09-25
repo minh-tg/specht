@@ -84,6 +84,11 @@ func runE2E(m *testing.M) int {
 		return 1
 	}
 
+	// Service fakes must exist before the first server boot so the wired
+	// endpoints (IdP, OSV, webhooks) resolve at startup.
+	startFakes()
+	defer stopFakes()
+
 	adminEmail = "e2e-admin@example.com"
 	adminPass = randomHex(24)
 
@@ -169,6 +174,14 @@ func startDatabase() error {
 	if err := db.RunMigrations(dsn, filepath.Join(repoRoot, "migrations")); err != nil {
 		return fmt.Errorf("migrations: %w", err)
 	}
+	// The product's per-project watcher cadence defaults to one hour
+	// (migration 000020) and outranks WATCHER_POLL_INTERVAL; the E2E
+	// suite runs every project on a one-second cadence so daemon-driven
+	// business processes are observable. Configures the test database
+	// only — production keeps its default.
+	if err := shrinkWatcherCadence(dsn); err != nil {
+		return fmt.Errorf("watcher cadence: %w", err)
+	}
 	return nil
 }
 
@@ -217,8 +230,11 @@ func startServer(adminEmails string) error {
 			// observable in tests instead of waiting out 5 minutes.
 			"LIFECYCLE_SWEEP_INTERVAL=1s",
 			"RATE_LIMIT_ENABLED=false",
-			"WATCHER_ENABLE=false",
 		)
+		// First occurrence wins in the child, and cleanEnv already swept
+		// the managed keys — the fakes are the authority for every wired
+		// endpoint.
+		env = append(env, fakeServerEnv(addr)...)
 		if adminEmails != "" {
 			env = append(env, "ADMIN_EMAILS="+adminEmails)
 		}
@@ -311,6 +327,17 @@ func cleanEnv(overrides ...string) []string {
 		"ADMIN_EMAILS": true, "LOG_LEVEL": true, "DB_MIGRATE": true,
 		"LIFECYCLE_SWEEP_INTERVAL": true, "RATE_LIMIT_ENABLED": true,
 		"WATCHER_ENABLE": true, "API_URL": true, "API_KEY": true,
+		// Fake-wired endpoints: developer or CI exports must never leak
+		// into the experiment (the fakes are the only authority).
+		"WATCHER_OSV_ENDPOINT": true, "WATCHER_POLL_INTERVAL": true,
+		"WATCHER_WEBHOOK_URL": true, "WATCHER_WEBHOOK_URLS": true,
+		"WATCHER_WEBHOOK_SIGNING_SECRET": true, "WATCHER_SLACK_URL": true,
+		"TRACKER_PROVIDER": true, "TRACKER_BASE_URL": true,
+		"TRACKER_PROJECT_ID": true, "TRACKER_API_TOKEN": true,
+		"SSO_ENABLE": true, "SSO_ISSUER_URL": true, "SSO_CLIENT_ID": true,
+		"SSO_CLIENT_SECRET": true, "SSO_REDIRECT_URI": true,
+		"SSO_ALLOWED_DOMAINS": true, "SSO_ADMIN_GROUPS": true,
+		"TRUSTED_PROXIES": true,
 	}
 	var env []string
 	for _, kv := range os.Environ() {

@@ -1,0 +1,313 @@
+//go:build e2e
+
+package e2e
+
+import (
+	"context"
+	"crypto"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math/big"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+)
+
+// Test-time service fakes, started in runE2E before the server so every
+// wired endpoint (SSO IdP, OSV feed, webhook sinks) exists at boot:
+//
+//   - fakeIdP:   SSO_ISSUER_URL target — JWKS, authorize, token, userinfo
+//   - fakeOSV:   WATCHER_OSV_ENDPOINT — empty querybatch answers by default
+//   - webhooks:  WATCHER_WEBHOOK_URL(S) — capture tracker/notify deliveries
+//
+// The smoke suite (service_fakes_e2e_test.go) proves each wire end to end;
+// the watcher, tracker, and SSO business processes build on them.
+
+const (
+	e2eIdPClientID     = "e2e-client"
+	e2eIdPClientSecret = "e2e-secret"
+	e2eWebhookSecret   = "e2e-signing-secret"
+	e2eSSOEmail        = "e2e-sso@example.com"
+)
+
+type capturedRequest struct {
+	Method string
+	Path   string
+	Header http.Header
+	Body   []byte
+}
+
+// captureSink records every webhook delivery for assertions.
+type captureSink struct {
+	mu   sync.Mutex
+	reqs []capturedRequest
+	srv  *httptest.Server
+}
+
+func newCaptureSink() *captureSink {
+	s := &captureSink{}
+	s.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		s.mu.Lock()
+		s.reqs = append(s.reqs, capturedRequest{
+			Method: r.Method, Path: r.URL.Path, Header: r.Header.Clone(), Body: body,
+		})
+		s.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	return s
+}
+
+func (s *captureSink) URL() string { return s.srv.URL }
+
+func (s *captureSink) snapshot() []capturedRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]capturedRequest, len(s.reqs))
+	copy(out, s.reqs)
+	return out
+}
+
+func (s *captureSink) count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.reqs)
+}
+
+// fakeOSV answers /v1/querybatch with empty results (no vulnerabilities)
+// and records what the watcher asked for.
+type fakeOSV struct {
+	mu      sync.Mutex
+	srv     *httptest.Server
+	queries int
+	last    []byte
+}
+
+func newFakeOSV() *fakeOSV {
+	o := &fakeOSV{}
+	o.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/querybatch" || r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var req struct {
+			Queries []json.RawMessage `json:"queries"`
+		}
+		_ = json.Unmarshal(body, &req)
+		results := make([]map[string]any, len(req.Queries))
+		for i := range results {
+			results[i] = map[string]any{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
+
+		o.mu.Lock()
+		o.queries++
+		o.last = body
+		o.mu.Unlock()
+	}))
+	return o
+}
+
+func (o *fakeOSV) URL() string { return o.srv.URL + "/v1/querybatch" }
+
+func (o *fakeOSV) callCount() int {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.queries
+}
+
+// fakeIdP is a loopback OIDC provider: static authorize redirect (echoing
+// state and nonce through a one-shot code), JWKS, token exchange, and
+// userinfo — the exact endpoints NewOIDCAuthenticator derives from the
+// issuer.
+type fakeIdP struct {
+	key   *rsa.PrivateKey
+	srv   *httptest.Server
+	mu    sync.Mutex
+	codes map[string]struct{ redirectURI, nonce string }
+}
+
+func newFakeIdP() *fakeIdP {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		panic(fmt.Sprintf("generate idp key: %v", err))
+	}
+	p := &fakeIdP{key: key, codes: map[string]struct{ redirectURI, nonce string }{}}
+	p.srv = httptest.NewServer(http.HandlerFunc(p.serve))
+	return p
+}
+
+func (p *fakeIdP) Issuer() string { return p.srv.URL }
+
+func (p *fakeIdP) serve(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	switch r.URL.Path {
+	case "/oauth/authorize":
+		// A real provider redirects back to the registered callback with
+		// the exact state (and nonce) the client sent.
+		q := r.URL.Query()
+		code := randomHex(16)
+		p.mu.Lock()
+		p.codes[code] = struct{ redirectURI, nonce string }{
+			redirectURI: q.Get("redirect_uri"), nonce: q.Get("nonce"),
+		}
+		p.mu.Unlock()
+		back, err := url.Parse(q.Get("redirect_uri"))
+		if err != nil || q.Get("redirect_uri") == "" {
+			http.Error(w, "bad redirect_uri", http.StatusBadRequest)
+			return
+		}
+		vals := back.Query()
+		vals.Set("code", code)
+		vals.Set("state", q.Get("state"))
+		back.RawQuery = vals.Encode()
+		http.Redirect(w, r, back.String(), http.StatusFound)
+	case "/.well-known/jwks.json":
+		n := base64.RawURLEncoding.EncodeToString(p.key.PublicKey.N.Bytes())
+		e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(p.key.PublicKey.E)).Bytes())
+		_, _ = fmt.Fprintf(w, `{"keys":[{"kty":"RSA","kid":"e2e-kid","alg":"RS256","use":"sig","n":%q,"e":%q}]}`, n, e)
+	case "/oauth/token":
+		_ = r.ParseForm()
+		p.mu.Lock()
+		stored, ok := p.codes[r.Form.Get("code")]
+		delete(p.codes, r.Form.Get("code"))
+		p.mu.Unlock()
+		if !ok {
+			http.Error(w, `{"error":"invalid_code"}`, http.StatusBadRequest)
+			return
+		}
+		idToken := p.signIDToken(r.Form.Get("client_id"), stored.nonce)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"access_token": "e2e-access", "token_type": "Bearer", "id_token": idToken,
+		})
+	case "/userinfo":
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"sub": "e2e-sso-sub", "email": e2eSSOEmail,
+			"groups": []string{"platform-team"},
+		})
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (p *fakeIdP) signIDToken(audience, nonce string) string {
+	claims := map[string]any{
+		"iss":   p.srv.URL,
+		"aud":   audience,
+		"sub":   "e2e-sso-sub",
+		"email": e2eSSOEmail,
+		"iat":   time.Now().Unix(),
+		"exp":   time.Now().Add(time.Hour).Unix(),
+	}
+	if nonce != "" {
+		claims["nonce"] = nonce
+	}
+	// The e2e server verifies signature against this key's JWKS; a compact
+	// RS256 JWT is produced via the same helper the auth tests use.
+	return signRS256(p.key, claims)
+}
+
+// fakeServices holds the process-wide fakes for one E2E run.
+type fakeServices struct {
+	idp         *fakeIdP
+	osv         *fakeOSV
+	notifySink  *captureSink
+	trackerSink *captureSink
+}
+
+var fakes *fakeServices
+
+func startFakes() {
+	fakes = &fakeServices{
+		idp:         newFakeIdP(),
+		osv:         newFakeOSV(),
+		notifySink:  newCaptureSink(),
+		trackerSink: newCaptureSink(),
+	}
+}
+
+func stopFakes() {
+	if fakes == nil {
+		return
+	}
+	fakes.idp.srv.Close()
+	fakes.osv.srv.Close()
+	fakes.notifySink.srv.Close()
+	fakes.trackerSink.srv.Close()
+}
+
+// shrinkWatcherCadence lowers the per-project watcher poll interval default
+// for the test database (see the call site for rationale).
+func shrinkWatcherCadence(dsn string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, err := pgx.Connect(ctx, dsn)
+	if err != nil {
+		return err
+	}
+	defer conn.Close(ctx)
+	_, err = conn.Exec(ctx,
+		"ALTER TABLE projects ALTER COLUMN cve_watcher_interval_seconds SET DEFAULT 1")
+	return err
+}
+
+// fakeServerEnv is appended to every server boot so the fakes are wired
+// before TestMain's health probe: watcher polls the fake OSV at 1s
+// intervals, tracker/notify deliver to the capture sinks, SSO trusts the
+// loopback IdP, and 127.0.0.1 is a trusted proxy for forwarded headers.
+func fakeServerEnv(addr string) []string {
+	if fakes == nil {
+		return nil
+	}
+	return []string{
+		"WATCHER_ENABLE=true",
+		"WATCHER_OSV_ENDPOINT=" + fakes.osv.URL(),
+		"WATCHER_POLL_INTERVAL=1s",
+		"WATCHER_WEBHOOK_URL=" + fakes.notifySink.URL() + "/notify",
+		"WATCHER_WEBHOOK_URLS=" + fakes.trackerSink.URL() + "/tracker",
+		"WATCHER_WEBHOOK_SIGNING_SECRET=" + e2eWebhookSecret,
+		"TRACKER_PROVIDER=webhook",
+		"TRACKER_PROJECT_ID=e2e-project",
+		"TRACKER_API_TOKEN=e2e-token",
+		"SSO_ENABLE=true",
+		"SSO_ISSUER_URL=" + fakes.idp.Issuer(),
+		"SSO_CLIENT_ID=" + e2eIdPClientID,
+		"SSO_CLIENT_SECRET=" + e2eIdPClientSecret,
+		"SSO_REDIRECT_URI=http://" + addr + "/api/v1/auth/sso/callback",
+		"SSO_ALLOWED_DOMAINS=example.com",
+		"SSO_ADMIN_GROUPS=platform-team",
+		"TRUSTED_PROXIES=127.0.0.1/32",
+	}
+}
+
+// signRS256 signs a compact RS256 JWT (header carries the JWKS kid).
+func signRS256(key *rsa.PrivateKey, claims map[string]any) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT","kid":"e2e-kid"}`))
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		panic(fmt.Sprintf("marshal id_token claims: %v", err))
+	}
+	signing := header + "." + base64.RawURLEncoding.EncodeToString(payload)
+	digest := sha256.Sum256([]byte(signing))
+	sig, err := rsa.SignPKCS1v15(rand.Reader, key, crypto.SHA256, digest[:])
+	if err != nil {
+		panic(fmt.Sprintf("sign id_token: %v", err))
+	}
+	return signing + "." + base64.RawURLEncoding.EncodeToString(sig)
+}
+
+// stringsKeep is a tiny helper for readable contains-assertions.
+func stringsKeep(haystack, needle string) bool { return strings.Contains(haystack, needle) }
