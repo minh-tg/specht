@@ -460,4 +460,53 @@ func TestE2E_AssessmentFlows(t *testing.T) {
 		require.Equal(t, http.StatusForbidden, status)
 		require.Equal(t, "insufficient_scope", errorCode(t, raw))
 	})
+
+	t.Run("a complete same-scanner rescan settles verified_fixed", func(t *testing.T) {
+		slug := newProject(t, "verify-fixed")
+		ingestRaw(t, slug, "trivy", "trivy-alpine-scan.json",
+			map[string]any{"branch": "main", "commit_sha": baseSHA})
+		findings := listScanFindings(t, slug)
+		require.Len(t, findings, 2)
+		target := findings[0]
+
+		// The analyst's standing must survive verification.
+		request[triageOutput](t, http.MethodPatch, "/api/v1/findings/"+target.ID, adminToken,
+			map[string]any{"analysis_state": "false_positive", "reason": "already mitigated"},
+			http.StatusOK)
+
+		// A newer COMPLETE trivy report from a *different scope* lacks the
+		// finding: the auto-fix writer must not fire (scope mismatch)…
+		second := ingestRaw(t, slug, "trivy", "trivy-empty-scan.json",
+			map[string]any{"branch": "release", "commit_sha": deadSHA})
+		require.Zero(t, second.TotalFindings)
+		for _, f := range listScanFindings(t, slug) {
+			require.Equal(t, "open", f.State,
+				"scope-mismatched scans never auto-close — only verification may")
+		}
+
+		// …but the analyst-facing verification accepts that report as
+		// evidence and moves the scan-derived state.
+		verified := request[verifyResponse](t, http.MethodPost,
+			"/api/v1/findings/"+target.ID+"/verify", adminToken, nil, http.StatusOK)
+		require.Equal(t, "verified_fixed", verified.Outcome)
+		require.NotNil(t, verified.ReportID)
+		require.Equal(t, second.ReportID, *verified.ReportID,
+			"the verdict names the verifying report")
+
+		detail := request[scanFinding](t, http.MethodGet,
+			"/api/v1/findings/"+target.ID, adminToken, nil, http.StatusOK)
+		require.Equal(t, "fixed", detail.State,
+			"verification moves the scan-derived state to fixed")
+		require.Equal(t, "false_positive", detail.AnalysisState,
+			"verification moves scan state, never analyst state")
+
+		events := request[[]auditEvent](t, http.MethodGet,
+			"/api/v1/findings/"+target.ID+"/events", adminToken, nil, http.StatusOK)
+		var types []string
+		for _, e := range events {
+			types = append(types, e.EventType)
+		}
+		require.Contains(t, types, "verified_fixed",
+			"the verdict lands in the audit trail")
+	})
 }
