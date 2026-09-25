@@ -435,9 +435,11 @@ type CreateWaiverContext struct {
 type UpdateWaiverRequest struct {
 	Name        string `json:"name,omitempty"`
 	Description string `json:"description,omitempty"`
-	// ExpiresAt sets a new RFC3339 expiry; the empty string clears it;
-	// omitting the field leaves the stored expiry untouched.
-	ExpiresAt  string                  `json:"expires_at,omitempty"`
+	// ExpiresAt is the update tri-state: nil omits the field (keep the
+	// stored expiry), a pointer to "" clears it, an RFC3339 value sets it.
+	// A plain string with omitempty could not express "clear", which is
+	// why this is a pointer.
+	ExpiresAt  *string                 `json:"expires_at,omitempty"`
 	Conditions []CreateWaiverCondition `json:"conditions,omitempty"`
 	Contexts   []CreateWaiverContext   `json:"contexts,omitempty"`
 	TargetIDs  []string                `json:"target_ids,omitempty"`
