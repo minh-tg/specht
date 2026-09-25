@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Domain A leftovers: the full SSO round-trip against the loopback IdP
-// (BP-08) and the trusted-proxy transport verdict (BP-10).
+// The SSO round-trip against the loopback IdP (BP-08) and the
+// trusted-proxy transport verdict (BP-10).
 
 // noRedirectClient surfaces every redirect instead of following it, so each
 // leg of the SSO dance can be asserted and re-issued with explicit cookies.

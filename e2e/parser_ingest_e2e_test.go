@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Domain C shapes: report history, finding state, audit events, and the
+// Shapes for report history, finding state, audit events, and the
 // context tables (BP-14, BP-19, BP-20, BP-21).
 
 type reportRow struct {

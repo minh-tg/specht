@@ -13,9 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Domain H: the CVE watcher daemon over the fake OSV feed (BP-46),
-// status surfaces (BP-47), the backfill CLI (BP-48), and notifications
-// (BP-49).
+// The CVE watcher daemon over the fake OSV feed (BP-46), status
+// surfaces (BP-47), the backfill CLI (BP-48), and notifications (BP-49).
 
 // armLodashAdvisory advertises an OSV record matching the lodash inventory
 // of trivy-npm-packages-scan.json: fixed in 4.18.0, CVSS 3.1 high.
