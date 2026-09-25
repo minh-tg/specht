@@ -65,8 +65,21 @@ export function Ingest() {
       return;
     }
 
+    const text = await file.text();
+    // The wire carries raw_data as a JSON value, not a string — accept the
+    // file only when it parses, so a malformed upload is a local error
+    // instead of a server-side parse failure.
+    try {
+      JSON.parse(text);
+    } catch {
+      setFileError("Invalid JSON");
+      setFileName(null);
+      setFileContent(null);
+      return;
+    }
+
     setFileName(file.name);
-    setFileContent(await file.text());
+    setFileContent(text);
   }
 
   async function handleSubmit(e: SubmitEvent) {
@@ -82,7 +95,8 @@ export function Ingest() {
         body: JSON.stringify({
           project: selectedProject,
           scanner: selectedScanner,
-          raw_data: fileContent,
+          // Validated at file selection: the wire needs a JSON value.
+          raw_data: JSON.parse(fileContent),
         }),
       });
       setResult({ success: true, reportId: report.report_id });

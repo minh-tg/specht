@@ -50,11 +50,13 @@ export function ApiKeys() {
     setCreateError(null);
     setCreating(true);
     try {
-      const res = await apiFetch<{ key: string; }>("/api/v1/auth/apikeys", {
+      // The server's one-time secret rides in raw_key (APIKeyResponse);
+      // reading any other field silently discards the only copy.
+      const res = await apiFetch<{ raw_key: string; }>("/api/v1/auth/apikeys", {
         method: "POST",
         body: JSON.stringify({ project: selectedProject, name: newKeyName.trim() }),
       });
-      setCreatedKey(res.key);
+      setCreatedKey(res.raw_key);
       setNewKeyName("");
       loadKeys(selectedProject);
     } catch (err) {

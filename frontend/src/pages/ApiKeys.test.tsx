@@ -40,7 +40,7 @@ describe("ApiKeys", () => {
       if (u.includes("/apikeys") && method === "POST") {
         return {
           ok: true,
-          json: () => Promise.resolve({ key: "sk-foo-bar-baz" }),
+          json: () => Promise.resolve({ raw_key: "sk-foo-bar-baz" }),
         } as Response;
       }
       if (u.includes("/apikeys") && method === "GET") {

@@ -135,7 +135,28 @@ describe("Ingest", () => {
     const body = JSON.parse(postCall!.body!);
     expect(body.project).toBe("test-project");
     expect(body.scanner).toBe("trivy");
-    expect(body.raw_data).toBe("{\"vuln\":true}");
+    // raw_data rides as a JSON value — the server parses scanner output
+    // from an object, never from an embedded string (the browser journey
+    // proves it against the real API).
+    expect(body.raw_data).toEqual({ vuln: true });
+  });
+
+  it("rejects a .json file whose contents are not JSON", async () => {
+    renderIngest();
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Project")).toBeInTheDocument();
+    });
+    await user.selectOptions(screen.getByRole("combobox", { name: /project/i }), "test-project");
+    await user.selectOptions(screen.getByRole("combobox", { name: /scanner/i }), "trivy (2)");
+    await user.upload(screen.getByLabelText(/scan file/i), createJsonFile("not json"));
+
+    expect(await screen.findByText("Invalid JSON")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /upload/i })).toBeDisabled();
+    expect(
+      fetchCalls.find((c) => c.url === "/api/v1/reports" && c.method === "POST"),
+    ).toBeUndefined();
   });
 });
 
