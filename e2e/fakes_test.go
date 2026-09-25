@@ -190,7 +190,16 @@ type fakeIdP struct {
 	key   *rsa.PrivateKey
 	srv   *httptest.Server
 	mu    sync.Mutex
+	email string
 	codes map[string]struct{ redirectURI, nonce string }
+}
+
+// setEmail changes the subject the token endpoint and userinfo assert —
+// tests drive provisioning, allowlist denial, and empty-email cases with it.
+func (p *fakeIdP) setEmail(email string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.email = email
 }
 
 func newFakeIdP() *fakeIdP {
@@ -198,7 +207,7 @@ func newFakeIdP() *fakeIdP {
 	if err != nil {
 		panic(fmt.Sprintf("generate idp key: %v", err))
 	}
-	p := &fakeIdP{key: key, codes: map[string]struct{ redirectURI, nonce string }{}}
+	p := &fakeIdP{key: key, email: e2eSSOEmail, codes: map[string]struct{ redirectURI, nonce string }{}}
 	p.srv = httptest.NewServer(http.HandlerFunc(p.serve))
 	return p
 }
@@ -247,8 +256,11 @@ func (p *fakeIdP) serve(w http.ResponseWriter, r *http.Request) {
 			"access_token": "e2e-access", "token_type": "Bearer", "id_token": idToken,
 		})
 	case "/userinfo":
+		p.mu.Lock()
+		email := p.email
+		p.mu.Unlock()
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"sub": "e2e-sso-sub", "email": e2eSSOEmail,
+			"sub": "e2e-sso-sub", "email": email,
 			"groups": []string{"platform-team"},
 		})
 	default:
@@ -257,11 +269,14 @@ func (p *fakeIdP) serve(w http.ResponseWriter, r *http.Request) {
 }
 
 func (p *fakeIdP) signIDToken(audience, nonce string) string {
+	p.mu.Lock()
+	email := p.email
+	p.mu.Unlock()
 	claims := map[string]any{
 		"iss":   p.srv.URL,
 		"aud":   audience,
 		"sub":   "e2e-sso-sub",
-		"email": e2eSSOEmail,
+		"email": email,
 		"iat":   time.Now().Unix(),
 		"exp":   time.Now().Add(time.Hour).Unix(),
 	}
