@@ -8,6 +8,7 @@ type mockClient struct {
 	gate             *client.GateStatus
 	waivers          []client.Waiver
 	waiver           *client.Waiver
+	waiverReq        *client.CreateWaiverRequest
 	waiverDet        *client.WaiverDetail
 	events           []client.WaiverEvent
 	assessment       *client.ReachabilityAssessment
@@ -109,6 +110,7 @@ func (m *mockClient) GetWaiver(projectSlug, waiverID string) (*client.WaiverDeta
 }
 
 func (m *mockClient) CreateWaiver(projectSlug string, req *client.CreateWaiverRequest) (*client.Waiver, error) {
+	m.waiverReq = req
 	return m.waiver, m.err
 }
 

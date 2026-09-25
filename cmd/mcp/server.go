@@ -85,10 +85,13 @@ type waiverInput struct {
 }
 
 type waiverCreateInput struct {
-	Project     string   `json:"project" jsonschema:"project slug"`
-	Name        string   `json:"name" jsonschema:"waiver name"`
-	Description string   `json:"description,omitempty" jsonschema:"waiver description"`
-	FindingIDs  []string `json:"finding_ids,omitempty" jsonschema:"finding IDs to target"`
+	Project     string `json:"project" jsonschema:"project slug"`
+	Name        string `json:"name" jsonschema:"waiver name"`
+	Description string `json:"description,omitempty" jsonschema:"waiver description"`
+	// ExpiresAt is the RFC3339 expiry; the API validates the format and
+	// rejects malformed timestamps at the edge.
+	ExpiresAt  string   `json:"expires_at,omitempty" jsonschema:"RFC3339 expiry timestamp"`
+	FindingIDs []string `json:"finding_ids,omitempty" jsonschema:"finding IDs to target"`
 }
 
 func newMCPServer(api API) *mcp.Server {
@@ -447,7 +450,12 @@ func handleWaiversCreate(api API, input waiverCreateInput) (*mcp.CallToolResult,
 	if input.Project == "" || input.Name == "" {
 		return nil, nil, fmt.Errorf("project and name are required")
 	}
-	waiver, err := api.CreateWaiver(input.Project, &client.CreateWaiverRequest{Name: input.Name, Description: input.Description, TargetIDs: input.FindingIDs})
+	waiver, err := api.CreateWaiver(input.Project, &client.CreateWaiverRequest{
+		Name:        input.Name,
+		Description: input.Description,
+		ExpiresAt:   input.ExpiresAt,
+		TargetIDs:   input.FindingIDs,
+	})
 	if err != nil {
 		return nil, nil, err
 	}

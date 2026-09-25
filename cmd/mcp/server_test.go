@@ -135,6 +135,41 @@ func TestMCPServerCall(t *testing.T) {
 	}
 }
 
+// TestMCPServerWaiversCreateForwardsExpiry pins the tool contract added for
+// time-boxed waivers: expires_at reaches the API request, and its absence
+// stays absent (omitempty).
+func TestMCPServerWaiversCreateForwardsExpiry(t *testing.T) {
+	mc := &mockClient{waiver: &client.Waiver{ID: "w1", Name: "release-window"}}
+	session := connectMCPServer(t, mc)
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name: "waivers_create",
+		Arguments: map[string]any{
+			"project": "my-app", "name": "release-window",
+			"expires_at": "2030-06-30T12:00:00Z",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected tool error: %+v", result.Content)
+	}
+	if mc.waiverReq == nil || mc.waiverReq.ExpiresAt != "2030-06-30T12:00:00Z" {
+		t.Fatalf("expires_at not forwarded: %+v", mc.waiverReq)
+	}
+
+	// Omitting the field keeps the request free of it (omitempty).
+	if _, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "waivers_create",
+		Arguments: map[string]any{"project": "my-app", "name": "open-ended"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if mc.waiverReq == nil || mc.waiverReq.ExpiresAt != "" {
+		t.Fatalf("absent expires_at must stay absent: %+v", mc.waiverReq)
+	}
+}
+
 func TestMCPServerValidation(t *testing.T) {
 	session := connectMCPServer(t, &mockClient{})
 	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
