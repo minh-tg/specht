@@ -35,7 +35,7 @@ The Specht RFC process provides a structured, collaborative path for substantial
 | **Draft** | Work in progress, not yet ready for formal review. |
 | **Under Review** | Proposed via an open GitHub Pull Request with active community review. |
 | **Final Comment Period (FCP)** | Consensus reached; a 7-day window is opened for final objections. |
-| **Accepted** | Merged into the `master` branch. The design is approved for implementation. |
+| **Accepted** | Merged into the `main` branch. The design is approved for implementation. |
 | **Implemented** | All implementation PRs are merged and shipped in Specht. |
 | **Superseded** | Replaced by a newer RFC (referenced in `superseded_by`). |
 | **Rejected** | Not accepted; preserved or documented with rationale for future reference. |
@@ -53,7 +53,7 @@ The Specht RFC process provides a structured, collaborative path for substantial
 4. **Open a Pull Request**: Title the PR `rfc: [Short Title]` and label it with `rfc` and `rfc:under-review`.
 5. **Iterate**: Address feedback via line-by-line GitHub review comments.
 6. **Final Comment Period (FCP)**: Once consensus is reached, maintainers announce a 7-day FCP.
-7. **Merge & Numbering**: Upon acceptance, the file is assigned the next sequential number (e.g. `rfcs/0002-my-feature.md`), its status is updated to `Accepted`, and it is merged into `master`.
+7. **Merge & Numbering**: Upon acceptance, the file is assigned the next sequential number (e.g. `rfcs/0002-my-feature.md`), its status is updated to `Accepted`, and it is merged into `main`.
 8. **Implementation Tracking**: A tracking issue is opened referencing the RFC to coordinate implementation PRs.
 
 ---

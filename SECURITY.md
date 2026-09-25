@@ -1,7 +1,7 @@
 # Security Policy
 
 Specht is an experimental project and does not yet provide a supported
-security response SLA. The latest `master` branch is the only development
+security response SLA. The latest `main` branch is the only development
 line receiving security fixes.
 
 ## Reporting a Vulnerability
