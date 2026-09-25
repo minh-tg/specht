@@ -231,7 +231,7 @@ func TestPortAdapterLifecycle(t *testing.T) {
 		ProjectID:   project.ID,
 		Name:        "updated release exception",
 		Description: "updated scope description",
-	}, nil, nil, nil, port.WaiverEventInput{
+	}, nil, nil, nil, nil, port.WaiverEventInput{
 		EventType: "updated",
 		Metadata:  json.RawMessage(`{"change":"description"}`),
 	})
@@ -253,7 +253,7 @@ func TestPortAdapterLifecycle(t *testing.T) {
 	_, err = stores.Waivers.UpdateWithDetails(ctx, port.Waiver{
 		ID:        waiver.ID,
 		ProjectID: project.ID,
-	}, &emptyConditions, &emptyContexts, &emptyTargets, port.WaiverEventInput{
+	}, nil, &emptyConditions, &emptyContexts, &emptyTargets, port.WaiverEventInput{
 		EventType: "details_cleared",
 		Metadata:  json.RawMessage(`{}`),
 	})

@@ -327,6 +327,14 @@ type WaiverChildInput struct {
 }
 
 // WaiverEventInput carries the audit event for unit-of-work methods.
+// WaiverExpiry is the tri-state expiry input for waiver updates: At sets a
+// new expiry, Clear writes NULL, and a nil *WaiverExpiry leaves the stored
+// value untouched.
+type WaiverExpiry struct {
+	At    *time.Time
+	Clear bool
+}
+
 type WaiverEventInput struct {
 	EventType string
 	ActorID   *string
@@ -353,7 +361,7 @@ type WaiverStore interface {
 	CreateWithDetails(ctx context.Context, input CreateWaiverInput) (Waiver, error)
 	List(ctx context.Context, projectID string) ([]Waiver, error)
 	GetByID(ctx context.Context, id, projectID string) (Waiver, error)
-	UpdateWithDetails(ctx context.Context, waiver Waiver, conditions *[]WaiverCondition, contexts *[]WaiverContext, targets *[]WaiverFindingTarget, event WaiverEventInput) (Waiver, error)
+	UpdateWithDetails(ctx context.Context, waiver Waiver, expiry *WaiverExpiry, conditions *[]WaiverCondition, contexts *[]WaiverContext, targets *[]WaiverFindingTarget, event WaiverEventInput) (Waiver, error)
 	Delete(ctx context.Context, id, projectID string) error
 	ToggleWithEvent(ctx context.Context, id, projectID, actorID string) (Waiver, error)
 	ListActive(ctx context.Context, projectID string) ([]Waiver, error)

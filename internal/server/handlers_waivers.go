@@ -119,14 +119,32 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 	var req struct {
-		Name        string                               `json:"name"`
-		Description string                               `json:"description"`
-		Conditions  []usecase.CreateWaiverConditionInput `json:"conditions,omitempty"`
-		Contexts    []usecase.CreateWaiverContextInput   `json:"contexts,omitempty"`
-		TargetIDs   []string                             `json:"target_ids,omitempty"`
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		// ExpiresAt is the update tri-state: omitted keeps the stored
+		// expiry, "" clears it, an RFC3339 value sets it.
+		ExpiresAt  *string                              `json:"expires_at"`
+		Conditions []usecase.CreateWaiverConditionInput `json:"conditions,omitempty"`
+		Contexts   []usecase.CreateWaiverContextInput   `json:"contexts,omitempty"`
+		TargetIDs  []string                             `json:"target_ids,omitempty"`
 	}
 	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_body", waiversMsgInvalidBody) {
 		return
+	}
+
+	var expiresAt *time.Time
+	clearExpires := false
+	if req.ExpiresAt != nil {
+		if *req.ExpiresAt == "" {
+			clearExpires = true
+		} else {
+			parsed, err := time.Parse(time.RFC3339, *req.ExpiresAt)
+			if err != nil {
+				respondError(w, http.StatusBadRequest, "invalid_expires_at", "expires_at must be an RFC3339 timestamp")
+				return
+			}
+			expiresAt = &parsed
+		}
 	}
 
 	var actorID string
@@ -135,14 +153,16 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.usecase.UpdateWaiver(r.Context(), usecase.UpdateWaiverInput{
-		WaiverID:    id,
-		ProjectSlug: slug,
-		Name:        req.Name,
-		Description: req.Description,
-		Conditions:  req.Conditions,
-		Contexts:    req.Contexts,
-		TargetIDs:   req.TargetIDs,
-		ActorID:     actorID,
+		WaiverID:       id,
+		ProjectSlug:    slug,
+		Name:           req.Name,
+		Description:    req.Description,
+		ExpiresAt:      expiresAt,
+		ClearExpiresAt: clearExpires,
+		Conditions:     req.Conditions,
+		Contexts:       req.Contexts,
+		TargetIDs:      req.TargetIDs,
+		ActorID:        actorID,
 	})
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {

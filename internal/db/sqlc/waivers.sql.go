@@ -578,24 +578,32 @@ const updateWaiver = `-- name: UpdateWaiver :one
 UPDATE waivers SET
     name = COALESCE($3, name),
     description = COALESCE($4, description),
+    expires_at = CASE WHEN $5::boolean
+        THEN $6::timestamptz ELSE expires_at END,
     updated_at = NOW()
 WHERE id = $1 AND project_id = $2
 RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at
 `
 
 type UpdateWaiverParams struct {
-	ID          pgtype.UUID `json:"id"`
-	ProjectID   pgtype.UUID `json:"project_id"`
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
+	ID          pgtype.UUID        `json:"id"`
+	ProjectID   pgtype.UUID        `json:"project_id"`
+	Name        string             `json:"name"`
+	Description string             `json:"description"`
+	SetExpires  bool               `json:"set_expires"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
 }
 
+// set_expires selects whether expires_at is written: true binds the new
+// value (NULL clears it), false leaves the stored expiry untouched.
 func (q *Queries) UpdateWaiver(ctx context.Context, arg UpdateWaiverParams) (Waiver, error) {
 	row := q.db.QueryRow(ctx, updateWaiver,
 		arg.ID,
 		arg.ProjectID,
 		arg.Name,
 		arg.Description,
+		arg.SetExpires,
+		arg.ExpiresAt,
 	)
 	var i Waiver
 	err := row.Scan(

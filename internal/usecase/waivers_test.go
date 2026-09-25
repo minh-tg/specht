@@ -453,7 +453,8 @@ func TestUpdateWaiverReplacesProvidedDetailsAndRecordsActor(t *testing.T) {
 	environmentID := "00000000-0000-0000-0000-0000000000c1"
 	findingID := "00000000-0000-0000-0000-0000000000d1"
 	wr := &mockWaiverRepo{
-		updateWithDetailsFn: func(_ context.Context, waiver port.Waiver, conditions *[]port.WaiverCondition, contexts *[]port.WaiverContext, targets *[]port.WaiverFindingTarget, event port.WaiverEventInput) (port.Waiver, error) {
+		updateWithDetailsFn: func(_ context.Context, waiver port.Waiver, expiry *port.WaiverExpiry, conditions *[]port.WaiverCondition, contexts *[]port.WaiverContext, targets *[]port.WaiverFindingTarget, event port.WaiverEventInput) (port.Waiver, error) {
+			_ = expiry
 			assert.Equal(t, waiverID, waiver.ID)
 			assert.Equal(t, project.ID, waiver.ProjectID)
 			assert.Equal(t, "updated exception", waiver.Name)
@@ -490,7 +491,7 @@ func TestUpdateWaiverPreservesOmittedDetailsAndClearsExplicitEmptyDetails(t *tes
 	project := makeProject(true)
 	waiverID := "00000000-0000-0000-0000-0000000000b1"
 	wr := &mockWaiverRepo{
-		updateWithDetailsFn: func(_ context.Context, _ port.Waiver, conditions *[]port.WaiverCondition, contexts *[]port.WaiverContext, targets *[]port.WaiverFindingTarget, _ port.WaiverEventInput) (port.Waiver, error) {
+		updateWithDetailsFn: func(_ context.Context, _ port.Waiver, _ *port.WaiverExpiry, conditions *[]port.WaiverCondition, contexts *[]port.WaiverContext, targets *[]port.WaiverFindingTarget, _ port.WaiverEventInput) (port.Waiver, error) {
 			assert.Nil(t, conditions)
 			require.NotNil(t, contexts)
 			assert.Empty(t, *contexts)

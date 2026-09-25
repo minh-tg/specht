@@ -433,11 +433,14 @@ type CreateWaiverContext struct {
 
 // UpdateWaiverRequest is the request body for updating a waiver.
 type UpdateWaiverRequest struct {
-	Name        string                  `json:"name,omitempty"`
-	Description string                  `json:"description,omitempty"`
-	Conditions  []CreateWaiverCondition `json:"conditions,omitempty"`
-	Contexts    []CreateWaiverContext   `json:"contexts,omitempty"`
-	TargetIDs   []string                `json:"target_ids,omitempty"`
+	Name        string `json:"name,omitempty"`
+	Description string `json:"description,omitempty"`
+	// ExpiresAt sets a new RFC3339 expiry; the empty string clears it;
+	// omitting the field leaves the stored expiry untouched.
+	ExpiresAt  string                  `json:"expires_at,omitempty"`
+	Conditions []CreateWaiverCondition `json:"conditions,omitempty"`
+	Contexts   []CreateWaiverContext   `json:"contexts,omitempty"`
+	TargetIDs  []string                `json:"target_ids,omitempty"`
 }
 
 // CheckWaiverMatchResponse reports whether a single finding is waived.

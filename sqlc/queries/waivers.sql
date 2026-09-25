@@ -13,9 +13,13 @@ SELECT * FROM waivers
 WHERE id = $1 AND project_id = $2;
 
 -- name: UpdateWaiver :one
+-- set_expires selects whether expires_at is written: true binds the new
+-- value (NULL clears it), false leaves the stored expiry untouched.
 UPDATE waivers SET
     name = COALESCE($3, name),
     description = COALESCE($4, description),
+    expires_at = CASE WHEN sqlc.arg(set_expires)::boolean
+        THEN sqlc.arg(expires_at)::timestamptz ELSE expires_at END,
     updated_at = NOW()
 WHERE id = $1 AND project_id = $2
 RETURNING *;

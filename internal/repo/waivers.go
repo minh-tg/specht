@@ -186,10 +186,15 @@ type UpdateWaiverDetailsParams struct {
 	ProjectID   pgtype.UUID
 	Name        string
 	Description string
-	Conditions  []WaiverConditionInput
-	Contexts    []WaiverContextInput
-	Targets     []WaiverTargetInput
-	Event       WaiverEventInput
+	// ExpiresAt/SetExpires form the expiry tri-state: the stored value is
+	// untouched unless SetExpires is true, in which case ExpiresAt is
+	// written (an invalid/zero time clears the expiry to NULL).
+	ExpiresAt  pgtype.Timestamptz
+	SetExpires bool
+	Conditions []WaiverConditionInput
+	Contexts   []WaiverContextInput
+	Targets    []WaiverTargetInput
+	Event      WaiverEventInput
 }
 
 // CreateWithDetails inserts a waiver together with its conditions, contexts,
@@ -284,6 +289,8 @@ func updateWaiverRow(ctx context.Context, q *sqlc.Queries, arg UpdateWaiverDetai
 		ProjectID:   arg.ProjectID,
 		Name:        name,
 		Description: desc,
+		SetExpires:  arg.SetExpires,
+		ExpiresAt:   arg.ExpiresAt,
 	})
 	if err != nil {
 		return sqlc.Waiver{}, fmt.Errorf("update waiver: %w", err)

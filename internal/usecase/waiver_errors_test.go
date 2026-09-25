@@ -195,7 +195,7 @@ func TestWaiverOperationsPreserveStoreFailures(t *testing.T) {
 	}
 
 	t.Run("update", func(t *testing.T) {
-		wr := &mockWaiverRepo{updateWithDetailsFn: func(context.Context, port.Waiver, *[]port.WaiverCondition, *[]port.WaiverContext, *[]port.WaiverFindingTarget, port.WaiverEventInput) (port.Waiver, error) {
+		wr := &mockWaiverRepo{updateWithDetailsFn: func(context.Context, port.Waiver, *port.WaiverExpiry, *[]port.WaiverCondition, *[]port.WaiverContext, *[]port.WaiverFindingTarget, port.WaiverEventInput) (port.Waiver, error) {
 			return port.Waiver{}, storeErr
 		}}
 		_, err := waiverUsecaseForProject(project, wr, "").UpdateWaiver(admin, UpdateWaiverInput{

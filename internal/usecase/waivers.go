@@ -101,10 +101,14 @@ type UpdateWaiverInput struct {
 	ProjectSlug string
 	Name        string
 	Description string
-	Conditions  []CreateWaiverConditionInput
-	Contexts    []CreateWaiverContextInput
-	TargetIDs   []string
-	ActorID     string
+	// ExpiresAt sets a new expiry; ClearExpiresAt writes NULL; both absent
+	// leaves the stored expiry untouched.
+	ExpiresAt      *time.Time
+	ClearExpiresAt bool
+	Conditions     []CreateWaiverConditionInput
+	Contexts       []CreateWaiverContextInput
+	TargetIDs      []string
+	ActorID        string
 }
 
 // WaiverDetailResponse is a waiver with full condition/context/target rows.
@@ -353,8 +357,15 @@ func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*
 		targets = &tgts
 	}
 
+	var expiry *port.WaiverExpiry
+	if input.ClearExpiresAt {
+		expiry = &port.WaiverExpiry{Clear: true}
+	} else if input.ExpiresAt != nil {
+		expiry = &port.WaiverExpiry{At: input.ExpiresAt}
+	}
+
 	actorID := stringPtr(input.ActorID)
-	w, err := u.deps.Stores.Waivers.UpdateWithDetails(ctx, waiver, conditions, contexts, targets, port.WaiverEventInput{
+	w, err := u.deps.Stores.Waivers.UpdateWithDetails(ctx, waiver, expiry, conditions, contexts, targets, port.WaiverEventInput{
 		EventType: "updated",
 		ActorID:   actorID,
 		Metadata:  waiverCreatedEvent,

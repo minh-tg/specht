@@ -913,7 +913,7 @@ type mockWaiverRepo struct {
 	createWithDetailsFn             func(context.Context, port.CreateWaiverInput) (port.Waiver, error)
 	listFn                          func(context.Context, string) ([]port.Waiver, error)
 	getByIDFn                       func(context.Context, string, string) (port.Waiver, error)
-	updateWithDetailsFn             func(context.Context, port.Waiver, *[]port.WaiverCondition, *[]port.WaiverContext, *[]port.WaiverFindingTarget, port.WaiverEventInput) (port.Waiver, error)
+	updateWithDetailsFn             func(context.Context, port.Waiver, *port.WaiverExpiry, *[]port.WaiverCondition, *[]port.WaiverContext, *[]port.WaiverFindingTarget, port.WaiverEventInput) (port.Waiver, error)
 	deleteFn                        func(context.Context, string, string) error
 	toggleWithEventFn               func(context.Context, string, string, string) (port.Waiver, error)
 	listActiveFn                    func(context.Context, string) ([]port.Waiver, error)
@@ -947,11 +947,11 @@ func (m *mockWaiverRepo) GetByID(ctx context.Context, id, projectID string) (por
 	return m.getByIDFn(ctx, id, projectID)
 }
 
-func (m *mockWaiverRepo) UpdateWithDetails(ctx context.Context, waiver port.Waiver, conditions *[]port.WaiverCondition, contexts *[]port.WaiverContext, targets *[]port.WaiverFindingTarget, event port.WaiverEventInput) (port.Waiver, error) {
+func (m *mockWaiverRepo) UpdateWithDetails(ctx context.Context, waiver port.Waiver, expiry *port.WaiverExpiry, conditions *[]port.WaiverCondition, contexts *[]port.WaiverContext, targets *[]port.WaiverFindingTarget, event port.WaiverEventInput) (port.Waiver, error) {
 	if m.updateWithDetailsFn == nil {
 		return port.Waiver{}, fmt.Errorf("unexpected call to UpdateWithDetails")
 	}
-	return m.updateWithDetailsFn(ctx, waiver, conditions, contexts, targets, event)
+	return m.updateWithDetailsFn(ctx, waiver, expiry, conditions, contexts, targets, event)
 }
 
 func (m *mockWaiverRepo) Delete(ctx context.Context, id, projectID string) error {

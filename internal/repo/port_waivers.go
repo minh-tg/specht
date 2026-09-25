@@ -80,7 +80,7 @@ func (r *pgWaiverPort) GetByID(ctx context.Context, id, projectID string) (port.
 	return waiverRowToPort(row), nil
 }
 
-func (r *pgWaiverPort) UpdateWithDetails(ctx context.Context, waiver port.Waiver, conditions *[]port.WaiverCondition, contexts *[]port.WaiverContext, targets *[]port.WaiverFindingTarget, event port.WaiverEventInput) (port.Waiver, error) {
+func (r *pgWaiverPort) UpdateWithDetails(ctx context.Context, waiver port.Waiver, expiry *port.WaiverExpiry, conditions *[]port.WaiverCondition, contexts *[]port.WaiverContext, targets *[]port.WaiverFindingTarget, event port.WaiverEventInput) (port.Waiver, error) {
 	wid, err := parseID(waiver.ID)
 	if err != nil {
 		return port.Waiver{}, err
@@ -95,6 +95,13 @@ func (r *pgWaiverPort) UpdateWithDetails(ctx context.Context, waiver port.Waiver
 		Name:        waiver.Name,
 		Description: waiver.Description,
 		Event:       waiverEventInputToRepo(event),
+	}
+	if expiry != nil {
+		arg.SetExpires = true
+		if expiry.At != nil {
+			arg.ExpiresAt = pgtype.Timestamptz{Time: *expiry.At, Valid: true}
+		}
+		// Clear keeps ExpiresAt invalid, which the CASE binds as NULL.
 	}
 	if conditions != nil {
 		arg.Conditions = make([]WaiverConditionInput, len(*conditions))
