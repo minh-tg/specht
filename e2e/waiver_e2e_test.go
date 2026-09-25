@@ -76,6 +76,41 @@ func TestE2E_WaiverLifecycleAndExpirySweep(t *testing.T) {
 		require.Contains(t, types, "enabled")
 	})
 
+	t.Run("updating the waiver sets, keeps, and clears its expiry", func(t *testing.T) {
+		waiverPath := "/api/v1/projects/" + slug + "/waivers/" + waiver.ID
+		expiresAt := time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
+
+		// A PUT can introduce an expiry where none existed.
+		updated := request[waiverDetail](t, http.MethodPut, waiverPath, adminToken,
+			map[string]any{"name": "release-window", "expires_at": expiresAt}, http.StatusOK)
+		require.NotNil(t, updated.ExpiresAt, "PUT sets expires_at")
+		sent, err := time.Parse(time.RFC3339, expiresAt)
+		require.NoError(t, err)
+		got, err := time.Parse(time.RFC3339, *updated.ExpiresAt)
+		require.NoError(t, err)
+		require.True(t, sent.Equal(got), "want %s got %s", expiresAt, *updated.ExpiresAt)
+
+		// Omitting the field leaves the stored expiry untouched.
+		kept := request[waiverDetail](t, http.MethodPut, waiverPath, adminToken,
+			map[string]any{"name": "release-window-renamed"}, http.StatusOK)
+		require.NotNil(t, kept.ExpiresAt, "omitting expires_at keeps the stored value")
+		require.Equal(t, *updated.ExpiresAt, *kept.ExpiresAt)
+
+		// A malformed timestamp never reaches the store.
+		status, raw := doJSON(t, http.MethodPut, waiverPath, adminToken,
+			map[string]any{"name": "x", "expires_at": "soon"})
+		require.Equal(t, http.StatusBadRequest, status, string(raw))
+		require.Equal(t, "invalid_expires_at", errorCode(t, raw))
+
+		// The empty string clears the expiry.
+		cleared := request[waiverDetail](t, http.MethodPut, waiverPath, adminToken,
+			map[string]any{"expires_at": ""}, http.StatusOK)
+		require.Nil(t, cleared.ExpiresAt, "the empty string clears the expiry")
+
+		// Throughout, the waiver keeps silencing the gate.
+		require.False(t, getGate(t, slug, "").ThresholdBreached)
+	})
+
 	t.Run("deleting the waiver removes it", func(t *testing.T) {
 		status, _ := doJSON(t, http.MethodDelete,
 			"/api/v1/projects/"+slug+"/waivers/"+waiver.ID, adminToken, nil)
