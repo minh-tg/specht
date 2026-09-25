@@ -38,6 +38,7 @@ var (
 	serverBin  string
 	adapterBin string
 	cliBin     string
+	mcpBin     string
 
 	repoRoot   string
 	tmpDir     string
@@ -196,6 +197,7 @@ func buildBinaries() error {
 		{filepath.Join(tmpDir, "specht-server"), "./cmd/server"},
 		{filepath.Join(tmpDir, "specht-adapter"), "./cmd/adapter"},
 		{filepath.Join(tmpDir, "specht"), "./cmd/specht"},
+		{filepath.Join(tmpDir, "specht-mcp"), "./cmd/mcp"},
 	} {
 		cmd := exec.Command("go", "build", "-o", target.out, target.pkg)
 		cmd.Dir = repoRoot
@@ -206,6 +208,7 @@ func buildBinaries() error {
 	serverBin = filepath.Join(tmpDir, "specht-server")
 	adapterBin = filepath.Join(tmpDir, "specht-adapter")
 	cliBin = filepath.Join(tmpDir, "specht")
+	mcpBin = filepath.Join(tmpDir, "specht-mcp")
 	return nil
 }
 
@@ -521,6 +524,7 @@ type findingEvent struct {
 
 type waiverDetail struct {
 	ID        string  `json:"id"`
+	Name      string  `json:"name"`
 	Enabled   bool    `json:"enabled"`
 	ExpiresAt *string `json:"expires_at,omitempty"`
 	Targets   []struct {
