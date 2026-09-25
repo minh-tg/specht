@@ -378,6 +378,12 @@ func pairGapCheck(deps PollDeps, suppressing *string) GapCheck {
 	return func(ctx context.Context, gapProjectID, purlName string, candidateIDs []string) (bool, error) {
 		id, err := deps.FindGap(ctx, gapProjectID, purlName, candidateIDs)
 		if err != nil {
+			// "No covering finding" is the store's normal answer for the
+			// create path — the port layer reports absence as ErrNotFound.
+			// Anything else still fails the poll (no double-creates).
+			if errors.Is(err, port.ErrNotFound) {
+				return false, nil
+			}
 			return false, err
 		}
 		if id == "" {

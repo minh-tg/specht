@@ -1022,17 +1022,16 @@ func (r *pgFindingPort) PersistWatcherFinding(ctx context.Context, input port.Pe
 		return port.Finding{}, err
 	}
 
+	// Finding ids do not exist yet: the repo layer assigns them to the
+	// dimensions, occurrence, and event after the finding row is inserted,
+	// so any caller-supplied ids on this path are ignored (the watcher
+	// create path carries none — empty is the normal shape).
 	dimensions := make([]sqlc.UpsertDimensionParams, 0, len(input.Dimensions))
 	for _, d := range input.Dimensions {
-		fid, err := parseID(d.FindingID)
-		if err != nil {
-			return port.Finding{}, err
-		}
 		dimensions = append(dimensions, sqlc.UpsertDimensionParams{
-			FindingID: fid,
-			DimKey:    d.Key,
-			DimValue:  d.Value,
-			Source:    textPtrFromString(d.Source),
+			DimKey:   d.Key,
+			DimValue: d.Value,
+			Source:   textPtrFromString(d.Source),
 		})
 	}
 
@@ -1055,12 +1054,19 @@ func (r *pgFindingPort) PersistWatcherFinding(ctx context.Context, input port.Pe
 
 	var event *sqlc.CreateFindingEventParams
 	if input.Event != nil {
-		fid, err := parseID(input.Event.FindingID)
-		if err != nil {
-			return port.Finding{}, err
+		// The finding id only exists after the row is inserted — the repo
+		// layer assigns it inside the transaction. Parse only when the
+		// caller actually supplied one; an empty id is the watcher create
+		// path's normal shape.
+		var eventFindingID pgtype.UUID
+		if input.Event.FindingID != "" {
+			eventFindingID, err = parseID(input.Event.FindingID)
+			if err != nil {
+				return port.Finding{}, err
+			}
 		}
 		event = &sqlc.CreateFindingEventParams{
-			FindingID: fid,
+			FindingID: eventFindingID,
 			UserID:    uuidPtrFromString(input.Event.UserID),
 			EventType: input.Event.EventType,
 			OldValue:  textPtrFromString(input.Event.OldValue),

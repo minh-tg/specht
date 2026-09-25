@@ -1129,6 +1129,37 @@ func TestNotificationFromDecision_FallsBackGracefully(t *testing.T) {
 	assert.Equal(t, "https://example.test/1", n.Link)
 }
 
+// TestPairGapCheck_NotFoundIsNotCovered pins the store-absence translation:
+// the port layer reports "no covering finding" as ErrNotFound, which is the
+// normal create path — only genuine errors may fail the poll.
+func TestPairGapCheck_NotFoundIsNotCovered(t *testing.T) {
+	ctx := context.Background()
+	var suppressing string
+
+	notFound := pairGapCheck(PollDeps{FindGap: func(context.Context, string, string, []string) (string, error) {
+		return "", port.ErrNotFound
+	}}, &suppressing)
+	covered, err := notFound(ctx, "proj", "pkg:npm/lodash", []string{"CVE-1"})
+	assert.NoError(t, err, "absence is not a poll failure")
+	assert.False(t, covered)
+
+	broken := pairGapCheck(PollDeps{FindGap: func(context.Context, string, string, []string) (string, error) {
+		return "", errors.New("connection lost")
+	}}, &suppressing)
+	covered, err = broken(ctx, "proj", "pkg:npm/lodash", []string{"CVE-1"})
+	assert.Error(t, err, "real errors still fail the poll")
+	assert.False(t, covered)
+
+	suppressing = ""
+	hit := pairGapCheck(PollDeps{FindGap: func(context.Context, string, string, []string) (string, error) {
+		return "finding-1", nil
+	}}, &suppressing)
+	covered, err = hit(ctx, "proj", "pkg:npm/lodash", []string{"CVE-1"})
+	assert.NoError(t, err)
+	assert.True(t, covered)
+	assert.Equal(t, "finding-1", suppressing)
+}
+
 func TestRunCveWatcher_DynamicallyReloadsProjects(t *testing.T) {
 	deps := baseDeps()
 	deps.Projects = nil // Start with no projects
