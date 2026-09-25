@@ -27,6 +27,7 @@ func TestDefaults(t *testing.T) {
 	assert.False(t, cfg.Watcher.Enable)
 	assert.Equal(t, DefaultWatcherPoll, cfg.Watcher.PollInterval)
 	assert.Equal(t, DefaultOSVEndpoint, cfg.Watcher.OSVEndpoint)
+	assert.Equal(t, DefaultOSVVulnEndpoint, cfg.Watcher.OSVVulnEndpoint)
 	assert.Empty(t, cfg.TrustedProxies, "forwarded headers are never trusted by default")
 }
 
@@ -96,15 +97,21 @@ func TestLoad_MalformedSweepIntervalFails(t *testing.T) {
 
 func TestWatcherConfig(t *testing.T) {
 	t.Setenv("WATCHER_POLL_INTERVAL", "")
+	t.Setenv("WATCHER_OSV_VULN_ENDPOINT", "")
 	w, err := WatcherConfig()
 	assert.NoError(t, err)
 	assert.True(t, w.Enable)
 	assert.Equal(t, DefaultOSVEndpoint, w.OSVEndpoint)
+	assert.Equal(t, DefaultOSVVulnEndpoint, w.OSVVulnEndpoint,
+		"the full-advisory endpoint defaults to the public OSV mirror")
 
 	t.Setenv("WATCHER_OSV_ENDPOINT", "https://example.test/querybatch")
+	t.Setenv("WATCHER_OSV_VULN_ENDPOINT", "https://example.test/vulns/{id}")
 	w, err = WatcherConfig()
 	assert.NoError(t, err)
 	assert.Equal(t, "https://example.test/querybatch", w.OSVEndpoint)
+	assert.Equal(t, "https://example.test/vulns/{id}", w.OSVVulnEndpoint,
+		"an operator mirror keeps both feed endpoints inside one trust boundary")
 }
 
 func TestLoad_SSOAllowedDomains(t *testing.T) {

@@ -22,7 +22,10 @@ const (
 	DefaultWatcherBatch = 0 // unlimited
 	DefaultCORSOrigins  = "http://localhost:5173"
 	DefaultOSVEndpoint  = "https://api.osv.dev/v1/querybatch"
-	DefaultDBMigrate    = true
+	// DefaultOSVVulnEndpoint fetches full advisory records once
+	// querybatch has matched their IDs ({id} is the placeholder).
+	DefaultOSVVulnEndpoint = "https://api.osv.dev/v1/vulns/{id}"
+	DefaultDBMigrate       = true
 	// DefaultSweepInterval is how often the analysis/waiver expiry
 	// sweepers look for expired rows. Tests shorten it via
 	// LIFECYCLE_SWEEP_INTERVAL to observe sweeps in seconds.
@@ -99,9 +102,13 @@ type RateLimit struct {
 
 // Watcher is the resolved CVE watcher configuration.
 type Watcher struct {
-	Enable          bool
-	PollInterval    time.Duration
-	OSVEndpoint     string
+	Enable       bool
+	PollInterval time.Duration
+	OSVEndpoint  string
+	// OSVVulnEndpoint is the full-advisory URL template querybatch results
+	// resolve through ({id} is substituted); an operator mirror keeps both
+	// endpoints inside one trust boundary.
+	OSVVulnEndpoint string
 	BatchSize       int
 	ColdStartWindow time.Duration // zero = full history
 	SlackURL        string
@@ -218,6 +225,7 @@ func loadWatcher(s *Server) error {
 	s.Watcher.Enable = os.Getenv("WATCHER_ENABLE") == "true"
 	s.Watcher.PollInterval = DefaultWatcherPoll
 	s.Watcher.OSVEndpoint = strOr(os.Getenv("WATCHER_OSV_ENDPOINT"), DefaultOSVEndpoint)
+	s.Watcher.OSVVulnEndpoint = strOr(os.Getenv("WATCHER_OSV_VULN_ENDPOINT"), DefaultOSVVulnEndpoint)
 	s.Watcher.SlackURL = os.Getenv("WATCHER_SLACK_URL")
 	s.Watcher.SlackSigning = os.Getenv("WATCHER_SLACK_SIGNING_SECRET")
 	s.Watcher.WebhookURL = os.Getenv("WATCHER_WEBHOOK_URL")
@@ -307,9 +315,10 @@ func Load() (*Server, error) {
 // where the watcher is effectively always enabled by invocation).
 func WatcherConfig() (*Watcher, error) {
 	w := &Watcher{
-		Enable:       true,
-		PollInterval: DefaultWatcherPoll,
-		OSVEndpoint:  strOr(os.Getenv("WATCHER_OSV_ENDPOINT"), DefaultOSVEndpoint),
+		Enable:          true,
+		PollInterval:    DefaultWatcherPoll,
+		OSVEndpoint:     strOr(os.Getenv("WATCHER_OSV_ENDPOINT"), DefaultOSVEndpoint),
+		OSVVulnEndpoint: strOr(os.Getenv("WATCHER_OSV_VULN_ENDPOINT"), DefaultOSVVulnEndpoint),
 	}
 	if v := os.Getenv("WATCHER_POLL_INTERVAL"); v != "" {
 		d, err := time.ParseDuration(v)

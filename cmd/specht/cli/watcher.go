@@ -210,8 +210,9 @@ func buildPollDeps(
 ) watcher.PollDeps {
 	return watcher.PollDeps{
 		Client: watcher.NewHTTPClient(watcher.HTTPClientConfig{
-			Endpoint: watcherConfig.OSVEndpoint,
-			CacheTTL: 0,
+			Endpoint:     watcherConfig.OSVEndpoint,
+			VulnEndpoint: watcherConfig.OSVVulnEndpoint,
+			CacheTTL:     0,
 		}),
 		Store:    store,
 		Projects: projectIDs,

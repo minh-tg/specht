@@ -406,9 +406,10 @@ func watcherPollDeps(stores *port.Stores, cfg *config.Server, ids []string, name
 	}
 	return watcher.PollDeps{
 		Client: watcher.NewHTTPClient(watcher.HTTPClientConfig{
-			Endpoint:  cfg.Watcher.OSVEndpoint,
-			BatchSize: cfg.Watcher.BatchSize,
-			CacheTTL:  cacheTTL,
+			Endpoint:     cfg.Watcher.OSVEndpoint,
+			VulnEndpoint: cfg.Watcher.OSVVulnEndpoint,
+			BatchSize:    cfg.Watcher.BatchSize,
+			CacheTTL:     cacheTTL,
 		}),
 		Store:    watcher.NewPollStore(stores),
 		Projects: ids,
