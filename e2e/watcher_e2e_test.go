@@ -179,14 +179,16 @@ func TestE2E_WatcherDaemonLifecycle(t *testing.T) {
 
 	t.Run("backfill dry-run persists nothing and the real run writes", func(t *testing.T) {
 		slug := newProject(t, "watcher-backfill")
+		// Disable BEFORE ingesting or arming: the live daemon polls every
+		// second, and a project that exists, has inventory, and sees the
+		// armed advisory inside the create→disable window would get its
+		// finding created by the daemon instead of the CLI.
+		setWatcherEnabled(t, slug, false)
 		ingestRaw(t, slug, "trivy", "trivy-npm-packages-scan.json", nil)
 		armLodashAdvisory()
 		defer fakes.osv.disarm()
 
-		// The live daemon must stay out of the way: disable the project
-		// (precondition via direct SQL — no API exposes the switch) and
-		// prove no finding appears before the CLI runs.
-		setWatcherEnabled(t, slug, false)
+		// The disabled project stays out of the live schedule.
 		time.Sleep(3 * time.Second)
 		pre, ok := fetchFindings(slug)
 		require.True(t, ok)
