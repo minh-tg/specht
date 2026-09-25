@@ -114,6 +114,30 @@ func TestWatcherConfig(t *testing.T) {
 		"an operator mirror keeps both feed endpoints inside one trust boundary")
 }
 
+func TestIntelConfig(t *testing.T) {
+	t.Setenv("INTEL_EPSS_ENDPOINT", "")
+	t.Setenv("INTEL_KEV_ENDPOINT", "")
+	t.Setenv("INTEL_TTL", "")
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.Equal(t, DefaultEPSSEndpoint, cfg.Intel.EPSSBaseURL)
+	assert.Equal(t, DefaultKEVEndpoint, cfg.Intel.KEVCatalogURL)
+	assert.Equal(t, DefaultIntelTTL, cfg.Intel.TTL)
+
+	t.Setenv("INTEL_EPSS_ENDPOINT", "https://mirror.test/epss")
+	t.Setenv("INTEL_KEV_ENDPOINT", "https://mirror.test/kev.json")
+	t.Setenv("INTEL_TTL", "5m")
+	cfg, err = Load()
+	assert.NoError(t, err)
+	assert.Equal(t, "https://mirror.test/epss", cfg.Intel.EPSSBaseURL)
+	assert.Equal(t, "https://mirror.test/kev.json", cfg.Intel.KEVCatalogURL)
+	assert.Equal(t, 5*time.Minute, cfg.Intel.TTL)
+
+	t.Setenv("INTEL_TTL", "banana")
+	_, err = Load()
+	assert.ErrorContains(t, err, "INTEL_TTL")
+}
+
 func TestLoad_SSOAllowedDomains(t *testing.T) {
 	t.Setenv("WATCHER_ENABLE", "")
 	t.Setenv("SSO_ALLOWED_DOMAINS", "Example.COM, example.org ")

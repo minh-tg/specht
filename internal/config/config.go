@@ -25,7 +25,12 @@ const (
 	// DefaultOSVVulnEndpoint fetches full advisory records once
 	// querybatch has matched their IDs ({id} is the placeholder).
 	DefaultOSVVulnEndpoint = "https://api.osv.dev/v1/vulns/{id}"
-	DefaultDBMigrate       = true
+	// DefaultEPSSEndpoint and DefaultKEVEndpoint are the public
+	// vulnerability-intel feeds; DefaultIntelTTL bounds their cache.
+	DefaultEPSSEndpoint = "https://api.first.org/data/v1/epss"
+	DefaultKEVEndpoint  = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+	DefaultIntelTTL     = time.Hour
+	DefaultDBMigrate    = true
 	// DefaultSweepInterval is how often the analysis/waiver expiry
 	// sweepers look for expired rows. Tests shorten it via
 	// LIFECYCLE_SWEEP_INTERVAL to observe sweeps in seconds.
@@ -61,6 +66,8 @@ type Server struct {
 	// only validated when Enable is true (a malformed optional setting must
 	// not crash a server with the watcher disabled).
 	Watcher Watcher
+	// Intel settings: EPSS/KEV feed endpoints and the record cache TTL.
+	Intel IntelConfig
 	// RateLimit guards the API against flooding. Disabled by default for
 	// dev UX; self-host production enables it via RATE_LIMIT_ENABLED.
 	RateLimit RateLimit
@@ -98,6 +105,13 @@ type RateLimit struct {
 	Burst     int
 	AuthRPS   int
 	AuthBurst int
+}
+
+// IntelConfig is the resolved vulnerability-intel configuration.
+type IntelConfig struct {
+	EPSSBaseURL   string
+	KEVCatalogURL string
+	TTL           time.Duration
 }
 
 // Watcher is the resolved CVE watcher configuration.
@@ -308,7 +322,29 @@ func Load() (*Server, error) {
 	if err := loadWatcher(s); err != nil {
 		return nil, err
 	}
+	if err := loadIntel(s); err != nil {
+		return nil, err
+	}
 	return s, nil
+}
+
+// loadIntel resolves the EPSS/KEV feed endpoints and cache TTL. A malformed
+// TTL is a hard error: intel config is small and explicit, never silently
+// defaulted after an operator typo.
+func loadIntel(s *Server) error {
+	s.Intel = IntelConfig{
+		EPSSBaseURL:   strOr(os.Getenv("INTEL_EPSS_ENDPOINT"), DefaultEPSSEndpoint),
+		KEVCatalogURL: strOr(os.Getenv("INTEL_KEV_ENDPOINT"), DefaultKEVEndpoint),
+		TTL:           DefaultIntelTTL,
+	}
+	if v := os.Getenv("INTEL_TTL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("INTEL_TTL is invalid: %w", err)
+		}
+		s.Intel.TTL = d
+	}
+	return nil
 }
 
 // WatcherConfig validates watcher settings standalone (the CLI backfill path,

@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/intel"
 	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/remediate"
 )
@@ -63,6 +64,10 @@ type FindingResponse struct {
 	// Suggestion is the reviewable remediation proposal for this finding,
 	// built from persisted dimensions and source guidance.
 	Suggestion *SuggestionResponse `json:"suggestion,omitempty"`
+	// Intel carries EPSS/KEV intelligence for the finding's CVE (ADR-023).
+	// Nil when the finding has no CVE-shaped vulnerability_id dimension or
+	// no configured feed knows the identifier.
+	Intel *intel.Record `json:"intel,omitempty"`
 }
 
 // FindingContextResponse carries the human-readable deployment context of
@@ -524,8 +529,35 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 			return nil, fmt.Errorf("get finding dimensions: %w", err)
 		}
 		resp.Suggestion = suggestionFromEvidence(f, dims, dc.ToolName, resp.Remediation)
+		u.attachIntel(ctx, dims, &resp)
 	}
 	return &resp, nil
+}
+
+// attachIntel resolves the finding's CVE through the intel store (ADR-023):
+// a miss or a TTL-stale entry triggers a refresh whose failure degrades to
+// the cached record — a feed outage never fails a detail read. Findings
+// without a CVE-shaped vulnerability_id dimension carry no intel at all.
+func (u *Usecases) attachIntel(ctx context.Context, dims []port.FindingDimension, resp *FindingResponse) {
+	if u.deps.Intel == nil {
+		return
+	}
+	cve := ""
+	for _, d := range dims {
+		if d.Key == "vulnerability_id" && intel.IsCVE(d.Value) {
+			cve = d.Value
+			break
+		}
+	}
+	if cve == "" {
+		return
+	}
+	if _, stale, ok := u.deps.Intel.Lookup(cve); !ok || stale {
+		_ = u.deps.Intel.Refresh(ctx, []string{cve})
+	}
+	if rec, _, ok := u.deps.Intel.Lookup(cve); ok {
+		resp.Intel = &rec
+	}
 }
 
 // spechtMetadata is the canonical namespace of an occurrence metadata

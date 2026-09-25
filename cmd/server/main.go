@@ -18,6 +18,7 @@ import (
 	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/config"
 	"github.com/minh-tg/specht/internal/db"
+	"github.com/minh-tg/specht/internal/intel"
 	"github.com/minh-tg/specht/internal/lifecycle"
 	"github.com/minh-tg/specht/internal/parser"
 	"github.com/minh-tg/specht/internal/port"
@@ -162,6 +163,9 @@ func main() {
 		Passwords:    auth.NewPasswordHasher(),
 		InventoryTTL: cfg.InventoryTTL,
 		Tracker:      buildTrackerDispatcher(),
+		Intel: intel.NewStore(cfg.Intel.TTL, nil,
+			&intel.EPSSProvider{BaseURL: cfg.Intel.EPSSBaseURL},
+			&intel.KEVProvider{CatalogURL: cfg.Intel.KEVCatalogURL}),
 	})
 
 	handler := server.NewRouter(server.RouterConfig{

@@ -16,6 +16,7 @@ import (
 	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/domain"
 	"github.com/minh-tg/specht/internal/gate"
+	"github.com/minh-tg/specht/internal/intel"
 	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/provider"
 	"github.com/minh-tg/specht/internal/scanner"
@@ -109,6 +110,9 @@ type Deps struct {
 	Passwords    auth.PasswordHasher
 	InventoryTTL time.Duration
 	Tracker      *tracker.Dispatcher
+	// Intel serves EPSS/KEV records on the finding read path (ADR-023);
+	// nil disables the block entirely.
+	Intel *intel.Store
 }
 
 // Usecases groups the application's use-case methods. It is safe for
