@@ -1,0 +1,31 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "/repo",
+  "ArtifactType": "filesystem",
+  "Results": [
+    {
+      "Target": "Node.js dependencies",
+      "Class": "lang-pkgs",
+      "Type": "npm",
+      "Packages": [
+        {
+          "Name": "lodash",
+          "Version": "4.17.19",
+          "PkgID": "lodash@4.17.19",
+          "Identifier": {
+            "PURL": "pkg:npm/lodash@4.17.19"
+          }
+        },
+        {
+          "Name": "left-pad",
+          "Version": "1.3.0",
+          "PkgID": "left-pad@1.3.0",
+          "Identifier": {
+            "PURL": "pkg:npm/left-pad@1.3.0"
+          }
+        }
+      ],
+      "Vulnerabilities": null
+    }
+  ]
+}

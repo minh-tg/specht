@@ -329,8 +329,9 @@ func cleanEnv(overrides ...string) []string {
 		"WATCHER_ENABLE": true, "API_URL": true, "API_KEY": true,
 		// Fake-wired endpoints: developer or CI exports must never leak
 		// into the experiment (the fakes are the only authority).
-		"WATCHER_OSV_ENDPOINT": true, "WATCHER_POLL_INTERVAL": true,
-		"WATCHER_WEBHOOK_URL": true, "WATCHER_WEBHOOK_URLS": true,
+		"WATCHER_OSV_ENDPOINT": true, "WATCHER_OSV_VULN_ENDPOINT": true,
+		"WATCHER_POLL_INTERVAL": true,
+		"WATCHER_WEBHOOK_URL":   true, "WATCHER_WEBHOOK_URLS": true,
 		"WATCHER_WEBHOOK_SIGNING_SECRET": true, "WATCHER_SLACK_URL": true,
 		"TRACKER_PROVIDER": true, "TRACKER_BASE_URL": true,
 		"TRACKER_PROJECT_ID": true, "TRACKER_API_TOKEN": true,

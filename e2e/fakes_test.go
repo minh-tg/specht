@@ -86,42 +86,95 @@ func (s *captureSink) count() int {
 }
 
 // fakeOSV answers /v1/querybatch with empty results (no vulnerabilities)
-// and records what the watcher asked for.
+// and /vulns/{id} with full advisory records; tests arm advisories by
+// package name so a poll discovers IDs in phase one and fetches records in
+// phase two — exactly the two-phase production flow.
 type fakeOSV struct {
 	mu      sync.Mutex
 	srv     *httptest.Server
 	queries int
 	last    []byte
+	armed   map[string]map[string]any // package name → full OSV record
 }
 
 func newFakeOSV() *fakeOSV {
-	o := &fakeOSV{}
-	o.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/querybatch" || r.Method != http.MethodPost {
-			http.NotFound(w, r)
-			return
-		}
-		body, _ := io.ReadAll(r.Body)
-		var req struct {
-			Queries []json.RawMessage `json:"queries"`
-		}
-		_ = json.Unmarshal(body, &req)
-		results := make([]map[string]any, len(req.Queries))
-		for i := range results {
-			results[i] = map[string]any{}
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
-
-		o.mu.Lock()
-		o.queries++
-		o.last = body
-		o.mu.Unlock()
-	}))
+	o := &fakeOSV{armed: map[string]map[string]any{}}
+	o.srv = httptest.NewServer(http.HandlerFunc(o.serve))
 	return o
 }
 
+func (o *fakeOSV) serve(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.URL.Path == "/v1/querybatch" && r.Method == http.MethodPost:
+		body, _ := io.ReadAll(r.Body)
+		var req struct {
+			Queries []struct {
+				Package struct {
+					Ecosystem string `json:"ecosystem"`
+					Name      string `json:"name"`
+				} `json:"package"`
+			} `json:"queries"`
+		}
+		_ = json.Unmarshal(body, &req)
+
+		o.mu.Lock()
+		results := make([]map[string]any, len(req.Queries))
+		for i, q := range req.Queries {
+			results[i] = map[string]any{}
+			rec, ok := o.armed[q.Package.Name]
+			if !ok {
+				continue
+			}
+			id, _ := rec["id"].(string)
+			modified, _ := rec["modified"].(string)
+			results[i]["vulns"] = []map[string]string{{"id": id, "modified": modified}}
+		}
+		o.queries++
+		o.last = body
+		o.mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{"results": results})
+	case strings.HasPrefix(r.URL.Path, "/vulns/") && r.Method == http.MethodGet:
+		id := strings.TrimPrefix(r.URL.Path, "/vulns/")
+		o.mu.Lock()
+		var record map[string]any
+		for _, rec := range o.armed {
+			if rid, _ := rec["id"].(string); rid == id {
+				record = rec
+				break
+			}
+		}
+		o.mu.Unlock()
+		if record == nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(record)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+// arm advertises record for every query about pkgName.
+func (o *fakeOSV) arm(pkgName string, record map[string]any) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.armed[pkgName] = record
+}
+
+// disarm drops every armed advisory (fresh expectations per subtest).
+func (o *fakeOSV) disarm() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.armed = map[string]map[string]any{}
+}
+
 func (o *fakeOSV) URL() string { return o.srv.URL + "/v1/querybatch" }
+
+// VulnURL is the full-record template the server resolves IDs through.
+func (o *fakeOSV) VulnURL() string { return o.srv.URL + "/vulns/{id}" }
 
 func (o *fakeOSV) callCount() int {
 	o.mu.Lock()
@@ -275,6 +328,7 @@ func fakeServerEnv(addr string) []string {
 	return []string{
 		"WATCHER_ENABLE=true",
 		"WATCHER_OSV_ENDPOINT=" + fakes.osv.URL(),
+		"WATCHER_OSV_VULN_ENDPOINT=" + fakes.osv.VulnURL(),
 		"WATCHER_POLL_INTERVAL=1s",
 		"WATCHER_WEBHOOK_URL=" + fakes.notifySink.URL() + "/notify",
 		"WATCHER_WEBHOOK_URLS=" + fakes.trackerSink.URL() + "/tracker",
