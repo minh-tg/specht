@@ -288,10 +288,93 @@ func (p *fakeIdP) signIDToken(audience, nonce string) string {
 	return signRS256(p.key, claims)
 }
 
+// intelFeed serves the EPSS and KEV fakes: per-CVE scores for /epss and a
+// catalog for /kev.json, with arm/fail switches per scenario.
+type intelFeed struct {
+	mu     sync.Mutex
+	srv    *httptest.Server
+	scores map[string]float64 // CVE → EPSS score
+	kev    map[string]string  // CVE → dateAdded
+	fail   bool
+}
+
+func newIntelFeed() *intelFeed {
+	f := &intelFeed{scores: map[string]float64{}, kev: map[string]string{}}
+	f.srv = httptest.NewServer(http.HandlerFunc(f.serve))
+	return f
+}
+
+func (f *intelFeed) serve(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	fail, scores, kev := f.fail, map[string]float64{}, map[string]string{}
+	for k, v := range f.scores {
+		scores[k] = v
+	}
+	for k, v := range f.kev {
+		kev[k] = v
+	}
+	f.mu.Unlock()
+	if fail {
+		http.Error(w, "feed down", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	switch r.URL.Path {
+	case "/epss":
+		data := []map[string]string{}
+		for _, cve := range strings.Split(r.URL.Query().Get("cve"), ",") {
+			if score, ok := scores[cve]; ok {
+				data = append(data, map[string]string{
+					"cve": cve, "epss": fmt.Sprintf("%.4f", score),
+					"percentile": "99.9", "date": "2026-09-01",
+				})
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"status": "OK", "data": data})
+	case "/kev.json":
+		vulns := []map[string]string{}
+		for cve, added := range kev {
+			vulns = append(vulns, map[string]string{"cveID": cve, "dateAdded": added})
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{"vulnerabilities": vulns})
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func (f *intelFeed) armEPSS(cve string, score float64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.scores[cve] = score
+}
+
+func (f *intelFeed) armKEV(cve, dateAdded string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.kev[cve] = dateAdded
+}
+
+func (f *intelFeed) disarm() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.scores = map[string]float64{}
+	f.kev = map[string]string{}
+}
+
+func (f *intelFeed) setFail(fail bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.fail = fail
+}
+
+func (f *intelFeed) EPSSURL() string { return f.srv.URL + "/epss" }
+func (f *intelFeed) KEVURL() string  { return f.srv.URL + "/kev.json" }
+
 // fakeServices holds the process-wide fakes for one E2E run.
 type fakeServices struct {
 	idp         *fakeIdP
 	osv         *fakeOSV
+	intel       *intelFeed
 	notifySink  *captureSink
 	trackerSink *captureSink
 }
@@ -302,6 +385,7 @@ func startFakes() {
 	fakes = &fakeServices{
 		idp:         newFakeIdP(),
 		osv:         newFakeOSV(),
+		intel:       newIntelFeed(),
 		notifySink:  newCaptureSink(),
 		trackerSink: newCaptureSink(),
 	}
@@ -313,6 +397,7 @@ func stopFakes() {
 	}
 	fakes.idp.srv.Close()
 	fakes.osv.srv.Close()
+	fakes.intel.srv.Close()
 	fakes.notifySink.srv.Close()
 	fakes.trackerSink.srv.Close()
 }
@@ -359,6 +444,10 @@ func fakeServerEnv(addr string) []string {
 		"SSO_ALLOWED_DOMAINS=example.com",
 		"SSO_ADMIN_GROUPS=platform-team",
 		"TRUSTED_PROXIES=127.0.0.1/32",
+		"INTEL_EPSS_ENDPOINT=" + fakes.intel.EPSSURL(),
+		"INTEL_KEV_ENDPOINT=" + fakes.intel.KEVURL(),
+		// A one-second TTL keeps the staleness contract observable.
+		"INTEL_TTL=1s",
 	}
 }
 

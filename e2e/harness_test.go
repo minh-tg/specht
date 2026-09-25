@@ -338,7 +338,9 @@ func cleanEnv(overrides ...string) []string {
 		"SSO_ENABLE": true, "SSO_ISSUER_URL": true, "SSO_CLIENT_ID": true,
 		"SSO_CLIENT_SECRET": true, "SSO_REDIRECT_URI": true,
 		"SSO_ALLOWED_DOMAINS": true, "SSO_ADMIN_GROUPS": true,
-		"TRUSTED_PROXIES": true,
+		"TRUSTED_PROXIES":     true,
+		"INTEL_EPSS_ENDPOINT": true, "INTEL_KEV_ENDPOINT": true,
+		"INTEL_TTL": true,
 	}
 	var env []string
 	for _, kv := range os.Environ() {
