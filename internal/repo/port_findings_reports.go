@@ -339,6 +339,30 @@ func (r *pgFindingPort) UpdateAnalysis(ctx context.Context, input port.UpdateAna
 	return findingRowToPort(row), nil
 }
 
+func (r *pgFindingPort) UpdateAnalysisWithEvent(ctx context.Context, input port.UpdateAnalysisInput, event port.FindingEventInput) (port.Finding, error) {
+	fid, err := parseID(input.ID)
+	if err != nil {
+		return port.Finding{}, err
+	}
+	eventID, err := parseID(event.FindingID)
+	if err != nil {
+		return port.Finding{}, err
+	}
+	row, err := r.inner.UpdateAnalysisWithEvent(ctx, UpdateAnalysisParams{
+		ID: fid, AnalysisState: input.AnalysisState, GateEffect: input.GateEffect,
+		AnalysisExpiresAt: timestamptzPtrFromTime(input.AnalysisExpiresAt), AnalysisReason: textPtrFromString(input.AnalysisReason),
+		AnalysisSource: input.AnalysisSource, ManualOverride: input.ManualOverride, ReviewRequired: input.ReviewRequired,
+		AnalysisUpdatedBy: uuidPtrFromString(input.AnalysisUpdatedBy),
+	}, CreateEventParams{
+		FindingID: eventID, UserID: uuidPtrFromString(event.UserID), EventType: event.EventType,
+		OldValue: textPtrFromString(event.OldValue), NewValue: textPtrFromString(event.NewValue), Comment: textPtrFromString(event.Comment), Changes: event.Changes,
+	})
+	if err != nil {
+		return port.Finding{}, mappingErr(err)
+	}
+	return findingRowToPort(row), nil
+}
+
 func (r *pgFindingPort) BulkUpdateAnalysis(ctx context.Context, input port.UpdateAnalysisInput, ids []string) ([]port.Finding, error) {
 	uids := make([]pgtype.UUID, len(ids))
 	for i, id := range ids {
@@ -691,6 +715,25 @@ func (r *pgFindingPort) MarkFixed(ctx context.Context, findingID string) (port.F
 		return port.Finding{}, err
 	}
 	row, err := r.inner.MarkFixed(ctx, fid)
+	if err != nil {
+		return port.Finding{}, mappingErr(err)
+	}
+	return findingRowToPort(row), nil
+}
+
+func (r *pgFindingPort) MarkFixedWithEvent(ctx context.Context, findingID string, event port.FindingEventInput) (port.Finding, error) {
+	fid, err := parseID(findingID)
+	if err != nil {
+		return port.Finding{}, err
+	}
+	eventID, err := parseID(event.FindingID)
+	if err != nil {
+		return port.Finding{}, err
+	}
+	row, err := r.inner.MarkFixedWithEvent(ctx, fid, CreateEventParams{
+		FindingID: eventID, UserID: uuidPtrFromString(event.UserID), EventType: event.EventType,
+		OldValue: textPtrFromString(event.OldValue), NewValue: textPtrFromString(event.NewValue), Comment: textPtrFromString(event.Comment), Changes: event.Changes,
+	})
 	if err != nil {
 		return port.Finding{}, mappingErr(err)
 	}

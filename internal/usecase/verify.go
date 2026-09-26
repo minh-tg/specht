@@ -98,21 +98,16 @@ func (u *Usecases) VerifyFix(ctx context.Context, findingID string) (*VerifyResp
 		}, nil
 	}
 
-	if _, err := u.deps.Stores.Findings.MarkFixed(ctx, fid.String()); err != nil {
-		return nil, fmt.Errorf("mark fixed: %w", err)
-	}
 	changes, _ := json.Marshal(map[string]any{
 		"report_id":  report.ID,
 		"tool":       report.ToolName,
 		"branch":     strOrEmpty(report.Branch),
 		"commit_sha": strOrEmpty(report.CommitSha),
 	})
-	if _, err := u.deps.Stores.Findings.CreateEvent(ctx, port.FindingEventInput{
-		FindingID: fid.String(),
-		EventType: "verified_fixed",
-		Changes:   changes,
+	if _, err := u.deps.Stores.Findings.MarkFixedWithEvent(ctx, fid.String(), port.FindingEventInput{
+		FindingID: fid.String(), EventType: "verified_fixed", Changes: changes,
 	}); err != nil {
-		return nil, fmt.Errorf("log verification event: %w", err)
+		return nil, fmt.Errorf("mark fixed and log event: %w", err)
 	}
 	if u.deps.Tracker != nil {
 		u.deps.Tracker.Dispatch(ctx, tracker.Event{

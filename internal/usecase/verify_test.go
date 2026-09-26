@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -61,6 +62,21 @@ func TestVerifyFix_Verified(t *testing.T) {
 	assert.Equal(t, reportID, *resp.ReportID)
 	assert.Equal(t, f.ID, marked)
 	assert.Equal(t, "verified_fixed", eventType)
+}
+
+func TestVerifyFix_EventFailureDoesNotChangeState(t *testing.T) {
+	now := time.Now()
+	uc, fr, rr, f := verifyHarness(now)
+	rr.latestReportFn = func(ctx context.Context, projectID, scanner string) (port.CompletedReport, error) {
+		return port.CompletedReport{ID: "11111111-1111-1111-1111-111111111111", ToolName: "trivy", Completeness: "complete", CreatedAt: now}, nil
+	}
+	fr.hasOccurrenceFn = func(ctx context.Context, findingID, reportID string) (bool, error) { return false, nil }
+	fr.markFixedWithEventFn = func(ctx context.Context, findingID string, event port.FindingEventInput) (port.Finding, error) {
+		return port.Finding{}, fmt.Errorf("event insert failed")
+	}
+	_, err := uc.VerifyFix(findingScopeCtx(findingFixtureProjectID), f.ID)
+	require.Error(t, err)
+	assert.NotEqual(t, "fixed", f.State)
 }
 
 func TestVerifyFix_StillPresent(t *testing.T) {

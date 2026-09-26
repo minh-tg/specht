@@ -115,7 +115,13 @@ func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*Triag
 	gateEffect := stateToGateEffect(input.AnalysisState)
 	userIDStr := userID.String()
 
-	updated, err := u.deps.Stores.Findings.UpdateAnalysis(ctx, port.UpdateAnalysisInput{
+	oldState := f.AnalysisState
+	changes, _ := json.Marshal(map[string]any{
+		"from":   oldState,
+		"to":     input.AnalysisState,
+		"reason": input.Reason,
+	})
+	updated, err := u.deps.Stores.Findings.UpdateAnalysisWithEvent(ctx, port.UpdateAnalysisInput{
 		ID:                findingID.String(),
 		AnalysisState:     input.AnalysisState,
 		GateEffect:        gateEffect,
@@ -125,28 +131,12 @@ func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*Triag
 		ManualOverride:    true,
 		ReviewRequired:    false,
 		AnalysisUpdatedBy: &userIDStr,
+	}, port.FindingEventInput{
+		FindingID: findingID.String(), UserID: &userIDStr, EventType: "analysis_changed",
+		OldValue: stringPtr(f.AnalysisState), NewValue: stringPtr(input.AnalysisState), Comment: stringPtr(input.Reason), Changes: changes,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("update analysis: %w", err)
-	}
-
-	oldState := f.AnalysisState
-	changes, _ := json.Marshal(map[string]any{
-		"from":   oldState,
-		"to":     input.AnalysisState,
-		"reason": input.Reason,
-	})
-	_, err = u.deps.Stores.Findings.CreateEvent(ctx, port.FindingEventInput{
-		FindingID: findingID.String(),
-		UserID:    &userIDStr,
-		EventType: "analysis_changed",
-		OldValue:  stringPtr(oldState),
-		NewValue:  stringPtr(input.AnalysisState),
-		Comment:   stringPtr(input.Reason),
-		Changes:   changes,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("log triage event: %w", err)
+		return nil, fmt.Errorf("update analysis and log event: %w", err)
 	}
 
 	return &TriageOutput{

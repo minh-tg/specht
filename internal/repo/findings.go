@@ -142,6 +142,29 @@ func (r *pgFindingRepo) MarkFixed(ctx context.Context, findingID pgtype.UUID) (s
 	return r.q.MarkFindingFixed(ctx, findingID)
 }
 
+func (r *pgFindingRepo) MarkFixedWithEvent(ctx context.Context, findingID pgtype.UUID, event CreateEventParams) (sqlc.Finding, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return sqlc.Finding{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	updated, err := q.MarkFindingFixed(ctx, findingID)
+	if err != nil {
+		return sqlc.Finding{}, fmt.Errorf("mark fixed: %w", err)
+	}
+	if _, err := q.CreateFindingEvent(ctx, sqlc.CreateFindingEventParams{
+		FindingID: event.FindingID, UserID: event.UserID, EventType: event.EventType,
+		OldValue: event.OldValue, NewValue: event.NewValue, Comment: event.Comment, Changes: event.Changes,
+	}); err != nil {
+		return sqlc.Finding{}, fmt.Errorf("create event: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return sqlc.Finding{}, fmt.Errorf("commit tx: %w", err)
+	}
+	return updated, nil
+}
+
 func (r *pgFindingRepo) MarkAbsentScopedFindingsFixed(ctx context.Context, arg sqlc.MarkAbsentScopedFindingsFixedParams) ([]sqlc.Finding, error) {
 	return r.q.MarkAbsentScopedFindingsFixed(ctx, arg)
 }
@@ -213,6 +236,34 @@ func (r *pgFindingRepo) UpdateAnalysis(ctx context.Context, arg UpdateAnalysisPa
 		ReviewRequired:    arg.ReviewRequired,
 		AnalysisUpdatedBy: arg.AnalysisUpdatedBy,
 	})
+}
+
+func (r *pgFindingRepo) UpdateAnalysisWithEvent(ctx context.Context, arg UpdateAnalysisParams, event CreateEventParams) (sqlc.Finding, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return sqlc.Finding{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	updated, err := q.UpdateFindingAnalysis(ctx, sqlc.UpdateFindingAnalysisParams{
+		ID: arg.ID, AnalysisState: arg.AnalysisState, GateEffect: arg.GateEffect,
+		AnalysisExpiresAt: arg.AnalysisExpiresAt, AnalysisReason: arg.AnalysisReason,
+		AnalysisSource: arg.AnalysisSource, ManualOverride: arg.ManualOverride,
+		ReviewRequired: arg.ReviewRequired, AnalysisUpdatedBy: arg.AnalysisUpdatedBy,
+	})
+	if err != nil {
+		return sqlc.Finding{}, fmt.Errorf("update analysis: %w", err)
+	}
+	if _, err := q.CreateFindingEvent(ctx, sqlc.CreateFindingEventParams{
+		FindingID: event.FindingID, UserID: event.UserID, EventType: event.EventType,
+		OldValue: event.OldValue, NewValue: event.NewValue, Comment: event.Comment, Changes: event.Changes,
+	}); err != nil {
+		return sqlc.Finding{}, fmt.Errorf("create event: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return sqlc.Finding{}, fmt.Errorf("commit tx: %w", err)
+	}
+	return updated, nil
 }
 
 // BulkUpdateAnalysisParams is the input to a bulk analysis-state update.

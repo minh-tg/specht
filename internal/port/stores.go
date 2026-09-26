@@ -525,6 +525,8 @@ type FindingStore interface {
 	ListByIDs(ctx context.Context, ids []string) ([]Finding, error)
 	ListByProject(ctx context.Context, projectID string, params ListFindingsParams) ([]Finding, error)
 	UpdateAnalysis(ctx context.Context, input UpdateAnalysisInput) (Finding, error)
+	// UpdateAnalysisWithEvent atomically updates analysis state and records its audit event.
+	UpdateAnalysisWithEvent(ctx context.Context, input UpdateAnalysisInput, event FindingEventInput) (Finding, error)
 	BulkUpdateAnalysis(ctx context.Context, input UpdateAnalysisInput, ids []string) ([]Finding, error)
 	BulkTriage(ctx context.Context, input UpdateAnalysisInput, ids []string, event FindingEventInput) ([]Finding, error)
 	CreateEvent(ctx context.Context, input FindingEventInput) (FindingEvent, error)
@@ -538,6 +540,8 @@ type FindingStore interface {
 	// never sets it: VerifyFix is the analyst-facing path, backed by a
 	// rescan that no longer observes the finding.
 	MarkFixed(ctx context.Context, findingID string) (Finding, error)
+	// MarkFixedWithEvent atomically marks a finding fixed and records its audit event.
+	MarkFixedWithEvent(ctx context.Context, findingID string, event FindingEventInput) (Finding, error)
 	// MarkAbsentFindingsFixed is the ingest-time auto-fix writer
 	// (ADR-018): it closes open or reopened findings whose most recent
 	// observation came from an equivalent complete scan (same project
