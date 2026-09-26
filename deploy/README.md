@@ -19,6 +19,13 @@ head -c 48 /dev/urandom | base64
 a missing or short `JWT_SECRET`; Postgres refuses an empty password — both
 fail fast instead of running insecure.
 
+For production, add `POSTGRES_SSLMODE=require` (or `verify-full` when the
+Postgres certificate and hostname are configured) to `deploy/.env.prod`. The
+Compose file's `disable` fallback is intentionally for its localhost-bound
+development database only; never use that fallback for a remote database.
+Keep `DB_MIGRATE=true` for the simple deployment path, or set it to `false`
+and run `specht migrate` as a separately controlled release step.
+
 ## 2. Start
 
 ```bash

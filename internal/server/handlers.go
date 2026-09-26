@@ -193,6 +193,7 @@ type (
 type Handler struct {
 	usecase usecaseInterface
 	audit   *audit.Logger
+	revoker auth.TokenRevoker
 }
 
 type usecaseInterface interface {
@@ -215,8 +216,12 @@ type usecaseInterface interface {
 }
 
 // NewHandler builds the HTTP handlers over a use-case implementation.
-func NewHandler(uc usecaseInterface) *Handler {
-	return &Handler{usecase: uc, audit: audit.NewLogger(nil)}
+func NewHandler(uc usecaseInterface, revokers ...auth.TokenRevoker) *Handler {
+	var revoker auth.TokenRevoker
+	if len(revokers) > 0 {
+		revoker = revokers[0]
+	}
+	return &Handler{usecase: uc, audit: audit.NewLogger(nil), revoker: revoker}
 }
 
 type ingestRequest struct {

@@ -217,3 +217,15 @@ func TestJWT_CreateRefreshToken_MintsUniqueTokens(t *testing.T) {
 	assert.NotEqual(t, first, second, "tokens must differ so their hashes cannot collide")
 	assert.Equal(t, "refresh", firstClaims["type"], "refresh tokens keep their type claim")
 }
+
+func TestJWT_RevokeTokenRejectsSubsequentAuthentication(t *testing.T) {
+	a, err := NewJWTAuthenticator(jwtBindingTestSecret)
+	require.NoError(t, err)
+	raw, err := a.CreateToken("user-1", "user@example.com", RoleViewer)
+	require.NoError(t, err)
+	_, err = a.Authenticate(context.Background(), raw)
+	require.NoError(t, err)
+	require.NoError(t, a.RevokeToken(raw))
+	_, err = a.Authenticate(context.Background(), raw)
+	assert.ErrorIs(t, err, ErrInvalidCredential)
+}

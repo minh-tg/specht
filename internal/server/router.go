@@ -31,6 +31,7 @@ type RouterConfig struct {
 	Usecases     usecaseInterface
 	CORSOrigins  string
 	JWTAuth      auth.Authenticator
+	Revoker      auth.TokenRevoker
 	APIKeyLookup func(ctx context.Context, keyHash string) (userID, projectID string, scopes []string, expiresAt time.Time, err error)
 	OIDC         *auth.OIDCAuthenticator
 	OIDCEnabled  bool
@@ -85,7 +86,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	r.Use(LoggerMiddleware)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(30 * time.Second))
-	h := NewHandler(cfg.Usecases)
+	var revoker auth.TokenRevoker = cfg.Revoker
+	if revoker == nil {
+		revoker, _ = cfg.JWTAuth.(auth.TokenRevoker)
+	}
+	h := NewHandler(cfg.Usecases, revoker)
 
 	r.Get("/api/v1/health", healthHandler)
 	r.Get("/api/v1/version", versionHandler)

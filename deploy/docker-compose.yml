@@ -23,6 +23,9 @@ services:
     ports:
       - "${SERVER_PORT:-8080}:8080"
     environment:
+      # Development-only default: the compose database is bound to localhost,
+      # so TLS is disabled. Production deployments must set POSTGRES_SSLMODE
+      # explicitly (for example, `require` or `verify-full`).
       DATABASE_URL: >-
         postgres://specht:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@db:5432/specht?sslmode=${POSTGRES_SSLMODE:-disable}
       # Production must set JWT_SECRET (min 32 random bytes) and
@@ -32,6 +35,9 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       SERVER_ADDR: :8080
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Keep migrations enabled for the local compose development loop. A
+      # production deployment may set DB_MIGRATE=false and run `specht migrate`
+      # as a separately controlled release step.
       DB_MIGRATE: "true"
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
       # Rate limiting: on by default in compose (self-host is internet-facing

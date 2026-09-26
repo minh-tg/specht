@@ -91,6 +91,16 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "logout_failed", "logout failed")
 		return
 	}
+	// Logout remains usable with only a refresh token, but when a bearer
+	// access token is supplied, retire it immediately rather than waiting for
+	// its normal expiry.
+	if h.revoker != nil {
+		if bearer := r.Header.Get("Authorization"); len(bearer) > len("Bearer ") && bearer[:len("Bearer ")] == "Bearer " {
+			if err := h.revoker.RevokeToken(bearer[len("Bearer "):]); err != nil {
+				slog.Warn("access token revocation failed during logout", "error", err)
+			}
+		}
+	}
 	w.WriteHeader(http.StatusNoContent)
 	h.audit.HTTP(r, audit.EventLogout, audit.OutcomeSuccess, "", "", nil)
 }
