@@ -7,9 +7,11 @@ import (
 	"encoding/base64"
 	"fmt"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +32,15 @@ func mustOIDC(t *testing.T, issuerURL string) *OIDCAuthenticator {
 	}, nil)
 	require.NoError(t, err)
 	return a
+}
+
+func TestOIDC_SSRFAddressChecks(t *testing.T) {
+	for _, raw := range []string{"127.0.0.1", "10.0.0.1", "169.254.1.1", "192.168.1.1", "::1", "fc00::1", "2001:db8::1"} {
+		t.Run(raw, func(t *testing.T) {
+			assert.True(t, isBlockedIP(net.ParseIP(raw)))
+		})
+	}
+	assert.False(t, isBlockedIP(net.ParseIP("8.8.8.8")))
 }
 
 func TestOIDC_Authenticate_NonOIDCToken(t *testing.T) {
@@ -86,6 +97,17 @@ func TestOIDC_RejectsInsecureIssuer(t *testing.T) {
 			require.NotNil(t, a)
 		})
 	}
+}
+
+func TestOIDC_JWKSResponseLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"keys":[]}` + strings.Repeat(" ", maxJWKSBodyBytes)))
+	}))
+	defer server.Close()
+	a := mustOIDC(t, server.URL)
+	err := a.fetchJWKS(context.Background())
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "exceeds")
 }
 
 func TestOIDC_LoginURL(t *testing.T) {

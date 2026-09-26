@@ -33,7 +33,13 @@ type OIDCConfig struct {
 
 // jwksCacheTTL bounds how long a fetched JWKS key set is reused before a
 // refresh is attempted.
-const jwksCacheTTL = 15 * time.Minute
+const (
+	jwksCacheTTL      = 15 * time.Minute
+	maxJWKSBodyBytes  = 1 << 20
+	maxJWKSKeys       = 100
+	maxJWKSFieldBytes = 16 << 10
+	maxJWKSKeyIDBytes = 256
+)
 
 type OIDCAuthenticator struct {
 	cfg    OIDCConfig
@@ -78,6 +84,60 @@ func isLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// safeDialContext resolves the destination before connecting and refuses local,
+// private, link-local, multicast, and other non-public address ranges. The
+// loopback exception exists only for plain HTTP local development providers;
+// HTTPS requests are never allowed to use it.
+func safeDialContext(dialer *net.Dialer, allowLoopback bool) func(context.Context, string, string) (net.Conn, error) {
+	return func(ctx context.Context, network, address string) (net.Conn, error) {
+		host, port, err := net.SplitHostPort(address)
+		if err != nil {
+			return nil, fmt.Errorf("invalid destination %q: %w", address, err)
+		}
+		ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
+		if err != nil {
+			return nil, fmt.Errorf("resolve %q: %w", host, err)
+		}
+		if len(ips) == 0 {
+			return nil, fmt.Errorf("resolve %q: no addresses", host)
+		}
+		for _, ip := range ips {
+			if isBlockedIP(ip) && !(allowLoopback && ip.IsLoopback()) {
+				return nil, fmt.Errorf("refusing connection to non-public address %q", ip)
+			}
+		}
+		var lastErr error
+		for _, ip := range ips {
+			conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+			if dialErr == nil {
+				return conn, nil
+			}
+			lastErr = dialErr
+		}
+		return nil, lastErr
+	}
+}
+
+func isBlockedIP(ip net.IP) bool {
+	if ip == nil || ip.IsUnspecified() || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() {
+		return true
+	}
+	v4 := ip.To4()
+	if v4 != nil {
+		// Carrier-grade NAT, benchmarking, and documentation ranges are not
+		// routable public service addresses and must not be SSRF targets.
+		return (v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127) ||
+			(v4[0] == 198 && v4[1] >= 18 && v4[1] <= 19) ||
+			(v4[0] == 192 && v4[1] == 0 && v4[2] == 0) ||
+			(v4[0] >= 240) ||
+			(v4[0] == 192 && v4[1] == 0 && v4[2] == 2) ||
+			(v4[0] == 198 && v4[1] == 51 && v4[2] == 100) ||
+			(v4[0] == 203 && v4[1] == 0 && v4[2] == 113)
+	}
+	// IPv6 documentation range.
+	return len(ip) == net.IPv6len && ip[0] == 0x20 && ip[1] == 0x01 && ip[2] == 0x0d && ip[3] == 0xb8
+}
+
 // NewOIDCAuthenticator builds an SSO authenticator from the given config.
 // The issuer URL is validated up front: it is the base for the token,
 // userinfo, and JWKS endpoints, and the token exchange posts the client
@@ -88,12 +148,21 @@ func NewOIDCAuthenticator(cfg OIDCConfig, logger func(msg string, args ...any)) 
 	if err := ValidateIssuerURL(cfg.IssuerURL); err != nil {
 		return nil, err
 	}
+	issuer, _ := url.Parse(cfg.IssuerURL)
+	allowLoopback := issuer.Scheme == "http" && isLoopbackHost(issuer.Hostname())
+	transport := &http.Transport{
+		DialContext: safeDialContext(&net.Dialer{Timeout: 10 * time.Second}, allowLoopback),
+	}
 	return &OIDCAuthenticator{
 		cfg:     cfg,
 		logger:  logger,
 		jwksURL: strings.TrimSuffix(cfg.IssuerURL, "/") + "/.well-known/jwks.json",
 		httpClient: &http.Client{
-			Timeout: 15 * time.Second,
+			Timeout:   15 * time.Second,
+			Transport: transport,
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return fmt.Errorf("oidc: redirects are not allowed")
+			},
 		},
 		keyCache: make(map[string]any),
 	}, nil
@@ -663,15 +732,28 @@ func (a *OIDCAuthenticator) fetchJWKS(ctx context.Context) error {
 		return fmt.Errorf("jwks: HTTP %d", resp.StatusCode)
 	}
 
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxJWKSBodyBytes+1))
+	if err != nil {
+		return fmt.Errorf("read jwks: %w", err)
+	}
+	if len(body) > maxJWKSBodyBytes {
+		return fmt.Errorf("jwks: response exceeds %d bytes", maxJWKSBodyBytes)
+	}
 	var jwks struct {
 		Keys []jwksKey `json:"keys"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&jwks); err != nil {
+	if err := json.Unmarshal(body, &jwks); err != nil {
 		return fmt.Errorf("decode jwks: %w", err)
+	}
+	if len(jwks.Keys) > maxJWKSKeys {
+		return fmt.Errorf("jwks: too many keys (maximum %d)", maxJWKSKeys)
 	}
 
 	keys := make(map[string]any, len(jwks.Keys))
 	for _, k := range jwks.Keys {
+		if len(k.Kid) > maxJWKSKeyIDBytes || len(k.N) > maxJWKSFieldBytes || len(k.E) > maxJWKSFieldBytes || len(k.X) > maxJWKSFieldBytes || len(k.Y) > maxJWKSFieldBytes || len(k.Crv) > maxJWKSFieldBytes {
+			continue
+		}
 		if k.Kid == "" {
 			continue
 		}
