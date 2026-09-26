@@ -42,6 +42,7 @@ func exitOnError(stage string, err error) {
 // connectDB runs configured migrations and opens the pool.
 func connectDB(cfg *config.Server) *pgxpool.Pool {
 	if cfg.DBMigrate && cfg.DBURL != "" {
+		db.WarnInsecureMigrationURL(cfg.DBURL)
 		exitOnError("startup migration failed", db.RunMigrations(cfg.DBURL, "migrations"))
 	}
 	pool, err := db.ConnectPool(context.Background(), cfg.DBURL)
@@ -123,8 +124,8 @@ func apiKeyLookup(repos *repo.Repos) func(ctx context.Context, keyHash string) (
 // enabled, the CVE watcher daemon — all bound to ctx so they stop with the
 // server.
 func startLifecycle(ctx context.Context, stores *port.Stores, pool *pgxpool.Pool, cfg *config.Server) {
-	go lifecycle.RunWaiverExpiry(ctx, repo.NewWaiverExpiryStore(pool), cfg.SweepInterval, slog.Default())
-	go lifecycle.RunAnalysisExpiry(ctx, repo.NewAnalysisExpiryStore(pool), cfg.SweepInterval, slog.Default())
+	exitOnError("start waiver expiry daemon", lifecycle.RunWaiverExpiry(ctx, repo.NewWaiverExpiryStore(pool), cfg.SweepInterval, slog.Default()))
+	exitOnError("start analysis expiry daemon", lifecycle.RunAnalysisExpiry(ctx, repo.NewAnalysisExpiryStore(pool), cfg.SweepInterval, slog.Default()))
 	if cfg.Watcher.Enable {
 		exitOnError("start watcher daemon", runWatcherDaemon(ctx, stores, cfg))
 	}

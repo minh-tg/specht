@@ -7,6 +7,7 @@ package lifecycle
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -30,7 +31,10 @@ func SweepExpiredFindings(ctx context.Context, store port.AnalysisExpiryStore, l
 // RunAnalysisExpiry starts a background goroutine that periodically sweeps
 // findings with expired analysis_expires_at, resetting them to unanalyzed.
 // The goroutine stops when ctx is cancelled.
-func RunAnalysisExpiry(ctx context.Context, store port.AnalysisExpiryStore, interval time.Duration, logger *slog.Logger) {
+func RunAnalysisExpiry(ctx context.Context, store port.AnalysisExpiryStore, interval time.Duration, logger *slog.Logger) error {
+	if interval <= 0 {
+		return fmt.Errorf("analysis expiry interval must be positive, got %s", interval)
+	}
 	go func() {
 		logger.Info("analysis expiry daemon started", "interval", interval)
 		ticker := time.NewTicker(interval)
@@ -48,4 +52,5 @@ func RunAnalysisExpiry(ctx context.Context, store port.AnalysisExpiryStore, inte
 			}
 		}
 	}()
+	return nil
 }

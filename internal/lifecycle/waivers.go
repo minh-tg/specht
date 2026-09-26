@@ -7,6 +7,7 @@ package lifecycle
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -30,7 +31,10 @@ func SweepExpiredWaivers(ctx context.Context, store port.WaiverExpiryStore, logg
 // RunWaiverExpiry starts a background goroutine that periodically sweeps
 // waivers with expired expires_at, disabling them automatically. The goroutine
 // stops when ctx is cancelled.
-func RunWaiverExpiry(ctx context.Context, store port.WaiverExpiryStore, interval time.Duration, logger *slog.Logger) {
+func RunWaiverExpiry(ctx context.Context, store port.WaiverExpiryStore, interval time.Duration, logger *slog.Logger) error {
+	if interval <= 0 {
+		return fmt.Errorf("waiver expiry interval must be positive, got %s", interval)
+	}
 	go func() {
 		logger.Info("waiver expiry daemon started", "interval", interval)
 		ticker := time.NewTicker(interval)
@@ -48,4 +52,5 @@ func RunWaiverExpiry(ctx context.Context, store port.WaiverExpiryStore, interval
 			}
 		}
 	}()
+	return nil
 }
