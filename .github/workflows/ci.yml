@@ -34,6 +34,51 @@ jobs:
         env:
           DOCKER_HOST: unix:///var/run/docker.sock
 
+  migration-reversibility:
+    name: migration reversibility
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: specht
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d specht"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31d06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Apply complete migration chain
+        run: go run ./cmd/server migrate
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/specht?sslmode=disable
+
+      - name: Roll back every migration
+        run: |
+          count=$(find migrations -name '*.up.sql' | wc -l)
+          test "$count" -gt 0
+          for _ in $(seq 1 "$count"); do
+            go run ./cmd/server migrate-down
+          done
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/specht?sslmode=disable
+
+      - name: Re-apply complete migration chain
+        run: go run ./cmd/server migrate
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/specht?sslmode=disable
+
   e2e:
     name: "e2e (full stack: API + adapter + CLI)"
     runs-on: ubuntu-latest
@@ -106,7 +151,7 @@ jobs:
 
       - name: gofumpt
         run: |
-          test -z "$(go run mvdan.cc/gofumpt@v0.7.0 -l .)"
+          test -z "$(go run mvdan.cc/gofumpt@86bffd62437a3c437c0b84d5d5ab244824e762fc -l .)"
 
       # Build golangci-lint from source with CI's Go rather than using its
       # prebuilt binary: the prebuilt v1.64.8 ships compiled with Go 1.24,
@@ -179,7 +224,8 @@ jobs:
 
       - name: Install Semgrep
         run: |
-          python3 -m pip install --user semgrep
+          python3 -m pip install --user \
+            "https://files.pythonhosted.org/packages/b3/bf/5bc9cc1b1e1650467ceb6361306d170dd3641b911efa2a89bc7129be4d54/semgrep-1.178.0-cp310.cp311.cp312.cp313.cp314.py310.py311.py312.py313.py314-none-manylinux_2_34_x86_64.whl#sha256=b7c4a4ba5cad1a6b0e76f7143c164b3f2853b9d0f902f2db2f64006257c941f2"
 
       - name: Run Semgrep important-only scan
         run: |

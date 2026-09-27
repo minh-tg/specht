@@ -34,3 +34,11 @@ contribution you did not author or do not have permission to submit.
   `go test -tags integration ./internal/repo/ -count=1` (needs Docker for
   testcontainers).
 - Keep pull requests focused and reasonably sized.
+
+### Reproducible CI inputs
+
+The Nix development environment uses the committed `flake.lock` for its
+`nixos-unstable` input. Refresh it deliberately with `nix flake lock` during
+quarterly dependency maintenance (or sooner for a security fix), then review
+the resulting input changes; do not update the lock opportunistically in
+unrelated pull requests.
