@@ -242,6 +242,7 @@ func TestPollOnce_WatermarkUntouchedOnFailure(t *testing.T) {
 
 func TestPollOnce_WarmPollFiltersAdvisoriesBeforeWatermark(t *testing.T) {
 	deps := baseDeps()
+	deps.ResweepInterval = 365 * 24 * time.Hour
 	client := deps.Client.(*fakeClient)
 	client.results["npm\x00lodash"] = []Advisory{
 		testAdvisory("GHSA-old-old-old", "2020-01-01T00:00:00Z"), // before watermark
@@ -346,7 +347,7 @@ func TestPollOnce_EmptyInventorySkipsClient(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, client.callCount(), "no OSV query for an empty inventory")
 	assert.Equal(t, 0, outcome.Created)
-	assert.False(t, watermarked, "empty inventory must not advance its watermark")
+	assert.True(t, watermarked, "empty inventory must advance its watermark")
 }
 
 func TestPollOnce_UnqueryableInventoryDoesNotAdvanceWatermark(t *testing.T) {
@@ -368,7 +369,7 @@ func TestPollOnce_UnqueryableInventoryDoesNotAdvanceWatermark(t *testing.T) {
 	require.NoError(t, err)
 	assert.Zero(t, client.callCount())
 	assert.Zero(t, outcome.Queried)
-	assert.False(t, watermarked, "unqueryable inventory must not advance its watermark")
+	assert.True(t, watermarked, "unqueryable inventory must advance its watermark")
 }
 
 func TestPollOnce_UnqueryableRowsDropped(t *testing.T) {

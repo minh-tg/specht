@@ -107,17 +107,22 @@ type PollDeps struct {
 	// WG optionally tracks background goroutines spawned during polling
 	// (e.g. asynchronous notification dispatch).
 	WG *sync.WaitGroup
+	// ResweepInterval controls periodic full-feed resweeps. A zero value uses
+	// the default one-week interval, ensuring edits to old advisories are
+	// eventually re-evaluated even when their published date is unchanged.
+	ResweepInterval time.Duration
 }
 
 // PollOutcome summarizes one poll for logging and tests.
 type PollOutcome struct {
-	Projects    int // projects queried
-	Queried     int // package queries sent to OSV
-	Created     int // findings persisted
-	Skipped     int // suppressed by a scan-derived finding (event attached)
-	Unchanged   int // re-poll hits of existing watcher findings (guard)
-	Ignored     int // filtered by cutoff, no affected entry, or unusable input
-	OrphanSkips int // skip decisions whose suppressing id was unresolved
+	Projects            int // projects queried
+	Queried             int // package queries sent to OSV
+	Created             int // findings persisted
+	Skipped             int // suppressed by a scan-derived finding (event attached)
+	Unchanged           int // re-poll hits of existing watcher findings (guard)
+	Ignored             int // filtered by cutoff, no affected entry, or unusable input
+	OrphanSkips         int // skip decisions whose suppressing id was unresolved
+	ModifiedReevaluated int // old advisories re-evaluated via modified-since or resweep
 }
 
 // PollOnce runs one full poll: every project's inventory is queried against
@@ -130,6 +135,9 @@ func PollOnce(ctx context.Context, deps PollDeps) (PollOutcome, error) {
 	}
 	if deps.Now == nil {
 		deps.Now = time.Now
+	}
+	if deps.ResweepInterval <= 0 {
+		deps.ResweepInterval = 7 * 24 * time.Hour
 	}
 	if deps.Logger == nil {
 		deps.Logger = slog.Default()
@@ -196,10 +204,19 @@ func pollProject(
 		return &pollDepsError{op: "inventory", err: err}
 	}
 	if len(rows) == 0 {
+		// An empty inventory is still a successful poll. Advancing the
+		// project watermark prevents idle projects from repeating cold-start
+		// full-history sweeps forever.
+		if err := deps.SetWatermark(ctx, projectID, now); err != nil {
+			return &pollDepsError{op: "advance watermark", err: err}
+		}
 		return nil
 	}
 	groups := groupInventory(rows)
 	if len(groups) == 0 {
+		if err := deps.SetWatermark(ctx, projectID, now); err != nil {
+			return &pollDepsError{op: "advance watermark", err: err}
+		}
 		return nil
 	}
 	// Per-project cutoff: the project's own last successful poll (or
@@ -207,7 +224,7 @@ func pollProject(
 	// was disabled while others advanced does not skip advisories that
 	// appeared during its disabled period — its cutoff only reflects
 	// its own history.
-	cutoff, err := pollCutoff(ctx, deps, projectID)
+	cutoff, err := pollCutoff(ctx, deps, projectID, now)
 	if err != nil {
 		return &pollDepsError{op: "cutoff", err: err}
 	}
@@ -221,7 +238,7 @@ func pollProject(
 	}
 	outcome.Queried += len(queries)
 	for i, res := range results {
-		if err := applyAdvisories(ctx, deps, projectID, groups[i], res.Advisories, cutoff, &pollTally{outcome: outcome, created: created}); err != nil {
+		if err := applyAdvisories(ctx, deps, projectID, groups[i], res.Advisories, cutoff, outcome, &pollTally{outcome: outcome, created: created}); err != nil {
 			return err
 		}
 	}
@@ -250,10 +267,15 @@ func applyAdvisories(
 	group invGroup,
 	advisories []Advisory,
 	cutoff time.Time,
+	outcome *PollOutcome,
 	tally *pollTally,
 ) *pollDepsError {
 	for _, advisory := range advisories {
-		if !afterCutoff(advisory, cutoff) {
+		eligible, modified := advisoryAfterCutoff(advisory, cutoff)
+		if modified {
+			outcome.ModifiedReevaluated++
+		}
+		if !eligible {
 			tally.outcome.Ignored++
 			continue
 		}
@@ -318,12 +340,18 @@ func notifyCreated(ctx context.Context, deps PollDeps, created []Decision) {
 // pollCutoff resolves one project's advisory published-date lower bound: the
 // project's own watermark on warm polls, the configured cold-start window (or
 // full history) when that project has never polled.
-func pollCutoff(ctx context.Context, deps PollDeps, projectID string) (time.Time, error) {
+func pollCutoff(ctx context.Context, deps PollDeps, projectID string, now time.Time) (time.Time, error) {
 	wm, ok, err := deps.GetWatermark(ctx, projectID)
 	if err != nil {
 		return time.Time{}, err
 	}
 	if ok {
+		// Periodic full resweeps catch advisories whose affected ranges were
+		// edited without changing Published. The modified-since path below
+		// catches these earlier when the feed supplies Modified.
+		if deps.ResweepInterval > 0 && !now.Before(wm.Add(deps.ResweepInterval)) {
+			return time.Time{}, nil
+		}
 		return wm, nil
 	}
 	return deps.Since, nil // zero = full history
@@ -342,14 +370,30 @@ func pollCutoff(ctx context.Context, deps PollDeps, projectID string) (time.Time
 // feed-delta upgrade path; do not treat afterCutoff as an incremental-change
 // feed.
 func afterCutoff(advisory Advisory, cutoff time.Time) bool {
+	eligible, _ := advisoryAfterCutoff(advisory, cutoff)
+	return eligible
+}
+
+// advisoryAfterCutoff accepts newly published advisories and advisories
+// modified since the watermark. The latter is essential because OSV may add
+// affected ranges without changing Published.
+func advisoryAfterCutoff(advisory Advisory, cutoff time.Time) (eligible, modified bool) {
 	if cutoff.IsZero() {
-		return true
+		return true, false
 	}
-	published, err := time.Parse(time.RFC3339, advisory.Published)
-	if err != nil {
-		return true
+	published, pubErr := time.Parse(time.RFC3339, advisory.Published)
+	if pubErr == nil && !published.Before(cutoff) {
+		return true, false
 	}
-	return !published.Before(cutoff)
+	if advisory.Modified != "" {
+		if changed, err := time.Parse(time.RFC3339, advisory.Modified); err == nil && !changed.Before(cutoff) {
+			return true, true
+		}
+	}
+	if pubErr != nil {
+		return true, false
+	}
+	return false, false
 }
 
 type decisionKind int
@@ -890,6 +934,7 @@ func (o *PollOutcome) add(other PollOutcome) {
 	o.Unchanged += other.Unchanged
 	o.Ignored += other.Ignored
 	o.OrphanSkips += other.OrphanSkips
+	o.ModifiedReevaluated += other.ModifiedReevaluated
 }
 
 // jitterDuration perturbs a scheduled delay by a uniform ±10% to avoid a
