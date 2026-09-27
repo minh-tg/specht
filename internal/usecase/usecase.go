@@ -99,20 +99,41 @@ type IngestReportOutput struct {
 	PreExistingCount int
 }
 
+// ScannerRegistry is the scanner capability consumed by the application.
+type ScannerRegistry interface {
+	Get(name string) (scanner.Scanner, error)
+	List() []scanner.Descriptor
+}
+
+// ProviderRegistry is the provider capability consumed by PR checks.
+type ProviderRegistry interface {
+	Get(name string) (provider.Provider, error)
+}
+
+// IntelStore serves EPSS/KEV records on the finding read path.
+type IntelStore interface {
+	Lookup(cveID string) (intel.Record, bool, bool)
+	Refresh(ctx context.Context, cveIDs []string) error
+}
+
+// TrackerDispatcher publishes lifecycle events without exposing its concrete
+// dispatch implementation to the application layer.
+type TrackerDispatcher interface {
+	Dispatch(ctx context.Context, event tracker.Event)
+}
+
 // Deps wires the dependencies a Usecases instance needs. Stores, Registry,
 // Tokens, and Passwords are required; InventoryTTL tunes how long scanned
 // inventory is considered fresh.
 type Deps struct {
 	Stores       *port.Stores
-	Registry     *scanner.Registry
-	Providers    *provider.Registry
+	Registry     ScannerRegistry
+	Providers    ProviderRegistry
 	Tokens       auth.TokenIssuer
 	Passwords    auth.PasswordHasher
 	InventoryTTL time.Duration
-	Tracker      *tracker.Dispatcher
-	// Intel serves EPSS/KEV records on the finding read path (ADR-023);
-	// nil disables the block entirely.
-	Intel *intel.Store
+	Tracker      TrackerDispatcher
+	Intel        IntelStore
 }
 
 // Usecases groups the application's use-case methods. It is safe for

@@ -286,7 +286,7 @@ func buildPRCheckPreview(plan *provider.CheckPlan, decision gate.Decision) *PRCh
 // providers returns the configured provider registry, defaulting to a
 // registry with the GitHub adapter so previews work without explicit
 // composition-root wiring.
-func (u *Usecases) providers() *provider.Registry {
+func (u *Usecases) providers() ProviderRegistry {
 	if u.deps.Providers != nil {
 		return u.deps.Providers
 	}

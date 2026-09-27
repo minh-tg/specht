@@ -26,14 +26,26 @@ const (
 	headerContentType  = "Content-Type"
 )
 
+// OIDCAuthenticator is the SSO capability consumed by the router.
+type OIDCAuthenticator interface {
+	CallbackHandler(func(context.Context, string, string, []string) (string, error)) http.HandlerFunc
+	LoginURL(state string) string
+}
+
+// TokenIssuer signs tokens for the SSO callback.
+type TokenIssuer interface {
+	CreateToken(userID, email, role string) (string, error)
+}
+
 // RouterConfig wires the dependencies the API router needs.
 type RouterConfig struct {
 	Usecases     usecaseInterface
 	CORSOrigins  string
 	JWTAuth      auth.Authenticator
+	TokenIssuer  TokenIssuer
 	Revoker      auth.TokenRevoker
 	APIKeyLookup func(ctx context.Context, keyHash string) (userID, projectID string, scopes []string, expiresAt time.Time, err error)
-	OIDC         *auth.OIDCAuthenticator
+	OIDC         OIDCAuthenticator
 	OIDCEnabled  bool
 	// RateLimit, when Enabled, mounts a strict per-IP bucket on public
 	// routes and a generous per-caller bucket behind authentication.
@@ -98,9 +110,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	if cfg.OIDCEnabled && cfg.OIDC != nil {
 		r.Get("/api/v1/auth/sso/login", ssoLoginHandler(cfg.OIDC))
 		r.Get("/api/v1/auth/sso/callback", cfg.OIDC.CallbackHandler(func(ctx context.Context, sub, email string, groups []string) (string, error) {
-			jwtAuth, ok := cfg.JWTAuth.(*auth.JWTAuthenticator)
-			if !ok {
-				return "", fmt.Errorf("OIDC enabled but JWTAuth is %T, not *auth.JWTAuthenticator", cfg.JWTAuth)
+			if cfg.TokenIssuer == nil {
+				return "", fmt.Errorf("OIDC enabled but no token issuer configured")
 			}
 			// Resolve the IdP subject to a local account: existing users
 			// keep their local role; unknown subjects are provisioned only
@@ -110,7 +121,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 			if err != nil {
 				return "", err
 			}
-			return jwtAuth.CreateToken(userID, email, role)
+			return cfg.TokenIssuer.CreateToken(userID, email, role)
 		}))
 	}
 	r.Post("/api/v1/auth/register", h.Register)
@@ -311,7 +322,7 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 // authorization endpoint. The state parameter is a CSRF token: it is bound to
 // an httpOnly cookie so the callback can verify the redirect really came from
 // a login flow this server started.
-func ssoLoginHandler(oidc *auth.OIDCAuthenticator) http.HandlerFunc {
+func ssoLoginHandler(oidc OIDCAuthenticator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		state, err := auth.GenerateStateToken()
 		if err != nil {

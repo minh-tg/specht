@@ -123,9 +123,13 @@ func apiKeyLookup(repos *repo.Repos) func(ctx context.Context, keyHash string) (
 // startLifecycle starts the analysis/waiver expiry sweepers and, when
 // enabled, the CVE watcher daemon — all bound to ctx so they stop with the
 // server.
-func startLifecycle(ctx context.Context, stores *port.Stores, pool *pgxpool.Pool, cfg *config.Server) {
-	exitOnError("start waiver expiry daemon", lifecycle.RunWaiverExpiry(ctx, repo.NewWaiverExpiryStore(pool), cfg.SweepInterval, slog.Default()))
-	exitOnError("start analysis expiry daemon", lifecycle.RunAnalysisExpiry(ctx, repo.NewAnalysisExpiryStore(pool), cfg.SweepInterval, slog.Default()))
+func buildLifecycleStores(pool *pgxpool.Pool) (port.AnalysisExpiryStore, port.WaiverExpiryStore) {
+	return repo.NewAnalysisExpiryStore(pool), repo.NewWaiverExpiryStore(pool)
+}
+
+func startLifecycle(ctx context.Context, stores *port.Stores, analysisStore port.AnalysisExpiryStore, waiverStore port.WaiverExpiryStore, cfg *config.Server) {
+	exitOnError("start waiver expiry daemon", lifecycle.RunWaiverExpiry(ctx, waiverStore, cfg.SweepInterval, slog.Default()))
+	exitOnError("start analysis expiry daemon", lifecycle.RunAnalysisExpiry(ctx, analysisStore, cfg.SweepInterval, slog.Default()))
 	if cfg.Watcher.Enable {
 		exitOnError("start watcher daemon", runWatcherDaemon(ctx, stores, cfg))
 	}
@@ -181,6 +185,7 @@ func main() {
 			AuthBurst: cfg.RateLimit.AuthBurst,
 		},
 		JWTAuth:           jwtAuth,
+		TokenIssuer:       jwtAuth,
 		APIKeyLookup:      apiKeyLookup(repos),
 		OIDCEnabled:       cfg.SSO.Enabled,
 		OIDC:              resolveOIDCAuth(cfg),
@@ -203,7 +208,8 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	startLifecycle(ctx, stores, pool, cfg)
+	analysisExpiryStore, waiverExpiryStore := buildLifecycleStores(pool)
+	startLifecycle(ctx, stores, analysisExpiryStore, waiverExpiryStore, cfg)
 
 	go func() {
 		slog.Info("server starting", "addr", cfg.Addr)
