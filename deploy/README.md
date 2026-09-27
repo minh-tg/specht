@@ -71,6 +71,16 @@ skips trusted proxy hops. Otherwise, forwarding headers are ignored and
 `Secure` cookies follow the direct connection. Set `CORS_ORIGINS` to the
 public UI origin(s).
 
+## SSO ID-token requirement
+
+The SSO authorization-code callback requires a signed ID token by default and
+verifies its signature and claims before accepting identity. For an IdP that
+cannot return an ID token, `SSO_ALLOW_USERINFO_ONLY=true` explicitly enables
+an insecure compatibility downgrade: identity then comes from the UserInfo
+endpoint without a signed subject to verify. Prefer configuring the IdP to
+return ID tokens; enable this only after assessing the reduced assurance.
+This option never bypasses validation when an ID token is present.
+
 ## 6. Backup and restore
 
 Postgres holds everything (the server is stateless). Nightly logical backup:

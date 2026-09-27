@@ -18,7 +18,8 @@ import (
 // on an unchecked type assertion inside the SSO callback's token issuer.
 func TestNewRouter_SSOWithNonJWTAuth_NoPanic(t *testing.T) {
 	// Minimal fake provider: the token endpoint returns an access token with
-	// no id_token, so identity extraction falls back to the userinfo endpoint.
+	// no id_token. Enable compatibility to exercise the later token-issuer
+	// failure path this test is intended to cover.
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/oauth/token":
@@ -38,10 +39,11 @@ func TestNewRouter_SSOWithNonJWTAuth_NoPanic(t *testing.T) {
 	defer provider.Close()
 
 	oidc, err := auth.NewOIDCAuthenticator(auth.OIDCConfig{
-		ClientID:     "test-client",
-		ClientSecret: "secret",
-		IssuerURL:    provider.URL,
-		RedirectURI:  "http://localhost:8080/api/v1/auth/sso/callback",
+		ClientID:          "test-client",
+		ClientSecret:      "secret",
+		IssuerURL:         provider.URL,
+		RedirectURI:       "http://localhost:8080/api/v1/auth/sso/callback",
+		AllowUserInfoOnly: true,
 	}, nil)
 	require.NoError(t, err)
 

@@ -94,6 +94,10 @@ type SSOConfig struct {
 	// elevation — everyone provisions as member. Existing accounts never
 	// change role from IdP groups.
 	AdminGroups []string
+	// AllowUserInfoOnly enables userinfo-only identity when a provider omits
+	// id_token. This insecure downgrade defaults to false; present ID tokens
+	// are still strictly verified.
+	AllowUserInfoOnly bool
 }
 
 // RateLimit is the resolved rate limiter configuration: a strict per-IP
@@ -160,14 +164,15 @@ func parseGroupAllowlist(v string) []string {
 // loadSSO reads the SSO/OIDC environment block; omitted means disabled.
 func loadSSO() SSOConfig {
 	return SSOConfig{
-		Enabled:        os.Getenv("SSO_ENABLE") == "true",
-		ClientID:       os.Getenv("SSO_CLIENT_ID"),
-		ClientSecret:   os.Getenv("SSO_CLIENT_SECRET"),
-		IssuerURL:      os.Getenv("SSO_ISSUER_URL"),
-		RedirectURI:    os.Getenv("SSO_REDIRECT_URI"),
-		AllowedDomains: parseDomainAllowlist(os.Getenv("SSO_ALLOWED_DOMAINS")),
-		GroupsClaim:    strings.TrimSpace(os.Getenv("SSO_GROUPS_CLAIM")),
-		AdminGroups:    parseGroupAllowlist(os.Getenv("SSO_ADMIN_GROUPS")),
+		Enabled:           os.Getenv("SSO_ENABLE") == "true",
+		ClientID:          os.Getenv("SSO_CLIENT_ID"),
+		ClientSecret:      os.Getenv("SSO_CLIENT_SECRET"),
+		IssuerURL:         os.Getenv("SSO_ISSUER_URL"),
+		RedirectURI:       os.Getenv("SSO_REDIRECT_URI"),
+		AllowedDomains:    parseDomainAllowlist(os.Getenv("SSO_ALLOWED_DOMAINS")),
+		GroupsClaim:       strings.TrimSpace(os.Getenv("SSO_GROUPS_CLAIM")),
+		AdminGroups:       parseGroupAllowlist(os.Getenv("SSO_ADMIN_GROUPS")),
+		AllowUserInfoOnly: os.Getenv("SSO_ALLOW_USERINFO_ONLY") == "true",
 	}
 }
 

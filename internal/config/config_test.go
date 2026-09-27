@@ -11,6 +11,7 @@ import (
 
 func TestDefaults(t *testing.T) {
 	t.Setenv("WATCHER_ENABLE", "")
+	t.Setenv("SSO_ALLOW_USERINFO_ONLY", "")
 	t.Setenv("INVENTORY_TTL", "")
 	t.Setenv("SERVER_ADDR", "")
 	t.Setenv("DB_MIGRATE", "")
@@ -29,6 +30,7 @@ func TestDefaults(t *testing.T) {
 	assert.Equal(t, DefaultOSVEndpoint, cfg.Watcher.OSVEndpoint)
 	assert.Equal(t, DefaultOSVVulnEndpoint, cfg.Watcher.OSVVulnEndpoint)
 	assert.Empty(t, cfg.TrustedProxies, "forwarded headers are never trusted by default")
+	assert.False(t, cfg.SSO.AllowUserInfoOnly, "userinfo-only OIDC downgrade is disabled by default")
 }
 
 func TestLoad_TrustedProxies(t *testing.T) {
@@ -154,6 +156,15 @@ func TestLoad_SSOAllowedDomainsEmpty(t *testing.T) {
 	cfg, err := Load()
 	assert.NoError(t, err)
 	assert.Empty(t, cfg.SSO.AllowedDomains, "empty allowlist disables auto-provisioning")
+}
+
+func TestLoad_SSOAllowUserInfoOnlyOverride(t *testing.T) {
+	t.Setenv("WATCHER_ENABLE", "")
+	t.Setenv("SSO_ALLOW_USERINFO_ONLY", "true")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.True(t, cfg.SSO.AllowUserInfoOnly)
 }
 
 func TestLoad_SSOGroupMapping(t *testing.T) {

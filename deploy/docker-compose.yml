@@ -57,6 +57,8 @@ services:
       WATCHER_COLD_START_WINDOW: ${WATCHER_COLD_START_WINDOW:-full}
       WATCHER_SLACK_URL: ${WATCHER_SLACK_URL:-}
       WATCHER_SLACK_SIGNING_SECRET: ${WATCHER_SLACK_SIGNING_SECRET:-}
+      # Security downgrade; leave false unless the IdP cannot return ID tokens.
+      SSO_ALLOW_USERINFO_ONLY: ${SSO_ALLOW_USERINFO_ONLY:-false}
     depends_on:
       db:
         condition: service_healthy

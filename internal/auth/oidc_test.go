@@ -213,11 +213,12 @@ func signOIDCIDToken(t *testing.T, key *rsa.PrivateKey, issuer, aud, sub, email,
 // fakeOIDCProvider is a configurable OIDC provider: token endpoint, userinfo
 // endpoint (with the configured subject), and the JWKS for key.
 type fakeOIDCProvider struct {
-	t          *testing.T
-	srv        *httptest.Server
-	idToken    string
-	userSub    string
-	userGroups string
+	t           *testing.T
+	srv         *httptest.Server
+	idToken     string
+	omitIDToken bool
+	userSub     string
+	userGroups  string
 }
 
 func writeFakeOIDCResponse(t *testing.T, w http.ResponseWriter, format string, args ...any) {
@@ -234,7 +235,11 @@ func newFakeOIDCProvider(t *testing.T, key *rsa.PrivateKey) *fakeOIDCProvider {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/oauth/token":
-			writeFakeOIDCResponse(t, w, `{"access_token":"acc-test","token_type":"Bearer","id_token":%q}`, p.idToken)
+			if p.omitIDToken {
+				writeFakeOIDCResponse(t, w, `{"access_token":"acc-test","token_type":"Bearer"}`)
+			} else {
+				writeFakeOIDCResponse(t, w, `{"access_token":"acc-test","token_type":"Bearer","id_token":%q}`, p.idToken)
+			}
 		case "/userinfo":
 			sub := p.userSub
 			if p.userGroups != "" {
@@ -305,6 +310,7 @@ func TestOIDC_Callback_RejectsNonceMismatch(t *testing.T) {
 	prov := newFakeOIDCProvider(t, key)
 	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", "attacker-nonce")
 	auth := mustOIDC(t, prov.srv.URL)
+	auth.cfg.AllowUserInfoOnly = true
 
 	w, _, _ := callbackResponse(t, auth, state)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
@@ -323,28 +329,65 @@ func TestOIDC_Callback_RejectsUserInfoSubMismatch(t *testing.T) {
 	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", nonce)
 	prov.userSub = "someone-else"
 	auth := mustOIDC(t, prov.srv.URL)
+	auth.cfg.AllowUserInfoOnly = true
 
 	w, _, _ := callbackResponse(t, auth, state)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, w.Body.String(), "identity extraction failed")
 }
 
-func TestOIDC_Callback_DeliversTokenInFragment(t *testing.T) {
-	// Minimal fake provider: the token endpoint returns an access token with
-	// no id_token, so identity extraction falls back to the userinfo endpoint.
+func TestOIDC_Callback_RejectsAbsentIDTokenByDefault(t *testing.T) {
 	key := newOIDCTestKey(t)
 	prov := newFakeOIDCProvider(t, key)
-	prov.idToken = "" // access-token-only response
+	prov.omitIDToken = true
 	auth := mustOIDC(t, prov.srv.URL)
 
-	state := "csrf-state"
+	w, gotUserID, _ := callbackResponse(t, auth, "csrf-state")
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Empty(t, gotUserID, "userinfo-only response must not issue a session by default")
+}
+
+func TestOIDC_Callback_AllowsAbsentIDTokenWhenExplicitlyEnabled(t *testing.T) {
+	key := newOIDCTestKey(t)
+	prov := newFakeOIDCProvider(t, key)
+	prov.omitIDToken = true
+	auth := mustOIDC(t, prov.srv.URL)
+	auth.cfg.AllowUserInfoOnly = true
+
+	w, gotUserID, gotEmail := callbackResponse(t, auth, "csrf-state")
+	assert.Equal(t, "oidc-user-1", gotUserID)
+	assert.Equal(t, "oidc@example.com", gotEmail)
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, "/#sso_token=test-session-token", w.Header().Get("Location"))
+}
+
+func TestOIDC_Callback_RejectsMalformedIDTokenWhenUserInfoOnlyEnabled(t *testing.T) {
+	key := newOIDCTestKey(t)
+	prov := newFakeOIDCProvider(t, key)
+	prov.idToken = "not-a-jwt"
+	auth := mustOIDC(t, prov.srv.URL)
+	auth.cfg.AllowUserInfoOnly = true
+
+	w, gotUserID, _ := callbackResponse(t, auth, "csrf-state")
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Empty(t, gotUserID, "opt-in applies only when the token is absent")
+}
+
+func TestOIDC_Callback_DeliversTokenInFragment(t *testing.T) {
+	// The session token must be delivered to the SPA as a URL fragment (which
+	// is never sent to the server or leaked via Referer), not as an httpOnly
+	// cookie that nothing in the stack ever reads.
+	key := newOIDCTestKey(t)
+	state, err := GenerateStateToken()
+	require.NoError(t, err)
+	_, nonce := splitStateNonce(state)
+	prov := newFakeOIDCProvider(t, key)
+	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", nonce)
+	auth := mustOIDC(t, prov.srv.URL)
 	w, gotUserID, gotEmail := callbackResponse(t, auth, state)
 	assert.Equal(t, "oidc-user-1", gotUserID)
 	assert.Equal(t, "oidc@example.com", gotEmail)
 
-	// The session token must be delivered to the SPA as a URL fragment (which
-	// is never sent to the server or leaked via Referer), not as an httpOnly
-	// cookie that nothing in the stack ever reads.
 	assert.Equal(t, http.StatusFound, w.Code)
 	assert.Equal(t, "/#sso_token=test-session-token", w.Header().Get("Location"))
 	for _, c := range w.Result().Cookies() {

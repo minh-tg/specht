@@ -29,6 +29,9 @@ type OIDCConfig struct {
 	// GroupsClaim names the claim carrying IdP group membership for
 	// enterprise role mapping. Empty means "groups".
 	GroupsClaim string
+	// AllowUserInfoOnly permits userinfo-based identity only when the token
+	// response omits id_token. This is an insecure compatibility downgrade.
+	AllowUserInfoOnly bool
 }
 
 // jwksCacheTTL bounds how long a fetched JWKS key set is reused before a
@@ -415,7 +418,14 @@ func (a *OIDCAuthenticator) identityFromUserInfo(ctx context.Context, tokenResp 
 		return nil, ErrInvalidCredential
 	}
 
-	idToken, _ := tokenResp["id_token"].(string)
+	rawIDToken, hasIDToken := tokenResp["id_token"]
+	idToken, idTokenIsString := rawIDToken.(string)
+	if hasIDToken && (!idTokenIsString || idToken == "") {
+		return nil, ErrInvalidCredential
+	}
+	if !hasIDToken && !a.cfg.AllowUserInfoOnly {
+		return nil, ErrInvalidCredential
+	}
 	if idToken != "" {
 		// id_token is optional here (some providers only hand it over when
 		// openid scope is requested), but when present it must be valid and
@@ -535,7 +545,11 @@ func verifySSOCallbackState(w http.ResponseWriter, r *http.Request, cookieName s
 // response: id_token plus userinfo binding when both are present,
 // id_token alone, or userinfo alone.
 func (a *OIDCAuthenticator) extractCallbackIdentity(ctx context.Context, tokenResp map[string]any, wantNonce string) (*Identity, error) {
-	idToken, _ := tokenResp["id_token"].(string)
+	rawIDToken, hasIDToken := tokenResp["id_token"]
+	idToken, idTokenIsString := rawIDToken.(string)
+	if hasIDToken && (!idTokenIsString || idToken == "") {
+		return nil, ErrInvalidCredential
+	}
 	accessToken, _ := tokenResp["access_token"].(string)
 	switch {
 	case idToken != "" && accessToken != "":
@@ -546,8 +560,11 @@ func (a *OIDCAuthenticator) extractCallbackIdentity(ctx context.Context, tokenRe
 	case idToken != "":
 		return a.identityFromIDToken(ctx, idToken, wantNonce)
 	default:
-		// No id_token: the access token authorizes the userinfo fetch
-		// directly; there is no signed subject to cross-check against.
+		// No id_token is accepted only for explicitly configured legacy
+		// providers; the default requires a verified signed ID token.
+		if !hasIDToken && !a.cfg.AllowUserInfoOnly {
+			return nil, ErrInvalidCredential
+		}
 		return a.identityFromUserInfo(ctx, tokenResp, wantNonce)
 	}
 }
