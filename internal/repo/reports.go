@@ -2,6 +2,8 @@ package repo
 
 import (
 	"context"
+	"fmt"
+	"math"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -131,11 +133,23 @@ func (r *pgReportRepo) DeleteReport(ctx context.Context, id, projectID pgtype.UU
 }
 
 func (r *pgReportRepo) UpdateStatus(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
+	count, err := int32Count(totalFindings)
+	if err != nil {
+		return sqlc.Report{}, err
+	}
+
 	return r.q.UpdateReportStatus(ctx, sqlc.UpdateReportStatusParams{
 		ID:            id,
 		ProjectID:     projectID,
 		Status:        status,
-		TotalFindings: pgtype.Int4{Int32: int32(totalFindings), Valid: true},
+		TotalFindings: pgtype.Int4{Int32: count, Valid: true},
 		ErrorMessage:  errorMsg,
 	})
+}
+
+func int32Count(count int) (int32, error) {
+	if count < math.MinInt32 || count > math.MaxInt32 {
+		return 0, fmt.Errorf("total findings count %d overflows int32", count)
+	}
+	return int32(count), nil
 }
