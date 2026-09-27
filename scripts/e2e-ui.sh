@@ -37,17 +37,25 @@ trap cleanup EXIT
 
 echo "== postgres ==" >&2
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
-docker run --rm -d --name "$CONTAINER" \
+docker run -d --name "$CONTAINER" \
   -e POSTGRES_USER=specht -e POSTGRES_PASSWORD=specht -e POSTGRES_DB="$DB_NAME" \
   -p "127.0.0.1:$DB_PORT:5432" docker.io/library/postgres:17-alpine >/dev/null
+ready=0
 for _ in $(seq 1 60); do
-  if docker exec "$CONTAINER" pg_isready -U specht >/dev/null 2>&1; then
+  if docker exec "$CONTAINER" pg_isready -U specht -d "$DB_NAME" >/dev/null 2>&1; then
+    ready=1
+    break
+  fi
+  state=$(docker inspect --format '{{.State.Status}}' "$CONTAINER" 2>/dev/null || true)
+  if [ "$state" != "running" ]; then
     break
   fi
   sleep 1
 done
-if ! docker exec "$CONTAINER" pg_isready -U specht >/dev/null 2>&1; then
+if [ "$ready" -ne 1 ]; then
   echo "postgres did not become ready" >&2
+  docker inspect --format 'container status={{.State.Status}} exit_code={{.State.ExitCode}} error={{.State.Error}}' "$CONTAINER" >&2 || true
+  docker logs "$CONTAINER" >&2 || true
   exit 1
 fi
 
