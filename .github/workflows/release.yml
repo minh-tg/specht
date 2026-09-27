@@ -48,6 +48,8 @@ jobs:
           context: .
           file: deploy/Dockerfile
           push: true
+          sbom: true
+          provenance: mode=max
           tags: ghcr.io/${{ github.repository }}:${{ steps.tag.outputs.tag }}
           build-args: |
             VERSION=${{ steps.tag.outputs.tag }}
