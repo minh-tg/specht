@@ -264,6 +264,52 @@ func TestPollOnce_WarmPollFiltersAdvisoriesBeforeWatermark(t *testing.T) {
 	assert.Equal(t, "GHSA-new-new-new", store.created[0].Finding.Display["advisory_id"])
 }
 
+func TestPollOnce_WarmPollResweepReevaluatesOldAdvisory(t *testing.T) {
+	deps := baseDeps()
+	deps.ResweepInterval = 7 * 24 * time.Hour
+	client := deps.Client.(*fakeClient)
+	client.results["npm\x00lodash"] = []Advisory{
+		testAdvisory("GHSA-resweep-resweep-resweep", "2020-01-01T00:00:00Z"),
+	}
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	}
+	deps.GetWatermark = func(ctx context.Context, projectID string) (time.Time, bool, error) {
+		return fixedNow.Add(-deps.ResweepInterval), true, nil
+	}
+
+	outcome, err := PollOnce(context.Background(), deps)
+	require.NoError(t, err)
+	assert.Equal(t, 1, outcome.Created, "a due resweep must reconsider advisories older than the watermark")
+	assert.Zero(t, outcome.ModifiedReevaluated, "a resweep is not a modified-since admission")
+	// One resweep performs one bounded query pass; it must not loop over the
+	// full feed repeatedly within the same poll.
+	require.Len(t, client.queries, 1)
+	require.Len(t, client.queries[0], 1)
+	require.Len(t, deps.Store.(*recordingStore).created, 1)
+}
+
+func TestPollOnce_WarmPollModifiedAdvisoryReevaluated(t *testing.T) {
+	deps := baseDeps()
+	deps.ResweepInterval = 365 * 24 * time.Hour
+	client := deps.Client.(*fakeClient)
+	advisory := testAdvisory("GHSA-modified-modified-modified", "2020-01-01T00:00:00Z")
+	advisory.Modified = fixedNow.Add(-time.Hour).Format(time.RFC3339)
+	client.results["npm\x00lodash"] = []Advisory{advisory}
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		return []port.InventoryPackage{inventoryRow("pkg:npm/lodash@4.17.19", "npm", "lodash", "4.17.19")}, nil
+	}
+	deps.GetWatermark = func(ctx context.Context, projectID string) (time.Time, bool, error) {
+		return fixedNow.Add(-24 * time.Hour), true, nil
+	}
+
+	outcome, err := PollOnce(context.Background(), deps)
+	require.NoError(t, err)
+	assert.Equal(t, 1, outcome.Created, "a modified advisory must be reconsidered even when published is old")
+	assert.Equal(t, 1, outcome.ModifiedReevaluated)
+	require.Len(t, deps.Store.(*recordingStore).created, 1)
+}
+
 func TestPollOnce_ColdStartWindowFiltersBySince(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
@@ -339,8 +385,10 @@ func TestPollOnce_EmptyInventorySkipsClient(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
 	watermarked := false
+	var watermarkAt time.Time
 	deps.SetWatermark = func(ctx context.Context, projectID string, ts time.Time) error {
 		watermarked = true
+		watermarkAt = ts
 		return nil
 	}
 	outcome, err := PollOnce(context.Background(), deps) // inventory returns nil
@@ -348,6 +396,7 @@ func TestPollOnce_EmptyInventorySkipsClient(t *testing.T) {
 	assert.Zero(t, client.callCount(), "no OSV query for an empty inventory")
 	assert.Equal(t, 0, outcome.Created)
 	assert.True(t, watermarked, "empty inventory must advance its watermark")
+	assert.Equal(t, fixedNow, watermarkAt, "empty inventory advances to the poll timestamp")
 }
 
 func TestPollOnce_UnqueryableInventoryDoesNotAdvanceWatermark(t *testing.T) {
