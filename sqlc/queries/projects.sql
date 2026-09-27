@@ -1,11 +1,11 @@
 -- name: ListProjects :many
 SELECT * FROM projects
-ORDER BY created_at DESC;
+ORDER BY created_at DESC, id DESC;
 
 -- name: ListProjectsByIDs :many
 SELECT * FROM projects
 WHERE id = ANY($1::uuid[])
-ORDER BY created_at DESC;
+ORDER BY created_at DESC, id DESC;
 
 -- name: GetProjectBySlug :one
 SELECT * FROM projects
@@ -43,7 +43,7 @@ RETURNING *;
 -- name: ListProjectMembers :many
 SELECT * FROM project_members
 WHERE project_id = $1
-ORDER BY created_at ASC;
+ORDER BY created_at ASC, user_id ASC;
 
 -- name: IsProjectMember :one
 SELECT EXISTS(SELECT 1 FROM project_members WHERE project_id = $1 AND user_id = $2);

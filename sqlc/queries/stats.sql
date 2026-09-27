@@ -25,7 +25,7 @@ SELECT
     created_at, completed_at
 FROM reports
 WHERE project_id = $1
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT 1;
 -- name: GetAgingRows :many
 SELECT
@@ -41,5 +41,5 @@ SELECT
     ) AS reopened
 FROM findings f
 WHERE f.project_id = $1
-ORDER BY f.first_seen_at ASC
+ORDER BY f.first_seen_at ASC, f.id ASC
 LIMIT 10000;

@@ -513,7 +513,7 @@ func (q *Queries) ListWaiverFindingTargetsByWaiverIDs(ctx context.Context, dolla
 const listWaivers = `-- name: ListWaivers :many
 SELECT id, project_id, name, description, enabled, created_at, updated_at, expires_at FROM waivers
 WHERE project_id = $1
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 `
 
 func (q *Queries) ListWaivers(ctx context.Context, projectID pgtype.UUID) ([]Waiver, error) {

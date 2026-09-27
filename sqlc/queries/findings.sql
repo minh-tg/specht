@@ -168,28 +168,28 @@ LEFT JOIN LATERAL (
     FROM finding_occurrences fo
     JOIN reports r ON fo.report_id = r.id
     WHERE fo.finding_id = f.id
-    ORDER BY fo.observed_at DESC
+    ORDER BY fo.observed_at DESC, fo.id DESC
     LIMIT 1
 ) ctx ON true
 LEFT JOIN LATERAL (
     SELECT ra.state
     FROM reachability_assessments ra
     WHERE ra.finding_id = f.id
-    ORDER BY ra.updated_at DESC
+    ORDER BY ra.updated_at DESC, ra.id DESC
     LIMIT 1
 ) ra ON true
 WHERE f.project_id = $1
   AND f.current_severity_rank >= $2
   AND f.gate_effect = 'block'
   AND f.state IN ('open', 'reopened')
-ORDER BY f.current_severity_rank DESC, f.created_at DESC;
+ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC;
 
 -- name: GetFindingContext :one
 SELECT r.environment_id, r.target_id, r.artifact_id
 FROM finding_occurrences fo
 JOIN reports r ON fo.report_id = r.id
 WHERE fo.finding_id = $1
-ORDER BY fo.observed_at DESC
+ORDER BY fo.observed_at DESC, fo.id DESC
 LIMIT 1;
 -- name: GetFindingDisplayContext :one
 SELECT t.name AS target_name, t.kind AS target_kind, t.owner AS target_owner,
@@ -201,7 +201,7 @@ JOIN reports r ON fo.report_id = r.id
 LEFT JOIN targets t ON r.target_id = t.id
 LEFT JOIN environments e ON r.environment_id = e.id
 WHERE fo.finding_id = $1
-ORDER BY fo.observed_at DESC
+ORDER BY fo.observed_at DESC, fo.id DESC
 LIMIT 1;
 
 -- name: ListFindingDisplayContextsByIDs :many
@@ -216,7 +216,7 @@ JOIN reports r ON fo.report_id = r.id
 LEFT JOIN targets t ON r.target_id = t.id
 LEFT JOIN environments e ON r.environment_id = e.id
 WHERE fo.finding_id = ANY($1::uuid[])
-ORDER BY fo.finding_id, fo.observed_at DESC;
+ORDER BY fo.finding_id, fo.observed_at DESC, fo.id DESC;
 
 
 
@@ -259,7 +259,7 @@ RETURNING *;
 -- by the report are excluded by construction.
 SELECT * FROM findings
 WHERE project_id = $1 AND introduced_by_report_id = $2
-ORDER BY current_severity_rank DESC, created_at DESC;
+ORDER BY current_severity_rank DESC, created_at DESC, id DESC;
 
 -- name: UpsertDimension :one
 INSERT INTO finding_dimensions (
@@ -445,27 +445,27 @@ LEFT JOIN LATERAL (
     FROM finding_occurrences fo
     JOIN reports r ON fo.report_id = r.id
     WHERE fo.finding_id = f.id
-    ORDER BY fo.observed_at DESC
+    ORDER BY fo.observed_at DESC, fo.id DESC
     LIMIT 1
 ) ctx ON true
 LEFT JOIN LATERAL (
     SELECT ra.state
     FROM reachability_assessments ra
     WHERE ra.finding_id = f.id
-    ORDER BY ra.updated_at DESC
+    ORDER BY ra.updated_at DESC, ra.id DESC
     LIMIT 1
 ) ra ON true
 WHERE rif.report_id = $1
   AND f.current_severity_rank >= $2
   AND f.gate_effect = 'block'
   AND f.state IN ('open', 'reopened')
-ORDER BY f.current_severity_rank DESC, f.created_at DESC;
+ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC;
 
 -- name: ListFindingsIntroducedByCommit :many
 SELECT * FROM findings
 WHERE project_id = $1
   AND introduced_commit_sha = $2
-ORDER BY current_severity_rank DESC, created_at DESC;
+ORDER BY current_severity_rank DESC, created_at DESC, id DESC;
 
 -- name: MarkAbsentScopedFindingsFixed :many
 -- ADR-018 auto-fix writer: closes findings whose most recent observation

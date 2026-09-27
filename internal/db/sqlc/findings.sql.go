@@ -641,7 +641,7 @@ SELECT r.environment_id, r.target_id, r.artifact_id
 FROM finding_occurrences fo
 JOIN reports r ON fo.report_id = r.id
 WHERE fo.finding_id = $1
-ORDER BY fo.observed_at DESC
+ORDER BY fo.observed_at DESC, fo.id DESC
 LIMIT 1
 `
 
@@ -668,7 +668,7 @@ JOIN reports r ON fo.report_id = r.id
 LEFT JOIN targets t ON r.target_id = t.id
 LEFT JOIN environments e ON r.environment_id = e.id
 WHERE fo.finding_id = $1
-ORDER BY fo.observed_at DESC
+ORDER BY fo.observed_at DESC, fo.id DESC
 LIMIT 1
 `
 
@@ -765,7 +765,7 @@ JOIN reports r ON fo.report_id = r.id
 LEFT JOIN targets t ON r.target_id = t.id
 LEFT JOIN environments e ON r.environment_id = e.id
 WHERE fo.finding_id = ANY($1::uuid[])
-ORDER BY fo.finding_id, fo.observed_at DESC
+ORDER BY fo.finding_id, fo.observed_at DESC, fo.id DESC
 `
 
 type ListFindingDisplayContextsByIDsRow struct {
@@ -1101,7 +1101,7 @@ const listFindingsIntroducedByCommit = `-- name: ListFindingsIntroducedByCommit 
 SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version, introduced_by_report_id, introduced_commit_sha FROM findings
 WHERE project_id = $1
   AND introduced_commit_sha = $2
-ORDER BY current_severity_rank DESC, created_at DESC
+ORDER BY current_severity_rank DESC, created_at DESC, id DESC
 `
 
 type ListFindingsIntroducedByCommitParams struct {
@@ -1161,7 +1161,7 @@ func (q *Queries) ListFindingsIntroducedByCommit(ctx context.Context, arg ListFi
 const listFindingsIntroducedByReport = `-- name: ListFindingsIntroducedByReport :many
 SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version, introduced_by_report_id, introduced_commit_sha FROM findings
 WHERE project_id = $1 AND introduced_by_report_id = $2
-ORDER BY current_severity_rank DESC, created_at DESC
+ORDER BY current_severity_rank DESC, created_at DESC, id DESC
 `
 
 type ListFindingsIntroducedByReportParams struct {
@@ -1242,21 +1242,21 @@ LEFT JOIN LATERAL (
     FROM finding_occurrences fo
     JOIN reports r ON fo.report_id = r.id
     WHERE fo.finding_id = f.id
-    ORDER BY fo.observed_at DESC
+    ORDER BY fo.observed_at DESC, fo.id DESC
     LIMIT 1
 ) ctx ON true
 LEFT JOIN LATERAL (
     SELECT ra.state
     FROM reachability_assessments ra
     WHERE ra.finding_id = f.id
-    ORDER BY ra.updated_at DESC
+    ORDER BY ra.updated_at DESC, ra.id DESC
     LIMIT 1
 ) ra ON true
 WHERE f.project_id = $1
   AND f.current_severity_rank >= $2
   AND f.gate_effect = 'block'
   AND f.state IN ('open', 'reopened')
-ORDER BY f.current_severity_rank DESC, f.created_at DESC
+ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 `
 
 type ListGateCandidatesParams struct {
@@ -1343,21 +1343,21 @@ LEFT JOIN LATERAL (
     FROM finding_occurrences fo
     JOIN reports r ON fo.report_id = r.id
     WHERE fo.finding_id = f.id
-    ORDER BY fo.observed_at DESC
+    ORDER BY fo.observed_at DESC, fo.id DESC
     LIMIT 1
 ) ctx ON true
 LEFT JOIN LATERAL (
     SELECT ra.state
     FROM reachability_assessments ra
     WHERE ra.finding_id = f.id
-    ORDER BY ra.updated_at DESC
+    ORDER BY ra.updated_at DESC, ra.id DESC
     LIMIT 1
 ) ra ON true
 WHERE rif.report_id = $1
   AND f.current_severity_rank >= $2
   AND f.gate_effect = 'block'
   AND f.state IN ('open', 'reopened')
-ORDER BY f.current_severity_rank DESC, f.created_at DESC
+ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 `
 
 type ListIntroducedGateCandidatesParams struct {

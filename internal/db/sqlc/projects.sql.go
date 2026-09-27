@@ -169,7 +169,7 @@ func (q *Queries) ListMemberProjectIDs(ctx context.Context, userID pgtype.UUID) 
 const listProjectMembers = `-- name: ListProjectMembers :many
 SELECT project_id, user_id, role, created_at FROM project_members
 WHERE project_id = $1
-ORDER BY created_at ASC
+ORDER BY created_at ASC, user_id ASC
 `
 
 func (q *Queries) ListProjectMembers(ctx context.Context, projectID pgtype.UUID) ([]ProjectMember, error) {
@@ -199,7 +199,7 @@ func (q *Queries) ListProjectMembers(ctx context.Context, projectID pgtype.UUID)
 
 const listProjects = `-- name: ListProjects :many
 SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id FROM projects
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 `
 
 func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
@@ -238,7 +238,7 @@ func (q *Queries) ListProjects(ctx context.Context) ([]Project, error) {
 const listProjectsByIDs = `-- name: ListProjectsByIDs :many
 SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id FROM projects
 WHERE id = ANY($1::uuid[])
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 `
 
 func (q *Queries) ListProjectsByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]Project, error) {

@@ -6,7 +6,7 @@ RETURNING *;
 -- name: ListWaivers :many
 SELECT * FROM waivers
 WHERE project_id = $1
-ORDER BY created_at DESC;
+ORDER BY created_at DESC, id DESC;
 
 -- name: GetWaiver :one
 SELECT * FROM waivers
