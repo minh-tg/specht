@@ -38,6 +38,52 @@ func TestBuiltinsDescriptorsAreNonEmpty(t *testing.T) {
 	}
 }
 
+func TestBuiltinsRegistryOnboardingContract(t *testing.T) {
+	builtins := parser.Builtins()
+	registry := scanner.NewRegistry()
+	seen := make(map[string]struct{}, len(builtins))
+
+	expectedIncremental := map[string]bool{
+		"checkov":          true,
+		"gitleaks":         true,
+		"semgrep":          true,
+		"tfsec":            true,
+		"dependency-check": false,
+		"grype":            false,
+		"nuclei":           false,
+		"osv-scanner":      false,
+		"sarif":            false,
+		"sbom":             false,
+		"trivy":            false,
+	}
+
+	for _, s := range builtins {
+		d := s.Descriptor()
+		require.NotEmpty(t, d.Name)
+		_, duplicate := seen[d.Name]
+		assert.False(t, duplicate, "scanner names must be unique: %q", d.Name)
+		seen[d.Name] = struct{}{}
+		require.NoError(t, registry.Register(s), "register %q", d.Name)
+		assert.Equal(t, expectedIncremental[d.Name], scanner.SupportsIncremental(s),
+			"%q must explicitly declare its incremental capability", d.Name)
+	}
+	assert.Len(t, seen, len(expectedIncremental))
+
+	// Detection of an unsupported payload is stable across repeated calls.
+	payload := []byte("not a scanner report")
+	_, firstErr := registry.Detect(payload)
+	_, secondErr := registry.Detect(payload)
+	require.ErrorIs(t, firstErr, scanner.ErrNoMatch)
+	require.ErrorIs(t, secondErr, scanner.ErrNoMatch)
+	assert.Equal(t, firstErr.Error(), secondErr.Error())
+
+	// Re-registering any built-in must never silently replace the adapter.
+	for _, s := range builtins {
+		assert.ErrorIs(t, registry.Register(s), scanner.ErrDuplicateName,
+			"duplicate scanner %q must be rejected", s.Descriptor().Name)
+	}
+}
+
 func TestBuiltinsRegisterCleanly(t *testing.T) {
 	reg := scanner.NewRegistry()
 	for _, s := range parser.Builtins() {
