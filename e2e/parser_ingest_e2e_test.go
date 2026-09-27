@@ -4,6 +4,7 @@ package e2e
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -11,6 +12,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser"
+	"github.com/minh-tg/specht/internal/scanner"
 	"github.com/stretchr/testify/require"
 )
 
@@ -115,6 +119,39 @@ func jsonArrayFixture(t *testing.T, fixture string) []json.RawMessage {
 	}
 	require.NotEmpty(t, events)
 	return events
+}
+
+type malformedDescriptorScanner struct{}
+
+func (malformedDescriptorScanner) Descriptor() scanner.Descriptor { return scanner.Descriptor{} }
+func (malformedDescriptorScanner) DetectFormat([]byte) bool       { return false }
+func (malformedDescriptorScanner) Parse(context.Context, []byte) (*domain.NormalizedReport, error) {
+	return nil, nil
+}
+
+// TestE2E_ParserRegistryDetection pins the parser onboarding matrix: unknown
+// data has no match, overlapping adapters are reported as ambiguous, names
+// cannot be registered twice, and malformed descriptors are rejected.
+func TestE2E_ParserRegistryDetection(t *testing.T) {
+	registry := scanner.NewRegistry()
+	for _, adapter := range parser.Builtins() {
+		require.NoError(t, registry.Register(adapter))
+	}
+
+	t.Run("scanner no-match", func(t *testing.T) {
+		_, err := registry.Detect([]byte(`{"not":"a scanner report"}`))
+		require.ErrorIs(t, err, scanner.ErrNoMatch)
+	})
+	t.Run("ambiguous-match", func(t *testing.T) {
+		_, err := registry.Detect([]byte(`{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"semgrep","version":"1.0.0"}},"results":[]}]}`))
+		require.ErrorIs(t, err, scanner.ErrAmbiguousMatch)
+	})
+	t.Run("duplicate-name rejection", func(t *testing.T) {
+		require.ErrorIs(t, registry.Register(parser.Builtins()[0]), scanner.ErrDuplicateName)
+	})
+	t.Run("malformed descriptor", func(t *testing.T) {
+		require.ErrorIs(t, registry.Register(malformedDescriptorScanner{}), scanner.ErrInvalidDescriptor)
+	})
 }
 
 // TestE2E_BuiltinParserIngest feeds every built-in parser through the real

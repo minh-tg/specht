@@ -2,7 +2,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setAuthToken } from "./client";
-import { useFinding, useReachability, useTriageFinding, useUpsertReachability } from "./hooks";
+import {
+  useFinding,
+  useGateStatus,
+  useReachability,
+  useTriageFinding,
+  useUpsertReachability,
+} from "./hooks";
 
 const ASSESSMENT = {
   id: "r1",
@@ -16,6 +22,7 @@ const ASSESSMENT = {
 
 let findingFetchCount: number;
 let reachabilityFetchCount: number;
+let gateFetchCount: number;
 let mutationCalls: Array<
   { method: string; url: string; headers: Record<string, string>; body: string; }
 >;
@@ -32,6 +39,7 @@ function wrapper({ children }: { children: React.ReactNode; }) {
 beforeEach(() => {
   findingFetchCount = 0;
   reachabilityFetchCount = 0;
+  gateFetchCount = 0;
   mutationCalls = [];
   setAuthToken(null);
   globalThis.fetch = vi.fn().mockImplementation(
@@ -43,6 +51,9 @@ beforeEach(() => {
       }
       if (url === "/api/v1/findings/f1/reachability" && method === "GET") {
         reachabilityFetchCount += 1;
+      }
+      if (url === "/api/v1/projects/p1/gate" && method === "GET") {
+        gateFetchCount += 1;
       }
       if (url.endsWith("/findings/f1") && method === "PATCH") {
         mutationCalls.push({
@@ -135,6 +146,31 @@ describe("mutation CSRF hardening", () => {
     for (const call of mutationCalls) {
       expect(call.headers.Authorization).toBe("Bearer access-tok-1");
     }
+  });
+
+  it("invalidates the finding and gate after a reachability mutation", async () => {
+    const { result } = renderHook(
+      () => {
+        useFinding("f1");
+        useGateStatus("p1");
+        return useUpsertReachability();
+      },
+      { wrapper },
+    );
+
+    await waitFor(() => {
+      expect(findingFetchCount).toBeGreaterThanOrEqual(1);
+      expect(gateFetchCount).toBeGreaterThanOrEqual(1);
+    });
+
+    await act(async () => {
+      await result.current.mutateAsync({ findingId: "f1", state: "not_reachable" });
+    });
+
+    await waitFor(() => {
+      expect(findingFetchCount).toBeGreaterThanOrEqual(2);
+      expect(gateFetchCount).toBeGreaterThanOrEqual(2);
+    });
   });
 
   it("sends the session token explicitly on every reachability mutation", async () => {
