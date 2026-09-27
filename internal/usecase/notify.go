@@ -32,6 +32,7 @@ func (u *Usecases) PreviewNotification(ctx context.Context, findingID, channel, 
 	}
 	outcome := notify.Build(notify.Input{
 		FindingID:     detail.ID,
+		ProjectSlug:   detail.ProjectID,
 		Title:         detail.CurrentTitle,
 		Severity:      detail.CurrentSeverity,
 		FindingKind:   detail.FindingKind,

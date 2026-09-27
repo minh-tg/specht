@@ -33,6 +33,18 @@ func TestBuild_IssueCreate(t *testing.T) {
 	assert.Equal(t, p.DedupeKey, again.Plan.DedupeKey)
 }
 
+func TestBuild_DedupeIsProjectScoped(t *testing.T) {
+	in := baseInput()
+	first := Build(in)
+	require.True(t, first.Supported)
+
+	in.ProjectSlug = "another-project"
+	second := Build(in)
+	require.True(t, second.Supported)
+	assert.NotEqual(t, first.Plan.ID, second.Plan.ID)
+	assert.NotEqual(t, first.Plan.DedupeKey, second.Plan.DedupeKey)
+}
+
 func TestBuild_UpdateAndClose(t *testing.T) {
 	in := baseInput()
 	in.AlreadyLinked = true

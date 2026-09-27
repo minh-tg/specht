@@ -90,13 +90,13 @@ func Build(in Input) Outcome {
 	}
 	action := actionFor(in)
 	plan := &Plan{
-		ID:        planID(channel, in.Target, in.Fingerprint),
+		ID:        planID(in.ProjectSlug, channel, in.Target, in.Fingerprint),
 		Channel:   channel,
 		Target:    strings.TrimSpace(in.Target),
 		Action:    action,
 		Title:     planTitle(channel, in),
 		Body:      planBody(in, action),
-		DedupeKey: dedupeKey(channel, in.Target, in.Fingerprint),
+		DedupeKey: dedupeKey(in.ProjectSlug, channel, in.Target, in.Fingerprint),
 		Reason:    planReason(channel, in, action),
 		Links: Links{
 			Finding: in.FindingURL,
@@ -119,17 +119,17 @@ func actionFor(in Input) Action {
 	return ActionCreate
 }
 
-// dedupeKey scopes one finding to at most one work item per integration
-// and scope: channel + target + fingerprint.
-func dedupeKey(channel Channel, target, fingerprint string) string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{string(channel), target, fingerprint}, "\x00")))
+// dedupeKey scopes one finding to at most one work item per project,
+// integration, and target: project + channel + target + fingerprint.
+func dedupeKey(projectID string, channel Channel, target, fingerprint string) string {
+	sum := sha256.Sum256([]byte(strings.Join([]string{projectID, string(channel), target, fingerprint}, "\x00")))
 	return "notify-" + hex.EncodeToString(sum[:])[:12]
 }
 
 // planID is deterministic like the dedupe key so identical evidence
 // reproduces the identical plan.
-func planID(channel Channel, target, fingerprint string) string {
-	return dedupeKey(channel, target, fingerprint)
+func planID(projectID string, channel Channel, target, fingerprint string) string {
+	return dedupeKey(projectID, channel, target, fingerprint)
 }
 
 // planTitle renders the item/message subject with severity first.
