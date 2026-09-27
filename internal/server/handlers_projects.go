@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/minh-tg/specht/internal/audit"
 	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/usecase"
 )
 
@@ -132,7 +133,11 @@ func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
 	reports, err := h.usecase.ListReports(r.Context(), slug, limit, offset)
 	if err != nil {
 		log.Printf("list reports: %v", err)
-		respondError(w, http.StatusNotFound, "not_found", projectsMsgNotFound)
+		if errors.Is(err, port.ErrNotFound) {
+			respondError(w, http.StatusNotFound, "not_found", projectsMsgNotFound)
+		} else {
+			respondError(w, http.StatusInternalServerError, "internal_error", "internal server error")
+		}
 		return
 	}
 	respondJSON(w, http.StatusOK, reports)

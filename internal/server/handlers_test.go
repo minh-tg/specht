@@ -17,6 +17,7 @@ import (
 	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/notify"
 	"github.com/minh-tg/specht/internal/patch"
+	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/usecase"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1122,7 +1123,7 @@ func TestListFindings_WithFilters(t *testing.T) {
 func TestListFindings_NotFound(t *testing.T) {
 	mock := &mockUsecases{
 		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
-			return nil, fmt.Errorf("not found")
+			return nil, port.ErrNotFound
 		},
 	}
 	router := testRouter(mock)
@@ -1131,6 +1132,20 @@ func TestListFindings_NotFound(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestListFindings_InternalError(t *testing.T) {
+	mock := &mockUsecases{
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
+			return nil, fmt.Errorf("database unavailable")
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 func TestListReports_Success(t *testing.T) {
@@ -1158,7 +1173,7 @@ func TestListReports_Success(t *testing.T) {
 func TestListReports_NotFound(t *testing.T) {
 	mock := &mockUsecases{
 		listReportsFn: func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error) {
-			return nil, fmt.Errorf("not found")
+			return nil, port.ErrNotFound
 		},
 	}
 	router := testRouter(mock)
@@ -1167,6 +1182,20 @@ func TestListReports_NotFound(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
+func TestListReports_InternalError(t *testing.T) {
+	mock := &mockUsecases{
+		listReportsFn: func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error) {
+			return nil, fmt.Errorf("database unavailable")
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/reports", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 func TestGetReport_Success(t *testing.T) {

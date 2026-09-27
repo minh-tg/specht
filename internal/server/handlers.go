@@ -17,6 +17,7 @@ import (
 	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/notify"
 	"github.com/minh-tg/specht/internal/patch"
+	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/usecase"
 )
 
@@ -591,7 +592,11 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 	findings, err := h.usecase.ListFindings(r.Context(), slug, filter, limit, offset)
 	if err != nil {
 		log.Printf("list findings: %v", err)
-		respondError(w, http.StatusNotFound, "not_found", msgProjectNotFound)
+		if errors.Is(err, port.ErrNotFound) {
+			respondError(w, http.StatusNotFound, "not_found", msgProjectNotFound)
+		} else {
+			respondError(w, http.StatusInternalServerError, "internal_error", "internal server error")
+		}
 		return
 	}
 	respondJSON(w, http.StatusOK, findings)
