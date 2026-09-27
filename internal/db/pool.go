@@ -10,15 +10,10 @@ import (
 
 // ConnectPool opens a pgx pool for the given database URL.
 func ConnectPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
-	cfg, err := pgxpool.ParseConfig(databaseURL)
+	cfg, err := poolConfig(databaseURL)
 	if err != nil {
-		return nil, fmt.Errorf("parse pool config: %w", err)
+		return nil, err
 	}
-
-	cfg.MaxConns = 20
-	cfg.MinConns = 2
-	cfg.MaxConnLifetime = 30 * time.Minute
-	cfg.MaxConnIdleTime = 5 * time.Minute
 
 	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
@@ -31,4 +26,18 @@ func ConnectPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error)
 	}
 
 	return pool, nil
+}
+
+func poolConfig(databaseURL string) (*pgxpool.Config, error) {
+	cfg, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse pool config: %w", err)
+	}
+
+	cfg.MaxConns = 20
+	cfg.MinConns = 2
+	cfg.MaxConnLifetime = 30 * time.Minute
+	cfg.MaxConnIdleTime = 5 * time.Minute
+
+	return cfg, nil
 }
