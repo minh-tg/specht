@@ -251,7 +251,7 @@ SELECT id, project_id, name, description, enabled, created_at, updated_at, expir
 WHERE project_id = $1
   AND enabled = true
   AND (expires_at IS NULL OR expires_at > NOW())
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 `
 
 func (q *Queries) ListActiveWaivers(ctx context.Context, projectID pgtype.UUID) ([]Waiver, error) {

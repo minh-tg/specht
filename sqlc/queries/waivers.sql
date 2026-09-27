@@ -41,7 +41,7 @@ SELECT * FROM waivers
 WHERE project_id = $1
   AND enabled = true
   AND (expires_at IS NULL OR expires_at > NOW())
-ORDER BY created_at DESC;
+ORDER BY created_at DESC, id DESC;
 
 -- name: CreateWaiverCondition :one
 INSERT INTO waiver_conditions (waiver_id, field, operator, value)

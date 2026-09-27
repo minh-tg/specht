@@ -77,7 +77,7 @@ func (q *Queries) GetEvidenceByID(ctx context.Context, id pgtype.UUID) (Evidence
 const listEvidenceByFinding = `-- name: ListEvidenceByFinding :many
 SELECT id, finding_id, type, url, description, uploaded_by, created_at FROM evidence_artifacts
 WHERE finding_id = $1
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 `
 
 func (q *Queries) ListEvidenceByFinding(ctx context.Context, findingID pgtype.UUID) ([]EvidenceArtifact, error) {

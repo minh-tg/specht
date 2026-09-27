@@ -75,7 +75,7 @@ WHERE f.project_id = $1
     JOIN reports r ON fo.report_id = r.id
     JOIN targets t ON r.target_id = t.id
     WHERE fo.finding_id = f.id AND t.name = ANY($6)))
-ORDER BY f.current_severity_rank DESC, f.created_at DESC
+ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 LIMIT $7 OFFSET $8;
 
 -- name: GetFindingByID :one
@@ -138,7 +138,7 @@ FROM UNNEST($1::uuid[]) AS f_id;
 SELECT * FROM finding_events
 WHERE finding_id = $1
   AND (array_length($2::text[], 1) IS NULL OR event_type = ANY($2))
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT $3 OFFSET $4;
 
 -- name: ListGateCandidates :many

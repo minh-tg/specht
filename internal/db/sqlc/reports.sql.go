@@ -330,7 +330,7 @@ func (q *Queries) LatestCompletedReportByScanner(ctx context.Context, arg Latest
 const listReportsByProject = `-- name: ListReportsByProject :many
 SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode FROM reports
 WHERE project_id = $1
-ORDER BY created_at DESC
+ORDER BY created_at DESC, id DESC
 LIMIT $2 OFFSET $3
 `
 

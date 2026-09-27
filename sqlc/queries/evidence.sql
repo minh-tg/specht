@@ -6,7 +6,7 @@ RETURNING *;
 -- name: ListEvidenceByFinding :many
 SELECT * FROM evidence_artifacts
 WHERE finding_id = $1
-ORDER BY created_at DESC;
+ORDER BY created_at DESC, id DESC;
 
 -- name: GetEvidenceByID :one
 SELECT * FROM evidence_artifacts WHERE id = $1;
