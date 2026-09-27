@@ -352,6 +352,7 @@ jobs:
         run: |
           go run ./cmd/server migrate
           JWT_SECRET="$(openssl rand -hex 32)"
+          echo "::add-mask::$JWT_SECRET"
           export JWT_SECRET
           echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           go build -o /tmp/specht-ci ./cmd/server
