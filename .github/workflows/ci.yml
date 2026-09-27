@@ -194,6 +194,9 @@ jobs:
       - name: Unit tests (vitest)
         run: pnpm test
 
+      - name: Audit dependencies
+        run: pnpm audit --audit-level high
+
       - name: Typecheck
         run: npx tsc -b
 
