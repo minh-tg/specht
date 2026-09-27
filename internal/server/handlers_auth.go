@@ -96,8 +96,10 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	// its normal expiry.
 	if h.revoker != nil {
 		if bearer := r.Header.Get("Authorization"); len(bearer) > len("Bearer ") && bearer[:len("Bearer ")] == "Bearer " {
-			if err := h.revoker.RevokeToken(bearer[len("Bearer "):]); err != nil {
-				slog.Warn("access token revocation failed during logout", "error", err)
+			if err := h.revoker.RevokeTokenContext(r.Context(), bearer[len("Bearer "):]); err != nil && !errors.Is(err, auth.ErrInvalidCredential) {
+				slog.Error("access token revocation failed during logout", "error", err)
+				respondError(w, http.StatusInternalServerError, "logout_failed", "logout failed")
+				return
 			}
 		}
 	}

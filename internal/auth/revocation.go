@@ -1,19 +1,20 @@
 package auth
 
 import (
+	"context"
 	"sync"
 	"time"
 )
 
 // Revoker records access-token JTIs that must no longer authenticate.
 type Revoker interface {
-	Revoke(jti string, exp time.Time) error
-	IsRevoked(jti string) bool
+	Revoke(ctx context.Context, jti string, exp time.Time) error
+	IsRevoked(ctx context.Context, jti string) (bool, error)
 }
 
 // TokenRevoker revokes a bearer access token after verifying its signature.
 type TokenRevoker interface {
-	RevokeToken(token string) error
+	RevokeTokenContext(ctx context.Context, token string) error
 }
 
 // MemoryRevoker stores revocations in process memory. Entries are bounded by
@@ -27,7 +28,7 @@ func NewMemoryRevoker() *MemoryRevoker {
 	return &MemoryRevoker{revoked: make(map[string]time.Time)}
 }
 
-func (r *MemoryRevoker) Revoke(jti string, exp time.Time) error {
+func (r *MemoryRevoker) Revoke(_ context.Context, jti string, exp time.Time) error {
 	if jti == "" {
 		return nil
 	}
@@ -37,19 +38,19 @@ func (r *MemoryRevoker) Revoke(jti string, exp time.Time) error {
 	return nil
 }
 
-func (r *MemoryRevoker) IsRevoked(jti string) bool {
+func (r *MemoryRevoker) IsRevoked(_ context.Context, jti string) (bool, error) {
 	now := time.Now()
 	r.mu.RLock()
 	exp, ok := r.revoked[jti]
 	r.mu.RUnlock()
 	if !ok {
-		return false
+		return false, nil
 	}
 	if !exp.IsZero() && !now.Before(exp) {
 		r.mu.Lock()
 		delete(r.revoked, jti)
 		r.mu.Unlock()
-		return false
+		return false, nil
 	}
-	return true
+	return true, nil
 }

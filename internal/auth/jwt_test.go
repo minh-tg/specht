@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -216,6 +217,38 @@ func TestJWT_CreateRefreshToken_MintsUniqueTokens(t *testing.T) {
 	assert.NotEqual(t, firstJTI, secondJTI, "jti must differ between mints")
 	assert.NotEqual(t, first, second, "tokens must differ so their hashes cannot collide")
 	assert.Equal(t, "refresh", firstClaims["type"], "refresh tokens keep their type claim")
+}
+
+type failingRevoker struct {
+	err error
+}
+
+func (r failingRevoker) Revoke(context.Context, string, time.Time) error {
+	return nil
+}
+
+func (r failingRevoker) IsRevoked(context.Context, string) (bool, error) {
+	return false, r.err
+}
+
+func TestJWT_Authenticate_FailsClosedWhenRevocationCheckFails(t *testing.T) {
+	revocationErr := errors.New("revocation store unavailable")
+	a, err := NewJWTAuthenticatorWithRevoker(jwtBindingTestSecret, failingRevoker{err: revocationErr})
+	require.NoError(t, err)
+
+	raw, err := a.CreateToken("user-1", "user@example.com", RoleViewer)
+	require.NoError(t, err)
+
+	ident, err := a.Authenticate(context.Background(), raw)
+	assert.Nil(t, ident)
+	assert.ErrorIs(t, err, ErrInvalidCredential)
+	assert.ErrorIs(t, err, revocationErr)
+}
+
+func TestJWT_NilRevokerIsRejected(t *testing.T) {
+	a, err := NewJWTAuthenticatorWithRevoker(jwtBindingTestSecret, nil)
+	assert.Nil(t, a)
+	assert.EqualError(t, err, "revoker is required")
 }
 
 func TestJWT_RevokeTokenRejectsSubsequentAuthentication(t *testing.T) {

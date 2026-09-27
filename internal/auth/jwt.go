@@ -26,6 +26,12 @@ type JWTAuthenticator struct {
 
 // NewJWTAuthenticator builds a JWT authenticator with the given HMAC secret.
 func NewJWTAuthenticator(secret string) (*JWTAuthenticator, error) {
+	return NewJWTAuthenticatorWithRevoker(secret, NewMemoryRevoker())
+}
+
+// NewJWTAuthenticatorWithRevoker builds an authenticator using the supplied
+// shared revocation store.
+func NewJWTAuthenticatorWithRevoker(secret string, revoker Revoker) (*JWTAuthenticator, error) {
 	if secret == "" {
 		return nil, fmt.Errorf("JWT_SECRET is required")
 	}
@@ -35,7 +41,10 @@ func NewJWTAuthenticator(secret string) (*JWTAuthenticator, error) {
 	if len(secret) < 32 {
 		return nil, fmt.Errorf("JWT_SECRET must be at least 32 bytes")
 	}
-	return &JWTAuthenticator{secret: []byte(secret), revoker: NewMemoryRevoker()}, nil
+	if revoker == nil {
+		return nil, fmt.Errorf("revoker is required")
+	}
+	return &JWTAuthenticator{secret: []byte(secret), revoker: revoker}, nil
 }
 
 func (a *JWTAuthenticator) CreateToken(userID, email, role string) (string, error) {
@@ -74,6 +83,11 @@ func (a *JWTAuthenticator) CreateRefreshToken(userID string) (string, error) {
 
 // RevokeToken verifies and revokes an access token by its JWT ID.
 func (a *JWTAuthenticator) RevokeToken(token string) error {
+	return a.RevokeTokenContext(context.Background(), token)
+}
+
+// RevokeTokenContext is the context-aware revocation path used by HTTP logout.
+func (a *JWTAuthenticator) RevokeTokenContext(ctx context.Context, token string) error {
 	tok, err := jwt.Parse(token, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
@@ -95,7 +109,7 @@ func (a *JWTAuthenticator) RevokeToken(token string) error {
 	if a.revoker == nil {
 		return nil
 	}
-	return a.revoker.Revoke(jti, time.Unix(int64(exp), 0))
+	return a.revoker.Revoke(ctx, jti, time.Unix(int64(exp), 0))
 }
 
 func (a *JWTAuthenticator) Authenticate(ctx context.Context, token string) (*Identity, error) {
@@ -126,8 +140,14 @@ func (a *JWTAuthenticator) Authenticate(ctx context.Context, token string) (*Ide
 	if jti == "" {
 		return nil, ErrInvalidCredential
 	}
-	if a.revoker != nil && a.revoker.IsRevoked(jti) {
-		return nil, ErrInvalidCredential
+	if a.revoker != nil {
+		revoked, checkErr := a.revoker.IsRevoked(ctx, jti)
+		if checkErr != nil {
+			return nil, errors.Join(ErrInvalidCredential, checkErr)
+		}
+		if revoked {
+			return nil, ErrInvalidCredential
+		}
 	}
 	sub, _ := claims.GetSubject()
 	email, _ := claims["email"].(string)

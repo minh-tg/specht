@@ -332,6 +332,11 @@ type ReportPackage struct {
 	LastSeenAt   pgtype.Timestamptz `json:"last_seen_at"`
 }
 
+type RevokedAccessToken struct {
+	Jti       string             `json:"jti"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
 type Signoff struct {
 	ID         pgtype.UUID        `json:"id"`
 	FindingID  pgtype.UUID        `json:"finding_id"`

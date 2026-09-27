@@ -2486,6 +2486,32 @@ func TestRefresh_Error(t *testing.T) {
 
 // ----- Logout Handler Tests -----
 
+type failingTokenRevoker struct {
+	err error
+}
+
+func (r failingTokenRevoker) RevokeTokenContext(context.Context, string) error {
+	return r.err
+}
+
+func TestLogout_AccessTokenRevocationError(t *testing.T) {
+	mock := &mockUsecases{
+		logoutFn: func(ctx context.Context, refreshToken string) error { return nil },
+	}
+	h := NewHandler(mock, failingTokenRevoker{err: fmt.Errorf("revocation store unavailable")})
+	body := strings.NewReader(`{"refresh_token":"valid-token"}`)
+	req := httptest.NewRequest("POST", "/api/v1/auth/logout", body)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer access-token")
+	w := httptest.NewRecorder()
+	h.Logout(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	var resp apiError
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "logout_failed", resp.Error.Code)
+}
+
 func TestLogout_Success(t *testing.T) {
 	mock := &mockUsecases{
 		logoutFn: func(ctx context.Context, refreshToken string) error { return nil },
@@ -2498,6 +2524,30 @@ func TestLogout_Success(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestLogout_IgnoresInvalidOrExpiredBearerToken(t *testing.T) {
+	const testJWTSecret = "test-secret-for-logout-tests-0123456789"
+	jwtAuth, err := auth.NewJWTAuthenticator(testJWTSecret)
+	require.NoError(t, err)
+	expired := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"iss": "specht", "aud": "specht-api", "sub": "user-1", "jti": "expired", "iat": time.Now().Add(-time.Hour).Unix(), "exp": time.Now().Add(-time.Minute).Unix(),
+	})
+	expiredToken, err := expired.SignedString([]byte(testJWTSecret))
+	require.NoError(t, err)
+
+	for _, token := range []string{"not-a-jwt", expiredToken} {
+		t.Run(token[:min(len(token), 8)], func(t *testing.T) {
+			mock := &mockUsecases{logoutFn: func(context.Context, string) error { return nil }}
+			h := NewHandler(mock, jwtAuth)
+			req := httptest.NewRequest("POST", "/api/v1/auth/logout", strings.NewReader(`{"refresh_token":"valid-token"}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+token)
+			w := httptest.NewRecorder()
+			h.Logout(w, req)
+			assert.Equal(t, http.StatusNoContent, w.Code)
+		})
+	}
 }
 
 func TestLogout_EmptyBody(t *testing.T) {

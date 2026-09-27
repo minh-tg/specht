@@ -148,7 +148,8 @@ func main() {
 
 	reg := buildScannerRegistry()
 	providers := buildProviders()
-	jwtAuth, err := auth.NewJWTAuthenticator(cfg.JWTSecret)
+	revoker := repo.NewPostgresRevoker(pool)
+	jwtAuth, err := auth.NewJWTAuthenticatorWithRevoker(cfg.JWTSecret, revoker)
 	exitOnError("auth setup", err)
 
 	repos := repo.NewRepos(pool)
@@ -186,6 +187,7 @@ func main() {
 		},
 		JWTAuth:           jwtAuth,
 		TokenIssuer:       jwtAuth,
+		Revoker:           jwtAuth,
 		APIKeyLookup:      apiKeyLookup(repos),
 		OIDCEnabled:       cfg.SSO.Enabled,
 		OIDC:              resolveOIDCAuth(cfg),
