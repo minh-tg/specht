@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -29,14 +30,26 @@ const EnvWebHookSecret = "WATCHER_WEBHOOK_SIGNING_SECRET"
 // payload, optionally signed with HMAC-SHA256; failures are logged and
 // swallowed (best-effort), so a dead or slow webhook can never stall ingest
 // or verification.
-//
-// webhook fan-out for finding lifecycle events.
 type WebHookTracker struct {
-	endpoints []string
-	secret    string
-	client    *http.Client
-	logger    func(string, ...any)
+	endpoints  []string
+	secret     string
+	client     *http.Client
+	logger     func(string, ...any)
+	jobs       chan webhookJob
+	queueDepth atomic.Int64
 }
+
+type webhookJob struct {
+	ctx       context.Context
+	url       string
+	eventType string
+	payload   []byte
+}
+
+const (
+	webhookWorkers = 8
+	webhookQueue   = 256
+)
 
 // WebHookTrackerConfig holds the endpoint list, optional HMAC-SHA256 signing
 // secret, and HTTP client tuning. An empty secret sends no signature header.
@@ -52,12 +65,19 @@ func NewWebHookTracker(cfg WebHookTrackerConfig, logger func(string, ...any)) *W
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 10 * time.Second
 	}
-	return &WebHookTracker{
+	t := &WebHookTracker{
 		endpoints: cfg.Endpoints,
 		secret:    cfg.Secret,
 		client:    &http.Client{Timeout: cfg.Timeout},
 		logger:    logger,
+		jobs:      make(chan webhookJob, webhookQueue),
 	}
+	if len(t.endpoints) > 0 {
+		for i := 0; i < webhookWorkers; i++ {
+			go t.worker()
+		}
+	}
+	return t
 }
 
 // Name returns the provider name for logging and dispatch.
@@ -86,9 +106,10 @@ func (t *WebHookTracker) UpdateIssue(ctx context.Context, issueID IssueID, event
 // synchronously, then each endpoint is POSTed on its own goroutine with a
 // context detached from the caller (context.WithoutCancel), so a slow or
 // dead webhook can never stall ingest or verification — even if the caller
-// cancels its context before delivery completes. Each POST is still bounded
-// by the short client Timeout configured at construction, and failures are
-// logged and swallowed.
+// cancels its context before delivery completes. A fixed worker pool and
+// bounded queue cap resource usage; excess deliveries are dropped. Each POST
+// is still bounded by the short client Timeout configured at construction,
+// and failures are logged and swallowed.
 func (t *WebHookTracker) dispatch(ctx context.Context, event Event) {
 	if len(t.endpoints) == 0 {
 		return
@@ -107,8 +128,28 @@ func (t *WebHookTracker) dispatch(ctx context.Context, event Event) {
 	// endpoints cost one timeout, not N sequential ones.
 	deliveryCtx := context.WithoutCancel(ctx)
 	for _, url := range t.endpoints {
-		go t.post(deliveryCtx, url, event.Type, payload)
+		job := webhookJob{ctx: deliveryCtx, url: url, eventType: event.Type, payload: payload}
+		select {
+		case t.jobs <- job:
+			t.queueDepth.Add(1)
+		default:
+			if t.logger != nil {
+				t.logger("webhook queue full; delivery dropped", "url", url)
+			}
+		}
 	}
+}
+
+func (t *WebHookTracker) worker() {
+	for job := range t.jobs {
+		t.queueDepth.Add(-1)
+		t.post(job.ctx, job.url, job.eventType, job.payload)
+	}
+}
+
+// QueueDepth reports the number of queued or active deliveries.
+func (t *WebHookTracker) QueueDepth() int {
+	return int(t.queueDepth.Load())
 }
 
 // post sends one signed JSON payload to a single webhook endpoint and logs
