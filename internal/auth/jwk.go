@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"crypto/ecdh"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
@@ -35,15 +34,14 @@ func parseRSAPublicKey(nB64, eB64 string) (*rsa.PublicKey, error) {
 // parseECDSAPublicKey builds an *ecdsa.PublicKey from a JWK EC key, verifying
 // that the point lies on the named curve.
 func parseECDSAPublicKey(crv, xB64, yB64 string) (*ecdsa.PublicKey, error) {
-	var ecdhCurve ecdh.Curve
 	var ellCurve elliptic.Curve
 	switch crv {
 	case "P-256":
-		ecdhCurve, ellCurve = ecdh.P256(), elliptic.P256()
+		ellCurve = elliptic.P256()
 	case "P-384":
-		ecdhCurve, ellCurve = ecdh.P384(), elliptic.P384()
+		ellCurve = elliptic.P384()
 	case "P-521":
-		ecdhCurve, ellCurve = ecdh.P521(), elliptic.P521()
+		ellCurve = elliptic.P521()
 	default:
 		return nil, fmt.Errorf("unsupported EC curve %q", crv)
 	}
@@ -66,10 +64,9 @@ func parseECDSAPublicKey(crv, xB64, yB64 string) (*ecdsa.PublicKey, error) {
 	point[0] = 4
 	copy(point[1+size-len(xBytes):], xBytes)
 	copy(point[1+2*size-len(yBytes):], yBytes)
-	if _, err := ecdhCurve.NewPublicKey(point); err != nil {
-		return nil, fmt.Errorf("EC point not on curve %q", crv)
+	key, err := ecdsa.ParseUncompressedPublicKey(ellCurve, point)
+	if err != nil {
+		return nil, fmt.Errorf("EC point not on curve %q: %w", crv, err)
 	}
-	x := new(big.Int).SetBytes(xBytes)
-	y := new(big.Int).SetBytes(yBytes)
-	return &ecdsa.PublicKey{Curve: ellCurve, X: x, Y: y}, nil
+	return key, nil
 }

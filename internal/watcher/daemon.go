@@ -357,9 +357,11 @@ func pollCutoff(ctx context.Context, deps PollDeps, projectID string, now time.T
 	return deps.Since, nil // zero = full history
 }
 
-// afterCutoff reports whether an advisory is eligible given the cutoff. An
-// advisory with an unparseable published date is always eligible — a date
-// quirk must never hide an advisory.
+// advisoryAfterCutoff reports whether an advisory is eligible given the cutoff.
+// An advisory with an unparseable published date is always eligible — a date
+// quirk must never hide an advisory. It accepts newly published advisories and
+// advisories modified since the watermark. The latter is essential because OSV
+// may add affected ranges without changing Published.
 //
 // Known v1 limitation (feed-delta path): the cutoff is keyed on the advisory's
 // published date (Published >= watermark on warm polls). Because querybatch is
@@ -367,16 +369,8 @@ func pollCutoff(ctx context.Context, deps PollDeps, projectID string, now time.T
 // ranges are later extended or modified is never re-evaluated on warm polls —
 // it is filtered here and the modified/added range goes unnoticed. This is the
 // documented cost of the watermark+cutoff approach and is tracked on the
-// feed-delta upgrade path; do not treat afterCutoff as an incremental-change
+// feed-delta upgrade path; do not treat the cutoff as an incremental-change
 // feed.
-func afterCutoff(advisory Advisory, cutoff time.Time) bool {
-	eligible, _ := advisoryAfterCutoff(advisory, cutoff)
-	return eligible
-}
-
-// advisoryAfterCutoff accepts newly published advisories and advisories
-// modified since the watermark. The latter is essential because OSV may add
-// affected ranges without changing Published.
 func advisoryAfterCutoff(advisory Advisory, cutoff time.Time) (eligible, modified bool) {
 	if cutoff.IsZero() {
 		return true, false
