@@ -17,7 +17,7 @@ RUN CGO_ENABLED=0 go build \
     -ldflags "-X github.com/minh-tg/specht/internal/version.Version=${VERSION} -X github.com/minh-tg/specht/internal/version.Commit=${COMMIT}" \
     -o /bin/server ./cmd/server
 
-FROM docker.io/library/alpine:3.21
+FROM docker.io/library/alpine:3.21@sha256:ce64758a109eb420d874a118f87920e625e12d3634e03b4a5573fd9f6e5d3507
 # Install runtime deps without hard-pinning patch versions: pinning an exact
 # Alpine package version (e.g. tzdata=2026b-r0) breaks the image build the
 # moment the distro bumps the rebuild (2026b -> 2026c), which is not what a

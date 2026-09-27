@@ -7,10 +7,13 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
 
 jobs:
   build-image:
     name: build + publish versioned image
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -43,6 +46,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push
+        id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
@@ -58,6 +62,14 @@ jobs:
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
             org.opencontainers.image.version=${{ steps.tag.outputs.tag }}
             org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@053f9b74638557590800a301da1ba82351507e2c # v3.8.1
+
+      - name: Sign image
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: cosign sign --yes "ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}"
 
   verify-image:
     name: boot + verify the published image
@@ -75,6 +87,16 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@053f9b74638557590800a301da1ba82351507e2c # v3.8.1
+
+      - name: Verify image signature
+        run: >-
+          cosign verify
+          --certificate-identity "${{ github.server_url }}/${{ github.repository }}/.github/workflows/release.yml@refs/tags/${{ github.ref_name }}"
+          --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          "ghcr.io/${{ github.repository }}@${{ needs['build-image'].outputs.image_digest }}"
 
       - name: Pull the tagged image
         run: docker pull "ghcr.io/${{ github.repository }}:${GITHUB_REF_NAME}"

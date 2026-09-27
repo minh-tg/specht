@@ -34,7 +34,24 @@ curl -fsS http://localhost:8080/api/v1/health
 curl -fsS http://localhost:8080/api/v1/version
 ```
 
-## 3. First admin
+## 3. Verify release images
+
+Published images are signed with keyless Sigstore signing from the tagged
+release workflow. Install `cosign`, then verify an image before deployment:
+
+```bash
+IMAGE=ghcr.io/minh-tg/specht:v0.1.0
+cosign verify \
+  --certificate-identity-regexp 'https://github.com/minh-tg/specht/.github/workflows/release.yml@refs/tags/v.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  "$IMAGE"
+```
+
+The command verifies the certificate issuer and that the signing workflow ran
+from this repository's release tag; replace the image with the exact version
+you intend to deploy.
+
+## 4. First admin
 
 Tenant isolation is enforced: every project needs members, and project
 administration needs a global admin.
@@ -44,7 +61,7 @@ administration needs a global admin.
    (`up -d` again — promotion is idempotent).
 3. Create projects and grant membership via `POST /projects/:slug/members`.
 
-## 4. Reverse proxy
+## 5. Reverse proxy
 
 Terminate TLS at the proxy and forward plain HTTP. Set `TRUSTED_PROXIES` to
 only the proxy-hop CIDRs. Configure the nearest proxy to append the observed
@@ -54,7 +71,7 @@ skips trusted proxy hops. Otherwise, forwarding headers are ignored and
 `Secure` cookies follow the direct connection. Set `CORS_ORIGINS` to the
 public UI origin(s).
 
-## 5. Backup and restore
+## 6. Backup and restore
 
 Postgres holds everything (the server is stateless). Nightly logical backup:
 
@@ -70,7 +87,7 @@ gunzip -c specht-YYYY-MM-DD.sql.gz | docker compose -f deploy/docker-compose.yml
   psql -U specht specht
 ```
 
-## 6. Upgrades
+## 7. Upgrades
 
 ```bash
 git pull
@@ -81,7 +98,7 @@ Migrations are forward-only and run at startup. To roll back, restore a
 compatible database backup and redeploy a compatible revision. Schema
 migrations never migrate down automatically.
 
-## 7. Hardening checklist
+## 8. Hardening checklist
 
 - `RATE_LIMIT_ENABLED=true` (compose default) — strict per-IP buckets on
   login/register, generous per-caller budgets behind auth.
