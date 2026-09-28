@@ -183,6 +183,9 @@ jobs:
       - name: Unit tests (vitest)
         run: pnpm test
 
+      - name: API types in sync
+        run: pnpm api:check
+
       - name: Audit dependencies
         run: pnpm audit --audit-level high
 

@@ -3,6 +3,7 @@ import { AuthContext, type AuthContextValue } from "@/auth/context";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { vi } from "vitest";
 import { Login } from "./Login";
@@ -177,4 +178,23 @@ describe("Login", () => {
       expect(await screen.findByText("Home page")).toBeInTheDocument();
     },
   );
+
+  it("links to the SSO entry point next to the password form", async () => {
+    authState.login = async () => {};
+    renderLoginWithAuth("/login");
+
+    const link = screen.getByRole("link", { name: /sign in with sso/i });
+    expect(link).toHaveAttribute("href", "/api/v1/auth/sso/login");
+  });
+
+  it("preserves an internal redirect when starting SSO", async () => {
+    authState.login = async () => {};
+    renderLoginWithAuth("/login?redirect=%2Fdashboard%3Ftab%3Dfindings");
+
+    const link = screen.getByRole("link", { name: /sign in with sso/i });
+    expect(link).toHaveAttribute(
+      "href",
+      "/api/v1/auth/sso/login?redirect=%2Fdashboard%3Ftab%3Dfindings",
+    );
+  });
 });

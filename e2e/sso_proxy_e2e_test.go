@@ -23,10 +23,15 @@ func noRedirectClient() *http.Client {
 }
 
 // ssoLoginLeg performs GET /auth/sso/login and returns the IdP redirect,
-// the issued state cookie, and the response headers.
-func ssoLoginLeg(t *testing.T, forwardedProto string) (string, []*http.Cookie, http.Header) {
+// the issued state cookies, and the response headers.
+func ssoLoginLeg(t *testing.T, forwardedProto string, returnPath ...string) (string, []*http.Cookie, http.Header) {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, baseURL+"/api/v1/auth/sso/login", nil)
+	loginURL := baseURL + "/api/v1/auth/sso/login"
+	if len(returnPath) > 0 {
+		query := url.Values{"redirect": []string{returnPath[0]}}
+		loginURL += "?" + query.Encode()
+	}
+	req, err := http.NewRequest(http.MethodGet, loginURL, nil)
 	require.NoError(t, err)
 	if forwardedProto != "" {
 		req.Header.Set("X-Forwarded-Proto", forwardedProto)
@@ -39,12 +44,12 @@ func ssoLoginLeg(t *testing.T, forwardedProto string) (string, []*http.Cookie, h
 }
 
 // ssoExchange drives login → IdP authorize → callback without a cookie jar:
-// the state cookie travels as an explicit header (a jar would refuse a
-// Secure cookie over plain http, exactly as a browser behind TLS
-// termination would hand it back over the https leg).
-func ssoExchange(t *testing.T, forwardedProto string) (int, string, http.Header) {
+// the state cookies travel as explicit headers (a jar would refuse a Secure
+// cookie over plain http, exactly as a browser behind TLS termination would
+// hand them back over the https leg).
+func ssoExchange(t *testing.T, forwardedProto string, returnPath ...string) (int, string, http.Header) {
 	t.Helper()
-	authorize, cookies, _ := ssoLoginLeg(t, forwardedProto)
+	authorize, cookies, _ := ssoLoginLeg(t, forwardedProto, returnPath...)
 
 	var stateCookie *http.Cookie
 	for _, c := range cookies {
@@ -69,7 +74,9 @@ func ssoExchange(t *testing.T, forwardedProto string) (int, string, http.Header)
 	require.NoError(t, err)
 	cbReq, err := http.NewRequest(http.MethodGet, cb.String(), nil)
 	require.NoError(t, err)
-	cbReq.AddCookie(stateCookie)
+	for _, cookie := range cookies {
+		cbReq.AddCookie(cookie)
+	}
 	if forwardedProto != "" {
 		cbReq.Header.Set("X-Forwarded-Proto", forwardedProto)
 	}
@@ -86,9 +93,11 @@ func ssoExchange(t *testing.T, forwardedProto string) (int, string, http.Header)
 func ssoToken(t *testing.T, status int, location string) string {
 	t.Helper()
 	require.Equal(t, http.StatusFound, status)
-	require.True(t, strings.HasPrefix(location, "/#sso_token="),
+	parsed, err := url.Parse(location)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(parsed.Fragment, "sso_token="),
 		"the token travels in the URL fragment: %s", location)
-	token, err := url.PathUnescape(strings.TrimPrefix(location, "/#sso_token="))
+	token, err := url.PathUnescape(strings.TrimPrefix(parsed.Fragment, "sso_token="))
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 	return token
@@ -98,10 +107,15 @@ func ssoToken(t *testing.T, status int, location string) string {
 // with state+nonce, provision on first login, deny outside the allowlist,
 // and never change an existing user's role.
 func TestE2E_SSOLoginAndProvisioning(t *testing.T) {
-	t.Run("first login provisions an allowlisted admin-group user", func(t *testing.T) {
+	t.Run("first login provisions an allowlisted admin-group user and preserves the deep link", func(t *testing.T) {
 		fakes.idp.setEmail("e2e-sso-full@example.com")
-		status, location, _ := ssoExchange(t, "")
+		status, location, _ := ssoExchange(t, "", "/projects/demo?tab=members")
 		token := ssoToken(t, status, location)
+
+		returned, err := url.Parse(location)
+		require.NoError(t, err)
+		require.Equal(t, "/projects/demo", returned.Path)
+		require.Equal(t, "tab=members", returned.RawQuery)
 
 		me := request[profileEnvelope](t, http.MethodGet, "/api/v1/me", token, nil, http.StatusOK)
 		require.Equal(t, "e2e-sso-full@example.com", me.Email)

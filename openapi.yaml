@@ -253,18 +253,25 @@ paths:
       description: |
         Redirects to the identity provider's authorization endpoint and sets an
         `HttpOnly` `sso_state` cookie binding the CSRF state (and the OIDC
-        nonce) to this browser. `Secure` is set only when the transport is
-        verified secure — TLS in-process, or `X-Forwarded-Proto: https` from a
-        configured trusted proxy. Available only when `SSO_ENABLE` is on; the
-        route is absent otherwise.
+        nonce) to this browser. An optional, validated same-origin `redirect`
+        path is held in a second cookie bound to that state, not sent to the
+        identity provider. `Secure` is set only when the transport is verified
+        secure — TLS in-process, or `X-Forwarded-Proto: https` from a configured
+        trusted proxy. Available only when `SSO_ENABLE` is on; the route is
+        absent otherwise.
       security: []
+      parameters:
+        - name: redirect
+          in: query
+          description: Optional same-origin SPA path and query to return to after sign-in; invalid values fall back to `/`.
+          schema: { type: string, maxLength: 2048 }
       responses:
         "302":
           description: Redirect to the identity provider.
           headers:
             Set-Cookie:
               schema: { type: string }
-              description: "`sso_state=<token>`; HttpOnly, SameSite=Lax, 10-minute lifetime."
+              description: "Sets `sso_state` and `sso_return`; HttpOnly, SameSite=Lax, 10-minute lifetime."
 
   /api/v1/auth/sso/callback:
     get:
@@ -274,9 +281,9 @@ paths:
       description: |
         Exchanges the authorization code, validates the ID token (signature,
         issuer, audience, expiry, nonce) against the state cookie, resolves the
-        IdP subject to a local account, and redirects to the SPA with the
-        session token in the URL **fragment** so it never reaches a server log
-        or `Referer` header.
+        IdP subject to a local account, and redirects to the validated SPA path
+        with the session token in the URL **fragment** so it never reaches a
+        server log or `Referer` header.
 
         Unknown IdP subjects are provisioned only when their email domain is in
         `SSO_ALLOWED_DOMAINS`; otherwise the request is refused. An existing
@@ -293,7 +300,7 @@ paths:
           schema: { type: string }
       responses:
         "302":
-          description: "Redirect to `/#sso_token=<jwt>`."
+          description: "Redirect to `<validated-path>#sso_token=<jwt>`; defaults to `/` when no safe return path was supplied."
           headers:
             Location:
               schema: { type: string }
