@@ -159,7 +159,7 @@ jobs:
         run: go build ./...
 
   frontend:
-    name: frontend (vitest + tsc + dprint + oxlint + api types)
+    name: frontend (vitest + tsc + dprint + oxlint)
     runs-on: ubuntu-latest
     defaults:
       run:
