@@ -11,7 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// BP-16's server-side bad paths — the catalog's "edge cases NOT E2E'd":
+// The ingest endpoint's server-side bad paths — the catalog's "edge cases
+// NOT E2E'd":
 // malformed bodies, the size cap, individually named missing fields,
 // unknown project/scanner, and what a parse failure does or does not
 // persist.

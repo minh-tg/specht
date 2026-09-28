@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Local shapes for account administration (BP-06, BP-07).
+// Local shapes for the profile and API key endpoints.
 
 type profileEnvelope struct {
 	ID          string  `json:"id"`
@@ -29,7 +29,8 @@ type apiKeyEnvelope struct {
 	CreatedAt string  `json:"created_at"`
 }
 
-// TestE2E_ProfileUpdate covers BP-06: a signed-in user edits their own
+// TestE2E_ProfileUpdate covers the profile process: a signed-in user
+// edits their own
 // profile — trimming, persistence, clearing — and API keys are refused on
 // the session-only routes.
 func TestE2E_ProfileUpdate(t *testing.T) {
@@ -79,7 +80,8 @@ func TestE2E_ProfileUpdate(t *testing.T) {
 	})
 }
 
-// TestE2E_APIKeyLifecycle covers BP-07 end to end: creation validates input
+// TestE2E_APIKeyLifecycle covers the API key lifecycle end to end:
+// creation validates input
 // and returns the one-time secret, list and revoke operate over the real
 // store, revoked and expired keys stop authenticating, and the role/scope
 // gates hold on every route.

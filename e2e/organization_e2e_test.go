@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Local response shapes for the organization endpoints (BP-11..BP-15).
+// Local response shapes for the organization endpoints.
 
 type projectEnvelope struct {
 	ID          string  `json:"id"`
@@ -73,7 +73,7 @@ func errorCode(t *testing.T, raw []byte) string {
 	return e.Error.Code
 }
 
-// TestE2E_ProjectLifecycle walks a project's full lifecycle (BP-11) and the
+// TestE2E_ProjectLifecycle walks a project's full lifecycle and the
 // identity-scoped visibility rules around it: lists differ per principal,
 // missing projects leak nothing to non-members, updates are admin-gated,
 // duplicate slugs conflict, and delete removes the project for everyone.
@@ -180,7 +180,7 @@ func TestE2E_ProjectLifecycle(t *testing.T) {
 	})
 }
 
-// TestE2E_ProjectMembership pins the membership business process (BP-12):
+// TestE2E_ProjectMembership pins the membership business process:
 // the roster is admin-only, grants validate identity/role/user, membership
 // unlocks reads, and the project role gates writes (viewer reads but cannot
 // ingest; an editor grant unlocks ingest).
@@ -286,7 +286,7 @@ func TestE2E_ProjectMembership(t *testing.T) {
 	})
 }
 
-// TestE2E_TeamAccessGrants pins the team business process (BP-13): any
+// TestE2E_TeamAccessGrants pins the team business process: any
 // session may create a team but only global admins delete one, rosters are
 // team-admin managed, and a project-team link confers access only while the
 // user's team membership lasts (unlink, member removal, and team deletion
@@ -455,7 +455,7 @@ func TestE2E_TeamAccessGrants(t *testing.T) {
 	})
 }
 
-// TestE2E_ScannerCatalog pins the scanner capability contract (BP-15): the
+// TestE2E_ScannerCatalog pins the scanner capability contract: the
 // authenticated catalog is the deterministic registration-order list of
 // built-in parsers with their versions and capabilities, and only global
 // admins may read it — sessions, keys, and anonymous callers are refused.

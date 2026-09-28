@@ -16,7 +16,7 @@ const prCommit = "abcd0000abcd0000abcd0000abcd0000abcd0000"
 // unknownCommit names a revision no report ever introduced.
 const unknownCommit = "0000dead0000dead0000dead0000dead0000dead"
 
-// Local response shapes for the planning previews (BP-25, BP-52, BP-53).
+// Local response shapes for the planning previews.
 
 type prCheckAnnotation struct {
 	FindingID string `json:"finding_id"`

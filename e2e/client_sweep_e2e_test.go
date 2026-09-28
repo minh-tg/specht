@@ -12,7 +12,7 @@ import (
 	"github.com/minh-tg/specht/internal/client"
 )
 
-// BP-71: the Go client library as a subject — its methods driven against
+// The Go client library as a subject — its methods driven against
 // the live server (the CLI already exercises a subset end to end).
 
 func TestE2E_ClientLibrarySweep(t *testing.T) {

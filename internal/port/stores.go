@@ -542,11 +542,11 @@ type FindingStore interface {
 	MarkFixed(ctx context.Context, findingID string) (Finding, error)
 	// MarkFixedWithEvent atomically marks a finding fixed and records its audit event.
 	MarkFixedWithEvent(ctx context.Context, findingID string, event FindingEventInput) (Finding, error)
-	// MarkAbsentFindingsFixed is the ingest-time auto-fix writer
-	// (ADR-018): it closes open or reopened findings whose most recent
-	// observation came from an equivalent complete scan (same project
-	// and scope hash) and that reportID does not observe, returning the
-	// closed findings. Callers gate it to full scans whose parsed
+	// MarkAbsentFindingsFixed is the ingest-time auto-fix writer: it closes
+	// open or reopened findings whose most recent observation came from an
+	// equivalent complete scan (same project and scope hash) and that
+	// reportID does not observe, returning the closed findings. Callers gate
+	// it to full scans whose parsed
 	// completeness is "complete".
 	MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string) ([]Finding, error)
 	// BulkCreateEvents records one event shape for many findings in a

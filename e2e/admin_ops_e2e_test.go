@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Local response shapes for the admin & operations endpoints (BP-54, BP-55).
+// Local response shapes for the admin & operations endpoints.
 
 type adminStatus struct {
 	Projects              int64      `json:"projects"`

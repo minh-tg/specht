@@ -10,7 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Local response shapes for the assessment endpoints (BP-30, BP-32..BP-35).
+// Local response shapes for the assessment endpoints: bulk triage,
+// evidence, reachability, signoff, and fix verification.
 
 type reachabilityResponse struct {
 	ID         string `json:"id"`

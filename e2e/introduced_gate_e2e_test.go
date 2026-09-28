@@ -10,9 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestE2E_IntroducedGateScopesToChange pins ADR-022's core promise through
-// the public API and the CLI: a PR report that only re-reports baseline debt
-// passes the change gate while the full gate keeps blocking, and a PR that
+// TestE2E_IntroducedGateScopesToChange pins the change-gating core promise
+// through the public API and the CLI: a PR report that only re-reports
+// baseline debt passes the change gate while the full gate keeps blocking,
+// and a PR that
 // introduces a blocking finding fails only the change gate. Classification
 // runs against a real baseline resolved from base_revision.
 func TestE2E_IntroducedGateScopesToChange(t *testing.T) {
@@ -82,7 +83,7 @@ func TestE2E_IntroducedGateScopesToChange(t *testing.T) {
 			}), http.StatusCreated)
 		require.Equal(t, 1, pr.TotalFindings)
 		require.False(t, pr.ThresholdBreached,
-			"pre-existing baseline debt must not fail the change gate (ADR-022)")
+			"pre-existing baseline debt must not fail the change gate")
 		require.Equal(t, 0, pr.IntroducedCount)
 		require.Equal(t, 1, pr.PreExistingCount)
 

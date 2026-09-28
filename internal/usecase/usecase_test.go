@@ -3891,7 +3891,8 @@ func TestGetGateStatus_WatcherOffDropsAll(t *testing.T) {
 // TestIngestUnknownScan_CannotCloseUnseenFinding is the no-auto-fix
 // regression: an unknown-completeness scan of a new fingerprint must leave
 // the finding open/unanalyzed — no fixed-state write and no silent expiry
-// path may close an unseen finding. (The ADR-018 auto-fix writer only runs
+// path may close an unseen finding. (The scan-equivalence auto-fix writer
+// only runs
 // for full scans whose parser vouches completeness "complete"; unknown
 // scans never reach it, and upsert reopens on reappearance.)
 func TestIngestUnknownScan_CannotCloseUnseenFinding(t *testing.T) {
