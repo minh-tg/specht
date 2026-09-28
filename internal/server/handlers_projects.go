@@ -128,7 +128,7 @@ func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit := parseIntParam(r, "limit", 20)
-	offset := parseIntParam(r, "offset", 0)
+	offset := parseOffsetParam(r, "offset", 0)
 
 	reports, err := h.usecase.ListReports(r.Context(), slug, limit, offset)
 	if err != nil {

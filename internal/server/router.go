@@ -77,7 +77,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		AllowedOrigins:   origins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", headerContentType},
-		ExposedHeaders:   []string{"Link"},
+		ExposedHeaders:   []string{"Link", "X-Total-Count"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
@@ -143,6 +143,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(session).Get("/api/v1/me", h.Me)
 		r.With(session).Put("/api/v1/me", h.UpdateMe)
 		r.With(sessionAdmin).Get("/api/v1/scanners", h.ListScanners)
+		r.With(sessionAdmin).Get("/api/v1/users", h.ListUsers)
 		r.With(readScope).Get("/api/v1/projects", h.ListProjects)
 		r.With(sessionAdmin).Post("/api/v1/projects", h.CreateProject)
 		r.With(readScope).Get(routeProjectsSlug, h.GetProject)

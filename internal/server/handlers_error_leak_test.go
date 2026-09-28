@@ -467,6 +467,16 @@ func TestWaiverHandlers_DoNotLeakStoreDetail(t *testing.T) {
 			wantStatus: http.StatusInternalServerError, wantCode: "internal_error",
 			wantMsg: "could not get watcher status",
 		},
+		{
+			name:   "list users store error",
+			method: "GET", target: "/api/v1/users?email=a&limit=5",
+			setup: func(m *mockUsecases) {
+				m.listUsersFn = func(_ context.Context, _ string, _, _ int32) ([]usecase.UserProfile, error) { return nil, dbErr }
+			},
+			invoke:     func(h *Handler, w http.ResponseWriter, r *http.Request) { h.ListUsers(w, r) },
+			wantStatus: http.StatusInternalServerError, wantCode: "internal_error",
+			wantMsg: "could not list users",
+		},
 	}
 
 	for _, tt := range cases {

@@ -121,6 +121,9 @@ type UserStore interface {
 	Create(ctx context.Context, email string, displayName, passwordHash *string) (User, error)
 	GetByEmail(ctx context.Context, email string) (User, error)
 	GetByID(ctx context.Context, id string) (User, error)
+	// List returns accounts ordered by email. filter matches a
+	// case-insensitive substring of the email; empty lists every account.
+	List(ctx context.Context, filter string, limit, offset int32) ([]User, error)
 	// SetRole changes a user's global role. Role must be a valid users.role value.
 	SetRole(ctx context.Context, userID, role string) (User, error)
 	// UpdateDisplayName changes a user's display name. A nil displayName
@@ -524,6 +527,9 @@ type FindingStore interface {
 	GetByFingerprint(ctx context.Context, projectID, findingKind, fingerprint string) (Finding, error)
 	ListByIDs(ctx context.Context, ids []string) ([]Finding, error)
 	ListByProject(ctx context.Context, projectID string, params ListFindingsParams) ([]Finding, error)
+	// CountByProject counts the findings the same filters select, ignoring
+	// the page window. It backs the list's X-Total-Count header.
+	CountByProject(ctx context.Context, projectID string, params ListFindingsParams) (int64, error)
 	UpdateAnalysis(ctx context.Context, input UpdateAnalysisInput) (Finding, error)
 	// UpdateAnalysisWithEvent atomically updates analysis state and records its audit event.
 	UpdateAnalysisWithEvent(ctx context.Context, input UpdateAnalysisInput, event FindingEventInput) (Finding, error)

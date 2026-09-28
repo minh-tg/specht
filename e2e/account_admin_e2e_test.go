@@ -201,3 +201,97 @@ func TestE2E_APIKeyLifecycle(t *testing.T) {
 			"admin commands are never key-scoped")
 	})
 }
+
+// TestE2E_UserDirectory covers the account directory the admin surfaces pick
+// a user from: an admin lists accounts, narrows by an email substring, and
+// pages through them. It is session-admin only — a project key must never
+// enumerate the organization — and it never returns credential material.
+func TestE2E_UserDirectory(t *testing.T) {
+	viewer := login(t, "e2e-viewer@example.com", adminPass)
+	viewerProfile := request[profileEnvelope](t, http.MethodGet, "/api/v1/me", viewer, nil, http.StatusOK)
+	for _, email := range []string{
+		"e2e-directory_under_score@example.com",
+		"e2e-directory-under-score@example.com",
+	} {
+		request[authResponse](t, http.MethodPost, "/api/v1/auth/register", "",
+			map[string]string{"email": email, "password": adminPass}, http.StatusCreated)
+	}
+	slug := newProject(t, "user-directory")
+
+	t.Run("an admin lists accounts ordered by email", func(t *testing.T) {
+		users := request[[]profileEnvelope](t, http.MethodGet, "/api/v1/users", adminToken, nil, http.StatusOK)
+		require.GreaterOrEqual(t, len(users), 2, "the harness registers an admin and a viewer")
+
+		var emails []string
+		for _, u := range users {
+			emails = append(emails, u.Email)
+			require.NotEmpty(t, u.ID)
+			require.NotEmpty(t, u.Role)
+			require.NotEmpty(t, u.CreatedAt)
+		}
+		require.Contains(t, emails, viewerProfile.Email)
+		require.IsIncreasing(t, emails, "the directory is ordered by email so pages are stable")
+	})
+
+	t.Run("the email filter narrows the directory", func(t *testing.T) {
+		exact := request[[]profileEnvelope](t, http.MethodGet,
+			"/api/v1/users?email="+viewerProfile.Email, adminToken, nil, http.StatusOK)
+		require.Len(t, exact, 1)
+		require.Equal(t, viewerProfile.ID, exact[0].ID)
+
+		partial := request[[]profileEnvelope](t, http.MethodGet,
+			"/api/v1/users?email=VIEWER", adminToken, nil, http.StatusOK)
+		require.Len(t, partial, 1, "the filter matches a case-insensitive substring")
+		require.Equal(t, viewerProfile.ID, partial[0].ID)
+
+		require.Empty(t, request[[]profileEnvelope](t, http.MethodGet,
+			"/api/v1/users?email=nobody-matches-this", adminToken, nil, http.StatusOK))
+
+		literal := request[[]profileEnvelope](t, http.MethodGet,
+			"/api/v1/users?email=directory_under_score", adminToken, nil, http.StatusOK)
+		require.Len(t, literal, 1, "underscore in the filter is literal, not a LIKE wildcard")
+		require.Equal(t, "e2e-directory_under_score@example.com", literal[0].Email)
+	})
+
+	t.Run("limit and offset bound the page", func(t *testing.T) {
+		all := request[[]profileEnvelope](t, http.MethodGet, "/api/v1/users", adminToken, nil, http.StatusOK)
+
+		first := request[[]profileEnvelope](t, http.MethodGet,
+			"/api/v1/users?limit=1", adminToken, nil, http.StatusOK)
+		require.Len(t, first, 1)
+		require.Equal(t, all[0].ID, first[0].ID, "the first page starts at the first account")
+
+		second := request[[]profileEnvelope](t, http.MethodGet,
+			"/api/v1/users?limit=1&offset=1", adminToken, nil, http.StatusOK)
+		require.Len(t, second, 1)
+		require.Equal(t, all[1].ID, second[0].ID, "offset moves the window")
+
+		require.Empty(t, request[[]profileEnvelope](t, http.MethodGet,
+			"/api/v1/users?offset=1000", adminToken, nil, http.StatusOK))
+		require.Len(t, request[[]profileEnvelope](t, http.MethodGet,
+			"/api/v1/users?limit=-1", adminToken, nil, http.StatusOK), len(all),
+			"a negative limit falls back to the default page rather than erroring")
+	})
+
+	t.Run("only an admin session may enumerate accounts", func(t *testing.T) {
+		status, raw := doJSON(t, http.MethodGet, "/api/v1/users", viewer, nil)
+		require.Equal(t, http.StatusForbidden, status, string(raw))
+		require.Equal(t, "insufficient_role", errorCode(t, raw))
+
+		status, raw = doJSON(t, http.MethodGet, "/api/v1/users", mintKey(t, slug), nil)
+		require.Equal(t, http.StatusForbidden, status, string(raw))
+		require.Equal(t, "insufficient_role", errorCode(t, raw),
+			"a project key has no business enumerating the organization")
+
+		status, raw = doJSON(t, http.MethodGet, "/api/v1/users", "", nil)
+		require.Equal(t, http.StatusUnauthorized, status, string(raw))
+		require.Equal(t, "missing_token", errorCode(t, raw))
+	})
+
+	t.Run("the directory never returns credential material", func(t *testing.T) {
+		status, raw := doJSON(t, http.MethodGet, "/api/v1/users", adminToken, nil)
+		require.Equal(t, http.StatusOK, status)
+		require.NotContains(t, string(raw), "password")
+		require.NotContains(t, string(raw), "hash")
+	})
+}

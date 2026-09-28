@@ -419,18 +419,24 @@ func (u *Usecases) GetProfile(ctx context.Context, userID string) (*UserProfile,
 		return nil, errors.New(authMsgUserNotFound)
 	}
 
-	name := ""
-	if user.DisplayName != nil {
-		name = *user.DisplayName
-	}
+	profile := toUserProfile(user)
+	return &profile, nil
+}
 
-	return &UserProfile{
-		ID:          user.ID,
-		Email:       user.Email,
-		DisplayName: name,
-		Role:        user.Role,
-		CreatedAt:   user.CreatedAt.Format(time.RFC3339),
-	}, nil
+// ListUsers returns the account directory ordered by email, for the admin
+// surfaces that pick a user to grant access to. filter matches a
+// case-insensitive substring of the email; empty lists every account. The
+// password hash never leaves this layer.
+func (u *Usecases) ListUsers(ctx context.Context, filter string, limit, offset int32) ([]UserProfile, error) {
+	users, err := u.deps.Stores.Users.List(ctx, strings.TrimSpace(filter), limit, offset)
+	if err != nil {
+		return nil, fmt.Errorf("list users: %w", err)
+	}
+	out := make([]UserProfile, len(users))
+	for i, user := range users {
+		out[i] = toUserProfile(user)
+	}
+	return out, nil
 }
 
 // UpdateProfile changes the caller's display name. A nil or blank
@@ -454,18 +460,24 @@ func (u *Usecases) UpdateProfile(ctx context.Context, userID string, displayName
 		return nil, errors.New(authMsgUserNotFound)
 	}
 
+	profile := toUserProfile(user)
+	return &profile, nil
+}
+
+// toUserProfile maps a stored account to its API shape. The password hash is
+// deliberately absent: it never crosses this boundary.
+func toUserProfile(user port.User) UserProfile {
 	name := ""
 	if user.DisplayName != nil {
 		name = *user.DisplayName
 	}
-
-	return &UserProfile{
+	return UserProfile{
 		ID:          user.ID,
 		Email:       user.Email,
 		DisplayName: name,
 		Role:        user.Role,
 		CreatedAt:   user.CreatedAt.Format(time.RFC3339),
-	}, nil
+	}
 }
 
 func strPtr(s string) *string { return &s }

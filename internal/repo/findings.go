@@ -44,6 +44,19 @@ func (r *pgFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID
 	})
 }
 
+// CountByProject counts the findings the same filters select, ignoring the
+// page window: the total a client needs to render "n of m".
+func (r *pgFindingRepo) CountByProject(ctx context.Context, projectID pgtype.UUID, params port.ListFindingsParams) (int64, error) {
+	return r.q.CountFindingsByProject(ctx, sqlc.CountFindingsByProjectParams{
+		ProjectID: projectID,
+		Column2:   params.Severities,
+		Column3:   params.States,
+		Column4:   params.Kinds,
+		Column5:   params.Environments,
+		Column6:   params.Targets,
+	})
+}
+
 func (r *pgFindingRepo) Upsert(ctx context.Context, arg UpsertFindingParams) (sqlc.Finding, error) {
 	return r.q.UpsertFinding(ctx, sqlc.UpsertFindingParams{
 		ProjectID:           arg.ProjectID,

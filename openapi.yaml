@@ -34,6 +34,10 @@ info:
     - List endpoints return a **bare JSON array**; pagination is
       `limit`/`offset` (default 20, maximum 500). A malformed, negative, or
       oversized limit falls back to the default rather than erroring.
+    - Paginated lists carry **`X-Total-Count`**, the size of the filtered set
+      independent of the page window, so a client can render "n of m" without
+      walking the pages. Findings serves it today; a missing header means the
+      total is unknown, not zero.
     - Timestamps are RFC 3339 with a UTC offset. Durations are Go duration
       strings (`30d` is not valid; use `720h`).
     - Errors share one envelope: `{"error": {"code": ..., "message": ...}}`.
@@ -92,6 +96,8 @@ tags:
     description: Organization groups and their project links.
   - name: Project members
     description: Direct per-project grants.
+  - name: Users
+    description: The account directory that admin surfaces pick a user from.
   - name: Context
     description: Environments, targets, and artifacts derived from scan context.
   - name: Insights
@@ -562,6 +568,40 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/SessionRequired" }
 
+  /api/v1/users:
+    get:
+      tags: [Users]
+      operationId: listUsers
+      summary: List accounts
+      description: |
+        The directory an admin picks from when granting project membership or
+        adding a team member, so a UI never has to ask for a raw user id.
+        Session admins only — a project-scoped key has no business
+        enumerating the organization. The response carries no credential
+        material.
+      x-auth: session
+      x-required-role: admin
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: email
+          in: query
+          description: Case-insensitive substring match on the email address. Empty lists every account.
+          schema: { type: string }
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Accounts, ordered by email so pages are stable.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/UserProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/SessionRequired" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/v1/reports:
     post:
       tags: [Reports]
@@ -697,7 +737,13 @@ paths:
         - $ref: "#/components/parameters/Offset"
       responses:
         "200":
-          description: The matching findings.
+          description: |
+            The matching findings. `X-Total-Count` carries the size of the
+            filtered set, independent of `limit`/`offset`.
+          headers:
+            X-Total-Count:
+              description: Size of the filtered set across every page.
+              schema: { type: integer }
           content:
             application/json:
               schema:
@@ -2039,8 +2085,8 @@ components:
     Offset:
       name: offset
       in: query
-      description: Items to skip.
-      schema: { type: integer, minimum: 0, default: 0 }
+      description: Items to skip. A malformed, negative, or out-of-range value falls back to 0.
+      schema: { type: integer, minimum: 0, maximum: 2147483647, default: 0 }
 
   responses:
     NoContent:
@@ -2178,7 +2224,9 @@ components:
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
-        display_name: { type: [string, "null"] }
+        display_name:
+          type: string
+          description: Omitted when the account has no display name.
         role:
           type: string
           description: |

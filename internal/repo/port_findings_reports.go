@@ -317,6 +317,15 @@ func (r *pgFindingPort) ListByProject(ctx context.Context, projectID string, par
 	return out, nil
 }
 
+// CountByProject counts what ListByProject would return across all pages.
+func (r *pgFindingPort) CountByProject(ctx context.Context, projectID string, params port.ListFindingsParams) (int64, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return 0, err
+	}
+	return r.inner.CountByProject(ctx, pid, params)
+}
+
 func (r *pgFindingPort) UpdateAnalysis(ctx context.Context, input port.UpdateAnalysisInput) (port.Finding, error) {
 	fid, err := parseID(input.ID)
 	if err != nil {
