@@ -93,9 +93,11 @@ func ssoExchange(t *testing.T, forwardedProto string, returnPath ...string) (int
 func ssoToken(t *testing.T, status int, location string) string {
 	t.Helper()
 	require.Equal(t, http.StatusFound, status)
-	require.True(t, strings.HasPrefix(location, "/#sso_token="),
+	parsed, err := url.Parse(location)
+	require.NoError(t, err)
+	require.True(t, strings.HasPrefix(parsed.Fragment, "sso_token="),
 		"the token travels in the URL fragment: %s", location)
-	token, err := url.PathUnescape(strings.TrimPrefix(location, "/#sso_token="))
+	token, err := url.PathUnescape(strings.TrimPrefix(parsed.Fragment, "sso_token="))
 	require.NoError(t, err)
 	require.NotEmpty(t, token)
 	return token
@@ -105,28 +107,20 @@ func ssoToken(t *testing.T, status int, location string) string {
 // with state+nonce, provision on first login, deny outside the allowlist,
 // and never change an existing user's role.
 func TestE2E_SSOLoginAndProvisioning(t *testing.T) {
-	t.Run("first login provisions an allowlisted admin-group user", func(t *testing.T) {
+	t.Run("first login provisions an allowlisted admin-group user and preserves the deep link", func(t *testing.T) {
 		fakes.idp.setEmail("e2e-sso-full@example.com")
-		status, location, _ := ssoExchange(t, "")
+		status, location, _ := ssoExchange(t, "", "/projects/demo?tab=members")
 		token := ssoToken(t, status, location)
+
+		returned, err := url.Parse(location)
+		require.NoError(t, err)
+		require.Equal(t, "/projects/demo", returned.Path)
+		require.Equal(t, "tab=members", returned.RawQuery)
 
 		me := request[profileEnvelope](t, http.MethodGet, "/api/v1/me", token, nil, http.StatusOK)
 		require.Equal(t, "e2e-sso-full@example.com", me.Email)
 		require.Equal(t, "admin", me.Role,
 			"the platform-team admin group provisions a global admin")
-	})
-
-	t.Run("safe deep-link return survives the provider round-trip", func(t *testing.T) {
-		defer fakes.idp.setEmail(e2eSSOEmail)
-		fakes.idp.setEmail("e2e-sso-return@example.com")
-
-		status, location, _ := ssoExchange(t, "", "/projects/demo?tab=members")
-		require.Equal(t, http.StatusFound, status)
-		returned, err := url.Parse(location)
-		require.NoError(t, err)
-		require.Equal(t, "/projects/demo", returned.Path)
-		require.Equal(t, "tab=members", returned.RawQuery)
-		require.True(t, strings.HasPrefix(returned.Fragment, "sso_token="))
 	})
 
 	t.Run("the allowlist denies foreign domains and empty emails", func(t *testing.T) {
