@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Local response shapes for the policy endpoints (BP-44, BP-45).
+// Local response shapes for the policy endpoints.
 
 type policyTemplate struct {
 	ID          string            `json:"id"`

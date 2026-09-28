@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The CVE watcher daemon over the fake OSV feed (BP-46), status
-// surfaces (BP-47), the backfill CLI (BP-48), and notifications (BP-49).
+// The CVE watcher daemon over the fake OSV feed, its status surfaces, the
+// backfill CLI, and its notifications.
 
 // armLodashAdvisory advertises an OSV record matching the lodash inventory
 // of trivy-npm-packages-scan.json: fixed in 4.18.0, CVSS 3.1 high.
@@ -87,7 +87,7 @@ func setWatcherEnabled(t *testing.T, slug string, enabled bool) {
 	require.Equal(t, int64(1), tag.RowsAffected())
 }
 
-// TestE2E_WatcherDaemonLifecycle closes BP-46..BP-49: an armed advisory on
+// TestE2E_WatcherDaemonLifecycle closes the watcher arc: an armed advisory on
 // the injected feed becomes a gated cve_watcher finding exactly once (with
 // advisory evidence and a notification), status reports healthy over API
 // and CLI, and the backfill CLI honors --dry-run before writing.
@@ -142,7 +142,7 @@ func TestE2E_WatcherDaemonLifecycle(t *testing.T) {
 			"/api/v1/findings/"+f.ID+"/evidence", adminToken, nil, http.StatusOK)
 		require.NotEmpty(t, evidence, "the advisory record persists as evidence")
 
-		// BP-49: the creation fans out to the generic webhook sink.
+		// The creation fans out to the generic webhook sink.
 		requireEventually(t, 15*time.Second, func() bool {
 			return fakes.notifySink.count() > notifyBefore
 		}, "the notifier receives the created finding")

@@ -15,7 +15,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// BP-70: the MCP bridge spawned as a real process against the live E2E
+// The MCP bridge spawned as a real process against the live E2E
 // server, speaking stdio JSON-RPC — the wire mocks cannot see.
 
 func connectMCP(t *testing.T) *mcp.ClientSession {

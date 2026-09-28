@@ -3,8 +3,8 @@ import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-// Browser journeys for the pages the COMP suites cannot prove: the seven
-// COMP-only entries BP-63..BP-69 against the shipped artifact. The script
+// Browser journeys for the pages the COMP suites cannot prove: the
+// seven journeys the COMP suites only mirror, against the shipped artifact. The script
 // bootstraps an admin account (two-phase ADMIN_EMAILS) — these defaults
 // mirror it; E2E_UI_ADMIN_* overrides keep both sides in sync.
 
@@ -64,9 +64,9 @@ async function uiLogin(page: import("@playwright/test").Page): Promise<void> {
   await expect(page).toHaveURL(/\/$/);
 }
 
-test("BP-63: findings dashboard filters live rows", async ({ page, request }) => {
+test("findings dashboard filters live rows", async ({ page, request }) => {
   const token = await apiToken(request);
-  const slug = uniq("bp63");
+  const slug = uniq("findings-filter");
   await seedProject(request, token, slug);
   await ingestFixture(request, token, slug, FIXTURE_HIGH);
   await ingestFixture(request, token, slug, FIXTURE_MEDIUM);
@@ -87,9 +87,9 @@ test("BP-63: findings dashboard filters live rows", async ({ page, request }) =>
   await expect(rows).toHaveCount(2);
 });
 
-test("BP-64: finding detail triage applies states and enforces reasons", async ({ page, request }) => {
+test("finding detail triage applies states and enforces reasons", async ({ page, request }) => {
   const token = await apiToken(request);
-  const slug = uniq("bp64");
+  const slug = uniq("finding-detail");
   await seedProject(request, token, slug);
   await ingestFixture(request, token, slug, FIXTURE_HIGH);
   await uiLogin(page);
@@ -123,9 +123,9 @@ test("BP-64: finding detail triage applies states and enforces reasons", async (
   ).toContainText("Confirmed");
 });
 
-test("BP-65: report history lists both ingested reports", async ({ page, request }) => {
+test("report history lists both ingested reports", async ({ page, request }) => {
   const token = await apiToken(request);
-  const slug = uniq("bp65");
+  const slug = uniq("report-history");
   await seedProject(request, token, slug);
   await ingestFixture(request, token, slug, FIXTURE_HIGH);
   await ingestFixture(request, token, slug, FIXTURE_MEDIUM);
@@ -136,9 +136,9 @@ test("BP-65: report history lists both ingested reports", async ({ page, request
   await expect(page.getByText("No reports yet")).toHaveCount(0);
 });
 
-test("BP-66: manual ingest uploads a scan file", async ({ page, request }) => {
+test("manual ingest uploads a scan file", async ({ page, request }) => {
   const token = await apiToken(request);
-  const slug = uniq("bp66");
+  const slug = uniq("manual-ingest");
   await seedProject(request, token, slug);
   await uiLogin(page);
 
@@ -156,9 +156,9 @@ test("BP-66: manual ingest uploads a scan file", async ({ page, request }) => {
   await expect(page.locator("tbody tr")).toHaveCount(1);
 });
 
-test("BP-67: API keys create with one-time reveal and revoke", async ({ page, request }) => {
+test("API keys create with one-time reveal and revoke", async ({ page, request }) => {
   const token = await apiToken(request);
-  const slug = uniq("bp67");
+  const slug = uniq("api-keys");
   await seedProject(request, token, slug);
   await uiLogin(page);
 
@@ -176,7 +176,7 @@ test("BP-67: API keys create with one-time reveal and revoke", async ({ page, re
   await expect(page.getByText("No API keys yet")).toBeVisible();
 });
 
-test("BP-68: logout and session expiry both return to sign in", async ({ page }) => {
+test("logout and session expiry both return to sign in", async ({ page }) => {
   await uiLogin(page);
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
 
@@ -193,7 +193,7 @@ test("BP-68: logout and session expiry both return to sign in", async ({ page })
   await expect(page).toHaveURL(/\/login/);
 });
 
-test("BP-69: sso hash token installs a session and junk is rejected", async ({ page, request }) => {
+test("sso hash token installs a session and junk is rejected", async ({ page, request }) => {
   const token = await apiToken(request);
 
   // A well-formed token in the fragment installs the session…

@@ -18,8 +18,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Shapes for report history, finding state, audit events, and the
-// context tables (BP-14, BP-19, BP-20, BP-21).
+// Shapes for report history, finding state, audit events, the context
+// tables, auto-fix, and the parser adapters.
 
 type reportRow struct {
 	ID            string  `json:"id"`
@@ -155,11 +155,11 @@ func TestE2E_ParserRegistryDetection(t *testing.T) {
 }
 
 // TestE2E_BuiltinParserIngest feeds every built-in parser through the real
-// ingest API (BP-20) and pins each fixture's finding count and kind as the
+// ingest API and pins each fixture's finding count and kind as the
 // contract of its adapter.
 func TestE2E_BuiltinParserIngest(t *testing.T) {
 	// want counts distinct persisted findings (fingerprint identity,
-	// ADR-015); wantReport counts the report's total_findings, which
+	// finding identity); wantReport counts the report's total_findings, which
 	// deliberately reflects every normalized entry the scanner emitted —
 	// duplicated events stay visible there (pinned by
 	// TestNucleiIngest_EndToEnd) while collapsing in the findings list.
@@ -209,8 +209,9 @@ func TestE2E_BuiltinParserIngest(t *testing.T) {
 	}
 }
 
-// TestE2E_AutoFixOnEquivalentRescan covers BP-19: a complete rescan of the
-// same scope that no longer observes a finding closes it with a
+// TestE2E_AutoFixOnEquivalentRescan covers auto-fix on scan equivalence:
+// a complete rescan of the same scope that no longer observes a finding
+// closes it with a
 // state_changed event naming the source report, while a scan whose
 // completeness is unknown never closes anything.
 func TestE2E_AutoFixOnEquivalentRescan(t *testing.T) {
@@ -281,7 +282,7 @@ func TestE2E_AutoFixOnEquivalentRescan(t *testing.T) {
 	})
 }
 
-// TestE2E_ReportHistoryReads covers BP-21: project-scoped report history
+// TestE2E_ReportHistoryReads covers project-scoped report history
 // with pagination, single-report reads, and existence hiding for foreign
 // keys.
 func TestE2E_ReportHistoryReads(t *testing.T) {
@@ -331,7 +332,8 @@ func TestE2E_ReportHistoryReads(t *testing.T) {
 		"a foreign report id must be indistinguishable from a missing one")
 }
 
-// TestE2E_ContextTablesReads covers BP-14: ingest-supplied deployment
+// TestE2E_ContextTablesReads covers the context tables:
+// ingest-supplied deployment
 // context materializes the environment, target, and artifact tables and
 // the read routes expose them.
 func TestE2E_ContextTablesReads(t *testing.T) {

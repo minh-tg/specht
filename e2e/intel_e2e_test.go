@@ -10,8 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// ADR-023's first wiring (BP-50): the finding detail embeds EPSS/KEV
-// intel, resolved on the read path from the configured feeds.
+// Read-time intel enrichment: the finding detail embeds EPSS/KEV intel,
+// resolved on the read path from the configured feeds.
 
 type intelBlock struct {
 	CVEID     string   `json:"cve_id"`

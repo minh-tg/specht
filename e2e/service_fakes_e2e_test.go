@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// watcherStatus is the watcher health contract (BP-47).
+// watcherStatus is the watcher health contract.
 type watcherStatus struct {
 	LastSuccessfulPollAt string `json:"last_successful_poll_at"`
 	LastPollAttemptAt    string `json:"last_poll_attempt_at"`

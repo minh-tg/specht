@@ -11,8 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// The SSO round-trip against the loopback IdP (BP-08) and the
-// trusted-proxy transport verdict (BP-10).
+// The SSO round-trip against the loopback IdP and the trusted-proxy
+// transport verdict.
 
 // noRedirectClient surfaces every redirect instead of following it, so each
 // leg of the SSO dance can be asserted and re-issued with explicit cookies.
@@ -94,7 +94,7 @@ func ssoToken(t *testing.T, status int, location string) string {
 	return token
 }
 
-// TestE2E_SSOLoginAndProvisioning closes BP-08's API-side journey: redirect
+// TestE2E_SSOLoginAndProvisioning closes the SSO API-side journey: redirect
 // with state+nonce, provision on first login, deny outside the allowlist,
 // and never change an existing user's role.
 func TestE2E_SSOLoginAndProvisioning(t *testing.T) {
@@ -144,7 +144,7 @@ func TestE2E_SSOLoginAndProvisioning(t *testing.T) {
 	})
 }
 
-// TestE2E_TrustedProxySecureTransport closes BP-10: the transport verdict
+// TestE2E_TrustedProxySecureTransport covers the transport verdict: the
 // (proxy-aware) drives cookie Secure attributes and HSTS, and the secure
 // journey completes end to end.
 func TestE2E_TrustedProxySecureTransport(t *testing.T) {

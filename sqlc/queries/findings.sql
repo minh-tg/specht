@@ -468,7 +468,7 @@ WHERE project_id = $1
 ORDER BY current_severity_rank DESC, created_at DESC, id DESC;
 
 -- name: MarkAbsentScopedFindingsFixed :many
--- ADR-018 auto-fix writer: closes findings whose most recent observation
+-- Scan-equivalence auto-fix: closes findings whose most recent observation
 -- came from an equivalent complete scan of the same scope and that the
 -- current report ($3) no longer observes. The EXISTS pair below means
 -- "some observation is equivalent-complete and nothing is newer", i.e.

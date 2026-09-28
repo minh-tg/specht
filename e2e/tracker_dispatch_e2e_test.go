@@ -68,7 +68,7 @@ func waitForTrackerDeliveries(t *testing.T, watermark int, eventType string, min
 	return found
 }
 
-// TestE2E_TrackerDispatchLifecycle closes BP-51: finding lifecycle events
+// TestE2E_TrackerDispatchLifecycle covers finding lifecycle events
 // reach the webhook transport — created on ingest, verified_fixed when the
 // auto-fix writer closes findings, regression when a complete rescan
 // reintroduces them — each delivery signed and carrying the routing
@@ -94,7 +94,7 @@ func TestE2E_TrackerDispatchLifecycle(t *testing.T) {
 	}
 
 	// 2. Verified fixed: an equivalent complete scan that omits both
-	// findings closes them (ADR-018) and announces each closure.
+	// findings closes them via auto-fix and announces each closure.
 	w1 := fakes.trackerSink.count()
 	second := ingestRaw(t, slug, "trivy", "trivy-empty-scan.json", scope)
 	require.Zero(t, second.TotalFindings)

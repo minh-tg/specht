@@ -14,7 +14,7 @@ import (
 )
 
 // autofixHarness mirrors the unknown-scan regression setup with a parser
-// that vouches for completeness, so the ingest reaches the ADR-018
+// that vouches for completeness, so the ingest reaches the scan-equivalence
 // auto-fix writer.
 func autofixHarness(t *testing.T, completeness domain.ScanCompleteness) (*Usecases, *mockFindingRepo, *mockReportRepo) {
 	t.Helper()

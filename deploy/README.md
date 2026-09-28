@@ -34,7 +34,112 @@ curl -fsS http://localhost:8080/api/v1/health
 curl -fsS http://localhost:8080/api/v1/version
 ```
 
-## 3. Verify release images
+## 3. Configuration reference
+
+The server reads its settings from the environment. Compose forwards every
+variable below from `deploy/.env.prod`; for a bare-metal run, export them or
+use your service manager. Defaults are the server's own, except where the
+compose defaults differ, which is noted.
+
+### Core
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SERVER_ADDR` | `:8080` | HTTP listen address. |
+| `DATABASE_URL` | *required* | Postgres DSN. Append `?sslmode=require` or `verify-full` for a remote database. |
+| `JWT_SECRET` | *required* | HMAC signing key, at least 32 random bytes. Startup fails without it. |
+| `DB_MIGRATE` | `true` | Run migrations at startup. Set `false` to run `specht migrate` as a separately controlled step. |
+| `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`. |
+| `CORS_ORIGINS` | `http://localhost:5173` | Comma/space-separated UI origins allowed to call the API. |
+| `ADMIN_EMAILS` | *(empty)* | Comma-separated emails promoted to global admin at startup. Idempotent; unknown addresses are skipped with a warning. |
+| `TRUSTED_PROXIES` | *(empty)* | Comma/space-separated CIDRs of proxy hops allowed to set `X-Forwarded-For` / `X-Real-IP` / `X-Forwarded-Proto`. Empty trusts nobody. |
+| `INVENTORY_TTL` | `2160h` | How long a scanned package stays in the watcher's active inventory. |
+| `LIFECYCLE_SWEEP_INTERVAL` | `5m` | Period of the analysis-expiry and waiver-expiry sweeps; must be a positive duration. |
+
+### Rate limiting
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `RATE_LIMIT_ENABLED` | `false` (`true` in compose) | Token-bucket limiting on public and authenticated routes. |
+| `RATE_LIMIT_RPS` | `10` | Per-IP rate for unauthenticated entry points. |
+| `RATE_LIMIT_BURST` | `20` | Burst for the unauthenticated bucket. |
+| `RATE_LIMIT_AUTH_RPS` | `1000` | Per-caller rate behind authentication. |
+| `RATE_LIMIT_AUTH_BURST` | `2000` | Burst for the authenticated bucket. |
+
+### SSO / OIDC
+
+Off unless `SSO_ENABLE=true`, which then requires the client credentials,
+issuer, and redirect URI.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `SSO_ENABLE` | `false` | Mounts the SSO login and callback routes. |
+| `SSO_CLIENT_ID` | *(empty)* | OAuth client id. |
+| `SSO_CLIENT_SECRET` | *(empty)* | **Secret.** OAuth client secret. |
+| `SSO_ISSUER_URL` | *(empty)* | Must be `https`; plain `http` is accepted only for a loopback host, for a local IdP. |
+| `SSO_REDIRECT_URI` | *(empty)* | Must match the IdP's registered redirect URI. |
+| `SSO_GROUPS_CLAIM` | `groups` | Claim carrying IdP group membership. |
+| `SSO_ALLOWED_DOMAINS` | *(empty)* | Comma/space-separated email domains that may auto-provision. Empty refuses every unknown subject. |
+| `SSO_ADMIN_GROUPS` | *(empty)* | IdP groups granting admin to a *newly provisioned* account. Existing accounts never change role from IdP groups. |
+| `SSO_ALLOW_USERINFO_ONLY` | `false` | Insecure compatibility downgrade for an IdP that returns no ID token. |
+
+### CVE feed watcher
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `WATCHER_ENABLE` | `false` | Runs the OSV poll loop. |
+| `WATCHER_POLL_INTERVAL` | `6h` | Time between polls. |
+| `WATCHER_OSV_ENDPOINT` | `https://api.osv.dev/v1/querybatch` | Batch query endpoint. |
+| `WATCHER_OSV_VULN_ENDPOINT` | `https://api.osv.dev/v1/vulns/{id}` | Full-advisory template; `{id}` is substituted. Keep it inside the same trust boundary as the batch endpoint. |
+| `WATCHER_BATCH_SIZE` | `0` (unlimited; compose sets `100`) | Identifiers per batch. |
+| `WATCHER_COLD_START_WINDOW` | `full` | `full` for full-history cold start, or a Go duration to backfill since. |
+| `WATCHER_SLACK_URL` | *(empty)* | Slack webhook for new advisories. Empty disables the channel. |
+| `WATCHER_SLACK_SIGNING_SECRET` | *(empty)* | **Secret.** Signs Slack deliveries. |
+| `WATCHER_WEBHOOK_URL` | *(empty)* | Generic webhook for new advisories. |
+| `WATCHER_WEBHOOK_SIGNING_SECRET` | *(empty)* | **Secret.** Signs both this webhook and tracker deliveries. |
+
+### Tracker dispatch
+
+Finding lifecycle events (created, verified fixed, regression) can be pushed to
+an external issue tracker. Disabled by default.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `TRACKER_PROVIDER` | `noop` | `noop`, `inprocess`, or `webhook`. |
+| `TRACKER_BASE_URL` | *(empty)* | Tracker API base URL. |
+| `TRACKER_PROJECT_ID` | *(empty)* | Destination project. |
+| `TRACKER_API_TOKEN` | *(empty)* | **Secret.** Tracker API token. |
+| `WATCHER_WEBHOOK_URLS` | *(empty)* | Comma-separated endpoints fanned out to when `TRACKER_PROVIDER=webhook`. |
+
+### Threat intel
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `INTEL_TTL` | `1h` | Cache lifetime for both feeds. A feed outage serves the last record, flagged stale. |
+| `INTEL_EPSS_ENDPOINT` | `https://api.first.org/data/v1/epss` | EPSS feed. |
+| `INTEL_KEV_ENDPOINT` | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json` | CISA KEV catalog. |
+
+### Client (adapter and CLI)
+
+Read by `specht-adapter` and `specht`, not by the server.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `API_URL` | `http://localhost:8080` | Specht base URL. |
+| `API_KEY` | *required* | A project API key, or a session token for admin operations. |
+| `SPECHT_PROJECT` | *(empty)* | Adapter only: project slug, overriding the one in the report. |
+
+### Compose-only
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `POSTGRES_PASSWORD` | *required* | Postgres password. |
+| `POSTGRES_SSLMODE` | `disable` | Appended to the generated `DATABASE_URL`. |
+| `SERVER_PORT` | `8080` | Host port published for the server. |
+
+See `.env.example` for a commented starting point.
+
+## 4. Verify release images
 
 Published images are signed with keyless Sigstore signing from the tagged
 release workflow. Install `cosign`, then verify an image before deployment:
@@ -51,7 +156,7 @@ The command verifies the certificate issuer and that the signing workflow ran
 from this repository's release tag; replace the image with the exact version
 you intend to deploy.
 
-## 4. First admin
+## 5. First admin
 
 Tenant isolation is enforced: every project needs members, and project
 administration needs a global admin.
@@ -61,7 +166,7 @@ administration needs a global admin.
    (`up -d` again — promotion is idempotent).
 3. Create projects and grant membership via `POST /projects/:slug/members`.
 
-## 5. Reverse proxy
+## 6. Reverse proxy
 
 Terminate TLS at the proxy and forward plain HTTP. Set `TRUSTED_PROXIES` to
 only the proxy-hop CIDRs. Configure the nearest proxy to append the observed
@@ -81,7 +186,7 @@ endpoint without a signed subject to verify. Prefer configuring the IdP to
 return ID tokens; enable this only after assessing the reduced assurance.
 This option never bypasses validation when an ID token is present.
 
-## 6. Backup and restore
+## 7. Backup and restore
 
 Postgres holds everything (the server is stateless). Nightly logical backup:
 
@@ -97,7 +202,7 @@ gunzip -c specht-YYYY-MM-DD.sql.gz | docker compose -f deploy/docker-compose.yml
   psql -U specht specht
 ```
 
-## 7. Upgrades
+## 8. Upgrades
 
 ```bash
 git pull
@@ -108,7 +213,7 @@ Migrations are forward-only and run at startup. To roll back, restore a
 compatible database backup and redeploy a compatible revision. Schema
 migrations never migrate down automatically.
 
-## 8. Hardening checklist
+## 9. Hardening checklist
 
 - `RATE_LIMIT_ENABLED=true` (compose default) — strict per-IP buckets on
   login/register, generous per-caller budgets behind auth.

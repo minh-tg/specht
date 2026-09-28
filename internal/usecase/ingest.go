@@ -166,8 +166,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, err
 	}
 
-	// ADR-018 auto-fix: runs after every finding is persisted and before
-	// the threshold check so the response reflects the post-fix state.
+	// Scan-equivalence auto-fix: runs after every finding is persisted and
+	// before the threshold check so the response reflects the post-fix state.
 	if err := u.autoFixAbsentFindings(ctx, project, input, report, nr, ctxInfo); err != nil {
 		u.markReportFailed(ctx, input, report, err)
 		return nil, err
@@ -189,8 +189,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	}, nil
 }
 
-// autoFixAbsentFindings is the ADR-018 auto-fix writer: when a full scan
-// normalized to completeness "complete", findings whose most recent
+// autoFixAbsentFindings is the scan-equivalence auto-fix writer: when a
+// full scan normalized to completeness "complete", findings whose most recent
 // observation came from an equivalent complete scan of the same scope and
 // that this report no longer observes move to fixed, each with a
 // state_changed event naming the source report. Incremental scans prove
