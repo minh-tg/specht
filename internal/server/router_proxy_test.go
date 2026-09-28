@@ -123,6 +123,28 @@ func TestRealIP_TrustedProxyHeadersHonored(t *testing.T) {
 	})
 }
 
+func TestSSOLogin_BindsReturnPathCookieToState(t *testing.T) {
+	const returnPath = "/projects/demo?tab=members"
+	h := ssoLoginHandler(testOIDC(t))
+	req := httptest.NewRequest("GET", "/api/v1/auth/sso/login?redirect=%2Fprojects%2Fdemo%3Ftab%3Dmembers", nil)
+	w := httptest.NewRecorder()
+
+	h(w, req)
+
+	stateCookie := ssoStateCookie(t, w)
+	var returnCookie *http.Cookie
+	for _, cookie := range w.Result().Cookies() {
+		if cookie.Name == auth.SSOReturnCookieName {
+			returnCookie = cookie
+			break
+		}
+	}
+	require.NotNil(t, returnCookie, "login must set the state-bound return cookie")
+	assert.Equal(t, auth.EncodeSSOReturnCookieValue(stateCookie.Value, returnPath), returnCookie.Value)
+	assert.True(t, returnCookie.HttpOnly)
+	assert.Equal(t, http.SameSiteLaxMode, returnCookie.SameSite)
+}
+
 func TestSSOLogin_SecureCookieRequiresTrustedProxy(t *testing.T) {
 	t.Run("spoofed X-Forwarded-Proto from direct client is ignored", func(t *testing.T) {
 		h := ssoLoginHandler(testOIDC(t))

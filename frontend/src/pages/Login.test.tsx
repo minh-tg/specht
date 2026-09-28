@@ -186,4 +186,15 @@ describe("Login", () => {
     const link = screen.getByRole("link", { name: /sign in with sso/i });
     expect(link).toHaveAttribute("href", "/api/v1/auth/sso/login");
   });
+
+  it("preserves an internal redirect when starting SSO", async () => {
+    authState.login = async () => {};
+    renderLoginWithAuth("/login?redirect=%2Fdashboard%3Ftab%3Dfindings");
+
+    const link = screen.getByRole("link", { name: /sign in with sso/i });
+    expect(link).toHaveAttribute(
+      "href",
+      "/api/v1/auth/sso/login?redirect=%2Fdashboard%3Ftab%3Dfindings",
+    );
+  });
 });

@@ -47,11 +47,20 @@ test("a rejected password shows the inline error", async ({ page }) => {
 test("the sign-in page offers the SSO entry point", async ({ page }) => {
   // SSO is opt-in server-side; without an IdP the entry point is unreachable,
   // so this pins the link contract only: it points at the real login route and
-  // does not post a form. The working redirect-from-IdP flow stays COMP-only
-  // (sso.test.ts) until the suite runs against an SSO-enabled server.
+  // does not post a form. The working redirect-from-IdP flow is covered by the
+  // server-side OIDC E2E test against the fake IdP.
   await page.goto("/login");
 
   const link = page.getByRole("link", { name: /sign in with sso/i });
   await expect(link).toBeVisible();
   await expect(link).toHaveAttribute("href", "/api/v1/auth/sso/login");
+});
+
+test("the SSO entry point preserves a safe internal redirect", async ({ page }) => {
+  await page.goto("/login?redirect=%2Fdashboard%3Ftab%3Dfindings");
+
+  await expect(page.getByRole("link", { name: /sign in with sso/i })).toHaveAttribute(
+    "href",
+    "/api/v1/auth/sso/login?redirect=%2Fdashboard%3Ftab%3Dfindings",
+  );
 });

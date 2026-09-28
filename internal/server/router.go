@@ -320,9 +320,9 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // ssoLoginHandler redirects unauthenticated users to the OIDC provider's
-// authorization endpoint. The state parameter is a CSRF token: it is bound to
-// an httpOnly cookie so the callback can verify the redirect really came from
-// a login flow this server started.
+// authorization endpoint. The state parameter is a CSRF token bound to an
+// httpOnly cookie; a second state-bound cookie carries a validated SPA return
+// path without exposing it to the identity provider.
 func ssoLoginHandler(oidc OIDCAuthenticator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		state, err := auth.GenerateStateToken()
@@ -336,6 +336,7 @@ func ssoLoginHandler(oidc OIDCAuthenticator) http.HandlerFunc {
 		// client-supplied X-Forwarded-Proto on its own.
 		// Secure comes from the proxy-aware transport verdict below.
 		// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
+		secure := auth.SecureTransport(r)
 		http.SetCookie(w, &http.Cookie{
 			Name:     "sso_state",
 			Value:    state,
@@ -343,7 +344,16 @@ func ssoLoginHandler(oidc OIDCAuthenticator) http.HandlerFunc {
 			MaxAge:   600, // 10 minutes, matching a typical auth-code flow
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
-			Secure:   auth.SecureTransport(r),
+			Secure:   secure,
+		})
+		http.SetCookie(w, &http.Cookie{
+			Name:     auth.SSOReturnCookieName,
+			Value:    auth.EncodeSSOReturnCookieValue(state, r.URL.Query().Get("redirect")),
+			Path:     "/",
+			MaxAge:   600,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   secure,
 		})
 		http.Redirect(w, r, oidc.LoginURL(state), http.StatusFound)
 	}
