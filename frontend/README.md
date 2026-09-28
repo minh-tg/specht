@@ -1,54 +1,25 @@
-# React + TypeScript + Vite
+# Specht frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+The frontend is Specht's React and TypeScript web app. It helps teams review and manage security findings from SCA, SAST, and IaC scans.
 
-Currently, two official plugins are available:
+## Frontend roadmap
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+The focus is to make the main workflow clear and dependable:
 
-## React Compiler
+- Connect the project overview, findings list, and finding details into one easy-to-follow flow.
+- Keep shared controls and page layouts consistent.
+- Improve filters, loading and error states, keyboard access, and smaller-screen layouts.
+- Add tests for the main user flows as the interface grows.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+After that, we want to improve the frontend for CI feedback, policy checks, and verifying fixes. This is a direction, not a promise or a schedule. See the [roadmap discussion](https://github.com/minh-tg/specht/discussions/1) for updates and to share feedback.
 
-## Expanding the Oxlint configuration
+## Authentication and CSRF
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+The app sends session tokens in `Authorization: Bearer <token>` headers. Every request goes through `apiFetch` in `src/api/client.ts`. The API requires this header and does not use cookies for authentication.
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
+This prevents cross-site requests from authenticating with a browser's automatically attached cookies.
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+If the backend starts using cookies for authentication, this protection no longer applies. Any such change must:
 
-## Authentication and CSRF posture
-
-The SPA authenticates exclusively with `Authorization: Bearer <token>` headers.
-Every request goes through `apiFetch` (`src/api/client.ts`), which attaches the
-session token explicitly to each request; the API rejects any request that
-lacks the header, so no ambient (cookie) credential is ever used or trusted.
-
-This is what keeps the API safe from CSRF: a cross-site request cannot attach
-a Bearer header, so no forged state-changing request can authenticate.
-
-**Cookie risk — read before adopting cookie-based sessions.** If the backend
-ever starts authenticating via cookies (session cookie, `SameSite=None` for
-cross-site, etc.), the CSRF protection above disappears: browsers attach
-cookies automatically, so a malicious site could forge state-changing
-requests. Any such change MUST:
-
-1. add real CSRF defense (double-submit token, or strict Origin/Referer
-   verification, or `SameSite=Strict` plus a same-origin check), and
-2. keep sending the explicit `Authorization` header on every mutation and
-   keep the server requiring it, so cookie adoption never becomes the sole
-   credential path.
+1. Add CSRF protection, such as a double-submit token, strict Origin or Referer checks, or `SameSite=Strict` with a same-origin check.
+2. Keep sending the `Authorization` header on every mutation and keep requiring it on the server. Cookies must not become the only way to authenticate.
