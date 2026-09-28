@@ -13,7 +13,7 @@
     "test:watch": "vitest",
     "preview": "vite preview",
     "api:types": "openapi-typescript ../openapi.yaml -o src/types/api.gen.ts && dprint fmt src/types/api.gen.ts",
-    "api:check": "openapi-typescript ../openapi.yaml -o src/types/api.gen.ts && dprint fmt src/types/api.gen.ts >/dev/null && git diff --quiet --exit-code -- src/types/api.gen.ts && echo api-types-in-sync"
+    "api:check": "pnpm api:types >/dev/null && git diff --quiet --exit-code -- src/types/api.gen.ts && echo api-types-in-sync"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
