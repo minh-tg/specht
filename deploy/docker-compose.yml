@@ -38,8 +38,13 @@ services:
       # Keep migrations enabled for the local compose development loop. A
       # production deployment may set DB_MIGRATE=false and run `specht migrate`
       # as a separately controlled release step.
-      DB_MIGRATE: "true"
+      DB_MIGRATE: ${DB_MIGRATE:-true}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      # Admin elevation (comma-separated emails) and trusted proxy CIDRs.
+      # Empty ADMIN_EMAILS promotes nobody; empty TRUSTED_PROXIES trusts
+      # forwarding headers from nobody (deploy directly or set the hops).
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       # Rate limiting: on by default in compose (self-host is internet-facing
       # until proven otherwise). Dev `go run` stays unlimited unless enabled.
       RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED:-true}
@@ -50,13 +55,42 @@ services:
       # CVE Feed Watcher (opt-in; off by default)
       WATCHER_ENABLE: ${WATCHER_ENABLE:-false}
       INVENTORY_TTL: ${INVENTORY_TTL:-2160h}
+      # Analysis/waiver expiry sweeper period.
+      LIFECYCLE_SWEEP_INTERVAL: ${LIFECYCLE_SWEEP_INTERVAL:-5m}
       WATCHER_POLL_INTERVAL: ${WATCHER_POLL_INTERVAL:-6h}
       WATCHER_OSV_ENDPOINT: >-
         ${WATCHER_OSV_ENDPOINT:-https://api.osv.dev/v1/querybatch}
+      WATCHER_OSV_VULN_ENDPOINT: >-
+        ${WATCHER_OSV_VULN_ENDPOINT:-https://api.osv.dev/v1/vulns/{id}}
       WATCHER_BATCH_SIZE: ${WATCHER_BATCH_SIZE:-100}
       WATCHER_COLD_START_WINDOW: ${WATCHER_COLD_START_WINDOW:-full}
       WATCHER_SLACK_URL: ${WATCHER_SLACK_URL:-}
       WATCHER_SLACK_SIGNING_SECRET: ${WATCHER_SLACK_SIGNING_SECRET:-}
+      WATCHER_WEBHOOK_URL: ${WATCHER_WEBHOOK_URL:-}
+      # Signs both the watcher's webhook and tracker deliveries.
+      WATCHER_WEBHOOK_SIGNING_SECRET: ${WATCHER_WEBHOOK_SIGNING_SECRET:-}
+      # Tracker dispatch (noop = disabled).
+      TRACKER_PROVIDER: ${TRACKER_PROVIDER:-noop}
+      TRACKER_BASE_URL: ${TRACKER_BASE_URL:-}
+      TRACKER_PROJECT_ID: ${TRACKER_PROJECT_ID:-}
+      TRACKER_API_TOKEN: ${TRACKER_API_TOKEN:-}
+      WATCHER_WEBHOOK_URLS: ${WATCHER_WEBHOOK_URLS:-}
+      # Threat intel (EPSS + CISA KEV) on the finding detail read path.
+      INTEL_TTL: ${INTEL_TTL:-1h}
+      INTEL_EPSS_ENDPOINT: >-
+        ${INTEL_EPSS_ENDPOINT:-https://api.first.org/data/v1/epss}
+      INTEL_KEV_ENDPOINT: >-
+        ${INTEL_KEV_ENDPOINT:-https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json}
+      # SSO / OIDC (off by default; SSO_ENABLE=true requires the client
+      # credentials, issuer, and redirect URI, or startup fails).
+      SSO_ENABLE: ${SSO_ENABLE:-false}
+      SSO_CLIENT_ID: ${SSO_CLIENT_ID:-}
+      SSO_CLIENT_SECRET: ${SSO_CLIENT_SECRET:-}
+      SSO_ISSUER_URL: ${SSO_ISSUER_URL:-}
+      SSO_REDIRECT_URI: ${SSO_REDIRECT_URI:-}
+      SSO_GROUPS_CLAIM: ${SSO_GROUPS_CLAIM:-}
+      SSO_ALLOWED_DOMAINS: ${SSO_ALLOWED_DOMAINS:-}
+      SSO_ADMIN_GROUPS: ${SSO_ADMIN_GROUPS:-}
       # Security downgrade; leave false unless the IdP cannot return ID tokens.
       SSO_ALLOW_USERINFO_ONLY: ${SSO_ALLOW_USERINFO_ONLY:-false}
     depends_on:
