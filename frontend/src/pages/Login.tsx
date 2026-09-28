@@ -83,6 +83,13 @@ export function Login() {
         >
           {submitting ? "Signing in..." : "Sign in"}
         </button>
+
+        <a
+          href="/api/v1/auth/sso/login"
+          className="border-input text-foreground hover:bg-accent block w-full rounded-md border px-4 py-2 text-center text-sm font-medium"
+        >
+          Sign in with SSO
+        </a>
       </form>
     </div>
   );

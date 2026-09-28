@@ -11,7 +11,9 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:watch": "vitest",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "api:types": "openapi-typescript ../openapi.yaml -o src/types/api.gen.ts && dprint fmt src/types/api.gen.ts",
+    "api:check": "openapi-typescript ../openapi.yaml -o src/types/api.gen.ts && dprint fmt src/types/api.gen.ts >/dev/null && git diff --quiet --exit-code -- src/types/api.gen.ts && echo api-types-in-sync"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",
@@ -46,6 +48,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "@vitest/coverage-v8": "^4.1.11",
     "dprint": "0.47.6",
+    "openapi-typescript": "^7.13.0",
     "oxlint": "^1.82.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.3",

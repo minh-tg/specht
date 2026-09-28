@@ -159,7 +159,7 @@ jobs:
         run: go build ./...
 
   frontend:
-    name: frontend (vitest + tsc + dprint + oxlint)
+    name: frontend (vitest + tsc + dprint + oxlint + api types)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -182,6 +182,9 @@ jobs:
 
       - name: Unit tests (vitest)
         run: pnpm test
+
+      - name: API types in sync
+        run: pnpm api:check
 
       - name: Audit dependencies
         run: pnpm audit --audit-level high
