@@ -62,6 +62,9 @@ The API comes up on `http://localhost:8080`. Check it:
 curl http://localhost:8080/api/v1/health
 ```
 
+[`openapi.yaml`](openapi.yaml) describes the whole HTTP API: every route, the
+role or API key scope it requires, its parameters, and its response shape.
+
 The server shows a placeholder at `/` until you run `make build`, which builds
 and embeds the React frontend from `frontend/`. The UI is unfinished; use the
 API and CLI for now.
@@ -82,6 +85,7 @@ cmd/mcp/         MCP bridge
 internal/        Go packages (handlers, usecases, repos, auth, scanners)
 frontend/        React SPA (Vite, shadcn/ui)
 migrations/      SQL migrations (golang-migrate)
+openapi.yaml     HTTP API description (all routes, scopes, and shapes)
 sqlc/            Type-safe SQL queries
 deploy/          Docker Compose deployment files
 examples/ci/     Ready-made GitHub Actions / GitLab CI pipelines
