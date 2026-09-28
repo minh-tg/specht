@@ -92,6 +92,8 @@ tags:
     description: Organization groups and their project links.
   - name: Project members
     description: Direct per-project grants.
+  - name: Users
+    description: The account directory that admin surfaces pick a user from.
   - name: Context
     description: Environments, targets, and artifacts derived from scan context.
   - name: Insights
@@ -561,6 +563,40 @@ paths:
                 items: { $ref: "#/components/schemas/Scanner" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/SessionRequired" }
+
+  /api/v1/users:
+    get:
+      tags: [Users]
+      operationId: listUsers
+      summary: List accounts
+      description: |
+        The directory an admin picks from when granting project membership or
+        adding a team member, so a UI never has to ask for a raw user id.
+        Session admins only — a project-scoped key has no business
+        enumerating the organization. The response carries no credential
+        material.
+      x-auth: session
+      x-required-role: admin
+      security:
+        - sessionAuth: []
+      parameters:
+        - name: email
+          in: query
+          description: Case-insensitive substring match on the email address. Empty lists every account.
+          schema: { type: string }
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+      responses:
+        "200":
+          description: Accounts, ordered by email so pages are stable.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/UserProfile" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/SessionRequired" }
+        "500": { $ref: "#/components/responses/InternalError" }
 
   /api/v1/reports:
     post:
@@ -2178,7 +2214,9 @@ components:
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
-        display_name: { type: [string, "null"] }
+        display_name:
+          type: string
+          description: Omitted when the account has no display name.
         role:
           type: string
           description: |

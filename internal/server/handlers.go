@@ -75,6 +75,7 @@ type (
 		Logout(ctx context.Context, refreshToken string) error
 		GetProfile(ctx context.Context, userID string) (*usecase.UserProfile, error)
 		UpdateProfile(ctx context.Context, userID string, displayName *string) (*usecase.UserProfile, error)
+		ListUsers(ctx context.Context, filter string, limit, offset int32) ([]usecase.UserProfile, error)
 	}
 
 	APIKeyUsecases interface {

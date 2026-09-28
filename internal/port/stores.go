@@ -121,6 +121,9 @@ type UserStore interface {
 	Create(ctx context.Context, email string, displayName, passwordHash *string) (User, error)
 	GetByEmail(ctx context.Context, email string) (User, error)
 	GetByID(ctx context.Context, id string) (User, error)
+	// List returns accounts ordered by email. filter matches a
+	// case-insensitive substring of the email; empty lists every account.
+	List(ctx context.Context, filter string, limit, offset int32) ([]User, error)
 	// SetRole changes a user's global role. Role must be a valid users.role value.
 	SetRole(ctx context.Context, userID, role string) (User, error)
 	// UpdateDisplayName changes a user's display name. A nil displayName

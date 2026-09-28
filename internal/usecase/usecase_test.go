@@ -827,6 +827,7 @@ type mockUserRepo struct {
 	createFn            func(context.Context, string, *string, *string) (port.User, error)
 	getByEmailFn        func(context.Context, string) (port.User, error)
 	getByIDFn           func(context.Context, string) (port.User, error)
+	listFn              func(context.Context, string, int32, int32) ([]port.User, error)
 	updateDisplayNameFn func(context.Context, string, *string) (port.User, error)
 	setRoleFn           func(context.Context, string, string) (port.User, error)
 }
@@ -850,6 +851,13 @@ func (m *mockUserRepo) GetByID(ctx context.Context, id string) (port.User, error
 		return port.User{}, fmt.Errorf("unexpected call to GetByID")
 	}
 	return m.getByIDFn(ctx, id)
+}
+
+func (m *mockUserRepo) List(ctx context.Context, filter string, limit, offset int32) ([]port.User, error) {
+	if m.listFn == nil {
+		return nil, fmt.Errorf("unexpected call to List")
+	}
+	return m.listFn(ctx, filter, limit, offset)
 }
 
 func (m *mockUserRepo) UpdateDisplayName(ctx context.Context, userID string, displayName *string) (port.User, error) {
@@ -2645,6 +2653,53 @@ func TestGetProfile_UserNotFound(t *testing.T) {
 
 	_, err := uc.GetProfile(context.Background(), "00000000-0000-0000-0000-000000000001")
 	assert.EqualError(t, err, "user not found")
+}
+
+func TestListUsers_Success(t *testing.T) {
+	var gotFilter string
+	var gotLimit, gotOffset int32
+	ur := &mockUserRepo{}
+	ur.listFn = func(_ context.Context, filter string, limit, offset int32) ([]port.User, error) {
+		gotFilter, gotLimit, gotOffset = filter, limit, offset
+		first := makeUser("00000000-0000-0000-0000-000000000041")
+		first.Email = "alice@example.com"
+		first.DisplayName = strPtr("Alice")
+		first.Role = "admin"
+		second := makeUser("00000000-0000-0000-0000-000000000042")
+		second.Email = "bob@example.com"
+		return []port.User{first, second}, nil
+	}
+
+	uc := New(Deps{Stores: &port.Stores{Users: ur}})
+	users, err := uc.ListUsers(context.Background(), "  alice  ", 5, 10)
+	require.NoError(t, err)
+	require.Len(t, users, 2)
+
+	assert.Equal(t, "alice", gotFilter, "the filter is trimmed before it reaches the store")
+	assert.EqualValues(t, 5, gotLimit)
+	assert.EqualValues(t, 10, gotOffset)
+
+	assert.Equal(t, "00000000-0000-0000-0000-000000000041", users[0].ID)
+	assert.Equal(t, "alice@example.com", users[0].Email)
+	assert.Equal(t, "Alice", users[0].DisplayName)
+	assert.Equal(t, "admin", users[0].Role)
+	assert.NotEmpty(t, users[0].CreatedAt)
+
+	assert.Equal(t, "bob@example.com", users[1].Email)
+	assert.Empty(t, users[1].DisplayName, "an account with no display name carries none")
+}
+
+func TestListUsers_StoreError(t *testing.T) {
+	ur := &mockUserRepo{}
+	ur.listFn = func(context.Context, string, int32, int32) ([]port.User, error) {
+		return nil, fmt.Errorf("connection refused")
+	}
+
+	uc := New(Deps{Stores: &port.Stores{Users: ur}})
+	_, err := uc.ListUsers(context.Background(), "", 20, 0)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "list users")
+	assert.ErrorContains(t, err, "connection refused")
 }
 
 func TestUpdateProfile_Success(t *testing.T) {

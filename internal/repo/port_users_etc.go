@@ -44,6 +44,24 @@ func (r *pgUserPort) GetByID(ctx context.Context, id string) (port.User, error) 
 	return userToPort(row), nil
 }
 
+// List returns accounts ordered by email, bounded by limit/offset. The
+// filter matches a case-insensitive substring of the email.
+func (r *pgUserPort) List(ctx context.Context, filter string, limit, offset int32) ([]port.User, error) {
+	rows, err := r.q.ListUsers(ctx, sqlc.ListUsersParams{
+		EmailFilter: filter,
+		PageLimit:   limit,
+		PageOffset:  offset,
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.User, len(rows))
+	for i, row := range rows {
+		out[i] = userToPort(row)
+	}
+	return out, nil
+}
+
 func (r *pgUserPort) SetRole(ctx context.Context, userID, role string) (port.User, error) {
 	uid, err := parseID(userID)
 	if err != nil {

@@ -79,6 +79,51 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 	return i, err
 }
 
+const listUsers = `-- name: ListUsers :many
+SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at FROM users
+WHERE ($1::text = '' OR email ILIKE '%' || $1::text || '%')
+ORDER BY email ASC, id ASC
+LIMIT $3 OFFSET $2
+`
+
+type ListUsersParams struct {
+	EmailFilter string `json:"email_filter"`
+	PageOffset  int32  `json:"page_offset"`
+	PageLimit   int32  `json:"page_limit"`
+}
+
+// Account directory for admin surfaces (project members, team rosters).
+// The filter matches a case-insensitive substring of the email; an empty
+// filter lists every account. Ordered by email so pages are stable.
+func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, error) {
+	rows, err := q.db.Query(ctx, listUsers, arg.EmailFilter, arg.PageOffset, arg.PageLimit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.DisplayName,
+			&i.PasswordHash,
+			&i.AvatarUrl,
+			&i.Role,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setUserRole = `-- name: SetUserRole :one
 UPDATE users SET role = $2 WHERE id = $1
 RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at
