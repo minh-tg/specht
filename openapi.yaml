@@ -34,6 +34,10 @@ info:
     - List endpoints return a **bare JSON array**; pagination is
       `limit`/`offset` (default 20, maximum 500). A malformed, negative, or
       oversized limit falls back to the default rather than erroring.
+    - Paginated lists carry **`X-Total-Count`**, the size of the filtered set
+      independent of the page window, so a client can render "n of m" without
+      walking the pages. Findings serves it today; a missing header means the
+      total is unknown, not zero.
     - Timestamps are RFC 3339 with a UTC offset. Durations are Go duration
       strings (`30d` is not valid; use `720h`).
     - Errors share one envelope: `{"error": {"code": ..., "message": ...}}`.
@@ -733,7 +737,13 @@ paths:
         - $ref: "#/components/parameters/Offset"
       responses:
         "200":
-          description: The matching findings.
+          description: |
+            The matching findings. `X-Total-Count` carries the size of the
+            filtered set, independent of `limit`/`offset`.
+          headers:
+            X-Total-Count:
+              description: Size of the filtered set across every page.
+              schema: { type: integer }
           content:
             application/json:
               schema:

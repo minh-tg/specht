@@ -132,8 +132,8 @@ func apiKeyRouter(t *testing.T, userID, projectID string, scopes []string, exp t
 		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
 			return &usecase.ProjectResponse{ID: projectID, Slug: slug}, nil
 		},
-		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
-			return []usecase.FindingResponse{}, nil
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
+			return []usecase.FindingResponse{}, 0, nil
 		},
 		ingestReportFn: func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
 			return &usecase.IngestReportOutput{ReportID: "rep-1", TotalFindings: 1}, nil

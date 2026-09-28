@@ -474,6 +474,7 @@ type mockFindingRepo struct {
 	createOccurrenceFn                func(context.Context, port.OccurrenceInput) (port.Occurrence, error)
 	upsertDimensionFn                 func(context.Context, port.DimensionInput) error
 	listByProjectFn                   func(context.Context, string, port.ListFindingsParams) ([]port.Finding, error)
+	countByProjectFn                  func(context.Context, string, port.ListFindingsParams) (int64, error)
 	getDisplayContextFn               func(context.Context, string) (port.FindingDisplayContext, error)
 	listFindingDisplayContextsByIDsFn func(context.Context, []string) ([]port.FindingDisplayContext, error)
 	listDimensionsFn                  func(context.Context, string) ([]port.FindingDimension, error)
@@ -528,6 +529,13 @@ func (m *mockFindingRepo) ListByProject(ctx context.Context, projectID string, p
 		return []port.Finding{}, nil
 	}
 	return m.listByProjectFn(ctx, projectID, params)
+}
+
+func (m *mockFindingRepo) CountByProject(ctx context.Context, projectID string, params port.ListFindingsParams) (int64, error) {
+	if m.countByProjectFn == nil {
+		return 0, nil
+	}
+	return m.countByProjectFn(ctx, projectID, params)
 }
 
 func (m *mockFindingRepo) GetByID(ctx context.Context, id string) (port.Finding, error) {
@@ -2843,14 +2851,21 @@ func TestListFindings_Success(t *testing.T) {
 	fr.listByProjectFn = func(ctx context.Context, projectID string, params port.ListFindingsParams) ([]port.Finding, error) {
 		return []port.Finding{makeFindingRow(1), makeFindingRow(2)}, nil
 	}
+	fr.countByProjectFn = func(ctx context.Context, projectID string, params port.ListFindingsParams) (int64, error) {
+		// The count must not inherit the page window.
+		assert.Zero(t, params.Limit, "the count ignores the page limit")
+		assert.Zero(t, params.Offset, "the count ignores the page offset")
+		return 137, nil
+	}
 
 	uc := New(Deps{
 		Stores: &port.Stores{Projects: pr, Findings: fr},
 	})
 
-	findings, err := uc.ListFindings(context.Background(), "my-app", FindingFilter{}, 20, 0)
+	findings, total, err := uc.ListFindings(context.Background(), "my-app", FindingFilter{}, 20, 0)
 	require.NoError(t, err)
-	assert.Len(t, findings, 2)
+	assert.Len(t, findings, 2, "the page is bounded by limit/offset")
+	assert.EqualValues(t, 137, total, "the total covers the whole filtered set, not the page")
 }
 
 func TestListFindings_ProjectNotFound(t *testing.T) {
@@ -2863,7 +2878,7 @@ func TestListFindings_ProjectNotFound(t *testing.T) {
 		Stores: &port.Stores{Projects: pr},
 	})
 
-	_, err := uc.ListFindings(context.Background(), "nonexistent", FindingFilter{}, 20, 0)
+	_, _, err := uc.ListFindings(context.Background(), "nonexistent", FindingFilter{}, 20, 0)
 	assert.ErrorContains(t, err, "lookup project")
 }
 

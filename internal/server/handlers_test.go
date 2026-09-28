@@ -32,7 +32,7 @@ type mockUsecases struct {
 	getProjectFn         func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
 	updateProjectFn      func(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error)
 	deleteProjectFn      func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
-	listFindingsFn       func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error)
+	listFindingsFn       func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error)
 	listReportsFn        func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
 	getReportFn          func(ctx context.Context, reportID string) (*usecase.ReportResponse, error)
 	ingestReportFn       func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
@@ -155,9 +155,9 @@ func (m *mockUsecases) DeleteProject(ctx context.Context, slug string) (*usecase
 	return m.deleteProjectFn(ctx, slug)
 }
 
-func (m *mockUsecases) ListFindings(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
+func (m *mockUsecases) ListFindings(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
 	if m.listFindingsFn == nil {
-		return nil, fmt.Errorf("unexpected call to ListFindings")
+		return nil, 0, fmt.Errorf("unexpected call to ListFindings")
 	}
 	return m.listFindingsFn(ctx, projectSlug, filter, limit, offset)
 }
@@ -1088,11 +1088,11 @@ func TestDeleteProject_NotFound(t *testing.T) {
 
 func TestListFindings_Success(t *testing.T) {
 	mock := &mockUsecases{
-		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
 			assert.Equal(t, "my-app", projectSlug)
 			assert.Equal(t, int32(20), limit)
 			assert.Equal(t, int32(0), offset)
-			return sampleFindings(), nil
+			return sampleFindings(), 4242, nil
 		},
 	}
 	router := testRouter(mock)
@@ -1101,6 +1101,8 @@ func TestListFindings_Success(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "4242", w.Header().Get("X-Total-Count"),
+		"the filtered total rides a header so the body stays a bare array")
 	var resp []usecase.FindingResponse
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
@@ -1110,14 +1112,14 @@ func TestListFindings_Success(t *testing.T) {
 
 func TestListFindings_WithFilters(t *testing.T) {
 	mock := &mockUsecases{
-		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
 			assert.Equal(t, []string{"high", "critical"}, filter.Severities)
 			assert.Equal(t, []string{"open"}, filter.States)
 			assert.Equal(t, []string{"production"}, filter.Environments)
 			assert.Equal(t, []string{"web"}, filter.Targets)
 			assert.Equal(t, int32(50), limit)
 			assert.Equal(t, int32(10), offset)
-			return sampleFindings(), nil
+			return sampleFindings(), int64(len(sampleFindings())), nil
 		},
 	}
 	router := testRouter(mock)
@@ -1130,8 +1132,8 @@ func TestListFindings_WithFilters(t *testing.T) {
 
 func TestListFindings_NotFound(t *testing.T) {
 	mock := &mockUsecases{
-		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
-			return nil, port.ErrNotFound
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
+			return nil, 0, port.ErrNotFound
 		},
 	}
 	router := testRouter(mock)
@@ -1144,8 +1146,8 @@ func TestListFindings_NotFound(t *testing.T) {
 
 func TestListFindings_InternalError(t *testing.T) {
 	mock := &mockUsecases{
-		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
-			return nil, fmt.Errorf("database unavailable")
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
+			return nil, 0, fmt.Errorf("database unavailable")
 		},
 	}
 	router := testRouter(mock)
@@ -1339,8 +1341,8 @@ func TestNewRouterRoutes(t *testing.T) {
 		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
 			return &usecase.ProjectResponse{ID: "p1", Slug: slug}, nil
 		},
-		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
-			return nil, nil
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
+			return nil, 0, nil
 		},
 		listReportsFn: func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error) {
 			return nil, nil
@@ -3295,8 +3297,8 @@ func TestListFindings_APIKeyAllowed(t *testing.T) {
 		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
 			return &usecase.ProjectResponse{ID: projectID, Slug: slug}, nil
 		},
-		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
-			return sampleFindings(), nil
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
+			return sampleFindings(), int64(len(sampleFindings())), nil
 		},
 	}
 	handler := &Handler{usecase: mock}

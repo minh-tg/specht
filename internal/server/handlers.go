@@ -99,7 +99,7 @@ type (
 	}
 
 	FindingUsecases interface {
-		ListFindings(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error)
+		ListFindings(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error)
 		GetFinding(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
 		TriageFinding(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
 		VerifyFix(ctx context.Context, findingID string) (*usecase.VerifyResponse, error)
@@ -590,7 +590,7 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 		filter.Targets = strings.Split(s, ",")
 	}
 
-	findings, err := h.usecase.ListFindings(r.Context(), slug, filter, limit, offset)
+	findings, total, err := h.usecase.ListFindings(r.Context(), slug, filter, limit, offset)
 	if err != nil {
 		log.Printf("list findings: %v", err)
 		if errors.Is(err, port.ErrNotFound) {
@@ -600,6 +600,9 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	// X-Total-Count carries the size of the filtered set so a client can
+	// render "n of m" and page counts; the body stays a bare array.
+	w.Header().Set("X-Total-Count", strconv.FormatInt(total, 10))
 	respondJSON(w, http.StatusOK, findings)
 }
 

@@ -527,6 +527,9 @@ type FindingStore interface {
 	GetByFingerprint(ctx context.Context, projectID, findingKind, fingerprint string) (Finding, error)
 	ListByIDs(ctx context.Context, ids []string) ([]Finding, error)
 	ListByProject(ctx context.Context, projectID string, params ListFindingsParams) ([]Finding, error)
+	// CountByProject counts the findings the same filters select, ignoring
+	// the page window. It backs the list's X-Total-Count header.
+	CountByProject(ctx context.Context, projectID string, params ListFindingsParams) (int64, error)
 	UpdateAnalysis(ctx context.Context, input UpdateAnalysisInput) (Finding, error)
 	// UpdateAnalysisWithEvent atomically updates analysis state and records its audit event.
 	UpdateAnalysisWithEvent(ctx context.Context, input UpdateAnalysisInput, event FindingEventInput) (Finding, error)

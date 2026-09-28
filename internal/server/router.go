@@ -77,7 +77,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		AllowedOrigins:   origins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", headerContentType},
-		ExposedHeaders:   []string{"Link"},
+		ExposedHeaders:   []string{"Link", "X-Total-Count"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
