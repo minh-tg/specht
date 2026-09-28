@@ -18,7 +18,7 @@ RETURNING *;
 -- The filter matches a case-insensitive substring of the email; an empty
 -- filter lists every account. Ordered by email so pages are stable.
 SELECT * FROM users
-WHERE (sqlc.arg(email_filter)::text = '' OR email ILIKE '%' || sqlc.arg(email_filter)::text || '%')
+WHERE (sqlc.arg(email_filter)::text = '' OR email ILIKE ('%' || sqlc.arg(email_filter)::text || '%') ESCAPE E'\\')
 ORDER BY email ASC, id ASC
 LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
 

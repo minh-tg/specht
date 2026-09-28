@@ -209,6 +209,13 @@ func TestE2E_APIKeyLifecycle(t *testing.T) {
 func TestE2E_UserDirectory(t *testing.T) {
 	viewer := login(t, "e2e-viewer@example.com", adminPass)
 	viewerProfile := request[profileEnvelope](t, http.MethodGet, "/api/v1/me", viewer, nil, http.StatusOK)
+	for _, email := range []string{
+		"e2e-directory_under_score@example.com",
+		"e2e-directory-under-score@example.com",
+	} {
+		request[authResponse](t, http.MethodPost, "/api/v1/auth/register", "",
+			map[string]string{"email": email, "password": adminPass}, http.StatusCreated)
+	}
 	slug := newProject(t, "user-directory")
 
 	t.Run("an admin lists accounts ordered by email", func(t *testing.T) {
@@ -239,6 +246,11 @@ func TestE2E_UserDirectory(t *testing.T) {
 
 		require.Empty(t, request[[]profileEnvelope](t, http.MethodGet,
 			"/api/v1/users?email=nobody-matches-this", adminToken, nil, http.StatusOK))
+
+		literal := request[[]profileEnvelope](t, http.MethodGet,
+			"/api/v1/users?email=directory_under_score", adminToken, nil, http.StatusOK)
+		require.Len(t, literal, 1, "underscore in the filter is literal, not a LIKE wildcard")
+		require.Equal(t, "e2e-directory_under_score@example.com", literal[0].Email)
 	})
 
 	t.Run("limit and offset bound the page", func(t *testing.T) {

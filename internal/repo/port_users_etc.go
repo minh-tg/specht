@@ -2,6 +2,7 @@ package repo
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -48,7 +49,7 @@ func (r *pgUserPort) GetByID(ctx context.Context, id string) (port.User, error) 
 // filter matches a case-insensitive substring of the email.
 func (r *pgUserPort) List(ctx context.Context, filter string, limit, offset int32) ([]port.User, error) {
 	rows, err := r.q.ListUsers(ctx, sqlc.ListUsersParams{
-		EmailFilter: filter,
+		EmailFilter: escapeLikePattern(filter),
 		PageLimit:   limit,
 		PageOffset:  offset,
 	})
@@ -60,6 +61,10 @@ func (r *pgUserPort) List(ctx context.Context, filter string, limit, offset int3
 		out[i] = userToPort(row)
 	}
 	return out, nil
+}
+
+func escapeLikePattern(value string) string {
+	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(value)
 }
 
 func (r *pgUserPort) SetRole(ctx context.Context, userID, role string) (port.User, error) {

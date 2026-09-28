@@ -81,7 +81,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 
 const listUsers = `-- name: ListUsers :many
 SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at FROM users
-WHERE ($1::text = '' OR email ILIKE '%' || $1::text || '%')
+WHERE ($1::text = '' OR email ILIKE ('%' || $1::text || '%') ESCAPE E'\\')
 ORDER BY email ASC, id ASC
 LIMIT $3 OFFSET $2
 `

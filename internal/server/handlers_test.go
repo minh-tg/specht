@@ -1118,12 +1118,12 @@ func TestListFindings_WithFilters(t *testing.T) {
 			assert.Equal(t, []string{"production"}, filter.Environments)
 			assert.Equal(t, []string{"web"}, filter.Targets)
 			assert.Equal(t, int32(50), limit)
-			assert.Equal(t, int32(10), offset)
+			assert.Equal(t, int32(1000), offset)
 			return sampleFindings(), int64(len(sampleFindings())), nil
 		},
 	}
 	router := testRouter(mock)
-	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings?severity=high,critical&status=open&environment=production&target=web&limit=50&offset=10", nil)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings?severity=high,critical&status=open&environment=production&target=web&limit=50&offset=1000", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -2933,6 +2933,28 @@ func TestParseIntParam(t *testing.T) {
 	}
 }
 
+func TestParseOffsetParam(t *testing.T) {
+	tests := []struct {
+		name       string
+		query      string
+		defaultVal int32
+		want       int32
+	}{
+		{"no param", "/test", 0, 0},
+		{"valid offset above page-size cap", "/test?offset=1000", 0, 1000},
+		{"maximum int32", "/test?offset=2147483647", 0, 2147483647},
+		{"int32 overflow", "/test?offset=2147483648", 7, 7},
+		{"negative offset", "/test?offset=-1", 7, 7},
+		{"non-numeric", "/test?offset=abc", 7, 7},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest("GET", tt.query, nil)
+			assert.Equal(t, tt.want, parseOffsetParam(r, "offset", tt.defaultVal))
+		})
+	}
+}
+
 func sampleWaiverResponse() usecase.WaiverResponse {
 	return usecase.WaiverResponse{
 		ID:          "wvr-1",
@@ -3448,7 +3470,7 @@ func TestListUsersHandler(t *testing.T) {
 		},
 	}
 	router := NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth})
-	req := httptest.NewRequest("GET", "/api/v1/users?email=example.com&limit=5&offset=10", nil)
+	req := httptest.NewRequest("GET", "/api/v1/users?email=example.com&limit=5&offset=1000", nil)
 	req.Header.Set("Authorization", "Bearer "+makeTestToken(t, auth.RoleAdmin))
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -3456,7 +3478,7 @@ func TestListUsersHandler(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "example.com", gotFilter, "the filter reaches the use case verbatim")
 	assert.EqualValues(t, 5, gotLimit)
-	assert.EqualValues(t, 10, gotOffset)
+	assert.EqualValues(t, 1000, gotOffset)
 
 	var resp []usecase.UserProfile
 	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))

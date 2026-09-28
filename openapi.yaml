@@ -2085,8 +2085,8 @@ components:
     Offset:
       name: offset
       in: query
-      description: Items to skip.
-      schema: { type: integer, minimum: 0, default: 0 }
+      description: Items to skip. A malformed, negative, or out-of-range value falls back to 0.
+      schema: { type: integer, minimum: 0, maximum: 2147483647, default: 0 }
 
   responses:
     NoContent:
