@@ -135,3 +135,165 @@
     @apply font-sans;
   }
 }
+
+/* ============================================================================
+   Phase 0 tokens — Specht Instrument (docs/design/stitch-v2/design-system-extended.md)
+   Appended as separate :root/.dark/@theme blocks so the existing shadcn neutral
+   layer above is untouched. Tailwind v4 merges multiple blocks of each.
+   ========================================================================= */
+
+:root {
+  /* Severity. `-fg` is calibrated ONLY against its matching `-bg` (design system
+     §1 pairing rule) — never place a `-fg` on a neutral surface, use
+     --foreground / --muted-foreground there instead. */
+  --sev-critical: #b42318;
+  --sev-critical-fg: #b42318;
+  --sev-critical-bg: #f6e3e2;
+  --sev-high: #c2410c;
+  --sev-high-fg: #b63d0b;
+  --sev-high-bg: #f6e4dc;
+  --sev-medium: #a15c07;
+  --sev-medium-fg: #975607;
+  --sev-medium-bg: #f0e6d8;
+  --sev-low: #2563a6;
+  --sev-low-fg: #2563a6;
+  --sev-low-bg: #dfe8f2;
+  --sev-success: #16794a;
+  --sev-success-fg: #157548;
+  --sev-success-bg: #dcebe3;
+  /* `none` is the ABSENCE of severity, so it gets no tint: outline chip only.
+     The API's fifth severity value is `none`, not `unknown`. */
+  --sev-none-fg: #737373;
+
+  /* Gate verdict: solid fill + contrasting text, never a tint. Separated from
+     severity by treatment so one hue cannot mean two things (§2). */
+  --verdict-block: #b42318;
+  --verdict-block-fg: #ffffff;
+  --verdict-pass: #16794a;
+  --verdict-pass-fg: #ffffff;
+  --verdict-indeterminate: #52525b;
+  --verdict-indeterminate-fg: #ffffff;
+
+  /* The one accent. Focus, selection, navigation — not severity. */
+  --action: #3157c8;
+  --action-hover: #2a4bb0;
+  --action-fg: #ffffff;
+
+  /* Focus (§6) */
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 2px;
+
+  /* Density (§5, §12). `--row-density` is the mode-scoped one. */
+  --row-compact: 36px;
+  --row-comfortable: 44px;
+  --row-group: 56px;
+  --row-density: var(--row-comfortable);
+  --ctrl-sm: 28px;
+  --ctrl-md: 32px;
+  --ctrl-lg: 36px;
+  --hit-min: 24px;
+
+  /* Motion (§13) */
+  --dur-instant: 100ms;
+  --dur-quick: 150ms;
+  --dur-base: 220ms;
+  --dur-slow: 320ms;
+  --ease-entering: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exiting: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-moving: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.dark {
+  --sev-critical: #ff8278;
+  --sev-critical-fg: #ff8278;
+  --sev-critical-bg: #352524;
+  --sev-high: #ff9b67;
+  --sev-high-fg: #ff9b67;
+  --sev-high-bg: #322620;
+  --sev-medium: #e8b64f;
+  --sev-medium-fg: #e8b64f;
+  --sev-medium-bg: #2e281d;
+  --sev-low: #83b8ff;
+  --sev-low-fg: #83b8ff;
+  --sev-low-bg: #232931;
+  --sev-success: #70d49b;
+  --sev-success-fg: #70d49b;
+  --sev-success-bg: #212b25;
+  --sev-none-fg: #a1a1a1;
+
+  --verdict-block: #ff8278;
+  --verdict-block-fg: #0a0a0a;
+  --verdict-pass: #70d49b;
+  --verdict-pass-fg: #0a0a0a;
+  --verdict-indeterminate: #9aa9b8;
+  --verdict-indeterminate-fg: #0a0a0a;
+
+  --action: #8ba8ff;
+  --action-hover: #a8beff;
+  --action-fg: #0a0a0a;
+}
+
+/* Mode sets density and hint budget; it is a route, and only token values differ
+   (§12). A screen must not pick its own density. */
+[data-mode="unblock"] { --row-density: var(--row-comfortable); }
+[data-mode="triage"]  { --row-density: var(--row-compact); }
+[data-mode="govern"],
+[data-mode="prove"],
+[data-mode="operate"] { --row-density: var(--row-compact); }
+
+@theme inline {
+  --color-sev-critical: var(--sev-critical);
+  --color-sev-critical-fg: var(--sev-critical-fg);
+  --color-sev-critical-bg: var(--sev-critical-bg);
+  --color-sev-high: var(--sev-high);
+  --color-sev-high-fg: var(--sev-high-fg);
+  --color-sev-high-bg: var(--sev-high-bg);
+  --color-sev-medium: var(--sev-medium);
+  --color-sev-medium-fg: var(--sev-medium-fg);
+  --color-sev-medium-bg: var(--sev-medium-bg);
+  --color-sev-low: var(--sev-low);
+  --color-sev-low-fg: var(--sev-low-fg);
+  --color-sev-low-bg: var(--sev-low-bg);
+  --color-sev-success: var(--sev-success);
+  --color-sev-success-fg: var(--sev-success-fg);
+  --color-sev-success-bg: var(--sev-success-bg);
+  --color-sev-none-fg: var(--sev-none-fg);
+
+  --color-verdict-block: var(--verdict-block);
+  --color-verdict-block-fg: var(--verdict-block-fg);
+  --color-verdict-pass: var(--verdict-pass);
+  --color-verdict-pass-fg: var(--verdict-pass-fg);
+  --color-verdict-indeterminate: var(--verdict-indeterminate);
+  --color-verdict-indeterminate-fg: var(--verdict-indeterminate-fg);
+
+  --color-action: var(--action);
+  --color-action-hover: var(--action-hover);
+  --color-action-fg: var(--action-fg);
+
+  --height-row-compact: var(--row-compact);
+  --height-row-comfortable: var(--row-comfortable);
+  --height-row-group: var(--row-group);
+  --height-control-sm: var(--ctrl-sm);
+  --height-control-md: var(--ctrl-md);
+  --height-control-lg: var(--ctrl-lg);
+}
+
+@layer base {
+  /* The focus ring is a token, not a per-component decision (§6). */
+  :focus-visible {
+    outline: var(--focus-ring-width) solid var(--action);
+    outline-offset: var(--focus-ring-offset);
+  }
+
+  /* Motion is feedback or it does not ship (§13). */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 1ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 1ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
