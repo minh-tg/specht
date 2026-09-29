@@ -179,6 +179,31 @@ describe("DataGrid — ARIA grid pattern", () => {
     expect(screen.getByText("Ingest a scan report to see findings")).toBeInTheDocument();
   });
 
+  it("announces the cursored row through a polite live region", () => {
+    // A live region is how a screen-reader user hears the cursor move.
+    render(<DataGrid label="Findings" rows={rows} columns={columns} rowKey={rowKey} />);
+    const status = screen.getByRole("status");
+    expect(status).toHaveAttribute("aria-live", "polite");
+    expect(status).toHaveTextContent("Row 1 of 3");
+
+    fireEvent.keyDown(screen.getByRole("grid"), { key: "ArrowDown" });
+    expect(status).toHaveTextContent("Row 2 of 3");
+  });
+
+  it("lets the owner name the announced row", () => {
+    // The owner knows things the grid does not, such as the selection count.
+    render(
+      <DataGrid
+        label="Findings"
+        rows={rows}
+        columns={columns}
+        rowKey={rowKey}
+        getAnnouncement={(row, index) => `Row ${index + 1} of 3: ${row.title}`}
+      />,
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Row 1 of 3: runc breakout");
+  });
+
   it("applies the mode's row-height token", () => {
     render(
       <DataGrid label="Findings" rows={rows} columns={columns} rowKey={rowKey} density="compact" />,

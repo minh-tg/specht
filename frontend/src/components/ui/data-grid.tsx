@@ -54,6 +54,12 @@ export interface DataGridProps<Row> {
   readonly sort?: DataGridSort | null;
   readonly onSortChange?: (columnId: string) => void;
   readonly ariaRowCount?: number;
+  /**
+   * Announced on cursor move through a polite live region. Defaults to
+   * "Row n of total"; override to name the row, or to include the selection count
+   * that only the owner knows.
+   */
+  readonly getAnnouncement?: (row: Row, index: number) => string;
   /** Shown when there are no rows. Should say what to do next, not just "no data". */
   readonly emptyState?: React.ReactNode;
 }
@@ -76,6 +82,7 @@ export function DataGrid<Row>({
   sort = null,
   onSortChange,
   ariaRowCount,
+  getAnnouncement,
   emptyState,
 }: DataGridProps<Row>) {
   const [cursorState, setCursorState] = React.useState(0);
@@ -144,111 +151,123 @@ export function DataGrid<Row>({
 
   const selectable = typeof onSelect === "function";
 
+  // Derived rather than stored: a live region announces when its text changes, so
+  // the cursored row is enough and no extra state is needed.
+  const cursoredRow = rows[cursor];
+  const liveMessage = cursoredRow === undefined
+    ? ""
+    : (getAnnouncement?.(cursoredRow, cursor) ?? `Row ${cursor + 1} of ${rows.length}`);
+
   return (
-    <table
-      role="grid"
-      aria-label={label}
-      aria-rowcount={ariaRowCount ?? rows.length}
-      onKeyDown={handleKeyDown}
-      className="w-full border-collapse text-left"
-    >
-      <thead>
-        <tr role="row" className="h-8">
-          {columns.map((column) => {
-            const active = sort?.columnId === column.id ? sort.direction : undefined;
-            return (
-              <th
-                key={column.id}
-                role="columnheader"
-                scope="col"
-                aria-sort={active}
-                className={cn(
-                  "border-b border-border px-2 py-1",
-                  "font-label text-[11px] leading-4 tracking-[0.06em] text-muted-foreground uppercase",
-                  column.align === "end" && "text-right",
-                )}
-              >
-                {column.sortable && onSortChange
-                  ? (
-                    <button
-                      type="button"
-                      onClick={() => onSortChange(column.id)}
-                      className="inline-flex items-center gap-1 hover:text-foreground"
-                    >
-                      {column.header}
-                      {active
-                        ? <span aria-hidden="true">{active === "ascending" ? "↑" : "↓"}</span>
-                        : null}
-                    </button>
-                  )
-                  : (
-                    column.header
-                  )}
-              </th>
-            );
-          })}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.length === 0
-          ? (
-            <tr role="row">
-              <td
-                role="gridcell"
-                colSpan={columns.length}
-                className="px-2 py-6 text-center text-muted-foreground"
-              >
-                {emptyState ?? "Nothing to show."}
-              </td>
-            </tr>
-          )
-          : (
-            rows.map((row, index) => {
-              const key = rowKey(row);
-              const isCursor = index === cursor;
-              const isSelected = selectedKey !== null && selectedKey === key;
+    <>
+      <div role="status" aria-live="polite" className="sr-only">
+        {liveMessage}
+      </div>
+      <table
+        role="grid"
+        aria-label={label}
+        aria-rowcount={ariaRowCount ?? rows.length}
+        onKeyDown={handleKeyDown}
+        className="w-full border-collapse text-left"
+      >
+        <thead>
+          <tr role="row" className="h-8">
+            {columns.map((column) => {
+              const active = sort?.columnId === column.id ? sort.direction : undefined;
               return (
-                <tr
-                  key={key}
-                  role="row"
-                  aria-rowindex={index + 2}
-                  aria-selected={selectable ? isSelected : undefined}
-                  // Roving tabindex: exactly one row is tabbable, and focus really moves.
-                  tabIndex={isCursor ? 0 : -1}
-                  ref={(node) => {
-                    rowRefs.current[index] = node;
-                  }}
-                  onClick={() => {
-                    setCursorState(index);
-                    onSelect?.(row);
-                  }}
+                <th
+                  key={column.id}
+                  role="columnheader"
+                  scope="col"
+                  aria-sort={active}
                   className={cn(
-                    DENSITY_CLASS[density],
-                    "border-b border-border/60 outline-none",
-                    "hover:bg-muted/60",
-                    isSelected && "bg-muted",
+                    "border-b border-border px-2 py-1",
+                    "font-label text-[11px] leading-4 tracking-[0.06em] text-muted-foreground uppercase",
+                    column.align === "end" && "text-right",
                   )}
                 >
-                  {columns.map((column) => (
-                    <td
-                      key={column.id}
-                      role="gridcell"
-                      className={cn(
-                        // A table cell's height is only a minimum, so a wrapping value
-                        // silently defeats the row-height token: clip instead of wrap.
-                        "overflow-hidden px-2 text-ellipsis whitespace-nowrap",
-                        "font-mono text-[13px] leading-[18px] tabular-nums",
-                        column.align === "end" && "text-right",
-                      )}
-                    >
-                      {column.cell(row)}
-                    </td>
-                  ))}
-                </tr>
+                  {column.sortable && onSortChange
+                    ? (
+                      <button
+                        type="button"
+                        onClick={() => onSortChange(column.id)}
+                        className="inline-flex items-center gap-1 hover:text-foreground"
+                      >
+                        {column.header}
+                        {active
+                          ? <span aria-hidden="true">{active === "ascending" ? "↑" : "↓"}</span>
+                          : null}
+                      </button>
+                    )
+                    : (
+                      column.header
+                    )}
+                </th>
               );
-            })
-          )}
-      </tbody>
-    </table>
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.length === 0
+            ? (
+              <tr role="row">
+                <td
+                  role="gridcell"
+                  colSpan={columns.length}
+                  className="px-2 py-6 text-center text-muted-foreground"
+                >
+                  {emptyState ?? "Nothing to show."}
+                </td>
+              </tr>
+            )
+            : (
+              rows.map((row, index) => {
+                const key = rowKey(row);
+                const isCursor = index === cursor;
+                const isSelected = selectedKey !== null && selectedKey === key;
+                return (
+                  <tr
+                    key={key}
+                    role="row"
+                    aria-rowindex={index + 2}
+                    aria-selected={selectable ? isSelected : undefined}
+                    // Roving tabindex: exactly one row is tabbable, and focus really moves.
+                    tabIndex={isCursor ? 0 : -1}
+                    ref={(node) => {
+                      rowRefs.current[index] = node;
+                    }}
+                    onClick={() => {
+                      setCursorState(index);
+                      onSelect?.(row);
+                    }}
+                    className={cn(
+                      DENSITY_CLASS[density],
+                      "border-b border-border/60 outline-none",
+                      "hover:bg-muted/60",
+                      isSelected && "bg-muted",
+                    )}
+                  >
+                    {columns.map((column) => (
+                      <td
+                        key={column.id}
+                        role="gridcell"
+                        className={cn(
+                          // A table cell's height is only a minimum, so a wrapping value
+                          // silently defeats the row-height token: clip instead of wrap.
+                          "overflow-hidden px-2 text-ellipsis whitespace-nowrap",
+                          "font-mono text-[13px] leading-[18px] tabular-nums",
+                          column.align === "end" && "text-right",
+                        )}
+                      >
+                        {column.cell(row)}
+                      </td>
+                    ))}
+                  </tr>
+                );
+              })
+            )}
+        </tbody>
+      </table>
+    </>
   );
 }
