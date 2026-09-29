@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 /**
  * Severity chip.
  *
- * Rules this encodes (docs/design/stitch-v2/design-system-extended.md):
+ * Rules this encodes:
  *
  * - **The label is mandatory.** Colour alone is never the signal: under simulated
  *   deuteranopia `high` and `medium` collapse to a ΔE of ~5.6, so the word is the

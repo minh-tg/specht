@@ -7,8 +7,7 @@ import * as React from "react";
  * This exists because generated screens kept shipping a hand-rolled `keydown`
  * handler on a `div`: key bindings that looked right but produced `role=0` and
  * `tabindex=0`, so nothing was announced and the cursor never followed the list.
- * The ARIA pattern is therefore a *component property*, not a principle
- * (design-system §9b).
+ * The ARIA pattern is therefore a *component property*, not a principle.
  *
  * Correctness it guarantees:
  *
@@ -16,7 +15,7 @@ import * as React from "react";
  *   with `scope` and `aria-sort`, and `role="gridcell"`.
  * - **Roving tabindex with real focus** — one row is tabbable at a time and focus
  *   actually moves, rather than `aria-activedescendant`, so the browser announces
- *   the row natively and `:focus-visible` draws the cursor. Per §12 a row cursor is
+ *   the row natively and `:focus-visible` draws the cursor. A row cursor is
  *   shown **only while focused**; there is no permanently drawn cursor.
  * - **Scroll-follow** — the cursored row is scrolled into view, so traversal to row
  *   40 of 100 does not leave the cursor off-screen.
@@ -47,7 +46,7 @@ export interface DataGridProps<Row> {
   readonly rows: readonly Row[];
   readonly columns: readonly DataGridColumn<Row>[];
   readonly rowKey: (row: Row) => string;
-  /** Row height token. Resolve it from the mode, not from the screen (§12). */
+  /** Row height token. Resolve it from the mode, not from the screen. */
   readonly density?: "compact" | "comfortable" | "group";
   readonly selectedKey?: string | null;
   readonly onSelect?: (row: Row) => void;

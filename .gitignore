@@ -33,6 +33,6 @@ Thumbs.db
 # Local tool output
 .codeql-results/
 
-# Heavy generated design artifacts (mockup screenshots, exported screens, vendored
-# Tailwind/fonts). Specs, reviews, audit reports and the harness stay in docs/design.
+# Local working docs: design specs, reviews, measurement harnesses, and the heavy
+# generated artifacts (mockup screenshots, exported screens, vendored Tailwind/fonts).
 local-docs/
