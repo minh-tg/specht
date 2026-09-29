@@ -48,7 +48,11 @@ describe("enum vocabularies", () => {
   });
 
   it("mirrors the backend severity scale", () => {
-    expect(SEVERITIES).toEqual(["critical", "high", "medium", "low", "unknown"]);
+    // `none`, not `unknown`: the API's fifth severity is the absence of a
+    // severity, and `unknown` is reserved for reachability.
+    expect(SEVERITIES).toEqual(["critical", "high", "medium", "low", "none"]);
+    expect(REACHABILITY_STATES).toContain("unknown");
+    expect(SEVERITIES).not.toContain("unknown");
   });
 });
 
@@ -144,6 +148,9 @@ describe("severityLabel", () => {
     expect(severityLabel("high")).toBe("High");
     expect(severityLabel("medium")).toBe("Medium");
     expect(severityLabel("low")).toBe("Low");
+    expect(severityLabel("none")).toBe("None");
+    // `unknown` is a reachability value, so it is out of vocabulary for severity
+    // and must fall back rather than be treated as the fifth severity.
     expect(severityLabel("unknown")).toBe("Unknown");
   });
 
