@@ -154,7 +154,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
 
       {verdict === "no_scans" && (
         <p className="text-muted-foreground mt-2 text-sm">
-          Upload a report below or send one from CI.{" "}
+          Upload a report or send one from CI.{" "}
           <Link
             to={`/${slug}/reports/upload`}
             className="text-primary underline underline-offset-2 hover:no-underline"
