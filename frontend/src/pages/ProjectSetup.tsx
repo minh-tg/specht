@@ -95,16 +95,29 @@ export function ProjectSetup() {
     );
   }
 
+  if (!project) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-8">
+        <h1 className="mb-6 text-2xl font-bold">Project not found</h1>
+        <p className="text-muted-foreground text-sm">
+          There is no project with this address, or you don&apos;t have access to it.
+        </p>
+        <Link to="/" className={`${LINK_CLASS} mt-2 inline-block`}>Back to projects</Link>
+      </div>
+    );
+  }
+
   const apiUrl = window.location.origin;
   const adapterRef = adapterRefFor(serverVersion);
-  const githubSnippet = githubActionsSnippet({ apiUrl, project: slug, adapterRef });
-  const gitlabSnippet = gitlabCiSnippet({ apiUrl, project: slug, adapterRef });
+  // The snippets use the slug the server returned, never the raw URL segment.
+  const githubSnippet = githubActionsSnippet({ apiUrl, project: project.slug, adapterRef });
+  const gitlabSnippet = gitlabCiSnippet({ apiUrl, project: project.slug, adapterRef });
   const reportCount = stats.data?.report_count ?? 0;
   const totalFindings = stats.data?.total_findings ?? 0;
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold">Set up CI for {project?.name ?? slug}</h1>
+      <h1 className="mb-6 text-2xl font-bold">Set up CI for {project.name}</h1>
 
       <ol className="list-decimal space-y-8 pl-5">
         <li>

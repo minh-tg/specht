@@ -11,6 +11,15 @@ export interface CiSnippetOptions {
 /** Adapter import path; `go run` fetches it from the module proxy. */
 const ADAPTER_MODULE = "github.com/minh-tg/specht/cmd/adapter";
 
+/**
+ * A YAML double-quoted scalar. JSON string syntax is valid YAML, so a value
+ * with a newline, colon, quote or `#` stays inside its own line instead of
+ * adding keys or jobs to the generated pipeline.
+ */
+function yamlString(value: string): string {
+  return JSON.stringify(value);
+}
+
 /** A full or abbreviated git commit hash. */
 const COMMIT_PATTERN = /^[0-9a-fA-F]{7,40}$/;
 
@@ -53,8 +62,8 @@ jobs:
   specht:
     runs-on: ubuntu-latest
     env:
-      SPECHT_API_URL: ${apiUrl}
-      SPECHT_PROJECT: ${project}
+      SPECHT_API_URL: ${yamlString(apiUrl)}
+      SPECHT_PROJECT: ${yamlString(project)}
       SPECHT_ENVIRONMENT: ci
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -111,8 +120,8 @@ export function gitlabCiSnippet({ apiUrl, project, adapterRef }: CiSnippetOption
 stages: [scan, gate]
 
 variables:
-  SPECHT_API_URL: ${apiUrl}
-  SPECHT_PROJECT: ${project}
+  SPECHT_API_URL: ${yamlString(apiUrl)}
+  SPECHT_PROJECT: ${yamlString(project)}
   SPECHT_ENVIRONMENT: ci
 
 trivy-scan:

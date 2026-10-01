@@ -237,7 +237,7 @@ test("an admin creates a project and follows the guided CI setup", async ({ page
   const githubSnippet = page.locator("pre").first();
   await expect(githubSnippet).toContainText("go run github.com/minh-tg/specht/cmd/adapter@");
   await expect(githubSnippet).not.toContainText("./cmd/adapter");
-  await expect(githubSnippet).toContainText(`SPECHT_PROJECT: ${slug}`);
+  await expect(githubSnippet).toContainText(`SPECHT_PROJECT: "${slug}"`);
 
   // The page notices the first report arriving without a reload.
   await expect(page.getByText("Waiting for the first report...")).toBeVisible();

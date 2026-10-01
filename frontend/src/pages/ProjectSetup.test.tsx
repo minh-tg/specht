@@ -15,6 +15,7 @@ let stats: Record<string, unknown>;
 let statsRequests = 0;
 let postCalls: Array<Record<string, unknown>> = [];
 let writeText: ReturnType<typeof vi.fn>;
+let projectSlug = "acme";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return {
@@ -28,6 +29,7 @@ const VERSION_COMMIT = "4f93c32a1b2c3d4e5f60718293a4b5c6d7e8f901";
 
 beforeEach(() => {
   meRole = "admin";
+  projectSlug = "acme";
   projectStatus = 200;
   versionStatus = 200;
   stats = {
@@ -58,7 +60,7 @@ beforeEach(() => {
       }
       return jsonResponse({
         id: "p1",
-        slug: "acme",
+        slug: projectSlug,
         name: "Acme API",
         description: null,
         created_at: "",
@@ -224,6 +226,39 @@ describe("ProjectSetup", () => {
       expect(snippet).toContain("cmd/adapter@main");
       expect(snippet).not.toContain("./cmd/adapter");
     }
+  });
+
+  it("shows a not-found message and no pipeline when the project does not exist", async () => {
+    projectStatus = 404;
+    renderPage();
+
+    expect(await screen.findByRole("heading", { name: "Project not found" })).toBeInTheDocument();
+    expect(document.querySelectorAll("pre")).toHaveLength(0);
+    expect(screen.queryByRole("button", { name: "Create key" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to projects" })).toHaveAttribute("href", "/");
+  });
+
+  it("quotes the project slug so it cannot add keys or jobs to the pipeline", async () => {
+    projectSlug = "acme\n    evil-job:\n      runs-on: ubuntu-latest";
+    renderPage();
+    await screen.findByRole("heading", { name: "Set up CI for Acme API" });
+
+    const snippets = [...document.querySelectorAll("pre")].map((pre) => pre.textContent ?? "");
+    expect(snippets).toHaveLength(2);
+    for (const snippet of snippets) {
+      expect(snippet).not.toMatch(/^\s*evil-job:/m);
+      expect(snippet).toContain(`SPECHT_PROJECT: ${JSON.stringify(projectSlug)}`);
+    }
+  });
+
+  it("builds the snippets from the project the server returned, not from the URL", async () => {
+    projectSlug = "canonical-slug";
+    renderPage();
+    await screen.findByRole("heading", { name: "Set up CI for Acme API" });
+
+    const github = document.querySelector("pre")?.textContent ?? "";
+    expect(github).toContain("SPECHT_PROJECT: \"canonical-slug\"");
+    expect(github).not.toContain("SPECHT_PROJECT: \"acme\"");
   });
 
   it("links to the manual upload and the findings of the project", async () => {
