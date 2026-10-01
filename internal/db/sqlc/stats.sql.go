@@ -67,6 +67,41 @@ func (q *Queries) GetAgingRows(ctx context.Context, projectID pgtype.UUID) ([]Ge
 	return items, nil
 }
 
+const getProjectAnalysisStateCounts = `-- name: GetProjectAnalysisStateCounts :many
+SELECT
+    COALESCE(NULLIF(f.analysis_state, ''), 'unanalyzed')::text AS state,
+    COUNT(*)::int AS count
+FROM findings f
+WHERE f.project_id = $1
+GROUP BY COALESCE(NULLIF(f.analysis_state, ''), 'unanalyzed')
+ORDER BY state ASC
+`
+
+type GetProjectAnalysisStateCountsRow struct {
+	State string `json:"state"`
+	Count int32  `json:"count"`
+}
+
+func (q *Queries) GetProjectAnalysisStateCounts(ctx context.Context, projectID pgtype.UUID) ([]GetProjectAnalysisStateCountsRow, error) {
+	rows, err := q.db.Query(ctx, getProjectAnalysisStateCounts, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetProjectAnalysisStateCountsRow
+	for rows.Next() {
+		var i GetProjectAnalysisStateCountsRow
+		if err := rows.Scan(&i.State, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getProjectLatestReport = `-- name: GetProjectLatestReport :one
 SELECT
     id, project_id, tool_name, tool_version, scan_type,

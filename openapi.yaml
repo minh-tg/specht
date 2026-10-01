@@ -3026,6 +3026,10 @@ components:
         by_severity:
           type: array
           items: { $ref: "#/components/schemas/SeverityCount" }
+        by_analysis_state:
+          type: array
+          description: Counts per analysis state present in the project, ordered by state name; empty when the project has no findings. A missing analysis state counts as unanalyzed.
+          items: { $ref: "#/components/schemas/AnalysisStateCount" }
         latest_report: { $ref: "#/components/schemas/Report" }
 
     SeverityCount:
@@ -3035,6 +3039,13 @@ components:
         severity: { type: string }
         count: { type: integer }
         blocking_count: { type: integer }
+
+    AnalysisStateCount:
+      type: object
+      required: [state, count]
+      properties:
+        state: { type: string }
+        count: { type: integer }
 
     AgingResponse:
       type: object

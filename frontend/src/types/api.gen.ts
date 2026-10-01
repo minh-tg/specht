@@ -2007,12 +2007,18 @@ export interface components {
       waiver_count: number;
       report_count: number;
       by_severity: components["schemas"]["SeverityCount"][];
+      /** @description Counts per analysis state present in the project, ordered by state name; empty when the project has no findings. A missing analysis state counts as unanalyzed. */
+      by_analysis_state?: components["schemas"]["AnalysisStateCount"][];
       latest_report?: components["schemas"]["Report"];
     };
     SeverityCount: {
       severity: string;
       count: number;
       blocking_count: number;
+    };
+    AnalysisStateCount: {
+      state: string;
+      count: number;
     };
     AgingResponse: {
       /** @description Always all four buckets, in age order. */
