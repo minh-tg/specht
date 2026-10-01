@@ -39,6 +39,17 @@ beforeEach(() => {
     let data: unknown = {};
     if (path.endsWith("/reachability") || path.endsWith("/projects") || path.endsWith("/reports")) {
       data = [];
+    } else if (path.endsWith("/scanners")) {
+      data = [];
+    } else if (/\/projects\/[^/]+$/.test(path)) {
+      data = {
+        id: "p1",
+        slug: "test-project",
+        name: "Test Project",
+        description: null,
+        created_at: "2025-01-01T00:00:00Z",
+        updated_at: "2025-01-01T00:00:00Z",
+      };
     } else if (path.endsWith("/findings")) {
       data = [];
     } else if (path.includes("/findings/")) {
@@ -159,6 +170,12 @@ it("renders the CI setup route", async () => {
 it("renders the upload report route", async () => {
   renderRoutes("/test-project/reports/upload");
 
-  expect(await screen.findByRole("heading", { name: "Upload report" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Upload a report" })).toBeInTheDocument();
   expect(document.title).toBe("Upload report · Specht");
+});
+
+it("redirects the legacy ingest route to the projects page", async () => {
+  renderRoutes("/ingest");
+
+  expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
 });

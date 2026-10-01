@@ -4,7 +4,6 @@ import { Navbar } from "@/components/Navbar";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { ApiKeys } from "@/pages/ApiKeys";
 import { FindingDetail } from "@/pages/FindingDetail";
-import { Ingest } from "@/pages/Ingest";
 import { Login } from "@/pages/Login";
 import { NewProject } from "@/pages/NewProject";
 import { ProjectLayout } from "@/pages/ProjectLayout";
@@ -114,16 +113,7 @@ export function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route
-        path="/ingest"
-        element={
-          <ProtectedRoute>
-            <Titled title="Ingest report">
-              <Ingest />
-            </Titled>
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/ingest" element={<Navigate to="/" replace />} />
       <Route
         path="/api-keys"
         element={

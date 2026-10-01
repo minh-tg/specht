@@ -142,14 +142,15 @@ test("manual ingest uploads a scan file", async ({ page, request }) => {
   await seedProject(request, token, slug);
   await uiLogin(page);
 
-  await page.goto("/ingest");
-  await page.getByLabel("Project").selectOption(slug);
+  await page.goto(`/${slug}/reports/upload`);
   await page.getByLabel("Scanner").selectOption("sarif");
   await page.setInputFiles("#ingest-file", FIXTURE_HIGH);
   await expect(page.getByText("high.sarif.json loaded")).toBeVisible();
 
   await page.getByRole("button", { name: "Upload" }).click();
-  await expect(page.getByText(/Report submitted\. ID:/)).toBeVisible();
+  const resultCard = page.getByRole("status");
+  await expect(resultCard).toContainText(/finding/);
+  await expect(page.getByRole("link", { name: "View findings" })).toBeVisible();
 
   // The upload really landed: the finding is listed.
   await page.goto(`/${slug}/findings`);
