@@ -722,7 +722,7 @@ paths:
         - $ref: "#/components/parameters/Slug"
         - name: severity
           in: query
-          description: Comma-separated severities (critical, high, medium, low, none).
+          description: Comma-separated severities (critical, high, medium, low, unknown). `unknown` is a finding the scanner did not rate.
           schema: { type: string, example: "critical,high" }
         - name: status
           in: query
@@ -730,7 +730,7 @@ paths:
           schema: { type: string, example: open }
         - name: kind
           in: query
-          description: Comma-separated finding kinds (sca, sast, iac, secret, dast).
+          description: Comma-separated finding kinds (sca, sast, iac, secret, dast, image_config, license, cve_watcher).
           schema: { type: string, example: "sca,sast" }
         - name: environment
           in: query
@@ -1892,8 +1892,9 @@ paths:
       operationId: getProjectStats
       summary: Read the project roll-up
       description: |
-        Counts findings by severity, with the blocking subset, plus waiver and
-        report totals and the newest report.
+        Counts findings by severity, with the blocking subset, and open or
+        reopened findings by analysis state, plus waiver and report totals and
+        the newest report.
       x-required-scope: read
       security:
         - sessionAuth: []
@@ -2312,7 +2313,7 @@ components:
         version: { type: string }
         finding_kinds:
           type: array
-          items: { type: string, enum: [sca, sast, iac, secret, dast] }
+          items: { type: string, enum: [sca, sast, iac, secret, dast, image_config, license, cve_watcher] }
         scan_types:
           type: array
           items: { type: string, example: image }
@@ -2381,7 +2382,7 @@ components:
         tool_version: { type: [string, "null"] }
         scan_type: { type: string, example: image }
         scan_target: { type: [string, "null"] }
-        status: { type: string, enum: [pending, completed, failed] }
+        status: { type: string, enum: [processing, completed, failed] }
         total_findings: { type: [integer, "null"] }
         branch: { type: [string, "null"] }
         commit_sha: { type: [string, "null"] }
@@ -2399,10 +2400,13 @@ components:
       properties:
         id: { type: string, format: uuid }
         project_id: { type: string, format: uuid }
-        finding_kind: { type: string, enum: [sca, sast, iac, secret, dast] }
+        finding_kind: { type: string, enum: [sca, sast, iac, secret, dast, image_config, license, cve_watcher] }
         fingerprint: { type: string, description: Stable identity across scans; the dedupe key. }
         current_title: { type: string }
-        current_severity: { type: string, enum: [critical, high, medium, low, none] }
+        current_severity:
+          type: string
+          enum: [critical, high, medium, low, unknown]
+          description: "`unknown` means the scanner did not rate the finding; it has rank 0 and never gates."
         current_score: { type: [number, "null"], description: CVSS score when the scanner supplied one. }
         state:
           type: string
@@ -2714,7 +2718,7 @@ components:
       properties:
         template_name: { type: [string, "null"] }
         template_version: { type: integer }
-        severity_floor: { type: string, enum: [critical, high, medium, low, none] }
+        severity_floor: { type: string, enum: [critical, high, medium, low] }
         severity_source:
           type: string
           description: The layer that supplied the floor.
@@ -3015,17 +3019,24 @@ components:
 
     ProjectStats:
       type: object
-      required: [total_findings, blocking_count, waiver_count, report_count, by_severity]
+      required: [total_findings, blocking_count, waiver_count, report_count, by_severity, by_analysis_state]
       properties:
-        total_findings: { type: integer }
+        total_findings:
+          type: integer
+          description: Open and reopened findings; findings already fixed are not counted.
         blocking_count:
           type: integer
-          description: Findings not in an ignoring analysis state.
+          description: Open and reopened findings not in an ignoring analysis state.
         waiver_count: { type: integer, description: Enabled waivers only. }
         report_count: { type: integer }
         by_severity:
           type: array
+          description: Counts per severity among the project's open and reopened findings (findings already fixed are not counted).
           items: { $ref: "#/components/schemas/SeverityCount" }
+        by_analysis_state:
+          type: array
+          description: Counts per analysis state among the project's open and reopened findings (findings already fixed are not counted), ordered by state name; empty when there are none. A missing analysis state counts as unanalyzed.
+          items: { $ref: "#/components/schemas/AnalysisStateCount" }
         latest_report: { $ref: "#/components/schemas/Report" }
 
     SeverityCount:
@@ -3035,6 +3046,13 @@ components:
         severity: { type: string }
         count: { type: integer }
         blocking_count: { type: integer }
+
+    AnalysisStateCount:
+      type: object
+      required: [state, count]
+      properties:
+        state: { type: string }
+        count: { type: integer }
 
     AgingResponse:
       type: object

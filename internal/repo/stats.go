@@ -10,6 +10,7 @@ import (
 // StatsRepo serves aggregate project statistics.
 type StatsRepo interface {
 	GetProjectStats(ctx context.Context, projectID pgtype.UUID) ([]sqlc.GetProjectStatsRow, error)
+	GetProjectAnalysisStateCounts(ctx context.Context, projectID pgtype.UUID) ([]sqlc.GetProjectAnalysisStateCountsRow, error)
 	GetProjectWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error)
 	GetProjectReportCount(ctx context.Context, projectID pgtype.UUID) (int32, error)
 	GetProjectLatestReport(ctx context.Context, projectID pgtype.UUID) (sqlc.GetProjectLatestReportRow, error)
@@ -26,6 +27,10 @@ func newStatsRepo(q *sqlc.Queries) *pgStatsRepo {
 
 func (r *pgStatsRepo) GetProjectStats(ctx context.Context, projectID pgtype.UUID) ([]sqlc.GetProjectStatsRow, error) {
 	return r.q.GetProjectStats(ctx, projectID)
+}
+
+func (r *pgStatsRepo) GetProjectAnalysisStateCounts(ctx context.Context, projectID pgtype.UUID) ([]sqlc.GetProjectAnalysisStateCountsRow, error) {
+	return r.q.GetProjectAnalysisStateCounts(ctx, projectID)
 }
 
 func (r *pgStatsRepo) GetProjectWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error) {

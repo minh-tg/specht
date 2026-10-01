@@ -20,6 +20,11 @@ type severityCount struct {
 	BlockingCount int32  `json:"blocking_count"`
 }
 
+type analysisStateCount struct {
+	State string `json:"state"`
+	Count int32  `json:"count"`
+}
+
 type latestReport struct {
 	ID       string `json:"id"`
 	ToolName string `json:"tool_name"`
@@ -27,12 +32,13 @@ type latestReport struct {
 }
 
 type statsResponse struct {
-	TotalFindings int32           `json:"total_findings"`
-	BlockingCount int32           `json:"blocking_count"`
-	WaiverCount   int32           `json:"waiver_count"`
-	ReportCount   int32           `json:"report_count"`
-	BySeverity    []severityCount `json:"by_severity"`
-	LatestReport  *latestReport   `json:"latest_report"`
+	TotalFindings   int32                `json:"total_findings"`
+	BlockingCount   int32                `json:"blocking_count"`
+	WaiverCount     int32                `json:"waiver_count"`
+	ReportCount     int32                `json:"report_count"`
+	BySeverity      []severityCount      `json:"by_severity"`
+	ByAnalysisState []analysisStateCount `json:"by_analysis_state"`
+	LatestReport    *latestReport        `json:"latest_report"`
 }
 
 type agingBucket struct {
@@ -125,6 +131,7 @@ func TestE2E_ProjectStatsAndAging(t *testing.T) {
 		require.Zero(t, stats.WaiverCount)
 		require.Zero(t, stats.ReportCount)
 		require.Empty(t, stats.BySeverity)
+		require.Empty(t, stats.ByAnalysisState)
 		require.Nil(t, stats.LatestReport, "a project with no reports claims no latest one")
 
 		aging := readAging(t, slug, adminToken, http.StatusOK)
@@ -166,6 +173,9 @@ func TestE2E_ProjectStatsAndAging(t *testing.T) {
 		require.EqualValues(t, 1, bySeverity["medium"].Count)
 		require.EqualValues(t, 1, bySeverity["medium"].BlockingCount)
 
+		require.Equal(t, []analysisStateCount{{State: "unanalyzed", Count: 2}}, stats.ByAnalysisState,
+			"fresh findings are untriaged and bucket under unanalyzed")
+
 		require.NotNil(t, stats.LatestReport)
 		require.Equal(t, "sarif", stats.LatestReport.ToolName)
 		require.Equal(t, "completed", stats.LatestReport.Status)
@@ -193,6 +203,10 @@ func TestE2E_ProjectStatsAndAging(t *testing.T) {
 		require.EqualValues(t, 2, stats.TotalFindings, "deciding a finding never removes it")
 		require.EqualValues(t, 1, stats.BlockingCount,
 			"an ignoring analysis state leaves the roll-up")
+		require.Equal(t, []analysisStateCount{
+			{State: "false_positive", Count: 1},
+			{State: "unanalyzed", Count: 1},
+		}, stats.ByAnalysisState, "triage moves one finding out of the unanalyzed bucket")
 		for _, s := range stats.BySeverity {
 			if s.Severity == "high" {
 				require.Zero(t, s.BlockingCount)

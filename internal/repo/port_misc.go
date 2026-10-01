@@ -82,6 +82,25 @@ func (r *pgStatsPort) GetProjectStats(ctx context.Context, projectID string) ([]
 	return out, nil
 }
 
+func (r *pgStatsPort) GetProjectAnalysisStateCounts(ctx context.Context, projectID string) ([]port.AnalysisStateStat, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.inner.GetProjectAnalysisStateCounts(ctx, pid)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.AnalysisStateStat, len(rows))
+	for i, row := range rows {
+		out[i] = port.AnalysisStateStat{
+			State: row.State,
+			Count: row.Count,
+		}
+	}
+	return out, nil
+}
+
 func (r *pgStatsPort) GetProjectWaiverCount(ctx context.Context, projectID string) (int32, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
