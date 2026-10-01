@@ -59,6 +59,23 @@ describe("ProjectList", () => {
     expect(await screen.findByText("Findings page")).toBeInTheDocument();
   });
 
+  it("styles the blocking badge with verdict tokens", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/alpha/gate")) {
+        return jsonResponse({ threshold_breached: true, blocking_count: 4 });
+      }
+      return jsonResponse([
+        { id: "p1", slug: "alpha", name: "Alpha", description: null },
+      ]);
+    });
+    renderProjectRoutes();
+
+    const badge = await screen.findByText("BLOCKING");
+    expect(badge).toHaveClass("bg-verdict-block", "text-verdict-block-fg");
+    expect(badge).not.toHaveClass("text-destructive-foreground");
+  });
+
   it("lets the user retry after projects fail to load", async () => {
     vi.mocked(globalThis.fetch)
       .mockRejectedValueOnce(new Error("Service unavailable"))

@@ -64,7 +64,7 @@ function ProjectCard(
       className="bg-card hover:bg-muted/50 dark:bg-muted/10 relative cursor-pointer rounded-lg border p-4 text-left transition-colors"
     >
       {gate?.threshold_breached && (
-        <span className="bg-destructive text-destructive-foreground absolute right-2 top-2 rounded px-1.5 py-0.5 text-[10px] font-medium">
+        <span className="bg-verdict-block text-verdict-block-fg absolute right-2 top-2 rounded px-2 py-0.5 text-xs font-medium">
           BLOCKING
         </span>
       )}
