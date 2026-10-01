@@ -12,7 +12,7 @@ import {
 } from "@/lib/verdict";
 import { Link } from "react-router-dom";
 
-/** Plain-language verdict line; unknown is handled by the skeleton. */
+/** Plain-language verdict line; unknown is resolved before this point. */
 function verdictSentence(verdict: Verdict, blockers: number): string {
   switch (verdict) {
     case "blocked":
@@ -33,10 +33,12 @@ function verdictSentence(verdict: Verdict, blockers: number): string {
  * load, so the tab nav below never jumps when the verdict resolves.
  */
 export function VerdictBand({ slug }: { readonly slug: string; }) {
-  const { data: gate } = useGateStatus(slug);
-  const { data: stats } = useProjectStats(slug);
+  const gateQuery = useGateStatus(slug);
+  const statsQuery = useProjectStats(slug);
   const { data: me } = useMe();
 
+  const gate = gateQuery.data;
+  const stats = statsQuery.data;
   const verdict = projectVerdict({ gate, stats });
   const isAdmin = me?.role === "admin";
   const blockers = blockerCount(gate);
@@ -44,7 +46,36 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
   const policy = gate?.policy;
   const latest = stats?.latest_report;
 
-  if (verdict === "unknown") {
+  // A failed request never delivers data, so `unknown` must not animate a
+  // skeleton forever: an errored, still-empty query is the error state.
+  const gateFailed = gateQuery.isError && gate === undefined;
+  const statsFailed = statsQuery.isError && stats === undefined;
+  const gatePending = gateQuery.isPending && gate === undefined;
+  const statsPending = statsQuery.isPending && stats === undefined;
+
+  if (gateFailed || statsFailed) {
+    return (
+      <section aria-live="polite" className="rounded-lg border p-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <VerdictBadge verdict="unknown" />
+          <p role="alert">{"Couldn't load the verdict."}</p>
+          <button
+            type="button"
+            className="text-primary text-sm underline underline-offset-2 hover:no-underline"
+            onClick={() => {
+              if (gateQuery.isError) void gateQuery.refetch();
+              if (statsQuery.isError) void statsQuery.refetch();
+            }}
+          >
+            Retry
+          </button>
+        </div>
+      </section>
+    );
+  }
+
+  // Only a query that is still pending without an error earns the skeleton.
+  if (verdict === "unknown" && (gatePending || statsPending)) {
     return (
       <section aria-live="polite" className="rounded-lg border p-4">
         <div className="flex items-center gap-2">

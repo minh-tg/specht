@@ -2,6 +2,7 @@ import { queryKeys } from "@/api/hooks";
 import { formatDateTime } from "@/lib/format";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { VerdictBand } from "./VerdictBand";
@@ -60,6 +61,16 @@ function renderBand(fixtures: Fixtures = {}, slug = "alpha") {
 /** No seeded data and a fetch that never settles: the skeleton stays up. */
 function renderLoadingBand(slug = "alpha") {
   globalThis.fetch = vi.fn().mockImplementation(() => new Promise(() => {}));
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return renderBandIn(client, slug);
+}
+
+/** No seeded data; the supplied fetch implementation decides success or failure. */
+function renderLiveBand(
+  fetchImpl: (input: RequestInfo | URL) => Promise<Response>,
+  slug = "alpha",
+) {
+  globalThis.fetch = vi.fn().mockImplementation(fetchImpl);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return renderBandIn(client, slug);
 }
@@ -262,4 +273,74 @@ describe("VerdictBand", () => {
     expect(screen.getByText("UNKNOWN")).toBeInTheDocument();
     expect(screen.queryByText("Nothing blocks this project")).not.toBeInTheDocument();
   });
+
+  it("keeps the skeleton for a slow request instead of showing an error", () => {
+    renderLoadingBand();
+
+    expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Couldn't load the verdict.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+
+  it("shows an error and a retry when the gate request fails", async () => {
+    renderLiveBand(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/gate")) return new Response(null, { status: 500 });
+      if (url.endsWith("/stats")) {
+        return jsonResponse({ report_count: 2, total_findings: 0, by_severity: [] });
+      }
+      if (url.endsWith("/me")) return jsonResponse({ role: "member" });
+      return jsonResponse([]);
+    });
+
+    expect(
+      await screen.findByText("Couldn't load the verdict.", undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toHaveAttribute("type", "button");
+    expect(document.querySelectorAll(".animate-pulse").length).toBe(0);
+  }, 20000);
+
+  it("shows an error and a retry when the stats request fails", async () => {
+    renderLiveBand(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/stats")) return new Response(null, { status: 500 });
+      if (url.endsWith("/gate")) {
+        return jsonResponse({ threshold_breached: false, blocking_count: 0, blocked_by: [] });
+      }
+      if (url.endsWith("/me")) return jsonResponse({ role: "member" });
+      return jsonResponse([]);
+    });
+
+    expect(
+      await screen.findByText("Couldn't load the verdict.", undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(document.querySelectorAll(".animate-pulse").length).toBe(0);
+  }, 20000);
+
+  it("re-requests and shows the verdict after Retry succeeds", async () => {
+    let gateFails = true;
+    renderLiveBand(async (input) => {
+      const url = String(input);
+      if (url.endsWith("/gate")) {
+        return gateFails
+          ? new Response(null, { status: 500 })
+          : jsonResponse({ threshold_breached: false, blocking_count: 0, blocked_by: [] });
+      }
+      if (url.endsWith("/stats")) {
+        return jsonResponse({ report_count: 2, total_findings: 0, by_severity: [] });
+      }
+      if (url.endsWith("/me")) return jsonResponse({ role: "member" });
+      return jsonResponse([]);
+    });
+
+    const retry = await screen.findByRole("button", { name: "Retry" }, { timeout: 5000 });
+    gateFails = false;
+    await userEvent.setup().click(retry);
+
+    expect(
+      await screen.findByText("Nothing blocks this project", undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Couldn't load the verdict.")).not.toBeInTheDocument();
+  }, 20000);
 });
