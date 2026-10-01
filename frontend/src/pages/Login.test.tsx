@@ -1,5 +1,6 @@
 import { AuthProvider } from "@/auth/AuthContext";
 import { AuthContext, type AuthContextValue } from "@/auth/context";
+import { hasPendingSsoAttempt } from "@/auth/sso";
 import { createTestQueryClient } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -207,5 +208,19 @@ describe("Login", () => {
       "href",
       "/api/v1/auth/sso/login?redirect=%2Fdashboard%3Ftab%3Dfindings",
     );
+  });
+  it("records the SSO attempt when the SSO link is used, so the return can be accepted", async () => {
+    localStorage.clear();
+    authState.login = async () => {};
+    renderLoginWithAuth("/login");
+
+    const link = screen.getByRole("link", { name: /sign in with sso/i });
+    // jsdom cannot navigate; the click handler is what is under test.
+    link.addEventListener("click", (event) => event.preventDefault());
+    expect(hasPendingSsoAttempt()).toBe(false);
+
+    await userEvent.setup().click(link);
+
+    expect(hasPendingSsoAttempt()).toBe(true);
   });
 });

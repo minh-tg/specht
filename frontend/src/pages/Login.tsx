@@ -1,4 +1,5 @@
 import { APIError } from "@/api/client";
+import { markSsoAttempt } from "@/auth/sso";
 import { useAuth } from "@/auth/useAuth";
 import { type SubmitEvent, useState } from "react";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
@@ -91,6 +92,7 @@ export function Login() {
 
         <a
           href={ssoHref}
+          onClick={() => markSsoAttempt()}
           className="border-input text-foreground hover:bg-accent block w-full rounded-md border px-4 py-2 text-center text-sm font-medium"
         >
           Sign in with SSO

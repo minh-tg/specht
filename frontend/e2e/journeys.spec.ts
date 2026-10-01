@@ -197,14 +197,24 @@ test("logout and session expiry both return to sign in", async ({ page }) => {
   await expect(page).toHaveURL(/\/login/);
 });
 
-test("sso hash token installs a session and junk is rejected", async ({ page, request }) => {
+test("sso hash token installs a session only for a login started here, and junk is rejected", async ({ page, request }) => {
   const token = await apiToken(request);
 
-  // A well-formed token in the fragment installs the session…
+  // A well-formed token in the fragment installs the session when this browser
+  // started an SSO login (pressing "Sign in with SSO" leaves this marker)…
+  await page.goto("/login");
+  await page.evaluate("localStorage.setItem('specht.sso_attempt', String(Date.now()))");
   await page.goto(`/#sso_token=${encodeURIComponent(token)}`);
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+
+  // …but the same token in a link nobody here asked for is ignored, so a crafted
+  // link cannot sign the visitor into someone else's account.
+  await page.evaluate("sessionStorage.removeItem('specht.session')");
+  await page.goto("/login");
+  await page.goto(`/#sso_token=${encodeURIComponent(token)}`);
+  await expect(page).toHaveURL(/\/login/);
 
   // …and an unusable fragment never installs one. A hash-only goto is a
   // same-document navigation (the in-memory session would survive), so
