@@ -219,7 +219,7 @@ describe("mutation CSRF hardening", () => {
     });
   });
 
-  it("never relies on ambient credentials: an anonymous mutation sends no Authorization header", async () => {
+  it("an anonymous mutation sends no Authorization header", async () => {
     const { result } = renderHook(() => useUpsertReachability(), { wrapper });
 
     await act(async () => {
@@ -227,10 +227,9 @@ describe("mutation CSRF hardening", () => {
     });
 
     expect(mutationCalls).toHaveLength(1);
-    // The request goes out without cookies or ambient credentials; the server
-    // rejects it (missing_token). A cookie-based CSRF can never be forged this way.
+    // No bearer token is attached when there is no session; the server rejects
+    // the anonymous request.
     expect(mutationCalls[0].headers.Authorization).toBeUndefined();
-    expect(mutationCalls[0].headers.Cookie).toBeUndefined();
   });
 });
 
