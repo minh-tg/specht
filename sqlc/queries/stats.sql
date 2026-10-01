@@ -5,8 +5,19 @@ SELECT
     COUNT(*) FILTER (WHERE f.gate_effect = 'block')::int AS blocking_count
 FROM findings f
 WHERE f.project_id = $1
+  AND f.state <> 'fixed'
 GROUP BY f.current_severity
 ORDER BY MIN(f.current_severity_rank);
+
+-- name: GetProjectAnalysisStateCounts :many
+SELECT
+    COALESCE(NULLIF(f.analysis_state, ''), 'unanalyzed')::text AS state,
+    COUNT(*)::int AS count
+FROM findings f
+WHERE f.project_id = $1
+  AND f.state <> 'fixed'
+GROUP BY COALESCE(NULLIF(f.analysis_state, ''), 'unanalyzed')
+ORDER BY state ASC;
 
 -- name: GetProjectWaiverCount :one
 SELECT COUNT(*)::int AS count
