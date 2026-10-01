@@ -474,14 +474,22 @@ type SeverityCount struct {
 	BlockingCount int32  `json:"blocking_count"`
 }
 
+// AnalysisStateCount is one analysis-state bucket of a project's finding
+// breakdown.
+type AnalysisStateCount struct {
+	State string `json:"state"`
+	Count int32  `json:"count"`
+}
+
 // ProjectStats is a project's aggregate finding/waiver/report statistics.
 type ProjectStats struct {
-	TotalFindings int32           `json:"total_findings"`
-	BlockingCount int32           `json:"blocking_count"`
-	WaiverCount   int32           `json:"waiver_count"`
-	ReportCount   int32           `json:"report_count"`
-	BySeverity    []SeverityCount `json:"by_severity"`
-	LatestReport  *Report         `json:"latest_report,omitempty"`
+	TotalFindings   int32                `json:"total_findings"`
+	BlockingCount   int32                `json:"blocking_count"`
+	WaiverCount     int32                `json:"waiver_count"`
+	ReportCount     int32                `json:"report_count"`
+	BySeverity      []SeverityCount      `json:"by_severity"`
+	ByAnalysisState []AnalysisStateCount `json:"by_analysis_state"`
+	LatestReport    *Report              `json:"latest_report,omitempty"`
 }
 
 // AgingBucketCount is one age bucket with its overdue subset.

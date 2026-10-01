@@ -1892,8 +1892,9 @@ paths:
       operationId: getProjectStats
       summary: Read the project roll-up
       description: |
-        Counts findings by severity, with the blocking subset, plus waiver and
-        report totals and the newest report.
+        Counts findings by severity, with the blocking subset, and open or
+        reopened findings by analysis state, plus waiver and report totals and
+        the newest report.
       x-required-scope: read
       security:
         - sessionAuth: []
@@ -3018,17 +3019,24 @@ components:
 
     ProjectStats:
       type: object
-      required: [total_findings, blocking_count, waiver_count, report_count, by_severity]
+      required: [total_findings, blocking_count, waiver_count, report_count, by_severity, by_analysis_state]
       properties:
-        total_findings: { type: integer }
+        total_findings:
+          type: integer
+          description: Open and reopened findings; findings already fixed are not counted.
         blocking_count:
           type: integer
-          description: Findings not in an ignoring analysis state.
+          description: Open and reopened findings not in an ignoring analysis state.
         waiver_count: { type: integer, description: Enabled waivers only. }
         report_count: { type: integer }
         by_severity:
           type: array
+          description: Counts per severity among the project's open and reopened findings (findings already fixed are not counted).
           items: { $ref: "#/components/schemas/SeverityCount" }
+        by_analysis_state:
+          type: array
+          description: Counts per analysis state among the project's open and reopened findings (findings already fixed are not counted), ordered by state name; empty when there are none. A missing analysis state counts as unanalyzed.
+          items: { $ref: "#/components/schemas/AnalysisStateCount" }
         latest_report: { $ref: "#/components/schemas/Report" }
 
     SeverityCount:
@@ -3038,6 +3046,13 @@ components:
         severity: { type: string }
         count: { type: integer }
         blocking_count: { type: integer }
+
+    AnalysisStateCount:
+      type: object
+      required: [state, count]
+      properties:
+        state: { type: string }
+        count: { type: integer }
 
     AgingResponse:
       type: object

@@ -848,9 +848,16 @@ type SeverityStat struct {
 	BlockingCount int32
 }
 
+// AnalysisStateStat is one analysis-state bucket of project stats.
+type AnalysisStateStat struct {
+	State string
+	Count int32
+}
+
 // StatsStore serves aggregate project statistics.
 type StatsStore interface {
 	GetProjectStats(ctx context.Context, projectID string) ([]SeverityStat, error)
+	GetProjectAnalysisStateCounts(ctx context.Context, projectID string) ([]AnalysisStateStat, error)
 	GetProjectWaiverCount(ctx context.Context, projectID string) (int32, error)
 	GetProjectReportCount(ctx context.Context, projectID string) (int32, error)
 	GetProjectLatestReport(ctx context.Context, projectID string) (Report, error)

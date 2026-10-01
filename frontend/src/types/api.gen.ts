@@ -1096,8 +1096,9 @@ export interface paths {
     };
     /**
      * Read the project roll-up
-     * @description Counts findings by severity, with the blocking subset, plus waiver and
-     *     report totals and the newest report.
+     * @description Counts findings by severity, with the blocking subset, and open or
+     *     reopened findings by analysis state, plus waiver and report totals and
+     *     the newest report.
      */
     get: operations["getProjectStats"];
     put?: never;
@@ -2012,19 +2013,27 @@ export interface components {
       created_at: string;
     };
     ProjectStats: {
+      /** @description Open and reopened findings; findings already fixed are not counted. */
       total_findings: number;
-      /** @description Findings not in an ignoring analysis state. */
+      /** @description Open and reopened findings not in an ignoring analysis state. */
       blocking_count: number;
       /** @description Enabled waivers only. */
       waiver_count: number;
       report_count: number;
+      /** @description Counts per severity among the project's open and reopened findings (findings already fixed are not counted). */
       by_severity: components["schemas"]["SeverityCount"][];
+      /** @description Counts per analysis state among the project's open and reopened findings (findings already fixed are not counted), ordered by state name; empty when there are none. A missing analysis state counts as unanalyzed. */
+      by_analysis_state: components["schemas"]["AnalysisStateCount"][];
       latest_report?: components["schemas"]["Report"];
     };
     SeverityCount: {
       severity: string;
       count: number;
       blocking_count: number;
+    };
+    AnalysisStateCount: {
+      state: string;
+      count: number;
     };
     AgingResponse: {
       /** @description Always all four buckets, in age order. */
