@@ -9,7 +9,7 @@ import type {
   ScannerDescriptor,
   TriageResponse,
 } from "@/types/api";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";
 
 export const queryKeys = {
@@ -74,6 +74,7 @@ export function useFindings(
       return apiFetch<Finding[]>(`/api/v1/projects/${projectSlug}/findings${query}`);
     },
     enabled: !!projectSlug,
+    placeholderData: keepPreviousData,
   });
 }
 
