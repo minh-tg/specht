@@ -43,6 +43,10 @@ export type ReachabilityState = typeof REACHABILITY_STATES[number];
 export const SEVERITIES = ["critical", "high", "medium", "low", "none"] as const;
 export type Severity = typeof SEVERITIES[number];
 
+// Mirrors the API's `finding_kind` enum.
+export const FINDING_KINDS = ["sca", "sast", "iac", "secret", "dast"] as const;
+export type FindingKind = typeof FINDING_KINDS[number];
+
 function isOneOf<T extends string>(
   values: readonly T[],
   value: string | null | undefined,
@@ -67,6 +71,9 @@ export const isReachabilityState = (
 
 export const isSeverity = (value: string | null | undefined): value is Severity =>
   isOneOf(SEVERITIES, value);
+
+export const isFindingKind = (value: string | null | undefined): value is FindingKind =>
+  isOneOf(FINDING_KINDS, value);
 
 /**
  * Groups an analysis state into its triage bucket. Returns null for values
@@ -128,6 +135,14 @@ const SEVERITY_LABELS: Record<Severity, string> = {
   none: "None",
 };
 
+const FINDING_KIND_LABELS: Record<FindingKind, string> = {
+  sca: "SCA",
+  sast: "SAST",
+  iac: "IaC",
+  secret: "Secret",
+  dast: "DAST",
+};
+
 /**
  * Human label for an analysis state. Returns null when no analysis has been
  * recorded (empty/absent) so callers can show their own empty state, and a
@@ -160,6 +175,12 @@ export function reachabilityStateLabel(value: string | null | undefined): string
 export function severityLabel(value: string | null | undefined): string | null {
   if (!value) return null;
   return isSeverity(value) ? SEVERITY_LABELS[value] : "Unknown";
+}
+
+/** Human label for a finding kind; see analysisStateLabel. */
+export function findingKindLabel(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return isFindingKind(value) ? FINDING_KIND_LABELS[value] : "Unknown";
 }
 
 /**

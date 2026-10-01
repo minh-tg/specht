@@ -1,6 +1,15 @@
 import { useFindings, useGateStatus } from "@/api/hooks";
 import { SeverityBadge } from "@/components/ui/severity-badge";
-import { analysisStateLabel, severityRank, technicalStateLabel } from "@/lib/enums";
+import {
+  analysisStateLabel,
+  FINDING_KINDS,
+  findingKindLabel,
+  SEVERITIES,
+  severityLabel,
+  severityRank,
+  TECHNICAL_STATES,
+  technicalStateLabel,
+} from "@/lib/enums";
 import { formatDate } from "@/lib/format";
 import { blocksGate, blocksGateLabel } from "@/lib/gate";
 import type { Finding } from "@/types/api";
@@ -129,10 +138,9 @@ export function FindingsDashboard() {
           onChange={(e) => updateFilter("severity", e.target.value)}
         >
           <option value="">All severities</option>
-          <option value="critical">Critical</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
+          {SEVERITIES.map((value) => (
+            <option key={value} value={value}>{severityLabel(value)}</option>
+          ))}
         </select>
         <select
           aria-label="Filter by status"
@@ -141,9 +149,9 @@ export function FindingsDashboard() {
           onChange={(e) => updateFilter("status", e.target.value)}
         >
           <option value="">All statuses</option>
-          <option value="open">Open</option>
-          <option value="fixed">Fixed</option>
-          <option value="reopened">Reopened</option>
+          {TECHNICAL_STATES.map((value) => (
+            <option key={value} value={value}>{technicalStateLabel(value)}</option>
+          ))}
         </select>
         <select
           aria-label="Filter by finding type"
@@ -152,10 +160,9 @@ export function FindingsDashboard() {
           onChange={(e) => updateFilter("kind", e.target.value)}
         >
           <option value="">All kinds</option>
-          <option value="sca">SCA</option>
-          <option value="sast">SAST</option>
-          <option value="iac">IaC</option>
-          <option value="secret">Secret</option>
+          {FINDING_KINDS.map((value) => (
+            <option key={value} value={value}>{findingKindLabel(value)}</option>
+          ))}
         </select>
       </div>
 

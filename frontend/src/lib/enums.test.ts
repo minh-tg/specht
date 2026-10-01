@@ -2,9 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   ANALYSIS_STATES,
   analysisStateLabel,
+  FINDING_KINDS,
+  findingKindLabel,
   GATE_EFFECTS,
   gateEffectLabel,
   isAnalysisState,
+  isFindingKind,
   isGateEffect,
   isReachabilityState,
   isSeverity,
@@ -56,6 +59,10 @@ describe("enum vocabularies", () => {
     expect(REACHABILITY_STATES).toContain("unknown");
     expect(SEVERITIES).not.toContain("unknown");
   });
+
+  it("mirrors the backend finding_kind enum", () => {
+    expect(FINDING_KINDS).toEqual(["sca", "sast", "iac", "secret", "dast"]);
+  });
 });
 
 describe("enum guards", () => {
@@ -76,6 +83,9 @@ describe("enum guards", () => {
     expect(isSeverity("critical")).toBe(true);
     expect(isSeverity("CRITICAL")).toBe(false);
     expect(isSeverity("info")).toBe(false);
+
+    expect(isFindingKind("dast")).toBe(true);
+    expect(isFindingKind("container")).toBe(false);
   });
 });
 
@@ -183,6 +193,22 @@ describe("severityLabel", () => {
   it("falls back for missing or unvalidated input", () => {
     expect(severityLabel(null)).toBeNull();
     expect(severityLabel("severe")).toBe("Unknown");
+  });
+});
+
+describe("findingKindLabel", () => {
+  it("labels every canonical finding kind", () => {
+    expect(findingKindLabel("sca")).toBe("SCA");
+    expect(findingKindLabel("sast")).toBe("SAST");
+    expect(findingKindLabel("iac")).toBe("IaC");
+    expect(findingKindLabel("secret")).toBe("Secret");
+    expect(findingKindLabel("dast")).toBe("DAST");
+  });
+
+  it("falls back for missing or unvalidated input", () => {
+    expect(findingKindLabel(null)).toBeNull();
+    expect(findingKindLabel("")).toBeNull();
+    expect(findingKindLabel("container")).toBe("Unknown");
   });
 });
 

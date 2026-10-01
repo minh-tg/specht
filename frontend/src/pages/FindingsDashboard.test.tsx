@@ -146,6 +146,44 @@ describe("FindingsDashboard", () => {
     expect(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0]).toContain("offset=0");
   });
 
+  it("offers None as a severity filter and requests severity=none", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      if (String(input).endsWith("/gate")) return jsonResponse(gateFixture);
+      const url = new URL(String(input), "http://localhost");
+      return jsonResponse(url.searchParams.get("severity") === "none" ? [] : findingsFixture);
+    });
+    renderWithProviders(<FindingsDashboard />);
+    const user = userEvent.setup();
+
+    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
+    const severity = screen.getByRole("combobox", { name: "Filter by severity" });
+    expect(within(severity).getByRole("option", { name: "None" })).toBeInTheDocument();
+
+    await user.selectOptions(severity, "none");
+
+    expect(await screen.findByText("No findings match these filters.")).toBeInTheDocument();
+    expect(String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0])).toContain("severity=none");
+  });
+
+  it("offers DAST as a finding kind filter and requests kind=dast", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      if (String(input).endsWith("/gate")) return jsonResponse(gateFixture);
+      const url = new URL(String(input), "http://localhost");
+      return jsonResponse(url.searchParams.get("kind") === "dast" ? [] : findingsFixture);
+    });
+    renderWithProviders(<FindingsDashboard />);
+    const user = userEvent.setup();
+
+    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
+    const kind = screen.getByRole("combobox", { name: "Filter by finding type" });
+    expect(within(kind).getByRole("option", { name: "DAST" })).toBeInTheDocument();
+
+    await user.selectOptions(kind, "dast");
+
+    expect(await screen.findByText("No findings match these filters.")).toBeInTheDocument();
+    expect(String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0])).toContain("kind=dast");
+  });
+
   it("sorts findings in both directions when the title column is selected", async () => {
     findingsFixture = [
       { ...findingsFixture[0], id: "f1", current_title: "Zebra", current_severity: "critical" },
