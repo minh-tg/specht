@@ -242,6 +242,43 @@ describe("UploadReport scanner loading and error states", () => {
     });
   });
 
+  it("retries the scanners request and keeps the chosen file", async () => {
+    const user = userEvent.setup();
+    let scannerCalls = 0;
+    fetchCalls = [];
+    globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
+      const u = String(url);
+      const method = ((opts as RequestInit)?.method ?? "GET").toUpperCase();
+      fetchCalls.push({ url: u, method, body: (opts as RequestInit)?.body as string | undefined });
+      if (u === "/api/v1/scanners" && method === "GET") {
+        scannerCalls += 1;
+        if (scannerCalls === 1) {
+          return { ok: false, status: 500, json: () => Promise.resolve({}) } as Response;
+        }
+        return { ok: true, json: () => Promise.resolve(SCANNERS) } as Response;
+      }
+      if (u === "/api/v1/projects/test-project" && method === "GET") {
+        return { ok: true, json: () => Promise.resolve(PROJECT) } as Response;
+      }
+      return { ok: true, json: () => Promise.resolve([]) } as Response;
+    });
+
+    renderUpload();
+
+    const retry = await screen.findByRole("button", { name: "Retry" });
+    await user.upload(screen.getByLabelText(/scan file/i), createJsonFile("{\"vuln\":true}"));
+    expect(await screen.findByText("report.json loaded")).toBeInTheDocument();
+
+    await user.click(retry);
+
+    await waitFor(() => {
+      expect(screen.getByRole("combobox", { name: /scanner/i })).toBeInTheDocument();
+    });
+    expect(scannerCalls).toBe(2);
+    // Choosing a file must survive the retry: refetching does not reset the form.
+    expect(screen.getByText("report.json loaded")).toBeInTheDocument();
+  });
+
   it("shows the empty state when the scanners endpoint returns no rows", async () => {
     fetchCalls = [];
     globalThis.fetch = vi.fn().mockImplementation(async (url) => {

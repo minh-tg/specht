@@ -17,6 +17,7 @@ export function UploadReport() {
     data: scanners,
     isLoading: scannersLoading,
     isError: scannersError,
+    refetch: refetchScanners,
   } = useScanners();
 
   const [selectedScanner, setSelectedScanner] = useState("");
@@ -125,7 +126,14 @@ export function UploadReport() {
   } else if (scannersError) {
     scannerPicker = (
       <div className="text-destructive mt-1 text-sm">
-        Failed to load scanners. Refresh to retry.
+        Failed to load scanners.
+        <button
+          type="button"
+          onClick={() => refetchScanners()}
+          className="text-primary ml-2 text-sm underline underline-offset-2 hover:no-underline"
+        >
+          Retry
+        </button>
       </div>
     );
   } else if (!scanners || scanners.length === 0) {
