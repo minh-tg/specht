@@ -1,11 +1,20 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Link, MemoryRouter, Route, Routes } from "react-router-dom";
+import { Link, MemoryRouter, Route, Routes, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { AppShell } from "./AppShell";
 
 function Boom(): never {
   throw new Error("render failure");
+}
+
+function BackButton() {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => navigate(-1)}>
+      Back
+    </button>
+  );
 }
 
 function renderShell(initialPath = "/a") {
@@ -39,7 +48,7 @@ function renderShell(initialPath = "/a") {
 }
 
 beforeEach(() => {
-  window.scrollTo = vi.fn();
+  vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
 
 afterEach(() => {
@@ -84,6 +93,32 @@ it("moves focus to main and scrolls to the top when the pathname changes", async
   expect(await screen.findByRole("heading", { name: "Page B" })).toBeInTheDocument();
   expect(screen.getByRole("main")).toHaveFocus();
   expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
+});
+
+it("keeps the scroll position on back navigation", async () => {
+  const user = userEvent.setup();
+  render(
+    <MemoryRouter initialEntries={["/a", "/b"]}>
+      <AppShell
+        header={
+          <nav aria-label="Main">
+            <Link to="/b">Page B</Link>
+          </nav>
+        }
+      >
+        <Routes>
+          <Route path="/a" element={<h1>Page A</h1>} />
+          <Route path="/b" element={<BackButton />} />
+        </Routes>
+      </AppShell>
+    </MemoryRouter>,
+  );
+
+  await user.click(screen.getByRole("button", { name: "Back" }));
+
+  expect(await screen.findByRole("heading", { name: "Page A" })).toBeInTheDocument();
+  expect(screen.getByRole("main")).toHaveFocus();
+  expect(window.scrollTo).not.toHaveBeenCalled();
 });
 
 it("keeps focus where it is when only the search string changes", async () => {
