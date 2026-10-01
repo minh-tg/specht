@@ -1,18 +1,20 @@
 import { AuthProvider } from "@/auth/AuthContext";
 import { ProtectedRoute } from "@/auth/ProtectedRoute";
+import { AppShell } from "@/components/AppShell";
 import { Navbar } from "@/components/Navbar";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { ApiKeys } from "@/pages/ApiKeys";
 import { FindingDetail } from "@/pages/FindingDetail";
 import { Login } from "@/pages/Login";
 import { NewProject } from "@/pages/NewProject";
+import { NotFound } from "@/pages/NotFound";
 import { ProjectLayout } from "@/pages/ProjectLayout";
 import { ProjectList } from "@/pages/ProjectList";
 import { ProjectSetup } from "@/pages/ProjectSetup";
 import { Register } from "@/pages/Register";
 import { UploadReport } from "@/pages/UploadReport";
 import { type ReactNode } from "react";
-import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
 
 function HomePage() {
   useDocumentTitle("Projects");
@@ -28,6 +30,12 @@ function HomePage() {
 function Titled({ title, children }: { title: string; children: ReactNode; }) {
   useDocumentTitle(title);
   return children;
+}
+
+/** A bare project URL opens the project's findings, its default view. */
+function ProjectIndexRedirect() {
+  const { slug } = useParams<{ slug: string; }>();
+  return <Navigate to={`/${slug}/findings`} replace />;
 }
 
 export function AppRoutes() {
@@ -124,7 +132,22 @@ export function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route
+        path="/:slug"
+        element={
+          <ProtectedRoute>
+            <ProjectIndexRedirect />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="*"
+        element={
+          <Titled title="Not found">
+            <NotFound />
+          </Titled>
+        }
+      />
     </Routes>
   );
 }
@@ -132,8 +155,9 @@ export function AppRoutes() {
 function AppLayout() {
   return (
     <AuthProvider>
-      <Navbar />
-      <AppRoutes />
+      <AppShell header={<Navbar />}>
+        <AppRoutes />
+      </AppShell>
     </AuthProvider>
   );
 }

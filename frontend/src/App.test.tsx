@@ -115,11 +115,25 @@ it("keeps project navigation in sync with the selected tab", async () => {
   );
 });
 
-it("returns unknown routes to the projects page", async () => {
-  renderRoutes("/unknown-route");
+it("shows a not-found page for unknown routes", async () => {
+  renderRoutes("/unknown/deeper/path");
 
-  expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
-  expect(await screen.findByText("No projects yet")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Page not found" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Back to projects" })).toHaveAttribute("href", "/");
+  expect(document.title).toBe("Not found · Specht");
+});
+
+it("opens a project's findings from its bare URL", async () => {
+  renderRoutes("/test-project");
+
+  expect(await screen.findByText("No findings found")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Findings" })).toHaveAttribute("aria-current", "page");
+});
+
+it("does not treat the bare-project route as a not-found page for signed-out visitors", async () => {
+  renderRoutes("/test-project", null);
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
 });
 
 it("sets the document title for the sign-in route", async () => {
