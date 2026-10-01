@@ -71,6 +71,9 @@ func TestParse_GoScan(t *testing.T) {
 
 	// Observation payload lands in Extensions.
 	assert.Equal(t, []string{"CVE-2021-3121"}, finding.Extensions["aliases"])
+
+	// The location names the affected package and where it was observed.
+	assert.Equal(t, "github.com/gogo/protobuf 1.3.1 in /home/user/project/go.mod", finding.Location)
 }
 
 func TestParseCVSSInfo(t *testing.T) {

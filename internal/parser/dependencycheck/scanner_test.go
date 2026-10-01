@@ -147,3 +147,28 @@ func TestFindingKind(t *testing.T) {
 	s := dependencycheck.NewScanner()
 	assert.Equal(t, "sca", string(s.Descriptor().FindingKinds[0]))
 }
+
+func TestParse_DependencyCheckReport_SCALocation(t *testing.T) {
+	data, err := os.ReadFile("testdata/dependency-check-report.json")
+	require.NoError(t, err)
+
+	report, err := dependencycheck.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+
+	byFingerprint := map[string]domain.NormalizedFinding{}
+	for _, f := range report.Findings {
+		byFingerprint[f.Fingerprint] = f
+	}
+	log4j, ok := byFingerprint["CVE-2021-44228:pkg:maven/org.apache.logging.log4j/log4j-core@2.17.0"]
+	require.True(t, ok, "log4j finding missing")
+	assert.Equal(t, "org.apache.logging.log4j/log4j-core 2.17.0 in /app/lib/log4j-core-2.17.0.jar", log4j.Location)
+}
+
+func TestParse_DependencyCheckLocationWithoutPURL(t *testing.T) {
+	data := []byte(`{"reportSchema":"1.1","dependencies":[{"fileName":"legacy-1.0.jar","filePath":"/app/legacy-1.0.jar","packages":[],"vulnerabilities":[{"name":"CVE-2020-0001","severity":"HIGH","description":"legacy issue"}]}]}`)
+
+	report, err := dependencycheck.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.Len(t, report.Findings, 1)
+	assert.Equal(t, "/app/legacy-1.0.jar", report.Findings[0].Location)
+}

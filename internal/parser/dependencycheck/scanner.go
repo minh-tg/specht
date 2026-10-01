@@ -112,6 +112,12 @@ func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) do
 		[]domain.Dimension{{Key: domain.DimVulnerabilityID, Value: v.Name}},
 		dcComponentDims(purl, dep.FileName)...,
 	)
+	location := dep.FilePath
+	if purl != "" {
+		if _, name, version := domain.SplitPURL(purl); name != "" {
+			location = domain.SCALocation(name, version, dep.FilePath)
+		}
+	}
 	return domain.NormalizedFinding{
 		Fingerprint: createFingerprint(v.Name, purl),
 		FindingKind: "sca",
@@ -119,7 +125,7 @@ func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) do
 		Description: v.Description,
 		Severity:    severity,
 		Score:       score,
-		Location:    dep.FilePath,
+		Location:    location,
 		CVSS:        dcCVSSInfo(score, cvssVec, cvssVer),
 		Dimensions:  dims,
 		Extensions: map[string]any{

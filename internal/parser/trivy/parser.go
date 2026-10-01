@@ -281,7 +281,7 @@ func addVulns(nr *domain.NormalizedReport, result trivyResult) {
 			Description: v.Description,
 			Severity:    normalizeSeverity(v.Severity),
 			Score:       maxCVSSScore(v.CVSS),
-			Location:    result.Target,
+			Location:    domain.SCALocation(v.PkgName, v.InstalledVersion, result.Target),
 			Dimensions:  dims,
 			Extensions:  ext,
 		})

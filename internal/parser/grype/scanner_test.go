@@ -161,3 +161,14 @@ func TestParse_GrypeReport_Aliases(t *testing.T) {
 	assert.Equal(t, "ghsa", ghsaFinding.Extensions["namespace"])
 	assert.Equal(t, "CVE-2021-3121", ghsaFinding.Aliases[0])
 }
+
+func TestParse_GrypeReport_SCALocation(t *testing.T) {
+	data, err := os.ReadFile("testdata/grype-report.json")
+	require.NoError(t, err)
+
+	report, err := grype.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+
+	f := grypeFindingByFingerprint(t, report.Findings, "CVE-2023-25165:pkg:golang/helm.sh/helm/v3@v3.11.1")
+	assert.Equal(t, "helm.sh/helm/v3 v3.11.1 in /app/go.mod", f.Location)
+}
