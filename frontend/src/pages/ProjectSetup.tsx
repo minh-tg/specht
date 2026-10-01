@@ -7,18 +7,18 @@ import {
   useProjectStats,
   useVersion,
 } from "@/api/hooks";
+import { CopyButton } from "@/components/CopyButton";
 import { adapterRefFor, githubActionsSnippet, gitlabCiSnippet } from "@/lib/ciSnippets";
 import { pluralize } from "@/lib/format";
 import type { ProjectStats } from "@/types/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 const BUTTON_CLASS =
   "bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50";
 const LINK_CLASS = "text-primary hover:text-primary/80 text-sm underline";
 const PRE_CLASS = "bg-muted rounded-md p-3 text-xs break-words whitespace-pre-wrap";
-const COPY_BUTTON_CLASS = "text-primary hover:text-primary/80 shrink-0 text-xs font-medium";
 
 export function ProjectSetup() {
   const { slug = "" } = useParams<{ slug: string; }>();
@@ -36,8 +36,6 @@ export function ProjectSetup() {
   // The secret must not outlive this page: drop it from the mutation cache too.
   const resetKeyMutation = createKey.reset;
   useEffect(() => resetKeyMutation, [resetKeyMutation]);
-  const [copied, setCopied] = useState<string | null>(null);
-  const copyTimer = useRef<number | undefined>(undefined);
 
   // Poll every five seconds until a report lands, then stop. The hook reads
   // refetchInterval again on every result update, so the cached stats decide
@@ -47,25 +45,6 @@ export function ProjectSetup() {
   const stats = useProjectStats(slug, {
     refetchInterval: firstReportReceived ? false : 5000,
   });
-
-  useEffect(() => () => {
-    if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current);
-  }, []);
-
-  async function writeToClipboard(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      // Clipboard access can be denied; the text stays visible for manual copy.
-    }
-  }
-
-  function copy(id: string, text: string) {
-    void writeToClipboard(text);
-    setCopied(id);
-    if (copyTimer.current !== undefined) window.clearTimeout(copyTimer.current);
-    copyTimer.current = window.setTimeout(() => setCopied(null), 2000);
-  }
 
   function handleCreateKey() {
     setKeyError(null);
@@ -142,13 +121,7 @@ export function ProjectSetup() {
             <div className="mt-3">
               <div className="flex items-center gap-2">
                 <code className={`${PRE_CLASS} flex-1 break-all`}>{rawKey}</code>
-                <button
-                  type="button"
-                  className={COPY_BUTTON_CLASS}
-                  onClick={() => copy("key", rawKey)}
-                >
-                  {copied === "key" ? "Copied" : "Copy"}
-                </button>
+                <CopyButton text={rawKey} label="API key" />
               </div>
               <p className="text-destructive mt-2 text-xs">
                 Copy it now. It will not be shown again.
@@ -171,13 +144,7 @@ export function ProjectSetup() {
           <div className="mt-3">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium">GitHub Actions</h3>
-              <button
-                type="button"
-                className={COPY_BUTTON_CLASS}
-                onClick={() => copy("github", githubSnippet)}
-              >
-                {copied === "github" ? "Copied" : "Copy"}
-              </button>
+              <CopyButton text={githubSnippet} label="GitHub Actions workflow" />
             </div>
             <pre className={`${PRE_CLASS} mt-1`}>
               <code>{githubSnippet}</code>
@@ -187,13 +154,7 @@ export function ProjectSetup() {
           <div className="mt-4">
             <div className="flex items-center justify-between">
               <h3 className="text-sm font-medium">GitLab CI</h3>
-              <button
-                type="button"
-                className={COPY_BUTTON_CLASS}
-                onClick={() => copy("gitlab", gitlabSnippet)}
-              >
-                {copied === "gitlab" ? "Copied" : "Copy"}
-              </button>
+              <CopyButton text={gitlabSnippet} label="GitLab CI pipeline" />
             </div>
             <pre className={`${PRE_CLASS} mt-1`}>
               <code>{gitlabSnippet}</code>

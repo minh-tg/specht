@@ -155,10 +155,12 @@ describe("ProjectSetup", () => {
       ),
     ).toBeInTheDocument();
 
-    await user.click(within(step("Create an API key")).getByRole("button", { name: "Copy" }));
+    await user.click(
+      within(step("Create an API key")).getByRole("button", { name: "Copy API key" }),
+    );
 
     expect(writeText).toHaveBeenCalledWith(RAW_KEY);
-    expect(within(step("Create an API key")).getByRole("button", { name: "Copied" }))
+    expect(within(step("Create an API key")).getByRole("button", { name: "Copied API key" }))
       .toBeInTheDocument();
   });
 
@@ -274,6 +276,24 @@ describe("ProjectSetup", () => {
     await waitFor(() => expect(lastClient.getMutationCache().getAll()).toHaveLength(0));
   });
 
+  it("tells the user when copying fails instead of claiming success", async () => {
+    const user = userEvent.setup();
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
+      configurable: true,
+    });
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "Create key" }));
+    await screen.findByText(RAW_KEY);
+
+    const keyStep = step("Create an API key");
+    await user.click(within(keyStep).getByRole("button", { name: "Copy API key" }));
+
+    expect(await within(keyStep).findByText(/copy it manually/)).toBeInTheDocument();
+    expect(within(keyStep).getByRole("button", { name: "Copy failed API key" }))
+      .toBeInTheDocument();
+  });
+
   it("links to the manual upload and the findings of the project", async () => {
     renderPage();
     expect(await screen.findByRole("link", { name: "Upload a report" }))
@@ -288,7 +308,7 @@ describe("ProjectSetup", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(statsRequests).toBe(1);
-    expect(screen.getByRole("status")).toHaveTextContent("Waiting for the first report...");
+    expect(screen.getByText("Waiting for the first report...")).toBeInTheDocument();
 
     stats = { ...stats, report_count: 1, total_findings: 1 };
     await act(async () => {
@@ -299,7 +319,7 @@ describe("ProjectSetup", () => {
 
     expect(screen.getByText("First report received: 1 finding.")).toBeInTheDocument();
     expect(statsRequests).toBe(2);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByText("Waiting for the first report...")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View findings" })).toHaveAttribute(
       "href",
       "/acme/findings",

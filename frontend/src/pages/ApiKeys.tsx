@@ -1,5 +1,6 @@
 import { APIError, apiFetch } from "@/api/client";
 import { useProjects } from "@/api/hooks";
+import { CopyButton } from "@/components/CopyButton";
 import type { ApiKey } from "@/types/api";
 import { type ReactNode, useState } from "react";
 
@@ -214,12 +215,7 @@ export function ApiKeys() {
               </p>
               <div className="flex items-center gap-2">
                 <code className="bg-muted flex-1 rounded px-2 py-1 text-xs">{createdKey}</code>
-                <button
-                  className="text-primary hover:text-primary/80 text-xs font-medium"
-                  onClick={() => navigator.clipboard.writeText(createdKey)}
-                >
-                  Copy
-                </button>
+                <CopyButton text={createdKey} label="API key" />
               </div>
               <button
                 className="text-muted-foreground hover:text-foreground mt-2 text-xs"
