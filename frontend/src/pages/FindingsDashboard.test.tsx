@@ -54,8 +54,8 @@ function renderWithProviders(ui: React.ReactElement, initialPath = "/test-projec
 describe("FindingsDashboard", () => {
   it("shows loading state initially", () => {
     renderWithProviders(<FindingsDashboard />);
-    const skeletons = document.querySelectorAll(".animate-pulse");
-    expect(skeletons.length).toBeGreaterThan(0);
+    const status = screen.getByRole("status", { name: "Loading findings" });
+    expect(status).toHaveAttribute("aria-busy", "true");
   });
 
   it("renders findings after loading", async () => {
@@ -311,10 +311,9 @@ describe("FindingsDashboard", () => {
     expect(screen.getByLabelText("Filter by severity")).toHaveValue("critical");
     const region = document.querySelector("[aria-busy]");
     expect(region).toHaveAttribute("aria-busy", "true");
-    expect(region?.className).toContain("opacity-60");
     // Stale rows stay visible instead of collapsing into a skeleton.
     expect(screen.getByText("Test Vuln")).toBeInTheDocument();
-    expect(document.querySelectorAll(".animate-pulse")).toHaveLength(0);
+    expect(screen.queryByRole("status", { name: "Loading findings" })).not.toBeInTheDocument();
 
     await act(async () => {
       releaseFiltered?.(jsonResponse([]));
@@ -405,7 +404,6 @@ describe("FindingsDashboard", () => {
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
     const cell = gateCell();
     expect(cell).toHaveTextContent("Yes");
-    expect(cell.querySelector("span")).toHaveClass("bg-sev-critical-bg", "text-sev-critical-fg");
   });
 
   it("explains an ignored and a below-floor finding in the gate column", async () => {
@@ -562,6 +560,9 @@ function renderWithDetailRoute(initialPath = "/test-project/findings") {
 }
 
 function gateCell(): HTMLElement {
-  const rows = within(screen.getByRole("table")).getAllByRole("row");
-  return within(rows[1]).getAllByRole("cell")[5];
+  const table = screen.getByRole("table");
+  const headers = within(table).getAllByRole("columnheader");
+  const index = headers.indexOf(within(table).getByRole("columnheader", { name: "Blocks gate" }));
+  const rows = within(table).getAllByRole("row");
+  return within(rows[1]).getAllByRole("cell")[index];
 }

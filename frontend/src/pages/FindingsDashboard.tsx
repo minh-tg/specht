@@ -171,7 +171,12 @@ export function FindingsDashboard() {
         className={isRefetching ? "space-y-4 opacity-60" : "space-y-4"}
       >
         {isLoading && (
-          <div className="space-y-2">
+          <div
+            role="status"
+            aria-busy="true"
+            aria-label="Loading findings"
+            className="space-y-2"
+          >
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="bg-muted h-10 animate-pulse rounded" />
             ))}
