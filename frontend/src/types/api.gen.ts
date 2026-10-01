@@ -1337,7 +1337,8 @@ export interface components {
       /** @example trivy */
       name: string;
       version: string;
-      finding_kinds: ("sca" | "sast" | "iac" | "secret" | "dast")[];
+      finding_kinds:
+        ("sca" | "sast" | "iac" | "secret" | "dast" | "image_config" | "license" | "cve_watcher")[];
       scan_types: string[];
       provides_packages: boolean;
       supports_auto_detection: boolean;
@@ -1414,7 +1415,7 @@ export interface components {
       scan_type: string;
       scan_target?: string | null;
       /** @enum {string} */
-      status: "pending" | "completed" | "failed";
+      status: "processing" | "completed" | "failed";
       total_findings?: number | null;
       branch?: string | null;
       commit_sha?: string | null;
@@ -1433,12 +1434,23 @@ export interface components {
       /** Format: uuid */
       project_id: string;
       /** @enum {string} */
-      finding_kind: "sca" | "sast" | "iac" | "secret" | "dast";
+      finding_kind:
+        | "sca"
+        | "sast"
+        | "iac"
+        | "secret"
+        | "dast"
+        | "image_config"
+        | "license"
+        | "cve_watcher";
       /** @description Stable identity across scans; the dedupe key. */
       fingerprint: string;
       current_title: string;
-      /** @enum {string} */
-      current_severity: "critical" | "high" | "medium" | "low" | "none";
+      /**
+       * @description `unknown` means the scanner did not rate the finding; it has rank 0 and never gates.
+       * @enum {string}
+       */
+      current_severity: "critical" | "high" | "medium" | "low" | "unknown";
       /** @description CVSS score when the scanner supplied one. */
       current_score?: number | null;
       /** @description Scan lifecycle. Moved only by ingest, verification, and the expiry sweeps. */
@@ -1735,7 +1747,7 @@ export interface components {
       template_name?: string | null;
       template_version: number;
       /** @enum {string} */
-      severity_floor: "critical" | "high" | "medium" | "low" | "none";
+      severity_floor: "critical" | "high" | "medium" | "low";
       /**
        * @description The layer that supplied the floor.
        * @enum {string}
@@ -2952,11 +2964,11 @@ export interface operations {
   listFindings: {
     parameters: {
       query?: {
-        /** @description Comma-separated severities (critical, high, medium, low, none). */
+        /** @description Comma-separated severities (critical, high, medium, low, unknown). `unknown` is a finding the scanner did not rate. */
         severity?: string;
         /** @description Comma-separated lifecycle states (open, fixed, reopened). */
         status?: string;
-        /** @description Comma-separated finding kinds (sca, sast, iac, secret, dast). */
+        /** @description Comma-separated finding kinds (sca, sast, iac, secret, dast, image_config, license, cve_watcher). */
         kind?: string;
         /** @description Comma-separated environment names. */
         environment?: string;

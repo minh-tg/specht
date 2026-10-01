@@ -722,7 +722,7 @@ paths:
         - $ref: "#/components/parameters/Slug"
         - name: severity
           in: query
-          description: Comma-separated severities (critical, high, medium, low, none).
+          description: Comma-separated severities (critical, high, medium, low, unknown). `unknown` is a finding the scanner did not rate.
           schema: { type: string, example: "critical,high" }
         - name: status
           in: query
@@ -730,7 +730,7 @@ paths:
           schema: { type: string, example: open }
         - name: kind
           in: query
-          description: Comma-separated finding kinds (sca, sast, iac, secret, dast).
+          description: Comma-separated finding kinds (sca, sast, iac, secret, dast, image_config, license, cve_watcher).
           schema: { type: string, example: "sca,sast" }
         - name: environment
           in: query
@@ -2313,7 +2313,7 @@ components:
         version: { type: string }
         finding_kinds:
           type: array
-          items: { type: string, enum: [sca, sast, iac, secret, dast] }
+          items: { type: string, enum: [sca, sast, iac, secret, dast, image_config, license, cve_watcher] }
         scan_types:
           type: array
           items: { type: string, example: image }
@@ -2382,7 +2382,7 @@ components:
         tool_version: { type: [string, "null"] }
         scan_type: { type: string, example: image }
         scan_target: { type: [string, "null"] }
-        status: { type: string, enum: [pending, completed, failed] }
+        status: { type: string, enum: [processing, completed, failed] }
         total_findings: { type: [integer, "null"] }
         branch: { type: [string, "null"] }
         commit_sha: { type: [string, "null"] }
@@ -2400,10 +2400,13 @@ components:
       properties:
         id: { type: string, format: uuid }
         project_id: { type: string, format: uuid }
-        finding_kind: { type: string, enum: [sca, sast, iac, secret, dast] }
+        finding_kind: { type: string, enum: [sca, sast, iac, secret, dast, image_config, license, cve_watcher] }
         fingerprint: { type: string, description: Stable identity across scans; the dedupe key. }
         current_title: { type: string }
-        current_severity: { type: string, enum: [critical, high, medium, low, none] }
+        current_severity:
+          type: string
+          enum: [critical, high, medium, low, unknown]
+          description: "`unknown` means the scanner did not rate the finding; it has rank 0 and never gates."
         current_score: { type: [number, "null"], description: CVSS score when the scanner supplied one. }
         state:
           type: string
@@ -2715,7 +2718,7 @@ components:
       properties:
         template_name: { type: [string, "null"] }
         template_version: { type: integer }
-        severity_floor: { type: string, enum: [critical, high, medium, low, none] }
+        severity_floor: { type: string, enum: [critical, high, medium, low] }
         severity_source:
           type: string
           description: The layer that supplied the floor.
