@@ -462,10 +462,10 @@ export function FindingDetail() {
           <span className="text-muted-foreground text-xs">{finding.finding_kind}</span>
           {gateChip}
         </div>
-        <h1 className="text-2xl font-bold">{finding.current_title}</h1>
+        <h1 className="text-2xl font-bold break-words">{finding.current_title}</h1>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 text-sm">
+      <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
         <div>
           <span className="text-muted-foreground">Status</span>
           <p className="font-medium">{technicalStateLabel(finding.state) ?? "–"}</p>
@@ -478,7 +478,7 @@ export function FindingDetail() {
         </div>
         <div>
           <span className="text-muted-foreground">Fingerprint</span>
-          <p className="font-mono text-xs">{finding.fingerprint}</p>
+          <p className="font-mono text-xs break-all">{finding.fingerprint}</p>
         </div>
         <div>
           <span className="text-muted-foreground">First Seen</span>
@@ -501,7 +501,7 @@ export function FindingDetail() {
       {finding.context && (
         <div className="mt-8 rounded-lg border p-4">
           <h2 className="mb-3 text-sm font-semibold">Context</h2>
-          <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
             <div>
               <span className="text-muted-foreground">Target</span>
               <p className="font-medium">
@@ -527,7 +527,7 @@ export function FindingDetail() {
               </p>
             </div>
             {parseSourceLink(finding.context.source_link) && (
-              <div className="col-span-2">
+              <div className="sm:col-span-2">
                 <span className="text-muted-foreground">Source</span>
                 <p className="font-medium">
                   <a
@@ -550,12 +550,12 @@ export function FindingDetail() {
         {finding.location
             && (finding.location.file || finding.location.resource || finding.location.summary)
           ? (
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
               <div>
                 <span className="text-muted-foreground">
                   {locationSubjectLabel(finding.finding_kind)}
                 </span>
-                <p className="font-mono text-xs select-all">
+                <p className="font-mono text-xs break-all select-all">
                   {finding.location.file ?? finding.location.resource ?? finding.location.summary}
                   {locationLineRange(finding.location)}
                 </p>
