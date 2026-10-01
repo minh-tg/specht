@@ -48,13 +48,16 @@ export function FindingsDashboard() {
   const [sortBy, setSortBy] = useState("severity");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
-  const { data: findings, isLoading, isError, error, refetch } = useFindings(slug ?? "", {
-    severity: severity || undefined,
-    status: status || undefined,
-    kind: kind || undefined,
-    offset,
-    limit: PAGE_SIZE,
-  });
+  const { data: findings, isLoading, isFetching, isError, error, refetch } = useFindings(
+    slug ?? "",
+    {
+      severity: severity || undefined,
+      status: status || undefined,
+      kind: kind || undefined,
+      offset,
+      limit: PAGE_SIZE,
+    },
+  );
 
   function updateFilter(key: string, value: string) {
     const next = new URLSearchParams(searchParams);
@@ -63,6 +66,15 @@ export function FindingsDashboard() {
     } else {
       next.delete(key);
     }
+    next.set("offset", "0");
+    setSearchParams(next);
+  }
+
+  function clearFilters() {
+    const next = new URLSearchParams(searchParams);
+    next.delete("severity");
+    next.delete("status");
+    next.delete("kind");
     next.set("offset", "0");
     setSearchParams(next);
   }
@@ -83,44 +95,24 @@ export function FindingsDashboard() {
   }
 
   const sorted = findings ? sortFindings(findings, sortBy, sortDir) : [];
+  const hasFilters = Boolean(severity || status || kind);
+  // Rows already on screen stay put while the next request is in flight, so the
+  // toolbar the user is operating never unmounts under them.
+  const isRefetching = isFetching && findings !== undefined;
+  const showResults = !isLoading && !isError;
+  const showPager = offset > 0 || sorted.length > 0;
+  // An empty page past the first one is not an empty project: the pager says so.
+  const showEmptyState = showResults && offset === 0 && sorted.length === 0;
 
   const sortIndicator = (col: string) => {
     if (sortBy !== col) return "";
     return sortDir === "asc" ? " ▲" : " ▼";
   };
 
-  if (isLoading) {
-    return (
-      <div className="space-y-2">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="bg-muted h-10 animate-pulse rounded" />
-        ))}
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="flex flex-col items-center gap-2 py-16">
-        <p className="text-destructive text-sm">{error?.message ?? "Failed to load findings"}</p>
-        <button
-          className="text-primary text-sm underline hover:no-underline"
-          onClick={() => refetch()}
-        >
-          Retry
-        </button>
-      </div>
-    );
-  }
-
-  if (!findings?.length) {
-    return (
-      <div className="flex flex-col items-center gap-2 py-16">
-        <p className="text-muted-foreground text-sm">No findings found</p>
-        <p className="text-muted-foreground text-xs">Ingest a scan report to see findings</p>
-      </div>
-    );
-  }
+  const ariaSort = (col: string): "ascending" | "descending" | "none" => {
+    if (sortBy !== col) return "none";
+    return sortDir === "asc" ? "ascending" : "descending";
+  };
 
   return (
     <div className="space-y-4">
@@ -162,90 +154,174 @@ export function FindingsDashboard() {
         </select>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-border border-b text-left">
-              <th
-                className="cursor-pointer px-3 py-2 font-medium"
-                onClick={() => toggleSort("severity")}
-              >
-                Severity{sortIndicator("severity")}
-              </th>
-              <th className="px-3 py-2 font-medium">Kind</th>
-              <th
-                className="cursor-pointer px-3 py-2 font-medium"
-                onClick={() => toggleSort("title")}
-              >
-                Title{sortIndicator("title")}
-              </th>
-              <th className="px-3 py-2 font-medium">State</th>
-              <th className="px-3 py-2 font-medium">Analysis</th>
-              <th
-                className="cursor-pointer px-3 py-2 font-medium"
-                onClick={() => toggleSort("last_seen")}
-              >
-                Last Seen{sortIndicator("last_seen")}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((f) => (
-              <tr
-                key={f.id}
-                className="border-border hover:bg-muted/50 cursor-pointer border-b"
-                onClick={() => navigate(`/${slug}/findings/${f.id}`)}
-              >
-                <td className="px-3 py-2">
-                  <SeverityBadge severity={f.current_severity} />
-                </td>
-                <td className="px-3 py-2">
-                  <span
-                    className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ${
-                      kindColors[f.finding_kind] ?? "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {f.finding_kind}
-                  </span>
-                </td>
-                <td className="px-3 py-2">{f.current_title}</td>
-                <td className="px-3 py-2 capitalize">{technicalStateLabel(f.state) ?? "–"}</td>
-                <td className="px-3 py-2 text-xs">
-                  {analysisStateLabel(f.analysis_state)
-                    ? (
-                      <span className="bg-muted rounded px-1.5 py-0.5 capitalize">
-                        {analysisStateLabel(f.analysis_state)}
-                      </span>
-                    )
-                    : <span className="text-muted-foreground">–</span>}
-                </td>
-                <td className="text-muted-foreground px-3 py-2">
-                  {new Date(f.last_seen_at).toLocaleDateString()}
-                </td>
-              </tr>
+      <div
+        aria-busy={isRefetching}
+        className={isRefetching ? "space-y-4 opacity-60" : "space-y-4"}
+      >
+        {isLoading && (
+          <div className="space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="bg-muted h-10 animate-pulse rounded" />
             ))}
-          </tbody>
-        </table>
-      </div>
+          </div>
+        )}
 
-      <div className="flex items-center justify-between">
-        <button
-          className="text-muted-foreground hover:text-foreground disabled:opacity-50 text-sm"
-          disabled={offset === 0}
-          onClick={() => goToPage(Math.max(0, offset - PAGE_SIZE))}
-        >
-          Previous
-        </button>
-        <span className="text-muted-foreground text-xs">
-          {offset + 1}–{offset + sorted.length}
-        </span>
-        <button
-          className="text-muted-foreground hover:text-foreground disabled:opacity-50 text-sm"
-          disabled={sorted.length < PAGE_SIZE}
-          onClick={() => goToPage(offset + PAGE_SIZE)}
-        >
-          Next
-        </button>
+        {!isLoading && isError && (
+          <div className="flex flex-col items-center gap-2 py-16">
+            <p className="text-destructive text-sm">
+              {error?.message ?? "Failed to load findings"}
+            </p>
+            <button
+              className="text-primary text-sm underline hover:no-underline"
+              onClick={() => refetch()}
+            >
+              Retry
+            </button>
+          </div>
+        )}
+
+        {showEmptyState && (
+          <div className="flex flex-col items-center gap-2 py-16">
+            {hasFilters
+              ? (
+                <>
+                  <p className="text-muted-foreground text-sm">No findings match these filters.</p>
+                  <button
+                    type="button"
+                    className="text-primary text-sm underline hover:no-underline"
+                    onClick={clearFilters}
+                  >
+                    Clear filters
+                  </button>
+                </>
+              )
+              : (
+                <>
+                  <p className="text-muted-foreground text-sm">No findings found</p>
+                  <p className="text-muted-foreground text-xs">
+                    Ingest a scan report to see findings
+                  </p>
+                </>
+              )}
+          </div>
+        )}
+
+        {showResults && sorted.length > 0 && (
+          <div className="space-y-2">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-border border-b text-left">
+                    <th
+                      aria-sort={ariaSort("severity")}
+                      className="px-3 py-2 font-medium"
+                    >
+                      <button
+                        type="button"
+                        className="w-full cursor-pointer text-left"
+                        onClick={() => toggleSort("severity")}
+                      >
+                        Severity{sortIndicator("severity")}
+                      </button>
+                    </th>
+                    <th className="px-3 py-2 font-medium">Kind</th>
+                    <th
+                      aria-sort={ariaSort("title")}
+                      className="px-3 py-2 font-medium"
+                    >
+                      <button
+                        type="button"
+                        className="w-full cursor-pointer text-left"
+                        onClick={() => toggleSort("title")}
+                      >
+                        Title{sortIndicator("title")}
+                      </button>
+                    </th>
+                    <th className="px-3 py-2 font-medium">State</th>
+                    <th className="px-3 py-2 font-medium">Analysis</th>
+                    <th
+                      aria-sort={ariaSort("last_seen")}
+                      className="px-3 py-2 font-medium"
+                    >
+                      <button
+                        type="button"
+                        className="w-full cursor-pointer text-left"
+                        onClick={() => toggleSort("last_seen")}
+                      >
+                        Last Seen{sortIndicator("last_seen")}
+                      </button>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sorted.map((f) => (
+                    <tr
+                      key={f.id}
+                      className="border-border hover:bg-muted/50 cursor-pointer border-b"
+                      onClick={() => navigate(`/${slug}/findings/${f.id}`)}
+                    >
+                      <td className="px-3 py-2">
+                        <SeverityBadge severity={f.current_severity} />
+                      </td>
+                      <td className="px-3 py-2">
+                        <span
+                          className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ${
+                            kindColors[f.finding_kind] ?? "bg-muted text-muted-foreground"
+                          }`}
+                        >
+                          {f.finding_kind}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2">{f.current_title}</td>
+                      <td className="px-3 py-2 capitalize">
+                        {technicalStateLabel(f.state) ?? "–"}
+                      </td>
+                      <td className="px-3 py-2 text-xs">
+                        {analysisStateLabel(f.analysis_state)
+                          ? (
+                            <span className="bg-muted rounded px-1.5 py-0.5 capitalize">
+                              {analysisStateLabel(f.analysis_state)}
+                            </span>
+                          )
+                          : <span className="text-muted-foreground">–</span>}
+                      </td>
+                      <td className="text-muted-foreground px-3 py-2">
+                        {new Date(f.last_seen_at).toLocaleDateString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-muted-foreground text-xs">
+              Sorting applies only to the findings on this page.
+            </p>
+          </div>
+        )}
+
+        {showResults && showPager && (
+          <div className="flex items-center justify-between">
+            <button
+              className="text-muted-foreground hover:text-foreground disabled:opacity-50 text-sm"
+              disabled={offset === 0}
+              onClick={() => goToPage(Math.max(0, offset - PAGE_SIZE))}
+            >
+              Previous
+            </button>
+            <span className="text-muted-foreground text-xs">
+              {sorted.length === 0
+                ? "No more results."
+                : `${offset + 1}–${offset + sorted.length}`}
+            </span>
+            <button
+              className="text-muted-foreground hover:text-foreground disabled:opacity-50 text-sm"
+              disabled={sorted.length < PAGE_SIZE}
+              onClick={() => goToPage(offset + PAGE_SIZE)}
+            >
+              Next
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
