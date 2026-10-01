@@ -143,4 +143,24 @@ describe("Navbar", () => {
     );
     expect(screen.getByRole("link", { name: "Sign in" })).not.toHaveAttribute("aria-current");
   });
+
+  it("keeps the brand link named Specht and hides the decorative mark", () => {
+    renderNavbar(signedOut);
+
+    const brand = screen.getByRole("link", { name: "Specht" });
+    expect(brand).toHaveAttribute("href", "/");
+    const mark = brand.querySelector("svg");
+    expect(mark).not.toBeNull();
+    expect(mark).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("offers the theme toggle both signed out and signed in", async () => {
+    const { unmount } = renderNavbar(signedOut);
+    expect(screen.getByRole("button", { name: /^Theme: / })).toBeInTheDocument();
+    unmount();
+
+    renderNavbar(signedIn());
+    expect(screen.getByRole("button", { name: /^Theme: / })).toBeInTheDocument();
+    await waitFor(() => expect(meCalls).toHaveLength(1));
+  });
 });

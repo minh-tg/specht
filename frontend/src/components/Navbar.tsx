@@ -1,5 +1,7 @@
 import { useMe } from "@/api/hooks";
 import { useAuth } from "@/auth/useAuth";
+import { BrandMark } from "@/components/BrandMark";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { NavLink } from "react-router-dom";
 
 /** Shared link styling: active links get a clearly visible token colour. */
@@ -47,10 +49,12 @@ export function Navbar() {
         aria-label="Main"
         className="mx-auto flex h-12 max-w-5xl items-center justify-between gap-3 px-4"
       >
-        <NavLink to="/" className="text-sm font-semibold">
+        <NavLink to="/" className="inline-flex items-center gap-2 text-sm font-semibold">
+          <BrandMark className="h-5 w-5" />
           Specht
         </NavLink>
         <div className="flex min-w-0 items-center gap-3">
+          <ThemeToggle />
           {auth.token
             ? <SignedInLinks email={auth.email} onLogout={auth.logout} />
             : (
