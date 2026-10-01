@@ -9,6 +9,7 @@ export function ApiKeys() {
   const [selectedProject, setSelectedProject] = useState("");
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loadingKeys, setLoadingKeys] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [newKeyName, setNewKeyName] = useState("");
   const [creating, setCreating] = useState(false);
@@ -17,15 +18,18 @@ export function ApiKeys() {
 
   const [revokingId, setRevokingId] = useState<string | null>(null);
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
+  const [revokeError, setRevokeError] = useState<string | null>(null);
 
   async function loadKeys(project: string) {
     if (!project) return;
     setLoadingKeys(true);
+    setLoadError(null);
     try {
       const data = await apiFetch<ApiKey[]>(`/api/v1/auth/apikeys?project=${project}`);
       setKeys(data);
-    } catch {
+    } catch (err) {
       setKeys([]);
+      setLoadError(err instanceof APIError ? err.message : "Failed to load API keys");
     } finally {
       setLoadingKeys(false);
     }
@@ -34,6 +38,7 @@ export function ApiKeys() {
   function handleProjectChange(slug: string) {
     setSelectedProject(slug);
     setCreatedKey(null);
+    setLoadError(null);
     if (slug) {
       loadKeys(slug);
     } else {
@@ -68,22 +73,35 @@ export function ApiKeys() {
 
   async function handleRevoke(id: string) {
     setRevokingId(id);
+    setRevokeError(null);
     try {
       await apiFetch(`/api/v1/auth/apikeys/${id}?project=${selectedProject}`, {
         method: "DELETE",
       });
       setKeys((prev) => prev.filter((k) => k.id !== id));
-    } catch {
-      // silent
+      setConfirmRevoke(null);
+    } catch (err) {
+      setRevokeError(err instanceof APIError ? err.message : "Failed to revoke key");
     } finally {
       setRevokingId(null);
-      setConfirmRevoke(null);
     }
   }
 
   let keysBody: ReactNode;
   if (loadingKeys) {
     keysBody = <div className="bg-muted h-20 animate-pulse rounded" />;
+  } else if (loadError) {
+    keysBody = (
+      <div role="alert" className="bg-card rounded-lg border p-4">
+        <p className="text-destructive text-sm">{loadError}</p>
+        <button
+          className="text-primary hover:text-primary/80 mt-2 text-xs font-medium"
+          onClick={() => loadKeys(selectedProject)}
+        >
+          Retry
+        </button>
+      </div>
+    );
   } else if (keys.length === 0) {
     keysBody = (
       <div className="flex flex-col items-center gap-2 py-8">
@@ -95,42 +113,50 @@ export function ApiKeys() {
     keysBody = (
       <div className="space-y-2">
         {keys.map((k) => (
-          <div
-            key={k.id}
-            className="bg-card flex items-center justify-between rounded-lg border p-3"
-          >
-            <div>
-              <p className="text-sm font-medium">{k.name}</p>
-              <p className="text-muted-foreground text-xs">
-                {k.key_prefix}... &middot; {new Date(k.created_at).toLocaleDateString()}
-              </p>
-            </div>
-            {confirmRevoke === k.id
-              ? (
-                <div className="flex items-center gap-2">
+          <div key={k.id} className="bg-card rounded-lg border p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium">{k.name}</p>
+                <p className="text-muted-foreground text-xs">
+                  {k.key_prefix}... &middot; {new Date(k.created_at).toLocaleDateString()}
+                </p>
+              </div>
+              {confirmRevoke === k.id
+                ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      className="text-destructive hover:text-destructive/80 text-xs font-medium"
+                      onClick={() => handleRevoke(k.id)}
+                      disabled={revokingId === k.id}
+                    >
+                      {revokingId === k.id ? "Revoking..." : "Confirm"}
+                    </button>
+                    <button
+                      className="text-muted-foreground hover:text-foreground text-xs"
+                      onClick={() => {
+                        setConfirmRevoke(null);
+                        setRevokeError(null);
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )
+                : (
                   <button
                     className="text-destructive hover:text-destructive/80 text-xs font-medium"
-                    onClick={() => handleRevoke(k.id)}
-                    disabled={revokingId === k.id}
+                    onClick={() => {
+                      setConfirmRevoke(k.id);
+                      setRevokeError(null);
+                    }}
                   >
-                    {revokingId === k.id ? "Revoking..." : "Confirm"}
+                    Revoke
                   </button>
-                  <button
-                    className="text-muted-foreground hover:text-foreground text-xs"
-                    onClick={() => setConfirmRevoke(null)}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )
-              : (
-                <button
-                  className="text-destructive hover:text-destructive/80 text-xs font-medium"
-                  onClick={() => setConfirmRevoke(k.id)}
-                >
-                  Revoke
-                </button>
-              )}
+                )}
+            </div>
+            {confirmRevoke === k.id && revokeError && (
+              <p role="alert" className="text-destructive mt-2 text-xs">{revokeError}</p>
+            )}
           </div>
         ))}
       </div>

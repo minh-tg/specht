@@ -29,10 +29,14 @@ function renderApiKeys() {
 }
 
 let fetchCalls: { url: string; method: string; body?: string; }[] = [];
+let listShouldFail = false;
+let deleteShouldFail = false;
 
 describe("ApiKeys", () => {
   beforeEach(() => {
     fetchCalls = [];
+    listShouldFail = false;
+    deleteShouldFail = false;
     globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
       const u = String(url);
       const method = ((opts as RequestInit)?.method ?? "GET").toUpperCase();
@@ -43,7 +47,24 @@ describe("ApiKeys", () => {
           json: () => Promise.resolve({ raw_key: "sk-foo-bar-baz" }),
         } as Response;
       }
+      if (u.includes("/apikeys") && method === "DELETE") {
+        if (deleteShouldFail) {
+          return {
+            ok: false,
+            status: 500,
+            json: () => Promise.resolve({ error: { code: "internal", message: "revoke failed" } }),
+          } as Response;
+        }
+        return { ok: true, json: () => Promise.resolve(undefined) } as Response;
+      }
       if (u.includes("/apikeys") && method === "GET") {
+        if (listShouldFail) {
+          return {
+            ok: false,
+            status: 500,
+            json: () => Promise.resolve({ error: { code: "internal", message: "load failed" } }),
+          } as Response;
+        }
         return {
           ok: true,
           json: () =>
@@ -141,5 +162,55 @@ describe("ApiKeys", () => {
     await waitFor(() => {
       expect(screen.queryByText("My Key")).not.toBeInTheDocument();
     });
+  });
+
+  it("shows a load error with retry instead of the empty state", async () => {
+    listShouldFail = true;
+    renderApiKeys();
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Project")).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByRole("combobox", { name: /project/i }), "test-project");
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("load failed");
+    });
+    expect(screen.queryByText("No API keys yet")).not.toBeInTheDocument();
+
+    listShouldFail = false;
+    await user.click(screen.getByRole("button", { name: /retry/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("My Key")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("keeps the key and confirm open when revoke fails", async () => {
+    renderApiKeys();
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByText("Test Project")).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByRole("combobox", { name: /project/i }), "test-project");
+
+    await waitFor(() => {
+      expect(screen.getByText("My Key")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /revoke/i }));
+    deleteShouldFail = true;
+    await user.click(screen.getByRole("button", { name: /confirm/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("alert")).toHaveTextContent("revoke failed");
+    });
+    expect(screen.getByText("My Key")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /confirm/i })).toBeInTheDocument();
   });
 });

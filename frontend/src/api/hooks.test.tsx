@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setAuthToken } from "./client";
 import {
   useFinding,
+  useFindings,
   useGateStatus,
   useReachability,
   useTriageFinding,
@@ -208,3 +209,50 @@ describe("mutation CSRF hardening", () => {
     expect(mutationCalls[0].headers.Cookie).toBeUndefined();
   });
 });
+
+describe("useFindings", () => {
+  it("keeps the previous page of findings while a filtered refetch is pending", async () => {
+    const previousPage = [{ id: "f1" }, { id: "f2" }];
+    const requested: string[] = [];
+    let releaseFiltered: ((response: Response) => void) | undefined;
+    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      requested.push(String(input));
+      if (requested.length === 1) {
+        return Promise.resolve(jsonResponse(previousPage));
+      }
+      return new Promise<Response>((resolve) => {
+        releaseFiltered = resolve;
+      });
+    });
+
+    const { result, rerender } = renderHook(
+      ({ severity }: { severity?: string; }) => useFindings("p1", { severity, limit: 20 }),
+      { wrapper, initialProps: { severity: undefined as string | undefined } },
+    );
+
+    await waitFor(() => expect(result.current.data).toEqual(previousPage));
+    expect(requested[0]).toContain("/api/v1/projects/p1/findings?limit=20");
+
+    rerender({ severity: "critical" });
+
+    await waitFor(() => expect(result.current.isPlaceholderData).toBe(true));
+    // The old page stays mounted while the filtered request is in flight, so the
+    // filter controls the user is touching do not unmount under them.
+    expect(result.current.data).toEqual(previousPage);
+    expect(result.current.isLoading).toBe(false);
+
+    await act(async () => {
+      releaseFiltered?.(jsonResponse([]));
+    });
+
+    await waitFor(() => expect(result.current.data).toEqual([]));
+    expect(result.current.isPlaceholderData).toBe(false);
+    expect(requested.at(-1)).toContain("severity=critical");
+  });
+});
+
+function jsonResponse(data: unknown): Response {
+  return new Response(JSON.stringify(data), {
+    headers: { "Content-Type": "application/json" },
+  });
+}

@@ -34,7 +34,13 @@ export const REACHABILITY_STATES = [
 ] as const;
 export type ReachabilityState = typeof REACHABILITY_STATES[number];
 
-export const SEVERITIES = ["critical", "high", "medium", "low", "unknown"] as const;
+// The API's fifth severity is `none` ("no severity assigned"), NOT `unknown`.
+// `unknown` belongs to reachability only — see REACHABILITY_STATES below. These are
+// semantically different: a `none`-severity finding is still a finding that must be
+// triaged, whereas `unknown` reachability means the path could not be assessed.
+// Using `unknown` here made every scanner-reported `none` fail validation and render
+// as "Unknown".
+export const SEVERITIES = ["critical", "high", "medium", "low", "none"] as const;
 export type Severity = typeof SEVERITIES[number];
 
 function isOneOf<T extends string>(
@@ -95,7 +101,7 @@ const SEVERITY_LABELS: Record<Severity, string> = {
   high: "High",
   medium: "Medium",
   low: "Low",
-  unknown: "Unknown",
+  none: "None",
 };
 
 /**
