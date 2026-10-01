@@ -57,7 +57,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
 
   if (gateFailed || statsFailed) {
     return (
-      <section aria-live="polite" className="rounded-lg border p-4">
+      <section aria-label="Gate verdict" className="rounded-lg border p-4">
         <div className="flex flex-wrap items-center gap-2">
           <VerdictBadge verdict="unknown" />
           <p role="alert">{"Couldn't load the verdict."}</p>
@@ -79,7 +79,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
   // Only a query that is still pending without an error earns the skeleton.
   if (verdict === "unknown" && (gatePending || statsPending)) {
     return (
-      <section aria-live="polite" className="rounded-lg border p-4">
+      <section aria-label="Gate verdict" aria-busy="true" className="rounded-lg border p-4">
         <div className="flex items-center gap-2">
           <VerdictBadge verdict="unknown" />
           <span className="bg-muted h-4 w-48 animate-pulse rounded" />
@@ -113,7 +113,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
   const showScan = latest !== undefined;
 
   return (
-    <section aria-live="polite" className="rounded-lg border p-4">
+    <section aria-label="Gate verdict" className="rounded-lg border p-4">
       {isDegraded(stats) && (
         <p
           role="alert"
@@ -127,7 +127,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
 
       <div className="flex flex-wrap items-center gap-2">
         <VerdictBadge verdict={verdict} />
-        <p>{verdictSentence(verdict, blockers)}</p>
+        <p role="status">{verdictSentence(verdict, blockers)}</p>
         {waived > 0 && <span className="text-muted-foreground text-sm">· {waived} waived</span>}
         {isAdmin && (
           <Link

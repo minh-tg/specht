@@ -107,6 +107,17 @@ describe("VerdictBand", () => {
     expect(screen.queryByText(/waived/)).not.toBeInTheDocument();
   });
 
+  it("announces only the verdict sentence from the loaded band", () => {
+    renderBand({
+      gate: { threshold_breached: false, blocking_count: 0, blocked_by: [] },
+      stats: { report_count: 2, total_findings: 0, by_severity: [] },
+    });
+
+    expect(document.querySelector("[aria-live]")).toBeNull();
+    expect(screen.getByRole("region", { name: "Gate verdict" })).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("Nothing blocks this project");
+  });
+
   it("shows the upload hint without admin links for members", () => {
     renderBand({
       gate: { threshold_breached: false, blocking_count: 0, blocked_by: [] },
@@ -276,6 +287,11 @@ describe("VerdictBand", () => {
     expect(document.querySelectorAll(".bg-muted.animate-pulse").length).toBeGreaterThan(0);
     expect(screen.getByText("UNKNOWN")).toBeInTheDocument();
     expect(screen.queryByText("Nothing blocks this project")).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Gate verdict" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    expect(document.querySelector("[aria-live]")).toBeNull();
   });
 
   it("keeps the skeleton for a slow request instead of showing an error", () => {
@@ -302,6 +318,8 @@ describe("VerdictBand", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toHaveAttribute("type", "button");
     expect(document.querySelectorAll(".animate-pulse").length).toBe(0);
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(document.querySelector("[aria-live]")).toBeNull();
   }, 20000);
 
   it("shows an error and a retry when the stats request fails", async () => {
