@@ -358,3 +358,30 @@ test("triaging the only blocker flips the project verdict to passing", async ({ 
   await expect(page.getByText("PASSING", { exact: true })).toBeVisible();
   await expect(page.getByText("Nothing blocks this project")).toBeVisible();
 });
+
+test("marking the only blocker not reachable flips the project verdict to passing", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("reachability-flip");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings`);
+  await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: HIGH_TITLE }).click();
+
+  const assess = page.getByRole("button", { name: "Assess" });
+  await expect(assess).toBeDisabled();
+  await page.getByLabel("Reachability assessment").selectOption("not_reachable");
+  await page.getByLabel("Evidence").fill("e2e: the vulnerable code path is never called");
+  await expect(assess).toBeEnabled();
+  await assess.click();
+
+  // The assessment is saved, shown as the latest one, and the gate follows.
+  await expect(page.getByText("Reachability saved")).toBeVisible();
+  await expect(page.getByText(/Latest:\s*Not Reachable/)).toBeVisible();
+
+  await page.getByRole("link", { name: "← Back to findings" }).click();
+  await expect(page.getByText("PASSING", { exact: true })).toBeVisible();
+  await expect(page.getByText("Nothing blocks this project")).toBeVisible();
+});
