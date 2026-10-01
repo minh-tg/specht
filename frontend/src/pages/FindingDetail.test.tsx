@@ -39,6 +39,7 @@ let eventsFixture: Array<Record<string, unknown>>;
 let triageCalls: Array<{ url: string; body: string; }>;
 let gateFixture: Record<string, unknown>;
 let gateFails: boolean;
+let findingFails: boolean;
 
 function makeFinding(overrides: FindingFixture = {}): Record<string, unknown> {
   return {
@@ -81,6 +82,7 @@ beforeEach(() => {
   triageCalls = [];
   gateFixture = { blocked_by: [] };
   gateFails = false;
+  findingFails = false;
   globalThis.fetch = vi.fn().mockImplementation(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -126,6 +128,14 @@ beforeEach(() => {
               analysis_state: "accepted_risk",
               gate_effect: "ignore",
             }),
+        } as Response;
+      }
+      if (url.endsWith("/findings/f1") && method === "GET" && findingFails) {
+        return {
+          ok: false,
+          status: 404,
+          json: () =>
+            Promise.resolve({ error: { code: "not_found", message: "Finding not found" } }),
         } as Response;
       }
       return { ok: true, json: () => Promise.resolve(makeFinding(findingFixture)) } as Response;
@@ -598,6 +608,48 @@ describe("FindingDetail back link", () => {
     const backLink = screen.getByRole("link", { name: /back to findings/i });
     expect(backLink).toBeInTheDocument();
     expect(backLink).toHaveAttribute("href", "/p1/findings");
+  });
+});
+
+describe("FindingDetail load failure", () => {
+  it("shows a heading, the error message, and a back link", async () => {
+    findingFails = true;
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Couldn't load this finding" }))
+      .toBeInTheDocument();
+    expect(screen.getByText("Finding not found")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "← Back to findings" })).toHaveAttribute(
+      "href",
+      "/p1/findings",
+    );
+  });
+
+  it("keeps the list filters in the back link when the user came from a filtered page", async () => {
+    findingFails = true;
+    renderDetail({ from: "?severity=high&offset=20" });
+
+    expect(await screen.findByRole("heading", { name: "Couldn't load this finding" }))
+      .toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "← Back to findings" })).toHaveAttribute(
+      "href",
+      "/p1/findings?severity=high&offset=20",
+    );
+  });
+
+  it("refetches the finding when Retry is pressed", async () => {
+    const user = userEvent.setup();
+    findingFails = true;
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Couldn't load this finding" }))
+      .toBeInTheDocument();
+
+    findingFails = false;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" }))
+      .toBeInTheDocument();
   });
 });
 

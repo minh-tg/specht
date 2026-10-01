@@ -444,9 +444,17 @@ export function FindingDetail() {
 
   if (isError || !finding) {
     return (
-      <div className="flex flex-col items-center gap-2 py-16">
-        <p className="text-destructive text-sm">{error?.message ?? "Finding not found"}</p>
+      <div className="mx-auto max-w-3xl px-4 py-8">
+        <Link
+          to={backToFindingsPath(slug ?? "", location.state)}
+          className="text-muted-foreground hover:text-foreground mb-6 inline-block text-sm"
+        >
+          &larr; Back to findings
+        </Link>
+        <h1 className="text-2xl font-bold">Couldn't load this finding</h1>
+        <p className="text-destructive mt-2 text-sm">{error?.message ?? "Finding not found"}</p>
         <button
+          type="button"
           className="text-primary text-sm underline hover:no-underline"
           onClick={() => refetch()}
         >
