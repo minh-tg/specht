@@ -16,7 +16,9 @@ import { Link } from "react-router-dom";
 function verdictSentence(verdict: Verdict, blockers: number): string {
   switch (verdict) {
     case "blocked":
-      return `${pluralize(blockers, "finding")} block this project`;
+      return `${pluralize(blockers, "finding")} ${
+        blockers === 1 ? "blocks" : "block"
+      } this project`;
     case "passing":
       return "Nothing blocks this project";
     case "no_scans":

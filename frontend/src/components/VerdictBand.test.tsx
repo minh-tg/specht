@@ -92,6 +92,15 @@ describe("VerdictBand", () => {
     expect(screen.getByText("· 2 waived")).toBeInTheDocument();
   });
 
+  it("uses the singular verb for exactly one blocker", () => {
+    renderBand({
+      gate: { threshold_breached: true, blocking_count: 1, blocked_by: ["a"] },
+      stats: { report_count: 1, total_findings: 1, by_severity: [] },
+    });
+
+    expect(screen.getByText("1 finding blocks this project")).toBeInTheDocument();
+  });
+
   it("passes when nothing blocks the gate", () => {
     renderBand({
       gate: { threshold_breached: false, blocking_count: 0, blocked_by: [] },
