@@ -3,6 +3,7 @@ package trivy_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/minh-tg/specht/internal/domain"
@@ -164,6 +165,24 @@ func TestParse_AlpineFullScan(t *testing.T) {
 	}
 }
 
+func TestParse_AlpineFullScan_SCALocation(t *testing.T) {
+	data, err := os.ReadFile("testdata/alpine-full.json")
+	require.NoError(t, err)
+
+	report, err := trivy.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+
+	var openssh *domain.NormalizedFinding
+	for i := range report.Findings {
+		if strings.Contains(report.Findings[i].Fingerprint, "CVE-2025-20006") {
+			openssh = &report.Findings[i]
+			break
+		}
+	}
+	require.NotNil(t, openssh, "CVE-2025-20006 finding missing")
+	assert.Equal(t, "openssh-server 9.7_p1-r4 in alpine:3.20 (alpine 3.20.3)", openssh.Location)
+}
+
 func packageByPURL(packages []domain.PackageRef, purl string) (domain.PackageRef, bool) {
 	for _, p := range packages {
 		if p.PURL == purl {
@@ -191,6 +210,17 @@ func TestParse_MultiTypeScan(t *testing.T) {
 	assert.Equal(t, 2, kinds["sca"])
 	assert.Equal(t, 1, kinds["iac"])
 	assert.Equal(t, 1, kinds["secret"])
+
+	// Only SCA locations name the package; misconfiguration and secret
+	// findings keep the scanner's target as their location.
+	for _, f := range report.Findings {
+		switch f.FindingKind {
+		case "iac":
+			assert.Equal(t, "Dockerfile", f.Location)
+		case "secret":
+			assert.Equal(t, "src/config.js", f.Location)
+		}
+	}
 }
 
 func TestParse_InvalidJSON(t *testing.T) {

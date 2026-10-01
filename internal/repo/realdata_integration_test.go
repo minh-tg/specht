@@ -233,7 +233,7 @@ func TestIngestBatchPreservesDuplicateAndNullableOccurrenceData(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "first title", occurrenceTitle, "the first occurrence remains canonical on a report conflict")
 	assert.True(t, descriptionIsNull, "JSON nullability must survive bulk persistence")
-	assert.Equal(t, "package-lock.json", locationSummary)
+	assert.Equal(t, "demo-package 1.0.0 in package-lock.json", locationSummary)
 	assert.Equal(t, "5.5", occurrenceScore, "bulk persistence must preserve the existing one-decimal truncation")
 	assert.True(t, toolVersionIsNull)
 	assert.True(t, parserVersionIsNull)

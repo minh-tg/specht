@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
@@ -112,6 +113,12 @@ func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) do
 		[]domain.Dimension{{Key: domain.DimVulnerabilityID, Value: v.Name}},
 		dcComponentDims(purl, dep.FileName)...,
 	)
+	location := dep.FilePath
+	if purl != "" {
+		if _, name, version := domain.SplitPURL(purl); name != "" {
+			location = domain.SCALocation(unescapePURL(name), unescapePURL(version), dep.FilePath)
+		}
+	}
 	return domain.NormalizedFinding{
 		Fingerprint: createFingerprint(v.Name, purl),
 		FindingKind: "sca",
@@ -119,7 +126,7 @@ func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) do
 		Description: v.Description,
 		Severity:    severity,
 		Score:       score,
-		Location:    dep.FilePath,
+		Location:    location,
 		CVSS:        dcCVSSInfo(score, cvssVec, cvssVer),
 		Dimensions:  dims,
 		Extensions: map[string]any{
@@ -237,4 +244,14 @@ func packageNameFromFile(fileName string) string {
 		}
 	}
 	return name
+}
+
+// unescapePURL decodes the percent-escapes a package URL uses for reserved
+// characters (the npm scope's "@" is written "%40"), so the display location
+// reads like the package name. Text that is not valid escaping is kept as is.
+func unescapePURL(s string) string {
+	if decoded, err := url.PathUnescape(s); err == nil {
+		return decoded
+	}
+	return s
 }

@@ -155,6 +155,22 @@ func SCAFingerprint(vulnID, purl string) Fingerprint {
 	return Fingerprint(vulnID + ":" + purl)
 }
 
+// SCALocation renders the display location of an SCA finding from the
+// affected package and the scan context that observed it.
+func SCALocation(packageName, installedVersion, where string) string {
+	if packageName == "" {
+		return where
+	}
+	location := packageName
+	if installedVersion != "" {
+		location += " " + installedVersion
+	}
+	if where != "" && where != packageName {
+		location += " in " + where
+	}
+	return location
+}
+
 // CanonicalVulnID resolves the canonical vulnerability identifier. CVE identifiers
 // (e.g. CVE-2024-1234) take precedence over tool-specific or ecosystem IDs (GHSA,
 // PYSEC, GO, RHSA) to ensure finding identity converges across scanners (RFC 0001).

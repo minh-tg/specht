@@ -237,7 +237,7 @@ func convertMatch(match grypeMatch) domain.NormalizedFinding {
 		Description: vuln.Description,
 		Severity:    normalizeGrypeSeverity(vuln.Severity),
 		Score:       score,
-		Location:    location,
+		Location:    domain.SCALocation(artifact.Name, artifact.Version, location),
 		Resource:    artifact.Name + "@" + artifact.Version,
 		Aliases:     aliases,
 		CVSS:        cvss,
