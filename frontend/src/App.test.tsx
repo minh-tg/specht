@@ -141,3 +141,24 @@ it("moves aria-current to the reports tab when it is selected", async () => {
   expect(screen.getByRole("link", { name: "Reports" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByRole("link", { name: "Findings" })).not.toHaveAttribute("aria-current");
 });
+
+it("renders the new project route", async () => {
+  renderRoutes("/projects/new");
+
+  expect(await screen.findByRole("heading", { name: "New project" })).toBeInTheDocument();
+  expect(document.title).toBe("New project · Specht");
+});
+
+it("renders the CI setup route", async () => {
+  renderRoutes("/test-project/setup");
+
+  expect(await screen.findByRole("heading", { name: "CI setup" })).toBeInTheDocument();
+  expect(document.title).toBe("CI setup · Specht");
+});
+
+it("renders the upload report route", async () => {
+  renderRoutes("/test-project/reports/upload");
+
+  expect(await screen.findByRole("heading", { name: "Upload report" })).toBeInTheDocument();
+  expect(document.title).toBe("Upload report · Specht");
+});
