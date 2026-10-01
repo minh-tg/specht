@@ -1,6 +1,7 @@
 import {
   useFinding,
   useFindingEvents,
+  useGateStatus,
   useReachability,
   useTriageFinding,
   useUpsertReachability,
@@ -16,6 +17,8 @@ import {
   reachabilityStateLabel,
   technicalStateLabel,
 } from "@/lib/enums";
+import { formatDateTime } from "@/lib/format";
+import { blocksGate, blocksGateLabel } from "@/lib/gate";
 import { truncateText } from "@/lib/utils";
 import type { FindingEvent, FindingLocation, ReachabilityAssessment } from "@/types/api";
 import { type ReactNode, useState } from "react";
@@ -47,13 +50,6 @@ const TRIAGE_OPTIONS: Array<
 ];
 
 const SOURCE_LINK_SCHEMES = new Set(["http:", "https:"]);
-
-/** Formats an API timestamp for display; a dash when absent or unparseable. */
-function formatTimestamp(value: string | undefined): string {
-  if (!value) return "–";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "–" : date.toLocaleString();
-}
 
 /** Parses a source link only when its scheme is http/https; otherwise null. */
 function parseSourceLink(value: string | undefined): URL | null {
@@ -155,7 +151,7 @@ function HistorySection({
               )
               : null}
             <span className="text-muted-foreground text-xs">
-              {formatTimestamp(event.created_at)}
+              {formatDateTime(event.created_at)}
             </span>
           </li>
         ))}
@@ -286,7 +282,7 @@ function latestAssessmentLine(latest: ReachabilityAssessment | null): ReactNode 
       </span>
       {evidence && (
         <span title={evidence}>{" — "}{truncateText(evidence, MAX_EVIDENCE_LENGTH)}</span>
-      )} ({formatTimestamp(latest.updated_at)})
+      )} ({formatDateTime(latest.updated_at)})
     </>
   );
 }
@@ -395,8 +391,9 @@ function ReachabilitySection({
 }
 
 export function FindingDetail() {
-  const { findingId } = useParams<{ findingId: string; }>();
+  const { slug, findingId } = useParams<{ slug: string; findingId: string; }>();
   const { data: finding, isLoading, isError, error, refetch } = useFinding(findingId ?? "");
+  const { data: gate } = useGateStatus(slug ?? "");
   const {
     data: reachability,
     isLoading: reachabilityLoading,
@@ -432,6 +429,23 @@ export function FindingDetail() {
     );
   }
 
+  const gateResult = blocksGate(finding, gate);
+
+  let gateChip: ReactNode = null;
+  if (gateResult?.blocks) {
+    gateChip = (
+      <span className="bg-sev-critical-bg text-sev-critical-fg rounded-sm px-1.5 py-0.5 text-xs font-medium">
+        Blocks the gate
+      </span>
+    );
+  } else if (gateResult) {
+    gateChip = (
+      <span className="inline-flex items-center rounded-sm border px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+        {blocksGateLabel(gateResult).replace(/^No/, "Does not block the gate")}
+      </span>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <Link
@@ -446,6 +460,7 @@ export function FindingDetail() {
         <div className="mb-2 flex items-center gap-3">
           <SeverityBadge severity={finding.current_severity} />
           <span className="text-muted-foreground text-xs">{finding.finding_kind}</span>
+          {gateChip}
         </div>
         <h1 className="text-2xl font-bold">{finding.current_title}</h1>
       </div>
@@ -462,20 +477,16 @@ export function FindingDetail() {
           </p>
         </div>
         <div>
-          <span className="text-muted-foreground">Gate Effect</span>
-          <p className="font-medium">{gateEffectLabel(finding.gate_effect) ?? "–"}</p>
-        </div>
-        <div>
           <span className="text-muted-foreground">Fingerprint</span>
           <p className="font-mono text-xs">{finding.fingerprint}</p>
         </div>
         <div>
           <span className="text-muted-foreground">First Seen</span>
-          <p className="font-medium">{formatTimestamp(finding.first_seen_at)}</p>
+          <p className="font-medium">{formatDateTime(finding.first_seen_at)}</p>
         </div>
         <div>
           <span className="text-muted-foreground">Last Seen</span>
-          <p className="font-medium">{formatTimestamp(finding.last_seen_at)}</p>
+          <p className="font-medium">{formatDateTime(finding.last_seen_at)}</p>
         </div>
         <div>
           <span className="text-muted-foreground">Introduced</span>

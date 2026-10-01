@@ -6,8 +6,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FindingsDashboard } from "./FindingsDashboard";
 
 let findingsFixture: Array<Record<string, unknown>>;
+let gateFixture: Record<string, unknown>;
 
 beforeEach(() => {
+  gateFixture = { blocked_by: [] };
   findingsFixture = [{
     id: "f1",
     project_id: "p1",
@@ -27,10 +29,12 @@ beforeEach(() => {
     created_at: "2025-01-01T00:00:00Z",
     updated_at: "2025-01-01T00:00:00Z",
   }];
-  globalThis.fetch = vi.fn().mockResolvedValue({
-    ok: true,
-    json: () => Promise.resolve(findingsFixture),
-  } as Response);
+  globalThis.fetch = vi.fn().mockImplementation(async (input) => {
+    if (String(input).endsWith("/gate")) {
+      return jsonResponse(gateFixture);
+    }
+    return jsonResponse(findingsFixture);
+  });
 });
 
 function renderWithProviders(ui: React.ReactElement, initialPath = "/test-project/findings") {
@@ -313,16 +317,63 @@ describe("FindingsDashboard", () => {
   });
 
   it("allows retrying a failed findings request", async () => {
-    vi.mocked(globalThis.fetch)
-      .mockRejectedValueOnce(new Error("Findings service unavailable"))
-      .mockResolvedValue(jsonResponse([]));
+    let findingsFailures = 1;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      if (String(input).endsWith("/gate")) return jsonResponse(gateFixture);
+      if (findingsFailures-- > 0) throw new Error("Findings service unavailable");
+      return jsonResponse([]);
+    });
     renderWithProviders(<FindingsDashboard />);
 
     expect(await screen.findByText("Findings service unavailable")).toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("No findings found")).toBeInTheDocument();
   });
+
+  it("marks a gate-blocked finding with a Yes chip", async () => {
+    gateFixture = { blocked_by: ["f1"] };
+    renderWithProviders(<FindingsDashboard />);
+
+    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
+    const cell = gateCell();
+    expect(cell).toHaveTextContent("Yes");
+    expect(cell.querySelector("span")).toHaveClass("bg-sev-critical-bg", "text-sev-critical-fg");
+  });
+
+  it("explains an ignored and a below-floor finding in the gate column", async () => {
+    findingsFixture = [
+      { ...findingsFixture[0], id: "f1", current_title: "Ignored finding", gate_effect: "ignore" },
+      {
+        ...findingsFixture[0],
+        id: "f2",
+        current_title: "Below floor finding",
+        current_severity: "low",
+      },
+    ];
+    gateFixture = { blocked_by: [], policy: { severity_floor: "high" } };
+    renderWithProviders(<FindingsDashboard />);
+
+    expect(await screen.findByText("Ignored finding")).toBeInTheDocument();
+    expect(screen.getByText("No (ignored by triage)")).toBeInTheDocument();
+    expect(screen.getByText("No (below the floor)")).toBeInTheDocument();
+  });
+
+  it("shows a dash in the gate column while the gate is still loading", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input) => {
+      if (String(input).endsWith("/gate")) return new Promise<Response>(() => {});
+      return Promise.resolve(jsonResponse(findingsFixture));
+    });
+    renderWithProviders(<FindingsDashboard />);
+
+    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
+    expect(gateCell()).toHaveTextContent("–");
+  });
 });
+
+function gateCell(): HTMLElement {
+  const rows = within(screen.getByRole("table")).getAllByRole("row");
+  return within(rows[1]).getAllByRole("cell")[5];
+}
 
 function jsonResponse(data: unknown): Response {
   return new Response(JSON.stringify(data), {

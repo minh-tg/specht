@@ -1,6 +1,8 @@
-import { useFindings } from "@/api/hooks";
+import { useFindings, useGateStatus } from "@/api/hooks";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { analysisStateLabel, technicalStateLabel } from "@/lib/enums";
+import { formatDate } from "@/lib/format";
+import { blocksGate, blocksGateLabel } from "@/lib/gate";
 import type { Finding } from "@/types/api";
 import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -58,6 +60,7 @@ export function FindingsDashboard() {
       limit: PAGE_SIZE,
     },
   );
+  const { data: gate } = useGateStatus(slug ?? "");
 
   function updateFilter(key: string, value: string) {
     const next = new URLSearchParams(searchParams);
@@ -239,6 +242,7 @@ export function FindingsDashboard() {
                     </th>
                     <th className="px-3 py-2 font-medium">Status</th>
                     <th className="px-3 py-2 font-medium">Triage</th>
+                    <th className="px-3 py-2 font-medium">Blocks gate</th>
                     <th
                       aria-sort={ariaSort("last_seen")}
                       className="px-3 py-2 font-medium"
@@ -254,42 +258,58 @@ export function FindingsDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {sorted.map((f) => (
-                    <tr
-                      key={f.id}
-                      className="border-border hover:bg-muted/50 cursor-pointer border-b"
-                      onClick={() => navigate(`/${slug}/findings/${f.id}`)}
-                    >
-                      <td className="px-3 py-2">
-                        <SeverityBadge severity={f.current_severity} />
-                      </td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ${
-                            kindColors[f.finding_kind] ?? "bg-muted text-muted-foreground"
-                          }`}
-                        >
-                          {f.finding_kind}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2">{f.current_title}</td>
-                      <td className="px-3 py-2 capitalize">
-                        {technicalStateLabel(f.state) ?? "–"}
-                      </td>
-                      <td className="px-3 py-2 text-xs">
-                        {analysisStateLabel(f.analysis_state)
-                          ? (
-                            <span className="bg-muted rounded px-1.5 py-0.5">
-                              {analysisStateLabel(f.analysis_state)}
-                            </span>
-                          )
-                          : <span className="text-muted-foreground">–</span>}
-                      </td>
-                      <td className="text-muted-foreground px-3 py-2">
-                        {new Date(f.last_seen_at).toLocaleDateString()}
-                      </td>
-                    </tr>
-                  ))}
+                  {sorted.map((f) => {
+                    const gateResult = blocksGate(f, gate);
+                    return (
+                      <tr
+                        key={f.id}
+                        className="border-border hover:bg-muted/50 cursor-pointer border-b"
+                        onClick={() => navigate(`/${slug}/findings/${f.id}`)}
+                      >
+                        <td className="px-3 py-2">
+                          <SeverityBadge severity={f.current_severity} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ${
+                              kindColors[f.finding_kind] ?? "bg-muted text-muted-foreground"
+                            }`}
+                          >
+                            {f.finding_kind}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2">{f.current_title}</td>
+                        <td className="px-3 py-2 capitalize">
+                          {technicalStateLabel(f.state) ?? "–"}
+                        </td>
+                        <td className="px-3 py-2 text-xs">
+                          {analysisStateLabel(f.analysis_state)
+                            ? (
+                              <span className="bg-muted rounded px-1.5 py-0.5">
+                                {analysisStateLabel(f.analysis_state)}
+                              </span>
+                            )
+                            : <span className="text-muted-foreground">–</span>}
+                        </td>
+                        <td className="px-3 py-2">
+                          {gateResult?.blocks
+                            ? (
+                              <span className="bg-sev-critical-bg text-sev-critical-fg rounded-sm px-1.5 py-0.5 text-xs font-medium">
+                                Yes
+                              </span>
+                            )
+                            : (
+                              <span className="text-muted-foreground text-xs">
+                                {blocksGateLabel(gateResult)}
+                              </span>
+                            )}
+                        </td>
+                        <td className="text-muted-foreground px-3 py-2">
+                          {formatDate(f.last_seen_at)}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
