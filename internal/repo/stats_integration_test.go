@@ -99,3 +99,54 @@ func TestStatsRepo_AnalysisStateCounts(t *testing.T) {
 	assert.NotNil(t, none, "a project without findings reports an empty array, never null")
 	assert.Empty(t, none)
 }
+
+// TestStatsRepo_SeverityCountsLeaveOutFixed verifies that the per-severity
+// roll-up (and so the project's total and blocking counts) covers open and
+// reopened findings only. A finding the scanner stopped reporting is marked
+// fixed and must not keep counting toward the project's findings.
+func TestStatsRepo_SeverityCountsLeaveOutFixed(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	stores := NewPortStores(pool)
+	project, err := stores.Projects.Create(ctx, port.CreateProjectInput{
+		Slug: "stats-severity", Name: "Stats Severity",
+		DeploymentThreshold: "high", Settings: []byte("{}"),
+	})
+	require.NoError(t, err)
+
+	now := time.Now().UTC()
+	seed := func(fp, severity string, rank int16) {
+		_, err := stores.Findings.Upsert(ctx, port.UpsertFindingInput{
+			ProjectID: project.ID, FindingKind: "sca", Fingerprint: fp, Title: fp,
+			Severity: severity, SeverityRank: rank, Score: 5.0,
+			FirstSeen: now, LastSeen: now,
+		})
+		require.NoError(t, err)
+	}
+	seed("fp-open-high", "high", 3)
+	seed("fp-fixed-critical", "critical", 4)
+	seed("fp-reopened-low", "low", 1)
+	seed("fp-fixed-high", "high", 3)
+	seed("fp-open-unknown", "unknown", 0)
+
+	setFindingState := func(fp, state string) {
+		tag, err := pool.Exec(ctx,
+			`UPDATE findings SET state = $1 WHERE project_id = $2 AND fingerprint = $3`,
+			state, project.ID, fp)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, tag.RowsAffected())
+	}
+	setFindingState("fp-fixed-critical", "fixed")
+	setFindingState("fp-fixed-high", "fixed")
+	setFindingState("fp-reopened-low", "reopened")
+
+	rows, err := stores.Stats.GetProjectStats(ctx, project.ID)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []port.SeverityStat{
+		{Severity: "high", Count: 1, BlockingCount: 1},
+		{Severity: "low", Count: 1, BlockingCount: 1},
+		{Severity: "unknown", Count: 1, BlockingCount: 1},
+	}, rows, "fixed findings are left out; open and reopened ones stay")
+}

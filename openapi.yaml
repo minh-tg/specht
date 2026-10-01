@@ -3018,14 +3018,17 @@ components:
       type: object
       required: [total_findings, blocking_count, waiver_count, report_count, by_severity, by_analysis_state]
       properties:
-        total_findings: { type: integer }
+        total_findings:
+          type: integer
+          description: Open and reopened findings; findings already fixed are not counted.
         blocking_count:
           type: integer
-          description: Findings not in an ignoring analysis state.
+          description: Open and reopened findings not in an ignoring analysis state.
         waiver_count: { type: integer, description: Enabled waivers only. }
         report_count: { type: integer }
         by_severity:
           type: array
+          description: Counts per severity among the project's open and reopened findings (findings already fixed are not counted).
           items: { $ref: "#/components/schemas/SeverityCount" }
         by_analysis_state:
           type: array

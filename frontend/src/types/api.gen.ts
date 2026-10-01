@@ -2001,12 +2001,14 @@ export interface components {
       created_at: string;
     };
     ProjectStats: {
+      /** @description Open and reopened findings; findings already fixed are not counted. */
       total_findings: number;
-      /** @description Findings not in an ignoring analysis state. */
+      /** @description Open and reopened findings not in an ignoring analysis state. */
       blocking_count: number;
       /** @description Enabled waivers only. */
       waiver_count: number;
       report_count: number;
+      /** @description Counts per severity among the project's open and reopened findings (findings already fixed are not counted). */
       by_severity: components["schemas"]["SeverityCount"][];
       /** @description Counts per analysis state among the project's open and reopened findings (findings already fixed are not counted), ordered by state name; empty when there are none. A missing analysis state counts as unanalyzed. */
       by_analysis_state: components["schemas"]["AnalysisStateCount"][];

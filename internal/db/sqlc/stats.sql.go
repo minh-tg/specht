@@ -169,6 +169,7 @@ SELECT
     COUNT(*) FILTER (WHERE f.gate_effect = 'block')::int AS blocking_count
 FROM findings f
 WHERE f.project_id = $1
+  AND f.state <> 'fixed'
 GROUP BY f.current_severity
 ORDER BY MIN(f.current_severity_rank)
 `
