@@ -18,7 +18,7 @@ import {
   technicalStateLabel,
 } from "@/lib/enums";
 import { formatDateTime } from "@/lib/format";
-import { blocksGate, blocksGateLabel } from "@/lib/gate";
+import { blocksGate, blocksGateSentence } from "@/lib/gate";
 import { truncateText } from "@/lib/utils";
 import type { FindingEvent, FindingLocation, ReachabilityAssessment } from "@/types/api";
 import { type ReactNode, useState } from "react";
@@ -466,23 +466,19 @@ export function FindingDetail() {
 
   const gateResult = blocksGate(finding, gate);
 
-  const currentGate = gateResult?.blocks
-    ? "Blocks the gate"
-    : gateResult
-    ? "Does not block the gate"
-    : null;
+  const currentGate = blocksGateSentence(gateResult);
 
   let gateChip: ReactNode = null;
   if (gateResult?.blocks) {
     gateChip = (
       <span className="bg-sev-critical-bg text-sev-critical-fg rounded-sm px-1.5 py-0.5 text-xs font-medium">
-        Blocks the gate
+        {blocksGateSentence(gateResult)}
       </span>
     );
   } else if (gateResult) {
     gateChip = (
       <span className="inline-flex items-center rounded-sm border px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-        {blocksGateLabel(gateResult).replace(/^No/, "Does not block the gate")}
+        {blocksGateSentence(gateResult)}
       </span>
     );
   }

@@ -344,9 +344,7 @@ describe("FindingDetail decision flow", () => {
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
     const decide = screen.getByRole("heading", { level: 2, name: "Decide" }).parentElement!;
-    await waitFor(() =>
-      expect(decide).toHaveTextContent("Currently: Accepted risk · Blocks the gate")
-    );
+    await waitFor(() => expect(decide).toHaveTextContent("Currently: Accepted risk · Blocks gate"));
   });
 
   it("says Not triaged and omits the gate position while the gate is unknown", async () => {
@@ -483,7 +481,7 @@ describe("FindingDetail gate status", () => {
     renderDetail();
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
-    const chip = screen.getByText("Blocks the gate");
+    const chip = screen.getByText("Blocks gate");
     expect(chip).toHaveClass("bg-sev-critical-bg", "text-sev-critical-fg");
   });
 
@@ -492,7 +490,7 @@ describe("FindingDetail gate status", () => {
     renderDetail();
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
-    const chip = screen.getByText("Does not block the gate (ignored by triage)");
+    const chip = screen.getByText("Does not block gate (ignored by triage)");
     expect(chip).toHaveClass("border", "text-muted-foreground");
   });
 
@@ -502,7 +500,7 @@ describe("FindingDetail gate status", () => {
     renderDetail();
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
-    expect(screen.getByText("Does not block the gate (below the floor)")).toBeInTheDocument();
+    expect(screen.getByText("Does not block gate (below the floor)")).toBeInTheDocument();
   });
 
   it("renders no chip while the gate status is unknown", async () => {
@@ -510,8 +508,8 @@ describe("FindingDetail gate status", () => {
     renderDetail();
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
-    expect(screen.queryByText("Blocks the gate")).not.toBeInTheDocument();
-    expect(screen.queryByText(/^Does not block the gate/)).not.toBeInTheDocument();
+    expect(screen.queryByText("Blocks gate")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Does not block gate/)).not.toBeInTheDocument();
   });
 });
 

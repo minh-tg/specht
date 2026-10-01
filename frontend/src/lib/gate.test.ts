@@ -1,6 +1,6 @@
 import type { GateStatus } from "@/types/api";
 import { describe, expect, it } from "vitest";
-import { blocksGate, blocksGateLabel } from "./gate";
+import { blocksGate, blocksGateLabel, blocksGateSentence } from "./gate";
 
 /** A gate that blocks nothing and imposes no floor. */
 function gate(overrides: Partial<GateStatus> = {}): GateStatus {
@@ -109,6 +109,21 @@ describe("blocksGateLabel", () => {
     expect(blocksGateLabel({ blocks: false })).toBe("No");
     expect(blocksGateLabel({ blocks: false, reason: "ignored" })).toBe("No (ignored by triage)");
     expect(blocksGateLabel({ blocks: false, reason: "below_floor" })).toBe("No (below the floor)");
+  });
+});
+
+describe("blocksGateSentence", () => {
+  it("returns null while the gate status is unknown", () => {
+    expect(blocksGateSentence(null)).toBeNull();
+  });
+
+  it("uses the findings list column's phrasing", () => {
+    expect(blocksGateSentence({ blocks: true })).toBe("Blocks gate");
+    expect(blocksGateSentence({ blocks: false })).toBe("Does not block gate");
+    expect(blocksGateSentence({ blocks: false, reason: "ignored" }))
+      .toBe("Does not block gate (ignored by triage)");
+    expect(blocksGateSentence({ blocks: false, reason: "below_floor" }))
+      .toBe("Does not block gate (below the floor)");
   });
 });
 

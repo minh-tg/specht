@@ -50,3 +50,16 @@ export function blocksGateLabel(result: BlocksGateResult | null): string {
   if (result.reason === "below_floor") return "No (below the floor)";
   return "No";
 }
+
+/**
+ * Sentence form of a blocksGate verdict for prose, so the detail page and the
+ * findings list column answer the same question with the same words. Returns
+ * null while the gate is unknown so callers can omit the clause entirely.
+ */
+export function blocksGateSentence(result: BlocksGateResult | null): string | null {
+  if (!result) return null;
+  if (result.blocks) return "Blocks gate";
+  if (result.reason === "ignored") return "Does not block gate (ignored by triage)";
+  if (result.reason === "below_floor") return "Does not block gate (below the floor)";
+  return "Does not block gate";
+}
