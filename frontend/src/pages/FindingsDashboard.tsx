@@ -232,13 +232,13 @@ export function FindingsDashboard() {
                     >
                       <button
                         type="button"
-                        className="w-full cursor-pointer text-left"
+                        className="w-full cursor-pointer text-left whitespace-nowrap"
                         onClick={() => toggleSort("severity")}
                       >
                         Severity{sortIndicator("severity")}
                       </button>
                     </th>
-                    <th scope="col" className="px-3 py-2 font-medium">Kind</th>
+                    <th scope="col" className="hidden px-3 py-2 font-medium md:table-cell">Kind</th>
                     <th
                       scope="col"
                       aria-sort={ariaSort("title")}
@@ -246,23 +246,27 @@ export function FindingsDashboard() {
                     >
                       <button
                         type="button"
-                        className="w-full cursor-pointer text-left"
+                        className="w-full cursor-pointer text-left whitespace-nowrap"
                         onClick={() => toggleSort("title")}
                       >
                         Title{sortIndicator("title")}
                       </button>
                     </th>
-                    <th scope="col" className="px-3 py-2 font-medium">Status</th>
-                    <th scope="col" className="px-3 py-2 font-medium">Triage</th>
+                    <th scope="col" className="hidden px-3 py-2 font-medium md:table-cell">
+                      Status
+                    </th>
+                    <th scope="col" className="hidden px-3 py-2 font-medium md:table-cell">
+                      Triage
+                    </th>
                     <th scope="col" className="px-3 py-2 font-medium">Blocks gate</th>
                     <th
                       scope="col"
                       aria-sort={ariaSort("last_seen")}
-                      className="px-3 py-2 font-medium"
+                      className="hidden px-3 py-2 font-medium md:table-cell"
                     >
                       <button
                         type="button"
-                        className="w-full cursor-pointer text-left"
+                        className="w-full cursor-pointer text-left whitespace-nowrap"
                         onClick={() => toggleSort("last_seen")}
                       >
                         Last Seen{sortIndicator("last_seen")}
@@ -282,7 +286,7 @@ export function FindingsDashboard() {
                         <td className="px-3 py-2">
                           <SeverityBadge severity={f.current_severity} />
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="hidden px-3 py-2 md:table-cell">
                           <span className="bg-muted text-muted-foreground inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium">
                             {f.finding_kind}
                           </span>
@@ -296,13 +300,13 @@ export function FindingsDashboard() {
                             {f.current_title}
                           </Link>
                         </td>
-                        <td className="px-3 py-2 capitalize">
+                        <td className="hidden px-3 py-2 capitalize md:table-cell">
                           {technicalStateLabel(f.state) ?? "–"}
                         </td>
-                        <td className="px-3 py-2 text-xs">
+                        <td className="hidden px-3 py-2 text-xs md:table-cell">
                           {analysisStateLabel(f.analysis_state)
                             ? (
-                              <span className="bg-muted rounded px-1.5 py-0.5">
+                              <span className="bg-muted rounded px-1.5 py-0.5 whitespace-nowrap">
                                 {analysisStateLabel(f.analysis_state)}
                               </span>
                             )
@@ -321,7 +325,7 @@ export function FindingsDashboard() {
                               </span>
                             )}
                         </td>
-                        <td className="text-muted-foreground px-3 py-2">
+                        <td className="text-muted-foreground hidden px-3 py-2 whitespace-nowrap md:table-cell">
                           {formatDate(f.last_seen_at)}
                         </td>
                       </tr>

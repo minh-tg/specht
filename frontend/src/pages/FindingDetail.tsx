@@ -275,15 +275,15 @@ function OutcomeRegions({ label, error, success }: {
 }) {
   return (
     <>
-      <div role="status" aria-live="polite" aria-label={label} className="mt-2 min-h-6 text-xs">
+      <div role="status" aria-live="polite" aria-label={label} className="text-xs">
         {success && (
-          <span className="bg-sev-success-bg text-sev-success-fg inline-block rounded-sm px-2 py-1">
+          <span className="bg-sev-success-bg text-sev-success-fg mt-2 inline-block rounded-sm px-2 py-1">
             {success}
           </span>
         )}
       </div>
       <div role="alert" aria-label={`${label} error`} className="text-destructive text-xs">
-        {error}
+        {error && <p className="mt-2">{error}</p>}
       </div>
     </>
   );
