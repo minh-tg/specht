@@ -132,7 +132,7 @@ test("report history lists both ingested reports", async ({ page, request }) => 
   await uiLogin(page);
 
   await page.goto(`/${slug}/reports`);
-  await expect(page.getByText("completed", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("Completed", { exact: true })).toHaveCount(2);
   await expect(page.getByText("No reports yet")).toHaveCount(0);
 });
 

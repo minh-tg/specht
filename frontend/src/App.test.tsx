@@ -108,7 +108,7 @@ it("keeps project navigation in sync with the selected tab", async () => {
 
   expect(await screen.findByText("No findings found")).toBeInTheDocument();
   await userEvent.setup().click(screen.getByRole("link", { name: "Reports" }));
-  expect(await screen.findByText("No reports yet")).toBeInTheDocument();
+  expect(await screen.findByText("No reports yet.")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Findings" })).toHaveAttribute(
     "href",
     "/test-project/findings",
@@ -148,7 +148,7 @@ it("marks the active project tab with aria-current", async () => {
 it("moves aria-current to the reports tab when it is selected", async () => {
   renderRoutes("/test-project/reports");
 
-  expect(await screen.findByText("No reports yet")).toBeInTheDocument();
+  expect(await screen.findByText("No reports yet.")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Reports" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByRole("link", { name: "Findings" })).not.toHaveAttribute("aria-current");
 });
