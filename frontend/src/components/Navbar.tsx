@@ -1,56 +1,70 @@
+import { useMe } from "@/api/hooks";
 import { useAuth } from "@/auth/useAuth";
-import { Link } from "react-router-dom";
+import { NavLink } from "react-router-dom";
+
+/** Shared link styling: active links get a clearly visible token colour. */
+function navLinkClass({ isActive }: { isActive: boolean; }): string {
+  return isActive
+    ? "text-foreground text-sm font-medium py-1"
+    : "text-muted-foreground hover:text-foreground text-sm py-1";
+}
+
+function SignedInLinks({ email, onLogout }: { email: string | null; onLogout: () => void; }) {
+  const me = useMe();
+
+  return (
+    <>
+      {email && (
+        <span
+          className="text-muted-foreground hidden max-w-[10rem] truncate text-xs sm:inline"
+          title={email}
+        >
+          {email}
+        </span>
+      )}
+      {me.data?.role === "admin" && (
+        <NavLink to="/api-keys" className={navLinkClass}>
+          API Keys
+        </NavLink>
+      )}
+      <button
+        type="button"
+        onClick={onLogout}
+        className="text-muted-foreground hover:text-foreground py-1 text-sm"
+      >
+        Logout
+      </button>
+    </>
+  );
+}
 
 export function Navbar() {
   const auth = useAuth();
 
   return (
     <header className="border-border bg-background border-b">
-      <div className="mx-auto flex h-12 max-w-5xl items-center justify-between px-4">
-        <div className="flex items-center gap-6">
-          <Link to="/" className="text-sm font-semibold">
-            Specht
-          </Link>
-          {auth.token && (
-            <Link to="/ingest" className="text-muted-foreground hover:text-foreground text-sm">
-              Ingest
-            </Link>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
+      <nav
+        aria-label="Main"
+        className="mx-auto flex h-12 max-w-5xl items-center justify-between gap-3 px-4"
+      >
+        <NavLink to="/" className="text-sm font-semibold">
+          Specht
+        </NavLink>
+        <div className="flex min-w-0 items-center gap-3">
           {auth.token
-            ? (
-              <>
-                <span className="text-muted-foreground text-xs">{auth.email}</span>
-                <Link
-                  to="/api-keys"
-                  className="text-muted-foreground hover:text-foreground text-sm"
-                >
-                  API Keys
-                </Link>
-                <button
-                  onClick={auth.logout}
-                  className="text-muted-foreground hover:text-foreground text-sm"
-                >
-                  Logout
-                </button>
-              </>
-            )
+            ? <SignedInLinks email={auth.email} onLogout={auth.logout} />
             : (
               <>
-                <Link
-                  to="/register"
-                  className="text-muted-foreground hover:text-foreground text-sm"
-                >
+                <NavLink to="/register" className={navLinkClass}>
                   Register
-                </Link>
-                <Link to="/login" className="text-muted-foreground hover:text-foreground text-sm">
+                </NavLink>
+                <NavLink to="/login" className={navLinkClass}>
                   Sign in
-                </Link>
+                </NavLink>
               </>
             )}
         </div>
-      </div>
+      </nav>
     </header>
   );
 }
