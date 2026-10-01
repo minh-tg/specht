@@ -91,12 +91,22 @@ export interface FindingSuggestion {
   source?: string;
 }
 
+export interface PolicyEffective {
+  template_name: string | null;
+  template_version: number;
+  severity_floor: string;
+  severity_source: "default" | "template" | "override";
+  watcher_gate: string;
+  watcher_source: "default" | "template" | "override";
+}
+
 export interface GateStatus {
   threshold_breached: boolean;
   blocking_count: number;
   blocked_by?: string[];
   blocked_by_reachability?: Record<string, ReachabilityState>;
   waived_count?: number;
+  policy?: PolicyEffective;
 }
 
 export interface ReachabilityAssessment {
@@ -149,6 +159,24 @@ export interface ApiKey {
   created_at: string;
 }
 
+export interface CreatedApiKey {
+  id: string;
+  name: string;
+  key_prefix: string;
+  raw_key: string;
+  last_four?: string | null;
+  created_at: string;
+  expires_at?: string | null;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  display_name?: string | null;
+  role: "admin" | "member";
+  created_at: string;
+}
+
 export interface Report {
   id: string;
   project_id: string;
@@ -162,6 +190,29 @@ export interface Report {
   commit_sha: string | null;
   created_at: string;
   completed_at: string | null;
+}
+
+export type ReportStatus = "pending" | "completed" | "failed";
+
+export interface SeverityCount {
+  severity: string;
+  count: number;
+  blocking_count: number;
+}
+
+export interface AnalysisStateCount {
+  state: string;
+  count: number;
+}
+
+export interface ProjectStats {
+  total_findings: number;
+  blocking_count: number;
+  waiver_count: number;
+  report_count: number;
+  by_severity: SeverityCount[];
+  by_analysis_state?: AnalysisStateCount[];
+  latest_report?: Report;
 }
 
 export interface IngestResponse {

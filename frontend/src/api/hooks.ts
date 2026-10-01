@@ -1,19 +1,27 @@
 import type { AnalysisState, ReachabilityState } from "@/lib/enums";
 import type {
+  CreatedApiKey,
   Finding,
   FindingEvent,
   GateStatus,
   Project,
+  ProjectStats,
   ReachabilityAssessment,
   Report,
   ScannerDescriptor,
   TriageResponse,
+  UserProfile,
 } from "@/types/api";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "./client";
 
 export const queryKeys = {
   projects: () => ["projects"] as const,
+  me: () => ["me"] as const,
+  project: (slug?: string) =>
+    slug === undefined ? (["project"] as const) : (["project", slug] as const),
+  projectStats: (slug?: string) =>
+    slug === undefined ? (["project-stats"] as const) : (["project-stats", slug] as const),
   scanners: () => ["scanners"] as const,
   findings: (
     projectSlug?: string,
@@ -53,6 +61,56 @@ export function useScanners() {
   return useQuery({
     queryKey: queryKeys.scanners(),
     queryFn: () => apiFetch<ScannerDescriptor[]>("/api/v1/scanners"),
+  });
+}
+
+export function useMe() {
+  return useQuery({
+    queryKey: queryKeys.me(),
+    queryFn: () => apiFetch<UserProfile>("/api/v1/me"),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useProject(slug: string) {
+  return useQuery({
+    queryKey: queryKeys.project(slug),
+    queryFn: () => apiFetch<Project>(`/api/v1/projects/${slug}`),
+    enabled: !!slug,
+  });
+}
+
+export function useProjectStats(slug: string) {
+  return useQuery({
+    queryKey: queryKeys.projectStats(slug),
+    queryFn: () => apiFetch<ProjectStats>(`/api/v1/projects/${slug}/stats`),
+    enabled: !!slug,
+  });
+}
+
+export function useCreateProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (
+      { name, slug, description }: { name: string; slug: string; description?: string; },
+    ) =>
+      apiFetch<Project>("/api/v1/projects", {
+        method: "POST",
+        body: JSON.stringify({ name, slug, description }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
+    },
+  });
+}
+
+export function useCreateApiKey() {
+  return useMutation({
+    mutationFn: ({ project, name }: { project: string; name: string; }) =>
+      apiFetch<CreatedApiKey>("/api/v1/auth/apikeys", {
+        method: "POST",
+        body: JSON.stringify({ project, name }),
+      }),
   });
 }
 
@@ -130,6 +188,7 @@ export function useTriageFinding() {
       queryClient.invalidateQueries({ queryKey: queryKeys.finding() });
       queryClient.invalidateQueries({ queryKey: queryKeys.findingEvents() });
       queryClient.invalidateQueries({ queryKey: queryKeys.gate() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectStats() });
     },
   });
 }
@@ -169,6 +228,7 @@ export function useUpsertReachability() {
       queryClient.invalidateQueries({ queryKey: queryKeys.gate() });
       queryClient.invalidateQueries({ queryKey: queryKeys.finding() });
       queryClient.invalidateQueries({ queryKey: queryKeys.findingEvents(vars.findingId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectStats() });
     },
   });
 }
