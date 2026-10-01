@@ -80,11 +80,15 @@ export function useProject(slug: string) {
   });
 }
 
-export function useProjectStats(slug: string) {
+export function useProjectStats(
+  slug: string,
+  options?: { refetchInterval?: number | false; },
+) {
   return useQuery({
     queryKey: queryKeys.projectStats(slug),
     queryFn: () => apiFetch<ProjectStats>(`/api/v1/projects/${slug}/stats`),
     enabled: !!slug,
+    refetchInterval: options?.refetchInterval,
   });
 }
 
