@@ -1,17 +1,65 @@
-import { useGateStatus, useProjects } from "@/api/hooks";
-import { useNavigate } from "react-router-dom";
+import { apiFetch } from "@/api/client";
+import { queryKeys, useMe, useProjects } from "@/api/hooks";
+import { VerdictBadge } from "@/components/VerdictBadge";
+import { formatDateTime, formatRelativeTime } from "@/lib/format";
+import { blockerCount, projectVerdict, type Verdict } from "@/lib/verdict";
+import type { GateStatus, Project, ProjectStats } from "@/types/api";
+import { useQueries } from "@tanstack/react-query";
+import { type ReactNode } from "react";
+import { Link } from "react-router-dom";
+
+/** Em dash shown wherever a project has no value to report. */
+const EMPTY = "–";
+
+const COLUMNS = ["Project", "Verdict", "Blocking", "Findings", "Last scan"] as const;
+const SKELETON_ROW_COUNT = 3;
+
+/** Primary button styling from components/ui/button, applied to a real link. */
+const PRIMARY_LINK_CLASS =
+  "bg-primary text-primary-foreground hover:bg-primary/80 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+
+const VERDICT_PRIORITY: Record<Verdict, number> = {
+  blocked: 0,
+  no_scans: 1,
+  passing: 2,
+  unknown: 3,
+};
+
+/**
+ * A project plus the two per-project queries the row needs. `settled` gates
+ * sorting so rows never reorder while their data is still in flight, and
+ * `failed` lets a broken row degrade to dashes instead of half-truths.
+ */
+interface ProjectRowData {
+  project: Project;
+  gate: GateStatus | undefined;
+  stats: ProjectStats | undefined;
+  settled: boolean;
+  failed: boolean;
+}
 
 export function ProjectList() {
   const { data: projects, isLoading, isError, error, refetch } = useProjects();
+  const { data: me } = useMe();
+  const isAdmin = me?.role === "admin";
+  const projectList = projects ?? [];
+
+  const gateQueries = useQueries({
+    queries: projectList.map((project) => ({
+      queryKey: queryKeys.gate(project.slug),
+      queryFn: () => apiFetch<GateStatus>(`/api/v1/projects/${project.slug}/gate`),
+    })),
+  });
+
+  const statsQueries = useQueries({
+    queries: projectList.map((project) => ({
+      queryKey: queryKeys.projectStats(project.slug),
+      queryFn: () => apiFetch<ProjectStats>(`/api/v1/projects/${project.slug}/stats`),
+    })),
+  });
 
   if (isLoading) {
-    return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="bg-muted h-32 animate-pulse rounded-lg" />
-        ))}
-      </div>
-    );
+    return <ProjectTableSkeleton />;
   }
 
   if (isError) {
@@ -28,53 +76,155 @@ export function ProjectList() {
     );
   }
 
-  if (!projects?.length) {
+  if (projectList.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 py-16">
         <p className="text-muted-foreground text-sm">No projects yet</p>
-        <p className="text-muted-foreground text-xs">
-          Ingest a scan report or create a project via the API
-        </p>
+        {isAdmin
+          ? (
+            <Link
+              to="/projects/new"
+              className="text-primary text-sm underline hover:no-underline"
+            >
+              Create your first project
+            </Link>
+          )
+          : (
+            <p className="text-muted-foreground text-xs">
+              Ask an administrator to create one.
+            </p>
+          )}
       </div>
     );
   }
 
+  const rows: ProjectRowData[] = projectList.map((project, index) => {
+    const gate = gateQueries[index];
+    const stats = statsQueries[index];
+    return {
+      project,
+      gate: gate?.data,
+      stats: stats?.data,
+      settled: gate !== undefined && stats !== undefined && !gate.isPending && !stats.isPending,
+      failed: gate?.isError === true || stats?.isError === true,
+    };
+  });
+
+  // Alphabetical until every row has settled, then blocked first. Sorting on
+  // partial data would make rows jump around as their queries land.
+  const allSettled = rows.every((row) => row.settled);
+  const ordered = [...rows].sort(allSettled ? compareRows : compareByName);
+
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {projects.map((p) => (
-        <ProjectCard key={p.id} slug={p.slug} name={p.name} description={p.description} />
-      ))}
+    <div className="space-y-4">
+      {isAdmin && (
+        <div className="flex justify-end">
+          <Link to="/projects/new" className={PRIMARY_LINK_CLASS}>
+            New project
+          </Link>
+        </div>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <ProjectTableHead />
+          <tbody>
+            {ordered.map((row) => <ProjectTableRow key={row.project.id} row={row} />)}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
 
-function ProjectCard(
-  { slug, name, description }: {
-    readonly slug: string;
-    readonly name: string;
-    readonly description: string | null;
-  },
-) {
-  const navigate = useNavigate();
-  const { data: gate } = useGateStatus(slug);
+function compareByName(a: ProjectRowData, b: ProjectRowData): number {
+  return a.project.name.localeCompare(b.project.name);
+}
+
+function compareRows(a: ProjectRowData, b: ProjectRowData): number {
+  const verdictA = projectVerdict({ gate: a.gate, stats: a.stats });
+  const verdictB = projectVerdict({ gate: b.gate, stats: b.stats });
+
+  if (verdictA !== verdictB) {
+    return VERDICT_PRIORITY[verdictA] - VERDICT_PRIORITY[verdictB];
+  }
+  if (verdictA === "blocked") {
+    const blockers = blockerCount(b.gate) - blockerCount(a.gate);
+    if (blockers !== 0) return blockers;
+  }
+  return compareByName(a, b);
+}
+
+function ProjectTableHead() {
+  return (
+    <thead>
+      <tr className="border-border text-muted-foreground border-b text-left">
+        {COLUMNS.map((column) => (
+          <th key={column} scope="col" className="px-3 py-2 font-medium">
+            {column}
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
+}
+
+function ProjectTableSkeleton() {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <ProjectTableHead />
+        <tbody>
+          {Array.from({ length: SKELETON_ROW_COUNT }).map((_, rowIndex) => (
+            <tr key={rowIndex} className="border-border border-b">
+              {COLUMNS.map((column) => (
+                <td key={column} className="px-3 py-2">
+                  <div className="bg-muted h-4 animate-pulse rounded" />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function ProjectTableRow({ row }: { readonly row: ProjectRowData; }) {
+  const { project, gate, stats, failed } = row;
+  const verdict = projectVerdict({ gate, stats });
+
+  const blocking = !failed && verdict === "blocked" ? String(blockerCount(gate)) : EMPTY;
+  const findings = !failed && stats ? stats.total_findings : EMPTY;
+
+  let lastScan: ReactNode = EMPTY;
+  if (!failed && stats) {
+    if (stats.report_count === 0) {
+      lastScan = "Never";
+    } else {
+      const createdAt = stats.latest_report?.created_at;
+      lastScan = <span title={formatDateTime(createdAt)}>{formatRelativeTime(createdAt)}</span>;
+    }
+  }
 
   return (
-    <button
-      onClick={() => navigate(`/${slug}/findings`)}
-      className="bg-card hover:bg-muted/50 dark:bg-muted/10 relative cursor-pointer rounded-lg border p-4 text-left transition-colors"
-    >
-      {gate?.threshold_breached && (
-        <span className="bg-verdict-block text-verdict-block-fg absolute right-2 top-2 rounded px-2 py-0.5 text-xs font-medium">
-          BLOCKING
-        </span>
-      )}
-      {gate && !gate.threshold_breached && gate.blocking_count > 0 && (
-        <span className="bg-muted-foreground/20 text-muted-foreground absolute right-2 top-2 rounded px-1.5 py-0.5 text-[10px] font-medium">
-          {gate.blocking_count} blocking
-        </span>
-      )}
-      <h3 className="font-medium">{name}</h3>
-      {description && <p className="text-muted-foreground mt-1 text-xs">{description}</p>}
-    </button>
+    <tr className="border-border border-b">
+      <td className="px-3 py-2">
+        <Link
+          to={`/${project.slug}/findings`}
+          className="text-primary font-medium hover:underline"
+        >
+          {project.name}
+        </Link>
+        {project.description && (
+          <p className="text-muted-foreground text-xs">{project.description}</p>
+        )}
+      </td>
+      <td className="px-3 py-2">
+        <VerdictBadge verdict={verdict} />
+      </td>
+      <td className="px-3 py-2">{blocking}</td>
+      <td className="px-3 py-2">{findings}</td>
+      <td className="text-muted-foreground px-3 py-2">{lastScan}</td>
+    </tr>
   );
 }
