@@ -1,3 +1,4 @@
+import { formatDate } from "@/lib/format";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
@@ -62,7 +63,7 @@ describe("FindingsDashboard", () => {
     renderWithProviders(<FindingsDashboard />);
     const title = await screen.findByText("Test Vuln");
     expect(title).toBeInTheDocument();
-    expect(screen.getByText("sca")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText("SCA")).toBeInTheDocument();
   });
 
   it("labels analysis_state instead of rendering the raw enum", async () => {
@@ -233,6 +234,57 @@ describe("FindingsDashboard", () => {
     expect(rows()[0]).toHaveTextContent("Unknown severity");
     expect(rows()[1]).toHaveTextContent("No severity");
     expect(rows()[2]).toHaveTextContent("Low severity");
+  });
+
+  it("labels an unrecognised kind instead of echoing the wire value", async () => {
+    findingsFixture[0].finding_kind = "<img src=x>";
+    renderWithProviders(<FindingsDashboard />);
+
+    await screen.findByText("Test Vuln");
+    expect(within(screen.getByRole("table")).getAllByText("Unknown").length).toBeGreaterThan(0);
+    expect(screen.queryByText("<img src=x>")).not.toBeInTheDocument();
+  });
+
+  it("repeats the narrow-screen columns as one line under the title", async () => {
+    findingsFixture[0].analysis_state = "accepted_risk";
+    renderWithProviders(<FindingsDashboard />);
+
+    await screen.findByText("Test Vuln");
+    const row = within(screen.getByRole("table")).getAllByRole("row")[1];
+    expect(row).toHaveTextContent(
+      `SCA · Open · Accepted risk · Last seen ${formatDate("2025-01-01T00:00:00Z")}`,
+    );
+  });
+
+  it("offers a sort control for narrow screens that covers last seen", async () => {
+    findingsFixture = [
+      {
+        ...findingsFixture[0],
+        id: "f1",
+        current_title: "Old finding",
+        last_seen_at: "2025-01-01T00:00:00Z",
+      },
+      {
+        ...findingsFixture[0],
+        id: "f2",
+        current_title: "New finding",
+        last_seen_at: "2025-03-01T00:00:00Z",
+      },
+    ];
+    renderWithProviders(<FindingsDashboard />);
+    const user = userEvent.setup();
+
+    await screen.findByText("Old finding");
+    const sort = screen.getByRole("combobox", { name: "Sort findings" });
+    expect(sort).toHaveValue("severity:desc");
+
+    await user.selectOptions(sort, "last_seen:desc");
+    const titles = () =>
+      within(screen.getByRole("table")).getAllByRole("link").map((link) => link.textContent);
+    expect(titles()).toEqual(["New finding", "Old finding"]);
+
+    await user.selectOptions(sort, "last_seen:asc");
+    expect(titles()).toEqual(["Old finding", "New finding"]);
   });
 
   it("exposes the sort direction on every sortable header", async () => {
@@ -532,7 +584,8 @@ describe("FindingsDashboard links and table semantics", () => {
   it("shows the kind as a neutral chip rather than a hue that collides with severity", async () => {
     renderWithDetailRoute();
 
-    const chip = await screen.findByText("sca");
+    await screen.findByText("Test Vuln");
+    const chip = within(screen.getByRole("table")).getByText("SCA");
     expect(chip.className).toContain("bg-muted");
     expect(chip.className).not.toMatch(/blue|purple|amber|rose/);
   });

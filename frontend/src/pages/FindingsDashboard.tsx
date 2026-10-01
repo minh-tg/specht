@@ -32,6 +32,28 @@ function sortFindings(findings: Finding[], by: string, dir: "asc" | "desc") {
   });
 }
 
+const SORT_OPTIONS: ReadonlyArray<{ value: string; label: string; }> = [
+  { value: "severity:desc", label: "Most severe first" },
+  { value: "severity:asc", label: "Least severe first" },
+  { value: "title:asc", label: "Title A–Z" },
+  { value: "title:desc", label: "Title Z–A" },
+  { value: "last_seen:desc", label: "Last seen, newest first" },
+  { value: "last_seen:asc", label: "Last seen, oldest first" },
+];
+
+/**
+ * The columns that are hidden on narrow screens, as one line under the title,
+ * so no field is lost to small viewports or to assistive technology.
+ */
+function compactMeta(finding: Finding): string {
+  return [
+    findingKindLabel(finding.finding_kind),
+    technicalStateLabel(finding.state),
+    analysisStateLabel(finding.analysis_state),
+    `Last seen ${formatDate(finding.last_seen_at)}`,
+  ].filter(Boolean).join(" · ");
+}
+
 /** Clicks on these keep their own behaviour instead of opening the finding. */
 const INTERACTIVE_SELECTOR = "a, button, input, select, textarea, label";
 
@@ -164,6 +186,19 @@ export function FindingsDashboard() {
             <option key={value} value={value}>{findingKindLabel(value)}</option>
           ))}
         </select>
+        <select
+          aria-label="Sort findings"
+          className="border-input bg-background rounded-md border px-3 py-1 text-sm md:hidden"
+          value={`${sortBy}:${sortDir}`}
+          onChange={(e) => {
+            const [by, dir] = e.target.value.split(":");
+            setSortBy(by);
+            setSortDir(dir === "asc" ? "asc" : "desc");
+          }}
+        >
+          {SORT_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}
+          </option>)}
+        </select>
       </div>
 
       <div
@@ -293,7 +328,7 @@ export function FindingsDashboard() {
                         </td>
                         <td className="hidden px-3 py-2 md:table-cell">
                           <span className="bg-muted text-muted-foreground inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium">
-                            {f.finding_kind}
+                            {findingKindLabel(f.finding_kind) ?? "–"}
                           </span>
                         </td>
                         <td className="px-3 py-2">
@@ -304,6 +339,9 @@ export function FindingsDashboard() {
                           >
                             {f.current_title}
                           </Link>
+                          <p className="text-muted-foreground mt-0.5 text-xs md:hidden">
+                            {compactMeta(f)}
+                          </p>
                         </td>
                         <td className="hidden px-3 py-2 capitalize md:table-cell">
                           {technicalStateLabel(f.state) ?? "–"}
