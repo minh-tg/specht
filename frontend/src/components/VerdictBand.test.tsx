@@ -1,17 +1,12 @@
 import { queryKeys } from "@/api/hooks";
 import { formatDateTime } from "@/lib/format";
+import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { VerdictBand } from "./VerdictBand";
-
-function jsonResponse(data: unknown): Response {
-  return new Response(JSON.stringify(data), {
-    headers: { "Content-Type": "application/json" },
-  });
-}
 
 interface Fixtures {
   gate?: unknown;
@@ -61,7 +56,7 @@ function renderBand(fixtures: Fixtures = {}, slug = "alpha") {
 /** No seeded data and a fetch that never settles: the skeleton stays up. */
 function renderLoadingBand(slug = "alpha") {
   globalThis.fetch = vi.fn().mockImplementation(() => new Promise(() => {}));
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createTestQueryClient();
   return renderBandIn(client, slug);
 }
 
@@ -71,7 +66,7 @@ function renderLiveBand(
   slug = "alpha",
 ) {
   globalThis.fetch = vi.fn().mockImplementation(fetchImpl);
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createTestQueryClient();
   return renderBandIn(client, slug);
 }
 

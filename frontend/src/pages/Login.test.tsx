@@ -1,6 +1,7 @@
 import { AuthProvider } from "@/auth/AuthContext";
 import { AuthContext, type AuthContextValue } from "@/auth/context";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "@/test/utils";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -9,7 +10,7 @@ import { Login } from "./Login";
 import { safeRedirect } from "./safeRedirect";
 
 function renderLogin() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const qc = createTestQueryClient();
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter>
@@ -35,7 +36,7 @@ function authContext(): AuthContextValue {
 }
 
 function renderLoginWithAuth(initialPath = "/login") {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const qc = createTestQueryClient();
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[initialPath]}>

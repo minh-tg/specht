@@ -1,4 +1,5 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient, jsonResponse } from "@/test/utils";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useParams } from "react-router-dom";
@@ -22,14 +23,6 @@ const PROJECT = {
 };
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status < 400,
-    status,
-    json: () => Promise.resolve(body),
-  } as Response;
-}
 
 function SetupRoute() {
   const { slug } = useParams<{ slug: string; }>();
@@ -66,7 +59,7 @@ beforeEach(() => {
 });
 
 function renderPage() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const qc = createTestQueryClient();
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={["/projects/new"]}>

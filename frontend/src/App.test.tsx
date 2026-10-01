@@ -1,5 +1,6 @@
 import { AuthContext, type AuthContextValue } from "@/auth/context";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "@/test/utils";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
@@ -60,7 +61,7 @@ beforeEach(() => {
 });
 
 function renderRoutes(initialPath: string, token: string | null = auth.token) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = createTestQueryClient();
   const value: AuthContextValue = {
     ...auth,
     token,
@@ -80,7 +81,7 @@ function renderRoutes(initialPath: string, token: string | null = auth.token) {
 }
 
 it("renders the finding detail route", async () => {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = createTestQueryClient();
 
   render(
     <QueryClientProvider client={queryClient}>

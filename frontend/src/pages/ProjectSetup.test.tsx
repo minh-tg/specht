@@ -1,4 +1,5 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient, jsonResponse } from "@/test/utils";
+import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -17,14 +18,6 @@ let postCalls: Array<Record<string, unknown>> = [];
 let writeText: ReturnType<typeof vi.fn>;
 let projectSlug = "acme";
 let lastClient: QueryClient;
-
-function jsonResponse(body: unknown, status = 200): Response {
-  return {
-    ok: status < 400,
-    status,
-    json: () => Promise.resolve(body),
-  } as Response;
-}
 
 const VERSION_COMMIT = "4f93c32a1b2c3d4e5f60718293a4b5c6d7e8f901";
 
@@ -97,7 +90,7 @@ afterEach(() => {
 });
 
 function renderPage() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const qc = createTestQueryClient();
   lastClient = qc;
   return render(
     <QueryClientProvider client={qc}>

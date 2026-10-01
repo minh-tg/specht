@@ -1,15 +1,10 @@
 import { queryKeys } from "@/api/hooks";
+import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { ProjectLayout } from "./ProjectLayout";
-
-function jsonResponse(data: unknown): Response {
-  return new Response(JSON.stringify(data), {
-    headers: { "Content-Type": "application/json" },
-  });
-}
 
 const project = {
   id: "p1",
@@ -77,7 +72,7 @@ function renderLayout(initialEntry = "/alpha/findings") {
 /** No seeded project and a fetch that never settles: the slug stays in the h1. */
 function renderPendingLayout(initialEntry = "/alpha/findings") {
   globalThis.fetch = vi.fn().mockImplementation(() => new Promise(() => {}));
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = createTestQueryClient();
   return renderLayoutIn(client, initialEntry);
 }
 

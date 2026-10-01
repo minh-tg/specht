@@ -1,4 +1,5 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient, jsonResponse } from "@/test/utils";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setAuthToken } from "./client";
@@ -37,7 +38,7 @@ let mutationCalls: Array<
 >;
 
 function wrapper({ children }: { children: React.ReactNode; }) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const qc = createTestQueryClient();
   return (
     <QueryClientProvider client={qc}>
       {children}
@@ -468,9 +469,3 @@ describe("useCreateApiKey", () => {
     expect(JSON.parse(mutations[0].body)).toEqual({ project: "payments", name: "ci" });
   });
 });
-
-function jsonResponse(data: unknown): Response {
-  return new Response(JSON.stringify(data), {
-    headers: { "Content-Type": "application/json" },
-  });
-}

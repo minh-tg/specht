@@ -1,5 +1,6 @@
 import { formatDateTime } from "@/lib/format";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "@/test/utils";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { vi } from "vitest";
@@ -58,7 +59,7 @@ function mockReports(reports: unknown[]) {
 }
 
 function renderWithProviders(ui: React.ReactElement) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const qc = createTestQueryClient();
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={["/test-project/reports"]}>

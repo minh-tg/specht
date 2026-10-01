@@ -1,4 +1,5 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient, jsonResponse } from "@/test/utils";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -38,7 +39,7 @@ beforeEach(() => {
 });
 
 function renderWithProviders(ui: React.ReactElement, initialPath = "/test-project/findings") {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const qc = createTestQueryClient();
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[initialPath]}>
@@ -480,7 +481,7 @@ function DetailState() {
 }
 
 function renderWithDetailRoute(initialPath = "/test-project/findings") {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const qc = createTestQueryClient();
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[initialPath]}>
@@ -496,10 +497,4 @@ function renderWithDetailRoute(initialPath = "/test-project/findings") {
 function gateCell(): HTMLElement {
   const rows = within(screen.getByRole("table")).getAllByRole("row");
   return within(rows[1]).getAllByRole("cell")[5];
-}
-
-function jsonResponse(data: unknown): Response {
-  return new Response(JSON.stringify(data), {
-    headers: { "Content-Type": "application/json" },
-  });
 }
