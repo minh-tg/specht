@@ -57,6 +57,7 @@ export function Register() {
           <input
             id="reg-email"
             type="email"
+            autoComplete="email"
             required
             className="border-input bg-background mt-1 block w-full rounded-md border px-3 py-2 text-sm"
             value={email}
@@ -71,6 +72,7 @@ export function Register() {
           <input
             id="reg-password"
             type="password"
+            autoComplete="new-password"
             required
             minLength={8}
             className="border-input bg-background mt-1 block w-full rounded-md border px-3 py-2 text-sm"

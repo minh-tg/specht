@@ -106,6 +106,16 @@ describe("Login", () => {
     expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
   });
 
+  it("exposes autocomplete hints so password managers can fill the form", () => {
+    renderLogin();
+
+    expect(screen.getByLabelText("Email")).toHaveAttribute("autocomplete", "email");
+    expect(screen.getByLabelText("Password")).toHaveAttribute(
+      "autocomplete",
+      "current-password",
+    );
+  });
+
   it("returns an authenticated user to the home page", async () => {
     authState.token = "session-token";
     renderLoginWithAuth();

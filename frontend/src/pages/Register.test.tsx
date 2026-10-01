@@ -45,6 +45,13 @@ describe("Register", () => {
     expect(screen.getByRole("heading", { name: "Create account" })).toBeInTheDocument();
   });
 
+  it("exposes autocomplete hints for new credentials", () => {
+    renderRegister();
+
+    expect(screen.getByLabelText("Email")).toHaveAttribute("autocomplete", "email");
+    expect(screen.getByLabelText("Password")).toHaveAttribute("autocomplete", "new-password");
+  });
+
   it("creates an account and sends the user to sign in", async () => {
     vi.mocked(globalThis.fetch).mockResolvedValue(
       new Response("{}", { status: 201, headers: { "Content-Type": "application/json" } }),

@@ -55,6 +55,7 @@ export function Login() {
           <input
             id="login-email"
             type="email"
+            autoComplete="email"
             required
             className="border-input bg-background mt-1 block w-full rounded-md border px-3 py-2 text-sm"
             value={email}
@@ -69,6 +70,7 @@ export function Login() {
           <input
             id="login-password"
             type="password"
+            autoComplete="current-password"
             required
             className="border-input bg-background mt-1 block w-full rounded-md border px-3 py-2 text-sm"
             value={password}
