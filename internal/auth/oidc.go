@@ -510,35 +510,43 @@ func idTokenSubject(idToken string) (string, error) {
 // verifySSOCallbackState validates the OAuth2 state parameter against the
 // single-use state cookie and clears the cookie. It returns the server-issued
 // nonce bound into the state value.
-func verifySSOCallbackState(w http.ResponseWriter, r *http.Request, cookieName string) (wantNonce string, ok bool) {
+func verifySSOCallbackState(w http.ResponseWriter, r *http.Request, cookieName string) (wantNonce, returnTo string, ok bool) {
 	state := r.URL.Query().Get("state")
 	if state == "" {
 		http.Error(w, "missing state", http.StatusBadRequest)
-		return "", false
+		return "", "", false
 	}
 	stateCookie, err := r.Cookie(cookieName)
 	if err != nil || !secureCompare(state, stateCookie.Value) {
 		http.Error(w, "state mismatch", http.StatusBadRequest)
-		return "", false
+		return "", "", false
 	}
-	// The state value is single-use: clear it before any further work so a
-	// replayed callback can never pass this check again.
+
+	returnTo = "/"
+	if returnCookie, err := r.Cookie(SSOReturnCookieName); err == nil {
+		returnTo = decodeSSOReturnCookieValue(returnCookie.Value, state)
+	}
+
+	// The state and return-path cookies are single-use: clear them before any
+	// further work so a replayed callback cannot pass this check again.
 	// secureCookie sets Secure from the proxy-aware transport verdict.
 	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
-	http.SetCookie(w, secureCookie(r, &http.Cookie{
-		Name:     cookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	}))
+	for _, name := range []string{cookieName, SSOReturnCookieName} {
+		http.SetCookie(w, secureCookie(r, &http.Cookie{
+			Name:     name,
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+		}))
+	}
 
 	// The server-issued nonce rides inside the state cookie (see
 	// GenerateStateToken), so an id_token is only accepted when its nonce
 	// claim matches what this login flow actually sent to the provider.
 	_, wantNonce = splitStateNonce(stateCookie.Value)
-	return wantNonce, true
+	return wantNonce, returnTo, true
 }
 
 // extractCallbackIdentity resolves the callback identity from the token
@@ -571,7 +579,7 @@ func (a *OIDCAuthenticator) extractCallbackIdentity(ctx context.Context, tokenRe
 
 // issueCallbackSession mints the session token for the validated identity
 // and delivers it in the redirect URL fragment.
-func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ctx context.Context, userID, email string, groups []string) (token string, err error), ident *Identity) {
+func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ctx context.Context, userID, email string, groups []string) (token string, err error), ident *Identity, returnTo string) {
 	tok, err := issuer(r.Context(), ident.UserID, ident.Email, ident.Groups)
 	if err != nil {
 		if errors.Is(err, ErrSSONotProvisioned) {
@@ -587,17 +595,17 @@ func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ct
 	// browser history, or server access logs. Fragments are not sent to
 	// the server, so nothing here ever reads it back; the SPA consumes
 	// the fragment on load and keeps the token in memory.
-	// Redirect target is the constant "/" with an escaped fragment;
-	// no user-controlled host or path.
+	// The return target is validated as a same-origin path both when it enters
+	// the cookie and when it is read back. The token remains in the fragment.
 	// nosemgrep: go.lang.security.injection.open-redirect.open-redirect
-	http.Redirect(w, r, "/#sso_token="+url.PathEscape(tok), http.StatusFound)
+	http.Redirect(w, r, safeSSOReturnPath(returnTo)+"#sso_token="+url.PathEscape(tok), http.StatusFound)
 }
 
 func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, userID, email string, groups []string) (token string, err error)) http.HandlerFunc {
 	const stateCookieName = "sso_state"
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		wantNonce, ok := verifySSOCallbackState(w, r, stateCookieName)
+		wantNonce, returnTo, ok := verifySSOCallbackState(w, r, stateCookieName)
 		if !ok {
 			return
 		}
@@ -623,7 +631,7 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, use
 			return
 		}
 
-		issueCallbackSession(w, r, issuer, ident)
+		issueCallbackSession(w, r, issuer, ident, returnTo)
 	}
 }
 

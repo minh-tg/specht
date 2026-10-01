@@ -32,7 +32,7 @@ type mockUsecases struct {
 	getProjectFn         func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
 	updateProjectFn      func(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error)
 	deleteProjectFn      func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
-	listFindingsFn       func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error)
+	listFindingsFn       func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error)
 	listReportsFn        func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
 	getReportFn          func(ctx context.Context, reportID string) (*usecase.ReportResponse, error)
 	ingestReportFn       func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
@@ -73,6 +73,7 @@ type mockUsecases struct {
 	logoutFn             func(ctx context.Context, refreshToken string) error
 	getProfileFn         func(ctx context.Context, userID string) (*usecase.UserProfile, error)
 	updateProfileFn      func(ctx context.Context, userID string, displayName *string) (*usecase.UserProfile, error)
+	listUsersFn          func(ctx context.Context, filter string, limit, offset int32) ([]usecase.UserProfile, error)
 	listEnvironmentsFn   func(ctx context.Context, slug string) ([]usecase.EnvironmentResponse, error)
 	listTargetsFn        func(ctx context.Context, slug string) ([]usecase.TargetResponse, error)
 	listArtifactsFn      func(ctx context.Context, slug string) ([]usecase.ArtifactResponse, error)
@@ -154,9 +155,9 @@ func (m *mockUsecases) DeleteProject(ctx context.Context, slug string) (*usecase
 	return m.deleteProjectFn(ctx, slug)
 }
 
-func (m *mockUsecases) ListFindings(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
+func (m *mockUsecases) ListFindings(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
 	if m.listFindingsFn == nil {
-		return nil, fmt.Errorf("unexpected call to ListFindings")
+		return nil, 0, fmt.Errorf("unexpected call to ListFindings")
 	}
 	return m.listFindingsFn(ctx, projectSlug, filter, limit, offset)
 }
@@ -450,6 +451,13 @@ func (m *mockUsecases) UpdateProfile(ctx context.Context, userID string, display
 		return nil, fmt.Errorf("unexpected call to UpdateProfile")
 	}
 	return m.updateProfileFn(ctx, userID, displayName)
+}
+
+func (m *mockUsecases) ListUsers(ctx context.Context, filter string, limit, offset int32) ([]usecase.UserProfile, error) {
+	if m.listUsersFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListUsers")
+	}
+	return m.listUsersFn(ctx, filter, limit, offset)
 }
 
 func (m *mockUsecases) ListEnvironments(ctx context.Context, slug string) ([]usecase.EnvironmentResponse, error) {
@@ -1080,11 +1088,11 @@ func TestDeleteProject_NotFound(t *testing.T) {
 
 func TestListFindings_Success(t *testing.T) {
 	mock := &mockUsecases{
-		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
 			assert.Equal(t, "my-app", projectSlug)
 			assert.Equal(t, int32(20), limit)
 			assert.Equal(t, int32(0), offset)
-			return sampleFindings(), nil
+			return sampleFindings(), 4242, nil
 		},
 	}
 	router := testRouter(mock)
@@ -1093,6 +1101,8 @@ func TestListFindings_Success(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "4242", w.Header().Get("X-Total-Count"),
+		"the filtered total rides a header so the body stays a bare array")
 	var resp []usecase.FindingResponse
 	err := json.Unmarshal(w.Body.Bytes(), &resp)
 	require.NoError(t, err)
@@ -1102,18 +1112,18 @@ func TestListFindings_Success(t *testing.T) {
 
 func TestListFindings_WithFilters(t *testing.T) {
 	mock := &mockUsecases{
-		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
 			assert.Equal(t, []string{"high", "critical"}, filter.Severities)
 			assert.Equal(t, []string{"open"}, filter.States)
 			assert.Equal(t, []string{"production"}, filter.Environments)
 			assert.Equal(t, []string{"web"}, filter.Targets)
 			assert.Equal(t, int32(50), limit)
-			assert.Equal(t, int32(10), offset)
-			return sampleFindings(), nil
+			assert.Equal(t, int32(1000), offset)
+			return sampleFindings(), int64(len(sampleFindings())), nil
 		},
 	}
 	router := testRouter(mock)
-	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings?severity=high,critical&status=open&environment=production&target=web&limit=50&offset=10", nil)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings?severity=high,critical&status=open&environment=production&target=web&limit=50&offset=1000", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
@@ -1122,8 +1132,8 @@ func TestListFindings_WithFilters(t *testing.T) {
 
 func TestListFindings_NotFound(t *testing.T) {
 	mock := &mockUsecases{
-		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
-			return nil, port.ErrNotFound
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
+			return nil, 0, port.ErrNotFound
 		},
 	}
 	router := testRouter(mock)
@@ -1136,8 +1146,8 @@ func TestListFindings_NotFound(t *testing.T) {
 
 func TestListFindings_InternalError(t *testing.T) {
 	mock := &mockUsecases{
-		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
-			return nil, fmt.Errorf("database unavailable")
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
+			return nil, 0, fmt.Errorf("database unavailable")
 		},
 	}
 	router := testRouter(mock)
@@ -1331,8 +1341,8 @@ func TestNewRouterRoutes(t *testing.T) {
 		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
 			return &usecase.ProjectResponse{ID: "p1", Slug: slug}, nil
 		},
-		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
-			return nil, nil
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
+			return nil, 0, nil
 		},
 		listReportsFn: func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error) {
 			return nil, nil
@@ -2923,6 +2933,28 @@ func TestParseIntParam(t *testing.T) {
 	}
 }
 
+func TestParseOffsetParam(t *testing.T) {
+	tests := []struct {
+		name       string
+		query      string
+		defaultVal int32
+		want       int32
+	}{
+		{"no param", "/test", 0, 0},
+		{"valid offset above page-size cap", "/test?offset=1000", 0, 1000},
+		{"maximum int32", "/test?offset=2147483647", 0, 2147483647},
+		{"int32 overflow", "/test?offset=2147483648", 7, 7},
+		{"negative offset", "/test?offset=-1", 7, 7},
+		{"non-numeric", "/test?offset=abc", 7, 7},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := httptest.NewRequest("GET", tt.query, nil)
+			assert.Equal(t, tt.want, parseOffsetParam(r, "offset", tt.defaultVal))
+		})
+	}
+}
+
 func sampleWaiverResponse() usecase.WaiverResponse {
 	return usecase.WaiverResponse{
 		ID:          "wvr-1",
@@ -3287,8 +3319,8 @@ func TestListFindings_APIKeyAllowed(t *testing.T) {
 		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
 			return &usecase.ProjectResponse{ID: projectID, Slug: slug}, nil
 		},
-		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error) {
-			return sampleFindings(), nil
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
+			return sampleFindings(), int64(len(sampleFindings())), nil
 		},
 	}
 	handler := &Handler{usecase: mock}
@@ -3422,10 +3454,47 @@ func TestListScannersHandler(t *testing.T) {
 	assert.Equal(t, "semgrep", resp[1].Name)
 }
 
+// TestListUsersHandler pins the directory contract the admin UIs pick from:
+// the email filter and pagination pass through untouched, and the response is
+// the account shape without any credential material.
+func TestListUsersHandler(t *testing.T) {
+	var gotFilter string
+	var gotLimit, gotOffset int32
+	mock := &mockUsecases{
+		listUsersFn: func(ctx context.Context, filter string, limit, offset int32) ([]usecase.UserProfile, error) {
+			gotFilter, gotLimit, gotOffset = filter, limit, offset
+			return []usecase.UserProfile{
+				{ID: "u1", Email: "alice@example.com", DisplayName: "Alice", Role: "admin", CreatedAt: "2026-01-01T00:00:00Z"},
+				{ID: "u2", Email: "bob@example.com", Role: "member", CreatedAt: "2026-01-02T00:00:00Z"},
+			}, nil
+		},
+	}
+	router := NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth})
+	req := httptest.NewRequest("GET", "/api/v1/users?email=example.com&limit=5&offset=1000", nil)
+	req.Header.Set("Authorization", "Bearer "+makeTestToken(t, auth.RoleAdmin))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "example.com", gotFilter, "the filter reaches the use case verbatim")
+	assert.EqualValues(t, 5, gotLimit)
+	assert.EqualValues(t, 1000, gotOffset)
+
+	var resp []usecase.UserProfile
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	require.Len(t, resp, 2)
+	assert.Equal(t, "alice@example.com", resp[0].Email)
+	assert.Equal(t, "Alice", resp[0].DisplayName)
+	assert.Equal(t, "admin", resp[0].Role)
+	assert.NotContains(t, w.Body.String(), "password", "the account shape carries no credential material")
+}
+
 // TestGlobalStatusEndpoints_AdminOnly guards the fix for unscoped global
-// daemon state (watcher health, scanner capabilities): any authenticated
-// principal could previously read them. Non-admin session users and
-// project-scoped API keys must be denied; only admin session users pass.
+// daemon state (watcher health, scanner capabilities) and for the account
+// directory: any authenticated principal could previously read daemon state,
+// and a project-scoped key must never enumerate the organization. Non-admin
+// session users and project-scoped API keys are denied; only admin session
+// users pass.
 func TestGlobalStatusEndpoints_AdminOnly(t *testing.T) {
 	mock := &mockUsecases{
 		getWatcherStatusFn: func(ctx context.Context) (*usecase.WatcherStatusResponse, error) {
@@ -3433,6 +3502,9 @@ func TestGlobalStatusEndpoints_AdminOnly(t *testing.T) {
 		},
 		listScannersFn: func() []usecase.ScannerDescriptorResponse {
 			return []usecase.ScannerDescriptorResponse{{Name: "trivy"}}
+		},
+		listUsersFn: func(ctx context.Context, filter string, limit, offset int32) ([]usecase.UserProfile, error) {
+			return []usecase.UserProfile{{ID: "u1", Email: "admin@example.com", Role: "admin"}}, nil
 		},
 	}
 	router := NewRouter(RouterConfig{
@@ -3492,6 +3564,30 @@ func TestGlobalStatusEndpoints_AdminOnly(t *testing.T) {
 		{
 			name: "scanners API key forbidden",
 			path: "/api/v1/scanners",
+			auth: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer vuln_testapikey")
+			},
+			want: http.StatusForbidden,
+		},
+		{
+			name: "users non-admin session user forbidden",
+			path: "/api/v1/users",
+			auth: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer "+makeTestToken(t, auth.RoleViewer))
+			},
+			want: http.StatusForbidden,
+		},
+		{
+			name: "users admin session user allowed",
+			path: "/api/v1/users",
+			auth: func(req *http.Request) {
+				req.Header.Set("Authorization", "Bearer "+makeTestToken(t, auth.RoleAdmin))
+			},
+			want: http.StatusOK,
+		},
+		{
+			name: "users API key forbidden",
+			path: "/api/v1/users",
 			auth: func(req *http.Request) {
 				req.Header.Set("Authorization", "Bearer vuln_testapikey")
 			},

@@ -474,6 +474,7 @@ type mockFindingRepo struct {
 	createOccurrenceFn                func(context.Context, port.OccurrenceInput) (port.Occurrence, error)
 	upsertDimensionFn                 func(context.Context, port.DimensionInput) error
 	listByProjectFn                   func(context.Context, string, port.ListFindingsParams) ([]port.Finding, error)
+	countByProjectFn                  func(context.Context, string, port.ListFindingsParams) (int64, error)
 	getDisplayContextFn               func(context.Context, string) (port.FindingDisplayContext, error)
 	listFindingDisplayContextsByIDsFn func(context.Context, []string) ([]port.FindingDisplayContext, error)
 	listDimensionsFn                  func(context.Context, string) ([]port.FindingDimension, error)
@@ -528,6 +529,13 @@ func (m *mockFindingRepo) ListByProject(ctx context.Context, projectID string, p
 		return []port.Finding{}, nil
 	}
 	return m.listByProjectFn(ctx, projectID, params)
+}
+
+func (m *mockFindingRepo) CountByProject(ctx context.Context, projectID string, params port.ListFindingsParams) (int64, error) {
+	if m.countByProjectFn == nil {
+		return 0, nil
+	}
+	return m.countByProjectFn(ctx, projectID, params)
 }
 
 func (m *mockFindingRepo) GetByID(ctx context.Context, id string) (port.Finding, error) {
@@ -827,6 +835,7 @@ type mockUserRepo struct {
 	createFn            func(context.Context, string, *string, *string) (port.User, error)
 	getByEmailFn        func(context.Context, string) (port.User, error)
 	getByIDFn           func(context.Context, string) (port.User, error)
+	listFn              func(context.Context, string, int32, int32) ([]port.User, error)
 	updateDisplayNameFn func(context.Context, string, *string) (port.User, error)
 	setRoleFn           func(context.Context, string, string) (port.User, error)
 }
@@ -850,6 +859,13 @@ func (m *mockUserRepo) GetByID(ctx context.Context, id string) (port.User, error
 		return port.User{}, fmt.Errorf("unexpected call to GetByID")
 	}
 	return m.getByIDFn(ctx, id)
+}
+
+func (m *mockUserRepo) List(ctx context.Context, filter string, limit, offset int32) ([]port.User, error) {
+	if m.listFn == nil {
+		return nil, fmt.Errorf("unexpected call to List")
+	}
+	return m.listFn(ctx, filter, limit, offset)
 }
 
 func (m *mockUserRepo) UpdateDisplayName(ctx context.Context, userID string, displayName *string) (port.User, error) {
@@ -2647,6 +2663,53 @@ func TestGetProfile_UserNotFound(t *testing.T) {
 	assert.EqualError(t, err, "user not found")
 }
 
+func TestListUsers_Success(t *testing.T) {
+	var gotFilter string
+	var gotLimit, gotOffset int32
+	ur := &mockUserRepo{}
+	ur.listFn = func(_ context.Context, filter string, limit, offset int32) ([]port.User, error) {
+		gotFilter, gotLimit, gotOffset = filter, limit, offset
+		first := makeUser("00000000-0000-0000-0000-000000000041")
+		first.Email = "alice@example.com"
+		first.DisplayName = strPtr("Alice")
+		first.Role = "admin"
+		second := makeUser("00000000-0000-0000-0000-000000000042")
+		second.Email = "bob@example.com"
+		return []port.User{first, second}, nil
+	}
+
+	uc := New(Deps{Stores: &port.Stores{Users: ur}})
+	users, err := uc.ListUsers(context.Background(), "  alice  ", 5, 10)
+	require.NoError(t, err)
+	require.Len(t, users, 2)
+
+	assert.Equal(t, "alice", gotFilter, "the filter is trimmed before it reaches the store")
+	assert.EqualValues(t, 5, gotLimit)
+	assert.EqualValues(t, 10, gotOffset)
+
+	assert.Equal(t, "00000000-0000-0000-0000-000000000041", users[0].ID)
+	assert.Equal(t, "alice@example.com", users[0].Email)
+	assert.Equal(t, "Alice", users[0].DisplayName)
+	assert.Equal(t, "admin", users[0].Role)
+	assert.NotEmpty(t, users[0].CreatedAt)
+
+	assert.Equal(t, "bob@example.com", users[1].Email)
+	assert.Empty(t, users[1].DisplayName, "an account with no display name carries none")
+}
+
+func TestListUsers_StoreError(t *testing.T) {
+	ur := &mockUserRepo{}
+	ur.listFn = func(context.Context, string, int32, int32) ([]port.User, error) {
+		return nil, fmt.Errorf("connection refused")
+	}
+
+	uc := New(Deps{Stores: &port.Stores{Users: ur}})
+	_, err := uc.ListUsers(context.Background(), "", 20, 0)
+	require.Error(t, err)
+	assert.ErrorContains(t, err, "list users")
+	assert.ErrorContains(t, err, "connection refused")
+}
+
 func TestUpdateProfile_Success(t *testing.T) {
 	ur := &mockUserRepo{}
 	ur.updateDisplayNameFn = func(ctx context.Context, userID string, displayName *string) (port.User, error) {
@@ -2788,14 +2851,21 @@ func TestListFindings_Success(t *testing.T) {
 	fr.listByProjectFn = func(ctx context.Context, projectID string, params port.ListFindingsParams) ([]port.Finding, error) {
 		return []port.Finding{makeFindingRow(1), makeFindingRow(2)}, nil
 	}
+	fr.countByProjectFn = func(ctx context.Context, projectID string, params port.ListFindingsParams) (int64, error) {
+		// The count must not inherit the page window.
+		assert.Zero(t, params.Limit, "the count ignores the page limit")
+		assert.Zero(t, params.Offset, "the count ignores the page offset")
+		return 137, nil
+	}
 
 	uc := New(Deps{
 		Stores: &port.Stores{Projects: pr, Findings: fr},
 	})
 
-	findings, err := uc.ListFindings(context.Background(), "my-app", FindingFilter{}, 20, 0)
+	findings, total, err := uc.ListFindings(context.Background(), "my-app", FindingFilter{}, 20, 0)
 	require.NoError(t, err)
-	assert.Len(t, findings, 2)
+	assert.Len(t, findings, 2, "the page is bounded by limit/offset")
+	assert.EqualValues(t, 137, total, "the total covers the whole filtered set, not the page")
 }
 
 func TestListFindings_ProjectNotFound(t *testing.T) {
@@ -2808,7 +2878,7 @@ func TestListFindings_ProjectNotFound(t *testing.T) {
 		Stores: &port.Stores{Projects: pr},
 	})
 
-	_, err := uc.ListFindings(context.Background(), "nonexistent", FindingFilter{}, 20, 0)
+	_, _, err := uc.ListFindings(context.Background(), "nonexistent", FindingFilter{}, 20, 0)
 	assert.ErrorContains(t, err, "lookup project")
 }
 

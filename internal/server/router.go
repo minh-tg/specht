@@ -77,7 +77,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		AllowedOrigins:   origins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", headerContentType},
-		ExposedHeaders:   []string{"Link"},
+		ExposedHeaders:   []string{"Link", "X-Total-Count"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
@@ -143,6 +143,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(session).Get("/api/v1/me", h.Me)
 		r.With(session).Put("/api/v1/me", h.UpdateMe)
 		r.With(sessionAdmin).Get("/api/v1/scanners", h.ListScanners)
+		r.With(sessionAdmin).Get("/api/v1/users", h.ListUsers)
 		r.With(readScope).Get("/api/v1/projects", h.ListProjects)
 		r.With(sessionAdmin).Post("/api/v1/projects", h.CreateProject)
 		r.With(readScope).Get(routeProjectsSlug, h.GetProject)
@@ -319,9 +320,9 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // ssoLoginHandler redirects unauthenticated users to the OIDC provider's
-// authorization endpoint. The state parameter is a CSRF token: it is bound to
-// an httpOnly cookie so the callback can verify the redirect really came from
-// a login flow this server started.
+// authorization endpoint. The state parameter is a CSRF token bound to an
+// httpOnly cookie; a second state-bound cookie carries a validated SPA return
+// path without exposing it to the identity provider.
 func ssoLoginHandler(oidc OIDCAuthenticator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		state, err := auth.GenerateStateToken()
@@ -335,6 +336,7 @@ func ssoLoginHandler(oidc OIDCAuthenticator) http.HandlerFunc {
 		// client-supplied X-Forwarded-Proto on its own.
 		// Secure comes from the proxy-aware transport verdict below.
 		// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
+		secure := auth.SecureTransport(r)
 		http.SetCookie(w, &http.Cookie{
 			Name:     "sso_state",
 			Value:    state,
@@ -342,7 +344,16 @@ func ssoLoginHandler(oidc OIDCAuthenticator) http.HandlerFunc {
 			MaxAge:   600, // 10 minutes, matching a typical auth-code flow
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
-			Secure:   auth.SecureTransport(r),
+			Secure:   secure,
+		})
+		http.SetCookie(w, &http.Cookie{
+			Name:     auth.SSOReturnCookieName,
+			Value:    auth.EncodeSSOReturnCookieValue(state, r.URL.Query().Get("redirect")),
+			Path:     "/",
+			MaxAge:   600,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			Secure:   secure,
 		})
 		http.Redirect(w, r, oidc.LoginURL(state), http.StatusFound)
 	}

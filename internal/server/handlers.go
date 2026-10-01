@@ -75,6 +75,7 @@ type (
 		Logout(ctx context.Context, refreshToken string) error
 		GetProfile(ctx context.Context, userID string) (*usecase.UserProfile, error)
 		UpdateProfile(ctx context.Context, userID string, displayName *string) (*usecase.UserProfile, error)
+		ListUsers(ctx context.Context, filter string, limit, offset int32) ([]usecase.UserProfile, error)
 	}
 
 	APIKeyUsecases interface {
@@ -98,7 +99,7 @@ type (
 	}
 
 	FindingUsecases interface {
-		ListFindings(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, error)
+		ListFindings(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error)
 		GetFinding(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
 		TriageFinding(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
 		VerifyFix(ctx context.Context, findingID string) (*usecase.VerifyResponse, error)
@@ -342,18 +343,29 @@ const (
 )
 
 func parseIntParam(r *http.Request, name string, defaultVal int32) int32 {
+	n := parseInt32Param(r, name, defaultVal)
+	if n > maxPageSize {
+		return maxPageSize
+	}
+	return n
+}
+
+// parseOffsetParam preserves the requested skip count instead of applying the
+// page-size ceiling. The int32 bound matches sqlc's PostgreSQL OFFSET argument.
+func parseOffsetParam(r *http.Request, name string, defaultVal int32) int32 {
+	return parseInt32Param(r, name, defaultVal)
+}
+
+func parseInt32Param(r *http.Request, name string, defaultVal int32) int32 {
 	val := r.URL.Query().Get(name)
 	if val == "" {
 		return defaultVal
 	}
-	// Parse with 32-bit size so oversized values error out instead of silently
-	// truncating to a negative int32 (PostgreSQL LIMIT -1 means "no limit").
+	// Parse with 32-bit size so values PostgreSQL cannot represent fall back
+	// instead of wrapping to a negative offset or LIMIT -1 (unbounded rows).
 	n, err := strconv.ParseInt(val, 10, 32)
 	if err != nil || n < 0 {
 		return defaultVal
-	}
-	if n > maxPageSize {
-		return maxPageSize
 	}
 	return int32(n)
 }
@@ -570,7 +582,7 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit := parseIntParam(r, "limit", 20)
-	offset := parseIntParam(r, "offset", 0)
+	offset := parseOffsetParam(r, "offset", 0)
 
 	var filter usecase.FindingFilter
 	if s := r.URL.Query().Get("severity"); s != "" {
@@ -589,7 +601,7 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 		filter.Targets = strings.Split(s, ",")
 	}
 
-	findings, err := h.usecase.ListFindings(r.Context(), slug, filter, limit, offset)
+	findings, total, err := h.usecase.ListFindings(r.Context(), slug, filter, limit, offset)
 	if err != nil {
 		log.Printf("list findings: %v", err)
 		if errors.Is(err, port.ErrNotFound) {
@@ -599,6 +611,9 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	// X-Total-Count carries the size of the filtered set so a client can
+	// render "n of m" and page counts; the body stays a bare array.
+	w.Header().Set("X-Total-Count", strconv.FormatInt(total, 10))
 	respondJSON(w, http.StatusOK, findings)
 }
 

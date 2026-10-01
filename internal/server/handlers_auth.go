@@ -144,6 +144,32 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, profile)
 }
 
+// ListUsers serves the account directory that admin surfaces pick from:
+// grant project membership, add a team member. Session admins only — a
+// project-scoped key has no business enumerating the organization, and the
+// route-level session guard is mirrored here so the handler stays safe if it
+// is ever mounted without it.
+func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
+	ident := auth.ContextIdentity(r.Context())
+	if ident == nil {
+		respondError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+	if ident.IsAPIKey || ident.Role != auth.RoleAdmin {
+		respondError(w, http.StatusForbidden, "insufficient_role", "requires admin role")
+		return
+	}
+
+	users, err := h.usecase.ListUsers(r.Context(), r.URL.Query().Get("email"),
+		parseIntParam(r, "limit", 20), parseOffsetParam(r, "offset", 0))
+	if err != nil {
+		slog.Error("list users", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not list users")
+		return
+	}
+	respondJSON(w, http.StatusOK, users)
+}
+
 func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Project   string `json:"project"`

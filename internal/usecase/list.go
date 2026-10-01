@@ -460,30 +460,41 @@ type FindingFilter struct {
 	Targets      []string
 }
 
-func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, filter FindingFilter, limit, offset int32) ([]FindingResponse, error) {
+// ListFindings returns one page of findings plus the total the same filter
+// selects across every page. Callers serve the total as X-Total-Count so a
+// client can render "n of m" and page counts without walking the pages, and
+// both numbers come from one resolved project so the filters cannot drift.
+func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, filter FindingFilter, limit, offset int32) ([]FindingResponse, int64, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
+		return nil, 0, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
 
-	findings, err := u.deps.Stores.Findings.ListByProject(ctx, project.ID, port.ListFindingsParams{
+	scope := port.ListFindingsParams{
 		Severities:   filter.Severities,
 		States:       filter.States,
 		Kinds:        filter.Kinds,
 		Environments: filter.Environments,
 		Targets:      filter.Targets,
-		Limit:        limit,
-		Offset:       offset,
-	})
+	}
+	page := scope
+	page.Limit = limit
+	page.Offset = offset
+
+	findings, err := u.deps.Stores.Findings.ListByProject(ctx, project.ID, page)
 	if err != nil {
-		return nil, fmt.Errorf("list findings: %w", err)
+		return nil, 0, fmt.Errorf("list findings: %w", err)
+	}
+	total, err := u.deps.Stores.Findings.CountByProject(ctx, project.ID, scope)
+	if err != nil {
+		return nil, 0, fmt.Errorf("count findings: %w", err)
 	}
 
 	resp := make([]FindingResponse, len(findings))
 	for i, f := range findings {
 		resp[i] = toFinding(f)
 	}
-	return resp, nil
+	return resp, total, nil
 }
 
 func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingResponse, error) {
