@@ -288,7 +288,7 @@ describe("FindingDetail enum labels", () => {
     renderDetail();
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
-    expect(screen.getByText("Accepted Risk", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByText("Accepted risk", { selector: "p" })).toBeInTheDocument();
     expect(screen.queryByText("accepted_risk", { selector: "p" })).not.toBeInTheDocument();
   });
 

@@ -93,13 +93,13 @@ export function triageBucket(
 }
 
 const ANALYSIS_LABELS: Record<AnalysisState, string> = {
-  unanalyzed: "Unanalyzed",
-  in_triage: "In Triage",
-  exploitable: "Confirmed",
-  false_positive: "False Positive",
-  not_affected: "Not Affected",
-  accepted_risk: "Accepted Risk",
-  wont_fix: "Won't Fix",
+  unanalyzed: "Not triaged",
+  in_triage: "In triage",
+  exploitable: "Exploitable",
+  false_positive: "False positive",
+  not_affected: "Not affected",
+  accepted_risk: "Accepted risk",
+  wont_fix: "Won't fix",
 };
 
 const TECHNICAL_LABELS: Record<TechnicalState, string> = {

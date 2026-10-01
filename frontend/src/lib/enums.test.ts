@@ -80,13 +80,13 @@ describe("enum guards", () => {
 
 describe("analysisStateLabel", () => {
   it("labels every canonical analysis state", () => {
-    expect(analysisStateLabel("unanalyzed")).toBe("Unanalyzed");
-    expect(analysisStateLabel("in_triage")).toBe("In Triage");
-    expect(analysisStateLabel("exploitable")).toBe("Confirmed");
-    expect(analysisStateLabel("false_positive")).toBe("False Positive");
-    expect(analysisStateLabel("not_affected")).toBe("Not Affected");
-    expect(analysisStateLabel("accepted_risk")).toBe("Accepted Risk");
-    expect(analysisStateLabel("wont_fix")).toBe("Won't Fix");
+    expect(analysisStateLabel("unanalyzed")).toBe("Not triaged");
+    expect(analysisStateLabel("in_triage")).toBe("In triage");
+    expect(analysisStateLabel("exploitable")).toBe("Exploitable");
+    expect(analysisStateLabel("false_positive")).toBe("False positive");
+    expect(analysisStateLabel("not_affected")).toBe("Not affected");
+    expect(analysisStateLabel("accepted_risk")).toBe("Accepted risk");
+    expect(analysisStateLabel("wont_fix")).toBe("Won't fix");
   });
 
   it("returns null when no analysis has been recorded", () => {

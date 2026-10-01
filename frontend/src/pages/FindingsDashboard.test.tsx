@@ -65,8 +65,15 @@ describe("FindingsDashboard", () => {
     renderWithProviders(<FindingsDashboard />);
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
-    expect(screen.getByText("Accepted Risk")).toBeInTheDocument();
+    expect(screen.getByText("Accepted risk")).toBeInTheDocument();
     expect(screen.queryByText("accepted_risk")).not.toBeInTheDocument();
+  });
+
+  it("shows Not triaged for a finding with no analysis", async () => {
+    renderWithProviders(<FindingsDashboard />);
+
+    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
+    expect(screen.getByText("Not triaged")).toBeInTheDocument();
   });
 
   it("renders a controlled chip when analysis_state is unvalidated", async () => {

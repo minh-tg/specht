@@ -237,8 +237,8 @@ export function FindingsDashboard() {
                         Title{sortIndicator("title")}
                       </button>
                     </th>
-                    <th className="px-3 py-2 font-medium">State</th>
-                    <th className="px-3 py-2 font-medium">Analysis</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                    <th className="px-3 py-2 font-medium">Triage</th>
                     <th
                       aria-sort={ariaSort("last_seen")}
                       className="px-3 py-2 font-medium"
@@ -279,7 +279,7 @@ export function FindingsDashboard() {
                       <td className="px-3 py-2 text-xs">
                         {analysisStateLabel(f.analysis_state)
                           ? (
-                            <span className="bg-muted rounded px-1.5 py-0.5 capitalize">
+                            <span className="bg-muted rounded px-1.5 py-0.5">
                               {analysisStateLabel(f.analysis_state)}
                             </span>
                           )

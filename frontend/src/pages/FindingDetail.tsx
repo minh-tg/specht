@@ -39,11 +39,11 @@ const TRIAGE_OPTIONS: Array<
     requiresExpiry: boolean;
   }
 > = [
-  { value: "exploitable", label: "Confirmed", requiresReason: false, requiresExpiry: false },
-  { value: "false_positive", label: "False Positive", requiresReason: true, requiresExpiry: false },
-  { value: "not_affected", label: "Not Affected", requiresReason: true, requiresExpiry: false },
-  { value: "accepted_risk", label: "Accepted Risk", requiresReason: true, requiresExpiry: true },
-  { value: "wont_fix", label: "Won't Fix", requiresReason: true, requiresExpiry: true },
+  { value: "exploitable", label: "Exploitable", requiresReason: false, requiresExpiry: false },
+  { value: "false_positive", label: "False positive", requiresReason: true, requiresExpiry: false },
+  { value: "not_affected", label: "Not affected", requiresReason: true, requiresExpiry: false },
+  { value: "accepted_risk", label: "Accepted risk", requiresReason: true, requiresExpiry: true },
+  { value: "wont_fix", label: "Won't fix", requiresReason: true, requiresExpiry: true },
 ];
 
 const SOURCE_LINK_SCHEMES = new Set(["http:", "https:"]);
@@ -456,7 +456,7 @@ export function FindingDetail() {
           <p className="font-medium">{technicalStateLabel(finding.state) ?? "–"}</p>
         </div>
         <div>
-          <span className="text-muted-foreground">Analysis</span>
+          <span className="text-muted-foreground">Triage</span>
           <p className="font-medium">
             {analysisStateLabel(finding.analysis_state) ?? "Not triaged"}
           </p>

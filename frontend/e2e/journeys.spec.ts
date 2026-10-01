@@ -120,7 +120,7 @@ test("finding detail triage applies states and enforces reasons", async ({ page,
   await page.goto(`/${slug}/findings`);
   await expect(
     page.locator("tbody tr").filter({ hasText: HIGH_TITLE }),
-  ).toContainText("Confirmed");
+  ).toContainText("Exploitable");
 });
 
 test("report history lists both ingested reports", async ({ page, request }) => {
