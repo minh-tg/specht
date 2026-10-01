@@ -78,6 +78,26 @@ WHERE f.project_id = $1
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 LIMIT $7 OFFSET $8;
 
+-- name: CountFindingsByProject :one
+-- The same filter predicates as ListFindingsByProject, without the page
+-- window. Served as X-Total-Count so a client can render "n of m" without
+-- paging to the end; keeps the list query's plan and row shape untouched.
+SELECT COUNT(*) FROM findings f
+WHERE f.project_id = $1
+  AND (array_length($2::text[], 1) IS NULL OR f.current_severity = ANY($2))
+  AND (array_length($3::text[], 1) IS NULL OR f.state = ANY($3))
+  AND (array_length($4::text[], 1) IS NULL OR f.finding_kind = ANY($4))
+  AND (array_length($5::text[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM finding_occurrences fo
+    JOIN reports r ON fo.report_id = r.id
+    JOIN environments e ON r.environment_id = e.id
+    WHERE fo.finding_id = f.id AND e.name = ANY($5)))
+  AND (array_length($6::text[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM finding_occurrences fo
+    JOIN reports r ON fo.report_id = r.id
+    JOIN targets t ON r.target_id = t.id
+    WHERE fo.finding_id = f.id AND t.name = ANY($6)));
+
 -- name: GetFindingByID :one
 SELECT * FROM findings WHERE id = $1;
 

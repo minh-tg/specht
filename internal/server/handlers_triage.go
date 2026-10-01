@@ -786,7 +786,7 @@ func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
 	}
 
 	limit := parseIntParam(r, "limit", 50)
-	offset := parseIntParam(r, "offset", 0)
+	offset := parseOffsetParam(r, "offset", 0)
 
 	events, err := h.usecase.GetFindingEvents(r.Context(), id, nil, limit, offset)
 	if err != nil {

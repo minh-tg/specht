@@ -299,6 +299,50 @@ func (q *Queries) BulkUpsertFindings(ctx context.Context, arg BulkUpsertFindings
 	return items, nil
 }
 
+const countFindingsByProject = `-- name: CountFindingsByProject :one
+SELECT COUNT(*) FROM findings f
+WHERE f.project_id = $1
+  AND (array_length($2::text[], 1) IS NULL OR f.current_severity = ANY($2))
+  AND (array_length($3::text[], 1) IS NULL OR f.state = ANY($3))
+  AND (array_length($4::text[], 1) IS NULL OR f.finding_kind = ANY($4))
+  AND (array_length($5::text[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM finding_occurrences fo
+    JOIN reports r ON fo.report_id = r.id
+    JOIN environments e ON r.environment_id = e.id
+    WHERE fo.finding_id = f.id AND e.name = ANY($5)))
+  AND (array_length($6::text[], 1) IS NULL OR EXISTS (
+    SELECT 1 FROM finding_occurrences fo
+    JOIN reports r ON fo.report_id = r.id
+    JOIN targets t ON r.target_id = t.id
+    WHERE fo.finding_id = f.id AND t.name = ANY($6)))
+`
+
+type CountFindingsByProjectParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	Column2   []string    `json:"column_2"`
+	Column3   []string    `json:"column_3"`
+	Column4   []string    `json:"column_4"`
+	Column5   []string    `json:"column_5"`
+	Column6   []string    `json:"column_6"`
+}
+
+// The same filter predicates as ListFindingsByProject, without the page
+// window. Served as X-Total-Count so a client can render "n of m" without
+// paging to the end; keeps the list query's plan and row shape untouched.
+func (q *Queries) CountFindingsByProject(ctx context.Context, arg CountFindingsByProjectParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countFindingsByProject,
+		arg.ProjectID,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+		arg.Column6,
+	)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createFindingEvent = `-- name: CreateFindingEvent :one
 INSERT INTO finding_events (
     finding_id, user_id, event_type, old_value, new_value, comment, changes

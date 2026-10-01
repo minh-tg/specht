@@ -3,11 +3,36 @@
 package e2e
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+// findingsPage reads one findings page and returns the X-Total-Count header
+// alongside it, where the size of the filtered set lives.
+func findingsPage(t *testing.T, slug, query string) ([]scanFinding, string) {
+	t.Helper()
+	path := baseURL + "/api/v1/projects/" + slug + "/findings"
+	if query != "" {
+		path += "?" + query
+	}
+	req, err := http.NewRequest(http.MethodGet, path, nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	raw, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	var out []scanFinding
+	require.NoErrorf(t, json.Unmarshal(raw, &out), "decode %s", raw)
+	return out, resp.Header.Get("X-Total-Count")
+}
 
 // listFindingsPage reads the findings list with an explicit query string so
 // a test can exercise filters and pagination bounds.
@@ -69,16 +94,30 @@ func TestE2E_FindingsFiltersAndPagination(t *testing.T) {
 	})
 
 	t.Run("limit and offset bound the page", func(t *testing.T) {
-		first := listFindingsPage(t, slug, "limit=1")
-		require.Len(t, first, 1)
+		all, total := findingsPage(t, slug, "")
+		require.Len(t, all, 10)
+		require.Equal(t, "10", total)
 
-		second := listFindingsPage(t, slug, "limit=1&offset=1")
+		first, firstTotal := findingsPage(t, slug, "limit=1")
+		require.Len(t, first, 1)
+		require.Equal(t, all[0].ID, first[0].ID)
+		require.Equal(t, "10", firstTotal,
+			"the total covers the filtered set, not the page")
+
+		second, _ := findingsPage(t, slug, "limit=1&offset=1")
 		require.Len(t, second, 1)
 		require.NotEqual(t, first[0].ID, second[0].ID, "offset moves the window")
 
 		require.Len(t, listFindingsPage(t, slug, "limit=3&offset=7"), 3)
 		require.Empty(t, listFindingsPage(t, slug, "offset=10"))
 		require.Empty(t, listFindingsPage(t, slug, "limit=0"))
+
+		// The total is the size of the filtered set, so it follows the filters
+		// rather than the page window: two sast findings, whatever the limit.
+		_, sastTotal := findingsPage(t, slug, "kind=sast&limit=1")
+		require.Equal(t, "2", sastTotal)
+		_, noneTotal := findingsPage(t, slug, "kind=iac")
+		require.Equal(t, "0", noneTotal)
 	})
 
 	t.Run("malformed and oversized limits fall back to the default page", func(t *testing.T) {

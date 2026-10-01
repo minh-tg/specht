@@ -260,7 +260,7 @@ func newFakeOIDCProvider(t *testing.T, key *rsa.PrivateKey) *fakeOIDCProvider {
 // callbackResponse drives the SSO callback with state echoed both in the query
 // and the cookie (as the router does) and returns the recorder plus the
 // identity the token issuer saw.
-func callbackResponse(t *testing.T, a *OIDCAuthenticator, state string) (*httptest.ResponseRecorder, string, string) {
+func callbackResponse(t *testing.T, a *OIDCAuthenticator, state string, returnPath ...string) (*httptest.ResponseRecorder, string, string) {
 	t.Helper()
 	var gotUserID, gotEmail string
 	h := a.CallbackHandler(func(ctx context.Context, userID, email string, groups []string) (string, error) {
@@ -269,6 +269,12 @@ func callbackResponse(t *testing.T, a *OIDCAuthenticator, state string) (*httpte
 	})
 	req := httptest.NewRequest("GET", "/callback?code=test-code&state="+url.QueryEscape(state), nil)
 	req.AddCookie(&http.Cookie{Name: "sso_state", Value: state})
+	if len(returnPath) > 0 {
+		req.AddCookie(&http.Cookie{
+			Name:  SSOReturnCookieName,
+			Value: EncodeSSOReturnCookieValue(state, returnPath[0]),
+		})
+	}
 	w := httptest.NewRecorder()
 	h(w, req)
 	return w, gotUserID, gotEmail
@@ -392,6 +398,26 @@ func TestOIDC_Callback_DeliversTokenInFragment(t *testing.T) {
 	assert.Equal(t, "/#sso_token=test-session-token", w.Header().Get("Location"))
 	for _, c := range w.Result().Cookies() {
 		assert.NotEqual(t, "token", c.Name, "callback must not set a session cookie")
+	}
+}
+
+func TestOIDC_Callback_PreservesValidatedReturnPath(t *testing.T) {
+	key := newOIDCTestKey(t)
+	state, err := GenerateStateToken()
+	require.NoError(t, err)
+	_, nonce := splitStateNonce(state)
+
+	prov := newFakeOIDCProvider(t, key)
+	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", nonce)
+	a := mustOIDC(t, prov.srv.URL)
+
+	w, _, _ := callbackResponse(t, a, state, "/projects/demo?tab=members")
+	assert.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, "/projects/demo?tab=members#sso_token=test-session-token", w.Header().Get("Location"))
+	for _, cookie := range w.Result().Cookies() {
+		if cookie.Name == SSOReturnCookieName {
+			assert.Less(t, cookie.MaxAge, 0, "return path state is single-use")
+		}
 	}
 }
 
