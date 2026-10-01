@@ -14,8 +14,11 @@ import (
 )
 
 // TestStatsRepo_AnalysisStateCounts verifies the per-analysis-state roll-up:
-// every state with findings is reported once, ordered by state name, and the
-// null/empty state the schema cannot normally hold folds into unanalyzed.
+// every state with open or reopened findings is reported once, ordered by
+// state name, findings already fixed are left out (the scan that fixed them
+// never touches their analysis state, so they would otherwise read as
+// untriaged work forever), and the null/empty state the schema cannot normally
+// hold folds into unanalyzed.
 func TestStatsRepo_AnalysisStateCounts(t *testing.T) {
 	pool, cleanup := setupIngestPool(t)
 	defer cleanup()
@@ -47,6 +50,8 @@ func TestStatsRepo_AnalysisStateCounts(t *testing.T) {
 	seed("fp-empty")
 	seed("fp-exploitable")
 	seed("fp-false-positive")
+	seed("fp-fixed")
+	seed("fp-reopened")
 
 	// The schema defaults analysis_state to unanalyzed and rejects null and
 	// empty values. Relax both in the throwaway test database to exercise the
@@ -67,11 +72,24 @@ func TestStatsRepo_AnalysisStateCounts(t *testing.T) {
 	setState("fp-empty", strPtr(""))
 	setState("fp-exploitable", strPtr("exploitable"))
 	setState("fp-false-positive", strPtr("false_positive"))
+	setState("fp-reopened", strPtr("exploitable"))
+
+	setFindingState := func(fp, state string) {
+		tag, err := pool.Exec(ctx,
+			`UPDATE findings SET state = $1 WHERE project_id = $2 AND fingerprint = $3`,
+			state, project.ID, fp)
+		require.NoError(t, err)
+		require.EqualValues(t, 1, tag.RowsAffected())
+	}
+	// A finding the scanner stopped reporting is marked fixed and keeps its
+	// unanalyzed analysis state; a reopened one is active work again.
+	setFindingState("fp-fixed", "fixed")
+	setFindingState("fp-reopened", "reopened")
 
 	counts, err := stores.Stats.GetProjectAnalysisStateCounts(ctx, project.ID)
 	require.NoError(t, err)
 	assert.Equal(t, []port.AnalysisStateStat{
-		{State: "exploitable", Count: 1},
+		{State: "exploitable", Count: 2},
 		{State: "false_positive", Count: 1},
 		{State: "unanalyzed", Count: 2},
 	}, counts)

@@ -1096,8 +1096,9 @@ export interface paths {
     };
     /**
      * Read the project roll-up
-     * @description Counts findings by severity, with the blocking subset, plus waiver and
-     *     report totals and the newest report.
+     * @description Counts findings by severity, with the blocking subset, and open or
+     *     reopened findings by analysis state, plus waiver and report totals and
+     *     the newest report.
      */
     get: operations["getProjectStats"];
     put?: never;
@@ -2007,8 +2008,8 @@ export interface components {
       waiver_count: number;
       report_count: number;
       by_severity: components["schemas"]["SeverityCount"][];
-      /** @description Counts per analysis state present in the project, ordered by state name; empty when the project has no findings. A missing analysis state counts as unanalyzed. */
-      by_analysis_state?: components["schemas"]["AnalysisStateCount"][];
+      /** @description Counts per analysis state among the project's open and reopened findings (findings already fixed are not counted), ordered by state name; empty when there are none. A missing analysis state counts as unanalyzed. */
+      by_analysis_state: components["schemas"]["AnalysisStateCount"][];
       latest_report?: components["schemas"]["Report"];
     };
     SeverityCount: {

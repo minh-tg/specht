@@ -1892,8 +1892,9 @@ paths:
       operationId: getProjectStats
       summary: Read the project roll-up
       description: |
-        Counts findings by severity, with the blocking subset, plus waiver and
-        report totals and the newest report.
+        Counts findings by severity, with the blocking subset, and open or
+        reopened findings by analysis state, plus waiver and report totals and
+        the newest report.
       x-required-scope: read
       security:
         - sessionAuth: []
@@ -3015,7 +3016,7 @@ components:
 
     ProjectStats:
       type: object
-      required: [total_findings, blocking_count, waiver_count, report_count, by_severity]
+      required: [total_findings, blocking_count, waiver_count, report_count, by_severity, by_analysis_state]
       properties:
         total_findings: { type: integer }
         blocking_count:
@@ -3028,7 +3029,7 @@ components:
           items: { $ref: "#/components/schemas/SeverityCount" }
         by_analysis_state:
           type: array
-          description: Counts per analysis state present in the project, ordered by state name; empty when the project has no findings. A missing analysis state counts as unanalyzed.
+          description: Counts per analysis state among the project's open and reopened findings (findings already fixed are not counted), ordered by state name; empty when there are none. A missing analysis state counts as unanalyzed.
           items: { $ref: "#/components/schemas/AnalysisStateCount" }
         latest_report: { $ref: "#/components/schemas/Report" }
 

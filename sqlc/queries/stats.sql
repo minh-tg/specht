@@ -14,6 +14,7 @@ SELECT
     COUNT(*)::int AS count
 FROM findings f
 WHERE f.project_id = $1
+  AND f.state <> 'fixed'
 GROUP BY COALESCE(NULLIF(f.analysis_state, ''), 'unanalyzed')
 ORDER BY state ASC;
 
