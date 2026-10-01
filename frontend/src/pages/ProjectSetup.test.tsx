@@ -308,7 +308,9 @@ describe("ProjectSetup", () => {
       await vi.advanceTimersByTimeAsync(0);
     });
     expect(statsRequests).toBe(1);
-    expect(screen.getByText("Waiting for the first report...")).toBeInTheDocument();
+    expect(screen.getByText("Waiting for the first report...")).toHaveAttribute("role", "status");
+    expect(screen.getByRole("heading", { name: "Waiting for the first report" }))
+      .toBeInTheDocument();
 
     stats = { ...stats, report_count: 1, total_findings: 1 };
     await act(async () => {
@@ -317,7 +319,9 @@ describe("ProjectSetup", () => {
       await vi.advanceTimersByTimeAsync(6000);
     });
 
-    expect(screen.getByText("First report received: 1 finding.")).toBeInTheDocument();
+    // The same live region is updated in place, so the arrival is announced.
+    expect(screen.getByText("First report received: 1 finding.")).toHaveAttribute("role", "status");
+    expect(screen.getByRole("heading", { name: "First report received" })).toBeInTheDocument();
     expect(statsRequests).toBe(2);
     expect(screen.queryByText("Waiting for the first report...")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View findings" })).toHaveAttribute(

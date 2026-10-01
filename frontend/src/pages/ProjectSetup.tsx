@@ -174,24 +174,20 @@ export function ProjectSetup() {
         </li>
 
         <li>
-          <h2 className="text-lg font-semibold">Waiting for the first report</h2>
-          {reportCount > 0
-            ? (
-              <div className="mt-1">
-                <p className="text-sm">
-                  First report received: {pluralize(totalFindings, "finding")}.
-                </p>
-                <div className="mt-2 flex gap-4">
-                  <Link to={`/${slug}/findings`} className={LINK_CLASS}>View findings</Link>
-                  <Link to="/" className={LINK_CLASS}>Back to projects</Link>
-                </div>
-              </div>
-            )
-            : (
-              <p role="status" className="text-muted-foreground mt-1 text-sm">
-                Waiting for the first report...
-              </p>
-            )}
+          <h2 className="text-lg font-semibold">
+            {reportCount > 0 ? "First report received" : "Waiting for the first report"}
+          </h2>
+          <p role="status" className="text-muted-foreground mt-1 text-sm">
+            {reportCount > 0
+              ? `First report received: ${pluralize(totalFindings, "finding")}.`
+              : "Waiting for the first report..."}
+          </p>
+          {reportCount > 0 && (
+            <div className="mt-2 flex gap-4">
+              <Link to={`/${project.slug}/findings`} className={LINK_CLASS}>View findings</Link>
+              <Link to="/" className={LINK_CLASS}>Back to projects</Link>
+            </div>
+          )}
         </li>
       </ol>
     </div>
