@@ -18,14 +18,22 @@ type SeverityCount struct {
 	BlockingCount int32  `json:"blocking_count"`
 }
 
+// AnalysisStateCount is one analysis-state bucket of a project's finding
+// breakdown.
+type AnalysisStateCount struct {
+	State string `json:"state"`
+	Count int32  `json:"count"`
+}
+
 // ProjectStats is a project's aggregate finding/waiver/report statistics.
 type ProjectStats struct {
-	TotalFindings int32           `json:"total_findings"`
-	BlockingCount int32           `json:"blocking_count"`
-	WaiverCount   int32           `json:"waiver_count"`
-	ReportCount   int32           `json:"report_count"`
-	BySeverity    []SeverityCount `json:"by_severity"`
-	LatestReport  *ReportResponse `json:"latest_report,omitempty"`
+	TotalFindings   int32                `json:"total_findings"`
+	BlockingCount   int32                `json:"blocking_count"`
+	WaiverCount     int32                `json:"waiver_count"`
+	ReportCount     int32                `json:"report_count"`
+	BySeverity      []SeverityCount      `json:"by_severity"`
+	ByAnalysisState []AnalysisStateCount `json:"by_analysis_state"`
+	LatestReport    *ReportResponse      `json:"latest_report,omitempty"`
 }
 
 func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*ProjectStats, error) {
@@ -37,6 +45,11 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 	rows, err := u.deps.Stores.Stats.GetProjectStats(ctx, project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get stats: %w", err)
+	}
+
+	stateRows, err := u.deps.Stores.Stats.GetProjectAnalysisStateCounts(ctx, project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get analysis state counts: %w", err)
 	}
 
 	waiverCount, err := u.deps.Stores.Stats.GetProjectWaiverCount(ctx, project.ID)
@@ -84,13 +97,22 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 		}
 	}
 
+	stateCounts := make([]AnalysisStateCount, len(stateRows))
+	for i, r := range stateRows {
+		stateCounts[i] = AnalysisStateCount{
+			State: r.State,
+			Count: r.Count,
+		}
+	}
+
 	return &ProjectStats{
-		TotalFindings: totalFindings,
-		BlockingCount: totalBlocking,
-		WaiverCount:   waiverCount,
-		ReportCount:   reportCount,
-		BySeverity:    sevCounts,
-		LatestReport:  latest,
+		TotalFindings:   totalFindings,
+		BlockingCount:   totalBlocking,
+		WaiverCount:     waiverCount,
+		ReportCount:     reportCount,
+		BySeverity:      sevCounts,
+		ByAnalysisState: stateCounts,
+		LatestReport:    latest,
 	}, nil
 }
 

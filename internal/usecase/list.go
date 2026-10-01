@@ -120,15 +120,9 @@ type SuggestionResponse struct {
 // URL come from source guidance when present (rem.Fallback marks their
 // absence, in which case only dims feed the model).
 func suggestionFromEvidence(f port.Finding, dims []port.FindingDimension, tool string, rem *RemediationResponse) *SuggestionResponse {
-	dimMap := make(map[string]string, len(dims))
-	for _, d := range dims {
-		if _, ok := dimMap[d.Key]; !ok {
-			dimMap[d.Key] = d.Value
-		}
-	}
 	in := remediate.Input{
 		FindingID: f.ID, FindingKind: f.FindingKind, Title: f.CurrentTitle,
-		Dims: dimMap, Tool: tool,
+		Dims: dimensionValues(dims), Tool: tool,
 	}
 	if rem != nil && !rem.Fallback {
 		in.FixSummary, in.FixURL = rem.Summary, rem.URL
@@ -526,7 +520,11 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 			Branch:          dc.Branch,
 			CommitSha:       dc.CommitSha,
 		}
-		resp.Remediation = remediationFromMetadata(dc.Metadata, dc.ToolName, f.FindingKind)
+		dims, err := u.deps.Stores.Findings.ListDimensions(ctx, id.String())
+		if err != nil {
+			return nil, fmt.Errorf("get finding dimensions: %w", err)
+		}
+		resp.Remediation = remediationFromMetadata(dc.Metadata, dc.ToolName, f.FindingKind, dims)
 		resp.Location = locationFromDisplay(dc.LocationSummary, dc.Metadata)
 		// derive source provenance link from provider:// owner URI.
 		if ref, err := domain.ParseRepoRef(dc.TargetOwner); err == nil && ref.Provider != "" {
@@ -535,10 +533,6 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 				filePath = resp.Location.File
 			}
 			resp.Context.SourceLink = ref.SourceLink(dc.CommitSha, filePath)
-		}
-		dims, err := u.deps.Stores.Findings.ListDimensions(ctx, id.String())
-		if err != nil {
-			return nil, fmt.Errorf("get finding dimensions: %w", err)
 		}
 		resp.Suggestion = suggestionFromEvidence(f, dims, dc.ToolName, resp.Remediation)
 		u.attachIntel(ctx, dims, &resp)
@@ -595,9 +589,11 @@ type spechtMetadata struct {
 }
 
 // remediationFromMetadata builds the fix guidance section from the latest
-// occurrence metadata. Source guidance wins; otherwise a kind-level label
-// marks the gap explicitly instead of inventing a fix.
-func remediationFromMetadata(metadata json.RawMessage, tool, kind string) *RemediationResponse {
+// occurrence metadata and the finding's canonical dimensions. Source
+// guidance wins; otherwise a known fixed version supplies the upgrade path,
+// and a kind-level label marks the remaining gap explicitly instead of
+// inventing a fix.
+func remediationFromMetadata(metadata json.RawMessage, tool, kind string, dims []port.FindingDimension) *RemediationResponse {
 	var doc spechtMetadata
 	if len(metadata) > 0 {
 		_ = json.Unmarshal(metadata, &doc)
@@ -609,7 +605,42 @@ func remediationFromMetadata(metadata json.RawMessage, tool, kind string) *Remed
 			Source:  tool,
 		}
 	}
+	if kind == "sca" {
+		if summary, ok := scaRemediation(dims); ok {
+			return &RemediationResponse{Summary: summary, Source: tool}
+		}
+	}
 	return &RemediationResponse{Summary: fixFallback(kind), Source: tool, Fallback: true}
+}
+
+// scaRemediation derives an upgrade instruction from the fixed version
+// dimension when the scanner supplied no fix text of its own.
+func scaRemediation(dims []port.FindingDimension) (string, bool) {
+	values := dimensionValues(dims)
+	fixed := values[domain.DimFixedVersion]
+	if fixed == "" {
+		return "", false
+	}
+	pkg := values[domain.DimPackageName]
+	if pkg == "" {
+		return fmt.Sprintf("Upgrade to %s.", fixed), true
+	}
+	if installed := values[domain.DimInstalledVer]; installed != "" {
+		return fmt.Sprintf("Upgrade %s from %s to %s.", pkg, installed, fixed), true
+	}
+	return fmt.Sprintf("Upgrade %s to %s.", pkg, fixed), true
+}
+
+// dimensionValues indexes canonical dimensions by key, keeping the first
+// value seen for each key.
+func dimensionValues(dims []port.FindingDimension) map[string]string {
+	values := make(map[string]string, len(dims))
+	for _, d := range dims {
+		if _, ok := values[d.Key]; !ok {
+			values[d.Key] = d.Value
+		}
+	}
+	return values
 }
 
 // locationFromDisplay points at the affected subject from the latest

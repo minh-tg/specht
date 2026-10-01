@@ -247,7 +247,7 @@ func applyDisplayContext(pf *provider.Finding, dc port.FindingDisplayContext, fi
 		pf.StartLine = loc.StartLine
 		pf.EndLine = loc.EndLine
 	}
-	if rem := remediationFromMetadata(dc.Metadata, dc.ToolName, findingKind); rem != nil {
+	if rem := remediationFromMetadata(dc.Metadata, dc.ToolName, findingKind, nil); rem != nil {
 		pf.RemediationURL = rem.URL
 	}
 }

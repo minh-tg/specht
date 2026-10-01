@@ -1096,8 +1096,9 @@ export interface paths {
     };
     /**
      * Read the project roll-up
-     * @description Counts findings by severity, with the blocking subset, plus waiver and
-     *     report totals and the newest report.
+     * @description Counts findings by severity, with the blocking subset, and open or
+     *     reopened findings by analysis state, plus waiver and report totals and
+     *     the newest report.
      */
     get: operations["getProjectStats"];
     put?: never;
@@ -1336,7 +1337,8 @@ export interface components {
       /** @example trivy */
       name: string;
       version: string;
-      finding_kinds: ("sca" | "sast" | "iac" | "secret" | "dast")[];
+      finding_kinds:
+        ("sca" | "sast" | "iac" | "secret" | "dast" | "image_config" | "license" | "cve_watcher")[];
       scan_types: string[];
       provides_packages: boolean;
       supports_auto_detection: boolean;
@@ -1413,7 +1415,7 @@ export interface components {
       scan_type: string;
       scan_target?: string | null;
       /** @enum {string} */
-      status: "pending" | "completed" | "failed";
+      status: "processing" | "completed" | "failed";
       total_findings?: number | null;
       branch?: string | null;
       commit_sha?: string | null;
@@ -1432,12 +1434,23 @@ export interface components {
       /** Format: uuid */
       project_id: string;
       /** @enum {string} */
-      finding_kind: "sca" | "sast" | "iac" | "secret" | "dast";
+      finding_kind:
+        | "sca"
+        | "sast"
+        | "iac"
+        | "secret"
+        | "dast"
+        | "image_config"
+        | "license"
+        | "cve_watcher";
       /** @description Stable identity across scans; the dedupe key. */
       fingerprint: string;
       current_title: string;
-      /** @enum {string} */
-      current_severity: "critical" | "high" | "medium" | "low" | "none";
+      /**
+       * @description `unknown` means the scanner did not rate the finding; it has rank 0 and never gates.
+       * @enum {string}
+       */
+      current_severity: "critical" | "high" | "medium" | "low" | "unknown";
       /** @description CVSS score when the scanner supplied one. */
       current_score?: number | null;
       /** @description Scan lifecycle. Moved only by ingest, verification, and the expiry sweeps. */
@@ -1734,7 +1747,7 @@ export interface components {
       template_name?: string | null;
       template_version: number;
       /** @enum {string} */
-      severity_floor: "critical" | "high" | "medium" | "low" | "none";
+      severity_floor: "critical" | "high" | "medium" | "low";
       /**
        * @description The layer that supplied the floor.
        * @enum {string}
@@ -2000,19 +2013,27 @@ export interface components {
       created_at: string;
     };
     ProjectStats: {
+      /** @description Open and reopened findings; findings already fixed are not counted. */
       total_findings: number;
-      /** @description Findings not in an ignoring analysis state. */
+      /** @description Open and reopened findings not in an ignoring analysis state. */
       blocking_count: number;
       /** @description Enabled waivers only. */
       waiver_count: number;
       report_count: number;
+      /** @description Counts per severity among the project's open and reopened findings (findings already fixed are not counted). */
       by_severity: components["schemas"]["SeverityCount"][];
+      /** @description Counts per analysis state among the project's open and reopened findings (findings already fixed are not counted), ordered by state name; empty when there are none. A missing analysis state counts as unanalyzed. */
+      by_analysis_state: components["schemas"]["AnalysisStateCount"][];
       latest_report?: components["schemas"]["Report"];
     };
     SeverityCount: {
       severity: string;
       count: number;
       blocking_count: number;
+    };
+    AnalysisStateCount: {
+      state: string;
+      count: number;
     };
     AgingResponse: {
       /** @description Always all four buckets, in age order. */
@@ -2943,11 +2964,11 @@ export interface operations {
   listFindings: {
     parameters: {
       query?: {
-        /** @description Comma-separated severities (critical, high, medium, low, none). */
+        /** @description Comma-separated severities (critical, high, medium, low, unknown). `unknown` is a finding the scanner did not rate. */
         severity?: string;
         /** @description Comma-separated lifecycle states (open, fixed, reopened). */
         status?: string;
-        /** @description Comma-separated finding kinds (sca, sast, iac, secret, dast). */
+        /** @description Comma-separated finding kinds (sca, sast, iac, secret, dast, image_config, license, cve_watcher). */
         kind?: string;
         /** @description Comma-separated environment names. */
         environment?: string;

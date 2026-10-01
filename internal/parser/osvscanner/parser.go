@@ -284,7 +284,7 @@ func (f osvFinding) normalized() domain.NormalizedFinding {
 		Description:  v.Details,
 		Severity:     extractSeverity(v),
 		Score:        extractScore(v),
-		Location:     f.source.Path + ":" + f.pkg.Name,
+		Location:     domain.SCALocation(f.pkg.Name, f.pkg.Version, f.source.Path),
 		Aliases:      v.Aliases,
 		Reachability: reachability,
 		CVSS:         extractCVSSInfo(v),

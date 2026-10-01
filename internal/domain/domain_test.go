@@ -89,3 +89,59 @@ func TestCanonicalVulnID(t *testing.T) {
 	assert.Equal(t, "CVE-2024-1234", domain.CanonicalVulnID("GHSA-xxxx-yyyy", []string{"cve-2024-1234", "PYSEC-2024-1"}))
 	assert.Equal(t, "GHSA-xxxx-yyyy", domain.CanonicalVulnID("GHSA-xxxx-yyyy", []string{"OSV-123"}))
 }
+
+func TestSCALocation(t *testing.T) {
+	tests := []struct {
+		name             string
+		packageName      string
+		installedVersion string
+		where            string
+		want             string
+	}{
+		{
+			name:             "package and version with scan context",
+			packageName:      "openssh-server",
+			installedVersion: "9.7_p1-r4",
+			where:            "alpine:3.20 (alpine 3.20.3)",
+			want:             "openssh-server 9.7_p1-r4 in alpine:3.20 (alpine 3.20.3)",
+		},
+		{
+			name:             "package and version without context",
+			packageName:      "curl",
+			installedVersion: "8.10.1-r0",
+			want:             "curl 8.10.1-r0",
+		},
+		{
+			name:        "package only with context",
+			packageName: "curl",
+			where:       "/app/package-lock.json",
+			want:        "curl in /app/package-lock.json",
+		},
+		{
+			name:        "package only without context",
+			packageName: "curl",
+			want:        "curl",
+		},
+		{
+			name:  "missing package falls back to context",
+			where: "/app/package-lock.json",
+			want:  "/app/package-lock.json",
+		},
+		{
+			name: "missing package and context",
+			want: "",
+		},
+		{
+			name:        "context identical to package name is not repeated",
+			packageName: "curl",
+			where:       "curl",
+			want:        "curl",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, domain.SCALocation(tt.packageName, tt.installedVersion, tt.where))
+		})
+	}
+}
