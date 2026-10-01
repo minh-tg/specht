@@ -15,6 +15,7 @@ import {
   severityLabel,
   TECHNICAL_STATES,
   technicalStateLabel,
+  triageBucket,
 } from "./enums";
 
 describe("enum vocabularies", () => {
@@ -139,6 +140,30 @@ describe("reachabilityStateLabel", () => {
   it("falls back for missing or unvalidated input", () => {
     expect(reachabilityStateLabel(null)).toBeNull();
     expect(reachabilityStateLabel("unreachable")).toBe("Unknown");
+  });
+});
+
+describe("triageBucket", () => {
+  it("groups unanalyzed and in-triage into needs_triage", () => {
+    expect(triageBucket("unanalyzed")).toBe("needs_triage");
+    expect(triageBucket("in_triage")).toBe("needs_triage");
+  });
+
+  it("groups exploitable on its own", () => {
+    expect(triageBucket("exploitable")).toBe("exploitable");
+  });
+
+  it("groups every settled non-exploitable state as dismissed", () => {
+    expect(triageBucket("false_positive")).toBe("dismissed");
+    expect(triageBucket("not_affected")).toBe("dismissed");
+    expect(triageBucket("accepted_risk")).toBe("dismissed");
+    expect(triageBucket("wont_fix")).toBe("dismissed");
+  });
+
+  it("returns null for out-of-vocabulary states", () => {
+    expect(triageBucket("")).toBeNull();
+    expect(triageBucket("pending_review")).toBeNull();
+    expect(triageBucket("UNANALYZED")).toBeNull();
   });
 });
 

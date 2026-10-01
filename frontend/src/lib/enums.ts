@@ -68,6 +68,30 @@ export const isReachabilityState = (
 export const isSeverity = (value: string | null | undefined): value is Severity =>
   isOneOf(SEVERITIES, value);
 
+/**
+ * Groups an analysis state into its triage bucket. Returns null for values
+ * outside the canonical vocabulary so callers can ignore them; the buckets are
+ * `needs_triage` (unanalyzed or in triage), `exploitable` and `dismissed`.
+ */
+export function triageBucket(
+  state: string,
+): "needs_triage" | "exploitable" | "dismissed" | null {
+  switch (state) {
+    case "unanalyzed":
+    case "in_triage":
+      return "needs_triage";
+    case "exploitable":
+      return "exploitable";
+    case "false_positive":
+    case "not_affected":
+    case "accepted_risk":
+    case "wont_fix":
+      return "dismissed";
+    default:
+      return null;
+  }
+}
+
 const ANALYSIS_LABELS: Record<AnalysisState, string> = {
   unanalyzed: "Unanalyzed",
   in_triage: "In Triage",
