@@ -32,6 +32,10 @@ export function ProjectSetup() {
   const createKey = useCreateApiKey();
   const [rawKey, setRawKey] = useState<string | null>(null);
   const [keyError, setKeyError] = useState<string | null>(null);
+
+  // The secret must not outlive this page: drop it from the mutation cache too.
+  const resetKeyMutation = createKey.reset;
+  useEffect(() => resetKeyMutation, [resetKeyMutation]);
   const [copied, setCopied] = useState<string | null>(null);
   const copyTimer = useRef<number | undefined>(undefined);
 

@@ -16,6 +16,7 @@ let statsRequests = 0;
 let postCalls: Array<Record<string, unknown>> = [];
 let writeText: ReturnType<typeof vi.fn>;
 let projectSlug = "acme";
+let lastClient: QueryClient;
 
 function jsonResponse(body: unknown, status = 200): Response {
   return {
@@ -97,6 +98,7 @@ afterEach(() => {
 
 function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  lastClient = qc;
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={["/acme/setup"]}>
@@ -259,6 +261,17 @@ describe("ProjectSetup", () => {
     const github = document.querySelector("pre")?.textContent ?? "";
     expect(github).toContain("SPECHT_PROJECT: \"canonical-slug\"");
     expect(github).not.toContain("SPECHT_PROJECT: \"acme\"");
+  });
+
+  it("drops the one-time key from the mutation cache once the page is left", async () => {
+    const view = renderPage();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Create key" }));
+    expect(await screen.findByText(RAW_KEY)).toBeInTheDocument();
+
+    view.unmount();
+
+    await waitFor(() => expect(lastClient.getMutationCache().getAll()).toHaveLength(0));
   });
 
   it("links to the manual upload and the findings of the project", async () => {

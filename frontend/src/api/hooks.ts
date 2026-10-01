@@ -122,6 +122,9 @@ export function useCreateProject() {
 
 export function useCreateApiKey() {
   return useMutation({
+    // The response carries the key's only copy of its secret; do not keep it
+    // in the shared mutation cache once nothing observes it.
+    gcTime: 0,
     mutationFn: ({ project, name }: { project: string; name: string; }) =>
       apiFetch<CreatedApiKey>("/api/v1/auth/apikeys", {
         method: "POST",
