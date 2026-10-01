@@ -4,8 +4,8 @@ import { analysisStateLabel, technicalStateLabel } from "@/lib/enums";
 import { formatDate } from "@/lib/format";
 import { blocksGate, blocksGateLabel } from "@/lib/gate";
 import type { Finding } from "@/types/api";
-import { useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { type MouseEvent, useState } from "react";
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 const PAGE_SIZE = 20;
 
@@ -30,17 +30,26 @@ function sortFindings(findings: Finding[], by: string, dir: "asc" | "desc") {
   });
 }
 
-const kindColors: Record<string, string> = {
-  sca: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  sast: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  iac: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
-  secret: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400",
-};
+/** Clicks on these keep their own behaviour instead of opening the finding. */
+const INTERACTIVE_SELECTOR = "a, button, input, select, textarea, label";
 
 export function FindingsDashboard() {
   const { slug } = useParams<{ slug: string; }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // The detail page reads `state.from` to return to this exact filtered page.
+  const detailState = { from: location.search };
+
+  function openFinding(event: MouseEvent<HTMLTableRowElement>, findingId: string) {
+    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    if ((event.target as Element).closest(INTERACTIVE_SELECTOR)) return;
+    if (window.getSelection()?.toString()) return;
+    navigate(`/${slug}/findings/${findingId}`, { state: detailState });
+  }
 
   const severity = searchParams.get("severity") ?? "";
   const status = searchParams.get("status") ?? "";
@@ -202,7 +211,7 @@ export function FindingsDashboard() {
                 <>
                   <p className="text-muted-foreground text-sm">No findings found</p>
                   <p className="text-muted-foreground text-xs">
-                    Ingest a scan report to see findings
+                    Findings appear here once a report is uploaded or sent from CI.
                   </p>
                 </>
               )}
@@ -213,9 +222,11 @@ export function FindingsDashboard() {
           <div className="space-y-2">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
+                <caption className="sr-only">Findings</caption>
                 <thead>
                   <tr className="border-border border-b text-left">
                     <th
+                      scope="col"
                       aria-sort={ariaSort("severity")}
                       className="px-3 py-2 font-medium"
                     >
@@ -227,8 +238,9 @@ export function FindingsDashboard() {
                         Severity{sortIndicator("severity")}
                       </button>
                     </th>
-                    <th className="px-3 py-2 font-medium">Kind</th>
+                    <th scope="col" className="px-3 py-2 font-medium">Kind</th>
                     <th
+                      scope="col"
                       aria-sort={ariaSort("title")}
                       className="px-3 py-2 font-medium"
                     >
@@ -240,10 +252,11 @@ export function FindingsDashboard() {
                         Title{sortIndicator("title")}
                       </button>
                     </th>
-                    <th className="px-3 py-2 font-medium">Status</th>
-                    <th className="px-3 py-2 font-medium">Triage</th>
-                    <th className="px-3 py-2 font-medium">Blocks gate</th>
+                    <th scope="col" className="px-3 py-2 font-medium">Status</th>
+                    <th scope="col" className="px-3 py-2 font-medium">Triage</th>
+                    <th scope="col" className="px-3 py-2 font-medium">Blocks gate</th>
                     <th
+                      scope="col"
                       aria-sort={ariaSort("last_seen")}
                       className="px-3 py-2 font-medium"
                     >
@@ -263,22 +276,26 @@ export function FindingsDashboard() {
                     return (
                       <tr
                         key={f.id}
-                        className="border-border hover:bg-muted/50 cursor-pointer border-b"
-                        onClick={() => navigate(`/${slug}/findings/${f.id}`)}
+                        className="border-border hover:bg-muted/50 focus-within:bg-muted/50 cursor-pointer border-b"
+                        onClick={(event) => openFinding(event, f.id)}
                       >
                         <td className="px-3 py-2">
                           <SeverityBadge severity={f.current_severity} />
                         </td>
                         <td className="px-3 py-2">
-                          <span
-                            className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ${
-                              kindColors[f.finding_kind] ?? "bg-muted text-muted-foreground"
-                            }`}
-                          >
+                          <span className="bg-muted text-muted-foreground inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium">
                             {f.finding_kind}
                           </span>
                         </td>
-                        <td className="px-3 py-2">{f.current_title}</td>
+                        <td className="px-3 py-2">
+                          <Link
+                            to={`/${slug}/findings/${f.id}`}
+                            state={detailState}
+                            className="underline-offset-2 hover:underline"
+                          >
+                            {f.current_title}
+                          </Link>
+                        </td>
                         <td className="px-3 py-2 capitalize">
                           {technicalStateLabel(f.state) ?? "–"}
                         </td>

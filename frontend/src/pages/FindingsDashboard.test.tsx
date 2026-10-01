@@ -1,7 +1,7 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FindingsDashboard } from "./FindingsDashboard";
 
@@ -265,7 +265,7 @@ describe("FindingsDashboard", () => {
 
     expect(await screen.findByText("No more results.")).toBeInTheDocument();
     expect(screen.queryByText("No findings found")).not.toBeInTheDocument();
-    expect(screen.queryByText("Ingest a scan report to see findings")).not.toBeInTheDocument();
+    expect(screen.queryByText(EMPTY_PROJECT_HINT)).not.toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
 
     const previous = screen.getByRole("button", { name: "Previous" });
@@ -278,12 +278,12 @@ describe("FindingsDashboard", () => {
     expect(String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0])).toContain("offset=0");
   });
 
-  it("shows the ingest empty copy when the first page of an unfiltered project is empty", async () => {
+  it("explains where findings come from when the first page of an unfiltered project is empty", async () => {
     vi.mocked(globalThis.fetch).mockResolvedValue(jsonResponse([]));
     renderWithProviders(<FindingsDashboard />);
 
     expect(await screen.findByText("No findings found")).toBeInTheDocument();
-    expect(screen.getByText("Ingest a scan report to see findings")).toBeInTheDocument();
+    expect(screen.getByText(EMPTY_PROJECT_HINT)).toBeInTheDocument();
     expect(screen.queryByText("No more results.")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Previous" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
@@ -369,6 +369,129 @@ describe("FindingsDashboard", () => {
     expect(gateCell()).toHaveTextContent("–");
   });
 });
+
+describe("FindingsDashboard links and table semantics", () => {
+  it("renders the finding title as a real link to its detail page", async () => {
+    renderWithDetailRoute();
+
+    const link = await screen.findByRole("link", { name: "Test Vuln" });
+    expect(link).toHaveAttribute("href", "/test-project/findings/f1");
+  });
+
+  it("passes the current list search to the detail page as router state", async () => {
+    renderWithDetailRoute("/test-project/findings?severity=high&offset=20");
+
+    await userEvent.setup().click(await screen.findByRole("link", { name: "Test Vuln" }));
+
+    expect(await screen.findByTestId("detail-state")).toHaveTextContent(
+      JSON.stringify({ from: "?severity=high&offset=20" }),
+    );
+  });
+
+  it("passes an empty search string when the list has no filters", async () => {
+    renderWithDetailRoute();
+
+    await userEvent.setup().click(await screen.findByRole("link", { name: "Test Vuln" }));
+
+    expect(await screen.findByTestId("detail-state")).toHaveTextContent(
+      JSON.stringify({ from: "" }),
+    );
+  });
+
+  it("opens the finding when the row itself is clicked", async () => {
+    renderWithDetailRoute();
+
+    await userEvent.setup().click(
+      within(await screen.findByRole("row", { name: /Test Vuln/ })).getByText("Open"),
+    );
+
+    expect(await screen.findByTestId("detail-state")).toBeInTheDocument();
+  });
+
+  it("opens the finding once, not twice, when the title link is clicked", async () => {
+    renderWithDetailRoute();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("link", { name: "Test Vuln" }));
+
+    expect(await screen.findByTestId("detail-state")).toBeInTheDocument();
+    expect(screen.getAllByTestId("detail-state")).toHaveLength(1);
+  });
+
+  it("leaves modifier clicks to the browser instead of navigating the row", async () => {
+    renderWithDetailRoute();
+    const user = userEvent.setup();
+    const cell = within(await screen.findByRole("row", { name: /Test Vuln/ })).getByText("Open");
+
+    await user.keyboard("{Control>}");
+    await user.click(cell);
+    await user.keyboard("{/Control}");
+
+    expect(screen.queryByTestId("detail-state")).not.toBeInTheDocument();
+  });
+
+  it("does not navigate when the user is selecting text in the row", async () => {
+    renderWithDetailRoute();
+    const user = userEvent.setup();
+    const cell = within(await screen.findByRole("row", { name: /Test Vuln/ })).getByText("Open");
+    vi.spyOn(window, "getSelection").mockReturnValue(
+      { toString: () => "Open" } as unknown as Selection,
+    );
+
+    await user.click(cell);
+
+    expect(screen.queryByTestId("detail-state")).not.toBeInTheDocument();
+  });
+
+  it("lets keyboard users reach the title link and open it with Enter", async () => {
+    renderWithDetailRoute();
+    const user = userEvent.setup();
+    const link = await screen.findByRole("link", { name: "Test Vuln" });
+
+    link.focus();
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByTestId("detail-state")).toBeInTheDocument();
+  });
+
+  it("gives the table a caption and scoped column headers", async () => {
+    renderWithDetailRoute();
+
+    const table = await screen.findByRole("table", { name: "Findings" });
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers.length).toBeGreaterThan(0);
+    for (const header of headers) expect(header).toHaveAttribute("scope", "col");
+  });
+
+  it("shows the kind as a neutral chip rather than a hue that collides with severity", async () => {
+    renderWithDetailRoute();
+
+    const chip = await screen.findByText("sca");
+    expect(chip.className).toContain("bg-muted");
+    expect(chip.className).not.toMatch(/blue|purple|amber|rose/);
+  });
+});
+
+const EMPTY_PROJECT_HINT = "Findings appear here once a report is uploaded or sent from CI.";
+
+function DetailState() {
+  const location = useLocation();
+  return <div data-testid="detail-state">{JSON.stringify(location.state)}</div>;
+}
+
+function renderWithDetailRoute(initialPath = "/test-project/findings") {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={[initialPath]}>
+        <Routes>
+          <Route path="/:slug/findings" element={<FindingsDashboard />} />
+          <Route path="/:slug/findings/:findingId" element={<DetailState />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
 
 function gateCell(): HTMLElement {
   const rows = within(screen.getByRole("table")).getAllByRole("row");
