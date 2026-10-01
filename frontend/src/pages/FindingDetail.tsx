@@ -11,6 +11,7 @@ import {
   ANALYSIS_STATES,
   type AnalysisState,
   analysisStateLabel,
+  findingKindLabel,
   gateEffectLabel,
   isAnalysisState,
   isReachabilityState,
@@ -502,7 +503,9 @@ export function FindingDetail() {
       <div className="mb-6">
         <div className="mb-2 flex items-center gap-3">
           <SeverityBadge severity={finding.current_severity} />
-          <span className="text-muted-foreground text-xs">{finding.finding_kind}</span>
+          <span className="text-muted-foreground text-xs">
+            {findingKindLabel(finding.finding_kind) ?? "–"}
+          </span>
           {gateChip}
         </div>
         <h1 className="text-2xl font-bold break-words">{finding.current_title}</h1>

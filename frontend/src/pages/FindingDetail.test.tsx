@@ -499,6 +499,17 @@ describe("FindingDetail enum labels", () => {
   });
 });
 
+describe("FindingDetail kind", () => {
+  it("labels the finding kind the same way the list does", async () => {
+    findingFixture = { finding_kind: "image_config" };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.getByText("Image config")).toBeInTheDocument();
+    expect(screen.queryByText("image_config")).not.toBeInTheDocument();
+  });
+});
+
 describe("FindingDetail gate status", () => {
   it("shows a prominent chip when the finding blocks the gate", async () => {
     gateFixture = { blocked_by: ["f1"] };
