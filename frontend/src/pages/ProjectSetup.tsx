@@ -17,7 +17,7 @@ import { Link, useParams } from "react-router-dom";
 const BUTTON_CLASS =
   "bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50";
 const LINK_CLASS = "text-primary hover:text-primary/80 text-sm underline";
-const PRE_CLASS = "bg-muted rounded-md p-3 text-xs overflow-x-auto";
+const PRE_CLASS = "bg-muted rounded-md p-3 text-xs break-words whitespace-pre-wrap";
 const COPY_BUTTON_CLASS = "text-primary hover:text-primary/80 shrink-0 text-xs font-medium";
 
 export function ProjectSetup() {
@@ -124,7 +124,7 @@ export function ProjectSetup() {
           {rawKey && (
             <div className="mt-3">
               <div className="flex items-center gap-2">
-                <code className={`${PRE_CLASS} flex-1`}>{rawKey}</code>
+                <code className={`${PRE_CLASS} flex-1 break-all`}>{rawKey}</code>
                 <button
                   type="button"
                   className={COPY_BUTTON_CLASS}
