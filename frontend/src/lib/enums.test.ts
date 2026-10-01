@@ -62,7 +62,16 @@ describe("enum vocabularies", () => {
   });
 
   it("mirrors the backend finding_kind enum", () => {
-    expect(FINDING_KINDS).toEqual(["sca", "sast", "iac", "secret", "dast"]);
+    expect(FINDING_KINDS).toEqual([
+      "sca",
+      "sast",
+      "iac",
+      "secret",
+      "dast",
+      "image_config",
+      "license",
+      "cve_watcher",
+    ]);
   });
 });
 
@@ -204,6 +213,10 @@ describe("findingKindLabel", () => {
     expect(findingKindLabel("iac")).toBe("IaC");
     expect(findingKindLabel("secret")).toBe("Secret");
     expect(findingKindLabel("dast")).toBe("DAST");
+    // Kinds the API document does not list but the findings table allows.
+    expect(findingKindLabel("image_config")).toBe("Image config");
+    expect(findingKindLabel("license")).toBe("License");
+    expect(findingKindLabel("cve_watcher")).toBe("CVE watcher");
   });
 
   it("falls back for missing or unvalidated input", () => {

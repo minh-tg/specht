@@ -42,8 +42,18 @@ export type ReachabilityState = typeof REACHABILITY_STATES[number];
 export const SEVERITIES = ["critical", "high", "medium", "low", "unknown"] as const;
 export type Severity = typeof SEVERITIES[number];
 
-// Mirrors the API's `finding_kind` enum.
-export const FINDING_KINDS = ["sca", "sast", "iac", "secret", "dast"] as const;
+// Mirrors the `finding_kinds` lookup table the findings reference (migrations 3, 17
+// and 26). openapi.yaml lists only the first five, but all eight can occur.
+export const FINDING_KINDS = [
+  "sca",
+  "sast",
+  "iac",
+  "secret",
+  "dast",
+  "image_config",
+  "license",
+  "cve_watcher",
+] as const;
 export type FindingKind = typeof FINDING_KINDS[number];
 
 function isOneOf<T extends string>(
@@ -140,6 +150,9 @@ const FINDING_KIND_LABELS: Record<FindingKind, string> = {
   iac: "IaC",
   secret: "Secret",
   dast: "DAST",
+  image_config: "Image config",
+  license: "License",
+  cve_watcher: "CVE watcher",
 };
 
 /**
