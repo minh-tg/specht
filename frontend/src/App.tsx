@@ -1,6 +1,7 @@
 import { AuthProvider } from "@/auth/AuthContext";
 import { ProtectedRoute } from "@/auth/ProtectedRoute";
 import { Navbar } from "@/components/Navbar";
+import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { ApiKeys } from "@/pages/ApiKeys";
 import { FindingDetail } from "@/pages/FindingDetail";
 import { FindingsDashboard } from "@/pages/FindingsDashboard";
@@ -9,6 +10,7 @@ import { Login } from "@/pages/Login";
 import { ProjectList } from "@/pages/ProjectList";
 import { Register } from "@/pages/Register";
 import { ReportHistory } from "@/pages/ReportHistory";
+import { type ReactNode } from "react";
 import {
   BrowserRouter,
   Link,
@@ -24,6 +26,7 @@ function ProjectLayout() {
   const location = useLocation();
   const path = location.pathname;
   const currentTab = path.endsWith("/reports") ? "reports" : "findings";
+  useDocumentTitle(currentTab === "reports" ? `${slug} · Reports` : `${slug} · Findings`);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -61,6 +64,8 @@ function ProjectLayout() {
 }
 
 function HomePage() {
+  useDocumentTitle("Projects");
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
       <h1 className="mb-6 text-2xl font-bold">Projects</h1>
@@ -69,11 +74,30 @@ function HomePage() {
   );
 }
 
+function Titled({ title, children }: { title: string; children: ReactNode; }) {
+  useDocumentTitle(title);
+  return children;
+}
+
 export function AppRoutes() {
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
+      <Route
+        path="/login"
+        element={
+          <Titled title="Sign in">
+            <Login />
+          </Titled>
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          <Titled title="Register">
+            <Register />
+          </Titled>
+        }
+      />
       <Route
         path="/"
         element={
@@ -94,7 +118,9 @@ export function AppRoutes() {
         path="/:slug/findings/:findingId"
         element={
           <ProtectedRoute>
-            <FindingDetail />
+            <Titled title="Finding">
+              <FindingDetail />
+            </Titled>
           </ProtectedRoute>
         }
       />
@@ -110,7 +136,9 @@ export function AppRoutes() {
         path="/ingest"
         element={
           <ProtectedRoute>
-            <Ingest />
+            <Titled title="Ingest report">
+              <Ingest />
+            </Titled>
           </ProtectedRoute>
         }
       />
@@ -118,7 +146,9 @@ export function AppRoutes() {
         path="/api-keys"
         element={
           <ProtectedRoute>
-            <ApiKeys />
+            <Titled title="API keys">
+              <ApiKeys />
+            </Titled>
           </ProtectedRoute>
         }
       />

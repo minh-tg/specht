@@ -16,6 +16,7 @@ const auth: AuthContextValue = {
 };
 
 beforeEach(() => {
+  document.title = "";
   const finding = {
     id: "f1",
     project_id: "p1",
@@ -108,4 +109,18 @@ it("returns unknown routes to the projects page", async () => {
 
   expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
   expect(await screen.findByText("No projects yet")).toBeInTheDocument();
+});
+
+it("sets the document title for the sign-in route", async () => {
+  renderRoutes("/login", null);
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+  expect(document.title).toBe("Sign in · Specht");
+});
+
+it("sets the document title for the projects route", async () => {
+  renderRoutes("/");
+
+  expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
+  expect(document.title).toBe("Projects · Specht");
 });
