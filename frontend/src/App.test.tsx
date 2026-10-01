@@ -124,3 +124,20 @@ it("sets the document title for the projects route", async () => {
   expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
   expect(document.title).toBe("Projects · Specht");
 });
+
+it("marks the active project tab with aria-current", async () => {
+  renderRoutes("/test-project/findings");
+
+  expect(await screen.findByText("No findings found")).toBeInTheDocument();
+  expect(screen.getByRole("navigation", { name: "Project sections" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Findings" })).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("link", { name: "Reports" })).not.toHaveAttribute("aria-current");
+});
+
+it("moves aria-current to the reports tab when it is selected", async () => {
+  renderRoutes("/test-project/reports");
+
+  expect(await screen.findByText("No reports yet")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Reports" })).toHaveAttribute("aria-current", "page");
+  expect(screen.getByRole("link", { name: "Findings" })).not.toHaveAttribute("aria-current");
+});

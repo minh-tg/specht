@@ -36,9 +36,10 @@ function ProjectLayout() {
       >
         &larr; Projects
       </Link>
-      <div className="mb-6 flex gap-4 border-b">
+      <nav aria-label="Project sections" className="mb-6 flex gap-4 border-b">
         <Link
           to={`/${slug}/findings`}
+          aria-current={currentTab === "findings" ? "page" : undefined}
           className={`pb-2 text-sm font-medium ${
             currentTab === "findings"
               ? "border-primary text-foreground border-b-2"
@@ -49,6 +50,7 @@ function ProjectLayout() {
         </Link>
         <Link
           to={`/${slug}/reports`}
+          aria-current={currentTab === "reports" ? "page" : undefined}
           className={`pb-2 text-sm font-medium ${
             currentTab === "reports"
               ? "border-primary text-foreground border-b-2"
@@ -57,7 +59,7 @@ function ProjectLayout() {
         >
           Reports
         </Link>
-      </div>
+      </nav>
       {currentTab === "findings" ? <FindingsDashboard /> : <ReportHistory />}
     </div>
   );
