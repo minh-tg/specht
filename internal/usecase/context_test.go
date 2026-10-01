@@ -291,3 +291,96 @@ func TestGetFinding_SuggestionFromDims(t *testing.T) {
 	assert.Equal(t, "high", finding.Suggestion.Confidence)
 	assert.Contains(t, finding.Suggestion.Detail, "7.88.1-r1")
 }
+
+func TestGetFinding_RemediationFromFixedVersion(t *testing.T) {
+	fr := &mockFindingRepo{}
+	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
+		f := makeFindingRow(1)
+		f.FindingKind = "sca"
+		return f, nil
+	}
+	fr.getDisplayContextFn = func(ctx context.Context, findingID string) (port.FindingDisplayContext, error) {
+		return port.FindingDisplayContext{ToolName: "trivy", LocationSummary: "alpine:3.20"}, nil
+	}
+	fr.listDimensionsFn = func(ctx context.Context, findingID string) ([]port.FindingDimension, error) {
+		return []port.FindingDimension{
+			{Key: "package_name", Value: "openssh-server"},
+			{Key: "installed_version", Value: "9.7_p1-r4"},
+			{Key: "fixed_version", Value: "9.7_p1-r5"},
+		}, nil
+	}
+
+	uc := New(Deps{Stores: memberFindingDeps(fr)})
+	finding, err := uc.GetFinding(memberSessionCtx(), "00000000-0000-0000-0000-000000000021")
+	require.NoError(t, err)
+	require.NotNil(t, finding.Remediation)
+	assert.False(t, finding.Remediation.Fallback)
+	assert.Equal(t, "Upgrade openssh-server from 9.7_p1-r4 to 9.7_p1-r5.", finding.Remediation.Summary)
+}
+
+func TestRemediationFromMetadata(t *testing.T) {
+	tests := []struct {
+		name         string
+		kind         string
+		metadata     json.RawMessage
+		dims         []port.FindingDimension
+		wantSummary  string
+		wantURL      string
+		wantFallback bool
+	}{
+		{
+			name: "fixed version with installed version",
+			kind: "sca",
+			dims: []port.FindingDimension{
+				{Key: "package_name", Value: "openssh-server"},
+				{Key: "installed_version", Value: "9.7_p1-r4"},
+				{Key: "fixed_version", Value: "9.7_p1-r5"},
+			},
+			wantSummary: "Upgrade openssh-server from 9.7_p1-r4 to 9.7_p1-r5.",
+		},
+		{
+			name: "fixed version without installed version",
+			kind: "sca",
+			dims: []port.FindingDimension{
+				{Key: "package_name", Value: "curl"},
+				{Key: "fixed_version", Value: "8.10.1-r1"},
+			},
+			wantSummary: "Upgrade curl to 8.10.1-r1.",
+		},
+		{
+			name:        "fixed version without package name",
+			kind:        "sca",
+			dims:        []port.FindingDimension{{Key: "fixed_version", Value: "1.2.3"}},
+			wantSummary: "Upgrade to 1.2.3.",
+		},
+		{
+			name:         "no fixed version falls back",
+			kind:         "sca",
+			dims:         []port.FindingDimension{{Key: "package_name", Value: "curl"}},
+			wantSummary:  fixFallback("sca"),
+			wantFallback: true,
+		},
+		{
+			name:     "scanner fix text wins",
+			kind:     "sca",
+			metadata: json.RawMessage(`{"specht":{"fix":{"Summary":"Upgrade to 1.2.4","URL":"https://advisory"}}}`),
+			dims: []port.FindingDimension{
+				{Key: "package_name", Value: "curl"},
+				{Key: "fixed_version", Value: "1.2.4"},
+			},
+			wantSummary: "Upgrade to 1.2.4",
+			wantURL:     "https://advisory",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rem := remediationFromMetadata(tt.metadata, "trivy", tt.kind, tt.dims)
+			require.NotNil(t, rem)
+			assert.Equal(t, tt.wantSummary, rem.Summary)
+			assert.Equal(t, tt.wantURL, rem.URL)
+			assert.Equal(t, tt.wantFallback, rem.Fallback)
+			assert.Equal(t, "trivy", rem.Source)
+		})
+	}
+}
