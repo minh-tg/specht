@@ -198,7 +198,9 @@ export interface Report {
   completed_at: string | null;
 }
 
-export type ReportStatus = "pending" | "completed" | "failed";
+// The server stores an unfinished report as `processing`; openapi.yaml documents the
+// same state as `pending`. Both mean "still running" (see `isReportInProgress`).
+export type ReportStatus = "processing" | "pending" | "completed" | "failed";
 
 export interface SeverityCount {
   severity: string;

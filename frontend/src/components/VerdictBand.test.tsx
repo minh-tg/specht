@@ -169,6 +169,27 @@ describe("VerdictBand", () => {
     );
   });
 
+  it("warns while the server reports the latest scan as processing", () => {
+    renderBand({
+      gate: { threshold_breached: false, blocking_count: 0, blocked_by: [] },
+      stats: {
+        report_count: 2,
+        total_findings: 1,
+        by_severity: [],
+        latest_report: {
+          id: "r1",
+          status: "processing",
+          created_at: "2025-01-01T00:00:00Z",
+          tool_name: "osv-scanner",
+        },
+      },
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The latest scan is still processing, so this verdict may change.",
+    );
+  });
+
   it("warns while the latest scan is still processing", () => {
     renderBand({
       gate: { threshold_breached: false, blocking_count: 0, blocked_by: [] },

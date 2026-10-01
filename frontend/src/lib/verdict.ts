@@ -26,10 +26,18 @@ export function blockerCount(gate?: GateStatus): number {
   return gate?.blocked_by?.length ?? 0;
 }
 
+/**
+ * True while a report is still being processed. The server stores that state as
+ * `processing`; openapi.yaml documents it as `pending`, so both are accepted.
+ */
+export function isReportInProgress(status: string | undefined): boolean {
+  return status === "processing" || status === "pending";
+}
+
 /** True when the newest report is still running or failed outright. */
 export function isDegraded(stats?: ProjectStats): boolean {
   const status = stats?.latest_report?.status;
-  return status === "failed" || status === "pending";
+  return status === "failed" || isReportInProgress(status);
 }
 
 export interface TriageBucketCounts {

@@ -1,23 +1,26 @@
 import { useReports } from "@/api/hooks";
 import { formatDateTime, pluralize } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { isReportInProgress } from "@/lib/verdict";
 import type { ReportStatus } from "@/types/api";
 import { Link, useParams } from "react-router-dom";
 
 const STATUS_LABELS: Record<ReportStatus, string> = {
+  processing: "Processing",
   pending: "Processing",
   completed: "Completed",
   failed: "Failed",
 };
 
 const STATUS_STYLES: Record<ReportStatus, string> = {
+  processing: "bg-muted text-muted-foreground",
   pending: "bg-muted text-muted-foreground",
   completed: "bg-sev-success-bg text-sev-success-fg",
   failed: "bg-destructive/10 text-destructive",
 };
 
 function isReportStatus(status: string): status is ReportStatus {
-  return status === "pending" || status === "completed" || status === "failed";
+  return Object.hasOwn(STATUS_LABELS, status);
 }
 
 function statusMeta(status: string): { label: string; style: string; } {
@@ -104,7 +107,7 @@ export function ReportHistory() {
                   status.style,
                 )}
               >
-                {r.status === "pending" && (
+                {isReportInProgress(r.status) && (
                   <span className="mr-1 h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
                 )}
                 {status.label}

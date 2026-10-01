@@ -1,6 +1,12 @@
 import type { GateStatus, ProjectStats, Report } from "@/types/api";
 import { describe, expect, it } from "vitest";
-import { blockerCount, isDegraded, projectVerdict, triageBuckets } from "./verdict";
+import {
+  blockerCount,
+  isDegraded,
+  isReportInProgress,
+  projectVerdict,
+  triageBuckets,
+} from "./verdict";
 
 function gate(overrides: Partial<GateStatus> = {}): GateStatus {
   return { threshold_breached: false, blocking_count: 0, ...overrides };
@@ -92,13 +98,25 @@ describe("isDegraded", () => {
     expect(isDegraded(stats({ latest_report: report("completed") }))).toBe(false);
   });
 
-  it("is true while the latest report is pending or failed", () => {
+  it("is true while the latest report is processing or failed", () => {
+    // `processing` is what the server stores; `pending` is what openapi.yaml calls it.
+    expect(isDegraded(stats({ latest_report: report("processing") }))).toBe(true);
     expect(isDegraded(stats({ latest_report: report("pending") }))).toBe(true);
     expect(isDegraded(stats({ latest_report: report("failed") }))).toBe(true);
   });
 
-  it("is false for an unknown status", () => {
-    expect(isDegraded(stats({ latest_report: report("processing") }))).toBe(false);
+  it("is false for a status outside the vocabulary", () => {
+    expect(isDegraded(stats({ latest_report: report("archived") }))).toBe(false);
+  });
+});
+
+describe("isReportInProgress", () => {
+  it("accepts the stored value and the documented alias only", () => {
+    expect(isReportInProgress("processing")).toBe(true);
+    expect(isReportInProgress("pending")).toBe(true);
+    expect(isReportInProgress("completed")).toBe(false);
+    expect(isReportInProgress("failed")).toBe(false);
+    expect(isReportInProgress(undefined)).toBe(false);
   });
 });
 

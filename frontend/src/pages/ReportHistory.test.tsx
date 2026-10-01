@@ -111,6 +111,25 @@ describe("ReportHistory", () => {
     expect(failedCard?.className).toContain("border-destructive");
   });
 
+  it("labels a report the server is still processing", async () => {
+    // The server stores the unfinished state as `processing`; the API document
+    // calls it `pending`. Both read as Processing and neither is echoed raw.
+    mockReports([{ ...REPORTS[1], status: "processing" }]);
+    renderWithProviders(<ReportHistory />);
+
+    const label = await screen.findByText("Processing");
+    expect(label.querySelector(".animate-pulse")).not.toBeNull();
+    expect(screen.queryByText("processing")).not.toBeInTheDocument();
+  });
+
+  it("does not echo a status outside the vocabulary through the prototype chain", async () => {
+    mockReports([{ ...REPORTS[0], status: "constructor" }]);
+    renderWithProviders(<ReportHistory />);
+
+    expect(await screen.findByText("constructor")).toBeInTheDocument();
+    expect(screen.queryByText("Completed")).not.toBeInTheDocument();
+  });
+
   it("shows an upload report link above the list", async () => {
     renderWithProviders(<ReportHistory />);
     expect(await screen.findByRole("link", { name: "Upload report" })).toHaveAttribute(
