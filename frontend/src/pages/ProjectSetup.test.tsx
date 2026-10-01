@@ -329,4 +329,65 @@ describe("ProjectSetup", () => {
     });
     expect(statsRequests).toBe(requestsAfterFirstReport);
   });
+
+  it("keeps polling while the first report is processing, then reports its findings", async () => {
+    vi.useFakeTimers();
+    stats = {
+      ...stats,
+      report_count: 1,
+      total_findings: 0,
+      latest_report: { id: "r1", status: "processing", created_at: "2025-01-01T00:00:00Z" },
+    };
+    renderPage();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByRole("heading", { name: "Processing the first report" }))
+      .toBeInTheDocument();
+    expect(screen.getByText(/still being processed/)).toHaveAttribute("role", "status");
+    expect(screen.queryByRole("link", { name: "View findings" })).not.toBeInTheDocument();
+
+    stats = {
+      ...stats,
+      total_findings: 3,
+      latest_report: { id: "r1", status: "completed", created_at: "2025-01-01T00:00:00Z" },
+    };
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+
+    expect(screen.getByText("First report received: 3 findings.")).toHaveAttribute(
+      "role",
+      "status",
+    );
+    expect(screen.getByRole("link", { name: "View findings" })).toBeInTheDocument();
+  });
+
+  it("says when the first report failed, links to the reports and keeps polling", async () => {
+    vi.useFakeTimers();
+    stats = {
+      ...stats,
+      report_count: 1,
+      total_findings: 0,
+      latest_report: { id: "r1", status: "failed", created_at: "2025-01-01T00:00:00Z" },
+    };
+    renderPage();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(screen.getByRole("heading", { name: "The first report failed" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View reports" })).toHaveAttribute(
+      "href",
+      "/acme/reports",
+    );
+    expect(screen.queryByRole("link", { name: "View findings" })).not.toBeInTheDocument();
+
+    const requests = statsRequests;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(6000);
+    });
+    expect(statsRequests).toBeGreaterThan(requests);
+  });
 });
