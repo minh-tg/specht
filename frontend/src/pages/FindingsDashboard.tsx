@@ -1,6 +1,6 @@
 import { useFindings, useGateStatus } from "@/api/hooks";
 import { SeverityBadge } from "@/components/ui/severity-badge";
-import { analysisStateLabel, technicalStateLabel } from "@/lib/enums";
+import { analysisStateLabel, severityRank, technicalStateLabel } from "@/lib/enums";
 import { formatDate } from "@/lib/format";
 import { blocksGate, blocksGateLabel } from "@/lib/gate";
 import type { Finding } from "@/types/api";
@@ -9,18 +9,11 @@ import { Link, useLocation, useNavigate, useParams, useSearchParams } from "reac
 
 const PAGE_SIZE = 20;
 
-const severityOrder: Record<string, number> = {
-  critical: 3,
-  high: 2,
-  medium: 1,
-  low: 0,
-};
-
 function sortFindings(findings: Finding[], by: string, dir: "asc" | "desc") {
   return [...findings].sort((a, b) => {
     let cmp = 0;
     if (by === "severity") {
-      cmp = (severityOrder[a.current_severity] ?? -1) - (severityOrder[b.current_severity] ?? -1);
+      cmp = severityRank(a.current_severity) - severityRank(b.current_severity);
     } else if (by === "title") {
       cmp = a.current_title.localeCompare(b.current_title);
     } else {

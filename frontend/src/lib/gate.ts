@@ -1,3 +1,4 @@
+import { severityRank } from "@/lib/enums";
 import type { GateStatus } from "@/types/api";
 
 /**
@@ -12,20 +13,6 @@ import type { GateStatus } from "@/types/api";
 export interface BlocksGateResult {
   blocks: boolean;
   reason?: "ignored" | "below_floor";
-}
-
-// Higher rank is more severe. Unknown values rank below `none` so an
-// unrecognised severity can never be treated as meeting a floor.
-const SEVERITY_RANK: Record<string, number> = {
-  critical: 4,
-  high: 3,
-  medium: 2,
-  low: 1,
-  none: 0,
-};
-
-function severityRank(value: string): number {
-  return SEVERITY_RANK[value] ?? -1;
 }
 
 /**

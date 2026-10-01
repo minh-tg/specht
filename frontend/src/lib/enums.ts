@@ -161,3 +161,14 @@ export function severityLabel(value: string | null | undefined): string | null {
   if (!value) return null;
   return isSeverity(value) ? SEVERITY_LABELS[value] : "Unknown";
 }
+
+/**
+ * Rank of a severity where higher is more severe, derived from the order of
+ * `SEVERITIES` so the two can never drift: `critical` ranks highest and `none`
+ * lowest. Anything outside the vocabulary (including null/undefined) ranks -1,
+ * below `none`, so an unrecognised value never counts as meeting a floor.
+ */
+export function severityRank(value: string | null | undefined): number {
+  const index = SEVERITIES.indexOf(value as Severity);
+  return index === -1 ? -1 : SEVERITIES.length - 1 - index;
+}

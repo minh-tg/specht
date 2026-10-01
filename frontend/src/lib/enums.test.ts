@@ -13,6 +13,7 @@ import {
   reachabilityStateLabel,
   SEVERITIES,
   severityLabel,
+  severityRank,
   TECHNICAL_STATES,
   technicalStateLabel,
   triageBucket,
@@ -182,5 +183,29 @@ describe("severityLabel", () => {
   it("falls back for missing or unvalidated input", () => {
     expect(severityLabel(null)).toBeNull();
     expect(severityLabel("severe")).toBe("Unknown");
+  });
+});
+
+describe("severityRank", () => {
+  it("ranks every canonical severity, most severe first", () => {
+    expect(severityRank("critical")).toBe(4);
+    expect(severityRank("high")).toBe(3);
+    expect(severityRank("medium")).toBe(2);
+    expect(severityRank("low")).toBe(1);
+    expect(severityRank("none")).toBe(0);
+  });
+
+  it("ranks unknown values below none so none can never meet a floor by accident", () => {
+    expect(severityRank("unknown")).toBe(-1);
+    expect(severityRank("severe")).toBe(-1);
+    expect(severityRank(null)).toBe(-1);
+    expect(severityRank(undefined)).toBe(-1);
+  });
+
+  it("decreases strictly along the canonical order", () => {
+    const ranks = SEVERITIES.map(severityRank);
+    for (let i = 1; i < ranks.length; i++) {
+      expect(ranks[i]).toBeLessThan(ranks[i - 1]);
+    }
   });
 });
