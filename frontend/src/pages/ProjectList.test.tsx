@@ -123,7 +123,7 @@ describe("ProjectList", () => {
   it("shows a table-shaped loading skeleton first", () => {
     renderProjectRoutes();
 
-    expect(screen.getByRole("table")).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Projects" })).toBeInTheDocument();
     expect(document.querySelectorAll(".animate-pulse").length).toBeGreaterThan(0);
   });
 
@@ -146,6 +146,7 @@ describe("ProjectList", () => {
     renderProjectRoutes();
 
     await screen.findByRole("link", { name: "Alpha" });
+    expect(screen.getByRole("table", { name: "Projects" })).toBeInTheDocument();
     for (const column of ["Project", "Verdict", "Blocking", "Findings", "Last scan"]) {
       expect(screen.getByRole("columnheader", { name: column })).toBeInTheDocument();
     }

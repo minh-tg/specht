@@ -126,6 +126,7 @@ export function ProjectList() {
       )}
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
+          <caption className="sr-only">Projects</caption>
           <ProjectTableHead />
           <tbody>
             {ordered.map((row) => <ProjectTableRow key={row.project.id} row={row} />)}
@@ -172,6 +173,7 @@ function ProjectTableSkeleton() {
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
+        <caption className="sr-only">Projects</caption>
         <ProjectTableHead />
         <tbody>
           {Array.from({ length: SKELETON_ROW_COUNT }).map((_, rowIndex) => (
