@@ -1,4 +1,4 @@
-import { apiFetch, setStoredSession, setUnauthorizedHandler } from "@/api/client";
+import { apiFetch, setStoredSession } from "@/api/client";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -308,7 +308,6 @@ describe("AuthProvider unauthorized callback", () => {
 
     renderAuth();
     let failure: Error | null = null;
-    setUnauthorizedHandler(() => {});
     try {
       await apiFetch("/api/v1/data");
     } catch (err) {
