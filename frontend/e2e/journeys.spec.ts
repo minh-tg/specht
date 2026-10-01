@@ -148,7 +148,10 @@ test("manual ingest uploads a scan file", async ({ page, request }) => {
   await expect(page.getByText("high.sarif.json loaded")).toBeVisible();
 
   await page.getByRole("button", { name: "Upload" }).click();
-  const resultCard = page.getByRole("status");
+  // Other status regions exist on the page (the route announcer), so pick the card by its content.
+  const resultCard = page.getByRole("status").filter({
+    has: page.getByRole("link", { name: "View findings" }),
+  });
   await expect(resultCard).toContainText(/finding/);
   await expect(page.getByRole("link", { name: "View findings" })).toBeVisible();
 
