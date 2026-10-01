@@ -119,7 +119,8 @@ describe("ProjectSetup", () => {
     meRole = "member";
     renderPage();
 
-    expect(await screen.findByText("Only administrators can create projects.")).toBeInTheDocument();
+    expect(await screen.findByText("Only administrators can set up CI for a project."))
+      .toBeInTheDocument();
     expect(screen.getByRole("link", { name: /back to projects/i })).toHaveAttribute("href", "/");
   });
 

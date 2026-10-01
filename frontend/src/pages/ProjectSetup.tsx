@@ -87,7 +87,9 @@ export function ProjectSetup() {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
         <h1 className="mb-6 text-2xl font-bold">CI setup</h1>
-        <p className="text-muted-foreground text-sm">Only administrators can create projects.</p>
+        <p className="text-muted-foreground text-sm">
+          Only administrators can set up CI for a project.
+        </p>
         <Link to="/" className={`${LINK_CLASS} mt-2 inline-block`}>Back to projects</Link>
       </div>
     );
