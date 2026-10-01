@@ -1,59 +1,62 @@
 import {
   useFinding,
   useFindingEvents,
+  useGateStatus,
   useReachability,
   useTriageFinding,
   useUpsertReachability,
 } from "@/api/hooks";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import {
+  ANALYSIS_STATES,
   type AnalysisState,
   analysisStateLabel,
+  findingKindLabel,
   gateEffectLabel,
   isAnalysisState,
   isReachabilityState,
+  REACHABILITY_STATES,
   type ReachabilityState,
   reachabilityStateLabel,
   technicalStateLabel,
 } from "@/lib/enums";
+import { formatDateTime } from "@/lib/format";
+import { blocksGate, blocksGateSentence } from "@/lib/gate";
 import { truncateText } from "@/lib/utils";
 import type { FindingEvent, FindingLocation, ReachabilityAssessment } from "@/types/api";
 import { type ReactNode, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 
 /** Inline evidence is capped so an oversized payload cannot blow up layout. */
 const MAX_EVIDENCE_LENGTH = 240;
 
-const REACHABILITY_OPTIONS: Array<{ value: ReachabilityState; label: string; }> = [
-  { value: "reachable", label: "Reachable" },
-  { value: "not_reachable", label: "Not Reachable" },
-  { value: "unknown", label: "Unknown" },
-  { value: "not_applicable", label: "Not Applicable" },
-];
+const REACHABILITY_OPTIONS: Array<{ value: ReachabilityState; label: string; }> =
+  REACHABILITY_STATES.map((value) => ({
+    value,
+    label: reachabilityStateLabel(value) ?? value,
+  }));
 
-const TRIAGE_OPTIONS: Array<
-  {
-    value: AnalysisState;
-    label: string;
-    requiresReason: boolean;
-    requiresExpiry: boolean;
-  }
-> = [
-  { value: "exploitable", label: "Confirmed", requiresReason: false, requiresExpiry: false },
-  { value: "false_positive", label: "False Positive", requiresReason: true, requiresExpiry: false },
-  { value: "not_affected", label: "Not Affected", requiresReason: true, requiresExpiry: false },
-  { value: "accepted_risk", label: "Accepted Risk", requiresReason: true, requiresExpiry: true },
-  { value: "wont_fix", label: "Won't Fix", requiresReason: true, requiresExpiry: true },
-];
+/**
+ * Extra input each decision state needs before it can be applied. A state
+ * absent here is not offered by the triage control at all.
+ */
+const TRIAGE_REQUIREMENTS: Partial<
+  Record<AnalysisState, { requiresReason: boolean; requiresExpiry: boolean; }>
+> = {
+  exploitable: { requiresReason: false, requiresExpiry: false },
+  false_positive: { requiresReason: true, requiresExpiry: false },
+  not_affected: { requiresReason: true, requiresExpiry: false },
+  accepted_risk: { requiresReason: true, requiresExpiry: true },
+  wont_fix: { requiresReason: true, requiresExpiry: true },
+};
+
+const TRIAGE_OPTIONS = ANALYSIS_STATES.flatMap((value) => {
+  const requirements = TRIAGE_REQUIREMENTS[value];
+  if (!requirements) return [];
+  return [{ value, label: analysisStateLabel(value) ?? value, ...requirements }];
+});
 
 const SOURCE_LINK_SCHEMES = new Set(["http:", "https:"]);
-
-/** Formats an API timestamp for display; a dash when absent or unparseable. */
-function formatTimestamp(value: string | undefined): string {
-  if (!value) return "–";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "–" : date.toLocaleString();
-}
 
 /** Parses a source link only when its scheme is http/https; otherwise null. */
 function parseSourceLink(value: string | undefined): URL | null {
@@ -84,7 +87,8 @@ function locationSubjectLabel(kind: string | undefined): string {
   }
 }
 
-/** Humanizes a confidence value; unknown stays visible but unlabeled. */
+/** Humanizes a confidence value; an unrecognised or missing value renders as
+ * "Unknown" instead of echoing the wire value. */
 function confidenceLabel(value: string | undefined): string {
   switch (value) {
     case "high":
@@ -155,8 +159,13 @@ function HistorySection({
               )
               : null}
             <span className="text-muted-foreground text-xs">
-              {formatTimestamp(event.created_at)}
+              {formatDateTime(event.created_at)}
             </span>
+            {event.comment && (
+              <p className="text-muted-foreground w-full text-xs break-words">
+                &ldquo;{event.comment}&rdquo;
+              </p>
+            )}
           </li>
         ))}
       </ul>
@@ -202,8 +211,8 @@ function TriageSection({ findingId }: { readonly findingId: string; }) {
     && (!selectedOption?.requiresReason || reason.trim() !== "");
 
   return (
-    <div className="mt-8 rounded-lg border p-4">
-      <h2 className="mb-3 text-sm font-semibold">Triage</h2>
+    <section aria-labelledby="triage-heading">
+      <h3 id="triage-heading" className="mb-3 text-sm font-medium">Triage</h3>
       <div className="flex flex-wrap gap-2">
         <select
           aria-label="Triage action"
@@ -249,20 +258,42 @@ function TriageSection({ findingId }: { readonly findingId: string; }) {
           {triageMutation.isPending ? "Saving..." : "Apply"}
         </button>
       </div>
-      {triageMutation.isError && (
-        <p role="alert" className="text-destructive mt-2 text-xs">
-          {triageMutation.error.message}
-        </p>
-      )}
-      {triageMutation.isSuccess && (
-        <p
-          role="status"
-          className="bg-sev-success-bg text-sev-success-fg mt-2 inline-block rounded-sm px-2 py-1 text-xs"
-        >
-          Triage saved (effect: {gateEffectLabel(triageMutation.data.gate_effect) ?? "Unknown"})
-        </p>
-      )}
-    </div>
+      <OutcomeRegions
+        label="Triage result"
+        error={triageMutation.isError ? triageMutation.error.message : null}
+        success={triageMutation.isSuccess
+          ? `Triage saved (effect: ${
+            gateEffectLabel(triageMutation.data.gate_effect) ?? "Unknown"
+          })`
+          : null}
+      />
+    </section>
+  );
+}
+
+/**
+ * Persistent live regions for a form's outcome. They are always mounted and
+ * only their text changes: a live region that appears together with its text
+ * is announced unreliably by screen readers.
+ */
+function OutcomeRegions({ label, error, success }: {
+  readonly label: string;
+  readonly error: string | null;
+  readonly success: string | null;
+}) {
+  return (
+    <>
+      <div role="status" aria-live="polite" aria-label={label} className="text-xs">
+        {success && (
+          <span className="bg-sev-success-bg text-sev-success-fg mt-2 inline-block rounded-sm px-2 py-1">
+            {success}
+          </span>
+        )}
+      </div>
+      <div role="alert" aria-label={`${label} error`} className="text-destructive text-xs">
+        {error && <p className="mt-2">{error}</p>}
+      </div>
+    </>
   );
 }
 
@@ -286,7 +317,7 @@ function latestAssessmentLine(latest: ReachabilityAssessment | null): ReactNode 
       </span>
       {evidence && (
         <span title={evidence}>{" — "}{truncateText(evidence, MAX_EVIDENCE_LENGTH)}</span>
-      )} ({formatTimestamp(latest.updated_at)})
+      )} ({formatDateTime(latest.updated_at)})
     </>
   );
 }
@@ -331,8 +362,8 @@ function ReachabilitySection({
   }
 
   return (
-    <div className="mt-8 rounded-lg border p-4">
-      <h2 className="mb-3 text-sm font-semibold">Reachability</h2>
+    <section aria-labelledby="reachability-heading" className="mt-6 border-t pt-4">
+      <h3 id="reachability-heading" className="mb-3 text-sm font-medium">Reachability</h3>
       {body}
       <div className="flex flex-wrap gap-2">
         <select
@@ -377,26 +408,27 @@ function ReachabilitySection({
           {mutation.isPending ? "Saving..." : "Assess"}
         </button>
       </div>
-      {mutation.isError && (
-        <p role="alert" className="text-destructive mt-2 text-xs">
-          {mutation.error.message}
-        </p>
-      )}
-      {mutation.isSuccess && (
-        <p
-          role="status"
-          className="bg-sev-success-bg text-sev-success-fg mt-2 inline-block rounded-sm px-2 py-1 text-xs"
-        >
-          Reachability saved
-        </p>
-      )}
-    </div>
+      <OutcomeRegions
+        label="Reachability result"
+        error={mutation.isError ? mutation.error.message : null}
+        success={mutation.isSuccess ? "Reachability saved" : null}
+      />
+    </section>
   );
 }
 
+/** Where "Back to findings" goes: the list page the user came from, if known. */
+function backToFindingsPath(slug: string, state: unknown): string {
+  const from = (state as { from?: unknown; } | null)?.from;
+  const search = typeof from === "string" && (from === "" || from.startsWith("?")) ? from : "";
+  return `/${slug}/findings${search}`;
+}
+
 export function FindingDetail() {
-  const { findingId } = useParams<{ findingId: string; }>();
+  const { slug, findingId } = useParams<{ slug: string; findingId: string; }>();
+  const location = useLocation();
   const { data: finding, isLoading, isError, error, refetch } = useFinding(findingId ?? "");
+  const { data: gate } = useGateStatus(slug ?? "");
   const {
     data: reachability,
     isLoading: reachabilityLoading,
@@ -420,9 +452,17 @@ export function FindingDetail() {
 
   if (isError || !finding) {
     return (
-      <div className="flex flex-col items-center gap-2 py-16">
-        <p className="text-destructive text-sm">{error?.message ?? "Finding not found"}</p>
+      <div className="mx-auto max-w-3xl px-4 py-8">
+        <Link
+          to={backToFindingsPath(slug ?? "", location.state)}
+          className="text-muted-foreground hover:text-foreground mb-6 inline-block text-sm"
+        >
+          &larr; Back to findings
+        </Link>
+        <h1 className="text-2xl font-bold">Couldn't load this finding</h1>
+        <p className="text-destructive mt-2 text-sm">{error?.message ?? "Finding not found"}</p>
         <button
+          type="button"
           className="text-primary text-sm underline hover:no-underline"
           onClick={() => refetch()}
         >
@@ -432,11 +472,29 @@ export function FindingDetail() {
     );
   }
 
+  const gateResult = blocksGate(finding, gate);
+
+  const currentGate = blocksGateSentence(gateResult);
+
+  let gateChip: ReactNode = null;
+  if (gateResult?.blocks) {
+    gateChip = (
+      <span className="bg-sev-critical-bg text-sev-critical-fg rounded-sm px-1.5 py-0.5 text-xs font-medium">
+        {blocksGateSentence(gateResult)}
+      </span>
+    );
+  } else if (gateResult) {
+    gateChip = (
+      <span className="inline-flex items-center rounded-sm border px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
+        {blocksGateSentence(gateResult)}
+      </span>
+    );
+  }
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <Link
-        to=".."
-        relative="path"
+        to={backToFindingsPath(slug ?? "", location.state)}
         className="text-muted-foreground hover:text-foreground mb-6 inline-block text-sm"
       >
         &larr; Back to findings
@@ -445,37 +503,32 @@ export function FindingDetail() {
       <div className="mb-6">
         <div className="mb-2 flex items-center gap-3">
           <SeverityBadge severity={finding.current_severity} />
-          <span className="text-muted-foreground text-xs">{finding.finding_kind}</span>
+          <span className="text-muted-foreground text-xs">
+            {findingKindLabel(finding.finding_kind) ?? "–"}
+          </span>
+          {gateChip}
         </div>
-        <h1 className="text-2xl font-bold">{finding.current_title}</h1>
+        <h1 className="text-2xl font-bold break-words">{finding.current_title}</h1>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 text-sm">
+      <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
         <div>
           <span className="text-muted-foreground">Status</span>
           <p className="font-medium">{technicalStateLabel(finding.state) ?? "–"}</p>
         </div>
         <div>
-          <span className="text-muted-foreground">Analysis</span>
+          <span className="text-muted-foreground">Triage</span>
           <p className="font-medium">
             {analysisStateLabel(finding.analysis_state) ?? "Not triaged"}
           </p>
         </div>
         <div>
-          <span className="text-muted-foreground">Gate Effect</span>
-          <p className="font-medium">{gateEffectLabel(finding.gate_effect) ?? "–"}</p>
-        </div>
-        <div>
-          <span className="text-muted-foreground">Fingerprint</span>
-          <p className="font-mono text-xs">{finding.fingerprint}</p>
-        </div>
-        <div>
           <span className="text-muted-foreground">First Seen</span>
-          <p className="font-medium">{formatTimestamp(finding.first_seen_at)}</p>
+          <p className="font-medium">{formatDateTime(finding.first_seen_at)}</p>
         </div>
         <div>
           <span className="text-muted-foreground">Last Seen</span>
-          <p className="font-medium">{formatTimestamp(finding.last_seen_at)}</p>
+          <p className="font-medium">{formatDateTime(finding.last_seen_at)}</p>
         </div>
         <div>
           <span className="text-muted-foreground">Introduced</span>
@@ -485,83 +538,10 @@ export function FindingDetail() {
               : "Unattributed"}
           </p>
         </div>
-      </div>
-
-      {finding.context && (
-        <div className="mt-8 rounded-lg border p-4">
-          <h2 className="mb-3 text-sm font-semibold">Context</h2>
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <span className="text-muted-foreground">Target</span>
-              <p className="font-medium">
-                {[finding.context.target_name, finding.context.target_kind]
-                  .filter(Boolean)
-                  .join(" · ") || "–"}
-              </p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Environment</span>
-              <p className="font-medium">{finding.context.environment_name || "–"}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Branch</span>
-              <p className="font-mono text-xs">{finding.context.branch || "–"}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Commit</span>
-              <p className="font-mono text-xs">
-                {finding.context.commit_sha
-                  ? finding.context.commit_sha.slice(0, 12)
-                  : "–"}
-              </p>
-            </div>
-            {parseSourceLink(finding.context.source_link) && (
-              <div className="col-span-2">
-                <span className="text-muted-foreground">Source</span>
-                <p className="font-medium">
-                  <a
-                    href={finding.context.source_link}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-primary hover:text-primary/80 text-sm underline underline-offset-4"
-                  >
-                    {parseSourceLink(finding.context.source_link)!.hostname}
-                    {parseSourceLink(finding.context.source_link)!.pathname}
-                  </a>
-                </p>
-              </div>
-            )}
-          </div>
+        <div className="sm:col-span-2">
+          <span className="text-muted-foreground">Fingerprint</span>
+          <p className="font-mono text-xs break-all">{finding.fingerprint}</p>
         </div>
-      )}
-      <div className="mt-8 rounded-lg border p-4">
-        <h2 className="mb-3 text-sm font-semibold">Where it occurs</h2>
-        {finding.location
-            && (finding.location.file || finding.location.resource || finding.location.summary)
-          ? (
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground">
-                  {locationSubjectLabel(finding.finding_kind)}
-                </span>
-                <p className="font-mono text-xs select-all">
-                  {finding.location.file ?? finding.location.resource ?? finding.location.summary}
-                  {locationLineRange(finding.location)}
-                </p>
-              </div>
-              {finding.location.summary && (finding.location.file || finding.location.resource) && (
-                <div>
-                  <span className="text-muted-foreground">Detail</span>
-                  <p className="font-medium">{finding.location.summary}</p>
-                </div>
-              )}
-            </div>
-          )
-          : (
-            <p className="text-muted-foreground text-sm">
-              No location reported — the scanner gave no file, resource, or URL.
-            </p>
-          )}
       </div>
 
       <div className="mt-8 rounded-lg border p-4">
@@ -610,19 +590,105 @@ export function FindingDetail() {
           )}
       </div>
 
+      <div className="mt-8 rounded-lg border p-4">
+        <h2 className="mb-3 text-sm font-semibold">Where it occurs</h2>
+        {finding.location
+            && (finding.location.file || finding.location.resource || finding.location.summary)
+          ? (
+            <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+              <div>
+                <span className="text-muted-foreground">
+                  {locationSubjectLabel(finding.finding_kind)}
+                </span>
+                <p className="font-mono text-xs break-all select-all">
+                  {finding.location.file ?? finding.location.resource ?? finding.location.summary}
+                  {locationLineRange(finding.location)}
+                </p>
+              </div>
+              {finding.location.summary && (finding.location.file || finding.location.resource) && (
+                <div>
+                  <span className="text-muted-foreground">Detail</span>
+                  <p className="font-medium">{finding.location.summary}</p>
+                </div>
+              )}
+            </div>
+          )
+          : (
+            <p className="text-muted-foreground text-sm">
+              No location reported — the scanner gave no file, resource, or URL.
+            </p>
+          )}
+      </div>
+
+      <div className="mt-8 rounded-lg border p-4">
+        <h2 className="mb-1 text-sm font-semibold">Decide</h2>
+        <p className="text-muted-foreground mb-4 text-xs">
+          Currently: {analysisStateLabel(finding.analysis_state) ?? "Not triaged"}
+          {currentGate && <>{" · "}{currentGate}</>}
+        </p>
+        <TriageSection findingId={finding.id} />
+        <ReachabilitySection
+          findingId={finding.id}
+          reachability={reachability}
+          isLoading={reachabilityLoading}
+          isError={reachabilityIsError}
+          error={reachabilityError}
+          isSuccess={reachabilityLoaded}
+        />
+      </div>
+
+      {finding.context && (
+        <div className="mt-8 rounded-lg border p-4">
+          <h2 className="mb-3 text-sm font-semibold">Context</h2>
+          <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+            <div>
+              <span className="text-muted-foreground">Target</span>
+              <p className="font-medium">
+                {[finding.context.target_name, finding.context.target_kind]
+                  .filter(Boolean)
+                  .join(" · ") || "–"}
+              </p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Environment</span>
+              <p className="font-medium">{finding.context.environment_name || "–"}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Branch</span>
+              <p className="font-mono text-xs">{finding.context.branch || "–"}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Commit</span>
+              <p className="font-mono text-xs">
+                {finding.context.commit_sha
+                  ? finding.context.commit_sha.slice(0, 12)
+                  : "–"}
+              </p>
+            </div>
+            {parseSourceLink(finding.context.source_link) && (
+              <div className="sm:col-span-2">
+                <span className="text-muted-foreground">Source</span>
+                <p className="font-medium">
+                  <a
+                    href={finding.context.source_link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-primary hover:text-primary/80 text-sm underline underline-offset-4"
+                  >
+                    {parseSourceLink(finding.context.source_link)!.hostname}
+                    {parseSourceLink(finding.context.source_link)!.pathname}
+                  </a>
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <HistorySection
         events={events}
         isLoading={eventsLoading}
         isError={eventsIsError}
-      />
-      <TriageSection findingId={finding.id} />
-      <ReachabilitySection
-        findingId={finding.id}
-        reachability={reachability}
-        isLoading={reachabilityLoading}
-        isError={reachabilityIsError}
-        error={reachabilityError}
-        isSuccess={reachabilityLoaded}
       />
     </div>
   );

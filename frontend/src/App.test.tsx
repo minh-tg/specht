@@ -1,5 +1,6 @@
 import { AuthContext, type AuthContextValue } from "@/auth/context";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { createTestQueryClient } from "@/test/utils";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
@@ -39,6 +40,17 @@ beforeEach(() => {
     let data: unknown = {};
     if (path.endsWith("/reachability") || path.endsWith("/projects") || path.endsWith("/reports")) {
       data = [];
+    } else if (path.endsWith("/scanners")) {
+      data = [];
+    } else if (/\/projects\/[^/]+$/.test(path)) {
+      data = {
+        id: "p1",
+        slug: "test-project",
+        name: "Test Project",
+        description: null,
+        created_at: "2025-01-01T00:00:00Z",
+        updated_at: "2025-01-01T00:00:00Z",
+      };
     } else if (path.endsWith("/findings")) {
       data = [];
     } else if (path.includes("/findings/")) {
@@ -49,7 +61,7 @@ beforeEach(() => {
 });
 
 function renderRoutes(initialPath: string, token: string | null = auth.token) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = createTestQueryClient();
   const value: AuthContextValue = {
     ...auth,
     token,
@@ -69,7 +81,7 @@ function renderRoutes(initialPath: string, token: string | null = auth.token) {
 }
 
 it("renders the finding detail route", async () => {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = createTestQueryClient();
 
   render(
     <QueryClientProvider client={queryClient}>
@@ -97,18 +109,32 @@ it("keeps project navigation in sync with the selected tab", async () => {
 
   expect(await screen.findByText("No findings found")).toBeInTheDocument();
   await userEvent.setup().click(screen.getByRole("link", { name: "Reports" }));
-  expect(await screen.findByText("No reports yet")).toBeInTheDocument();
+  expect(await screen.findByText("No reports yet.")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Findings" })).toHaveAttribute(
     "href",
     "/test-project/findings",
   );
 });
 
-it("returns unknown routes to the projects page", async () => {
-  renderRoutes("/unknown-route");
+it("shows a not-found page for unknown routes", async () => {
+  renderRoutes("/unknown/deeper/path");
 
-  expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
-  expect(await screen.findByText("No projects yet")).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Page not found" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Back to projects" })).toHaveAttribute("href", "/");
+  expect(document.title).toBe("Not found · Specht");
+});
+
+it("opens a project's findings from its bare URL", async () => {
+  renderRoutes("/test-project");
+
+  expect(await screen.findByText("No findings found")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Findings" })).toHaveAttribute("aria-current", "page");
+});
+
+it("does not treat the bare-project route as a not-found page for signed-out visitors", async () => {
+  renderRoutes("/test-project", null);
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
 });
 
 it("sets the document title for the sign-in route", async () => {
@@ -137,7 +163,34 @@ it("marks the active project tab with aria-current", async () => {
 it("moves aria-current to the reports tab when it is selected", async () => {
   renderRoutes("/test-project/reports");
 
-  expect(await screen.findByText("No reports yet")).toBeInTheDocument();
+  expect(await screen.findByText("No reports yet.")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: "Reports" })).toHaveAttribute("aria-current", "page");
   expect(screen.getByRole("link", { name: "Findings" })).not.toHaveAttribute("aria-current");
+});
+
+it("renders the new project route", async () => {
+  renderRoutes("/projects/new");
+
+  expect(await screen.findByRole("heading", { name: "New project" })).toBeInTheDocument();
+  expect(document.title).toBe("New project · Specht");
+});
+
+it("renders the CI setup route", async () => {
+  renderRoutes("/test-project/setup");
+
+  expect(await screen.findByRole("heading", { name: "CI setup" })).toBeInTheDocument();
+  expect(document.title).toBe("CI setup · Specht");
+});
+
+it("renders the upload report route", async () => {
+  renderRoutes("/test-project/reports/upload");
+
+  expect(await screen.findByRole("heading", { name: "Upload a report" })).toBeInTheDocument();
+  expect(document.title).toBe("Upload report · Specht");
+});
+
+it("redirects the legacy ingest route to the projects page", async () => {
+  renderRoutes("/ingest");
+
+  expect(await screen.findByRole("heading", { name: "Projects" })).toBeInTheDocument();
 });

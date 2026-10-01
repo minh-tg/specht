@@ -1,5 +1,6 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { createTestQueryClient } from "@/test/utils";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +37,9 @@ let findingFixture: FindingFixture;
 let reachabilityFixture: Array<Record<string, unknown>>;
 let eventsFixture: Array<Record<string, unknown>>;
 let triageCalls: Array<{ url: string; body: string; }>;
+let gateFixture: Record<string, unknown>;
+let gateFails: boolean;
+let findingFails: boolean;
 
 function makeFinding(overrides: FindingFixture = {}): Record<string, unknown> {
   return {
@@ -58,11 +62,11 @@ function makeFinding(overrides: FindingFixture = {}): Record<string, unknown> {
   };
 }
 
-function renderDetail() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderDetail(state?: unknown) {
+  const qc = createTestQueryClient();
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={["/p1/findings/f1"]}>
+      <MemoryRouter initialEntries={[{ pathname: "/p1/findings/f1", state }]}>
         <Routes>
           <Route path="/:slug/findings/:findingId" element={<FindingDetail />} />
         </Routes>
@@ -76,6 +80,9 @@ beforeEach(() => {
   reachabilityFixture = [];
   eventsFixture = [];
   triageCalls = [];
+  gateFixture = { blocked_by: [] };
+  gateFails = false;
+  findingFails = false;
   globalThis.fetch = vi.fn().mockImplementation(
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -101,6 +108,16 @@ beforeEach(() => {
             }),
         } as Response;
       }
+      if (url.endsWith("/gate") && method === "GET") {
+        if (gateFails) {
+          return {
+            ok: false,
+            status: 500,
+            json: () => Promise.resolve({ error: { code: "internal", message: "gate failed" } }),
+          } as Response;
+        }
+        return { ok: true, json: () => Promise.resolve(gateFixture) } as Response;
+      }
       if (url.endsWith("/findings/f1") && method === "PATCH") {
         triageCalls.push({ url, body: String(init?.body ?? "") });
         return {
@@ -111,6 +128,14 @@ beforeEach(() => {
               analysis_state: "accepted_risk",
               gate_effect: "ignore",
             }),
+        } as Response;
+      }
+      if (url.endsWith("/findings/f1") && method === "GET" && findingFails) {
+        return {
+          ok: false,
+          status: 404,
+          json: () =>
+            Promise.resolve({ error: { code: "not_found", message: "Finding not found" } }),
         } as Response;
       }
       return { ok: true, json: () => Promise.resolve(makeFinding(findingFixture)) } as Response;
@@ -241,11 +266,12 @@ describe("FindingDetail accessibility", () => {
     await user.selectOptions(screen.getByLabelText("Triage action"), "exploitable");
     await user.click(screen.getByRole("button", { name: "Apply" }));
 
-    const status = await screen.findByRole("status");
-    expect(status).toHaveTextContent(/Triage saved \(effect:/);
-    expect(status).toHaveClass("bg-sev-success-bg");
-    expect(status).toHaveClass("text-sev-success-fg");
-    expect(status).not.toHaveClass("text-green-600");
+    const status = screen.getByRole("status", { name: "Triage result" });
+    await waitFor(() => expect(status).toHaveTextContent(/Triage saved \(effect:/));
+    const chip = within(status).getByText(/Triage saved \(effect:/);
+    expect(chip).toHaveClass("bg-sev-success-bg");
+    expect(chip).toHaveClass("text-sev-success-fg");
+    expect(chip).not.toHaveClass("text-green-600");
   });
 
   it("exposes a failed triage through an alert", async () => {
@@ -278,7 +304,153 @@ describe("FindingDetail accessibility", () => {
     await user.selectOptions(screen.getByLabelText("Triage action"), "exploitable");
     await user.click(screen.getByRole("button", { name: "Apply" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("triage failed hard");
+    const alert = screen.getByRole("alert", { name: "Triage result error" });
+    await waitFor(() => expect(alert).toHaveTextContent("triage failed hard"));
+  });
+});
+
+describe("FindingDetail decision flow", () => {
+  it("orders the sections: how to fix, where, decide, context, history", async () => {
+    findingFixture = { context: { source_link: "https://example.com/repo" } };
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    const order = ["How to fix", "Where it occurs", "Decide", "Context", "History"].map((name) =>
+      screen.getByRole("heading", { level: 2, name })
+    );
+    for (let i = 0; i < order.length - 1; i++) {
+      expect(
+        order[i].compareDocumentPosition(order[i + 1]) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+  });
+
+  it("puts the triage and reachability controls inside the Decide section", async () => {
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    const decide = screen.getByRole("heading", { level: 2, name: "Decide" }).parentElement!;
+    expect(within(decide).getByRole("heading", { level: 3, name: "Triage" })).toBeInTheDocument();
+    expect(within(decide).getByRole("heading", { level: 3, name: "Reachability" }))
+      .toBeInTheDocument();
+    expect(within(decide).getByLabelText("Triage action")).toBeInTheDocument();
+    expect(within(decide).getByLabelText("Reachability assessment")).toBeInTheDocument();
+  });
+
+  it("offers the reachability and triage options from the shared vocabularies", async () => {
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    const reachability = screen.getByLabelText("Reachability assessment");
+    expect(within(reachability).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Select assessment...",
+      "Reachable",
+      "Not Reachable",
+      "Unknown",
+      "Not Applicable",
+    ]);
+
+    const triage = screen.getByLabelText("Triage action");
+    expect(within(triage).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Select action...",
+      "Exploitable",
+      "False positive",
+      "Not affected",
+      "Accepted risk",
+      "Won't fix",
+    ]);
+  });
+
+  it("states the current triage and gate position at the top of the Decide section", async () => {
+    findingFixture = { analysis_state: "accepted_risk" };
+    gateFixture = { blocked_by: ["f1"] };
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    const decide = screen.getByRole("heading", { level: 2, name: "Decide" }).parentElement!;
+    await waitFor(() => expect(decide).toHaveTextContent("Currently: Accepted risk · Blocks gate"));
+  });
+
+  it("says Not triaged and omits the gate position while the gate is unknown", async () => {
+    gateFails = true;
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    const current = screen.getByText(/^Currently:/);
+    expect(current).toHaveTextContent("Currently: Not triaged");
+    expect(current).not.toHaveTextContent("gate");
+  });
+
+  it("mounts the outcome live regions before anything happens", async () => {
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    const triage = screen.getByRole("status", { name: "Triage result" });
+    const reachability = screen.getByRole("status", { name: "Reachability result" });
+    expect(triage).toHaveAttribute("aria-live", "polite");
+    expect(triage).toBeEmptyDOMElement();
+    expect(reachability).toBeEmptyDOMElement();
+    expect(screen.getByRole("alert", { name: "Triage result error" })).toBeEmptyDOMElement();
+    expect(screen.getByRole("alert", { name: "Reachability result error" }))
+      .toBeEmptyDOMElement();
+  });
+
+  it("announces a reachability save inside its own live region", async () => {
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+    const region = screen.getByRole("status", { name: "Reachability result" });
+
+    await user.selectOptions(screen.getByLabelText("Reachability assessment"), "reachable");
+    await user.click(screen.getByRole("button", { name: "Assess" }));
+
+    await waitFor(() => expect(region).toHaveTextContent("Reachability saved"));
+    expect(screen.getByRole("status", { name: "Triage result" })).toBeEmptyDOMElement();
+  });
+
+  it("returns to the list with its filters when the user opened the finding from a filtered page", async () => {
+    renderDetail({ from: "?severity=high&offset=20" });
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    expect(screen.getByRole("link", { name: "← Back to findings" })).toHaveAttribute(
+      "href",
+      "/p1/findings?severity=high&offset=20",
+    );
+  });
+
+  it("returns to the plain list when there is no router state or an unsafe one", async () => {
+    const { unmount } = renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+    expect(screen.getByRole("link", { name: "← Back to findings" })).toHaveAttribute(
+      "href",
+      "/p1/findings",
+    );
+    unmount();
+
+    renderDetail({ from: "http://evil.example/steal" });
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+    expect(screen.getByRole("link", { name: "← Back to findings" })).toHaveAttribute(
+      "href",
+      "/p1/findings",
+    );
+  });
+
+  it("shows event comments in the history without exposing user ids", async () => {
+    eventsFixture = [{
+      id: "e1",
+      finding_id: "f1",
+      user_id: "11111111-2222-3333-4444-555555555555",
+      event_type: "analysis_changed",
+      old_value: "unanalyzed",
+      new_value: "accepted_risk",
+      comment: "Vendor confirmed the code path is unreachable",
+      created_at: "2025-01-03T00:00:00Z",
+    }];
+    renderDetail();
+
+    expect(await screen.findByText(/Vendor confirmed the code path is unreachable/))
+      .toBeInTheDocument();
+    expect(screen.queryByText(/11111111-2222/)).not.toBeInTheDocument();
   });
 });
 
@@ -288,7 +460,7 @@ describe("FindingDetail enum labels", () => {
     renderDetail();
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
-    expect(screen.getByText("Accepted Risk", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByText("Accepted risk", { selector: "p" })).toBeInTheDocument();
     expect(screen.queryByText("accepted_risk", { selector: "p" })).not.toBeInTheDocument();
   });
 
@@ -301,22 +473,12 @@ describe("FindingDetail enum labels", () => {
     expect(screen.getByText("Unknown", { selector: "p" })).toBeInTheDocument();
   });
 
-  it("labels the gate effect instead of rendering the raw enum", async () => {
+  it("no longer shows a Gate Effect field", async () => {
     findingFixture = { gate_effect: "ignore" };
     renderDetail();
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
-    expect(screen.getByText("Ignore", { selector: "p" })).toBeInTheDocument();
-    expect(screen.queryByText("ignore", { selector: "p" })).not.toBeInTheDocument();
-  });
-
-  it("renders a controlled label when gate_effect is unvalidated", async () => {
-    findingFixture = { gate_effect: "defer" };
-    renderDetail();
-
-    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
-    expect(screen.queryByText("defer")).not.toBeInTheDocument();
-    expect(screen.getByText("Unknown", { selector: "p" })).toBeInTheDocument();
+    expect(screen.queryByText("Gate Effect")).not.toBeInTheDocument();
   });
 
   it("labels the technical state instead of rendering the raw enum", async () => {
@@ -334,6 +496,55 @@ describe("FindingDetail enum labels", () => {
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
     expect(screen.queryByText("closed")).not.toBeInTheDocument();
     expect(screen.getByText("Unknown", { selector: "p" })).toBeInTheDocument();
+  });
+});
+
+describe("FindingDetail kind", () => {
+  it("labels the finding kind the same way the list does", async () => {
+    findingFixture = { finding_kind: "image_config" };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.getByText("Image config")).toBeInTheDocument();
+    expect(screen.queryByText("image_config")).not.toBeInTheDocument();
+  });
+});
+
+describe("FindingDetail gate status", () => {
+  it("shows a prominent chip when the finding blocks the gate", async () => {
+    gateFixture = { blocked_by: ["f1"] };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    const chip = screen.getByText("Blocks gate");
+    expect(chip).toHaveClass("bg-sev-critical-bg", "text-sev-critical-fg");
+  });
+
+  it("explains an ignored finding in the gate chip", async () => {
+    findingFixture = { gate_effect: "ignore" };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    const chip = screen.getByText("Does not block gate (ignored by triage)");
+    expect(chip).toHaveClass("border", "text-muted-foreground");
+  });
+
+  it("explains a below-floor finding in the gate chip", async () => {
+    findingFixture = { current_severity: "low" };
+    gateFixture = { blocked_by: [], policy: { severity_floor: "high" } };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.getByText("Does not block gate (below the floor)")).toBeInTheDocument();
+  });
+
+  it("renders no chip while the gate status is unknown", async () => {
+    gateFails = true;
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.queryByText("Blocks gate")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Does not block gate/)).not.toBeInTheDocument();
   });
 });
 
@@ -433,6 +644,48 @@ describe("FindingDetail back link", () => {
   });
 });
 
+describe("FindingDetail load failure", () => {
+  it("shows a heading, the error message, and a back link", async () => {
+    findingFails = true;
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Couldn't load this finding" }))
+      .toBeInTheDocument();
+    expect(screen.getByText("Finding not found")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "← Back to findings" })).toHaveAttribute(
+      "href",
+      "/p1/findings",
+    );
+  });
+
+  it("keeps the list filters in the back link when the user came from a filtered page", async () => {
+    findingFails = true;
+    renderDetail({ from: "?severity=high&offset=20" });
+
+    expect(await screen.findByRole("heading", { name: "Couldn't load this finding" }))
+      .toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "← Back to findings" })).toHaveAttribute(
+      "href",
+      "/p1/findings?severity=high&offset=20",
+    );
+  });
+
+  it("refetches the finding when Retry is pressed", async () => {
+    const user = userEvent.setup();
+    findingFails = true;
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Couldn't load this finding" }))
+      .toBeInTheDocument();
+
+    findingFails = false;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" }))
+      .toBeInTheDocument();
+  });
+});
+
 describe("FindingDetail remediation", () => {
   it("renders the fix summary with its source", async () => {
     findingFixture = {
@@ -467,6 +720,55 @@ describe("FindingDetail remediation", () => {
 
     const link = await screen.findByRole("link", { name: /remediation reference/i });
     expect(link).toHaveAttribute("href", "https://example.com/advisory/1");
+  });
+});
+
+describe("FindingDetail suggested action", () => {
+  it("renders the action, target, confidence, and detail", async () => {
+    findingFixture = {
+      remediation: { summary: "Upgrade the dependency" },
+      suggestion: {
+        action: "upgrade",
+        target: "lodash@4.17.21",
+        confidence: "high",
+        detail: "Fixes CVE-2021-23337",
+      },
+    };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    const suggestion = screen.getByText(/^Suggested:/);
+    expect(suggestion).toHaveTextContent(
+      "Suggested: upgrade lodash@4.17.21 (confidence High) — Fixes CVE-2021-23337",
+    );
+    expect(suggestion).toHaveTextContent("lodash@4.17.21");
+    expect(suggestion).toHaveTextContent("Fixes CVE-2021-23337");
+  });
+
+  it("shows Unknown instead of an unvalidated confidence value", async () => {
+    findingFixture = {
+      remediation: { summary: "Upgrade the dependency" },
+      suggestion: { action: "upgrade", target: "lodash@4.17.21", confidence: "moderate" },
+    };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    const suggestion = screen.getByText(/^Suggested:/);
+    expect(suggestion).toHaveTextContent("(confidence Unknown)");
+    expect(suggestion).not.toHaveTextContent("moderate");
+  });
+
+  it("does not render a dangling separator when the detail is missing", async () => {
+    findingFixture = {
+      remediation: { summary: "Upgrade the dependency" },
+      suggestion: { action: "upgrade", target: "lodash@4.17.21", confidence: "high" },
+    };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    const suggestion = screen.getByText(/^Suggested:/);
+    expect(suggestion).toHaveTextContent("Suggested: upgrade lodash@4.17.21 (confidence High)");
+    expect(suggestion).not.toHaveTextContent("—");
   });
 });
 

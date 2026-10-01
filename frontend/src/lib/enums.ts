@@ -34,14 +34,27 @@ export const REACHABILITY_STATES = [
 ] as const;
 export type ReachabilityState = typeof REACHABILITY_STATES[number];
 
-// The API's fifth severity is `none` ("no severity assigned"), NOT `unknown`.
-// `unknown` belongs to reachability only — see REACHABILITY_STATES below. These are
-// semantically different: a `none`-severity finding is still a finding that must be
-// triaged, whereas `unknown` reachability means the path could not be assessed.
-// Using `unknown` here made every scanner-reported `none` fail validation and render
-// as "Unknown".
-export const SEVERITIES = ["critical", "high", "medium", "low", "none"] as const;
+// The fifth severity is "not rated". The server stores it as `unknown` (rank 0) for
+// every finding a scanner did not rate, including SARIF and Semgrep `none` levels,
+// while openapi.yaml documents the same thing as `none`. `unknown` is the canonical
+// value here so filters and counts match what is stored; `none` is accepted as an
+// alias. Reachability also has an `unknown`, which is a different vocabulary.
+export const SEVERITIES = ["critical", "high", "medium", "low", "unknown"] as const;
 export type Severity = typeof SEVERITIES[number];
+
+// Mirrors the `finding_kinds` lookup table the findings reference (migrations 3, 17
+// and 26). openapi.yaml lists only the first five, but all eight can occur.
+export const FINDING_KINDS = [
+  "sca",
+  "sast",
+  "iac",
+  "secret",
+  "dast",
+  "image_config",
+  "license",
+  "cve_watcher",
+] as const;
+export type FindingKind = typeof FINDING_KINDS[number];
 
 function isOneOf<T extends string>(
   values: readonly T[],
@@ -68,14 +81,41 @@ export const isReachabilityState = (
 export const isSeverity = (value: string | null | undefined): value is Severity =>
   isOneOf(SEVERITIES, value);
 
+export const isFindingKind = (value: string | null | undefined): value is FindingKind =>
+  isOneOf(FINDING_KINDS, value);
+
+/**
+ * Groups an analysis state into its triage bucket. Returns null for values
+ * outside the canonical vocabulary so callers can ignore them; the buckets are
+ * `needs_triage` (unanalyzed or in triage), `exploitable` and `dismissed`.
+ */
+export function triageBucket(
+  state: string,
+): "needs_triage" | "exploitable" | "dismissed" | null {
+  switch (state) {
+    case "unanalyzed":
+    case "in_triage":
+      return "needs_triage";
+    case "exploitable":
+      return "exploitable";
+    case "false_positive":
+    case "not_affected":
+    case "accepted_risk":
+    case "wont_fix":
+      return "dismissed";
+    default:
+      return null;
+  }
+}
+
 const ANALYSIS_LABELS: Record<AnalysisState, string> = {
-  unanalyzed: "Unanalyzed",
-  in_triage: "In Triage",
-  exploitable: "Confirmed",
-  false_positive: "False Positive",
-  not_affected: "Not Affected",
-  accepted_risk: "Accepted Risk",
-  wont_fix: "Won't Fix",
+  unanalyzed: "Not triaged",
+  in_triage: "In triage",
+  exploitable: "Exploitable",
+  false_positive: "False positive",
+  not_affected: "Not affected",
+  accepted_risk: "Accepted risk",
+  wont_fix: "Won't fix",
 };
 
 const TECHNICAL_LABELS: Record<TechnicalState, string> = {
@@ -101,7 +141,18 @@ const SEVERITY_LABELS: Record<Severity, string> = {
   high: "High",
   medium: "Medium",
   low: "Low",
-  none: "None",
+  unknown: "Unrated",
+};
+
+const FINDING_KIND_LABELS: Record<FindingKind, string> = {
+  sca: "SCA",
+  sast: "SAST",
+  iac: "IaC",
+  secret: "Secret",
+  dast: "DAST",
+  image_config: "Image config",
+  license: "License",
+  cve_watcher: "CVE watcher",
 };
 
 /**
@@ -132,8 +183,39 @@ export function reachabilityStateLabel(value: string | null | undefined): string
   return isReachabilityState(value) ? REACHABILITY_LABELS[value] : "Unknown";
 }
 
-/** Human label for a severity; see analysisStateLabel. */
+/**
+ * Lower-cases a severity from the wire and maps the documented alias `none` onto
+ * the stored value `unknown`, so every consumer treats "not rated" the same way.
+ */
+export function normalizeSeverity(value: string | null | undefined): string {
+  const normalized = (value ?? "").trim().toLowerCase();
+  return normalized === "none" ? "unknown" : normalized;
+}
+
+/**
+ * Human label for a severity; see analysisStateLabel. A finding the scanner did
+ * not rate is "Unrated"; "Unknown" is reserved for values outside the vocabulary.
+ */
 export function severityLabel(value: string | null | undefined): string | null {
   if (!value) return null;
-  return isSeverity(value) ? SEVERITY_LABELS[value] : "Unknown";
+  const normalized = normalizeSeverity(value);
+  return isSeverity(normalized) ? SEVERITY_LABELS[normalized] : "Unknown";
+}
+
+/** Human label for a finding kind; see analysisStateLabel. */
+export function findingKindLabel(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return isFindingKind(value) ? FINDING_KIND_LABELS[value] : "Unknown";
+}
+
+/**
+ * Rank of a severity where higher is more severe, derived from the order of
+ * `SEVERITIES` so the two can never drift: `critical` ranks highest and `unknown`
+ * (not rated, rank 0 on the server) lowest. Anything outside the vocabulary
+ * (including null/undefined) ranks -1, below that, so an unrecognised value never
+ * counts as meeting a floor.
+ */
+export function severityRank(value: string | null | undefined): number {
+  const index = SEVERITIES.indexOf(normalizeSeverity(value) as Severity);
+  return index === -1 ? -1 : SEVERITIES.length - 1 - index;
 }

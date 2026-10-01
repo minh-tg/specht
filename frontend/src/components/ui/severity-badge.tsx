@@ -1,4 +1,4 @@
-import { isSeverity, type Severity, severityLabel } from "@/lib/enums";
+import { isSeverity, normalizeSeverity, type Severity, severityLabel } from "@/lib/enums";
 import { cn } from "@/lib/utils";
 
 /**
@@ -12,9 +12,9 @@ import { cn } from "@/lib/utils";
  * - **`-fg` pairs only with its own `-bg`.** Each variant uses matched tokens rather
  *   than mixing a tinted foreground with a neutral fill — that mistake measured
  *   4.32:1 in a generated screen.
- * - **`none` has no tint.** It is the *absence* of severity, so it renders as an
- *   outline chip. A filled `none` chip measured ΔE 2.2 from `--border` and read as a
- *   disabled control.
+ * - **"Unrated" has no tint.** It is the *absence* of severity (stored as `unknown`),
+ *   so it renders as an outline chip. A filled one measured ΔE 2.2 from `--border` and
+ *   read as a disabled control.
  * - Tints are solid tokens, never an alpha such as `bg-critical/10`.
  */
 const SEVERITY_VARIANTS: Record<Severity, string> = {
@@ -22,16 +22,16 @@ const SEVERITY_VARIANTS: Record<Severity, string> = {
   high: "bg-sev-high-bg text-sev-high-fg",
   medium: "bg-sev-medium-bg text-sev-medium-fg",
   low: "bg-sev-low-bg text-sev-low-fg",
-  none: "border border-border text-sev-none-fg",
+  unknown: "border border-border text-sev-none-fg",
 };
 
 export function SeverityBadge({ severity }: { readonly severity: string; }) {
   // The wire is untrusted: match case-insensitively, and never render an
   // out-of-vocabulary value verbatim. An unrecognised value gets the quietest
-  // treatment (`none`) so it cannot masquerade as a real severity.
-  const normalized = severity.trim().toLowerCase();
+  // treatment (the unrated one) so it cannot masquerade as a real severity.
+  const normalized = normalizeSeverity(severity);
   const known = isSeverity(normalized);
-  const variant = SEVERITY_VARIANTS[(known ? normalized : "none") as Severity];
+  const variant = SEVERITY_VARIANTS[(known ? normalized : "unknown") as Severity];
   const label = severityLabel(normalized) ?? "Unknown";
 
   return (

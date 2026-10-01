@@ -1,69 +1,21 @@
 import { AuthProvider } from "@/auth/AuthContext";
 import { ProtectedRoute } from "@/auth/ProtectedRoute";
+import { SessionCacheGuard } from "@/auth/SessionCacheGuard";
+import { AppShell } from "@/components/AppShell";
 import { Navbar } from "@/components/Navbar";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { ApiKeys } from "@/pages/ApiKeys";
 import { FindingDetail } from "@/pages/FindingDetail";
-import { FindingsDashboard } from "@/pages/FindingsDashboard";
-import { Ingest } from "@/pages/Ingest";
 import { Login } from "@/pages/Login";
+import { NewProject } from "@/pages/NewProject";
+import { NotFound } from "@/pages/NotFound";
+import { ProjectLayout } from "@/pages/ProjectLayout";
 import { ProjectList } from "@/pages/ProjectList";
+import { ProjectSetup } from "@/pages/ProjectSetup";
 import { Register } from "@/pages/Register";
-import { ReportHistory } from "@/pages/ReportHistory";
+import { UploadReport } from "@/pages/UploadReport";
 import { type ReactNode } from "react";
-import {
-  BrowserRouter,
-  Link,
-  Navigate,
-  Route,
-  Routes,
-  useLocation,
-  useParams,
-} from "react-router-dom";
-
-function ProjectLayout() {
-  const { slug } = useParams<{ slug: string; }>();
-  const location = useLocation();
-  const path = location.pathname;
-  const currentTab = path.endsWith("/reports") ? "reports" : "findings";
-  useDocumentTitle(currentTab === "reports" ? `${slug} · Reports` : `${slug} · Findings`);
-
-  return (
-    <div className="mx-auto max-w-5xl px-4 py-8">
-      <Link
-        to="/"
-        className="text-muted-foreground hover:text-foreground mb-6 inline-block text-sm"
-      >
-        &larr; Projects
-      </Link>
-      <nav aria-label="Project sections" className="mb-6 flex gap-4 border-b">
-        <Link
-          to={`/${slug}/findings`}
-          aria-current={currentTab === "findings" ? "page" : undefined}
-          className={`pb-2 text-sm font-medium ${
-            currentTab === "findings"
-              ? "border-primary text-foreground border-b-2"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Findings
-        </Link>
-        <Link
-          to={`/${slug}/reports`}
-          aria-current={currentTab === "reports" ? "page" : undefined}
-          className={`pb-2 text-sm font-medium ${
-            currentTab === "reports"
-              ? "border-primary text-foreground border-b-2"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Reports
-        </Link>
-      </nav>
-      {currentTab === "findings" ? <FindingsDashboard /> : <ReportHistory />}
-    </div>
-  );
-}
+import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
 
 function HomePage() {
   useDocumentTitle("Projects");
@@ -79,6 +31,12 @@ function HomePage() {
 function Titled({ title, children }: { title: string; children: ReactNode; }) {
   useDocumentTitle(title);
   return children;
+}
+
+/** A bare project URL opens the project's findings, its default view. */
+function ProjectIndexRedirect() {
+  const { slug } = useParams<{ slug: string; }>();
+  return <Navigate to={`/${slug}/findings`} replace />;
 }
 
 export function AppRoutes() {
@@ -109,6 +67,16 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/projects/new"
+        element={
+          <ProtectedRoute>
+            <Titled title="New project">
+              <NewProject />
+            </Titled>
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/:slug/findings"
         element={
           <ProtectedRoute>
@@ -135,15 +103,26 @@ export function AppRoutes() {
         }
       />
       <Route
-        path="/ingest"
+        path="/:slug/setup"
         element={
           <ProtectedRoute>
-            <Titled title="Ingest report">
-              <Ingest />
+            <Titled title="CI setup">
+              <ProjectSetup />
             </Titled>
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/:slug/reports/upload"
+        element={
+          <ProtectedRoute>
+            <Titled title="Upload report">
+              <UploadReport />
+            </Titled>
+          </ProtectedRoute>
+        }
+      />
+      <Route path="/ingest" element={<Navigate to="/" replace />} />
       <Route
         path="/api-keys"
         element={
@@ -154,7 +133,22 @@ export function AppRoutes() {
           </ProtectedRoute>
         }
       />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route
+        path="/:slug"
+        element={
+          <ProtectedRoute>
+            <ProjectIndexRedirect />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="*"
+        element={
+          <Titled title="Not found">
+            <NotFound />
+          </Titled>
+        }
+      />
     </Routes>
   );
 }
@@ -162,8 +156,10 @@ export function AppRoutes() {
 function AppLayout() {
   return (
     <AuthProvider>
-      <Navbar />
-      <AppRoutes />
+      <SessionCacheGuard />
+      <AppShell header={<Navbar />}>
+        <AppRoutes />
+      </AppShell>
     </AuthProvider>
   );
 }

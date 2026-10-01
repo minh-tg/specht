@@ -2,19 +2,25 @@ import { describe, expect, it } from "vitest";
 import {
   ANALYSIS_STATES,
   analysisStateLabel,
+  FINDING_KINDS,
+  findingKindLabel,
   GATE_EFFECTS,
   gateEffectLabel,
   isAnalysisState,
+  isFindingKind,
   isGateEffect,
   isReachabilityState,
   isSeverity,
   isTechnicalState,
+  normalizeSeverity,
   REACHABILITY_STATES,
   reachabilityStateLabel,
   SEVERITIES,
   severityLabel,
+  severityRank,
   TECHNICAL_STATES,
   technicalStateLabel,
+  triageBucket,
 } from "./enums";
 
 describe("enum vocabularies", () => {
@@ -47,12 +53,25 @@ describe("enum vocabularies", () => {
     ]);
   });
 
-  it("mirrors the backend severity scale", () => {
-    // `none`, not `unknown`: the API's fifth severity is the absence of a
-    // severity, and `unknown` is reserved for reachability.
-    expect(SEVERITIES).toEqual(["critical", "high", "medium", "low", "none"]);
+  it("mirrors the severities the server stores", () => {
+    // The server stores `unknown` for a finding the scanner did not rate;
+    // openapi.yaml calls it `none`, which the UI accepts as an alias.
+    expect(SEVERITIES).toEqual(["critical", "high", "medium", "low", "unknown"]);
+    expect(SEVERITIES).not.toContain("none");
     expect(REACHABILITY_STATES).toContain("unknown");
-    expect(SEVERITIES).not.toContain("unknown");
+  });
+
+  it("mirrors the backend finding_kind enum", () => {
+    expect(FINDING_KINDS).toEqual([
+      "sca",
+      "sast",
+      "iac",
+      "secret",
+      "dast",
+      "image_config",
+      "license",
+      "cve_watcher",
+    ]);
   });
 });
 
@@ -74,18 +93,21 @@ describe("enum guards", () => {
     expect(isSeverity("critical")).toBe(true);
     expect(isSeverity("CRITICAL")).toBe(false);
     expect(isSeverity("info")).toBe(false);
+
+    expect(isFindingKind("dast")).toBe(true);
+    expect(isFindingKind("container")).toBe(false);
   });
 });
 
 describe("analysisStateLabel", () => {
   it("labels every canonical analysis state", () => {
-    expect(analysisStateLabel("unanalyzed")).toBe("Unanalyzed");
-    expect(analysisStateLabel("in_triage")).toBe("In Triage");
-    expect(analysisStateLabel("exploitable")).toBe("Confirmed");
-    expect(analysisStateLabel("false_positive")).toBe("False Positive");
-    expect(analysisStateLabel("not_affected")).toBe("Not Affected");
-    expect(analysisStateLabel("accepted_risk")).toBe("Accepted Risk");
-    expect(analysisStateLabel("wont_fix")).toBe("Won't Fix");
+    expect(analysisStateLabel("unanalyzed")).toBe("Not triaged");
+    expect(analysisStateLabel("in_triage")).toBe("In triage");
+    expect(analysisStateLabel("exploitable")).toBe("Exploitable");
+    expect(analysisStateLabel("false_positive")).toBe("False positive");
+    expect(analysisStateLabel("not_affected")).toBe("Not affected");
+    expect(analysisStateLabel("accepted_risk")).toBe("Accepted risk");
+    expect(analysisStateLabel("wont_fix")).toBe("Won't fix");
   });
 
   it("returns null when no analysis has been recorded", () => {
@@ -142,20 +164,106 @@ describe("reachabilityStateLabel", () => {
   });
 });
 
+describe("triageBucket", () => {
+  it("groups unanalyzed and in-triage into needs_triage", () => {
+    expect(triageBucket("unanalyzed")).toBe("needs_triage");
+    expect(triageBucket("in_triage")).toBe("needs_triage");
+  });
+
+  it("groups exploitable on its own", () => {
+    expect(triageBucket("exploitable")).toBe("exploitable");
+  });
+
+  it("groups every settled non-exploitable state as dismissed", () => {
+    expect(triageBucket("false_positive")).toBe("dismissed");
+    expect(triageBucket("not_affected")).toBe("dismissed");
+    expect(triageBucket("accepted_risk")).toBe("dismissed");
+    expect(triageBucket("wont_fix")).toBe("dismissed");
+  });
+
+  it("returns null for out-of-vocabulary states", () => {
+    expect(triageBucket("")).toBeNull();
+    expect(triageBucket("pending_review")).toBeNull();
+    expect(triageBucket("UNANALYZED")).toBeNull();
+  });
+});
+
 describe("severityLabel", () => {
   it("labels every canonical severity", () => {
     expect(severityLabel("critical")).toBe("Critical");
     expect(severityLabel("high")).toBe("High");
     expect(severityLabel("medium")).toBe("Medium");
     expect(severityLabel("low")).toBe("Low");
-    expect(severityLabel("none")).toBe("None");
-    // `unknown` is a reachability value, so it is out of vocabulary for severity
-    // and must fall back rather than be treated as the fifth severity.
-    expect(severityLabel("unknown")).toBe("Unknown");
+    expect(severityLabel("unknown")).toBe("Unrated");
+    // The documented alias reads the same as the stored value.
+    expect(severityLabel("none")).toBe("Unrated");
+    expect(severityLabel("NONE")).toBe("Unrated");
   });
 
   it("falls back for missing or unvalidated input", () => {
     expect(severityLabel(null)).toBeNull();
     expect(severityLabel("severe")).toBe("Unknown");
+  });
+});
+
+describe("findingKindLabel", () => {
+  it("labels every canonical finding kind", () => {
+    expect(findingKindLabel("sca")).toBe("SCA");
+    expect(findingKindLabel("sast")).toBe("SAST");
+    expect(findingKindLabel("iac")).toBe("IaC");
+    expect(findingKindLabel("secret")).toBe("Secret");
+    expect(findingKindLabel("dast")).toBe("DAST");
+    // Kinds the API document does not list but the findings table allows.
+    expect(findingKindLabel("image_config")).toBe("Image config");
+    expect(findingKindLabel("license")).toBe("License");
+    expect(findingKindLabel("cve_watcher")).toBe("CVE watcher");
+  });
+
+  it("falls back for missing or unvalidated input", () => {
+    expect(findingKindLabel(null)).toBeNull();
+    expect(findingKindLabel("")).toBeNull();
+    expect(findingKindLabel("container")).toBe("Unknown");
+  });
+});
+
+describe("normalizeSeverity", () => {
+  it("maps the documented none alias onto the stored unknown value", () => {
+    expect(normalizeSeverity("none")).toBe("unknown");
+    expect(normalizeSeverity("  NONE ")).toBe("unknown");
+  });
+
+  it("lower-cases and trims everything else without judging it", () => {
+    expect(normalizeSeverity(" High ")).toBe("high");
+    expect(normalizeSeverity("explosive")).toBe("explosive");
+    expect(normalizeSeverity(null)).toBe("");
+    expect(normalizeSeverity(undefined)).toBe("");
+  });
+});
+
+describe("severityRank", () => {
+  it("ranks every canonical severity, most severe first", () => {
+    expect(severityRank("critical")).toBe(4);
+    expect(severityRank("high")).toBe(3);
+    expect(severityRank("medium")).toBe(2);
+    expect(severityRank("low")).toBe(1);
+    expect(severityRank("unknown")).toBe(0);
+  });
+
+  it("ranks the documented none alias with the stored unknown value", () => {
+    expect(severityRank("none")).toBe(0);
+    expect(severityRank(" None ")).toBe(0);
+  });
+
+  it("ranks values outside the vocabulary below unrated so they never meet a floor", () => {
+    expect(severityRank("severe")).toBe(-1);
+    expect(severityRank(null)).toBe(-1);
+    expect(severityRank(undefined)).toBe(-1);
+  });
+
+  it("decreases strictly along the canonical order", () => {
+    const ranks = SEVERITIES.map(severityRank);
+    for (let i = 1; i < ranks.length; i++) {
+      expect(ranks[i]).toBeLessThan(ranks[i - 1]);
+    }
   });
 });

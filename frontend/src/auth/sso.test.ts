@@ -1,5 +1,11 @@
-import { describe, expect, it } from "vitest";
-import { SSO_SESSION_KEY, ssoTokenFromHash } from "./sso";
+import { beforeEach, describe, expect, it } from "vitest";
+import {
+  clearSsoAttempt,
+  hasPendingSsoAttempt,
+  markSsoAttempt,
+  SSO_SESSION_KEY,
+  ssoTokenFromHash,
+} from "./sso";
 
 function tokenWithPayload(payload: unknown): string {
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
@@ -44,4 +50,40 @@ describe("ssoTokenFromHash", () => {
       expect(ssoTokenFromHash(`#${SSO_SESSION_KEY}=${encodeURIComponent(token)}`)).toBeNull();
     },
   );
+});
+
+describe("SSO attempt marker", () => {
+  const MINUTE = 60 * 1000;
+
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it("is absent until a login is started", () => {
+    expect(hasPendingSsoAttempt()).toBe(false);
+  });
+
+  it("is pending right after a login is started", () => {
+    markSsoAttempt(1_000_000);
+    expect(hasPendingSsoAttempt(1_000_000 + MINUTE)).toBe(true);
+  });
+
+  it("expires after ten minutes, like the server's state cookie", () => {
+    markSsoAttempt(1_000_000);
+    expect(hasPendingSsoAttempt(1_000_000 + 10 * MINUTE)).toBe(true);
+    expect(hasPendingSsoAttempt(1_000_000 + 10 * MINUTE + 1)).toBe(false);
+  });
+
+  it("is not pending when its timestamp lies in the future or is not a number", () => {
+    markSsoAttempt(2_000_000);
+    expect(hasPendingSsoAttempt(1_000_000)).toBe(false);
+    localStorage.setItem("specht.sso_attempt", "yesterday");
+    expect(hasPendingSsoAttempt()).toBe(false);
+  });
+
+  it("is forgotten once cleared", () => {
+    markSsoAttempt();
+    clearSsoAttempt();
+    expect(hasPendingSsoAttempt()).toBe(false);
+  });
 });

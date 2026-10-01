@@ -1,18 +1,33 @@
 import { useReports } from "@/api/hooks";
-import { useParams } from "react-router-dom";
+import { formatDateTime, pluralize } from "@/lib/format";
+import { cn } from "@/lib/utils";
+import { isReportInProgress } from "@/lib/verdict";
+import type { ReportStatus } from "@/types/api";
+import { Link, useParams } from "react-router-dom";
 
-const statusStyles: Record<string, string> = {
-  completed: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
-  processing: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
-  failed: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
+const STATUS_LABELS: Record<ReportStatus, string> = {
+  processing: "Processing",
+  pending: "Processing",
+  completed: "Completed",
+  failed: "Failed",
 };
 
-const toolColors: Record<string, string> = {
-  trivy: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400",
-  "osv-scanner": "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400",
-  semgrep: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400",
-  checkov: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400",
+const STATUS_STYLES: Record<ReportStatus, string> = {
+  processing: "bg-muted text-muted-foreground",
+  pending: "bg-muted text-muted-foreground",
+  completed: "bg-sev-success-bg text-sev-success-fg",
+  failed: "bg-destructive/10 text-destructive",
 };
+
+function isReportStatus(status: string): status is ReportStatus {
+  return Object.hasOwn(STATUS_LABELS, status);
+}
+
+function statusMeta(status: string): { label: string; style: string; } {
+  return isReportStatus(status)
+    ? { label: STATUS_LABELS[status], style: STATUS_STYLES[status] }
+    : { label: status, style: "bg-muted text-muted-foreground" };
+}
 
 export function ReportHistory() {
   const { slug } = useParams<{ slug: string; }>();
@@ -45,45 +60,69 @@ export function ReportHistory() {
   if (!reports?.length) {
     return (
       <div className="flex flex-col items-center gap-2 py-16">
-        <p className="text-muted-foreground text-sm">No reports yet</p>
+        <p className="text-muted-foreground text-sm">No reports yet.</p>
+        <Link
+          to={`/${slug}/reports/upload`}
+          className="text-primary text-sm underline hover:no-underline"
+        >
+          Upload a report
+        </Link>
       </div>
     );
   }
 
   return (
     <div className="space-y-3">
-      {reports.map((r) => (
-        <div key={r.id} className="bg-card rounded-lg border p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span
-                className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${
-                  toolColors[r.tool_name] ?? "bg-muted text-muted-foreground"
-                }`}
-              >
-                {r.tool_name}
-              </span>
-              <div>
+      <div className="flex justify-end">
+        <Link
+          to={`/${slug}/reports/upload`}
+          className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium"
+        >
+          Upload report
+        </Link>
+      </div>
+
+      {reports.map((r) => {
+        const status = statusMeta(r.status);
+        const revision = [r.branch, r.commit_sha?.slice(0, 7)].filter(Boolean).join(" · ");
+
+        return (
+          <div
+            key={r.id}
+            className={cn(
+              "bg-card rounded-lg border p-4",
+              r.status === "failed" && "border-destructive",
+            )}
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="bg-muted text-muted-foreground inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium">
+                  {r.tool_name}
+                </span>
                 {r.scan_target && <p className="text-muted-foreground text-xs">{r.scan_target}</p>}
               </div>
+              <span
+                className={cn(
+                  "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
+                  status.style,
+                )}
+              >
+                {isReportInProgress(r.status) && (
+                  <span className="mr-1 h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                )}
+                {status.label}
+              </span>
             </div>
-            <span
-              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                statusStyles[r.status] ?? ""
-              }`}
-            >
-              {r.status === "processing" && (
-                <span className="mr-1 h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+            {revision && <p className="text-muted-foreground mt-1 font-mono text-xs">{revision}</p>}
+            <div className="text-muted-foreground mt-2 text-xs">
+              {formatDateTime(r.created_at)}
+              {r.total_findings != null && (
+                <span className="ml-3">{pluralize(r.total_findings, "finding")}</span>
               )}
-              {r.status}
-            </span>
+            </div>
           </div>
-          <div className="text-muted-foreground mt-2 text-xs">
-            {new Date(r.created_at).toLocaleString()}
-            {r.total_findings != null && <span className="ml-3">{r.total_findings} findings</span>}
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

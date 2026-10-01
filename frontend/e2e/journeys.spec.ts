@@ -120,7 +120,7 @@ test("finding detail triage applies states and enforces reasons", async ({ page,
   await page.goto(`/${slug}/findings`);
   await expect(
     page.locator("tbody tr").filter({ hasText: HIGH_TITLE }),
-  ).toContainText("Confirmed");
+  ).toContainText("Exploitable");
 });
 
 test("report history lists both ingested reports", async ({ page, request }) => {
@@ -132,7 +132,7 @@ test("report history lists both ingested reports", async ({ page, request }) => 
   await uiLogin(page);
 
   await page.goto(`/${slug}/reports`);
-  await expect(page.getByText("completed", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("Completed", { exact: true })).toHaveCount(2);
   await expect(page.getByText("No reports yet")).toHaveCount(0);
 });
 
@@ -142,14 +142,18 @@ test("manual ingest uploads a scan file", async ({ page, request }) => {
   await seedProject(request, token, slug);
   await uiLogin(page);
 
-  await page.goto("/ingest");
-  await page.getByLabel("Project").selectOption(slug);
+  await page.goto(`/${slug}/reports/upload`);
   await page.getByLabel("Scanner").selectOption("sarif");
   await page.setInputFiles("#ingest-file", FIXTURE_HIGH);
   await expect(page.getByText("high.sarif.json loaded")).toBeVisible();
 
   await page.getByRole("button", { name: "Upload" }).click();
-  await expect(page.getByText(/Report submitted\. ID:/)).toBeVisible();
+  // Other status regions exist on the page (the route announcer), so pick the card by its content.
+  const resultCard = page.getByRole("status").filter({
+    has: page.getByRole("link", { name: "View findings" }),
+  });
+  await expect(resultCard).toContainText(/finding/);
+  await expect(page.getByRole("link", { name: "View findings" })).toBeVisible();
 
   // The upload really landed: the finding is listed.
   await page.goto(`/${slug}/findings`);
@@ -193,14 +197,24 @@ test("logout and session expiry both return to sign in", async ({ page }) => {
   await expect(page).toHaveURL(/\/login/);
 });
 
-test("sso hash token installs a session and junk is rejected", async ({ page, request }) => {
+test("sso hash token installs a session only for a login started here, and junk is rejected", async ({ page, request }) => {
   const token = await apiToken(request);
 
-  // A well-formed token in the fragment installs the session…
+  // A well-formed token in the fragment installs the session when this browser
+  // started an SSO login (pressing "Sign in with SSO" leaves this marker)…
+  await page.goto("/login");
+  await page.evaluate("localStorage.setItem('specht.sso_attempt', String(Date.now()))");
   await page.goto(`/#sso_token=${encodeURIComponent(token)}`);
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+
+  // …but the same token in a link nobody here asked for is ignored, so a crafted
+  // link cannot sign the visitor into someone else's account.
+  await page.evaluate("sessionStorage.removeItem('specht.session')");
+  await page.goto("/login");
+  await page.goto(`/#sso_token=${encodeURIComponent(token)}`);
+  await expect(page).toHaveURL(/\/login/);
 
   // …and an unusable fragment never installs one. A hash-only goto is a
   // same-document navigation (the in-memory session would survive), so
@@ -211,4 +225,176 @@ test("sso hash token installs a session and junk is rejected", async ({ page, re
   await expect(page).toHaveURL(/\/login/);
   await page.goto("/#sso_token=not-a-jwt");
   await expect(page).toHaveURL(/\/login/);
+});
+
+test("an admin creates a project and follows the guided CI setup", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("guided-setup");
+  await uiLogin(page);
+
+  await page.goto("/");
+  await page.getByRole("link", { name: "New project" }).click();
+  await expect(page).toHaveURL(/\/projects\/new$/);
+  await page.getByLabel("Name").fill(slug);
+  await expect(page.getByLabel("Slug")).toHaveValue(slug);
+  await page.getByRole("button", { name: "Create project" }).click();
+
+  await expect(page).toHaveURL(new RegExp(`/${slug}/setup$`));
+  await expect(page.getByRole("heading", { name: `Set up CI for ${slug}` })).toBeVisible();
+
+  // The key is shown once; the pipeline snippets only reference the secret.
+  await page.getByRole("button", { name: "Create key" }).click();
+  await expect(page.locator("code").filter({ hasText: /^vuln_/ })).toBeVisible();
+  await expect(page.getByText("Copy it now. It will not be shown again.")).toBeVisible();
+
+  const githubSnippet = page.locator("pre").first();
+  await expect(githubSnippet).toContainText("go run github.com/minh-tg/specht/cmd/adapter@");
+  await expect(githubSnippet).not.toContainText("./cmd/adapter");
+  await expect(githubSnippet).toContainText(`SPECHT_PROJECT: "${slug}"`);
+
+  // The page notices the first report arriving without a reload.
+  await expect(page.getByText("Waiting for the first report...")).toBeVisible();
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
+  await expect(page.getByText(/First report received: 1 finding\./)).toBeVisible({
+    timeout: 15_000,
+  });
+});
+
+test("the project header gives an honest verdict and links severity counts to the list", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const blocked = uniq("verdict-blocked");
+  const passing = uniq("verdict-passing");
+  const empty = uniq("verdict-empty");
+  for (const slug of [blocked, passing, empty]) await seedProject(request, token, slug);
+  await ingestFixture(request, token, blocked, FIXTURE_HIGH);
+  await ingestFixture(request, token, passing, FIXTURE_MEDIUM);
+  await uiLogin(page);
+
+  await page.goto(`/${blocked}/findings`);
+  await expect(page.getByRole("heading", { level: 1, name: blocked })).toBeVisible();
+  await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 finding blocks this project")).toBeVisible();
+  await expect(page.getByText(/Floor: /)).toBeVisible();
+  await page.getByRole("link", { name: "1 high finding" }).click();
+  await expect(page).toHaveURL(/severity=high/);
+  await expect(page.getByLabel("Filter by severity")).toHaveValue("high");
+
+  await page.goto(`/${passing}/findings`);
+  await expect(page.getByText("PASSING", { exact: true })).toBeVisible();
+  await expect(page.getByText("Nothing blocks this project")).toBeVisible();
+
+  // A project that was never scanned must not read as passing.
+  await page.goto(`/${empty}/findings`);
+  await expect(page.getByText("NO SCANS", { exact: true })).toBeVisible();
+  await expect(page.getByText("PASSING", { exact: true })).toHaveCount(0);
+});
+
+test("unknown URLs show a not-found page and a bare project URL opens its findings", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("bare-url");
+  await seedProject(request, token, slug);
+  await uiLogin(page);
+
+  await page.goto("/definitely/not/a/page");
+  await expect(page.getByRole("heading", { name: "Page not found" })).toBeVisible();
+  await page.getByRole("link", { name: "Back to projects" }).click();
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+
+  await page.goto(`/${slug}`);
+  await expect(page).toHaveURL(new RegExp(`/${slug}/findings$`));
+});
+
+test("the theme choice persists across reloads", async ({ page }) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.goto("/login");
+  const html = page.locator("html");
+  await expect(html).not.toHaveClass(/dark/);
+
+  await page.getByRole("button", { name: /^Theme: system/ }).click();
+  await page.getByRole("button", { name: /^Theme: light/ }).click();
+  await expect(html).toHaveClass(/dark/);
+
+  await page.reload();
+  await expect(html).toHaveClass(/dark/);
+  await expect(page.getByRole("button", { name: "Theme: dark (click to change)" })).toBeVisible();
+
+  await page.getByRole("button", { name: /^Theme: dark/ }).click();
+  await expect(html).not.toHaveClass(/dark/);
+});
+
+test("back to findings returns to the filtered list the finding was opened from", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("back-filter");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
+  await ingestFixture(request, token, slug, FIXTURE_MEDIUM);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings?severity=high`);
+  await page.getByRole("link", { name: HIGH_TITLE }).click();
+  await expect(page).toHaveURL(new RegExp(`/${slug}/findings/`));
+
+  await page.getByRole("link", { name: "← Back to findings" }).click();
+  await expect(page).toHaveURL(new RegExp(`/${slug}/findings\\?severity=high$`));
+  await expect(page.getByLabel("Filter by severity")).toHaveValue("high");
+});
+
+test("keyboard users can skip the navigation", async ({ page }) => {
+  await page.goto("/login");
+  await page.keyboard.press("Tab");
+
+  const skip = page.getByRole("link", { name: "Skip to main content" });
+  await expect(skip).toBeFocused();
+  await expect(skip).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("main#main-content")).toBeFocused();
+});
+
+test("triaging the only blocker flips the project verdict to passing", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("verdict-flip");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings`);
+  await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: HIGH_TITLE }).click();
+  await expect(page.locator("span", { hasText: /^Blocks gate$/ })).toBeVisible();
+
+  await page.locator("select:has(option[value=\"false_positive\"])").selectOption("false_positive");
+  await page.getByPlaceholder("Reason").fill("e2e: test credential, not a real secret");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(page.getByText(/Triage saved \(effect:/)).toBeVisible();
+
+  await page.getByRole("link", { name: "← Back to findings" }).click();
+  await expect(page.getByText("PASSING", { exact: true })).toBeVisible();
+  await expect(page.getByText("Nothing blocks this project")).toBeVisible();
+});
+
+test("marking the only blocker not reachable flips the project verdict to passing", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("reachability-flip");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings`);
+  await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
+  await page.getByRole("link", { name: HIGH_TITLE }).click();
+
+  const assess = page.getByRole("button", { name: "Assess" });
+  await expect(assess).toBeDisabled();
+  await page.getByLabel("Reachability assessment").selectOption("not_reachable");
+  await page.getByLabel("Evidence").fill("e2e: the vulnerable code path is never called");
+  await expect(assess).toBeEnabled();
+  await assess.click();
+
+  // The assessment is saved, shown as the latest one, and the gate follows.
+  await expect(page.getByText("Reachability saved")).toBeVisible();
+  await expect(page.getByText(/Latest:\s*Not Reachable/)).toBeVisible();
+
+  await page.getByRole("link", { name: "← Back to findings" }).click();
+  await expect(page.getByText("PASSING", { exact: true })).toBeVisible();
+  await expect(page.getByText("Nothing blocks this project")).toBeVisible();
 });

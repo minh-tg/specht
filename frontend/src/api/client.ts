@@ -73,10 +73,6 @@ export function setAuthToken(token: string | null) {
   authToken = token;
 }
 
-export function getAuthToken(): string | null {
-  return authToken;
-}
-
 export function setUnauthorizedHandler(cb: (() => void) | null) {
   onUnauthorized = cb;
 }
@@ -84,8 +80,6 @@ export function setUnauthorizedHandler(cb: (() => void) | null) {
 export function setRefreshFailedHandler(cb: (() => void) | null) {
   onRefreshFailed = cb;
 }
-
-export { setUnauthorizedHandler as setOnUnauthorized };
 
 interface ApiFetchOptions extends RequestInit {
   skipAuthRedirect?: boolean;

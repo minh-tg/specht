@@ -8,7 +8,12 @@ import {
   setStoredSession,
   setUnauthorizedHandler,
 } from "@/api/client";
-import { SSO_SESSION_KEY, ssoTokenFromHash } from "@/auth/sso";
+import {
+  clearSsoAttempt,
+  hasPendingSsoAttempt,
+  SSO_SESSION_KEY,
+  ssoTokenFromHash,
+} from "@/auth/sso";
 import type { LoginResponse } from "@/types/api";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { AuthContext, type AuthState } from "./context";
@@ -19,7 +24,9 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
   // a null session. The SSO callback fragment takes precedence, and a
   // token there is installed immediately for the same reason.
   const [state, setState] = useState<AuthState>(() => {
-    const sso = ssoTokenFromHash(window.location.hash);
+    // Peek, don't consume: React may run this initializer twice. The marker is
+    // cleared by the mount effect below.
+    const sso = hasPendingSsoAttempt() ? ssoTokenFromHash(window.location.hash) : null;
     if (sso) {
       setAuthToken(sso.token);
       setStoredSession(sso.token, null, {
@@ -48,9 +55,12 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    // Drop the consumed fragment so the token cannot be replayed by a
-    // refresh or shared in a copied link. Fragments without an sso_token
-    // parameter (e.g. in-page anchors) are left untouched.
+    // Each SSO attempt is single-use, whatever the fragment held.
+    clearSsoAttempt();
+    // Drop the fragment so the token cannot be replayed by a refresh or shared
+    // in a copied link, including one that was refused above because no login
+    // was started here. Fragments without an sso_token parameter (e.g. in-page
+    // anchors) are left untouched.
     const hash = window.location.hash;
     if (hash && new URLSearchParams(hash.slice(1)).has(SSO_SESSION_KEY)) {
       const clean = window.location.pathname + window.location.search;

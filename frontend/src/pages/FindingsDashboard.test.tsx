@@ -1,13 +1,17 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { formatDate } from "@/lib/format";
+import { createTestQueryClient, jsonResponse } from "@/test/utils";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FindingsDashboard } from "./FindingsDashboard";
 
 let findingsFixture: Array<Record<string, unknown>>;
+let gateFixture: Record<string, unknown>;
 
 beforeEach(() => {
+  gateFixture = { blocked_by: [] };
   findingsFixture = [{
     id: "f1",
     project_id: "p1",
@@ -27,14 +31,16 @@ beforeEach(() => {
     created_at: "2025-01-01T00:00:00Z",
     updated_at: "2025-01-01T00:00:00Z",
   }];
-  globalThis.fetch = vi.fn().mockResolvedValue({
-    ok: true,
-    json: () => Promise.resolve(findingsFixture),
-  } as Response);
+  globalThis.fetch = vi.fn().mockImplementation(async (input) => {
+    if (String(input).endsWith("/gate")) {
+      return jsonResponse(gateFixture);
+    }
+    return jsonResponse(findingsFixture);
+  });
 });
 
 function renderWithProviders(ui: React.ReactElement, initialPath = "/test-project/findings") {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const qc = createTestQueryClient();
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={[initialPath]}>
@@ -49,15 +55,15 @@ function renderWithProviders(ui: React.ReactElement, initialPath = "/test-projec
 describe("FindingsDashboard", () => {
   it("shows loading state initially", () => {
     renderWithProviders(<FindingsDashboard />);
-    const skeletons = document.querySelectorAll(".animate-pulse");
-    expect(skeletons.length).toBeGreaterThan(0);
+    const status = screen.getByRole("status", { name: "Loading findings" });
+    expect(status).toHaveAttribute("aria-busy", "true");
   });
 
   it("renders findings after loading", async () => {
     renderWithProviders(<FindingsDashboard />);
     const title = await screen.findByText("Test Vuln");
     expect(title).toBeInTheDocument();
-    expect(screen.getByText("sca")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText("SCA")).toBeInTheDocument();
   });
 
   it("labels analysis_state instead of rendering the raw enum", async () => {
@@ -65,8 +71,15 @@ describe("FindingsDashboard", () => {
     renderWithProviders(<FindingsDashboard />);
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
-    expect(screen.getByText("Accepted Risk")).toBeInTheDocument();
+    expect(screen.getByText("Accepted risk")).toBeInTheDocument();
     expect(screen.queryByText("accepted_risk")).not.toBeInTheDocument();
+  });
+
+  it("shows Not triaged for a finding with no analysis", async () => {
+    renderWithProviders(<FindingsDashboard />);
+
+    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
+    expect(screen.getByText("Not triaged")).toBeInTheDocument();
   });
 
   it("renders a controlled chip when analysis_state is unvalidated", async () => {
@@ -134,6 +147,47 @@ describe("FindingsDashboard", () => {
     expect(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0]).toContain("offset=0");
   });
 
+  it("offers Unrated as a severity filter and requests severity=unknown", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      if (String(input).endsWith("/gate")) return jsonResponse(gateFixture);
+      const url = new URL(String(input), "http://localhost");
+      return jsonResponse(url.searchParams.get("severity") === "unknown" ? [] : findingsFixture);
+    });
+    renderWithProviders(<FindingsDashboard />);
+    const user = userEvent.setup();
+
+    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
+    const severity = screen.getByRole("combobox", { name: "Filter by severity" });
+    expect(within(severity).getByRole("option", { name: "Unrated" })).toBeInTheDocument();
+    expect(within(severity).queryByRole("option", { name: "None" })).not.toBeInTheDocument();
+
+    await user.selectOptions(severity, "unknown");
+
+    expect(await screen.findByText("No findings match these filters.")).toBeInTheDocument();
+    expect(String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0])).toContain(
+      "severity=unknown",
+    );
+  });
+
+  it("offers DAST as a finding kind filter and requests kind=dast", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      if (String(input).endsWith("/gate")) return jsonResponse(gateFixture);
+      const url = new URL(String(input), "http://localhost");
+      return jsonResponse(url.searchParams.get("kind") === "dast" ? [] : findingsFixture);
+    });
+    renderWithProviders(<FindingsDashboard />);
+    const user = userEvent.setup();
+
+    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
+    const kind = screen.getByRole("combobox", { name: "Filter by finding type" });
+    expect(within(kind).getByRole("option", { name: "DAST" })).toBeInTheDocument();
+
+    await user.selectOptions(kind, "dast");
+
+    expect(await screen.findByText("No findings match these filters.")).toBeInTheDocument();
+    expect(String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0])).toContain("kind=dast");
+  });
+
   it("sorts findings in both directions when the title column is selected", async () => {
     findingsFixture = [
       { ...findingsFixture[0], id: "f1", current_title: "Zebra", current_severity: "critical" },
@@ -154,6 +208,86 @@ describe("FindingsDashboard", () => {
     expect(rows()[0]).toHaveTextContent("Alpha");
     await user.click(titleButton);
     expect(rows()[0]).toHaveTextContent("Zebra");
+  });
+
+  it("sorts an unrated finding below low and an unrecognised value below that", async () => {
+    findingsFixture = [
+      {
+        ...findingsFixture[0],
+        id: "f1",
+        current_title: "Unrated finding",
+        current_severity: "unknown",
+      },
+      { ...findingsFixture[0], id: "f2", current_title: "Low severity", current_severity: "low" },
+      { ...findingsFixture[0], id: "f3", current_title: "Odd severity", current_severity: "bogus" },
+    ];
+    renderWithProviders(<FindingsDashboard />);
+    const user = userEvent.setup();
+
+    await screen.findByText("Unrated finding");
+    const rows = () => within(screen.getByRole("table")).getAllByRole("row").slice(1);
+    // Default sort is severity descending: low(1), unrated(0), unrecognised(-1).
+    expect(rows()[0]).toHaveTextContent("Low severity");
+    expect(rows()[1]).toHaveTextContent("Unrated finding");
+    expect(rows()[2]).toHaveTextContent("Odd severity");
+
+    const severity = screen.getByRole("columnheader", { name: /Severity/ });
+    await user.click(within(severity).getByRole("button", { name: /Severity/ }));
+
+    expect(rows()[0]).toHaveTextContent("Odd severity");
+    expect(rows()[1]).toHaveTextContent("Unrated finding");
+    expect(rows()[2]).toHaveTextContent("Low severity");
+  });
+
+  it("labels an unrecognised kind instead of echoing the wire value", async () => {
+    findingsFixture[0].finding_kind = "<img src=x>";
+    renderWithProviders(<FindingsDashboard />);
+
+    await screen.findByText("Test Vuln");
+    expect(within(screen.getByRole("table")).getAllByText("Unknown").length).toBeGreaterThan(0);
+    expect(screen.queryByText("<img src=x>")).not.toBeInTheDocument();
+  });
+
+  it("repeats the narrow-screen columns as one line under the title", async () => {
+    findingsFixture[0].analysis_state = "accepted_risk";
+    renderWithProviders(<FindingsDashboard />);
+
+    await screen.findByText("Test Vuln");
+    const row = within(screen.getByRole("table")).getAllByRole("row")[1];
+    expect(row).toHaveTextContent(
+      `SCA · Open · Accepted risk · Last seen ${formatDate("2025-01-01T00:00:00Z")}`,
+    );
+  });
+
+  it("offers a sort control for narrow screens that covers last seen", async () => {
+    findingsFixture = [
+      {
+        ...findingsFixture[0],
+        id: "f1",
+        current_title: "Old finding",
+        last_seen_at: "2025-01-01T00:00:00Z",
+      },
+      {
+        ...findingsFixture[0],
+        id: "f2",
+        current_title: "New finding",
+        last_seen_at: "2025-03-01T00:00:00Z",
+      },
+    ];
+    renderWithProviders(<FindingsDashboard />);
+    const user = userEvent.setup();
+
+    await screen.findByText("Old finding");
+    const sort = screen.getByRole("combobox", { name: "Sort findings" });
+    expect(sort).toHaveValue("severity:desc");
+
+    await user.selectOptions(sort, "last_seen:desc");
+    const titles = () =>
+      within(screen.getByRole("table")).getAllByRole("link").map((link) => link.textContent);
+    expect(titles()).toEqual(["New finding", "Old finding"]);
+
+    await user.selectOptions(sort, "last_seen:asc");
+    expect(titles()).toEqual(["Old finding", "New finding"]);
   });
 
   it("exposes the sort direction on every sortable header", async () => {
@@ -232,10 +366,9 @@ describe("FindingsDashboard", () => {
     expect(screen.getByLabelText("Filter by severity")).toHaveValue("critical");
     const region = document.querySelector("[aria-busy]");
     expect(region).toHaveAttribute("aria-busy", "true");
-    expect(region?.className).toContain("opacity-60");
     // Stale rows stay visible instead of collapsing into a skeleton.
     expect(screen.getByText("Test Vuln")).toBeInTheDocument();
-    expect(document.querySelectorAll(".animate-pulse")).toHaveLength(0);
+    expect(screen.queryByRole("status", { name: "Loading findings" })).not.toBeInTheDocument();
 
     await act(async () => {
       releaseFiltered?.(jsonResponse([]));
@@ -254,7 +387,7 @@ describe("FindingsDashboard", () => {
 
     expect(await screen.findByText("No more results.")).toBeInTheDocument();
     expect(screen.queryByText("No findings found")).not.toBeInTheDocument();
-    expect(screen.queryByText("Ingest a scan report to see findings")).not.toBeInTheDocument();
+    expect(screen.queryByText(EMPTY_PROJECT_HINT)).not.toBeInTheDocument();
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
 
     const previous = screen.getByRole("button", { name: "Previous" });
@@ -267,12 +400,12 @@ describe("FindingsDashboard", () => {
     expect(String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0])).toContain("offset=0");
   });
 
-  it("shows the ingest empty copy when the first page of an unfiltered project is empty", async () => {
+  it("explains where findings come from when the first page of an unfiltered project is empty", async () => {
     vi.mocked(globalThis.fetch).mockResolvedValue(jsonResponse([]));
     renderWithProviders(<FindingsDashboard />);
 
     expect(await screen.findByText("No findings found")).toBeInTheDocument();
-    expect(screen.getByText("Ingest a scan report to see findings")).toBeInTheDocument();
+    expect(screen.getByText(EMPTY_PROJECT_HINT)).toBeInTheDocument();
     expect(screen.queryByText("No more results.")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Previous" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
@@ -306,19 +439,186 @@ describe("FindingsDashboard", () => {
   });
 
   it("allows retrying a failed findings request", async () => {
-    vi.mocked(globalThis.fetch)
-      .mockRejectedValueOnce(new Error("Findings service unavailable"))
-      .mockResolvedValue(jsonResponse([]));
+    let findingsFailures = 1;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      if (String(input).endsWith("/gate")) return jsonResponse(gateFixture);
+      if (findingsFailures-- > 0) throw new Error("Findings service unavailable");
+      return jsonResponse([]);
+    });
     renderWithProviders(<FindingsDashboard />);
 
     expect(await screen.findByText("Findings service unavailable")).toBeInTheDocument();
     await userEvent.setup().click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("No findings found")).toBeInTheDocument();
   });
+
+  it("marks a gate-blocked finding with a Yes chip", async () => {
+    gateFixture = { blocked_by: ["f1"] };
+    renderWithProviders(<FindingsDashboard />);
+
+    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
+    const cell = gateCell();
+    expect(cell).toHaveTextContent("Yes");
+  });
+
+  it("explains an ignored and a below-floor finding in the gate column", async () => {
+    findingsFixture = [
+      { ...findingsFixture[0], id: "f1", current_title: "Ignored finding", gate_effect: "ignore" },
+      {
+        ...findingsFixture[0],
+        id: "f2",
+        current_title: "Below floor finding",
+        current_severity: "low",
+      },
+    ];
+    gateFixture = { blocked_by: [], policy: { severity_floor: "high" } };
+    renderWithProviders(<FindingsDashboard />);
+
+    expect(await screen.findByText("Ignored finding")).toBeInTheDocument();
+    expect(screen.getByText("No (ignored by triage)")).toBeInTheDocument();
+    expect(screen.getByText("No (below the floor)")).toBeInTheDocument();
+  });
+
+  it("shows a dash in the gate column while the gate is still loading", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation((input) => {
+      if (String(input).endsWith("/gate")) return new Promise<Response>(() => {});
+      return Promise.resolve(jsonResponse(findingsFixture));
+    });
+    renderWithProviders(<FindingsDashboard />);
+
+    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
+    expect(gateCell()).toHaveTextContent("–");
+  });
 });
 
-function jsonResponse(data: unknown): Response {
-  return new Response(JSON.stringify(data), {
-    headers: { "Content-Type": "application/json" },
+describe("FindingsDashboard links and table semantics", () => {
+  it("renders the finding title as a real link to its detail page", async () => {
+    renderWithDetailRoute();
+
+    const link = await screen.findByRole("link", { name: "Test Vuln" });
+    expect(link).toHaveAttribute("href", "/test-project/findings/f1");
   });
+
+  it("passes the current list search to the detail page as router state", async () => {
+    renderWithDetailRoute("/test-project/findings?severity=high&offset=20");
+
+    await userEvent.setup().click(await screen.findByRole("link", { name: "Test Vuln" }));
+
+    expect(await screen.findByTestId("detail-state")).toHaveTextContent(
+      JSON.stringify({ from: "?severity=high&offset=20" }),
+    );
+  });
+
+  it("passes an empty search string when the list has no filters", async () => {
+    renderWithDetailRoute();
+
+    await userEvent.setup().click(await screen.findByRole("link", { name: "Test Vuln" }));
+
+    expect(await screen.findByTestId("detail-state")).toHaveTextContent(
+      JSON.stringify({ from: "" }),
+    );
+  });
+
+  it("opens the finding when the row itself is clicked", async () => {
+    renderWithDetailRoute();
+
+    await userEvent.setup().click(
+      within(await screen.findByRole("row", { name: /Test Vuln/ })).getByText("Open"),
+    );
+
+    expect(await screen.findByTestId("detail-state")).toBeInTheDocument();
+  });
+
+  it("opens the finding once, not twice, when the title link is clicked", async () => {
+    renderWithDetailRoute();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole("link", { name: "Test Vuln" }));
+
+    expect(await screen.findByTestId("detail-state")).toBeInTheDocument();
+    expect(screen.getAllByTestId("detail-state")).toHaveLength(1);
+  });
+
+  it("leaves modifier clicks to the browser instead of navigating the row", async () => {
+    renderWithDetailRoute();
+    const user = userEvent.setup();
+    const cell = within(await screen.findByRole("row", { name: /Test Vuln/ })).getByText("Open");
+
+    await user.keyboard("{Control>}");
+    await user.click(cell);
+    await user.keyboard("{/Control}");
+
+    expect(screen.queryByTestId("detail-state")).not.toBeInTheDocument();
+  });
+
+  it("does not navigate when the user is selecting text in the row", async () => {
+    renderWithDetailRoute();
+    const user = userEvent.setup();
+    const cell = within(await screen.findByRole("row", { name: /Test Vuln/ })).getByText("Open");
+    vi.spyOn(window, "getSelection").mockReturnValue(
+      { toString: () => "Open" } as unknown as Selection,
+    );
+
+    await user.click(cell);
+
+    expect(screen.queryByTestId("detail-state")).not.toBeInTheDocument();
+  });
+
+  it("lets keyboard users reach the title link and open it with Enter", async () => {
+    renderWithDetailRoute();
+    const user = userEvent.setup();
+    const link = await screen.findByRole("link", { name: "Test Vuln" });
+
+    link.focus();
+    await user.keyboard("{Enter}");
+
+    expect(await screen.findByTestId("detail-state")).toBeInTheDocument();
+  });
+
+  it("gives the table a caption and scoped column headers", async () => {
+    renderWithDetailRoute();
+
+    const table = await screen.findByRole("table", { name: "Findings" });
+    const headers = within(table).getAllByRole("columnheader");
+    expect(headers.length).toBeGreaterThan(0);
+    for (const header of headers) expect(header).toHaveAttribute("scope", "col");
+  });
+
+  it("shows the kind as a neutral chip rather than a hue that collides with severity", async () => {
+    renderWithDetailRoute();
+
+    await screen.findByText("Test Vuln");
+    const chip = within(screen.getByRole("table")).getByText("SCA");
+    expect(chip.className).toContain("bg-muted");
+    expect(chip.className).not.toMatch(/blue|purple|amber|rose/);
+  });
+});
+
+const EMPTY_PROJECT_HINT = "Findings appear here once a report is uploaded or sent from CI.";
+
+function DetailState() {
+  const location = useLocation();
+  return <div data-testid="detail-state">{JSON.stringify(location.state)}</div>;
+}
+
+function renderWithDetailRoute(initialPath = "/test-project/findings") {
+  const qc = createTestQueryClient();
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter initialEntries={[initialPath]}>
+        <Routes>
+          <Route path="/:slug/findings" element={<FindingsDashboard />} />
+          <Route path="/:slug/findings/:findingId" element={<DetailState />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
+}
+
+function gateCell(): HTMLElement {
+  const table = screen.getByRole("table");
+  const headers = within(table).getAllByRole("columnheader");
+  const index = headers.indexOf(within(table).getByRole("columnheader", { name: "Blocks gate" }));
+  const rows = within(table).getAllByRole("row");
+  return within(rows[1]).getAllByRole("cell")[index];
 }
