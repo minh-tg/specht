@@ -86,7 +86,8 @@ function locationSubjectLabel(kind: string | undefined): string {
   }
 }
 
-/** Humanizes a confidence value; unknown stays visible but unlabeled. */
+/** Humanizes a confidence value; an unrecognised or missing value renders as
+ * "Unknown" instead of echoing the wire value. */
 function confidenceLabel(value: string | undefined): string {
   switch (value) {
     case "high":
