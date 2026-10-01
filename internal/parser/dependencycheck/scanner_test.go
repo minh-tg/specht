@@ -172,3 +172,12 @@ func TestParse_DependencyCheckLocationWithoutPURL(t *testing.T) {
 	require.Len(t, report.Findings, 1)
 	assert.Equal(t, "/app/legacy-1.0.jar", report.Findings[0].Location)
 }
+
+func TestParse_DependencyCheckLocationDecodesPackageURLEscapes(t *testing.T) {
+	data := []byte(`{"reportSchema":"1.1","dependencies":[{"fileName":"package-lock.json","filePath":"/app/package-lock.json","packages":[{"id":"pkg:npm/%40babel/traverse@7.24.0"}],"vulnerabilities":[{"name":"CVE-2023-45133","severity":"CRITICAL","description":"scoped package"}]}]}`)
+
+	report, err := dependencycheck.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.Len(t, report.Findings, 1)
+	assert.Equal(t, "@babel/traverse 7.24.0 in /app/package-lock.json", report.Findings[0].Location)
+}
