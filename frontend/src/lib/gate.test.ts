@@ -88,17 +88,19 @@ describe("blocksGate", () => {
     ).toEqual({ blocks: false });
   });
 
-  it("ranks an unknown severity below every floor", () => {
-    expect(
-      blocksGate(
-        finding({ current_severity: "unknown" }),
-        gate({ policy: policy({ severity_floor: "none" }) }),
-      ),
-    ).toEqual({ blocks: false, reason: "below_floor" });
+  it("ranks an unrated finding below every real floor", () => {
+    for (const current_severity of ["unknown", "none"]) {
+      expect(
+        blocksGate(
+          finding({ current_severity }),
+          gate({ policy: policy({ severity_floor: "low" }) }),
+        ),
+      ).toEqual({ blocks: false, reason: "below_floor" });
+    }
   });
 
   it("has no reason when the policy carries no floor", () => {
-    expect(blocksGate(finding({ current_severity: "none" }), gate())).toEqual({ blocks: false });
+    expect(blocksGate(finding({ current_severity: "unknown" }), gate())).toEqual({ blocks: false });
   });
 });
 

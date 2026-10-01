@@ -147,23 +147,26 @@ describe("FindingsDashboard", () => {
     expect(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0]).toContain("offset=0");
   });
 
-  it("offers None as a severity filter and requests severity=none", async () => {
+  it("offers Unrated as a severity filter and requests severity=unknown", async () => {
     vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
       if (String(input).endsWith("/gate")) return jsonResponse(gateFixture);
       const url = new URL(String(input), "http://localhost");
-      return jsonResponse(url.searchParams.get("severity") === "none" ? [] : findingsFixture);
+      return jsonResponse(url.searchParams.get("severity") === "unknown" ? [] : findingsFixture);
     });
     renderWithProviders(<FindingsDashboard />);
     const user = userEvent.setup();
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
     const severity = screen.getByRole("combobox", { name: "Filter by severity" });
-    expect(within(severity).getByRole("option", { name: "None" })).toBeInTheDocument();
+    expect(within(severity).getByRole("option", { name: "Unrated" })).toBeInTheDocument();
+    expect(within(severity).queryByRole("option", { name: "None" })).not.toBeInTheDocument();
 
-    await user.selectOptions(severity, "none");
+    await user.selectOptions(severity, "unknown");
 
     expect(await screen.findByText("No findings match these filters.")).toBeInTheDocument();
-    expect(String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0])).toContain("severity=none");
+    expect(String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0])).toContain(
+      "severity=unknown",
+    );
   });
 
   it("offers DAST as a finding kind filter and requests kind=dast", async () => {
@@ -207,32 +210,32 @@ describe("FindingsDashboard", () => {
     expect(rows()[0]).toHaveTextContent("Zebra");
   });
 
-  it("sorts a none-severity finding below low, not with unknown values", async () => {
+  it("sorts an unrated finding below low and an unrecognised value below that", async () => {
     findingsFixture = [
-      { ...findingsFixture[0], id: "f1", current_title: "No severity", current_severity: "none" },
-      { ...findingsFixture[0], id: "f2", current_title: "Low severity", current_severity: "low" },
       {
         ...findingsFixture[0],
-        id: "f3",
-        current_title: "Unknown severity",
+        id: "f1",
+        current_title: "Unrated finding",
         current_severity: "unknown",
       },
+      { ...findingsFixture[0], id: "f2", current_title: "Low severity", current_severity: "low" },
+      { ...findingsFixture[0], id: "f3", current_title: "Odd severity", current_severity: "bogus" },
     ];
     renderWithProviders(<FindingsDashboard />);
     const user = userEvent.setup();
 
-    await screen.findByText("No severity");
+    await screen.findByText("Unrated finding");
     const rows = () => within(screen.getByRole("table")).getAllByRole("row").slice(1);
-    // Default sort is severity descending: low(1), none(0), unknown(-1).
+    // Default sort is severity descending: low(1), unrated(0), unrecognised(-1).
     expect(rows()[0]).toHaveTextContent("Low severity");
-    expect(rows()[1]).toHaveTextContent("No severity");
-    expect(rows()[2]).toHaveTextContent("Unknown severity");
+    expect(rows()[1]).toHaveTextContent("Unrated finding");
+    expect(rows()[2]).toHaveTextContent("Odd severity");
 
     const severity = screen.getByRole("columnheader", { name: /Severity/ });
     await user.click(within(severity).getByRole("button", { name: /Severity/ }));
 
-    expect(rows()[0]).toHaveTextContent("Unknown severity");
-    expect(rows()[1]).toHaveTextContent("No severity");
+    expect(rows()[0]).toHaveTextContent("Odd severity");
+    expect(rows()[1]).toHaveTextContent("Unrated finding");
     expect(rows()[2]).toHaveTextContent("Low severity");
   });
 

@@ -212,6 +212,26 @@ describe("VerdictBand", () => {
     expect(screen.queryByRole("link", { name: /high finding/ })).not.toBeInTheDocument();
   });
 
+  it("counts findings the scanner did not rate and links them to the unknown filter", () => {
+    // The server stores unrated findings as `unknown`; dropping them made the
+    // chips add up to less than the project's findings.
+    renderBand({
+      gate: { threshold_breached: false, blocking_count: 0, blocked_by: [] },
+      stats: {
+        report_count: 1,
+        total_findings: 3,
+        by_severity: [
+          { severity: "low", count: 1, blocking_count: 0 },
+          { severity: "unknown", count: 2, blocking_count: 0 },
+        ],
+      },
+    });
+
+    const unrated = screen.getByRole("link", { name: "2 unrated findings" });
+    expect(unrated).toHaveAttribute("href", "/alpha/findings?severity=unknown");
+    expect(unrated).toHaveTextContent("Unrated");
+  });
+
   it("shows triage counters only when the breakdown is present", () => {
     renderBand({
       gate: { threshold_breached: false, blocking_count: 0, blocked_by: [] },

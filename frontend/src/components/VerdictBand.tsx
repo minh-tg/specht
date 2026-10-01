@@ -1,7 +1,7 @@
 import { useGateStatus, useMe, useProjectStats } from "@/api/hooks";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { VerdictBadge } from "@/components/VerdictBadge";
-import { SEVERITIES } from "@/lib/enums";
+import { SEVERITIES, severityLabel } from "@/lib/enums";
 import { formatDateTime, formatRelativeTime, pluralize } from "@/lib/format";
 import {
   blockerCount,
@@ -181,7 +181,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
             <Link
               key={severity}
               to={`/${slug}/findings?severity=${severity}`}
-              aria-label={pluralize(count, `${severity} finding`)}
+              aria-label={pluralize(count, `${severityLabel(severity)?.toLowerCase()} finding`)}
               className="inline-flex items-center gap-1"
             >
               <SeverityBadge severity={severity} />

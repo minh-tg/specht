@@ -12,6 +12,7 @@ import {
   isReachabilityState,
   isSeverity,
   isTechnicalState,
+  normalizeSeverity,
   REACHABILITY_STATES,
   reachabilityStateLabel,
   SEVERITIES,
@@ -52,12 +53,12 @@ describe("enum vocabularies", () => {
     ]);
   });
 
-  it("mirrors the backend severity scale", () => {
-    // `none`, not `unknown`: the API's fifth severity is the absence of a
-    // severity, and `unknown` is reserved for reachability.
-    expect(SEVERITIES).toEqual(["critical", "high", "medium", "low", "none"]);
+  it("mirrors the severities the server stores", () => {
+    // The server stores `unknown` for a finding the scanner did not rate;
+    // openapi.yaml calls it `none`, which the UI accepts as an alias.
+    expect(SEVERITIES).toEqual(["critical", "high", "medium", "low", "unknown"]);
+    expect(SEVERITIES).not.toContain("none");
     expect(REACHABILITY_STATES).toContain("unknown");
-    expect(SEVERITIES).not.toContain("unknown");
   });
 
   it("mirrors the backend finding_kind enum", () => {
@@ -184,10 +185,10 @@ describe("severityLabel", () => {
     expect(severityLabel("high")).toBe("High");
     expect(severityLabel("medium")).toBe("Medium");
     expect(severityLabel("low")).toBe("Low");
-    expect(severityLabel("none")).toBe("None");
-    // `unknown` is a reachability value, so it is out of vocabulary for severity
-    // and must fall back rather than be treated as the fifth severity.
-    expect(severityLabel("unknown")).toBe("Unknown");
+    expect(severityLabel("unknown")).toBe("Unrated");
+    // The documented alias reads the same as the stored value.
+    expect(severityLabel("none")).toBe("Unrated");
+    expect(severityLabel("NONE")).toBe("Unrated");
   });
 
   it("falls back for missing or unvalidated input", () => {
@@ -212,17 +213,35 @@ describe("findingKindLabel", () => {
   });
 });
 
+describe("normalizeSeverity", () => {
+  it("maps the documented none alias onto the stored unknown value", () => {
+    expect(normalizeSeverity("none")).toBe("unknown");
+    expect(normalizeSeverity("  NONE ")).toBe("unknown");
+  });
+
+  it("lower-cases and trims everything else without judging it", () => {
+    expect(normalizeSeverity(" High ")).toBe("high");
+    expect(normalizeSeverity("explosive")).toBe("explosive");
+    expect(normalizeSeverity(null)).toBe("");
+    expect(normalizeSeverity(undefined)).toBe("");
+  });
+});
+
 describe("severityRank", () => {
   it("ranks every canonical severity, most severe first", () => {
     expect(severityRank("critical")).toBe(4);
     expect(severityRank("high")).toBe(3);
     expect(severityRank("medium")).toBe(2);
     expect(severityRank("low")).toBe(1);
-    expect(severityRank("none")).toBe(0);
+    expect(severityRank("unknown")).toBe(0);
   });
 
-  it("ranks unknown values below none so none can never meet a floor by accident", () => {
-    expect(severityRank("unknown")).toBe(-1);
+  it("ranks the documented none alias with the stored unknown value", () => {
+    expect(severityRank("none")).toBe(0);
+    expect(severityRank(" None ")).toBe(0);
+  });
+
+  it("ranks values outside the vocabulary below unrated so they never meet a floor", () => {
     expect(severityRank("severe")).toBe(-1);
     expect(severityRank(null)).toBe(-1);
     expect(severityRank(undefined)).toBe(-1);
