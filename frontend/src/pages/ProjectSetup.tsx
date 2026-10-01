@@ -1,6 +1,13 @@
 import { APIError } from "@/api/client";
-import { queryKeys, useCreateApiKey, useMe, useProject, useProjectStats } from "@/api/hooks";
-import { githubActionsSnippet, gitlabCiSnippet } from "@/lib/ciSnippets";
+import {
+  queryKeys,
+  useCreateApiKey,
+  useMe,
+  useProject,
+  useProjectStats,
+  useVersion,
+} from "@/api/hooks";
+import { adapterRefFor, githubActionsSnippet, gitlabCiSnippet } from "@/lib/ciSnippets";
 import { pluralize } from "@/lib/format";
 import type { ProjectStats } from "@/types/api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -18,6 +25,9 @@ export function ProjectSetup() {
   const queryClient = useQueryClient();
   const { data: me, isLoading: meLoading } = useMe();
   const { data: project, isLoading: projectLoading } = useProject(slug);
+  // Until the version resolves the snippets point at main; the text updates
+  // in place once the build info arrives.
+  const { data: serverVersion } = useVersion();
 
   const createKey = useCreateApiKey();
   const [rawKey, setRawKey] = useState<string | null>(null);
@@ -84,8 +94,9 @@ export function ProjectSetup() {
   }
 
   const apiUrl = window.location.origin;
-  const githubSnippet = githubActionsSnippet({ apiUrl, project: slug });
-  const gitlabSnippet = gitlabCiSnippet({ apiUrl, project: slug });
+  const adapterRef = adapterRefFor(serverVersion);
+  const githubSnippet = githubActionsSnippet({ apiUrl, project: slug, adapterRef });
+  const gitlabSnippet = gitlabCiSnippet({ apiUrl, project: slug, adapterRef });
   const reportCount = stats.data?.report_count ?? 0;
   const totalFindings = stats.data?.total_findings ?? 0;
 

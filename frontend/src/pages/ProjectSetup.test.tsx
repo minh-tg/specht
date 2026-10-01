@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +10,7 @@ const RAW_KEY = "sk-live-0123456789abcdef";
 
 let meRole: "admin" | "member" = "admin";
 let projectStatus = 200;
+let versionStatus = 200;
 let stats: Record<string, unknown>;
 let statsRequests = 0;
 let postCalls: Array<Record<string, unknown>> = [];
@@ -23,9 +24,12 @@ function jsonResponse(body: unknown, status = 200): Response {
   } as Response;
 }
 
+const VERSION_COMMIT = "4f93c32a1b2c3d4e5f60718293a4b5c6d7e8f901";
+
 beforeEach(() => {
   meRole = "admin";
   projectStatus = 200;
+  versionStatus = 200;
   stats = {
     report_count: 0,
     total_findings: 0,
@@ -60,6 +64,12 @@ beforeEach(() => {
         created_at: "",
         updated_at: "",
       });
+    }
+    if (url === "/api/v1/version") {
+      if (versionStatus >= 400) {
+        return jsonResponse({ error: { message: "unavailable" } }, versionStatus);
+      }
+      return jsonResponse({ version: "0.1.0", commit: VERSION_COMMIT });
     }
     if (url === "/api/v1/projects/acme/stats") {
       statsRequests += 1;
@@ -179,19 +189,40 @@ describe("ProjectSetup", () => {
     expect(screen.queryByText(RAW_KEY)).not.toBeInTheDocument();
   });
 
-  it("renders both pipeline snippets with the slug and API URL but no key", async () => {
+  it("renders both pipeline snippets with the slug, API URL and server build but no key", async () => {
     renderPage();
     await screen.findByRole("heading", { name: "Set up CI for Acme API" });
+    await waitFor(() => {
+      expect(document.body.textContent).toContain(`cmd/adapter@${VERSION_COMMIT}`);
+    });
 
     const snippets = [...document.querySelectorAll("pre")].map((pre) => pre.textContent ?? "");
     expect(snippets).toHaveLength(2);
     for (const snippet of snippets) {
       expect(snippet).toContain("acme");
       expect(snippet).toContain(window.location.origin);
+      expect(snippet).toContain(`cmd/adapter@${VERSION_COMMIT}`);
+      expect(snippet).not.toContain("./cmd/adapter");
       expect(snippet).not.toContain("raw_key");
       expect(snippet).not.toContain(RAW_KEY);
     }
     expect(screen.getByText("More examples: examples/ci/ in the repository.")).toBeInTheDocument();
+  });
+
+  it("falls back to the main branch when the build info is unavailable", async () => {
+    versionStatus = 500;
+    renderPage();
+    await screen.findByRole("heading", { name: "Set up CI for Acme API" });
+    await waitFor(() => {
+      expect(document.body.textContent).toContain("cmd/adapter@main");
+    });
+
+    const snippets = [...document.querySelectorAll("pre")].map((pre) => pre.textContent ?? "");
+    expect(snippets).toHaveLength(2);
+    for (const snippet of snippets) {
+      expect(snippet).toContain("cmd/adapter@main");
+      expect(snippet).not.toContain("./cmd/adapter");
+    }
   });
 
   it("links to the manual upload and the findings of the project", async () => {

@@ -24,6 +24,12 @@ export interface Project {
   updated_at: string;
 }
 
+/** Build information reported by the server on /api/v1/version. */
+export interface ServerVersion {
+  version: string;
+  commit: string;
+}
+
 export interface Finding {
   id: string;
   project_id: string;

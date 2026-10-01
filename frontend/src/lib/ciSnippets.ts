@@ -3,6 +3,24 @@ export interface CiSnippetOptions {
   apiUrl: string;
   /** Target project slug. */
   project: string;
+  /** Go module version query for the adapter: the server's commit hash, or
+   * "main" when the build did not report one. */
+  adapterRef: string;
+}
+
+/** Adapter import path; `go run` fetches it from the module proxy. */
+const ADAPTER_MODULE = "github.com/minh-tg/specht/cmd/adapter";
+
+/** A full or abbreviated git commit hash. */
+const COMMIT_PATTERN = /^[0-9a-fA-F]{7,40}$/;
+
+/**
+ * Pins the CI adapter to the same build as the Specht server: the reported
+ * commit when it is a hex hash, otherwise "main" (unreleased builds report
+ * "unknown", "dev" or nothing at all).
+ */
+export function adapterRefFor(version?: { version: string; commit: string; }): string {
+  return version !== undefined && COMMIT_PATTERN.test(version.commit) ? version.commit : "main";
 }
 
 /**
@@ -11,8 +29,10 @@ export interface CiSnippetOptions {
  * adapter (see examples/ci/github-actions.yml). The API key is only ever read
  * from the SPECHT_API_KEY secret, never inlined into the workflow.
  */
-export function githubActionsSnippet({ apiUrl, project }: CiSnippetOptions): string {
+export function githubActionsSnippet({ apiUrl, project, adapterRef }: CiSnippetOptions): string {
   return `# Specht gate for GitHub Actions.
+#
+# The adapter runs from source at the same build as your Specht server (standalone binaries are not published yet; requires Go).
 #
 # Store the API key you created above as the SPECHT_API_KEY repository secret
 # (Settings > Secrets and variables > Actions). Never commit it.
@@ -37,15 +57,16 @@ jobs:
       SPECHT_PROJECT: ${project}
       SPECHT_ENVIRONMENT: ci
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Scan with Trivy
-        uses: aquasecurity/trivy-action@v0.24.0
+        uses: aquasecurity/trivy-action@6e7b7d1fd3e4fef0c5fa8cce1229c54b2c9bd0d8 # v0.24.0
         with:
           scan-type: fs
           format: json
           output: trivy-results.json
           exit-code: "0"
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
 
       - name: Ingest and gate with Specht
         env:
@@ -56,7 +77,7 @@ jobs:
           COMMIT_SHA: \${{ github.sha }}
           REPOSITORY: \${{ github.repository }}
         run: |
-          go run ./cmd/adapter \\
+          go run ${ADAPTER_MODULE}@${adapterRef} \\
             -project "$PROJECT" \\
             -tool trivy < <(jq -n \\
               --arg project "$PROJECT" \\
@@ -77,8 +98,10 @@ jobs:
  * the GitHub Actions template (see examples/ci/gitlab-ci.yml). The API key is
  * read from the masked SPECHT_API_KEY CI/CD variable, never inlined.
  */
-export function gitlabCiSnippet({ apiUrl, project }: CiSnippetOptions): string {
+export function gitlabCiSnippet({ apiUrl, project, adapterRef }: CiSnippetOptions): string {
   return `# Specht gate for GitLab CI.
+#
+# The adapter runs from source at the same build as your Specht server (standalone binaries are not published yet; requires Go).
 #
 # Store the API key you created above as the masked SPECHT_API_KEY CI/CD
 # variable (Settings > CI/CD > Variables). Never commit it.
@@ -123,6 +146,6 @@ specht-gate:
           branch: $branch, commit_sha: $commit,
           environment: $env, owner: $owner,
           raw_data: $raw[0]}' \\
-      | go run ./cmd/adapter -project "$PROJECT" -tool trivy
+      | go run ${ADAPTER_MODULE}@${adapterRef} -project "$PROJECT" -tool trivy
 `;
 }

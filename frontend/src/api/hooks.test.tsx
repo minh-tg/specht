@@ -15,6 +15,7 @@ import {
   useReachability,
   useTriageFinding,
   useUpsertReachability,
+  useVersion,
 } from "./hooks";
 
 const ASSESSMENT = {
@@ -329,6 +330,22 @@ describe("useMe", () => {
 
     await waitFor(() => expect(result.current.data).toEqual(profile));
     expect(requested[0]).toBe("/api/v1/me");
+  });
+});
+
+describe("useVersion", () => {
+  it("reads the server build info from /api/v1/version", async () => {
+    const version = { version: "0.1.0", commit: "4f93c32a1b2c" };
+    const requested: string[] = [];
+    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      requested.push(String(input));
+      return Promise.resolve(jsonResponse(version));
+    });
+
+    const { result } = renderHook(() => useVersion(), { wrapper });
+
+    await waitFor(() => expect(result.current.data).toEqual(version));
+    expect(requested[0]).toBe("/api/v1/version");
   });
 });
 

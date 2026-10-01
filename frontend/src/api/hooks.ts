@@ -9,6 +9,7 @@ import type {
   ReachabilityAssessment,
   Report,
   ScannerDescriptor,
+  ServerVersion,
   TriageResponse,
   UserProfile,
 } from "@/types/api";
@@ -18,6 +19,7 @@ import { apiFetch } from "./client";
 export const queryKeys = {
   projects: () => ["projects"] as const,
   me: () => ["me"] as const,
+  version: () => ["version"] as const,
   project: (slug?: string) =>
     slug === undefined ? (["project"] as const) : (["project", slug] as const),
   projectStats: (slug?: string) =>
@@ -69,6 +71,16 @@ export function useMe() {
     queryKey: queryKeys.me(),
     queryFn: () => apiFetch<UserProfile>("/api/v1/me"),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** Server build info; unauthenticated and effectively static, so it is cached
+ * for an hour. */
+export function useVersion() {
+  return useQuery({
+    queryKey: queryKeys.version(),
+    queryFn: () => apiFetch<ServerVersion>("/api/v1/version"),
+    staleTime: 60 * 60 * 1000,
   });
 }
 
