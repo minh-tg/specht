@@ -206,6 +206,7 @@ function TriageSection({ findingId }: { readonly findingId: string; }) {
       <h2 className="mb-3 text-sm font-semibold">Triage</h2>
       <div className="flex flex-wrap gap-2">
         <select
+          aria-label="Triage action"
           className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
           value={selectedState}
           onChange={(e) => {
@@ -225,6 +226,7 @@ function TriageSection({ findingId }: { readonly findingId: string; }) {
         {selectedOption?.requiresReason && (
           <input
             className="border-input bg-background min-w-[200px] rounded-md border px-3 py-1.5 text-sm"
+            aria-label="Reason"
             placeholder="Reason"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
@@ -232,6 +234,7 @@ function TriageSection({ findingId }: { readonly findingId: string; }) {
         )}
         {selectedOption?.requiresExpiry && (
           <input
+            aria-label="Expiry date"
             type="date"
             className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
             value={expiresAt}
@@ -247,10 +250,15 @@ function TriageSection({ findingId }: { readonly findingId: string; }) {
         </button>
       </div>
       {triageMutation.isError && (
-        <p className="text-destructive mt-2 text-xs">{triageMutation.error.message}</p>
+        <p role="alert" className="text-destructive mt-2 text-xs">
+          {triageMutation.error.message}
+        </p>
       )}
       {triageMutation.isSuccess && (
-        <p className="text-green-600 mt-2 text-xs">
+        <p
+          role="status"
+          className="bg-sev-success-bg text-sev-success-fg mt-2 inline-block rounded-sm px-2 py-1 text-xs"
+        >
           Triage saved (effect: {gateEffectLabel(triageMutation.data.gate_effect) ?? "Unknown"})
         </p>
       )}
@@ -328,6 +336,7 @@ function ReachabilitySection({
       {body}
       <div className="flex flex-wrap gap-2">
         <select
+          aria-label="Reachability assessment"
           className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
           value={reachState}
           onChange={(e) => {
@@ -344,6 +353,7 @@ function ReachabilitySection({
         </select>
         <input
           className="border-input bg-background min-w-[200px] rounded-md border px-3 py-1.5 text-sm"
+          aria-label="Evidence"
           placeholder="Evidence"
           value={reachEvidence}
           onChange={(e) => setReachEvidence(e.target.value)}
@@ -367,9 +377,19 @@ function ReachabilitySection({
           {mutation.isPending ? "Saving..." : "Assess"}
         </button>
       </div>
-      {mutation.isError && <p className="text-destructive mt-2 text-xs">{mutation.error.message}
-      </p>}
-      {mutation.isSuccess && <p className="text-green-600 mt-2 text-xs">Reachability saved</p>}
+      {mutation.isError && (
+        <p role="alert" className="text-destructive mt-2 text-xs">
+          {mutation.error.message}
+        </p>
+      )}
+      {mutation.isSuccess && (
+        <p
+          role="status"
+          className="bg-sev-success-bg text-sev-success-fg mt-2 inline-block rounded-sm px-2 py-1 text-xs"
+        >
+          Reachability saved
+        </p>
+      )}
     </div>
   );
 }

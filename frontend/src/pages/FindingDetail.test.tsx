@@ -218,6 +218,70 @@ describe("FindingDetail triage validation", () => {
   });
 });
 
+describe("FindingDetail accessibility", () => {
+  it("names each triage and reachability control for assistive technology", async () => {
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    await user.selectOptions(screen.getByLabelText("Triage action"), "accepted_risk");
+
+    expect(screen.getByLabelText("Triage action")).toBeInTheDocument();
+    expect(screen.getByLabelText("Reason")).toBeInTheDocument();
+    expect(screen.getByLabelText("Expiry date")).toBeInTheDocument();
+    expect(screen.getByLabelText("Reachability assessment")).toBeInTheDocument();
+    expect(screen.getByLabelText("Evidence")).toBeInTheDocument();
+  });
+
+  it("announces a successful triage with the matched success token pair", async () => {
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    await user.selectOptions(screen.getByLabelText("Triage action"), "exploitable");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    const status = await screen.findByRole("status");
+    expect(status).toHaveTextContent(/Triage saved \(effect:/);
+    expect(status).toHaveClass("bg-sev-success-bg");
+    expect(status).toHaveClass("text-sev-success-fg");
+    expect(status).not.toHaveClass("text-green-600");
+  });
+
+  it("exposes a failed triage through an alert", async () => {
+    globalThis.fetch = vi.fn().mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = (init?.method ?? "GET").toUpperCase();
+        if (url.endsWith("/events") && method === "GET") {
+          return { ok: true, json: () => Promise.resolve(eventsFixture) } as Response;
+        }
+        if (url.endsWith("/reachability") && method === "GET") {
+          return { ok: true, json: () => Promise.resolve(reachabilityFixture) } as Response;
+        }
+        if (url.endsWith("/findings/f1") && method === "PATCH") {
+          return {
+            ok: false,
+            status: 500,
+            json: () =>
+              Promise.resolve({ error: { code: "internal", message: "triage failed hard" } }),
+          } as Response;
+        }
+        return { ok: true, json: () => Promise.resolve(makeFinding(findingFixture)) } as Response;
+      },
+    );
+
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    await user.selectOptions(screen.getByLabelText("Triage action"), "exploitable");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("triage failed hard");
+  });
+});
+
 describe("FindingDetail enum labels", () => {
   it("labels the analysis state instead of rendering the raw enum", async () => {
     findingFixture = { analysis_state: "accepted_risk" };
