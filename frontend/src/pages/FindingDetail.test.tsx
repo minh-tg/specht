@@ -690,6 +690,55 @@ describe("FindingDetail remediation", () => {
   });
 });
 
+describe("FindingDetail suggested action", () => {
+  it("renders the action, target, confidence, and detail", async () => {
+    findingFixture = {
+      remediation: { summary: "Upgrade the dependency" },
+      suggestion: {
+        action: "upgrade",
+        target: "lodash@4.17.21",
+        confidence: "high",
+        detail: "Fixes CVE-2021-23337",
+      },
+    };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    const suggestion = screen.getByText(/^Suggested:/);
+    expect(suggestion).toHaveTextContent(
+      "Suggested: upgrade lodash@4.17.21 (confidence High) — Fixes CVE-2021-23337",
+    );
+    expect(suggestion).toHaveTextContent("lodash@4.17.21");
+    expect(suggestion).toHaveTextContent("Fixes CVE-2021-23337");
+  });
+
+  it("shows Unknown instead of an unvalidated confidence value", async () => {
+    findingFixture = {
+      remediation: { summary: "Upgrade the dependency" },
+      suggestion: { action: "upgrade", target: "lodash@4.17.21", confidence: "moderate" },
+    };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    const suggestion = screen.getByText(/^Suggested:/);
+    expect(suggestion).toHaveTextContent("(confidence Unknown)");
+    expect(suggestion).not.toHaveTextContent("moderate");
+  });
+
+  it("does not render a dangling separator when the detail is missing", async () => {
+    findingFixture = {
+      remediation: { summary: "Upgrade the dependency" },
+      suggestion: { action: "upgrade", target: "lodash@4.17.21", confidence: "high" },
+    };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    const suggestion = screen.getByText(/^Suggested:/);
+    expect(suggestion).toHaveTextContent("Suggested: upgrade lodash@4.17.21 (confidence High)");
+    expect(suggestion).not.toHaveTextContent("—");
+  });
+});
+
 describe("FindingDetail location", () => {
   it("renders the file with line range", async () => {
     findingFixture = {
