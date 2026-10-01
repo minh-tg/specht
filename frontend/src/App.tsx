@@ -1,5 +1,6 @@
 import { AuthProvider } from "@/auth/AuthContext";
 import { ProtectedRoute } from "@/auth/ProtectedRoute";
+import { SessionCacheGuard } from "@/auth/SessionCacheGuard";
 import { AppShell } from "@/components/AppShell";
 import { Navbar } from "@/components/Navbar";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
@@ -155,6 +156,7 @@ export function AppRoutes() {
 function AppLayout() {
   return (
     <AuthProvider>
+      <SessionCacheGuard />
       <AppShell header={<Navbar />}>
         <AppRoutes />
       </AppShell>
