@@ -8,11 +8,13 @@ import {
 } from "@/api/hooks";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import {
+  ANALYSIS_STATES,
   type AnalysisState,
   analysisStateLabel,
   gateEffectLabel,
   isAnalysisState,
   isReachabilityState,
+  REACHABILITY_STATES,
   type ReachabilityState,
   reachabilityStateLabel,
   technicalStateLabel,
@@ -27,27 +29,31 @@ import { Link, useLocation, useParams } from "react-router-dom";
 /** Inline evidence is capped so an oversized payload cannot blow up layout. */
 const MAX_EVIDENCE_LENGTH = 240;
 
-const REACHABILITY_OPTIONS: Array<{ value: ReachabilityState; label: string; }> = [
-  { value: "reachable", label: "Reachable" },
-  { value: "not_reachable", label: "Not Reachable" },
-  { value: "unknown", label: "Unknown" },
-  { value: "not_applicable", label: "Not Applicable" },
-];
+const REACHABILITY_OPTIONS: Array<{ value: ReachabilityState; label: string; }> =
+  REACHABILITY_STATES.map((value) => ({
+    value,
+    label: reachabilityStateLabel(value) ?? value,
+  }));
 
-const TRIAGE_OPTIONS: Array<
-  {
-    value: AnalysisState;
-    label: string;
-    requiresReason: boolean;
-    requiresExpiry: boolean;
-  }
-> = [
-  { value: "exploitable", label: "Exploitable", requiresReason: false, requiresExpiry: false },
-  { value: "false_positive", label: "False positive", requiresReason: true, requiresExpiry: false },
-  { value: "not_affected", label: "Not affected", requiresReason: true, requiresExpiry: false },
-  { value: "accepted_risk", label: "Accepted risk", requiresReason: true, requiresExpiry: true },
-  { value: "wont_fix", label: "Won't fix", requiresReason: true, requiresExpiry: true },
-];
+/**
+ * Extra input each decision state needs before it can be applied. A state
+ * absent here is not offered by the triage control at all.
+ */
+const TRIAGE_REQUIREMENTS: Partial<
+  Record<AnalysisState, { requiresReason: boolean; requiresExpiry: boolean; }>
+> = {
+  exploitable: { requiresReason: false, requiresExpiry: false },
+  false_positive: { requiresReason: true, requiresExpiry: false },
+  not_affected: { requiresReason: true, requiresExpiry: false },
+  accepted_risk: { requiresReason: true, requiresExpiry: true },
+  wont_fix: { requiresReason: true, requiresExpiry: true },
+};
+
+const TRIAGE_OPTIONS = ANALYSIS_STATES.flatMap((value) => {
+  const requirements = TRIAGE_REQUIREMENTS[value];
+  if (!requirements) return [];
+  return [{ value, label: analysisStateLabel(value) ?? value, ...requirements }];
+});
 
 const SOURCE_LINK_SCHEMES = new Set(["http:", "https:"]);
 

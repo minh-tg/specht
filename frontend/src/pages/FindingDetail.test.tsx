@@ -337,6 +337,30 @@ describe("FindingDetail decision flow", () => {
     expect(within(decide).getByLabelText("Reachability assessment")).toBeInTheDocument();
   });
 
+  it("offers the reachability and triage options from the shared vocabularies", async () => {
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    const reachability = screen.getByLabelText("Reachability assessment");
+    expect(within(reachability).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Select assessment...",
+      "Reachable",
+      "Not Reachable",
+      "Unknown",
+      "Not Applicable",
+    ]);
+
+    const triage = screen.getByLabelText("Triage action");
+    expect(within(triage).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Select action...",
+      "Exploitable",
+      "False positive",
+      "Not affected",
+      "Accepted risk",
+      "Won't fix",
+    ]);
+  });
+
   it("states the current triage and gate position at the top of the Decide section", async () => {
     findingFixture = { analysis_state: "accepted_risk" };
     gateFixture = { blocked_by: ["f1"] };
