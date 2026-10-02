@@ -1,8 +1,9 @@
 import { useTriageFinding } from "@/api/hooks";
 import { type AnalysisState, gateEffectLabel, isAnalysisState } from "@/lib/enums";
+import { GLOSSARY } from "@/lib/glossary";
 import { useState } from "react";
 import { toExpiryTimestamp } from "./format";
-import { TRIAGE_OPTIONS } from "./options";
+import { TRIAGE_GLOSSARY, TRIAGE_OPTIONS } from "./options";
 import { OutcomeRegions } from "./OutcomeRegions";
 
 /** Triage controls and status feedback for one finding. */
@@ -13,6 +14,8 @@ export function TriageSection({ findingId }: { readonly findingId: string; }) {
   const [expiresAt, setExpiresAt] = useState("");
 
   const selectedOption = TRIAGE_OPTIONS.find((o) => o.value === selectedState);
+  const hintKey = selectedState ? TRIAGE_GLOSSARY[selectedState] : undefined;
+  const hint = hintKey ? GLOSSARY[hintKey].short : null;
 
   async function handleTriage() {
     if (!selectedState) return;
@@ -41,6 +44,7 @@ export function TriageSection({ findingId }: { readonly findingId: string; }) {
       <div className="flex flex-wrap gap-2">
         <select
           aria-label="Triage action"
+          aria-describedby={hint ? "triage-hint" : undefined}
           className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
           value={selectedState}
           onChange={(e) => {
@@ -83,6 +87,7 @@ export function TriageSection({ findingId }: { readonly findingId: string; }) {
           {triageMutation.isPending ? "Saving..." : "Apply"}
         </button>
       </div>
+      {hint && <p id="triage-hint" className="text-muted-foreground mt-2 text-sm">{hint}</p>}
       <OutcomeRegions
         label="Triage result"
         error={triageMutation.isError ? triageMutation.error.message : null}

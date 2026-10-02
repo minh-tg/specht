@@ -1,3 +1,4 @@
+import { GLOSSARY } from "@/lib/glossary";
 import { createTestQueryClient } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -240,6 +241,27 @@ describe("FindingDetail triage validation", () => {
 
     await user.type(reasonInput, "test code only");
     expect(apply).toBeEnabled();
+  });
+});
+
+describe("FindingDetail triage explanations", () => {
+  it("explains the chosen triage action and links the explanation to the select", async () => {
+    const user = userEvent.setup();
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+    const select = screen.getByLabelText("Triage action");
+    expect(select).not.toHaveAttribute("aria-describedby");
+
+    await user.selectOptions(select, "false_positive");
+    const hint = screen.getByText(GLOSSARY.falsePositive.short);
+    expect(select).toHaveAttribute("aria-describedby", hint.id);
+
+    await user.selectOptions(select, "exploitable");
+    expect(screen.queryByText(GLOSSARY.falsePositive.short)).not.toBeInTheDocument();
+    expect(screen.getByText(GLOSSARY.exploitable.short)).toBeInTheDocument();
+
+    await user.selectOptions(select, "");
+    expect(select).not.toHaveAttribute("aria-describedby");
   });
 });
 
