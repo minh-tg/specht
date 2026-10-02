@@ -1,17 +1,12 @@
-import { APIError, apiFetch } from "@/api/client";
-import { queryKeys, useProject, useScanners } from "@/api/hooks";
+import { useProject, useScanners } from "@/api/hooks";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { pluralize } from "@/lib/format";
-import type { IngestResponse } from "@/types/api";
-import { useQueryClient } from "@tanstack/react-query";
-import { type ChangeEvent, type ReactNode, type SubmitEvent, useRef, useState } from "react";
+import { type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
+import { useReportUpload } from "./upload-report/useReportUpload";
 
 export function UploadReport() {
   const { slug = "" } = useParams<{ slug: string; }>();
-  const queryClient = useQueryClient();
   const { data: project } = useProject(slug);
   const {
     data: scanners,
@@ -19,106 +14,22 @@ export function UploadReport() {
     isError: scannersError,
     refetch: refetchScanners,
   } = useScanners();
-
-  const [selectedScanner, setSelectedScanner] = useState("");
-  const [fileContent, setFileContent] = useState<string | null>(null);
-  const [fileName, setFileName] = useState<string | null>(null);
-  const [fileError, setFileError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [result, setResult] = useState<IngestResponse | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const {
+    selectedScanner,
+    setSelectedScanner,
+    fileName,
+    fileError,
+    submitting,
+    canSubmit,
+    uploadError,
+    result,
+    fileRef,
+    handleFileChange,
+    handleSubmit,
+    resetForm,
+  } = useReportUpload(slug);
 
   const projectName = project?.name ?? slug;
-
-  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setFileError(null);
-    setUploadError(null);
-    setResult(null);
-
-    if (!file.name.endsWith(".json")) {
-      setFileError("Unsupported file format");
-      setFileContent(null);
-      setFileName(null);
-      return;
-    }
-
-    if (file.size > MAX_FILE_SIZE) {
-      setFileError("File too large (max 10MB)");
-      setFileContent(null);
-      setFileName(null);
-      return;
-    }
-
-    const text = await file.text();
-    // The wire carries raw_data as a JSON value, not a string — accept the
-    // file only when it parses, so a malformed upload is a local error
-    // instead of a server-side parse failure.
-    try {
-      JSON.parse(text);
-    } catch {
-      setFileError("Invalid JSON");
-      setFileName(null);
-      setFileContent(null);
-      return;
-    }
-
-    setFileName(file.name);
-    setFileContent(text);
-  }
-
-  function resetForm() {
-    setSelectedScanner("");
-    setFileContent(null);
-    setFileName(null);
-    setFileError(null);
-    setUploadError(null);
-    setResult(null);
-    if (fileRef.current) fileRef.current.value = "";
-  }
-
-  async function handleSubmit(e: SubmitEvent) {
-    e.preventDefault();
-    if (!slug || !selectedScanner || !fileContent) return;
-
-    setSubmitting(true);
-    setUploadError(null);
-    setResult(null);
-
-    try {
-      const report = await apiFetch<IngestResponse>("/api/v1/reports", {
-        method: "POST",
-        body: JSON.stringify({
-          project: slug,
-          scanner: selectedScanner,
-          // Validated at file selection: the wire needs a JSON value.
-          raw_data: JSON.parse(fileContent),
-        }),
-      });
-      setResult(report);
-      setFileContent(null);
-      setFileName(null);
-      setFileError(null);
-      if (fileRef.current) fileRef.current.value = "";
-
-      queryClient.invalidateQueries({ queryKey: queryKeys.reports(slug) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.gate(slug) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.projectStats(slug) });
-    } catch (err) {
-      if (err instanceof APIError && err.status === 403) {
-        setUploadError("You don't have permission to upload reports to this project.");
-      } else if (err instanceof APIError) {
-        setUploadError(err.message);
-      } else {
-        setUploadError("Upload failed");
-      }
-    } finally {
-      setSubmitting(false);
-    }
-  }
 
   let scannerPicker: ReactNode;
   if (scannersLoading) {
@@ -230,7 +141,7 @@ export function UploadReport() {
 
         <button
           type="submit"
-          disabled={submitting || !selectedScanner || !fileContent}
+          disabled={!canSubmit}
           className="bg-primary text-primary-foreground hover:bg-primary/90 w-full rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
         >
           {submitting ? "Uploading..." : "Upload"}
