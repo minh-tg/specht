@@ -102,9 +102,17 @@ describe("ReportHistory", () => {
     // Dates go through formatDateTime.
     expect(screen.getByText(formatDateTime("2025-01-01T00:00:00Z"))).toBeInTheDocument();
 
-    // Branch plus the short commit sha, as a muted mono line.
-    expect(screen.getByText("main · abcdef1")).toBeInTheDocument();
-    expect(screen.getByText("feature/x · 1234567")).toBeInTheDocument();
+    // Branch text stays, and the commit sha links to its change view.
+    expect(screen.getByText("main")).toBeInTheDocument();
+    expect(screen.getByText("feature/x")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "abcdef1" })).toHaveAttribute(
+      "href",
+      "/test-project/changes/abcdef1234567890?report=r1",
+    );
+    expect(screen.getByRole("link", { name: "1234567" })).toHaveAttribute(
+      "href",
+      "/test-project/changes/1234567abcdef?report=r3",
+    );
 
     // The failed report is visually louder than the others.
     const failedCard = screen.getByText("Failed").closest("div.bg-card");

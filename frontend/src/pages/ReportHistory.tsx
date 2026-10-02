@@ -84,7 +84,6 @@ export function ReportHistory() {
 
       {reports.map((r) => {
         const status = statusMeta(r.status);
-        const revision = [r.branch, r.commit_sha?.slice(0, 7)].filter(Boolean).join(" · ");
 
         return (
           <div
@@ -113,7 +112,20 @@ export function ReportHistory() {
                 {status.label}
               </span>
             </div>
-            {revision && <p className="text-muted-foreground mt-1 font-mono text-xs">{revision}</p>}
+            {(r.branch || r.commit_sha) && (
+              <p className="text-muted-foreground mt-1 font-mono text-xs">
+                {r.branch && <span>{r.branch}</span>}
+                {r.branch && r.commit_sha && " · "}
+                {r.commit_sha && (
+                  <Link
+                    to={`/${slug}/changes/${r.commit_sha}?report=${r.id}`}
+                    className="text-primary underline underline-offset-2 hover:no-underline"
+                  >
+                    {r.commit_sha.slice(0, 7)}
+                  </Link>
+                )}
+              </p>
+            )}
             <div className="text-muted-foreground mt-2 text-xs">
               {formatDateTime(r.created_at)}
               {r.total_findings != null && (
