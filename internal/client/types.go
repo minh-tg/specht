@@ -55,6 +55,8 @@ type GateStatus struct {
 	// reachability state.
 	BlockedByReachability map[string]string `json:"blocked_by_reachability,omitempty"`
 	WaivedCount           int               `json:"waived_count,omitempty"`
+	// WaivedFindingIDs lists the blocking findings an active waiver covers.
+	WaivedFindingIDs []string `json:"waived_finding_ids"`
 }
 
 // PRCheckAnnotation is one planned pull-request annotation.

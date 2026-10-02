@@ -1741,6 +1741,8 @@ export interface components {
       };
       /** @description Blocking findings silenced by an active waiver. */
       waived_count?: number;
+      /** @description IDs of the blocking findings an active waiver silences; always an array, possibly empty. */
+      waived_finding_ids?: string[];
       policy?: components["schemas"]["PolicyEffective"];
     };
     PolicyEffective: {

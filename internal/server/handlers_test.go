@@ -1925,6 +1925,31 @@ func TestGateStatus_Breached(t *testing.T) {
 	assert.Equal(t, http.StatusOK, w.Code)
 }
 
+// TestGateStatus_WaivedFindingIDsSerialized pins the wire contract: the
+// waived ids field is always an array, even when empty, so a UI can render
+// per-finding "Waived" badges without nil checks.
+func TestGateStatus_WaivedFindingIDsSerialized(t *testing.T) {
+	mock := &mockUsecases{
+		getGateStatusFn: func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error) {
+			return &usecase.GateStatusOutput{
+				ThresholdBreached: true,
+				BlockingCount:     1,
+				WaivedFindingIDs:  []string{},
+			}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/gate", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	var body map[string]json.RawMessage
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Contains(t, body, "waived_finding_ids", "the field must be present even when empty")
+	assert.JSONEq(t, `[]`, string(body["waived_finding_ids"]))
+}
+
 func TestGateStatus_IntroducedOnly(t *testing.T) {
 	var gotReport string
 	mock := &mockUsecases{

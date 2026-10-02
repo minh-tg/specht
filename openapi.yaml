@@ -2710,6 +2710,10 @@ components:
           description: Each blocked finding's latest reachability assessment.
           additionalProperties: { type: string }
         waived_count: { type: integer, description: Blocking findings silenced by an active waiver. }
+        waived_finding_ids:
+          type: array
+          description: IDs of the blocking findings an active waiver silences; always an array, possibly empty.
+          items: { type: string, format: uuid }
         policy: { $ref: "#/components/schemas/PolicyEffective" }
 
     PolicyEffective:
