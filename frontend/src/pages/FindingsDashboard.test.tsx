@@ -63,7 +63,7 @@ describe("FindingsDashboard", () => {
     renderWithProviders(<FindingsDashboard />);
     const title = await screen.findByText("Test Vuln");
     expect(title).toBeInTheDocument();
-    expect(within(screen.getByRole("table")).getByText("SCA")).toBeInTheDocument();
+    expect(within(screen.getByRole("grid")).getByText("SCA")).toBeInTheDocument();
   });
 
   it("labels analysis_state instead of rendering the raw enum", async () => {
@@ -198,7 +198,7 @@ describe("FindingsDashboard", () => {
     const user = userEvent.setup();
 
     await screen.findByText("Zebra");
-    const rows = () => within(screen.getByRole("table")).getAllByRole("row").slice(1);
+    const rows = () => within(screen.getByRole("grid")).getAllByRole("row").slice(1);
     expect(rows()[0]).toHaveTextContent("Zebra");
     expect(rows().at(-1)).toHaveTextContent("Mystery");
 
@@ -225,7 +225,7 @@ describe("FindingsDashboard", () => {
     const user = userEvent.setup();
 
     await screen.findByText("Unrated finding");
-    const rows = () => within(screen.getByRole("table")).getAllByRole("row").slice(1);
+    const rows = () => within(screen.getByRole("grid")).getAllByRole("row").slice(1);
     // Default sort is severity descending: low(1), unrated(0), unrecognised(-1).
     expect(rows()[0]).toHaveTextContent("Low severity");
     expect(rows()[1]).toHaveTextContent("Unrated finding");
@@ -244,7 +244,7 @@ describe("FindingsDashboard", () => {
     renderWithProviders(<FindingsDashboard />);
 
     await screen.findByText("Test Vuln");
-    expect(within(screen.getByRole("table")).getAllByText("Unknown").length).toBeGreaterThan(0);
+    expect(within(screen.getByRole("grid")).getAllByText("Unknown").length).toBeGreaterThan(0);
     expect(screen.queryByText("<img src=x>")).not.toBeInTheDocument();
   });
 
@@ -253,7 +253,7 @@ describe("FindingsDashboard", () => {
     renderWithProviders(<FindingsDashboard />);
 
     await screen.findByText("Test Vuln");
-    const row = within(screen.getByRole("table")).getAllByRole("row")[1];
+    const row = within(screen.getByRole("grid")).getAllByRole("row")[1];
     expect(row).toHaveTextContent(
       `SCA · Open · Accepted risk · Last seen ${formatDate("2025-01-01T00:00:00Z")}`,
     );
@@ -283,7 +283,7 @@ describe("FindingsDashboard", () => {
 
     await user.selectOptions(sort, "last_seen:desc");
     const titles = () =>
-      within(screen.getByRole("table")).getAllByRole("link").map((link) => link.textContent);
+      within(screen.getByRole("grid")).getAllByRole("link").map((link) => link.textContent);
     expect(titles()).toEqual(["New finding", "Old finding"]);
 
     await user.selectOptions(sort, "last_seen:asc");
@@ -388,11 +388,12 @@ describe("FindingsDashboard", () => {
     expect(await screen.findByText("No more results.")).toBeInTheDocument();
     expect(screen.queryByText("No findings found")).not.toBeInTheDocument();
     expect(screen.queryByText(EMPTY_PROJECT_HINT)).not.toBeInTheDocument();
-    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.queryByRole("grid")).not.toBeInTheDocument();
 
-    const previous = screen.getByRole("button", { name: "Previous" });
+    const previous = screen.getByRole("button", { name: "Previous page" });
     expect(previous).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Back to the first page" })).toBeInTheDocument();
 
     await userEvent.setup().click(previous);
 
@@ -407,7 +408,7 @@ describe("FindingsDashboard", () => {
     expect(await screen.findByText("No findings found")).toBeInTheDocument();
     expect(screen.getByText(EMPTY_PROJECT_HINT)).toBeInTheDocument();
     expect(screen.queryByText("No more results.")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Previous" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Previous page" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
   });
 
@@ -430,12 +431,42 @@ describe("FindingsDashboard", () => {
 
     expect(await screen.findByText("Current finding 0")).toBeInTheDocument();
     expect(screen.getByText("1–20")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "Next page" }));
 
     expect(await screen.findByText("Next page finding")).toBeInTheDocument();
     expect(screen.getByText("21–21")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Previous" }));
+    await user.click(screen.getByRole("button", { name: "Previous page" }));
     expect(await screen.findByText("Current finding 0")).toBeInTheDocument();
+  });
+
+  it("counts the filtered set so the pager stops at the real last page", async () => {
+    const all = Array.from({ length: 45 }, (_, index) => ({
+      ...findingsFixture[0],
+      id: `f${index}`,
+      current_title: `Finding ${index}`,
+    }));
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      if (String(input).endsWith("/gate")) return jsonResponse(gateFixture);
+      const url = new URL(String(input), "http://localhost");
+      const offset = Number.parseInt(url.searchParams.get("offset") ?? "0", 10);
+      return new Response(JSON.stringify(all.slice(offset, offset + 20)), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "X-Total-Count": String(all.length) },
+      });
+    });
+    renderWithProviders(<FindingsDashboard />, "/test-project/findings?offset=20");
+    const user = userEvent.setup();
+
+    expect(await screen.findByText("Finding 20")).toBeInTheDocument();
+    expect(screen.getByText("21–40 of 45")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+
+    expect(await screen.findByText("Finding 40")).toBeInTheDocument();
+    expect(screen.getByText("41–45 of 45")).toBeInTheDocument();
+    // The total says the list ends here, so a partial page is the last one.
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
   });
 
   it("allows retrying a failed findings request", async () => {
@@ -575,10 +606,10 @@ describe("FindingsDashboard links and table semantics", () => {
     expect(await screen.findByTestId("detail-state")).toBeInTheDocument();
   });
 
-  it("gives the table a caption and scoped column headers", async () => {
+  it("gives the grid an accessible name and scoped column headers", async () => {
     renderWithDetailRoute();
 
-    const table = await screen.findByRole("table", { name: "Findings" });
+    const table = await screen.findByRole("grid", { name: "Findings" });
     const headers = within(table).getAllByRole("columnheader");
     expect(headers.length).toBeGreaterThan(0);
     for (const header of headers) expect(header).toHaveAttribute("scope", "col");
@@ -588,7 +619,7 @@ describe("FindingsDashboard links and table semantics", () => {
     renderWithDetailRoute();
 
     await screen.findByText("Test Vuln");
-    const chip = within(screen.getByRole("table")).getByText("SCA");
+    const chip = within(screen.getByRole("grid")).getByText("SCA");
     expect(chip.className).toContain("bg-muted");
     expect(chip.className).not.toMatch(/blue|purple|amber|rose/);
   });
@@ -616,9 +647,9 @@ function renderWithDetailRoute(initialPath = "/test-project/findings") {
 }
 
 function gateCell(): HTMLElement {
-  const table = screen.getByRole("table");
+  const table = screen.getByRole("grid");
   const headers = within(table).getAllByRole("columnheader");
   const index = headers.indexOf(within(table).getByRole("columnheader", { name: "Blocks gate" }));
   const rows = within(table).getAllByRole("row");
-  return within(rows[1]).getAllByRole("cell")[index];
+  return within(rows[1]).getAllByRole("gridcell")[index];
 }

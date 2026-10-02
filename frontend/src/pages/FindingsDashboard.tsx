@@ -1,137 +1,40 @@
 import { useFindings, useGateStatus } from "@/api/hooks";
-import { SeverityBadge } from "@/components/ui/severity-badge";
-import {
-  analysisStateLabel,
-  FINDING_KINDS,
-  findingKindLabel,
-  SEVERITIES,
-  severityLabel,
-  severityRank,
-  TECHNICAL_STATES,
-  technicalStateLabel,
-} from "@/lib/enums";
-import { formatDate } from "@/lib/format";
-import { blocksGate, blocksGateLabel } from "@/lib/gate";
-import type { Finding } from "@/types/api";
-import { type MouseEvent, useState } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
-
-const PAGE_SIZE = 20;
-
-function sortFindings(findings: Finding[], by: string, dir: "asc" | "desc") {
-  return [...findings].sort((a, b) => {
-    let cmp = 0;
-    if (by === "severity") {
-      cmp = severityRank(a.current_severity) - severityRank(b.current_severity);
-    } else if (by === "title") {
-      cmp = a.current_title.localeCompare(b.current_title);
-    } else {
-      cmp = new Date(a.last_seen_at).getTime() - new Date(b.last_seen_at).getTime();
-    }
-    return dir === "desc" ? -cmp : cmp;
-  });
-}
-
-const SORT_OPTIONS: ReadonlyArray<{ value: string; label: string; }> = [
-  { value: "severity:desc", label: "Most severe first" },
-  { value: "severity:asc", label: "Least severe first" },
-  { value: "title:asc", label: "Title A–Z" },
-  { value: "title:desc", label: "Title Z–A" },
-  { value: "last_seen:desc", label: "Last seen, newest first" },
-  { value: "last_seen:asc", label: "Last seen, oldest first" },
-];
-
-/**
- * The columns that are hidden on narrow screens, as one line under the title,
- * so no field is lost to small viewports or to assistive technology.
- */
-function compactMeta(finding: Finding): string {
-  return [
-    findingKindLabel(finding.finding_kind),
-    technicalStateLabel(finding.state),
-    analysisStateLabel(finding.analysis_state),
-    `Last seen ${formatDate(finding.last_seen_at)}`,
-  ].filter(Boolean).join(" · ");
-}
-
-/** Clicks on these keep their own behaviour instead of opening the finding. */
-const INTERACTIVE_SELECTOR = "a, button, input, select, textarea, label";
+import { useParams } from "react-router-dom";
+import { ClearFiltersButton, FindingsFilters } from "./findings-dashboard/FindingsFilters";
+import { FindingsPager } from "./findings-dashboard/FindingsPager";
+import { FindingsTable } from "./findings-dashboard/FindingsTable";
+import { PAGE_SIZE, sortFindings } from "./findings-dashboard/sort";
+import { useFindingsQuery } from "./findings-dashboard/useFindingsQuery";
 
 export function FindingsDashboard() {
   const { slug } = useParams<{ slug: string; }>();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
-  const location = useLocation();
 
-  // The detail page reads `state.from` to return to this exact filtered page.
-  const detailState = { from: location.search };
+  const { filters, sort, offset, setFilter, setSort, setPage, clearFilters } = useFindingsQuery();
 
-  function openFinding(event: MouseEvent<HTMLTableRowElement>, findingId: string) {
-    if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
-      return;
-    }
-    if ((event.target as Element).closest(INTERACTIVE_SELECTOR)) return;
-    if (window.getSelection()?.toString()) return;
-    navigate(`/${slug}/findings/${findingId}`, { state: detailState });
-  }
-
-  const severity = searchParams.get("severity") ?? "";
-  const status = searchParams.get("status") ?? "";
-  const kind = searchParams.get("kind") ?? "";
-  const offset = Number.parseInt(searchParams.get("offset") ?? "0", 10);
-
-  const [sortBy, setSortBy] = useState("severity");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-
-  const { data: findings, isLoading, isFetching, isError, error, refetch } = useFindings(
+  const { data, isLoading, isFetching, isError, error, refetch } = useFindings(
     slug ?? "",
     {
-      severity: severity || undefined,
-      status: status || undefined,
-      kind: kind || undefined,
+      severity: filters.severity || undefined,
+      status: filters.status || undefined,
+      kind: filters.kind || undefined,
       offset,
       limit: PAGE_SIZE,
     },
   );
+  const findings = data?.findings;
+  const total = data?.total ?? null;
   const { data: gate } = useGateStatus(slug ?? "");
 
-  function updateFilter(key: string, value: string) {
-    const next = new URLSearchParams(searchParams);
-    if (value) {
-      next.set(key, value);
-    } else {
-      next.delete(key);
-    }
-    next.set("offset", "0");
-    setSearchParams(next);
-  }
-
-  function clearFilters() {
-    const next = new URLSearchParams(searchParams);
-    next.delete("severity");
-    next.delete("status");
-    next.delete("kind");
-    next.set("offset", "0");
-    setSearchParams(next);
-  }
-
   function toggleSort(column: string) {
-    if (sortBy === column) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    if (sort.by === column) {
+      setSort(column, sort.dir === "asc" ? "desc" : "asc");
     } else {
-      setSortBy(column);
-      setSortDir(column === "severity" ? "desc" : "asc");
+      setSort(column, column === "severity" ? "desc" : "asc");
     }
   }
 
-  function goToPage(newOffset: number) {
-    const next = new URLSearchParams(searchParams);
-    next.set("offset", String(newOffset));
-    setSearchParams(next);
-  }
-
-  const sorted = findings ? sortFindings(findings, sortBy, sortDir) : [];
-  const hasFilters = Boolean(severity || status || kind);
+  const sorted = findings ? sortFindings(findings, sort.by, sort.dir) : [];
+  const hasFilters = Boolean(filters.severity || filters.status || filters.kind);
   // Rows already on screen stay put while the next request is in flight, so the
   // toolbar the user is operating never unmounts under them.
   const isRefetching = isFetching && findings !== undefined;
@@ -140,66 +43,14 @@ export function FindingsDashboard() {
   // An empty page past the first one is not an empty project: the pager says so.
   const showEmptyState = showResults && offset === 0 && sorted.length === 0;
 
-  const sortIndicator = (col: string) => {
-    if (sortBy !== col) return "";
-    return sortDir === "asc" ? " ▲" : " ▼";
-  };
-
-  const ariaSort = (col: string): "ascending" | "descending" | "none" => {
-    if (sortBy !== col) return "none";
-    return sortDir === "asc" ? "ascending" : "descending";
-  };
-
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        <select
-          aria-label="Filter by severity"
-          className="border-input bg-background rounded-md border px-3 py-1 text-sm"
-          value={severity}
-          onChange={(e) => updateFilter("severity", e.target.value)}
-        >
-          <option value="">All severities</option>
-          {SEVERITIES.map((value) => (
-            <option key={value} value={value}>{severityLabel(value)}</option>
-          ))}
-        </select>
-        <select
-          aria-label="Filter by status"
-          className="border-input bg-background rounded-md border px-3 py-1 text-sm"
-          value={status}
-          onChange={(e) => updateFilter("status", e.target.value)}
-        >
-          <option value="">All statuses</option>
-          {TECHNICAL_STATES.map((value) => (
-            <option key={value} value={value}>{technicalStateLabel(value)}</option>
-          ))}
-        </select>
-        <select
-          aria-label="Filter by finding type"
-          className="border-input bg-background rounded-md border px-3 py-1 text-sm"
-          value={kind}
-          onChange={(e) => updateFilter("kind", e.target.value)}
-        >
-          <option value="">All kinds</option>
-          {FINDING_KINDS.map((value) => (
-            <option key={value} value={value}>{findingKindLabel(value)}</option>
-          ))}
-        </select>
-        <select
-          aria-label="Sort findings"
-          className="border-input bg-background rounded-md border px-3 py-1 text-sm md:hidden"
-          value={`${sortBy}:${sortDir}`}
-          onChange={(e) => {
-            const [by, dir] = e.target.value.split(":");
-            setSortBy(by);
-            setSortDir(dir === "asc" ? "asc" : "desc");
-          }}
-        >
-          {SORT_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}
-          </option>)}
-        </select>
-      </div>
+      <FindingsFilters
+        filters={filters}
+        sort={sort}
+        onFilterChange={setFilter}
+        onSortChange={setSort}
+      />
 
       <div
         aria-busy={isRefetching}
@@ -238,13 +89,7 @@ export function FindingsDashboard() {
               ? (
                 <>
                   <p className="text-muted-foreground text-sm">No findings match these filters.</p>
-                  <button
-                    type="button"
-                    className="text-primary text-sm underline hover:no-underline"
-                    onClick={clearFilters}
-                  >
-                    Clear filters
-                  </button>
+                  <ClearFiltersButton onClear={clearFilters} />
                 </>
               )
               : (
@@ -259,152 +104,25 @@ export function FindingsDashboard() {
         )}
 
         {showResults && sorted.length > 0 && (
-          <div className="space-y-2">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <caption className="sr-only">Findings</caption>
-                <thead>
-                  <tr className="border-border border-b text-left">
-                    <th
-                      scope="col"
-                      aria-sort={ariaSort("severity")}
-                      className="px-3 py-2 font-medium"
-                    >
-                      <button
-                        type="button"
-                        className="w-full cursor-pointer text-left whitespace-nowrap"
-                        onClick={() => toggleSort("severity")}
-                      >
-                        Severity{sortIndicator("severity")}
-                      </button>
-                    </th>
-                    <th scope="col" className="hidden px-3 py-2 font-medium md:table-cell">Kind</th>
-                    <th
-                      scope="col"
-                      aria-sort={ariaSort("title")}
-                      className="px-3 py-2 font-medium"
-                    >
-                      <button
-                        type="button"
-                        className="w-full cursor-pointer text-left whitespace-nowrap"
-                        onClick={() => toggleSort("title")}
-                      >
-                        Title{sortIndicator("title")}
-                      </button>
-                    </th>
-                    <th scope="col" className="hidden px-3 py-2 font-medium md:table-cell">
-                      Status
-                    </th>
-                    <th scope="col" className="hidden px-3 py-2 font-medium md:table-cell">
-                      Triage
-                    </th>
-                    <th scope="col" className="px-3 py-2 font-medium">Blocks gate</th>
-                    <th
-                      scope="col"
-                      aria-sort={ariaSort("last_seen")}
-                      className="hidden px-3 py-2 font-medium md:table-cell"
-                    >
-                      <button
-                        type="button"
-                        className="w-full cursor-pointer text-left whitespace-nowrap"
-                        onClick={() => toggleSort("last_seen")}
-                      >
-                        Last Seen{sortIndicator("last_seen")}
-                      </button>
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.map((f) => {
-                    const gateResult = blocksGate(f, gate);
-                    return (
-                      <tr
-                        key={f.id}
-                        className="border-border hover:bg-muted/50 focus-within:bg-muted/50 cursor-pointer border-b"
-                        onClick={(event) => openFinding(event, f.id)}
-                      >
-                        <td className="px-3 py-2">
-                          <SeverityBadge severity={f.current_severity} />
-                        </td>
-                        <td className="hidden px-3 py-2 md:table-cell">
-                          <span className="bg-muted text-muted-foreground inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium">
-                            {findingKindLabel(f.finding_kind) ?? "–"}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2">
-                          <Link
-                            to={`/${slug}/findings/${f.id}`}
-                            state={detailState}
-                            className="underline-offset-2 hover:underline"
-                          >
-                            {f.current_title}
-                          </Link>
-                          <p className="text-muted-foreground mt-0.5 text-xs md:hidden">
-                            {compactMeta(f)}
-                          </p>
-                        </td>
-                        <td className="hidden px-3 py-2 capitalize md:table-cell">
-                          {technicalStateLabel(f.state) ?? "–"}
-                        </td>
-                        <td className="hidden px-3 py-2 text-xs md:table-cell">
-                          {analysisStateLabel(f.analysis_state)
-                            ? (
-                              <span className="bg-muted rounded px-1.5 py-0.5 whitespace-nowrap">
-                                {analysisStateLabel(f.analysis_state)}
-                              </span>
-                            )
-                            : <span className="text-muted-foreground">–</span>}
-                        </td>
-                        <td className="px-3 py-2">
-                          {gateResult?.blocks
-                            ? (
-                              <span className="bg-sev-critical-bg text-sev-critical-fg rounded-sm px-1.5 py-0.5 text-xs font-medium">
-                                Yes
-                              </span>
-                            )
-                            : (
-                              <span className="text-muted-foreground text-xs">
-                                {blocksGateLabel(gateResult)}
-                              </span>
-                            )}
-                        </td>
-                        <td className="text-muted-foreground hidden px-3 py-2 whitespace-nowrap md:table-cell">
-                          {formatDate(f.last_seen_at)}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <p className="text-muted-foreground text-xs">
-              Sorting applies only to the findings on this page.
-            </p>
-          </div>
+          <FindingsTable
+            slug={slug}
+            findings={sorted}
+            gate={gate}
+            sort={sort}
+            onToggleSort={toggleSort}
+          />
         )}
 
         {showResults && showPager && (
-          <div className="flex items-center justify-between">
-            <button
-              className="text-muted-foreground hover:text-foreground disabled:opacity-50 text-sm"
-              disabled={offset === 0}
-              onClick={() => goToPage(Math.max(0, offset - PAGE_SIZE))}
-            >
-              Previous
-            </button>
-            <span className="text-muted-foreground text-xs">
-              {sorted.length === 0
-                ? "No more results."
-                : `${offset + 1}–${offset + sorted.length}`}
-            </span>
-            <button
-              className="text-muted-foreground hover:text-foreground disabled:opacity-50 text-sm"
-              disabled={sorted.length < PAGE_SIZE}
-              onClick={() => goToPage(offset + PAGE_SIZE)}
-            >
-              Next
-            </button>
-          </div>
+          <FindingsPager
+            offset={offset}
+            pageSize={PAGE_SIZE}
+            rowCount={sorted.length}
+            total={total}
+            onPrevious={() => setPage(Math.max(0, offset - PAGE_SIZE))}
+            onNext={() => setPage(offset + PAGE_SIZE)}
+            onFirst={() => setPage(0)}
+          />
         )}
       </div>
     </div>

@@ -14,7 +14,7 @@ import type {
   UserProfile,
 } from "@/types/api";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "./client";
+import { apiFetch, apiFetchWithTotal } from "./client";
 
 export const queryKeys = {
   projects: () => ["projects"] as const,
@@ -44,6 +44,10 @@ export const queryKeys = {
     projectSlug === undefined ? (["reports"] as const) : (["reports", projectSlug] as const),
   gate: (projectSlug?: string) =>
     projectSlug === undefined ? (["gate"] as const) : (["gate", projectSlug] as const),
+  changeGate: (projectSlug?: string, reportId?: string) =>
+    projectSlug === undefined
+      ? (["gate"] as const)
+      : (["gate", projectSlug, "introduced", reportId ?? ""] as const),
   reachability: (findingId?: string) =>
     findingId === undefined ? (["reachability"] as const) : (["reachability", findingId] as const),
   findingEvents: (findingId?: string) =>
@@ -139,7 +143,7 @@ export function useFindings(
 ) {
   return useQuery({
     queryKey: queryKeys.findings(projectSlug, filters),
-    queryFn: () => {
+    queryFn: async () => {
       const params = new URLSearchParams();
       if (filters.severity) params.set("severity", filters.severity);
       if (filters.status) params.set("status", filters.status);
@@ -148,21 +152,33 @@ export function useFindings(
       if (filters.limit != null) params.set("limit", String(filters.limit));
       const qs = params.toString();
       const query = qs ? `?${qs}` : "";
-      return apiFetch<Finding[]>(
+      const { data, total } = await apiFetchWithTotal<Finding[]>(
         `/api/v1/projects/${encodeURIComponent(projectSlug)}/findings${query}`,
       );
+      // `total` counts the filtered set across every page, so the pager can
+      // tell the last page from a full one without probing for it.
+      return { findings: data, total };
     },
     enabled: !!projectSlug,
     placeholderData: keepPreviousData,
   });
 }
 
-export function useFinding(findingId: string) {
-  return useQuery({
+/**
+ * Query options for one finding. Exported so callers that load many findings at
+ * once (the change view) can reuse the same query and share its cache entry
+ * with `useFinding`.
+ */
+export function findingQueryOptions(findingId: string) {
+  return {
     queryKey: queryKeys.finding(findingId),
     queryFn: () => apiFetch<Finding>(`/api/v1/findings/${encodeURIComponent(findingId)}`),
     enabled: !!findingId,
-  });
+  };
+}
+
+export function useFinding(findingId: string) {
+  return useQuery(findingQueryOptions(findingId));
 }
 
 export function useReports(projectSlug: string) {
@@ -179,6 +195,24 @@ export function useGateStatus(projectSlug: string) {
     queryKey: queryKeys.gate(projectSlug),
     queryFn: () => apiFetch<GateStatus>(`/api/v1/projects/${encodeURIComponent(projectSlug)}/gate`),
     enabled: !!projectSlug,
+  });
+}
+
+/**
+ * Gate verdict scoped to one report, i.e. only the findings that change
+ * introduced. Requires a report: without one there is nothing to scope to, so
+ * the query stays disabled rather than falling back to the project-wide gate.
+ */
+export function useChangeGate(projectSlug: string, reportId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.changeGate(projectSlug, reportId),
+    queryFn: () =>
+      apiFetch<GateStatus>(
+        `/api/v1/projects/${encodeURIComponent(projectSlug)}/gate?introduced_only=true&report_id=${
+          encodeURIComponent(reportId ?? "")
+        }`,
+      ),
+    enabled: !!projectSlug && !!reportId,
   });
 }
 

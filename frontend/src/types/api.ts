@@ -112,6 +112,8 @@ export interface GateStatus {
   blocked_by?: string[];
   blocked_by_reachability?: Record<string, ReachabilityState>;
   waived_count?: number;
+  /** IDs of the blocking findings an active waiver silences. */
+  waived_finding_ids?: string[];
   policy?: PolicyEffective;
 }
 

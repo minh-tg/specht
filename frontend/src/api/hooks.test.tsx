@@ -4,6 +4,9 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setAuthToken } from "./client";
 import {
+  findingQueryOptions,
+  queryKeys,
+  useChangeGate,
   useCreateApiKey,
   useCreateProject,
   useFinding,
@@ -234,6 +237,24 @@ describe("mutation CSRF hardening", () => {
 });
 
 describe("useFindings", () => {
+  it("reads the filtered total from X-Total-Count", async () => {
+    const findings = [{ id: "f21" }, { id: "f22" }];
+    globalThis.fetch = vi.fn().mockImplementation(() => {
+      return Promise.resolve(
+        new Response(JSON.stringify(findings), {
+          status: 200,
+          headers: { "Content-Type": "application/json", "X-Total-Count": "45" },
+        }),
+      );
+    });
+
+    const { result } = renderHook(() => useFindings("p1", { offset: 20, limit: 20 }), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.data).toEqual({ findings, total: 45 }));
+  });
+
   it("keeps the previous page of findings while a filtered refetch is pending", async () => {
     const previousPage = [{ id: "f1" }, { id: "f2" }];
     const requested: string[] = [];
@@ -253,7 +274,9 @@ describe("useFindings", () => {
       { wrapper, initialProps: { severity: undefined as string | undefined } },
     );
 
-    await waitFor(() => expect(result.current.data).toEqual(previousPage));
+    await waitFor(() =>
+      expect(result.current.data).toEqual({ findings: previousPage, total: null })
+    );
     expect(requested[0]).toContain("/api/v1/projects/p1/findings?limit=20");
 
     rerender({ severity: "critical" });
@@ -261,14 +284,14 @@ describe("useFindings", () => {
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(true));
     // The old page stays mounted while the filtered request is in flight, so the
     // filter controls the user is touching do not unmount under them.
-    expect(result.current.data).toEqual(previousPage);
+    expect(result.current.data).toEqual({ findings: previousPage, total: null });
     expect(result.current.isLoading).toBe(false);
 
     await act(async () => {
       releaseFiltered?.(jsonResponse([]));
     });
 
-    await waitFor(() => expect(result.current.data).toEqual([]));
+    await waitFor(() => expect(result.current.data).toEqual({ findings: [], total: null }));
     expect(result.current.isPlaceholderData).toBe(false);
     expect(requested.at(-1)).toContain("severity=critical");
   });
@@ -466,5 +489,50 @@ describe("useCreateApiKey", () => {
     expect(data?.raw_key).toBe("vuln_secret");
     expect(mutations[0].url).toBe("/api/v1/auth/apikeys");
     expect(JSON.parse(mutations[0].body)).toEqual({ project: "payments", name: "ci" });
+  });
+});
+
+describe("useChangeGate", () => {
+  it("scopes the gate to one report and encodes every parameter", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return Promise.resolve(jsonResponse({ threshold_breached: true, blocking_count: 1 }));
+    });
+
+    const { result } = renderHook(() => useChangeGate("p/1", "r 1/2"), { wrapper });
+
+    await waitFor(() => expect(result.current.data?.threshold_breached).toBe(true));
+    expect(urls[0]).toBe("/api/v1/projects/p%2F1/gate?introduced_only=true&report_id=r%201%2F2");
+  });
+
+  it("stays disabled without a report", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({}));
+    globalThis.fetch = fetchMock;
+
+    renderHook(() => useChangeGate("p1", undefined), { wrapper });
+
+    // Give React Query a tick to settle, then prove no request went out.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("findingQueryOptions", () => {
+  it("shares one cache entry with useFinding", async () => {
+    const qc = createTestQueryClient();
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({ id: "f1" }));
+    const localWrapper = ({ children }: { children: React.ReactNode; }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+
+    const { result } = renderHook(() => useFinding("f1"), { wrapper: localWrapper });
+    await waitFor(() => expect(result.current.data).toEqual({ id: "f1" }));
+
+    const options = findingQueryOptions("f1");
+    expect(options.queryKey).toEqual(queryKeys.finding("f1"));
+    expect(qc.getQueryData(options.queryKey)).toEqual({ id: "f1" });
   });
 });

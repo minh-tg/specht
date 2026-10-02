@@ -538,6 +538,14 @@ describe("FindingDetail gate status", () => {
     expect(screen.getByText("Does not block gate (below the floor)")).toBeInTheDocument();
   });
 
+  it("shows the Waived chip when an active waiver silences the finding", async () => {
+    gateFixture = { blocked_by: [], waived_finding_ids: ["f1"] };
+    renderDetail();
+
+    expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
+    expect(screen.getByText("Waived: does not block gate")).toBeInTheDocument();
+  });
+
   it("renders no chip while the gate status is unknown", async () => {
     gateFails = true;
     renderDetail();

@@ -8,11 +8,13 @@ import type { GateStatus } from "@/types/api";
  * The gate is the backend's own decision: `gate.blocked_by` is the authority,
  * never the finding's `gate_effect` (which only records whether the effect was
  * ignored by triage). Deriving "blocks" from `gate_effect` alone would claim a
- * finding is blocking even after the gate service excluded it.
+ * finding is blocking even after the gate service excluded it. The waiver list
+ * (`gate.waived_finding_ids`) is equally the backend's decision, so it is
+ * honoured before the finding-level ignore and floor rules.
  */
 export interface BlocksGateResult {
   blocks: boolean;
-  reason?: "ignored" | "below_floor";
+  reason?: "ignored" | "below_floor" | "waived";
 }
 
 /**
@@ -28,6 +30,10 @@ export function blocksGate(
 
   if (gate.blocked_by?.includes(finding.id)) {
     return { blocks: true };
+  }
+
+  if (gate.waived_finding_ids?.includes(finding.id)) {
+    return { blocks: false, reason: "waived" };
   }
 
   if (finding.gate_effect === "ignore") {
@@ -48,6 +54,7 @@ export function blocksGateLabel(result: BlocksGateResult | null): string {
   if (result.blocks) return "Yes";
   if (result.reason === "ignored") return "No (ignored by triage)";
   if (result.reason === "below_floor") return "No (below the floor)";
+  if (result.reason === "waived") return "Waived";
   return "No";
 }
 
@@ -61,5 +68,6 @@ export function blocksGateSentence(result: BlocksGateResult | null): string | nu
   if (result.blocks) return "Blocks gate";
   if (result.reason === "ignored") return "Does not block gate (ignored by triage)";
   if (result.reason === "below_floor") return "Does not block gate (below the floor)";
+  if (result.reason === "waived") return "Waived: does not block gate";
   return "Does not block gate";
 }

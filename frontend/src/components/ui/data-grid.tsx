@@ -31,7 +31,21 @@ export interface DataGridColumn<Row> {
   readonly header: React.ReactNode;
   readonly sortable?: boolean;
   readonly align?: "start" | "end";
-  /** Cell content. Keep it single-line: a wrapping cell silently breaks row height. */
+  /**
+   * Hide the whole column below the given breakpoint. The owner is responsible
+   * for repeating the value somewhere that stays visible, so nothing is lost to
+   * a small viewport or to assistive technology.
+   */
+  readonly hideBelow?: "md";
+  /** Extra classes merged into this column's cells (not its header). */
+  readonly cellClassName?: string;
+  /**
+   * Let a multi-line value wrap. Without this the cell clips to one line, which
+   * keeps the row-height token honest. A table row's height is only a minimum,
+   * so a wrapping cell grows its row instead of overflowing.
+   */
+  readonly wrap?: boolean;
+  /** Cell content. Keep it single-line unless `wrap` is set. */
   readonly cell: (row: Row) => React.ReactNode;
 }
 
@@ -48,9 +62,22 @@ export interface DataGridProps<Row> {
   readonly rowKey: (row: Row) => string;
   /** Row height token. Resolve it from the mode, not from the screen. */
   readonly density?: "compact" | "comfortable" | "group";
+  /** Per-row classes, for a cursor affordance the column set cannot express. */
+  readonly rowClassName?: (row: Row) => string | undefined;
   readonly selectedKey?: string | null;
   readonly onSelect?: (row: Row) => void;
   readonly onActivate?: (row: Row) => void;
+  /**
+   * Fired after the cursor update on a row click, with the click event so the
+   * owner can apply its own guards. `onSelect` still runs as before.
+   */
+  readonly onRowClick?: (row: Row, event: React.MouseEvent<HTMLTableRowElement>) => void;
+  /**
+   * The ledger default is mono with tabular numerals. Prose-heavy grids read
+   * better in the app font; a cell that still needs aligned digits can add
+   * `tabular-nums` through `cellClassName`.
+   */
+  readonly proportionalFont?: boolean;
   readonly sort?: DataGridSort | null;
   readonly onSortChange?: (columnId: string) => void;
   readonly ariaRowCount?: number;
@@ -64,7 +91,14 @@ export interface DataGridProps<Row> {
   readonly emptyState?: React.ReactNode;
 }
 
-const DENSITY_CLASS: Record<NonNullable<DataGridProps<unknown>["density"]>, string> = {
+type Density = NonNullable<DataGridProps<unknown>["density"]>;
+
+/** Elements that own their activation keys; the grid must not intercept them. */
+const CONTROL_SELECTOR = "a, button, input, select, textarea, label";
+
+// A table row's height is only a minimum (`min-height` is ignored on rows), so
+// the token keeps rows uniform and still lets a wrapping cell grow its row.
+const DENSITY_HEIGHT: Record<Density, string> = {
   compact: "h-[var(--row-compact)]",
   comfortable: "h-[var(--row-comfortable)]",
   group: "h-[var(--row-group)]",
@@ -76,9 +110,12 @@ export function DataGrid<Row>({
   columns,
   rowKey,
   density = "comfortable",
+  rowClassName,
   selectedKey = null,
   onSelect,
   onActivate,
+  onRowClick,
+  proportionalFont = false,
   sort = null,
   onSortChange,
   ariaRowCount,
@@ -111,6 +148,11 @@ export function DataGrid<Row>({
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTableElement>) => {
+    // A header control owns Enter and Space itself. The grid must not steal the
+    // activation keys from a sort button, and a link in a cell keeps its native
+    // activation; the cursor row is not interactive, so row activation still
+    // reaches onActivate/onSelect.
+    const onControl = (event.target as Element | null)?.closest(CONTROL_SELECTOR) != null;
     switch (event.key) {
       case "ArrowDown":
       case "j":
@@ -131,6 +173,7 @@ export function DataGrid<Row>({
         moveCursor(rows.length - 1);
         return;
       case "Enter": {
+        if (onControl) return;
         const row = rows[cursor];
         if (!row) return;
         event.preventDefault();
@@ -139,6 +182,7 @@ export function DataGrid<Row>({
       }
       case " ":
       case "x": {
+        if (onControl) return;
         const row = rows[cursor];
         if (!row || !onSelect) return;
         event.preventDefault();
@@ -179,10 +223,13 @@ export function DataGrid<Row>({
                   key={column.id}
                   role="columnheader"
                   scope="col"
-                  aria-sort={active}
+                  // Sortable headers always carry a state: an absent aria-sort and
+                  // "none" mean the same thing but only the latter is announced.
+                  aria-sort={column.sortable ? (active ?? "none") : undefined}
                   className={cn(
                     "border-b border-border px-2 py-1",
                     "font-label text-[11px] leading-4 tracking-[0.06em] text-muted-foreground uppercase",
+                    column.hideBelow === "md" && "hidden md:table-cell",
                     column.align === "end" && "text-right",
                   )}
                 >
@@ -236,15 +283,19 @@ export function DataGrid<Row>({
                     ref={(node) => {
                       rowRefs.current[index] = node;
                     }}
-                    onClick={() => {
+                    onClick={(event) => {
                       setCursorState(index);
                       onSelect?.(row);
+                      onRowClick?.(row, event);
                     }}
                     className={cn(
-                      DENSITY_CLASS[density],
-                      "border-b border-border/60 outline-none",
+                      DENSITY_HEIGHT[density],
+                      // The global :focus-visible ring is the cursor; keep it inside the row
+                      // so the table's overflow wrapper cannot clip it.
+                      "border-b border-border/60 focus-visible:bg-muted/60 focus-visible:outline-offset-[-2px]",
                       "hover:bg-muted/60",
                       isSelected && "bg-muted",
+                      rowClassName?.(row),
                     )}
                   >
                     {columns.map((column) => (
@@ -254,9 +305,14 @@ export function DataGrid<Row>({
                         className={cn(
                           // A table cell's height is only a minimum, so a wrapping value
                           // silently defeats the row-height token: clip instead of wrap.
-                          "overflow-hidden px-2 text-ellipsis whitespace-nowrap",
-                          "font-mono text-[13px] leading-[18px] tabular-nums",
+                          column.wrap
+                            ? "break-words whitespace-normal"
+                            : "overflow-hidden text-ellipsis whitespace-nowrap",
+                          "px-2 text-[13px] leading-[18px]",
+                          proportionalFont ? "" : "font-mono tabular-nums",
                           column.align === "end" && "text-right",
+                          column.hideBelow === "md" && "hidden md:table-cell",
+                          column.cellClassName,
                         )}
                       >
                         {column.cell(row)}

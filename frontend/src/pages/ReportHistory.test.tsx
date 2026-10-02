@@ -76,6 +76,13 @@ describe("ReportHistory", () => {
     mockReports(REPORTS);
   });
 
+  it("encodes the commit and report ids in the change link", async () => {
+    mockReports([{ ...REPORTS[0], id: "r 1", commit_sha: "ab/c?d" }]);
+    renderWithProviders(<ReportHistory />);
+    const link = await screen.findByRole("link", { name: "ab/c?d" });
+    expect(link).toHaveAttribute("href", "/test-project/changes/ab%2Fc%3Fd?report=r%201");
+  });
+
   it("shows loading state initially", () => {
     renderWithProviders(<ReportHistory />);
     const skeletons = document.querySelectorAll(".animate-pulse");
@@ -102,9 +109,17 @@ describe("ReportHistory", () => {
     // Dates go through formatDateTime.
     expect(screen.getByText(formatDateTime("2025-01-01T00:00:00Z"))).toBeInTheDocument();
 
-    // Branch plus the short commit sha, as a muted mono line.
-    expect(screen.getByText("main · abcdef1")).toBeInTheDocument();
-    expect(screen.getByText("feature/x · 1234567")).toBeInTheDocument();
+    // Branch text stays, and the commit sha links to its change view.
+    expect(screen.getByText("main")).toBeInTheDocument();
+    expect(screen.getByText("feature/x")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "abcdef1" })).toHaveAttribute(
+      "href",
+      "/test-project/changes/abcdef1234567890?report=r1",
+    );
+    expect(screen.getByRole("link", { name: "1234567" })).toHaveAttribute(
+      "href",
+      "/test-project/changes/1234567abcdef?report=r3",
+    );
 
     // The failed report is visually louder than the others.
     const failedCard = screen.getByText("Failed").closest("div.bg-card");

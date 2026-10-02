@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { DataGrid, type DataGridColumn } from "./data-grid";
 
 interface Row {
@@ -210,5 +210,191 @@ describe("DataGrid — ARIA grid pattern", () => {
     );
     const gridRows = screen.getAllByRole("row").filter((r) => r.hasAttribute("aria-rowindex"));
     expect(gridRows[0].className).toContain("--row-compact");
+  });
+
+  it("reports aria-sort=none on a sortable header that is not the sorted column", () => {
+    // An absent aria-sort and "none" mean the same thing, but only the latter is
+    // announced, so a sortable column must always carry a state.
+    const sortableColumns: readonly DataGridColumn<Row>[] = [
+      { id: "title", header: "Title", sortable: true, cell: (row) => row.title },
+      { id: "gate", header: "Gate", sortable: true, cell: (row) => row.gate },
+    ];
+    render(
+      <DataGrid
+        label="Findings"
+        rows={rows}
+        columns={sortableColumns}
+        rowKey={rowKey}
+        sort={{ columnId: "gate", direction: "ascending" }}
+        onSortChange={() => {}}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: /Title/ }))
+      .toHaveAttribute("aria-sort", "none");
+    expect(screen.getByRole("columnheader", { name: /Gate/ }))
+      .toHaveAttribute("aria-sort", "ascending");
+  });
+
+  it("omits aria-sort on a column that cannot be sorted", () => {
+    render(
+      <DataGrid
+        label="Findings"
+        rows={rows}
+        columns={columns}
+        rowKey={rowKey}
+        sort={{ columnId: "title", direction: "ascending" }}
+        onSortChange={() => {}}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: "Gate" })).not.toHaveAttribute("aria-sort");
+  });
+
+  it("hides a column below md on both its header and its cells", () => {
+    const narrowColumns: readonly DataGridColumn<Row>[] = [
+      { id: "title", header: "Title", cell: (row) => row.title },
+      { id: "gate", header: "Gate", hideBelow: "md", cell: (row) => row.gate },
+    ];
+    render(<DataGrid label="Findings" rows={rows} columns={narrowColumns} rowKey={rowKey} />);
+
+    const header = screen.getByRole("columnheader", { name: "Gate" });
+    expect(header.className).toContain("hidden");
+    expect(header.className).toContain("md:table-cell");
+
+    const gridRows = screen.getAllByRole("row").filter((r) => r.hasAttribute("aria-rowindex"));
+    const gateCell = within(gridRows[0]).getAllByRole("gridcell")[1];
+    expect(gateCell.className).toContain("hidden");
+    expect(gateCell.className).toContain("md:table-cell");
+  });
+
+  it("merges a column's cellClassName into that column's cells", () => {
+    const styledColumns: readonly DataGridColumn<Row>[] = [
+      {
+        id: "title",
+        header: "Title",
+        cellClassName: "text-muted-foreground",
+        cell: (row) => row.title,
+      },
+    ];
+    render(<DataGrid label="Findings" rows={rows} columns={styledColumns} rowKey={rowKey} />);
+
+    const gridRows = screen.getAllByRole("row").filter((r) => r.hasAttribute("aria-rowindex"));
+    const cell = within(gridRows[0]).getAllByRole("gridcell")[0];
+    expect(cell.className).toContain("text-muted-foreground");
+    // The cell keeps its default ledger styling as well.
+    expect(cell.className).toContain("font-mono");
+  });
+
+  it("drops the one-line clipping only for a wrapping cell", () => {
+    const wrapColumns: readonly DataGridColumn<Row>[] = [
+      { id: "title", header: "Title", wrap: true, cell: (row) => row.title },
+      { id: "gate", header: "Gate", cell: (row) => row.gate },
+    ];
+    render(<DataGrid label="Findings" rows={rows} columns={wrapColumns} rowKey={rowKey} />);
+
+    const gridRows = screen.getAllByRole("row").filter((r) => r.hasAttribute("aria-rowindex"));
+    const [titleCell, gateCell] = within(gridRows[0]).getAllByRole("gridcell");
+    expect(titleCell.className).toContain("whitespace-normal");
+    expect(titleCell.className).not.toContain("whitespace-nowrap");
+    expect(gateCell.className).toContain("whitespace-nowrap");
+  });
+
+  it("gives rows the density token as a height, which a wrapping cell may exceed", () => {
+    render(
+      <DataGrid
+        label="Findings"
+        rows={rows}
+        columns={columns}
+        rowKey={rowKey}
+        density="compact"
+      />,
+    );
+    const gridRows = screen.getAllByRole("row").filter((r) => r.hasAttribute("aria-rowindex"));
+    expect(gridRows[0].className).toContain("h-[var(--row-compact)]");
+    expect(gridRows[0].className).not.toContain("min-h-");
+  });
+
+  it("leaves the focus ring on the cursor row instead of suppressing it", () => {
+    render(<DataGrid label="Findings" rows={rows} columns={columns} rowKey={rowKey} />);
+    const gridRows = screen.getAllByRole("row").filter((r) => r.hasAttribute("aria-rowindex"));
+    // `outline-none` would override the app-wide :focus-visible ring and hide the cursor.
+    expect(gridRows[0].className).not.toContain("outline-none");
+    expect(gridRows[0].className).toContain("focus-visible:outline-offset-[-2px]");
+  });
+
+  it("merges per-row classes from rowClassName", () => {
+    render(
+      <DataGrid
+        label="Findings"
+        rows={rows}
+        columns={columns}
+        rowKey={rowKey}
+        rowClassName={(row) => (row.id === "f2" ? "cursor-pointer" : undefined)}
+      />,
+    );
+    const gridRows = screen.getAllByRole("row").filter((r) => r.hasAttribute("aria-rowindex"));
+    expect(gridRows[1].className).toContain("cursor-pointer");
+    expect(gridRows[0].className).not.toContain("cursor-pointer");
+  });
+
+  it("fires onRowClick after moving the cursor, keeping onSelect", () => {
+    const calls: string[] = [];
+    const onSelect = vi.fn((row: Row) => calls.push(`select:${row.id}`));
+    const onRowClick = vi.fn((row: Row) => calls.push(`click:${row.id}`));
+    render(
+      <DataGrid
+        label="Findings"
+        rows={rows}
+        columns={columns}
+        rowKey={rowKey}
+        onSelect={onSelect}
+        onRowClick={onRowClick}
+      />,
+    );
+    const gridRows = screen.getAllByRole("row").filter((r) => r.hasAttribute("aria-rowindex"));
+
+    fireEvent.click(gridRows[1]);
+
+    expect(onRowClick).toHaveBeenCalledWith(rows[1], expect.anything());
+    expect(onSelect).toHaveBeenCalledWith(rows[1]);
+    // The click moves the cursor before the owner's handler runs, so a click and
+    // the keyboard cursor never disagree about which row is current.
+    expect(calls).toEqual(["select:f2", "click:f2"]);
+    expect(gridRows[1]).toHaveAttribute("tabindex", "0");
+  });
+
+  it("leaves Enter to a control inside the grid instead of activating the row", () => {
+    // A sort button in a header owns Enter; hijacking it would make the grid
+    // impossible to sort from the keyboard.
+    const controlColumns: readonly DataGridColumn<Row>[] = [
+      {
+        id: "title",
+        header: <button type="button">Sort by title</button>,
+        cell: (row) => row.title,
+      },
+    ];
+    const onActivate = vi.fn();
+    render(
+      <DataGrid
+        label="Findings"
+        rows={rows}
+        columns={controlColumns}
+        rowKey={rowKey}
+        onActivate={onActivate}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "Sort by title" }), { key: "Enter" });
+
+    expect(onActivate).not.toHaveBeenCalled();
+  });
+
+  it("switches cells to the app font when proportionalFont is set", () => {
+    render(
+      <DataGrid label="Findings" rows={rows} columns={columns} rowKey={rowKey} proportionalFont />,
+    );
+    const gridRows = screen.getAllByRole("row").filter((r) => r.hasAttribute("aria-rowindex"));
+    const cell = within(gridRows[0]).getAllByRole("gridcell")[0];
+    expect(cell.className).not.toContain("font-mono");
+    expect(cell.className).not.toContain("tabular-nums");
   });
 });
