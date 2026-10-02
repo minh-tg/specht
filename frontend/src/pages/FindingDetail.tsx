@@ -1,6 +1,5 @@
 import { useFinding, useFindingEvents, useGateStatus, useReachability } from "@/api/hooks";
-import { analysisStateLabel, technicalStateLabel } from "@/lib/enums";
-import { formatDateTime } from "@/lib/format";
+import { analysisStateLabel } from "@/lib/enums";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { FindingHeader } from "./finding-detail/FindingHeader";
@@ -11,6 +10,7 @@ import {
   parseSourceLink,
 } from "./finding-detail/format";
 import { HistorySection } from "./finding-detail/HistorySection";
+import { MetadataGrid } from "./finding-detail/MetadataGrid";
 import { ReachabilitySection } from "./finding-detail/ReachabilitySection";
 import { TriageSection } from "./finding-detail/TriageSection";
 
@@ -84,38 +84,7 @@ export function FindingDetail() {
 
       <FindingHeader finding={finding} gateResult={gateResult} />
 
-      <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-        <div>
-          <span className="text-muted-foreground">Status</span>
-          <p className="font-medium">{technicalStateLabel(finding.state) ?? "–"}</p>
-        </div>
-        <div>
-          <span className="text-muted-foreground">Triage</span>
-          <p className="font-medium">
-            {analysisStateLabel(finding.analysis_state) ?? "Not triaged"}
-          </p>
-        </div>
-        <div>
-          <span className="text-muted-foreground">First Seen</span>
-          <p className="font-medium">{formatDateTime(finding.first_seen_at)}</p>
-        </div>
-        <div>
-          <span className="text-muted-foreground">Last Seen</span>
-          <p className="font-medium">{formatDateTime(finding.last_seen_at)}</p>
-        </div>
-        <div>
-          <span className="text-muted-foreground">Introduced</span>
-          <p className="font-mono text-xs">
-            {finding.introduced_commit_sha
-              ? finding.introduced_commit_sha.slice(0, 12)
-              : "Unattributed"}
-          </p>
-        </div>
-        <div className="sm:col-span-2">
-          <span className="text-muted-foreground">Fingerprint</span>
-          <p className="font-mono text-xs break-all">{finding.fingerprint}</p>
-        </div>
-      </div>
+      <MetadataGrid finding={finding} />
 
       <div className="mt-8 rounded-lg border p-4">
         <h2 className="mb-3 text-sm font-semibold">How to fix</h2>
