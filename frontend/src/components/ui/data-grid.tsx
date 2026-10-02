@@ -41,8 +41,8 @@ export interface DataGridColumn<Row> {
   readonly cellClassName?: string;
   /**
    * Let a multi-line value wrap. Without this the cell clips to one line, which
-   * keeps the row-height token honest; pair it with `rowHeight="auto"` so the
-   * row can grow instead of overflowing.
+   * keeps the row-height token honest. A table row's height is only a minimum,
+   * so a wrapping cell grows its row instead of overflowing.
    */
   readonly wrap?: boolean;
   /** Cell content. Keep it single-line unless `wrap` is set. */
@@ -62,11 +62,6 @@ export interface DataGridProps<Row> {
   readonly rowKey: (row: Row) => string;
   /** Row height token. Resolve it from the mode, not from the screen. */
   readonly density?: "compact" | "comfortable" | "group";
-  /**
-   * "fixed" honours the density row-height token; "auto" turns it into a
-   * min-height so a wrapped cell can grow the row instead of overflowing.
-   */
-  readonly rowHeight?: "fixed" | "auto";
   /** Per-row classes, for a cursor affordance the column set cannot express. */
   readonly rowClassName?: (row: Row) => string | undefined;
   readonly selectedKey?: string | null;
@@ -101,12 +96,12 @@ type Density = NonNullable<DataGridProps<unknown>["density"]>;
 /** Elements that own their activation keys; the grid must not intercept them. */
 const CONTROL_SELECTOR = "a, button, input, select, textarea, label";
 
-// A table cell's height is only a minimum, so the fixed token keeps rows uniform
-// and `auto` swaps it for the equivalent minimum when a cell may wrap.
-const DENSITY_HEIGHT: Record<Density, Record<"fixed" | "auto", string>> = {
-  compact: { fixed: "h-[var(--row-compact)]", auto: "min-h-[var(--row-compact)]" },
-  comfortable: { fixed: "h-[var(--row-comfortable)]", auto: "min-h-[var(--row-comfortable)]" },
-  group: { fixed: "h-[var(--row-group)]", auto: "min-h-[var(--row-group)]" },
+// A table row's height is only a minimum (`min-height` is ignored on rows), so
+// the token keeps rows uniform and still lets a wrapping cell grow its row.
+const DENSITY_HEIGHT: Record<Density, string> = {
+  compact: "h-[var(--row-compact)]",
+  comfortable: "h-[var(--row-comfortable)]",
+  group: "h-[var(--row-group)]",
 };
 
 export function DataGrid<Row>({
@@ -115,7 +110,6 @@ export function DataGrid<Row>({
   columns,
   rowKey,
   density = "comfortable",
-  rowHeight = "fixed",
   rowClassName,
   selectedKey = null,
   onSelect,
@@ -295,7 +289,7 @@ export function DataGrid<Row>({
                       onRowClick?.(row, event);
                     }}
                     className={cn(
-                      DENSITY_HEIGHT[density][rowHeight],
+                      DENSITY_HEIGHT[density],
                       "border-b border-border/60 outline-none",
                       "hover:bg-muted/60",
                       isSelected && "bg-muted",

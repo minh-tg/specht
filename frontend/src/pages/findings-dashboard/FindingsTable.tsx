@@ -139,8 +139,6 @@ export function FindingsTable(
           rows={findings}
           columns={columns}
           rowKey={(f) => f.id}
-          // A wrapped title makes the row taller than the density token.
-          rowHeight="auto"
           proportionalFont
           rowClassName={() => "cursor-pointer"}
           sort={{

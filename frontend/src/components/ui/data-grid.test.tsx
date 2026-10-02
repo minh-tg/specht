@@ -298,7 +298,7 @@ describe("DataGrid — ARIA grid pattern", () => {
     expect(gateCell.className).toContain("whitespace-nowrap");
   });
 
-  it("uses a minimum height instead of a fixed one when rows may grow", () => {
+  it("gives rows the density token as a height, which a wrapping cell may exceed", () => {
     render(
       <DataGrid
         label="Findings"
@@ -306,11 +306,11 @@ describe("DataGrid — ARIA grid pattern", () => {
         columns={columns}
         rowKey={rowKey}
         density="compact"
-        rowHeight="auto"
       />,
     );
     const gridRows = screen.getAllByRole("row").filter((r) => r.hasAttribute("aria-rowindex"));
-    expect(gridRows[0].className).toContain("min-h-[var(--row-compact)]");
+    expect(gridRows[0].className).toContain("h-[var(--row-compact)]");
+    expect(gridRows[0].className).not.toContain("min-h-");
   });
 
   it("merges per-row classes from rowClassName", () => {
