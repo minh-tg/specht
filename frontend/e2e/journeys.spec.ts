@@ -15,6 +15,13 @@ const ADMIN_PASSWORD = process.env.E2E_UI_ADMIN_PASSWORD ?? "journey-admin-123";
 // e2e/testdata next to the Go suite.
 const FIXTURE_HIGH = path.resolve(process.cwd(), "../e2e/testdata/high.sarif.json");
 const FIXTURE_MEDIUM = path.resolve(process.cwd(), "../e2e/testdata/medium.sarif.json");
+const FIXTURE_HIGH_MEDIUM = path.resolve(process.cwd(), "../e2e/testdata/high-medium.sarif.json");
+const FIXTURE_HIGH_NEW = path.resolve(process.cwd(), "../e2e/testdata/high-new.sarif.json");
+
+// A baseline scan and the pull-request scan that adds one blocking finding on top of it.
+const BASE_SHA = "1111111111111111111111111111111111111111";
+const CHANGE_SHA = "2222222222222222222222222222222222222222";
+const NEW_TITLE = "SQL injection in user query";
 
 const HIGH_TITLE = "Hardcoded credentials in app config";
 
@@ -44,6 +51,7 @@ async function ingestFixture(
   token: string,
   slug: string,
   fixturePath: string,
+  extra: Record<string, unknown> = {},
 ): Promise<void> {
   const res = await request.post("/api/v1/reports", {
     headers: { Authorization: `Bearer ${token}` },
@@ -51,6 +59,7 @@ async function ingestFixture(
       project: slug,
       scanner: "sarif",
       raw_data: JSON.parse(readFileSync(fixturePath, "utf8")),
+      ...extra,
     },
   });
   expect(res.ok(), await res.text()).toBeTruthy();
@@ -400,4 +409,47 @@ test("marking the only blocker not reachable flips the project verdict to passin
   await page.getByRole("link", { name: "← Back to findings" }).click();
   await expect(page.getByText("PASSING", { exact: true })).toBeVisible();
   await expect(page.getByText("Nothing blocks this project")).toBeVisible();
+});
+
+test("a CI link opens the change view with only what the change introduced", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("change-view");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH_MEDIUM, { commit_sha: BASE_SHA });
+  await ingestFixture(request, token, slug, FIXTURE_HIGH_NEW, {
+    commit_sha: CHANGE_SHA,
+    base_revision: BASE_SHA,
+    gate_introduced_only: true,
+  });
+  await uiLogin(page);
+
+  // The CI check links by commit; a 7-character prefix is enough.
+  await page.goto(`/${slug}/changes/${CHANGE_SHA.slice(0, 7)}`);
+  await expect(page.getByRole("heading", { name: "Change 2222222" })).toBeVisible();
+  await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
+  await expect(page.getByText("1 finding blocks this change")).toBeVisible();
+
+  // Only the introduced finding is listed as a blocker; the baseline debt is folded away.
+  const introduced = page.getByRole("region", { name: "Findings introduced by this change" });
+  await expect(introduced.getByRole("link", { name: NEW_TITLE })).toBeVisible();
+  await expect(introduced.getByRole("link", { name: HIGH_TITLE })).toHaveCount(0);
+
+  await page.getByText(/1 other finding blocks this project/).click();
+  await expect(page.getByRole("link", { name: HIGH_TITLE })).toBeVisible();
+
+  // Deciding is one click away.
+  await introduced.getByRole("link", { name: NEW_TITLE }).click();
+  await expect(page).toHaveURL(new RegExp(`/${slug}/findings/`));
+  await expect(page.getByRole("heading", { name: "Triage" })).toBeVisible();
+});
+
+test("a commit with no scan says so instead of failing", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("change-none");
+  await seedProject(request, token, slug);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/changes/deadbee`);
+  await expect(page.getByText("No scan found for commit deadbee")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Upload a report" })).toBeVisible();
 });
