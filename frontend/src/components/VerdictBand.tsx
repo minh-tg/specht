@@ -1,4 +1,5 @@
 import { useGateStatus, useMe, useProjectStats } from "@/api/hooks";
+import { InfoTip } from "@/components/InfoTip";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { SEVERITIES, severityLabel } from "@/lib/enums";
@@ -141,7 +142,12 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
 
       {(showFloor || showScan) && (
         <p className="text-muted-foreground mt-1 text-sm">
-          {policy && <span>Floor: {policy.severity_floor} ({policy.severity_source})</span>}
+          {policy && (
+            <span>
+              Floor: {policy.severity_floor} ({policy.severity_source})
+              <InfoTip term="severityFloor" className="ml-1" />
+            </span>
+          )}
           {policy && showScan && " · "}
           {latest && (
             <span title={formatDateTime(latest.created_at)}>
