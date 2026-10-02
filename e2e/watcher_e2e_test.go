@@ -20,13 +20,22 @@ import (
 // of trivy-npm-packages-scan.json: fixed in 4.18.0, CVSS 3.1 high.
 func armLodashAdvisory() string {
 	const id = "OSV-2026-777"
+	// The daemon polls every second and advances a project's watermark on EVERY
+	// successful poll, including a poll of a project that has no inventory yet
+	// (between newProject and the scan being ingested). Warm polls then skip
+	// advisories published before that watermark, by design: the watcher reports
+	// NEW advisories, scans cover the old ones. A fixed past date therefore made
+	// this fixture depend on winning a race against the first poll, which a slow
+	// CI runner loses about half the time. Dating the advisory after any
+	// watermark the daemon can have recorded makes it eligible in both orders.
+	published := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
 	fakes.osv.arm("lodash", map[string]any{
 		"id":        id,
 		"aliases":   []string{"CVE-2026-777"},
 		"summary":   "lodash prototype pollution before 4.18.0",
 		"details":   "A prototype pollution flaw in lodash versions before 4.18.0 allows attackers to inject properties.",
-		"published": "2026-01-01T00:00:00Z",
-		"modified":  "2026-01-02T00:00:00Z",
+		"published": published,
+		"modified":  published,
 		"severity": []map[string]string{{
 			"type":  "CVSS_V3",
 			"score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
@@ -94,6 +103,11 @@ func setWatcherEnabled(t *testing.T, slug string, enabled bool) {
 func TestE2E_WatcherDaemonLifecycle(t *testing.T) {
 	t.Run("armed advisory becomes a gated watcher finding exactly once", func(t *testing.T) {
 		slug := newProject(t, "watcher-advisory")
+		// Let the daemon poll the still-empty project first, so its watermark is
+		// already set when the scan and the advisory arrive. That is the realistic
+		// order (a new advisory appears after the project was first polled) and it
+		// makes this subtest deterministic instead of racing the first poll.
+		time.Sleep(2500 * time.Millisecond)
 		ingestRaw(t, slug, "trivy", "trivy-npm-packages-scan.json", nil)
 		notifyBefore := fakes.notifySink.count()
 		armLodashAdvisory()
@@ -107,6 +121,9 @@ func TestE2E_WatcherDaemonLifecycle(t *testing.T) {
 				break
 			}
 			time.Sleep(500 * time.Millisecond)
+		}
+		if len(found) != 1 {
+			t.Logf("server log tail:\n%s", serverLogTail())
 		}
 		require.Len(t, found, 1, "the armed advisory creates one watcher finding")
 		f := found[0]
