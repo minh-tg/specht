@@ -11,18 +11,20 @@ import {
 } from "@/lib/enums";
 import { formatDate } from "@/lib/format";
 import { blocksGate, blocksGateLabel } from "@/lib/gate";
-import { type MouseEvent, useState } from "react";
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { type MouseEvent } from "react";
+import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { compactMeta, PAGE_SIZE, SORT_OPTIONS, sortFindings } from "./findings-dashboard/sort";
+import { useFindingsQuery } from "./findings-dashboard/useFindingsQuery";
 
 /** Clicks on these keep their own behaviour instead of opening the finding. */
 const INTERACTIVE_SELECTOR = "a, button, input, select, textarea, label";
 
 export function FindingsDashboard() {
   const { slug } = useParams<{ slug: string; }>();
-  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const location = useLocation();
+
+  const { filters, sort, offset, setFilter, setSort, setPage, clearFilters } = useFindingsQuery();
 
   // The detail page reads `state.from` to return to this exact filtered page.
   const detailState = { from: location.search };
@@ -36,63 +38,28 @@ export function FindingsDashboard() {
     navigate(`/${slug}/findings/${findingId}`, { state: detailState });
   }
 
-  const severity = searchParams.get("severity") ?? "";
-  const status = searchParams.get("status") ?? "";
-  const kind = searchParams.get("kind") ?? "";
-  const offset = Number.parseInt(searchParams.get("offset") ?? "0", 10);
-
-  const [sortBy, setSortBy] = useState("severity");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-
   const { data: findings, isLoading, isFetching, isError, error, refetch } = useFindings(
     slug ?? "",
     {
-      severity: severity || undefined,
-      status: status || undefined,
-      kind: kind || undefined,
+      severity: filters.severity || undefined,
+      status: filters.status || undefined,
+      kind: filters.kind || undefined,
       offset,
       limit: PAGE_SIZE,
     },
   );
   const { data: gate } = useGateStatus(slug ?? "");
 
-  function updateFilter(key: string, value: string) {
-    const next = new URLSearchParams(searchParams);
-    if (value) {
-      next.set(key, value);
-    } else {
-      next.delete(key);
-    }
-    next.set("offset", "0");
-    setSearchParams(next);
-  }
-
-  function clearFilters() {
-    const next = new URLSearchParams(searchParams);
-    next.delete("severity");
-    next.delete("status");
-    next.delete("kind");
-    next.set("offset", "0");
-    setSearchParams(next);
-  }
-
   function toggleSort(column: string) {
-    if (sortBy === column) {
-      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    if (sort.by === column) {
+      setSort(column, sort.dir === "asc" ? "desc" : "asc");
     } else {
-      setSortBy(column);
-      setSortDir(column === "severity" ? "desc" : "asc");
+      setSort(column, column === "severity" ? "desc" : "asc");
     }
   }
 
-  function goToPage(newOffset: number) {
-    const next = new URLSearchParams(searchParams);
-    next.set("offset", String(newOffset));
-    setSearchParams(next);
-  }
-
-  const sorted = findings ? sortFindings(findings, sortBy, sortDir) : [];
-  const hasFilters = Boolean(severity || status || kind);
+  const sorted = findings ? sortFindings(findings, sort.by, sort.dir) : [];
+  const hasFilters = Boolean(filters.severity || filters.status || filters.kind);
   // Rows already on screen stay put while the next request is in flight, so the
   // toolbar the user is operating never unmounts under them.
   const isRefetching = isFetching && findings !== undefined;
@@ -102,13 +69,13 @@ export function FindingsDashboard() {
   const showEmptyState = showResults && offset === 0 && sorted.length === 0;
 
   const sortIndicator = (col: string) => {
-    if (sortBy !== col) return "";
-    return sortDir === "asc" ? " ▲" : " ▼";
+    if (sort.by !== col) return "";
+    return sort.dir === "asc" ? " ▲" : " ▼";
   };
 
   const ariaSort = (col: string): "ascending" | "descending" | "none" => {
-    if (sortBy !== col) return "none";
-    return sortDir === "asc" ? "ascending" : "descending";
+    if (sort.by !== col) return "none";
+    return sort.dir === "asc" ? "ascending" : "descending";
   };
 
   return (
@@ -117,8 +84,8 @@ export function FindingsDashboard() {
         <select
           aria-label="Filter by severity"
           className="border-input bg-background rounded-md border px-3 py-1 text-sm"
-          value={severity}
-          onChange={(e) => updateFilter("severity", e.target.value)}
+          value={filters.severity}
+          onChange={(e) => setFilter("severity", e.target.value)}
         >
           <option value="">All severities</option>
           {SEVERITIES.map((value) => (
@@ -128,8 +95,8 @@ export function FindingsDashboard() {
         <select
           aria-label="Filter by status"
           className="border-input bg-background rounded-md border px-3 py-1 text-sm"
-          value={status}
-          onChange={(e) => updateFilter("status", e.target.value)}
+          value={filters.status}
+          onChange={(e) => setFilter("status", e.target.value)}
         >
           <option value="">All statuses</option>
           {TECHNICAL_STATES.map((value) => (
@@ -139,8 +106,8 @@ export function FindingsDashboard() {
         <select
           aria-label="Filter by finding type"
           className="border-input bg-background rounded-md border px-3 py-1 text-sm"
-          value={kind}
-          onChange={(e) => updateFilter("kind", e.target.value)}
+          value={filters.kind}
+          onChange={(e) => setFilter("kind", e.target.value)}
         >
           <option value="">All kinds</option>
           {FINDING_KINDS.map((value) => (
@@ -150,11 +117,10 @@ export function FindingsDashboard() {
         <select
           aria-label="Sort findings"
           className="border-input bg-background rounded-md border px-3 py-1 text-sm md:hidden"
-          value={`${sortBy}:${sortDir}`}
+          value={`${sort.by}:${sort.dir}`}
           onChange={(e) => {
             const [by, dir] = e.target.value.split(":");
-            setSortBy(by);
-            setSortDir(dir === "asc" ? "asc" : "desc");
+            setSort(by, dir === "asc" ? "asc" : "desc");
           }}
         >
           {SORT_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}
@@ -349,7 +315,7 @@ export function FindingsDashboard() {
             <button
               className="text-muted-foreground hover:text-foreground disabled:opacity-50 text-sm"
               disabled={offset === 0}
-              onClick={() => goToPage(Math.max(0, offset - PAGE_SIZE))}
+              onClick={() => setPage(Math.max(0, offset - PAGE_SIZE))}
             >
               Previous
             </button>
@@ -361,7 +327,7 @@ export function FindingsDashboard() {
             <button
               className="text-muted-foreground hover:text-foreground disabled:opacity-50 text-sm"
               disabled={sorted.length < PAGE_SIZE}
-              onClick={() => goToPage(offset + PAGE_SIZE)}
+              onClick={() => setPage(offset + PAGE_SIZE)}
             >
               Next
             </button>
