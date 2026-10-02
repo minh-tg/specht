@@ -76,6 +76,13 @@ describe("ReportHistory", () => {
     mockReports(REPORTS);
   });
 
+  it("encodes the commit and report ids in the change link", async () => {
+    mockReports([{ ...REPORTS[0], id: "r 1", commit_sha: "ab/c?d" }]);
+    renderWithProviders(<ReportHistory />);
+    const link = await screen.findByRole("link", { name: "ab/c?d" });
+    expect(link).toHaveAttribute("href", "/test-project/changes/ab%2Fc%3Fd?report=r%201");
+  });
+
   it("shows loading state initially", () => {
     renderWithProviders(<ReportHistory />);
     const skeletons = document.querySelectorAll(".animate-pulse");

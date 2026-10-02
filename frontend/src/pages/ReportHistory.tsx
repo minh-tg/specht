@@ -118,7 +118,9 @@ export function ReportHistory() {
                 {r.branch && r.commit_sha && " · "}
                 {r.commit_sha && (
                   <Link
-                    to={`/${slug}/changes/${r.commit_sha}?report=${r.id}`}
+                    to={`/${encodeURIComponent(slug ?? "")}/changes/${
+                      encodeURIComponent(r.commit_sha)
+                    }?report=${encodeURIComponent(r.id)}`}
                     className="text-primary underline underline-offset-2 hover:no-underline"
                   >
                     {r.commit_sha.slice(0, 7)}
