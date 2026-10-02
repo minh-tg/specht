@@ -176,21 +176,22 @@ func applyGateFlags(payload *client.IngestPayload, f *adapterFlags) {
 
 // publishPreview emits the CI-side outputs (annotations, step summary,
 // check run) for a resolved PR check preview.
-func publishPreview(ctx context.Context, f *adapterFlags, payload client.IngestPayload, preview *client.PRCheckPreview, stderr io.Writer, hc *http.Client) {
+func publishPreview(ctx context.Context, f *adapterFlags, payload client.IngestPayload, preview *client.PRCheckPreview, apiURL string, stderr io.Writer, hc *http.Client) {
 	if preview == nil {
 		return
 	}
+	changeLink := changeURL(apiURL, payload.Project, payload.CommitSha)
 	if f.annotations && len(preview.Annotations) > 0 {
 		emitGitHubWorkflowAnnotations(stderr, preview.Annotations)
 	}
 	if f.summaryFile != "" && preview.Summary != "" {
-		if err := writeStepSummary(f.summaryFile, preview.Summary); err != nil {
+		if err := writeStepSummary(f.summaryFile, withChangeLink(preview.Summary, changeLink)); err != nil {
 			writeDiagnostic(stderr, "⚠️  could not write step summary: %v\n", err)
 		}
 	}
 	shouldPublish := f.publishCheck || (f.inGitHubActions && f.githubToken != "" && f.githubRepo != "")
 	if shouldPublish && f.githubToken != "" && f.githubRepo != "" {
-		if err := publishGitHubCheckRun(ctx, hc, f.githubToken, f.githubRepo, payload.CommitSha, preview); err != nil {
+		if err := publishGitHubCheckRun(ctx, hc, f.githubToken, f.githubRepo, payload.CommitSha, changeLink, preview); err != nil {
 			writeDiagnostic(stderr, "⚠️  could not publish github check run: %v\n", err)
 		}
 	}
@@ -268,10 +269,10 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 		clientOptions = append(clientOptions, client.WithHTTPClient(hc))
 	}
 	cl := client.New(apiURL, clientOptions...).WithContext(ctx)
-	return runReportWorkflow(ctx, cl, f, payload, stderr, hc)
+	return runReportWorkflow(ctx, cl, f, payload, apiURL, stderr, hc)
 }
 
-func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, payload client.IngestPayload, stderr io.Writer, hc *http.Client) int {
+func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, payload client.IngestPayload, apiURL string, stderr io.Writer, hc *http.Client) int {
 	resp, err := cl.IngestReport(&payload)
 	if err != nil {
 		writeDiagnostic(stderr, "error: ingest failed: %v\n", err)
@@ -293,7 +294,7 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 			writeDiagnostic(stderr, "⚠️  could not fetch PR check preview: %v\n", err)
 		}
 	}
-	publishPreview(ctx, f, payload, preview, stderr, hc)
+	publishPreview(ctx, f, payload, preview, apiURL, stderr, hc)
 
 	if payload.GateIntroducedOnly {
 		return reportIntroducedGate(resp, preview, payload, stderr)
