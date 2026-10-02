@@ -8,27 +8,35 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: oklch(0.985 0.005 75);
-  --foreground: oklch(0.25 0.01 75);
+  /* Identity palette knobs. The whole look is these three numbers plus the lightness values below,
+     so re-skinning means changing them and running src/lib/tokens.test.ts, which checks WCAG
+     contrast in both themes and that the accent cannot be mistaken for a severity colour by
+     people with red-green colour blindness. Severity and verdict tokens are separate on purpose. */
+  --hue-neutral: 75; /* warm paper */
+  --hue-accent: 305; /* plum */
+  --chroma-accent: 0.14;
+
+  --background: oklch(0.985 0.005 var(--hue-neutral));
+  --foreground: oklch(0.25 0.01 var(--hue-neutral));
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.25 0.01 75);
+  --card-foreground: oklch(0.25 0.01 var(--hue-neutral));
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.25 0.01 75);
-  --primary: oklch(0.48 0.14 305);
-  --primary-foreground: oklch(0.985 0.005 75);
-  --secondary: oklch(0.95 0.01 75);
-  --secondary-foreground: oklch(0.25 0.01 75);
-  --muted: oklch(0.95 0.01 75);
+  --popover-foreground: oklch(0.25 0.01 var(--hue-neutral));
+  --primary: oklch(0.48 var(--chroma-accent) var(--hue-accent));
+  --primary-foreground: oklch(0.985 0.005 var(--hue-neutral));
+  --secondary: oklch(0.95 0.01 var(--hue-neutral));
+  --secondary-foreground: oklch(0.25 0.01 var(--hue-neutral));
+  --muted: oklch(0.95 0.01 var(--hue-neutral));
   /* Warm paper neutrals (hue 75). 0.4 keeps muted text at 4.5:1 or better on the tinted
      --muted surface as well as on --background and the white card. */
-  --muted-foreground: oklch(0.4 0.01 75);
-  --accent: oklch(0.95 0.01 75);
-  --accent-foreground: oklch(0.25 0.01 75);
+  --muted-foreground: oklch(0.4 0.01 var(--hue-neutral));
+  --accent: oklch(0.95 0.01 var(--hue-neutral));
+  --accent-foreground: oklch(0.25 0.01 var(--hue-neutral));
   --destructive: oklch(0.577 0.245 27.325);
   --destructive-foreground: oklch(0.577 0.245 27.325);
-  --border: oklch(0.88 0.01 75);
-  --input: oklch(0.88 0.01 75);
-  --ring: oklch(0.55 0.14 305);
+  --border: oklch(0.88 0.01 var(--hue-neutral));
+  --input: oklch(0.88 0.01 var(--hue-neutral));
+  --ring: oklch(0.55 var(--chroma-accent) var(--hue-accent));
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -47,25 +55,25 @@
 }
 
 .dark {
-  --background: oklch(0.18 0.01 75);
-  --foreground: oklch(0.95 0.005 75);
-  --card: oklch(0.24 0.01 75);
-  --card-foreground: oklch(0.95 0.005 75);
-  --popover: oklch(0.24 0.01 75);
-  --popover-foreground: oklch(0.95 0.005 75);
-  --primary: oklch(0.48 0.14 305);
-  --primary-foreground: oklch(0.985 0.005 75);
-  --secondary: oklch(0.28 0.01 75);
-  --secondary-foreground: oklch(0.95 0.005 75);
-  --muted: oklch(0.28 0.01 75);
-  --muted-foreground: oklch(0.8 0.01 75);
-  --accent: oklch(0.28 0.01 75);
-  --accent-foreground: oklch(0.95 0.005 75);
+  --background: oklch(0.18 0.01 var(--hue-neutral));
+  --foreground: oklch(0.95 0.005 var(--hue-neutral));
+  --card: oklch(0.24 0.01 var(--hue-neutral));
+  --card-foreground: oklch(0.95 0.005 var(--hue-neutral));
+  --popover: oklch(0.24 0.01 var(--hue-neutral));
+  --popover-foreground: oklch(0.95 0.005 var(--hue-neutral));
+  --primary: oklch(0.48 var(--chroma-accent) var(--hue-accent));
+  --primary-foreground: oklch(0.985 0.005 var(--hue-neutral));
+  --secondary: oklch(0.28 0.01 var(--hue-neutral));
+  --secondary-foreground: oklch(0.95 0.005 var(--hue-neutral));
+  --muted: oklch(0.28 0.01 var(--hue-neutral));
+  --muted-foreground: oklch(0.8 0.01 var(--hue-neutral));
+  --accent: oklch(0.28 0.01 var(--hue-neutral));
+  --accent-foreground: oklch(0.95 0.005 var(--hue-neutral));
   --destructive: oklch(0.704 0.191 22.216);
   --destructive-foreground: oklch(0.577 0.245 27.325);
-  --border: oklch(0.34 0.01 75);
-  --input: oklch(0.38 0.01 75);
-  --ring: oklch(0.65 0.14 305);
+  --border: oklch(0.34 0.01 var(--hue-neutral));
+  --input: oklch(0.38 0.01 var(--hue-neutral));
+  --ring: oklch(0.65 var(--chroma-accent) var(--hue-accent));
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -180,8 +188,8 @@
      colour-blind users, unlike warm or green-teal accents that collapse into the
      severity hues. --primary is the FILL; --action is the same accent used as TEXT,
      so links must use text-action (the dark theme needs a lighter tint to reach 4.5:1). */
-  --action: oklch(0.48 0.14 305);
-  --action-hover: oklch(0.42 0.14 305);
+  --action: oklch(0.48 var(--chroma-accent) var(--hue-accent));
+  --action-hover: oklch(0.42 var(--chroma-accent) var(--hue-accent));
   --action-fg: #ffffff;
 
   /* Focus */
@@ -233,8 +241,8 @@
   --verdict-indeterminate: #9aa9b8;
   --verdict-indeterminate-fg: #0a0a0a;
 
-  --action: oklch(0.78 0.14 305);
-  --action-hover: oklch(0.85 0.12 305);
+  --action: oklch(0.78 var(--chroma-accent) var(--hue-accent));
+  --action-hover: oklch(0.85 var(--chroma-accent) var(--hue-accent));
   --action-fg: #0a0a0a;
 }
 
