@@ -2,6 +2,7 @@ import { SeverityBadge } from "@/components/ui/severity-badge";
 import { findingKindLabel } from "@/lib/enums";
 import { type BlocksGateResult, blocksGateSentence } from "@/lib/gate";
 import type { Finding } from "@/types/api";
+import { ShieldCheck } from "lucide-react";
 import type { ReactNode } from "react";
 
 /** Severity, kind, gate verdict and title for one finding. */
@@ -16,6 +17,13 @@ export function FindingHeader({
   if (gateResult?.blocks) {
     gateChip = (
       <span className="bg-sev-critical-bg text-sev-critical-fg rounded-sm px-1.5 py-0.5 text-xs font-medium">
+        {blocksGateSentence(gateResult)}
+      </span>
+    );
+  } else if (gateResult?.reason === "waived") {
+    gateChip = (
+      <span className="inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-xs font-medium text-foreground">
+        <ShieldCheck className="size-3" aria-hidden="true" />
         {blocksGateSentence(gateResult)}
       </span>
     );
