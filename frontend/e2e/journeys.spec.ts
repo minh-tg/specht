@@ -114,9 +114,12 @@ test("finding detail triage applies states and enforces reasons", async ({ page,
   // A reason-free state applies directly and sticks: after a reload the
   // dashboard's analysis column shows it (the detail form is an action
   // picker, not a state display).
+  // Wait for the PATCH itself: the first confirmation is still on screen, so
+  // asserting on its text would let the reload cut the second save short.
   await triageSelect.selectOption("exploitable");
+  const saved = page.waitForResponse((res) => res.request().method() === "PATCH" && res.ok());
   await apply.click();
-  await expect(page.getByText(/Triage saved \(effect:/)).toBeVisible();
+  await saved;
   await page.goto(`/${slug}/findings`);
   await expect(
     page.locator("tbody tr").filter({ hasText: HIGH_TITLE }),
