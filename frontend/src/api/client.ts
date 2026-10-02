@@ -95,11 +95,16 @@ function withAuthHeaders(
   return headers;
 }
 
+interface SendResult<T> {
+  data: T;
+  response: Response;
+}
+
 async function send<T>(
   path: string,
   options: ApiFetchOptions,
   token: string | null,
-): Promise<T> {
+): Promise<SendResult<T>> {
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(options.headers as Record<string, string>),
@@ -124,14 +129,14 @@ async function send<T>(
   }
 
   if (res.status === 204) {
-    return undefined as T;
+    return { data: undefined as T, response: res };
   }
 
-  return res.json();
+  return { data: await res.json() as T, response: res };
 }
 
 export async function refreshAccessToken(refreshToken: string): Promise<Session> {
-  const { token, refresh_token: newRefresh, user_id, email } = await send<{
+  const { data: { token, refresh_token: newRefresh, user_id, email } } = await send<{
     token: string;
     refresh_token: string;
     user_id: string;
@@ -229,11 +234,49 @@ async function withAuth<T>(
   return refreshAndRetry(attempt, refreshToken);
 }
 
+/** A response body paired with the count of rows the filter matched, when the
+ * server reports one through the `X-Total-Count` header. */
+export interface ApiResponseWithTotal<T> {
+  data: T;
+  total: number | null;
+}
+
+/** Parses `X-Total-Count`; a missing, non-integer or negative value is unknown. */
+function parseTotalCount(header: string | null): number | null {
+  if (header === null) return null;
+  const value = header.trim();
+  if (!/^\d+$/.test(value)) return null;
+  const total = Number.parseInt(value, 10);
+  return Number.isSafeInteger(total) ? total : null;
+}
+
+/** Runs a request through the shared auth/refresh path and keeps the response
+ * metadata that [`apiFetch`] discards. */
+async function apiFetchResponse<T>(
+  path: string,
+  options: ApiFetchOptions,
+): Promise<SendResult<T>> {
+  const { skipAuthRedirect = false, ...fetchOptions } = options;
+  const attempt = (token: string | null): Promise<SendResult<T>> =>
+    send<T>(path, fetchOptions, token);
+  return withAuth(attempt, skipAuthRedirect);
+}
+
 export async function apiFetch<T>(
   path: string,
   options: ApiFetchOptions = {},
 ): Promise<T> {
-  const { skipAuthRedirect = false, ...fetchOptions } = options;
-  const attempt = (token: string | null): Promise<T> => send<T>(path, fetchOptions, token);
-  return withAuth(attempt, skipAuthRedirect);
+  const { data } = await apiFetchResponse<T>(path, options);
+  return data;
+}
+
+/** Like [`apiFetch`], but also surfaces the `X-Total-Count` header (the size of
+ * the filtered set across every page) so list views can page honestly. */
+export async function apiFetchWithTotal<T>(
+  path: string,
+  options: ApiFetchOptions = {},
+): Promise<ApiResponseWithTotal<T>> {
+  const { data, response } = await apiFetchResponse<T>(path, options);
+  const header = response.headers?.get("X-Total-Count") ?? null;
+  return { data, total: parseTotalCount(header) };
 }
