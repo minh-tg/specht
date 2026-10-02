@@ -1,10 +1,9 @@
 import { useFinding, useFindingEvents, useGateStatus, useReachability } from "@/api/hooks";
-import { SeverityBadge } from "@/components/ui/severity-badge";
-import { analysisStateLabel, findingKindLabel, technicalStateLabel } from "@/lib/enums";
+import { analysisStateLabel, technicalStateLabel } from "@/lib/enums";
 import { formatDateTime } from "@/lib/format";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
-import type { ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
+import { FindingHeader } from "./finding-detail/FindingHeader";
 import {
   confidenceLabel,
   locationLineRange,
@@ -74,21 +73,6 @@ export function FindingDetail() {
 
   const currentGate = blocksGateSentence(gateResult);
 
-  let gateChip: ReactNode = null;
-  if (gateResult?.blocks) {
-    gateChip = (
-      <span className="bg-sev-critical-bg text-sev-critical-fg rounded-sm px-1.5 py-0.5 text-xs font-medium">
-        {blocksGateSentence(gateResult)}
-      </span>
-    );
-  } else if (gateResult) {
-    gateChip = (
-      <span className="inline-flex items-center rounded-sm border px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-        {blocksGateSentence(gateResult)}
-      </span>
-    );
-  }
-
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       <Link
@@ -98,16 +82,7 @@ export function FindingDetail() {
         &larr; Back to findings
       </Link>
 
-      <div className="mb-6">
-        <div className="mb-2 flex items-center gap-3">
-          <SeverityBadge severity={finding.current_severity} />
-          <span className="text-muted-foreground text-xs">
-            {findingKindLabel(finding.finding_kind) ?? "–"}
-          </span>
-          {gateChip}
-        </div>
-        <h1 className="text-2xl font-bold break-words">{finding.current_title}</h1>
-      </div>
+      <FindingHeader finding={finding} gateResult={gateResult} />
 
       <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
         <div>
