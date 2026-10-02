@@ -11,7 +11,7 @@ export function FindingsDashboard() {
 
   const { filters, sort, offset, setFilter, setSort, setPage, clearFilters } = useFindingsQuery();
 
-  const { data: findings, isLoading, isFetching, isError, error, refetch } = useFindings(
+  const { data, isLoading, isFetching, isError, error, refetch } = useFindings(
     slug ?? "",
     {
       severity: filters.severity || undefined,
@@ -21,6 +21,7 @@ export function FindingsDashboard() {
       limit: PAGE_SIZE,
     },
   );
+  const findings = data?.findings;
   const { data: gate } = useGateStatus(slug ?? "");
 
   function toggleSort(column: string) {

@@ -14,7 +14,7 @@ import type {
   UserProfile,
 } from "@/types/api";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiFetch } from "./client";
+import { apiFetch, apiFetchWithTotal } from "./client";
 
 export const queryKeys = {
   projects: () => ["projects"] as const,
@@ -143,7 +143,7 @@ export function useFindings(
 ) {
   return useQuery({
     queryKey: queryKeys.findings(projectSlug, filters),
-    queryFn: () => {
+    queryFn: async () => {
       const params = new URLSearchParams();
       if (filters.severity) params.set("severity", filters.severity);
       if (filters.status) params.set("status", filters.status);
@@ -152,9 +152,12 @@ export function useFindings(
       if (filters.limit != null) params.set("limit", String(filters.limit));
       const qs = params.toString();
       const query = qs ? `?${qs}` : "";
-      return apiFetch<Finding[]>(
+      const { data, total } = await apiFetchWithTotal<Finding[]>(
         `/api/v1/projects/${encodeURIComponent(projectSlug)}/findings${query}`,
       );
+      // `total` counts the filtered set across every page, so the pager can
+      // tell the last page from a full one without probing for it.
+      return { findings: data, total };
     },
     enabled: !!projectSlug,
     placeholderData: keepPreviousData,

@@ -237,6 +237,24 @@ describe("mutation CSRF hardening", () => {
 });
 
 describe("useFindings", () => {
+  it("reads the filtered total from X-Total-Count", async () => {
+    const findings = [{ id: "f21" }, { id: "f22" }];
+    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      return Promise.resolve(
+        new Response(JSON.stringify(findings), {
+          status: 200,
+          headers: { "Content-Type": "application/json", "X-Total-Count": "45" },
+        }),
+      );
+    });
+
+    const { result } = renderHook(() => useFindings("p1", { offset: 20, limit: 20 }), {
+      wrapper,
+    });
+
+    await waitFor(() => expect(result.current.data).toEqual({ findings, total: 45 }));
+  });
+
   it("keeps the previous page of findings while a filtered refetch is pending", async () => {
     const previousPage = [{ id: "f1" }, { id: "f2" }];
     const requested: string[] = [];
@@ -256,7 +274,9 @@ describe("useFindings", () => {
       { wrapper, initialProps: { severity: undefined as string | undefined } },
     );
 
-    await waitFor(() => expect(result.current.data).toEqual(previousPage));
+    await waitFor(() =>
+      expect(result.current.data).toEqual({ findings: previousPage, total: null })
+    );
     expect(requested[0]).toContain("/api/v1/projects/p1/findings?limit=20");
 
     rerender({ severity: "critical" });
@@ -264,14 +284,14 @@ describe("useFindings", () => {
     await waitFor(() => expect(result.current.isPlaceholderData).toBe(true));
     // The old page stays mounted while the filtered request is in flight, so the
     // filter controls the user is touching do not unmount under them.
-    expect(result.current.data).toEqual(previousPage);
+    expect(result.current.data).toEqual({ findings: previousPage, total: null });
     expect(result.current.isLoading).toBe(false);
 
     await act(async () => {
       releaseFiltered?.(jsonResponse([]));
     });
 
-    await waitFor(() => expect(result.current.data).toEqual([]));
+    await waitFor(() => expect(result.current.data).toEqual({ findings: [], total: null }));
     expect(result.current.isPlaceholderData).toBe(false);
     expect(requested.at(-1)).toContain("severity=critical");
   });
