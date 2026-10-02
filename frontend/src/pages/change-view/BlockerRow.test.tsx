@@ -80,6 +80,7 @@ describe("BlockerRowView", () => {
     });
 
     expect(screen.getByText("src/db.ts:42")).toBeInTheDocument();
+    expect(screen.getByText("Do this")).toBeInTheDocument();
     expect(screen.getByText("Upgrade lodash")).toBeInTheDocument();
   });
 
@@ -94,9 +95,33 @@ describe("BlockerRowView", () => {
     expect(screen.getByText("Upgrade lodash@4.17.21")).toBeInTheDocument();
   });
 
-  it("says when no fix was suggested", () => {
+  it("starts the action with a capital letter when the scanner wrote it lowercase", () => {
+    renderRow({
+      finding: finding({
+        suggestion: { action: "review", target: "src/db.ts", confidence: "low" },
+      }),
+    });
+
+    expect(screen.getByText("Review src/db.ts")).toBeInTheDocument();
+  });
+
+  it("treats the server's fallback label as no known fix", () => {
+    renderRow({
+      finding: finding({
+        remediation: { summary: "No fix description reported", fallback: true },
+      }),
+    });
+
+    expect(screen.getByText("No automated fix is known.")).toBeInTheDocument();
+    expect(screen.queryByText("No fix description reported")).not.toBeInTheDocument();
+  });
+
+  it("says honestly when no fix is known, and still points at the decision", () => {
     renderRow({ finding: finding({ location: {} }) });
 
-    expect(screen.getByText("No fix suggested")).toBeInTheDocument();
+    expect(screen.getByText("Do this")).toBeInTheDocument();
+    expect(screen.getByText("No automated fix is known.")).toBeInTheDocument();
+    expect(screen.queryByText("No fix suggested")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Decide" })).toBeInTheDocument();
   });
 });

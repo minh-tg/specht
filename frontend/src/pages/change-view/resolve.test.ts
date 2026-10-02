@@ -2,7 +2,7 @@ import type { Report } from "@/types/api";
 import { describe, expect, it } from "vitest";
 import {
   existingBlockers,
-  fixLine,
+  fixAction,
   floorSourceLabel,
   locationLine,
   resolveReport,
@@ -127,24 +127,39 @@ describe("locationLine", () => {
   });
 });
 
-describe("fixLine", () => {
+describe("fixAction", () => {
   it("uses the first line of the remediation summary", () => {
-    expect(fixLine({ remediation: { summary: "Upgrade lodash\nor pin it" } })).toBe(
+    expect(fixAction({ remediation: { summary: "Upgrade lodash\nor pin it" } })).toBe(
       "Upgrade lodash",
     );
   });
 
   it("falls back to the suggestion action and target", () => {
     expect(
-      fixLine({ suggestion: { action: "Upgrade", target: "lodash@4.17.21", confidence: "high" } }),
+      fixAction({
+        suggestion: { action: "Upgrade", target: "lodash@4.17.21", confidence: "high" },
+      }),
     )
       .toBe("Upgrade lodash@4.17.21");
-    expect(fixLine({ suggestion: { action: "Rotate the key", confidence: "high" } }))
+    expect(fixAction({ suggestion: { action: "Rotate the key", confidence: "high" } }))
       .toBe("Rotate the key");
   });
 
-  it("says so when there is no fix", () => {
-    expect(fixLine({})).toBe("No fix suggested");
+  it("does not offer the server's fallback label as the thing to do", () => {
+    const fallback = { summary: "No fix description reported", fallback: true };
+    expect(fixAction({ remediation: fallback })).toBeNull();
+    // A real suggestion still wins over a fallback label.
+    expect(
+      fixAction({
+        remediation: fallback,
+        suggestion: { action: "Upgrade", target: "lodash@4.17.21", confidence: "high" },
+      }),
+    ).toBe("Upgrade lodash@4.17.21");
+  });
+
+  it("is null when there is no fix, so nothing is invented", () => {
+    expect(fixAction({})).toBeNull();
+    expect(fixAction({ remediation: { summary: "   " } })).toBeNull();
   });
 });
 

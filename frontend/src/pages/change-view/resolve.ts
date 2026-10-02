@@ -54,14 +54,17 @@ export function locationLine(location?: FindingLocation): string | null {
 }
 
 /**
- * One actionable line for a finding: the first line of the scanner's fix
- * summary, else the reviewable suggestion's action and target, else a plain
- * acknowledgement that none was supplied.
+ * One actionable line for a finding: the first line of the scanner's fix summary, else the
+ * reviewable suggestion's action and target. Null when the scanner supplied no fix (including when
+ * the summary is only the server's fallback label), so the caller
+ * can say so plainly instead of showing a made-up instruction.
  */
-export function fixLine(
+export function fixAction(
   finding: { remediation?: FindingRemediation; suggestion?: FindingSuggestion; },
-): string {
-  const summary = finding.remediation?.summary;
+): string | null {
+  // `fallback` marks text the server wrote because the scanner supplied nothing; it is a label,
+  // not advice, so it must not be offered as the thing to do.
+  const summary = finding.remediation?.fallback ? undefined : finding.remediation?.summary;
   if (summary) {
     const first = summary.split("\n")[0].trim();
     if (first) return first;
@@ -70,7 +73,7 @@ export function fixLine(
     const { action, target } = finding.suggestion;
     return target ? `${action} ${target}` : action;
   }
-  return "No fix suggested";
+  return null;
 }
 
 /** Human name for the layer that supplied the effective policy floor. */
