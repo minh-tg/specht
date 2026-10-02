@@ -1,6 +1,6 @@
 import { useFinding } from "@/api/hooks";
 import { SeverityBadge } from "@/components/ui/severity-badge";
-import { fixLine, locationLine } from "@/pages/change-view/resolve";
+import { fixAction, locationLine } from "@/pages/change-view/resolve";
 import type { Finding } from "@/types/api";
 import { type ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -58,6 +58,10 @@ export function BlockerRowView(
 
   const target = `/${slug}/findings/${findingId}`;
   const location = locationLine(finding.location);
+  const rawAction = fixAction(finding);
+  // Scanner text is shown as written, except that a suggestion such as "review src/db.ts" starts
+  // the sentence with a capital.
+  const action = rawAction ? rawAction.charAt(0).toUpperCase() + rawAction.slice(1) : null;
 
   return (
     <Row>
@@ -71,7 +75,19 @@ export function BlockerRowView(
         </Link>
       </div>
       {location && <p className="text-muted-foreground mt-1 font-mono text-xs">{location}</p>}
-      <p className="text-muted-foreground mt-1 text-sm">{fixLine(finding)}</p>
+      <div className="mt-2 rounded-md border px-3 py-2">
+        <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+          Do this
+        </p>
+        {action
+          ? <p className="text-sm font-semibold">{action}</p>
+          : (
+            <p className="text-sm">
+              <span className="font-semibold">No automated fix is known.</span>{" "}
+              Open it to decide what to do.
+            </p>
+          )}
+      </div>
     </Row>
   );
 }
