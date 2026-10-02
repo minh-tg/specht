@@ -189,6 +189,13 @@ it("renders the upload report route", async () => {
   expect(document.title).toBe("Upload report · Specht");
 });
 
+it("renders the change view route", async () => {
+  renderRoutes("/test-project/changes/abcdef1234567890");
+
+  expect(await screen.findByRole("heading", { name: "Change abcdef1" })).toBeInTheDocument();
+  expect(document.title).toBe("test-project · Change abcdef1 · Specht");
+});
+
 it("redirects the legacy ingest route to the projects page", async () => {
   renderRoutes("/ingest");
 

@@ -5,6 +5,7 @@ import { AppShell } from "@/components/AppShell";
 import { Navbar } from "@/components/Navbar";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { ApiKeys } from "@/pages/ApiKeys";
+import { ChangeView } from "@/pages/ChangeView";
 import { FindingDetail } from "@/pages/FindingDetail";
 import { Login } from "@/pages/Login";
 import { NewProject } from "@/pages/NewProject";
@@ -99,6 +100,14 @@ export function AppRoutes() {
         element={
           <ProtectedRoute>
             <ProjectLayout />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/:slug/changes/:commit"
+        element={
+          <ProtectedRoute>
+            <ChangeView />
           </ProtectedRoute>
         }
       />
