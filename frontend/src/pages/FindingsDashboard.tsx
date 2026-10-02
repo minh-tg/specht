@@ -1,20 +1,13 @@
 import { useFindings, useGateStatus } from "@/api/hooks";
 import { SeverityBadge } from "@/components/ui/severity-badge";
-import {
-  analysisStateLabel,
-  FINDING_KINDS,
-  findingKindLabel,
-  SEVERITIES,
-  severityLabel,
-  TECHNICAL_STATES,
-  technicalStateLabel,
-} from "@/lib/enums";
+import { analysisStateLabel, findingKindLabel, technicalStateLabel } from "@/lib/enums";
 import { formatDate } from "@/lib/format";
 import { blocksGate, blocksGateLabel } from "@/lib/gate";
 import { type MouseEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { ClearFiltersButton, FindingsFilters } from "./findings-dashboard/FindingsFilters";
 import { FindingsPager } from "./findings-dashboard/FindingsPager";
-import { compactMeta, PAGE_SIZE, SORT_OPTIONS, sortFindings } from "./findings-dashboard/sort";
+import { compactMeta, PAGE_SIZE, sortFindings } from "./findings-dashboard/sort";
 import { useFindingsQuery } from "./findings-dashboard/useFindingsQuery";
 
 /** Clicks on these keep their own behaviour instead of opening the finding. */
@@ -81,53 +74,12 @@ export function FindingsDashboard() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        <select
-          aria-label="Filter by severity"
-          className="border-input bg-background rounded-md border px-3 py-1 text-sm"
-          value={filters.severity}
-          onChange={(e) => setFilter("severity", e.target.value)}
-        >
-          <option value="">All severities</option>
-          {SEVERITIES.map((value) => (
-            <option key={value} value={value}>{severityLabel(value)}</option>
-          ))}
-        </select>
-        <select
-          aria-label="Filter by status"
-          className="border-input bg-background rounded-md border px-3 py-1 text-sm"
-          value={filters.status}
-          onChange={(e) => setFilter("status", e.target.value)}
-        >
-          <option value="">All statuses</option>
-          {TECHNICAL_STATES.map((value) => (
-            <option key={value} value={value}>{technicalStateLabel(value)}</option>
-          ))}
-        </select>
-        <select
-          aria-label="Filter by finding type"
-          className="border-input bg-background rounded-md border px-3 py-1 text-sm"
-          value={filters.kind}
-          onChange={(e) => setFilter("kind", e.target.value)}
-        >
-          <option value="">All kinds</option>
-          {FINDING_KINDS.map((value) => (
-            <option key={value} value={value}>{findingKindLabel(value)}</option>
-          ))}
-        </select>
-        <select
-          aria-label="Sort findings"
-          className="border-input bg-background rounded-md border px-3 py-1 text-sm md:hidden"
-          value={`${sort.by}:${sort.dir}`}
-          onChange={(e) => {
-            const [by, dir] = e.target.value.split(":");
-            setSort(by, dir === "asc" ? "asc" : "desc");
-          }}
-        >
-          {SORT_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}
-          </option>)}
-        </select>
-      </div>
+      <FindingsFilters
+        filters={filters}
+        sort={sort}
+        onFilterChange={setFilter}
+        onSortChange={setSort}
+      />
 
       <div
         aria-busy={isRefetching}
@@ -166,13 +118,7 @@ export function FindingsDashboard() {
               ? (
                 <>
                   <p className="text-muted-foreground text-sm">No findings match these filters.</p>
-                  <button
-                    type="button"
-                    className="text-primary text-sm underline hover:no-underline"
-                    onClick={clearFilters}
-                  >
-                    Clear filters
-                  </button>
+                  <ClearFiltersButton onClear={clearFilters} />
                 </>
               )
               : (
