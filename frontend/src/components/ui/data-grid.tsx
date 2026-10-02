@@ -290,7 +290,9 @@ export function DataGrid<Row>({
                     }}
                     className={cn(
                       DENSITY_HEIGHT[density],
-                      "border-b border-border/60 outline-none",
+                      // The global :focus-visible ring is the cursor; keep it inside the row
+                      // so the table's overflow wrapper cannot clip it.
+                      "border-b border-border/60 focus-visible:bg-muted/60 focus-visible:outline-offset-[-2px]",
                       "hover:bg-muted/60",
                       isSelected && "bg-muted",
                       rowClassName?.(row),

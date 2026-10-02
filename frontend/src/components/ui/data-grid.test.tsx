@@ -313,6 +313,14 @@ describe("DataGrid — ARIA grid pattern", () => {
     expect(gridRows[0].className).not.toContain("min-h-");
   });
 
+  it("leaves the focus ring on the cursor row instead of suppressing it", () => {
+    render(<DataGrid label="Findings" rows={rows} columns={columns} rowKey={rowKey} />);
+    const gridRows = screen.getAllByRole("row").filter((r) => r.hasAttribute("aria-rowindex"));
+    // `outline-none` would override the app-wide :focus-visible ring and hide the cursor.
+    expect(gridRows[0].className).not.toContain("outline-none");
+    expect(gridRows[0].className).toContain("focus-visible:outline-offset-[-2px]");
+  });
+
   it("merges per-row classes from rowClassName", () => {
     render(
       <DataGrid
