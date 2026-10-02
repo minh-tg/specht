@@ -8,14 +8,12 @@ import {
 } from "@/api/hooks";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import {
-  ANALYSIS_STATES,
   type AnalysisState,
   analysisStateLabel,
   findingKindLabel,
   gateEffectLabel,
   isAnalysisState,
   isReachabilityState,
-  REACHABILITY_STATES,
   type ReachabilityState,
   reachabilityStateLabel,
   technicalStateLabel,
@@ -23,110 +21,22 @@ import {
 import { formatDateTime } from "@/lib/format";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
 import { truncateText } from "@/lib/utils";
-import type { FindingEvent, FindingLocation, ReachabilityAssessment } from "@/types/api";
+import type { FindingEvent, ReachabilityAssessment } from "@/types/api";
 import { type ReactNode, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
-
-/** Inline evidence is capped so an oversized payload cannot blow up layout. */
-const MAX_EVIDENCE_LENGTH = 240;
-
-const REACHABILITY_OPTIONS: Array<{ value: ReachabilityState; label: string; }> =
-  REACHABILITY_STATES.map((value) => ({
-    value,
-    label: reachabilityStateLabel(value) ?? value,
-  }));
-
-/**
- * Extra input each decision state needs before it can be applied. A state
- * absent here is not offered by the triage control at all.
- */
-const TRIAGE_REQUIREMENTS: Partial<
-  Record<AnalysisState, { requiresReason: boolean; requiresExpiry: boolean; }>
-> = {
-  exploitable: { requiresReason: false, requiresExpiry: false },
-  false_positive: { requiresReason: true, requiresExpiry: false },
-  not_affected: { requiresReason: true, requiresExpiry: false },
-  accepted_risk: { requiresReason: true, requiresExpiry: true },
-  wont_fix: { requiresReason: true, requiresExpiry: true },
-};
-
-const TRIAGE_OPTIONS = ANALYSIS_STATES.flatMap((value) => {
-  const requirements = TRIAGE_REQUIREMENTS[value];
-  if (!requirements) return [];
-  return [{ value, label: analysisStateLabel(value) ?? value, ...requirements }];
-});
-
-const SOURCE_LINK_SCHEMES = new Set(["http:", "https:"]);
-
-/** Parses a source link only when its scheme is http/https; otherwise null. */
-function parseSourceLink(value: string | undefined): URL | null {
-  if (!value) return null;
-  try {
-    const url = new URL(value);
-    return SOURCE_LINK_SCHEMES.has(url.protocol) ? url : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Subject label per finding kind for the location section. */
-function locationSubjectLabel(kind: string | undefined): string {
-  switch (kind) {
-    case "sca":
-      return "Package";
-    case "sast":
-      return "File";
-    case "iac":
-      return "Resource";
-    case "secret":
-      return "File";
-    case "dast":
-      return "URL";
-    default:
-      return "Subject";
-  }
-}
-
-/** Humanizes a confidence value; an unrecognised or missing value renders as
- * "Unknown" instead of echoing the wire value. */
-function confidenceLabel(value: string | undefined): string {
-  switch (value) {
-    case "high":
-      return "High";
-    case "medium":
-      return "Medium";
-    case "low":
-      return "Low";
-    default:
-      return "Unknown";
-  }
-}
-
-/** Humanizes a lifecycle event type for the history list. */
-function eventTypeLabel(value: string | undefined): string {
-  if (!value) return "Unknown";
-  return value
-    .split("_")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
-/** Normalizes a date-input value to a server-accepted RFC3339 expiry. */
-function toExpiryTimestamp(value: string): string | undefined {
-  if (!value) return undefined;
-  const iso = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T23:59:59.999Z` : value;
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
-}
-
-/** ":start" or ":start–end" when lines are known; empty otherwise. */
-function locationLineRange(location: FindingLocation): string {
-  if (!location.file || !location.start_line) return "";
-  let range = `:${location.start_line}`;
-  if (location.end_line && location.end_line !== location.start_line) {
-    range += `–${location.end_line}`;
-  }
-  return range;
-}
+import {
+  confidenceLabel,
+  eventTypeLabel,
+  locationLineRange,
+  locationSubjectLabel,
+  parseSourceLink,
+  toExpiryTimestamp,
+} from "./finding-detail/format";
+import {
+  MAX_EVIDENCE_LENGTH,
+  REACHABILITY_OPTIONS,
+  TRIAGE_OPTIONS,
+} from "./finding-detail/options";
 
 /** Lifecycle event history for one finding. */
 function HistorySection({
