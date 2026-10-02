@@ -29,7 +29,7 @@ pnpm exec dprint check
 
 - Colours come from the tokens in `src/index.css`, not from raw palette classes. A `-fg` token is only used on its matching `-bg`, and severity and verdict are always shown as text as well as colour.
 - The theme is applied before first paint by `public/theme-init.js`. It is an external file, not an inline script, so a strict `script-src 'self'` Content-Security-Policy keeps working. Keep it in step with `src/lib/theme.ts`.
-- Add tests with every change. The accessibility baseline is an axe-core pass with no WCAG 2.2 AA violations in light and dark.
+- Add tests with every change. The accessibility baseline is an axe-core pass with no WCAG 2.2 AA violations in light and dark. `e2e/a11y.spec.ts` enforces it on every page (run it with `make e2e-ui`).
 
 ## What is next
 
