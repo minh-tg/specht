@@ -13,6 +13,7 @@ import { formatDate } from "@/lib/format";
 import { blocksGate, blocksGateLabel } from "@/lib/gate";
 import { type MouseEvent } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { FindingsPager } from "./findings-dashboard/FindingsPager";
 import { compactMeta, PAGE_SIZE, SORT_OPTIONS, sortFindings } from "./findings-dashboard/sort";
 import { useFindingsQuery } from "./findings-dashboard/useFindingsQuery";
 
@@ -311,27 +312,13 @@ export function FindingsDashboard() {
         )}
 
         {showResults && showPager && (
-          <div className="flex items-center justify-between">
-            <button
-              className="text-muted-foreground hover:text-foreground disabled:opacity-50 text-sm"
-              disabled={offset === 0}
-              onClick={() => setPage(Math.max(0, offset - PAGE_SIZE))}
-            >
-              Previous
-            </button>
-            <span className="text-muted-foreground text-xs">
-              {sorted.length === 0
-                ? "No more results."
-                : `${offset + 1}–${offset + sorted.length}`}
-            </span>
-            <button
-              className="text-muted-foreground hover:text-foreground disabled:opacity-50 text-sm"
-              disabled={sorted.length < PAGE_SIZE}
-              onClick={() => setPage(offset + PAGE_SIZE)}
-            >
-              Next
-            </button>
-          </div>
+          <FindingsPager
+            offset={offset}
+            pageSize={PAGE_SIZE}
+            rowCount={sorted.length}
+            onPrevious={() => setPage(Math.max(0, offset - PAGE_SIZE))}
+            onNext={() => setPage(offset + PAGE_SIZE)}
+          />
         )}
       </div>
     </div>
