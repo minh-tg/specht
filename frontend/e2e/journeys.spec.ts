@@ -1,77 +1,23 @@
-import type { APIRequestContext } from "@playwright/test";
 import { expect, test } from "@playwright/test";
-import { readFileSync } from "node:fs";
-import path from "node:path";
+import {
+  apiToken,
+  BASE_SHA,
+  CHANGE_SHA,
+  FIXTURE_HIGH,
+  FIXTURE_HIGH_MEDIUM,
+  FIXTURE_HIGH_NEW,
+  FIXTURE_MEDIUM,
+  ingestFixture,
+  seedProject,
+  uiLogin,
+  uniq,
+} from "./helpers";
 
-// Browser journeys for the pages the COMP suites cannot prove: the
-// seven journeys the COMP suites only mirror, against the shipped artifact. The script
-// bootstraps an admin account (two-phase ADMIN_EMAILS) — these defaults
-// mirror it; E2E_UI_ADMIN_* overrides keep both sides in sync.
+// Browser journeys for the pages the COMP suites cannot prove, against the shipped artifact.
+// The admin account and the seeding helpers are shared with the other browser suites in ./helpers.
 
-const ADMIN_EMAIL = process.env.E2E_UI_ADMIN_EMAIL ?? "journey-admin@specht.local";
-const ADMIN_PASSWORD = process.env.E2E_UI_ADMIN_PASSWORD ?? "journey-admin-123";
-
-// Playwright runs with frontend/ as cwd; the fixtures live in the repo's
-// e2e/testdata next to the Go suite.
-const FIXTURE_HIGH = path.resolve(process.cwd(), "../e2e/testdata/high.sarif.json");
-const FIXTURE_MEDIUM = path.resolve(process.cwd(), "../e2e/testdata/medium.sarif.json");
-const FIXTURE_HIGH_MEDIUM = path.resolve(process.cwd(), "../e2e/testdata/high-medium.sarif.json");
-const FIXTURE_HIGH_NEW = path.resolve(process.cwd(), "../e2e/testdata/high-new.sarif.json");
-
-// A baseline scan and the pull-request scan that adds one blocking finding on top of it.
-const BASE_SHA = "1111111111111111111111111111111111111111";
-const CHANGE_SHA = "2222222222222222222222222222222222222222";
 const NEW_TITLE = "SQL injection in user query";
-
 const HIGH_TITLE = "Hardcoded credentials in app config";
-
-function uniq(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
-async function apiToken(request: APIRequestContext): Promise<string> {
-  const res = await request.post("/api/v1/auth/login", {
-    data: { email: ADMIN_EMAIL, password: ADMIN_PASSWORD },
-  });
-  expect(res.ok(), await res.text()).toBeTruthy();
-  const body = await res.json();
-  return body.token as string;
-}
-
-async function seedProject(request: APIRequestContext, token: string, slug: string): Promise<void> {
-  const res = await request.post("/api/v1/projects", {
-    headers: { Authorization: `Bearer ${token}` },
-    data: { name: slug, slug },
-  });
-  expect(res.ok(), await res.text()).toBeTruthy();
-}
-
-async function ingestFixture(
-  request: APIRequestContext,
-  token: string,
-  slug: string,
-  fixturePath: string,
-  extra: Record<string, unknown> = {},
-): Promise<void> {
-  const res = await request.post("/api/v1/reports", {
-    headers: { Authorization: `Bearer ${token}` },
-    data: {
-      project: slug,
-      scanner: "sarif",
-      raw_data: JSON.parse(readFileSync(fixturePath, "utf8")),
-      ...extra,
-    },
-  });
-  expect(res.ok(), await res.text()).toBeTruthy();
-}
-
-async function uiLogin(page: import("@playwright/test").Page): Promise<void> {
-  await page.goto("/login");
-  await page.fill("#login-email", ADMIN_EMAIL);
-  await page.fill("#login-password", ADMIN_PASSWORD);
-  await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL(/\/$/);
-}
 
 test("findings dashboard filters live rows", async ({ page, request }) => {
   const token = await apiToken(request);
