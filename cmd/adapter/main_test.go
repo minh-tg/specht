@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -382,6 +383,7 @@ func TestRun_IntroducedOnly_Fail_WithAnnotations_And_Summary(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(summaryBytes), "### Vulnerability Report")
 	assert.Contains(t, string(summaryBytes), "CVE-2023-45853 in zlib")
+	assert.Contains(t, string(summaryBytes), "[View this change in Specht]("+srv.URL+"/my-app/changes/abc12345)")
 }
 
 func TestRun_BaselinePolicy_Warn_And_Fail(t *testing.T) {
@@ -428,23 +430,6 @@ func TestRun_BaselinePolicy_Warn_And_Fail(t *testing.T) {
 }
 
 func TestPublishGitHubCheckRun(t *testing.T) {
-	var capturedReq gitHubCheckRunRequest
-	var authHeader string
-
-	ghSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "POST", r.Method)
-		assert.Equal(t, "/repos/owner/repo/check-runs", r.URL.Path)
-		authHeader = r.Header.Get("Authorization")
-		err := json.NewDecoder(r.Body).Decode(&capturedReq)
-		require.NoError(t, err)
-
-		w.WriteHeader(http.StatusCreated)
-		if _, err := w.Write([]byte(`{"id": 12345}`)); err != nil {
-			t.Errorf("write check-run response: %v", err)
-		}
-	}))
-	defer ghSrv.Close()
-
 	preview := &client.PRCheckPreview{
 		Conclusion: "failure",
 		Title:      "Specht Gate: 1 blocking finding",
@@ -461,27 +446,137 @@ func TestPublishGitHubCheckRun(t *testing.T) {
 		},
 	}
 
-	// Custom client routing to test server
-	customTransport := http.DefaultTransport
-	customHC := &http.Client{
+	t.Run("includes details_url and summary link", func(t *testing.T) {
+		var capturedReq gitHubCheckRunRequest
+		var rawBody []byte
+		var authHeader string
+
+		ghSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "POST", r.Method)
+			assert.Equal(t, "/repos/owner/repo/check-runs", r.URL.Path)
+			authHeader = r.Header.Get("Authorization")
+			var err error
+			rawBody, err = io.ReadAll(r.Body)
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(rawBody, &capturedReq))
+
+			w.WriteHeader(http.StatusCreated)
+			if _, err := w.Write([]byte(`{"id": 12345}`)); err != nil {
+				t.Errorf("write check-run response: %v", err)
+			}
+		}))
+		defer ghSrv.Close()
+
+		changeLink := "https://specht.example.com/my-app/changes/sha123"
+		err := publishGitHubCheckRun(context.Background(), githubCheckRunClient(ghSrv), "secret-token", "owner/repo", "sha123", changeLink, preview)
+		require.NoError(t, err)
+		assert.Equal(t, "Bearer secret-token", authHeader)
+		assert.Equal(t, "Specht Security Gate", capturedReq.Name)
+		assert.Equal(t, "sha123", capturedReq.HeadSHA)
+		assert.Equal(t, "failure", capturedReq.Conclusion)
+		assert.Equal(t, changeLink, capturedReq.DetailsURL)
+		assert.Contains(t, string(rawBody), `"details_url":"`+changeLink+`"`)
+		assert.Len(t, capturedReq.Output.Annotations, 1)
+		assert.Equal(t, "src/main.go", capturedReq.Output.Annotations[0].Path)
+		assert.Equal(t, "failure", capturedReq.Output.Annotations[0].AnnotationLevel)
+		assert.Equal(t, "Summary markdown\n\n[View this change in Specht]("+changeLink+")", capturedReq.Output.Summary)
+	})
+
+	t.Run("omits details_url without a change link", func(t *testing.T) {
+		var capturedReq gitHubCheckRunRequest
+		var rawBody []byte
+
+		ghSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			var err error
+			rawBody, err = io.ReadAll(r.Body)
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(rawBody, &capturedReq))
+			w.WriteHeader(http.StatusCreated)
+		}))
+		defer ghSrv.Close()
+
+		changeLink := changeURL("https://specht.example.com", "", "sha123")
+		require.Empty(t, changeLink)
+		err := publishGitHubCheckRun(context.Background(), githubCheckRunClient(ghSrv), "secret-token", "owner/repo", "sha123", changeLink, preview)
+		require.NoError(t, err)
+		assert.NotContains(t, string(rawBody), "details_url")
+		assert.Equal(t, "Summary markdown", capturedReq.Output.Summary)
+		assert.NotContains(t, capturedReq.Output.Summary, "View this change in Specht")
+	})
+}
+
+func githubCheckRunClient(ghSrv *httptest.Server) *http.Client {
+	return &http.Client{
 		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
 			if strings.HasPrefix(req.URL.String(), "https://api.github.com/") {
 				req.URL.Scheme = "http"
 				req.URL.Host = ghSrv.Listener.Addr().String()
 			}
-			return customTransport.RoundTrip(req)
+			return http.DefaultTransport.RoundTrip(req)
 		}),
 	}
+}
 
-	err := publishGitHubCheckRun(context.Background(), customHC, "secret-token", "owner/repo", "sha123", preview)
-	require.NoError(t, err)
-	assert.Equal(t, "Bearer secret-token", authHeader)
-	assert.Equal(t, "Specht Security Gate", capturedReq.Name)
-	assert.Equal(t, "sha123", capturedReq.HeadSHA)
-	assert.Equal(t, "failure", capturedReq.Conclusion)
-	assert.Len(t, capturedReq.Output.Annotations, 1)
-	assert.Equal(t, "src/main.go", capturedReq.Output.Annotations[0].Path)
-	assert.Equal(t, "failure", capturedReq.Output.Annotations[0].AnnotationLevel)
+func TestChangeURL(t *testing.T) {
+	tests := []struct {
+		name    string
+		apiURL  string
+		project string
+		commit  string
+		want    string
+	}{
+		{
+			name:    "builds the change page link",
+			apiURL:  "https://specht.example.com",
+			project: "my-app",
+			commit:  "abc12345",
+			want:    "https://specht.example.com/my-app/changes/abc12345",
+		},
+		{
+			name:    "trailing slash on apiURL does not double up",
+			apiURL:  "https://specht.example.com/",
+			project: "my-app",
+			commit:  "abc12345",
+			want:    "https://specht.example.com/my-app/changes/abc12345",
+		},
+		{
+			name:    "escapes a hostile project slug",
+			apiURL:  "https://specht.example.com",
+			project: "a b)(c",
+			commit:  "abc12345",
+			want:    "https://specht.example.com/a%20b%29%28c/changes/abc12345",
+		},
+		{
+			name:    "escapes a hostile commit sha",
+			apiURL:  "https://specht.example.com",
+			project: "my-app",
+			commit:  "a b)(c",
+			want:    "https://specht.example.com/my-app/changes/a%20b%29%28c",
+		},
+		{name: "empty apiURL", apiURL: "", project: "my-app", commit: "abc12345", want: ""},
+		{name: "empty project", apiURL: "https://specht.example.com", project: "", commit: "abc12345", want: ""},
+		{name: "empty commit", apiURL: "https://specht.example.com", project: "my-app", commit: "", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := changeURL(tt.apiURL, tt.project, tt.commit)
+			assert.Equal(t, tt.want, got)
+			if tt.project == "a b)(c" || tt.commit == "a b)(c" {
+				assert.NotContains(t, got, " ")
+				assert.NotContains(t, got, "(")
+				assert.NotContains(t, got, ")")
+			}
+		})
+	}
+}
+
+func TestWithChangeLink(t *testing.T) {
+	link := "https://specht.example.com/my-app/changes/abc12345"
+	assert.Equal(t, "Summary\n\n[View this change in Specht]("+link+")", withChangeLink("Summary", link))
+	assert.Equal(t, "Summary\n\n[View this change in Specht]("+link+")", withChangeLink("Summary\n", link))
+	assert.Equal(t, "[View this change in Specht]("+link+")", withChangeLink("", link))
+	assert.Equal(t, "Summary", withChangeLink("Summary", ""))
 }
 
 type roundTripperFunc func(req *http.Request) (*http.Response, error)

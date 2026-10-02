@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -95,6 +96,7 @@ type gitHubCheckRunRequest struct {
 	HeadSHA    string               `json:"head_sha"`
 	Status     string               `json:"status"`
 	Conclusion string               `json:"conclusion"`
+	DetailsURL string               `json:"details_url,omitempty"`
 	Output     gitHubCheckRunOutput `json:"output"`
 }
 
@@ -150,8 +152,33 @@ func toCheckRunAnnotation(a client.PRCheckAnnotation) (gitHubCheckRunAnnotation,
 	}, true
 }
 
-// publishGitHubCheckRun posts a check run to the GitHub Checks API.
-func publishGitHubCheckRun(ctx context.Context, hc *http.Client, token, repo, commit string, preview *client.PRCheckPreview) error {
+// changeURL builds the Specht UI link for a change page. It returns "" when
+// any component is missing so callers can omit the link.
+func changeURL(apiURL, project, commit string) string {
+	apiURL = strings.TrimRight(apiURL, "/")
+	if apiURL == "" || project == "" || commit == "" {
+		return ""
+	}
+	return apiURL + "/" + url.PathEscape(project) + "/changes/" + url.PathEscape(commit)
+}
+
+// withChangeLink appends a link back to the Specht change page to a check
+// summary. It returns the summary unchanged when link is empty.
+func withChangeLink(summary, link string) string {
+	if link == "" {
+		return summary
+	}
+	line := fmt.Sprintf("[View this change in Specht](%s)", link)
+	trimmed := strings.TrimRight(summary, "\n")
+	if trimmed == "" {
+		return line
+	}
+	return trimmed + "\n\n" + line
+}
+
+// publishGitHubCheckRun posts a check run to the GitHub Checks API. changeLink
+// is the Specht UI URL for this change, or "" to omit it.
+func publishGitHubCheckRun(ctx context.Context, hc *http.Client, token, repo, commit, changeLink string, preview *client.PRCheckPreview) error {
 	if token == "" || repo == "" || commit == "" || preview == nil {
 		return nil
 	}
@@ -176,9 +203,10 @@ func publishGitHubCheckRun(ctx context.Context, hc *http.Client, token, repo, co
 		HeadSHA:    commit,
 		Status:     "completed",
 		Conclusion: conclusion,
+		DetailsURL: changeLink,
 		Output: gitHubCheckRunOutput{
 			Title:       preview.Title,
-			Summary:     preview.Summary,
+			Summary:     withChangeLink(preview.Summary, changeLink),
 			Annotations: ghAnnotations,
 		},
 	}

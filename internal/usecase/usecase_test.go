@@ -2825,6 +2825,43 @@ func TestGetGateStatus_Success(t *testing.T) {
 	assert.Len(t, status.BlockedBy, 3)
 }
 
+// TestGetGateStatus_ReportsWaivedFindingIDs checks the API output carries the
+// ids of the blocking findings an active waiver covers, so a UI can label
+// each finding as waived without a second request.
+func TestGetGateStatus_ReportsWaivedFindingIDs(t *testing.T) {
+	pr := &mockProjectRepo{}
+	fr := &mockFindingRepo{}
+	wr := &mockWaiverRepo{}
+
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minSeverityRank int16) ([]port.GateCandidate, error) {
+		return []port.GateCandidate{
+			{Finding: makeFindingRow(1)},
+			{Finding: makeFindingRow(2)},
+		}, nil
+	}
+	waivedID := makeFindingRow(1).ID
+	wr.listActiveFn = func(ctx context.Context, projectID string) ([]port.Waiver, error) {
+		return []port.Waiver{{ID: "w1", ProjectID: projectID, Enabled: true}}, nil
+	}
+	wr.listFindingTargetsByWaiverIDsFn = func(ctx context.Context, waiverIDs []string) ([]port.WaiverFindingTarget, error) {
+		return []port.WaiverFindingTarget{{ID: "t1", WaiverID: "w1", FindingID: waivedID}}, nil
+	}
+
+	uc := New(Deps{
+		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: wr},
+	})
+
+	status, err := uc.GetGateStatus(context.Background(), "my-app", 2)
+	require.NoError(t, err)
+	require.NotNil(t, status)
+	assert.Equal(t, 1, status.WaivedCount)
+	assert.Equal(t, []string{waivedID}, status.WaivedFindingIDs)
+	assert.Equal(t, int64(1), status.BlockingCount)
+}
+
 func TestGetGateStatus_ProjectNotFound(t *testing.T) {
 	pr := &mockProjectRepo{}
 	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
