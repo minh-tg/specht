@@ -390,9 +390,10 @@ describe("FindingsDashboard", () => {
     expect(screen.queryByText(EMPTY_PROJECT_HINT)).not.toBeInTheDocument();
     expect(screen.queryByRole("grid")).not.toBeInTheDocument();
 
-    const previous = screen.getByRole("button", { name: "Previous" });
+    const previous = screen.getByRole("button", { name: "Previous page" });
     expect(previous).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Back to the first page" })).toBeInTheDocument();
 
     await userEvent.setup().click(previous);
 
@@ -407,7 +408,7 @@ describe("FindingsDashboard", () => {
     expect(await screen.findByText("No findings found")).toBeInTheDocument();
     expect(screen.getByText(EMPTY_PROJECT_HINT)).toBeInTheDocument();
     expect(screen.queryByText("No more results.")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Previous" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Previous page" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
   });
 
@@ -430,12 +431,42 @@ describe("FindingsDashboard", () => {
 
     expect(await screen.findByText("Current finding 0")).toBeInTheDocument();
     expect(screen.getByText("1–20")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByRole("button", { name: "Next page" }));
 
     expect(await screen.findByText("Next page finding")).toBeInTheDocument();
     expect(screen.getByText("21–21")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Previous" }));
+    await user.click(screen.getByRole("button", { name: "Previous page" }));
     expect(await screen.findByText("Current finding 0")).toBeInTheDocument();
+  });
+
+  it("counts the filtered set so the pager stops at the real last page", async () => {
+    const all = Array.from({ length: 45 }, (_, index) => ({
+      ...findingsFixture[0],
+      id: `f${index}`,
+      current_title: `Finding ${index}`,
+    }));
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      if (String(input).endsWith("/gate")) return jsonResponse(gateFixture);
+      const url = new URL(String(input), "http://localhost");
+      const offset = Number.parseInt(url.searchParams.get("offset") ?? "0", 10);
+      return new Response(JSON.stringify(all.slice(offset, offset + 20)), {
+        status: 200,
+        headers: { "Content-Type": "application/json", "X-Total-Count": String(all.length) },
+      });
+    });
+    renderWithProviders(<FindingsDashboard />, "/test-project/findings?offset=20");
+    const user = userEvent.setup();
+
+    expect(await screen.findByText("Finding 20")).toBeInTheDocument();
+    expect(screen.getByText("21–40 of 45")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next page" })).toBeEnabled();
+
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+
+    expect(await screen.findByText("Finding 40")).toBeInTheDocument();
+    expect(screen.getByText("41–45 of 45")).toBeInTheDocument();
+    // The total says the list ends here, so a partial page is the last one.
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled();
   });
 
   it("allows retrying a failed findings request", async () => {

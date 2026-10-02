@@ -22,6 +22,7 @@ export function FindingsDashboard() {
     },
   );
   const findings = data?.findings;
+  const total = data?.total ?? null;
   const { data: gate } = useGateStatus(slug ?? "");
 
   function toggleSort(column: string) {
@@ -117,8 +118,10 @@ export function FindingsDashboard() {
             offset={offset}
             pageSize={PAGE_SIZE}
             rowCount={sorted.length}
+            total={total}
             onPrevious={() => setPage(Math.max(0, offset - PAGE_SIZE))}
             onNext={() => setPage(offset + PAGE_SIZE)}
+            onFirst={() => setPage(0)}
           />
         )}
       </div>
