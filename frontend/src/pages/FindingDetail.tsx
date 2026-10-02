@@ -3,12 +3,13 @@ import { analysisStateLabel } from "@/lib/enums";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { FindingHeader } from "./finding-detail/FindingHeader";
-import { locationLineRange, locationSubjectLabel, parseSourceLink } from "./finding-detail/format";
+import { parseSourceLink } from "./finding-detail/format";
 import { HistorySection } from "./finding-detail/HistorySection";
 import { HowToFix } from "./finding-detail/HowToFix";
 import { MetadataGrid } from "./finding-detail/MetadataGrid";
 import { ReachabilitySection } from "./finding-detail/ReachabilitySection";
 import { TriageSection } from "./finding-detail/TriageSection";
+import { WhereItOccurs } from "./finding-detail/WhereItOccurs";
 
 /** Where "Back to findings" goes: the list page the user came from, if known. */
 function backToFindingsPath(slug: string, state: unknown): string {
@@ -84,35 +85,7 @@ export function FindingDetail() {
 
       <HowToFix finding={finding} />
 
-      <div className="mt-8 rounded-lg border p-4">
-        <h2 className="mb-3 text-sm font-semibold">Where it occurs</h2>
-        {finding.location
-            && (finding.location.file || finding.location.resource || finding.location.summary)
-          ? (
-            <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-              <div>
-                <span className="text-muted-foreground">
-                  {locationSubjectLabel(finding.finding_kind)}
-                </span>
-                <p className="font-mono text-xs break-all select-all">
-                  {finding.location.file ?? finding.location.resource ?? finding.location.summary}
-                  {locationLineRange(finding.location)}
-                </p>
-              </div>
-              {finding.location.summary && (finding.location.file || finding.location.resource) && (
-                <div>
-                  <span className="text-muted-foreground">Detail</span>
-                  <p className="font-medium">{finding.location.summary}</p>
-                </div>
-              )}
-            </div>
-          )
-          : (
-            <p className="text-muted-foreground text-sm">
-              No location reported — the scanner gave no file, resource, or URL.
-            </p>
-          )}
-      </div>
+      <WhereItOccurs finding={finding} />
 
       <div className="mt-8 rounded-lg border p-4">
         <h2 className="mb-1 text-sm font-semibold">Decide</h2>
