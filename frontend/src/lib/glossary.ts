@@ -39,6 +39,26 @@ export const GLOSSARY = {
     short:
       "Whether your code can actually run the vulnerable part of a library. A person records it, with evidence.",
   },
+  exploitable: {
+    label: "Exploitable",
+    short:
+      "You have confirmed an attacker could use this against this project. It keeps blocking the gate until it is fixed or waived.",
+  },
+  falsePositive: {
+    label: "False positive",
+    short:
+      "The scanner got it wrong: this is not a real problem. It stops blocking the gate, and you must say why.",
+  },
+  notAffected: {
+    label: "Not affected",
+    short:
+      "The issue is real in general but cannot be exploited in how this project uses it. It stops blocking, and you must say why.",
+  },
+  wontFix: {
+    label: "Won't fix",
+    short:
+      "The team decided not to fix this for now. It stops blocking until the review date, and you must say why.",
+  },
   acceptedRisk: {
     label: "Accepted risk",
     short:
