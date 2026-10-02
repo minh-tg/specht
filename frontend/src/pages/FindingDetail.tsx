@@ -21,74 +21,22 @@ import {
 import { formatDateTime } from "@/lib/format";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
 import { truncateText } from "@/lib/utils";
-import type { FindingEvent, ReachabilityAssessment } from "@/types/api";
+import type { ReachabilityAssessment } from "@/types/api";
 import { type ReactNode, useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import {
   confidenceLabel,
-  eventTypeLabel,
   locationLineRange,
   locationSubjectLabel,
   parseSourceLink,
   toExpiryTimestamp,
 } from "./finding-detail/format";
+import { HistorySection } from "./finding-detail/HistorySection";
 import {
   MAX_EVIDENCE_LENGTH,
   REACHABILITY_OPTIONS,
   TRIAGE_OPTIONS,
 } from "./finding-detail/options";
-
-/** Lifecycle event history for one finding. */
-function HistorySection({
-  events,
-  isLoading,
-  isError,
-}: {
-  readonly events?: FindingEvent[];
-  readonly isLoading: boolean;
-  readonly isError: boolean;
-}) {
-  let body: ReactNode;
-  if (isLoading) {
-    body = <p className="text-muted-foreground text-sm">Loading history...</p>;
-  } else if (isError) {
-    body = <p className="text-destructive text-sm">Unable to load history.</p>;
-  } else if (!Array.isArray(events) || events.length === 0) {
-    body = <p className="text-muted-foreground text-sm">No history yet.</p>;
-  } else {
-    body = (
-      <ul className="space-y-2 text-sm">
-        {events.map((event) => (
-          <li key={event.id} className="flex flex-wrap items-baseline gap-x-2">
-            <span className="font-medium">{eventTypeLabel(event.event_type)}</span>
-            {event.old_value != null || event.new_value != null
-              ? (
-                <span className="text-muted-foreground font-mono text-xs">
-                  {event.old_value || "–"} → {event.new_value || "–"}
-                </span>
-              )
-              : null}
-            <span className="text-muted-foreground text-xs">
-              {formatDateTime(event.created_at)}
-            </span>
-            {event.comment && (
-              <p className="text-muted-foreground w-full text-xs break-words">
-                &ldquo;{event.comment}&rdquo;
-              </p>
-            )}
-          </li>
-        ))}
-      </ul>
-    );
-  }
-
-  return (
-    <div className="mt-8 rounded-lg border p-4">
-      <h2 className="mb-3 text-sm font-semibold">History</h2>
-      {body}
-    </div>
-  );
-}
 
 /** Triage controls and status feedback for one finding. */
 function TriageSection({ findingId }: { readonly findingId: string; }) {
