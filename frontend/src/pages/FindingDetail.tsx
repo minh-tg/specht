@@ -3,13 +3,9 @@ import { analysisStateLabel } from "@/lib/enums";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { FindingHeader } from "./finding-detail/FindingHeader";
-import {
-  confidenceLabel,
-  locationLineRange,
-  locationSubjectLabel,
-  parseSourceLink,
-} from "./finding-detail/format";
+import { locationLineRange, locationSubjectLabel, parseSourceLink } from "./finding-detail/format";
 import { HistorySection } from "./finding-detail/HistorySection";
+import { HowToFix } from "./finding-detail/HowToFix";
 import { MetadataGrid } from "./finding-detail/MetadataGrid";
 import { ReachabilitySection } from "./finding-detail/ReachabilitySection";
 import { TriageSection } from "./finding-detail/TriageSection";
@@ -86,51 +82,7 @@ export function FindingDetail() {
 
       <MetadataGrid finding={finding} />
 
-      <div className="mt-8 rounded-lg border p-4">
-        <h2 className="mb-3 text-sm font-semibold">How to fix</h2>
-        {finding.remediation?.summary
-          ? (
-            <div className="space-y-2 text-sm">
-              <p className="font-medium">{finding.remediation.summary}</p>
-              {finding.remediation.fallback && (
-                <p className="text-muted-foreground text-xs">
-                  General guidance — the scanner reported no specific fix.
-                </p>
-              )}
-              {finding.remediation.url && parseSourceLink(finding.remediation.url) && (
-                <p>
-                  <a
-                    href={finding.remediation.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-primary hover:text-primary/80 text-sm underline underline-offset-4"
-                  >
-                    Remediation reference
-                  </a>
-                </p>
-              )}
-              {finding.remediation.source && (
-                <p className="text-muted-foreground text-xs">
-                  Source: {finding.remediation.source}
-                </p>
-              )}
-              {finding.suggestion && (
-                <p className="text-muted-foreground text-xs">
-                  Suggested: {finding.suggestion.action}
-                  {finding.suggestion.target ? ` ${finding.suggestion.target}` : ""} (confidence
-                  {" "}
-                  {confidenceLabel(finding.suggestion.confidence)})
-                  {finding.suggestion.detail ? ` — ${finding.suggestion.detail}` : ""}
-                </p>
-              )}
-            </div>
-          )
-          : (
-            <p className="text-muted-foreground text-sm">
-              No remediation reported for this finding.
-            </p>
-          )}
-      </div>
+      <HowToFix finding={finding} />
 
       <div className="mt-8 rounded-lg border p-4">
         <h2 className="mb-3 text-sm font-semibold">Where it occurs</h2>
