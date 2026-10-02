@@ -1,3 +1,5 @@
+import { useMe } from "@/api/hooks";
+import { actorLabel, useUserDirectory } from "@/api/users";
 import { formatDateTime } from "@/lib/format";
 import type { FindingEvent } from "@/types/api";
 import type { ReactNode } from "react";
@@ -13,6 +15,9 @@ export function HistorySection({
   readonly isLoading: boolean;
   readonly isError: boolean;
 }) {
+  const { data: me } = useMe();
+  const { data: directory } = useUserDirectory();
+
   let body: ReactNode;
   if (isLoading) {
     body = <p className="text-muted-foreground text-sm">Loading history...</p>;
@@ -33,6 +38,9 @@ export function HistorySection({
                 </span>
               )
               : null}
+            <span className="text-muted-foreground text-xs">
+              by {actorLabel(event, { me, directory })}
+            </span>
             <span className="text-muted-foreground text-xs">
               {formatDateTime(event.created_at)}
             </span>
