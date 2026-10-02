@@ -35,7 +35,7 @@ export function UploadForm({
         <button
           type="button"
           onClick={() => onRetryScanners()}
-          className="text-primary ml-2 text-sm underline underline-offset-2 hover:no-underline"
+          className="text-action ml-2 text-sm underline underline-offset-2 hover:no-underline"
         >
           Retry
         </button>

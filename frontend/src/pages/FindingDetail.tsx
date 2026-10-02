@@ -57,7 +57,7 @@ export function FindingDetail() {
         <p className="text-destructive mt-2 text-sm">{error?.message ?? "Finding not found"}</p>
         <button
           type="button"
-          className="text-primary text-sm underline hover:no-underline"
+          className="text-action text-sm underline hover:no-underline"
           onClick={() => refetch()}
         >
           Retry

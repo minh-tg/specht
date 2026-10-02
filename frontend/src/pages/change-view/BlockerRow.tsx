@@ -5,7 +5,7 @@ import type { Finding } from "@/types/api";
 import { type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
-const LINK_CLASS = "text-primary underline underline-offset-2 hover:no-underline";
+const LINK_CLASS = "text-action underline underline-offset-2 hover:no-underline";
 const ROW_CLASS = "border-b px-3 py-3 last:border-b-0";
 
 export interface BlockerRowProps {

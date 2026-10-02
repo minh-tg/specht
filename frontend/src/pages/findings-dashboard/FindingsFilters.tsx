@@ -78,7 +78,7 @@ export function ClearFiltersButton({ onClear }: { onClear: () => void; }) {
   return (
     <button
       type="button"
-      className="text-primary text-sm underline hover:no-underline"
+      className="text-action text-sm underline hover:no-underline"
       onClick={onClear}
     >
       Clear filters

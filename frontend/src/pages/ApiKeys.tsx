@@ -96,7 +96,7 @@ export function ApiKeys() {
       <div role="alert" className="bg-card rounded-lg border p-4">
         <p className="text-destructive text-sm">{loadError}</p>
         <button
-          className="text-primary hover:text-primary/80 mt-2 text-xs font-medium"
+          className="text-action hover:text-action/80 mt-2 text-xs font-medium"
           onClick={() => loadKeys(selectedProject)}
         >
           Retry

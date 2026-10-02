@@ -39,7 +39,7 @@ export function ContextGrid({ context }: { readonly context?: FindingContext; })
                 href={context.source_link}
                 target="_blank"
                 rel="noreferrer"
-                className="text-primary hover:text-primary/80 text-sm underline underline-offset-4"
+                className="text-action hover:text-action/80 text-sm underline underline-offset-4"
               >
                 {parseSourceLink(context.source_link)!.hostname}
                 {parseSourceLink(context.source_link)!.pathname}

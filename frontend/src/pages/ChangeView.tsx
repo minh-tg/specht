@@ -21,7 +21,7 @@ import { Link, useParams, useSearchParams } from "react-router-dom";
 /** Rows rendered before the "Show all" control reveals the rest. */
 export const MAX_BLOCKER_ROWS = 20;
 
-const LINK_CLASS = "text-primary underline underline-offset-2 hover:no-underline";
+const LINK_CLASS = "text-action underline underline-offset-2 hover:no-underline";
 
 function Page({ children }: { children: ReactNode; }) {
   return <div className="mx-auto max-w-3xl px-4 py-8">{children}</div>;

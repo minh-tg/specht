@@ -67,7 +67,7 @@ export function ProjectList() {
       <div className="flex flex-col items-center gap-2 py-16">
         <p className="text-destructive text-sm">{error?.message ?? "Failed to load projects"}</p>
         <button
-          className="text-primary text-sm underline hover:no-underline"
+          className="text-action text-sm underline hover:no-underline"
           onClick={() => refetch()}
         >
           Retry
@@ -84,7 +84,7 @@ export function ProjectList() {
           ? (
             <Link
               to="/projects/new"
-              className="text-primary text-sm underline hover:no-underline"
+              className="text-action text-sm underline hover:no-underline"
             >
               Create your first project
             </Link>
@@ -213,7 +213,7 @@ function ProjectTableRow({ row }: { readonly row: ProjectRowData; }) {
       <td className="px-3 py-2">
         <Link
           to={`/${project.slug}/findings`}
-          className="text-primary font-medium hover:underline"
+          className="text-action font-medium hover:underline"
         >
           {project.name}
         </Link>

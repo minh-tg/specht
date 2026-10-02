@@ -23,10 +23,10 @@ export function UploadResultCard({ result, slug, onReset }: UploadResultCardProp
         {result.threshold_breached ? "The gate would block this project." : "The gate passes."}
       </p>
       <div className="mt-3 flex items-center gap-4 text-sm">
-        <Link to={`/${slug}/findings`} className="text-primary underline hover:no-underline">
+        <Link to={`/${slug}/findings`} className="text-action underline hover:no-underline">
           View findings
         </Link>
-        <Link to={`/${slug}/reports`} className="text-primary underline hover:no-underline">
+        <Link to={`/${slug}/reports`} className="text-action underline hover:no-underline">
           Back to reports
         </Link>
         <button

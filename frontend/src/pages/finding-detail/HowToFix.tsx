@@ -21,7 +21,7 @@ export function HowToFix({ finding }: { readonly finding: Finding; }) {
                   href={finding.remediation.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-primary hover:text-primary/80 text-sm underline underline-offset-4"
+                  className="text-action hover:text-action/80 text-sm underline underline-offset-4"
                 >
                   Remediation reference
                 </a>

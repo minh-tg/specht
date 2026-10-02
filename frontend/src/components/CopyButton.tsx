@@ -24,7 +24,7 @@ export function CopyButton({ text, label, className }: {
         aria-label={`${word} ${label}`}
         onClick={() => void copy(text)}
         className={cn(
-          "text-primary hover:text-primary/80 inline-flex min-h-6 shrink-0 items-center rounded-md px-2 py-1 text-xs font-medium",
+          "text-action hover:text-action/80 inline-flex min-h-6 shrink-0 items-center rounded-md px-2 py-1 text-xs font-medium",
           className,
         )}
       >

@@ -46,7 +46,7 @@ export function FindingsPager(
       </div>
       {offset > 0 && rowCount === 0 && (
         <button
-          className="text-primary text-sm underline hover:no-underline"
+          className="text-action text-sm underline hover:no-underline"
           onClick={onFirst}
         >
           Back to the first page
