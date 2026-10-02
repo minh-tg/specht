@@ -239,7 +239,7 @@ describe("mutation CSRF hardening", () => {
 describe("useFindings", () => {
   it("reads the filtered total from X-Total-Count", async () => {
     const findings = [{ id: "f21" }, { id: "f22" }];
-    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+    globalThis.fetch = vi.fn().mockImplementation(() => {
       return Promise.resolve(
         new Response(JSON.stringify(findings), {
           status: 200,
