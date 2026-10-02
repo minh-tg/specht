@@ -1,3 +1,4 @@
+import { InfoTip } from "@/components/InfoTip";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { pluralize } from "@/lib/format";
 import type { Verdict } from "@/lib/verdict";
@@ -84,6 +85,7 @@ export function ChangeVerdict(
           {policy && (
             <span>
               Floor: {policy.severity_floor} (from {floorSourceLabel(policy.severity_source)})
+              <InfoTip term="severityFloor" className="ml-1" />
             </span>
           )}
           {policy && waived > 0 && " · "}

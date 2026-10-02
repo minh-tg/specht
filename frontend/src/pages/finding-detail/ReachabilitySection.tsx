@@ -1,4 +1,5 @@
 import { useUpsertReachability } from "@/api/hooks";
+import { InfoTip } from "@/components/InfoTip";
 import { isReachabilityState, type ReachabilityState, reachabilityStateLabel } from "@/lib/enums";
 import { formatDateTime } from "@/lib/format";
 import { truncateText } from "@/lib/utils";
@@ -73,7 +74,10 @@ export function ReachabilitySection({
 
   return (
     <section aria-labelledby="reachability-heading" className="mt-6 border-t pt-4">
-      <h3 id="reachability-heading" className="mb-3 text-sm font-medium">Reachability</h3>
+      <div className="mb-3 flex items-center gap-1">
+        <h3 id="reachability-heading" className="text-sm font-medium">Reachability</h3>
+        <InfoTip term="reachability" />
+      </div>
       {body}
       <div className="flex flex-wrap gap-2">
         <select
