@@ -7,7 +7,7 @@ export function NotFound() {
       <p className="text-muted-foreground mt-2 text-sm">
         The page you&apos;re looking for doesn&apos;t exist, or you don&apos;t have access to it.
       </p>
-      <Link to="/" className="text-primary mt-4 inline-block text-sm underline hover:no-underline">
+      <Link to="/" className="text-action mt-4 inline-block text-sm underline hover:no-underline">
         Back to projects
       </Link>
     </div>

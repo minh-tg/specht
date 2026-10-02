@@ -82,7 +82,7 @@ export function NewProject() {
         <p className="text-muted-foreground text-sm">Only administrators can create projects.</p>
         <Link
           to="/"
-          className="text-primary hover:text-primary/80 mt-2 inline-block text-sm underline"
+          className="text-action hover:text-action/80 mt-2 inline-block text-sm underline"
         >
           Back to projects
         </Link>

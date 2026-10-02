@@ -48,7 +48,7 @@ export function ReportHistory() {
       <div className="flex flex-col items-center gap-2 py-16">
         <p className="text-destructive text-sm">{error?.message ?? "Failed to load reports"}</p>
         <button
-          className="text-primary text-sm underline hover:no-underline"
+          className="text-action text-sm underline hover:no-underline"
           onClick={() => refetch()}
         >
           Retry
@@ -63,7 +63,7 @@ export function ReportHistory() {
         <p className="text-muted-foreground text-sm">No reports yet.</p>
         <Link
           to={`/${slug}/reports/upload`}
-          className="text-primary text-sm underline hover:no-underline"
+          className="text-action text-sm underline hover:no-underline"
         >
           Upload a report
         </Link>
@@ -121,7 +121,7 @@ export function ReportHistory() {
                     to={`/${encodeURIComponent(slug ?? "")}/changes/${
                       encodeURIComponent(r.commit_sha)
                     }?report=${encodeURIComponent(r.id)}`}
-                    className="text-primary underline underline-offset-2 hover:no-underline"
+                    className="text-action underline underline-offset-2 hover:no-underline"
                   >
                     {r.commit_sha.slice(0, 7)}
                   </Link>

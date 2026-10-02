@@ -18,7 +18,7 @@ import { Link, useParams } from "react-router-dom";
 
 const BUTTON_CLASS =
   "bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50";
-const LINK_CLASS = "text-primary hover:text-primary/80 text-sm underline";
+const LINK_CLASS = "text-action hover:text-action/80 text-sm underline";
 const PRE_CLASS = "bg-muted rounded-md p-3 text-xs break-words whitespace-pre-wrap";
 
 type FirstReport = "waiting" | "processing" | "failed" | "received";

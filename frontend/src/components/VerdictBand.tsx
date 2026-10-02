@@ -63,7 +63,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
           <p role="alert">{"Couldn't load the verdict."}</p>
           <button
             type="button"
-            className="text-primary text-sm underline underline-offset-2 hover:no-underline"
+            className="text-action text-sm underline underline-offset-2 hover:no-underline"
             onClick={() => {
               if (gateQuery.isError) void gateQuery.refetch();
               if (statsQuery.isError) void statsQuery.refetch();
@@ -157,7 +157,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
           Upload a report or send one from CI.{" "}
           <Link
             to={`/${slug}/reports/upload`}
-            className="text-primary underline underline-offset-2 hover:no-underline"
+            className="text-action underline underline-offset-2 hover:no-underline"
           >
             Upload a report
           </Link>
@@ -166,7 +166,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
               {" · "}
               <Link
                 to={`/${slug}/setup`}
-                className="text-primary underline underline-offset-2 hover:no-underline"
+                className="text-action underline underline-offset-2 hover:no-underline"
               >
                 Set up CI
               </Link>
