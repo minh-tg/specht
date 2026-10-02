@@ -44,6 +44,34 @@ describe("blocksGate", () => {
     });
   });
 
+  it("reports waived when an active waiver silences the finding", () => {
+    expect(blocksGate(finding({ id: "f1" }), gate({ waived_finding_ids: ["f1"] }))).toEqual({
+      blocks: false,
+      reason: "waived",
+    });
+  });
+
+  it("ignores a waiver that names a different finding and one whose list is absent", () => {
+    expect(blocksGate(finding({ id: "f1" }), gate({ waived_finding_ids: ["f2"] }))).toEqual({
+      blocks: false,
+    });
+    expect(blocksGate(finding({ id: "f1" }), gate())).toEqual({ blocks: false });
+  });
+
+  it("counts a finding in both blocked_by and waived_finding_ids as blocking", () => {
+    expect(
+      blocksGate(finding({ id: "f1" }), gate({ blocked_by: ["f1"], waived_finding_ids: ["f1"] })),
+    ).toEqual({ blocks: true });
+  });
+
+  it("prefers waived over ignored and below the floor", () => {
+    const result = blocksGate(
+      finding({ gate_effect: "ignore", current_severity: "low" }),
+      gate({ waived_finding_ids: ["f1"], policy: policy({ severity_floor: "critical" }) }),
+    );
+    expect(result).toEqual({ blocks: false, reason: "waived" });
+  });
+
   it("blocks a finding whose gate_effect is ignore when the gate still lists it", () => {
     expect(blocksGate(finding({ id: "f1", gate_effect: "ignore" }), gate({ blocked_by: ["f1"] })))
       .toEqual({ blocks: true });
@@ -111,6 +139,7 @@ describe("blocksGateLabel", () => {
     expect(blocksGateLabel({ blocks: false })).toBe("No");
     expect(blocksGateLabel({ blocks: false, reason: "ignored" })).toBe("No (ignored by triage)");
     expect(blocksGateLabel({ blocks: false, reason: "below_floor" })).toBe("No (below the floor)");
+    expect(blocksGateLabel({ blocks: false, reason: "waived" })).toBe("Waived");
   });
 });
 
@@ -126,6 +155,8 @@ describe("blocksGateSentence", () => {
       .toBe("Does not block gate (ignored by triage)");
     expect(blocksGateSentence({ blocks: false, reason: "below_floor" }))
       .toBe("Does not block gate (below the floor)");
+    expect(blocksGateSentence({ blocks: false, reason: "waived" }))
+      .toBe("Waived: does not block gate");
   });
 });
 
