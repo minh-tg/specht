@@ -111,6 +111,7 @@ const MEANING_COLOURS = [
   "--sev-critical-fg",
   "--sev-high-fg",
   "--sev-medium-fg",
+  "--sev-low-fg",
   "--sev-success-fg",
   "--verdict-block",
   "--verdict-pass",
@@ -125,7 +126,8 @@ const VISIONS: readonly Vision[] = ["normal", "protanopia", "deuteranopia"];
 
 /**
  * Under 5 two colours are hard to tell apart side by side. The chosen plum accent measures about
- * 5.8 at worst; the terracotta it replaced measured 0.2 and teal measured 2.2.
+ * 5.8 at worst against the other colours and 6.4 against the low-chroma LOW blue; the terracotta it
+ * replaced measured 0.2 and teal measured 2.2.
  */
 const MIN_COLOUR_DISTANCE = 5;
 
@@ -141,26 +143,3 @@ describe.each(["light", "dark"] as const)("accent colour safety: %s theme", (the
       .toBeGreaterThanOrEqual(MIN_COLOUR_DISTANCE);
   });
 });
-
-/**
- * KNOWN GAP, kept visible on purpose. --sev-low-fg is a saturated blue (#2563a6). For red-green
- * colour blindness any blue-violet accent collapses into it (measured: plum is about 1.5 away in
- * the light theme, where 5 is the floor), so these cases fail today. They are wrapped in
- * `it.fails`, so the suite stays green now and goes red the moment the gap is closed (for example
- * by giving LOW a lower chroma), which is the cue to delete this block and add --sev-low-fg to
- * MEANING_COLOURS above. LOW badges always carry a text label and a tinted background, so nothing
- * relies on colour alone in the meantime.
- */
-describe.each(["light", "dark"] as const)(
-  "known gap: accent versus LOW severity, %s theme",
-  (theme) => {
-    it.fails.each(
-      [...ACCENTS].flatMap((accent) =>
-        (["protanopia", "deuteranopia"] as const).map((vision) => [accent, vision] as const)
-      ),
-    )("%s is hard to tell from --sev-low-fg for %s vision", (accent, vision) => {
-      expect(chromaticDistance(colour(theme, accent), colour(theme, "--sev-low-fg"), vision))
-        .toBeGreaterThanOrEqual(MIN_COLOUR_DISTANCE);
-    });
-  },
-);
