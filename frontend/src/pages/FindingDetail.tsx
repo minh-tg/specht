@@ -1,24 +1,9 @@
-import {
-  useFinding,
-  useFindingEvents,
-  useGateStatus,
-  useReachability,
-  useUpsertReachability,
-} from "@/api/hooks";
+import { useFinding, useFindingEvents, useGateStatus, useReachability } from "@/api/hooks";
 import { SeverityBadge } from "@/components/ui/severity-badge";
-import {
-  analysisStateLabel,
-  findingKindLabel,
-  isReachabilityState,
-  type ReachabilityState,
-  reachabilityStateLabel,
-  technicalStateLabel,
-} from "@/lib/enums";
+import { analysisStateLabel, findingKindLabel, technicalStateLabel } from "@/lib/enums";
 import { formatDateTime } from "@/lib/format";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
-import { truncateText } from "@/lib/utils";
-import type { ReachabilityAssessment } from "@/types/api";
-import { type ReactNode, useState } from "react";
+import type { ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import {
   confidenceLabel,
@@ -27,129 +12,8 @@ import {
   parseSourceLink,
 } from "./finding-detail/format";
 import { HistorySection } from "./finding-detail/HistorySection";
-import { MAX_EVIDENCE_LENGTH, REACHABILITY_OPTIONS } from "./finding-detail/options";
-import { OutcomeRegions } from "./finding-detail/OutcomeRegions";
+import { ReachabilitySection } from "./finding-detail/ReachabilitySection";
 import { TriageSection } from "./finding-detail/TriageSection";
-
-/** The latest assessment line, with truncated inline evidence. */
-function latestAssessmentLine(latest: ReachabilityAssessment | null): ReactNode {
-  if (!latest) {
-    return (
-      <>
-        Latest: <span className="font-medium">Unknown</span>{" "}
-        — no assessment yet; an unassessed finding still blocks the gate until marked not reachable
-        or not applicable.
-      </>
-    );
-  }
-  const evidence = latest.evidence?.trim();
-  return (
-    <>
-      Latest:{" "}
-      <span className="font-medium">
-        {reachabilityStateLabel(latest.state) ?? "Unknown"}
-      </span>
-      {evidence && (
-        <span title={evidence}>{" — "}{truncateText(evidence, MAX_EVIDENCE_LENGTH)}</span>
-      )} ({formatDateTime(latest.updated_at)})
-    </>
-  );
-}
-
-/** Reachability assessment controls and latest status for one finding. */
-function ReachabilitySection({
-  findingId,
-  reachability,
-  isLoading,
-  isError,
-  error,
-  isSuccess,
-}: {
-  readonly findingId: string;
-  readonly reachability?: ReachabilityAssessment[];
-  readonly isLoading: boolean;
-  readonly isError: boolean;
-  readonly error: Error | null;
-  readonly isSuccess: boolean;
-}) {
-  const mutation = useUpsertReachability();
-  const [reachState, setReachState] = useState<ReachabilityState | "">("");
-  const [reachEvidence, setReachEvidence] = useState("");
-
-  // The list is capped to the latest assessment for inline display; older
-  // history is not rendered in this view.
-  const latest = reachability?.[0] ?? null;
-
-  let body: ReactNode;
-  if (isLoading) {
-    body = <p className="text-muted-foreground mb-3 text-xs">Latest: Loading...</p>;
-  } else if (isError) {
-    body = (
-      <p className="text-destructive mb-3 text-xs">
-        Unable to load reachability: {error?.message ?? "request failed"}
-      </p>
-    );
-  } else if (!isSuccess) {
-    body = <p className="text-muted-foreground mb-3 text-xs">Latest: Loading...</p>;
-  } else {
-    body = <p className="text-muted-foreground mb-3 text-xs">{latestAssessmentLine(latest)}</p>;
-  }
-
-  return (
-    <section aria-labelledby="reachability-heading" className="mt-6 border-t pt-4">
-      <h3 id="reachability-heading" className="mb-3 text-sm font-medium">Reachability</h3>
-      {body}
-      <div className="flex flex-wrap gap-2">
-        <select
-          aria-label="Reachability assessment"
-          className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
-          value={reachState}
-          onChange={(e) => {
-            const value = e.target.value;
-            setReachState(isReachabilityState(value) ? value : "");
-          }}
-        >
-          <option value="">Select assessment...</option>
-          {REACHABILITY_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-        <input
-          className="border-input bg-background min-w-[200px] rounded-md border px-3 py-1.5 text-sm"
-          aria-label="Evidence"
-          placeholder="Evidence"
-          value={reachEvidence}
-          onChange={(e) => setReachEvidence(e.target.value)}
-        />
-        <button
-          onClick={() => {
-            if (!reachState) return;
-            mutation.mutate(
-              { findingId, state: reachState, evidence: reachEvidence },
-              {
-                onSuccess: () => {
-                  setReachState("");
-                  setReachEvidence("");
-                },
-              },
-            );
-          }}
-          disabled={!reachState || mutation.isPending}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-1.5 text-sm font-medium disabled:opacity-50"
-        >
-          {mutation.isPending ? "Saving..." : "Assess"}
-        </button>
-      </div>
-      <OutcomeRegions
-        label="Reachability result"
-        error={mutation.isError ? mutation.error.message : null}
-        success={mutation.isSuccess ? "Reachability saved" : null}
-      />
-    </section>
-  );
-}
 
 /** Where "Back to findings" goes: the list page the user came from, if known. */
 function backToFindingsPath(slug: string, state: unknown): string {
