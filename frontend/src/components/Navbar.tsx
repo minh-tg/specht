@@ -50,7 +50,7 @@ export function Navbar() {
         className="mx-auto flex h-12 max-w-5xl items-center justify-between gap-3 px-4"
       >
         <NavLink to="/" className="inline-flex items-center gap-2 text-sm font-semibold">
-          <BrandMark className="h-5 w-5" />
+          <BrandMark className="text-action h-5 w-5" />
           Specht
         </NavLink>
         <div className="flex min-w-0 items-center gap-3">
