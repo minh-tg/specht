@@ -2,8 +2,8 @@ import { useFinding, useFindingEvents, useGateStatus, useReachability } from "@/
 import { analysisStateLabel } from "@/lib/enums";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
 import { Link, useLocation, useParams } from "react-router-dom";
+import { ContextGrid } from "./finding-detail/ContextGrid";
 import { FindingHeader } from "./finding-detail/FindingHeader";
-import { parseSourceLink } from "./finding-detail/format";
 import { HistorySection } from "./finding-detail/HistorySection";
 import { HowToFix } from "./finding-detail/HowToFix";
 import { MetadataGrid } from "./finding-detail/MetadataGrid";
@@ -104,53 +104,7 @@ export function FindingDetail() {
         />
       </div>
 
-      {finding.context && (
-        <div className="mt-8 rounded-lg border p-4">
-          <h2 className="mb-3 text-sm font-semibold">Context</h2>
-          <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-            <div>
-              <span className="text-muted-foreground">Target</span>
-              <p className="font-medium">
-                {[finding.context.target_name, finding.context.target_kind]
-                  .filter(Boolean)
-                  .join(" · ") || "–"}
-              </p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Environment</span>
-              <p className="font-medium">{finding.context.environment_name || "–"}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Branch</span>
-              <p className="font-mono text-xs">{finding.context.branch || "–"}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Commit</span>
-              <p className="font-mono text-xs">
-                {finding.context.commit_sha
-                  ? finding.context.commit_sha.slice(0, 12)
-                  : "–"}
-              </p>
-            </div>
-            {parseSourceLink(finding.context.source_link) && (
-              <div className="sm:col-span-2">
-                <span className="text-muted-foreground">Source</span>
-                <p className="font-medium">
-                  <a
-                    href={finding.context.source_link}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-primary hover:text-primary/80 text-sm underline underline-offset-4"
-                  >
-                    {parseSourceLink(finding.context.source_link)!.hostname}
-                    {parseSourceLink(finding.context.source_link)!.pathname}
-                  </a>
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <ContextGrid context={finding.context} />
 
       <HistorySection
         events={events}
