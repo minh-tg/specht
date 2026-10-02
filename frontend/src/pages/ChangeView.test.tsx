@@ -219,8 +219,10 @@ describe("ChangeView", () => {
     expect(screen.getByText("Fix f1")).toBeInTheDocument();
   });
 
-  it("reads PASSING when nothing is introduced", async () => {
+  it("reads PASSING and keeps the debt section available", async () => {
     changeGate = gate({ threshold_breached: false, blocking_count: 0, blocked_by: [] });
+    projectGate = { threshold_breached: true, blocking_count: 1, blocked_by: ["pre1"] };
+    findings = { ...findings, pre1: finding("pre1") };
     renderPage();
 
     expect(
@@ -230,6 +232,7 @@ describe("ChangeView", () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Introduced by this change" }))
       .not.toBeInTheDocument();
+    expect(await screen.findByText(/1 other finding/)).toBeInTheDocument();
   });
 
   it("alerts with a back link when the gate request fails", async () => {
@@ -273,6 +276,29 @@ describe("ChangeView", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Show all 25" }));
     await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(25));
     expect(findingFetches).toHaveLength(25);
+  });
+
+  it("folds only findings the change did not introduce into the debt section", async () => {
+    changeGate = gate({ blocked_by: ["f1", "f2"] });
+    projectGate = {
+      threshold_breached: true,
+      blocking_count: 3,
+      blocked_by: ["f1", "f2", "pre1"],
+    };
+    findings = { f1: finding("f1"), f2: finding("f2"), pre1: finding("pre1") };
+    renderPage();
+
+    const summary = await screen.findByText(
+      "1 other finding blocks this project (not introduced by this change)",
+    );
+    // The introduced findings were fetched; the debt row was not, until opened.
+    expect(findingFetches.sort()).toEqual(["f1", "f2"]);
+
+    await userEvent.setup().click(summary);
+    await waitFor(() => expect(screen.getByText("Finding pre1")).toBeInTheDocument());
+    const details = summary.closest("details");
+    if (!details) throw new Error("debt summary is not inside a details element");
+    expect(within(details).queryByText("Finding f1")).not.toBeInTheDocument();
   });
 
   it("resolves a commit prefix and honours the report override", async () => {

@@ -1,11 +1,18 @@
 import { APIError } from "@/api/client";
-import { findingQueryOptions, useChangeGate, useProject, useReports } from "@/api/hooks";
+import {
+  findingQueryOptions,
+  useChangeGate,
+  useGateStatus,
+  useProject,
+  useReports,
+} from "@/api/hooks";
 import { formatDateTime, formatRelativeTime } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { blockerCount, isReportInProgress } from "@/lib/verdict";
 import { BlockerRowView } from "@/pages/change-view/BlockerRow";
 import { ChangeVerdict } from "@/pages/change-view/ChangeVerdict";
-import { resolveReport, shortCommit } from "@/pages/change-view/resolve";
+import { ExistingDebt } from "@/pages/change-view/ExistingDebt";
+import { existingBlockers, resolveReport, shortCommit } from "@/pages/change-view/resolve";
 import type { Report } from "@/types/api";
 import { useQueries } from "@tanstack/react-query";
 import { type ReactNode, useState } from "react";
@@ -187,6 +194,7 @@ export function ChangeView() {
     && (isReportInProgress(report.status) || report.status === "failed");
   // A scan without a verdict must not be scoped through the gate.
   const changeGateQuery = useChangeGate(slug, degraded ? undefined : report?.id);
+  const projectGateQuery = useGateStatus(slug);
 
   if (
     projectQuery.isError && projectQuery.error instanceof APIError
@@ -264,6 +272,7 @@ export function ChangeView() {
   const gate = changeGateQuery.data;
   const blockedBy = gate.blocked_by ?? [];
   const kind = gate.threshold_breached ? "blocked" : "passing";
+  const existing = existingBlockers(projectGateQuery.data?.blocked_by, blockedBy);
 
   return (
     <Page>
@@ -277,6 +286,7 @@ export function ChangeView() {
         />
       </div>
       <BlockerList slug={slug} ids={blockedBy} />
+      <ExistingDebt slug={slug} ids={existing} />
     </Page>
   );
 }
