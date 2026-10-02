@@ -164,9 +164,11 @@
   --sev-medium: #a15c07;
   --sev-medium-fg: #975607;
   --sev-medium-bg: #f0e6d8;
-  --sev-low: #2563a6;
-  --sev-low-fg: #2563a6;
-  --sev-low-bg: #dfe8f2;
+  /* LOW is deliberately low-chroma: a vivid blue collapses into any blue-violet accent for
+     red-green colour blindness (tokens.test.ts keeps them apart). */
+  --sev-low: oklch(0.42 0.05 245);
+  --sev-low-fg: oklch(0.42 0.05 245);
+  --sev-low-bg: oklch(0.94 0.01 245);
   --sev-success: #16794a;
   --sev-success-fg: #157548;
   --sev-success-bg: #dcebe3;
@@ -226,8 +228,8 @@
   --sev-medium: #e8b64f;
   --sev-medium-fg: #e8b64f;
   --sev-medium-bg: #2e281d;
-  --sev-low: #83b8ff;
-  --sev-low-fg: #83b8ff;
+  --sev-low: oklch(0.8 0.05 245);
+  --sev-low-fg: oklch(0.8 0.05 245);
   --sev-low-bg: #232931;
   --sev-success: #70d49b;
   --sev-success-fg: #70d49b;
