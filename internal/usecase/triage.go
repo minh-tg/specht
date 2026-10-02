@@ -54,6 +54,10 @@ type GateStatusOutput struct {
 	// reachability state. Callers can explain why each finding blocks the gate.
 	BlockedByReachability map[string]string `json:"blocked_by_reachability,omitempty"`
 	WaivedCount           int               `json:"waived_count,omitempty"`
+	// WaivedFindingIDs lists the blocking findings an active waiver covers.
+	// It is always present (an empty array when nothing is waived) so a UI
+	// can mark each finding as waived without a second round trip.
+	WaivedFindingIDs []string `json:"waived_finding_ids"`
 	// Policy is the project's effective policy with provenance: which
 	// baseline and overrides produced this verdict.
 	Policy *PolicyEffectiveResponse `json:"policy,omitempty"`
@@ -287,6 +291,7 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 		BlockedBy:             decision.BlockedBy,
 		BlockedByReachability: reachability,
 		WaivedCount:           decision.WaivedCount,
+		WaivedFindingIDs:      decision.WaivedFindingIDs,
 		Policy:                policy,
 	}, nil
 }
@@ -318,6 +323,7 @@ func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug stri
 		BlockedBy:             decision.BlockedBy,
 		BlockedByReachability: reachability,
 		WaivedCount:           decision.WaivedCount,
+		WaivedFindingIDs:      decision.WaivedFindingIDs,
 	}, nil
 }
 

@@ -320,6 +320,83 @@ func TestEvaluate_BlockedByReachability_Populated(t *testing.T) {
 	assert.Equal(t, 3, d.TotalBlocking)
 }
 
+// TestEvaluate_WaivedFindingIDs_ListsCoveredBlockersInInputOrder pins the
+// reported ids to the blocking-population findings an active waiver covers,
+// in the order the findings were returned (never the waiver declaration
+// order) and never more than the findings actually at or above the floor.
+func TestEvaluate_WaivedFindingIDs_ListsCoveredBlockersInInputOrder(t *testing.T) {
+	g := New(
+		&mockFindingsRepo{findings: []Finding{
+			{ID: "f1", CurrentSeverityRank: 4, Fingerprint: "CVE-2024-0001"},
+			{ID: "f2", CurrentSeverityRank: 4, Fingerprint: "CVE-2024-0002"},
+			{ID: "f3", CurrentSeverityRank: 4, Fingerprint: "CVE-2024-0003"},
+		}},
+		&mockWaiversRepo{waivers: []Waiver{
+			// Declared out of finding order on purpose: the reported ids
+			// must follow the findings' input order.
+			{ID: "w1", Targets: []WaiverTarget{{FindingID: "f3"}}},
+			{ID: "w2", Conditions: []WaiverCondition{{Field: "cve_id", Operator: "eq", Value: "CVE-2024-0001"}}},
+		}},
+	)
+	d, err := g.Evaluate(context.Background(), "proj-1", 3)
+	require.NoError(t, err)
+	assert.Equal(t, StatusFail, d.Status)
+	assert.Equal(t, []string{"f2"}, d.BlockedBy)
+	assert.Equal(t, []string{"f1", "f3"}, d.WaivedFindingIDs)
+	assert.Equal(t, d.WaivedCount, len(d.WaivedFindingIDs))
+}
+
+// TestEvaluate_WaivedFindingIDs_EmptyIsNonNil keeps the API able to serialize
+// the field as [] rather than null when nothing is waived.
+func TestEvaluate_WaivedFindingIDs_EmptyIsNonNil(t *testing.T) {
+	g := New(
+		&mockFindingsRepo{findings: []Finding{
+			{ID: "f1", CurrentSeverityRank: 4, Fingerprint: "CVE-2024-0001"},
+		}},
+		&mockWaiversRepo{},
+	)
+	d, err := g.Evaluate(context.Background(), "proj-1", 3)
+	require.NoError(t, err)
+	assert.Equal(t, StatusFail, d.Status)
+	require.NotNil(t, d.WaivedFindingIDs)
+	assert.Empty(t, d.WaivedFindingIDs)
+	assert.Equal(t, 0, d.WaivedCount)
+}
+
+// TestEvaluate_WaivedFindingIDs_EmptyOnPassWithoutFindings covers the early
+// pass return: no findings means nothing to waiver, but the field still has
+// to be a non-nil empty slice.
+func TestEvaluate_WaivedFindingIDs_EmptyOnPassWithoutFindings(t *testing.T) {
+	g := New(&mockFindingsRepo{}, &mockWaiversRepo{})
+	d, err := g.Evaluate(context.Background(), "proj-1", 3)
+	require.NoError(t, err)
+	assert.Equal(t, StatusPass, d.Status)
+	require.NotNil(t, d.WaivedFindingIDs)
+	assert.Empty(t, d.WaivedFindingIDs)
+}
+
+// TestEvaluateIntroducedOnly_WaivedFindingIDs_ExcludesBelowFloor verifies the
+// reporting population: a finding below the severity floor was never a
+// blocking finding, so a waiver that also covers it must not list it.
+func TestEvaluateIntroducedOnly_WaivedFindingIDs_ExcludesBelowFloor(t *testing.T) {
+	g := New(
+		&mockFindingsRepo{findings: []Finding{
+			{ID: "high", CurrentSeverityRank: 4, Fingerprint: "CVE-2024-0001", IntroducedByReportID: "r1"},
+			{ID: "low", CurrentSeverityRank: 2, Fingerprint: "CVE-2024-0002", IntroducedByReportID: "r1"},
+		}},
+		&mockWaiversRepo{waivers: []Waiver{
+			// Covers every finding, including the one below the floor.
+			{ID: "w-all", Conditions: []WaiverCondition{{Field: "severity_rank", Operator: "gte", Value: "1"}}},
+		}},
+	)
+	d, err := g.EvaluateIntroducedOnly(context.Background(), "proj-1", 3, "r1", nil)
+	require.NoError(t, err)
+	assert.Equal(t, StatusPass, d.Status)
+	assert.Equal(t, 1, d.WaivedCount)
+	assert.Equal(t, []string{"high"}, d.WaivedFindingIDs,
+		"a finding below the severity floor was never blocking, so it is not reported as waived")
+}
+
 func TestEvaluate_Pass_HasEmptyReachabilityMap(t *testing.T) {
 	g := New(&mockFindingsRepo{}, &mockWaiversRepo{})
 	d, err := g.Evaluate(context.Background(), "proj-1", 3)

@@ -47,6 +47,13 @@ type Decision struct {
 	BlockedByReachability map[string]ReachabilityState
 	// WaivedCount is the number of blocking findings an active waiver covers.
 	WaivedCount int
+	// WaivedFindingIDs lists the blocking-population findings an active
+	// waiver covers, in the order the findings were returned. Every id here
+	// was a blocking candidate (at or above the severity floor and admitted
+	// by policy), so len(WaivedFindingIDs) == WaivedCount. The field is
+	// always non-nil on a successful evaluation so it serializes as an empty
+	// array rather than null.
+	WaivedFindingIDs []string
 	// TotalBlocking is the number of blocking findings considered.
 	TotalBlocking int
 }
@@ -226,7 +233,7 @@ func (g *gate) EvaluateWithPolicies(ctx context.Context, projectID string, minSe
 
 func (g *gate) EvaluateIntroducedOnly(ctx context.Context, projectID string, minSeverityRank int16, reportID string, policies []GatePolicy) (Decision, error) {
 	if reportID == "" {
-		return Decision{Status: StatusPass}, nil
+		return Decision{Status: StatusPass, WaivedFindingIDs: []string{}}, nil
 	}
 	findings, err := g.findings.ListIntroducedGateCandidates(ctx, reportID, minSeverityRank)
 	if err != nil {
@@ -270,22 +277,25 @@ func filterGateFindings(findings []Finding, p sourcePolicies, keep func(Finding)
 }
 
 // partitionGateFindings splits applicable findings into waived and blocking.
-func partitionGateFindings(applicable []Finding, waivers []Waiver) (blockedBy []string, reach map[string]ReachabilityState, waivedCount int) {
+// It returns the waived findings' ids in input order and always yields a
+// non-nil slice so callers can rely on it serializing as an array.
+func partitionGateFindings(applicable []Finding, waivers []Waiver) (blockedBy []string, reach map[string]ReachabilityState, waivedFindingIDs []string) {
 	reach = make(map[string]ReachabilityState, len(applicable))
+	waivedFindingIDs = make([]string, 0, len(applicable))
 	for _, f := range applicable {
 		if IsFindingWaived(f, waivers) {
-			waivedCount++
+			waivedFindingIDs = append(waivedFindingIDs, f.ID)
 		} else {
 			blockedBy = append(blockedBy, f.ID)
 			reach[f.ID] = f.Reachability
 		}
 	}
-	return blockedBy, reach, waivedCount
+	return blockedBy, reach, waivedFindingIDs
 }
 
 func (g *gate) evaluateFindings(ctx context.Context, projectID string, findings []Finding, policies []GatePolicy, keep func(Finding) bool) (Decision, error) {
 	if len(findings) == 0 {
-		return Decision{Status: StatusPass}, nil
+		return Decision{Status: StatusPass, WaivedFindingIDs: []string{}}, nil
 	}
 
 	p := sourcePolicies{}
@@ -295,7 +305,7 @@ func (g *gate) evaluateFindings(ctx context.Context, projectID string, findings 
 
 	applicableFindings := filterGateFindings(findings, p, keep)
 	if len(applicableFindings) == 0 {
-		return Decision{Status: StatusPass}, nil
+		return Decision{Status: StatusPass, WaivedFindingIDs: []string{}}, nil
 	}
 
 	waivers, err := g.waivers.ListActiveWaivers(ctx, projectID)
@@ -303,13 +313,15 @@ func (g *gate) evaluateFindings(ctx context.Context, projectID string, findings 
 		return Decision{Status: StatusError}, fmt.Errorf("list active waivers: %w", err)
 	}
 
-	blockedBy, blockedByReachability, waivedCount := partitionGateFindings(applicableFindings, waivers)
+	blockedBy, blockedByReachability, waivedFindingIDs := partitionGateFindings(applicableFindings, waivers)
+	waivedCount := len(waivedFindingIDs)
 
 	if len(blockedBy) == 0 {
 		return Decision{
-			Status:        StatusPass,
-			WaivedCount:   waivedCount,
-			TotalBlocking: len(applicableFindings),
+			Status:           StatusPass,
+			WaivedCount:      waivedCount,
+			WaivedFindingIDs: waivedFindingIDs,
+			TotalBlocking:    len(applicableFindings),
 		}, nil
 	}
 
@@ -318,6 +330,7 @@ func (g *gate) evaluateFindings(ctx context.Context, projectID string, findings 
 		BlockedBy:             blockedBy,
 		BlockedByReachability: blockedByReachability,
 		WaivedCount:           waivedCount,
+		WaivedFindingIDs:      waivedFindingIDs,
 		TotalBlocking:         len(applicableFindings),
 	}, nil
 }
