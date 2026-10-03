@@ -2,7 +2,7 @@ import { apiFetch } from "@/api/client";
 import { queryKeys, useMe, useProjects } from "@/api/hooks";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { formatDateTime, formatRelativeTime } from "@/lib/format";
-import { blockerCount, projectVerdict, type Verdict } from "@/lib/verdict";
+import { blockerCount, degradedMessage, projectVerdict, type Verdict } from "@/lib/verdict";
 import type { GateStatus, Project, ProjectStats } from "@/types/api";
 import { useQueries } from "@tanstack/react-query";
 import { type ReactNode } from "react";
@@ -17,6 +17,10 @@ const SKELETON_ROW_COUNT = 3;
 /** Primary button styling from components/ui/button, applied to a real link. */
 const PRIMARY_LINK_CLASS =
   "bg-primary text-primary-foreground hover:bg-primary/80 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
+
+/** The outline variant of the same button, for an action that is not the one to take first. */
+const SECONDARY_LINK_CLASS =
+  "border-border bg-background hover:bg-muted dark:border-input dark:bg-input/30 dark:hover:bg-input/50 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 const VERDICT_PRIORITY: Record<Verdict, number> = {
   blocked: 0,
@@ -115,11 +119,37 @@ export function ProjectList() {
   const allSettled = rows.every((row) => row.settled);
   const ordered = [...rows].sort(allSettled ? compareRows : compareByName);
 
+  // Once everything has settled, name the project to start with: the sort put the one with the
+  // most blockers first, so it is the first blocked row.
+  const blockedRows = allSettled
+    ? ordered.filter((row) => !row.failed && projectVerdict(row) === "blocked")
+    : [];
+  const startWith = blockedRows[0]?.project;
+
   return (
     <div className="space-y-4">
+      {startWith && (
+        <section aria-labelledby="start-here" className="space-y-2">
+          <p id="start-here" className="text-lg">
+            {blockedRows.length === 1
+              ? "1 project is blocked."
+              : `${blockedRows.length} projects are blocked.`} Start with{" "}
+            <span className="font-semibold">{startWith.name}</span>.
+          </p>
+          <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
+            Do this
+          </p>
+          <Link to={`/${startWith.slug}/findings`} className={PRIMARY_LINK_CLASS}>
+            Open {startWith.name}
+          </Link>
+        </section>
+      )}
       {isAdmin && (
         <div className="flex justify-end">
-          <Link to="/projects/new" className={PRIMARY_LINK_CLASS}>
+          <Link
+            to="/projects/new"
+            className={startWith ? SECONDARY_LINK_CLASS : PRIMARY_LINK_CLASS}
+          >
             New project
           </Link>
         </div>
@@ -195,6 +225,7 @@ function ProjectTableRow({ row }: { readonly row: ProjectRowData; }) {
   const { project, gate, stats, failed } = row;
   const verdict = projectVerdict({ gate, stats });
 
+  const degraded = failed ? null : degradedMessage(stats);
   const blocking = !failed && verdict === "blocked" ? String(blockerCount(gate)) : EMPTY;
   const findings = !failed && stats ? stats.total_findings : EMPTY;
 
@@ -219,6 +250,11 @@ function ProjectTableRow({ row }: { readonly row: ProjectRowData; }) {
         </Link>
         {project.description && (
           <p className="text-muted-foreground text-xs">{project.description}</p>
+        )}
+        {degraded && (
+          <p className="bg-sev-high-bg text-sev-high-fg mt-1 inline-block rounded px-2 py-0.5 text-xs">
+            {degraded}
+          </p>
         )}
       </td>
       <td className="px-3 py-2">
