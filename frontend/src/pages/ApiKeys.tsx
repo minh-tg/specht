@@ -1,10 +1,42 @@
 import { APIError, apiFetch } from "@/api/client";
-import { useProjects } from "@/api/hooks";
+import { useMe, useProjects } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
 import type { ApiKey } from "@/types/api";
 import { type ReactNode, useState } from "react";
+import { Link } from "react-router-dom";
 
+/** Keys are created and revoked by administrators; the server refuses everyone else. */
 export function ApiKeys() {
+  const { data: me, isLoading } = useMe();
+
+  if (isLoading) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-8">
+        <div className="bg-muted h-8 w-48 animate-pulse rounded" />
+        <div className="bg-muted mt-6 h-64 animate-pulse rounded-lg" />
+      </div>
+    );
+  }
+
+  if (me?.role !== "admin") {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-8">
+        <h1 className="mb-6 text-2xl font-bold">API Keys</h1>
+        <p className="text-muted-foreground text-sm">Only administrators can manage API keys.</p>
+        <Link
+          to="/"
+          className="text-action hover:text-action/80 mt-2 inline-block text-sm underline"
+        >
+          Back to projects
+        </Link>
+      </div>
+    );
+  }
+
+  return <ApiKeysManager />;
+}
+
+function ApiKeysManager() {
   const { data: projects } = useProjects();
 
   const [selectedProject, setSelectedProject] = useState("");

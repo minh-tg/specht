@@ -32,16 +32,21 @@ function renderApiKeys() {
 let fetchCalls: { url: string; method: string; body?: string; }[] = [];
 let listShouldFail = false;
 let deleteShouldFail = false;
+let role = "admin";
 
 describe("ApiKeys", () => {
   beforeEach(() => {
     fetchCalls = [];
     listShouldFail = false;
     deleteShouldFail = false;
+    role = "admin";
     globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
       const u = String(url);
       const method = ((opts as RequestInit)?.method ?? "GET").toUpperCase();
       fetchCalls.push({ url: u, method, body: (opts as RequestInit)?.body as string | undefined });
+      if (u.endsWith("/api/v1/me")) {
+        return { ok: true, json: () => Promise.resolve({ id: "u1", role }) } as Response;
+      }
       if (u.includes("/apikeys") && method === "POST") {
         return {
           ok: true,
@@ -95,10 +100,20 @@ describe("ApiKeys", () => {
     });
   });
 
-  it("shows heading and project selector", () => {
+  it("shows heading and project selector", async () => {
     renderApiKeys();
-    expect(screen.getByText("API Keys")).toBeInTheDocument();
+    expect(await screen.findByText("API Keys")).toBeInTheDocument();
     expect(screen.getByText("Select a project")).toBeInTheDocument();
+  });
+
+  it("tells a member that only administrators manage keys, without loading any", async () => {
+    role = "member";
+    renderApiKeys();
+
+    expect(await screen.findByText("Only administrators can manage API keys.")).toBeInTheDocument();
+    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to projects" })).toHaveAttribute("href", "/");
+    expect(fetchCalls.some((c) => c.url.includes("/apikeys"))).toBe(false);
   });
 
   it("shows created key in one-time display modal", async () => {
