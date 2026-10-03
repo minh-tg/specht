@@ -12,3 +12,12 @@ overrides:
   fast-uri: 3.1.8
   "brace-expansion@^5.0.0": 5.0.12
   ip-address: 10.7.2
+
+# braces <=3.0.3 (GHSA-vfj7-8cjw-p6xm, DoS from deeply nested brace patterns) has no
+# published fix yet: the advisory names 3.0.4, but npm's latest is 3.0.3, so an override
+# cannot clear it. It is reached only through the shadcn CLI (fast-glob > micromatch), which
+# expands its own fixed globs at development time; nothing ships to the browser or runs on
+# untrusted input. Remove this ignore as soon as braces 3.0.4 is published.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-vfj7-8cjw-p6xm
