@@ -69,14 +69,19 @@ function makeGate(blockedBy: string[]) {
   };
 }
 
-function makeStats(reportCount: number, totalFindings: number, createdAt?: string) {
+function makeStats(
+  reportCount: number,
+  totalFindings: number,
+  createdAt?: string,
+  status?: string,
+) {
   return {
     total_findings: totalFindings,
     blocking_count: 0,
     waiver_count: 0,
     report_count: reportCount,
     by_severity: [],
-    latest_report: createdAt ? { id: "r1", created_at: createdAt } : undefined,
+    latest_report: createdAt ? { id: "r1", created_at: createdAt, status } : undefined,
   };
 }
 
@@ -94,12 +99,14 @@ function deferred(): { promise: Promise<unknown>; resolve: (value: unknown) => v
 
 /** Names of the rendered rows, top to bottom. */
 function rowNames(): string[] {
-  return screen.getAllByRole("link").map((link) => link.textContent ?? "");
+  return within(screen.getByRole("table")).getAllByRole("link").map((link) =>
+    link.textContent ?? ""
+  );
 }
 
 /** The table row that owns the project link with this name. */
 function rowFor(name: string): HTMLElement {
-  const row = screen.getByRole("link", { name }).closest("tr");
+  const row = within(screen.getByRole("table")).getByRole("link", { name }).closest("tr");
   if (!row) throw new Error(`no row for project ${name}`);
   return row;
 }
@@ -190,6 +197,109 @@ describe("ProjectList", () => {
 
     alphaGate.resolve(makeGate(["f1"]));
     await waitFor(() => expect(rowNames()).toEqual(["Zulu", "Alpha"]));
+  });
+
+  it("names the project to start with once everything has settled", async () => {
+    const scannedAt = recentIso(2);
+    mockApi({
+      projects: [
+        { id: "p1", slug: "alpha", name: "Alpha", description: null },
+        { id: "p2", slug: "zulu", name: "Zulu", description: null },
+        { id: "p3", slug: "mid", name: "Mid", description: null },
+      ],
+      me: { role: "member" },
+      gate: (slug) =>
+        slug === "zulu"
+          ? makeGate(["f1", "f2", "f3"])
+          : slug === "alpha"
+          ? makeGate(["f1"])
+          : makeGate([]),
+      stats: () => makeStats(1, 3, scannedAt),
+    });
+    renderProjectRoutes();
+
+    const hero = await screen.findByRole("region", { name: /2 projects are blocked/ });
+    expect(hero).toHaveTextContent("Start with Zulu.");
+    expect(within(hero).getByText("Do this")).toBeInTheDocument();
+    expect(within(hero).getByRole("link", { name: "Open Zulu" })).toHaveAttribute(
+      "href",
+      "/zulu/findings",
+    );
+  });
+
+  it("says nothing about where to start while a project is still loading or when nothing is blocked", async () => {
+    const alphaGate = deferred();
+    mockApi({
+      projects: [
+        { id: "p1", slug: "alpha", name: "Alpha", description: null },
+        { id: "p2", slug: "beta", name: "Beta", description: null },
+      ],
+      me: { role: "member" },
+      gate: (slug) => (slug === "alpha" ? alphaGate.promise : makeGate(["f1"])),
+      stats: () => makeStats(1, 1, recentIso(2)),
+    });
+    renderProjectRoutes();
+
+    await screen.findByText("BLOCKED");
+    expect(screen.queryByText(/Start with/)).not.toBeInTheDocument();
+
+    alphaGate.resolve(makeGate([]));
+    expect(await screen.findByText(/1 project is blocked/)).toBeInTheDocument();
+    expect(screen.getByText("Start with", { exact: false })).toHaveTextContent("Start with Beta.");
+  });
+
+  it("does not show the start-here step when no project is blocked", async () => {
+    mockApi({
+      projects: [{ id: "p1", slug: "alpha", name: "Alpha", description: null }],
+      me: { role: "member" },
+      gate: () => makeGate([]),
+      stats: () => makeStats(1, 1, recentIso(2)),
+    });
+    renderProjectRoutes();
+
+    await screen.findByText("PASSING");
+    expect(screen.queryByText(/Start with/)).not.toBeInTheDocument();
+  });
+
+  it("demotes New project to a secondary button while a project needs attention first", async () => {
+    mockApi({
+      projects: [{ id: "p1", slug: "alpha", name: "Alpha", description: null }],
+      me: { role: "admin" },
+      gate: () => makeGate(["f1"]),
+      stats: () => makeStats(1, 1, recentIso(2)),
+    });
+    renderProjectRoutes();
+
+    await screen.findByText(/Start with/);
+    const newProject = screen.getByRole("link", { name: "New project" });
+    expect(newProject).not.toHaveClass("bg-primary");
+    expect(screen.getByRole("link", { name: "Open Alpha" })).toHaveClass("bg-primary");
+  });
+
+  it("says in the row when the latest scan failed or is still processing", async () => {
+    mockApi({
+      projects: [
+        { id: "p1", slug: "alpha", name: "Alpha", description: null },
+        { id: "p2", slug: "beta", name: "Beta", description: null },
+        { id: "p3", slug: "gamma", name: "Gamma", description: null },
+      ],
+      me: { role: "member" },
+      gate: () => makeGate([]),
+      stats: (slug) =>
+        makeStats(
+          1,
+          0,
+          recentIso(2),
+          slug === "alpha" ? "failed" : slug === "beta" ? "processing" : "completed",
+        ),
+    });
+    renderProjectRoutes();
+
+    await waitFor(() =>
+      expect(within(rowFor("Alpha")).getByText(/latest scan failed/)).toBeInTheDocument()
+    );
+    expect(within(rowFor("Beta")).getByText(/still processing/)).toBeInTheDocument();
+    expect(within(rowFor("Gamma")).queryByText(/latest scan/)).not.toBeInTheDocument();
   });
 
   it("shows UNKNOWN for a failed gate request without breaking other rows", async () => {

@@ -6,6 +6,7 @@ import { SEVERITIES, severityLabel } from "@/lib/enums";
 import { formatDateTime, formatRelativeTime, pluralize } from "@/lib/format";
 import {
   blockerCount,
+  degradedMessage,
   isDegraded,
   projectVerdict,
   triageBuckets,
@@ -120,9 +121,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
           role="alert"
           className="border-destructive text-destructive mb-3 rounded border px-3 py-2 text-sm"
         >
-          {latest?.status === "failed"
-            ? "The latest scan failed, so this verdict may be incomplete."
-            : "The latest scan is still processing, so this verdict may change."}
+          {degradedMessage(stats)}
         </p>
       )}
 

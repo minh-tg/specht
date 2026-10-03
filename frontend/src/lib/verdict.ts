@@ -40,6 +40,20 @@ export function isDegraded(stats?: ProjectStats): boolean {
   return status === "failed" || isReportInProgress(status);
 }
 
+/**
+ * Why the verdict cannot be fully trusted right now, in one sentence, or null when it can. A failed
+ * scan adds no findings, so a project can read PASSING while the evidence is missing; this is the
+ * wording used wherever that is said (the project page and the project list).
+ */
+export function degradedMessage(stats?: ProjectStats): string | null {
+  const status = stats?.latest_report?.status;
+  if (status === "failed") return "The latest scan failed, so this verdict may be incomplete.";
+  if (isReportInProgress(status)) {
+    return "The latest scan is still processing, so this verdict may change.";
+  }
+  return null;
+}
+
 export interface TriageBucketCounts {
   needsTriage: number;
   exploitable: number;
