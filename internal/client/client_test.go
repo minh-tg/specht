@@ -89,6 +89,40 @@ func TestProjects(t *testing.T) {
 	assert.Equal(t, "test-app", p.Slug)
 }
 
+func TestProjectMembers(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method + " " + r.URL.Path {
+		case "GET /api/v1/projects/my-app/members":
+			if err := json.NewEncoder(w).Encode([]ProjectMember{{ProjectID: "p1", UserID: "u1", Role: "manager"}}); err != nil {
+				t.Errorf("encode member list: %v", err)
+			}
+		case "POST /api/v1/projects/my-app/members":
+			w.WriteHeader(http.StatusCreated)
+			if err := json.NewEncoder(w).Encode(ProjectMember{ProjectID: "p1", UserID: "u2", Role: "member"}); err != nil {
+				t.Errorf("encode added member: %v", err)
+			}
+		case "DELETE /api/v1/projects/my-app/members/u2":
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+		}
+	}))
+	defer srv.Close()
+
+	cl := New(srv.URL, WithToken("key"))
+	members, err := cl.ListProjectMembers("my-app")
+	require.NoError(t, err)
+	assert.Len(t, members, 1)
+	assert.Equal(t, "manager", members[0].Role)
+
+	added, err := cl.AddProjectMember("my-app", "u2", "member")
+	require.NoError(t, err)
+	assert.Equal(t, "member", added.Role)
+
+	err = cl.RemoveProjectMember("my-app", "u2")
+	require.NoError(t, err)
+}
+
 func TestGateStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewEncoder(w).Encode(GateStatus{ThresholdBreached: true, BlockingCount: 5}); err != nil {

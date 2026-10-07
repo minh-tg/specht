@@ -20,7 +20,7 @@ info:
     1. **Credential type** — some routes require a session and reject API keys
        entirely (`x-auth: session`), because a project key cannot represent the
        authority they carry.
-    2. **Role or scope** — session roles are `admin`, `editor`, `viewer`
+    2. **Role or scope** — session roles are `admin`, `manager`, `member`
        (`x-required-role`); API key scopes are `ingest`, `read`, `admin`
        (`x-required-scope`). Sessions pass scope checks and are then subject to
        project membership instead.
@@ -1594,7 +1594,8 @@ paths:
       tags: [Teams]
       operationId: createTeam
       summary: Create a team
-      x-auth: session
+      description: Company-wide teams can only be created by global administrators.
+      x-required-role: admin
       security:
         - sessionAuth: []
       requestBody:
@@ -1705,7 +1706,7 @@ paths:
       tags: [Teams]
       operationId: listProjectTeams
       summary: List a project's team links
-      x-required-scope: admin
+      x-required-scope: read
       security:
         - sessionAuth: []
         - apiKeyAuth: []
@@ -1773,7 +1774,7 @@ paths:
       tags: [Project members]
       operationId: listProjectMembers
       summary: List direct project grants
-      x-required-scope: admin
+      x-required-scope: read
       security:
         - sessionAuth: []
         - apiKeyAuth: []
@@ -1814,6 +1815,28 @@ paths:
               schema: { $ref: "#/components/schemas/ProjectMember" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/v1/projects/{slug}/members/{userID}:
+    delete:
+      tags: [Project members]
+      operationId: removeProjectMember
+      summary: Remove a project member
+      description: Revokes direct membership. Managers may remove members; removing admins requires project admin authority. The last project admin cannot be removed.
+      x-required-scope: admin
+      security:
+        - sessionAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - name: userID
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { $ref: "#/components/responses/NoContent" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /api/v1/projects/{slug}/environments:
     get:
@@ -2054,7 +2077,7 @@ components:
       bearerFormat: JWT
       description: |
         Session JWT from `/auth/login`, `/auth/refresh`, or the SSO callback.
-        Carries a role: `admin`, `editor`, or `viewer`. Rejected on routes
+        Carries a role: `admin`, `manager`, or `member`. Rejected on routes
         marked `x-auth: session` only when the credential is actually an API
         key — a session is always accepted there.
     apiKeyAuth:
@@ -2964,7 +2987,7 @@ components:
       required: [user_id, role]
       properties:
         user_id: { type: string, format: uuid }
-        role: { type: string, enum: [admin, editor, viewer] }
+        role: { type: string, enum: [admin, manager, member] }
 
     ProjectTeam:
       type: object
@@ -2973,7 +2996,7 @@ components:
         project_id: { type: string, format: uuid }
         team_id: { type: string, format: uuid }
         team_name: { type: string }
-        role: { type: string, enum: [admin, editor, viewer] }
+        role: { type: string, enum: [admin, manager, member] }
 
     ProjectMember:
       type: object
@@ -2981,7 +3004,7 @@ components:
       properties:
         project_id: { type: string, format: uuid }
         user_id: { type: string, format: uuid }
-        role: { type: string, enum: [admin, editor, viewer] }
+        role: { type: string, enum: [admin, manager, member] }
         created_at: { type: string, format: date-time }
 
     Environment:

@@ -238,12 +238,12 @@ func TestE2E_ProjectMembership(t *testing.T) {
 			"roles outside admin/editor/viewer are refused")
 	})
 
-	t.Run("a grant unlocks reads while the roster stays admin-only", func(t *testing.T) {
+	t.Run("a grant unlocks reads and roster visibility", func(t *testing.T) {
 		added := request[memberResponse](t, http.MethodPost,
 			"/api/v1/projects/"+slug+"/members", adminToken,
-			map[string]string{"user_id": viewerMe.ID, "role": "viewer"}, http.StatusCreated)
+			map[string]string{"user_id": viewerMe.ID, "role": "member"}, http.StatusCreated)
 		require.Equal(t, viewerMe.ID, added.UserID)
-		require.Equal(t, "viewer", added.Role)
+		require.Equal(t, "member", added.Role)
 		require.Equal(t, slug != "", added.ProjectID != "")
 
 		got := request[projectEnvelope](t, http.MethodGet, "/api/v1/projects/"+slug, viewerToken, nil, http.StatusOK)
@@ -256,10 +256,9 @@ func TestE2E_ProjectMembership(t *testing.T) {
 		require.Contains(t, listProjectSlugs(t, viewerToken), slug,
 			"member visibility flows into the project list")
 
-		status, raw := doJSON(t, http.MethodGet, "/api/v1/projects/"+slug+"/members", viewerToken, nil)
-		require.Equal(t, http.StatusForbidden, status)
-		require.Equal(t, "project_access_denied", errorCode(t, raw),
-			"a viewer membership does not expose the roster")
+		members := request[[]memberResponse](t, http.MethodGet,
+			"/api/v1/projects/"+slug+"/members", viewerToken, nil, http.StatusOK)
+		require.Len(t, members, 2, "a project member may view the roster")
 	})
 
 	t.Run("the project role gates writes", func(t *testing.T) {
@@ -267,22 +266,31 @@ func TestE2E_ProjectMembership(t *testing.T) {
 			ingestBody(t, slug, "medium.sarif.json"))
 		require.Equal(t, http.StatusForbidden, status)
 		require.Equal(t, "project_access_denied", errorCode(t, raw),
-			"a viewer membership cannot ingest")
+			"a member cannot ingest")
 
 		upgraded := request[memberResponse](t, http.MethodPost,
 			"/api/v1/projects/"+slug+"/members", adminToken,
-			map[string]string{"user_id": viewerMe.ID, "role": "editor"}, http.StatusCreated)
-		require.Equal(t, "editor", upgraded.Role,
+			map[string]string{"user_id": viewerMe.ID, "role": "manager"}, http.StatusCreated)
+		require.Equal(t, "manager", upgraded.Role,
 			"re-granting the same user upserts the role")
 
 		resp := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", viewerToken,
 			ingestBody(t, slug, "medium.sarif.json"), http.StatusCreated)
 		require.Equal(t, 1, resp.TotalFindings,
-			"an editor membership may ingest")
+			"a manager membership may ingest")
 
 		findings := request[[]findingResponse](t, http.MethodGet,
 			"/api/v1/projects/"+slug+"/findings", viewerToken, nil, http.StatusOK)
 		require.Len(t, findings, 1)
+	})
+
+	t.Run("removing a member revokes access", func(t *testing.T) {
+		status, _ := doJSON(t, http.MethodDelete,
+			"/api/v1/projects/"+slug+"/members/"+viewerMe.ID, adminToken, nil)
+		require.Equal(t, http.StatusNoContent, status)
+
+		status, _ = doJSON(t, http.MethodGet, "/api/v1/projects/"+slug, viewerToken, nil)
+		require.Equal(t, http.StatusForbidden, status)
 	})
 }
 
@@ -297,25 +305,11 @@ func TestE2E_TeamAccessGrants(t *testing.T) {
 	viewerMe := request[userProfile](t, http.MethodGet, "/api/v1/me", viewerToken, nil, http.StatusOK)
 	teamName := "e2e-team-" + randomHex(4)
 
-	t.Run("creation is open to sessions, deletion is global-admin only", func(t *testing.T) {
-		own := request[teamResponse](t, http.MethodPost, "/api/v1/teams", viewerToken,
-			map[string]string{"name": teamName + "-own"}, http.StatusCreated)
-		require.NotEmpty(t, own.ID)
-
-		// The creator is a team admin of their own team...
-		roster := request[[]teamMemberResponse](t, http.MethodGet,
-			"/api/v1/teams/"+own.ID+"/members", viewerToken, nil, http.StatusOK)
-		require.Len(t, roster, 1)
-		require.Equal(t, viewerMe.ID, roster[0].UserID)
-		require.Equal(t, "admin", roster[0].Role)
-
-		// ... but team admins do not own the team's existence.
-		status, raw := doJSON(t, http.MethodDelete, "/api/v1/teams/"+own.ID, viewerToken, nil)
+	t.Run("creation and deletion are global-admin only", func(t *testing.T) {
+		status, raw := doJSON(t, http.MethodPost, "/api/v1/teams", viewerToken,
+			map[string]string{"name": teamName + "-own"})
 		require.Equal(t, http.StatusForbidden, status)
 		require.Equal(t, "insufficient_role", errorCode(t, raw))
-
-		status, _ = doJSON(t, http.MethodDelete, "/api/v1/teams/"+own.ID, adminToken, nil)
-		require.Equal(t, http.StatusNoContent, status)
 
 		team := request[teamResponse](t, http.MethodPost, "/api/v1/teams", adminToken,
 			map[string]string{"name": teamName, "description": "e2e team"}, http.StatusCreated)
@@ -400,14 +394,14 @@ func TestE2E_TeamAccessGrants(t *testing.T) {
 			map[string]string{"team_id": team.ID, "role": "superuser"})
 		require.Equal(t, http.StatusBadRequest, status)
 		require.Equal(t, "invalid_link", errorCode(t, raw),
-			"links confer admin, editor, or viewer")
+			"links confer admin, manager, or member")
 
 		link := request[projectTeamResponse](t, http.MethodPost,
 			"/api/v1/projects/"+slug+"/teams", adminToken,
-			map[string]string{"team_id": team.ID, "role": "viewer"}, http.StatusCreated)
+			map[string]string{"team_id": team.ID, "role": "member"}, http.StatusCreated)
 		require.Equal(t, team.ID, link.TeamID)
 		require.Equal(t, teamName, link.TeamName)
-		require.Equal(t, "viewer", link.Role)
+		require.Equal(t, "member", link.Role)
 
 		request[projectEnvelope](t, http.MethodGet, "/api/v1/projects/"+slug, viewerToken, nil, http.StatusOK)
 		request[[]findingResponse](t, http.MethodGet, "/api/v1/projects/"+slug+"/findings", viewerToken, nil, http.StatusOK)
@@ -429,7 +423,7 @@ func TestE2E_TeamAccessGrants(t *testing.T) {
 
 		request[projectTeamResponse](t, http.MethodPost,
 			"/api/v1/projects/"+slug+"/teams", adminToken,
-			map[string]string{"team_id": team.ID, "role": "viewer"}, http.StatusCreated)
+			map[string]string{"team_id": team.ID, "role": "member"}, http.StatusCreated)
 		request[projectEnvelope](t, http.MethodGet, "/api/v1/projects/"+slug, viewerToken, nil, http.StatusOK)
 
 		status, _ = doJSON(t, http.MethodDelete,

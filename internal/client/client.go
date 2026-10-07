@@ -650,6 +650,33 @@ func (c *Client) UnlinkProjectTeam(projectSlug, teamID string) error {
 	return c.do(context.Background(), "DELETE", apiProjectsPrefix+url.PathEscape(projectSlug)+"/teams/"+url.PathEscape(teamID), nil, nil)
 }
 
+// ListProjectMembers returns direct members of a project.
+func (c *Client) ListProjectMembers(projectSlug string) ([]ProjectMember, error) {
+	var resp []ProjectMember
+	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(projectSlug)+"/members", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// AddProjectMember adds or updates a user's role on a project.
+func (c *Client) AddProjectMember(projectSlug, userID, role string) (*ProjectMember, error) {
+	body, err := json.Marshal(map[string]any{"user_id": userID, "role": role})
+	if err != nil {
+		return nil, err
+	}
+	var resp ProjectMember
+	if err := c.do(context.Background(), "POST", apiProjectsPrefix+url.PathEscape(projectSlug)+"/members", body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// RemoveProjectMember removes a user from a project.
+func (c *Client) RemoveProjectMember(projectSlug, userID string) error {
+	return c.do(context.Background(), "DELETE", apiProjectsPrefix+url.PathEscape(projectSlug)+"/members/"+url.PathEscape(userID), nil, nil)
+}
+
 // Environments, Targets, Artifacts.
 
 func (c *Client) ListEnvironments(projectSlug string) ([]Environment, error) {

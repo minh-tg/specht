@@ -169,6 +169,14 @@ type ProjectTeam struct {
 	Role      string `json:"role"`
 }
 
+// ProjectMember binds a user directly to a project.
+type ProjectMember struct {
+	ProjectID string `json:"project_id"`
+	UserID    string `json:"user_id"`
+	Role      string `json:"role"`
+	CreatedAt string `json:"created_at"`
+}
+
 // Project is a scan project (the top-level tenant of findings and reports).
 type Project struct {
 	ID          string    `json:"id"`
