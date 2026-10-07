@@ -26,11 +26,11 @@ func AuthMiddleware(authenticators ...auth.Authenticator) func(http.Handler) htt
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			header := r.Header.Get("Authorization")
-			if !strings.HasPrefix(header, "Bearer ") {
+			if len(header) < 7 || !strings.EqualFold(header[:7], "Bearer ") {
 				respondError(w, http.StatusUnauthorized, "missing_token", "authorization header required")
 				return
 			}
-			token := strings.TrimPrefix(header, "Bearer ")
+			token := strings.TrimSpace(header[7:])
 
 			for _, a := range authenticators {
 				ident, err := a.Authenticate(r.Context(), token)

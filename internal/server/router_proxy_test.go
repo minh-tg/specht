@@ -210,6 +210,7 @@ func TestSecurityHeaders_ProxyAware(t *testing.T) {
 		assert.Equal(t, "nosniff", w.Header().Get("X-Content-Type-Options"))
 		assert.Equal(t, "SAMEORIGIN", w.Header().Get("X-Frame-Options"))
 		assert.Equal(t, "strict-origin-when-cross-origin", w.Header().Get("Referrer-Policy"))
+		assert.Contains(t, w.Header().Get("Content-Security-Policy"), "default-src 'self'")
 		assert.Empty(t, w.Header().Get("Strict-Transport-Security"), "plain HTTP should not set HSTS")
 	})
 
