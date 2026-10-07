@@ -22,6 +22,7 @@ const (
 	apiFindingsPrefix = "/api/v1/findings/"
 	apiTeamsPrefix    = "/api/v1/teams/"
 	waiverSegment     = "/waivers/"
+	membersSegment    = "/members"
 )
 
 // Client is a typed HTTP client for the Specht API.
@@ -599,7 +600,7 @@ func (c *Client) DeleteTeam(id string) error {
 // ListTeamMembers returns a team's roster.
 func (c *Client) ListTeamMembers(teamID string) ([]TeamMember, error) {
 	var resp []TeamMember
-	if err := c.do(context.Background(), "GET", apiTeamsPrefix+url.PathEscape(teamID)+"/members", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiTeamsPrefix+url.PathEscape(teamID)+membersSegment, nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -612,7 +613,7 @@ func (c *Client) AddTeamMember(teamID, userID, role string) (*TeamMember, error)
 		return nil, err
 	}
 	var resp TeamMember
-	if err := c.do(context.Background(), "POST", apiTeamsPrefix+url.PathEscape(teamID)+"/members", body, &resp); err != nil {
+	if err := c.do(context.Background(), "POST", apiTeamsPrefix+url.PathEscape(teamID)+membersSegment, body, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -620,7 +621,7 @@ func (c *Client) AddTeamMember(teamID, userID, role string) (*TeamMember, error)
 
 // RemoveTeamMember removes a user from a team.
 func (c *Client) RemoveTeamMember(teamID, userID string) error {
-	return c.do(context.Background(), "DELETE", apiTeamsPrefix+url.PathEscape(teamID)+"/members/"+url.PathEscape(userID), nil, nil)
+	return c.do(context.Background(), "DELETE", apiTeamsPrefix+url.PathEscape(teamID)+membersSegment+"/"+url.PathEscape(userID), nil, nil)
 }
 
 // ListProjectTeams returns every team linked to a project.
@@ -653,7 +654,7 @@ func (c *Client) UnlinkProjectTeam(projectSlug, teamID string) error {
 // ListProjectMembers returns direct members of a project.
 func (c *Client) ListProjectMembers(projectSlug string) ([]ProjectMember, error) {
 	var resp []ProjectMember
-	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(projectSlug)+"/members", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(projectSlug)+membersSegment, nil, &resp); err != nil {
 		return nil, err
 	}
 	return resp, nil
@@ -666,7 +667,7 @@ func (c *Client) AddProjectMember(projectSlug, userID, role string) (*ProjectMem
 		return nil, err
 	}
 	var resp ProjectMember
-	if err := c.do(context.Background(), "POST", apiProjectsPrefix+url.PathEscape(projectSlug)+"/members", body, &resp); err != nil {
+	if err := c.do(context.Background(), "POST", apiProjectsPrefix+url.PathEscape(projectSlug)+membersSegment, body, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil
@@ -674,7 +675,7 @@ func (c *Client) AddProjectMember(projectSlug, userID, role string) (*ProjectMem
 
 // RemoveProjectMember removes a user from a project.
 func (c *Client) RemoveProjectMember(projectSlug, userID string) error {
-	return c.do(context.Background(), "DELETE", apiProjectsPrefix+url.PathEscape(projectSlug)+"/members/"+url.PathEscape(userID), nil, nil)
+	return c.do(context.Background(), "DELETE", apiProjectsPrefix+url.PathEscape(projectSlug)+membersSegment+"/"+url.PathEscape(userID), nil, nil)
 }
 
 // Environments, Targets, Artifacts.

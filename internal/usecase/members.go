@@ -92,6 +92,44 @@ func (u *Usecases) ListProjectMembers(ctx context.Context, projectSlug string) (
 	return resp, nil
 }
 
+// ensureNotLastAdmin verifies that the project retains at least one admin.
+func (u *Usecases) ensureNotLastAdmin(ctx context.Context, projectID string) error {
+	admins, err := u.deps.Stores.Projects.CountAdmins(ctx, projectID)
+	if err != nil {
+		return fmt.Errorf("count project admins: %w", err)
+	}
+	if admins <= 1 {
+		return ErrLastAdminForbidden
+	}
+	return nil
+}
+
+// validateMemberRoleUpdate ensures non-admins do not modify peers/superiors and
+// that demoting an admin does not violate the last-admin invariant.
+func (u *Usecases) validateMemberRoleUpdate(ctx context.Context, projectID, callerRole, newRole, existingRole string) error {
+	if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleAdmin) && auth.RoleRank(existingRole) >= auth.RoleRank(callerRole) {
+		return ErrProjectAccessDenied
+	}
+	if existingRole == auth.RoleAdmin && newRole != auth.RoleAdmin {
+		return u.ensureNotLastAdmin(ctx, projectID)
+	}
+	return nil
+}
+
+// canRemoveMember verifies authority and invariants when removing a project member.
+func (u *Usecases) canRemoveMember(ctx context.Context, projectID, callerRole, targetRole string) error {
+	if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleManager) {
+		return ErrProjectAccessDenied
+	}
+	if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleAdmin) && auth.RoleRank(targetRole) >= auth.RoleRank(callerRole) {
+		return ErrProjectAccessDenied
+	}
+	if targetRole == auth.RoleAdmin {
+		return u.ensureNotLastAdmin(ctx, projectID)
+	}
+	return nil
+}
+
 // AddProjectMember grants a user a role on a project (upsert) subject to
 // delegation boundaries and the last-admin invariant.
 func (u *Usecases) AddProjectMember(ctx context.Context, projectSlug, userID, role string) (*ProjectMemberResponse, error) {
@@ -108,34 +146,15 @@ func (u *Usecases) AddProjectMember(ctx context.Context, projectSlug, userID, ro
 	if err != nil {
 		return nil, err
 	}
-	// Caller must be at least Manager.
-	if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleManager) {
-		return nil, ErrProjectAccessDenied
-	}
-	// Delegation ceiling: caller cannot grant a role higher than their own rank.
-	if auth.RoleRank(role) > auth.RoleRank(callerRole) {
+	if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleManager) || auth.RoleRank(role) > auth.RoleRank(callerRole) {
 		return nil, ErrProjectAccessDenied
 	}
 
 	// Check existing member status for peer-protection and last-admin invariant.
 	existing, err := u.deps.Stores.Projects.GetMember(ctx, p.ID, userID)
 	if err == nil {
-		existingRole := normalizeMemberRole(existing.Role)
-		// Peer protection: non-admins cannot modify someone of equal or higher rank.
-		if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleAdmin) {
-			if auth.RoleRank(existingRole) >= auth.RoleRank(callerRole) {
-				return nil, ErrProjectAccessDenied
-			}
-		}
-		// Last admin invariant: demoting an admin requires another admin to exist.
-		if existingRole == auth.RoleAdmin && role != auth.RoleAdmin {
-			admins, err := u.deps.Stores.Projects.CountAdmins(ctx, p.ID)
-			if err != nil {
-				return nil, fmt.Errorf("count project admins: %w", err)
-			}
-			if admins <= 1 {
-				return nil, ErrLastAdminForbidden
-			}
+		if err := u.validateMemberRoleUpdate(ctx, p.ID, callerRole, role, normalizeMemberRole(existing.Role)); err != nil {
+			return nil, err
 		}
 	} else if !errors.Is(err, port.ErrNotFound) {
 		return nil, fmt.Errorf("lookup member: %w", err)
@@ -175,42 +194,19 @@ func (u *Usecases) RemoveProjectMember(ctx context.Context, projectSlug, userID 
 	}
 	targetRole := normalizeMemberRole(target.Role)
 
-	isSelf := ident.UserID == userID
-	if isSelf {
-		// Self-removal: allowed for all roles, except the last direct admin.
+	if ident.UserID == userID {
 		if targetRole == auth.RoleAdmin {
-			admins, err := u.deps.Stores.Projects.CountAdmins(ctx, p.ID)
-			if err != nil {
-				return fmt.Errorf("count project admins: %w", err)
-			}
-			if admins <= 1 {
-				return ErrLastAdminForbidden
+			if err := u.ensureNotLastAdmin(ctx, p.ID); err != nil {
+				return err
 			}
 		}
 	} else {
-		// Removing someone else requires Manager+ permissions.
 		callerRole, err := u.callerProjectRole(ctx, p.ID)
 		if err != nil {
 			return err
 		}
-		if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleManager) {
-			return ErrProjectAccessDenied
-		}
-		// Peer protection: non-admins cannot remove someone of equal or higher rank.
-		if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleAdmin) {
-			if auth.RoleRank(targetRole) >= auth.RoleRank(callerRole) {
-				return ErrProjectAccessDenied
-			}
-		}
-		// Last admin invariant: removing an admin requires another admin to exist.
-		if targetRole == auth.RoleAdmin {
-			admins, err := u.deps.Stores.Projects.CountAdmins(ctx, p.ID)
-			if err != nil {
-				return fmt.Errorf("count project admins: %w", err)
-			}
-			if admins <= 1 {
-				return ErrLastAdminForbidden
-			}
+		if err := u.canRemoveMember(ctx, p.ID, callerRole, targetRole); err != nil {
+			return err
 		}
 	}
 
