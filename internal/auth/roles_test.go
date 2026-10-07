@@ -47,17 +47,17 @@ func TestRoleScope(t *testing.T) {
 func TestValidRole(t *testing.T) {
 	assert.True(t, ValidRole(RoleAdmin))
 	assert.True(t, ValidRole(RoleManager))
-	assert.True(t, ValidRole(RoleMember))
-	assert.True(t, ValidRole("editor"))
-	assert.True(t, ValidRole("viewer"))
+	assert.True(t, ValidRole(RoleEditor))
+	assert.True(t, ValidRole(RoleViewer))
+	assert.False(t, ValidRole(RoleMember))
 	assert.False(t, ValidRole("guest"))
 	assert.False(t, ValidRole(""))
 }
 
 func TestTokenRole(t *testing.T) {
 	assert.Equal(t, RoleAdmin, TokenRole(RoleAdmin))
-	assert.Equal(t, RoleMember, TokenRole(RoleMember))
+	assert.Equal(t, RoleViewer, TokenRole(RoleMember))
 	assert.Equal(t, RoleManager, TokenRole(RoleManager))
-	assert.Equal(t, RoleManager, TokenRole("editor"))
-	assert.Equal(t, RoleMember, TokenRole("viewer"))
+	assert.Equal(t, RoleManager, TokenRole(RoleEditor))
+	assert.Equal(t, RoleViewer, TokenRole(RoleViewer))
 }

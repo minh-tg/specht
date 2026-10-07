@@ -23,7 +23,7 @@ const (
 	RoleManager = "manager"
 	RoleMember  = "member"
 
-	// Backward-compatibility aliases during transition
+	// Legacy token and alias roles
 	RoleEditor = "editor"
 	RoleViewer = "viewer"
 )
@@ -87,10 +87,10 @@ func (i *Identity) HasScope(scope string) bool {
 
 // ValidRole reports whether role belongs to the canonical RBAC vocabulary.
 // Every role reaching authorization checks — from JWT claims or API-key
-// identities — must be one of admin/manager/member (or legacy editor/viewer).
+// identities — must be one of admin/manager/editor/viewer.
 func ValidRole(role string) bool {
 	switch role {
-	case RoleAdmin, RoleManager, RoleMember, RoleEditor, RoleViewer:
+	case RoleAdmin, RoleManager, RoleEditor, RoleViewer:
 		return true
 	default:
 		return false
@@ -98,14 +98,16 @@ func ValidRole(role string) bool {
 }
 
 // TokenRole maps a stored users.role value to the canonical role for token
-// claims. Legacy editor/viewer strings map to their modern counterparts;
-// canonical roles pass through unchanged.
+// claims. Legacy 'member' accounts are viewers; canonical roles pass through
+// unchanged. Callers minting access tokens must map through this so a DB
+// role can never leak verbatim into a claim.
 func TokenRole(role string) string {
+	if role == RoleMember {
+		return RoleViewer
+	}
 	switch role {
 	case RoleEditor:
 		return RoleManager
-	case RoleViewer:
-		return RoleMember
 	default:
 		return role
 	}

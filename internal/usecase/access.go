@@ -132,12 +132,40 @@ func (u *Usecases) requireProjectRole(ctx context.Context, projectID, apiKeyScop
 	return ErrProjectAccessDenied
 }
 
+// callerProjectRole resolves the effective project role for the session caller.
+// Global admins automatically resolve to RoleAdmin. API keys are denied.
+func (u *Usecases) callerProjectRole(ctx context.Context, projectID string) (string, error) {
+	ident := auth.ContextIdentity(ctx)
+	if ident == nil || ident.IsAPIKey {
+		return "", ErrProjectAccessDenied
+	}
+	if ident.Role == auth.RoleAdmin {
+		return auth.RoleAdmin, nil
+	}
+	role, err := u.deps.Stores.Projects.EffectiveRole(ctx, projectID, ident.UserID)
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return "", ErrProjectAccessDenied
+		}
+		return "", fmt.Errorf("resolve effective role: %w", err)
+	}
+	return role, nil
+}
+
+func (u *Usecases) requireProjectManager(ctx context.Context, projectID string) error {
+	return u.requireProjectRole(ctx, projectID, auth.ScopeAdmin, auth.RoleAdmin, auth.RoleManager, auth.RoleEditor)
+}
+
 func (u *Usecases) requireProjectEditor(ctx context.Context, projectID string) error {
-	return u.requireProjectRole(ctx, projectID, auth.ScopeAdmin, auth.RoleAdmin, auth.RoleEditor)
+	return u.requireProjectManager(ctx, projectID)
+}
+
+func (u *Usecases) requireProjectMember(ctx context.Context, projectID string) error {
+	return u.requireProjectRole(ctx, projectID, auth.ScopeRead, auth.RoleAdmin, auth.RoleManager, auth.RoleMember, auth.RoleEditor, auth.RoleViewer)
 }
 
 func (u *Usecases) requireProjectIngest(ctx context.Context, projectID string) error {
-	return u.requireProjectRole(ctx, projectID, auth.ScopeIngest, auth.RoleAdmin, auth.RoleEditor)
+	return u.requireProjectRole(ctx, projectID, auth.ScopeIngest, auth.RoleAdmin, auth.RoleManager, auth.RoleEditor)
 }
 
 func (u *Usecases) requireProjectAdminForWaiver(ctx context.Context, projectID string) error {

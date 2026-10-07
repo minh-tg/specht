@@ -26,6 +26,12 @@ func teamMemberCtx() context.Context {
 	})
 }
 
+func TestCreateTeam_NonAdminDenied(t *testing.T) {
+	uc, _, _, _ := teamHarness()
+	_, err := uc.CreateTeam(teamMemberCtx(), "backend", "Backend team")
+	assert.ErrorIs(t, err, ErrProjectAccessDenied)
+}
+
 func TestCreateTeam_CreatorBecomesAdmin(t *testing.T) {
 	uc, _, tr, _ := teamHarness()
 	tr.getByNameFn = func(ctx context.Context, name string) (port.Team, error) {
@@ -42,7 +48,7 @@ func TestCreateTeam_CreatorBecomesAdmin(t *testing.T) {
 		return port.TeamMember{TeamID: teamID, UserID: userID, Role: role}, nil
 	}
 
-	out, err := uc.CreateTeam(teamMemberCtx(), "backend", "Backend team")
+	out, err := uc.CreateTeam(adminCtx(), "backend", "Backend team")
 	require.NoError(t, err)
 	assert.Equal(t, "backend", out.Name)
 	assert.Equal(t, auth.RoleAdmin, memberRole, "creator administers the team")
@@ -54,10 +60,10 @@ func TestCreateTeam_ConflictAndValidation(t *testing.T) {
 		return port.Team{ID: "team-0", Name: name}, nil
 	}
 
-	_, err := uc.CreateTeam(teamMemberCtx(), "backend", "")
+	_, err := uc.CreateTeam(adminCtx(), "backend", "")
 	assert.ErrorIs(t, err, ErrTeamConflict)
 
-	_, err = uc.CreateTeam(teamMemberCtx(), "   ", "")
+	_, err = uc.CreateTeam(adminCtx(), "   ", "")
 	require.Error(t, err)
 }
 
@@ -123,9 +129,9 @@ func TestLinkProjectTeam_ConfersAccess(t *testing.T) {
 		return port.ProjectTeam{ProjectID: projectID, TeamID: teamID, Role: role}, nil
 	}
 
-	link, err := uc.LinkProjectTeam(adminCtx(), "my-app", "11111111-1111-1111-1111-111111111111", "editor")
+	link, err := uc.LinkProjectTeam(adminCtx(), "my-app", "11111111-1111-1111-1111-111111111111", auth.RoleManager)
 	require.NoError(t, err)
-	assert.Equal(t, "editor", link.Role)
+	assert.Equal(t, auth.RoleManager, link.Role)
 }
 
 func TestCheckAccess_ViaTeamMembership(t *testing.T) {

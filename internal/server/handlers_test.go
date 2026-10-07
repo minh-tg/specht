@@ -24,79 +24,80 @@ import (
 )
 
 type mockUsecases struct {
-	createProjectFn      func(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error)
-	listProjectMembersFn func(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error)
-	addProjectMemberFn   func(ctx context.Context, projectSlug, userID, role string) (*usecase.ProjectMemberResponse, error)
-	isProjectMemberFn    func(ctx context.Context, projectID, userID string) (bool, error)
-	listProjectsFn       func(ctx context.Context) ([]usecase.ProjectResponse, error)
-	getProjectFn         func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
-	updateProjectFn      func(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error)
-	deleteProjectFn      func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
-	listFindingsFn       func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error)
-	listReportsFn        func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
-	getReportFn          func(ctx context.Context, reportID string) (*usecase.ReportResponse, error)
-	ingestReportFn       func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
-	registerFn           func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
-	loginFn              func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
-	createAPIKeyFn       func(ctx context.Context, projectSlug, name string, expiresAt *time.Time) (*usecase.APIKeyResponse, error)
-	listAPIKeysFn        func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
-	revokeAPIKeyFn       func(ctx context.Context, projectSlug, keyID string) error
-	triageFindingFn      func(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
-	bulkTriageFn         func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
-	getGateStatusFn      func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error)
-	getIntroducedGateFn  func(ctx context.Context, slug string, minRank int16, reportID string) (*usecase.GateStatusOutput, error)
-	previewPRCheckFn     func(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error)
-	previewPatchFn       func(ctx context.Context, findingID string) (*patch.Outcome, error)
-	previewNotifyFn      func(ctx context.Context, findingID, channel, target string, alreadyLinked bool) (*notify.Outcome, error)
-	adminStatusFn        func(ctx context.Context) (*usecase.AdminStatus, error)
-	previewRetentionFn   func(ctx context.Context, olderThanDays int) (*usecase.RetentionPreview, error)
-	purgeRetentionFn     func(ctx context.Context, olderThanDays int) (*usecase.RetentionResult, error)
-	createPolicyFn       func(ctx context.Context, name, description string, definition json.RawMessage) (*usecase.PolicyTemplateResponse, error)
-	listPoliciesFn       func(ctx context.Context) ([]usecase.PolicyTemplateResponse, error)
-	updatePolicyFn       func(ctx context.Context, id, name, description string, definition json.RawMessage) (*usecase.PolicyTemplateResponse, error)
-	deletePolicyFn       func(ctx context.Context, id string) error
-	setProjectPolicyFn   func(ctx context.Context, projectSlug, templateName string) (*usecase.PolicyEffectiveResponse, error)
-	setPolicyOverridesFn func(ctx context.Context, projectSlug string, overrides map[string]string) (*usecase.PolicyEffectiveResponse, error)
-	effectivePolicyFn    func(ctx context.Context, projectSlug string) (*usecase.PolicyEffectiveResponse, error)
-	createTeamFn         func(ctx context.Context, name, description string) (*usecase.TeamResponse, error)
-	listTeamsFn          func(ctx context.Context) ([]usecase.TeamResponse, error)
-	deleteTeamFn         func(ctx context.Context, teamID string) error
-	addTeamMemberFn      func(ctx context.Context, teamID, userID, role string) (*usecase.TeamMemberResponse, error)
-	listTeamMembersFn    func(ctx context.Context, teamID string) ([]usecase.TeamMemberResponse, error)
-	removeTeamMemberFn   func(ctx context.Context, teamID, userID string) error
-	linkProjectTeamFn    func(ctx context.Context, projectSlug, teamID, role string) (*usecase.ProjectTeamResponse, error)
-	unlinkProjectTeamFn  func(ctx context.Context, projectSlug, teamID string) error
-	listProjectTeamsFn   func(ctx context.Context, projectSlug string) ([]usecase.ProjectTeamResponse, error)
-	getFindingFn         func(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
-	getFindingEventsFn   func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
-	refreshFn            func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
-	logoutFn             func(ctx context.Context, refreshToken string) error
-	getProfileFn         func(ctx context.Context, userID string) (*usecase.UserProfile, error)
-	updateProfileFn      func(ctx context.Context, userID string, displayName *string) (*usecase.UserProfile, error)
-	listUsersFn          func(ctx context.Context, filter string, limit, offset int32) ([]usecase.UserProfile, error)
-	listEnvironmentsFn   func(ctx context.Context, slug string) ([]usecase.EnvironmentResponse, error)
-	listTargetsFn        func(ctx context.Context, slug string) ([]usecase.TargetResponse, error)
-	listArtifactsFn      func(ctx context.Context, slug string) ([]usecase.ArtifactResponse, error)
-	createWaiverFn       func(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error)
-	listWaiversFn        func(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error)
-	getWaiverFn          func(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverDetailResponse, error)
-	updateWaiverFn       func(ctx context.Context, input usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error)
-	deleteWaiverFn       func(ctx context.Context, projectSlug, waiverID string) error
-	toggleWaiverFn       func(ctx context.Context, projectSlug, waiverID, actorID string) (*usecase.WaiverResponse, error)
-	listWaiverEventsFn   func(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
-	checkWaiverMatchFn   func(ctx context.Context, projectSlug, findingID string) (bool, error)
-	getProjectStatsFn    func(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error)
-	verifyFixFn          func(ctx context.Context, findingID string) (*usecase.VerifyResponse, error)
-	getAgingFn           func(ctx context.Context, projectSlug string) (*usecase.AgingResponse, error)
-	getWatcherStatusFn   func(ctx context.Context) (*usecase.WatcherStatusResponse, error)
-	listScannersFn       func() []usecase.ScannerDescriptorResponse
-	createEvidenceFn     func(ctx context.Context, findingID, userID, typ, url, description string) (usecase.EvidenceResponse, error)
-	listEvidenceFn       func(ctx context.Context, findingID string) ([]usecase.EvidenceResponse, error)
-	deleteEvidenceFn     func(ctx context.Context, evidenceID string) error
-	upsertReachabilityFn func(ctx context.Context, findingID, userID, state, evidence string) (*usecase.ReachabilityResponse, error)
-	listReachabilityFn   func(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error)
-	upsertSignoffFn      func(ctx context.Context, findingID, userID, status, comment string) (*usecase.SignoffResponse, error)
-	getSignoffFn         func(ctx context.Context, findingID string) (*usecase.SignoffResponse, error)
+	createProjectFn       func(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error)
+	listProjectMembersFn  func(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error)
+	addProjectMemberFn    func(ctx context.Context, projectSlug, userID, role string) (*usecase.ProjectMemberResponse, error)
+	isProjectMemberFn     func(ctx context.Context, projectID, userID string) (bool, error)
+	listProjectsFn        func(ctx context.Context) ([]usecase.ProjectResponse, error)
+	getProjectFn          func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
+	updateProjectFn       func(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error)
+	deleteProjectFn       func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
+	listFindingsFn        func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error)
+	listReportsFn         func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
+	getReportFn           func(ctx context.Context, reportID string) (*usecase.ReportResponse, error)
+	ingestReportFn        func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
+	registerFn            func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
+	loginFn               func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
+	createAPIKeyFn        func(ctx context.Context, projectSlug, name string, expiresAt *time.Time) (*usecase.APIKeyResponse, error)
+	listAPIKeysFn         func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
+	revokeAPIKeyFn        func(ctx context.Context, projectSlug, keyID string) error
+	triageFindingFn       func(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
+	bulkTriageFn          func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
+	getGateStatusFn       func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error)
+	getIntroducedGateFn   func(ctx context.Context, slug string, minRank int16, reportID string) (*usecase.GateStatusOutput, error)
+	previewPRCheckFn      func(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error)
+	previewPatchFn        func(ctx context.Context, findingID string) (*patch.Outcome, error)
+	previewNotifyFn       func(ctx context.Context, findingID, channel, target string, alreadyLinked bool) (*notify.Outcome, error)
+	adminStatusFn         func(ctx context.Context) (*usecase.AdminStatus, error)
+	previewRetentionFn    func(ctx context.Context, olderThanDays int) (*usecase.RetentionPreview, error)
+	purgeRetentionFn      func(ctx context.Context, olderThanDays int) (*usecase.RetentionResult, error)
+	createPolicyFn        func(ctx context.Context, name, description string, definition json.RawMessage) (*usecase.PolicyTemplateResponse, error)
+	listPoliciesFn        func(ctx context.Context) ([]usecase.PolicyTemplateResponse, error)
+	updatePolicyFn        func(ctx context.Context, id, name, description string, definition json.RawMessage) (*usecase.PolicyTemplateResponse, error)
+	deletePolicyFn        func(ctx context.Context, id string) error
+	setProjectPolicyFn    func(ctx context.Context, projectSlug, templateName string) (*usecase.PolicyEffectiveResponse, error)
+	setPolicyOverridesFn  func(ctx context.Context, projectSlug string, overrides map[string]string) (*usecase.PolicyEffectiveResponse, error)
+	effectivePolicyFn     func(ctx context.Context, projectSlug string) (*usecase.PolicyEffectiveResponse, error)
+	createTeamFn          func(ctx context.Context, name, description string) (*usecase.TeamResponse, error)
+	listTeamsFn           func(ctx context.Context) ([]usecase.TeamResponse, error)
+	deleteTeamFn          func(ctx context.Context, teamID string) error
+	addTeamMemberFn       func(ctx context.Context, teamID, userID, role string) (*usecase.TeamMemberResponse, error)
+	listTeamMembersFn     func(ctx context.Context, teamID string) ([]usecase.TeamMemberResponse, error)
+	removeTeamMemberFn    func(ctx context.Context, teamID, userID string) error
+	linkProjectTeamFn     func(ctx context.Context, projectSlug, teamID, role string) (*usecase.ProjectTeamResponse, error)
+	unlinkProjectTeamFn   func(ctx context.Context, projectSlug, teamID string) error
+	listProjectTeamsFn    func(ctx context.Context, projectSlug string) ([]usecase.ProjectTeamResponse, error)
+	getFindingFn          func(ctx context.Context, findingID string) (*usecase.FindingResponse, error)
+	getFindingEventsFn    func(ctx context.Context, findingID string, eventTypes []string, limit, offset int32) ([]usecase.FindingEvent, error)
+	refreshFn             func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
+	logoutFn              func(ctx context.Context, refreshToken string) error
+	getProfileFn          func(ctx context.Context, userID string) (*usecase.UserProfile, error)
+	updateProfileFn       func(ctx context.Context, userID string, displayName *string) (*usecase.UserProfile, error)
+	listUsersFn           func(ctx context.Context, filter string, limit, offset int32) ([]usecase.UserProfile, error)
+	listEnvironmentsFn    func(ctx context.Context, slug string) ([]usecase.EnvironmentResponse, error)
+	listTargetsFn         func(ctx context.Context, slug string) ([]usecase.TargetResponse, error)
+	listArtifactsFn       func(ctx context.Context, slug string) ([]usecase.ArtifactResponse, error)
+	createWaiverFn        func(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error)
+	listWaiversFn         func(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error)
+	getWaiverFn           func(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverDetailResponse, error)
+	updateWaiverFn        func(ctx context.Context, input usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error)
+	deleteWaiverFn        func(ctx context.Context, projectSlug, waiverID string) error
+	toggleWaiverFn        func(ctx context.Context, projectSlug, waiverID, actorID string) (*usecase.WaiverResponse, error)
+	listWaiverEventsFn    func(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
+	checkWaiverMatchFn    func(ctx context.Context, projectSlug, findingID string) (bool, error)
+	getProjectStatsFn     func(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error)
+	verifyFixFn           func(ctx context.Context, findingID string) (*usecase.VerifyResponse, error)
+	getAgingFn            func(ctx context.Context, projectSlug string) (*usecase.AgingResponse, error)
+	getWatcherStatusFn    func(ctx context.Context) (*usecase.WatcherStatusResponse, error)
+	listScannersFn        func() []usecase.ScannerDescriptorResponse
+	createEvidenceFn      func(ctx context.Context, findingID, userID, typ, url, description string) (usecase.EvidenceResponse, error)
+	listEvidenceFn        func(ctx context.Context, findingID string) ([]usecase.EvidenceResponse, error)
+	deleteEvidenceFn      func(ctx context.Context, evidenceID string) error
+	upsertReachabilityFn  func(ctx context.Context, findingID, userID, state, evidence string) (*usecase.ReachabilityResponse, error)
+	listReachabilityFn    func(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error)
+	upsertSignoffFn       func(ctx context.Context, findingID, userID, status, comment string) (*usecase.SignoffResponse, error)
+	getSignoffFn          func(ctx context.Context, findingID string) (*usecase.SignoffResponse, error)
+	removeProjectMemberFn func(ctx context.Context, projectSlug, userID string) error
 }
 
 func (m *mockUsecases) CreateProject(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error) {
@@ -118,6 +119,13 @@ func (m *mockUsecases) AddProjectMember(ctx context.Context, projectSlug, userID
 		return nil, fmt.Errorf("unexpected call to AddProjectMember")
 	}
 	return m.addProjectMemberFn(ctx, projectSlug, userID, role)
+}
+
+func (m *mockUsecases) RemoveProjectMember(ctx context.Context, projectSlug, userID string) error {
+	if m.removeProjectMemberFn == nil {
+		return fmt.Errorf("unexpected call to RemoveProjectMember")
+	}
+	return m.removeProjectMemberFn(ctx, projectSlug, userID)
 }
 
 func (m *mockUsecases) IsProjectMember(ctx context.Context, projectID, userID string) (bool, error) {
@@ -865,6 +873,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/projects/{slug}/stats", h.GetProjectStats)
 	r.Get("/api/v1/projects/{slug}/aging", h.GetAging)
 	r.Post("/api/v1/projects/{slug}/members", h.AddProjectMember)
+	r.Delete("/api/v1/projects/{slug}/members/{userID}", h.RemoveProjectMember)
 	return r
 }
 
@@ -3030,6 +3039,7 @@ func authRouter(h *Handler) http.Handler {
 	})
 	r.Get("/api/v1/projects/{slug}/members", h.ListProjectMembers)
 	r.Post("/api/v1/projects/{slug}/members", h.AddProjectMember)
+	r.Delete("/api/v1/projects/{slug}/members/{userID}", h.RemoveProjectMember)
 	r.Route("/api/v1/projects/{slug}/waivers", func(r chi.Router) {
 		r.Get("/", h.ListWaivers)
 		r.Post("/", h.CreateWaiver)
@@ -3256,6 +3266,48 @@ func TestListProjectMembers_NonMemberDenied(t *testing.T) {
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusForbidden, w.Code)
+}
+
+func TestRemoveProjectMember_Success(t *testing.T) {
+	mock := &mockUsecases{
+		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			return &usecase.ProjectResponse{ID: "00000000-0000-0000-0000-000000000001", Slug: slug}, nil
+		},
+		isProjectMemberFn: func(ctx context.Context, projectID, userID string) (bool, error) {
+			return true, nil
+		},
+		removeProjectMemberFn: func(ctx context.Context, projectSlug, userID string) error {
+			assert.Equal(t, "my-app", projectSlug)
+			assert.Equal(t, "member-1", userID)
+			return nil
+		},
+	}
+	h := NewHandler(mock)
+	router := authRouter(h)
+	req := httptest.NewRequest("DELETE", "/api/v1/projects/my-app/members/member-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestRemoveProjectMember_LastAdmin(t *testing.T) {
+	mock := &mockUsecases{
+		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			return &usecase.ProjectResponse{ID: "00000000-0000-0000-0000-000000000001", Slug: slug}, nil
+		},
+		isProjectMemberFn: func(ctx context.Context, projectID, userID string) (bool, error) {
+			return true, nil
+		},
+		removeProjectMemberFn: func(ctx context.Context, projectSlug, userID string) error {
+			return usecase.ErrLastAdminForbidden
+		},
+	}
+	h := NewHandler(mock)
+	router := authRouter(h)
+	req := httptest.NewRequest("DELETE", "/api/v1/projects/my-app/members/admin-1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
 // ----- enforceProjectAccess Tests -----
