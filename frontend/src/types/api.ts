@@ -24,6 +24,36 @@ export interface Project {
   updated_at: string;
 }
 
+export type ProjectRole = "admin" | "manager" | "member";
+
+export interface ProjectMember {
+  project_id: string;
+  user_id: string;
+  role: ProjectRole;
+  created_at: string;
+}
+
+export interface ProjectTeam {
+  project_id: string;
+  team_id: string;
+  team_name: string;
+  role: ProjectRole;
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TeamMember {
+  team_id: string;
+  user_id: string;
+  created_at: string;
+}
+
 /** Build information reported by the server on /api/v1/version. */
 export interface ServerVersion {
   version: string;

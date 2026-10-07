@@ -14,6 +14,7 @@ import { ProjectLayout } from "@/pages/ProjectLayout";
 import { ProjectList } from "@/pages/ProjectList";
 import { ProjectSetup } from "@/pages/ProjectSetup";
 import { Register } from "@/pages/Register";
+import { TeamsDirectory } from "@/pages/TeamsDirectory";
 import { UploadReport } from "@/pages/UploadReport";
 import { type ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
@@ -100,6 +101,24 @@ export function AppRoutes() {
         element={
           <ProtectedRoute>
             <ProjectLayout />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/:slug/access"
+        element={
+          <ProtectedRoute>
+            <ProjectLayout />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/teams"
+        element={
+          <ProtectedRoute>
+            <Titled title="Teams">
+              <TeamsDirectory />
+            </Titled>
           </ProtectedRoute>
         }
       />

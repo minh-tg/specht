@@ -905,7 +905,10 @@ export interface paths {
     /** List teams */
     get: operations["listTeams"];
     put?: never;
-    /** Create a team */
+    /**
+     * Create a team
+     * @description Company-wide teams can only be created by global administrators.
+     */
     post: operations["createTeam"];
     delete?: never;
     options?: never;
@@ -1022,6 +1025,26 @@ export interface paths {
      */
     post: operations["addProjectMember"];
     delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{slug}/members/{userID}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Remove a project member
+     * @description Revokes direct membership. Managers may remove members; removing admins requires project admin authority. The last project admin cannot be removed.
+     */
+    delete: operations["removeProjectMember"];
     options?: never;
     head?: never;
     patch?: never;
@@ -1953,7 +1976,7 @@ export interface components {
       /** Format: uuid */
       user_id: string;
       /** @enum {string} */
-      role: "admin" | "editor" | "viewer";
+      role: "admin" | "manager" | "member";
     };
     ProjectTeam: {
       /** Format: uuid */
@@ -1962,7 +1985,7 @@ export interface components {
       team_id: string;
       team_name: string;
       /** @enum {string} */
-      role: "admin" | "editor" | "viewer";
+      role: "admin" | "manager" | "member";
     };
     ProjectMember: {
       /** Format: uuid */
@@ -1970,7 +1993,7 @@ export interface components {
       /** Format: uuid */
       user_id: string;
       /** @enum {string} */
-      role: "admin" | "editor" | "viewer";
+      role: "admin" | "manager" | "member";
       /** Format: date-time */
       created_at: string;
     };
@@ -4179,6 +4202,25 @@ export interface operations {
       };
       400: components["responses"]["BadRequest"];
       403: components["responses"]["Forbidden"];
+    };
+  };
+  removeProjectMember: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+        userID: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      204: components["responses"]["NoContent"];
+      400: components["responses"]["BadRequest"];
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
     };
   };
   listEnvironments: {
