@@ -87,6 +87,9 @@ type ProjectStore interface {
 	// document (policy overrides live under "policy").
 	UpdateSettings(ctx context.Context, projectID string, settings json.RawMessage) (Project, error)
 	UpsertMember(ctx context.Context, projectID, userID, role string) (ProjectMember, error)
+	GetMember(ctx context.Context, projectID, userID string) (ProjectMember, error)
+	DeleteMember(ctx context.Context, projectID, userID string) error
+	CountAdmins(ctx context.Context, projectID string) (int, error)
 	ListMembers(ctx context.Context, projectID string) ([]ProjectMember, error)
 	IsMember(ctx context.Context, projectID, userID string) (bool, error)
 	// ListMemberProjectIDs returns the IDs of all projects a user belongs

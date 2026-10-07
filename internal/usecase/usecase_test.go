@@ -31,6 +31,9 @@ type mockProjectRepo struct {
 	updateSettingsFn    func(context.Context, string, json.RawMessage) (port.Project, error)
 	deleteFn            func(context.Context, string) (port.Project, error)
 	upsertMemberFn      func(context.Context, string, string, string) (port.ProjectMember, error)
+	getMemberFn         func(context.Context, string, string) (port.ProjectMember, error)
+	deleteMemberFn      func(context.Context, string, string) error
+	countAdminsFn       func(context.Context, string) (int, error)
 	listMembersFn       func(context.Context, string) ([]port.ProjectMember, error)
 	isMemberFn          func(context.Context, string, string) (bool, error)
 	listMemberIDsFn     func(context.Context, string) ([]string, error)
@@ -75,6 +78,27 @@ func (m *mockProjectRepo) UpsertMember(ctx context.Context, projectID, userID, r
 		return port.ProjectMember{}, fmt.Errorf("unexpected call to UpsertMember")
 	}
 	return m.upsertMemberFn(ctx, projectID, userID, role)
+}
+
+func (m *mockProjectRepo) GetMember(ctx context.Context, projectID, userID string) (port.ProjectMember, error) {
+	if m.getMemberFn != nil {
+		return m.getMemberFn(ctx, projectID, userID)
+	}
+	return port.ProjectMember{}, fmt.Errorf("unexpected call to GetMember")
+}
+
+func (m *mockProjectRepo) DeleteMember(ctx context.Context, projectID, userID string) error {
+	if m.deleteMemberFn != nil {
+		return m.deleteMemberFn(ctx, projectID, userID)
+	}
+	return fmt.Errorf("unexpected call to DeleteMember")
+}
+
+func (m *mockProjectRepo) CountAdmins(ctx context.Context, projectID string) (int, error) {
+	if m.countAdminsFn != nil {
+		return m.countAdminsFn(ctx, projectID)
+	}
+	return 0, fmt.Errorf("unexpected call to CountAdmins")
 }
 
 func (m *mockProjectRepo) ListMembers(ctx context.Context, projectID string) ([]port.ProjectMember, error) {

@@ -81,11 +81,11 @@ WHERE tm.user_id = $1;
 
 -- name: EffectiveProjectRole :one
 -- The strongest role a user holds on a project across direct membership
--- and team links (admin > editor > viewer). pgx.ErrNoRows means no access
+-- and team links (admin > manager > member). pgx.ErrNoRows means no access
 -- at all — callers treat it as denial, never as a default role.
 SELECT ranked.role FROM (
     SELECT role,
-        CASE role WHEN 'admin' THEN 3 WHEN 'editor' THEN 2 ELSE 1 END AS rank
+        CASE role WHEN 'admin' THEN 3 WHEN 'manager' THEN 2 WHEN 'editor' THEN 2 ELSE 1 END AS rank
     FROM (
         SELECT pm.role FROM project_members pm WHERE pm.project_id = $1 AND pm.user_id = $2
         UNION ALL
