@@ -196,6 +196,10 @@ func (h *Handler) AddProjectMember(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) RemoveProjectMember(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	userID := chi.URLParam(r, "userID")
+	if slug == "" || userID == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", "project slug and user id are required")
+		return
+	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
 		h.respondProjectAccessError(w, err)
 		return
