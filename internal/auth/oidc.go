@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/minh-tg/specht/internal/netutil"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -80,65 +81,15 @@ func ValidateIssuerURL(raw string) error {
 }
 
 func isLoopbackHost(host string) bool {
-	if host == "localhost" {
-		return true
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
+	return netutil.IsLoopbackHost(host)
 }
 
-// safeDialContext resolves the destination before connecting and refuses local,
-// private, link-local, multicast, and other non-public address ranges. The
-// loopback exception exists only for plain HTTP local development providers;
-// HTTPS requests are never allowed to use it.
 func safeDialContext(dialer *net.Dialer, allowLoopback bool) func(context.Context, string, string) (net.Conn, error) {
-	return func(ctx context.Context, network, address string) (net.Conn, error) {
-		host, port, err := net.SplitHostPort(address)
-		if err != nil {
-			return nil, fmt.Errorf("invalid destination %q: %w", address, err)
-		}
-		ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host)
-		if err != nil {
-			return nil, fmt.Errorf("resolve %q: %w", host, err)
-		}
-		if len(ips) == 0 {
-			return nil, fmt.Errorf("resolve %q: no addresses", host)
-		}
-		for _, ip := range ips {
-			if isBlockedIP(ip) && !(allowLoopback && ip.IsLoopback()) {
-				return nil, fmt.Errorf("refusing connection to non-public address %q", ip)
-			}
-		}
-		var lastErr error
-		for _, ip := range ips {
-			conn, dialErr := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
-			if dialErr == nil {
-				return conn, nil
-			}
-			lastErr = dialErr
-		}
-		return nil, lastErr
-	}
+	return netutil.SafeDialContext(dialer, allowLoopback)
 }
 
 func isBlockedIP(ip net.IP) bool {
-	if ip == nil || ip.IsUnspecified() || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() {
-		return true
-	}
-	v4 := ip.To4()
-	if v4 != nil {
-		// Carrier-grade NAT, benchmarking, and documentation ranges are not
-		// routable public service addresses and must not be SSRF targets.
-		return (v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127) ||
-			(v4[0] == 198 && v4[1] >= 18 && v4[1] <= 19) ||
-			(v4[0] == 192 && v4[1] == 0 && v4[2] == 0) ||
-			(v4[0] >= 240) ||
-			(v4[0] == 192 && v4[1] == 0 && v4[2] == 2) ||
-			(v4[0] == 198 && v4[1] == 51 && v4[2] == 100) ||
-			(v4[0] == 203 && v4[1] == 0 && v4[2] == 113)
-	}
-	// IPv6 documentation range.
-	return len(ip) == net.IPv6len && ip[0] == 0x20 && ip[1] == 0x01 && ip[2] == 0x0d && ip[3] == 0xb8
+	return netutil.IsBlockedIP(ip)
 }
 
 // NewOIDCAuthenticator builds an SSO authenticator from the given config.

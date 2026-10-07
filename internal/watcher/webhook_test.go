@@ -147,3 +147,10 @@ func TestFanoutNotifier_OneDeadChannelDoesNotBlockOthers(t *testing.T) {
 	require.NoError(t, f.Notify(context.Background(), []Notification{{Title: "x"}}))
 	assert.Equal(t, int32(1), got.Load())
 }
+
+func TestWebhookNotifier_BlocksSSRF(t *testing.T) {
+	n := NewWebhookNotifier("http://169.254.169.254/latest/meta-data/", "", nil)
+	n.sleeper = func(ctx context.Context, _ time.Duration) error { return nil }
+	err := n.Notify(context.Background(), []Notification{{Title: "x"}})
+	assert.NoError(t, err)
+}

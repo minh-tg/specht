@@ -286,3 +286,12 @@ func TestWebHookTracker_NoSignatureWithoutSecret(t *testing.T) {
 	defer mu.Unlock()
 	assert.Empty(t, gotHeader, "no signature header when no secret configured")
 }
+
+func TestWebHookTracker_BlocksSSRF(t *testing.T) {
+	tr := NewWebHookTracker(WebHookTrackerConfig{
+		Endpoints: []string{"http://169.254.169.254/latest/meta-data/"},
+	}, nil)
+	id, err := tr.CreateIssue(context.Background(), Event{Type: EventCreated, Fingerprint: "fp"})
+	require.NoError(t, err)
+	assert.Equal(t, IssueID("fp"), id)
+}
