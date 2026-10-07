@@ -16,23 +16,32 @@ var (
 )
 
 // Roles for the RBAC model. These are the canonical role strings that may
-// appear on JWTs and identities; RequireRole and handler checks enforce this
-// vocabulary.
+// appear on JWTs, project memberships, and identities; RequireRole and handler
+// checks enforce this vocabulary.
 const (
-	RoleAdmin  = "admin"
+	RoleAdmin   = "admin"
+	RoleManager = "manager"
+	RoleMember  = "member"
+
+	// Backward-compatibility aliases during transition
 	RoleEditor = "editor"
 	RoleViewer = "viewer"
 )
 
-// RoleMember is the legacy users.role value written by self-service
-// registration and permitted by the users table CHECK ('admin','member').
-// It predates the canonical JWT/RBAC vocabulary above and must never reach a
-// token claim: issuance maps it to RoleViewer (see TokenRole), and
-// RequireRole rejects it outright as a non-canonical role.
-//
-// Deprecated: retained only for the DB → token mapping and stored-role
-// documentation. New code should use RoleViewer.
-const RoleMember = "member"
+// RoleRank returns the hierarchy rank of a role:
+// Admin (3) > Manager (2) > Member (1). Unknown roles return 0.
+func RoleRank(role string) int {
+	switch role {
+	case RoleAdmin:
+		return 3
+	case RoleManager, RoleEditor:
+		return 2
+	case RoleMember, RoleViewer:
+		return 1
+	default:
+		return 0
+	}
+}
 
 // API-key permission scopes (project-scoped keys, ADR 019). A key is granted
 // one or more of these at creation; authorization checks a key's scope list
@@ -52,9 +61,9 @@ func RoleScope(role string) (string, bool) {
 	switch role {
 	case RoleAdmin:
 		return ScopeAdmin, true
-	case RoleEditor:
+	case RoleManager, RoleEditor:
 		return ScopeAdmin, true // mutations beyond plain ingest are admin-level
-	case RoleViewer:
+	case RoleMember, RoleViewer:
 		return ScopeRead, true
 	default:
 		return "", false
@@ -78,12 +87,10 @@ func (i *Identity) HasScope(scope string) bool {
 
 // ValidRole reports whether role belongs to the canonical RBAC vocabulary.
 // Every role reaching authorization checks — from JWT claims or API-key
-// identities — must be one of admin/editor/viewer. Anything else (the
-// legacy "member", empty claims, or garbage) is not a known principal and
-// must be denied, never silently admitted.
+// identities — must be one of admin/manager/member (or legacy editor/viewer).
 func ValidRole(role string) bool {
 	switch role {
-	case RoleAdmin, RoleEditor, RoleViewer:
+	case RoleAdmin, RoleManager, RoleMember, RoleEditor, RoleViewer:
 		return true
 	default:
 		return false
@@ -91,14 +98,17 @@ func ValidRole(role string) bool {
 }
 
 // TokenRole maps a stored users.role value to the canonical role for token
-// claims. Legacy 'member' accounts are viewers; canonical roles pass through
-// unchanged. Callers minting access tokens must map through this so a DB
-// role can never leak verbatim into a claim.
+// claims. Legacy editor/viewer strings map to their modern counterparts;
+// canonical roles pass through unchanged.
 func TokenRole(role string) string {
-	if role == RoleMember {
-		return RoleViewer
+	switch role {
+	case RoleEditor:
+		return RoleManager
+	case RoleViewer:
+		return RoleMember
+	default:
+		return role
 	}
-	return role
 }
 
 // Identity is the authenticated principal attached to a request context.
