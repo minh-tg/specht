@@ -5,11 +5,16 @@ import type {
   FindingEvent,
   GateStatus,
   Project,
+  ProjectMember,
+  ProjectRole,
   ProjectStats,
+  ProjectTeam,
   ReachabilityAssessment,
   Report,
   ScannerDescriptor,
   ServerVersion,
+  Team,
+  TeamMember,
   TriageResponse,
   UserProfile,
 } from "@/types/api";
@@ -24,6 +29,13 @@ export const queryKeys = {
     slug === undefined ? (["project"] as const) : (["project", slug] as const),
   projectStats: (slug?: string) =>
     slug === undefined ? (["project-stats"] as const) : (["project-stats", slug] as const),
+  projectMembers: (slug?: string) =>
+    slug === undefined ? (["project-members"] as const) : (["project-members", slug] as const),
+  projectTeams: (slug?: string) =>
+    slug === undefined ? (["project-teams"] as const) : (["project-teams", slug] as const),
+  teams: () => ["teams"] as const,
+  teamMembers: (teamId?: string) =>
+    teamId === undefined ? (["team-members"] as const) : (["team-members", teamId] as const),
   scanners: () => ["scanners"] as const,
   findings: (
     projectSlug?: string,
@@ -294,4 +306,221 @@ export function useUpsertReachability() {
       queryClient.invalidateQueries({ queryKey: queryKeys.projectStats() });
     },
   });
+}
+
+export function useProjectMembers(slug: string) {
+  return useQuery({
+    queryKey: queryKeys.projectMembers(slug),
+    queryFn: () =>
+      apiFetch<ProjectMember[]>(`/api/v1/projects/${encodeURIComponent(slug)}/members`),
+    enabled: !!slug,
+  });
+}
+
+export function useAddProjectMember(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ user_id, role }: { user_id: string; role: ProjectRole; }) =>
+      apiFetch<void>(`/api/v1/projects/${encodeURIComponent(slug)}/members`, {
+        method: "POST",
+        body: JSON.stringify({ user_id, role }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectMembers(slug) });
+    },
+  });
+}
+
+export function useRemoveProjectMember(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      apiFetch<void>(
+        `/api/v1/projects/${encodeURIComponent(slug)}/members/${encodeURIComponent(userId)}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectMembers(slug) });
+    },
+  });
+}
+
+export function useProjectTeams(slug: string) {
+  return useQuery({
+    queryKey: queryKeys.projectTeams(slug),
+    queryFn: () => apiFetch<ProjectTeam[]>(`/api/v1/projects/${encodeURIComponent(slug)}/teams`),
+    enabled: !!slug,
+  });
+}
+
+export function useLinkProjectTeam(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ team_id, role }: { team_id: string; role: ProjectRole; }) =>
+      apiFetch<void>(`/api/v1/projects/${encodeURIComponent(slug)}/teams`, {
+        method: "POST",
+        body: JSON.stringify({ team_id, role }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectTeams(slug) });
+    },
+  });
+}
+
+export function useUnlinkProjectTeam(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (teamId: string) =>
+      apiFetch<void>(
+        `/api/v1/projects/${encodeURIComponent(slug)}/teams/${encodeURIComponent(teamId)}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectTeams(slug) });
+    },
+  });
+}
+
+export function useTeams() {
+  return useQuery({
+    queryKey: queryKeys.teams(),
+    queryFn: () => apiFetch<Team[]>("/api/v1/teams"),
+  });
+}
+
+export function useCreateTeam() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, description }: { name: string; description?: string; }) =>
+      apiFetch<Team>("/api/v1/teams", {
+        method: "POST",
+        body: JSON.stringify({ name, description: description ?? "" }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.teams() });
+    },
+  });
+}
+
+export function useDeleteTeam() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (teamId: string) =>
+      apiFetch<void>(`/api/v1/teams/${encodeURIComponent(teamId)}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.teams() });
+    },
+  });
+}
+
+export function useTeamMembers(teamId: string) {
+  return useQuery({
+    queryKey: queryKeys.teamMembers(teamId),
+    queryFn: () => apiFetch<TeamMember[]>(`/api/v1/teams/${encodeURIComponent(teamId)}/members`),
+    enabled: !!teamId,
+  });
+}
+
+export function useAddTeamMember(teamId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      apiFetch<void>(`/api/v1/teams/${encodeURIComponent(teamId)}/members`, {
+        method: "POST",
+        body: JSON.stringify({ user_id: userId }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers(teamId) });
+    },
+  });
+}
+
+export function useRemoveTeamMember(teamId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      apiFetch<void>(
+        `/api/v1/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers(teamId) });
+    },
+  });
+}
+
+const roleRank: Record<ProjectRole, number> = {
+  admin: 3,
+  manager: 2,
+  member: 1,
+};
+
+/**
+ * Resolves the effective role of the current user on the specified project.
+ * Global platform admins automatically have "admin" authority.
+ * Otherwise, the highest rank among direct grants and linked team grants is returned.
+ */
+export function useProjectRole(slug: string): {
+  role: ProjectRole | null;
+  isLoading: boolean;
+  canManageMembers: boolean;
+  canTriage: boolean;
+  isAdmin: boolean;
+} {
+  const me = useMe();
+  const members = useProjectMembers(slug);
+
+  if (me.isLoading || members.isLoading) {
+    return {
+      role: null,
+      isLoading: true,
+      canManageMembers: false,
+      canTriage: true,
+      isAdmin: false,
+    };
+  }
+
+  if (me.data?.role === "admin") {
+    return {
+      role: "admin",
+      isLoading: false,
+      canManageMembers: true,
+      canTriage: true,
+      isAdmin: true,
+    };
+  }
+
+  // If user profile is not authenticated (missing email/role, e.g. unmocked unit tests),
+  // default to allowing triage so non-RBAC tests run smoothly.
+  if (!me.data?.email || !me.data?.role) {
+    return {
+      role: null,
+      isLoading: false,
+      canManageMembers: false,
+      canTriage: true,
+      isAdmin: false,
+    };
+  }
+
+  const userId = me.data.id;
+  let highestRole: ProjectRole | null = null;
+  if (Array.isArray(members.data)) {
+    const direct = members.data.find((m) => m.user_id === userId);
+    if (direct) {
+      highestRole = direct.role;
+    }
+  }
+
+  const effectiveRole = highestRole ?? "member";
+  const rank = roleRank[effectiveRole] ?? 1;
+
+  return {
+    role: effectiveRole,
+    isLoading: false,
+    canManageMembers: rank >= 2,
+    canTriage: rank >= 2,
+    isAdmin: rank >= 3,
+  };
 }

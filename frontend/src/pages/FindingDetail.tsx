@@ -93,7 +93,7 @@ export function FindingDetail() {
           Currently: {analysisStateLabel(finding.analysis_state) ?? "Not triaged"}
           {currentGate && <>{" · "}{currentGate}</>}
         </p>
-        <TriageSection findingId={finding.id} />
+        <TriageSection findingId={finding.id} projectSlug={slug} />
         <ReachabilitySection
           findingId={finding.id}
           reachability={reachability}
