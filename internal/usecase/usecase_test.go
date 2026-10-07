@@ -84,21 +84,46 @@ func (m *mockProjectRepo) GetMember(ctx context.Context, projectID, userID strin
 	if m.getMemberFn != nil {
 		return m.getMemberFn(ctx, projectID, userID)
 	}
-	return port.ProjectMember{}, fmt.Errorf("unexpected call to GetMember")
+	if m.listMembersFn != nil {
+		members, err := m.listMembersFn(ctx, projectID)
+		if err != nil {
+			return port.ProjectMember{}, err
+		}
+		for _, member := range members {
+			if member.UserID == userID {
+				return member, nil
+			}
+		}
+		return port.ProjectMember{}, port.ErrNotFound
+	}
+	return port.ProjectMember{}, port.ErrNotFound
 }
 
 func (m *mockProjectRepo) DeleteMember(ctx context.Context, projectID, userID string) error {
 	if m.deleteMemberFn != nil {
 		return m.deleteMemberFn(ctx, projectID, userID)
 	}
-	return fmt.Errorf("unexpected call to DeleteMember")
+	return nil
 }
 
 func (m *mockProjectRepo) CountAdmins(ctx context.Context, projectID string) (int, error) {
 	if m.countAdminsFn != nil {
 		return m.countAdminsFn(ctx, projectID)
 	}
-	return 0, fmt.Errorf("unexpected call to CountAdmins")
+	if m.listMembersFn != nil {
+		members, err := m.listMembersFn(ctx, projectID)
+		if err != nil {
+			return 0, err
+		}
+		count := 0
+		for _, member := range members {
+			if member.Role == auth.RoleAdmin {
+				count++
+			}
+		}
+		return count, nil
+	}
+	return 1, nil
 }
 
 func (m *mockProjectRepo) ListMembers(ctx context.Context, projectID string) ([]port.ProjectMember, error) {

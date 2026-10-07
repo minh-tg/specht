@@ -54,10 +54,10 @@ func TestAddProjectMember_ProjectAdminAllowed(t *testing.T) {
 		return port.ProjectMember{ProjectID: projectID, UserID: userID, Role: role}, nil
 	}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
-	m, err := uc.AddProjectMember(sessionCtx("admin-1", auth.RoleViewer), "my-app", "new-1", auth.RoleEditor)
+	m, err := uc.AddProjectMember(sessionCtx("admin-1", auth.RoleViewer), "my-app", "new-1", auth.RoleManager)
 	require.NoError(t, err)
 	assert.Equal(t, "new-1", m.UserID)
-	assert.Equal(t, auth.RoleEditor, m.Role)
+	assert.Equal(t, auth.RoleManager, m.Role)
 }
 
 func TestAddProjectMember_InvalidRoleRejected(t *testing.T) {

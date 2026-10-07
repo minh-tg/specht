@@ -192,3 +192,29 @@ func (h *Handler) AddProjectMember(w http.ResponseWriter, r *http.Request) {
 	}
 	respondJSON(w, http.StatusCreated, member)
 }
+
+func (h *Handler) RemoveProjectMember(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	userID := chi.URLParam(r, "userID")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		h.respondProjectAccessError(w, err)
+		return
+	}
+	if err := h.usecase.RemoveProjectMember(r.Context(), slug, userID); err != nil {
+		if errors.Is(err, usecase.ErrInvalidID) {
+			respondError(w, http.StatusBadRequest, "invalid_id", err.Error())
+			return
+		}
+		if errors.Is(err, usecase.ErrMemberNotFound) {
+			respondError(w, http.StatusNotFound, "member_not_found", "project member not found")
+			return
+		}
+		if errors.Is(err, usecase.ErrLastAdminForbidden) {
+			respondError(w, http.StatusBadRequest, "last_admin", err.Error())
+			return
+		}
+		respondError(w, http.StatusForbidden, "project_access_denied", projectsMsgAccessDenied)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

@@ -44,17 +44,18 @@ var validTeamMemberRoles = map[string]bool{"admin": true, "member": true}
 
 // validLinkRoles are the project roles a team link may confer.
 var validLinkRoles = map[string]bool{
-	auth.RoleAdmin:  true,
-	auth.RoleEditor: true,
-	auth.RoleViewer: true,
+	auth.RoleAdmin:   true,
+	auth.RoleManager: true,
+	auth.RoleMember:  true,
+	"editor":         true,
+	"viewer":         true,
 }
 
-// CreateTeam creates a team; the creator becomes its admin. Any
-// authenticated session user may create a team (mirroring project
-// creation); API keys never may.
+// CreateTeam creates a team in the central company directory; the creator becomes its admin.
+// Only global administrators may create teams; API keys never may.
 func (u *Usecases) CreateTeam(ctx context.Context, name, description string) (*TeamResponse, error) {
 	ident := auth.ContextIdentity(ctx)
-	if ident == nil || ident.IsAPIKey {
+	if ident == nil || ident.IsAPIKey || ident.Role != auth.RoleAdmin {
 		return nil, ErrProjectAccessDenied
 	}
 	name = strings.TrimSpace(name)
@@ -199,20 +200,30 @@ func (u *Usecases) RemoveTeamMember(ctx context.Context, teamID, userID string) 
 }
 
 // LinkProjectTeam confers a project role on every team member. Project
-// admins own the assignment (same gate as member management).
+// managers and admins may link teams, with a delegation ceiling that limits
+// the conferred role to the caller's own rank.
 func (u *Usecases) LinkProjectTeam(ctx context.Context, projectSlug, teamID, role string) (*ProjectTeamResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
-	if err := u.requireProjectAdmin(ctx, project.ID); err != nil {
+	callerRole, err := u.callerProjectRole(ctx, project.ID)
+	if err != nil {
 		return nil, err
+	}
+	if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleManager) {
+		return nil, ErrProjectAccessDenied
 	}
 	if _, err := validID(teamID); err != nil {
 		return nil, err
 	}
+	role = normalizeMemberRole(role)
 	if !validLinkRoles[role] {
-		return nil, fmt.Errorf("invalid link role %q: want admin, editor, or viewer", role)
+		return nil, fmt.Errorf("invalid link role %q: want admin, manager, or member", role)
+	}
+	// Delegation ceiling: cannot link a team with a role higher than caller's rank.
+	if auth.RoleRank(role) > auth.RoleRank(callerRole) {
+		return nil, ErrProjectAccessDenied
 	}
 	if _, err := u.deps.Stores.Teams.GetTeamByID(ctx, teamID); err != nil {
 		return nil, notFoundAsTeam(err)
@@ -225,11 +236,11 @@ func (u *Usecases) LinkProjectTeam(ctx context.Context, projectSlug, teamID, rol
 	if err != nil {
 		return nil, fmt.Errorf("lookup team: %w", err)
 	}
-	return &ProjectTeamResponse{ProjectID: link.ProjectID, TeamID: link.TeamID, TeamName: team.Name, Role: link.Role}, nil
+	return &ProjectTeamResponse{ProjectID: link.ProjectID, TeamID: link.TeamID, TeamName: team.Name, Role: normalizeMemberRole(link.Role)}, nil
 }
 
-// UnlinkProjectTeam revokes the conferred role. Access granted through the
-// link ends with it; direct memberships are untouched.
+// UnlinkProjectTeam revokes the conferred role. Project managers may unlink
+// member or manager teams; unlinking admin teams requires project admin authority.
 func (u *Usecases) UnlinkProjectTeam(ctx context.Context, projectSlug, teamID string) error {
 	if _, err := validID(teamID); err != nil {
 		return err
@@ -238,8 +249,27 @@ func (u *Usecases) UnlinkProjectTeam(ctx context.Context, projectSlug, teamID st
 	if err != nil {
 		return fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
-	if err := u.requireProjectAdmin(ctx, project.ID); err != nil {
+	callerRole, err := u.callerProjectRole(ctx, project.ID)
+	if err != nil {
 		return err
+	}
+	if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleManager) {
+		return ErrProjectAccessDenied
+	}
+	// If caller is not project admin, check the role of the existing link to prevent peer/superior revocation.
+	if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleAdmin) {
+		links, err := u.deps.Stores.Teams.ListProjectTeams(ctx, project.ID)
+		if err != nil {
+			return fmt.Errorf("list project teams: %w", err)
+		}
+		for _, l := range links {
+			if l.TeamID == teamID {
+				if auth.RoleRank(normalizeMemberRole(l.Role)) >= auth.RoleRank(callerRole) {
+					return ErrProjectAccessDenied
+				}
+				break
+			}
+		}
 	}
 	if err := u.deps.Stores.Teams.UnlinkProjectTeam(ctx, project.ID, teamID); err != nil {
 		return fmt.Errorf("unlink project team: %w", err)
@@ -248,12 +278,13 @@ func (u *Usecases) UnlinkProjectTeam(ctx context.Context, projectSlug, teamID st
 }
 
 // ListProjectTeams returns every team linked to a project.
+// Accessible to project members, managers, and admins.
 func (u *Usecases) ListProjectTeams(ctx context.Context, projectSlug string) ([]ProjectTeamResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
-	if err := u.requireProjectAdmin(ctx, project.ID); err != nil {
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
 		return nil, err
 	}
 	links, err := u.deps.Stores.Teams.ListProjectTeams(ctx, project.ID)
@@ -262,7 +293,7 @@ func (u *Usecases) ListProjectTeams(ctx context.Context, projectSlug string) ([]
 	}
 	out := make([]ProjectTeamResponse, len(links))
 	for i, l := range links {
-		out[i] = ProjectTeamResponse{ProjectID: l.ProjectID, TeamID: l.TeamID, TeamName: l.TeamName, Role: l.Role}
+		out[i] = ProjectTeamResponse{ProjectID: l.ProjectID, TeamID: l.TeamID, TeamName: l.TeamName, Role: normalizeMemberRole(l.Role)}
 	}
 	return out, nil
 }
