@@ -79,7 +79,8 @@ curl -fsS -u "${scan_token}:" -X POST \
 
 echo "== scan ==" >&2
 scan_status=0
-SONAR_HOST_URL="$sonar_url" SONAR_TOKEN="$scan_token" sonar-scanner \
+SONAR_HOST_URL="$sonar_url" SONAR_TOKEN="$scan_token" \
+SONAR_SCANNER_SKIP_JRE_PROVISIONING="true" sonar-scanner \
   "-Dsonar.projectKey=${PROJECT_KEY}" \
   "-Dsonar.projectName=${PROJECT_KEY}" \
   -Dsonar.sources=. \
@@ -88,6 +89,7 @@ SONAR_HOST_URL="$sonar_url" SONAR_TOKEN="$scan_token" sonar-scanner \
   "-Dsonar.scm.disabled=${SONAR_SCM_DISABLED}" \
   "-Dsonar.exclusions=${SONAR_EXCLUSIONS}" \
   "-Dsonar.go.coverage.reportPaths=${coverage_report}" \
+  "-Dsonar.scanner.skipJreProvisioning=true" \
   -Dsonar.qualitygate.wait=true || scan_status=$?
 
 echo "== findings summary ==" >&2

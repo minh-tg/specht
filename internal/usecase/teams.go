@@ -239,6 +239,23 @@ func (u *Usecases) LinkProjectTeam(ctx context.Context, projectSlug, teamID, rol
 	return &ProjectTeamResponse{ProjectID: link.ProjectID, TeamID: link.TeamID, TeamName: team.Name, Role: normalizeMemberRole(link.Role)}, nil
 }
 
+// checkUnlinkPermission ensures managers cannot unlink admin-level team links.
+func (u *Usecases) checkUnlinkPermission(ctx context.Context, projectID, teamID, callerRole string) error {
+	if auth.RoleRank(callerRole) >= auth.RoleRank(auth.RoleAdmin) {
+		return nil
+	}
+	links, err := u.deps.Stores.Teams.ListProjectTeams(ctx, projectID)
+	if err != nil {
+		return fmt.Errorf("list project teams: %w", err)
+	}
+	for _, l := range links {
+		if l.TeamID == teamID && auth.RoleRank(normalizeMemberRole(l.Role)) >= auth.RoleRank(callerRole) {
+			return ErrProjectAccessDenied
+		}
+	}
+	return nil
+}
+
 // UnlinkProjectTeam revokes the conferred role. Project managers may unlink
 // member or manager teams; unlinking admin teams requires project admin authority.
 func (u *Usecases) UnlinkProjectTeam(ctx context.Context, projectSlug, teamID string) error {
@@ -256,20 +273,8 @@ func (u *Usecases) UnlinkProjectTeam(ctx context.Context, projectSlug, teamID st
 	if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleManager) {
 		return ErrProjectAccessDenied
 	}
-	// If caller is not project admin, check the role of the existing link to prevent peer/superior revocation.
-	if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleAdmin) {
-		links, err := u.deps.Stores.Teams.ListProjectTeams(ctx, project.ID)
-		if err != nil {
-			return fmt.Errorf("list project teams: %w", err)
-		}
-		for _, l := range links {
-			if l.TeamID == teamID {
-				if auth.RoleRank(normalizeMemberRole(l.Role)) >= auth.RoleRank(callerRole) {
-					return ErrProjectAccessDenied
-				}
-				break
-			}
-		}
+	if err := u.checkUnlinkPermission(ctx, project.ID, teamID, callerRole); err != nil {
+		return err
 	}
 	if err := u.deps.Stores.Teams.UnlinkProjectTeam(ctx, project.ID, teamID); err != nil {
 		return fmt.Errorf("unlink project team: %w", err)
