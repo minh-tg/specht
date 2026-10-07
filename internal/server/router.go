@@ -124,10 +124,23 @@ func NewRouter(cfg RouterConfig) http.Handler {
 			return cfg.TokenIssuer.CreateToken(userID, email, role)
 		}))
 	}
-	r.Post("/api/v1/auth/register", h.Register)
-	r.Post("/api/v1/auth/login", h.Login)
-	r.Post("/api/v1/auth/refresh", h.Refresh)
-	r.Post("/api/v1/auth/logout", h.Logout)
+	r.Group(func(r chi.Router) {
+		if !cfg.RateLimit.Enabled {
+			rps := cfg.RateLimit.RPS
+			if rps <= 0 {
+				rps = 10
+			}
+			burst := cfg.RateLimit.Burst
+			if burst <= 0 {
+				burst = 20
+			}
+			r.Use(NewRateLimiter(rps, burst).Middleware(false))
+		}
+		r.Post("/api/v1/auth/register", h.Register)
+		r.Post("/api/v1/auth/login", h.Login)
+		r.Post("/api/v1/auth/refresh", h.Refresh)
+		r.Post("/api/v1/auth/logout", h.Logout)
+	})
 
 	r.Group(func(r chi.Router) {
 		r.Use(AuthMiddleware(cfg.JWTAuth, apiKeyAuth))

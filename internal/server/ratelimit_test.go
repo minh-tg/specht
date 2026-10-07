@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -154,4 +155,29 @@ func TestRateLimiter_EvictsIdleBuckets(t *testing.T) {
 	require.Equal(t, http.StatusOK, limited("10.0.1.1").Code)
 	assert.Equal(t, 1, l.BucketCount(), "idle buckets must be evicted")
 	assert.Equal(t, http.StatusOK, limited("10.0.0.9").Code, "evicted IP gets a fresh bucket")
+}
+
+func TestRouter_AuthEndpointsRateLimitedByDefault(t *testing.T) {
+	router := NewRouter(RouterConfig{
+		Usecases: &mockUsecases{},
+		JWTAuth:  testJWTAuth,
+		RateLimit: RateLimitConfig{
+			Enabled: false,
+			RPS:     1,
+			Burst:   2,
+		},
+	})
+
+	sendLogin := func() int {
+		req := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(`{"email":"a@b.com","password":"pw"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "192.0.2.1:1234"
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	assert.NotEqual(t, http.StatusTooManyRequests, sendLogin())
+	assert.NotEqual(t, http.StatusTooManyRequests, sendLogin())
+	assert.Equal(t, http.StatusTooManyRequests, sendLogin())
 }
