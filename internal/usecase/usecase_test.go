@@ -2208,6 +2208,12 @@ func TestRegister_ShortPassword(t *testing.T) {
 	assert.EqualError(t, err, "password must be at least 8 characters")
 }
 
+func TestRegister_LongPassword(t *testing.T) {
+	uc := New(Deps{})
+	_, err := uc.Register(context.Background(), "test@example.com", strings.Repeat("a", 73))
+	assert.EqualError(t, err, "password must be at most 72 characters")
+}
+
 func TestRegister_ExistingEmail(t *testing.T) {
 	ur := &mockUserRepo{}
 	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {
