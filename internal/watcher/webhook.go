@@ -15,6 +15,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/minh-tg/specht/internal/netutil"
 )
 
 const (
@@ -77,7 +79,7 @@ func NewWebhookNotifier(webhookURL, secret string, logger *slog.Logger) *Webhook
 		webhookURL: webhookURL,
 		secret:     secret,
 		logger:     logger,
-		client:     &http.Client{Timeout: 10 * time.Second},
+		client:     netutil.SafeHTTPClientForURL(webhookURL, 10*time.Second),
 		sleeper:    notifierSleep,
 	}
 }

@@ -20,6 +20,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	"github.com/minh-tg/specht/internal/netutil"
 )
 
 // WATCHER_* environment variables for the notification channel. Env sourcing
@@ -104,7 +106,7 @@ func NewSlackNotifier(webhookURL, secret string, logger *slog.Logger) *SlackNoti
 		webhookURL: webhookURL,
 		secret:     secret,
 		logger:     logger,
-		client:     &http.Client{Timeout: 10 * time.Second},
+		client:     netutil.SafeHTTPClientForURL(webhookURL, 10*time.Second),
 		sleeper:    notifierSleep,
 	}
 }

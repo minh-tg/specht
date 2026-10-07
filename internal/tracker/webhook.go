@@ -12,6 +12,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/minh-tg/specht/internal/netutil"
 )
 
 // WebHookSignatureHeader carries the HMAC-SHA256 digest of the raw request
@@ -68,7 +70,7 @@ func NewWebHookTracker(cfg WebHookTrackerConfig, logger func(string, ...any)) *W
 	t := &WebHookTracker{
 		endpoints: cfg.Endpoints,
 		secret:    cfg.Secret,
-		client:    &http.Client{Timeout: cfg.Timeout},
+		client:    netutil.NewSafeHTTPClient(cfg.Timeout),
 		logger:    logger,
 		jobs:      make(chan webhookJob, webhookQueue),
 	}
