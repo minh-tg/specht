@@ -2755,6 +2755,28 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
+func TestAuthMiddleware_CaseInsensitiveBearer(t *testing.T) {
+	tok, err := testJWTAuth.CreateToken("user-1", "user@example.com", auth.RoleAdmin)
+	require.NoError(t, err)
+
+	mw := AuthMiddleware(testJWTAuth)
+	var gotUser string
+	handler := mw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ident := auth.ContextIdentity(r.Context())
+		if ident != nil {
+			gotUser = ident.UserID
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	req := httptest.NewRequest("GET", "/api/v1/projects", nil)
+	req.Header.Set("Authorization", "bearer "+tok)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "user-1", gotUser)
+}
+
 func TestAuthMiddleware_ExpiredJWTDoesNotFallThrough(t *testing.T) {
 	mw := AuthMiddleware(testJWTAuth, auth.NewAPIKeyAuthenticator(func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
 		return "user-1", "project-1", nil, time.Time{}, nil
