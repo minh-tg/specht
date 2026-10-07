@@ -50,3 +50,15 @@ SELECT EXISTS(SELECT 1 FROM project_members WHERE project_id = $1 AND user_id = 
 
 -- name: ListMemberProjectIDs :many
 SELECT project_id FROM project_members WHERE user_id = $1;
+
+-- name: GetProjectMember :one
+SELECT * FROM project_members
+WHERE project_id = $1 AND user_id = $2;
+
+-- name: DeleteProjectMember :exec
+DELETE FROM project_members
+WHERE project_id = $1 AND user_id = $2;
+
+-- name: CountProjectAdmins :one
+SELECT COUNT(*) FROM project_members
+WHERE project_id = $1 AND role = 'admin';

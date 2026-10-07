@@ -241,6 +241,55 @@ func (r *pgProjectPort) UpsertMember(ctx context.Context, projectID, userID, rol
 	return memberToPort(row), nil
 }
 
+func (r *pgProjectPort) GetMember(ctx context.Context, projectID, userID string) (port.ProjectMember, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.ProjectMember{}, err
+	}
+	uid, err := parseID(userID)
+	if err != nil {
+		return port.ProjectMember{}, err
+	}
+	row, err := r.q.GetProjectMember(ctx, sqlc.GetProjectMemberParams{
+		ProjectID: pid,
+		UserID:    uid,
+	})
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return port.ProjectMember{}, port.ErrNotFound
+		}
+		return port.ProjectMember{}, err
+	}
+	return memberToPort(row), nil
+}
+
+func (r *pgProjectPort) DeleteMember(ctx context.Context, projectID, userID string) error {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return err
+	}
+	uid, err := parseID(userID)
+	if err != nil {
+		return err
+	}
+	return r.q.DeleteProjectMember(ctx, sqlc.DeleteProjectMemberParams{
+		ProjectID: pid,
+		UserID:    uid,
+	})
+}
+
+func (r *pgProjectPort) CountAdmins(ctx context.Context, projectID string) (int, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return 0, err
+	}
+	count, err := r.q.CountProjectAdmins(ctx, pid)
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}
+
 func (r *pgProjectPort) ListMembers(ctx context.Context, projectID string) ([]port.ProjectMember, error) {
 	pid, err := parseID(projectID)
 	if err != nil {

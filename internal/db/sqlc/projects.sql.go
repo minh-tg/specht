@@ -11,6 +11,18 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countProjectAdmins = `-- name: CountProjectAdmins :one
+SELECT COUNT(*) FROM project_members
+WHERE project_id = $1 AND role = 'admin'
+`
+
+func (q *Queries) CountProjectAdmins(ctx context.Context, projectID pgtype.UUID) (int64, error) {
+	row := q.db.QueryRow(ctx, countProjectAdmins, projectID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (slug, name, description, deployment_threshold, settings)
 VALUES ($1, $2, $3, $4, $5)
@@ -76,6 +88,21 @@ func (q *Queries) DeleteProject(ctx context.Context, slug string) (Project, erro
 	return i, err
 }
 
+const deleteProjectMember = `-- name: DeleteProjectMember :exec
+DELETE FROM project_members
+WHERE project_id = $1 AND user_id = $2
+`
+
+type DeleteProjectMemberParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	UserID    pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) DeleteProjectMember(ctx context.Context, arg DeleteProjectMemberParams) error {
+	_, err := q.db.Exec(ctx, deleteProjectMember, arg.ProjectID, arg.UserID)
+	return err
+}
+
 const getProjectByID = `-- name: GetProjectByID :one
 SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id FROM projects
 WHERE id = $1 LIMIT 1
@@ -122,6 +149,28 @@ func (q *Queries) GetProjectBySlug(ctx context.Context, slug string) (Project, e
 		&i.CveWatcherEnabled,
 		&i.CveWatcherIntervalSeconds,
 		&i.PolicyTemplateID,
+	)
+	return i, err
+}
+
+const getProjectMember = `-- name: GetProjectMember :one
+SELECT project_id, user_id, role, created_at FROM project_members
+WHERE project_id = $1 AND user_id = $2
+`
+
+type GetProjectMemberParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	UserID    pgtype.UUID `json:"user_id"`
+}
+
+func (q *Queries) GetProjectMember(ctx context.Context, arg GetProjectMemberParams) (ProjectMember, error) {
+	row := q.db.QueryRow(ctx, getProjectMember, arg.ProjectID, arg.UserID)
+	var i ProjectMember
+	err := row.Scan(
+		&i.ProjectID,
+		&i.UserID,
+		&i.Role,
+		&i.CreatedAt,
 	)
 	return i, err
 }

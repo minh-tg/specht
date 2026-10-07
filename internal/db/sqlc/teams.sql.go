@@ -47,7 +47,7 @@ func (q *Queries) DeleteTeam(ctx context.Context, id pgtype.UUID) error {
 const effectiveProjectRole = `-- name: EffectiveProjectRole :one
 SELECT ranked.role FROM (
     SELECT role,
-        CASE role WHEN 'admin' THEN 3 WHEN 'editor' THEN 2 ELSE 1 END AS rank
+        CASE role WHEN 'admin' THEN 3 WHEN 'manager' THEN 2 WHEN 'editor' THEN 2 ELSE 1 END AS rank
     FROM (
         SELECT pm.role FROM project_members pm WHERE pm.project_id = $1 AND pm.user_id = $2
         UNION ALL
@@ -66,7 +66,7 @@ type EffectiveProjectRoleParams struct {
 }
 
 // The strongest role a user holds on a project across direct membership
-// and team links (admin > editor > viewer). pgx.ErrNoRows means no access
+// and team links (admin > manager > member). pgx.ErrNoRows means no access
 // at all — callers treat it as denial, never as a default role.
 func (q *Queries) EffectiveProjectRole(ctx context.Context, arg EffectiveProjectRoleParams) (string, error) {
 	row := q.db.QueryRow(ctx, effectiveProjectRole, arg.ProjectID, arg.UserID)
