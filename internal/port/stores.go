@@ -1016,6 +1016,9 @@ type TeamStore interface {
 	LinkProjectTeam(ctx context.Context, projectID, teamID, role string) (ProjectTeam, error)
 	UnlinkProjectTeam(ctx context.Context, projectID, teamID string) error
 	ListProjectTeams(ctx context.Context, projectID string) ([]ProjectTeam, error)
+	// ListTeamProjectLinks returns every project a team is linked to,
+	// with the role each link confers on the team's members.
+	ListTeamProjectLinks(ctx context.Context, teamID string) ([]ProjectTeam, error)
 }
 
 // PolicyTemplate is a reusable organization-wide policy baseline.

@@ -309,6 +309,48 @@ func (q *Queries) ListTeamMembers(ctx context.Context, teamID pgtype.UUID) ([]Li
 	return items, nil
 }
 
+const listTeamProjectLinks = `-- name: ListTeamProjectLinks :many
+SELECT pt.project_id, pt.team_id, pt.role, pt.created_at, t.name AS team_name
+FROM project_teams pt
+JOIN teams t ON t.id = pt.team_id
+WHERE pt.team_id = $1
+ORDER BY pt.project_id ASC
+`
+
+type ListTeamProjectLinksRow struct {
+	ProjectID pgtype.UUID        `json:"project_id"`
+	TeamID    pgtype.UUID        `json:"team_id"`
+	Role      string             `json:"role"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	TeamName  string             `json:"team_name"`
+}
+
+func (q *Queries) ListTeamProjectLinks(ctx context.Context, teamID pgtype.UUID) ([]ListTeamProjectLinksRow, error) {
+	rows, err := q.db.Query(ctx, listTeamProjectLinks, teamID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListTeamProjectLinksRow
+	for rows.Next() {
+		var i ListTeamProjectLinksRow
+		if err := rows.Scan(
+			&i.ProjectID,
+			&i.TeamID,
+			&i.Role,
+			&i.CreatedAt,
+			&i.TeamName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTeams = `-- name: ListTeams :many
 SELECT id, name, description, created_at, updated_at FROM teams
 ORDER BY name ASC

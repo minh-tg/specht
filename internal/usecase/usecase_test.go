@@ -216,6 +216,14 @@ type mockTeamRepo struct {
 	linkFn         func(context.Context, string, string, string) (port.ProjectTeam, error)
 	unlinkFn       func(context.Context, string, string) error
 	listLinksFn    func(context.Context, string) ([]port.ProjectTeam, error)
+	teamLinksFn    func(context.Context, string) ([]port.ProjectTeam, error)
+}
+
+func (m *mockTeamRepo) ListTeamProjectLinks(ctx context.Context, teamID string) ([]port.ProjectTeam, error) {
+	if m.teamLinksFn != nil {
+		return m.teamLinksFn(ctx, teamID)
+	}
+	return nil, nil
 }
 
 func (m *mockTeamRepo) CreateTeam(ctx context.Context, name, description string) (port.Team, error) {
