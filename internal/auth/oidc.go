@@ -2,7 +2,9 @@ package auth
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
@@ -133,7 +135,7 @@ func (a *OIDCAuthenticator) Authenticate(ctx context.Context, token string) (*Id
 	return nil, ErrNotApplicable
 }
 
-func (a *OIDCAuthenticator) exchangeCode(ctx context.Context, code string) (map[string]any, error) {
+func (a *OIDCAuthenticator) exchangeCode(ctx context.Context, code, codeVerifier string) (map[string]any, error) {
 	// The client secret is POSTed below to an endpoint derived from the
 	// issuer; refuse anything but the validated HTTPS (or loopback) issuer
 	// base. This is a second line of defense behind the constructor check —
@@ -148,6 +150,9 @@ func (a *OIDCAuthenticator) exchangeCode(ctx context.Context, code string) (map[
 	data.Set("client_id", a.cfg.ClientID)
 	data.Set("client_secret", a.cfg.ClientSecret)
 	data.Set("redirect_uri", a.cfg.RedirectURI)
+	if codeVerifier != "" {
+		data.Set("code_verifier", codeVerifier)
+	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(data.Encode()))
 	if err != nil {
@@ -201,11 +206,11 @@ func (a *OIDCAuthenticator) identityFromIDToken(ctx context.Context, idToken str
 		return nil, ErrInvalidCredential
 	}
 
-	if wantNonce != "" {
-		gotNonce, _ := claims["nonce"].(string)
-		if gotNonce == "" || !secureCompare(gotNonce, wantNonce) {
-			return nil, ErrInvalidCredential
-		}
+	// The nonce is always checked: a login flow that did not send one has no
+	// way to tell a replayed id_token from a fresh one.
+	gotNonce, _ := claims["nonce"].(string)
+	if wantNonce == "" || gotNonce == "" || !secureCompare(gotNonce, wantNonce) {
+		return nil, ErrInvalidCredential
 	}
 
 	sub, _ := claims.GetSubject()
@@ -504,16 +509,22 @@ func idTokenSubject(idToken string) (string, error) {
 // verifySSOCallbackState validates the OAuth2 state parameter against the
 // single-use state cookie and clears the cookie. It returns the server-issued
 // nonce bound into the state value.
-func verifySSOCallbackState(w http.ResponseWriter, r *http.Request, cookieName string) (wantNonce, returnTo string, ok bool) {
-	state := r.URL.Query().Get("state")
+func verifySSOCallbackState(w http.ResponseWriter, r *http.Request, cookieName string) (state, wantNonce, returnTo string, ok bool) {
+	state = r.URL.Query().Get("state")
 	if state == "" {
 		http.Error(w, "missing state", http.StatusBadRequest)
-		return "", "", false
+		return "", "", "", false
 	}
 	stateCookie, err := r.Cookie(cookieName)
 	if err != nil || !secureCompare(state, stateCookie.Value) {
 		http.Error(w, "state mismatch", http.StatusBadRequest)
-		return "", "", false
+		return "", "", "", false
+	}
+	// Every login this server starts carries a nonce (GenerateStateToken); a
+	// state without one did not come from here.
+	if _, nonce := splitStateNonce(stateCookie.Value); nonce == "" {
+		http.Error(w, "invalid state", http.StatusBadRequest)
+		return "", "", "", false
 	}
 
 	returnTo = "/"
@@ -540,7 +551,7 @@ func verifySSOCallbackState(w http.ResponseWriter, r *http.Request, cookieName s
 	// GenerateStateToken), so an id_token is only accepted when its nonce
 	// claim matches what this login flow actually sent to the provider.
 	_, wantNonce = splitStateNonce(stateCookie.Value)
-	return wantNonce, returnTo, true
+	return state, wantNonce, returnTo, true
 }
 
 // extractCallbackIdentity resolves the callback identity from the token
@@ -605,7 +616,7 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, cla
 	const stateCookieName = "sso_state"
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		wantNonce, returnTo, ok := verifySSOCallbackState(w, r, stateCookieName)
+		state, wantNonce, returnTo, ok := verifySSOCallbackState(w, r, stateCookieName)
 		if !ok {
 			return
 		}
@@ -616,7 +627,7 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, cla
 			return
 		}
 
-		tokenResp, err := a.exchangeCode(r.Context(), code)
+		tokenResp, err := a.exchangeCode(r.Context(), code, a.pkceVerifier(state))
 		if err != nil {
 			if a.logger != nil {
 				a.logger("oidc token exchange failed", "error", err)
@@ -650,7 +661,32 @@ func (a *OIDCAuthenticator) LoginURL(state string) string {
 	if nonce != "" {
 		params.Set("nonce", nonce)
 	}
+	if verifier := a.pkceVerifier(state); verifier != "" {
+		params.Set("code_challenge", pkceChallenge(verifier))
+		params.Set("code_challenge_method", "S256")
+	}
 	return strings.TrimSuffix(a.cfg.IssuerURL, "/") + "/oauth/authorize?" + params.Encode()
+}
+
+// pkceVerifier derives the RFC 7636 code verifier for one login flow. It is
+// an HMAC of the state keyed with the client secret, so it is unique per flow,
+// stable across replicas (nothing to store), and cannot be computed by someone
+// who has only seen the redirect URL, which carries the state and code but
+// never the secret. With no client secret configured the key would be public,
+// so PKCE is skipped instead of offering a guessable verifier.
+func (a *OIDCAuthenticator) pkceVerifier(state string) string {
+	if a.cfg.ClientSecret == "" {
+		return ""
+	}
+	mac := hmac.New(sha256.New, []byte(a.cfg.ClientSecret))
+	mac.Write([]byte("specht-oidc-pkce\x00" + state))
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
+
+// pkceChallenge is the S256 transform of a verifier.
+func pkceChallenge(verifier string) string {
+	sum := sha256.Sum256([]byte(verifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
 // GenerateStateToken returns a cryptographically random state value for OAuth2
@@ -682,9 +718,8 @@ func randomToken() (string, error) {
 }
 
 // splitStateNonce splits a GenerateStateToken value into its csrf and nonce
-// halves. Values without a separator (e.g. hand-rolled states in tests, or a
-// provider echoing a legacy state) yield an empty nonce; the callback then
-// accepts id_tokens without a nonce claim rather than breaking old flows.
+// halves. A value without a separator yields an empty nonce, which the
+// callback rejects: it did not come from GenerateStateToken.
 func splitStateNonce(state string) (csrf, nonce string) {
 	if i := strings.IndexByte(state, '.'); i >= 0 {
 		return state[:i], state[i+1:]

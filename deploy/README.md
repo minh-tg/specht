@@ -217,6 +217,21 @@ endpoint without a signed subject to verify. Prefer configuring the IdP to
 return ID tokens; enable this only after assessing the reduced assurance.
 This option never bypasses validation when an ID token is present.
 
+## SSO login protections
+
+Each SSO login sends the provider a state, an OIDC `nonce`, and (when
+`SSO_CLIENT_SECRET` is set) a PKCE `code_challenge` (S256). The callback
+rejects a state that carries no nonce and an ID token whose nonce does not
+match, and the token request proves possession of the PKCE verifier. The
+verifier is derived from the state and the client secret, so nothing extra is
+stored and any replica can complete a login another one started. Providers
+that do not support PKCE ignore the extra parameters. Logins that were
+already in flight when you upgrade fail once and succeed on retry.
+
+The session token still reaches the SPA in the URL fragment after a
+successful login; it is never sent to the server or in a `Referer` header, but
+page scripts can read it.
+
 ## SSO account linking
 
 An SSO login is matched to an account by the provider's stable identity, the

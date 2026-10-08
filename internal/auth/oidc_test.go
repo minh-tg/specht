@@ -228,6 +228,8 @@ type fakeOIDCProvider struct {
 	// userEmailVerified, when non-nil, is sent as the userinfo email_verified
 	// claim exactly as given (bool, string, ...).
 	userEmailVerified any
+	// tokenForm is the form body of the most recent token request.
+	tokenForm url.Values
 }
 
 func writeFakeOIDCResponse(t *testing.T, w http.ResponseWriter, format string, args ...any) {
@@ -244,6 +246,8 @@ func newFakeOIDCProvider(t *testing.T, key *rsa.PrivateKey) *fakeOIDCProvider {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/oauth/token":
+			_ = r.ParseForm()
+			p.tokenForm = r.PostForm
 			if p.omitIDToken {
 				writeFakeOIDCResponse(t, w, `{"access_token":"acc-test","token_type":"Bearer"}`)
 			} else {
@@ -368,7 +372,7 @@ func TestOIDC_Callback_RejectsAbsentIDTokenByDefault(t *testing.T) {
 	prov.omitIDToken = true
 	auth := mustOIDC(t, prov.srv.URL)
 
-	w, gotUserID, _ := callbackResponse(t, auth, "csrf-state")
+	w, gotUserID, _ := callbackResponse(t, auth, "csrf-state.test-nonce")
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Empty(t, gotUserID, "userinfo-only response must not issue a session by default")
 }
@@ -380,7 +384,7 @@ func TestOIDC_Callback_AllowsAbsentIDTokenWhenExplicitlyEnabled(t *testing.T) {
 	auth := mustOIDC(t, prov.srv.URL)
 	auth.cfg.AllowUserInfoOnly = true
 
-	w, gotUserID, gotEmail := callbackResponse(t, auth, "csrf-state")
+	w, gotUserID, gotEmail := callbackResponse(t, auth, "csrf-state.test-nonce")
 	assert.Equal(t, "oidc-user-1", gotUserID)
 	assert.Equal(t, "oidc@example.com", gotEmail)
 	assert.Equal(t, http.StatusFound, w.Code)
@@ -394,7 +398,7 @@ func TestOIDC_Callback_RejectsMalformedIDTokenWhenUserInfoOnlyEnabled(t *testing
 	auth := mustOIDC(t, prov.srv.URL)
 	auth.cfg.AllowUserInfoOnly = true
 
-	w, gotUserID, _ := callbackResponse(t, auth, "csrf-state")
+	w, gotUserID, _ := callbackResponse(t, auth, "csrf-state.test-nonce")
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Empty(t, gotUserID, "opt-in applies only when the token is absent")
 }
