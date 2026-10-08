@@ -140,6 +140,11 @@ func startLifecycle(ctx context.Context, stores *port.Stores, analysisStore port
 }
 
 func main() {
+	// The container HEALTHCHECK runs before any configuration is needed, so
+	// it must not depend on secrets or the database being set up.
+	if len(os.Args) > 1 && os.Args[1] == "healthcheck" {
+		os.Exit(healthcheckMain())
+	}
 	cfg, err := config.Load()
 	exitOnError("config", err)
 	setupLogging(cfg.LogLevel)
