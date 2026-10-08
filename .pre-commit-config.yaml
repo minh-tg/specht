@@ -104,3 +104,11 @@ repos:
             exit 1
           fi
           ' --
+
+  - repo: local
+    hooks:
+      - id: dco-signoff
+        name: DCO sign-off
+        language: system
+        stages: [commit-msg]
+        entry: scripts/dco-signoff.sh
