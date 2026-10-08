@@ -212,7 +212,7 @@ func (m *mockUsecases) Login(ctx context.Context, email, password string) (*usec
 	return m.loginFn(ctx, email, password)
 }
 
-func (m *mockUsecases) FindOrProvisionSSOUser(ctx context.Context, sub, email string, groups []string, allowedDomains []string, adminGroups []string) (string, string, bool, error) {
+func (m *mockUsecases) FindOrProvisionSSOUser(ctx context.Context, claims auth.SSOClaims, allowedDomains []string, adminGroups []string) (string, string, bool, error) {
 	return "", "", false, fmt.Errorf("unexpected call to FindOrProvisionSSOUser")
 }
 

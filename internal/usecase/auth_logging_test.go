@@ -45,7 +45,7 @@ func TestFindOrProvisionSSOUser_DoesNotLogTheFullEmail(t *testing.T) {
 	}
 
 	_, _, _, err := New(ssoTestDeps(ur)).FindOrProvisionSSOUser(
-		context.Background(), "sub-9", "mallory@evil.example", nil, []string{"example.com"}, nil)
+		context.Background(), auth.SSOClaims{Subject: "sub-9", Email: "mallory@evil.example"}, []string{"example.com"}, nil)
 
 	assert.ErrorIs(t, err, auth.ErrSSONotProvisioned)
 	assert.NotContains(t, logs.String(), "mallory@evil.example")

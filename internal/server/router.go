@@ -28,7 +28,7 @@ const (
 
 // OIDCAuthenticator is the SSO capability consumed by the router.
 type OIDCAuthenticator interface {
-	CallbackHandler(func(context.Context, string, string, []string) (string, error)) http.HandlerFunc
+	CallbackHandler(func(context.Context, auth.SSOClaims) (string, error)) http.HandlerFunc
 	LoginURL(state string) string
 }
 
@@ -112,7 +112,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	// SSO/OIDC entry point: redirect to the provider's authorization URL.
 	if cfg.OIDCEnabled && cfg.OIDC != nil {
 		r.Get("/api/v1/auth/sso/login", ssoLoginHandler(cfg.OIDC))
-		r.Get("/api/v1/auth/sso/callback", cfg.OIDC.CallbackHandler(func(ctx context.Context, sub, email string, groups []string) (string, error) {
+		r.Get("/api/v1/auth/sso/callback", cfg.OIDC.CallbackHandler(func(ctx context.Context, claims auth.SSOClaims) (string, error) {
 			if cfg.TokenIssuer == nil {
 				return "", fmt.Errorf("OIDC enabled but no token issuer configured")
 			}
@@ -120,11 +120,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 			// keep their local role; unknown subjects are provisioned only
 			// for allowlisted domains, otherwise rejected. IdP admin
 			// groups elevate provisioned accounts.
-			userID, role, _, err := cfg.Usecases.FindOrProvisionSSOUser(ctx, sub, email, groups, cfg.SSOAllowedDomains, cfg.SSOAdminGroups)
+			userID, role, _, err := cfg.Usecases.FindOrProvisionSSOUser(ctx, claims, cfg.SSOAllowedDomains, cfg.SSOAdminGroups)
 			if err != nil {
 				return "", err
 			}
-			return cfg.TokenIssuer.CreateToken(userID, email, role)
+			return cfg.TokenIssuer.CreateToken(userID, auth.NormalizeEmail(claims.Email), role)
 		}))
 	}
 	r.Group(func(r chi.Router) {

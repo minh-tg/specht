@@ -23,7 +23,7 @@ func TestFindOrProvisionSSOUser_ExistingKeepsLocalRole(t *testing.T) {
 		return u, nil
 	}
 	uc := New(ssoTestDeps(ur))
-	userID, role, provisioned, err := uc.FindOrProvisionSSOUser(context.Background(), "sub-1", "Ada@Example.COM", nil, nil, nil)
+	userID, role, provisioned, err := uc.FindOrProvisionSSOUser(context.Background(), auth.SSOClaims{Subject: "sub-1", Email: "Ada@Example.COM"}, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "user-1", userID)
 	assert.Equal(t, auth.RoleAdmin, role, "existing accounts keep their local role")
@@ -45,7 +45,7 @@ func TestFindOrProvisionSSOUser_NormalisesEmailForLookupAndCreate(t *testing.T) 
 		return u, nil
 	}
 	uc := New(ssoTestDeps(ur))
-	_, _, _, err := uc.FindOrProvisionSSOUser(context.Background(), "sub-9", "  New@Example.COM ", nil, []string{"example.com"}, nil)
+	_, _, _, err := uc.FindOrProvisionSSOUser(context.Background(), auth.SSOClaims{Subject: "sub-9", Email: "  New@Example.COM "}, []string{"example.com"}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "new@example.com", lookedUp, "the IdP's casing must not decide which account is found")
 	assert.Equal(t, "new@example.com", created, "and must not create a second account for the same person")
@@ -60,7 +60,7 @@ func TestFindOrProvisionSSOUser_UnknownDomainDenied(t *testing.T) {
 		return port.User{}, assert.AnError
 	}
 	uc := New(ssoTestDeps(ur))
-	_, _, _, err := uc.FindOrProvisionSSOUser(context.Background(), "sub-9", "mallory@evil.example", nil, []string{"example.com"}, nil)
+	_, _, _, err := uc.FindOrProvisionSSOUser(context.Background(), auth.SSOClaims{Subject: "sub-9", Email: "mallory@evil.example"}, []string{"example.com"}, nil)
 	assert.ErrorIs(t, err, auth.ErrSSONotProvisioned)
 }
 
@@ -78,7 +78,7 @@ func TestFindOrProvisionSSOUser_AllowedDomainProvisions(t *testing.T) {
 		return u, nil
 	}
 	uc := New(ssoTestDeps(ur))
-	userID, role, provisioned, err := uc.FindOrProvisionSSOUser(context.Background(), "sub-9", "New@Example.COM", nil, []string{"example.com"}, nil)
+	userID, role, provisioned, err := uc.FindOrProvisionSSOUser(context.Background(), auth.SSOClaims{Subject: "sub-9", Email: "New@Example.COM"}, []string{"example.com"}, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "user-9", userID)
 	assert.Equal(t, auth.RoleViewer, role, "provisioned member accounts map to viewer claims")
@@ -88,7 +88,7 @@ func TestFindOrProvisionSSOUser_AllowedDomainProvisions(t *testing.T) {
 
 func TestFindOrProvisionSSOUser_EmptyEmailDenied(t *testing.T) {
 	uc := New(Deps{Stores: &port.Stores{Users: &mockUserRepo{}}})
-	_, _, _, err := uc.FindOrProvisionSSOUser(context.Background(), "sub-1", "", nil, []string{"example.com"}, nil)
+	_, _, _, err := uc.FindOrProvisionSSOUser(context.Background(), auth.SSOClaims{Subject: "sub-1", Email: ""}, []string{"example.com"}, nil)
 	assert.ErrorIs(t, err, auth.ErrSSONotProvisioned)
 }
 
@@ -112,8 +112,8 @@ func TestFindOrProvisionSSOUser_AdminGroupProvisionsAdmin(t *testing.T) {
 	}
 	uc := New(ssoTestDeps(ur))
 	userID, role, provisioned, err := uc.FindOrProvisionSSOUser(
-		context.Background(), "sub-9", "new@example.com",
-		[]string{"idp-viewers", "idp-admins"}, []string{"example.com"}, []string{"idp-admins"},
+		context.Background(), auth.SSOClaims{Subject: "sub-9", Email: "new@example.com", Groups: []string{"idp-viewers", "idp-admins"}},
+		[]string{"example.com"}, []string{"idp-admins"},
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "user-9", userID)
@@ -140,8 +140,8 @@ func TestFindOrProvisionSSOUser_NonAdminGroupStaysMember(t *testing.T) {
 	}
 	uc := New(ssoTestDeps(ur))
 	_, role, provisioned, err := uc.FindOrProvisionSSOUser(
-		context.Background(), "sub-9", "new@example.com",
-		[]string{"idp-viewers"}, []string{"example.com"}, []string{"idp-admins"},
+		context.Background(), auth.SSOClaims{Subject: "sub-9", Email: "new@example.com", Groups: []string{"idp-viewers"}},
+		[]string{"example.com"}, []string{"idp-admins"},
 	)
 	require.NoError(t, err)
 	assert.Equal(t, auth.RoleViewer, role)
@@ -164,8 +164,8 @@ func TestFindOrProvisionSSOUser_ExistingRoleNeverChanges(t *testing.T) {
 	}
 	uc := New(ssoTestDeps(ur))
 	_, role, provisioned, err := uc.FindOrProvisionSSOUser(
-		context.Background(), "sub-1", "ada@example.com",
-		[]string{"idp-admins"}, []string{"example.com"}, []string{"idp-admins"},
+		context.Background(), auth.SSOClaims{Subject: "sub-1", Email: "ada@example.com", Groups: []string{"idp-admins"}},
+		[]string{"example.com"}, []string{"idp-admins"},
 	)
 	require.NoError(t, err)
 	assert.Equal(t, auth.RoleViewer, role, "IdP groups never change an established role")
@@ -189,8 +189,8 @@ func TestFindOrProvisionSSOUser_ElevationFailureFailsClosed(t *testing.T) {
 	}
 	uc := New(ssoTestDeps(ur))
 	_, _, _, err := uc.FindOrProvisionSSOUser(
-		context.Background(), "sub-9", "new@example.com",
-		[]string{"idp-admins"}, []string{"example.com"}, []string{"idp-admins"},
+		context.Background(), auth.SSOClaims{Subject: "sub-9", Email: "new@example.com", Groups: []string{"idp-admins"}},
+		[]string{"example.com"}, []string{"idp-admins"},
 	)
 	require.Error(t, err, "failed elevation must fail the login, not mint an admin token")
 }
