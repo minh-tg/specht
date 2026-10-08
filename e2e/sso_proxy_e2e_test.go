@@ -185,6 +185,11 @@ func TestE2E_SSOLoginAndProvisioning(t *testing.T) {
 		require.Equal(t, passwordMe.ID, ssoMe.ID, "same account, two transports")
 		require.Equal(t, passwordMe.Role, ssoMe.Role,
 			"group membership never promotes or demotes an existing user")
+
+		status, _ = doJSON(t, http.MethodPost, "/api/v1/auth/login", "",
+			map[string]string{"email": email, "password": adminPass})
+		require.Equal(t, http.StatusUnauthorized, status,
+			"linking through the provider retires the password that may have been set by someone else")
 	})
 }
 

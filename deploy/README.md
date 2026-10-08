@@ -209,6 +209,11 @@ links the existing account with the same address or, when its domain is in
 `SSO_ALLOWED_DOMAINS`, provisions a new one. An account that is already linked
 to a different subject at the same provider is never re-linked by email.
 
+Linking an existing account removes its password and revokes all of its
+refresh tokens, because whoever registered that address first may not be the
+person the provider vouches for. The user signs in through the provider from
+then on. Accounts created by SSO never had a password.
+
 Existing SSO users have no link yet; their next login creates it, which needs
 the verified email above. If your provider never sends `email_verified` (Azure
 AD v2 does not by default) and its emails are controlled by your

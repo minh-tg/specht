@@ -206,10 +206,23 @@ func (u *Usecases) linkExistingSSOUser(ctx context.Context, user port.User, issu
 	case !errors.Is(err, port.ErrNotFound):
 		return "", "", false, fmt.Errorf("lookup user identity: %w", err)
 	}
+	// Whoever registered this address first may not be its owner. Drop the
+	// password so it cannot be used again, and end every session minted
+	// with it, before the provider identity takes the account over. The
+	// steps are idempotent, so a failure part-way is retried on the next
+	// login instead of leaving a linked account with a live backdoor.
+	if user.PasswordHash != "" {
+		if err := u.deps.Stores.Users.ClearPassword(ctx, user.ID); err != nil {
+			return "", "", false, fmt.Errorf("disable password for sso link: %w", err)
+		}
+	}
+	if err := u.deps.Stores.RefreshTokens.RevokeAllForUser(ctx, user.ID); err != nil {
+		return "", "", false, fmt.Errorf("revoke sessions for sso link: %w", err)
+	}
 	if err := u.linkSSOIdentity(ctx, user.ID, issuer, sub); err != nil {
 		return "", "", false, err
 	}
-	slog.Info("sso login: linked existing account", "user_id", user.ID, "sub", sub)
+	slog.Info("sso login: linked existing account", "user_id", user.ID, "sub", sub, "password_disabled", user.PasswordHash != "")
 	return user.ID, auth.TokenRole(user.Role), false, nil
 }
 

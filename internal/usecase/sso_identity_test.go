@@ -25,6 +25,7 @@ type mockIdentityRepo struct {
 	byUser    map[string]port.UserIdentity
 	linkErr   error
 	links     []port.UserIdentity
+	onLink    func(userID string)
 }
 
 func newMockIdentityRepo() *mockIdentityRepo {
@@ -62,11 +63,18 @@ func (m *mockIdentityRepo) Link(ctx context.Context, userID, issuer, subject str
 	id := port.UserIdentity{UserID: userID, Issuer: issuer, Subject: subject}
 	m.links = append(m.links, id)
 	m.seed(userID, issuer, subject)
+	if m.onLink != nil {
+		m.onLink(userID)
+	}
 	return id, nil
 }
 
 func ssoDepsWith(ur *mockUserRepo, ids *mockIdentityRepo) Deps {
-	return Deps{Stores: &port.Stores{Users: ur, Identities: ids}}
+	return Deps{Stores: &port.Stores{
+		Users:         ur,
+		Identities:    ids,
+		RefreshTokens: &mockRefreshTokenRepo{revokeAllFn: func(context.Context, string) error { return nil }},
+	}}
 }
 
 func existingUser(id, role string) func(context.Context, string) (port.User, error) {
