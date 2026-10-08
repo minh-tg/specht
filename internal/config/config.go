@@ -78,6 +78,9 @@ type Server struct {
 	// administrator has to register before anyone can be promoted; SSO-only
 	// and locked-down deployments close it once their admins exist.
 	RegistrationDisabled bool
+	// IngestConcurrency caps report ingests processed at once; zero leaves
+	// the server's built-in default.
+	IngestConcurrency int
 }
 
 // SSOConfig configures OIDC single-sign-on login.
@@ -350,6 +353,14 @@ func Load() (*Server, error) {
 			return nil, fmt.Errorf("REGISTRATION_ENABLED is invalid: %q (want true or false)", v)
 		}
 		s.RegistrationDisabled = !enabled
+	}
+
+	if v := os.Getenv("INGEST_MAX_CONCURRENCY"); v != "" {
+		n, err := parsePositiveInt("INGEST_MAX_CONCURRENCY", v)
+		if err != nil {
+			return nil, err
+		}
+		s.IngestConcurrency = n
 	}
 
 	if err := loadRateLimit(s); err != nil {

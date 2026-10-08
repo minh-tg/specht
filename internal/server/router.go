@@ -66,6 +66,9 @@ type RouterConfig struct {
 	// RegistrationDisabled makes POST /api/v1/auth/register answer 403. It is
 	// phrased as a disable flag so the zero value keeps registration open.
 	RegistrationDisabled bool
+	// IngestConcurrency caps report ingests processed at once; zero or less
+	// means DefaultIngestConcurrency.
+	IngestConcurrency int
 }
 
 // NewRouter builds the chi router with middleware and all API routes.
@@ -102,7 +105,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	r.Use(LoggerMiddleware)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(30 * time.Second))
+	r.Use(requestTimeout(defaultRequestTimeout, ingestWindow+ingestWriteSlack))
 	var revoker auth.TokenRevoker = cfg.Revoker
 	if revoker == nil {
 		revoker, _ = cfg.JWTAuth.(auth.TokenRevoker)
@@ -173,6 +176,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		readScope := RequireAPIKeyScopes(auth.ScopeRead, auth.ScopeAdmin)
 		adminScope := RequireAPIKeyScopes(auth.ScopeAdmin)
 		ingestScope := RequireAPIKeyScopes(auth.ScopeIngest)
+		ingestGate := ingestLimits(cfg.IngestConcurrency, ingestQueueWait, ingestWindow, ingestWriteSlack)
 		session := RequireSession()
 		sessionAdmin := RequireSessionRole(auth.RoleAdmin)
 		if cfg.RateLimit.Enabled {
@@ -191,7 +195,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(readScope).Get("/api/v1/projects/{slug}/findings", h.ListFindings)
 		r.With(readScope).Get("/api/v1/projects/{slug}/reports", h.ListReports)
 		r.With(readScope).Get("/api/v1/reports/{id}", h.GetReport)
-		r.With(ingestScope).Post("/api/v1/reports", h.IngestReport)
+		r.With(ingestScope, ingestGate).Post(ingestPath, h.IngestReport)
 		r.With(RequireRole(auth.RoleAdmin)).Post("/api/v1/auth/apikeys", h.CreateAPIKey)
 		r.With(RequireRole(auth.RoleAdmin)).Get("/api/v1/auth/apikeys", h.ListAPIKeys)
 		r.With(RequireRole(auth.RoleAdmin)).Delete("/api/v1/auth/apikeys/{id}", h.RevokeAPIKey)
