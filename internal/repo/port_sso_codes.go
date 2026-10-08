@@ -13,6 +13,7 @@ import (
 type pgSSOCodePort struct{ q *sqlc.Queries }
 
 func (r *pgSSOCodePort) Create(ctx context.Context, codeHash, userID, email, role string, expiresAt time.Time) error {
+	_ = r.q.PruneSSOCodes(ctx)
 	uid, err := parseID(userID)
 	if err != nil {
 		return err
@@ -27,6 +28,7 @@ func (r *pgSSOCodePort) Create(ctx context.Context, codeHash, userID, email, rol
 }
 
 func (r *pgSSOCodePort) Consume(ctx context.Context, codeHash string, now time.Time) (port.SSOCode, error) {
+	_ = r.q.PruneSSOCodes(ctx)
 	row, err := r.q.ConsumeSSOCode(ctx, sqlc.ConsumeSSOCodeParams{
 		CodeHash:  codeHash,
 		ExpiresAt: pgtype.Timestamptz{Time: now, Valid: true},
