@@ -10,10 +10,18 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
+// fullTools registers every tool, for tests about a tool's own behaviour.
+var fullTools = toolOptions{AllowMutations: true, SessionCredential: true}
+
 func connectMCPServer(t *testing.T, api API) *mcp.ClientSession {
 	t.Helper()
+	return connectMCPServerWith(t, api, fullTools)
+}
+
+func connectMCPServerWith(t *testing.T, api API, opts toolOptions) *mcp.ClientSession {
+	t.Helper()
 	ctx := context.Background()
-	server := newMCPServer(api)
+	server := newMCPServer(api, opts)
 	client := mcp.NewClient(&mcp.Implementation{Name: "specht-test-client", Version: "0.1.0"}, nil)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	serverSession, err := server.Connect(ctx, serverTransport, nil)
@@ -201,5 +209,94 @@ func TestMCPServerAPIErrorsAreToolErrors(t *testing.T) {
 	}
 	if !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "api unavailable") {
 		t.Fatalf("unexpected API error: %+v", result.Content)
+	}
+}
+
+func listedTools(t *testing.T, opts toolOptions) map[string]bool {
+	t.Helper()
+	result, err := connectMCPServerWith(t, &mockClient{}, opts).ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := make(map[string]bool, len(result.Tools))
+	for _, tool := range result.Tools {
+		got[tool.Name] = true
+	}
+	return got
+}
+
+var (
+	readOnlyTools = []string{
+		"findings_list", "findings_get", "gate_check", "pr_preview", "patch_preview",
+		"notify_preview", "policy_effective", "project_teams", "waivers_list",
+		"waivers_get", "waiver_events",
+	}
+	sessionOnlyTools = []string{"admin_status", "admin_retention_preview", "teams_list", "watcher_status"}
+	mutatingTools    = []string{"reachability_set", "waivers_create", "waivers_toggle"}
+)
+
+func assertTools(t *testing.T, got map[string]bool, present, absent []string) {
+	t.Helper()
+	for _, name := range present {
+		if !got[name] {
+			t.Errorf("tool %q should be registered", name)
+		}
+	}
+	for _, name := range absent {
+		if got[name] {
+			t.Errorf("tool %q must not be registered", name)
+		}
+	}
+}
+
+// An agent holding a project API key gets read-only tools by default: nothing
+// that changes state, and nothing the key cannot call anyway.
+func TestMCPServer_DefaultSurfaceIsReadOnlyAndKeyUsable(t *testing.T) {
+	got := listedTools(t, toolOptions{})
+
+	assertTools(t, got, readOnlyTools, append(append([]string{}, sessionOnlyTools...), mutatingTools...))
+	if len(got) != len(readOnlyTools) {
+		t.Errorf("tool count = %d, want %d", len(got), len(readOnlyTools))
+	}
+}
+
+func TestMCPServer_MutatingToolsNeedAnExplicitOptIn(t *testing.T) {
+	got := listedTools(t, toolOptions{AllowMutations: true})
+
+	assertTools(t, got, append(append([]string{}, readOnlyTools...), mutatingTools...), sessionOnlyTools)
+}
+
+func TestMCPServer_SessionOnlyToolsNeedASessionCredential(t *testing.T) {
+	got := listedTools(t, toolOptions{SessionCredential: true})
+
+	assertTools(t, got, append(append([]string{}, readOnlyTools...), sessionOnlyTools...), mutatingTools)
+}
+
+func TestLoadToolOptions(t *testing.T) {
+	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
+	tests := []struct {
+		name    string
+		key     string
+		env     map[string]string
+		want    toolOptions
+		wantErr bool
+	}{
+		{"project api key, nothing set", "vuln_abc123", nil, toolOptions{}, false},
+		{"session token", "eyJhbGciOi.payload.sig", nil, toolOptions{SessionCredential: true}, false},
+		{"opt in to mutations", "vuln_abc123", map[string]string{"MCP_ALLOW_MUTATIONS": "true"}, toolOptions{AllowMutations: true}, false},
+		{"explicit off", "vuln_abc123", map[string]string{"MCP_ALLOW_MUTATIONS": "false"}, toolOptions{}, false},
+		{"typo fails rather than guessing", "vuln_abc123", map[string]string{"MCP_ALLOW_MUTATIONS": "ture"}, toolOptions{}, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := loadToolOptions(tc.key, env(tc.env))
+
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, tc.wantErr)
+			}
+			if err == nil && got != tc.want {
+				t.Fatalf("options = %+v, want %+v", got, tc.want)
+			}
+		})
 	}
 }

@@ -335,6 +335,7 @@ func cleanEnv(overrides ...string) []string {
 		"LIFECYCLE_SWEEP_INTERVAL": true, "RATE_LIMIT_ENABLED": true,
 		"RATE_LIMIT_LOGIN_PER_MINUTE": true, "RATE_LIMIT_LOGIN_BURST": true,
 		"WATCHER_ENABLE": true, "API_URL": true, "API_KEY": true,
+		"MCP_ALLOW_MUTATIONS": true,
 		// Fake-wired endpoints: developer or CI exports must never leak
 		// into the experiment (the fakes are the only authority).
 		"WATCHER_OSV_ENDPOINT": true, "WATCHER_OSV_VULN_ENDPOINT": true,
