@@ -134,6 +134,11 @@ type Deps struct {
 	InventoryTTL time.Duration
 	Tracker      TrackerDispatcher
 	Intel        IntelStore
+	// SSOAllowUnverifiedEmail lets a first-time SSO login link or provision by
+	// an email the provider did not mark verified. It exists for providers that
+	// never send email_verified (for example a single-tenant directory whose
+	// administrators control every address) and is off by default.
+	SSOAllowUnverifiedEmail bool
 }
 
 // Usecases groups the application's use-case methods. It is safe for

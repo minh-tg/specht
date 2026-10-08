@@ -161,14 +161,20 @@ func main() {
 	// warning; the flag is otherwise a no-op.
 	bootstrapAdmins(context.Background(), stores)
 
+	if cfg.SSO.Enabled && cfg.SSO.AllowUnverifiedEmail {
+		slog.Warn("SSO_ALLOW_UNVERIFIED_EMAIL is on: a first SSO login may link to an existing account by an email " +
+			"the identity provider did not verify; use it only if your provider's emails are administrator-controlled")
+	}
+
 	uc := usecase.New(usecase.Deps{
-		Stores:       stores,
-		Registry:     reg,
-		Providers:    providers,
-		Tokens:       jwtAuth,
-		Passwords:    auth.NewPasswordHasher(),
-		InventoryTTL: cfg.InventoryTTL,
-		Tracker:      buildTrackerDispatcher(),
+		Stores:                  stores,
+		Registry:                reg,
+		Providers:               providers,
+		Tokens:                  jwtAuth,
+		Passwords:               auth.NewPasswordHasher(),
+		InventoryTTL:            cfg.InventoryTTL,
+		SSOAllowUnverifiedEmail: cfg.SSO.AllowUnverifiedEmail,
+		Tracker:                 buildTrackerDispatcher(),
 		Intel: intel.NewStore(cfg.Intel.TTL, nil,
 			&intel.EPSSProvider{BaseURL: cfg.Intel.EPSSBaseURL},
 			&intel.KEVProvider{CatalogURL: cfg.Intel.KEVCatalogURL}),

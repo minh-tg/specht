@@ -106,6 +106,11 @@ type SSOConfig struct {
 	// id_token. This insecure downgrade defaults to false; present ID tokens
 	// are still strictly verified.
 	AllowUserInfoOnly bool
+	// AllowUnverifiedEmail lets a first-time SSO login link or provision by an
+	// email the provider did not mark verified. It exists for providers that
+	// never send email_verified and defaults to false; the login is still
+	// bound to the provider's stable subject afterwards.
+	AllowUnverifiedEmail bool
 }
 
 // RateLimit is the resolved rate limiter configuration: a strict per-IP
@@ -184,6 +189,8 @@ func loadSSO() SSOConfig {
 		GroupsClaim:       strings.TrimSpace(os.Getenv("SSO_GROUPS_CLAIM")),
 		AdminGroups:       parseGroupAllowlist(os.Getenv("SSO_ADMIN_GROUPS")),
 		AllowUserInfoOnly: os.Getenv("SSO_ALLOW_USERINFO_ONLY") == "true",
+
+		AllowUnverifiedEmail: os.Getenv("SSO_ALLOW_UNVERIFIED_EMAIL") == "true",
 	}
 }
 

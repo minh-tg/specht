@@ -140,33 +140,82 @@ func (u *Usecases) burnHash(password string) {
 	_, _ = u.deps.Passwords.Hash(password)
 }
 
-// FindOrProvisionSSOUser resolves an SSO-authenticated principal (claims carry
-// the stable IdP subject, the asserted address and the provider's verdict on
-// it) to a local account for token issuance. Existing accounts keep their local role — IdP groups never
-// change an established role. Unknown accounts are provisioned only when the
-// email domain is allowlisted, otherwise auth.ErrSSONotProvisioned is
-// returned (the caller maps it to a generic 403). Provisioned accounts are
-// created without a password hash, so they can never use password login
-// (Login rejects empty hashes); they receive the default member role unless
-// IdP group membership matches adminGroups, in which case they are elevated
-// to admin via SetRole. A SetRole failure fails the login closed: the
-// account exists as a member and an operator can elevate it explicitly.
+// FindOrProvisionSSOUser resolves an SSO-authenticated principal to a local
+// account for token issuance.
+//
+// The pair (issuer, subject) identifies the person at the provider and decides
+// first: a subject that was linked before is resolved by that link alone, so a
+// changed or unverified email claim cannot redirect it to another account.
+// Only a first-time subject falls back to the email, and only when the
+// provider vouches for it (or the operator opted in with
+// SSOAllowUnverifiedEmail). A verified email that matches an existing account
+// links that account, unless it is already bound to a different subject at the
+// same provider. Otherwise the account is provisioned when the email domain is
+// allowlisted; anything else yields auth.ErrSSONotProvisioned (the caller maps
+// it to a generic 403). Existing accounts keep their local role. Provisioned
+// accounts have no password, so password login stays impossible for them, and
+// become admin only when IdP group membership matches adminGroups; a SetRole
+// failure fails the login closed.
 func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, claims auth.SSOClaims, allowedDomains []string, adminGroups []string) (userID, role string, provisioned bool, err error) {
-	sub, groups := claims.Subject, claims.Groups
-	email := auth.NormalizeEmail(claims.Email)
-	if email == "" {
+	issuer, sub := claims.Issuer, claims.Subject
+	if issuer == "" || sub == "" {
+		slog.Warn("sso login: provider returned no stable identity", "sub", sub)
 		return "", "", false, auth.ErrSSONotProvisioned
 	}
-	user, err := u.deps.Stores.Users.GetByEmail(ctx, email)
-	if err == nil {
-		if sub != "" {
-			slog.Info("sso login: existing account", "email", auth.MaskEmail(email), "sub", sub)
+
+	linked, err := u.deps.Stores.Identities.GetBySubject(ctx, issuer, sub)
+	switch {
+	case err == nil:
+		user, err := u.deps.Stores.Users.GetByID(ctx, linked.UserID)
+		if err != nil {
+			return "", "", false, fmt.Errorf("lookup linked sso user: %w", err)
 		}
+		slog.Info("sso login: linked account", "user_id", user.ID, "sub", sub)
 		return user.ID, auth.TokenRole(user.Role), false, nil
+	case !errors.Is(err, port.ErrNotFound):
+		return "", "", false, fmt.Errorf("lookup sso identity: %w", err)
 	}
-	if !errors.Is(err, port.ErrNotFound) {
+
+	email := auth.NormalizeEmail(claims.Email)
+	if email == "" || (!claims.EmailVerified && !u.deps.SSOAllowUnverifiedEmail) {
+		slog.Warn("sso login: first login without a verified email", "email", auth.MaskEmail(email), "sub", sub)
+		return "", "", false, auth.ErrSSONotProvisioned
+	}
+
+	user, err := u.deps.Stores.Users.GetByEmail(ctx, email)
+	switch {
+	case err == nil:
+		return u.linkExistingSSOUser(ctx, user, issuer, sub)
+	case errors.Is(err, port.ErrNotFound):
+		return u.provisionSSOUser(ctx, claims, email, allowedDomains, adminGroups)
+	default:
 		return "", "", false, fmt.Errorf("lookup sso user: %w", err)
 	}
+}
+
+// linkExistingSSOUser binds a provider identity to the account its verified
+// email matched. An account that already has an identity at this provider is
+// refused: a second subject presenting the same email is exactly how a
+// reassigned or spoofed address would take the account over.
+func (u *Usecases) linkExistingSSOUser(ctx context.Context, user port.User, issuer, sub string) (string, string, bool, error) {
+	_, err := u.deps.Stores.Identities.GetForUser(ctx, user.ID, issuer)
+	switch {
+	case err == nil:
+		slog.Warn("sso login: account already linked to a different subject", "user_id", user.ID, "sub", sub)
+		return "", "", false, auth.ErrSSONotProvisioned
+	case !errors.Is(err, port.ErrNotFound):
+		return "", "", false, fmt.Errorf("lookup user identity: %w", err)
+	}
+	if err := u.linkSSOIdentity(ctx, user.ID, issuer, sub); err != nil {
+		return "", "", false, err
+	}
+	slog.Info("sso login: linked existing account", "user_id", user.ID, "sub", sub)
+	return user.ID, auth.TokenRole(user.Role), false, nil
+}
+
+// provisionSSOUser creates and links an account for a first-time subject whose
+// email domain is allowlisted.
+func (u *Usecases) provisionSSOUser(ctx context.Context, claims auth.SSOClaims, email string, allowedDomains, adminGroups []string) (string, string, bool, error) {
 	domain := ssoEmailDomain(email)
 	allowed := false
 	for _, d := range allowedDomains {
@@ -176,23 +225,39 @@ func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, claims auth.SSOCl
 		}
 	}
 	if !allowed {
-		slog.Warn("sso login: account not provisioned", "email", auth.MaskEmail(email), "sub", sub)
+		slog.Warn("sso login: account not provisioned", "email", auth.MaskEmail(email), "sub", claims.Subject)
 		return "", "", false, auth.ErrSSONotProvisioned
 	}
 	created, err := u.deps.Stores.Users.Create(ctx, email, nil, nil)
 	if err != nil {
 		return "", "", false, fmt.Errorf("provision sso user: %w", err)
 	}
-	slog.Info("sso login: provisioned account", "email", auth.MaskEmail(email), "sub", sub)
-	if auth.IsSSOAdmin(groups, adminGroups) {
+	if err := u.linkSSOIdentity(ctx, created.ID, claims.Issuer, claims.Subject); err != nil {
+		return "", "", false, err
+	}
+	slog.Info("sso login: provisioned account", "user_id", created.ID, "sub", claims.Subject)
+	if auth.IsSSOAdmin(claims.Groups, adminGroups) {
 		elevated, err := u.deps.Stores.Users.SetRole(ctx, created.ID, auth.RoleAdmin)
 		if err != nil {
 			return "", "", false, fmt.Errorf("elevate sso admin: %w", err)
 		}
-		slog.Info("sso login: elevated to admin by IdP group", "email", auth.MaskEmail(email), "sub", sub)
+		slog.Info("sso login: elevated to admin by IdP group", "user_id", created.ID, "sub", claims.Subject)
 		return elevated.ID, auth.TokenRole(elevated.Role), true, nil
 	}
 	return created.ID, auth.TokenRole(created.Role), true, nil
+}
+
+// linkSSOIdentity records the binding, mapping a lost race (the subject or the
+// account got linked in between) to the same refusal as any other conflict.
+func (u *Usecases) linkSSOIdentity(ctx context.Context, userID, issuer, sub string) error {
+	if _, err := u.deps.Stores.Identities.Link(ctx, userID, issuer, sub); err != nil {
+		if errors.Is(err, port.ErrIdentityLinked) {
+			slog.Warn("sso login: identity linked concurrently", "user_id", userID, "sub", sub)
+			return auth.ErrSSONotProvisioned
+		}
+		return fmt.Errorf("link sso identity: %w", err)
+	}
+	return nil
 }
 
 // ssoEmailDomain returns the lowercased domain part of an email address,

@@ -137,6 +137,36 @@ func TestE2E_SSOLoginAndProvisioning(t *testing.T) {
 			"an empty email is refused: %s", location)
 	})
 
+	t.Run("an email the provider does not vouch for is refused", func(t *testing.T) {
+		defer fakes.idp.setEmailVerified(true)
+		defer fakes.idp.setEmail(e2eSSOEmail)
+
+		fakes.idp.setEmail("e2e-sso-unverified@example.com")
+		fakes.idp.setEmailVerified(false)
+		status, location, _ := ssoExchange(t, "")
+		require.Equal(t, http.StatusForbidden, status,
+			"an unverified email cannot provision or link: %s", location)
+	})
+
+	t.Run("a second subject with a linked account's email cannot take it over", func(t *testing.T) {
+		defer fakes.idp.setSubject("")
+		defer fakes.idp.setEmail(e2eSSOEmail)
+
+		fakes.idp.setEmail("e2e-sso-bound@example.com")
+		status, location, _ := ssoExchange(t, "")
+		owner := request[profileEnvelope](t, http.MethodGet, "/api/v1/me", ssoToken(t, status, location), nil, http.StatusOK)
+
+		fakes.idp.setSubject("some-other-subject")
+		status, location, _ = ssoExchange(t, "")
+		require.Equal(t, http.StatusForbidden, status,
+			"the same email under a different subject is refused: %s", location)
+
+		fakes.idp.setSubject("")
+		status, location, _ = ssoExchange(t, "")
+		again := request[profileEnvelope](t, http.MethodGet, "/api/v1/me", ssoToken(t, status, location), nil, http.StatusOK)
+		require.Equal(t, owner.ID, again.ID, "the rightful subject still signs in")
+	})
+
 	t.Run("sso never changes an existing user's role", func(t *testing.T) {
 		email := "e2e-sso-role@example.com"
 		status, _ := doJSON(t, http.MethodPost, "/api/v1/auth/register", "",

@@ -91,6 +91,7 @@ issuer, and redirect URI.
 | `SSO_ALLOWED_DOMAINS` | *(empty)* | Comma/space-separated email domains that may auto-provision. Empty refuses every unknown subject. |
 | `SSO_ADMIN_GROUPS` | *(empty)* | IdP groups granting admin to a *newly provisioned* account. Existing accounts never change role from IdP groups. |
 | `SSO_ALLOW_USERINFO_ONLY` | `false` | Insecure compatibility downgrade for an IdP that returns no ID token. |
+| `SSO_ALLOW_UNVERIFIED_EMAIL` | `false` | Let a first SSO login link or provision by an email the IdP did not mark `email_verified`. Only for IdPs that never send the claim and whose emails administrators control. See "SSO account linking". |
 
 ### CVE feed watcher
 
@@ -194,6 +195,25 @@ an insecure compatibility downgrade: identity then comes from the UserInfo
 endpoint without a signed subject to verify. Prefer configuring the IdP to
 return ID tokens; enable this only after assessing the reduced assurance.
 This option never bypasses validation when an ID token is present.
+
+## SSO account linking
+
+An SSO login is matched to an account by the provider's stable identity, the
+pair of issuer and subject (`sub`), which is stored in `user_identities` after
+the first login. Later logins use only that pair, so a changed or unverified
+`email` claim cannot redirect them to a different account.
+
+The first login of a new subject needs a verified email: the ID token or
+UserInfo response must carry `email_verified: true`. That email then either
+links the existing account with the same address or, when its domain is in
+`SSO_ALLOWED_DOMAINS`, provisions a new one. An account that is already linked
+to a different subject at the same provider is never re-linked by email.
+
+Existing SSO users have no link yet; their next login creates it, which needs
+the verified email above. If your provider never sends `email_verified` (Azure
+AD v2 does not by default) and its emails are controlled by your
+administrators, set `SSO_ALLOW_UNVERIFIED_EMAIL=true` for that first login. The
+server logs a warning at startup while it is on.
 
 ## 7. Backup and restore
 

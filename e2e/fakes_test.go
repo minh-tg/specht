@@ -191,7 +191,11 @@ type fakeIdP struct {
 	srv   *httptest.Server
 	mu    sync.Mutex
 	email string
-	codes map[string]struct{ redirectURI, nonce string }
+	// subject overrides the derived per-email subject; unverified makes
+	// userinfo withhold email_verified.
+	subject    string
+	unverified bool
+	codes      map[string]struct{ redirectURI, nonce string }
 }
 
 // setEmail changes the subject the token endpoint and userinfo assert —
@@ -200,6 +204,30 @@ func (p *fakeIdP) setEmail(email string) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.email = email
+}
+
+// setSubject pins the provider subject regardless of email; "" restores the
+// default of one stable subject per email address.
+func (p *fakeIdP) setSubject(sub string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.subject = sub
+}
+
+// setEmailVerified controls the email_verified claim in userinfo.
+func (p *fakeIdP) setEmailVerified(verified bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.unverified = !verified
+}
+
+// subjectFor is the stable provider identity of an address: a real IdP does
+// not hand two different people the same subject.
+func (p *fakeIdP) subjectFor(email string) string {
+	if p.subject != "" {
+		return p.subject
+	}
+	return "e2e-sub:" + email
 }
 
 func newFakeIdP() *fakeIdP {
@@ -257,10 +285,10 @@ func (p *fakeIdP) serve(w http.ResponseWriter, r *http.Request) {
 		})
 	case "/userinfo":
 		p.mu.Lock()
-		email := p.email
+		email, sub, verified := p.email, p.subjectFor(p.email), !p.unverified
 		p.mu.Unlock()
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"sub": "e2e-sso-sub", "email": email,
+			"sub": sub, "email": email, "email_verified": verified,
 			"groups": []string{"platform-team"},
 		})
 	default:
@@ -270,12 +298,12 @@ func (p *fakeIdP) serve(w http.ResponseWriter, r *http.Request) {
 
 func (p *fakeIdP) signIDToken(audience, nonce string) string {
 	p.mu.Lock()
-	email := p.email
+	email, sub := p.email, p.subjectFor(p.email)
 	p.mu.Unlock()
 	claims := map[string]any{
 		"iss":   p.srv.URL,
 		"aud":   audience,
-		"sub":   "e2e-sso-sub",
+		"sub":   sub,
 		"email": email,
 		"iat":   time.Now().Unix(),
 		"exp":   time.Now().Add(time.Hour).Unix(),

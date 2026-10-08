@@ -167,6 +167,31 @@ func TestLoad_SSOAllowUserInfoOnlyOverride(t *testing.T) {
 	assert.True(t, cfg.SSO.AllowUserInfoOnly)
 }
 
+func TestLoad_SSOUnverifiedEmailIsOffUnlessExplicitlyTrue(t *testing.T) {
+	tests := []struct {
+		value string
+		want  bool
+	}{
+		{"", false},
+		{"true", true},
+		{"false", false},
+		{"yes", false},
+		{"1", false},
+	}
+	for _, tc := range tests {
+		t.Run("value="+tc.value, func(t *testing.T) {
+			t.Setenv("WATCHER_ENABLE", "")
+			t.Setenv("SSO_ALLOW_UNVERIFIED_EMAIL", tc.value)
+
+			cfg, err := Load()
+
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, cfg.SSO.AllowUnverifiedEmail,
+				"only the exact value true opts in, so a typo cannot weaken the default")
+		})
+	}
+}
+
 func TestLoad_SSOGroupMapping(t *testing.T) {
 	t.Setenv("WATCHER_ENABLE", "")
 	t.Setenv("SSO_GROUPS_CLAIM", "roles")
