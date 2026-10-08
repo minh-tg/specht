@@ -383,4 +383,58 @@ describe("AuthProvider SSO fragment", () => {
 
     expect(screen.getByTestId("token")).toHaveTextContent("none");
   });
+
+  it("exchanges sso_code and installs session and refresh tokens", async () => {
+    fetchMock((url) => {
+      if (url === "/api/v1/auth/sso/exchange") {
+        return response(200, {
+          token: "jwt-from-exchange",
+          refresh_token: "ref-from-exchange",
+          user_id: "sso-user-42",
+          email: "sso-user@example.com",
+        });
+      }
+      return response(404, {});
+    });
+
+    markSsoAttempt();
+    window.history.replaceState(null, "", "/#sso_code=auth-code-123");
+
+    renderAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("token")).toHaveTextContent("jwt-from-exchange");
+    });
+    expect(screen.getByTestId("refresh")).toHaveTextContent("ref-from-exchange");
+    expect(screen.getByTestId("user-id")).toHaveTextContent("sso-user-42");
+    expect(screen.getByTestId("email")).toHaveTextContent("sso-user@example.com");
+    await waitFor(() => expect(window.location.hash).toBe(""));
+    expect(hasPendingSsoAttempt()).toBe(false);
+  });
+
+  it("ignores an sso_code when no login was started here", async () => {
+    window.history.replaceState(null, "", "/#sso_code=unsolicited-code");
+
+    renderAuth();
+
+    expect(screen.getByTestId("token")).toHaveTextContent("none");
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+    await waitFor(() => expect(window.location.hash).toBe(""));
+  });
+
+  it("clears state when sso_code exchange fails", async () => {
+    fetchMock(() => response(401, { error: "invalid_code" }));
+
+    markSsoAttempt();
+    window.history.replaceState(null, "", "/#sso_code=invalid-code");
+
+    renderAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("token")).toHaveTextContent("none");
+    });
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
+    await waitFor(() => expect(window.location.hash).toBe(""));
+    expect(hasPendingSsoAttempt()).toBe(false);
+  });
 });

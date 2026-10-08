@@ -1,8 +1,9 @@
-// SSO session-token delivery. The OIDC callback redirects the browser to
-// "/#sso_token=<token>" after a successful login. Fragments are never sent to
-// the server, so the callback can hand the SPA its session token without it
-// leaking through Referer headers, logs, or browser history. The SPA consumes
-// the fragment at boot and keeps the token in memory.
+// SSO authorization-code delivery. The OIDC callback redirects the browser to
+// "/#sso_code=<code>" after a successful login. Fragments are never sent to
+// the server, so the callback can hand the SPA the single-use exchange code without
+// it leaking through Referer headers, logs, or browser history. The SPA consumes
+// the code and exchanges it via POST /api/v1/auth/sso/exchange for session tokens.
+export const SSO_CODE_KEY = "sso_code";
 export const SSO_SESSION_KEY = "sso_token";
 
 // A token in the fragment is only accepted while an SSO login that this browser
@@ -75,4 +76,16 @@ export function ssoTokenFromHash(hash: string): { token: string; claims: SsoToke
   const claims = decodePayload(token);
   if (!claims || typeof claims.sub !== "string" || claims.sub === "") return null;
   return { token, claims };
+}
+
+/**
+ * Reads an SSO authorization code from a URL fragment ("#sso_code=<code>").
+ * Returns null when the fragment has no sso_code parameter or it is empty.
+ */
+export function ssoCodeFromHash(hash: string): string | null {
+  if (!hash.startsWith("#")) return null;
+  const params = new URLSearchParams(hash.slice(1));
+  const code = params.get(SSO_CODE_KEY);
+  if (!code || typeof code !== "string" || code.trim() === "") return null;
+  return code.trim();
 }

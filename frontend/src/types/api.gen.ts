@@ -183,6 +183,29 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/auth/sso/exchange": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Exchange a single-use SSO authorization code for tokens
+     * @description Exchanges a short-lived single-use authorization code delivered via URL
+     *     fragment upon completing the OIDC callback. Returns both a 15-minute
+     *     access token and a 7-day refresh token. Replayed or expired codes fail
+     *     closed with 401.
+     */
+    post: operations["ssoExchange"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/me": {
     parameters: {
       query?: never;
@@ -2510,7 +2533,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description Redirect to `<validated-path>#sso_token=<jwt>`; defaults to `/` when no safe return path was supplied. */
+      /** @description Redirect to `<validated-path>#sso_code=<code>`; defaults to `/` when no safe return path was supplied. */
       302: {
         headers: {
           Location?: string;
@@ -2545,6 +2568,52 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+    };
+  };
+  ssoExchange: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": {
+          /** @description The single-use authorization code delivered in */
+          code: string;
+        };
+      };
+    };
+    responses: {
+      /** @description Session tokens minted. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AuthResponse"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      /** @description Invalid, replayed, or expired authorization code. */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Internal exchange error. */
+      500: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
       };
     };
   };

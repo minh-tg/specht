@@ -881,6 +881,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/findings/{id}/events", h.ListFindingEvents)
 	r.Get("/api/v1/findings/{id}", h.GetFinding)
 	r.Post("/api/v1/auth/refresh", h.Refresh)
+	r.Post("/api/v1/auth/sso/exchange", h.SSOExchange)
 	r.Post("/api/v1/auth/logout", h.Logout)
 	r.Get("/api/v1/me", h.Me)
 	r.Put("/api/v1/me", h.UpdateMe)
@@ -2544,6 +2545,84 @@ func TestRefresh_Error(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// ----- SSO Exchange Handler Tests -----
+
+func TestSSOExchange_Success(t *testing.T) {
+	mock := &mockUsecases{
+		exchangeSSOCodeFn: func(ctx context.Context, code string) (*usecase.AuthResponse, error) {
+			assert.Equal(t, "valid-sso-code", code)
+			return &usecase.AuthResponse{Token: "jwt-token", RefreshToken: "ref-token", UserID: "u1", Email: "alice@example.com"}, nil
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"code":"valid-sso-code"}`)
+	req := httptest.NewRequest("POST", "/api/v1/auth/sso/exchange", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var resp usecase.AuthResponse
+	err := json.Unmarshal(w.Body.Bytes(), &resp)
+	require.NoError(t, err)
+	assert.Equal(t, "jwt-token", resp.Token)
+	assert.Equal(t, "ref-token", resp.RefreshToken)
+	assert.Equal(t, "u1", resp.UserID)
+	assert.Equal(t, "alice@example.com", resp.Email)
+}
+
+func TestSSOExchange_InvalidBody(t *testing.T) {
+	router := testRouter(nil)
+	req := httptest.NewRequest("POST", "/api/v1/auth/sso/exchange", strings.NewReader(`not-json`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestSSOExchange_EmptyCode(t *testing.T) {
+	router := testRouter(nil)
+	req := httptest.NewRequest("POST", "/api/v1/auth/sso/exchange", strings.NewReader(`{"code":""}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestSSOExchange_InvalidCode(t *testing.T) {
+	mock := &mockUsecases{
+		exchangeSSOCodeFn: func(ctx context.Context, code string) (*usecase.AuthResponse, error) {
+			return nil, auth.ErrInvalidCredential
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"code":"bad-code"}`)
+	req := httptest.NewRequest("POST", "/api/v1/auth/sso/exchange", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestSSOExchange_InternalError(t *testing.T) {
+	mock := &mockUsecases{
+		exchangeSSOCodeFn: func(ctx context.Context, code string) (*usecase.AuthResponse, error) {
+			return nil, fmt.Errorf("database failure")
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"code":"valid-code"}`)
+	req := httptest.NewRequest("POST", "/api/v1/auth/sso/exchange", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 }
 
 // ----- Logout Handler Tests -----

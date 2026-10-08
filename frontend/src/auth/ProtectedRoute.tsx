@@ -6,6 +6,10 @@ export function ProtectedRoute({ children }: { readonly children: ReactNode; }) 
   const auth = useContext(AuthContext);
   const location = useLocation();
 
+  if (auth?.loading) {
+    return null;
+  }
+
   if (!auth?.token) {
     return <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />;
   }
