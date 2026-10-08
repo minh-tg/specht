@@ -98,6 +98,7 @@ services:
       SSO_ADMIN_GROUPS: ${SSO_ADMIN_GROUPS:-}
       # Security downgrade; leave false unless the IdP cannot return ID tokens.
       SSO_ALLOW_USERINFO_ONLY: ${SSO_ALLOW_USERINFO_ONLY:-false}
+      SSO_ALLOW_UNVERIFIED_EMAIL: ${SSO_ALLOW_UNVERIFIED_EMAIL:-false}
     depends_on:
       db:
         condition: service_healthy
