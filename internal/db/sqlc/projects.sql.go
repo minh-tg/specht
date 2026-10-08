@@ -323,6 +323,19 @@ func (q *Queries) ListProjectsByIDs(ctx context.Context, dollar_1 []pgtype.UUID)
 	return items, nil
 }
 
+const lockProjectForMembership = `-- name: LockProjectForMembership :one
+SELECT id FROM projects
+WHERE id = $1
+FOR NO KEY UPDATE
+`
+
+func (q *Queries) LockProjectForMembership(ctx context.Context, id pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, lockProjectForMembership, id)
+	var id_2 pgtype.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
 const updateProject = `-- name: UpdateProject :one
 UPDATE projects SET name = $2, description = $3, updated_at = NOW()
 WHERE slug = $1

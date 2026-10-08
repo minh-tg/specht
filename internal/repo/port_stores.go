@@ -15,7 +15,7 @@ func NewPortStores(pool *pgxpool.Pool) *port.Stores {
 	repos := NewRepos(pool)
 
 	return &port.Stores{
-		Projects:      &pgProjectPort{q: q},
+		Projects:      &pgProjectPort{q: q, withTx: repos.WithTx},
 		Users:         &pgUserPort{q: q},
 		RefreshTokens: &pgRefreshTokenPort{q: q},
 		APIKeys:       &pgAPIKeyPort{q: q},
@@ -43,7 +43,7 @@ func NewPortStores(pool *pgxpool.Pool) *port.Stores {
 // without a second pool.
 func PortStoresFromRepos(repos *Repos, q *sqlc.Queries) *port.Stores {
 	return &port.Stores{
-		Projects:      &pgProjectPort{q: q},
+		Projects:      &pgProjectPort{q: q, withTx: repos.WithTx},
 		Users:         &pgUserPort{q: q},
 		RefreshTokens: &pgRefreshTokenPort{q: q},
 		APIKeys:       &pgAPIKeyPort{q: q},
