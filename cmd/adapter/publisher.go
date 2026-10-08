@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/minh-tg/specht/internal/client"
 )
@@ -180,15 +181,26 @@ func withChangeLink(summary, link string) string {
 // the error, and so into CI logs.
 const maxGitHubErrorBytes = 64 << 10
 
+// gitHubRequestTimeout bounds a whole GitHub API call when the caller did not
+// supply a client, so a stalled connection cannot hang the CI job.
+const gitHubRequestTimeout = 30 * time.Second
+
+// gitHubClientOrDefault returns hc, or a client with a request timeout when
+// hc is nil. http.DefaultClient has none.
+func gitHubClientOrDefault(hc *http.Client) *http.Client {
+	if hc != nil {
+		return hc
+	}
+	return &http.Client{Timeout: gitHubRequestTimeout}
+}
+
 // publishGitHubCheckRun posts a check run to the GitHub Checks API. changeLink
 // is the Specht UI URL for this change, or "" to omit it.
 func publishGitHubCheckRun(ctx context.Context, hc *http.Client, token, repo, commit, changeLink string, preview *client.PRCheckPreview) error {
 	if token == "" || repo == "" || commit == "" || preview == nil {
 		return nil
 	}
-	if hc == nil {
-		hc = http.DefaultClient
-	}
+	hc = gitHubClientOrDefault(hc)
 
 	conclusion := preview.Conclusion
 	if conclusion == "" {
