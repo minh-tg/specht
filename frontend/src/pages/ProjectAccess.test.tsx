@@ -37,10 +37,12 @@ describe("ProjectAccess", () => {
   let mockTeams: { project_id: string; team_id: string; team_name: string; role: string; }[] = [];
   let userRole = "admin";
   let fetchCalls: { url: string; method: string; body?: string; }[] = [];
+  let deleteError: { status: number; code: string; message: string; } | null = null;
 
   beforeEach(() => {
     fetchCalls = [];
     userRole = "admin";
+    deleteError = null;
     mockMembers = [
       { project_id: "p1", user_id: "u1", role: "admin", created_at: "2026-09-12T00:00:00Z" },
       { project_id: "p1", user_id: "u2", role: "manager", created_at: "2026-09-18T00:00:00Z" },
@@ -65,7 +67,12 @@ describe("ProjectAccess", () => {
           return jsonResponse({ ok: true });
         }
         if (method === "DELETE") {
-          return jsonResponse(null, 204);
+          return deleteError
+            ? jsonResponse(
+              { error: { code: deleteError.code, message: deleteError.message } },
+              deleteError.status,
+            )
+            : new Response(null, { status: 204 });
         }
         return jsonResponse(mockMembers);
       }
@@ -74,7 +81,12 @@ describe("ProjectAccess", () => {
           return jsonResponse({ ok: true });
         }
         if (method === "DELETE") {
-          return jsonResponse(null, 204);
+          return deleteError
+            ? jsonResponse(
+              { error: { code: deleteError.code, message: deleteError.message } },
+              deleteError.status,
+            )
+            : new Response(null, { status: 204 });
         }
         return jsonResponse(mockTeams);
       }
@@ -221,6 +233,48 @@ describe("ProjectAccess", () => {
 
     // Fourth button: u4 (admin) -> disabled
     expect(removeButtons[3]).toBeDisabled();
+  });
+
+  it("says why removing a member failed, and clears the message on a successful retry", async () => {
+    const user = userEvent.setup();
+    deleteError = {
+      status: 403,
+      code: "project_access_denied",
+      message: "project access denied",
+    };
+    renderProjectAccess();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alex Rivera")).toBeInTheDocument();
+    });
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    // Second Remove button belongs to Alex Rivera (manager).
+    await user.click(screen.getAllByRole("button", { name: "Remove" })[1]);
+    expect(await screen.findByRole("alert")).toHaveTextContent("project access denied");
+
+    deleteError = null;
+    await user.click(screen.getAllByRole("button", { name: "Remove" })[1]);
+    await waitFor(() => {
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+  });
+
+  it("says why unlinking a team failed", async () => {
+    const user = userEvent.setup();
+    deleteError = {
+      status: 403,
+      code: "project_access_denied",
+      message: "project access denied",
+    };
+    renderProjectAccess();
+
+    await waitFor(() => {
+      expect(screen.getByText("Backend Platform")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByRole("button", { name: "Unlink" })[0]);
+    expect(await screen.findByRole("alert")).toHaveTextContent("project access denied");
   });
 
   it("hides management controls for member role", async () => {
