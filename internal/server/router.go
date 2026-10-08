@@ -125,17 +125,20 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		}))
 	}
 	r.Group(func(r chi.Router) {
-		if !cfg.RateLimit.Enabled {
-			rps := cfg.RateLimit.RPS
-			if rps <= 0 {
-				rps = 10
-			}
-			burst := cfg.RateLimit.Burst
-			if burst <= 0 {
-				burst = 20
-			}
-			r.Use(NewRateLimiter(rps, burst).Middleware(false))
+		// No post-auth limiter covers these routes, and an Authorization
+		// header is client-controlled, so they are limited by IP alone rather
+		// than exempting requests that carry one. When the global limiter is
+		// enabled it counts the same requests against identical RPS and burst
+		// values, so the effective limit does not change.
+		rps := cfg.RateLimit.RPS
+		if rps <= 0 {
+			rps = 10
 		}
+		burst := cfg.RateLimit.Burst
+		if burst <= 0 {
+			burst = 20
+		}
+		r.Use(NewRateLimiter(rps, burst).MiddlewareByIP())
 		r.Post("/api/v1/auth/register", h.Register)
 		r.Post("/api/v1/auth/login", h.Login)
 		r.Post("/api/v1/auth/refresh", h.Refresh)
