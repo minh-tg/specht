@@ -72,7 +72,7 @@ func TestUserEmailMigration_RefusesCaseDuplicatesThenNormalises(t *testing.T) {
 	_, err = repos.pool.Exec(ctx, `INSERT INTO users (email, role) VALUES ('MIXED@example.com', 'member')`)
 	assert.Error(t, err, "uniqueness now ignores case")
 
-	require.NoError(t, m.Steps(-1), "rolling back restores the original casing")
+	require.NoError(t, m.Migrate(36), "rolling back restores the original casing, whatever migrations follow")
 	var restored string
 	require.NoError(t, repos.pool.QueryRow(ctx, `SELECT email FROM users WHERE lower(email) = 'mixed@example.com'`).Scan(&restored))
 	assert.Equal(t, "Mixed@Example.com", restored)
