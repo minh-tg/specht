@@ -225,6 +225,11 @@ type FindingOccurrence struct {
 	ObservedAt      pgtype.Timestamptz `json:"observed_at"`
 }
 
+type Migration000037UserEmailOriginal struct {
+	ID    pgtype.UUID `json:"id"`
+	Email string      `json:"email"`
+}
+
 type PolicyTemplate struct {
 	ID          pgtype.UUID        `json:"id"`
 	Name        string             `json:"name"`

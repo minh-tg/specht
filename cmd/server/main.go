@@ -326,7 +326,7 @@ func bootstrapAdmins(ctx context.Context, stores *port.Stores) {
 		return
 	}
 	for _, email := range strings.FieldsFunc(raw, func(c rune) bool { return c == ',' || c == ' ' }) {
-		email = strings.TrimSpace(email)
+		email = auth.NormalizeEmail(email)
 		if email == "" {
 			continue
 		}

@@ -65,7 +65,7 @@ func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthR
 	if err != nil || addr.Address != email || !strings.Contains(addr.Address, "@") {
 		return nil, fmt.Errorf("invalid email address")
 	}
-	email = strings.ToLower(strings.TrimSpace(addr.Address))
+	email = auth.NormalizeEmail(addr.Address)
 	if len(password) < 8 {
 		return nil, fmt.Errorf("password must be at least 8 characters")
 	}
@@ -125,6 +125,7 @@ func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthR
 // to admin via SetRole. A SetRole failure fails the login closed: the
 // account exists as a member and an operator can elevate it explicitly.
 func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, sub, email string, groups []string, allowedDomains []string, adminGroups []string) (userID, role string, provisioned bool, err error) {
+	email = auth.NormalizeEmail(email)
 	if email == "" {
 		return "", "", false, auth.ErrSSONotProvisioned
 	}
@@ -180,7 +181,7 @@ func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResp
 	if email == "" || password == "" {
 		return nil, fmt.Errorf("email and password are required")
 	}
-	email = strings.ToLower(strings.TrimSpace(email))
+	email = auth.NormalizeEmail(email)
 
 	user, err := u.deps.Stores.Users.GetByEmail(ctx, email)
 	if err != nil {

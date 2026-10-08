@@ -13,7 +13,7 @@ import (
 
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, display_name, password_hash, role)
-VALUES ($1, $2, $3, 'member')
+VALUES (lower($1::text), $2, $3, 'member')
 RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at
 `
 
@@ -40,7 +40,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at FROM users WHERE email = $1
+SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at FROM users WHERE lower(email) = lower($1::text)
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
