@@ -37,6 +37,7 @@ import (
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 	"github.com/minh-tg/specht/internal/scanner"
 )
 
@@ -186,7 +187,7 @@ func convert(log sarifLog) *domain.NormalizedReport {
 				skipped++
 				continue
 			}
-			nr.Findings = append(nr.Findings, convertResult(result, rule, ruleID, ns))
+			nr.Findings = append(nr.Findings, parseutil.HardenFinding(convertResult(result, rule, ruleID, ns)))
 		}
 	}
 	if skipped > 0 {
@@ -317,7 +318,7 @@ func resultFile(result sarifResult) string {
 	if len(result.Locations) == 0 {
 		return unknownFile
 	}
-	uri := result.Locations[0].PhysicalLocation.ArtifactLocation.URI
+	uri := parseutil.CleanFilePath(result.Locations[0].PhysicalLocation.ArtifactLocation.URI)
 	if uri == "" {
 		return unknownFile
 	}
@@ -328,7 +329,7 @@ func resultLine(result sarifResult) int {
 	if len(result.Locations) == 0 {
 		return 0
 	}
-	return result.Locations[0].PhysicalLocation.Region.StartLine
+	return parseutil.SafeLine(result.Locations[0].PhysicalLocation.Region.StartLine)
 }
 
 // stableProducerFingerprint prefers tool-computed partial fingerprints over

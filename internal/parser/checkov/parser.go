@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 	"github.com/minh-tg/specht/internal/scanner"
 )
 
@@ -111,7 +112,7 @@ func convert(report checkovReport) *domain.NormalizedReport {
 	}
 
 	for _, f := range report.Results.FailedChecks {
-		nr.Findings = append(nr.Findings, convertCheck(f, report.CheckType))
+		nr.Findings = append(nr.Findings, parseutil.HardenFinding(convertCheck(f, report.CheckType)))
 	}
 
 	return nr
@@ -119,7 +120,7 @@ func convert(report checkovReport) *domain.NormalizedReport {
 
 // convertCheck maps one failed checkov check to a normalized IaC finding.
 func convertCheck(f checkovFinding, checkType string) domain.NormalizedFinding {
-	file := f.FilePath
+	file := parseutil.CleanFilePath(f.FilePath)
 	if file == "" {
 		file = "unknown"
 	}
@@ -180,12 +181,17 @@ func checkCodeLocation(f checkovFinding, file string) *domain.CodeLocation {
 	case 0:
 		return nil
 	case 1:
-		return &domain.CodeLocation{File: file, StartLine: f.FileLineRange[0]}
+		return &domain.CodeLocation{File: file, StartLine: parseutil.SafeLine(f.FileLineRange[0])}
 	default:
+		start := parseutil.SafeLine(f.FileLineRange[0])
+		end := parseutil.SafeLine(f.FileLineRange[1])
+		if end < start {
+			end = start
+		}
 		return &domain.CodeLocation{
 			File:      file,
-			StartLine: f.FileLineRange[0],
-			EndLine:   f.FileLineRange[1],
+			StartLine: start,
+			EndLine:   end,
 		}
 	}
 }

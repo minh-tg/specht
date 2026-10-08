@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 	"github.com/minh-tg/specht/internal/scanner"
 )
 
@@ -72,7 +73,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		if g.RuleID == "" || g.File == "" {
 			continue
 		}
-		nr.Findings = append(nr.Findings, convert(g))
+		nr.Findings = append(nr.Findings, parseutil.HardenFinding(convert(g)))
 	}
 	return nr, nil
 }
@@ -116,9 +117,18 @@ type gitleaksFinding struct {
 }
 
 func convert(g gitleaksFinding) domain.NormalizedFinding {
-	location := g.File
-	if g.StartLine > 0 {
-		location = fmt.Sprintf("%s:%d", g.File, g.StartLine)
+	file := parseutil.CleanFilePath(g.File)
+	if file == "" {
+		file = "unknown"
+	}
+	startLine := parseutil.SafeLine(g.StartLine)
+	endLine := parseutil.SafeLine(g.EndLine)
+	if endLine < startLine {
+		endLine = startLine
+	}
+	location := file
+	if startLine > 0 {
+		location = fmt.Sprintf("%s:%d", file, startLine)
 	}
 	title := g.Description
 	if title == "" {
@@ -130,10 +140,10 @@ func convert(g gitleaksFinding) domain.NormalizedFinding {
 	}
 	dims := []domain.Dimension{
 		{Key: domain.DimRuleID, Value: g.RuleID},
-		{Key: domain.DimFile, Value: g.File},
+		{Key: domain.DimFile, Value: file},
 	}
-	if g.StartLine > 0 {
-		dims = append(dims, domain.Dimension{Key: domain.DimLine, Value: itoa(g.StartLine)})
+	if startLine > 0 {
+		dims = append(dims, domain.Dimension{Key: domain.DimLine, Value: itoa(startLine)})
 	}
 	if g.Entropy > 0 {
 		meta["entropy"] = g.Entropy
@@ -142,7 +152,7 @@ func convert(g gitleaksFinding) domain.NormalizedFinding {
 		meta["tags"] = strings.Join(g.Tags, ",")
 	}
 	return domain.NormalizedFinding{
-		Fingerprint: "secret:" + g.RuleID + ":" + g.File,
+		Fingerprint: "secret:" + g.RuleID + ":" + file,
 		FindingKind: "secret",
 		Title:       title,
 		Description: "Rotate the exposed credential, revoke the old value, and purge it from history.",
@@ -152,9 +162,9 @@ func convert(g gitleaksFinding) domain.NormalizedFinding {
 			Summary: "Revoke the exposed credential with its provider, issue a replacement, purge it from VCS history, then resolve this finding. Specht never retrieves or validates secret values.",
 		},
 		CodeLocation: &domain.CodeLocation{
-			File:      g.File,
-			StartLine: g.StartLine,
-			EndLine:   g.EndLine,
+			File:      file,
+			StartLine: startLine,
+			EndLine:   endLine,
 		},
 		Dimensions: dims,
 		Extensions: meta,

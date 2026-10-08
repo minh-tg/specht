@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 	"github.com/minh-tg/specht/internal/scanner"
 )
 
@@ -158,7 +159,7 @@ func convert(report sarifReport) *domain.NormalizedReport {
 		location := fmt.Sprintf("%s:%d", file, line)
 		fingerprint := "sast:" + result.RuleID + ":" + file + ":" + strconv.Itoa(line)
 
-		nr.Findings = append(nr.Findings, domain.NormalizedFinding{
+		nr.Findings = append(nr.Findings, parseutil.HardenFinding(domain.NormalizedFinding{
 			Fingerprint: fingerprint,
 			FindingKind: "sast",
 			Title:       extractTitle(result, rule),
@@ -171,7 +172,7 @@ func convert(report sarifReport) *domain.NormalizedReport {
 				{Key: "line", Value: strconv.Itoa(line)},
 			},
 			Extensions: resultMeta(result, rule, hasRule),
-		})
+		}))
 	}
 
 	return nr
@@ -228,7 +229,7 @@ func extractFile(result sarifResult) string {
 	if len(result.Locations) == 0 {
 		return "unknown"
 	}
-	uri := result.Locations[0].PhysicalLocation.ArtifactLocation.URI
+	uri := parseutil.CleanFilePath(result.Locations[0].PhysicalLocation.ArtifactLocation.URI)
 	if uri == "" {
 		return "unknown"
 	}
@@ -239,7 +240,7 @@ func extractLine(result sarifResult) int {
 	if len(result.Locations) == 0 {
 		return 0
 	}
-	return result.Locations[0].PhysicalLocation.Region.StartLine
+	return parseutil.SafeLine(result.Locations[0].PhysicalLocation.Region.StartLine)
 }
 
 func extractTitle(result sarifResult, rule sarifRule) string {

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 	"github.com/minh-tg/specht/internal/scanner"
 )
 
@@ -69,7 +70,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		if r.Status != 1 || r.RuleID == "" {
 			continue
 		}
-		nr.Findings = append(nr.Findings, convert(r))
+		nr.Findings = append(nr.Findings, parseutil.HardenFinding(convert(r)))
 	}
 	return nr, nil
 }
@@ -98,13 +99,14 @@ type tfsecResult struct {
 
 // tfsecFileLocation resolves the display file and location strings.
 func tfsecFileLocation(r tfsecResult) (string, string) {
-	file := r.Location.Filename
+	file := parseutil.CleanFilePath(r.Location.Filename)
 	if file == "" {
 		file = unknownFile
 	}
 	location := file
-	if r.Location.StartLine > 0 {
-		location = file + ":" + strconv.Itoa(r.Location.StartLine)
+	startLine := parseutil.SafeLine(r.Location.StartLine)
+	if startLine > 0 {
+		location = file + ":" + strconv.Itoa(startLine)
 	}
 	return file, location
 }
@@ -176,10 +178,15 @@ func convert(r tfsecResult) domain.NormalizedFinding {
 		Extensions:  meta,
 	}
 	if file != unknownFile {
+		start := parseutil.SafeLine(r.Location.StartLine)
+		end := parseutil.SafeLine(r.Location.EndLine)
+		if end < start {
+			end = start
+		}
 		f.CodeLocation = &domain.CodeLocation{
 			File:      file,
-			StartLine: r.Location.StartLine,
-			EndLine:   r.Location.EndLine,
+			StartLine: start,
+			EndLine:   end,
 		}
 	}
 	return f
