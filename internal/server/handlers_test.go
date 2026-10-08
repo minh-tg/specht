@@ -1296,17 +1296,19 @@ func makeTestToken(t *testing.T, role string) string {
 	return tok
 }
 
-func TestCORS_DefaultOrigin(t *testing.T) {
+func TestCORS_NoConfiguredOriginsMeansNoCrossOriginAccess(t *testing.T) {
 	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: "", JWTAuth: testJWTAuth})
-	req := httptest.NewRequest("OPTIONS", "/api/v1/health", nil)
-	req.Header.Set("Origin", "http://localhost:5173")
-	req.Header.Set("Access-Control-Request-Method", "GET")
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "http://localhost:5173", w.Header().Get("Access-Control-Allow-Origin"))
-	assert.NotEmpty(t, w.Header().Get("Access-Control-Allow-Methods"))
+	for _, origin := range []string{"http://localhost:5173", "https://evil.example"} {
+		req := httptest.NewRequest("OPTIONS", "/api/v1/health", nil)
+		req.Header.Set("Origin", origin)
+		req.Header.Set("Access-Control-Request-Method", "GET")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		assert.Empty(t, w.Header().Get("Access-Control-Allow-Origin"), "preflight from %s", origin)
+		assert.Empty(t, w.Header().Get("Access-Control-Allow-Credentials"), "preflight from %s", origin)
+	}
 }
 
 func TestCORS_CustomOrigins(t *testing.T) {
@@ -1334,7 +1336,7 @@ func TestCORS_DisallowedOrigin(t *testing.T) {
 }
 
 func TestCORS_HeadersOnGET(t *testing.T) {
-	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: "", JWTAuth: testJWTAuth})
+	router := NewRouter(RouterConfig{Usecases: corsMock, CORSOrigins: "http://localhost:5173", JWTAuth: testJWTAuth})
 	req := httptest.NewRequest("GET", "/api/v1/health", nil)
 	req.Header.Set("Origin", "http://localhost:5173")
 	w := httptest.NewRecorder()

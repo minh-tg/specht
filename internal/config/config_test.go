@@ -18,10 +18,12 @@ func TestDefaults(t *testing.T) {
 	t.Setenv("WATCHER_POLL_INTERVAL", "")
 	t.Setenv("TRUSTED_PROXIES", "")
 	t.Setenv("LIFECYCLE_SWEEP_INTERVAL", "")
+	t.Setenv("CORS_ORIGINS", "")
 
 	cfg, err := Load()
 	assert.NoError(t, err)
 	assert.Equal(t, ":8080", cfg.Addr)
+	assert.Empty(t, cfg.CORSOrigins, "no origin is allowed cross-origin unless configured")
 	assert.True(t, cfg.DBMigrate, "DB_MIGRATE defaults to true")
 	assert.Equal(t, DefaultInventoryTTL, cfg.InventoryTTL)
 	assert.Equal(t, DefaultSweepInterval, cfg.SweepInterval)

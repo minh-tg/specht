@@ -39,7 +39,7 @@ services:
       # production deployment may set DB_MIGRATE=false and run `specht migrate`
       # as a separately controlled release step.
       DB_MIGRATE: ${DB_MIGRATE:-true}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
       # Admin elevation (comma-separated emails) and trusted proxy CIDRs.
       # Empty ADMIN_EMAILS promotes nobody; empty TRUSTED_PROXIES trusts
       # forwarding headers from nobody (deploy directly or set the hops).

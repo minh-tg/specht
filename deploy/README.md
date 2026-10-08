@@ -50,7 +50,7 @@ compose defaults differ, which is noted.
 | `JWT_SECRET` | *required* | HMAC signing key, at least 32 random bytes. Startup fails without it. |
 | `DB_MIGRATE` | `true` | Run migrations at startup. Set `false` to run `specht migrate` as a separately controlled step. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`. |
-| `CORS_ORIGINS` | `http://localhost:5173` | Comma/space-separated UI origins allowed to call the API. |
+| `CORS_ORIGINS` | *(empty)* | Comma/space-separated origins allowed to call the API from a browser. Empty allows none: the bundled UI is same-origin and needs no entry. Set it only when the UI is hosted elsewhere (use exact `https://` origins). |
 | `ADMIN_EMAILS` | *(empty)* | Comma-separated emails promoted to global admin at startup. Idempotent; unknown addresses are skipped with a warning. Matching ignores case. While `REGISTRATION_ENABLED` is on, an address that is not registered yet can be claimed by anyone, so register it before listing it (or turn registration off); the server logs an error for each such address. |
 | `REGISTRATION_ENABLED` | `true` | Allow self-service `POST /api/v1/auth/register`. Open by default because the first administrator has to register before anyone can be promoted. Set `false` once your admins exist (and always for SSO-only deployments); the endpoint then answers `403 registration_disabled`. Anything other than a boolean fails startup. |
 | `TRUSTED_PROXIES` | *(empty)* | Comma/space-separated CIDRs of proxy hops allowed to set `X-Forwarded-For` / `X-Real-IP` / `X-Forwarded-Proto`. Empty trusts nobody. |
@@ -203,8 +203,8 @@ only the proxy-hop CIDRs. Configure the nearest proxy to append the observed
 client address to `X-Forwarded-For` and overwrite `X-Real-IP` and
 `X-Forwarded-Proto`; the server walks the forwarded chain from the right and
 skips trusted proxy hops. Otherwise, forwarding headers are ignored and
-`Secure` cookies follow the direct connection. Set `CORS_ORIGINS` to the
-public UI origin(s).
+`Secure` cookies follow the direct connection. `CORS_ORIGINS` stays empty
+unless the UI is served from a different origin than the API.
 
 ## SSO ID-token requirement
 
