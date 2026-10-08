@@ -4,12 +4,13 @@ package intel
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/minh-tg/specht/internal/netutil"
 )
 
 // EPSSProvider fetches EPSS scores in batches. BaseURL is injectable for
@@ -20,6 +21,10 @@ type EPSSProvider struct {
 }
 
 // Name implements Provider.
+// maxEPSSResponseBytes bounds one batch reply; a few hundred CVEs is well
+// under a megabyte.
+const maxEPSSResponseBytes = 8 << 20
+
 func (p *EPSSProvider) Name() string { return "epss" }
 
 type epssResponse struct {
@@ -70,7 +75,7 @@ func (p *EPSSProvider) fetchBatch(ctx context.Context, cveIDs []string, out map[
 		return fmt.Errorf("epss fetch: status %d", resp.StatusCode)
 	}
 	var body epssResponse
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+	if err := netutil.DecodeJSONLimited(resp.Body, maxEPSSResponseBytes, &body); err != nil {
 		return fmt.Errorf("epss decode: %w", err)
 	}
 	for _, d := range body.Data {

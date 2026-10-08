@@ -176,6 +176,10 @@ func withChangeLink(summary, link string) string {
 	return trimmed + "\n\n" + line
 }
 
+// maxGitHubErrorBytes bounds how much of a failed GitHub reply is echoed into
+// the error, and so into CI logs.
+const maxGitHubErrorBytes = 64 << 10
+
 // publishGitHubCheckRun posts a check run to the GitHub Checks API. changeLink
 // is the Specht UI URL for this change, or "" to omit it.
 func publishGitHubCheckRun(ctx context.Context, hc *http.Client, token, repo, commit, changeLink string, preview *client.PRCheckPreview) error {
@@ -237,7 +241,7 @@ func publishGitHubCheckRun(ctx context.Context, hc *http.Client, token, repo, co
 	}()
 
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, maxGitHubErrorBytes))
 		return fmt.Errorf("github api returned status %d: %s", resp.StatusCode, string(respBody))
 	}
 

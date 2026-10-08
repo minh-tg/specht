@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/minh-tg/specht/internal/netutil"
 )
 
 // defaultRequestTimeout bounds API requests made by the default HTTP client.
@@ -18,6 +20,8 @@ const defaultRequestTimeout = 60 * time.Second
 
 // API path prefixes centralize route construction for the Specht API.
 const (
+	// maxResponseBytes bounds any single API response the client will read.
+	maxResponseBytes  = 64 << 20
 	apiProjectsPrefix = "/api/v1/projects/"
 	apiFindingsPrefix = "/api/v1/findings/"
 	apiTeamsPrefix    = "/api/v1/teams/"
@@ -138,7 +142,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		_ = resp.Body.Close()
 	}()
 
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := netutil.ReadAllLimited(resp.Body, maxResponseBytes)
 	if err != nil {
 		return fmt.Errorf("read response: %w", err)
 	}
