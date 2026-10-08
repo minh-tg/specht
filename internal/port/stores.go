@@ -23,6 +23,11 @@ import (
 // Postgres adapter maps pgx.ErrNoRows to it at the boundary.
 var ErrNotFound = errors.New("not found")
 
+// ErrLastAdmin is returned when a membership write would remove or demote the
+// only remaining admin of a project. The Postgres adapter enforces it under a
+// per-project lock so concurrent writes cannot both pass the check.
+var ErrLastAdmin = errors.New("last project admin")
+
 // ErrDuplicateReport is returned when a report with the same raw-content
 // hash has already been ingested for the project.
 var ErrDuplicateReport = errors.New("duplicate report")

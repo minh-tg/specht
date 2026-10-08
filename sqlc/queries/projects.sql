@@ -59,6 +59,11 @@ WHERE project_id = $1 AND user_id = $2;
 DELETE FROM project_members
 WHERE project_id = $1 AND user_id = $2;
 
+-- name: LockProjectForMembership :one
+SELECT id FROM projects
+WHERE id = $1
+FOR NO KEY UPDATE;
+
 -- name: CountProjectAdmins :one
 SELECT COUNT(*) FROM project_members
 WHERE project_id = $1 AND role = 'admin';

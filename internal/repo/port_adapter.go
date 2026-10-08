@@ -108,6 +108,9 @@ func strVal(t pgtype.Text) string {
 
 type pgProjectPort struct {
 	q *sqlc.Queries
+	// withTx runs a function in a database transaction; membership writes that
+	// enforce the last-admin invariant need it.
+	withTx func(ctx context.Context, fn func(q *sqlc.Queries) error) error
 }
 
 func (r *pgProjectPort) Create(ctx context.Context, input port.CreateProjectInput) (port.Project, error) {
@@ -221,6 +224,37 @@ func (r *pgProjectPort) GetByID(ctx context.Context, id string) (port.Project, e
 	return projectToPort(row), nil
 }
 
+// inMembershipTx runs fn in a transaction holding a per-project lock. The lock
+// serializes concurrent membership writes for one project, so a check such as
+// "is this the last admin" and the write that follows it cannot interleave
+// with another writer's.
+func (r *pgProjectPort) inMembershipTx(ctx context.Context, pid pgtype.UUID, fn func(q *sqlc.Queries) error) error {
+	if r.withTx == nil {
+		return errors.New("project port: transactions unavailable")
+	}
+	return r.withTx(ctx, func(q *sqlc.Queries) error {
+		if _, err := q.LockProjectForMembership(ctx, pid); err != nil {
+			return mappingErr(err)
+		}
+		return fn(q)
+	})
+}
+
+// requireOtherAdmin fails with port.ErrLastAdmin when the project has no admin
+// besides the one about to be removed or demoted.
+func requireOtherAdmin(ctx context.Context, q *sqlc.Queries, pid pgtype.UUID) error {
+	admins, err := q.CountProjectAdmins(ctx, pid)
+	if err != nil {
+		return err
+	}
+	if admins <= 1 {
+		return port.ErrLastAdmin
+	}
+	return nil
+}
+
+// UpsertMember sets a member's role. Demoting the project's only admin fails
+// with port.ErrLastAdmin.
 func (r *pgProjectPort) UpsertMember(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
@@ -230,10 +264,25 @@ func (r *pgProjectPort) UpsertMember(ctx context.Context, projectID, userID, rol
 	if err != nil {
 		return port.ProjectMember{}, err
 	}
-	row, err := r.q.UpsertProjectMember(ctx, sqlc.UpsertProjectMemberParams{
-		ProjectID: pid,
-		UserID:    uid,
-		Role:      role,
+	var row sqlc.ProjectMember
+	err = r.inMembershipTx(ctx, pid, func(q *sqlc.Queries) error {
+		existing, err := q.GetProjectMember(ctx, sqlc.GetProjectMemberParams{ProjectID: pid, UserID: uid})
+		switch {
+		case err == nil:
+			if existing.Role == "admin" && role != "admin" {
+				if err := requireOtherAdmin(ctx, q, pid); err != nil {
+					return err
+				}
+			}
+		case !errors.Is(err, pgx.ErrNoRows):
+			return err
+		}
+		row, err = q.UpsertProjectMember(ctx, sqlc.UpsertProjectMemberParams{
+			ProjectID: pid,
+			UserID:    uid,
+			Role:      role,
+		})
+		return err
 	})
 	if err != nil {
 		return port.ProjectMember{}, err
@@ -263,6 +312,8 @@ func (r *pgProjectPort) GetMember(ctx context.Context, projectID, userID string)
 	return memberToPort(row), nil
 }
 
+// DeleteMember removes a member. Removing the project's only admin fails with
+// port.ErrLastAdmin.
 func (r *pgProjectPort) DeleteMember(ctx context.Context, projectID, userID string) error {
 	pid, err := parseID(projectID)
 	if err != nil {
@@ -272,9 +323,22 @@ func (r *pgProjectPort) DeleteMember(ctx context.Context, projectID, userID stri
 	if err != nil {
 		return err
 	}
-	return r.q.DeleteProjectMember(ctx, sqlc.DeleteProjectMemberParams{
-		ProjectID: pid,
-		UserID:    uid,
+	return r.inMembershipTx(ctx, pid, func(q *sqlc.Queries) error {
+		existing, err := q.GetProjectMember(ctx, sqlc.GetProjectMemberParams{ProjectID: pid, UserID: uid})
+		switch {
+		case err == nil:
+			if existing.Role == "admin" {
+				if err := requireOtherAdmin(ctx, q, pid); err != nil {
+					return err
+				}
+			}
+		case !errors.Is(err, pgx.ErrNoRows):
+			return err
+		}
+		return q.DeleteProjectMember(ctx, sqlc.DeleteProjectMemberParams{
+			ProjectID: pid,
+			UserID:    uid,
+		})
 	})
 }
 

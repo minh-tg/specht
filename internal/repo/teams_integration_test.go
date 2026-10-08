@@ -21,7 +21,7 @@ func TestTeams_ConferAccessEndToEnd(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 	teams := &pgTeamPort{q: sqlc.New(repos.pool)}
-	projects := &pgProjectPort{q: sqlc.New(repos.pool)}
+	projects := &pgProjectPort{q: sqlc.New(repos.pool), withTx: repos.WithTx}
 
 	user, err := repos.Users.Create(ctx, "teammate@test.com",
 		pgtype.Text{Valid: false}, pgtype.Text{Valid: true, String: "unused-hash"})

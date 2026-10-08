@@ -20,7 +20,7 @@ func TestProjectMembers_EndToEnd(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
-	ports := &pgProjectPort{q: sqlc.New(repos.pool)}
+	ports := &pgProjectPort{q: sqlc.New(repos.pool), withTx: repos.WithTx}
 
 	project := createTestProject(t, repos)
 	user, err := repos.Users.Create(ctx, "member@test.com",
