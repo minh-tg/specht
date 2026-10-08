@@ -6,7 +6,6 @@ package server
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"net/http"
 	"net/netip"
@@ -118,9 +117,6 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	if cfg.OIDCEnabled && cfg.OIDC != nil {
 		r.Get("/api/v1/auth/sso/login", ssoLoginHandler(cfg.OIDC))
 		r.Get("/api/v1/auth/sso/callback", cfg.OIDC.CallbackHandler(func(ctx context.Context, claims auth.SSOClaims) (string, error) {
-			if cfg.TokenIssuer == nil {
-				return "", fmt.Errorf("OIDC enabled but no token issuer configured")
-			}
 			// Resolve the IdP subject to a local account: existing users
 			// keep their local role; unknown subjects are provisioned only
 			// for allowlisted domains, otherwise rejected. IdP admin
@@ -129,7 +125,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 			if err != nil {
 				return "", err
 			}
-			return cfg.TokenIssuer.CreateToken(userID, auth.NormalizeEmail(claims.Email), role)
+			return cfg.Usecases.CreateSSOExchangeCode(ctx, userID, auth.NormalizeEmail(claims.Email), role)
 		}))
 	}
 	r.Group(func(r chi.Router) {

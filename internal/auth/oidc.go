@@ -601,15 +601,15 @@ func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ct
 		return
 	}
 
-	// Deliver the session token in the redirect URL fragment (never a
-	// query parameter) so it does not leak through Referer headers,
+	// Deliver the single-use authorization code in the redirect URL fragment
+	// (never a query parameter) so it does not leak through Referer headers,
 	// browser history, or server access logs. Fragments are not sent to
 	// the server, so nothing here ever reads it back; the SPA consumes
-	// the fragment on load and keeps the token in memory.
+	// the code on load and immediately exchanges it for session tokens.
 	// The return target is validated as a same-origin path both when it enters
-	// the cookie and when it is read back. The token remains in the fragment.
+	// the cookie and when it is read back. The code remains in the fragment.
 	// nosemgrep: go.lang.security.injection.open-redirect.open-redirect
-	http.Redirect(w, r, safeSSOReturnPath(returnTo)+"#sso_token="+url.PathEscape(tok), http.StatusFound)
+	http.Redirect(w, r, safeSSOReturnPath(returnTo)+"#sso_code="+url.PathEscape(tok), http.StatusFound)
 }
 
 func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, claims SSOClaims) (token string, err error)) http.HandlerFunc {
