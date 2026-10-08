@@ -40,7 +40,7 @@ func TestTeams_ConferAccessEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, effective, "no link yet: no access")
 
-	_, err = teams.LinkProjectTeam(ctx, projectID, team.ID, "editor")
+	_, err = teams.LinkProjectTeam(ctx, projectID, team.ID, "manager")
 	require.NoError(t, err)
 
 	effective, err = projects.IsMemberEffective(ctx, projectID, userID)
@@ -49,7 +49,7 @@ func TestTeams_ConferAccessEndToEnd(t *testing.T) {
 
 	role, err := projects.EffectiveRole(ctx, projectID, userID)
 	require.NoError(t, err)
-	assert.Equal(t, "editor", role)
+	assert.Equal(t, "manager", role)
 
 	ids, err := projects.ListAccessibleProjectIDs(ctx, userID)
 	require.NoError(t, err)

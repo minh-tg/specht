@@ -33,22 +33,22 @@ func TestProjectMembers_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, isMember, "fresh user must not belong to the project")
 
-	m, err := ports.UpsertMember(ctx, projectID, userID, "viewer")
+	m, err := ports.UpsertMember(ctx, projectID, userID, "member")
 	require.NoError(t, err)
 	assert.Equal(t, projectID, m.ProjectID)
 	assert.Equal(t, userID, m.UserID)
-	assert.Equal(t, "viewer", m.Role)
+	assert.Equal(t, "member", m.Role)
 
 	isMember, err = ports.IsMember(ctx, projectID, userID)
 	require.NoError(t, err)
 	assert.True(t, isMember)
 
-	m, err = ports.UpsertMember(ctx, projectID, userID, "editor")
+	m, err = ports.UpsertMember(ctx, projectID, userID, "manager")
 	require.NoError(t, err)
-	assert.Equal(t, "editor", m.Role, "re-upsert must change the role, not duplicate")
+	assert.Equal(t, "manager", m.Role, "re-upsert must change the role, not duplicate")
 
 	members, err := ports.ListMembers(ctx, projectID)
 	require.NoError(t, err)
 	require.Len(t, members, 1)
-	assert.Equal(t, "editor", members[0].Role)
+	assert.Equal(t, "manager", members[0].Role)
 }
