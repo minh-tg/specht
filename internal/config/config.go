@@ -20,7 +20,6 @@ const (
 	DefaultInventoryTTL = 2160 * time.Hour // 90d
 	DefaultWatcherPoll  = 6 * time.Hour
 	DefaultWatcherBatch = 0 // unlimited
-	DefaultCORSOrigins  = "http://localhost:5173"
 	DefaultOSVEndpoint  = "https://api.osv.dev/v1/querybatch"
 	// DefaultOSVVulnEndpoint fetches full advisory records once
 	// querybatch has matched their IDs ({id} is the placeholder).
@@ -311,7 +310,7 @@ func Load() (*Server, error) {
 		Addr:          strOr(os.Getenv("SERVER_ADDR"), DefaultServerAddr),
 		DBURL:         os.Getenv("DATABASE_URL"),
 		DBMigrate:     strOr(os.Getenv("DB_MIGRATE"), "true") == "true",
-		CORSOrigins:   strOr(os.Getenv("CORS_ORIGINS"), DefaultCORSOrigins),
+		CORSOrigins:   os.Getenv("CORS_ORIGINS"),
 		JWTSecret:     os.Getenv("JWT_SECRET"),
 		LogLevel:      strOr(os.Getenv("LOG_LEVEL"), "info"),
 		InventoryTTL:  DefaultInventoryTTL,

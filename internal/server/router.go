@@ -72,18 +72,20 @@ type RouterConfig struct {
 func NewRouter(cfg RouterConfig) http.Handler {
 	r := chi.NewRouter()
 
+	// The bundled UI is served from the API's own origin, so cross-origin
+	// access is opt-in. With no origins configured the CORS middleware is not
+	// installed at all: rs/cors reads an empty list as "any origin".
 	origins := strings.FieldsFunc(cfg.CORSOrigins, func(c rune) bool { return c == ',' || c == ' ' })
-	if len(origins) == 0 {
-		origins = []string{"http://localhost:5173"}
+	if len(origins) > 0 {
+		r.Use(cors.Handler(cors.Options{
+			AllowedOrigins:   origins,
+			AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+			AllowedHeaders:   []string{"Accept", "Authorization", headerContentType},
+			ExposedHeaders:   []string{"Link", "X-Total-Count"},
+			AllowCredentials: true,
+			MaxAge:           300,
+		}))
 	}
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   origins,
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", headerContentType},
-		ExposedHeaders:   []string{"Link", "X-Total-Count"},
-		AllowCredentials: true,
-		MaxAge:           300,
-	}))
 
 	var apiKeyAuth auth.Authenticator
 	if cfg.APIKeyLookup != nil {
