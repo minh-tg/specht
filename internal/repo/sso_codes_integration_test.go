@@ -84,3 +84,30 @@ func TestSSOCodes_CascadeDeleteOnUser(t *testing.T) {
 	_, err = store.Consume(ctx, codeHash, time.Now())
 	assert.ErrorIs(t, err, port.ErrNotFound)
 }
+
+func TestSSOCodes_PrunesExpiredCodes(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	store := &pgSSOCodePort{q: sqlc.New(repos.pool)}
+
+	userID := newTestUserID(t, repos)
+
+	// Seed expired codes directly into sso_exchange_codes
+	_, err := repos.pool.Exec(ctx, `
+		INSERT INTO sso_exchange_codes (code_hash, user_id, email, role, expires_at)
+		SELECT 'expired-' || n, $1, 'test@example.com', 'member', NOW() - INTERVAL '5 minutes'
+		FROM generate_series(1, 10) AS n`, uuid.MustParse(userID))
+	require.NoError(t, err)
+
+	// Calling Create should trigger opportunistic pruning
+	err = store.Create(ctx, "fresh-hash", userID, "fresh@example.com", "member", time.Now().Add(time.Minute))
+	require.NoError(t, err)
+
+	var count int
+	err = repos.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM sso_exchange_codes
+		WHERE code_hash LIKE 'expired-%'`).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count, "expired codes must be pruned")
+}
