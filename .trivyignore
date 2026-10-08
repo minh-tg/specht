@@ -1,0 +1,8 @@
+# braces <=3.0.3 (CVE-2026-93687, DoS from deeply nested brace patterns) has no
+# published fix yet: npm's latest is 3.0.3, so a lockfile update or override
+# cannot clear it. It is reached only through the shadcn CLI (fast-glob >
+# micromatch), which expands its own fixed globs at development time; nothing
+# ships to the browser or runs on untrusted input. The matching pnpm audit
+# ignore lives in frontend/pnpm-workspace.yaml. Remove both as soon as a
+# patched braces release is published.
+CVE-2026-93687
