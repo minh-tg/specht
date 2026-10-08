@@ -25,7 +25,7 @@ func TestExchangeCode_RefusesAnOversizedTokenResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, err := mustOIDC(t, srv.URL).exchangeCode(context.Background(), "code")
+	_, err := mustOIDC(t, srv.URL).exchangeCode(context.Background(), "code", "")
 
 	require.Error(t, err)
 	assert.ErrorIs(t, err, netutil.ErrBodyTooLarge)
@@ -38,7 +38,7 @@ func TestExchangeCode_StillAcceptsANormalTokenResponse(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	resp, err := mustOIDC(t, srv.URL).exchangeCode(context.Background(), "code")
+	resp, err := mustOIDC(t, srv.URL).exchangeCode(context.Background(), "code", "")
 
 	require.NoError(t, err)
 	assert.Equal(t, "at", resp["access_token"])

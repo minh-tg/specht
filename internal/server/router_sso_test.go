@@ -61,7 +61,7 @@ func TestNewRouter_SSOWithNonJWTAuth_NoPanic(t *testing.T) {
 	// Drive the callback through a real code exchange so the token-issuer
 	// closure runs. The misconfigured JWTAuth must surface as the callback's
 	// clean 500 ("token issuance failed") rather than a recovered panic.
-	state := "test-state"
+	state := "test-state.test-nonce"
 	req := httptest.NewRequest("GET", "/api/v1/auth/sso/callback?code=test-code&state="+state, nil)
 	req.AddCookie(&http.Cookie{Name: "sso_state", Value: state})
 	w := httptest.NewRecorder()
