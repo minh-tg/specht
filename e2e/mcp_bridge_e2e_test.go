@@ -18,15 +18,25 @@ import (
 // The MCP bridge spawned as a real process against the live E2E
 // server, speaking stdio JSON-RPC — the wire mocks cannot see.
 
-func connectMCP(t *testing.T) *mcp.ClientSession {
+// connectMCPWithKey spawns the bridge with the given credential and extra
+// environment, so a test can pin exactly what a real key sees on the wire.
+func connectMCPWithKey(t *testing.T, key string, extraEnv ...string) *mcp.ClientSession {
 	t.Helper()
 	client := mcp.NewClient(&mcp.Implementation{Name: "specht-e2e-client", Version: "0.0.0"}, nil)
 	cmd := exec.Command(mcpBin)
-	cmd.Env = cleanEnv("API_URL="+baseURL, "API_KEY="+adminToken)
+	cmd.Env = cleanEnv(append([]string{"API_URL=" + baseURL, "API_KEY=" + key}, extraEnv...)...)
 	session, err := client.Connect(context.Background(), &mcp.CommandTransport{Command: cmd}, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = session.Close() })
 	return session
+}
+
+// connectMCP spawns the bridge with a session token and the mutation tools
+// explicitly enabled, so the whole surface is on the wire. Production defaults
+// to read-only; the unit tests pin that default.
+func connectMCP(t *testing.T) *mcp.ClientSession {
+	t.Helper()
+	return connectMCPWithKey(t, adminToken, "MCP_ALLOW_MUTATIONS=true")
 }
 
 // mcpText calls one tool and returns its text plus the error flag; API and
@@ -42,6 +52,38 @@ func mcpText(t *testing.T, session *mcp.ClientSession, tool string, args map[str
 	text, ok := result.Content[0].(*mcp.TextContent)
 	require.Truef(t, ok, "tool %s returns text content", tool)
 	return text.Text, result.IsError
+}
+
+// A project API key is the credential the bridge documents, and the one CI
+// workflows hold. Without MCP_ALLOW_MUTATIONS it must expose only tools that
+// key can actually call: no state changes, no session-only routes.
+func TestE2E_MCPBridgeWithProjectKeyExposesOnlyKeyUsableReadTools(t *testing.T) {
+	slug := newProject(t, "mcp-key-surface")
+	ingestFixture(t, slug, adminToken, "high-medium.sarif.json")
+
+	session := connectMCPWithKey(t, mintKey(t, slug)) // no mutation opt-in: the production default
+	tools, err := session.ListTools(context.Background(), nil)
+	require.NoError(t, err)
+	names := make([]string, 0, len(tools.Tools))
+	for _, tool := range tools.Tools {
+		names = append(names, tool.Name)
+	}
+	require.ElementsMatch(t, []string{
+		"findings_list", "findings_get", "gate_check", "pr_preview",
+		"patch_preview", "notify_preview", "policy_effective",
+		"project_teams", "waivers_list", "waivers_get", "waiver_events",
+	}, names)
+
+	// A read tool really works with this credential, not just on paper.
+	text, isErr := mcpText(t, session, "findings_list", map[string]any{"project": slug})
+	require.False(t, isErr, text)
+	require.Contains(t, text, "Found 2 finding(s)")
+
+	// Neither a mutating nor a session-only tool is registered at all.
+	for _, name := range []string{"waivers_create", "reachability_set", "admin_status", "teams_list"} {
+		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: name})
+		require.Error(t, err, "tool %q must not be advertised to a project key", name)
+	}
 }
 
 func TestE2E_MCPBridgeOverStdio(t *testing.T) {

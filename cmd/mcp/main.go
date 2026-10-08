@@ -20,8 +20,13 @@ func main() {
 		log.Fatal("API_KEY environment variable is required")
 	}
 
+	opts, err := loadToolOptions(apiKey, os.Getenv)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	api := client.New(apiURL, client.WithToken(apiKey))
-	server := newMCPServer(api)
+	server := newMCPServer(api, opts)
 	if err := server.Run(context.Background(), &mcp.StdioTransport{}); err != nil {
 		log.Fatal(err)
 	}

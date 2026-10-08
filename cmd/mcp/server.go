@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/minh-tg/specht/internal/client"
@@ -94,9 +95,50 @@ type waiverCreateInput struct {
 	FindingIDs []string `json:"finding_ids,omitempty" jsonschema:"finding IDs to target"`
 }
 
-func newMCPServer(api API) *mcp.Server {
-	server := mcp.NewServer(&mcp.Implementation{Name: "specht-mcp", Version: "0.1.0"}, nil)
+// toolOptions decides which tools a server exposes. The default is the
+// narrowest useful set: read-only tools that a project API key can call.
+type toolOptions struct {
+	// AllowMutations registers the tools that change state (waivers,
+	// reachability). Off by default because the agent on the other end acts on
+	// scanner-supplied text, which can be written by an attacker; a prompt
+	// injected there could otherwise suppress findings without a human
+	// seeing it.
+	AllowMutations bool
+	// SessionCredential means API_KEY holds a user session token, not a
+	// project API key. The admin, team-directory and watcher routes accept
+	// sessions only, so their tools are registered only for one.
+	SessionCredential bool
+}
 
+// loadToolOptions derives the tool surface from the credential and the
+// environment. MCP_ALLOW_MUTATIONS is strict so a typo cannot silently enable
+// or disable the write tools.
+func loadToolOptions(apiKey string, getenv func(string) string) (toolOptions, error) {
+	opts := toolOptions{SessionCredential: !strings.HasPrefix(apiKey, "vuln_")}
+	if v := getenv("MCP_ALLOW_MUTATIONS"); v != "" {
+		allow, err := strconv.ParseBool(v)
+		if err != nil {
+			return toolOptions{}, fmt.Errorf("MCP_ALLOW_MUTATIONS is invalid: %q (want true or false)", v)
+		}
+		opts.AllowMutations = allow
+	}
+	return opts, nil
+}
+
+func newMCPServer(api API, opts toolOptions) *mcp.Server {
+	server := mcp.NewServer(&mcp.Implementation{Name: "specht-mcp", Version: "0.1.0"}, nil)
+	registerReadTools(server, api)
+	if opts.SessionCredential {
+		registerSessionTools(server, api)
+	}
+	if opts.AllowMutations {
+		registerMutationTools(server, api)
+	}
+	return server
+}
+
+// registerReadTools adds the read-only tools every credential can use.
+func registerReadTools(server *mcp.Server, api API) {
 	mcp.AddTool(server, &mcp.Tool{Name: "findings_list", Description: "List findings for a project"}, func(_ context.Context, _ *mcp.CallToolRequest, input findingsListInput) (*mcp.CallToolResult, any, error) {
 		return handleFindingsList(api, input)
 	})
@@ -115,26 +157,11 @@ func newMCPServer(api API) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{Name: "notify_preview", Description: "Preview the tracker or messaging action for a finding"}, func(_ context.Context, _ *mcp.CallToolRequest, input notifyPreviewInput) (*mcp.CallToolResult, any, error) {
 		return handleNotifyPreview(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "admin_status", Description: "Platform observability snapshot"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
-		return handleAdminStatus(api)
-	})
-	mcp.AddTool(server, &mcp.Tool{Name: "admin_retention_preview", Description: "Count settled reports a purge would delete"}, func(_ context.Context, _ *mcp.CallToolRequest, input retentionPreviewInput) (*mcp.CallToolResult, any, error) {
-		return handleAdminRetentionPreview(api, input)
-	})
 	mcp.AddTool(server, &mcp.Tool{Name: "policy_effective", Description: "Show a project's resolved policy with provenance"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
 		return handlePolicyEffective(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "teams_list", Description: "List all teams"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
-		return handleTeamsList(api)
-	})
 	mcp.AddTool(server, &mcp.Tool{Name: "project_teams", Description: "List teams linked to a project"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
 		return handleProjectTeams(api, input)
-	})
-	mcp.AddTool(server, &mcp.Tool{Name: "reachability_set", Description: "Set a finding's reachability assessment"}, func(_ context.Context, _ *mcp.CallToolRequest, input reachabilitySetInput) (*mcp.CallToolResult, any, error) {
-		return handleReachabilitySet(api, input)
-	})
-	mcp.AddTool(server, &mcp.Tool{Name: "watcher_status", Description: "Check CVE watcher daemon health"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
-		return handleWatcherStatus(api)
 	})
 	mcp.AddTool(server, &mcp.Tool{Name: "waivers_list", Description: "List waivers for a project"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
 		return handleWaiversList(api, input)
@@ -142,17 +169,38 @@ func newMCPServer(api API) *mcp.Server {
 	mcp.AddTool(server, &mcp.Tool{Name: "waivers_get", Description: "Get waiver details"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverInput) (*mcp.CallToolResult, any, error) {
 		return handleWaiversGet(api, input)
 	})
+	mcp.AddTool(server, &mcp.Tool{Name: "waiver_events", Description: "List events for a waiver"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverInput) (*mcp.CallToolResult, any, error) {
+		return handleWaiverEvents(api, input)
+	})
+}
+
+// registerSessionTools adds the tools whose routes reject API keys.
+func registerSessionTools(server *mcp.Server, api API) {
+	mcp.AddTool(server, &mcp.Tool{Name: "admin_status", Description: "Platform observability snapshot"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+		return handleAdminStatus(api)
+	})
+	mcp.AddTool(server, &mcp.Tool{Name: "admin_retention_preview", Description: "Count settled reports a purge would delete"}, func(_ context.Context, _ *mcp.CallToolRequest, input retentionPreviewInput) (*mcp.CallToolResult, any, error) {
+		return handleAdminRetentionPreview(api, input)
+	})
+	mcp.AddTool(server, &mcp.Tool{Name: "teams_list", Description: "List all teams"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+		return handleTeamsList(api)
+	})
+	mcp.AddTool(server, &mcp.Tool{Name: "watcher_status", Description: "Check CVE watcher daemon health"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+		return handleWatcherStatus(api)
+	})
+}
+
+// registerMutationTools adds the tools that change state.
+func registerMutationTools(server *mcp.Server, api API) {
+	mcp.AddTool(server, &mcp.Tool{Name: "reachability_set", Description: "Set a finding's reachability assessment"}, func(_ context.Context, _ *mcp.CallToolRequest, input reachabilitySetInput) (*mcp.CallToolResult, any, error) {
+		return handleReachabilitySet(api, input)
+	})
 	mcp.AddTool(server, &mcp.Tool{Name: "waivers_create", Description: "Create a new waiver for a project"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverCreateInput) (*mcp.CallToolResult, any, error) {
 		return handleWaiversCreate(api, input)
 	})
 	mcp.AddTool(server, &mcp.Tool{Name: "waivers_toggle", Description: "Enable or disable a waiver"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverInput) (*mcp.CallToolResult, any, error) {
 		return handleWaiversToggle(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "waiver_events", Description: "List events for a waiver"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverInput) (*mcp.CallToolResult, any, error) {
-		return handleWaiverEvents(api, input)
-	})
-
-	return server
 }
 
 func textToolResult(text string) (*mcp.CallToolResult, any, error) {
