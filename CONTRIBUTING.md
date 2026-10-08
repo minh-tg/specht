@@ -25,11 +25,30 @@ Signed-off-by: Your Name <you@example.com>
 All commits in a pull request must be signed off. Do not sign off a
 contribution you did not author or do not have permission to submit.
 
+The `dco` check on every pull request fails when a commit has no
+`Signed-off-by` trailer whose email matches the commit's author or committer.
+Commits by bot accounts such as Dependabot are exempt. To sign off a branch
+that is missing it:
+
+```bash
+git rebase --signoff origin/main
+git push --force-with-lease
+```
+
+Installing the hooks with `prek install` also signs off for you: the
+`dco-signoff` hook adds the trailer from your git identity when you commit, so
+`-s` becomes optional. The sign-off still certifies the statement above, so
+review what you commit.
+
+Maintainers: squash merges keep each commit's sign-off because the repository
+builds the squash message from the commit messages. Leave that setting as is.
+
 ## Development
 
 - Commits are checked by pre-commit hooks (installed via `prek install`):
   gofumpt, staticcheck, `go vet`, `go mod tidy`, dprint/oxlint (frontend),
-  hadolint, gitleaks, and conventional-commit message validation.
+  hadolint, gitleaks, conventional-commit message validation, and an automatic
+  DCO sign-off.
 - Run the test suite with `go test ./... -count=1 -short` (unit) or
   `go test -tags integration ./internal/repo/ -count=1` (needs Docker for
   testcontainers).
