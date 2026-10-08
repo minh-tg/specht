@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 	"github.com/minh-tg/specht/internal/scanner"
 )
 
@@ -113,10 +114,11 @@ func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) do
 		[]domain.Dimension{{Key: domain.DimVulnerabilityID, Value: v.Name}},
 		dcComponentDims(purl, dep.FileName)...,
 	)
-	location := dep.FilePath
+	filePath := parseutil.CleanFilePath(dep.FilePath)
+	location := filePath
 	if purl != "" {
 		if _, name, version := domain.SplitPURL(purl); name != "" {
-			location = domain.SCALocation(unescapePURL(name), unescapePURL(version), dep.FilePath)
+			location = domain.SCALocation(unescapePURL(name), unescapePURL(version), filePath)
 		}
 	}
 	return domain.NormalizedFinding{
@@ -131,7 +133,7 @@ func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) do
 		Dimensions:  dims,
 		Extensions: map[string]any{
 			"file_name": dep.FileName,
-			"file_path": dep.FilePath,
+			"file_path": filePath,
 			"cve":       v.Name,
 			"severity":  v.Severity,
 		},
@@ -140,19 +142,20 @@ func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) do
 
 // appendDCPackages records the full package inventory of one dependency.
 func appendDCPackages(nr *domain.NormalizedReport, dep dcDependency) {
+	filePath := parseutil.CleanFilePath(dep.FilePath)
 	for _, p := range dep.Packages {
 		purl := domain.NormalizePURL(p.ID)
 		if purl == "" {
 			continue
 		}
 		pkgType, name, version := domain.SplitPURL(purl)
-		nr.Packages = append(nr.Packages, domain.PackageRef{
+		nr.Packages = append(nr.Packages, parseutil.HardenPackage(domain.PackageRef{
 			PURL:         purl,
 			Ecosystem:    pkgType,
 			Name:         name,
 			Version:      version,
-			ManifestPath: dep.FilePath,
-		})
+			ManifestPath: filePath,
+		}))
 	}
 }
 
@@ -168,7 +171,7 @@ func convert(report dcReport) *domain.NormalizedReport {
 	if len(report.Dependencies) > 0 {
 		nr.Target = &domain.TargetInfo{
 			Kind:       "filesystem",
-			Identifier: report.Dependencies[0].FilePath,
+			Identifier: parseutil.CleanFilePath(report.Dependencies[0].FilePath),
 		}
 	}
 
@@ -181,7 +184,7 @@ func convert(report dcReport) *domain.NormalizedReport {
 		}
 
 		for _, v := range dep.Vulnerabilities {
-			nr.Findings = append(nr.Findings, convertDCVulnerability(dep, v, purl))
+			nr.Findings = append(nr.Findings, parseutil.HardenFinding(convertDCVulnerability(dep, v, purl)))
 		}
 	}
 

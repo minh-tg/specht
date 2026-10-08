@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 	"github.com/minh-tg/specht/internal/scanner"
 )
 
@@ -215,6 +216,7 @@ func resultTarget(first trivyResult) *domain.TargetInfo {
 }
 
 func addPackages(nr *domain.NormalizedReport, result trivyResult) {
+	cleanTarget := parseutil.CleanFilePath(result.Target)
 	for _, p := range result.Packages {
 		purl := p.Identifier.PURL
 		if purl == "" {
@@ -223,16 +225,18 @@ func addPackages(nr *domain.NormalizedReport, result trivyResult) {
 		if purl == "" {
 			continue
 		}
-		nr.Packages = append(nr.Packages, domain.PackageRef{
-			PURL:      domain.NormalizePURL(purl),
-			Ecosystem: result.Type,
-			Name:      p.Name,
-			Version:   p.Version,
-		})
+		nr.Packages = append(nr.Packages, parseutil.HardenPackage(domain.PackageRef{
+			PURL:         domain.NormalizePURL(purl),
+			Ecosystem:    result.Type,
+			Name:         p.Name,
+			Version:      p.Version,
+			ManifestPath: cleanTarget,
+		}))
 	}
 }
 
 func addVulns(nr *domain.NormalizedReport, result trivyResult) {
+	cleanTarget := parseutil.CleanFilePath(result.Target)
 	for _, v := range result.Vulnerabilities {
 		purl := v.PkgIdentifier.PURL
 		if purl == "" {
@@ -250,7 +254,7 @@ func addVulns(nr *domain.NormalizedReport, result trivyResult) {
 		}
 
 		ext := map[string]any{
-			"target":       result.Target,
+			"target":       cleanTarget,
 			"pkg_name":     v.PkgName,
 			"pkg_id":       v.PkgID,
 			"purl":         purl,
@@ -274,17 +278,17 @@ func addVulns(nr *domain.NormalizedReport, result trivyResult) {
 			ext["data_source"] = v.DataSource.URL
 		}
 
-		nr.Findings = append(nr.Findings, domain.NormalizedFinding{
+		nr.Findings = append(nr.Findings, parseutil.HardenFinding(domain.NormalizedFinding{
 			Fingerprint: string(domain.SCAFingerprint(v.VulnerabilityID, purl)),
 			FindingKind: kindSCA,
 			Title:       v.Title,
 			Description: v.Description,
 			Severity:    normalizeSeverity(v.Severity),
 			Score:       maxCVSSScore(v.CVSS),
-			Location:    domain.SCALocation(v.PkgName, v.InstalledVersion, result.Target),
+			Location:    domain.SCALocation(v.PkgName, v.InstalledVersion, cleanTarget),
 			Dimensions:  dims,
 			Extensions:  ext,
-		})
+		}))
 	}
 }
 
@@ -323,33 +327,41 @@ func bestCVSSScore(c trivyCVSS) float64 {
 }
 
 func addSecrets(nr *domain.NormalizedReport, result trivyResult) {
+	cleanTarget := parseutil.CleanFilePath(result.Target)
+	if cleanTarget == "" {
+		cleanTarget = "unknown"
+	}
 	for _, s := range result.Secrets {
-		fp := "secret:" + s.RuleID + ":" + result.Target
-		nr.Findings = append(nr.Findings, domain.NormalizedFinding{
+		fp := "secret:" + s.RuleID + ":" + cleanTarget
+		nr.Findings = append(nr.Findings, parseutil.HardenFinding(domain.NormalizedFinding{
 			Fingerprint: fp,
 			FindingKind: kindSecret,
 			Title:       s.Title,
 			Severity:    normalizeSeverity(s.Severity),
-			Location:    result.Target,
+			Location:    cleanTarget,
 			Dimensions: []domain.Dimension{
 				{Key: domain.DimRuleID, Value: s.RuleID},
 			},
 			Extensions: map[string]any{
 				"category": s.Category,
 			},
-		})
+		}))
 	}
 }
 
 func addMisconfigs(nr *domain.NormalizedReport, result trivyResult) {
+	cleanTarget := parseutil.CleanFilePath(result.Target)
+	if cleanTarget == "" {
+		cleanTarget = "unknown"
+	}
 	for _, m := range result.Misconfigs {
-		fp := "iac:" + m.RuleID + ":" + result.Target
-		nr.Findings = append(nr.Findings, domain.NormalizedFinding{
+		fp := "iac:" + m.RuleID + ":" + cleanTarget
+		nr.Findings = append(nr.Findings, parseutil.HardenFinding(domain.NormalizedFinding{
 			Fingerprint: fp,
 			FindingKind: kindIaC,
 			Title:       m.Title,
 			Severity:    normalizeSeverity(m.Severity),
-			Location:    result.Target,
+			Location:    cleanTarget,
 			Dimensions: []domain.Dimension{
 				{Key: domain.DimRuleID, Value: m.RuleID},
 			},
@@ -357,7 +369,7 @@ func addMisconfigs(nr *domain.NormalizedReport, result trivyResult) {
 				"message":      m.Message,
 				"severity_raw": m.Severity,
 			},
-		})
+		}))
 	}
 }
 
