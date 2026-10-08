@@ -229,3 +229,25 @@ func (r *pgTeamPort) ListProjectTeams(ctx context.Context, projectID string) ([]
 	}
 	return out, nil
 }
+
+func (r *pgTeamPort) ListTeamProjectLinks(ctx context.Context, teamID string) ([]port.ProjectTeam, error) {
+	tid, err := parseID(teamID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListTeamProjectLinks(ctx, tid)
+	if err != nil {
+		return nil, mappingErr(err)
+	}
+	out := make([]port.ProjectTeam, len(rows))
+	for i, row := range rows {
+		out[i] = port.ProjectTeam{
+			ProjectID: toUUID(row.ProjectID),
+			TeamID:    toUUID(row.TeamID),
+			TeamName:  row.TeamName,
+			Role:      row.Role,
+			CreatedAt: row.CreatedAt.Time,
+		}
+	}
+	return out, nil
+}

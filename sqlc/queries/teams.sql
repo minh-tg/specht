@@ -58,6 +58,13 @@ JOIN teams t ON t.id = pt.team_id
 WHERE pt.project_id = $1
 ORDER BY t.name ASC;
 
+-- name: ListTeamProjectLinks :many
+SELECT pt.project_id, pt.team_id, pt.role, pt.created_at, t.name AS team_name
+FROM project_teams pt
+JOIN teams t ON t.id = pt.team_id
+WHERE pt.team_id = $1
+ORDER BY pt.project_id ASC;
+
 -- name: IsProjectMemberEffective :one
 -- Effective membership: a direct project_members row OR membership in any
 -- team linked to the project. The single choke point for session-user

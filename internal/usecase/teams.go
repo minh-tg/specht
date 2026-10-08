@@ -152,6 +152,43 @@ func (u *Usecases) requireTeamAdmin(ctx context.Context, teamID string) error {
 	return nil
 }
 
+// requireDelegationCeiling keeps team administration from outranking project
+// administration. Adding someone to a team hands them every role the team is
+// linked at, so a non-admin caller must hold each elevated role (above
+// member) through a direct project membership. The team's own link cannot
+// vouch for the caller: that would let any team admin delegate whatever the
+// project admins gave the team. Global admins are exempt.
+func (u *Usecases) requireDelegationCeiling(ctx context.Context, teamID string) error {
+	ident := auth.ContextIdentity(ctx)
+	if ident == nil || ident.IsAPIKey {
+		return ErrProjectAccessDenied
+	}
+	if ident.Role == auth.RoleAdmin {
+		return nil
+	}
+	links, err := u.deps.Stores.Teams.ListTeamProjectLinks(ctx, teamID)
+	if err != nil {
+		return fmt.Errorf("list team project links: %w", err)
+	}
+	for _, l := range links {
+		linkRole := normalizeMemberRole(l.Role)
+		if auth.RoleRank(linkRole) <= auth.RoleRank(auth.RoleMember) {
+			continue
+		}
+		direct, err := u.deps.Stores.Projects.GetMember(ctx, l.ProjectID, ident.UserID)
+		switch {
+		case errors.Is(err, port.ErrNotFound):
+			return ErrProjectAccessDenied
+		case err != nil:
+			return fmt.Errorf("resolve direct project role: %w", err)
+		}
+		if auth.RoleRank(normalizeMemberRole(direct.Role)) < auth.RoleRank(linkRole) {
+			return ErrProjectAccessDenied
+		}
+	}
+	return nil
+}
+
 // AddTeamMember adds a user to a team. The user must exist (foreign keys
 // alone would surface a raw constraint violation); the role validates
 // against the team vocabulary.
@@ -167,6 +204,9 @@ func (u *Usecases) AddTeamMember(ctx context.Context, teamID, userID, role strin
 	}
 	if !validTeamMemberRoles[role] {
 		return nil, fmt.Errorf("invalid team role %q: want admin or member", role)
+	}
+	if err := u.requireDelegationCeiling(ctx, teamID); err != nil {
+		return nil, err
 	}
 	user, err := u.deps.Stores.Users.GetByID(ctx, userID)
 	if err != nil {
