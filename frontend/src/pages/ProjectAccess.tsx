@@ -224,6 +224,11 @@ export function ProjectAccess() {
               </table>
             </div>
           )}
+        {removeMemberMutation.isError && (
+          <p role="alert" className="border-t border-border px-5 py-3 text-destructive text-xs">
+            {removeMemberMutation.error?.message ?? "Failed to remove member"}
+          </p>
+        )}
       </section>
 
       {/* Linked Teams Section */}
@@ -314,6 +319,11 @@ export function ProjectAccess() {
               </table>
             </div>
           )}
+        {unlinkTeamMutation.isError && (
+          <p role="alert" className="border-t border-border px-5 py-3 text-destructive text-xs">
+            {unlinkTeamMutation.error?.message ?? "Failed to unlink team"}
+          </p>
+        )}
       </section>
 
       {/* Add Member Modal */}
