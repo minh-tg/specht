@@ -332,17 +332,17 @@ func bootstrapAdmins(ctx context.Context, stores *port.Stores) {
 		}
 		user, err := stores.Users.GetByEmail(ctx, email)
 		if err != nil {
-			slog.Warn("admin bootstrap: unknown account, skipping", "email", email)
+			slog.Warn("admin bootstrap: unknown account, skipping", "email", auth.MaskEmail(email))
 			continue
 		}
 		if user.Role == auth.RoleAdmin {
 			continue
 		}
 		if _, err := stores.Users.SetRole(ctx, user.ID, auth.RoleAdmin); err != nil {
-			slog.Error("admin bootstrap: promotion failed", "email", email, "error", err)
+			slog.Error("admin bootstrap: promotion failed", "email", auth.MaskEmail(email), "error", err)
 			continue
 		}
-		slog.Info("admin bootstrap: promoted to admin", "email", email)
+		slog.Info("admin bootstrap: promoted to admin", "email", auth.MaskEmail(email))
 	}
 }
 
