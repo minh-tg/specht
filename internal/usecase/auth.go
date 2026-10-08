@@ -80,36 +80,36 @@ func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthR
 		// Hash anyway: skipping the work would make duplicates answer
 		// measurably faster than new accounts and reveal who is registered.
 		u.burnHash(password)
-		slog.Warn("register: email already registered", "email", email)
+		slog.Warn("register: email already registered", "email", auth.MaskEmail(email))
 		return nil, ErrRegistrationFailed
 	}
 	if !errors.Is(err, port.ErrNotFound) {
-		slog.Error("register: lookup user failed", "email", email, "error", err)
+		slog.Error("register: lookup user failed", "email", auth.MaskEmail(email), "error", err)
 		return nil, ErrRegistrationFailed
 	}
 
 	hash, err := u.deps.Passwords.Hash(password)
 	if err != nil {
-		slog.Error("register: hash password failed", "email", email, "error", err)
+		slog.Error("register: hash password failed", "email", auth.MaskEmail(email), "error", err)
 		return nil, ErrRegistrationFailed
 	}
 
 	user, err := u.deps.Stores.Users.Create(ctx, email, nil, &hash)
 	if err != nil {
-		slog.Error("register: create user failed", "email", email, "error", err)
+		slog.Error("register: create user failed", "email", auth.MaskEmail(email), "error", err)
 		return nil, ErrRegistrationFailed
 	}
 
 	userID := user.ID
 	token, err := u.deps.Tokens.CreateToken(userID, user.Email, auth.RoleViewer)
 	if err != nil {
-		slog.Error("register: create token failed", "email", email, "error", err)
+		slog.Error("register: create token failed", "email", auth.MaskEmail(email), "error", err)
 		return nil, ErrRegistrationFailed
 	}
 
 	resp, err := u.createSession(ctx, userID, user.Email)
 	if err != nil {
-		slog.Error("register: create session failed", "email", email, "error", err)
+		slog.Error("register: create session failed", "email", auth.MaskEmail(email), "error", err)
 		return nil, ErrRegistrationFailed
 	}
 	resp.Token = token
@@ -159,7 +159,7 @@ func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, sub, email string
 	user, err := u.deps.Stores.Users.GetByEmail(ctx, email)
 	if err == nil {
 		if sub != "" {
-			slog.Info("sso login: existing account", "email", email, "sub", sub)
+			slog.Info("sso login: existing account", "email", auth.MaskEmail(email), "sub", sub)
 		}
 		return user.ID, auth.TokenRole(user.Role), false, nil
 	}
@@ -175,20 +175,20 @@ func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, sub, email string
 		}
 	}
 	if !allowed {
-		slog.Warn("sso login: account not provisioned", "email", email, "sub", sub)
+		slog.Warn("sso login: account not provisioned", "email", auth.MaskEmail(email), "sub", sub)
 		return "", "", false, auth.ErrSSONotProvisioned
 	}
 	created, err := u.deps.Stores.Users.Create(ctx, email, nil, nil)
 	if err != nil {
 		return "", "", false, fmt.Errorf("provision sso user: %w", err)
 	}
-	slog.Info("sso login: provisioned account", "email", email, "sub", sub)
+	slog.Info("sso login: provisioned account", "email", auth.MaskEmail(email), "sub", sub)
 	if auth.IsSSOAdmin(groups, adminGroups) {
 		elevated, err := u.deps.Stores.Users.SetRole(ctx, created.ID, auth.RoleAdmin)
 		if err != nil {
 			return "", "", false, fmt.Errorf("elevate sso admin: %w", err)
 		}
-		slog.Info("sso login: elevated to admin by IdP group", "email", email, "sub", sub)
+		slog.Info("sso login: elevated to admin by IdP group", "email", auth.MaskEmail(email), "sub", sub)
 		return elevated.ID, auth.TokenRole(elevated.Role), true, nil
 	}
 	return created.ID, auth.TokenRole(created.Role), true, nil

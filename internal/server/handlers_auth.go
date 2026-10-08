@@ -31,7 +31,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		// indistinguishable from any other registration failure, or this
 		// endpoint becomes an account-enumeration oracle. Detail goes to the
 		// server log only.
-		slog.Error("register failed", "email", req.Email, "error", err)
+		slog.Error("register failed", "email", auth.MaskEmail(req.Email), "error", err)
 		respondError(w, http.StatusUnprocessableEntity, "registration_failed", "registration failed")
 		h.audit.HTTP(r, audit.EventRegister, audit.OutcomeFailure, "", req.Email, err)
 		return
