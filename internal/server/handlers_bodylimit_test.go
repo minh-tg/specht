@@ -213,3 +213,49 @@ func TestAddProjectMember_BodyTooLarge(t *testing.T) {
 	requireAPIError(t, w, http.StatusRequestEntityTooLarge, "body_too_large")
 	assert.False(t, called, "add project member use case must not run for an oversized body")
 }
+
+// The reason is copied onto the event of every finding in a bulk request, so
+// the use case caps it; the handler must report that as the caller's mistake.
+func TestTriage_OverlongReasonIsABadRequest(t *testing.T) {
+	t.Run("single", func(t *testing.T) {
+		mock := &mockUsecases{
+			triageFindingFn: func(context.Context, usecase.TriageInput) (*usecase.TriageOutput, error) {
+				return nil, usecase.ErrReasonTooLong
+			},
+		}
+		req := authRequest("PATCH", "/api/v1/findings/abc-123", `{"analysis_state":"false_positive","reason":"x"}`)
+		w := httptest.NewRecorder()
+
+		testRouter(mock).ServeHTTP(w, req)
+
+		requireAPIError(t, w, http.StatusBadRequest, "reason_too_long")
+	})
+	t.Run("bulk", func(t *testing.T) {
+		mock := &mockUsecases{
+			bulkTriageFn: func(context.Context, usecase.BulkTriageInput) ([]usecase.TriageOutput, error) {
+				return nil, usecase.ErrReasonTooLong
+			},
+		}
+		req := authRequest("POST", "/api/v1/findings/bulk-analysis", bulkBody(2))
+		w := httptest.NewRecorder()
+
+		testRouter(mock).ServeHTTP(w, req)
+
+		requireAPIError(t, w, http.StatusBadRequest, "reason_too_long")
+	})
+}
+
+// The use case enforces the id cap for non-HTTP callers; if it ever trips
+// behind the handler's own check the answer is still a 400, not a 500.
+func TestBulkTriage_UseCaseIDCapIsABadRequest(t *testing.T) {
+	mock := &mockUsecases{
+		bulkTriageFn: func(context.Context, usecase.BulkTriageInput) ([]usecase.TriageOutput, error) {
+			return nil, usecase.ErrTooManyFindings
+		},
+	}
+	w := httptest.NewRecorder()
+
+	testRouter(mock).ServeHTTP(w, authRequest("POST", "/api/v1/findings/bulk-analysis", bulkBody(2)))
+
+	requireAPIError(t, w, http.StatusBadRequest, "too_many_ids")
+}

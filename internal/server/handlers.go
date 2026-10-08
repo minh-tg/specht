@@ -339,8 +339,9 @@ const (
 	maxIngestBodyBytes = 25 << 20 // 25 MiB
 	maxJSONBodyBytes   = 1 << 20  // 1 MiB
 	// maxBulkFindingIDs bounds the finding_ids fan-out of BulkTriage so one
-	// request cannot drive unbounded per-id lookup and update work.
-	maxBulkFindingIDs = 1000
+	// request cannot drive unbounded per-id lookup and update work. The use
+	// case enforces the same limit for callers that do not come through here.
+	maxBulkFindingIDs = usecase.MaxBulkTriageFindings
 )
 
 func parseIntParam(r *http.Request, name string, defaultVal int32) int32 {

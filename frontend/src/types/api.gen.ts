@@ -1585,7 +1585,7 @@ export interface components {
         | "not_affected"
         | "accepted_risk"
         | "wont_fix";
-      /** @description Required for states that ignore the gate. */
+      /** @description Required for states that ignore the gate. At most 4096 bytes (`reason_too_long` otherwise). */
       reason?: string;
       /**
        * Format: date-time
@@ -1603,6 +1603,7 @@ export interface components {
     BulkTriageRequest: {
       finding_ids: string[];
       analysis_state: string;
+      /** @description At most 4096 bytes (`reason_too_long` otherwise); it is stored on every finding's event. */
       reason?: string;
       /** Format: date-time */
       analysis_expires_at?: string;
