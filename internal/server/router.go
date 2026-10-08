@@ -139,10 +139,24 @@ func NewRouter(cfg RouterConfig) http.Handler {
 			burst = 20
 		}
 		r.Use(NewRateLimiter(rps, burst).MiddlewareByIP())
-		r.Post("/api/v1/auth/register", h.Register)
-		r.Post("/api/v1/auth/login", h.Login)
 		r.Post("/api/v1/auth/refresh", h.Refresh)
 		r.Post("/api/v1/auth/logout", h.Logout)
+
+		// Login and register accept guessable credentials, so they get a much
+		// tighter bucket than the SPA's automatic token refresh needs.
+		r.Group(func(r chi.Router) {
+			perMinute := cfg.RateLimit.LoginPerMinute
+			if perMinute <= 0 {
+				perMinute = defaultLoginPerMinute
+			}
+			loginBurst := cfg.RateLimit.LoginBurst
+			if loginBurst <= 0 {
+				loginBurst = defaultLoginBurst
+			}
+			r.Use(NewLoginRateLimiter(perMinute, loginBurst).MiddlewareByIP())
+			r.Post("/api/v1/auth/register", h.Register)
+			r.Post("/api/v1/auth/login", h.Login)
+		})
 	})
 
 	r.Group(func(r chi.Router) {

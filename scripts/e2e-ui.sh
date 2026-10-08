@@ -78,6 +78,8 @@ start_server() {
     SERVER_ADDR="127.0.0.1:$PORT" \
     DB_MIGRATE=true \
     LOG_LEVEL=warn \
+    RATE_LIMIT_LOGIN_PER_MINUTE=100000 \
+    RATE_LIMIT_LOGIN_BURST=100000 \
     "$@" "$BIN_DIR/specht-server" >>"$BIN_DIR/server.log" 2>&1 &
   SERVER_PID=$!
 }

@@ -37,11 +37,14 @@ const (
 	DefaultSweepInterval = 5 * time.Minute
 	DefaultStalenessMult = 2
 	// Rate limiting defaults (token bucket per key): strict for
-	// unauthenticated entry points, generous for authenticated callers.
-	DefaultRateLimitRPS       = 10
-	DefaultRateLimitBurst     = 20
-	DefaultRateLimitAuthRPS   = 1000
-	DefaultRateLimitAuthBurst = 2000
+	// unauthenticated entry points, generous for authenticated callers, and
+	// tightest for login and register, which accept guessable credentials.
+	DefaultRateLimitRPS            = 10
+	DefaultRateLimitBurst          = 20
+	DefaultRateLimitAuthRPS        = 1000
+	DefaultRateLimitAuthBurst      = 2000
+	DefaultRateLimitLoginPerMinute = 5
+	DefaultRateLimitLoginBurst     = 5
 )
 
 // Server is the resolved server configuration.
@@ -101,14 +104,17 @@ type SSOConfig struct {
 }
 
 // RateLimit is the resolved rate limiter configuration: a strict per-IP
-// bucket for unauthenticated entry points and a generous per-caller bucket
-// for authenticated requests.
+// bucket for unauthenticated entry points, a generous per-caller bucket for
+// authenticated requests, and a much tighter per-IP bucket (refilled per
+// minute) for login and register.
 type RateLimit struct {
-	Enable    bool
-	RPS       int
-	Burst     int
-	AuthRPS   int
-	AuthBurst int
+	Enable         bool
+	RPS            int
+	Burst          int
+	AuthRPS        int
+	AuthBurst      int
+	LoginPerMinute int
+	LoginBurst     int
 }
 
 // IntelConfig is the resolved vulnerability-intel configuration.
@@ -205,11 +211,13 @@ func parsePositiveInt(label, v string) (int, error) {
 // enabled so a stray invalid var cannot crash a dev server.
 func loadRateLimit(s *Server) error {
 	s.RateLimit = RateLimit{
-		Enable:    os.Getenv("RATE_LIMIT_ENABLED") == "true",
-		RPS:       DefaultRateLimitRPS,
-		Burst:     DefaultRateLimitBurst,
-		AuthRPS:   DefaultRateLimitAuthRPS,
-		AuthBurst: DefaultRateLimitAuthBurst,
+		Enable:         os.Getenv("RATE_LIMIT_ENABLED") == "true",
+		RPS:            DefaultRateLimitRPS,
+		Burst:          DefaultRateLimitBurst,
+		AuthRPS:        DefaultRateLimitAuthRPS,
+		AuthBurst:      DefaultRateLimitAuthBurst,
+		LoginPerMinute: DefaultRateLimitLoginPerMinute,
+		LoginBurst:     DefaultRateLimitLoginBurst,
 	}
 	parsed := []struct {
 		label string
@@ -220,6 +228,8 @@ func loadRateLimit(s *Server) error {
 		{"RATE_LIMIT_BURST", os.Getenv("RATE_LIMIT_BURST"), func(n int) { s.RateLimit.Burst = n }},
 		{"RATE_LIMIT_AUTH_RPS", os.Getenv("RATE_LIMIT_AUTH_RPS"), func(n int) { s.RateLimit.AuthRPS = n }},
 		{"RATE_LIMIT_AUTH_BURST", os.Getenv("RATE_LIMIT_AUTH_BURST"), func(n int) { s.RateLimit.AuthBurst = n }},
+		{"RATE_LIMIT_LOGIN_PER_MINUTE", os.Getenv("RATE_LIMIT_LOGIN_PER_MINUTE"), func(n int) { s.RateLimit.LoginPerMinute = n }},
+		{"RATE_LIMIT_LOGIN_BURST", os.Getenv("RATE_LIMIT_LOGIN_BURST"), func(n int) { s.RateLimit.LoginBurst = n }},
 	}
 	for _, p := range parsed {
 		if p.v == "" {
