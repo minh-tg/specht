@@ -30,6 +30,27 @@ func TestFindOrProvisionSSOUser_ExistingKeepsLocalRole(t *testing.T) {
 	assert.False(t, provisioned)
 }
 
+func TestFindOrProvisionSSOUser_NormalisesEmailForLookupAndCreate(t *testing.T) {
+	ur := &mockUserRepo{}
+	var lookedUp, created string
+	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {
+		lookedUp = email
+		return port.User{}, port.ErrNotFound
+	}
+	ur.createFn = func(ctx context.Context, email string, displayName, passwordHash *string) (port.User, error) {
+		created = email
+		u := makeUser("user-9")
+		u.Email = email
+		u.Role = "member"
+		return u, nil
+	}
+	uc := New(ssoTestDeps(ur))
+	_, _, _, err := uc.FindOrProvisionSSOUser(context.Background(), "sub-9", "  New@Example.COM ", nil, []string{"example.com"}, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "new@example.com", lookedUp, "the IdP's casing must not decide which account is found")
+	assert.Equal(t, "new@example.com", created, "and must not create a second account for the same person")
+}
+
 func TestFindOrProvisionSSOUser_UnknownDomainDenied(t *testing.T) {
 	ur := &mockUserRepo{}
 	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {

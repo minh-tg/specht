@@ -1,10 +1,10 @@
 -- name: CreateUser :one
 INSERT INTO users (email, display_name, password_hash, role)
-VALUES ($1, $2, $3, 'member')
+VALUES (lower(sqlc.arg(email)::text), sqlc.narg(display_name), sqlc.narg(password_hash), 'member')
 RETURNING *;
 
 -- name: GetUserByEmail :one
-SELECT * FROM users WHERE email = $1;
+SELECT * FROM users WHERE lower(email) = lower(sqlc.arg(email)::text);
 
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = $1;

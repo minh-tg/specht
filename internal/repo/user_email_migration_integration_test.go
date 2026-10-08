@@ -7,9 +7,29 @@ import (
 	"testing"
 
 	"github.com/golang-migrate/migrate/v4"
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestUsers_EmailStorageAndLookupIgnoreCase(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	created, err := repos.Users.Create(ctx, "Ada@Example.COM",
+		pgtype.Text{Valid: false}, pgtype.Text{Valid: true, String: "unused-hash"})
+	require.NoError(t, err)
+	assert.Equal(t, "ada@example.com", created.Email, "the database lowercases even if a caller forgets to")
+
+	found, err := repos.Users.GetByEmail(ctx, "ADA@example.com")
+	require.NoError(t, err)
+	assert.Equal(t, created.ID, found.ID, "lookup ignores case")
+
+	_, err = repos.Users.Create(ctx, "aDa@EXAMPLE.com",
+		pgtype.Text{Valid: false}, pgtype.Text{Valid: true, String: "unused-hash"})
+	assert.Error(t, err, "a case-variant address cannot become a second account")
+}
 
 func TestUserEmailMigration_RefusesCaseDuplicatesThenNormalises(t *testing.T) {
 	repos, cleanup := setupTestDB(t)

@@ -49,6 +49,21 @@ func TestBootstrapAdmins_PromotesKnownSkipsUnknown(t *testing.T) {
 	}
 }
 
+func TestBootstrapAdmins_MatchesEmailsCaseInsensitively(t *testing.T) {
+	store := &fakeUserStore{users: map[string]port.User{
+		"ops@example.com": {ID: "u-ops", Email: "ops@example.com", Role: "member"},
+	}}
+	stores := &port.Stores{Users: store}
+	t.Setenv("ADMIN_EMAILS", " Ops@Example.COM ")
+
+	bootstrapAdmins(context.Background(), stores)
+
+	if store.users["ops@example.com"].Role != "admin" {
+		t.Fatalf("a mixed-case ADMIN_EMAILS entry must still promote the lowercase account, role = %q",
+			store.users["ops@example.com"].Role)
+	}
+}
+
 func TestBootstrapAdmins_EmptyNoop(t *testing.T) {
 	store := &fakeUserStore{users: map[string]port.User{}}
 	stores := &port.Stores{Users: store}
