@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -27,6 +28,12 @@ const (
 	triageMsgInvalidTeamID        = "invalid team id format"
 	triageMsgTeamNotFound         = "team not found"
 	triageMsgTeamAdminRequired    = "team admin is required"
+)
+
+// Limit messages derive from the limits themselves so they cannot drift.
+var (
+	tooManyIDsMessage    = fmt.Sprintf("finding_ids exceeds the maximum of %d", usecase.MaxBulkTriageFindings)
+	reasonTooLongMessage = fmt.Sprintf("reason exceeds the maximum of %d bytes", usecase.MaxTriageReasonBytes)
 )
 
 func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
@@ -73,6 +80,8 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		case errors.Is(err, usecase.ErrReasonRequired):
 			respondError(w, http.StatusUnprocessableEntity, "reason_required", "reason is required for this analysis state")
+		case errors.Is(err, usecase.ErrReasonTooLong):
+			respondError(w, http.StatusBadRequest, "reason_too_long", reasonTooLongMessage)
 		case errors.Is(err, usecase.ErrExpiryRequired):
 			respondError(w, http.StatusUnprocessableEntity, "expiry_required", "expiry is required for accepted_risk and wont_fix")
 		case errors.Is(err, usecase.ErrInvalidState):
@@ -126,7 +135,7 @@ func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(req.FindingIDs) > maxBulkFindingIDs {
-		respondError(w, http.StatusBadRequest, "too_many_ids", "finding_ids exceeds the maximum of 1000")
+		respondError(w, http.StatusBadRequest, "too_many_ids", tooManyIDsMessage)
 		return
 	}
 	if req.AnalysisState == "" {
@@ -158,6 +167,10 @@ func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
 		case errors.Is(err, usecase.ErrReasonRequired):
 			respondError(w, http.StatusUnprocessableEntity, "reason_required", "reason is required for this analysis state")
+		case errors.Is(err, usecase.ErrReasonTooLong):
+			respondError(w, http.StatusBadRequest, "reason_too_long", reasonTooLongMessage)
+		case errors.Is(err, usecase.ErrTooManyFindings):
+			respondError(w, http.StatusBadRequest, "too_many_ids", tooManyIDsMessage)
 		case errors.Is(err, usecase.ErrExpiryRequired):
 			respondError(w, http.StatusUnprocessableEntity, "expiry_required", "expiry is required for accepted_risk and wont_fix")
 		case errors.Is(err, usecase.ErrInvalidState):

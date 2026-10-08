@@ -18,6 +18,18 @@ var (
 	ErrReasonRequired  = errors.New("reason is required for this analysis state")
 	ErrExpiryRequired  = errors.New("expiry is required for accepted_risk and wont_fix")
 	ErrInvalidState    = errors.New("invalid analysis state")
+	ErrTooManyFindings = errors.New("too many findings in one request")
+	ErrReasonTooLong   = errors.New("reason is too long")
+)
+
+const (
+	// MaxBulkTriageFindings bounds the finding ids in one bulk triage call,
+	// which does a lookup, an access check and an update for each.
+	MaxBulkTriageFindings = 1000
+	// MaxTriageReasonBytes bounds a triage reason. The reason is copied onto
+	// the event of every finding it is applied to, so an unbounded one
+	// multiplies into the database by the size of the batch.
+	MaxTriageReasonBytes = 4096
 )
 
 // TriageInput sets a finding's analysis state with an optional reason and expiry.
@@ -102,6 +114,9 @@ func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*Triag
 
 	if !finding.ValidateAnalysisState(input.AnalysisState) {
 		return nil, fmt.Errorf("%w: %q", ErrInvalidState, input.AnalysisState)
+	}
+	if len(input.Reason) > MaxTriageReasonBytes {
+		return nil, fmt.Errorf("%w: at most %d bytes", ErrReasonTooLong, MaxTriageReasonBytes)
 	}
 
 	f, err := u.findingWithProjectEditor(ctx, findingID)
@@ -216,6 +231,12 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 func validateBulkTriage(input BulkTriageInput) error {
 	if !finding.ValidateAnalysisState(input.AnalysisState) {
 		return fmt.Errorf("%w: %q", ErrInvalidState, input.AnalysisState)
+	}
+	if len(input.FindingIDs) > MaxBulkTriageFindings {
+		return fmt.Errorf("%w: at most %d", ErrTooManyFindings, MaxBulkTriageFindings)
+	}
+	if len(input.Reason) > MaxTriageReasonBytes {
+		return fmt.Errorf("%w: at most %d bytes", ErrReasonTooLong, MaxTriageReasonBytes)
 	}
 	for _, id := range input.FindingIDs {
 		if _, err := uuid.Parse(id); err != nil {

@@ -2545,7 +2545,7 @@ components:
           enum: [unanalyzed, in_triage, exploitable, false_positive, not_affected, accepted_risk, wont_fix]
         reason:
           type: string
-          description: Required for states that ignore the gate.
+          description: Required for states that ignore the gate. At most 4096 bytes (`reason_too_long` otherwise).
         analysis_expires_at:
           type: string
           format: date-time
@@ -2568,7 +2568,7 @@ components:
           maxItems: 1000
           items: { type: string, format: uuid }
         analysis_state: { type: string }
-        reason: { type: string }
+        reason: { type: string, description: "At most 4096 bytes (`reason_too_long` otherwise); it is stored on every finding's event." }
         analysis_expires_at: { type: string, format: date-time }
 
     BulkTriageResponse:
