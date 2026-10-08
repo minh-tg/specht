@@ -103,8 +103,8 @@ func TestOIDC_Callback_ForwardsGroups(t *testing.T) {
 	prov.idToken = signOIDCIDTokenWithGroups(t, key, prov.srv.URL, "test-client", oidcGroupClaims{sub: "oidc-user-1", email: "oidc@example.com", nonce: nonce, groups: []string{"idp-admins"}})
 
 	var gotGroups []string
-	h := auth.CallbackHandler(func(ctx context.Context, userID, email string, groups []string) (string, error) {
-		gotGroups = groups
+	h := auth.CallbackHandler(func(ctx context.Context, claims SSOClaims) (string, error) {
+		gotGroups = claims.Groups
 		return "test-session-token", nil
 	})
 	req := httptest.NewRequest("GET", "/callback?code=test-code&state="+url.QueryEscape(state), nil)
@@ -128,8 +128,8 @@ func TestOIDC_Callback_MergesUserinfoGroups(t *testing.T) {
 	prov.idToken = signOIDCIDTokenWithGroups(t, key, prov.srv.URL, "test-client", oidcGroupClaims{sub: "oidc-user-1", email: "oidc@example.com", nonce: nonce, groups: []string{"idp-admins"}})
 
 	var gotGroups []string
-	h := auth.CallbackHandler(func(ctx context.Context, userID, email string, groups []string) (string, error) {
-		gotGroups = groups
+	h := auth.CallbackHandler(func(ctx context.Context, claims SSOClaims) (string, error) {
+		gotGroups = claims.Groups
 		return "test-session-token", nil
 	})
 	req := httptest.NewRequest("GET", "/callback?code=test-code&state="+url.QueryEscape(state), nil)

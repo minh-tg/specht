@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"net"
@@ -127,7 +128,7 @@ func TestOIDC_LoginURL(t *testing.T) {
 func TestOIDC_CallbackHandler_MissingCode(t *testing.T) {
 	a := mustOIDC(t, "https://example.com")
 
-	h := a.CallbackHandler(func(ctx context.Context, userID, email string, groups []string) (string, error) {
+	h := a.CallbackHandler(func(ctx context.Context, _ SSOClaims) (string, error) {
 		return "token", nil
 	})
 	req := httptest.NewRequest("GET", "/api/v1/auth/sso/callback", nil)
@@ -140,7 +141,7 @@ func TestOIDC_CallbackHandler_MissingCode(t *testing.T) {
 func TestOIDC_CallbackHandler_MissingState(t *testing.T) {
 	a := mustOIDC(t, "https://example.com")
 
-	h := a.CallbackHandler(func(ctx context.Context, userID, email string, groups []string) (string, error) {
+	h := a.CallbackHandler(func(ctx context.Context, _ SSOClaims) (string, error) {
 		return "token", nil
 	})
 	req := httptest.NewRequest("GET", "/callback?code=test-code", nil)
@@ -154,7 +155,7 @@ func TestOIDC_CallbackHandler_MissingState(t *testing.T) {
 func TestOIDC_CallbackHandler_StateMismatch(t *testing.T) {
 	a := mustOIDC(t, "https://example.com")
 
-	h := a.CallbackHandler(func(ctx context.Context, userID, email string, groups []string) (string, error) {
+	h := a.CallbackHandler(func(ctx context.Context, _ SSOClaims) (string, error) {
 		return "token", nil
 	})
 	req := httptest.NewRequest("GET", "/callback?code=test-code&state=attacker-state", nil)
@@ -189,7 +190,7 @@ func jwksBody(t *testing.T, pub *rsa.PublicKey) string {
 
 // signOIDCIDToken signs an id_token with the given key, kid, issuer, audience,
 // subject, and optional nonce.
-func signOIDCIDToken(t *testing.T, key *rsa.PrivateKey, issuer, aud, sub, email, nonce string) string {
+func signOIDCIDToken(t *testing.T, key *rsa.PrivateKey, issuer, aud, sub, email, nonce string, extra ...jwt.MapClaims) string {
 	t.Helper()
 	now := time.Now()
 	claims := jwt.MapClaims{
@@ -202,6 +203,11 @@ func signOIDCIDToken(t *testing.T, key *rsa.PrivateKey, issuer, aud, sub, email,
 	}
 	if nonce != "" {
 		claims["nonce"] = nonce
+	}
+	for _, e := range extra {
+		for k, v := range e {
+			claims[k] = v
+		}
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	tok.Header["kid"] = testOIDCKid
@@ -219,6 +225,9 @@ type fakeOIDCProvider struct {
 	omitIDToken bool
 	userSub     string
 	userGroups  string
+	// userEmailVerified, when non-nil, is sent as the userinfo email_verified
+	// claim exactly as given (bool, string, ...).
+	userEmailVerified any
 }
 
 func writeFakeOIDCResponse(t *testing.T, w http.ResponseWriter, format string, args ...any) {
@@ -241,12 +250,16 @@ func newFakeOIDCProvider(t *testing.T, key *rsa.PrivateKey) *fakeOIDCProvider {
 				writeFakeOIDCResponse(t, w, `{"access_token":"acc-test","token_type":"Bearer","id_token":%q}`, p.idToken)
 			}
 		case "/userinfo":
-			sub := p.userSub
-			if p.userGroups != "" {
-				writeFakeOIDCResponse(t, w, `{"sub":%q,"email":%q,"groups":%s}`, sub, "oidc@example.com", p.userGroups)
-			} else {
-				writeFakeOIDCResponse(t, w, `{"sub":%q,"email":%q}`, sub, "oidc@example.com")
+			info := map[string]any{"sub": p.userSub, "email": "oidc@example.com"}
+			if p.userEmailVerified != nil {
+				info["email_verified"] = p.userEmailVerified
 			}
+			if p.userGroups != "" {
+				info["groups"] = json.RawMessage(p.userGroups)
+			}
+			body, err := json.Marshal(info)
+			require.NoError(t, err)
+			writeFakeOIDCResponse(t, w, "%s", body)
 		case "/.well-known/jwks.json":
 			writeFakeOIDCResponse(t, w, "%s", jwksBody(t, &key.PublicKey))
 		default:
@@ -257,14 +270,14 @@ func newFakeOIDCProvider(t *testing.T, key *rsa.PrivateKey) *fakeOIDCProvider {
 	return p
 }
 
-// callbackResponse drives the SSO callback with state echoed both in the query
-// and the cookie (as the router does) and returns the recorder plus the
-// identity the token issuer saw.
-func callbackResponse(t *testing.T, a *OIDCAuthenticator, state string, returnPath ...string) (*httptest.ResponseRecorder, string, string) {
+// callbackClaims drives the SSO callback with state echoed both in the query
+// and the cookie (as the router does) and returns the recorder plus the claims
+// the token issuer saw.
+func callbackClaims(t *testing.T, a *OIDCAuthenticator, state string, returnPath ...string) (*httptest.ResponseRecorder, SSOClaims) {
 	t.Helper()
-	var gotUserID, gotEmail string
-	h := a.CallbackHandler(func(ctx context.Context, userID, email string, groups []string) (string, error) {
-		gotUserID, gotEmail = userID, email
+	var got SSOClaims
+	h := a.CallbackHandler(func(ctx context.Context, claims SSOClaims) (string, error) {
+		got = claims
 		return "test-session-token", nil
 	})
 	req := httptest.NewRequest("GET", "/callback?code=test-code&state="+url.QueryEscape(state), nil)
@@ -277,7 +290,14 @@ func callbackResponse(t *testing.T, a *OIDCAuthenticator, state string, returnPa
 	}
 	w := httptest.NewRecorder()
 	h(w, req)
-	return w, gotUserID, gotEmail
+	return w, got
+}
+
+// callbackResponse is callbackClaims reduced to the subject and email.
+func callbackResponse(t *testing.T, a *OIDCAuthenticator, state string, returnPath ...string) (*httptest.ResponseRecorder, string, string) {
+	t.Helper()
+	w, claims := callbackClaims(t, a, state, returnPath...)
+	return w, claims.Subject, claims.Email
 }
 
 func TestOIDC_Callback_NonceRoundTrip(t *testing.T) {
@@ -481,8 +501,8 @@ func TestOIDC_Callback_NotProvisionedIsForbidden(t *testing.T) {
 	prov.userSub = "unknown-sub"
 	a := mustOIDC(t, prov.srv.URL)
 
-	h := a.CallbackHandler(func(ctx context.Context, userID, email string, groups []string) (string, error) {
-		assert.Equal(t, "unknown-sub", userID)
+	h := a.CallbackHandler(func(ctx context.Context, claims SSOClaims) (string, error) {
+		assert.Equal(t, "unknown-sub", claims.Subject)
 		// The fake provider answers a fixed userinfo email; the 403 below
 		// is what this test pins, not the address value.
 		return "", ErrSSONotProvisioned

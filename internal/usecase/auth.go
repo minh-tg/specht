@@ -140,9 +140,9 @@ func (u *Usecases) burnHash(password string) {
 	_, _ = u.deps.Passwords.Hash(password)
 }
 
-// FindOrProvisionSSOUser resolves an SSO-authenticated principal (sub is the
-// stable IdP subject, email the asserted address) to a local account for
-// token issuance. Existing accounts keep their local role — IdP groups never
+// FindOrProvisionSSOUser resolves an SSO-authenticated principal (claims carry
+// the stable IdP subject, the asserted address and the provider's verdict on
+// it) to a local account for token issuance. Existing accounts keep their local role — IdP groups never
 // change an established role. Unknown accounts are provisioned only when the
 // email domain is allowlisted, otherwise auth.ErrSSONotProvisioned is
 // returned (the caller maps it to a generic 403). Provisioned accounts are
@@ -151,8 +151,9 @@ func (u *Usecases) burnHash(password string) {
 // IdP group membership matches adminGroups, in which case they are elevated
 // to admin via SetRole. A SetRole failure fails the login closed: the
 // account exists as a member and an operator can elevate it explicitly.
-func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, sub, email string, groups []string, allowedDomains []string, adminGroups []string) (userID, role string, provisioned bool, err error) {
-	email = auth.NormalizeEmail(email)
+func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, claims auth.SSOClaims, allowedDomains []string, adminGroups []string) (userID, role string, provisioned bool, err error) {
+	sub, groups := claims.Subject, claims.Groups
+	email := auth.NormalizeEmail(claims.Email)
 	if email == "" {
 		return "", "", false, auth.ErrSSONotProvisioned
 	}

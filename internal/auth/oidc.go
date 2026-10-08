@@ -211,10 +211,26 @@ func (a *OIDCAuthenticator) identityFromIDToken(ctx context.Context, idToken str
 	}
 	email, _ := claims["email"].(string)
 	return &Identity{
-		UserID: sub,
-		Email:  email,
-		Groups: parseGroupsClaim(claims, a.groupsClaim()),
+		UserID:        sub,
+		Email:         email,
+		EmailVerified: claimIsTrue(claims["email_verified"]),
+		Groups:        parseGroupsClaim(claims, a.groupsClaim()),
 	}, nil
+}
+
+// claimIsTrue reads an OIDC boolean claim. Providers disagree on its type:
+// most send a JSON boolean, some send the string "true". Anything else,
+// including an absent claim, is false, so a provider that says nothing about
+// verification is treated as not having verified.
+func claimIsTrue(v any) bool {
+	switch x := v.(type) {
+	case bool:
+		return x
+	case string:
+		return strings.EqualFold(strings.TrimSpace(x), "true")
+	default:
+		return false
+	}
 }
 
 // groupsClaim resolves the configured groups claim, defaulting to "groups".
@@ -391,8 +407,9 @@ func (a *OIDCAuthenticator) identityFromUserInfo(ctx context.Context, tokenResp 
 		return nil, err
 	}
 	var info struct {
-		Sub   string `json:"sub"`
-		Email string `json:"email"`
+		Sub           string `json:"sub"`
+		Email         string `json:"email"`
+		EmailVerified any    `json:"email_verified"`
 	}
 	if err := json.Unmarshal(body, &info); err != nil {
 		return nil, fmt.Errorf("decode userinfo: %w", err)
@@ -414,10 +431,20 @@ func (a *OIDCAuthenticator) identityFromUserInfo(ctx context.Context, tokenResp 
 		}
 	}
 
+	verified := claimIsTrue(info.EmailVerified)
+	if idToken != "" {
+		// The signed id_token is the stronger source: if it says the email is
+		// not verified, a more permissive userinfo document does not override it.
+		if claim, present := idTokenClaim(idToken, "email_verified"); present && !claimIsTrue(claim) {
+			verified = false
+		}
+	}
+
 	return &Identity{
-		UserID: info.Sub,
-		Email:  info.Email,
-		Groups: mergeSSOGroups(idToken, body, a.groupsClaim()),
+		UserID:        info.Sub,
+		Email:         info.Email,
+		EmailVerified: verified,
+		Groups:        mergeSSOGroups(idToken, body, a.groupsClaim()),
 	}, nil
 }
 
@@ -434,6 +461,19 @@ func idTokenGroups(idToken, groupsClaim string) ([]string, error) {
 		return nil, fmt.Errorf("decode id_token groups: %w", err)
 	}
 	return parseGroupsClaim(claims, groupsClaim), nil
+}
+
+// idTokenClaim returns one claim of an already-validated id_token and whether
+// it was present. Like idTokenGroups it only decodes the payload, so callers
+// must have validated the token first.
+func idTokenClaim(idToken, name string) (any, bool) {
+	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
+	claims := jwt.MapClaims{}
+	if _, _, err := parser.ParseUnverified(idToken, claims); err != nil {
+		return nil, false
+	}
+	v, ok := claims[name]
+	return v, ok
 }
 
 // idTokenSubject returns the sub claim of an id_token without validating the
@@ -530,8 +570,14 @@ func (a *OIDCAuthenticator) extractCallbackIdentity(ctx context.Context, tokenRe
 
 // issueCallbackSession mints the session token for the validated identity
 // and delivers it in the redirect URL fragment.
-func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ctx context.Context, userID, email string, groups []string) (token string, err error), ident *Identity, returnTo string) {
-	tok, err := issuer(r.Context(), ident.UserID, ident.Email, ident.Groups)
+func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ctx context.Context, claims SSOClaims) (token string, err error), providerIssuer string, ident *Identity, returnTo string) {
+	tok, err := issuer(r.Context(), SSOClaims{
+		Issuer:        providerIssuer,
+		Subject:       ident.UserID,
+		Email:         ident.Email,
+		EmailVerified: ident.EmailVerified,
+		Groups:        ident.Groups,
+	})
 	if err != nil {
 		if errors.Is(err, ErrSSONotProvisioned) {
 			http.Error(w, "sso account not provisioned", http.StatusForbidden)
@@ -552,7 +598,7 @@ func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ct
 	http.Redirect(w, r, safeSSOReturnPath(returnTo)+"#sso_token="+url.PathEscape(tok), http.StatusFound)
 }
 
-func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, userID, email string, groups []string) (token string, err error)) http.HandlerFunc {
+func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, claims SSOClaims) (token string, err error)) http.HandlerFunc {
 	const stateCookieName = "sso_state"
 
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -582,7 +628,7 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, use
 			return
 		}
 
-		issueCallbackSession(w, r, issuer, ident, returnTo)
+		issueCallbackSession(w, r, issuer, strings.TrimSuffix(a.cfg.IssuerURL, "/"), ident, returnTo)
 	}
 }
 

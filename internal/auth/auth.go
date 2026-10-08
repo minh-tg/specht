@@ -129,6 +129,22 @@ type Identity struct {
 	// enterprise role mapping consumes it at provisioning time. Empty
 	// for password and API-key principals.
 	Groups []string
+	// EmailVerified reports whether the identity provider vouched for Email
+	// (the OIDC email_verified claim). Only SSO principals set it; a missing
+	// claim is false.
+	EmailVerified bool
+}
+
+// SSOClaims is what a completed SSO login hands to account resolution. The
+// pair (Issuer, Subject) identifies the person at the provider and is the only
+// field that is stable; Email may change and is only trustworthy when
+// EmailVerified is true.
+type SSOClaims struct {
+	Issuer        string
+	Subject       string
+	Email         string
+	EmailVerified bool
+	Groups        []string
 }
 
 // Authenticator authenticates a bearer token (JWT or API key) into an Identity.
