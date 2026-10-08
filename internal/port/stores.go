@@ -171,6 +171,24 @@ type IdentityStore interface {
 	Link(ctx context.Context, userID, issuer, subject string) (UserIdentity, error)
 }
 
+// ---------- SSO exchange codes ----------
+
+// SSOCode is a short-lived authorization code minted after successful OIDC login
+// and consumed by the SPA in exchange for session and refresh tokens.
+type SSOCode struct {
+	CodeHash  string
+	UserID    string
+	Email     string
+	Role      string
+	ExpiresAt time.Time
+}
+
+// SSOCodeStore persists single-use SSO exchange codes.
+type SSOCodeStore interface {
+	Create(ctx context.Context, codeHash, userID, email, role string, expiresAt time.Time) error
+	Consume(ctx context.Context, codeHash string, now time.Time) (SSOCode, error)
+}
+
 // ---------- Refresh tokens ----------
 
 // RefreshToken is a persisted refresh-token row.
@@ -971,6 +989,7 @@ type Stores struct {
 	Policy        PolicyStore
 	Teams         TeamStore
 	Identities    IdentityStore
+	SSOCodes      SSOCodeStore
 }
 
 // Team is a named group of users that projects link for access.

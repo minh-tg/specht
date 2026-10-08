@@ -35,6 +35,7 @@ func NewPortStores(pool *pgxpool.Pool) *port.Stores {
 		Teams:         &pgTeamPort{q: q},
 		Admin:         &pgAdminPort{q: q},
 		Identities:    &pgIdentityPort{q: q},
+		SSOCodes:      &pgSSOCodePort{q: q},
 	}
 }
 
@@ -64,5 +65,6 @@ func PortStoresFromRepos(repos *Repos, q *sqlc.Queries) *port.Stores {
 		Teams:         &pgTeamPort{q: q},
 		Admin:         &pgAdminPort{q: q},
 		Identities:    &pgIdentityPort{q: q},
+		SSOCodes:      &pgSSOCodePort{q: q},
 	}
 }
