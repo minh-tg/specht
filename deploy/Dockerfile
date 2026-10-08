@@ -1,11 +1,11 @@
-FROM docker.io/library/node:22-alpine AS frontend-builder
+FROM docker.io/library/node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS frontend-builder
 WORKDIR /src/frontend
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./
 RUN corepack enable && pnpm install --frozen-lockfile
 COPY frontend/ .
 RUN pnpm run build
 
-FROM docker.io/library/golang:1.26-alpine AS builder
+FROM docker.io/library/golang:1.26-alpine@sha256:8ac98ca534ac3f51e1f420a1dd2c15e74c75cfa0f23f3ad27eb5d7236c349a0c AS builder
 ARG VERSION=dev
 ARG COMMIT=unknown
 WORKDIR /src
