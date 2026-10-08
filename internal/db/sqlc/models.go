@@ -388,6 +388,14 @@ type User struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
+type UserIdentity struct {
+	ID        pgtype.UUID        `json:"id"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	Issuer    string             `json:"issuer"`
+	Subject   string             `json:"subject"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type Waiver struct {
 	ID          pgtype.UUID        `json:"id"`
 	ProjectID   pgtype.UUID        `json:"project_id"`

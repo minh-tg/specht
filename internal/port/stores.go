@@ -139,6 +139,35 @@ type UserStore interface {
 	UpdateDisplayName(ctx context.Context, userID string, displayName *string) (User, error)
 }
 
+// ---------- External identities ----------
+
+// ErrIdentityLinked is returned when linking would break the one-to-one rule:
+// the provider subject already belongs to an account, or the account already
+// has an identity at that provider.
+var ErrIdentityLinked = errors.New("identity already linked")
+
+// UserIdentity links an account to its identity at an external provider. The
+// pair (Issuer, Subject) is the stable identifier of a person at that
+// provider; an email claim is not.
+type UserIdentity struct {
+	ID        string
+	UserID    string
+	Issuer    string
+	Subject   string
+	CreatedAt time.Time
+}
+
+// IdentityStore persists the links between accounts and provider identities.
+type IdentityStore interface {
+	// GetBySubject returns the identity for a provider subject, or ErrNotFound.
+	GetBySubject(ctx context.Context, issuer, subject string) (UserIdentity, error)
+	// GetForUser returns the identity an account has at issuer, or ErrNotFound.
+	GetForUser(ctx context.Context, userID, issuer string) (UserIdentity, error)
+	// Link attaches a provider identity to an account. It fails with
+	// ErrIdentityLinked when either side is already linked at that provider.
+	Link(ctx context.Context, userID, issuer, subject string) (UserIdentity, error)
+}
+
 // ---------- Refresh tokens ----------
 
 // RefreshToken is a persisted refresh-token row.
@@ -938,6 +967,7 @@ type Stores struct {
 	Admin         AdminStore
 	Policy        PolicyStore
 	Teams         TeamStore
+	Identities    IdentityStore
 }
 
 // Team is a named group of users that projects link for access.
