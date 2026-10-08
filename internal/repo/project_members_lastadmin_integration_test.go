@@ -72,6 +72,16 @@ func TestProjectMembers_LastAdminIsProtected(t *testing.T) {
 	assert.ErrorIs(t, err, port.ErrNotFound, "an unknown project is reported as not found")
 }
 
+func TestProjectMembers_UnknownUserIsNotFound(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ports := &pgProjectPort{q: sqlc.New(repos.pool), withTx: repos.WithTx}
+
+	projectID, _ := projectWithAdmins(t, repos, ports, 1)
+	_, err := ports.UpsertMember(context.Background(), projectID, uuid.NewString(), "member")
+	assert.ErrorIs(t, err, port.ErrNotFound, "granting a user that does not exist is reported as not found")
+}
+
 func TestProjectMembers_ConcurrentAdminRemovalsKeepOneAdmin(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()
