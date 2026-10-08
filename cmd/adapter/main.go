@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -122,7 +123,9 @@ func buildPayload(rawInput []byte, f *adapterFlags, stderr io.Writer) (client.In
 	// scanner parser report any format error after ingestion.
 	_ = json.Unmarshal(rawInput, &payload)
 	if len(payload.RawData) == 0 {
-		payload.RawData = rawInput
+		payload.RawData = normalizeRawJSON(rawInput)
+	} else if !json.Valid(payload.RawData) {
+		payload.RawData = normalizeRawJSON(payload.RawData)
 	}
 
 	if f.project != "" {
@@ -147,6 +150,50 @@ func buildPayload(rawInput []byte, f *adapterFlags, stderr io.Writer) (client.In
 
 	applyGateFlags(&payload, f)
 	return payload, 0
+}
+
+// normalizeRawJSON converts line-delimited JSON (JSONL/NDJSON) into a standard JSON array.
+// If raw is already valid JSON or cannot be parsed as a sequence of multiple JSON values,
+// the original input is returned unmodified.
+func normalizeRawJSON(raw []byte) []byte {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || json.Valid(trimmed) {
+		return raw
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(trimmed))
+	var items []json.RawMessage
+	for {
+		var item json.RawMessage
+		if err := dec.Decode(&item); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return raw
+		}
+		items = append(items, item)
+	}
+
+	if len(items) <= 1 {
+		return raw
+	}
+
+	var buf bytes.Buffer
+	buf.Grow(len(trimmed) + len(items) + 2)
+	buf.WriteByte('[')
+	for i, it := range items {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		buf.Write(bytes.TrimSpace(it))
+	}
+	buf.WriteByte(']')
+
+	res := buf.Bytes()
+	if json.Valid(res) {
+		return res
+	}
+	return raw
 }
 
 // applyGateFlags copies the gate-scope flags onto the payload.
