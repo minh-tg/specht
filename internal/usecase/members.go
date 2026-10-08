@@ -92,6 +92,16 @@ func (u *Usecases) ListProjectMembers(ctx context.Context, projectSlug string) (
 	return resp, nil
 }
 
+// memberWriteError maps the store's last-admin refusal, raised under a project
+// lock when another writer removed the second admin first, to the usecase
+// error and wraps anything else with the operation name.
+func memberWriteError(op string, err error) error {
+	if errors.Is(err, port.ErrLastAdmin) {
+		return ErrLastAdminForbidden
+	}
+	return fmt.Errorf("%s: %w", op, err)
+}
+
 // ensureNotLastAdmin verifies that the project retains at least one admin.
 func (u *Usecases) ensureNotLastAdmin(ctx context.Context, projectID string) error {
 	admins, err := u.deps.Stores.Projects.CountAdmins(ctx, projectID)
@@ -162,7 +172,7 @@ func (u *Usecases) AddProjectMember(ctx context.Context, projectSlug, userID, ro
 
 	m, err := u.deps.Stores.Projects.UpsertMember(ctx, p.ID, userID, role)
 	if err != nil {
-		return nil, fmt.Errorf("add member: %w", err)
+		return nil, memberWriteError("add member", err)
 	}
 	resp := &ProjectMemberResponse{
 		ProjectID: m.ProjectID,
@@ -211,7 +221,7 @@ func (u *Usecases) RemoveProjectMember(ctx context.Context, projectSlug, userID 
 	}
 
 	if err := u.deps.Stores.Projects.DeleteMember(ctx, p.ID, userID); err != nil {
-		return fmt.Errorf("delete project member: %w", err)
+		return memberWriteError("delete project member", err)
 	}
 	return nil
 }
