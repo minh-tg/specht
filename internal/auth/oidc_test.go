@@ -388,7 +388,7 @@ func TestOIDC_Callback_AllowsAbsentIDTokenWhenExplicitlyEnabled(t *testing.T) {
 	assert.Equal(t, "oidc-user-1", gotUserID)
 	assert.Equal(t, "oidc@example.com", gotEmail)
 	assert.Equal(t, http.StatusFound, w.Code)
-	assert.Equal(t, "/#sso_token=test-session-token", w.Header().Get("Location"))
+	assert.Equal(t, "/#sso_code=test-session-token", w.Header().Get("Location"))
 }
 
 func TestOIDC_Callback_RejectsMalformedIDTokenWhenUserInfoOnlyEnabled(t *testing.T) {
@@ -419,7 +419,7 @@ func TestOIDC_Callback_DeliversTokenInFragment(t *testing.T) {
 	assert.Equal(t, "oidc@example.com", gotEmail)
 
 	assert.Equal(t, http.StatusFound, w.Code)
-	assert.Equal(t, "/#sso_token=test-session-token", w.Header().Get("Location"))
+	assert.Equal(t, "/#sso_code=test-session-token", w.Header().Get("Location"))
 	for _, c := range w.Result().Cookies() {
 		assert.NotEqual(t, "token", c.Name, "callback must not set a session cookie")
 	}
@@ -437,7 +437,7 @@ func TestOIDC_Callback_PreservesValidatedReturnPath(t *testing.T) {
 
 	w, _, _ := callbackResponse(t, a, state, "/projects/demo?tab=members")
 	assert.Equal(t, http.StatusFound, w.Code)
-	assert.Equal(t, "/projects/demo?tab=members#sso_token=test-session-token", w.Header().Get("Location"))
+	assert.Equal(t, "/projects/demo?tab=members#sso_code=test-session-token", w.Header().Get("Location"))
 	for _, cookie := range w.Result().Cookies() {
 		if cookie.Name == SSOReturnCookieName {
 			assert.Less(t, cookie.MaxAge, 0, "return path state is single-use")
