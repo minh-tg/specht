@@ -23,12 +23,13 @@ FROM docker.io/library/alpine:3.21@sha256:ce64758a109eb420d874a118f87920e625e12d
 # moment the distro bumps the rebuild (2026b -> 2026c), which is not what a
 # build should fail on. ca-certificates and tzdata are stable interfaces; the
 # Go binary is what we want reproducible, and go.mod already pins that.
-RUN apk add --no-cache ca-certificates tzdata curl
+RUN apk add --no-cache ca-certificates tzdata
 COPY --from=builder /bin/server /usr/local/bin/specht
 COPY --from=builder /src/migrations /migrations
 RUN addgroup -S specht && adduser -S -G specht specht
 USER specht
+# The binary probes itself, so the image needs no HTTP client of its own.
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -fsS http://localhost:8080/api/v1/health || exit 1
+  CMD ["specht", "healthcheck"]
 EXPOSE 8080
 ENTRYPOINT ["specht"]
