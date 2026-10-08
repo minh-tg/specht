@@ -80,8 +80,25 @@ func (u *Usecases) CreateTeam(ctx context.Context, name, description string) (*T
 	return &TeamResponse{ID: team.ID, Name: team.Name, Description: team.Description}, nil
 }
 
-// ListTeams returns every team in name order.
+// ListTeams returns every team in name order to callers who belong to the
+// organisation: global admins and users with access to at least one project,
+// directly or through a team. Self-registered accounts with no access get an
+// empty directory instead of the company's team names, and API keys, which
+// authenticate a project and not a person, are refused.
 func (u *Usecases) ListTeams(ctx context.Context) ([]TeamResponse, error) {
+	ident := auth.ContextIdentity(ctx)
+	if ident == nil || ident.IsAPIKey {
+		return nil, ErrProjectAccessDenied
+	}
+	if ident.Role != auth.RoleAdmin {
+		accessible, err := u.deps.Stores.Projects.ListAccessibleProjectIDs(ctx, ident.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("check directory access: %w", err)
+		}
+		if len(accessible) == 0 {
+			return []TeamResponse{}, nil
+		}
+	}
 	teams, err := u.deps.Stores.Teams.ListTeams(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list teams: %w", err)
