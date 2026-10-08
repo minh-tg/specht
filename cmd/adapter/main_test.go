@@ -106,6 +106,7 @@ func TestBuildPayload_NormalizesLineDelimitedJSON(t *testing.T) {
 }
 
 func TestRun_LineDelimitedJSON_IngestSuccess(t *testing.T) {
+	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")
 
 	var captured client.IngestPayload

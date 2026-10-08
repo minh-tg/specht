@@ -89,18 +89,30 @@ func ssoExchange(t *testing.T, forwardedProto string, returnPath ...string) (int
 	return cbResp.StatusCode, cbResp.Header.Get("Location"), cbResp.Header
 }
 
-// ssoToken pulls the session token out of a successful callback redirect.
+// ssoToken pulls the exchange code out of a successful callback redirect
+// and exchanges it via /api/v1/auth/sso/exchange for the session token.
 func ssoToken(t *testing.T, status int, location string) string {
 	t.Helper()
 	require.Equal(t, http.StatusFound, status)
 	parsed, err := url.Parse(location)
 	require.NoError(t, err)
-	require.True(t, strings.HasPrefix(parsed.Fragment, "sso_token="),
+	require.True(t, strings.HasPrefix(parsed.Fragment, "sso_code="),
 		"the token travels in the URL fragment: %s", location)
-	token, err := url.PathUnescape(strings.TrimPrefix(parsed.Fragment, "sso_token="))
+	code, err := url.PathUnescape(strings.TrimPrefix(parsed.Fragment, "sso_code="))
 	require.NoError(t, err)
-	require.NotEmpty(t, token)
-	return token
+	require.NotEmpty(t, code)
+
+	type exchangeResp struct {
+		Token string `json:"token"`
+	}
+	st, body := doJSON(t, http.MethodPost, "/api/v1/auth/sso/exchange", "", map[string]string{
+		"code": code,
+	})
+	require.Equal(t, http.StatusOK, st, "sso exchange must succeed: %s", string(body))
+	var resp exchangeResp
+	require.NoError(t, json.Unmarshal(body, &resp))
+	require.NotEmpty(t, resp.Token)
+	return resp.Token
 }
 
 // TestE2E_SSOLoginAndProvisioning closes the SSO API-side journey: redirect
