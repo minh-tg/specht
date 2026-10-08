@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
