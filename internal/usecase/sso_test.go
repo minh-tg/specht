@@ -11,7 +11,7 @@ import (
 )
 
 func ssoTestDeps(ur *mockUserRepo) Deps {
-	return Deps{Stores: &port.Stores{Users: ur, Identities: newMockIdentityRepo()}}
+	return ssoDepsWith(ur, newMockIdentityRepo())
 }
 
 func TestFindOrProvisionSSOUser_ExistingKeepsLocalRole(t *testing.T) {

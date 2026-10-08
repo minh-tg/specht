@@ -79,6 +79,14 @@ func (r *pgUserPort) SetRole(ctx context.Context, userID, role string) (port.Use
 	return userToPort(row), nil
 }
 
+func (r *pgUserPort) ClearPassword(ctx context.Context, userID string) error {
+	uid, err := parseID(userID)
+	if err != nil {
+		return err
+	}
+	return r.q.ClearUserPassword(ctx, uid)
+}
+
 func (r *pgUserPort) UpdateDisplayName(ctx context.Context, userID string, displayName *string) (port.User, error) {
 	uid, err := parseID(userID)
 	if err != nil {

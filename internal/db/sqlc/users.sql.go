@@ -11,6 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const clearUserPassword = `-- name: ClearUserPassword :exec
+UPDATE users SET password_hash = NULL, updated_at = NOW() WHERE id = $1
+`
+
+func (q *Queries) ClearUserPassword(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, clearUserPassword, id)
+	return err
+}
+
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, display_name, password_hash, role)
 VALUES (lower($1::text), $2, $3, 'member')

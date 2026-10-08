@@ -134,6 +134,9 @@ type UserStore interface {
 	List(ctx context.Context, filter string, limit, offset int32) ([]User, error)
 	// SetRole changes a user's global role. Role must be a valid users.role value.
 	SetRole(ctx context.Context, userID, role string) (User, error)
+	// ClearPassword removes the account's password hash so it can no longer
+	// sign in with a password. It is idempotent.
+	ClearPassword(ctx context.Context, userID string) error
 	// UpdateDisplayName changes a user's display name. A nil displayName
 	// clears it.
 	UpdateDisplayName(ctx context.Context, userID string, displayName *string) (User, error)

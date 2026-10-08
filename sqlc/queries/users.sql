@@ -9,6 +9,9 @@ SELECT * FROM users WHERE lower(email) = lower(sqlc.arg(email)::text);
 -- name: GetUserByID :one
 SELECT * FROM users WHERE id = $1;
 
+-- name: ClearUserPassword :exec
+UPDATE users SET password_hash = NULL, updated_at = NOW() WHERE id = $1;
+
 -- name: SetUserRole :one
 UPDATE users SET role = $2 WHERE id = $1
 RETURNING *;
