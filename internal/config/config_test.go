@@ -319,3 +319,26 @@ func TestLoad_RateLimitInvalidIgnoredWhenDisabled(t *testing.T) {
 	assert.NoError(t, err, "a stray invalid var must not crash a dev server")
 	assert.False(t, cfg.RateLimit.Enable)
 }
+
+func TestLoad_IngestConcurrency(t *testing.T) {
+	t.Run("unset leaves the router default", func(t *testing.T) {
+		t.Setenv("INGEST_MAX_CONCURRENCY", "")
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Zero(t, cfg.IngestConcurrency)
+	})
+	t.Run("a positive number is used", func(t *testing.T) {
+		t.Setenv("INGEST_MAX_CONCURRENCY", "3")
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, 3, cfg.IngestConcurrency)
+	})
+	for _, bad := range []string{"0", "-1", "many"} {
+		t.Run("rejects "+bad, func(t *testing.T) {
+			t.Setenv("INGEST_MAX_CONCURRENCY", bad)
+			_, err := Load()
+			require.Error(t, err, "a typo must fail at startup, not silently remove the limit")
+			assert.Contains(t, err.Error(), "INGEST_MAX_CONCURRENCY")
+		})
+	}
+}

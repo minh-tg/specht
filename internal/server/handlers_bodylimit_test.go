@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/minh-tg/specht/internal/usecase"
 	"github.com/stretchr/testify/assert"
@@ -258,4 +260,46 @@ func TestBulkTriage_UseCaseIDCapIsABadRequest(t *testing.T) {
 	testRouter(mock).ServeHTTP(w, authRequest("POST", "/api/v1/findings/bulk-analysis", bulkBody(2)))
 
 	requireAPIError(t, w, http.StatusBadRequest, "too_many_ids")
+}
+
+// The ingest gate must be mounted on the real route: with one slot taken by a
+// long-running ingest, a second one must not reach the use case.
+func TestIngestRoute_IsGatedByTheConcurrencyLimit(t *testing.T) {
+	release := make(chan struct{})
+	entered := make(chan struct{}, 2)
+	var mu sync.Mutex
+	runs := 0
+	mock := &mockUsecases{
+		ingestReportFn: func(context.Context, usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
+			mu.Lock()
+			runs++
+			mu.Unlock()
+			entered <- struct{}{}
+			select {
+			case <-release:
+			case <-time.After(2 * time.Second): // a missing gate must fail the test, not hang it
+			}
+			return &usecase.IngestReportOutput{ReportID: "rep-1"}, nil
+		},
+	}
+	router := NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth, IngestConcurrency: 1})
+	send := func(ctx context.Context) {
+		req := httptest.NewRequest("POST", "/api/v1/reports", strings.NewReader(`{"project":"p","scanner":"trivy","raw_data":{"a":1}}`)).WithContext(ctx)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+testToken(t))
+		router.ServeHTTP(httptest.NewRecorder(), req)
+	}
+	done := make(chan struct{})
+	go func() { send(context.Background()); close(done) }()
+	<-entered
+
+	queued, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	send(queued)
+	close(release)
+	<-done
+
+	mu.Lock()
+	defer mu.Unlock()
+	assert.Equal(t, 1, runs, "the second ingest waited for the only slot and never ran")
 }

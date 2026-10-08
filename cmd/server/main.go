@@ -189,6 +189,7 @@ func main() {
 		CORSOrigins: cfg.CORSOrigins,
 
 		RegistrationDisabled: cfg.RegistrationDisabled,
+		IngestConcurrency:    cfg.IngestConcurrency,
 		TrustedProxies:       cfg.TrustedProxies,
 		RateLimit: server.RateLimitConfig{
 			Enabled:        cfg.RateLimit.Enable,

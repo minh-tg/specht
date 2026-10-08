@@ -40,6 +40,7 @@ services:
       # as a separately controlled release step.
       DB_MIGRATE: ${DB_MIGRATE:-true}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
+      INGEST_MAX_CONCURRENCY: ${INGEST_MAX_CONCURRENCY:-8}
       # Admin elevation (comma-separated emails) and trusted proxy CIDRs.
       # Empty ADMIN_EMAILS promotes nobody; empty TRUSTED_PROXIES trusts
       # forwarding headers from nobody (deploy directly or set the hops).
