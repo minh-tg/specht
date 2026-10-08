@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 	"github.com/minh-tg/specht/internal/scanner"
 )
 
@@ -125,12 +126,12 @@ func parseCycloneDX(data []byte) (*domain.NormalizedReport, error) {
 		if c.Name == "" {
 			continue
 		}
-		nr.Packages = append(nr.Packages, domain.PackageRef{
+		nr.Packages = append(nr.Packages, parseutil.HardenPackage(domain.PackageRef{
 			PURL:      c.PURL,
 			Ecosystem: ecosystemFromPURL(c.PURL),
 			Name:      c.Name,
 			Version:   c.Version,
-		})
+		}))
 	}
 	return nr, nil
 }
@@ -183,12 +184,12 @@ func parseSPDX(data []byte) (*domain.NormalizedReport, error) {
 		if p.VersionInfo == "" && purl == "" {
 			continue
 		}
-		nr.Packages = append(nr.Packages, domain.PackageRef{
+		nr.Packages = append(nr.Packages, parseutil.HardenPackage(domain.PackageRef{
 			PURL:      purl,
 			Ecosystem: ecosystemFromPURL(purl),
 			Name:      p.Name,
 			Version:   p.VersionInfo,
-		})
+		}))
 	}
 	return nr, nil
 }

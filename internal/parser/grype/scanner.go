@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 	"github.com/minh-tg/specht/internal/scanner"
 )
 
@@ -149,7 +150,7 @@ func convert(doc grypeDoc) *domain.NormalizedReport {
 	// dependency tree should pair grype with a syft SBOM scan.
 	nr.Packages = collectPackages(doc.Matches)
 	for _, match := range doc.Matches {
-		nr.Findings = append(nr.Findings, convertMatch(match))
+		nr.Findings = append(nr.Findings, parseutil.HardenFinding(convertMatch(match)))
 	}
 
 	return nr
@@ -172,17 +173,17 @@ func collectPackages(matches []grypeMatch) []domain.PackageRef {
 
 		manifestPath := ""
 		if len(artifact.Locations) > 0 {
-			manifestPath = artifact.Locations[0].Path
+			manifestPath = parseutil.CleanFilePath(artifact.Locations[0].Path)
 		}
 		pkgType, _, _ := domain.SplitPURL(purl)
 
-		packages = append(packages, domain.PackageRef{
+		packages = append(packages, parseutil.HardenPackage(domain.PackageRef{
 			PURL:         purl,
 			Ecosystem:    pkgType,
 			Name:         artifact.Name,
 			Version:      artifact.Version,
 			ManifestPath: manifestPath,
-		})
+		}))
 	}
 	return packages
 }
@@ -227,7 +228,7 @@ func convertMatch(match grypeMatch) domain.NormalizedFinding {
 
 	location := ""
 	if len(artifact.Locations) > 0 {
-		location = artifact.Locations[0].Path
+		location = parseutil.CleanFilePath(artifact.Locations[0].Path)
 	}
 
 	return domain.NormalizedFinding{

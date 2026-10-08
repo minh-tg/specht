@@ -22,6 +22,7 @@ import (
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 	"github.com/minh-tg/specht/internal/scanner"
 )
 
@@ -259,16 +260,20 @@ func convert(ev nucleiEvent) domain.NormalizedFinding {
 	if ev.Type != "" {
 		meta["nuclei_type"] = ev.Type
 	}
-	return domain.NormalizedFinding{
+	cleanLoc := parseutil.CleanFilePath(target)
+	if cleanLoc == "" {
+		cleanLoc = parseutil.SanitizeText(target, parseutil.MaxPathLength)
+	}
+	return parseutil.HardenFinding(domain.NormalizedFinding{
 		Fingerprint: "dast:" + ev.TemplateID + ":" + identity,
 		FindingKind: "dast",
 		Title:       title,
 		Description: ev.Info.Description,
 		Severity:    normalizeSeverity(ev.Info.Severity),
-		Location:    target,
+		Location:    cleanLoc,
 		Dimensions:  dims,
 		Extensions:  meta,
-	}
+	})
 }
 
 // identityURL normalizes an observed URL to scheme://host/path (no query,

@@ -8,6 +8,7 @@ import (
 
 	"github.com/minh-tg/specht/internal/cvss"
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 	"github.com/minh-tg/specht/internal/scanner"
 )
 
@@ -171,18 +172,19 @@ func convert(report osvReport) *domain.NormalizedReport {
 }
 
 func addOsvPackages(nr *domain.NormalizedReport, result osvResult) {
+	manifestPath := parseutil.CleanFilePath(result.Source.Path)
 	for _, pkg := range result.Packages {
 		purl := pkg.Package.PURL
 		if purl == "" {
 			purl = "pkg:" + strings.ToLower(pkg.Package.Ecosystem) + "/" + pkg.Package.Name
 		}
-		nr.Packages = append(nr.Packages, domain.PackageRef{
+		nr.Packages = append(nr.Packages, parseutil.HardenPackage(domain.PackageRef{
 			PURL:         domain.NormalizePURL(purl),
 			Ecosystem:    pkg.Package.Ecosystem,
 			Name:         pkg.Package.Name,
 			Version:      pkg.Package.Version,
-			ManifestPath: result.Source.Path,
-		})
+			ManifestPath: manifestPath,
+		}))
 	}
 }
 
@@ -202,7 +204,7 @@ func addOsvVulns(nr *domain.NormalizedReport, result osvResult) {
 				source:   result.Source,
 				analysis: groupAnalysis[v.ID],
 			}
-			nr.Findings = append(nr.Findings, f.normalized())
+			nr.Findings = append(nr.Findings, parseutil.HardenFinding(f.normalized()))
 		}
 	}
 }
@@ -250,9 +252,10 @@ func (f osvFinding) normalized() domain.NormalizedFinding {
 	}
 
 	fix := fixInfo(v, fixedVersion)
+	cleanSource := parseutil.CleanFilePath(f.source.Path)
 
 	ext := map[string]any{
-		"source_path": f.source.Path,
+		"source_path": cleanSource,
 		"ecosystem":   f.pkg.Ecosystem,
 		"osv_id":      v.ID,
 		"aliases":     v.Aliases,
@@ -284,7 +287,7 @@ func (f osvFinding) normalized() domain.NormalizedFinding {
 		Description:  v.Details,
 		Severity:     extractSeverity(v),
 		Score:        extractScore(v),
-		Location:     domain.SCALocation(f.pkg.Name, f.pkg.Version, f.source.Path),
+		Location:     domain.SCALocation(f.pkg.Name, f.pkg.Version, cleanSource),
 		Aliases:      v.Aliases,
 		Reachability: reachability,
 		CVSS:         extractCVSSInfo(v),
