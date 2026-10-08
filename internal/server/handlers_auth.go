@@ -79,6 +79,31 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, result)
 }
 
+func (h *Handler) SSOExchange(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Code string `json:"code"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", authMsgInvalidBody) {
+		return
+	}
+	if req.Code == "" {
+		respondError(w, http.StatusBadRequest, "invalid_request", "code is required")
+		return
+	}
+
+	result, err := h.usecase.ExchangeSSOCode(r.Context(), req.Code)
+	if err != nil {
+		if errors.Is(err, auth.ErrInvalidCredential) {
+			respondError(w, http.StatusUnauthorized, "invalid_code", "invalid or expired exchange code")
+			return
+		}
+		slog.Error("sso exchange", "error", err)
+		respondError(w, http.StatusInternalServerError, "exchange_failed", "code exchange failed")
+		return
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
 func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		RefreshToken string `json:"refresh_token"`

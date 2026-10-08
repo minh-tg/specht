@@ -300,7 +300,7 @@ paths:
           schema: { type: string }
       responses:
         "302":
-          description: "Redirect to `<validated-path>#sso_token=<jwt>`; defaults to `/` when no safe return path was supplied."
+          description: "Redirect to `<validated-path>#sso_code=<code>`; defaults to `/` when no safe return path was supplied."
           headers:
             Location:
               schema: { type: string }
@@ -318,6 +318,46 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
         "500":
           description: Token exchange or identity extraction failed.
+
+  /api/v1/auth/sso/exchange:
+    post:
+      tags: [Authentication]
+      operationId: ssoExchange
+      summary: Exchange a single-use SSO authorization code for tokens
+      description: |
+        Exchanges a short-lived single-use authorization code delivered via URL
+        fragment upon completing the OIDC callback. Returns both a 15-minute
+        access token and a 7-day refresh token. Replayed or expired codes fail
+        closed with 401.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+                  description: The single-use authorization code delivered in #sso_code.
+      responses:
+        "200":
+          description: Session tokens minted.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401":
+          description: Invalid, replayed, or expired authorization code.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "500":
+          description: Internal exchange error.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/v1/me:
     get:

@@ -3,7 +3,9 @@ import {
   clearSsoAttempt,
   hasPendingSsoAttempt,
   markSsoAttempt,
+  SSO_CODE_KEY,
   SSO_SESSION_KEY,
+  ssoCodeFromHash,
   ssoTokenFromHash,
 } from "./sso";
 
@@ -48,6 +50,19 @@ describe("ssoTokenFromHash", () => {
     (claims) => {
       const token = tokenWithPayload(claims);
       expect(ssoTokenFromHash(`#${SSO_SESSION_KEY}=${encodeURIComponent(token)}`)).toBeNull();
+    },
+  );
+});
+
+describe("ssoCodeFromHash", () => {
+  it("extracts code from hash", () => {
+    expect(ssoCodeFromHash(`#${SSO_CODE_KEY}=my-code-123`)).toBe("my-code-123");
+  });
+
+  it.each(["", "login", "#other=value", "#sso_code=", "#sso_code=   "])(
+    "ignores fragments without a valid code (%s)",
+    (hash) => {
+      expect(ssoCodeFromHash(hash)).toBeNull();
     },
   );
 });
