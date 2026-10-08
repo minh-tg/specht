@@ -233,6 +233,10 @@ func startServer(adminEmails string) error {
 			// observable in tests instead of waiting out 5 minutes.
 			"LIFECYCLE_SWEEP_INTERVAL=1s",
 			"RATE_LIMIT_ENABLED=false",
+			// The suites register and log in far more than the default
+			// per-IP credential budget allows from one address.
+			"RATE_LIMIT_LOGIN_PER_MINUTE=100000",
+			"RATE_LIMIT_LOGIN_BURST=100000",
 		)
 		// First occurrence wins in the child, and cleanEnv already swept
 		// the managed keys — the fakes are the authority for every wired
@@ -329,6 +333,7 @@ func cleanEnv(overrides ...string) []string {
 		"DATABASE_URL": true, "JWT_SECRET": true, "SERVER_ADDR": true,
 		"ADMIN_EMAILS": true, "LOG_LEVEL": true, "DB_MIGRATE": true,
 		"LIFECYCLE_SWEEP_INTERVAL": true, "RATE_LIMIT_ENABLED": true,
+		"RATE_LIMIT_LOGIN_PER_MINUTE": true, "RATE_LIMIT_LOGIN_BURST": true,
 		"WATCHER_ENABLE": true, "API_URL": true, "API_KEY": true,
 		// Fake-wired endpoints: developer or CI exports must never leak
 		// into the experiment (the fakes are the only authority).

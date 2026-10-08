@@ -190,6 +190,52 @@ func TestRouter_CredentialEndpointsLimitedDespiteAuthorizationHeader(t *testing.
 	}
 }
 
+func TestRouter_LoginTierDefaults(t *testing.T) {
+	router := NewRouter(RouterConfig{Usecases: &mockUsecases{}, JWTAuth: testJWTAuth})
+	post := func(path, ip string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("POST", path, strings.NewReader(`{"email":"a@b.com","password":"pw"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = ip + ":1234"
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	for i := range defaultLoginBurst {
+		require.NotEqual(t, http.StatusTooManyRequests, post("/api/v1/auth/login", "192.0.2.60").Code, "attempt %d", i+1)
+	}
+	w := post("/api/v1/auth/login", "192.0.2.60")
+	require.Equal(t, http.StatusTooManyRequests, w.Code, "the burst is spent after %d attempts", defaultLoginBurst)
+	assert.Equal(t, "12", w.Header().Get("Retry-After"), "5 per minute refills one token every 12 seconds")
+	assert.Empty(t, w.Header().Get("X-RateLimit-Limit"), "a per-second header would misstate a per-minute limit")
+
+	assert.Equal(t, http.StatusTooManyRequests, post("/api/v1/auth/register", "192.0.2.60").Code,
+		"login and register draw on one credential budget per IP")
+	assert.NotEqual(t, http.StatusTooManyRequests, post("/api/v1/auth/login", "192.0.2.61").Code,
+		"another IP has its own budget")
+	assert.NotEqual(t, http.StatusTooManyRequests, post("/api/v1/auth/refresh", "192.0.2.60").Code,
+		"token refresh is not charged to the credential budget")
+}
+
+func TestRouter_LoginTierConfigurable(t *testing.T) {
+	router := NewRouter(RouterConfig{
+		Usecases:  &mockUsecases{},
+		JWTAuth:   testJWTAuth,
+		RateLimit: RateLimitConfig{LoginPerMinute: 60, LoginBurst: 2},
+	})
+	send := func() int {
+		req := httptest.NewRequest("POST", "/api/v1/auth/login", strings.NewReader(`{"email":"a@b.com","password":"pw"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.RemoteAddr = "192.0.2.70:1234"
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w.Code
+	}
+	assert.NotEqual(t, http.StatusTooManyRequests, send())
+	assert.NotEqual(t, http.StatusTooManyRequests, send())
+	assert.Equal(t, http.StatusTooManyRequests, send())
+}
+
 func TestRouter_AuthEndpointsRateLimitedByDefault(t *testing.T) {
 	router := NewRouter(RouterConfig{
 		Usecases: &mockUsecases{},

@@ -65,6 +65,14 @@ compose defaults differ, which is noted.
 | `RATE_LIMIT_BURST` | `20` | Burst for the unauthenticated bucket. |
 | `RATE_LIMIT_AUTH_RPS` | `1000` | Per-caller rate behind authentication. |
 | `RATE_LIMIT_AUTH_BURST` | `2000` | Burst for the authenticated bucket. |
+| `RATE_LIMIT_LOGIN_PER_MINUTE` | `5` | Per-IP refill rate for login and register, the endpoints that accept guessable credentials. |
+| `RATE_LIMIT_LOGIN_BURST` | `5` | Burst for that bucket: attempts allowed before the per-minute refill applies. |
+
+The login and register bucket applies even when `RATE_LIMIT_ENABLED` is
+`false`, and a request cannot opt out of it by sending an `Authorization`
+header. Token refresh and logout are not charged to it. Behind a reverse proxy,
+set `TRUSTED_PROXIES` so each client is counted by its own address instead of
+the proxy's; otherwise every user shares one bucket.
 
 ### SSO / OIDC
 
@@ -216,7 +224,8 @@ migrations never migrate down automatically.
 ## 9. Hardening checklist
 
 - `RATE_LIMIT_ENABLED=true` (compose default) — strict per-IP buckets on
-  login/register, generous per-caller budgets behind auth.
+  unauthenticated routes, generous per-caller budgets behind auth. Login and
+  register always get their own 5-per-minute per-IP bucket.
 - Request bodies are size-capped; ingest rejects oversized scans with 413.
 - `LOG_LEVEL=info` (or `warn`); audit events go to structured logs.
 - Keep the image updated; rebuilds pull a fresh Alpine + `go mod` pins.

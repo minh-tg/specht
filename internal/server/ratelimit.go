@@ -26,16 +26,26 @@ var rateLimitExempt = map[string]bool{
 	"/api/v1/version": true,
 }
 
-// RateLimitConfig tunes the two limiter tiers. The IP tier guards
-// unauthenticated entry points (register, login); the auth tier gives
-// authenticated callers a generous budget.
+// RateLimitConfig tunes the limiter tiers. The IP tier guards unauthenticated
+// entry points; the auth tier gives authenticated callers a generous budget;
+// the login tier is a much tighter per-IP bucket on the endpoints that accept
+// guessable credentials (login, register).
 type RateLimitConfig struct {
 	Enabled   bool
 	RPS       int
 	Burst     int
 	AuthRPS   int
 	AuthBurst int
+	// LoginPerMinute and LoginBurst size the login tier. Zero selects the
+	// defaults.
+	LoginPerMinute int
+	LoginBurst     int
 }
+
+const (
+	defaultLoginPerMinute = 5
+	defaultLoginBurst     = 5
+)
 
 type rateLimitVisitor struct {
 	limiter  *rate.Limiter
@@ -45,12 +55,13 @@ type rateLimitVisitor struct {
 // RateLimiter is a per-key token-bucket limiter. A zero value is unusable;
 // build one with NewRateLimiter. It is safe for concurrent use.
 type RateLimiter struct {
-	mu        sync.Mutex
-	visitors  map[string]*rateLimitVisitor
-	rps       int
-	burst     int
-	lastSweep time.Time
-	now       func() time.Time
+	mu          sync.Mutex
+	visitors    map[string]*rateLimitVisitor
+	limit       rate.Limit
+	limitHeader string // X-RateLimit-Limit value; empty omits the header
+	burst       int
+	lastSweep   time.Time
+	now         func() time.Time
 }
 
 // NewRateLimiter builds a limiter allowing rps requests per second with the
@@ -63,8 +74,28 @@ func NewRateLimiter(rps, burst int) *RateLimiter {
 		burst = 1
 	}
 	return &RateLimiter{
+		visitors:    make(map[string]*rateLimitVisitor),
+		limit:       rate.Limit(rps),
+		limitHeader: strconv.Itoa(rps),
+		burst:       burst,
+		now:         time.Now,
+	}
+}
+
+// NewLoginRateLimiter builds a limiter that refills perMinute requests per
+// minute with the given burst per key, for credential endpoints where one
+// request per second is already too generous. Non-positive values fall back
+// to 1. It omits X-RateLimit-Limit because the header's unit is per second.
+func NewLoginRateLimiter(perMinute, burst int) *RateLimiter {
+	if perMinute <= 0 {
+		perMinute = 1
+	}
+	if burst <= 0 {
+		burst = 1
+	}
+	return &RateLimiter{
 		visitors: make(map[string]*rateLimitVisitor),
-		rps:      rps,
+		limit:    rate.Limit(float64(perMinute) / 60),
 		burst:    burst,
 		now:      time.Now,
 	}
@@ -91,7 +122,7 @@ func (l *RateLimiter) limiterFor(key string, now time.Time) *rate.Limiter {
 	}
 	v, ok := l.visitors[key]
 	if !ok {
-		v = &rateLimitVisitor{limiter: rate.NewLimiter(rate.Limit(l.rps), l.burst)}
+		v = &rateLimitVisitor{limiter: rate.NewLimiter(l.limit, l.burst)}
 		l.visitors[key] = v
 	}
 	v.lastSeen = now
@@ -132,7 +163,13 @@ func (l *RateLimiter) middleware(keyFor func(*http.Request) (string, bool)) func
 				return
 			}
 			limiter := l.limiterFor(key, l.now())
-			w.Header().Set("X-RateLimit-Limit", strconv.Itoa(l.rps))
+			if l.limitHeader != "" {
+				w.Header().Set("X-RateLimit-Limit", l.limitHeader)
+			} else {
+				// An outer tier may already have set it; its value would
+				// misstate this limiter's budget.
+				w.Header().Del("X-RateLimit-Limit")
+			}
 			if limiter.Allow() {
 				remaining := int(math.Floor(limiter.Tokens()))
 				if remaining < 0 {

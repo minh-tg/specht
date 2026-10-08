@@ -195,9 +195,13 @@ func TestLoad_RateLimitDefaults(t *testing.T) {
 	t.Setenv("RATE_LIMIT_BURST", "")
 	t.Setenv("RATE_LIMIT_AUTH_RPS", "")
 	t.Setenv("RATE_LIMIT_AUTH_BURST", "")
+	t.Setenv("RATE_LIMIT_LOGIN_PER_MINUTE", "")
+	t.Setenv("RATE_LIMIT_LOGIN_BURST", "")
 
 	cfg, err := Load()
 	assert.NoError(t, err)
+	assert.Equal(t, DefaultRateLimitLoginPerMinute, cfg.RateLimit.LoginPerMinute)
+	assert.Equal(t, DefaultRateLimitLoginBurst, cfg.RateLimit.LoginBurst)
 	assert.False(t, cfg.RateLimit.Enable, "rate limiting is opt-in")
 	assert.Equal(t, DefaultRateLimitRPS, cfg.RateLimit.RPS)
 	assert.Equal(t, DefaultRateLimitBurst, cfg.RateLimit.Burst)
@@ -211,9 +215,13 @@ func TestLoad_RateLimitOverrides(t *testing.T) {
 	t.Setenv("RATE_LIMIT_BURST", "100")
 	t.Setenv("RATE_LIMIT_AUTH_RPS", "5000")
 	t.Setenv("RATE_LIMIT_AUTH_BURST", "10000")
+	t.Setenv("RATE_LIMIT_LOGIN_PER_MINUTE", "30")
+	t.Setenv("RATE_LIMIT_LOGIN_BURST", "8")
 
 	cfg, err := Load()
 	assert.NoError(t, err)
+	assert.Equal(t, 30, cfg.RateLimit.LoginPerMinute)
+	assert.Equal(t, 8, cfg.RateLimit.LoginBurst)
 	assert.True(t, cfg.RateLimit.Enable)
 	assert.Equal(t, 50, cfg.RateLimit.RPS)
 	assert.Equal(t, 100, cfg.RateLimit.Burst)
@@ -227,6 +235,14 @@ func TestLoad_RateLimitInvalidFailsWhenEnabled(t *testing.T) {
 
 	_, err := Load()
 	assert.ErrorContains(t, err, "RATE_LIMIT_RPS")
+}
+
+func TestLoad_RateLimitLoginInvalidFailsWhenEnabled(t *testing.T) {
+	t.Setenv("RATE_LIMIT_ENABLED", "true")
+	t.Setenv("RATE_LIMIT_LOGIN_PER_MINUTE", "0")
+
+	_, err := Load()
+	assert.ErrorContains(t, err, "RATE_LIMIT_LOGIN_PER_MINUTE")
 }
 
 func TestLoad_RateLimitInvalidIgnoredWhenDisabled(t *testing.T) {
