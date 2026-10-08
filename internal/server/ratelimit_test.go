@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -155,6 +156,38 @@ func TestRateLimiter_EvictsIdleBuckets(t *testing.T) {
 	require.Equal(t, http.StatusOK, limited("10.0.1.1").Code)
 	assert.Equal(t, 1, l.BucketCount(), "idle buckets must be evicted")
 	assert.Equal(t, http.StatusOK, limited("10.0.0.9").Code, "evicted IP gets a fresh bucket")
+}
+
+func TestRouter_CredentialEndpointsLimitedDespiteAuthorizationHeader(t *testing.T) {
+	for _, enabled := range []bool{false, true} {
+		t.Run(fmt.Sprintf("global limiter enabled=%v", enabled), func(t *testing.T) {
+			router := NewRouter(RouterConfig{
+				Usecases: &mockUsecases{},
+				JWTAuth:  testJWTAuth,
+				RateLimit: RateLimitConfig{
+					Enabled: enabled,
+					RPS:     1,
+					Burst:   2,
+				},
+			})
+			for _, path := range []string{"/api/v1/auth/login", "/api/v1/auth/register"} {
+				limited := false
+				for range 40 {
+					req := httptest.NewRequest("POST", path, strings.NewReader(`{"email":"a@b.com","password":"pw"}`))
+					req.Header.Set("Content-Type", "application/json")
+					req.Header.Set("Authorization", "Bearer not-a-real-token")
+					req.RemoteAddr = "192.0.2.50:1234"
+					w := httptest.NewRecorder()
+					router.ServeHTTP(w, req)
+					if w.Code == http.StatusTooManyRequests {
+						limited = true
+						break
+					}
+				}
+				assert.True(t, limited, "%s must be rate limited even when the request carries an Authorization header", path)
+			}
+		})
+	}
 }
 
 func TestRouter_AuthEndpointsRateLimitedByDefault(t *testing.T) {

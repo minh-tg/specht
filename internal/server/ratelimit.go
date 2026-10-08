@@ -104,13 +104,29 @@ func (l *RateLimiter) limiterFor(key string, now time.Time) *rate.Limiter {
 // requests carrying an Authorization header pass through — they are judged
 // by the post-auth instance, so one request never spends two budgets.
 func (l *RateLimiter) Middleware(useIdentity bool) func(http.Handler) http.Handler {
+	return l.middleware(func(r *http.Request) (string, bool) {
+		return l.rateLimitKey(r, useIdentity)
+	})
+}
+
+// MiddlewareByIP enforces the bucket per client IP for every request. Unlike
+// Middleware(false) it does not wave through requests that carry an
+// Authorization header: a client controls that header, so it must not exempt a
+// request on routes that no post-auth limiter covers, such as login.
+func (l *RateLimiter) MiddlewareByIP() func(http.Handler) http.Handler {
+	return l.middleware(func(r *http.Request) (string, bool) {
+		return "ip:" + clientHost(r), true
+	})
+}
+
+func (l *RateLimiter) middleware(keyFor func(*http.Request) (string, bool)) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if rateLimitExempt[r.URL.Path] {
 				next.ServeHTTP(w, r)
 				return
 			}
-			key, ok := l.rateLimitKey(r, useIdentity)
+			key, ok := keyFor(r)
 			if !ok {
 				next.ServeHTTP(w, r)
 				return
