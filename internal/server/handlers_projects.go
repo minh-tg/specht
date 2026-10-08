@@ -185,12 +185,41 @@ func (h *Handler) AddProjectMember(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing_field", "user_id and role are required")
 		return
 	}
+	// Stop outsiders here so the specific errors below cannot reveal whether a
+	// project or a user exists to someone with no access to it.
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		h.respondProjectAccessError(w, err)
+		return
+	}
 	member, err := h.usecase.AddProjectMember(r.Context(), slug, req.UserID, req.Role)
 	if err != nil {
-		respondError(w, http.StatusForbidden, "project_access_denied", projectsMsgAccessDenied)
+		respondMemberError(w, err)
 		return
 	}
 	respondJSON(w, http.StatusCreated, member)
+}
+
+// respondMemberError maps a membership usecase error to its HTTP response.
+// An unrecognised error is a server fault: it is logged and reported as such
+// instead of masquerading as a permission problem.
+func respondMemberError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, usecase.ErrInvalidID):
+		respondError(w, http.StatusBadRequest, "invalid_id", err.Error())
+	case errors.Is(err, usecase.ErrInvalidMemberRole):
+		respondError(w, http.StatusBadRequest, "invalid_role", err.Error())
+	case errors.Is(err, usecase.ErrLastAdminForbidden):
+		respondError(w, http.StatusBadRequest, "last_admin", err.Error())
+	case errors.Is(err, usecase.ErrMemberNotFound):
+		respondError(w, http.StatusNotFound, "member_not_found", "project member not found")
+	case errors.Is(err, usecase.ErrMemberUserNotFound):
+		respondError(w, http.StatusNotFound, "user_not_found", "user not found")
+	case errors.Is(err, usecase.ErrProjectAccessDenied):
+		respondError(w, http.StatusForbidden, "project_access_denied", projectsMsgAccessDenied)
+	default:
+		slog.Error("project membership change failed", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not update project members")
+	}
 }
 
 func (h *Handler) RemoveProjectMember(w http.ResponseWriter, r *http.Request) {
@@ -205,19 +234,7 @@ func (h *Handler) RemoveProjectMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.usecase.RemoveProjectMember(r.Context(), slug, userID); err != nil {
-		if errors.Is(err, usecase.ErrInvalidID) {
-			respondError(w, http.StatusBadRequest, "invalid_id", err.Error())
-			return
-		}
-		if errors.Is(err, usecase.ErrMemberNotFound) {
-			respondError(w, http.StatusNotFound, "member_not_found", "project member not found")
-			return
-		}
-		if errors.Is(err, usecase.ErrLastAdminForbidden) {
-			respondError(w, http.StatusBadRequest, "last_admin", err.Error())
-			return
-		}
-		respondError(w, http.StatusForbidden, "project_access_denied", projectsMsgAccessDenied)
+		respondMemberError(w, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

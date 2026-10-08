@@ -226,16 +226,28 @@ func TestE2E_ProjectMembership(t *testing.T) {
 		require.Equal(t, "missing_field", errorCode(t, raw))
 
 		status, raw = doJSON(t, http.MethodPost, "/api/v1/projects/"+slug+"/members", adminToken,
+			map[string]string{"user_id": "not-a-uuid", "role": "viewer"})
+		require.Equal(t, http.StatusBadRequest, status)
+		require.Equal(t, "invalid_id", errorCode(t, raw),
+			"a user id that is not a UUID is a client error, not a server error")
+
+		status, raw = doJSON(t, http.MethodPost, "/api/v1/projects/"+slug+"/members", adminToken,
 			map[string]string{"user_id": randomHex(16), "role": "viewer"})
-		require.Equal(t, http.StatusForbidden, status)
-		require.Equal(t, "project_access_denied", errorCode(t, raw),
-			"an unknown user is refused without a server error")
+		require.Equal(t, http.StatusNotFound, status)
+		require.Equal(t, "user_not_found", errorCode(t, raw),
+			"a well-formed id that belongs to nobody is reported as not found")
 
 		status, raw = doJSON(t, http.MethodPost, "/api/v1/projects/"+slug+"/members", adminToken,
 			map[string]string{"user_id": viewerMe.ID, "role": "superuser"})
-		require.Equal(t, http.StatusForbidden, status)
-		require.Equal(t, "project_access_denied", errorCode(t, raw),
-			"roles outside admin/editor/viewer are refused")
+		require.Equal(t, http.StatusBadRequest, status)
+		require.Equal(t, "invalid_role", errorCode(t, raw),
+			"roles outside admin/manager/member (or the legacy editor/viewer aliases) are refused")
+
+		status, raw = doJSON(t, http.MethodPost, "/api/v1/projects/"+slug+"/members", adminToken,
+			map[string]string{"user_id": adminMe.ID, "role": "member"})
+		require.Equal(t, http.StatusBadRequest, status)
+		require.Equal(t, "last_admin", errorCode(t, raw),
+			"the only project admin cannot be demoted")
 	})
 
 	t.Run("a grant unlocks reads and roster visibility", func(t *testing.T) {

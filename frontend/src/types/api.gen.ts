@@ -1021,7 +1021,7 @@ export interface paths {
     put?: never;
     /**
      * Grant a user access
-     * @description Re-granting an existing member updates their role.
+     * @description Re-granting an existing member updates their role. A malformed `user_id` is `400 invalid_id`, a role outside the project vocabulary is `400 invalid_role`, demoting the only project admin is `400 last_admin`, and a user that does not exist is `404 user_not_found`.
      */
     post: operations["addProjectMember"];
     delete?: never;
@@ -4202,6 +4202,8 @@ export interface operations {
       };
       400: components["responses"]["BadRequest"];
       403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
+      500: components["responses"]["InternalError"];
     };
   };
   removeProjectMember: {
@@ -4221,6 +4223,7 @@ export interface operations {
       400: components["responses"]["BadRequest"];
       403: components["responses"]["Forbidden"];
       404: components["responses"]["NotFound"];
+      500: components["responses"]["InternalError"];
     };
   };
   listEnvironments: {
