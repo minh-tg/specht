@@ -292,3 +292,7 @@ migrations never migrate down automatically.
 - `LOG_LEVEL=info` (or `warn`); audit events go to structured logs.
 - Keep the image updated; rebuilds pull a fresh Alpine + `go mod` pins.
 - Watcher (`WATCHER_ENABLE`) and SSO stay off unless configured.
+- Database TLS: the compose default `POSTGRES_SSLMODE=disable` is for a
+  database on the same host. For anything else set `require` or `verify-full`;
+  at startup the server logs a warning when `DATABASE_URL` reaches a non-local
+  host with `sslmode` of `disable`, `allow`, `prefer`, or unset.
