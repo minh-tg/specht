@@ -159,7 +159,7 @@ func main() {
 	// existing accounts to the global admin role at startup so tenant
 	// membership can be administered. Unknown addresses are skipped with a
 	// warning; the flag is otherwise a no-op.
-	bootstrapAdmins(context.Background(), stores)
+	bootstrapAdmins(context.Background(), stores, !cfg.RegistrationDisabled)
 
 	if cfg.SSO.Enabled && cfg.SSO.AllowUnverifiedEmail {
 		slog.Warn("SSO_ALLOW_UNVERIFIED_EMAIL is on: a first SSO login may link to an existing account by an email " +
@@ -327,8 +327,11 @@ func buildTrackerDispatcher() *tracker.Dispatcher {
 // caller can abort from the main goroutine instead of inside a watcher
 // goroutine.
 // bootstrapAdmins promotes ADMIN_EMAILS accounts to global admin.
-// It is idempotent and never creates accounts.
-func bootstrapAdmins(ctx context.Context, stores *port.Stores) {
+// It is idempotent and never creates accounts. Registration does not prove
+// ownership of an address, so with signup open an address that is not yet
+// registered can be claimed by anyone, and the next start would promote
+// them; that case is reported as an error rather than a routine skip.
+func bootstrapAdmins(ctx context.Context, stores *port.Stores, signupOpen bool) {
 	raw := os.Getenv("ADMIN_EMAILS")
 	if raw == "" {
 		return
@@ -340,7 +343,12 @@ func bootstrapAdmins(ctx context.Context, stores *port.Stores) {
 		}
 		user, err := stores.Users.GetByEmail(ctx, email)
 		if err != nil {
-			slog.Warn("admin bootstrap: unknown account, skipping", "email", auth.MaskEmail(email))
+			if signupOpen {
+				slog.Error("admin bootstrap: unknown account and anyone can register it; register it now or set REGISTRATION_ENABLED=false before the next start",
+					"email", auth.MaskEmail(email))
+			} else {
+				slog.Warn("admin bootstrap: unknown account, skipping", "email", auth.MaskEmail(email))
+			}
 			continue
 		}
 		if user.Role == auth.RoleAdmin {

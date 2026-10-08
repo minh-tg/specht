@@ -51,7 +51,7 @@ compose defaults differ, which is noted.
 | `DB_MIGRATE` | `true` | Run migrations at startup. Set `false` to run `specht migrate` as a separately controlled step. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`. |
 | `CORS_ORIGINS` | `http://localhost:5173` | Comma/space-separated UI origins allowed to call the API. |
-| `ADMIN_EMAILS` | *(empty)* | Comma-separated emails promoted to global admin at startup. Idempotent; unknown addresses are skipped with a warning. Matching ignores case. |
+| `ADMIN_EMAILS` | *(empty)* | Comma-separated emails promoted to global admin at startup. Idempotent; unknown addresses are skipped with a warning. Matching ignores case. While `REGISTRATION_ENABLED` is on, an address that is not registered yet can be claimed by anyone, so register it before listing it (or turn registration off); the server logs an error for each such address. |
 | `REGISTRATION_ENABLED` | `true` | Allow self-service `POST /api/v1/auth/register`. Open by default because the first administrator has to register before anyone can be promoted. Set `false` once your admins exist (and always for SSO-only deployments); the endpoint then answers `403 registration_disabled`. Anything other than a boolean fails startup. |
 | `TRUSTED_PROXIES` | *(empty)* | Comma/space-separated CIDRs of proxy hops allowed to set `X-Forwarded-For` / `X-Real-IP` / `X-Forwarded-Proto`. Empty trusts nobody. |
 | `INVENTORY_TTL` | `2160h` | How long a scanned package stays in the watcher's active inventory. |
