@@ -285,6 +285,11 @@ func (r *pgProjectPort) UpsertMember(ctx context.Context, projectID, userID, rol
 		return err
 	})
 	if err != nil {
+		if isForeignKeyViolation(err) {
+			// The project row is locked and so exists; the user is the
+			// reference that does not.
+			return port.ProjectMember{}, port.ErrNotFound
+		}
 		return port.ProjectMember{}, err
 	}
 	return memberToPort(row), nil
@@ -489,6 +494,13 @@ func isDuplicateSlug(err error) bool {
 		return pgErr.Code == "23505"
 	}
 	return false
+}
+
+// isForeignKeyViolation reports whether err is a Postgres foreign-key
+// violation (SQLSTATE 23503).
+func isForeignKeyViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23503"
 }
 
 // mappingErr adapts pgx no-rows to port.ErrNotFound. It uses errors.Is so
