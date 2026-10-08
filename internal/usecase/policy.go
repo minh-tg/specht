@@ -190,6 +190,9 @@ func (u *Usecases) EffectivePolicy(ctx context.Context, projectSlug string) (*Po
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
+		return nil, err
+	}
 	return u.effectivePolicy(ctx, project)
 }
 

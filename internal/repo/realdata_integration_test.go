@@ -443,7 +443,7 @@ func TestAgingRows_EndToEnd(t *testing.T) {
 	assert.False(t, byID[oldLow].Reopened)
 	assert.Equal(t, "critical", byID[oldCritical].Severity)
 
-	resp, err := uc.GetAging(ctx, "my-app")
+	resp, err := uc.GetAging(globalAdminCtx(creator.ID), "my-app")
 	require.NoError(t, err)
 	assert.Equal(t, int32(1), resp.OverdueTotal, "40d critical past 7d SLA; 100d low within 180d SLA")
 	assert.Equal(t, int32(1), resp.Reopened)
@@ -757,7 +757,7 @@ func TestRegression_DetectedAndReopened(t *testing.T) {
 	require.Len(t, events, 1, "regression must log a regression event")
 
 	// The gate must block: the regressed finding is a blocking candidate.
-	g, err := uc.GetGateStatus(ctx, "regress-app", 0)
+	g, err := uc.GetGateStatus(globalAdminCtx(creator.ID), "regress-app", 0)
 	require.NoError(t, err)
 	assert.True(t, g.ThresholdBreached, "regressed finding must re-block the gate")
 	assert.NotEmpty(t, g.BlockedBy)

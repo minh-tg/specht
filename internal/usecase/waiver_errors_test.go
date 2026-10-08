@@ -145,7 +145,7 @@ func TestWaiverOperationsPreserveStoreFailures(t *testing.T) {
 		wr := &mockWaiverRepo{listFn: func(context.Context, string) ([]port.Waiver, error) {
 			return nil, storeErr
 		}}
-		_, err := waiverUsecaseForProject(project, wr, "").ListWaivers(context.Background(), "my-app")
+		_, err := waiverUsecaseForProject(project, wr, "").ListWaivers(adminCtx(), "my-app")
 		require.ErrorIs(t, err, storeErr)
 	})
 
@@ -153,7 +153,7 @@ func TestWaiverOperationsPreserveStoreFailures(t *testing.T) {
 		wr := &mockWaiverRepo{getByIDFn: func(context.Context, string, string) (port.Waiver, error) {
 			return port.Waiver{}, storeErr
 		}}
-		_, err := waiverUsecaseForProject(project, wr, "").GetWaiver(context.Background(), "my-app", waiverID)
+		_, err := waiverUsecaseForProject(project, wr, "").GetWaiver(adminCtx(), "my-app", waiverID)
 		require.ErrorIs(t, err, storeErr)
 	})
 
@@ -189,7 +189,7 @@ func TestWaiverOperationsPreserveStoreFailures(t *testing.T) {
 					return nil, nil
 				},
 			}
-			_, err := waiverUsecaseForProject(project, wr, "").GetWaiver(context.Background(), "my-app", waiverID)
+			_, err := waiverUsecaseForProject(project, wr, "").GetWaiver(adminCtx(), "my-app", waiverID)
 			require.ErrorIs(t, err, storeErr)
 		})
 	}
@@ -227,7 +227,7 @@ func TestWaiverOperationsPreserveStoreFailures(t *testing.T) {
 				return nil, storeErr
 			},
 		}
-		_, err := waiverUsecaseForProject(project, wr, "").ListWaiverEvents(context.Background(), "my-app", waiverID)
+		_, err := waiverUsecaseForProject(project, wr, "").ListWaiverEvents(adminCtx(), "my-app", waiverID)
 		require.ErrorIs(t, err, storeErr)
 	})
 

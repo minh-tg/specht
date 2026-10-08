@@ -261,6 +261,9 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
+		return nil, err
+	}
 
 	// A non-positive floor means "no explicit severity": the project's
 	// effective policy decides. An explicit floor always wins.
@@ -304,6 +307,9 @@ func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug stri
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
+	}
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
+		return nil, err
 	}
 
 	u.initGate()

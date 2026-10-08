@@ -114,7 +114,7 @@ func TestRealDataFullLoopParity(t *testing.T) {
 				Registry: reg,
 			})
 
-			result, err := uc.IngestReport(context.Background(), IngestReportInput{
+			result, err := uc.IngestReport(adminCtx(), IngestReportInput{
 				ProjectSlug: "my-app",
 				Scanner:     tc.scanner,
 				RawData:     raw,
@@ -123,7 +123,7 @@ func TestRealDataFullLoopParity(t *testing.T) {
 			require.Equal(t, tc.totalFindings, result.TotalFindings)
 			require.Len(t, retained, tc.totalFindings, "every parsed finding must be upserted")
 
-			status, err := uc.GetGateStatus(context.Background(), "my-app", 3)
+			status, err := uc.GetGateStatus(adminCtx(), "my-app", 3)
 			require.NoError(t, err)
 			assert.Equal(t, result.ThresholdBreached, status.ThresholdBreached,
 				"ingest response and GET gate must agree")

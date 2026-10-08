@@ -2887,7 +2887,7 @@ func TestGetGateStatus_Success(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: wr},
 	})
 
-	status, err := uc.GetGateStatus(context.Background(), "my-app", 2)
+	status, err := uc.GetGateStatus(adminCtx(), "my-app", 2)
 	require.NoError(t, err)
 	require.NotNil(t, status)
 	assert.True(t, status.ThresholdBreached)
@@ -2925,7 +2925,7 @@ func TestGetGateStatus_ReportsWaivedFindingIDs(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: wr},
 	})
 
-	status, err := uc.GetGateStatus(context.Background(), "my-app", 2)
+	status, err := uc.GetGateStatus(adminCtx(), "my-app", 2)
 	require.NoError(t, err)
 	require.NotNil(t, status)
 	assert.Equal(t, 1, status.WaivedCount)
@@ -2970,7 +2970,7 @@ func TestListFindings_Success(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, Findings: fr},
 	})
 
-	findings, total, err := uc.ListFindings(context.Background(), "my-app", FindingFilter{}, 20, 0)
+	findings, total, err := uc.ListFindings(adminCtx(), "my-app", FindingFilter{}, 20, 0)
 	require.NoError(t, err)
 	assert.Len(t, findings, 2, "the page is bounded by limit/offset")
 	assert.EqualValues(t, 137, total, "the total covers the whole filtered set, not the page")
@@ -3087,7 +3087,7 @@ func TestListReports_Success(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, Reports: rr},
 	})
 
-	reports, err := uc.ListReports(context.Background(), "my-app", 20, 0)
+	reports, err := uc.ListReports(adminCtx(), "my-app", 20, 0)
 	require.NoError(t, err)
 	assert.Len(t, reports, 1)
 	assert.Equal(t, "trivy", reports[0].ToolName)
@@ -3605,7 +3605,7 @@ func TestGetGateStatus_IncludesBlockedByReachability(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: wr, Reachability: rch},
 	})
 
-	status, err := uc.GetGateStatus(context.Background(), "my-app", 2)
+	status, err := uc.GetGateStatus(adminCtx(), "my-app", 2)
 	require.NoError(t, err)
 	require.NotNil(t, status)
 	assert.True(t, status.ThresholdBreached)
@@ -3643,7 +3643,7 @@ func TestGetGateStatus_ReachabilityExemptionsPass(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: wr, Reachability: rch},
 	})
 
-	status, err := uc.GetGateStatus(context.Background(), "my-app", 2)
+	status, err := uc.GetGateStatus(adminCtx(), "my-app", 2)
 	require.NoError(t, err)
 	assert.False(t, status.ThresholdBreached)
 	assert.Zero(t, status.BlockingCount)
@@ -3668,7 +3668,7 @@ func TestGetGateStatus_ReachabilityLookupError(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: wr, Reachability: rch},
 	})
 
-	_, err := uc.GetGateStatus(context.Background(), "my-app", 2)
+	_, err := uc.GetGateStatus(adminCtx(), "my-app", 2)
 	assert.ErrorContains(t, err, "database unavailable")
 }
 
@@ -3941,7 +3941,7 @@ func TestIngestGateParity_GetGateStatusAgrees(t *testing.T) {
 		Registry: newTestRegistryWithCriticalFinding(),
 	})
 
-	ingestOut, err := uc.IngestReport(context.Background(), IngestReportInput{
+	ingestOut, err := uc.IngestReport(adminCtx(), IngestReportInput{
 		ProjectSlug: "my-app",
 		Scanner:     "trivy",
 		RawData:     json.RawMessage(`{"test": true}`),
@@ -3949,7 +3949,7 @@ func TestIngestGateParity_GetGateStatusAgrees(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, ingestOut.ThresholdBreached, "unwaived critical finding breaches ingest gate")
 
-	gateStatus, err := uc.GetGateStatus(context.Background(), "my-app", 3)
+	gateStatus, err := uc.GetGateStatus(adminCtx(), "my-app", 3)
 	require.NoError(t, err)
 	assert.Equal(t, ingestOut.ThresholdBreached, gateStatus.ThresholdBreached,
 		"ingest response and GET gate must agree for the same completed report")
@@ -4021,7 +4021,7 @@ func TestGetGateStatus_WatcherRequireTriageDropsUntriaged(t *testing.T) {
 	})
 
 	// Default project (cve_watcher_gate = "" -> immediate): both block.
-	status, err := uc.GetGateStatus(context.Background(), "my-app", 3)
+	status, err := uc.GetGateStatus(adminCtx(), "my-app", 3)
 	require.NoError(t, err)
 	assert.True(t, status.ThresholdBreached)
 	assert.Len(t, status.BlockedBy, 2)
@@ -4032,7 +4032,7 @@ func TestGetGateStatus_WatcherRequireTriageDropsUntriaged(t *testing.T) {
 		p.CveWatcherGate = "require_triage"
 		return p, nil
 	}
-	status, err = uc.GetGateStatus(context.Background(), "my-app", 3)
+	status, err = uc.GetGateStatus(adminCtx(), "my-app", 3)
 	require.NoError(t, err)
 	assert.True(t, status.ThresholdBreached)
 	assert.Equal(t, []string{"w2"}, status.BlockedBy)
@@ -4060,7 +4060,7 @@ func TestGetGateStatus_WatcherOffDropsAll(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: wr},
 	})
 
-	status, err := uc.GetGateStatus(context.Background(), "my-app", 3)
+	status, err := uc.GetGateStatus(adminCtx(), "my-app", 3)
 	require.NoError(t, err)
 	assert.False(t, status.ThresholdBreached)
 	assert.Empty(t, status.BlockedBy)

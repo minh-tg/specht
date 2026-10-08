@@ -41,6 +41,9 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
+		return nil, err
+	}
 
 	rows, err := u.deps.Stores.Stats.GetProjectStats(ctx, project.ID)
 	if err != nil {
@@ -160,6 +163,9 @@ func (u *Usecases) GetAging(ctx context.Context, projectSlug string) (*AgingResp
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
+	}
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
+		return nil, err
 	}
 	rows, err := u.deps.Stores.Stats.GetAgingRows(ctx, project.ID)
 	if err != nil {

@@ -130,7 +130,7 @@ func TestPreviewPRCheck_RequiresCommit(t *testing.T) {
 
 func TestPreviewPRCheck_UnknownProvider(t *testing.T) {
 	uc, _ := prcheckHarness(t)
-	_, err := uc.PreviewPRCheck(context.Background(), PRCheckPreviewInput{
+	_, err := uc.PreviewPRCheck(adminCtx(), PRCheckPreviewInput{
 		ProjectSlug: "my-app", Provider: "bitkeeper", CommitSha: prcheckCommit,
 	})
 	require.Error(t, err)

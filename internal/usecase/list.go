@@ -463,6 +463,9 @@ func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, filter 
 	if err != nil {
 		return nil, 0, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
+		return nil, 0, err
+	}
 
 	scope := port.ListFindingsParams{
 		Severities:   filter.Severities,
@@ -689,6 +692,9 @@ func (u *Usecases) ListReports(ctx context.Context, projectSlug string, limit, o
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
+		return nil, err
+	}
 
 	reports, err := u.deps.Stores.Reports.ListByProject(ctx, project.ID, limit, offset)
 	if err != nil {
@@ -794,6 +800,9 @@ func (u *Usecases) ListEnvironments(ctx context.Context, projectSlug string) ([]
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
+		return nil, err
+	}
 	envs, err := u.deps.Stores.Environments.List(ctx, project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list environments: %w", err)
@@ -810,6 +819,9 @@ func (u *Usecases) ListTargets(ctx context.Context, projectSlug string) ([]Targe
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
+		return nil, err
+	}
 	targets, err := u.deps.Stores.Targets.List(ctx, project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("list targets: %w", err)
@@ -825,6 +837,9 @@ func (u *Usecases) ListArtifacts(ctx context.Context, projectSlug string) ([]Art
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
+	}
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
+		return nil, err
 	}
 	artifacts, err := u.deps.Stores.Artifacts.List(ctx, project.ID)
 	if err != nil {

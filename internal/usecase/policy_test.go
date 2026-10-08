@@ -174,7 +174,7 @@ func TestGetGateStatus_UsesPolicyFloor(t *testing.T) {
 		Projects: pr, Findings: fr, Waivers: &mockWaiverRepo{},
 	}})
 
-	out, err := uc.GetGateStatus(context.Background(), "my-app", 0)
+	out, err := uc.GetGateStatus(adminCtx(), "my-app", 0)
 	require.NoError(t, err)
 	assert.False(t, out.ThresholdBreached, "high finding must not breach a critical floor")
 	require.NotNil(t, out.Policy)
