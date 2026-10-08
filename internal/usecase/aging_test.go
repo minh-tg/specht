@@ -87,7 +87,7 @@ func TestGetAging_Success(t *testing.T) {
 		{ID: "f1", Title: "CVE-1", Severity: "high", SeverityRank: 3, FirstSeen: now.AddDate(0, 0, -60), State: "open"},
 	}}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr, Stats: sr}})
-	resp, err := uc.GetAging(context.Background(), "my-app")
+	resp, err := uc.GetAging(adminCtx(), "my-app")
 	require.NoError(t, err)
 	assert.Equal(t, int32(1), resp.OverdueTotal, "60d high past 30d SLA")
 	require.Len(t, resp.Overdue, 1)

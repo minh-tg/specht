@@ -258,6 +258,9 @@ func (u *Usecases) ListWaivers(ctx context.Context, projectSlug string) ([]Waive
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
 	}
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
+		return nil, err
+	}
 
 	waivers, err := u.deps.Stores.Waivers.List(ctx, project.ID)
 	if err != nil {
@@ -275,6 +278,9 @@ func (u *Usecases) GetWaiver(ctx context.Context, projectSlug, waiverID string) 
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
+	}
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
+		return nil, err
 	}
 
 	id, err := uuid.Parse(waiverID)
@@ -464,6 +470,9 @@ func (u *Usecases) ListWaiverEvents(ctx context.Context, projectSlug, waiverID s
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
+	}
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
+		return nil, err
 	}
 
 	id, err := uuid.Parse(waiverID)

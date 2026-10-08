@@ -58,7 +58,7 @@ func TestGetProjectStats_ByAnalysisState(t *testing.T) {
 			{State: "unanalyzed", Count: 1},
 		},
 	}
-	stats, err := statsUsecase(store).GetProjectStats(context.Background(), "my-app")
+	stats, err := statsUsecase(store).GetProjectStats(adminCtx(), "my-app")
 	require.NoError(t, err)
 	assert.Equal(t, int32(2), stats.TotalFindings)
 	assert.Equal(t, []AnalysisStateCount{
@@ -68,7 +68,7 @@ func TestGetProjectStats_ByAnalysisState(t *testing.T) {
 }
 
 func TestGetProjectStats_EmptyProjectMarshalAnalysisStates(t *testing.T) {
-	stats, err := statsUsecase(&mockStatsStore{}).GetProjectStats(context.Background(), "my-app")
+	stats, err := statsUsecase(&mockStatsStore{}).GetProjectStats(adminCtx(), "my-app")
 	require.NoError(t, err)
 	require.NotNil(t, stats.ByAnalysisState, "an empty project still reports an array, never null")
 	assert.Empty(t, stats.ByAnalysisState)
@@ -81,7 +81,7 @@ func TestGetProjectStats_EmptyProjectMarshalAnalysisStates(t *testing.T) {
 
 func TestGetProjectStats_AnalysisStateError(t *testing.T) {
 	store := &mockStatsStore{analysisErr: errors.New("boom")}
-	_, err := statsUsecase(store).GetProjectStats(context.Background(), "my-app")
+	_, err := statsUsecase(store).GetProjectStats(adminCtx(), "my-app")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "get analysis state counts")
 }

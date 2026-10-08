@@ -95,6 +95,9 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, input.ProjectSlug, err)
 	}
+	if err := u.requireProjectMember(ctx, project.ID); err != nil {
+		return nil, err
+	}
 
 	name := input.Provider
 	if name == "" {

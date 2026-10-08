@@ -399,7 +399,7 @@ func TestListWaiversReturnsProjectWaivers(t *testing.T) {
 	}
 	uc := waiverUsecaseForProject(project, wr, "")
 
-	got, err := uc.ListWaivers(context.Background(), "my-app")
+	got, err := uc.ListWaivers(adminCtx(), "my-app")
 
 	require.NoError(t, err)
 	require.Len(t, got, 2)
@@ -433,7 +433,7 @@ func TestGetWaiverReturnsItsConditionsContextsAndTargets(t *testing.T) {
 	}
 	uc := waiverUsecaseForProject(project, wr, "")
 
-	got, err := uc.GetWaiver(context.Background(), "my-app", waiverID)
+	got, err := uc.GetWaiver(adminCtx(), "my-app", waiverID)
 
 	require.NoError(t, err)
 	require.NotNil(t, got)
@@ -530,7 +530,7 @@ func TestListWaiverEventsReturnsAuditHistory(t *testing.T) {
 	}
 	uc := waiverUsecaseForProject(project, wr, "")
 
-	got, err := uc.ListWaiverEvents(context.Background(), "my-app", waiverID)
+	got, err := uc.ListWaiverEvents(adminCtx(), "my-app", waiverID)
 
 	require.NoError(t, err)
 	require.Len(t, got, 1)
