@@ -559,6 +559,10 @@ func (h *Handler) GetEffectivePolicy(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListTeams(w http.ResponseWriter, r *http.Request) {
 	result, err := h.usecase.ListTeams(r.Context())
 	if err != nil {
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			respondError(w, http.StatusForbidden, "project_access_denied", projectsMsgAccessDenied)
+			return
+		}
 		slog.Error("list teams", "error", err)
 		respondError(w, http.StatusInternalServerError, "teams_failed", "could not list teams")
 		return
