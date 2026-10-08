@@ -176,6 +176,26 @@ administration needs a global admin.
    (`up -d` again — promotion is idempotent).
 3. Create projects and grant membership via `POST /projects/:slug/members`.
 
+### Changing or removing a global admin
+
+Access tokens last 15 minutes and carry the account's global role. The server
+does not re-read that role on each request, so a token issued before a change
+keeps working until it expires, even after the account is demoted or deleted.
+Project roles are different: they are looked up on every request, so removing
+someone from a project or a team takes effect immediately.
+
+Specht has no endpoint that demotes or deletes accounts; do it in the database
+and then end the sessions explicitly:
+
+1. Change the role or delete the row in `users`.
+2. When demoting, also run
+   `UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = '<user id>'`.
+   A refresh re-reads the role, so the new role applies from then on, but
+   without this the account keeps its refresh token until it expires. Deleting
+   the user needs no extra step because its refresh tokens are removed with it.
+3. To cut off already-issued access tokens at once rather than waiting out the
+   15 minutes, rotate `JWT_SECRET` and restart. That signs every user out.
+
 ## 6. Reverse proxy
 
 Terminate TLS at the proxy and forward plain HTTP. Set `TRUSTED_PROXIES` to
