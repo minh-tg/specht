@@ -44,6 +44,9 @@ services:
       # Empty ADMIN_EMAILS promotes nobody; empty TRUSTED_PROXIES trusts
       # forwarding headers from nobody (deploy directly or set the hops).
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      # Open so the first admin can register; set to false afterwards, and for
+      # SSO-only deployments.
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       # Rate limiting: on by default in compose (self-host is internet-facing
       # until proven otherwise). Dev `go run` stays unlimited unless enabled.

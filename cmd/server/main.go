@@ -175,9 +175,11 @@ func main() {
 	})
 
 	handler := server.NewRouter(server.RouterConfig{
-		Usecases:       uc,
-		CORSOrigins:    cfg.CORSOrigins,
-		TrustedProxies: cfg.TrustedProxies,
+		Usecases:    uc,
+		CORSOrigins: cfg.CORSOrigins,
+
+		RegistrationDisabled: cfg.RegistrationDisabled,
+		TrustedProxies:       cfg.TrustedProxies,
 		RateLimit: server.RateLimitConfig{
 			Enabled:        cfg.RateLimit.Enable,
 			RPS:            cfg.RateLimit.RPS,
