@@ -83,6 +83,7 @@ func resolveOIDCAuth(cfg *config.Server) *auth.OIDCAuthenticator {
 // apiKeyLookup adapts the API key repository to the router's lookup
 // contract.
 func apiKeyLookup(repos *repo.Repos) func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
+	touches := newTouchThrottle(apiKeyTouchInterval)
 	return func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
 		key, err := repos.APIKeys.GetByHash(ctx, keyHash)
 		if err != nil {
@@ -110,11 +111,14 @@ func apiKeyLookup(repos *repo.Repos) func(ctx context.Context, keyHash string) (
 		if key.ExpiresAt.Valid {
 			expiresAt = key.ExpiresAt.Time
 		}
-		// Stamp last_used_at on every successful key authentication. This
-		// is best-effort observability: a failure must never deny a key
-		// that has already passed every gate.
-		if err := repos.APIKeys.TouchLastUsed(ctx, key.ID); err != nil {
-			slog.Warn("api key lookup: failed to update last_used_at", "error", err)
+		// Stamp last_used_at, at most once a minute per key. This is
+		// best-effort observability: a failure must never deny a key that
+		// has already passed every gate.
+		if keyID := uuid.UUID(key.ID.Bytes).String(); touches.due(keyID) {
+			if err := repos.APIKeys.TouchLastUsed(ctx, key.ID); err != nil {
+				touches.release(keyID)
+				slog.Warn("api key lookup: failed to update last_used_at", "error", err)
+			}
 		}
 		return actorID, uuid.UUID(key.ProjectID.Bytes).String(), scopes, expiresAt, nil
 	}
