@@ -201,7 +201,8 @@ func (u *Usecases) RemoveTeamMember(ctx context.Context, teamID, userID string) 
 
 // LinkProjectTeam confers a project role on every team member. Project
 // managers and admins may link teams, with a delegation ceiling that limits
-// the conferred role to the caller's own rank.
+// the conferred role to the caller's own rank. Relinking is an upsert, so
+// non-admins may not rewrite an existing link at or above their own rank.
 func (u *Usecases) LinkProjectTeam(ctx context.Context, projectSlug, teamID, role string) (*ProjectTeamResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
@@ -225,6 +226,9 @@ func (u *Usecases) LinkProjectTeam(ctx context.Context, projectSlug, teamID, rol
 	if auth.RoleRank(role) > auth.RoleRank(callerRole) {
 		return nil, ErrProjectAccessDenied
 	}
+	if err := u.checkExistingLinkPermission(ctx, project.ID, teamID, callerRole); err != nil {
+		return nil, err
+	}
 	if _, err := u.deps.Stores.Teams.GetTeamByID(ctx, teamID); err != nil {
 		return nil, notFoundAsTeam(err)
 	}
@@ -239,8 +243,9 @@ func (u *Usecases) LinkProjectTeam(ctx context.Context, projectSlug, teamID, rol
 	return &ProjectTeamResponse{ProjectID: link.ProjectID, TeamID: link.TeamID, TeamName: team.Name, Role: normalizeMemberRole(link.Role)}, nil
 }
 
-// checkUnlinkPermission ensures managers cannot unlink admin-level team links.
-func (u *Usecases) checkUnlinkPermission(ctx context.Context, projectID, teamID, callerRole string) error {
+// checkExistingLinkPermission ensures non-admin callers cannot rewrite or
+// remove a team link whose role is at or above their own.
+func (u *Usecases) checkExistingLinkPermission(ctx context.Context, projectID, teamID, callerRole string) error {
 	if auth.RoleRank(callerRole) >= auth.RoleRank(auth.RoleAdmin) {
 		return nil
 	}
@@ -257,7 +262,8 @@ func (u *Usecases) checkUnlinkPermission(ctx context.Context, projectID, teamID,
 }
 
 // UnlinkProjectTeam revokes the conferred role. Project managers may unlink
-// member or manager teams; unlinking admin teams requires project admin authority.
+// only member-level teams; unlinking manager or admin teams requires project
+// admin authority.
 func (u *Usecases) UnlinkProjectTeam(ctx context.Context, projectSlug, teamID string) error {
 	if _, err := validID(teamID); err != nil {
 		return err
@@ -273,7 +279,7 @@ func (u *Usecases) UnlinkProjectTeam(ctx context.Context, projectSlug, teamID st
 	if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleManager) {
 		return ErrProjectAccessDenied
 	}
-	if err := u.checkUnlinkPermission(ctx, project.ID, teamID, callerRole); err != nil {
+	if err := u.checkExistingLinkPermission(ctx, project.ID, teamID, callerRole); err != nil {
 		return err
 	}
 	if err := u.deps.Stores.Teams.UnlinkProjectTeam(ctx, project.ID, teamID); err != nil {
