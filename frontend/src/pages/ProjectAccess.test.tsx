@@ -72,7 +72,7 @@ describe("ProjectAccess", () => {
               { error: { code: deleteError.code, message: deleteError.message } },
               deleteError.status,
             )
-            : new Response(null, { status: 204 });
+            : jsonResponse(null, 204);
         }
         return jsonResponse(mockMembers);
       }
@@ -86,7 +86,7 @@ describe("ProjectAccess", () => {
               { error: { code: deleteError.code, message: deleteError.message } },
               deleteError.status,
             )
-            : new Response(null, { status: 204 });
+            : jsonResponse(null, 204);
         }
         return jsonResponse(mockTeams);
       }
