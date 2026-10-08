@@ -63,6 +63,9 @@ type RouterConfig struct {
 	// walks XFF right-to-left and skips trusted hops. Empty (default) means no
 	// peer is trusted and forwarding headers are ignored entirely.
 	TrustedProxies []netip.Prefix
+	// RegistrationDisabled makes POST /api/v1/auth/register answer 403. It is
+	// phrased as a disable flag so the zero value keeps registration open.
+	RegistrationDisabled bool
 }
 
 // NewRouter builds the chi router with middleware and all API routes.
@@ -154,7 +157,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 				loginBurst = defaultLoginBurst
 			}
 			r.Use(NewLoginRateLimiter(perMinute, loginBurst).MiddlewareByIP())
-			r.Post("/api/v1/auth/register", h.Register)
+			if cfg.RegistrationDisabled {
+				r.Post("/api/v1/auth/register", registrationDisabledHandler)
+			} else {
+				r.Post("/api/v1/auth/register", h.Register)
+			}
 			r.Post("/api/v1/auth/login", h.Login)
 		})
 	})
@@ -331,6 +338,12 @@ func isTrustedProxyAddr(addr netip.Addr, trusted []netip.Prefix) bool {
 		}
 	}
 	return false
+}
+
+// registrationDisabledHandler answers self-service registration when the
+// operator has closed it. It never reaches the usecase.
+func registrationDisabledHandler(w http.ResponseWriter, _ *http.Request) {
+	respondError(w, http.StatusForbidden, "registration_disabled", "self-service registration is disabled")
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {

@@ -189,6 +189,45 @@ func TestLoad_SSOGroupMappingDefaults(t *testing.T) {
 	assert.Empty(t, cfg.SSO.AdminGroups, "empty admin groups disable elevation")
 }
 
+func TestLoad_RegistrationIsOpenByDefault(t *testing.T) {
+	t.Setenv("REGISTRATION_ENABLED", "")
+
+	cfg, err := Load()
+
+	assert.NoError(t, err)
+	assert.False(t, cfg.RegistrationDisabled, "the first admin has to register, so the default stays open")
+}
+
+func TestLoad_RegistrationCanBeDisabled(t *testing.T) {
+	for _, v := range []string{"false", "FALSE", "0"} {
+		t.Run(v, func(t *testing.T) {
+			t.Setenv("REGISTRATION_ENABLED", v)
+
+			cfg, err := Load()
+
+			assert.NoError(t, err)
+			assert.True(t, cfg.RegistrationDisabled)
+		})
+	}
+}
+
+func TestLoad_RegistrationExplicitlyEnabled(t *testing.T) {
+	t.Setenv("REGISTRATION_ENABLED", "true")
+
+	cfg, err := Load()
+
+	assert.NoError(t, err)
+	assert.False(t, cfg.RegistrationDisabled)
+}
+
+func TestLoad_RegistrationTypoFailsFast(t *testing.T) {
+	t.Setenv("REGISTRATION_ENABLED", "flase")
+
+	_, err := Load()
+
+	assert.ErrorContains(t, err, "REGISTRATION_ENABLED", "a typo must not silently leave registration open")
+}
+
 func TestLoad_RateLimitDefaults(t *testing.T) {
 	t.Setenv("RATE_LIMIT_ENABLED", "")
 	t.Setenv("RATE_LIMIT_RPS", "")

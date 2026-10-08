@@ -74,6 +74,11 @@ type Server struct {
 	// RateLimit guards the API against flooding. Disabled by default for
 	// dev UX; self-host production enables it via RATE_LIMIT_ENABLED.
 	RateLimit RateLimit
+	// RegistrationDisabled turns off self-service account creation
+	// (REGISTRATION_ENABLED=false). It defaults to open because the first
+	// administrator has to register before anyone can be promoted; SSO-only
+	// and locked-down deployments close it once their admins exist.
+	RegistrationDisabled bool
 }
 
 // SSOConfig configures OIDC single-sign-on login.
@@ -329,6 +334,16 @@ func Load() (*Server, error) {
 			return nil, fmt.Errorf("LIFECYCLE_SWEEP_INTERVAL must be a positive duration, got %q", v)
 		}
 		s.SweepInterval = d
+	}
+
+	if v := os.Getenv("REGISTRATION_ENABLED"); v != "" {
+		// Strict on purpose: a typo must fail at startup, never silently
+		// leave an intended-closed registration endpoint open.
+		enabled, err := strconv.ParseBool(v)
+		if err != nil {
+			return nil, fmt.Errorf("REGISTRATION_ENABLED is invalid: %q (want true or false)", v)
+		}
+		s.RegistrationDisabled = !enabled
 	}
 
 	if err := loadRateLimit(s); err != nil {
