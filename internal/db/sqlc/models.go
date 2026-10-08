@@ -352,6 +352,14 @@ type Signoff struct {
 	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
+type SsoExchangeCode struct {
+	CodeHash  string             `json:"code_hash"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	Email     string             `json:"email"`
+	Role      string             `json:"role"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
 type Target struct {
 	ID        pgtype.UUID        `json:"id"`
 	ProjectID pgtype.UUID        `json:"project_id"`

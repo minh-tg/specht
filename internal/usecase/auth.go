@@ -2,7 +2,9 @@ package usecase
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -593,3 +595,58 @@ func toUserProfile(user port.User) UserProfile {
 }
 
 func strPtr(s string) *string { return &s }
+
+// CreateSSOExchangeCode issues a high-entropy, short-lived (60s) single-use authorization code
+// for an authenticated SSO identity. The code is delivered to the browser and exchanged via
+// ExchangeSSOCode for session tokens, ensuring no bearer tokens appear in URL fragments.
+func (u *Usecases) CreateSSOExchangeCode(ctx context.Context, userID, email, role string) (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("generate sso exchange code: %w", err)
+	}
+	code := base64.RawURLEncoding.EncodeToString(b)
+	hash := sha256.Sum256([]byte(code))
+	codeHash := hex.EncodeToString(hash[:])
+
+	expiresAt := time.Now().Add(60 * time.Second)
+	if err := u.deps.Stores.SSOCodes.Create(ctx, codeHash, userID, email, role, expiresAt); err != nil {
+		return "", fmt.Errorf("store sso exchange code: %w", err)
+	}
+	return code, nil
+}
+
+// ExchangeSSOCode atomically consumes an SSO exchange code and returns an AuthResponse
+// containing both an access token and a refresh token with rotation. Replayed, expired,
+// or non-existent codes fail closed.
+func (u *Usecases) ExchangeSSOCode(ctx context.Context, code string) (*AuthResponse, error) {
+	if code == "" {
+		return nil, auth.ErrInvalidCredential
+	}
+	hash := sha256.Sum256([]byte(code))
+	codeHash := hex.EncodeToString(hash[:])
+
+	ssoCode, err := u.deps.Stores.SSOCodes.Consume(ctx, codeHash, time.Now())
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return nil, auth.ErrInvalidCredential
+		}
+		return nil, fmt.Errorf("consume sso exchange code: %w", err)
+	}
+
+	user, err := u.deps.Stores.Users.GetByID(ctx, ssoCode.UserID)
+	if err != nil {
+		return nil, auth.ErrInvalidCredential
+	}
+
+	token, err := u.deps.Tokens.CreateToken(user.ID, user.Email, auth.TokenRole(user.Role))
+	if err != nil {
+		return nil, fmt.Errorf("create token: %w", err)
+	}
+
+	resp, err := u.createSession(ctx, user.ID, user.Email)
+	if err != nil {
+		return nil, err
+	}
+	resp.Token = token
+	return resp, nil
+}
