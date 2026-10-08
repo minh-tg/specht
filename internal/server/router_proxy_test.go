@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"strings"
 	"testing"
 
 	"github.com/minh-tg/specht/internal/auth"
@@ -212,6 +213,23 @@ func TestSecurityHeaders_ProxyAware(t *testing.T) {
 		assert.Equal(t, "strict-origin-when-cross-origin", w.Header().Get("Referrer-Policy"))
 		assert.Contains(t, w.Header().Get("Content-Security-Policy"), "default-src 'self'")
 		assert.Empty(t, w.Header().Get("Strict-Transport-Security"), "plain HTTP should not set HSTS")
+	})
+
+	t.Run("CSP pins the directives default-src does not cover", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/v1/health", nil)
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		directives := map[string]string{}
+		for _, part := range strings.Split(w.Header().Get("Content-Security-Policy"), ";") {
+			name, value, _ := strings.Cut(strings.TrimSpace(part), " ")
+			directives[name] = value
+		}
+		assert.Equal(t, "'self'", directives["base-uri"], "an injected <base> must not redirect relative URLs")
+		assert.Equal(t, "'self'", directives["form-action"], "forms may not post to another origin")
+		assert.Equal(t, "'none'", directives["object-src"], "no plugin content")
+		assert.Equal(t, "'self'", directives["frame-ancestors"])
 	})
 
 	t.Run("HSTS set when trusted proxy terminates HTTPS", func(t *testing.T) {
