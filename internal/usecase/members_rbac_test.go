@@ -184,6 +184,34 @@ func TestRemoveProjectMember_SelfExitAndLastAdmin(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestMemberWrites_LostLastAdminRaceIsReportedAsLastAdmin(t *testing.T) {
+	uc, pr := setupMembersRBACTest()
+	pr.getMemberFn = func(ctx context.Context, projectID, userID string) (port.ProjectMember, error) {
+		return port.ProjectMember{ProjectID: projectID, UserID: userID, Role: auth.RoleAdmin}, nil
+	}
+	// The pre-check sees a second admin, but another request removes it before
+	// this write runs, so the store refuses under its project lock.
+	pr.countAdminsFn = func(ctx context.Context, projectID string) (int, error) {
+		return 2, nil
+	}
+	pr.deleteMemberFn = func(ctx context.Context, projectID, userID string) error {
+		return port.ErrLastAdmin
+	}
+	pr.upsertMemberFn = func(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
+		return port.ProjectMember{}, port.ErrLastAdmin
+	}
+	pr.effectiveRoleFn = func(ctx context.Context, projectID, userID string) (string, error) {
+		return auth.RoleAdmin, nil
+	}
+	admin := projectRoleCtx("admin-1", auth.RoleAdmin)
+
+	err := uc.RemoveProjectMember(admin, "rbac-test", "admin-1")
+	assert.ErrorIs(t, err, ErrLastAdminForbidden)
+
+	_, err = uc.AddProjectMember(admin, "rbac-test", "admin-1", auth.RoleMember)
+	assert.ErrorIs(t, err, ErrLastAdminForbidden)
+}
+
 func TestRemoveProjectMember_PeerProtection(t *testing.T) {
 	uc, pr := setupMembersRBACTest()
 
