@@ -4,11 +4,16 @@ package intel
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/minh-tg/specht/internal/netutil"
 )
+
+// maxKEVResponseBytes bounds the catalog download. The feed is about 1.5 MiB
+// today; the cap leaves room for years of growth.
+const maxKEVResponseBytes = 32 << 20
 
 // KEVProvider fetches the CISA KEV catalog in bulk. CatalogURL is injectable
 // for tests; production is the CISA JSON feed.
@@ -54,7 +59,7 @@ func (p *KEVProvider) Fetch(ctx context.Context, cveIDs []string) (map[string]Re
 		return nil, fmt.Errorf("kev fetch: status %d", resp.StatusCode)
 	}
 	var catalog kevCatalog
-	if err := json.NewDecoder(resp.Body).Decode(&catalog); err != nil {
+	if err := netutil.DecodeJSONLimited(resp.Body, maxKEVResponseBytes, &catalog); err != nil {
 		return nil, fmt.Errorf("kev decode: %w", err)
 	}
 	want := make(map[string]struct{}, len(cveIDs))

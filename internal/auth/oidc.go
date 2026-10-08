@@ -38,11 +38,14 @@ type OIDCConfig struct {
 // jwksCacheTTL bounds how long a fetched JWKS key set is reused before a
 // refresh is attempted.
 const (
-	jwksCacheTTL      = 15 * time.Minute
-	maxJWKSBodyBytes  = 1 << 20
-	maxJWKSKeys       = 100
-	maxJWKSFieldBytes = 16 << 10
-	maxJWKSKeyIDBytes = 256
+	jwksCacheTTL     = 15 * time.Minute
+	maxJWKSBodyBytes = 1 << 20
+	// maxTokenResponseBytes bounds the token endpoint reply; a real one is a
+	// few kilobytes of JSON.
+	maxTokenResponseBytes = 1 << 20
+	maxJWKSKeys           = 100
+	maxJWKSFieldBytes     = 16 << 10
+	maxJWKSKeyIDBytes     = 256
 )
 
 type OIDCAuthenticator struct {
@@ -166,7 +169,7 @@ func (a *OIDCAuthenticator) exchangeCode(ctx context.Context, code string) (map[
 	}
 
 	var tokenResp map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&tokenResp); err != nil {
+	if err := netutil.DecodeJSONLimited(resp.Body, maxTokenResponseBytes, &tokenResp); err != nil {
 		return nil, fmt.Errorf("decode token response: %w", err)
 	}
 	return tokenResp, nil

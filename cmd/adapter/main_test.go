@@ -505,6 +505,21 @@ func TestPublishGitHubCheckRun(t *testing.T) {
 	})
 }
 
+func TestPublishGitHubCheckRun_BoundsTheErrorBodyItEchoes(t *testing.T) {
+	ghSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(strings.Repeat("x", 4<<20)))
+	}))
+	defer ghSrv.Close()
+	preview := &client.PRCheckPreview{Conclusion: "success", Title: "t", Summary: "s"}
+
+	err := publishGitHubCheckRun(context.Background(), githubCheckRunClient(ghSrv), "tok", "owner/repo", "sha123", "", preview)
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "status 502")
+	assert.Less(t, len(err.Error()), 2*maxGitHubErrorBytes, "a hostile or broken API must not put megabytes in our logs")
+}
+
 func githubCheckRunClient(ghSrv *httptest.Server) *http.Client {
 	return &http.Client{
 		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
