@@ -77,6 +77,9 @@ func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthR
 	if err == nil {
 		// M8: the duplicate is a legitimate operational detail for operators,
 		// but must never reach the caller. Log it, return the generic error.
+		// Hash anyway: skipping the work would make duplicates answer
+		// measurably faster than new accounts and reveal who is registered.
+		u.burnHash(password)
 		slog.Warn("register: email already registered", "email", email)
 		return nil, ErrRegistrationFailed
 	}
@@ -111,6 +114,30 @@ func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthR
 	}
 	resp.Token = token
 	return resp, nil
+}
+
+// burnVerify spends the cost of one password check against a dummy hash. The
+// early-exit branches of Login (unknown email, account with no password) call
+// it so they take as long as a real check; otherwise response time reveals
+// which emails are registered and which use password login.
+func (u *Usecases) burnVerify(password string) {
+	if u.deps.Passwords == nil {
+		return
+	}
+	u.dummyOnce.Do(func() {
+		u.dummyHash, _ = u.deps.Passwords.Hash("timing-equalisation-placeholder")
+	})
+	if u.dummyHash != "" {
+		u.deps.Passwords.Verify(password, u.dummyHash)
+	}
+}
+
+// burnHash spends the cost of hashing one password and discards the result.
+func (u *Usecases) burnHash(password string) {
+	if u.deps.Passwords == nil {
+		return
+	}
+	_, _ = u.deps.Passwords.Hash(password)
 }
 
 // FindOrProvisionSSOUser resolves an SSO-authenticated principal (sub is the
@@ -185,10 +212,12 @@ func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResp
 
 	user, err := u.deps.Stores.Users.GetByEmail(ctx, email)
 	if err != nil {
+		u.burnVerify(password)
 		return nil, errors.New(authMsgInvalidCredentials)
 	}
 
 	if user.PasswordHash == "" {
+		u.burnVerify(password)
 		return nil, errors.New(authMsgInvalidCredentials)
 	}
 
