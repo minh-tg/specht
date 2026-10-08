@@ -37,6 +37,112 @@ func TestBuildPayload_PreservesNonEnvelopeScannerOutput(t *testing.T) {
 	assert.Empty(t, stderr.String())
 }
 
+func TestNormalizeRawJSON(t *testing.T) {
+	t.Run("preserves valid single object", func(t *testing.T) {
+		input := []byte(`{"Results": []}`)
+		got := normalizeRawJSON(input)
+		assert.Equal(t, input, got)
+	})
+
+	t.Run("preserves valid single array", func(t *testing.T) {
+		input := []byte(`[{"id": 1}, {"id": 2}]`)
+		got := normalizeRawJSON(input)
+		assert.Equal(t, input, got)
+	})
+
+	t.Run("normalizes line-delimited json into array", func(t *testing.T) {
+		input := []byte("{\"check_id\": \"rule-1\", \"file\": \"a.go\"}\n{\"check_id\": \"rule-2\", \"file\": \"b.go\"}\n")
+		got := normalizeRawJSON(input)
+		require.True(t, json.Valid(got))
+
+		var items []map[string]string
+		require.NoError(t, json.Unmarshal(got, &items))
+		require.Len(t, items, 2)
+		assert.Equal(t, "rule-1", items[0]["check_id"])
+		assert.Equal(t, "rule-2", items[1]["check_id"])
+	})
+
+	t.Run("handles crlf and blank lines", func(t *testing.T) {
+		input := []byte("\r\n{\"id\": 1}\r\n\r\n{\"id\": 2}\r\n{\"id\": 3}\r\n")
+		got := normalizeRawJSON(input)
+		require.True(t, json.Valid(got))
+
+		var items []map[string]int
+		require.NoError(t, json.Unmarshal(got, &items))
+		require.Len(t, items, 3)
+		assert.Equal(t, 1, items[0]["id"])
+		assert.Equal(t, 2, items[1]["id"])
+		assert.Equal(t, 3, items[2]["id"])
+	})
+
+	t.Run("preserves malformed or non-json input", func(t *testing.T) {
+		malformed := []byte("not valid json\nat all")
+		assert.Equal(t, malformed, normalizeRawJSON(malformed))
+
+		partial := []byte("{\"incomplete\":")
+		assert.Equal(t, partial, normalizeRawJSON(partial))
+
+		empty := []byte("   \n\t  ")
+		assert.Equal(t, empty, normalizeRawJSON(empty))
+	})
+}
+
+func TestBuildPayload_NormalizesLineDelimitedJSON(t *testing.T) {
+	raw := []byte("{\"template-id\": \"cve-1\", \"host\": \"example.com\"}\n{\"template-id\": \"cve-2\", \"host\": \"example.com\"}\n")
+	flags := &adapterFlags{project: "my-app", tool: "nuclei"}
+	var stderr bytes.Buffer
+
+	payload, code := buildPayload(raw, flags, &stderr)
+	require.Zero(t, code)
+	assert.Equal(t, "my-app", payload.Project)
+	assert.Equal(t, "nuclei", payload.Scanner)
+	require.True(t, json.Valid(payload.RawData))
+
+	var parsed []map[string]string
+	require.NoError(t, json.Unmarshal(payload.RawData, &parsed))
+	require.Len(t, parsed, 2)
+	assert.Equal(t, "cve-1", parsed[0]["template-id"])
+	assert.Equal(t, "cve-2", parsed[1]["template-id"])
+}
+
+func TestRun_LineDelimitedJSON_IngestSuccess(t *testing.T) {
+	t.Setenv("API_KEY", "test-key")
+
+	var captured client.IngestPayload
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/reports":
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&captured))
+			writeTestJSONResponse(t, w, client.IngestResponse{
+				ReportID:          "rep-jsonl",
+				TotalFindings:     2,
+				ThresholdBreached: false,
+			})
+		case "/api/v1/projects/my-app/gate":
+			writeTestJSONResponse(t, w, client.GateStatus{
+				ThresholdBreached: false,
+				BlockingCount:     0,
+			})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("API_URL", srv.URL)
+
+	jsonlInput := "{\"template-id\": \"t1\", \"host\": \"localhost\"}\n{\"template-id\": \"t2\", \"host\": \"localhost\"}\n"
+	var stdout, stderr bytes.Buffer
+	args := []string{"-project=my-app", "-tool=nuclei"}
+	code := run(args, strings.NewReader(jsonlInput), &stdout, &stderr, srv.Client())
+
+	assert.Equal(t, 0, code)
+	assert.Equal(t, "my-app", captured.Project)
+	assert.Equal(t, "nuclei", captured.Scanner)
+	require.True(t, json.Valid(captured.RawData))
+	assert.Contains(t, stderr.String(), "report rep-jsonl ingested, 2 finding(s)")
+	assert.Contains(t, stderr.String(), "gate PASSED")
+}
+
 func TestIngestReport_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "POST", r.Method)
