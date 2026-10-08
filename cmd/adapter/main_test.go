@@ -520,6 +520,13 @@ func TestPublishGitHubCheckRun_BoundsTheErrorBodyItEchoes(t *testing.T) {
 	assert.Less(t, len(err.Error()), 2*maxGitHubErrorBytes, "a hostile or broken API must not put megabytes in our logs")
 }
 
+func TestGitHubClientOrDefault_NeverHangsForever(t *testing.T) {
+	assert.Positive(t, gitHubClientOrDefault(nil).Timeout, "the default client has a request timeout")
+
+	custom := &http.Client{}
+	assert.Same(t, custom, gitHubClientOrDefault(custom), "an injected client is used as given")
+}
+
 func githubCheckRunClient(ghSrv *httptest.Server) *http.Client {
 	return &http.Client{
 		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
