@@ -93,6 +93,7 @@ type trivySecret struct {
 }
 
 type trivyMisconfig struct {
+	ID       string      `json:"ID"`
 	RuleID   string      `json:"RuleID"`
 	Severity string      `json:"Severity"`
 	Title    string      `json:"Title"`
@@ -355,7 +356,11 @@ func addMisconfigs(nr *domain.NormalizedReport, result trivyResult) {
 		cleanTarget = "unknown"
 	}
 	for _, m := range result.Misconfigs {
-		fp := "iac:" + m.RuleID + ":" + result.Target
+		ruleID := m.RuleID
+		if ruleID == "" {
+			ruleID = m.ID
+		}
+		fp := "iac:" + ruleID + ":" + result.Target
 		nr.Findings = append(nr.Findings, parseutil.HardenFinding(domain.NormalizedFinding{
 			Fingerprint: fp,
 			FindingKind: kindIaC,
@@ -363,7 +368,7 @@ func addMisconfigs(nr *domain.NormalizedReport, result trivyResult) {
 			Severity:    normalizeSeverity(m.Severity),
 			Location:    cleanTarget,
 			Dimensions: []domain.Dimension{
-				{Key: domain.DimRuleID, Value: m.RuleID},
+				{Key: domain.DimRuleID, Value: ruleID},
 			},
 			Extensions: map[string]any{
 				"message":      m.Message,
