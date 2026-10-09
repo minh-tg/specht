@@ -65,6 +65,53 @@ func TestScopeHashMaterial_StableAndSensitive(t *testing.T) {
 				"scope material must not change when %s changes", tt.name)
 		})
 	}
+
+	// Image tags change on every build, so two tags of one image share a scope.
+	// Different image names stay apart.
+	image := func(identifier string) *domain.NormalizedReport {
+		return &domain.NormalizedReport{Target: &domain.TargetInfo{Kind: "container_image", Identifier: identifier}}
+	}
+	assert.Equal(t,
+		scopeHashMaterial(base(), image("img:1"), ctxInfo),
+		scopeHashMaterial(base(), image("img:2"), ctxInfo),
+		"scope material must not change when only the image tag changes")
+	assert.NotEqual(t,
+		scopeHashMaterial(base(), image("img-a:1"), ctxInfo),
+		scopeHashMaterial(base(), image("img-b:1"), ctxInfo),
+		"scope material must change when the image name changes")
+}
+
+func TestScopeTargetIdentifier(t *testing.T) {
+	const digest = "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+	cases := []struct {
+		name       string
+		kind       string
+		identifier string
+		want       string
+	}{
+		{"image tag is dropped", "container_image", "registry/app:1.2", "registry/app"},
+		{"image without tag is unchanged", "container_image", "registry/app", "registry/app"},
+		{"image digest is dropped", "container_image", "registry/app@" + digest, "registry/app"},
+		{"image tag and digest are dropped", "container_image", "registry/app:sha-abc@" + digest, "registry/app"},
+		{"registry port kept with tag", "container_image", "registry.local:5000/team/app:1.2", "registry.local:5000/team/app"},
+		{"registry port kept without tag", "container_image", "registry.local:5000/team/app", "registry.local:5000/team/app"},
+		{"registry port kept with digest", "container_image", "registry.local:5000/team/app@" + digest, "registry.local:5000/team/app"},
+		{"bare image tag is dropped", "container_image", "app:latest", "app"},
+		{"sbom name without version", "package", "left-pad", "left-pad"},
+		{"sbom version is dropped", "package", "left-pad@1.3.0", "left-pad"},
+		{"sbom scoped name keeps its scope", "package", "@scope/pkg@2.0.0", "@scope/pkg"},
+		{"sbom scoped name without version", "package", "@scope/pkg", "@scope/pkg"},
+		{"sbom empty version", "package", "left-pad@", "left-pad"},
+		{"filesystem path with @ is unchanged", "filesystem", "vendor/pkg@v1/app", "vendor/pkg@v1/app"},
+		{"filesystem path with colon is unchanged", "filesystem", "dir/file:1", "dir/file:1"},
+		{"iac target is unchanged", "iac", "main.tf", "main.tf"},
+		{"empty identifier", "container_image", "", ""},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, scopeTargetIdentifier(tt.kind, tt.identifier))
+		})
+	}
 }
 
 func TestScopeHashMaterial_TargetChanges(t *testing.T) {
