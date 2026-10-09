@@ -1,4 +1,5 @@
 import { useFindings, useGateStatus } from "@/api/hooks";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useParams } from "react-router-dom";
 import { ClearFiltersButton, FindingsFilters } from "./findings-dashboard/FindingsFilters";
 import { FindingsPager } from "./findings-dashboard/FindingsPager";
@@ -63,9 +64,7 @@ export function FindingsDashboard() {
             aria-label="Loading findings"
             className="space-y-2"
           >
-            {Array.from({ length: 5 }).map((_, i) => (
-              <div key={i} className="bg-muted h-10 animate-pulse rounded" />
-            ))}
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 rounded" />)}
           </div>
         )}
 

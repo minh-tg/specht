@@ -1,4 +1,5 @@
 import { useReports } from "@/api/hooks";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime, pluralize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { isReportInProgress } from "@/lib/verdict";
@@ -36,9 +37,7 @@ export function ReportHistory() {
   if (isLoading) {
     return (
       <div className="space-y-2">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="bg-muted h-16 animate-pulse rounded" />
-        ))}
+        {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16 rounded" />)}
       </div>
     );
   }

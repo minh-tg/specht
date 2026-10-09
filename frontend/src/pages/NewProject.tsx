@@ -1,5 +1,6 @@
 import { APIError } from "@/api/client";
 import { useCreateProject, useMe } from "@/api/hooks";
+import { Skeleton } from "@/components/ui/skeleton";
 import { isValidSlug, slugify } from "@/lib/slug";
 import { type ChangeEvent, type SubmitEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -69,8 +70,8 @@ export function NewProject() {
   if (isLoading) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
-        <div className="bg-muted h-8 w-48 animate-pulse rounded" />
-        <div className="bg-muted mt-6 h-64 animate-pulse rounded-lg" />
+        <Skeleton className="h-8 w-48 rounded" />
+        <Skeleton className="mt-6 h-64 rounded-lg" />
       </div>
     );
   }

@@ -6,6 +6,7 @@ import {
   useProject,
   useReports,
 } from "@/api/hooks";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime, formatRelativeTime } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { blockerCount, isReportInProgress } from "@/lib/verdict";
@@ -92,7 +93,10 @@ function ChangeLoading() {
     <div className="mt-6 space-y-3">
       <ChangeVerdict kind="no_verdict" blockers={0} waived={0} loading />
       {Array.from({ length: 3 }).map((_, index) => (
-        <div key={index} className="bg-muted h-16 animate-pulse rounded" />
+        <Skeleton
+          key={index}
+          className="h-16 rounded"
+        />
       ))}
     </div>
   );

@@ -1,6 +1,7 @@
 import { APIError, apiFetch } from "@/api/client";
 import { useMe, useProjects } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { ApiKey } from "@/types/api";
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
@@ -12,8 +13,8 @@ export function ApiKeys() {
   if (isLoading) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
-        <div className="bg-muted h-8 w-48 animate-pulse rounded" />
-        <div className="bg-muted mt-6 h-64 animate-pulse rounded-lg" />
+        <Skeleton className="h-8 w-48 rounded" />
+        <Skeleton className="mt-6 h-64 rounded-lg" />
       </div>
     );
   }
@@ -122,7 +123,7 @@ function ApiKeysManager() {
 
   let keysBody: ReactNode;
   if (loadingKeys) {
-    keysBody = <div className="bg-muted h-20 animate-pulse rounded" />;
+    keysBody = <Skeleton className="h-20 rounded" />;
   } else if (loadError) {
     keysBody = (
       <div role="alert" className="bg-card rounded-lg border p-4">
