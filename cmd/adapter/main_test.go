@@ -344,6 +344,23 @@ func TestRun_Help(t *testing.T) {
 	assert.Contains(t, stderr.String(), "Usage: specht-adapter")
 }
 
+func TestRun_Help_SeverityDescribesPolicyFloor(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-help"}, bytes.NewReader(nil), &stdout, &stderr, nil)
+	require.Equal(t, 0, code)
+	assert.NotContains(t, stderr.String(), "default: high,critical", "the policy decides the baseline, not the flag")
+	assert.Contains(t, stderr.String(), "the project policy decides")
+	assert.Contains(t, stderr.String(), "can only tighten")
+}
+
+func TestParseFlags_SeverityHelpText(t *testing.T) {
+	var stderr bytes.Buffer
+	f := parseFlags([]string{"-severity"}, &stderr, false)
+	require.Nil(t, f, "a missing flag value fails parsing")
+	assert.NotContains(t, stderr.String(), "default: high,critical")
+	assert.Contains(t, stderr.String(), "can only tighten")
+}
+
 func TestRun_MissingAPIKey(t *testing.T) {
 	t.Setenv("API_KEY", "")
 	var stdout, stderr bytes.Buffer
