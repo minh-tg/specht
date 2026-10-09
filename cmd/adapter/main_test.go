@@ -306,6 +306,83 @@ func TestRun_MissingAPIKey(t *testing.T) {
 	assert.Contains(t, stderr.String(), "API_KEY environment variable is required")
 }
 
+func TestRun_MissingAPIURLInCI(t *testing.T) {
+	clearCIMarkers(t)
+	t.Setenv("CI", "true")
+	t.Setenv("API_KEY", "test-key")
+	t.Setenv("API_URL", "")
+	t.Setenv("SPECHT_API_URL", "")
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=my-app", "-tool=trivy"}, strings.NewReader(`{}`), &stdout, &stderr, nil)
+	require.Equal(t, 2, code)
+	assert.Contains(t, stderr.String(), "refusing to default to http://localhost:8080")
+}
+
+func TestRun_MissingAPIURLOutsideCIWarns(t *testing.T) {
+	clearCIMarkers(t)
+	t.Setenv("API_KEY", "test-key")
+	t.Setenv("API_URL", "")
+	t.Setenv("SPECHT_API_URL", "")
+
+	var stderr bytes.Buffer
+	gotURL, code := resolveAPIURL(&stderr)
+	require.Zero(t, code)
+	assert.Equal(t, "http://localhost:8080", gotURL)
+	assert.Contains(t, stderr.String(), "notice: SPECHT_API_URL is not set")
+}
+
+func TestResolveAPIURL(t *testing.T) {
+	t.Run("API_URL wins over the alias and drops a trailing slash", func(t *testing.T) {
+		clearCIMarkers(t)
+		t.Setenv("API_URL", "https://a.example.com/")
+		t.Setenv("SPECHT_API_URL", "https://b.example.com")
+		var stderr bytes.Buffer
+		gotURL, code := resolveAPIURL(&stderr)
+		require.Zero(t, code)
+		assert.Equal(t, "https://a.example.com", gotURL)
+		assert.Empty(t, stderr.String())
+	})
+
+	t.Run("SPECHT_API_URL is accepted", func(t *testing.T) {
+		clearCIMarkers(t)
+		t.Setenv("API_URL", "")
+		t.Setenv("SPECHT_API_URL", "https://b.example.com/")
+		var stderr bytes.Buffer
+		gotURL, code := resolveAPIURL(&stderr)
+		require.Zero(t, code)
+		assert.Equal(t, "https://b.example.com", gotURL)
+		assert.Empty(t, stderr.String())
+	})
+
+	t.Run("every CI marker rejects a missing URL", func(t *testing.T) {
+		for _, marker := range []string{"CI", "GITHUB_ACTIONS", "GITLAB_CI"} {
+			t.Run(marker, func(t *testing.T) {
+				clearCIMarkers(t)
+				if marker == "CI" {
+					t.Setenv("CI", "true")
+				} else {
+					t.Setenv(marker, "true")
+				}
+				t.Setenv("API_URL", "")
+				t.Setenv("SPECHT_API_URL", "")
+				var stderr bytes.Buffer
+				gotURL, code := resolveAPIURL(&stderr)
+				assert.Equal(t, 2, code)
+				assert.Empty(t, gotURL)
+				assert.Contains(t, stderr.String(), "refusing to default")
+			})
+		}
+	})
+}
+
+func clearCIMarkers(t *testing.T) {
+	t.Helper()
+	for _, key := range []string{"CI", "GITHUB_ACTIONS", "GITLAB_CI"} {
+		t.Setenv(key, "")
+	}
+}
+
 func TestRun_ExcludeTool(t *testing.T) {
 	t.Setenv("API_KEY", "dummy")
 	var stdout, stderr bytes.Buffer
