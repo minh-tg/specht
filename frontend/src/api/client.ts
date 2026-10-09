@@ -186,17 +186,49 @@ function sessionExpired(): never {
 
 const unauthorized = (err: unknown): boolean => err instanceof APIError && err.status === 401;
 
-/** Refreshes the access token once and retries; a rejected retry with a 401
- * means the refresh itself was rejected — end the session and surface the
- * original retry error to the caller. */
-async function refreshAndRetry<T>(
-  attempt: (token: string | null) => Promise<T>,
-  refreshToken: string,
-): Promise<T> {
+/** The refresh in progress, shared by every request that 401s while it runs.
+ * The server rotates refresh tokens and treats a reused one as replay, so two
+ * refreshes from the same token would revoke the whole session family. */
+let inFlightRefresh: Promise<Session> | null = null;
+
+/** Spends the stored refresh token once. A rejected refresh ends the session,
+ * so the sign-in redirect runs once no matter how many requests were waiting. */
+async function startRefresh(): Promise<Session> {
+  const refreshToken = getStoredRefreshToken();
+  if (!refreshToken) sessionExpired();
   try {
     const session = await refreshAccessToken(refreshToken);
     setAuthToken(session.token);
-    return await attempt(session.token);
+    return session;
+  } catch (err) {
+    if (unauthorized(err)) endSession(err);
+    throw err;
+  }
+}
+
+function refreshSharedSession(): Promise<Session> {
+  if (!inFlightRefresh) {
+    inFlightRefresh = startRefresh().finally(() => {
+      inFlightRefresh = null;
+    });
+  }
+  return inFlightRefresh;
+}
+
+/** Refreshes once, shared across concurrent 401s, then retries this request.
+ * A request whose 401 arrived after another request already refreshed reuses
+ * that token. A rejected retry with a 401 means the new token was refused too:
+ * end the session and surface the error to the caller. */
+async function refreshAndRetry<T>(
+  attempt: (token: string | null) => Promise<T>,
+  failedToken: string,
+): Promise<T> {
+  const current = authToken;
+  const token = current !== null && current !== failedToken
+    ? current
+    : (await refreshSharedSession()).token;
+  try {
+    return await attempt(token);
   } catch (err) {
     if (!unauthorized(err)) throw err;
     endSession(err);
@@ -229,9 +261,7 @@ async function withAuth<T>(
     if (!unauthorized(err) || skipAuthRedirect) throw err;
   }
 
-  const refreshToken = getStoredRefreshToken();
-  if (!refreshToken) sessionExpired();
-  return refreshAndRetry(attempt, refreshToken);
+  return refreshAndRetry(attempt, token);
 }
 
 /** A response body paired with the count of rows the filter matched, when the
