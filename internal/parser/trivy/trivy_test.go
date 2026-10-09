@@ -40,7 +40,8 @@ func TestParse_AlpineScan(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NotNil(t, report.Target)
-	assert.Equal(t, "alpine:3.20 (alpine 3.20.3)", report.Target.Identifier)
+	assert.Equal(t, "alpine:3.20", report.Target.Identifier, "the artifact name, not the OS-suffixed result target")
+	assert.Equal(t, "container_image", report.Target.Kind)
 	require.Len(t, report.Findings, 2)
 
 	tests := []struct {
@@ -103,6 +104,38 @@ func TestParse_CurrentCleanEnvelope(t *testing.T) {
 	assert.Empty(t, report.Findings)
 	require.NotNil(t, report.Target)
 	assert.Equal(t, "alpine:3.20", report.Target.Identifier)
+}
+
+func TestParse_TargetIsStableAcrossResultOrder(t *testing.T) {
+	envelope := func(results string) []byte {
+		return []byte(`{"SchemaVersion":2,"ArtifactName":".","ArtifactType":"filesystem","Results":[` + results + `]}`)
+	}
+	lockA := `{"Target":"a/package-lock.json","Class":"lang-pkgs","Type":"npm"}`
+	lockB := `{"Target":"b/go.mod","Class":"lang-pkgs","Type":"gomod"}`
+	osPkgs := `{"Target":"alpine:3.20 (alpine 3.20.3)","Class":"os-pkgs","Type":"alpine"}`
+
+	s := trivy.NewScanner()
+	for name, results := range map[string]string{
+		"lockfile a first":  lockA + "," + lockB,
+		"lockfile b first":  lockB + "," + lockA,
+		"os packages first": osPkgs + "," + lockA,
+	} {
+		t.Run(name, func(t *testing.T) {
+			report, err := s.Parse(context.Background(), envelope(results))
+			require.NoError(t, err)
+			require.NotNil(t, report.Target)
+			assert.Equal(t, ".", report.Target.Identifier)
+			assert.Equal(t, "filesystem", report.Target.Kind, "the artifact type decides the kind, not the first result class")
+		})
+	}
+}
+
+func TestParse_TargetFallsBackToFirstResultWithoutArtifactName(t *testing.T) {
+	report, err := trivy.NewScanner().Parse(context.Background(), []byte(`{"SchemaVersion":2,"Results":[{"Target":"go.mod","Class":"lang-pkgs","Type":"gomod"}]}`))
+	require.NoError(t, err)
+	require.NotNil(t, report.Target)
+	assert.Equal(t, "go.mod", report.Target.Identifier)
+	assert.Equal(t, "container_image", report.Target.Kind)
 }
 
 func TestParse_LegacyArrayEnvelope(t *testing.T) {
