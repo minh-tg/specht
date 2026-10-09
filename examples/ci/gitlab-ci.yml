@@ -1,54 +1,46 @@
+# This file is generated. Do not edit it by hand.
+#
+# Source: frontend/src/lib/ciSnippets.ts, the same code that renders the
+# snippet on the project setup page.
+#
+# Regenerate: pnpm --dir frontend ci:examples
+
 # Specht gate for GitLab CI.
 #
-# Same three steps as the GitHub Actions template: scan with Trivy, wrap the
-# raw JSON in a Specht ingest envelope (branch/commit/environment/owner),
-# pipe it to `specht-adapter` for ingest + gate evaluation.
+# Scans the checkout with Trivy, then runs the Specht adapter image for the
+# pinned release on the scanner output. The adapter and the server must be the
+# same release, so the image is pinned to a tag.
 #
-# Exit codes: 0 gate passed, 1 threshold breached (job fails with the
-# blocking findings in the log), 2 usage/runtime error.
+# Store the API key you created above as the masked SPECHT_API_KEY CI/CD
+# variable (Settings > CI/CD > Variables). Never commit it.
 #
-# Required CI/CD variables (masked where secret):
-#   SPECHT_API_URL (variable), SPECHT_API_KEY (masked), SPECHT_PROJECT
-#   (variable). SPECHT_OWNER is optional; use the provider://owner/repo URI
-#   format (e.g. "gitlab://mygroup/myproject").
+# The adapter reads the commit, branch and project from the GitLab CI
+# variables. Add -introduced-only to gate only on the findings this change
+# introduces, or -base-ref <branch> to name the baseline explicitly.
+#
+# Exit codes: 0 gate passed, 1 severity threshold breached, 2 runtime error.
 
 stages: [scan, gate]
 
 variables:
-  SPECHT_ENVIRONMENT: ci
+  SPECHT_API_URL: "https://specht.example.com"
+  SPECHT_PROJECT: "my-app"
 
 trivy-scan:
   stage: scan
   image:
-    name: aquasec/trivy:0.59.0
+    name: aquasec/trivy:0.70.0
     entrypoint: [""]
   script:
     - trivy fs --format json --output trivy-results.json --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL .
   artifacts:
     paths: [trivy-results.json]
-    expire_in: 30 days
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 specht-gate:
   stage: gate
-  image: golang:1.26-bookworm
+  image:
+    name: ghcr.io/minh-tg/specht-adapter:vX.Y.Z
+    entrypoint: [""]
   needs: [trivy-scan]
   script:
-    - |
-      jq -n \
-        --arg project "$SPECHT_PROJECT" \
-        --arg branch "$CI_COMMIT_REF_NAME" \
-        --arg commit "$CI_COMMIT_SHA" \
-        --arg env "$SPECHT_ENVIRONMENT" \
-        --arg owner "gitlab://$CI_PROJECT_PATH" \
-        --slurpfile raw trivy-results.json \
-        '{project: $project, scanner: "trivy",
-          branch: $branch, commit_sha: $commit,
-          environment: $env, owner: $owner,
-          raw_data: $raw[0]}' \
-      | go run ./cmd/adapter -project "$SPECHT_PROJECT" -tool trivy
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - specht-adapter -file trivy-results.json -tool trivy -project "$SPECHT_PROJECT"
