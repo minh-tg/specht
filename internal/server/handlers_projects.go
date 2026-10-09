@@ -69,7 +69,7 @@ func (h *Handler) ListProjects(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	project, err := h.usecase.GetProject(r.Context(), slug)
@@ -124,7 +124,7 @@ func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	limit := parseIntParam(r, "limit", 20)
@@ -161,7 +161,7 @@ func (h *Handler) GetReport(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListProjectMembers(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	members, err := h.usecase.ListProjectMembers(r.Context(), slug)
@@ -188,7 +188,7 @@ func (h *Handler) AddProjectMember(w http.ResponseWriter, r *http.Request) {
 	// Stop outsiders here so the specific errors below cannot reveal whether a
 	// project or a user exists to someone with no access to it.
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	member, err := h.usecase.AddProjectMember(r.Context(), slug, req.UserID, req.Role)
@@ -230,7 +230,7 @@ func (h *Handler) RemoveProjectMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	if err := h.usecase.RemoveProjectMember(r.Context(), slug, userID); err != nil {

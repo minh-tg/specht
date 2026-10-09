@@ -2217,7 +2217,12 @@ export interface components {
         "application/json": components["schemas"]["Error"];
       };
     };
-    /** @description The caller is not a member of the project, or the key is bound to another one. */
+    /**
+     * @description The caller is not a member of the project, or the key is bound to another one.
+     *     The message depends on the credential: a project key is told it does not have
+     *     access to this project; a signed-in user gets "project not found or you do not
+     *     have access", which does not reveal whether the project exists.
+     */
     ProjectAccessDenied: {
       headers: {
         [name: string]: unknown;
