@@ -22,6 +22,11 @@ export function UploadResultCard({ result, slug, onReset }: UploadResultCardProp
       <p className="text-muted-foreground mt-2 text-sm">
         {result.threshold_breached ? "The gate would block this project." : "The gate passes."}
       </p>
+      {result.replayed && (
+        <p className="text-muted-foreground mt-2 text-sm">
+          This exact report was already ingested for this commit; showing its result.
+        </p>
+      )}
       <div className="mt-3 flex items-center gap-4 text-sm">
         <Link to={`/${slug}/findings`} className="text-action underline hover:no-underline">
           View findings
