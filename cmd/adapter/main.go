@@ -31,6 +31,8 @@ type adapterFlags struct {
 	severity        string
 	status          string
 	project         string
+	owner           string
+	environment     string
 	tool            string
 	excludeTool     string
 	file            string
@@ -59,6 +61,8 @@ func parseFlags(args []string, stderr io.Writer, inGitHubActions bool) *adapterF
 	fs.StringVar(&f.severity, "severity", "", "Severity threshold, comma-separated (the project policy decides; a value here can only tighten it)")
 	fs.StringVar(&f.status, "status", "", "Deprecated and ignored; the project policy decides")
 	fs.StringVar(&f.project, "project", "", "Project slug (overrides stdin)")
+	fs.StringVar(&f.owner, "owner", "", "Report owner, e.g. github://owner/repo (overrides stdin; alias SPECHT_OWNER)")
+	fs.StringVar(&f.environment, "environment", "", "Deployment environment (overrides stdin; alias SPECHT_ENVIRONMENT)")
 	fs.StringVar(&f.tool, "tool", "", "Scanner name (overrides scanner detected in stdin payload)")
 	fs.StringVar(&f.excludeTool, "exclude-tool", "", "Skip if scanner matches this name")
 	fs.StringVar(&f.file, "file", "", "Path to scan result file (default: read from stdin)")
@@ -150,8 +154,53 @@ func buildPayload(rawInput []byte, f *adapterFlags, stderr io.Writer) (client.In
 		return payload, -1
 	}
 
+	applyOwnerEnvironment(&payload, f)
 	applyGateFlags(&payload, f)
 	return payload, 0
+}
+
+// applyOwnerEnvironment fills the repository owner and the deployment
+// environment that give a report its target context. An explicit flag wins,
+// then a value already in the input envelope, then the SPECHT_OWNER and
+// SPECHT_ENVIRONMENT aliases, and last the provider the adapter runs in. The
+// order mirrors the existing project and tool layering.
+func applyOwnerEnvironment(payload *client.IngestPayload, f *adapterFlags) {
+	if f.owner != "" {
+		payload.Owner = f.owner
+	}
+	if payload.Owner == "" {
+		if owner := os.Getenv("SPECHT_OWNER"); owner != "" {
+			payload.Owner = owner
+		}
+	}
+	if payload.Owner == "" {
+		payload.Owner = derivedOwner()
+	}
+
+	if f.environment != "" {
+		payload.Environment = f.environment
+	}
+	if payload.Environment == "" {
+		if environment := os.Getenv("SPECHT_ENVIRONMENT"); environment != "" {
+			payload.Environment = environment
+		}
+	}
+	if payload.Environment == "" && isCI() {
+		payload.Environment = "ci"
+	}
+}
+
+// derivedOwner names the repository or project a report belongs to from the
+// variables the CI provider sets, so a direct scanner file keeps the context
+// the old envelope carried.
+func derivedOwner() string {
+	if repo := os.Getenv("GITHUB_REPOSITORY"); repo != "" {
+		return "github://" + repo
+	}
+	if path := os.Getenv("CI_PROJECT_PATH"); path != "" {
+		return "gitlab://" + path
+	}
+	return ""
 }
 
 // normalizeRawJSON converts line-delimited JSON (JSONL/NDJSON) into a standard JSON array.
@@ -680,6 +729,8 @@ exits based on the policy result.
 
 Flags:
   -project string        Project slug (overrides payload)
+  -owner string          Report owner, e.g. github://owner/repo (overrides payload; alias SPECHT_OWNER)
+  -environment string    Deployment environment (overrides payload; alias SPECHT_ENVIRONMENT)
   -tool string           Scanner name (overrides payload)
   -exclude-tool string   Skip if scanner name matches this value
   -severity string       Severity threshold, comma-separated (the project policy decides; a value here can only tighten it)
@@ -707,6 +758,10 @@ Environment:
   GITHUB_STEP_SUMMARY    Auto-detected path to Markdown job summary
   GITHUB_TOKEN           Auto-detected GitHub token
   CI_MERGE_REQUEST_TARGET_BRANCH_NAME Auto-detected MR target in GitLab CI
+  CI_PROJECT_PATH        Auto-detected GitLab project path for the report owner
+  SPECHT_OWNER           Report owner when neither -owner nor the payload sets one
+  SPECHT_ENVIRONMENT     Deployment environment when neither -environment nor the payload sets one
+  SPECHT_PROJECT         Project slug when neither -project nor the payload sets one
 
 Exit codes:
   0  Pass - no blocking findings, or skipped by -exclude-tool

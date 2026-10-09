@@ -38,9 +38,10 @@ var ciEnvVars = []string{
 	"GITHUB_EVENT_PATH", "GITHUB_REPOSITORY", "GITHUB_STEP_SUMMARY",
 	"GITHUB_TOKEN", "GH_TOKEN",
 	// GitLab CI context.
-	"CI_MERGE_REQUEST_TARGET_BRANCH_NAME", "CI_COMMIT_SHA", "CI_COMMIT_REF_NAME",
+	"CI_MERGE_REQUEST_TARGET_BRANCH_NAME", "CI_COMMIT_SHA", "CI_COMMIT_REF_NAME", "CI_PROJECT_PATH",
 	// Adapter configuration.
 	"API_URL", "SPECHT_API_URL", "API_KEY", "SPECHT_API_KEY", "SPECHT_PROJECT",
+	"SPECHT_OWNER", "SPECHT_ENVIRONMENT",
 }
 
 // clearCIEnvironment isolates a test from the ambient environment. A test that
@@ -64,6 +65,91 @@ func TestBuildPayload_PreservesNonEnvelopeScannerOutput(t *testing.T) {
 	assert.Equal(t, "trivy", payload.Scanner)
 	assert.Equal(t, json.RawMessage(raw), payload.RawData)
 	assert.Empty(t, stderr.String())
+}
+
+// buildTestPayload decodes raw with the given flags and fails when the adapter
+// rejects the input, so a test asserts on a payload that really ingests.
+func buildTestPayload(t *testing.T, raw []byte, flags *adapterFlags) client.IngestPayload {
+	t.Helper()
+	var stderr bytes.Buffer
+	payload, code := buildPayload(raw, flags, &stderr)
+	require.Zero(t, code, stderr.String())
+	return payload
+}
+
+func TestBuildPayload_OwnerAndEnvironment(t *testing.T) {
+	t.Run("derives owner and environment from GitHub Actions", func(t *testing.T) {
+		clearCIEnvironment(t)
+		t.Setenv("GITHUB_ACTIONS", "true")
+		t.Setenv("GITHUB_REPOSITORY", "acme/api")
+
+		payload := buildTestPayload(t, []byte(`{"SchemaVersion":2}`), &adapterFlags{tool: "trivy"})
+
+		assert.Equal(t, "github://acme/api", payload.Owner)
+		assert.Equal(t, "ci", payload.Environment)
+	})
+
+	t.Run("derives owner and environment from GitLab CI", func(t *testing.T) {
+		clearCIEnvironment(t)
+		t.Setenv("GITLAB_CI", "true")
+		t.Setenv("CI_PROJECT_PATH", "acme/platform/api")
+
+		payload := buildTestPayload(t, []byte(`{"SchemaVersion":2}`), &adapterFlags{tool: "trivy"})
+
+		assert.Equal(t, "gitlab://acme/platform/api", payload.Owner)
+		assert.Equal(t, "ci", payload.Environment)
+	})
+
+	t.Run("explicit flags win over the envelope and the environment", func(t *testing.T) {
+		clearCIEnvironment(t)
+		t.Setenv("GITHUB_ACTIONS", "true")
+		t.Setenv("GITHUB_REPOSITORY", "acme/api")
+		t.Setenv("SPECHT_OWNER", "alias/owner")
+		t.Setenv("SPECHT_ENVIRONMENT", "staging")
+		raw := []byte(`{"SchemaVersion":2,"owner":"github://envelope/owner","environment":"envelope"}`)
+		flags := &adapterFlags{tool: "trivy", owner: "github://flag/owner", environment: "production"}
+
+		payload := buildTestPayload(t, raw, flags)
+
+		assert.Equal(t, "github://flag/owner", payload.Owner)
+		assert.Equal(t, "production", payload.Environment)
+	})
+
+	t.Run("environment aliases beat the values derived from CI", func(t *testing.T) {
+		clearCIEnvironment(t)
+		t.Setenv("GITHUB_ACTIONS", "true")
+		t.Setenv("GITHUB_REPOSITORY", "acme/api")
+		t.Setenv("SPECHT_OWNER", "alias/owner")
+		t.Setenv("SPECHT_ENVIRONMENT", "staging")
+
+		payload := buildTestPayload(t, []byte(`{"SchemaVersion":2}`), &adapterFlags{tool: "trivy"})
+
+		assert.Equal(t, "alias/owner", payload.Owner)
+		assert.Equal(t, "staging", payload.Environment)
+	})
+
+	t.Run("an envelope value beats the derived and aliased values", func(t *testing.T) {
+		clearCIEnvironment(t)
+		t.Setenv("GITHUB_ACTIONS", "true")
+		t.Setenv("GITHUB_REPOSITORY", "acme/api")
+		t.Setenv("SPECHT_OWNER", "alias/owner")
+		t.Setenv("SPECHT_ENVIRONMENT", "staging")
+		raw := []byte(`{"SchemaVersion":2,"owner":"github://envelope/owner","environment":"envelope"}`)
+
+		payload := buildTestPayload(t, raw, &adapterFlags{tool: "trivy"})
+
+		assert.Equal(t, "github://envelope/owner", payload.Owner)
+		assert.Equal(t, "envelope", payload.Environment)
+	})
+
+	t.Run("leaves both empty outside CI", func(t *testing.T) {
+		clearCIEnvironment(t)
+
+		payload := buildTestPayload(t, []byte(`{"SchemaVersion":2}`), &adapterFlags{tool: "trivy"})
+
+		assert.Empty(t, payload.Owner)
+		assert.Empty(t, payload.Environment)
+	})
 }
 
 func TestNormalizeRawJSON(t *testing.T) {
