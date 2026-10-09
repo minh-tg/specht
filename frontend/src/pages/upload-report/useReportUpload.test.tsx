@@ -85,7 +85,13 @@ describe("useReportUpload", () => {
   it("sets the result after a successful submit", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({ report_id: "r1", total_findings: 3, threshold_breached: true }),
+      json: () =>
+        Promise.resolve({
+          report_id: "r1",
+          total_findings: 3,
+          threshold_breached: true,
+          replayed: false,
+        }),
     } as Response);
     const { result } = renderUploadHook();
 
@@ -100,6 +106,7 @@ describe("useReportUpload", () => {
       report_id: "r1",
       total_findings: 3,
       threshold_breached: true,
+      replayed: false,
     });
     expect(result.current.uploadError).toBeNull();
     expect(result.current.submitting).toBe(false);
@@ -157,7 +164,12 @@ describe("useReportUpload", () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: () =>
-        Promise.resolve({ report_id: "r1", total_findings: 3, threshold_breached: false }),
+        Promise.resolve({
+          report_id: "r1",
+          total_findings: 3,
+          threshold_breached: false,
+          replayed: false,
+        }),
     } as Response);
     const { result } = renderUploadHook();
 

@@ -260,4 +260,5 @@ export interface IngestResponse {
   report_id: string;
   total_findings: number;
   threshold_breached: boolean;
+  replayed: boolean;
 }
