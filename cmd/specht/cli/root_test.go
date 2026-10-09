@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/minh-tg/specht/internal/client"
+	"github.com/minh-tg/specht/internal/version"
 )
 
 func TestRootRegistersProjectTeams(t *testing.T) {
@@ -185,4 +186,16 @@ type roundTripFunc func(*http.Request) (*http.Response, error)
 
 func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 	return f(r)
+}
+
+func TestRootVersionFlag(t *testing.T) {
+	var out bytes.Buffer
+	d := Deps{Out: &out, ErrW: io.Discard}
+
+	if err := runCmd(t, d, "--version"); err != nil {
+		t.Fatal(err)
+	}
+	if want := "specht version " + version.String() + "\n"; out.String() != want {
+		t.Fatalf("--version output = %q, want %q", out.String(), want)
+	}
 }

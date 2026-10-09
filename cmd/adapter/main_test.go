@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/minh-tg/specht/internal/client"
+	"github.com/minh-tg/specht/internal/version"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -467,6 +468,15 @@ func TestParseFlags_SeverityHelpText(t *testing.T) {
 	require.Nil(t, f, "a missing flag value fails parsing")
 	assert.NotContains(t, stderr.String(), "default: high,critical")
 	assert.Contains(t, stderr.String(), "can only tighten")
+}
+
+func TestRun_Version(t *testing.T) {
+	clearCIEnvironment(t)
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-version"}, bytes.NewReader(nil), &stdout, &stderr, nil)
+	require.Equal(t, 0, code, "-version needs no API key or input")
+	assert.Equal(t, "specht-adapter "+version.String()+"\n", stdout.String())
+	assert.Empty(t, stderr.String())
 }
 
 func TestRun_MissingAPIKey(t *testing.T) {

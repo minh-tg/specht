@@ -13,6 +13,7 @@ import (
 	"os"
 
 	"github.com/minh-tg/specht/internal/client"
+	"github.com/minh-tg/specht/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -108,6 +109,7 @@ func NewRootCmd(d Deps) *cobra.Command {
 	root := &cobra.Command{
 		Use:           "specht",
 		Short:         "Unified vulnerability management for SCA, SAST, and IaC",
+		Version:       version.String(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}

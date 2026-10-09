@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/minh-tg/specht/internal/client"
+	"github.com/minh-tg/specht/internal/version"
 )
 
 func main() {
@@ -48,6 +49,7 @@ type adapterFlags struct {
 	githubRepo      string
 	summaryFile     string
 	help            bool
+	showVersion     bool
 	inGitHubActions bool
 }
 
@@ -78,6 +80,7 @@ func parseFlags(args []string, stderr io.Writer, inGitHubActions bool) *adapterF
 	fs.StringVar(&f.githubRepo, "github-repo", os.Getenv("GITHUB_REPOSITORY"), "GitHub repository (owner/repo)")
 	fs.StringVar(&f.summaryFile, "summary-file", os.Getenv("GITHUB_STEP_SUMMARY"), "Path to write Markdown summary (e.g. GITHUB_STEP_SUMMARY)")
 	fs.BoolVar(&f.help, "help", false, "Show usage")
+	fs.BoolVar(&f.showVersion, "version", false, "Print the adapter version and exit")
 
 	if err := fs.Parse(args); err != nil {
 		return nil
@@ -503,6 +506,10 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 		printUsage(stderr)
 		return 0
 	}
+	if f.showVersion {
+		_, _ = fmt.Fprintf(stdout, "specht-adapter %s\n", version.String())
+		return 0
+	}
 	if f.status != "" {
 		writeDiagnosticLine(stderr, "warning: -status is deprecated and ignored; the project policy decides which finding statuses are gated")
 	}
@@ -749,6 +756,7 @@ Flags:
   -github-repo string    GitHub repository (owner/repo) (auto-detected from GITHUB_REPOSITORY)
   -summary-file string   Path to write Markdown summary (auto-detected from GITHUB_STEP_SUMMARY)
   -help                  Show this usage message
+  -version               Print the adapter version and exit
 
 Environment:
   API_URL                Specht API base URL (default "http://localhost:8080", alias SPECHT_API_URL)
