@@ -71,7 +71,7 @@ type (
 		Register(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
 		Login(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
 		FindOrProvisionSSOUser(ctx context.Context, claims auth.SSOClaims, allowedDomains []string, adminGroups []string) (userID, role string, provisioned bool, err error)
-		CreateSSOExchangeCode(ctx context.Context, userID, email, role string) (string, error)
+		CreateSSOExchangeCode(ctx context.Context, userID string) (string, error)
 		ExchangeSSOCode(ctx context.Context, code string) (*usecase.AuthResponse, error)
 		Refresh(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error)
 		Logout(ctx context.Context, refreshToken string) error

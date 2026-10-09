@@ -12,7 +12,7 @@ import (
 // pgSSOCodePort adapts SSOCodeStore.
 type pgSSOCodePort struct{ q *sqlc.Queries }
 
-func (r *pgSSOCodePort) Create(ctx context.Context, codeHash, userID, email, role string, expiresAt time.Time) error {
+func (r *pgSSOCodePort) Create(ctx context.Context, codeHash, userID string, expiresAt time.Time) error {
 	_ = r.q.PruneSSOCodes(ctx)
 	uid, err := parseID(userID)
 	if err != nil {
@@ -21,8 +21,6 @@ func (r *pgSSOCodePort) Create(ctx context.Context, codeHash, userID, email, rol
 	return r.q.CreateSSOCode(ctx, sqlc.CreateSSOCodeParams{
 		CodeHash:  codeHash,
 		UserID:    uid,
-		Email:     email,
-		Role:      role,
 		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
 	})
 }
@@ -39,8 +37,6 @@ func (r *pgSSOCodePort) Consume(ctx context.Context, codeHash string, now time.T
 	return port.SSOCode{
 		CodeHash:  row.CodeHash,
 		UserID:    toUUID(row.UserID),
-		Email:     row.Email,
-		Role:      row.Role,
 		ExpiresAt: row.ExpiresAt.Time,
 	}, nil
 }

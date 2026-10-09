@@ -121,11 +121,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 			// keep their local role; unknown subjects are provisioned only
 			// for allowlisted domains, otherwise rejected. IdP admin
 			// groups elevate provisioned accounts.
-			userID, role, _, err := cfg.Usecases.FindOrProvisionSSOUser(ctx, claims, cfg.SSOAllowedDomains, cfg.SSOAdminGroups)
+			userID, _, _, err := cfg.Usecases.FindOrProvisionSSOUser(ctx, claims, cfg.SSOAllowedDomains, cfg.SSOAdminGroups)
 			if err != nil {
 				return "", err
 			}
-			return cfg.Usecases.CreateSSOExchangeCode(ctx, userID, auth.NormalizeEmail(claims.Email), role)
+			return cfg.Usecases.CreateSSOExchangeCode(ctx, userID)
 		}))
 	}
 	r.Group(func(r chi.Router) {
