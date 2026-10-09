@@ -272,6 +272,9 @@ func (u *Usecases) CreateProject(ctx context.Context, name, slug, description, c
 	if ident == nil || ident.IsAPIKey || ident.Role != auth.RoleAdmin || ident.UserID != creatorID {
 		return nil, ErrProjectAccessDenied
 	}
+	if err := validateProjectSlug(slug); err != nil {
+		return nil, err
+	}
 	p, err := u.deps.Stores.Projects.Create(ctx, port.CreateProjectInput{
 		Slug:                slug,
 		Name:                name,

@@ -158,6 +158,15 @@ func TestE2E_ProjectLifecycle(t *testing.T) {
 		require.Equal(t, "slug_taken", errorCode(t, raw))
 	})
 
+	t.Run("unroutable slugs are rejected", func(t *testing.T) {
+		for _, bad := range []string{"my.app", "Upper-Case", "api", "login", "ab"} {
+			status, raw := doJSON(t, http.MethodPost, "/api/v1/projects", adminToken,
+				map[string]string{"name": "bad slug", "slug": bad})
+			require.Equal(t, http.StatusBadRequest, status, bad)
+			require.Equal(t, "invalid_slug", errorCode(t, raw), bad)
+		}
+	})
+
 	t.Run("delete removes the project for everyone", func(t *testing.T) {
 		status, raw := doJSON(t, http.MethodDelete, "/api/v1/projects/"+slug, viewerToken, nil)
 		require.Equal(t, http.StatusForbidden, status)

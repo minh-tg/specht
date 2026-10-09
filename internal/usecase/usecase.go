@@ -31,6 +31,11 @@ var ErrDuplicateReport = errors.New("duplicate report")
 // it to an HTTP conflict.
 var ErrSlugTaken = errors.New("slug already taken")
 
+// ErrInvalidSlug is returned when a new project slug is malformed or
+// reserved. The wrapped message says which rule failed. Handlers map it to a
+// 400.
+var ErrInvalidSlug = errors.New("invalid project slug")
+
 // ErrAPIKeyNotFound is returned when an API key does not exist (or belongs
 // to another project). Handlers map it to a 404.
 var ErrAPIKeyNotFound = errors.New("api key not found")

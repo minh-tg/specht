@@ -1373,7 +1373,7 @@ export interface components {
     CreateProjectRequest: {
       name: string;
       /**
-       * @description Unique URL-safe identifier for the project. The server requires only that it is non-empty and unused.
+       * @description Unique URL-safe identifier for the project, 3 to 48 characters of lowercase letters and digits with single hyphens between groups (`^[a-z0-9]+(-[a-z0-9]+)*$`). Names the server or the web app already uses as a first path segment (`admin`, `api`, `api-keys`, `assets`, `ingest`, `login`, `projects`, `register`, `teams`) are reserved. A rejected slug returns `invalid_slug`.
        * @example my-app
        */
       slug: string;
