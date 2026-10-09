@@ -292,6 +292,51 @@ func TestDetectCIEnvironment_GitLab(t *testing.T) {
 	assert.Equal(t, "mr-branch", branch)
 }
 
+func TestApplyGateFlags_IgnoresDeprecatedStatus(t *testing.T) {
+	var payload client.IngestPayload
+	applyGateFlags(&payload, &adapterFlags{status: "open", severity: "high"})
+	assert.Empty(t, payload.GateStatus, "the deprecated flag must not reach the payload")
+	assert.Equal(t, "high", payload.GateSeverity)
+}
+
+func TestRun_StatusFlagDeprecated(t *testing.T) {
+	var captured []client.IngestPayload
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/reports":
+			var payload client.IngestPayload
+			require.NoError(t, json.NewDecoder(r.Body).Decode(&payload))
+			captured = append(captured, payload)
+			writeTestJSONResponse(t, w, client.IngestResponse{ReportID: "rep-status"})
+		case "/api/v1/projects/my-app/gate":
+			writeTestJSONResponse(t, w, client.GateStatus{})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	clearCIMarkers(t)
+	t.Setenv("API_KEY", "test-key")
+	t.Setenv("API_URL", srv.URL)
+
+	{
+		var stdout, stderr bytes.Buffer
+		code := run([]string{"-project=my-app", "-tool=trivy", "-status=open"}, strings.NewReader(`{"Results":[]}`), &stdout, &stderr, srv.Client())
+		require.Equal(t, 0, code, "stderr:\n%s", stderr.String())
+		assert.Contains(t, stderr.String(), "-status is deprecated")
+	}
+	{
+		var stdout, stderr bytes.Buffer
+		code := run([]string{"-project=my-app", "-tool=trivy"}, strings.NewReader(`{"Results":[]}`), &stdout, &stderr, srv.Client())
+		require.Equal(t, 0, code, "stderr:\n%s", stderr.String())
+		assert.NotContains(t, stderr.String(), "-status is deprecated")
+	}
+
+	require.Len(t, captured, 2)
+	assert.Empty(t, captured[0].GateStatus, "the deprecated flag must not reach the payload")
+	assert.Empty(t, captured[1].GateStatus)
+}
+
 func TestRun_Help(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"-help"}, bytes.NewReader(nil), &stdout, &stderr, nil)

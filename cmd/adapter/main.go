@@ -55,7 +55,7 @@ func parseFlags(args []string, stderr io.Writer, inGitHubActions bool) *adapterF
 	f := &adapterFlags{inGitHubActions: inGitHubActions}
 
 	fs.StringVar(&f.severity, "severity", "", "Severity threshold (comma-separated, default: high,critical)")
-	fs.StringVar(&f.status, "status", "", "Finding status filter (default: open)")
+	fs.StringVar(&f.status, "status", "", "Deprecated and ignored; the project policy decides")
 	fs.StringVar(&f.project, "project", "", "Project slug (overrides stdin)")
 	fs.StringVar(&f.tool, "tool", "", "Scanner name (overrides scanner detected in stdin payload)")
 	fs.StringVar(&f.excludeTool, "exclude-tool", "", "Skip if scanner matches this name")
@@ -196,13 +196,12 @@ func normalizeRawJSON(raw []byte) []byte {
 	return raw
 }
 
-// applyGateFlags copies the gate-scope flags onto the payload.
+// applyGateFlags copies the gate-scope flags onto the payload. The -status
+// flag is deliberately not applied: the server ignores it and the project
+// policy decides which statuses are gated.
 func applyGateFlags(payload *client.IngestPayload, f *adapterFlags) {
 	if f.severity != "" {
 		payload.GateSeverity = f.severity
-	}
-	if f.status != "" {
-		payload.GateStatus = f.status
 	}
 	if f.baseRef != "" {
 		payload.BaseRevision = f.baseRef
@@ -299,6 +298,9 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 	if f.help {
 		printUsage(stderr)
 		return 0
+	}
+	if f.status != "" {
+		writeDiagnosticLine(stderr, "warning: -status is deprecated and ignored; the project policy decides which finding statuses are gated")
 	}
 	detectCIEnvironment(&f.baseRef, &f.commit, &f.branch)
 
@@ -522,7 +524,7 @@ Flags:
   -tool string           Scanner name (overrides payload)
   -exclude-tool string   Skip if scanner name matches this value
   -severity string       Severity threshold, comma-separated (default: high,critical)
-  -status string         Finding status filter (default: open)
+  -status string         Deprecated and ignored; the project policy decides
   -file string           Path to scan result file (default: read from stdin)
   -introduced-only       Gate strictly on introduced vulnerabilities
   -base-ref string       Baseline git ref/branch/commit (auto-detected in CI)
