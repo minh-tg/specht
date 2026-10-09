@@ -183,6 +183,17 @@ func TestParse_AlpineFullScan_SCALocation(t *testing.T) {
 	assert.Equal(t, "openssh-server 9.7_p1-r4 in alpine:3.20 (alpine 3.20.3)", openssh.Location)
 }
 
+func TestParse_SecretFingerprintKeepsRawTarget(t *testing.T) {
+	data := []byte(`{"SchemaVersion":2,"ArtifactName":"repo","ArtifactType":"filesystem","Results":[{"Target":"./app/.env","Class":"secret","Secrets":[{"RuleID":"aws-access-key-id","Category":"AWS","Severity":"CRITICAL","Title":"AWS Access Key ID","Match":"AKIA****"}]}]}`)
+
+	report, err := trivy.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.Len(t, report.Findings, 1)
+
+	assert.Equal(t, "secret:aws-access-key-id:./app/.env", report.Findings[0].Fingerprint, "fingerprints must stay keyed on the raw target")
+	assert.NotContains(t, report.Findings[0].Location, "./")
+}
+
 func packageByPURL(packages []domain.PackageRef, purl string) (domain.PackageRef, bool) {
 	for _, p := range packages {
 		if p.PURL == purl {
