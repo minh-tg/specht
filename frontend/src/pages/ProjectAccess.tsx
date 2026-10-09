@@ -10,6 +10,15 @@ import {
 } from "@/api/hooks";
 import { useUserDirectory } from "@/api/users";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { isUuid } from "@/lib/uuid";
 import type { ProjectRole } from "@/types/api";
 import { useState } from "react";
@@ -372,175 +381,148 @@ export function ProjectAccess() {
         )}
       </section>
 
-      {/* Add Member Modal */}
-      {showAddMember && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="add-member-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-        >
-          <div className="bg-card border border-border rounded-lg max-w-md w-full p-6 shadow-xl">
-            <h3 id="add-member-title" className="text-lg font-semibold text-foreground">
-              Add Direct Member
-            </h3>
-            <p className="text-muted-foreground text-xs mt-1 mb-4">
-              Grant a user direct permissions on this project.
-            </p>
-            <form onSubmit={handleAddMember} className="space-y-4">
-              <div>
-                <label
-                  htmlFor="member-id-input"
-                  className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
-                >
-                  User ID
-                </label>
-                <input
-                  id="member-id-input"
-                  required
-                  value={memberUserId}
-                  onChange={(e) => {
-                    setMemberUserId(e.target.value);
-                    setMemberInputError(null);
-                    addMemberMutation.reset();
-                  }}
-                  placeholder="e.g. 3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f"
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-              </div>
+      <Dialog open={showAddMember} onOpenChange={setShowAddMember}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Direct Member</DialogTitle>
+            <DialogDescription>Grant a user direct permissions on this project.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleAddMember} className="grid gap-4">
+            <div>
+              <label
+                htmlFor="member-id-input"
+                className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
+              >
+                User ID
+              </label>
+              <Input
+                id="member-id-input"
+                required
+                value={memberUserId}
+                onChange={(e) => {
+                  setMemberUserId(e.target.value);
+                  setMemberInputError(null);
+                  addMemberMutation.reset();
+                }}
+                placeholder="e.g. 3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f"
+              />
+            </div>
 
-              <div>
-                <label
-                  htmlFor="member-role-select"
-                  className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
-                >
-                  Project Role
-                </label>
-                <select
-                  id="member-role-select"
-                  value={memberRole}
-                  onChange={(e) => setMemberRole(e.target.value as ProjectRole)}
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="member">Member: view findings and reports</option>
-                  <option value="manager">Manager: triage findings and manage members</option>
-                  <option value="admin" disabled={!isAdmin}>
-                    Admin: full project control {!isAdmin ? "(Project Admins only)" : ""}
-                  </option>
-                </select>
-                {!isAdmin && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    * Only Project Admins can grant the Admin role.
-                  </p>
-                )}
-              </div>
-
-              {memberInputError && <p className="text-destructive text-xs">{memberInputError}</p>}
-              {addMemberMutation.isError && (
-                <p className="text-destructive text-xs">
-                  {addMemberMutation.error?.message ?? "Failed to add member"}
+            <div>
+              <label
+                htmlFor="member-role-select"
+                className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
+              >
+                Project Role
+              </label>
+              <select
+                id="member-role-select"
+                value={memberRole}
+                onChange={(e) => setMemberRole(e.target.value as ProjectRole)}
+                className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="member">Member: view findings and reports</option>
+                <option value="manager">Manager: triage findings and manage members</option>
+                <option value="admin" disabled={!isAdmin}>
+                  Admin: full project control {!isAdmin ? "(Project Admins only)" : ""}
+                </option>
+              </select>
+              {!isAdmin && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  * Only Project Admins can grant the Admin role.
                 </p>
               )}
+            </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowAddMember(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={addMemberMutation.isPending}>
-                  {addMemberMutation.isPending ? "Adding..." : "Add Member"}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            {memberInputError && <p className="text-destructive text-xs">{memberInputError}</p>}
+            {addMemberMutation.isError && (
+              <p className="text-destructive text-xs">
+                {addMemberMutation.error?.message ?? "Failed to add member"}
+              </p>
+            )}
 
-      {/* Link Team Modal */}
-      {showLinkTeam && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="link-team-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-        >
-          <div className="bg-card border border-border rounded-lg max-w-md w-full p-6 shadow-xl">
-            <h3 id="link-team-title" className="text-lg font-semibold text-foreground">
-              Link Company Team
-            </h3>
-            <p className="text-muted-foreground text-xs mt-1 mb-4">
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowAddMember(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={addMemberMutation.isPending}>
+                {addMemberMutation.isPending ? "Adding..." : "Add Member"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showLinkTeam} onOpenChange={setShowLinkTeam}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Link Company Team</DialogTitle>
+            <DialogDescription>
               Select an organization team from the central directory.
-            </p>
-            <form onSubmit={handleLinkTeam} className="space-y-4">
-              <div>
-                <label
-                  htmlFor="link-team-select"
-                  className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
-                >
-                  Company Team
-                </label>
-                <select
-                  id="link-team-select"
-                  required
-                  value={selectedTeamId}
-                  onChange={(e) => setSelectedTeamId(e.target.value)}
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="">Select a team...</option>
-                  {allCompanyTeams?.map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="link-team-role-select"
-                  className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
-                >
-                  Granted Role
-                </label>
-                <select
-                  id="link-team-role-select"
-                  value={teamRole}
-                  onChange={(e) => setTeamRole(e.target.value as ProjectRole)}
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="member">Member: view findings and reports</option>
-                  <option value="manager">Manager: triage findings and manage members</option>
-                  <option value="admin" disabled={!isAdmin}>
-                    Admin: full project control {!isAdmin ? "(Project Admins only)" : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleLinkTeam} className="grid gap-4">
+            <div>
+              <label
+                htmlFor="link-team-select"
+                className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
+              >
+                Company Team
+              </label>
+              <select
+                id="link-team-select"
+                required
+                value={selectedTeamId}
+                onChange={(e) => setSelectedTeamId(e.target.value)}
+                className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">Select a team...</option>
+                {allCompanyTeams?.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
                   </option>
-                </select>
-              </div>
+                ))}
+              </select>
+            </div>
 
-              {linkTeamMutation.isError && (
-                <p className="text-destructive text-xs">
-                  {linkTeamMutation.error?.message ?? "Failed to link team"}
-                </p>
-              )}
+            <div>
+              <label
+                htmlFor="link-team-role-select"
+                className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
+              >
+                Granted Role
+              </label>
+              <select
+                id="link-team-role-select"
+                value={teamRole}
+                onChange={(e) => setTeamRole(e.target.value as ProjectRole)}
+                className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="member">Member: view findings and reports</option>
+                <option value="manager">Manager: triage findings and manage members</option>
+                <option value="admin" disabled={!isAdmin}>
+                  Admin: full project control {!isAdmin ? "(Project Admins only)" : ""}
+                </option>
+              </select>
+            </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowLinkTeam(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={!selectedTeamId || linkTeamMutation.isPending}>
-                  {linkTeamMutation.isPending ? "Linking..." : "Link Team"}
-                </Button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+            {linkTeamMutation.isError && (
+              <p className="text-destructive text-xs">
+                {linkTeamMutation.error?.message ?? "Failed to link team"}
+              </p>
+            )}
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowLinkTeam(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!selectedTeamId || linkTeamMutation.isPending}>
+                {linkTeamMutation.isPending ? "Linking..." : "Link Team"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
