@@ -190,7 +190,7 @@ func main() {
 		Tracker:                 buildTrackerDispatcher(),
 		Intel: intel.NewStore(cfg.Intel.TTL, nil,
 			&intel.EPSSProvider{BaseURL: cfg.Intel.EPSSBaseURL},
-			&intel.KEVProvider{CatalogURL: cfg.Intel.KEVCatalogURL}),
+			&intel.KEVProvider{CatalogURL: cfg.Intel.KEVCatalogURL, TTL: cfg.Intel.TTL}),
 	})
 
 	handler := server.NewRouter(server.RouterConfig{

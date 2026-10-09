@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -65,6 +66,66 @@ func TestKEVProvider_MatchesSubset(t *testing.T) {
 	require.Len(t, records, 1, "KEV absence is not a record")
 	assert.True(t, records["CVE-2024-1111"].KEV)
 	assert.Equal(t, "2026-01-15", records["CVE-2024-1111"].KEVAdded)
+}
+
+func TestKEVProvider_ReusesCatalogWithinTTL(t *testing.T) {
+	var downloads atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		downloads.Add(1)
+		writeJSON(t, w, `{"vulnerabilities":[`+
+			`{"cveID":"CVE-2024-1111","dateAdded":"2026-01-15"},`+
+			`{"cveID":"CVE-2024-2222","dateAdded":"2026-02-01"}]}`)
+	}))
+	defer srv.Close()
+
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	p := &KEVProvider{CatalogURL: srv.URL, Client: srv.Client(), TTL: time.Hour, Now: func() time.Time { return now }}
+
+	first, err := p.Fetch(context.Background(), []string{"CVE-2024-1111"})
+	require.NoError(t, err)
+	assert.Equal(t, "2026-01-15", first["CVE-2024-1111"].KEVAdded)
+
+	now = now.Add(59 * time.Minute)
+	second, err := p.Fetch(context.Background(), []string{"CVE-2024-2222", "CVE-2024-0000"})
+	require.NoError(t, err)
+	require.Len(t, second, 1)
+	assert.Equal(t, "2026-02-01", second["CVE-2024-2222"].KEVAdded)
+	assert.EqualValues(t, 1, downloads.Load(), "a second lookup inside the TTL must not download again")
+
+	now = now.Add(2 * time.Minute)
+	_, err = p.Fetch(context.Background(), []string{"CVE-2024-1111"})
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, downloads.Load(), "an expired catalog is downloaded again")
+}
+
+func TestKEVProvider_FailedRefreshKeepsCatalogAndRetries(t *testing.T) {
+	var downloads atomic.Int32
+	var fail atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		downloads.Add(1)
+		if fail.Load() {
+			http.Error(w, "down", http.StatusServiceUnavailable)
+			return
+		}
+		writeJSON(t, w, `{"vulnerabilities":[{"cveID":"CVE-2024-1111","dateAdded":"2026-01-15"}]}`)
+	}))
+	defer srv.Close()
+
+	now := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	p := &KEVProvider{CatalogURL: srv.URL, Client: srv.Client(), TTL: time.Hour, Now: func() time.Time { return now }}
+	_, err := p.Fetch(context.Background(), []string{"CVE-2024-1111"})
+	require.NoError(t, err)
+
+	now = now.Add(2 * time.Hour)
+	fail.Store(true)
+	_, err = p.Fetch(context.Background(), []string{"CVE-2024-1111"})
+	require.ErrorContains(t, err, "status 503")
+
+	fail.Store(false)
+	records, err := p.Fetch(context.Background(), []string{"CVE-2024-1111"})
+	require.NoError(t, err, "the next call retries the download")
+	assert.True(t, records["CVE-2024-1111"].KEV)
+	assert.EqualValues(t, 3, downloads.Load())
 }
 
 func TestStore_RefreshMergesAndServes(t *testing.T) {
@@ -156,7 +217,7 @@ func TestStore_PartialRefreshPreservesCachedSignals(t *testing.T) {
 	now := time.Now()
 	s := NewStore(time.Hour, func() time.Time { return now },
 		&EPSSProvider{BaseURL: epssSrv.URL, Client: epssSrv.Client()},
-		&KEVProvider{CatalogURL: kevSrv.URL, Client: kevSrv.Client()},
+		&KEVProvider{CatalogURL: kevSrv.URL, Client: kevSrv.Client(), Now: func() time.Time { return now }},
 	)
 
 	// Step 1: Initial refresh populates both EPSS and KEV
@@ -168,7 +229,9 @@ func TestStore_PartialRefreshPreservesCachedSignals(t *testing.T) {
 	assert.True(t, rec.KEV)
 	assert.Equal(t, "2026-01-15", rec.KEVAdded)
 
-	// Step 2: KEV fails, EPSS succeeds. Cached KEV data must NOT be erased.
+	// Step 2: the KEV catalog has expired and the download fails, EPSS
+	// succeeds. Cached KEV data must NOT be erased.
+	now = now.Add(2 * time.Hour)
 	failKEV = true
 	err := s.Refresh(context.Background(), []string{"CVE-2024-1111"})
 	require.Error(t, err)
