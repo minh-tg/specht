@@ -12,6 +12,7 @@ const RAW_KEY = "sk-live-0123456789abcdef";
 let meRole: "admin" | "member" = "admin";
 let projectStatus = 200;
 let versionStatus = 200;
+let versionPending = false;
 let versionValue = "0.1.0";
 let stats: Record<string, unknown>;
 let statsRequests = 0;
@@ -29,6 +30,7 @@ beforeEach(() => {
   statsFailing = false;
   projectStatus = 200;
   versionStatus = 200;
+  versionPending = false;
   versionValue = "0.1.0";
   stats = {
     report_count: 0,
@@ -66,6 +68,7 @@ beforeEach(() => {
       });
     }
     if (url === "/api/v1/version") {
+      if (versionPending) return new Promise<Response>(() => {});
       if (versionStatus >= 400) {
         return jsonResponse({ error: { message: "unavailable" } }, versionStatus);
       }
@@ -231,7 +234,24 @@ describe("ProjectSetup", () => {
     expect(screen.queryByText(/development build/)).not.toBeInTheDocument();
   });
 
-  it("keeps the placeholder and shows the development-build note when the version is unavailable", async () => {
+  it("shows only the placeholder while the version is loading", async () => {
+    versionPending = true;
+    renderPage();
+    await screen.findByRole("heading", { name: "Set up CI for Acme API" });
+    await waitFor(() => {
+      expect(document.body.textContent).toContain("minh-tg/specht@vX.Y.Z");
+    });
+
+    const snippets = [...document.querySelectorAll("pre")].map((pre) => pre.textContent ?? "");
+    expect(snippets).toHaveLength(2);
+    for (const snippet of snippets) {
+      expect(snippet).toContain("vX.Y.Z");
+    }
+    expect(screen.queryByText(/development build/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Could not read this server's version/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the placeholder and explains a failed version request", async () => {
     versionStatus = 500;
     renderPage();
     await screen.findByRole("heading", { name: "Set up CI for Acme API" });
@@ -247,9 +267,10 @@ describe("ProjectSetup", () => {
     }
     expect(
       screen.getByText(
-        "This server is a development build. Replace vX.Y.Z with a released Specht version.",
+        "Could not read this server's version. Replace vX.Y.Z with the Specht version you run.",
       ),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/development build/)).not.toBeInTheDocument();
   });
 
   it("shows the development-build note for a dev build", async () => {

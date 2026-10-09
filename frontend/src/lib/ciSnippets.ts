@@ -131,6 +131,8 @@ export function gitlabCiSnippet({ apiUrl, project, version }: CiSnippetOptions):
 # target branch from CI_MERGE_REQUEST_TARGET_BRANCH_NAME. The default branch
 # has no merge request, so it gates on the whole project.
 #
+# Optional: set SPECHT_ENVIRONMENT to name the deployed environment (defaults to ci).
+#
 # Exit codes: 0 gate passed, 1 severity threshold breached, 2 runtime error.
 
 stages: [scan, gate]
