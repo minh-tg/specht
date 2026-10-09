@@ -103,18 +103,18 @@ func TestCheckFindingRowsProjectAccess_NoIdentityDenied(t *testing.T) {
 	assert.ErrorIs(t, err, ErrProjectAccessDenied)
 }
 
-func TestRequireProjectEditor_UsesEffectiveProjectRole(t *testing.T) {
+func TestRequireProjectManager_UsesEffectiveProjectRole(t *testing.T) {
 	pr := &mockProjectRepo{}
 	pr.effectiveRoleFn = func(ctx context.Context, projectID, userID string) (string, error) {
 		return auth.RoleViewer, nil
 	}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
-	assert.ErrorIs(t, uc.requireProjectEditor(sessionCtx("u1", auth.RoleViewer), findingFixtureProjectID), ErrProjectAccessDenied)
+	assert.ErrorIs(t, uc.requireProjectManager(sessionCtx("u1", auth.RoleViewer), findingFixtureProjectID), ErrProjectAccessDenied)
 
 	pr.effectiveRoleFn = func(ctx context.Context, projectID, userID string) (string, error) {
 		return auth.RoleEditor, nil
 	}
-	assert.NoError(t, uc.requireProjectEditor(sessionCtx("u1", auth.RoleViewer), findingFixtureProjectID))
+	assert.NoError(t, uc.requireProjectManager(sessionCtx("u1", auth.RoleViewer), findingFixtureProjectID))
 }
 
 func TestRequireProjectIngest_RequiresEditorRoleOrIngestScope(t *testing.T) {

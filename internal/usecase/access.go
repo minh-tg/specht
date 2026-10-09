@@ -156,10 +156,6 @@ func (u *Usecases) requireProjectManager(ctx context.Context, projectID string) 
 	return u.requireProjectRole(ctx, projectID, auth.ScopeAdmin, auth.RoleAdmin, auth.RoleManager, auth.RoleEditor)
 }
 
-func (u *Usecases) requireProjectEditor(ctx context.Context, projectID string) error {
-	return u.requireProjectManager(ctx, projectID)
-}
-
 func (u *Usecases) requireProjectMember(ctx context.Context, projectID string) error {
 	return u.requireProjectRole(ctx, projectID, auth.ScopeRead, auth.RoleAdmin, auth.RoleManager, auth.RoleMember, auth.RoleEditor, auth.RoleViewer)
 }
@@ -183,7 +179,7 @@ func (u *Usecases) findingWithProjectEditor(ctx context.Context, findingID uuid.
 		}
 		return port.Finding{}, fmt.Errorf("check finding project role: %w", err)
 	}
-	if err := u.requireProjectEditor(ctx, finding.ProjectID); err != nil {
+	if err := u.requireProjectManager(ctx, finding.ProjectID); err != nil {
 		return port.Finding{}, err
 	}
 	return finding, nil
@@ -201,7 +197,7 @@ func (u *Usecases) checkFindingRowsProjectEditor(ctx context.Context, findings [
 			continue
 		}
 		seen[finding.ProjectID] = true
-		if err := u.requireProjectEditor(ctx, finding.ProjectID); err != nil {
+		if err := u.requireProjectManager(ctx, finding.ProjectID); err != nil {
 			return err
 		}
 	}
