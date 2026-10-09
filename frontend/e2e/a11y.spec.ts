@@ -148,6 +148,17 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
 
   // Dialogs are page content while open: audit each one with its focus trap active.
   await page.goto(`/${slug}/access`);
+  await expect(page.getByRole("heading", { name: /Direct Members/ })).toBeVisible();
+  await audit(page, "project access");
+  // The only admin cannot be removed: hovering the disabled control explains why.
+  await page.locator("span[tabindex=\"0\"]").first().hover();
+  await expect(
+    page.locator("[data-slot=\"tooltip-content\"]", {
+      hasText: "Cannot remove the last project admin",
+    }),
+  ).toBeVisible();
+  await audit(page, "project access with a disabled reason shown");
+  await page.mouse.move(0, 0);
   await page.getByRole("button", { name: "+ Add Member" }).click();
   await expect(page.getByRole("dialog", { name: "Add Direct Member" })).toBeVisible();
   await audit(page, "add member dialog");
@@ -169,5 +180,5 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
     .map((f) => `[${f.theme}] ${f.page}: ${f.rule} (${f.impact})\n    ${f.nodes.join("\n    ")}`)
     .join("\n");
   expect(findings, `axe found violations in ${audits} audits:\n${report}`).toEqual([]);
-  expect(audits).toBeGreaterThanOrEqual(36);
+  expect(audits).toBeGreaterThanOrEqual(40);
 });
