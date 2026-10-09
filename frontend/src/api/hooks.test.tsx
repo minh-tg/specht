@@ -6,6 +6,7 @@ import { setAuthToken } from "./client";
 import {
   findingQueryOptions,
   queryKeys,
+  useAddTeamMember,
   useChangeGate,
   useCreateApiKey,
   useCreateProject,
@@ -489,6 +490,39 @@ describe("useCreateApiKey", () => {
     expect(data?.raw_key).toBe("vuln_secret");
     expect(mutations[0].url).toBe("/api/v1/auth/apikeys");
     expect(JSON.parse(mutations[0].body)).toEqual({ project: "payments", name: "ci" });
+  });
+});
+
+describe("useAddTeamMember", () => {
+  it("posts the user and the role to the team roster", async () => {
+    const mutations: Array<{ url: string; method: string; body: string; }> = [];
+    globalThis.fetch = vi.fn().mockImplementation(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        mutations.push({
+          url: String(input),
+          method: (init?.method ?? "GET").toUpperCase(),
+          body: String(init?.body ?? ""),
+        });
+        return Promise.resolve(jsonResponse({ ok: true }, 201));
+      },
+    );
+
+    const { result } = renderHook(() => useAddTeamMember("t1"), { wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        userId: "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+        role: "admin",
+      });
+    });
+
+    expect(mutations).toHaveLength(1);
+    expect(mutations[0].url).toBe("/api/v1/teams/t1/members");
+    expect(mutations[0].method).toBe("POST");
+    expect(JSON.parse(mutations[0].body)).toEqual({
+      user_id: "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+      role: "admin",
+    });
   });
 });
 

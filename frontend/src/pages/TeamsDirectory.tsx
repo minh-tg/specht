@@ -9,6 +9,7 @@ import {
 } from "@/api/hooks";
 import { useUserDirectory } from "@/api/users";
 import { Button } from "@/components/ui/button";
+import { isUuid } from "@/lib/uuid";
 import type { Team } from "@/types/api";
 import { useState } from "react";
 
@@ -79,6 +80,8 @@ export function TeamsDirectory() {
 
   const [activeRosterTeam, setActiveRosterTeam] = useState<Team | null>(null);
   const [rosterUserId, setRosterUserId] = useState("");
+  const [rosterRole, setRosterRole] = useState<"admin" | "member">("member");
+  const [rosterInputError, setRosterInputError] = useState<string | null>(null);
 
   const { data: activeMembers, isLoading: rosterLoading } = useTeamMembers(
     activeRosterTeam?.id ?? "",
@@ -104,10 +107,19 @@ export function TeamsDirectory() {
 
   async function handleAddRosterMember(e: React.FormEvent) {
     e.preventDefault();
-    if (!rosterUserId.trim()) return;
+    const userId = rosterUserId.trim();
+    if (!userId) return;
+    if (!isUuid(userId)) {
+      setRosterInputError(
+        "User ID must be a UUID, for example 3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f.",
+      );
+      return;
+    }
+    setRosterInputError(null);
     try {
-      await addMemberMutation.mutateAsync(rosterUserId.trim());
+      await addMemberMutation.mutateAsync({ userId, role: rosterRole });
       setRosterUserId("");
+      setRosterRole("member");
     } catch {}
   }
 
@@ -259,17 +271,39 @@ export function TeamsDirectory() {
             </div>
 
             {isGlobalAdmin && (
-              <form onSubmit={handleAddRosterMember} className="flex gap-2">
-                <input
-                  required
-                  value={rosterUserId}
-                  onChange={(e) => setRosterUserId(e.target.value)}
-                  placeholder="User ID or email..."
-                  className="flex-1 px-3 py-1.5 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
-                <Button type="submit" size="sm" disabled={addMemberMutation.isPending}>
-                  {addMemberMutation.isPending ? "Adding..." : "Add"}
-                </Button>
+              <form onSubmit={handleAddRosterMember} className="space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    required
+                    aria-label="User ID"
+                    value={rosterUserId}
+                    onChange={(e) => {
+                      setRosterUserId(e.target.value);
+                      setRosterInputError(null);
+                      addMemberMutation.reset();
+                    }}
+                    placeholder="User ID"
+                    className="flex-1 px-3 py-1.5 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <select
+                    aria-label="Team role"
+                    value={rosterRole}
+                    onChange={(e) => setRosterRole(e.target.value as "admin" | "member")}
+                    className="px-2 py-1.5 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    <option value="member">Member</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                  <Button type="submit" size="sm" disabled={addMemberMutation.isPending}>
+                    {addMemberMutation.isPending ? "Adding..." : "Add"}
+                  </Button>
+                </div>
+                {rosterInputError && <p className="text-destructive text-xs">{rosterInputError}</p>}
+                {addMemberMutation.isError && (
+                  <p className="text-destructive text-xs">
+                    {addMemberMutation.error?.message ?? "Failed to add member"}
+                  </p>
+                )}
               </form>
             )}
 
