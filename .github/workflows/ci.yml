@@ -260,7 +260,7 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # go.mod pins the toolchain floor (go1.26.6); setup-go plus
+      # go.mod pins the toolchain floor (go1.26.9); setup-go plus
       # GOTOOLCHAIN=auto resolves a patched toolchain, so the scan runs
       # against fixed stdlib.
       - name: govulncheck
