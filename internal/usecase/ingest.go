@@ -446,10 +446,12 @@ func changedFilesDocument(files []string) json.RawMessage {
 // Commit SHA and artifact version are left out on purpose. Auto-fix closes a
 // finding only when a scan of the same scope observed it, so a later commit
 // on the same branch must land in the same scope as the commit before it.
+// The target enters with its build-specific parts removed (see
+// scopeTargetIdentifier).
 func scopeHashMaterial(input IngestReportInput, nr *domain.NormalizedReport, ctxInfo reportContext) string {
 	target := ""
 	if nr.Target != nil {
-		target = nr.Target.Identifier
+		target = scopeTargetIdentifier(nr.Target.Kind, nr.Target.Identifier)
 	}
 	return strings.Join([]string{
 		input.Scanner,
@@ -458,6 +460,50 @@ func scopeHashMaterial(input IngestReportInput, nr *domain.NormalizedReport, ctx
 		input.Branch,
 		input.Environment,
 	}, "\x00")
+}
+
+// scopeTargetIdentifier strips the parts of a target identifier that change on
+// every build without changing what was scanned: the tag and digest of a
+// container image reference, and the version of an SBOM component. Only the
+// kinds named here are rewritten, so a filesystem path containing "@" or ":"
+// keeps its exact spelling.
+func scopeTargetIdentifier(kind, identifier string) string {
+	switch kind {
+	case "container_image":
+		return trimImageReference(identifier)
+	case "package":
+		if i := strings.LastIndex(identifier, "@"); i > 0 {
+			return identifier[:i]
+		}
+	}
+	return identifier
+}
+
+// trimImageReference drops a trailing @<algorithm>:<hex> digest, then a :tag
+// that sits in the last path segment. A colon before the last slash is a
+// registry port and stays.
+func trimImageReference(ref string) string {
+	if i := strings.LastIndex(ref, "@"); i >= 0 && isDigestSuffix(ref[i+1:]) {
+		ref = ref[:i]
+	}
+	if colon := strings.LastIndex(ref, ":"); colon > strings.LastIndex(ref, "/") {
+		ref = ref[:colon]
+	}
+	return ref
+}
+
+// isDigestSuffix reports whether s has the shape algorithm:hex.
+func isDigestSuffix(s string) bool {
+	algorithm, digest, ok := strings.Cut(s, ":")
+	if !ok || algorithm == "" || digest == "" {
+		return false
+	}
+	for _, c := range digest {
+		if !strings.ContainsRune("0123456789abcdefABCDEF", c) {
+			return false
+		}
+	}
+	return true
 }
 
 // scopeDocument renders the persisted scan_scope JSONB: the typed scope
