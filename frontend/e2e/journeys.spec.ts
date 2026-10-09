@@ -191,7 +191,9 @@ test("an admin creates a project and follows the guided CI setup", async ({ page
   await uiLogin(page);
 
   await page.goto("/");
-  await page.getByRole("link", { name: "New project" }).click();
+  // A fresh instance has no projects, so the dashboard shows the empty-state
+  // link instead of the "New project" action; both point at the same route.
+  await page.getByRole("link", { name: /^(New project|Create your first project)$/ }).click();
   await expect(page).toHaveURL(/\/projects\/new$/);
   await page.getByLabel("Name").fill(slug);
   await expect(page.getByLabel("Slug")).toHaveValue(slug);
@@ -206,9 +208,12 @@ test("an admin creates a project and follows the guided CI setup", async ({ page
   await expect(page.getByText("Copy it now. It will not be shown again.")).toBeVisible();
 
   const githubSnippet = page.locator("pre").first();
-  await expect(githubSnippet).toContainText("go run github.com/minh-tg/specht/cmd/adapter@");
-  await expect(githubSnippet).not.toContainText("./cmd/adapter");
-  await expect(githubSnippet).toContainText(`SPECHT_PROJECT: "${slug}"`);
+  await expect(githubSnippet).toContainText("uses: minh-tg/specht@vX.Y.Z");
+  await expect(githubSnippet).not.toContainText("go run");
+  await expect(githubSnippet).not.toContainText("jq");
+  await expect(githubSnippet).toContainText(`project: "${slug}"`);
+  // The dev build has no release tag to pin, so the page says what to replace.
+  await expect(page.getByText(/development build/)).toBeVisible();
 
   // The page notices the first report arriving without a reload.
   await expect(page.getByText("Waiting for the first report...")).toBeVisible();
