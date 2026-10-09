@@ -206,6 +206,20 @@ describe("ChangeView", () => {
     ).toBeInTheDocument();
   });
 
+  it("includes the failure reason in the failed-scan alert", async () => {
+    reports = [
+      report({
+        status: "failed",
+        error_message: "scanner exited with status 2: unsupported lockfile version",
+      }),
+    ];
+    renderPage();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("This scan failed");
+    expect(alert).toHaveTextContent("scanner exited with status 2: unsupported lockfile version");
+  });
+
   it("shows the blockers a change introduces", async () => {
     renderPage();
 

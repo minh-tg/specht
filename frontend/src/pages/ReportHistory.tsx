@@ -112,6 +112,9 @@ export function ReportHistory() {
                 {status.label}
               </span>
             </div>
+            {r.status === "failed" && r.error_message && (
+              <p className="text-muted-foreground mt-1 text-xs break-words">{r.error_message}</p>
+            )}
             {(r.branch || r.commit_sha) && (
               <p className="text-muted-foreground mt-1 font-mono text-xs">
                 {r.branch && <span>{r.branch}</span>}

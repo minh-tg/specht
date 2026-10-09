@@ -156,15 +156,16 @@ function NoReport({ slug, commit }: { slug: string; commit: string; }) {
   );
 }
 
-function DegradedBanner({ failed }: { failed: boolean; }) {
+function DegradedBanner({ failed, reason }: { failed: boolean; reason?: string; }) {
   if (failed) {
     return (
-      <p
+      <div
         role="alert"
         className="border-destructive text-destructive mb-3 rounded border px-3 py-2 text-sm"
       >
-        This scan failed
-      </p>
+        <p>This scan failed</p>
+        {reason && <p className="mt-1 text-xs break-words">{reason}</p>}
+      </div>
     );
   }
   return (
@@ -253,7 +254,7 @@ export function ChangeView() {
       <Page>
         {header}
         <div className="mt-6">
-          <DegradedBanner failed={report.status === "failed"} />
+          <DegradedBanner failed={report.status === "failed"} reason={report.error_message} />
           <ChangeVerdict kind="no_verdict" blockers={0} waived={0} />
         </div>
       </Page>
