@@ -33,7 +33,9 @@ let audits = 0;
 
 async function audit(page: Page, name: string): Promise<void> {
   await page.waitForLoadState("networkidle");
-  await page.addScriptTag({ content: axe.source });
+  // Evaluated through the devtools protocol, which the page CSP does not
+  // govern; an inline <script> tag would be blocked by script-src 'self'.
+  await page.evaluate(axe.source);
   for (const theme of ["light", "dark"] as const) {
     await page.evaluate(
       (t) => document.documentElement.classList.toggle("dark", t === "dark"),
