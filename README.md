@@ -2,26 +2,31 @@
 
 [![CI](https://github.com/minh-tg/specht/actions/workflows/ci.yml/badge.svg)](https://github.com/minh-tg/specht/actions/workflows/ci.yml) [![CodeQL](https://github.com/minh-tg/specht/actions/workflows/codeql.yml/badge.svg)](https://github.com/minh-tg/specht/actions/workflows/codeql.yml) [![Go 1.26](https://img.shields.io/badge/Go-1.26.0-00ADD8?logo=go&logoColor=white)](go.mod) [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
-Specht collects reports from security scanners in one place. It tracks findings
-across scans and lets teams apply project rules in CI, so they can see what
-changed and decide whether a change should pass.
+Self-hosted vulnerability management for security scanner reports.
+
+Specht brings software composition analysis (SCA), static application security
+testing (SAST), infrastructure-as-code (IaC), and secret findings into one
+place. Track findings across scans, triage them in the dashboard, and apply
+project policies in CI to decide whether a change should pass.
 
 > [!WARNING]
 > **Experimental preview.** Specht is not production-ready; APIs, database
 > schemas, and settings may change. Do not use it as your only security control.
 
-## What it does
+## What you can do
 
-- Tracks findings as they appear, are fixed, return, or are waived. It keeps
-  package inventory and remediation details with them.
-- Provides an HTTP API, a `specht` CLI, and `specht-adapter` for CI. The adapter
+- Filter findings, review report history, triage issues, upload reports, and
+  manage project access and API keys in the web UI.
+- Track findings as they appear, are fixed, return, or are waived, alongside
+  package inventory and remediation details.
+- Use the HTTP API, `specht` CLI, or `specht-adapter` for CI. The adapter
   can fail a build when policy blocks a change, print annotations, and publish
   GitHub check runs. Pipeline examples for GitHub Actions and GitLab are in
   [`examples/ci/`](examples/ci/).
-- Can check tracked packages against OSV for newly published advisories and
-  send notifications to Slack or a webhook.
-- Supports single sign-on, teams, shared organization policies, and waivers
-  with conditions and expiry dates.
+- Check tracked packages against OSV for newly published advisories and send
+  notifications to Slack or a webhook.
+- Set up single sign-on, teams, shared organization policies, and waivers with
+  conditions and expiry dates.
 
 ## Supported inputs
 
@@ -43,39 +48,56 @@ Tools that emit compatible SARIF or SBOM JSON can use the shared adapters.
 Other formats need a Go parser with fixtures and tests under
 [`internal/parser/`](internal/parser/).
 
-## Quick start
+## Try it locally
 
-You need Go 1.26 and Docker:
+You need Go 1.26, Node.js 26, pnpm, Make, and Docker. The optional
+`nix develop` shell supplies the build tools; Docker still needs to be running.
+Run these commands from the repository root in Bash:
 
 ```bash
 cp .env.example .env
-docker compose -f deploy/docker-compose.yml up -d db
 set -a
 source .env
 set +a
-go run ./cmd/server
+# The example secret is a placeholder and is rejected by the server.
+export JWT_SECRET="$(head -c 48 /dev/urandom | base64 | tr -d '\n')"
+docker compose --env-file .env -f deploy/docker-compose.yml up -d db
+pnpm --dir frontend install --frozen-lockfile
+make build
+./bin/server
 ```
 
-The API comes up on `http://localhost:8080`. Check it:
+Open <http://localhost:8080> to register and sign in. The server applies database
+migrations on startup. In another terminal, check the API:
 
 ```bash
-curl http://localhost:8080/api/v1/health
+curl --fail http://localhost:8080/api/v1/health
 ```
 
-[`openapi.yaml`](openapi.yaml) describes the whole HTTP API: every route, the
-role or API key scope it requires, its parameters, and its response shape.
+To create projects and manage membership, stop the server and restart it from
+the same shell with your registered email:
 
-The server shows a placeholder at `/` until you run `make build`, which builds
-and embeds the React frontend from `frontend/`. The UI is unfinished; use the
-API and CLI for now.
+```bash
+ADMIN_EMAILS=you@example.com ./bin/server
+```
 
-## Self-Hosting
+This promotes that account to global admin. Create a project in the UI, then
+follow its CI setup page to create an API key and connect a scanner. Pipeline
+examples are also available in [`examples/ci/`](examples/ci/).
 
-[`deploy/README.md`](deploy/README.md) covers the Docker Compose self-hosting
-path for evaluation, including secrets, TLS, backups, and upgrades. Specht is
-still an early preview, not production-ready.
+For API-only development, skip the frontend installation and build, and run
+`go run ./cmd/server` instead. Without a frontend build, `/` shows a placeholder.
 
-## Project Layout
+[`openapi.yaml`](openapi.yaml) documents the HTTP routes, required roles and API
+key scopes, parameters, and responses.
+
+## Self-host
+
+For evaluation deployments, follow [`deploy/README.md`](deploy/README.md).
+It covers Docker Compose, persistent secrets, TLS, backups, and upgrades.
+The local defaults above are not suitable for an internet-facing deployment.
+
+## Project layout
 
 ```
 cmd/server/      API server (chi router, embedded SPA, watcher daemon)
@@ -102,46 +124,69 @@ After that every commit you make gets checked: gofumpt, staticcheck,
 `go vet`, `go mod tidy`, dprint/oxlint (frontend), hadolint, gitleaks, and
 conventional-commit validation. Useful commands:
 
+### Tests
+
 ```bash
-go test ./... -count=1 -short                     # unit tests
-make e2e                                           # full-stack E2E: real server/adapter/CLI (needs Docker)
-make e2e-ui                                        # browser smoke: register → login → dashboard (needs Docker)
-make coverage                                       # combined per-file + statement coverage; needs Docker
-make lsp-check                                      # Go diagnostics from gopls
-SONAR_ADMIN_PASSWORD=admin make sonar               # disposable local SonarQube scan; needs Docker/Podman
-go test -tags integration ./internal/repo/ -count=1   # integration, needs Docker
-pnpm -C frontend test                             # frontend tests
-pnpm -C frontend exec tsc -b
-pnpm -C frontend exec dprint check
-pnpm -C frontend lint
+go test ./... -count=1 -short  # Go unit tests
+pnpm --dir frontend test      # frontend unit tests
+
+# Integration and full-stack tests (Docker required)
+go test -tags integration ./... -count=1 -timeout 20m
+make e2e     # API, adapter, and CLI
+make e2e-ui  # browser journeys and accessibility
+
+make coverage  # coverage report; Docker required
 ```
 
-## How development works
+Browser tests need Chromium. Install it with
+`pnpm --dir frontend exec playwright install chromium`, or set
+`CHROMIUM_BIN` to a system Chromium executable. The harness builds the UI and
+server, starts a temporary database, and tests sign-in, findings, triage,
+report uploads, project setup, and more. If its default port is occupied, use
+`E2E_UI_PORT=18082 make e2e-ui`.
+
+For Docker-compatible runtimes that cannot run the testcontainers cleanup
+helper, prefix Go integration and E2E commands with
+`TESTCONTAINERS_RYUK_DISABLED=true`.
+
+### Other checks
+
+```bash
+make lsp-check
+pnpm --dir frontend exec tsc -b
+pnpm --dir frontend exec dprint check
+pnpm --dir frontend lint
+SONAR_ADMIN_PASSWORD=admin make sonar  # disposable local SonarQube scan; needs Docker/Podman
+```
+
+## Contribute
 
 - Changes to supported scanner kinds, the finding format, database schemas, or
   CI policy need an approved RFC first (see [`rfcs/`](rfcs/)). This adds a
   review step, but helps avoid breaking report ingestion.
-- CI repeats the test/lint/frontend checks on every push
+- CI runs test/lint/frontend checks on pull requests and pushes to `main`
   ([ci.yml](.github/workflows/ci.yml)), CodeQL runs separately
   ([codeql.yml](.github/workflows/codeql.yml)), and Dependabot opens dependency
   PRs with a cooldown window
   ([dependabot.yml](.github/workflows/dependabot.yml)).
-- About 1,000 Go test functions, including integration tests that run against
-  PostgreSQL in Docker, plus a frontend test suite. We expect tests for code
-  changes.
+- Include tests for code changes. The suites cover Go packages, PostgreSQL
+  integration, the API and command-line tools, and browser journeys.
 - Contributions follow the
   [Developer Certificate of Origin](CONTRIBUTING.md#developer-certificate-of-origin).
 - Push a semantic-version tag and [release.yml](.github/workflows/release.yml)
   publishes a version-tagged container image. It does not create a GitHub
   Release or provide standalone CLI binaries.
 
-## Project Status
+## Project status
 
-No releases or tags exist yet. The release workflow is limited to
-version-tagged container images; it does not publish a mutable `latest` image
-or standalone binaries. The API and CLI are the useful interfaces for now: the
-web UI is unfinished and there is no dashboard yet.
-Expect breaking changes. Bug reports and general feedback are welcome via
+Specht is an experimental preview. The web UI supports project setup, findings
+and report history, triage, reachability decisions, API keys, and access
+management. The API and CLI cover additional workflows.
+
+The release workflow publishes version-tagged container images, not a mutable
+`latest` image or standalone binaries. Expect breaking changes.
+
+Bug reports and general feedback are welcome via
 [GitHub issues](https://github.com/minh-tg/specht/issues); security reports
 should follow [SECURITY.md](SECURITY.md).
 
