@@ -65,6 +65,16 @@ SELECT EXISTS (
     WHERE project_id = $1 AND commit_sha = $2 AND status = 'completed'
 );
 
+-- name: GetLatestCompletedFullReportByBranch :one
+-- Baseline resolution when base_revision names a branch rather than a
+-- commit: the newest completed full scan from the same scanner on that
+-- branch. pgx.ErrNoRows means the branch has no full baseline yet.
+SELECT id, tool_name, branch, commit_sha, base_revision, scan_mode, scan_completeness, created_at
+FROM reports
+WHERE project_id = $1 AND tool_name = $2 AND branch = $3 AND status = 'completed' AND scan_mode = 'full'
+ORDER BY created_at DESC, id DESC
+LIMIT 1;
+
 -- name: CountStaleReports :one
 -- Retention preview: settled (completed/failed) reports older
 -- than the cutoff. Processing reports are never counted — an in-flight

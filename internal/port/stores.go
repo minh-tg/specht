@@ -851,6 +851,11 @@ type ReportStore interface {
 	// HasCompletedForCommit reports whether any scanner completed a scan of the
 	// exact revision. A PR check refuses to pass without such a scan.
 	HasCompletedForCommit(ctx context.Context, projectID, commit string) (bool, error)
+
+	// GetLatestFullByBranch returns the newest completed full report from
+	// one scanner on a branch, or ErrNotFound. It is the baseline fallback
+	// when base_revision names a branch instead of a commit.
+	GetLatestFullByBranch(ctx context.Context, projectID, scanner, branch string) (CompletedReport, error)
 	// CountStaleReports counts settled (completed/failed) reports older
 	// than the cutoff. Processing reports are never counted.
 	CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error)

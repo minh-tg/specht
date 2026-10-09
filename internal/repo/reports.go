@@ -117,6 +117,14 @@ func (r *pgReportRepo) HasCompletedReportForCommit(ctx context.Context, projectI
 	})
 }
 
+func (r *pgReportRepo) GetLatestFullByBranch(ctx context.Context, projectID pgtype.UUID, toolName string, branch pgtype.Text) (sqlc.GetLatestCompletedFullReportByBranchRow, error) {
+	return r.q.GetLatestCompletedFullReportByBranch(ctx, sqlc.GetLatestCompletedFullReportByBranchParams{
+		ProjectID: projectID,
+		ToolName:  toolName,
+		Branch:    branch,
+	})
+}
+
 func (r *pgReportRepo) CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error) {
 	return r.q.CountStaleReports(ctx, uuidFromTime(cutoff))
 }

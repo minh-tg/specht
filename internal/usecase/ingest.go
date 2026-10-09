@@ -251,13 +251,25 @@ func (u *Usecases) rejectDuplicateContent(ctx context.Context, projectID string,
 	return nil
 }
 
+// findBaselineReport resolves a base revision to a completed full report.
+// A commit SHA matches the newest full report for that exact commit. CI
+// passes a branch name for pull requests, so when no commit matches, the
+// newest full report on that branch is the baseline.
+func (u *Usecases) findBaselineReport(ctx context.Context, projectID, scanner, revision string) (port.CompletedReport, error) {
+	base, err := u.deps.Stores.Reports.GetCompletedByCommit(ctx, projectID, scanner, revision)
+	if !errors.Is(err, port.ErrNotFound) {
+		return base, err
+	}
+	return u.deps.Stores.Reports.GetLatestFullByBranch(ctx, projectID, scanner, revision)
+}
+
 // resolveBaseRevision fills the baseline from the base revision when scan
 // mode resolution did not already provide one.
 func (u *Usecases) resolveBaseRevision(ctx context.Context, project port.Project, input IngestReportInput, baselineID string) (string, error) {
 	if baselineID != "" || input.BaseRevision == "" {
 		return baselineID, nil
 	}
-	base, err := u.deps.Stores.Reports.GetCompletedByCommit(ctx, project.ID, input.Scanner, input.BaseRevision)
+	base, err := u.findBaselineReport(ctx, project.ID, input.Scanner, input.BaseRevision)
 	if err == nil {
 		return base.ID, nil
 	}
@@ -279,7 +291,7 @@ func (u *Usecases) resolveScanMode(ctx context.Context, project port.Project, sc
 	if !scanner.SupportsIncremental(sc) {
 		return ScanModeFull, fmt.Sprintf("scanner %q does not support incremental scans; recorded as full scan", input.Scanner), "", nil
 	}
-	base, err := u.deps.Stores.Reports.GetCompletedByCommit(ctx, project.ID, input.Scanner, input.BaseRevision)
+	base, err := u.findBaselineReport(ctx, project.ID, input.Scanner, input.BaseRevision)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			return ScanModeFull, fmt.Sprintf("no completed full baseline for base_revision %q; recorded as full scan", input.BaseRevision), "", nil
