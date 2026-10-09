@@ -127,7 +127,7 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	// the redacted bytes (the stored form), so reporting the same scan
 	// twice collides here instead of stranding a processing row at
 	// completion time.
-	if err := u.rejectDuplicateContent(ctx, project.ID, input.RawData); err != nil {
+	if err := u.rejectDuplicateContent(ctx, project.ID, input.RawData, input.CommitSha); err != nil {
 		return nil, err
 	}
 
@@ -240,10 +240,10 @@ func (u *Usecases) autoFixAbsentFindings(ctx context.Context, project port.Proje
 }
 
 // rejectDuplicateContent returns ErrDuplicateReport when identical (redacted)
-// bytes already completed an ingest for this project.
-func (u *Usecases) rejectDuplicateContent(ctx context.Context, projectID string, rawData []byte) error {
+// bytes already completed an ingest for this project at the same commit.
+func (u *Usecases) rejectDuplicateContent(ctx context.Context, projectID string, rawData []byte, commit string) error {
 	rawHash := sha256.Sum256(rawData)
-	if _, err := u.deps.Stores.Reports.FindCompletedByHash(ctx, projectID, hex.EncodeToString(rawHash[:])); err == nil {
+	if _, err := u.deps.Stores.Reports.FindCompletedByHashAndCommit(ctx, projectID, hex.EncodeToString(rawHash[:]), commit); err == nil {
 		return ErrDuplicateReport
 	} else if !errors.Is(err, port.ErrNotFound) {
 		return fmt.Errorf("check duplicate report: %w", err)

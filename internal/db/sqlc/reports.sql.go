@@ -186,22 +186,27 @@ func (q *Queries) DeleteStaleReports(ctx context.Context, completedAt pgtype.Tim
 	return items, nil
 }
 
-const findCompletedByHash = `-- name: FindCompletedByHash :one
+const findCompletedByHashAndCommit = `-- name: FindCompletedByHashAndCommit :one
 SELECT id FROM reports
-WHERE project_id = $1 AND raw_report_hash = $2 AND status = 'completed'
+WHERE project_id = $1 AND raw_report_hash = $2
+  AND COALESCE(commit_sha, '') = COALESCE($3, '')
+  AND status = 'completed'
 LIMIT 1
 `
 
-type FindCompletedByHashParams struct {
+type FindCompletedByHashAndCommitParams struct {
 	ProjectID     pgtype.UUID `json:"project_id"`
 	RawReportHash pgtype.Text `json:"raw_report_hash"`
+	CommitSha     pgtype.Text `json:"commit_sha"`
 }
 
-// Duplicate-content guard: a completed report with the same raw-content
-// hash. pgx.ErrNoRows means this content is new (or only ever failed) —
-// the caller ingests normally.
-func (q *Queries) FindCompletedByHash(ctx context.Context, arg FindCompletedByHashParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, findCompletedByHash, arg.ProjectID, arg.RawReportHash)
+// Replay lookup: a completed report for the same project, raw-content hash,
+// and commit. A NULL commit_sha compares as the empty string, so ingests
+// that both omit a commit still find each other. pgx.ErrNoRows means this
+// content is new for this commit (or only ever failed) — the caller ingests
+// normally.
+func (q *Queries) FindCompletedByHashAndCommit(ctx context.Context, arg FindCompletedByHashAndCommitParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, findCompletedByHashAndCommit, arg.ProjectID, arg.RawReportHash, arg.CommitSha)
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err
