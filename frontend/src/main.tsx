@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import { shouldRetryQuery } from "./api/retry";
 import App from "./App.tsx";
+import { TooltipProvider } from "./components/ui/tooltip";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: shouldRetryQuery } },
@@ -12,7 +13,9 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <TooltipProvider delay={300}>
+        <App />
+      </TooltipProvider>
     </QueryClientProvider>
   </StrictMode>,
 );
