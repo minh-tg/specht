@@ -261,6 +261,43 @@ func TestToReport_MapsErrorMessage(t *testing.T) {
 	assert.Nil(t, completed.ErrorMessage)
 }
 
+func TestToReport_FailureReasonIsSanitized(t *testing.T) {
+	strPtr := func(s string) *string { return &s }
+
+	t.Run("fixed reason passes through", func(t *testing.T) {
+		r := makeReport()
+		r.Status = "failed"
+		r.ErrorMessage = strPtr(reportFailureInventory)
+		resp := toReport(r)
+		require.NotNil(t, resp.ErrorMessage)
+		assert.Equal(t, reportFailureInventory, *resp.ErrorMessage)
+	})
+
+	t.Run("legacy raw store error is replaced", func(t *testing.T) {
+		r := makeReport()
+		r.Status = "failed"
+		r.ErrorMessage = strPtr("dial postgres://specht:hunter2@db:5432/specht: connection refused")
+		resp := toReport(r)
+		require.NotNil(t, resp.ErrorMessage)
+		assert.Equal(t, reportFailureGeneric, *resp.ErrorMessage)
+		assert.NotContains(t, *resp.ErrorMessage, "hunter2")
+	})
+
+	t.Run("empty stays empty", func(t *testing.T) {
+		r := makeReport()
+		r.Status = "failed"
+		r.ErrorMessage = strPtr("")
+		resp := toReport(r)
+		require.NotNil(t, resp.ErrorMessage)
+		assert.Equal(t, "", *resp.ErrorMessage)
+	})
+
+	t.Run("absent stays absent", func(t *testing.T) {
+		resp := toReport(makeReport())
+		assert.Nil(t, resp.ErrorMessage)
+	})
+}
+
 // incrementalHarness builds an ingest stack whose scanner emits two
 // findings: fp-new (absent from the baseline) and fp-old (present in the
 // baseline). hasBase controls whether a baseline report resolves.
