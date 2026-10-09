@@ -252,6 +252,50 @@ func (q *Queries) GetCompletedReportByCommit(ctx context.Context, arg GetComplet
 	return i, err
 }
 
+const getLatestCompletedFullReportByBranch = `-- name: GetLatestCompletedFullReportByBranch :one
+SELECT id, tool_name, branch, commit_sha, base_revision, scan_mode, scan_completeness, created_at
+FROM reports
+WHERE project_id = $1 AND tool_name = $2 AND branch = $3 AND status = 'completed' AND scan_mode = 'full'
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+type GetLatestCompletedFullReportByBranchParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	ToolName  string      `json:"tool_name"`
+	Branch    pgtype.Text `json:"branch"`
+}
+
+type GetLatestCompletedFullReportByBranchRow struct {
+	ID               pgtype.UUID        `json:"id"`
+	ToolName         string             `json:"tool_name"`
+	Branch           pgtype.Text        `json:"branch"`
+	CommitSha        pgtype.Text        `json:"commit_sha"`
+	BaseRevision     pgtype.Text        `json:"base_revision"`
+	ScanMode         string             `json:"scan_mode"`
+	ScanCompleteness string             `json:"scan_completeness"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
+// Baseline resolution when base_revision names a branch rather than a
+// commit: the newest completed full scan from the same scanner on that
+// branch. pgx.ErrNoRows means the branch has no full baseline yet.
+func (q *Queries) GetLatestCompletedFullReportByBranch(ctx context.Context, arg GetLatestCompletedFullReportByBranchParams) (GetLatestCompletedFullReportByBranchRow, error) {
+	row := q.db.QueryRow(ctx, getLatestCompletedFullReportByBranch, arg.ProjectID, arg.ToolName, arg.Branch)
+	var i GetLatestCompletedFullReportByBranchRow
+	err := row.Scan(
+		&i.ID,
+		&i.ToolName,
+		&i.Branch,
+		&i.CommitSha,
+		&i.BaseRevision,
+		&i.ScanMode,
+		&i.ScanCompleteness,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getReportByID = `-- name: GetReportByID :one
 SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode FROM reports WHERE id = $1
 `

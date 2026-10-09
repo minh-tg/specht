@@ -765,3 +765,127 @@ func TestIngestReport_RegressionFailsIntroducedGate(t *testing.T) {
 	assert.Equal(t, 1, out.IntroducedCount)
 	assert.Equal(t, 0, out.PreExistingCount)
 }
+
+// baselineFake answers a baseline lookup with a completed full report id and
+// records every revision it was asked for.
+type baselineFake struct {
+	id    string
+	calls *[]string
+}
+
+func (b baselineFake) lookup(ctx context.Context, projectID, scanner, revision string) (port.CompletedReport, error) {
+	*b.calls = append(*b.calls, revision)
+	if b.id == "" {
+		return port.CompletedReport{}, port.ErrNotFound
+	}
+	return port.CompletedReport{ID: b.id, ToolName: scanner, ScanMode: "full", Completeness: "complete"}, nil
+}
+
+// baselineUsecases wires a report store whose commit and branch lookups are
+// the given fakes. Both return ErrNotFound when their id is empty.
+func baselineUsecases(commit, branch *baselineFake) *Usecases {
+	pr, rr, fr := makeTestRepos()
+	rr.byCommitFn = commit.lookup
+	rr.byBranchFn = branch.lookup
+	return New(Deps{Stores: &port.Stores{Projects: pr, Reports: rr, Findings: fr}})
+}
+
+// incrementalStub is a trivy-named scanner that opts into incremental scans.
+type incrementalStub struct {
+	mockScanner
+}
+
+func (*incrementalStub) SupportsIncremental() bool { return true }
+
+func TestResolveBaseRevision_CommitHit(t *testing.T) {
+	var commitCalls, branchCalls []string
+	uc := baselineUsecases(
+		&baselineFake{id: "commit-base", calls: &commitCalls},
+		&baselineFake{calls: &branchCalls},
+	)
+
+	baseline, err := uc.resolveBaseRevision(context.Background(), makeProject(true),
+		IngestReportInput{Scanner: "trivy", BaseRevision: "a1b2c3d"}, "")
+	require.NoError(t, err)
+	assert.Equal(t, "commit-base", baseline)
+	assert.Equal(t, []string{"a1b2c3d"}, commitCalls)
+	assert.Empty(t, branchCalls, "branch lookup must not run when a commit matches")
+}
+
+func TestResolveBaseRevision_BranchHit(t *testing.T) {
+	var commitCalls, branchCalls []string
+	uc := baselineUsecases(
+		&baselineFake{calls: &commitCalls},
+		&baselineFake{id: "branch-base", calls: &branchCalls},
+	)
+
+	baseline, err := uc.resolveBaseRevision(context.Background(), makeProject(true),
+		IngestReportInput{Scanner: "trivy", BaseRevision: "main"}, "")
+	require.NoError(t, err)
+	assert.Equal(t, "branch-base", baseline)
+	assert.Equal(t, []string{"main"}, commitCalls)
+	assert.Equal(t, []string{"main"}, branchCalls)
+}
+
+func TestResolveBaseRevision_NoBaseline(t *testing.T) {
+	var commitCalls, branchCalls []string
+	uc := baselineUsecases(
+		&baselineFake{calls: &commitCalls},
+		&baselineFake{calls: &branchCalls},
+	)
+
+	baseline, err := uc.resolveBaseRevision(context.Background(), makeProject(true),
+		IngestReportInput{Scanner: "trivy", BaseRevision: "main"}, "")
+	require.NoError(t, err)
+	assert.Empty(t, baseline)
+}
+
+func TestResolveScanMode_CommitHitIsIncremental(t *testing.T) {
+	var commitCalls, branchCalls []string
+	uc := baselineUsecases(
+		&baselineFake{id: "commit-base", calls: &commitCalls},
+		&baselineFake{calls: &branchCalls},
+	)
+
+	mode, reason, baseline, err := uc.resolveScanMode(context.Background(), makeProject(true),
+		&incrementalStub{mockScanner{name: "trivy"}},
+		IngestReportInput{Scanner: "trivy", ScanMode: ScanModeIncremental, BaseRevision: "a1b2c3d"})
+	require.NoError(t, err)
+	assert.Equal(t, ScanModeIncremental, mode)
+	assert.Empty(t, reason)
+	assert.Equal(t, "commit-base", baseline)
+	assert.Empty(t, branchCalls, "branch lookup must not run when a commit matches")
+}
+
+func TestResolveScanMode_BranchHitIsIncremental(t *testing.T) {
+	var commitCalls, branchCalls []string
+	uc := baselineUsecases(
+		&baselineFake{calls: &commitCalls},
+		&baselineFake{id: "branch-base", calls: &branchCalls},
+	)
+
+	mode, reason, baseline, err := uc.resolveScanMode(context.Background(), makeProject(true),
+		&incrementalStub{mockScanner{name: "trivy"}},
+		IngestReportInput{Scanner: "trivy", ScanMode: ScanModeIncremental, BaseRevision: "main"})
+	require.NoError(t, err)
+	assert.Equal(t, ScanModeIncremental, mode)
+	assert.Empty(t, reason)
+	assert.Equal(t, "branch-base", baseline)
+	assert.Equal(t, []string{"main"}, branchCalls)
+}
+
+func TestResolveScanMode_NoBaselineFallsBackToFull(t *testing.T) {
+	var commitCalls, branchCalls []string
+	uc := baselineUsecases(
+		&baselineFake{calls: &commitCalls},
+		&baselineFake{calls: &branchCalls},
+	)
+
+	mode, reason, baseline, err := uc.resolveScanMode(context.Background(), makeProject(true),
+		&incrementalStub{mockScanner{name: "trivy"}},
+		IngestReportInput{Scanner: "trivy", ScanMode: ScanModeIncremental, BaseRevision: "main"})
+	require.NoError(t, err)
+	assert.Equal(t, ScanModeFull, mode)
+	assert.Contains(t, reason, "no completed full baseline for base_revision \"main\"")
+	assert.Empty(t, baseline)
+}

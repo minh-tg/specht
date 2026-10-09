@@ -153,6 +153,27 @@ func (r *pgReportPort) GetCompletedByCommit(ctx context.Context, projectID, scan
 	}, nil
 }
 
+func (r *pgReportPort) GetLatestFullByBranch(ctx context.Context, projectID, scanner, branch string) (port.CompletedReport, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.CompletedReport{}, err
+	}
+	row, err := r.inner.GetLatestFullByBranch(ctx, pid, scanner, textPtrFromString(&branch))
+	if err != nil {
+		return port.CompletedReport{}, mappingErr(err)
+	}
+	return port.CompletedReport{
+		ID:           toUUID(row.ID),
+		ToolName:     row.ToolName,
+		Branch:       stringFromTextPtr(row.Branch),
+		CommitSha:    stringFromTextPtr(row.CommitSha),
+		BaseRevision: stringFromTextPtr(row.BaseRevision),
+		ScanMode:     row.ScanMode,
+		Completeness: row.ScanCompleteness,
+		CreatedAt:    row.CreatedAt.Time,
+	}, nil
+}
+
 // scanModeParam normalizes the requested scan mode for storage: empty
 // means full, anything else passes through for the DB check constraint
 // to accept ("full", "incremental") or reject with a clear error.
