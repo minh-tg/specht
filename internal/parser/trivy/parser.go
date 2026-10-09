@@ -184,11 +184,7 @@ func convert(report trivyReport) *domain.NormalizedReport {
 		Findings:     nil,
 	}
 
-	if len(report.Results) > 0 {
-		nr.Target = resultTarget(report.Results[0])
-	} else if report.ArtifactName != "" {
-		nr.Target = &domain.TargetInfo{Identifier: report.ArtifactName, Kind: report.ArtifactType}
-	}
+	nr.Target = reportTarget(report)
 
 	for _, result := range report.Results {
 		// full package inventory, vulnerable or not
@@ -199,6 +195,40 @@ func convert(report trivyReport) *domain.NormalizedReport {
 	}
 
 	return nr
+}
+
+// reportTarget names what the scan ran against. ArtifactName is the stable
+// name of the scanned artifact (an image reference, a scanned path); a result
+// Target is a per-class detail such as "alpine:3.20 (alpine 3.20.3)" or
+// whichever lockfile Trivy listed first, so it only names the target when the
+// report carries no artifact name.
+func reportTarget(report trivyReport) *domain.TargetInfo {
+	if len(report.Results) == 0 {
+		if report.ArtifactName == "" {
+			return nil
+		}
+		return &domain.TargetInfo{Identifier: report.ArtifactName, Kind: report.ArtifactType}
+	}
+	target := resultTarget(report.Results[0])
+	if report.ArtifactName != "" {
+		target.Identifier = report.ArtifactName
+		if kind := artifactKind(report.ArtifactType); kind != "" {
+			target.Kind = kind
+		}
+	}
+	return target
+}
+
+// artifactKind maps Trivy's ArtifactType onto target kinds. An unknown type
+// returns "" so the caller keeps the kind implied by the result class.
+func artifactKind(artifactType string) string {
+	switch artifactType {
+	case "container_image":
+		return "container_image"
+	case "filesystem", "repository":
+		return "filesystem"
+	}
+	return ""
 }
 
 func resultTarget(first trivyResult) *domain.TargetInfo {
