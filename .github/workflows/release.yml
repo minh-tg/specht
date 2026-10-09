@@ -176,16 +176,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      # The candidate is pushed by digest only, so no version tag resolves to
+      # it while the signature, the labels and the smoke test are still
+      # unverified. The public tag is added at the end of this job, once every
+      # check below has passed.
+      - name: Build and push by digest
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7
         with:
           context: .
           file: deploy/Dockerfile.adapter
-          push: true
+          outputs: type=image,name=ghcr.io/${{ github.repository_owner }}/specht-adapter,push-by-digest=true,name-canonical=true,push=true
           sbom: true
           provenance: mode=max
-          tags: ghcr.io/${{ github.repository_owner }}/specht-adapter:${{ github.ref_name }}
           build-args: |
             VERSION=${{ github.ref_name }}
             COMMIT=${{ steps.tag.outputs.commit }}
@@ -209,16 +212,33 @@ jobs:
           --certificate-oidc-issuer https://token.actions.githubusercontent.com
           "ghcr.io/${{ github.repository_owner }}/specht-adapter@${{ steps.build.outputs.digest }}"
 
-      - name: Pull the tagged image
-        run: docker pull "ghcr.io/${{ github.repository_owner }}/specht-adapter:${GITHUB_REF_NAME}"
+      - name: Pull the candidate digest
+        run: docker pull "ghcr.io/${{ github.repository_owner }}/specht-adapter@${{ steps.build.outputs.digest }}"
 
       - name: Smoke test the adapter image
         run: |
-          img="ghcr.io/${{ github.repository_owner }}/specht-adapter:${GITHUB_REF_NAME}"
+          img="ghcr.io/${{ github.repository_owner }}/specht-adapter@${{ steps.build.outputs.digest }}"
           docker run --rm "$img" -help
           # GitLab Runner clears the entrypoint and drives the binary from a
           # shell script, so the image must carry a shell as well.
           docker run --rm --entrypoint "" "$img" sh -c 'specht-adapter -help'
+
+      # Publishing is the last step. Only a digest that passed the signature
+      # check and the smoke test is promoted to the public version tag.
+      - name: Tag the verified digest
+        run: |
+          docker buildx imagetools create \
+            --tag "ghcr.io/${{ github.repository_owner }}/specht-adapter:${{ github.ref_name }}" \
+            "ghcr.io/${{ github.repository_owner }}/specht-adapter@${{ steps.build.outputs.digest }}"
+
+      - name: Assert the published tag resolves to the verified digest
+        run: |
+          published="$(docker buildx imagetools inspect --format '{{.Manifest.Digest}}' \
+            "ghcr.io/${{ github.repository_owner }}/specht-adapter:${{ github.ref_name }}")"
+          if [ "$published" != "${{ steps.build.outputs.digest }}" ]; then
+            echo "::error::tag ${{ github.ref_name }} resolves to $published, expected ${{ steps.build.outputs.digest }}"
+            exit 1
+          fi
 
   publish-release:
     name: publish the GitHub release
