@@ -40,6 +40,8 @@ func TestParse_GoScan(t *testing.T) {
 
 	assert.Equal(t, "osv-scanner", osvscanner.NewScanner().Descriptor().Name)
 	require.NotNil(t, report.Target)
+	assert.Equal(t, "package", report.Target.Kind)
+	assert.Equal(t, "lockfile", report.ScanScope.Ext["osv_source_type"])
 	assert.Len(t, report.Findings, 1)
 
 	finding := report.Findings[0]
@@ -204,6 +206,70 @@ func TestParse_RejectsMalformedAffectedRecords(t *testing.T) {
 			data := []byte(`{"results":[{"packages":[{"vulnerabilities":[{"affected":` + affected + `}]}]}]}`)
 			_, err := osvscanner.NewScanner().Parse(context.Background(), data)
 			require.Error(t, err)
+		})
+	}
+}
+
+func TestParse_MultipleResultsPreservesLastTargetAndInventory(t *testing.T) {
+	data := []byte(`{"results":[{"source":{"path":"repo/go.mod","type":"lockfile"},"packages":[{"package":{"name":"acme/first","version":"1.2.3","ecosystem":"Go","purl":"pkg:golang/acme/first@1.2.3"},"vulnerabilities":[{"id":"GO-2026-0001","summary":"first issue"}]}]},{"source":{"path":"service/package-lock.json","type":"repository"},"packages":[{"package":{"name":"last","version":"4.5.6","ecosystem":"npm","purl":"pkg:npm/last@4.5.6"},"vulnerabilities":[{"id":"GHSA-2026-0002","summary":"last issue"}]}]}]}`)
+	report, err := osvscanner.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.NotNil(t, report.Target)
+	assert.Equal(t, "repo", report.Target.Kind)
+	assert.Equal(t, "service/package-lock.json", report.Target.Identifier)
+	assert.Equal(t, "repository", report.ScanScope.Ext["osv_source_type"])
+	assert.Equal(t, "service/package-lock.json", report.ScanScope.Ext["osv_source_path"])
+
+	require.Len(t, report.Packages, 2, "inventory must include packages from every result")
+	packages := make(map[string]string, len(report.Packages))
+	for _, pkg := range report.Packages {
+		packages[pkg.Name] = pkg.ManifestPath
+	}
+	assert.Equal(t, map[string]string{
+		"acme/first": "repo/go.mod",
+		"last":       "service/package-lock.json",
+	}, packages)
+
+	require.Len(t, report.Findings, 2)
+	wantFingerprints := []string{
+		"GO-2026-0001:pkg:golang/acme/first@1.2.3",
+		"GHSA-2026-0002:pkg:npm/last@4.5.6",
+	}
+	gotFingerprints := make([]string, len(report.Findings))
+	for i, finding := range report.Findings {
+		gotFingerprints[i] = finding.Fingerprint
+	}
+	assert.Equal(t, wantFingerprints, gotFingerprints)
+
+	repeated, err := osvscanner.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.Len(t, repeated.Findings, len(report.Findings))
+	for i := range report.Findings {
+		assert.Equal(t, report.Findings[i].Fingerprint, repeated.Findings[i].Fingerprint)
+	}
+}
+
+func TestTargetKindForSource(t *testing.T) {
+	for _, tc := range []struct {
+		sourceType string
+		want       string
+	}{
+		{"lockfile", "package"},
+		{"sbom", "package"},
+		{"repository", "repo"},
+		{"git", "repo"},
+		{"image", "container_image"},
+		{"filesystem", "filesystem"},
+		{"iac", "iac_stack"},
+		{"future-source", "package"},
+	} {
+		t.Run(tc.sourceType, func(t *testing.T) {
+			data := []byte(`{"results":[{"source":{"type":"` + tc.sourceType + `","path":"go.mod"}}]}`)
+			report, err := osvscanner.NewScanner().Parse(context.Background(), data)
+			require.NoError(t, err)
+			require.NotNil(t, report.Target)
+			assert.Equal(t, tc.want, report.Target.Kind)
+			assert.Equal(t, tc.sourceType, report.ScanScope.Ext["osv_source_type"])
 		})
 	}
 }

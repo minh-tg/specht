@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/minh-tg/specht/internal/domain"
 	"github.com/minh-tg/specht/internal/parser"
 	"github.com/minh-tg/specht/internal/scanner"
@@ -209,6 +210,78 @@ func TestE2E_BuiltinParserIngest(t *testing.T) {
 	}
 }
 
+func TestE2E_SbomAndOSVTargetsPersist(t *testing.T) {
+	cases := []struct {
+		name       string
+		scanner    string
+		fixture    string
+		wantKind   string
+		wantTarget string
+		scopeKey   string
+		scopeValue string
+	}{
+		{"cyclonedx", "sbom", filepath.Join("..", "internal", "parser", "sbom", "testdata", "cyclonedx.json"), "package", "myapp@1.2.3", "sbom_format", "CycloneDX"},
+		{"spdx", "sbom", filepath.Join("..", "internal", "parser", "sbom", "testdata", "spdx.json"), "package", "myapp-1.2.3", "sbom_format", "SPDX"},
+		{"osv", "osv-scanner", filepath.Join("..", "internal", "parser", "osvscanner", "testdata", "go-scan.json"), "package", "/home/user/project/go.mod", "osv_source_type", "lockfile"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			slug := newProject(t, "target-"+tc.name)
+			raw, err := os.ReadFile(tc.fixture)
+			require.NoError(t, err)
+			body := map[string]any{"project": slug, "scanner": tc.scanner, "raw_data": json.RawMessage(raw)}
+			resp := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", adminToken, body, http.StatusCreated)
+
+			conn, err := pgx.Connect(context.Background(), dsn)
+			require.NoError(t, err)
+			defer conn.Close(context.Background())
+			var kind, name string
+			var scopeRaw []byte
+			err = conn.QueryRow(context.Background(), `
+				SELECT t.kind, t.name, r.scan_scope
+				FROM reports r JOIN targets t ON t.id = r.target_id
+				WHERE r.id = $1`, resp.ReportID).Scan(&kind, &name, &scopeRaw)
+			require.NoError(t, err, "report must persist its target link")
+			require.Equal(t, tc.wantKind, kind)
+			require.Equal(t, tc.wantTarget, name)
+			var scope map[string]any
+			require.NoError(t, json.Unmarshal(scopeRaw, &scope))
+			ext, ok := scope["ext"].(map[string]any)
+			require.True(t, ok, "parser source metadata must be retained in scan_scope.ext")
+			require.Equal(t, tc.scopeValue, ext[tc.scopeKey])
+			require.NotContains(t, serverLogTail(), "targets_kind_check", "ingest must not warn about a target kind constraint")
+		})
+	}
+}
+
+func assertReportTargetLink(t *testing.T, reportID, wantKind, wantName string) {
+	t.Helper()
+	conn, err := pgx.Connect(context.Background(), dsn)
+	require.NoError(t, err)
+	defer conn.Close(context.Background())
+
+	var kind, name string
+	err = conn.QueryRow(context.Background(), `
+		SELECT t.kind, t.name
+		FROM reports r JOIN targets t ON t.id = r.target_id
+		WHERE r.id = $1`, reportID).Scan(&kind, &name)
+	require.NoError(t, err, "report must persist its target link")
+	require.Equal(t, wantKind, kind)
+	require.Equal(t, wantName, name)
+}
+
+func assertReportHasNoTargetLink(t *testing.T, reportID string) {
+	t.Helper()
+	conn, err := pgx.Connect(context.Background(), dsn)
+	require.NoError(t, err)
+	defer conn.Close(context.Background())
+
+	var missing bool
+	err = conn.QueryRow(context.Background(), `SELECT target_id IS NULL FROM reports WHERE id = $1`, reportID).Scan(&missing)
+	require.NoError(t, err)
+	require.True(t, missing)
+}
+
 func TestE2E_CapturedReportIngest(t *testing.T) {
 	cases := []struct {
 		file    string
@@ -235,6 +308,17 @@ func TestE2E_CapturedReportIngest(t *testing.T) {
 			require.NoError(t, err)
 			body := map[string]any{"project": slug, "scanner": tc.scanner, "raw_data": json.RawMessage(raw)}
 			first := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", adminToken, body, http.StatusCreated)
+			switch tc.file {
+			case "cyclonedx.json":
+				// This captured document has components but no metadata.component.
+				// The separate SBOM target regression covers CycloneDX documents
+				// that actually declare a root component.
+				assertReportHasNoTargetLink(t, first.ReportID)
+			case "spdx.json":
+				assertReportTargetLink(t, first.ReportID, "package", "fixture")
+			case "osv-scanner.json":
+				assertReportTargetLink(t, first.ReportID, "package", "package-lock.json")
+			}
 			want := 0
 			for _, count := range tc.kinds {
 				want += count

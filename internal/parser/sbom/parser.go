@@ -79,6 +79,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 
 type cyclonedxDoc struct {
 	SerialNumber string `json:"serialNumber"`
+	SpecVersion  string `json:"specVersion"`
 	Version      int    `json:"version"`
 	Metadata     struct {
 		Timestamp string `json:"timestamp"`
@@ -89,6 +90,7 @@ type cyclonedxDoc struct {
 			} `json:"components"`
 		} `json:"tools"`
 		Component *struct {
+			Type    string `json:"type"`
 			Name    string `json:"name"`
 			Version string `json:"version"`
 		} `json:"component"`
@@ -113,13 +115,20 @@ func parseCycloneDX(data []byte) (*domain.NormalizedReport, error) {
 		ScanType:           domain.ScanTypeSBOM,
 		ScanScope:          &domain.ScanScope{},
 	}
+	nr.ScanScope.Ext = map[string]string{"sbom_format": "CycloneDX"}
+	if doc.SpecVersion != "" {
+		nr.ScanScope.Ext["sbom_spec_version"] = doc.SpecVersion
+	}
 	if doc.SerialNumber != "" {
-		nr.ScanScope.Ext = map[string]string{"sbom_serial": doc.SerialNumber}
+		nr.ScanScope.Ext["sbom_serial"] = doc.SerialNumber
 	}
 	if doc.Metadata.Component != nil {
 		nr.Target = &domain.TargetInfo{
-			Kind:       "sbom",
+			Kind:       "package",
 			Identifier: doc.Metadata.Component.Name + "@" + doc.Metadata.Component.Version,
+		}
+		if doc.Metadata.Component.Type != "" {
+			nr.ScanScope.Ext["sbom_component_type"] = doc.Metadata.Component.Type
 		}
 	}
 	for _, c := range doc.Components {
@@ -161,14 +170,17 @@ func parseSPDX(data []byte) (*domain.NormalizedReport, error) {
 		FingerprintVersion: 1,
 		Completeness:       domain.CompletenessComplete,
 		ScanType:           domain.ScanTypeSBOM,
-		ScanScope:          &domain.ScanScope{},
+		ScanScope: &domain.ScanScope{Ext: map[string]string{
+			"sbom_format":  "SPDX",
+			"spdx_version": doc.SPDXVersion,
+		}},
 	}
 	name := doc.DocumentName
 	if name == "" {
 		name = doc.Name
 	}
 	if name != "" {
-		nr.Target = &domain.TargetInfo{Kind: "sbom", Identifier: name}
+		nr.Target = &domain.TargetInfo{Kind: "package", Identifier: name}
 	}
 	for _, p := range doc.Packages {
 		if p.Name == "" {
