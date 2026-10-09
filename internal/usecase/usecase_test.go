@@ -380,6 +380,7 @@ type mockReportRepo struct {
 	deleteStaleFn              func(context.Context, time.Time) ([]string, error)
 	findCompletedByReplayKeyFn func(context.Context, string, string, string, string) (string, error)
 	deleteReportFn             func(context.Context, string, string) error
+	deleteDuplicateReportFn    func(context.Context, string, string, string) error
 	hasCommitFn                func(context.Context, string, string) (bool, error)
 }
 
@@ -472,6 +473,13 @@ func (m *mockReportRepo) DeleteReport(ctx context.Context, id, projectID string)
 		return fmt.Errorf("unexpected call to DeleteReport")
 	}
 	return m.deleteReportFn(ctx, id, projectID)
+}
+
+func (m *mockReportRepo) DeleteDuplicateReport(ctx context.Context, id, projectID, winnerID string) error {
+	if m.deleteDuplicateReportFn == nil {
+		return fmt.Errorf("unexpected call to DeleteDuplicateReport")
+	}
+	return m.deleteDuplicateReportFn(ctx, id, projectID, winnerID)
 }
 
 type mockPolicyRepo struct {

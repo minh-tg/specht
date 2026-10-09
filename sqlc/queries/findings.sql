@@ -281,6 +281,16 @@ SELECT * FROM findings
 WHERE project_id = $1 AND introduced_by_report_id = $2
 ORDER BY current_severity_rank DESC, created_at DESC, id DESC;
 
+-- name: ReassignFindingIntroducedBy :exec
+-- Duplicate-race cleanup: re-points findings that a losing processing report
+-- introduced at the report that won the race, so deleting the loser does not
+-- null their attribution. Findings the winner introduced itself are left
+-- alone because their report id is not the loser's.
+UPDATE findings SET
+    introduced_by_report_id = $3,
+    updated_at = NOW()
+WHERE project_id = $1 AND introduced_by_report_id = $2;
+
 -- name: UpsertDimension :one
 INSERT INTO finding_dimensions (
     finding_id, dim_key, dim_value, source

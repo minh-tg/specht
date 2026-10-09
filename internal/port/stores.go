@@ -875,6 +875,10 @@ type ReportStore interface {
 	FindCompletedByReplayKey(ctx context.Context, projectID, rawHash, commit, scopeHash string) (string, error)
 	// DeleteReport removes one report row (duplicate-cleanup path).
 	DeleteReport(ctx context.Context, id, projectID string) error
+	// DeleteDuplicateReport removes a race loser's processing row and moves the
+	// finding attribution it introduced to the winning report in one
+	// transaction, so deleting the loser cannot null that attribution.
+	DeleteDuplicateReport(ctx context.Context, id, projectID, winnerID string) error
 }
 
 // CompletedReport is the verification basis: the newest completed scan

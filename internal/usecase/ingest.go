@@ -1157,13 +1157,17 @@ func (u *Usecases) evaluateIngestGate(ctx context.Context, project port.Project,
 // replayRaceWinner answers a lost duplicate-completion race: a twin ingest of
 // the same scope, commit, and bytes completed first, so this report's
 // completion violated the dedup index. The orphaned processing row is removed
-// and the winner is replayed. ErrDuplicateReport is returned only when the
-// winner cannot be found, for example when a concurrent retention purge
-// removed it between the index violation and the lookup. That is the one
-// remaining case that answers 409.
+// (moving any finding attribution it introduced to the winner) and the winner
+// is replayed. ErrDuplicateReport is returned only when the winner cannot be
+// found, for example when a concurrent retention purge removed it between the
+// index violation and the lookup. That is the one remaining case that answers
+// 409.
 func (u *Usecases) replayRaceWinner(ctx context.Context, project port.Project, input IngestReportInput, orphanID, scopeHash string) (bool, *IngestReportOutput, error) {
-	u.deleteDuplicateReport(ctx, project.ID, orphanID)
 	winnerID, err := u.findReplayReport(ctx, project.ID, input.RawData, input.CommitSha, scopeHash)
+	// The orphaned processing row is garbage whether or not a winner resolves,
+	// so cleanup always runs. With a winner, cleanup moves the findings the
+	// loser introduced to the winner in the same transaction as the delete.
+	u.deleteDuplicateReport(ctx, project.ID, orphanID, winnerID)
 	if err != nil {
 		return false, nil, err
 	}
@@ -1178,12 +1182,21 @@ func (u *Usecases) replayRaceWinner(ctx context.Context, project port.Project, i
 }
 
 // deleteDuplicateReport removes a processing row orphaned by a lost duplicate
-// race. Occurrences cascade; shared finding rows are untouched. Failures log
-// only: the row is garbage either way (retention purges processing rows never,
-// so leaving it would strand it permanently, hence best-effort delete here,
-// loud log on failure).
-func (u *Usecases) deleteDuplicateReport(ctx context.Context, projectID, reportID string) {
-	if err := u.deps.Stores.Reports.DeleteReport(ctx, reportID, projectID); err != nil {
+// race. When the winner is known it also re-points the findings the orphan
+// introduced at the winner, in the same transaction, so a shared finding row
+// keeps its attribution instead of nulling when the orphan goes. Occurrences
+// and the orphan's report_introduced_findings rows cascade; the winner's own
+// rows are untouched. Failures log only: the row is garbage either way
+// (retention purges processing rows never, so leaving it would strand it
+// permanently, hence best-effort delete here, loud log on failure).
+func (u *Usecases) deleteDuplicateReport(ctx context.Context, projectID, reportID, winnerID string) {
+	var err error
+	if winnerID == "" {
+		err = u.deps.Stores.Reports.DeleteReport(ctx, reportID, projectID)
+	} else {
+		err = u.deps.Stores.Reports.DeleteDuplicateReport(ctx, reportID, projectID, winnerID)
+	}
+	if err != nil {
 		slog.Error("delete duplicate report failed", "report", reportID, "error", err)
 	}
 }

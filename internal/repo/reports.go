@@ -7,11 +7,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minh-tg/specht/internal/db/sqlc"
 )
 
 type pgReportRepo struct {
-	q *sqlc.Queries
+	q    *sqlc.Queries
+	pool *pgxpool.Pool
 }
 
 // CreateReportParams is the input to creating a report row.
@@ -154,6 +156,37 @@ func (r *pgReportRepo) DeleteReport(ctx context.Context, id, projectID pgtype.UU
 		ID:        id,
 		ProjectID: projectID,
 	})
+}
+
+// DeleteDuplicateReport removes a duplicate-race loser and moves the finding
+// attribution it introduced to the winner. Both statements share one
+// transaction so a crash cannot leave a finding pointing at a deleted report;
+// the loser's report_introduced_findings rows cascade with it and the
+// winner's own rows are untouched.
+func (r *pgReportRepo) DeleteDuplicateReport(ctx context.Context, id, projectID, winnerID pgtype.UUID) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	q := sqlc.New(tx)
+	if err := q.ReassignFindingIntroducedBy(ctx, sqlc.ReassignFindingIntroducedByParams{
+		ProjectID:              projectID,
+		IntroducedByReportID:   id,
+		IntroducedByReportID_2: winnerID,
+	}); err != nil {
+		return fmt.Errorf("reassign finding attribution: %w", err)
+	}
+	if err := q.DeleteReport(ctx, sqlc.DeleteReportParams{
+		ID:        id,
+		ProjectID: projectID,
+	}); err != nil {
+		return fmt.Errorf("delete duplicate report: %w", err)
+	}
+	return tx.Commit(ctx)
 }
 
 func (r *pgReportRepo) UpdateStatus(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error) {
