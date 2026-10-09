@@ -6,6 +6,9 @@
 # the adapter against the Specht API. Nothing is executed before verification
 # succeeds, so a tampered or unsigned archive never runs.
 #
+# The download origin and the keyless verification identity are fixed in
+# action/specht-gate.sh; this action exposes no input that can change them.
+#
 # Usage:
 #
 #   permissions:
@@ -76,14 +79,6 @@ inputs:
     description: Release tag to download, for example v1.2.3. Defaults to the action ref when it is a release tag.
     required: false
     default: ""
-  release-base-url:
-    description: Where release assets are downloaded from. Self-test only.
-    required: false
-    default: https://github.com/minh-tg/specht/releases/download
-  cosign-public-key:
-    description: PEM public key for cosign verify-blob. Empty (the default) verifies keyless. Self-test only.
-    required: false
-    default: ""
 
 outputs:
   skipped:
@@ -100,236 +95,47 @@ runs:
       id: setup
       shell: bash
       env:
-        INPUT_VERSION: ${{ inputs.version }}
-        INPUT_API_KEY: ${{ inputs.api-key }}
-        ACTION_REF: ${{ github.action_ref }}
-        EVENT_NAME: ${{ github.event_name }}
-        PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-        PR_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
-      run: |
-        set -euo pipefail
-
-        version="${INPUT_VERSION:-}"
-        if [[ -z "$version" && "$ACTION_REF" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-          version="$ACTION_REF"
-        fi
-        if [[ -z "$version" ]]; then
-          echo "::error::no Specht release tag resolved. Pin the action to a release tag (uses: minh-tg/specht@v1.2.3) or set the version input to one, such as v1.2.3. There is no latest fallback."
-          exit 1
-        fi
-        if [[ ! "$version" =~ ^v?[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-          echo "::error::version '${version}' is not a release tag such as v1.2.3"
-          exit 1
-        fi
-        tag="v${version#v}"
-        file_version="${tag#v}"
-
-        case "${RUNNER_OS:-}" in
-          Linux) os=linux ;;
-          macOS) os=darwin ;;
-          Windows) os=windows ;;
-          *)
-            echo "::error::unsupported RUNNER_OS '${RUNNER_OS:-}'; Specht supports Linux, macOS and Windows runners"
-            exit 1
-            ;;
-        esac
-        case "${RUNNER_ARCH:-}" in
-          X64) arch=amd64 ;;
-          ARM64) arch=arm64 ;;
-          *)
-            echo "::error::unsupported RUNNER_ARCH '${RUNNER_ARCH:-}'; Specht supports X64 and ARM64 runners"
-            exit 1
-            ;;
-        esac
-        if [[ "$os" == windows && "$arch" != amd64 ]]; then
-          echo "::error::Specht publishes no windows/${arch} adapter archive; only windows/amd64 is supported"
-          exit 1
-        fi
-
-        ext=tar.gz
-        if [[ "$os" == windows ]]; then
-          ext=zip
-        fi
-        asset="specht-adapter_${file_version}_${os}_${arch}.${ext}"
-
-        skipped=false
-        if [[ -z "${INPUT_API_KEY:-}" ]]; then
-          if [[ "$EVENT_NAME" == pull_request && -n "$PR_HEAD_REPO" && "$PR_HEAD_REPO" != "$PR_BASE_REPO" ]]; then
-            echo "::notice::Specht skipped: pull requests from forks do not receive the api-key secret."
-            skipped=true
-          else
-            echo "::error::Specht needs the api-key input; set it from a repository secret, for example secrets.SPECHT_API_KEY. Only pull_request events from forks may leave it empty."
-            exit 1
-          fi
-        fi
-
-        {
-          echo "version=$file_version"
-          echo "tag=$tag"
-          echo "os=$os"
-          echo "arch=$arch"
-          echo "asset=$asset"
-          echo "skipped=$skipped"
-        } >>"$GITHUB_OUTPUT"
-
-    - name: Download the release assets
-      id: download
-      if: steps.setup.outputs.skipped != 'true'
-      shell: bash
-      env:
-        RELEASE_BASE_URL: ${{ inputs.release-base-url }}
-        COSIGN_PUBLIC_KEY: ${{ inputs.cosign-public-key }}
-        TAG: ${{ steps.setup.outputs.tag }}
-        ASSET: ${{ steps.setup.outputs.asset }}
-      run: |
-        set -euo pipefail
-
-        base="${RELEASE_BASE_URL%/}"
-        case "$base" in
-          https://*)
-            proto="=https"
-            ;;
-          http://127.0.0.1 | http://127.0.0.1[:/]* | http://localhost | http://localhost[:/]*)
-            proto="=https,http"
-            ;;
-          *)
-            echo "::error::release-base-url must use https; plain http is allowed only for 127.0.0.1 or localhost"
-            exit 1
-            ;;
-        esac
-
-        tmp="$RUNNER_TEMP/specht-action"
-        rm -rf "$tmp"
-        mkdir -p "$tmp"
-
-        # The keyless certificate only exists on keyless releases, so a
-        # key-verified self-test release does not need it.
-        files=("$ASSET" SHA256SUMS SHA256SUMS.sig)
-        if [[ -z "$COSIGN_PUBLIC_KEY" ]]; then
-          files+=(SHA256SUMS.pem)
-        fi
-        for f in "${files[@]}"; do
-          echo "downloading ${base}/${TAG}/${f}"
-          curl --fail --location --retry 3 --retry-delay 2 --silent --show-error \
-            --proto "$proto" --proto-redir "$proto" \
-            --output "$tmp/$f" "${base}/${TAG}/${f}"
-        done
+        # The public action clears the test-only overrides, so only the
+        # self-test action can redirect the download origin or the keyless
+        # verification policy.
+        SPECHT_SELFTEST: ""
+        SPECHT_RELEASE_BASE_URL: ""
+        SPECHT_COSIGN_PUBLIC_KEY: ""
+        SPECHT_CERTIFICATE_IDENTITY: ""
+        SPECHT_INPUT_VERSION: ${{ inputs.version }}
+        SPECHT_INPUT_API_KEY: ${{ inputs.api-key }}
+        SPECHT_ACTION_REF: ${{ github.action_ref }}
+        SPECHT_EVENT_NAME: ${{ github.event_name }}
+        SPECHT_PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        SPECHT_PR_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+      run: bash "${{ github.action_path }}/action/specht-gate.sh" prepare
 
     - name: Install cosign
       id: cosign
       if: steps.setup.outputs.skipped != 'true'
       uses: sigstore/cosign-installer@053f9b74638557590800a301da1ba82351507e2c # v3.8.1
 
-    - name: Verify the signature and the archive checksum
-      id: verify
+    - name: Download, verify and run the Specht adapter
+      id: gate
       if: steps.setup.outputs.skipped != 'true'
       shell: bash
       env:
-        TAG: ${{ steps.setup.outputs.tag }}
-        ASSET: ${{ steps.setup.outputs.asset }}
-        OS: ${{ steps.setup.outputs.os }}
-        COSIGN_PUBLIC_KEY: ${{ inputs.cosign-public-key }}
-      run: |
-        set -euo pipefail
-
-        tmp="$RUNNER_TEMP/specht-action"
-        if [[ -n "$COSIGN_PUBLIC_KEY" ]]; then
-          key="$tmp/cosign.pub"
-          if [[ -f "$COSIGN_PUBLIC_KEY" ]]; then
-            key="$COSIGN_PUBLIC_KEY"
-          else
-            printf '%s\n' "$COSIGN_PUBLIC_KEY" >"$key"
-          fi
-          cosign verify-blob \
-            --key "$key" \
-            --signature "$tmp/SHA256SUMS.sig" \
-            "$tmp/SHA256SUMS"
-        else
-          # Keyless: the signature must come from this repository's release
-          # workflow at the tag the action downloads.
-          cosign verify-blob \
-            --certificate "$tmp/SHA256SUMS.pem" \
-            --signature "$tmp/SHA256SUMS.sig" \
-            --certificate-identity "https://github.com/minh-tg/specht/.github/workflows/release.yml@refs/tags/${TAG}" \
-            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
-            "$tmp/SHA256SUMS"
-        fi
-
-        cd "$tmp"
-        line="$(awk -v asset="$ASSET" '$2 == asset { print }' SHA256SUMS)"
-        if [[ -z "$line" ]]; then
-          echo "::error::SHA256SUMS has no entry for ${ASSET}"
-          exit 1
-        fi
-        if [[ "$OS" == darwin ]]; then
-          printf '%s\n' "$line" | shasum -a 256 -c -
-        else
-          printf '%s\n' "$line" | sha256sum -c -
-        fi
-
-    - name: Run the adapter
-      id: run
-      if: steps.setup.outputs.skipped != 'true'
-      shell: bash
-      env:
-        INPUT_API_URL: ${{ inputs.api-url }}
-        INPUT_API_KEY: ${{ inputs.api-key }}
-        INPUT_PROJECT: ${{ inputs.project }}
-        INPUT_FILE: ${{ inputs.file }}
-        INPUT_TOOL: ${{ inputs.tool }}
-        INPUT_INTRODUCED_ONLY: ${{ inputs.introduced-only }}
-        INPUT_BASE_REF: ${{ inputs.base-ref }}
-        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
-        EVENT_NAME: ${{ github.event_name }}
-        EVENT_BASE_REF: ${{ github.base_ref }}
-        ASSET: ${{ steps.setup.outputs.asset }}
-        OS: ${{ steps.setup.outputs.os }}
-        # The adapter reads SPECHT_* today and the plain names on older
-        # releases; both are set. The key is never echoed.
-        SPECHT_API_URL: ${{ inputs.api-url }}
-        SPECHT_API_KEY: ${{ inputs.api-key }}
-        API_URL: ${{ inputs.api-url }}
-        API_KEY: ${{ inputs.api-key }}
-        GITHUB_TOKEN: ${{ inputs.github-token }}
-      run: |
-        set -euo pipefail
-
-        tmp="$RUNNER_TEMP/specht-action"
-        mkdir -p "$tmp/adapter"
-        case "$OS" in
-          windows) unzip -q -o "$tmp/$ASSET" -d "$tmp/adapter" ;;
-          *) tar -xzf "$tmp/$ASSET" -C "$tmp/adapter" ;;
-        esac
-        bin="$tmp/adapter/specht-adapter"
-        if [[ "$OS" == windows ]]; then
-          bin="${bin}.exe"
-        fi
-        chmod +x "$bin"
-
-        args=(-file "$INPUT_FILE" -tool "$INPUT_TOOL")
-        if [[ -n "$INPUT_PROJECT" ]]; then
-          args+=(-project "$INPUT_PROJECT")
-        fi
-
-        introduced="$INPUT_INTRODUCED_ONLY"
-        if [[ -z "$introduced" ]]; then
-          if [[ "$EVENT_NAME" == pull_request* ]]; then
-            introduced=true
-          else
-            introduced=false
-          fi
-        fi
-        if [[ "$introduced" == "true" ]]; then
-          args+=(-introduced-only)
-        fi
-
-        base_ref="$INPUT_BASE_REF"
-        if [[ -z "$base_ref" ]]; then
-          base_ref="${EVENT_BASE_REF:-}"
-        fi
-        if [[ -n "$base_ref" ]]; then
-          args+=(-base-ref "$base_ref")
-        fi
-
-        # The step exit code is the adapter's: 0 pass, 1 blocked, 2 error.
-        "$bin" "${args[@]}"
+        SPECHT_SELFTEST: ""
+        SPECHT_RELEASE_BASE_URL: ""
+        SPECHT_COSIGN_PUBLIC_KEY: ""
+        SPECHT_CERTIFICATE_IDENTITY: ""
+        SPECHT_INPUT_VERSION: ${{ inputs.version }}
+        SPECHT_INPUT_API_URL: ${{ inputs.api-url }}
+        SPECHT_INPUT_API_KEY: ${{ inputs.api-key }}
+        SPECHT_INPUT_PROJECT: ${{ inputs.project }}
+        SPECHT_INPUT_FILE: ${{ inputs.file }}
+        SPECHT_INPUT_TOOL: ${{ inputs.tool }}
+        SPECHT_INPUT_INTRODUCED_ONLY: ${{ inputs.introduced-only }}
+        SPECHT_INPUT_BASE_REF: ${{ inputs.base-ref }}
+        SPECHT_INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        SPECHT_ACTION_REF: ${{ github.action_ref }}
+        SPECHT_EVENT_NAME: ${{ github.event_name }}
+        SPECHT_PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        SPECHT_PR_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+        SPECHT_EVENT_BASE_REF: ${{ github.base_ref }}
+      run: bash "${{ github.action_path }}/action/specht-gate.sh" run
