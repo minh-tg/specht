@@ -71,7 +71,10 @@ func TestE2E_FindingIntelOnDetail(t *testing.T) {
 		for _, f := range findings {
 			ids = append(ids, f.ID)
 		}
-		armed := awaitDetailIntel(t, ids, func(*intelBlock) bool { return true })
+		// The KEV catalog is reused for the intel TTL, so a catalog fetched
+		// for an earlier subtest, before this CVE was armed, can still be
+		// served. Wait for the refresh after it expires to carry both signals.
+		armed := awaitDetailIntel(t, ids, func(in *intelBlock) bool { return in.EPSS != nil && in.KEV })
 		var bare *findingDetail
 		for _, id := range ids {
 			if id != armed.ID {
