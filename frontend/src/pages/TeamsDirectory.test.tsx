@@ -303,7 +303,6 @@ describe("TeamsDirectory", () => {
 
   it("shows why deleting a team failed on that team's card", async () => {
     const user = userEvent.setup();
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     deleteTeamError = {
       status: 409,
       code: "team_linked",
@@ -312,9 +311,40 @@ describe("TeamsDirectory", () => {
     renderTeamsDirectory();
 
     await user.click((await screen.findAllByRole("button", { name: "Delete" }))[0]);
+    await user.click(await screen.findByRole("button", { name: "Delete team" }));
 
     const message = await screen.findByText("team is still linked to a project");
     expect(message.closest("div.bg-card")).toHaveTextContent("Security Operations");
     expect(message.closest("div.bg-card")).not.toHaveTextContent("Backend Platform");
+  });
+
+  it("asks before deleting a team, names it, and deletes nothing on cancel", async () => {
+    const user = userEvent.setup();
+    renderTeamsDirectory();
+
+    await user.click((await screen.findAllByRole("button", { name: "Delete" }))[0]);
+    const dialog = await screen.findByRole("alertdialog", { name: /^Delete .+\?$/ });
+    expect(dialog).toHaveTextContent("This cannot be undone.");
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(fetchCalls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+
+  it("closes the roster with Escape and returns focus to the button that opened it", async () => {
+    const user = userEvent.setup();
+    renderTeamsDirectory();
+
+    const opener = (await screen.findAllByRole("button", { name: "Manage Roster" }))[0];
+    await user.click(opener);
+    expect(await screen.findByRole("dialog", { name: /members$/ })).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(opener).toHaveFocus();
   });
 });
