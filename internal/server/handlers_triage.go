@@ -20,7 +20,6 @@ const (
 	triageMsgInvalidBody          = "invalid request body"
 	triageMsgFindingIDRequired    = "finding id is required"
 	triageMsgFindingNotFound      = "finding not found"
-	triageMsgFindingAccessDenied  = "API key does not have access to this finding"
 	triageMsgSlugRequired         = "project slug is required"
 	triageMsgProjectAdminRequired = "project admin is required"
 	triageMsgPolicyTemplateAbsent = "policy template not found"
@@ -75,7 +74,7 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrFindingNotFound):
 			respondError(w, http.StatusNotFound, "not_found", triageMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
+			respondAccessDenied(w, r, "finding")
 		case errors.Is(err, usecase.ErrInvalidFindingID):
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		case errors.Is(err, usecase.ErrReasonRequired):
@@ -108,7 +107,7 @@ func (h *Handler) VerifyFinding(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrFindingNotFound):
 			respondError(w, http.StatusNotFound, "not_found", triageMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
+			respondAccessDenied(w, r, "finding")
 		case errors.Is(err, usecase.ErrInvalidFindingID):
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		default:
@@ -164,7 +163,7 @@ func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrInvalidFindingID):
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
+			respondAccessDenied(w, r, "finding")
 		case errors.Is(err, usecase.ErrReasonRequired):
 			respondError(w, http.StatusUnprocessableEntity, "reason_required", "reason is required for this analysis state")
 		case errors.Is(err, usecase.ErrReasonTooLong):
@@ -259,7 +258,7 @@ func (h *Handler) PreviewPRCheck(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
-			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this report")
+			respondAccessDenied(w, r, "report")
 			return
 		}
 		slog.Error("preview pr check", "project", slug, "error", err)
@@ -285,7 +284,7 @@ func (h *Handler) PreviewPatch(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrFindingNotFound):
 			respondError(w, http.StatusNotFound, "not_found", triageMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
+			respondAccessDenied(w, r, "finding")
 		default:
 			slog.Error("preview patch", "finding_id", id, "error", err)
 			respondError(w, http.StatusInternalServerError, "patch_failed", "could not plan patch")
@@ -323,7 +322,7 @@ func (h *Handler) PreviewNotification(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrFindingNotFound):
 			respondError(w, http.StatusNotFound, "not_found", triageMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
+			respondAccessDenied(w, r, "finding")
 		default:
 			slog.Error("preview notification", "finding_id", id, "error", err)
 			respondError(w, http.StatusInternalServerError, "notify_failed", "could not plan notification")
@@ -815,7 +814,7 @@ func (h *Handler) ListFindingEvents(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrFindingNotFound):
 			respondError(w, http.StatusNotFound, "not_found", triageMsgFindingNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "project_access_denied", triageMsgFindingAccessDenied)
+			respondAccessDenied(w, r, "finding")
 		default:
 			slog.Error("list finding events", "finding_id", id, "error", err)
 			respondError(w, http.StatusInternalServerError, "events_failed", "could not list finding events")

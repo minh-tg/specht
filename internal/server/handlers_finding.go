@@ -22,7 +22,7 @@ func (h *Handler) GetFinding(w http.ResponseWriter, r *http.Request) {
 	finding, err := h.usecase.GetFinding(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
-			respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding")
+			respondAccessDenied(w, r, "finding")
 			h.audit.HTTP(r, audit.EventGetFinding, audit.OutcomeFailure, "", id, err)
 		} else if _, parseErr := uuid.Parse(id); parseErr != nil {
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")

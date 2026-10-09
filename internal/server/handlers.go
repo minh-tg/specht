@@ -332,14 +332,6 @@ const maxPageSize = 500
 // msgProjectNotFound is the shared not-found message for project responses.
 const msgProjectNotFound = "project not found"
 
-// Access-denied messages for project routes. The session variant does not
-// mention API keys, and it is worded so it also fits a project that does not
-// exist.
-const (
-	msgProjectAccessDeniedAPIKey  = "API key does not have access to this project"
-	msgProjectAccessDeniedSession = "project not found or you do not have access"
-)
-
 // Request-body size limits. Ingest carries raw scanner output, so it
 // gets a generous cap; every other JSON body carries small, server-derived
 // fields and is capped at 1 MiB. All caps are absolute ceilings: a declared
@@ -397,11 +389,20 @@ func (h *Handler) respondProjectAccessError(w http.ResponseWriter, r *http.Reque
 		respondError(w, http.StatusNotFound, "not_found", msgProjectNotFound)
 		return
 	}
+	respondAccessDenied(w, r, "project")
+}
+
+// respondAccessDenied answers a denied check on a project-scoped resource.
+// resource names the thing being refused ("project", "finding", "report").
+// Every caller gets a 403 with the same code. The message follows the
+// credential: a project key is told it lacks access to the resource, while a
+// signed-in user gets wording that also fits a resource that does not exist.
+func respondAccessDenied(w http.ResponseWriter, r *http.Request, resource string) {
 	if ident := auth.ContextIdentity(r.Context()); ident != nil && ident.IsAPIKey {
-		respondError(w, http.StatusForbidden, "project_access_denied", msgProjectAccessDeniedAPIKey)
+		respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this "+resource)
 		return
 	}
-	respondError(w, http.StatusForbidden, "project_access_denied", msgProjectAccessDeniedSession)
+	respondError(w, http.StatusForbidden, "project_access_denied", resource+" not found or you do not have access")
 }
 
 // enforceProjectAccess gates slug-scoped routes on tenant membership
