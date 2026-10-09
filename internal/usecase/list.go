@@ -150,9 +150,12 @@ type ReportResponse struct {
 	// against; ScanMode is full or incremental; ChangedFiles lists the
 	// paths an incremental scan covered. Together they keep incremental
 	// scans identified and reproducible.
-	BaseRevision *string    `json:"base_revision,omitempty"`
-	ScanMode     string     `json:"scan_mode,omitempty"`
-	ChangedFiles []string   `json:"changed_files,omitempty"`
+	BaseRevision *string  `json:"base_revision,omitempty"`
+	ScanMode     string   `json:"scan_mode,omitempty"`
+	ChangedFiles []string `json:"changed_files,omitempty"`
+	// ErrorMessage explains a failed report. It holds a fixed, sanitized
+	// reason and is omitted for reports that did not fail.
+	ErrorMessage *string    `json:"error_message,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`
 	CompletedAt  *time.Time `json:"completed_at"`
 }
@@ -242,6 +245,7 @@ func toReport(r port.Report) ReportResponse {
 		BaseRevision:  strOpt(r.BaseRevision),
 		ScanMode:      r.ScanMode,
 		ChangedFiles:  changedFilesOpt(r.ChangedFiles),
+		ErrorMessage:  strOpt(r.ErrorMessage),
 		CreatedAt:     timePtr(r.CreatedAt),
 		CompletedAt:   timeOpt(r.CompletedAt),
 	}

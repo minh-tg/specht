@@ -2047,7 +2047,7 @@ func TestIngestReport_InventoryWriteFailure(t *testing.T) {
 
 	inv := &mockInventoryRepo{}
 	inv.upsertReportPackagesFn = func(ctx context.Context, reportID string, packages []port.PackageRef) error {
-		return fmt.Errorf("db unavailable")
+		return fmt.Errorf("dial postgres://specht:hunter2@db:5432/specht: connection refused")
 	}
 
 	reg := scanner.NewRegistry()
@@ -2090,7 +2090,8 @@ func TestIngestReport_InventoryWriteFailure(t *testing.T) {
 	assert.ErrorContains(t, err, "persist package inventory")
 	assert.Equal(t, "failed", failedStatus, "a failed inventory batch must mark the report failed, not leave it processing")
 	require.NotNil(t, failedError, "a failed report must record why it failed")
-	assert.Contains(t, *failedError, "persist package inventory")
+	assert.Equal(t, reportFailureInventory, *failedError)
+	assert.NotContains(t, *failedError, "hunter2", "the stored reason must not carry raw store errors")
 }
 
 func TestIngestReport_FindingsFailureMarksReportFailed(t *testing.T) {

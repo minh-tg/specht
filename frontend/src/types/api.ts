@@ -226,6 +226,7 @@ export interface Report {
   total_findings: number | null;
   branch: string | null;
   commit_sha: string | null;
+  error_message?: string;
   created_at: string;
   completed_at: string | null;
 }

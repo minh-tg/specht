@@ -336,7 +336,8 @@ export interface paths {
      * List the scanner catalog
      * @description Every registered scanner with its version, the finding kinds it emits,
      *     the scan types it accepts, and whether it can detect its own format.
-     *     Session admins only — project keys are refused.
+     *     Any signed-in user may read it, since the upload form needs it for
+     *     every role that can ingest. Project keys are refused.
      */
     get: operations["listScanners"];
     put?: never;
@@ -1469,6 +1470,8 @@ export interface components {
       /** @enum {string} */
       scan_mode?: "full" | "incremental";
       changed_files?: string[];
+      /** @description Fixed, sanitized reason a failed report failed. Absent unless status is failed. */
+      error_message?: string;
       /** Format: date-time */
       created_at: string;
       /** Format: date-time */

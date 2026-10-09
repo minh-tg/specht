@@ -1251,6 +1251,7 @@ func reportRowToPort(re sqlc.Report) port.Report {
 		BaseRevision:  stringFromTextPtr(re.BaseRevision),
 		ChangedFiles:  changedFilesToPort(re.ChangedFiles),
 		ScanMode:      re.ScanMode,
+		ErrorMessage:  stringFromTextPtr(re.ErrorMessage),
 		CreatedAt:     re.CreatedAt.Time,
 		CompletedAt:   timePtrFromTimestamptz(re.CompletedAt),
 	}

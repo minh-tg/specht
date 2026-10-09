@@ -196,6 +196,43 @@ func TestReportRepo_CreateAndGetByID(t *testing.T) {
 	assert.True(t, updated.CompletedAt.Valid)
 }
 
+func TestReportRepo_FailedStatusKeepsErrorMessage(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	project, err := repos.Projects.Create(context.Background(), sqlc.CreateProjectParams{
+		Slug:                "failed-app",
+		Name:                "Failed App",
+		Description:         pgtype.Text{Valid: false},
+		DeploymentThreshold: "high",
+		Settings:            []byte("{}"),
+	})
+	require.NoError(t, err)
+
+	report, err := repos.Reports.Create(context.Background(), CreateReportParams{
+		ProjectID:     project.ID,
+		ToolName:      "trivy",
+		ToolVersion:   pgtype.Text{Valid: false},
+		ScanType:      "image",
+		ScanTarget:    pgtype.Text{Valid: false},
+		ScanScope:     []byte(`{}`),
+		Branch:        pgtype.Text{Valid: false},
+		CommitSha:     pgtype.Text{Valid: false},
+		RawReportHash: pgtype.Text{Valid: false},
+		ParserVersion: pgtype.Text{Valid: false},
+	})
+	require.NoError(t, err)
+
+	reason := "Internal error: could not store findings."
+	_, err = repos.Reports.UpdateStatus(context.Background(), report.ID, project.ID, "failed", 0, pgtype.Text{String: reason, Valid: true})
+	require.NoError(t, err)
+
+	failed, err := repos.Reports.GetByID(context.Background(), report.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "failed", failed.Status)
+	assert.Equal(t, pgtype.Text{String: reason, Valid: true}, failed.ErrorMessage)
+}
+
 func TestReportRepo_ListByProject(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()
