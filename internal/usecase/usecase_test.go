@@ -896,6 +896,8 @@ type mockUserRepo struct {
 	updateDisplayNameFn func(context.Context, string, *string) (port.User, error)
 	setRoleFn           func(context.Context, string, string) (port.User, error)
 	clearPasswordFn     func(context.Context, string) error
+	tokenVersionFn      func(context.Context, string) (int32, error)
+	bumpTokenVersionFn  func(context.Context, string) error
 }
 
 func (m *mockUserRepo) ClearPassword(ctx context.Context, userID string) error {
@@ -903,6 +905,20 @@ func (m *mockUserRepo) ClearPassword(ctx context.Context, userID string) error {
 		return fmt.Errorf("unexpected call to ClearPassword")
 	}
 	return m.clearPasswordFn(ctx, userID)
+}
+
+func (m *mockUserRepo) TokenVersion(ctx context.Context, userID string) (int32, error) {
+	if m.tokenVersionFn == nil {
+		return 0, nil
+	}
+	return m.tokenVersionFn(ctx, userID)
+}
+
+func (m *mockUserRepo) BumpTokenVersion(ctx context.Context, userID string) error {
+	if m.bumpTokenVersionFn == nil {
+		return nil
+	}
+	return m.bumpTokenVersionFn(ctx, userID)
 }
 
 func (m *mockUserRepo) Create(ctx context.Context, email string, displayName, passwordHash *string) (port.User, error) {

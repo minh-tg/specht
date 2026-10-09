@@ -137,6 +137,10 @@ type UserStore interface {
 	// ClearPassword removes the account's password hash so it can no longer
 	// sign in with a password. It is idempotent.
 	ClearPassword(ctx context.Context, userID string) error
+	// TokenVersion returns the account's current access-token generation.
+	TokenVersion(ctx context.Context, userID string) (int32, error)
+	// BumpTokenVersion invalidates every access token issued before the call.
+	BumpTokenVersion(ctx context.Context, userID string) error
 	// UpdateDisplayName changes a user's display name. A nil displayName
 	// clears it.
 	UpdateDisplayName(ctx context.Context, userID string, displayName *string) (User, error)

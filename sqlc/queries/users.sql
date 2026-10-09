@@ -25,6 +25,12 @@ WHERE (sqlc.arg(email_filter)::text = '' OR email ILIKE ('%' || sqlc.arg(email_f
 ORDER BY email ASC, id ASC
 LIMIT sqlc.arg(page_limit) OFFSET sqlc.arg(page_offset);
 
+-- name: GetUserTokenVersion :one
+SELECT token_version FROM users WHERE id = $1;
+
+-- name: BumpUserTokenVersion :exec
+UPDATE users SET token_version = token_version + 1, updated_at = NOW() WHERE id = $1;
+
 -- name: UpdateUserDisplayName :one
 UPDATE users SET display_name = $2, updated_at = NOW() WHERE id = $1
 RETURNING *;
