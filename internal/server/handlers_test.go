@@ -799,6 +799,29 @@ func TestIngestReport_Success(t *testing.T) {
 	assert.Equal(t, "sha256:deadbeef", got.Digest)
 }
 
+func TestIngestReport_Replay(t *testing.T) {
+	mock := &mockUsecases{
+		ingestReportFn: func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
+			return &usecase.IngestReportOutput{ReportID: "rep-existing", TotalFindings: 2, Replayed: true}, nil
+		},
+	}
+	router := testRouter(mock)
+	body := strings.NewReader(`{"project":"my-app","scanner":"trivy","raw_data":{"image":"myapp:latest"},"commit_sha":"abc"}`)
+	req := httptest.NewRequest("POST", "/api/v1/reports", body)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code, "a replay answers 200, not 201")
+	var resp struct {
+		ReportID string `json:"report_id"`
+		Replayed bool   `json:"replayed"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "rep-existing", resp.ReportID)
+	assert.True(t, resp.Replayed)
+}
+
 func TestIngestReport_Duplicate(t *testing.T) {
 	mock := &mockUsecases{
 		ingestReportFn: func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {

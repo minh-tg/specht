@@ -267,6 +267,10 @@ type ingestResponse struct {
 	FallbackReason   string `json:"fallback_reason,omitempty"`
 	IntroducedCount  int    `json:"introduced_count"`
 	PreExistingCount int    `json:"pre_existing_count"`
+	// Replayed is true when the request matched an already completed report
+	// for the same project, bytes, and commit; the response then carries that
+	// report's id and a freshly evaluated verdict, at HTTP 200.
+	Replayed bool `json:"replayed"`
 }
 
 type apiError struct {

@@ -18,8 +18,10 @@ func TestE2E_IngestFindingsAndGate(t *testing.T) {
 	slug := newProject(t, "ingest")
 	key := mintKey(t, slug)
 
+	var firstReportID string
 	t.Run("api key ingests a report", func(t *testing.T) {
 		resp := ingestFixture(t, slug, key, "high-medium.sarif.json")
+		firstReportID = resp.ReportID
 		require.Equal(t, 2, resp.TotalFindings)
 		require.NotEmpty(t, resp.ReportID)
 		require.Equal(t, "full", resp.ScanMode)
@@ -27,11 +29,13 @@ func TestE2E_IngestFindingsAndGate(t *testing.T) {
 			"the default floor (high) must be breached by the high finding")
 	})
 
-	t.Run("identical report bytes are rejected as duplicate", func(t *testing.T) {
-		status, raw := doJSON(t, http.MethodPost, "/api/v1/reports", key,
-			ingestBody(t, slug, "high-medium.sarif.json"))
-		require.Equal(t, http.StatusConflict, status)
-		require.Contains(t, string(raw), "duplicate_report")
+	t.Run("identical report bytes for the same commit replay the stored report", func(t *testing.T) {
+		replay := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", key,
+			ingestBody(t, slug, "high-medium.sarif.json"), http.StatusOK)
+		require.True(t, replay.Replayed)
+		require.Equal(t, firstReportID, replay.ReportID, "the replay names the stored report")
+		require.True(t, replay.ThresholdBreached,
+			"the freshly evaluated verdict still breaches the default floor")
 	})
 
 	t.Run("findings are listed with expected severities and states", func(t *testing.T) {

@@ -106,7 +106,11 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeSuccess, req.Project, req.Scanner, nil)
-	respondJSON(w, http.StatusCreated, ingestResponse{
+	status := http.StatusCreated
+	if result.Replayed {
+		status = http.StatusOK
+	}
+	respondJSON(w, status, ingestResponse{
 		ReportID:          result.ReportID,
 		TotalFindings:     result.TotalFindings,
 		ThresholdBreached: result.ThresholdBreached,
@@ -114,5 +118,6 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		FallbackReason:    result.FallbackReason,
 		IntroducedCount:   result.IntroducedCount,
 		PreExistingCount:  result.PreExistingCount,
+		Replayed:          result.Replayed,
 	})
 }
