@@ -42,15 +42,6 @@ type ProjectTeamResponse struct {
 // validTeamMemberRoles are the roles a team membership may carry.
 var validTeamMemberRoles = map[string]bool{"admin": true, "member": true}
 
-// validLinkRoles are the project roles a team link may confer.
-var validLinkRoles = map[string]bool{
-	auth.RoleAdmin:   true,
-	auth.RoleManager: true,
-	auth.RoleMember:  true,
-	"editor":         true,
-	"viewer":         true,
-}
-
 // CreateTeam creates a team in the central company directory; the creator becomes its admin.
 // Only global administrators may create teams; API keys never may.
 func (u *Usecases) CreateTeam(ctx context.Context, name, description string) (*TeamResponse, error) {
@@ -276,7 +267,7 @@ func (u *Usecases) LinkProjectTeam(ctx context.Context, projectSlug, teamID, rol
 		return nil, err
 	}
 	role = normalizeMemberRole(role)
-	if !validLinkRoles[role] {
+	if !memberRoles[role] {
 		return nil, fmt.Errorf("invalid link role %q: want admin, manager, or member", role)
 	}
 	// Delegation ceiling: cannot link a team with a role higher than caller's rank.
