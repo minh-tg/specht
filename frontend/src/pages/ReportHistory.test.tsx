@@ -126,6 +126,57 @@ describe("ReportHistory", () => {
     expect(failedCard?.className).toContain("border-destructive");
   });
 
+  it("shows why a failed report failed under its status", async () => {
+    mockReports([
+      {
+        id: "r1",
+        project_id: "p1",
+        tool_name: "trivy",
+        tool_version: null,
+        scan_type: "filesystem",
+        scan_target: null,
+        status: "failed",
+        total_findings: null,
+        branch: null,
+        commit_sha: null,
+        error_message: "scanner exited with status 2: unsupported lockfile version",
+        created_at: "2025-01-01T00:00:00Z",
+        completed_at: null,
+      },
+    ]);
+    renderWithProviders(<ReportHistory />);
+
+    const reason = await screen.findByText(
+      "scanner exited with status 2: unsupported lockfile version",
+    );
+    expect(reason).toHaveClass("text-muted-foreground", "break-words");
+    expect(screen.getByText("Failed")).toBeInTheDocument();
+  });
+
+  it("omits the reason line when a failed report has no error message", async () => {
+    mockReports([
+      {
+        id: "r1",
+        project_id: "p1",
+        tool_name: "trivy",
+        tool_version: null,
+        scan_type: "filesystem",
+        scan_target: null,
+        status: "failed",
+        total_findings: null,
+        branch: null,
+        commit_sha: null,
+        created_at: "2025-01-01T00:00:00Z",
+        completed_at: null,
+      },
+    ]);
+    renderWithProviders(<ReportHistory />);
+
+    expect(await screen.findByText("Failed")).toBeInTheDocument();
+    expect(screen.getByText("trivy").closest("div.bg-card")).not.toHaveTextContent("unsupported");
+    expect(screen.queryByText(/status 2/)).not.toBeInTheDocument();
+  });
+
   it("labels a report the server is still processing", async () => {
     // The server stores the unfinished state as `processing`; the API document
     // calls it `pending`. Both read as Processing and neither is echoed raw.
