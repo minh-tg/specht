@@ -1,4 +1,5 @@
-import { QueryClient } from "@tanstack/react-query";
+import { createQueryClient } from "@/api/queryClient";
+import type { QueryClient } from "@tanstack/react-query";
 
 /** Statuses the `Response` constructor refuses to pair with a body. */
 const NULL_BODY_STATUSES = new Set([204, 205, 304]);
@@ -23,7 +24,10 @@ export function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-/** A `QueryClient` that never retries, so tests fail fast on a mocked fetch. */
+/**
+ * The app's `QueryClient` without query retries, so tests fail fast on a mocked
+ * fetch. Mutation success toasts still fire; they show when a test renders a Toaster.
+ */
 export function createTestQueryClient(): QueryClient {
-  return new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return createQueryClient(false);
 }

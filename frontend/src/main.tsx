@@ -1,14 +1,13 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
-import { shouldRetryQuery } from "./api/retry";
+import { createQueryClient } from "./api/queryClient";
 import App from "./App.tsx";
+import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";
 
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: shouldRetryQuery } },
-});
+const queryClient = createQueryClient();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
@@ -16,6 +15,7 @@ createRoot(document.getElementById("root")!).render(
       <TooltipProvider delay={300}>
         <App />
       </TooltipProvider>
+      <Toaster />
     </QueryClientProvider>
   </StrictMode>,
 );
