@@ -1299,7 +1299,7 @@ func testToken(t *testing.T) string {
 	t.Helper()
 	a, err := auth.NewJWTAuthenticator(testJWTSecret)
 	require.NoError(t, err)
-	tok, err := a.CreateToken("test-user", "test@example.com", auth.RoleAdmin)
+	tok, err := a.CreateToken("test-user", "test@example.com", auth.RoleAdmin, 0)
 	require.NoError(t, err)
 	return tok
 }
@@ -1308,7 +1308,7 @@ func makeTestToken(t *testing.T, role string) string {
 	t.Helper()
 	a, err := auth.NewJWTAuthenticator(testJWTSecret)
 	require.NoError(t, err)
-	tok, err := a.CreateToken("test-user", "test@example.com", role)
+	tok, err := a.CreateToken("test-user", "test@example.com", role, 0)
 	require.NoError(t, err)
 	return tok
 }
@@ -2862,7 +2862,7 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 }
 
 func TestAuthMiddleware_CaseInsensitiveBearer(t *testing.T) {
-	tok, err := testJWTAuth.CreateToken("user-1", "user@example.com", auth.RoleAdmin)
+	tok, err := testJWTAuth.CreateToken("user-1", "user@example.com", auth.RoleAdmin, 0)
 	require.NoError(t, err)
 
 	mw := AuthMiddleware(testJWTAuth)

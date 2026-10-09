@@ -33,7 +33,7 @@ type OIDCAuthenticator interface {
 
 // TokenIssuer signs tokens for the SSO callback.
 type TokenIssuer interface {
-	CreateToken(userID, email, role string) (string, error)
+	CreateToken(userID, email, role string, tokenVersion int32) (string, error)
 }
 
 // RouterConfig wires the dependencies the API router needs.

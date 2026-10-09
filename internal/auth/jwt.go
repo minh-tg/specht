@@ -20,8 +20,22 @@ const (
 
 // JWTAuthenticator signs and verifies JWT access tokens.
 type JWTAuthenticator struct {
-	secret  []byte
-	revoker Revoker
+	secret   []byte
+	revoker  Revoker
+	versions TokenVersionSource
+}
+
+// TokenVersionSource reports an account's current access-token generation.
+// Access tokens minted for an older generation are rejected.
+type TokenVersionSource interface {
+	TokenVersion(ctx context.Context, userID string) (int32, error)
+}
+
+// WithTokenVersions enables the per-account generation check on every access
+// token. Without it, Authenticate skips that check.
+func (a *JWTAuthenticator) WithTokenVersions(src TokenVersionSource) *JWTAuthenticator {
+	a.versions = src
+	return a
 }
 
 // NewJWTAuthenticator builds a JWT authenticator with the given HMAC secret.
@@ -47,7 +61,7 @@ func NewJWTAuthenticatorWithRevoker(secret string, revoker Revoker) (*JWTAuthent
 	return &JWTAuthenticator{secret: []byte(secret), revoker: revoker}, nil
 }
 
-func (a *JWTAuthenticator) CreateToken(userID, email, role string) (string, error) {
+func (a *JWTAuthenticator) CreateToken(userID, email, role string, tokenVersion int32) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
 		"iss":   tokenIssuer,
@@ -55,6 +69,7 @@ func (a *JWTAuthenticator) CreateToken(userID, email, role string) (string, erro
 		"sub":   userID,
 		"email": email,
 		"role":  role,
+		"tv":    tokenVersion,
 		"jti":   uuid.NewString(),
 		"iat":   now.Unix(),
 		"exp":   now.Add(15 * time.Minute).Unix(),
@@ -150,6 +165,17 @@ func (a *JWTAuthenticator) Authenticate(ctx context.Context, token string) (*Ide
 		}
 	}
 	sub, _ := claims.GetSubject()
+	if a.versions != nil {
+		// Fail closed: a token whose generation cannot be confirmed against the
+		// account is refused, so a lookup error or a missing claim never admits it.
+		current, verErr := a.versions.TokenVersion(ctx, sub)
+		if verErr != nil {
+			return nil, errors.Join(ErrInvalidCredential, verErr)
+		}
+		if tv, ok := claims["tv"].(float64); !ok || int32(tv) != current {
+			return nil, ErrInvalidCredential
+		}
+	}
 	email, _ := claims["email"].(string)
 	role, _ := claims["role"].(string)
 	return &Identity{UserID: sub, Email: email, Role: role}, nil
