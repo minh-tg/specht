@@ -101,8 +101,25 @@ func setWatcherEnabled(t *testing.T, slug string, enabled bool) {
 // advisory evidence and a notification), status reports healthy over API
 // and CLI, and the backfill CLI honors --dry-run before writing.
 func TestE2E_WatcherDaemonLifecycle(t *testing.T) {
+	// Every project this test creates, retired together at the end. The
+	// advisory stays armed and the projects stay enabled while the subtests
+	// run: disarming under a live poll is what wrote a spurious 404 into the
+	// shared watcher health row and failed the status subtest.
+	var created []string
+	t.Cleanup(func() {
+		for _, slug := range created {
+			setWatcherEnabled(t, slug, false)
+		}
+		// One poll interval plus slack: the daemon prunes the disabled
+		// projects and any poll already in flight finishes while the feed
+		// still serves the advisory.
+		time.Sleep(1500 * time.Millisecond)
+		fakes.osv.disarm()
+	})
+
 	t.Run("armed advisory becomes a gated watcher finding exactly once", func(t *testing.T) {
 		slug := newProject(t, "watcher-advisory")
+		created = append(created, slug)
 		// Let the daemon poll the still-empty project first, so its watermark is
 		// already set when the scan and the advisory arrive. That is the realistic
 		// order (a new advisory appears after the project was first polled) and it
@@ -111,7 +128,6 @@ func TestE2E_WatcherDaemonLifecycle(t *testing.T) {
 		ingestRaw(t, slug, "trivy", "trivy-npm-packages-scan.json", nil)
 		notifyBefore := fakes.notifySink.count()
 		armLodashAdvisory()
-		defer fakes.osv.disarm()
 
 		var found []scanFinding
 		deadline := time.Now().Add(25 * time.Second)
@@ -173,14 +189,20 @@ func TestE2E_WatcherDaemonLifecycle(t *testing.T) {
 	})
 
 	t.Run("watcher status reports healthy over API and CLI", func(t *testing.T) {
+		// Wait for a fully healthy row rather than a recorded attempt: the
+		// row is shared by every project, so a transient failure clears only
+		// on the next successful round.
 		var status watcherStatus
 		requireEventually(t, 20*time.Second, func() bool {
 			s, ok := fetchWatcherStatus()
-			if ok {
-				status = s
+			if !ok {
+				return false
 			}
-			return ok && status.LastSuccessfulPollAt != "" && status.LastPollAttemptAt != ""
-		}, "status records a successful poll")
+			status = s
+			return status.LastSuccessfulPollAt != "" && status.LastPollAttemptAt != "" &&
+				status.LastError == "" && status.ConsecutiveFailures == 0 &&
+				status.Healthy && !status.Stale
+		}, "status reports a completed successful poll")
 		require.Empty(t, status.LastError)
 		require.Zero(t, status.ConsecutiveFailures)
 		require.True(t, status.Healthy)
@@ -196,14 +218,14 @@ func TestE2E_WatcherDaemonLifecycle(t *testing.T) {
 
 	t.Run("backfill dry-run persists nothing and the real run writes", func(t *testing.T) {
 		slug := newProject(t, "watcher-backfill")
+		created = append(created, slug)
 		// Disable BEFORE ingesting or arming: the live daemon polls every
 		// second, and a project that exists, has inventory, and sees the
-		// armed advisory inside the create→disable window would get its
+		// armed advisory inside the create to disable window would get its
 		// finding created by the daemon instead of the CLI.
 		setWatcherEnabled(t, slug, false)
 		ingestRaw(t, slug, "trivy", "trivy-npm-packages-scan.json", nil)
 		armLodashAdvisory()
-		defer fakes.osv.disarm()
 
 		// The disabled project stays out of the live schedule.
 		time.Sleep(3 * time.Second)

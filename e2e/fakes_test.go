@@ -94,11 +94,23 @@ type fakeOSV struct {
 	srv     *httptest.Server
 	queries int
 	last    []byte
-	armed   map[string]map[string]any // package name → full OSV record
+	// armed is the querybatch surface: package name to the record the feed
+	// currently advertises. disarm clears it so the next subtest starts from
+	// fresh expectations.
+	armed map[string]map[string]any
+	// resolvable holds every advisory the fake has advertised, keyed by ID.
+	// The record fetch resolves retired records too: a poll that listed an ID
+	// just before disarm must not get a 404, or that 404 lands in the shared
+	// watcher health row as a failure unrelated to the code under test. A
+	// real feed does not drop a record between the ID listing and the fetch.
+	resolvable map[string]map[string]any
 }
 
 func newFakeOSV() *fakeOSV {
-	o := &fakeOSV{armed: map[string]map[string]any{}}
+	o := &fakeOSV{
+		armed:      map[string]map[string]any{},
+		resolvable: map[string]map[string]any{},
+	}
 	o.srv = httptest.NewServer(http.HandlerFunc(o.serve))
 	return o
 }
@@ -138,13 +150,7 @@ func (o *fakeOSV) serve(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/vulns/") && r.Method == http.MethodGet:
 		id := strings.TrimPrefix(r.URL.Path, "/vulns/")
 		o.mu.Lock()
-		var record map[string]any
-		for _, rec := range o.armed {
-			if rid, _ := rec["id"].(string); rid == id {
-				record = rec
-				break
-			}
-		}
+		record := o.resolvable[id]
 		o.mu.Unlock()
 		if record == nil {
 			http.NotFound(w, r)
@@ -157,14 +163,20 @@ func (o *fakeOSV) serve(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// arm advertises record for every query about pkgName.
+// arm advertises record for every query about pkgName and keeps it
+// resolvable by ID for the record fetch.
 func (o *fakeOSV) arm(pkgName string, record map[string]any) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.armed[pkgName] = record
+	if id, _ := record["id"].(string); id != "" {
+		o.resolvable[id] = record
+	}
 }
 
-// disarm drops every armed advisory (fresh expectations per subtest).
+// disarm retires every advertised advisory (fresh expectations per subtest).
+// Already-listed IDs stay resolvable so an in-flight two-phase poll never sees
+// a record vanish between querybatch and the record fetch.
 func (o *fakeOSV) disarm() {
 	o.mu.Lock()
 	defer o.mu.Unlock()
