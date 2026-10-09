@@ -244,6 +244,16 @@ func publishPreview(ctx context.Context, f *adapterFlags, payload client.IngestP
 	}
 }
 
+// printChangeLink writes the Specht change page URL to stdout so that GitLab
+// and local users see it too, not only GitHub step summaries and check runs.
+// The report id, when known, tells the change page which report to open. A
+// missing project or commit omits the line entirely.
+func printChangeLink(w io.Writer, apiURL, project, commit, reportID string) {
+	if link := changeURLWithReport(apiURL, project, commit, reportID); link != "" {
+		writeDiagnosticLine(w, "View this change in Specht: "+link)
+	}
+}
+
 // reportIntroducedGate prints the change-scoped verdict and returns its
 // exit code (0 pass, 1 breached).
 func reportIntroducedGate(resp *client.IngestResponse, preview *client.PRCheckPreview, payload client.IngestPayload, stderr io.Writer) int {
@@ -316,15 +326,16 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 		clientOptions = append(clientOptions, client.WithHTTPClient(hc))
 	}
 	cl := client.New(apiURL, clientOptions...).WithContext(ctx)
-	return runReportWorkflow(ctx, cl, f, payload, apiURL, stderr, hc)
+	return runReportWorkflow(ctx, cl, f, payload, apiURL, stdout, stderr, hc)
 }
 
-func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, payload client.IngestPayload, apiURL string, stderr io.Writer, hc *http.Client) int {
+func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, payload client.IngestPayload, apiURL string, stdout, stderr io.Writer, hc *http.Client) int {
 	resp, err := cl.IngestReport(&payload)
 	if err != nil {
 		writeDiagnostic(stderr, "error: ingest failed: %v\n", err)
 		return 2
 	}
+	printChangeLink(stdout, apiURL, payload.Project, payload.CommitSha, resp.ReportID)
 	if resp.FallbackReason != "" {
 		writeDiagnostic(stderr, "⚠️  BASELINE WARNING: %s\n", resp.FallbackReason)
 		if strings.EqualFold(f.baselinePolicy, "fail") {
