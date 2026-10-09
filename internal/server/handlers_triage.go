@@ -245,12 +245,18 @@ func (h *Handler) PreviewPRCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// An empty severity is no request: the project policy floor applies.
+	var minRank int16
+	if sev := q.Get("severity"); sev != "" {
+		minRank = parseMinSeverityRank(sev)
+	}
+
 	result, err := h.usecase.PreviewPRCheck(r.Context(), usecase.PRCheckPreviewInput{
 		ProjectSlug:     slug,
 		Provider:        q.Get("provider"),
 		CommitSha:       commit,
 		ReportID:        q.Get("report_id"),
-		MinSeverityRank: parseMinSeverityRank(q.Get("severity")),
+		MinSeverityRank: minRank,
 	})
 	if err != nil {
 		if errors.Is(err, usecase.ErrUnknownProvider) {

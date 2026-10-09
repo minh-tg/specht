@@ -56,8 +56,9 @@ type IngestReportInput struct {
 	BaseRevision string
 	ChangedFiles []string
 	ScanMode     string
-	// GateSeverity and GateStatus override which findings count as blocking
-	// for the post-ingest threshold check (defaults: high/critical, open).
+	// GateSeverity and GateStatus narrow which findings count as blocking
+	// for the post-ingest threshold check. GateSeverity can only tighten the
+	// project policy floor; an empty list keeps the policy floor.
 	GateSeverity []string
 	GateStatus   []string
 	// GateIntroducedOnly scopes the post-ingest threshold check to findings

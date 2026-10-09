@@ -286,11 +286,11 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 		return nil, err
 	}
 
-	// A non-positive floor means "no explicit severity": the project's
-	// effective policy decides. An explicit floor always wins.
-	floor := minSeverityRank
-	if floor <= 0 {
-		floor = u.effectiveSeverityFloor(ctx, project, nil)
+	// The project policy sets the floor; a positive requested rank can only
+	// tighten it. Zero means no explicit severity.
+	floor, policy, err := u.gateFloor(ctx, project, minSeverityRank)
+	if err != nil {
+		return nil, fmt.Errorf("resolve policy: %w", err)
 	}
 
 	u.initGate()
@@ -302,11 +302,6 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 	reachability := make(map[string]string, len(decision.BlockedByReachability))
 	for id, state := range decision.BlockedByReachability {
 		reachability[id] = string(state)
-	}
-
-	policy, err := u.effectivePolicy(ctx, project)
-	if err != nil {
-		return nil, fmt.Errorf("resolve policy: %w", err)
 	}
 
 	return &GateStatusOutput{
@@ -333,11 +328,11 @@ func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug stri
 		return nil, err
 	}
 
-	// Same floor resolution as GetGateStatus: a non-positive floor means
-	// "no explicit severity", so the project's effective policy decides.
-	floor := minSeverityRank
-	if floor <= 0 {
-		floor = u.effectiveSeverityFloor(ctx, project, nil)
+	// The project policy sets the floor; a positive requested rank can only
+	// tighten it. Zero means no explicit severity.
+	floor, policy, err := u.gateFloor(ctx, project, minSeverityRank)
+	if err != nil {
+		return nil, fmt.Errorf("resolve policy: %w", err)
 	}
 
 	u.initGate()
@@ -349,11 +344,6 @@ func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug stri
 	reachability := make(map[string]string, len(decision.BlockedByReachability))
 	for id, state := range decision.BlockedByReachability {
 		reachability[id] = string(state)
-	}
-
-	policy, err := u.effectivePolicy(ctx, project)
-	if err != nil {
-		return nil, fmt.Errorf("resolve policy: %w", err)
 	}
 
 	return &GateStatusOutput{

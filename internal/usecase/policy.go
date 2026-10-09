@@ -295,15 +295,41 @@ func notFoundAsPolicy(err error) error {
 	return err
 }
 
-// effectiveSeverityFloor resolves the gate floor: an explicit caller
-// severity wins, otherwise the project's effective policy applies.
-func (u *Usecases) effectiveSeverityFloor(ctx context.Context, project port.Project, explicit []string) int16 {
-	if len(explicit) > 0 {
-		return gateSeverityRank(explicit, nil)
-	}
+// gateFloor resolves the blocking floor for one gate evaluation. The
+// project policy sets the floor and a positive requested rank can only
+// tighten it (see tightenSeverityFloor). Zero means no request. The
+// effective policy is returned so callers can report its provenance.
+func (u *Usecases) gateFloor(ctx context.Context, project port.Project, requested int16) (int16, *PolicyEffectiveResponse, error) {
 	eff, err := u.effectivePolicy(ctx, project)
 	if err != nil {
-		return gateSeverityRank(nil, nil)
+		return 0, nil, err
 	}
-	return policy.SeverityRank(eff.SeverityFloor)
+	return tightenSeverityFloor(policy.SeverityRank(eff.SeverityFloor), requested), eff, nil
+}
+
+// tightenSeverityFloor returns the stricter of the policy floor and a
+// requested floor. A lower rank blocks more, so a request that would loosen
+// the policy is ignored: requesting critical under a high policy stays high,
+// and requesting medium under a high policy yields medium. Zero means no
+// request and keeps the policy floor.
+func tightenSeverityFloor(policyFloor, requested int16) int16 {
+	if requested > 0 && requested < policyFloor {
+		return requested
+	}
+	return policyFloor
+}
+
+// effectiveSeverityFloor resolves the ingest gate floor from the severity
+// labels a caller sent. The labels can only tighten the project policy;
+// an empty list means no request.
+func (u *Usecases) effectiveSeverityFloor(ctx context.Context, project port.Project, requested []string) int16 {
+	var asked int16
+	if len(requested) > 0 {
+		asked = gateSeverityRank(requested, nil)
+	}
+	floor, _, err := u.gateFloor(ctx, project, asked)
+	if err != nil {
+		return tightenSeverityFloor(policy.SeverityRank(policy.DefaultSeverityFloor), asked)
+	}
+	return floor
 }

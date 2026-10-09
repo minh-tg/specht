@@ -224,3 +224,121 @@ func TestGetIntroducedGateStatus_AppliesPolicyFloor(t *testing.T) {
 		})
 	}
 }
+
+func TestTightenSeverityFloor(t *testing.T) {
+	assert.Equal(t, int16(3), tightenSeverityFloor(3, 0), "no request keeps the policy floor")
+	assert.Equal(t, int16(3), tightenSeverityFloor(3, 4), "a looser request is ignored")
+	assert.Equal(t, int16(3), tightenSeverityFloor(3, 3), "an equal request keeps the policy floor")
+	assert.Equal(t, int16(2), tightenSeverityFloor(3, 2), "a stricter request applies")
+	assert.Equal(t, int16(1), tightenSeverityFloor(4, 1), "a stricter request applies to a critical policy")
+}
+
+// floorRequestCases pairs a project policy with a caller request for every
+// gate entry point. The effective floor is the stricter of the two.
+var floorRequestCases = []struct {
+	name      string
+	settings  string
+	requested int16
+	want      int16
+}{
+	{name: "no request under default policy", want: 3},
+	{name: "critical request keeps default high floor", requested: 4, want: 3},
+	{name: "medium request tightens default high floor", requested: 2, want: 2},
+	{name: "no request under critical policy", settings: `{"policy":{"severity_floor":"critical"}}`, want: 4},
+	{name: "high request tightens critical policy", settings: `{"policy":{"severity_floor":"critical"}}`, requested: 3, want: 3},
+	{name: "low request tightens critical policy", settings: `{"policy":{"severity_floor":"critical"}}`, requested: 1, want: 1},
+}
+
+func projectWithSettings(settings string) port.Project {
+	project := makeProject(true)
+	if settings != "" {
+		project.Settings = json.RawMessage(settings)
+	}
+	return project
+}
+
+func TestGetGateStatus_RequestedFloorOnlyTightens(t *testing.T) {
+	for _, tc := range floorRequestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			pr, _, fr := makeTestRepos()
+			project := projectWithSettings(tc.settings)
+			pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+				return project, nil
+			}
+			var got int16
+			fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minRank int16) ([]port.GateCandidate, error) {
+				got = minRank
+				return nil, nil
+			}
+			uc := New(Deps{Stores: &port.Stores{
+				Projects: pr, Findings: fr, Waivers: &mockWaiverRepo{},
+			}})
+
+			_, err := uc.GetGateStatus(adminCtx(), "my-app", tc.requested)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestGetIntroducedGateStatus_RequestedFloorOnlyTightens(t *testing.T) {
+	for _, tc := range floorRequestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			pr, _, fr := makeTestRepos()
+			project := projectWithSettings(tc.settings)
+			pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+				return project, nil
+			}
+			var got int16
+			fr.listIntroducedGateCandidatesFn = func(ctx context.Context, reportID string, minRank int16) ([]port.GateCandidate, error) {
+				got = minRank
+				return nil, nil
+			}
+			uc := New(Deps{Stores: &port.Stores{
+				Projects: pr, Findings: fr, Waivers: &mockWaiverRepo{},
+			}})
+
+			_, err := uc.GetIntroducedGateStatus(adminCtx(), "my-app", tc.requested, "00000000-0000-0000-0000-000000000098")
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestCheckGateAfterIngest_RequestedFloorOnlyTightens(t *testing.T) {
+	cases := []struct {
+		name         string
+		settings     string
+		gateSeverity []string
+		want         int16
+	}{
+		{name: "no request under default policy", want: 3},
+		{name: "critical request keeps default high floor", gateSeverity: []string{"critical"}, want: 3},
+		{name: "medium request tightens default high floor", gateSeverity: []string{"medium"}, want: 2},
+		{name: "no request under critical policy", settings: `{"policy":{"severity_floor":"critical"}}`, want: 4},
+		{name: "high request tightens critical policy", settings: `{"policy":{"severity_floor":"critical"}}`, gateSeverity: []string{"high"}, want: 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pr, rr, fr := makeTestRepos()
+			project := projectWithSettings(tc.settings)
+			rr.updateStatusFn = func(ctx context.Context, id, projectID, status string, total int32, msg *string) (port.Report, error) {
+				return port.Report{ID: id, ProjectID: projectID}, nil
+			}
+			var got int16
+			fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minRank int16) ([]port.GateCandidate, error) {
+				got = minRank
+				return nil, nil
+			}
+			uc := New(Deps{Stores: &port.Stores{
+				Projects: pr, Reports: rr, Findings: fr, Waivers: &mockWaiverRepo{},
+			}})
+
+			_, err := uc.checkGateAfterIngest(context.Background(), project,
+				IngestReportInput{ProjectSlug: "my-app", Scanner: "trivy", GateSeverity: tc.gateSeverity},
+				port.Report{ID: "00000000-0000-0000-0000-000000000097", ProjectID: project.ID}, 0)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
