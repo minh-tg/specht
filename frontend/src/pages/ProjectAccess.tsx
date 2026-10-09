@@ -39,8 +39,18 @@ export function ProjectAccess() {
   const { slug } = useParams<{ slug: string; }>();
   const currentSlug = slug ?? "";
 
-  const { data: members, isLoading: membersLoading } = useProjectMembers(currentSlug);
-  const { data: teams, isLoading: teamsLoading } = useProjectTeams(currentSlug);
+  const {
+    data: members,
+    isLoading: membersLoading,
+    isError: membersError,
+    refetch: refetchMembers,
+  } = useProjectMembers(currentSlug);
+  const {
+    data: teams,
+    isLoading: teamsLoading,
+    isError: teamsError,
+    refetch: refetchTeams,
+  } = useProjectTeams(currentSlug);
   const { data: directory } = useUserDirectory();
   const { data: allCompanyTeams } = useTeams();
   const { canManageMembers, isAdmin, role: currentRole } = useProjectRole(currentSlug);
@@ -158,6 +168,19 @@ export function ProjectAccess() {
 
         {membersLoading
           ? <div className="p-6 text-center text-muted-foreground text-sm">Loading members...</div>
+          : membersError
+          ? (
+            <div className="p-6 text-center text-sm">
+              <p className="text-destructive mb-2">Could not load members.</p>
+              <button
+                type="button"
+                className="text-action underline hover:no-underline"
+                onClick={() => refetchMembers()}
+              >
+                Retry
+              </button>
+            </div>
+          )
           : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-sm">
@@ -266,6 +289,19 @@ export function ProjectAccess() {
           ? (
             <div className="p-6 text-center text-muted-foreground text-sm">
               Loading linked teams...
+            </div>
+          )
+          : teamsError
+          ? (
+            <div className="p-6 text-center text-sm">
+              <p className="text-destructive mb-2">Could not load linked teams.</p>
+              <button
+                type="button"
+                className="text-action underline hover:no-underline"
+                onClick={() => refetchTeams()}
+              >
+                Retry
+              </button>
             </div>
           )
           : (

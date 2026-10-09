@@ -16,15 +16,19 @@ import { useState } from "react";
 function TeamCard({
   team,
   isGlobalAdmin,
+  deleteError,
   onOpenRoster,
   onDeleteTeam,
 }: {
   team: Team;
   isGlobalAdmin: boolean;
+  deleteError?: string;
   onOpenRoster: (team: Team) => void;
   onDeleteTeam: (teamId: string) => void;
 }) {
-  const { data: members } = useTeamMembers(team.id);
+  const { data: members, isError: membersError, refetch: refetchMembers } = useTeamMembers(
+    team.id,
+  );
 
   return (
     <div className="bg-card border border-border rounded-lg p-5 flex flex-col justify-between shadow-xs">
@@ -37,7 +41,20 @@ function TeamCard({
 
       <div>
         <div className="flex items-center justify-between pt-3 border-t border-border text-xs text-muted-foreground mb-3">
-          <span>👥 {members?.length ?? 0} members</span>
+          {membersError
+            ? (
+              <span className="flex items-center gap-2">
+                <span className="text-destructive">Could not load members</span>
+                <button
+                  type="button"
+                  className="text-action underline hover:no-underline"
+                  onClick={() => refetchMembers()}
+                >
+                  Retry
+                </button>
+              </span>
+            )
+            : <span>{members?.length ?? 0} members</span>}
           <span>Created {new Date(team.created_at).toLocaleDateString()}</span>
         </div>
 
@@ -61,6 +78,7 @@ function TeamCard({
             </Button>
           )}
         </div>
+        {deleteError && <p className="text-destructive text-xs mt-2">{deleteError}</p>}
       </div>
     </div>
   );
@@ -70,7 +88,8 @@ export function TeamsDirectory() {
   const me = useMe();
   const isGlobalAdmin = me.data?.role === "admin";
 
-  const { data: teams, isLoading: teamsLoading } = useTeams();
+  const { data: teams, isLoading: teamsLoading, isError: teamsError, refetch: refetchTeams } =
+    useTeams();
   const createTeamMutation = useCreateTeam();
   const deleteTeamMutation = useDeleteTeam();
 
@@ -83,9 +102,12 @@ export function TeamsDirectory() {
   const [rosterRole, setRosterRole] = useState<"admin" | "member">("member");
   const [rosterInputError, setRosterInputError] = useState<string | null>(null);
 
-  const { data: activeMembers, isLoading: rosterLoading } = useTeamMembers(
-    activeRosterTeam?.id ?? "",
-  );
+  const {
+    data: activeMembers,
+    isLoading: rosterLoading,
+    isError: rosterError,
+    refetch: refetchRoster,
+  } = useTeamMembers(activeRosterTeam?.id ?? "");
   const { data: directory } = useUserDirectory();
 
   const addMemberMutation = useAddTeamMember(activeRosterTeam?.id ?? "");
@@ -152,6 +174,13 @@ export function TeamsDirectory() {
 
       {teamsLoading
         ? <div className="py-12 text-center text-muted-foreground text-sm">Loading teams...</div>
+        : teamsError
+        ? (
+          <div className="bg-card border border-border rounded-lg p-12 text-center">
+            <p className="text-destructive text-sm mb-4">Could not load company teams.</p>
+            <Button variant="outline" onClick={() => refetchTeams()}>Retry</Button>
+          </div>
+        )
         : teams && teams.length > 0
         ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -160,6 +189,9 @@ export function TeamsDirectory() {
                 key={team.id}
                 team={team}
                 isGlobalAdmin={isGlobalAdmin}
+                deleteError={deleteTeamMutation.isError && deleteTeamMutation.variables === team.id
+                  ? deleteTeamMutation.error?.message ?? "Failed to delete team"
+                  : undefined}
                 onOpenRoster={(t) => setActiveRosterTeam(t)}
                 onDeleteTeam={(id) => {
                   if (window.confirm("Are you sure you want to delete this company team?")) {
@@ -314,6 +346,19 @@ export function TeamsDirectory() {
                     Loading roster...
                   </div>
                 )
+                : rosterError
+                ? (
+                  <div className="p-4 text-center text-xs">
+                    <p className="text-destructive mb-2">Could not load the roster.</p>
+                    <button
+                      type="button"
+                      className="text-action underline hover:no-underline"
+                      onClick={() => refetchRoster()}
+                    >
+                      Retry
+                    </button>
+                  </div>
+                )
                 : activeMembers && activeMembers.length > 0
                 ? (
                   <ul className="divide-y divide-border text-sm">
@@ -346,6 +391,11 @@ export function TeamsDirectory() {
                   </div>
                 )}
             </div>
+            {removeMemberMutation.isError && (
+              <p className="text-destructive text-xs">
+                {removeMemberMutation.error?.message ?? "Failed to remove member"}
+              </p>
+            )}
 
             <div className="flex justify-end pt-2">
               <Button variant="outline" onClick={() => setActiveRosterTeam(null)}>

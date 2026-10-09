@@ -40,11 +40,17 @@ describe("TeamsDirectory", () => {
   }[] = [];
   let fetchCalls: { url: string; method: string; body?: string; }[] = [];
   let addMemberError: { status: number; code: string; message: string; } | null = null;
+  let removeMemberError: { status: number; code: string; message: string; } | null = null;
+  let deleteTeamError: { status: number; code: string; message: string; } | null = null;
+  let teamsLoadFailing = false;
 
   beforeEach(() => {
     fetchCalls = [];
     userRole = "admin";
     addMemberError = null;
+    removeMemberError = null;
+    deleteTeamError = null;
+    teamsLoadFailing = false;
     mockTeams = [
       {
         id: "t1",
@@ -80,12 +86,25 @@ describe("TeamsDirectory", () => {
             )
             : jsonResponse({ ok: true }, 201);
         }
-        if (method === "DELETE") return jsonResponse(null, 204);
+        if (method === "DELETE") {
+          return removeMemberError
+            ? jsonResponse(
+              { error: { code: removeMemberError.code, message: removeMemberError.message } },
+              removeMemberError.status,
+            )
+            : jsonResponse(null, 204);
+        }
         return jsonResponse([
           { team_id: "t1", user_id: "u1", created_at: "2026-09-01T00:00:00Z" },
         ]);
       }
       if (u.endsWith("/api/v1/teams")) {
+        if (method === "GET" && teamsLoadFailing) {
+          return jsonResponse(
+            { error: { code: "internal", message: "database unavailable" } },
+            500,
+          );
+        }
         if (method === "POST") {
           const parsed = JSON.parse(body ?? "{}");
           return jsonResponse({
@@ -99,7 +118,14 @@ describe("TeamsDirectory", () => {
         return jsonResponse(mockTeams);
       }
       if (u.includes("/api/v1/teams/")) {
-        if (method === "DELETE") return jsonResponse(null, 204);
+        if (method === "DELETE") {
+          return deleteTeamError
+            ? jsonResponse(
+              { error: { code: deleteTeamError.code, message: deleteTeamError.message } },
+              deleteTeamError.status,
+            )
+            : jsonResponse(null, 204);
+        }
       }
       if (u.includes("/api/v1/users")) {
         return jsonResponse([
@@ -243,5 +269,52 @@ describe("TeamsDirectory", () => {
     await user.click(screen.getByRole("button", { name: "Add" }));
 
     expect(await screen.findByText("user not found")).toBeInTheDocument();
+  });
+
+  it("shows a load error for the teams list and retries", async () => {
+    const user = userEvent.setup();
+    teamsLoadFailing = true;
+    renderTeamsDirectory();
+
+    expect(await screen.findByText("Could not load company teams.")).toBeInTheDocument();
+    expect(screen.queryByText("No company teams exist yet.")).not.toBeInTheDocument();
+
+    teamsLoadFailing = false;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("Security Operations")).toBeInTheDocument();
+    expect(screen.queryByText("Could not load company teams.")).not.toBeInTheDocument();
+  });
+
+  it("shows why removing a roster member failed", async () => {
+    const user = userEvent.setup();
+    removeMemberError = {
+      status: 403,
+      code: "team_admin_required",
+      message: "team admin role required",
+    };
+    renderTeamsDirectory();
+
+    await user.click((await screen.findAllByRole("button", { name: "Manage Roster" }))[0]);
+    await user.click(await screen.findByRole("button", { name: "Remove" }));
+
+    expect(await screen.findByText("team admin role required")).toBeInTheDocument();
+  });
+
+  it("shows why deleting a team failed on that team's card", async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    deleteTeamError = {
+      status: 409,
+      code: "team_linked",
+      message: "team is still linked to a project",
+    };
+    renderTeamsDirectory();
+
+    await user.click((await screen.findAllByRole("button", { name: "Delete" }))[0]);
+
+    const message = await screen.findByText("team is still linked to a project");
+    expect(message.closest("div.bg-card")).toHaveTextContent("Security Operations");
+    expect(message.closest("div.bg-card")).not.toHaveTextContent("Backend Platform");
   });
 });
