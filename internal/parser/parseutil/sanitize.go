@@ -161,13 +161,15 @@ func SafeScore(score float64) float64 {
 }
 
 // BoundFingerprint ensures a fingerprint does not exceed the PostgreSQL index limit.
-// If the fingerprint exceeds MaxFingerprintLength, it hashes the trailing portion.
+// An overlong fingerprint keeps a prefix and appends a SHA-256 of the whole
+// input, so two overlong fingerprints that share a prefix stay distinct.
 func BoundFingerprint(fp string) string {
+	original := fp
 	fp = SanitizeText(fp, MaxFingerprintLength*2)
 	if len(fp) <= MaxFingerprintLength {
 		return fp
 	}
-	h := sha256.Sum256([]byte(fp))
+	h := sha256.Sum256([]byte(original))
 	prefix := TruncateString(fp, MaxFingerprintLength-65)
 	return prefix + ":" + hex.EncodeToString(h[:])
 }
