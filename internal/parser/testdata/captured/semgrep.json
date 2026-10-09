@@ -1,0 +1,122 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Semgrep OSS",
+          "version": "1.172.0",
+          "rules": [
+            {
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "fullDescription": {
+                "text": "Do not use `math/rand`. Use `crypto/rand` instead."
+              },
+              "help": {
+                "markdown": "Do not use `math/rand`. Use `crypto/rand` instead.\n\n#### 💎 Enable cross-file analysis and Pro rules for free at <a href='https://sg.run/pro'>sg.run/pro</a>\n\n<b>References:</b>\n - [Semgrep Rule](https://semgrep.dev/r/go.lang.security.audit.crypto.math_random.math-random-used)\n - [https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html#secure-random-number-generation](https://cheatsheetseries.owasp.org/cheatsheets/Cryptographic_Storage_Cheat_Sheet.html#secure-random-number-generation)\n",
+                "text": "Do not use `math/rand`. Use `crypto/rand` instead.\n💎 Enable cross-file analysis and Pro rules for free at sg.run/pro"
+              },
+              "helpUri": "https://semgrep.dev/r/go.lang.security.audit.crypto.math_random.math-random-used",
+              "id": "go.lang.security.audit.crypto.math_random.math-random-used",
+              "name": "go.lang.security.audit.crypto.math_random.math-random-used",
+              "properties": {
+                "precision": "very-high",
+                "tags": [
+                  "CWE-338: Use of Cryptographically Weak Pseudo-Random Number Generator (PRNG)",
+                  "MEDIUM CONFIDENCE",
+                  "OWASP-A02:2021 - Cryptographic Failures",
+                  "OWASP-A04:2025 - Cryptographic Failures",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Semgrep Finding: go.lang.security.audit.crypto.math_random.math-random-used"
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "fullDescription": {
+                "text": "Found PostgreSQL connection string disabling SSL verification\n"
+              },
+              "help": {
+                "markdown": "Found PostgreSQL connection string disabling SSL verification\n\n\n<b>References:</b>\n - [https://www.postgresql.org/docs/current/libpq-connect.html](https://www.postgresql.org/docs/current/libpq-connect.html)\n",
+                "text": "Found PostgreSQL connection string disabling SSL verification\n"
+              },
+              "id": "generic.postgres-insecure-sslmode",
+              "name": "generic.postgres-insecure-sslmode",
+              "properties": {
+                "precision": "very-high",
+                "tags": [
+                  "CWE-295: Improper Certificate Validation",
+                  "HIGH CONFIDENCE",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Semgrep Finding: generic.postgres-insecure-sslmode"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "fingerprints": {
+            "matchBasedId/v1": "requires login"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/watcher/daemon.go",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "endColumn": 15,
+                  "endLine": 15,
+                  "startColumn": 3,
+                  "startLine": 15
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Do not use `math/rand`. Use `crypto/rand` instead."
+          },
+          "properties": {},
+          "ruleId": "go.lang.security.audit.crypto.math_random.math-random-used"
+        },
+        {
+          "fingerprints": {
+            "matchBasedId/v1": "requires login"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": ".env.example",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "endColumn": 76,
+                  "endLine": 3,
+                  "startColumn": 14,
+                  "startLine": 3
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Found PostgreSQL connection string disabling SSL verification\n"
+          },
+          "properties": {},
+          "ruleId": "generic.postgres-insecure-sslmode"
+        }
+      ]
+    }
+  ]
+}

@@ -24,6 +24,24 @@ func TestDetect_ValidInput(t *testing.T) {
 	assert.True(t, s.DetectFormat(data))
 }
 
+func TestDetect_ToolNames(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want bool
+	}{
+		{"Semgrep", true},
+		{"Semgrep OSS", true},
+		{"semgrep oss", true},
+		{"Semgrep-like", false},
+		{"CodeQL", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			data := []byte(`{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"` + tc.name + `"}}}]}`)
+			assert.Equal(t, tc.want, semgrep.NewScanner().DetectFormat(data))
+		})
+	}
+}
+
 func TestDetect_InvalidInput(t *testing.T) {
 	s := semgrep.NewScanner()
 	assert.False(t, s.DetectFormat([]byte(`{}`)))

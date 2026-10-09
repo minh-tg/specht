@@ -9,7 +9,7 @@
       "resolution": "Enable versioning on the S3 bucket.",
       "severity": "HIGH",
       "warning": false,
-      "status": 1,
+      "status": 0,
       "resource": "aws_s3_bucket.data",
       "location": {
         "filename": "main.tf",
@@ -24,7 +24,7 @@
       "rule_description": "Instances should not have public IPs",
       "severity": "CRITICAL",
       "warning": false,
-      "status": 0,
+      "status": 1,
       "resource": "aws_instance.web",
       "location": {
         "filename": "main.tf",
@@ -42,7 +42,7 @@
       "resolution": "Set sensitive = true.",
       "severity": "MEDIUM",
       "warning": false,
-      "status": 1,
+      "status": 0,
       "resource": "var.db_password",
       "location": {
         "filename": "variables.tf",

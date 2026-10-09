@@ -1,0 +1,73 @@
+{
+  "results": [
+    {
+      "rule_id": "AVD-AWS-0086",
+      "long_id": "aws-s3-block-public-acls",
+      "rule_description": "S3 Access block should block public ACL",
+      "rule_provider": "aws",
+      "rule_service": "s3",
+      "impact": "PUT calls with public ACLs specified can make objects public",
+      "resolution": "Enable blocking any PUT calls with a public ACL specified",
+      "links": [
+        "https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-acls/",
+        "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_public_access_block#block_public_acls"
+      ],
+      "description": "No public access block so not blocking public acls",
+      "severity": "HIGH",
+      "warning": false,
+      "status": 0,
+      "resource": "aws_s3_bucket.manual_test",
+      "location": {
+        "filename": "main.tf",
+        "start_line": 1,
+        "end_line": 4
+      }
+    },
+    {
+      "rule_id": "AVD-AWS-0087",
+      "long_id": "aws-s3-block-public-policy",
+      "rule_description": "S3 Access block should block public policy",
+      "rule_provider": "aws",
+      "rule_service": "s3",
+      "impact": "Users could put a policy that allows public access",
+      "resolution": "Prevent policies that allow public access being PUT",
+      "links": [
+        "https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/block-public-policy/",
+        "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket_public_access_block#block_public_policy"
+      ],
+      "description": "No public access block so not blocking public policies",
+      "severity": "HIGH",
+      "warning": false,
+      "status": 0,
+      "resource": "aws_s3_bucket.manual_test",
+      "location": {
+        "filename": "main.tf",
+        "start_line": 1,
+        "end_line": 4
+      }
+    },
+    {
+      "rule_id": "AVD-AWS-0088",
+      "long_id": "aws-s3-enable-bucket-encryption",
+      "rule_description": "Unencrypted S3 bucket.",
+      "rule_provider": "aws",
+      "rule_service": "s3",
+      "impact": "The bucket objects could be read if compromised",
+      "resolution": "Configure bucket encryption",
+      "links": [
+        "https://aquasecurity.github.io/tfsec/v1.28.14/checks/aws/s3/enable-bucket-encryption/",
+        "https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/s3_bucket#enable-default-server-side-encryption"
+      ],
+      "description": "Bucket does not have encryption enabled",
+      "severity": "HIGH",
+      "warning": false,
+      "status": 0,
+      "resource": "aws_s3_bucket.manual_test",
+      "location": {
+        "filename": "main.tf",
+        "start_line": 1,
+        "end_line": 4
+      }
+    }
+  ]
+}

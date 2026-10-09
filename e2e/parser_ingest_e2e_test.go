@@ -209,6 +209,79 @@ func TestE2E_BuiltinParserIngest(t *testing.T) {
 	}
 }
 
+func TestE2E_CapturedReportIngest(t *testing.T) {
+	cases := []struct {
+		file    string
+		scanner string
+		kinds   map[string]int
+	}{
+		{"trivy.json", "trivy", map[string]int{"sca": 3, "iac": 9}},
+		{"osv-scanner.json", "osv-scanner", map[string]int{"sca": 2}},
+		{"grype.json", "grype", map[string]int{"sca": 2}},
+		{"dependency-check.json", "dependency-check", map[string]int{"sca": 4}},
+		{"checkov.json", "checkov", map[string]int{"iac": 3}},
+		{"tfsec.json", "tfsec", map[string]int{"iac": 3}},
+		{"nuclei.json", "nuclei", map[string]int{"dast": 1}},
+		{"gitleaks.json", "gitleaks", map[string]int{"secret": 1}},
+		{"semgrep.json", "semgrep", map[string]int{"sast": 2}},
+		{"codeql.json", "sarif", map[string]int{"sast": 2}},
+		{"cyclonedx.json", "sbom", map[string]int{}},
+		{"spdx.json", "sbom", map[string]int{}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.file, func(t *testing.T) {
+			slug := newProject(t, "captured-"+tc.scanner)
+			raw, err := os.ReadFile(filepath.Join("..", "internal", "parser", "testdata", "captured", tc.file))
+			require.NoError(t, err)
+			body := map[string]any{"project": slug, "scanner": tc.scanner, "raw_data": json.RawMessage(raw)}
+			first := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", adminToken, body, http.StatusCreated)
+			want := 0
+			for _, count := range tc.kinds {
+				want += count
+			}
+			require.Equal(t, want, first.TotalFindings)
+			before := listScanFindings(t, slug)
+			require.Len(t, before, want)
+			kinds := map[string]int{}
+			ids := map[string]bool{}
+			for _, f := range before {
+				kinds[f.FindingKind]++
+				ids[f.ID] = true
+			}
+			require.Equal(t, tc.kinds, kinds)
+
+			// Identical reports are rejected without adding findings.
+			request[map[string]any](t, http.MethodPost, "/api/v1/reports", adminToken, body, http.StatusConflict)
+
+			// Change ignored metadata, not scanner observations: a new report
+			// must reuse the existing finding identities.
+			var document any
+			require.NoError(t, json.Unmarshal(raw, &document))
+			switch d := document.(type) {
+			case map[string]any:
+				d["_repeat_capture"] = true
+			case []any:
+				require.NotEmpty(t, d)
+				entry, ok := d[0].(map[string]any)
+				require.True(t, ok)
+				entry["_repeat_capture"] = true
+			default:
+				t.Fatal("captured report must be a JSON object or array")
+			}
+			body["raw_data"] = document
+			second := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", adminToken, body, http.StatusCreated)
+			require.NotEqual(t, first.ReportID, second.ReportID)
+			require.Equal(t, want, second.TotalFindings)
+			after := listScanFindings(t, slug)
+			require.Len(t, after, want)
+			for _, f := range after {
+				require.True(t, ids[f.ID], "repeated observations must not create new findings")
+				require.Equal(t, "open", f.State)
+			}
+		})
+	}
+}
+
 // TestE2E_AutoFixOnEquivalentRescan covers auto-fix on scan equivalence:
 // a complete rescan of the same scope that no longer observes a finding
 // closes it with a

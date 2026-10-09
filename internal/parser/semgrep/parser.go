@@ -125,7 +125,8 @@ func (s *Scanner) DetectFormat(data []byte) bool {
 	if len(probe.Runs) == 0 {
 		return false
 	}
-	return strings.EqualFold(probe.Runs[0].Tool.Driver.Name, "semgrep")
+	name := probe.Runs[0].Tool.Driver.Name
+	return strings.EqualFold(name, "semgrep") || strings.EqualFold(name, "semgrep oss")
 }
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {

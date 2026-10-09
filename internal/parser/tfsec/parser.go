@@ -1,6 +1,6 @@
 // Package tfsec adapts tfsec JSON output to the normalized domain model.
 // tfsec scans Terraform (and CloudFormation/Kubernetes/Dockerfile via its
-// own loaders) for misconfigurations; only failed checks (status 1)
+// own loaders) for misconfigurations; only failed checks (status 0)
 // become findings. Passed, unknown, and explicitly ignored results are
 // skipped: they carry no remediation signal.
 package tfsec
@@ -51,7 +51,18 @@ func (s *Scanner) DetectFormat(data []byte) bool {
 	if err := json.Unmarshal(data, &probe); err != nil {
 		return false
 	}
-	return probe.Statistics != nil && probe.Results != nil
+	if probe.Results == nil {
+		return false
+	}
+	if probe.Statistics != nil {
+		return true
+	}
+	for _, r := range probe.Results {
+		if r.RuleID != "" && r.LongID != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
@@ -67,7 +78,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		Target:             &domain.TargetInfo{Kind: "terraform"},
 	}
 	for _, r := range report.Results {
-		if r.Status != 1 || r.RuleID == "" {
+		if r.Status == nil || *r.Status != 0 || r.RuleID == "" {
 			continue
 		}
 		nr.Findings = append(nr.Findings, parseutil.HardenFinding(convert(r)))
@@ -87,7 +98,7 @@ type tfsecResult struct {
 	Impact          string `json:"impact"`
 	Resolution      string `json:"resolution"`
 	Severity        string `json:"severity"`
-	Status          int    `json:"status"`
+	Status          *int   `json:"status"`
 	Resource        string `json:"resource"`
 	Location        struct {
 		Filename  string `json:"filename"`

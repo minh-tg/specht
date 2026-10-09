@@ -1,0 +1,61 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.7.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.7",
+  "version": 1,
+  "components": [
+    {
+      "bom-ref": "0abb8aed-9ec1-4fe9-b111-073202182c32",
+      "type": "library",
+      "name": "debug",
+      "version": "4.4.3",
+      "purl": "pkg:npm/debug@4.4.3",
+      "properties": [
+        {
+          "name": "aquasecurity:trivy:PkgID",
+          "value": "debug@4.4.3(supports-color@7.2.0)"
+        },
+        {
+          "name": "aquasecurity:trivy:PkgType",
+          "value": "pnpm"
+        }
+      ]
+    },
+    {
+      "bom-ref": "23a5ca22-d65d-490d-b178-50bca437af34",
+      "type": "library",
+      "group": "@babel",
+      "name": "traverse",
+      "version": "7.29.8",
+      "purl": "pkg:npm/%40babel/traverse@7.29.8",
+      "properties": [
+        {
+          "name": "aquasecurity:trivy:PkgID",
+          "value": "@babel/traverse@7.29.8(supports-color@7.2.0)"
+        },
+        {
+          "name": "aquasecurity:trivy:PkgType",
+          "value": "pnpm"
+        }
+      ]
+    },
+    {
+      "bom-ref": "3744b8b2-b129-4e31-9baf-26cf70160505",
+      "type": "library",
+      "name": "send",
+      "version": "1.2.1",
+      "purl": "pkg:npm/send@1.2.1",
+      "properties": [
+        {
+          "name": "aquasecurity:trivy:PkgID",
+          "value": "send@1.2.1(supports-color@10.2.2)"
+        },
+        {
+          "name": "aquasecurity:trivy:PkgType",
+          "value": "pnpm"
+        }
+      ]
+    }
+  ],
+  "vulnerabilities": []
+}

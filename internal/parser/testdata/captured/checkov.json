@@ -1,0 +1,156 @@
+{
+  "check_type": "terraform",
+  "results": {
+    "failed_checks": [
+      {
+        "check_id": "CKV_AWS_18",
+        "bc_check_id": null,
+        "check_name": "Ensure the S3 bucket has access logging enabled",
+        "check_result": {
+          "result": "FAILED",
+          "entity": {
+            "aws_s3_bucket": {
+              "manual_test": {
+                "__end_line__": 4,
+                "__start_line__": 1,
+                "acl": [
+                  "public-read"
+                ],
+                "bucket": [
+                  "specht-manual-test-not-deployed"
+                ],
+                "__address__": "aws_s3_bucket.manual_test"
+              }
+            }
+          },
+          "evaluated_keys": [
+            "logging",
+            "resource_type"
+          ]
+        },
+        "file_path": "main.tf",
+        "file_line_range": [
+          1,
+          4
+        ],
+        "resource": "aws_s3_bucket.manual_test",
+        "fixed_definition": null,
+        "entity_tags": null,
+        "caller_file_path": null,
+        "caller_file_line_range": null,
+        "resource_address": null,
+        "severity": null,
+        "bc_category": null,
+        "benchmarks": {},
+        "description": null,
+        "short_description": null,
+        "vulnerability_details": null,
+        "connected_node": null,
+        "guideline": null,
+        "details": [],
+        "check_len": null
+      },
+      {
+        "check_id": "CKV_AWS_20",
+        "bc_check_id": null,
+        "check_name": "S3 Bucket has an ACL defined which allows public READ access.",
+        "check_result": {
+          "result": "FAILED",
+          "entity": {
+            "aws_s3_bucket": {
+              "manual_test": {
+                "__end_line__": 4,
+                "__start_line__": 1,
+                "acl": [
+                  "public-read"
+                ],
+                "bucket": [
+                  "specht-manual-test-not-deployed"
+                ],
+                "__address__": "aws_s3_bucket.manual_test"
+              }
+            }
+          },
+          "evaluated_keys": [
+            "access_control_policy/grant",
+            "access_control_policy/grant/*/grantee/uri",
+            "acl",
+            "access_control_policy",
+            "resource_type"
+          ]
+        },
+        "file_path": "main.tf",
+        "file_line_range": [
+          1,
+          4
+        ],
+        "resource": "aws_s3_bucket.manual_test",
+        "fixed_definition": null,
+        "entity_tags": null,
+        "caller_file_path": null,
+        "caller_file_line_range": null,
+        "resource_address": null,
+        "severity": null,
+        "bc_category": null,
+        "benchmarks": {},
+        "description": null,
+        "short_description": null,
+        "vulnerability_details": null,
+        "connected_node": null,
+        "guideline": null,
+        "details": [],
+        "check_len": null
+      },
+      {
+        "check_id": "CKV_AWS_21",
+        "bc_check_id": null,
+        "check_name": "Ensure all data stored in the S3 bucket have versioning enabled",
+        "check_result": {
+          "result": "FAILED",
+          "entity": {
+            "aws_s3_bucket": {
+              "manual_test": {
+                "__end_line__": 4,
+                "__start_line__": 1,
+                "acl": [
+                  "public-read"
+                ],
+                "bucket": [
+                  "specht-manual-test-not-deployed"
+                ],
+                "__address__": "aws_s3_bucket.manual_test"
+              }
+            }
+          },
+          "evaluated_keys": [
+            "versioning_configuration/status",
+            "resource_type",
+            "versioning/enabled"
+          ]
+        },
+        "file_path": "main.tf",
+        "file_line_range": [
+          1,
+          4
+        ],
+        "resource": "aws_s3_bucket.manual_test",
+        "fixed_definition": null,
+        "entity_tags": null,
+        "caller_file_path": null,
+        "caller_file_line_range": null,
+        "resource_address": null,
+        "severity": null,
+        "bc_category": null,
+        "benchmarks": {},
+        "description": null,
+        "short_description": null,
+        "vulnerability_details": null,
+        "connected_node": null,
+        "guideline": null,
+        "details": [],
+        "check_len": null
+      }
+    ],
+    "passed_checks": []
+  }
+}
