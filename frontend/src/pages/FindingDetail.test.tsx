@@ -1,3 +1,4 @@
+import { Toaster } from "@/components/ui/sonner";
 import { GLOSSARY } from "@/lib/glossary";
 import { createTestQueryClient } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -72,6 +73,7 @@ function renderDetail(state?: unknown) {
           <Route path="/:slug/findings/:findingId" element={<FindingDetail />} />
         </Routes>
       </MemoryRouter>
+      <Toaster />
     </QueryClientProvider>,
   );
 }
@@ -280,7 +282,7 @@ describe("FindingDetail accessibility", () => {
     expect(screen.getByLabelText("Evidence")).toBeInTheDocument();
   });
 
-  it("announces a successful triage with the matched success token pair", async () => {
+  it("confirms a successful triage in a polite toast, not in the form", async () => {
     const user = userEvent.setup();
     renderDetail();
     await screen.findByRole("heading", { name: "Test Vulnerability" });
@@ -288,12 +290,9 @@ describe("FindingDetail accessibility", () => {
     await user.selectOptions(screen.getByLabelText("Triage action"), "exploitable");
     await user.click(screen.getByRole("button", { name: "Apply" }));
 
-    const status = screen.getByRole("status", { name: "Triage result" });
-    await waitFor(() => expect(status).toHaveTextContent(/Triage saved \(effect:/));
-    const chip = within(status).getByText(/Triage saved \(effect:/);
-    expect(chip).toHaveClass("bg-sev-success-bg");
-    expect(chip).toHaveClass("text-sev-success-fg");
-    expect(chip).not.toHaveClass("text-green-600");
+    const message = await screen.findByText(/Triage saved \(effect:/);
+    expect(message.closest("[aria-live=\"polite\"]")).not.toBeNull();
+    expect(screen.getByRole("alert", { name: "Triage result error" })).toBeEmptyDOMElement();
   });
 
   it("exposes a failed triage through an alert", async () => {
@@ -403,31 +402,26 @@ describe("FindingDetail decision flow", () => {
     expect(current).not.toHaveTextContent("gate");
   });
 
-  it("mounts the outcome live regions before anything happens", async () => {
+  it("mounts the error regions before anything happens", async () => {
     renderDetail();
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
-    const triage = screen.getByRole("status", { name: "Triage result" });
-    const reachability = screen.getByRole("status", { name: "Reachability result" });
-    expect(triage).toHaveAttribute("aria-live", "polite");
-    expect(triage).toBeEmptyDOMElement();
-    expect(reachability).toBeEmptyDOMElement();
     expect(screen.getByRole("alert", { name: "Triage result error" })).toBeEmptyDOMElement();
     expect(screen.getByRole("alert", { name: "Reachability result error" }))
       .toBeEmptyDOMElement();
+    expect(screen.queryByRole("status", { name: "Triage result" })).not.toBeInTheDocument();
   });
 
-  it("announces a reachability save inside its own live region", async () => {
+  it("confirms a reachability save in a toast and leaves triage untouched", async () => {
     const user = userEvent.setup();
     renderDetail();
     await screen.findByRole("heading", { name: "Test Vulnerability" });
-    const region = screen.getByRole("status", { name: "Reachability result" });
 
     await user.selectOptions(screen.getByLabelText("Reachability assessment"), "reachable");
     await user.click(screen.getByRole("button", { name: "Assess" }));
 
-    await waitFor(() => expect(region).toHaveTextContent("Reachability saved"));
-    expect(screen.getByRole("status", { name: "Triage result" })).toBeEmptyDOMElement();
+    expect(await screen.findByText("Reachability saved")).toBeInTheDocument();
+    expect(screen.queryByText(/Triage saved/)).not.toBeInTheDocument();
   });
 
   it("returns to the list with its filters when the user opened the finding from a filtered page", async () => {

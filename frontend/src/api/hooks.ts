@@ -1,4 +1,4 @@
-import type { AnalysisState, ReachabilityState } from "@/lib/enums";
+import { type AnalysisState, gateEffectLabel, type ReachabilityState } from "@/lib/enums";
 import type {
   CreatedApiKey,
   Finding,
@@ -231,6 +231,10 @@ export function useChangeGate(projectSlug: string, reportId: string | undefined)
 export function useTriageFinding() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: {
+      success: (data: TriageResponse) =>
+        `Triage saved (effect: ${gateEffectLabel(data.gate_effect) ?? "Unknown"})`,
+    },
     mutationFn: ({
       findingId,
       analysisState,
@@ -284,6 +288,7 @@ export function useFindingEvents(findingId: string) {
 export function useUpsertReachability() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { success: "Reachability saved" },
     mutationFn: (
       { findingId, state, evidence }: {
         findingId: string;
@@ -320,6 +325,7 @@ export function useProjectMembers(slug: string) {
 export function useAddProjectMember(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { success: "Member added" },
     mutationFn: ({ user_id, role }: { user_id: string; role: ProjectRole; }) =>
       apiFetch<void>(`/api/v1/projects/${encodeURIComponent(slug)}/members`, {
         method: "POST",
@@ -334,6 +340,7 @@ export function useAddProjectMember(slug: string) {
 export function useRemoveProjectMember(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { success: "Member removed" },
     mutationFn: (userId: string) =>
       apiFetch<void>(
         `/api/v1/projects/${encodeURIComponent(slug)}/members/${encodeURIComponent(userId)}`,
@@ -356,6 +363,7 @@ export function useProjectTeams(slug: string) {
 export function useLinkProjectTeam(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { success: "Team linked" },
     mutationFn: ({ team_id, role }: { team_id: string; role: ProjectRole; }) =>
       apiFetch<void>(`/api/v1/projects/${encodeURIComponent(slug)}/teams`, {
         method: "POST",
@@ -370,6 +378,7 @@ export function useLinkProjectTeam(slug: string) {
 export function useUnlinkProjectTeam(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { success: "Team unlinked" },
     mutationFn: (teamId: string) =>
       apiFetch<void>(
         `/api/v1/projects/${encodeURIComponent(slug)}/teams/${encodeURIComponent(teamId)}`,
@@ -391,6 +400,7 @@ export function useTeams() {
 export function useCreateTeam() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { success: "Team created" },
     mutationFn: ({ name, description }: { name: string; description?: string; }) =>
       apiFetch<Team>("/api/v1/teams", {
         method: "POST",
@@ -405,6 +415,7 @@ export function useCreateTeam() {
 export function useDeleteTeam() {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { success: "Team deleted" },
     mutationFn: (teamId: string) =>
       apiFetch<void>(`/api/v1/teams/${encodeURIComponent(teamId)}`, {
         method: "DELETE",
@@ -429,6 +440,7 @@ export function useTeamMembers(teamId: string) {
 export function useAddTeamMember(teamId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { success: "Added to the team" },
     mutationFn: ({ userId, role }: { userId: string; role: TeamMemberRole; }) =>
       apiFetch<void>(`/api/v1/teams/${encodeURIComponent(teamId)}/members`, {
         method: "POST",
@@ -443,6 +455,7 @@ export function useAddTeamMember(teamId: string) {
 export function useRemoveTeamMember(teamId: string) {
   const queryClient = useQueryClient();
   return useMutation({
+    meta: { success: "Removed from the team" },
     mutationFn: (userId: string) =>
       apiFetch<void>(
         `/api/v1/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,

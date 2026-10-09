@@ -125,7 +125,6 @@ export function ReachabilitySection({
       <OutcomeRegions
         label="Reachability result"
         error={mutation.isError ? mutation.error.message : null}
-        success={mutation.isSuccess ? "Reachability saved" : null}
       />
     </section>
   );
