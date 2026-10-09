@@ -181,3 +181,46 @@ func TestGetGateStatus_UsesPolicyFloor(t *testing.T) {
 	assert.Equal(t, "critical", out.Policy.SeverityFloor)
 	assert.Equal(t, "override", out.Policy.SeveritySource)
 }
+
+func TestGetIntroducedGateStatus_AppliesPolicyFloor(t *testing.T) {
+	cases := []struct {
+		name     string
+		rank     int16
+		breached bool
+	}{
+		{name: "medium finding under default high floor", rank: 2, breached: false},
+		{name: "high finding under default high floor", rank: 3, breached: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			pr, _, fr := makeTestRepos()
+			project := makeProject(true)
+			pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+				return project, nil
+			}
+			fr.listIntroducedGateCandidatesFn = func(ctx context.Context, reportID string, minRank int16) ([]port.GateCandidate, error) {
+				assert.Equal(t, int16(3), minRank, "default policy floor must reach the introduced-only gate")
+				if tc.rank < minRank {
+					return nil, nil
+				}
+				return []port.GateCandidate{{
+					Finding: port.Finding{
+						ID: "00000000-0000-0000-0000-000000000099", ProjectID: project.ID,
+						CurrentSeverityRank: tc.rank, FindingKind: "sca", Fingerprint: "fp-introduced",
+						CurrentTitle: "CVE-2024-0002", AnalysisState: "unanalyzed",
+					},
+				}}, nil
+			}
+			uc := New(Deps{Stores: &port.Stores{
+				Projects: pr, Findings: fr, Waivers: &mockWaiverRepo{},
+			}})
+
+			out, err := uc.GetIntroducedGateStatus(adminCtx(), "my-app", 0, "00000000-0000-0000-0000-000000000098")
+			require.NoError(t, err)
+			assert.Equal(t, tc.breached, out.ThresholdBreached)
+			require.NotNil(t, out.Policy)
+			assert.Equal(t, "high", out.Policy.SeverityFloor)
+			assert.Equal(t, "default", out.Policy.SeveritySource)
+		})
+	}
+}

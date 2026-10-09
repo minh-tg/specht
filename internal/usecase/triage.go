@@ -333,8 +333,15 @@ func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug stri
 		return nil, err
 	}
 
+	// Same floor resolution as GetGateStatus: a non-positive floor means
+	// "no explicit severity", so the project's effective policy decides.
+	floor := minSeverityRank
+	if floor <= 0 {
+		floor = u.effectiveSeverityFloor(ctx, project, nil)
+	}
+
 	u.initGate()
-	decision, err := u.gate.EvaluateIntroducedOnly(ctx, project.ID, minSeverityRank, reportID, gatePoliciesForProject(project))
+	decision, err := u.gate.EvaluateIntroducedOnly(ctx, project.ID, floor, reportID, gatePoliciesForProject(project))
 	if err != nil {
 		return nil, fmt.Errorf("gate eval: %w", err)
 	}
@@ -344,6 +351,11 @@ func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug stri
 		reachability[id] = string(state)
 	}
 
+	policy, err := u.effectivePolicy(ctx, project)
+	if err != nil {
+		return nil, fmt.Errorf("resolve policy: %w", err)
+	}
+
 	return &GateStatusOutput{
 		ThresholdBreached:     decision.Status == gate.StatusFail,
 		BlockingCount:         int64(decision.TotalBlocking - decision.WaivedCount),
@@ -351,6 +363,7 @@ func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug stri
 		BlockedByReachability: reachability,
 		WaivedCount:           decision.WaivedCount,
 		WaivedFindingIDs:      decision.WaivedFindingIDs,
+		Policy:                policy,
 	}, nil
 }
 
