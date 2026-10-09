@@ -681,6 +681,7 @@ func TestRunWithContextCancelsAPIRequest(t *testing.T) {
 }
 
 func TestRun_IntroducedOnly_PreviewFailureWarnsWithoutChangingVerdict(t *testing.T) {
+	stubRetrySleep(t)
 	t.Setenv("API_KEY", "test-key")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1003,6 +1004,193 @@ func newChangeLinkServer(t *testing.T, reportID string, breached bool) *httptest
 			http.NotFound(w, r)
 		}
 	}))
+}
+
+func stubRetrySleep(t *testing.T) *[]time.Duration {
+	t.Helper()
+	slept := &[]time.Duration{}
+	prev := adapterSleep
+	adapterSleep = func(_ context.Context, d time.Duration) { *slept = append(*slept, d) }
+	t.Cleanup(func() { adapterSleep = prev })
+	return slept
+}
+
+func TestRun_RetriesTransientIngestFailure(t *testing.T) {
+	slept := stubRetrySleep(t)
+	var attempts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/reports":
+			attempts++
+			if attempts == 1 {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				return
+			}
+			writeTestJSONResponse(t, w, client.IngestResponse{ReportID: "rep-retry"})
+		case "/api/v1/projects/my-app/gate":
+			writeTestJSONResponse(t, w, client.GateStatus{})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	clearCIMarkers(t)
+	t.Setenv("API_KEY", "test-key")
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=my-app", "-tool=trivy"}, strings.NewReader(`{"Results":[]}`), &stdout, &stderr, srv.Client())
+	require.Equal(t, 0, code, "stderr:\n%s", stderr.String())
+	assert.Equal(t, 2, attempts, "the 503 is retried once")
+	assert.Equal(t, []time.Duration{time.Second}, *slept)
+}
+
+func TestRun_GivesUpAfterTwoRetries(t *testing.T) {
+	slept := stubRetrySleep(t)
+	var attempts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer srv.Close()
+	clearCIMarkers(t)
+	t.Setenv("API_KEY", "test-key")
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=my-app", "-tool=trivy"}, strings.NewReader(`{"Results":[]}`), &stdout, &stderr, srv.Client())
+	require.Equal(t, 2, code)
+	assert.Equal(t, 3, attempts, "the initial attempt plus two retries")
+	assert.Equal(t, []time.Duration{time.Second, 3 * time.Second}, *slept)
+	assert.Contains(t, stderr.String(), "ingest failed")
+}
+
+func TestRun_DoesNotRetryBadRequest(t *testing.T) {
+	slept := stubRetrySleep(t)
+	var attempts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusBadRequest)
+	}))
+	defer srv.Close()
+	clearCIMarkers(t)
+	t.Setenv("API_KEY", "test-key")
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=my-app", "-tool=trivy"}, strings.NewReader(`{"Results":[]}`), &stdout, &stderr, srv.Client())
+	require.Equal(t, 2, code)
+	assert.Equal(t, 1, attempts, "a 400 is not transient")
+	assert.Empty(t, *slept)
+}
+
+func TestRun_HonoursRetryAfterOn429(t *testing.T) {
+	slept := stubRetrySleep(t)
+	var attempts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/reports":
+			attempts++
+			if attempts == 1 {
+				w.Header().Set("Retry-After", "2")
+				w.WriteHeader(http.StatusTooManyRequests)
+				return
+			}
+			writeTestJSONResponse(t, w, client.IngestResponse{ReportID: "rep-429"})
+		case "/api/v1/projects/my-app/gate":
+			writeTestJSONResponse(t, w, client.GateStatus{})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	clearCIMarkers(t)
+	t.Setenv("API_KEY", "test-key")
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=my-app", "-tool=trivy"}, strings.NewReader(`{"Results":[]}`), &stdout, &stderr, srv.Client())
+	require.Equal(t, 0, code, "stderr:\n%s", stderr.String())
+	assert.Equal(t, []time.Duration{2 * time.Second}, *slept, "Retry-After replaces the default backoff")
+}
+
+func TestRun_DuplicateReportMessage(t *testing.T) {
+	slept := stubRetrySleep(t)
+	var attempts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.WriteHeader(http.StatusConflict)
+		writeTestJSONResponse(t, w, map[string]any{
+			"error": map[string]string{"code": "duplicate_report", "message": "report already exists for this project and data"},
+		})
+	}))
+	defer srv.Close()
+	clearCIMarkers(t)
+	t.Setenv("API_KEY", "test-key")
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=my-app", "-tool=trivy"}, strings.NewReader(`{"Results":[]}`), &stdout, &stderr, srv.Client())
+	require.Equal(t, 2, code)
+	assert.Equal(t, 1, attempts, "a 409 duplicate is not retried")
+	assert.Empty(t, *slept)
+	assert.Contains(t, stderr.String(), "duplicate report")
+	assert.Contains(t, stderr.String(), "already ingested")
+}
+
+func TestRetryAfterDelay(t *testing.T) {
+	assert.Equal(t, 2*time.Second, retryAfterDelay("2"))
+	assert.Equal(t, 30*time.Second, retryAfterDelay("600"), "Retry-After is capped")
+	assert.Zero(t, retryAfterDelay(""))
+	assert.Zero(t, retryAfterDelay("0"))
+	assert.Zero(t, retryAfterDelay("not-a-date"))
+}
+
+func TestRetryTransportRetriesNetworkErrors(t *testing.T) {
+	var calls int
+	base := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		if calls < 3 {
+			return nil, io.EOF
+		}
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       io.NopCloser(strings.NewReader("ok")),
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	})
+	var slept []time.Duration
+	rt := &retryTransport{base: base, sleep: func(_ context.Context, d time.Duration) { slept = append(slept, d) }}
+	req, err := http.NewRequest(http.MethodGet, "http://example.test/x", nil)
+	require.NoError(t, err)
+
+	resp, err := rt.RoundTrip(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	assert.Equal(t, 3, calls)
+	assert.Equal(t, []time.Duration{time.Second, 3 * time.Second}, slept)
+}
+
+func TestRetryTransportStopsOnContextCancelDuringBackoff(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var calls int
+	base := roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		calls++
+		return &http.Response{
+			StatusCode: http.StatusServiceUnavailable,
+			Body:       io.NopCloser(strings.NewReader("")),
+			Header:     make(http.Header),
+			Request:    req,
+		}, nil
+	})
+	rt := &retryTransport{base: base, sleep: func(_ context.Context, _ time.Duration) { cancel() }}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://example.test/x", nil)
+	require.NoError(t, err)
+
+	_, err = rt.RoundTrip(req)
+	require.ErrorIs(t, err, context.Canceled)
+	assert.Equal(t, 1, calls, "shutdown must stop further attempts")
 }
 
 func TestChangeURL(t *testing.T) {

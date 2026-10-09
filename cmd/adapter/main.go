@@ -11,8 +11,10 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/minh-tg/specht/internal/client"
 )
@@ -243,6 +245,159 @@ func publishPreview(ctx context.Context, f *adapterFlags, payload client.IngestP
 	}
 }
 
+// isDuplicateReport reports whether ingest failed because the server already
+// holds a byte-identical report (409 duplicate_report). The adapter keeps exit
+// 2: no verdict is available for this run.
+func isDuplicateReport(err error) bool {
+	var apiErr *client.Error
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	return apiErr.StatusCode == http.StatusConflict && (apiErr.Code == "duplicate_report" || apiErr.Code == "")
+}
+
+// adapterRequestTimeout bounds one API attempt when the caller supplied no
+// client. It mirrors the API client's own default so wrapping the client in
+// retries does not change the timeout contract.
+const adapterRequestTimeout = 60 * time.Second
+
+// retryBackoff holds the wait before each retry. A transient failure is
+// retried at most len(retryBackoff) times.
+var retryBackoff = []time.Duration{time.Second, 3 * time.Second}
+
+// maxRetryAfter caps how long a 429 response can ask the adapter to wait.
+const maxRetryAfter = 30 * time.Second
+
+// adapterSleep waits out the backoff, or returns early when the request
+// context ends, so a signal does not leave the adapter sleeping.
+var adapterSleep = func(ctx context.Context, d time.Duration) {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+}
+
+// newAdapterHTTPClient returns a client whose requests retry transient
+// failures. It wraps hc when given, or a client with the adapter request
+// timeout, so retries apply on every run.
+func newAdapterHTTPClient(hc *http.Client, sleep func(context.Context, time.Duration)) *http.Client {
+	if hc == nil {
+		hc = &http.Client{Timeout: adapterRequestTimeout}
+	} else {
+		clone := *hc
+		hc = &clone
+	}
+	base := hc.Transport
+	if base == nil {
+		base = http.DefaultTransport
+	}
+	hc.Transport = &retryTransport{base: base, sleep: sleep}
+	return hc
+}
+
+// retryTransport retries the transient failures of one API request: network
+// errors, 502/503/504 and 429. Any other 4xx is returned immediately, so a
+// contract or auth error is not retried.
+type retryTransport struct {
+	base  http.RoundTripper
+	sleep func(context.Context, time.Duration)
+}
+
+func (t *retryTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	for attempt := 0; ; attempt++ {
+		resp, err := t.base.RoundTrip(req)
+		if !retryableAttempt(req, resp, err) || attempt >= len(retryBackoff) {
+			return resp, err
+		}
+		wait := retryBackoff[attempt]
+		if resp != nil && resp.StatusCode == http.StatusTooManyRequests {
+			if d := retryAfterDelay(resp.Header.Get("Retry-After")); d > 0 {
+				wait = d
+			}
+		}
+		if resp != nil {
+			drainAndClose(resp.Body)
+		}
+		next, ok := replayRequest(req)
+		if !ok {
+			return resp, err
+		}
+		t.sleep(req.Context(), wait)
+		if err := req.Context().Err(); err != nil {
+			return nil, err
+		}
+		req = next
+	}
+}
+
+// retryableAttempt reports whether the attempt may be repeated. A canceled
+// context is not retried: shutdown must stay prompt.
+func retryableAttempt(req *http.Request, resp *http.Response, err error) bool {
+	if err != nil {
+		return req.Context().Err() == nil
+	}
+	switch resp.StatusCode {
+	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
+}
+
+// replayRequest copies req with a fresh body for the next attempt. It reports
+// false when a body exists that cannot be regenerated.
+func replayRequest(req *http.Request) (*http.Request, bool) {
+	next := req.Clone(req.Context())
+	if req.Body == nil {
+		return next, true
+	}
+	if req.GetBody == nil {
+		return nil, false
+	}
+	body, err := req.GetBody()
+	if err != nil {
+		return nil, false
+	}
+	next.Body = body
+	next.ContentLength = req.ContentLength
+	return next, true
+}
+
+// drainAndClose releases a response that is discarded before a retry.
+func drainAndClose(body io.ReadCloser) {
+	if body == nil {
+		return
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(body, 4<<10))
+	_ = body.Close()
+}
+
+// retryAfterDelay parses a Retry-After header (seconds or HTTP date) and caps
+// it at maxRetryAfter. It returns 0 when the header is absent or malformed, so
+// the caller falls back to the standard backoff.
+func retryAfterDelay(value string) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if seconds, err := strconv.Atoi(value); err == nil {
+		if seconds <= 0 {
+			return 0
+		}
+		return min(time.Duration(seconds)*time.Second, maxRetryAfter)
+	}
+	if when, err := http.ParseTime(value); err == nil {
+		delay := time.Until(when)
+		if delay <= 0 {
+			return 0
+		}
+		return min(delay, maxRetryAfter)
+	}
+	return 0
+}
+
 // printChangeLink writes the Specht change page URL to stdout so that GitLab
 // and local users see it too, not only GitHub step summaries and check runs.
 // The report id, when known, tells the change page which report to open. A
@@ -330,9 +485,9 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 		return code
 	}
 
-	clientOptions := []client.Option{client.WithToken(apiKey)}
-	if hc != nil {
-		clientOptions = append(clientOptions, client.WithHTTPClient(hc))
+	clientOptions := []client.Option{
+		client.WithToken(apiKey),
+		client.WithHTTPClient(newAdapterHTTPClient(hc, adapterSleep)),
 	}
 	cl := client.New(apiURL, clientOptions...).WithContext(ctx)
 	return runReportWorkflow(ctx, cl, f, payload, apiURL, stdout, stderr, hc)
@@ -341,6 +496,10 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, payload client.IngestPayload, apiURL string, stdout, stderr io.Writer, hc *http.Client) int {
 	resp, err := cl.IngestReport(&payload)
 	if err != nil {
+		if isDuplicateReport(err) {
+			writeDiagnosticLine(stderr, "error: duplicate report: an identical report was already ingested for this project, so no new verdict was produced")
+			return 2
+		}
 		writeDiagnostic(stderr, "error: ingest failed: %v\n", err)
 		return 2
 	}
