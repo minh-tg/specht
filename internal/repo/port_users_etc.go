@@ -87,6 +87,22 @@ func (r *pgUserPort) ClearPassword(ctx context.Context, userID string) error {
 	return r.q.ClearUserPassword(ctx, uid)
 }
 
+func (r *pgUserPort) TokenVersion(ctx context.Context, userID string) (int32, error) {
+	uid, err := parseID(userID)
+	if err != nil {
+		return 0, err
+	}
+	return r.q.GetUserTokenVersion(ctx, uid)
+}
+
+func (r *pgUserPort) BumpTokenVersion(ctx context.Context, userID string) error {
+	uid, err := parseID(userID)
+	if err != nil {
+		return err
+	}
+	return r.q.BumpUserTokenVersion(ctx, uid)
+}
+
 func (r *pgUserPort) UpdateDisplayName(ctx context.Context, userID string, displayName *string) (port.User, error) {
 	uid, err := parseID(userID)
 	if err != nil {

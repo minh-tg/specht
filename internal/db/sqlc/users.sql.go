@@ -11,6 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const bumpUserTokenVersion = `-- name: BumpUserTokenVersion :exec
+UPDATE users SET token_version = token_version + 1, updated_at = NOW() WHERE id = $1
+`
+
+func (q *Queries) BumpUserTokenVersion(ctx context.Context, id pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, bumpUserTokenVersion, id)
+	return err
+}
+
 const clearUserPassword = `-- name: ClearUserPassword :exec
 UPDATE users SET password_hash = NULL, updated_at = NOW() WHERE id = $1
 `
@@ -23,7 +32,7 @@ func (q *Queries) ClearUserPassword(ctx context.Context, id pgtype.UUID) error {
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, display_name, password_hash, role)
 VALUES (lower($1::text), $2, $3, 'member')
-RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version
 `
 
 type CreateUserParams struct {
@@ -44,12 +53,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at FROM users WHERE lower(email) = lower($1::text)
+SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version FROM users WHERE lower(email) = lower($1::text)
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -64,12 +74,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at FROM users WHERE id = $1
+SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -84,12 +95,24 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
 
+const getUserTokenVersion = `-- name: GetUserTokenVersion :one
+SELECT token_version FROM users WHERE id = $1
+`
+
+func (q *Queries) GetUserTokenVersion(ctx context.Context, id pgtype.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, getUserTokenVersion, id)
+	var token_version int32
+	err := row.Scan(&token_version)
+	return token_version, err
+}
+
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at FROM users
+SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version FROM users
 WHERE ($1::text = '' OR email ILIKE ('%' || $1::text || '%') ESCAPE E'\\')
 ORDER BY email ASC, id ASC
 LIMIT $3 OFFSET $2
@@ -122,6 +145,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 			&i.Role,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.TokenVersion,
 		); err != nil {
 			return nil, err
 		}
@@ -135,7 +159,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 
 const setUserRole = `-- name: SetUserRole :one
 UPDATE users SET role = $2 WHERE id = $1
-RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version
 `
 
 type SetUserRoleParams struct {
@@ -155,13 +179,14 @@ func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (User,
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }
 
 const updateUserDisplayName = `-- name: UpdateUserDisplayName :one
 UPDATE users SET display_name = $2, updated_at = NOW() WHERE id = $1
-RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version
 `
 
 type UpdateUserDisplayNameParams struct {
@@ -181,6 +206,7 @@ func (q *Queries) UpdateUserDisplayName(ctx context.Context, arg UpdateUserDispl
 		&i.Role,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TokenVersion,
 	)
 	return i, err
 }

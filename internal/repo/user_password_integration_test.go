@@ -11,6 +11,33 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestUsers_BumpTokenVersionAdvancesTheGeneration(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	users := &pgUserPort{q: sqlc.New(repos.pool)}
+
+	created, err := users.Create(ctx, "carol@example.com", nil, nil)
+	require.NoError(t, err)
+	other, err := users.Create(ctx, "dan@example.com", nil, nil)
+	require.NoError(t, err)
+
+	version, err := users.TokenVersion(ctx, created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int32(0), version)
+
+	require.NoError(t, users.BumpTokenVersion(ctx, created.ID))
+	require.NoError(t, users.BumpTokenVersion(ctx, created.ID))
+
+	version, err = users.TokenVersion(ctx, created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), version)
+
+	version, err = users.TokenVersion(ctx, other.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int32(0), version, "other accounts keep their generation")
+}
+
 func TestUsers_ClearPasswordRemovesOnlyThePassword(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()
