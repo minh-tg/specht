@@ -64,6 +64,23 @@ func setSPAHeaders(w http.ResponseWriter, cleanPath string) {
 	}
 }
 
+// isAssetPath reports whether a cleaned path points into the Vite asset
+// directory, including the directory itself.
+func isAssetPath(cleanPath string) bool {
+	return cleanPath == "assets" || strings.HasPrefix(cleanPath, "assets/")
+}
+
+// isAppRoute reports whether a cleaned path is a client-side route that
+// should fall back to index.html: no file extension and not an asset path.
+func isAppRoute(cleanPath string) bool {
+	return !isAssetPath(cleanPath) && path.Ext(cleanPath) == ""
+}
+
+func fileExists(fsys fs.FS, name string) bool {
+	info, err := fs.Stat(fsys, name)
+	return err == nil && !info.IsDir()
+}
+
 func spaHandlerWithFS(apiHandler http.Handler, assets fs.FS) http.Handler {
 	root := "dist"
 	if _, err := fs.Stat(assets, "dist/dist/index.html"); err == nil {
@@ -80,6 +97,13 @@ func spaHandlerWithFS(apiHandler http.Handler, assets fs.FS) http.Handler {
 		// rejects escapes); Clean only selects Content-Type/cache headers.
 		// nosemgrep: go.lang.security.filepath-clean-misuse.filepath-clean-misuse
 		cleanPath := cleanSPAPath(r.URL.Path)
+		if !fileExists(sub, cleanPath) && !isAppRoute(cleanPath) {
+			// A missing asset must fail fast: returning the shell under a JS
+			// or CSS URL would be cached as an immutable chunk.
+			w.Header().Set("Cache-Control", "no-store")
+			http.NotFound(w, r)
+			return
+		}
 		setSPAHeaders(w, cleanPath)
 
 		http.StripPrefix("/", http.FileServer(http.FS(spaFileSystem{sub}))).ServeHTTP(w, r)
