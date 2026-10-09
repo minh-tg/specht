@@ -599,9 +599,9 @@ paths:
       description: |
         Every registered scanner with its version, the finding kinds it emits,
         the scan types it accepts, and whether it can detect its own format.
-        Session admins only — project keys are refused.
+        Any signed-in user may read it, since the upload form needs it for
+        every role that can ingest. Project keys are refused.
       x-auth: session
-      x-required-role: admin
       security:
         - sessionAuth: []
       responses:

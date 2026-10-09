@@ -463,8 +463,8 @@ func TestE2E_TeamAccessGrants(t *testing.T) {
 
 // TestE2E_ScannerCatalog pins the scanner capability contract: the
 // authenticated catalog is the deterministic registration-order list of
-// built-in parsers with their versions and capabilities, and only global
-// admins may read it — sessions, keys, and anonymous callers are refused.
+// built-in parsers with their versions and capabilities. Any signed-in user
+// may read it; project keys and anonymous callers are refused.
 func TestE2E_ScannerCatalog(t *testing.T) {
 	t.Run("admin sees the full deterministic catalog", func(t *testing.T) {
 		descs := request[[]scannerDescriptor](t, http.MethodGet, "/api/v1/scanners", adminToken, nil, http.StatusOK)
@@ -487,15 +487,16 @@ func TestE2E_ScannerCatalog(t *testing.T) {
 		require.Contains(t, byName["sarif"].FindingKinds, "sast")
 	})
 
-	t.Run("non-admin identities are refused", func(t *testing.T) {
+	t.Run("non-admin session users read the catalog", func(t *testing.T) {
 		viewerToken := login(t, "e2e-viewer@example.com", adminPass)
 
-		status, raw := doJSON(t, http.MethodGet, "/api/v1/scanners", viewerToken, nil)
-		require.Equal(t, http.StatusForbidden, status)
-		require.Equal(t, "insufficient_role", errorCode(t, raw))
+		descs := request[[]scannerDescriptor](t, http.MethodGet, "/api/v1/scanners", viewerToken, nil, http.StatusOK)
+		require.NotEmpty(t, descs)
+	})
 
+	t.Run("project keys and anonymous callers are refused", func(t *testing.T) {
 		key := mintKey(t, newProject(t, "org-scan-key"))
-		status, raw = doJSON(t, http.MethodGet, "/api/v1/scanners", key, nil)
+		status, raw := doJSON(t, http.MethodGet, "/api/v1/scanners", key, nil)
 		require.Equal(t, http.StatusForbidden, status)
 		require.Equal(t, "insufficient_role", errorCode(t, raw),
 			"project keys never hold session roles")
