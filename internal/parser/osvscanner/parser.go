@@ -40,16 +40,16 @@ type osvPkg struct {
 }
 
 type osvVuln struct {
-	ID               string         `json:"id"`
-	Aliases          []string       `json:"aliases"`
-	Summary          string         `json:"summary"`
-	Details          string         `json:"details"`
-	Published        string         `json:"published"`
-	Modified         string         `json:"modified"`
-	Severity         []osvSeverity  `json:"severity"`
-	DatabaseSpecific *osvDBSpecific `json:"database_specific"`
-	Affected         *osvAffected   `json:"affected"`
-	References       []osvReference `json:"references"`
+	ID               string             `json:"id"`
+	Aliases          []string           `json:"aliases"`
+	Summary          string             `json:"summary"`
+	Details          string             `json:"details"`
+	Published        string             `json:"published"`
+	Modified         string             `json:"modified"`
+	Severity         []osvSeverity      `json:"severity"`
+	DatabaseSpecific *osvDBSpecific     `json:"database_specific"`
+	Affected         osvAffectedRecords `json:"affected"`
+	References       []osvReference     `json:"references"`
 }
 
 type osvSeverity struct {
@@ -65,6 +65,37 @@ type osvAffected struct {
 	Package  osvPkg     `json:"package"`
 	Ranges   []osvRange `json:"ranges"`
 	Versions []string   `json:"versions"`
+}
+
+// osvAffectedRecords accepts the OSV array and older scanner object format.
+type osvAffectedRecords []osvAffected
+
+func (a *osvAffectedRecords) UnmarshalJSON(data []byte) error {
+	var records []osvAffected
+	if strings.HasPrefix(strings.TrimSpace(string(data)), "[") {
+		if err := json.Unmarshal(data, &records); err != nil {
+			return err
+		}
+	} else {
+		var record *osvAffected
+		if err := json.Unmarshal(data, &record); err != nil {
+			return err
+		}
+		if record != nil {
+			records = append(records, *record)
+		}
+	}
+	*a = records
+	return nil
+}
+
+func (a osvAffectedRecords) forPackage(pkg osvPkg) *osvAffected {
+	for i := range a {
+		if a[i].Package.Name == pkg.Name && strings.EqualFold(a[i].Package.Ecosystem, pkg.Ecosystem) {
+			return &a[i]
+		}
+	}
+	return nil
 }
 
 type osvRange struct {
@@ -202,6 +233,7 @@ func addOsvVulns(nr *domain.NormalizedReport, result osvResult) {
 				vuln:     v,
 				pkg:      pkg.Package,
 				source:   result.Source,
+				affected: v.Affected.forPackage(pkg.Package),
 				analysis: groupAnalysis[v.ID],
 			}
 			nr.Findings = append(nr.Findings, parseutil.HardenFinding(f.normalized()))
@@ -215,6 +247,7 @@ type osvFinding struct {
 	vuln     osvVuln
 	pkg      osvPkg
 	source   osvSource
+	affected *osvAffected
 	analysis osvCallAnalysis
 }
 
@@ -222,18 +255,15 @@ type osvFinding struct {
 func (f osvFinding) normalized() domain.NormalizedFinding {
 	v := f.vuln
 	purl := f.pkg.PURL
-	if v.Affected != nil && v.Affected.Package.PURL != "" {
-		purl = v.Affected.Package.PURL
+	if f.affected != nil && f.affected.Package.PURL != "" {
+		purl = f.affected.Package.PURL
 	}
 	if purl == "" {
 		ecosystem, name := f.pkg.Ecosystem, f.pkg.Name
-		if v.Affected != nil {
-			ecosystem, name = v.Affected.Package.Ecosystem, v.Affected.Package.Name
-		}
 		purl = "pkg:" + strings.ToLower(ecosystem) + "/" + name
 	}
 
-	fixedVersion := firstFixedVersion(v)
+	fixedVersion := firstFixedVersion(f.affected)
 	cveID := firstCVEAlias(v)
 
 	var reachability *domain.ReachabilityHint
@@ -299,12 +329,12 @@ func (f osvFinding) normalized() domain.NormalizedFinding {
 
 // firstFixedVersion returns the last fixed version recorded across the
 // vulnerability's affected ranges, or "" when none is fixed.
-func firstFixedVersion(v osvVuln) string {
-	if v.Affected == nil {
+func firstFixedVersion(affected *osvAffected) string {
+	if affected == nil {
 		return ""
 	}
 	var fixed string
-	for _, rng := range v.Affected.Ranges {
+	for _, rng := range affected.Ranges {
 		for _, e := range rng.Events {
 			if e.Fixed != "" {
 				fixed = e.Fixed
@@ -455,7 +485,7 @@ func normalizeOSVSeverity(s string) domain.Severity {
 		return domain.SeverityCritical
 	case "HIGH":
 		return domain.SeverityHigh
-	case "MEDIUM":
+	case "MEDIUM", "MODERATE":
 		return domain.SeverityMedium
 	case "LOW":
 		return domain.SeverityLow

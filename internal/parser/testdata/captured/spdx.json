@@ -1,0 +1,111 @@
+{
+  "spdxVersion": "SPDX-2.3",
+  "dataLicense": "CC0-1.0",
+  "SPDXID": "SPDXRef-DOCUMENT",
+  "name": "fixture",
+  "documentNamespace": "https://example.org/spdx/fixture",
+  "creationInfo": {
+    "created": "2026-10-09T08:41:29Z"
+  },
+  "packages": [
+    {
+      "name": "@adobe/css-tools",
+      "SPDXID": "SPDXRef-Package-13a806294a614395",
+      "versionInfo": "4.5.0",
+      "supplier": "NOASSERTION",
+      "downloadLocation": "NONE",
+      "filesAnalyzed": false,
+      "sourceInfo": "package found in: pnpm-lock.yaml",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/%40adobe/css-tools@4.5.0"
+        }
+      ],
+      "primaryPackagePurpose": "LIBRARY",
+      "annotations": [
+        {
+          "annotator": "Tool: trivy-0.74.0",
+          "annotationDate": "2026-10-09T08:41:29Z",
+          "annotationType": "OTHER",
+          "comment": "PkgID: @adobe/css-tools@4.5.0"
+        },
+        {
+          "annotator": "Tool: trivy-0.74.0",
+          "annotationDate": "2026-10-09T08:41:29Z",
+          "annotationType": "OTHER",
+          "comment": "PkgType: pnpm"
+        }
+      ]
+    },
+    {
+      "name": "@asamuzakjp/css-color",
+      "SPDXID": "SPDXRef-Package-77cf9b50c9314842",
+      "versionInfo": "5.1.11",
+      "supplier": "NOASSERTION",
+      "downloadLocation": "NONE",
+      "filesAnalyzed": false,
+      "sourceInfo": "package found in: pnpm-lock.yaml",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/%40asamuzakjp/css-color@5.1.11"
+        }
+      ],
+      "primaryPackagePurpose": "LIBRARY",
+      "annotations": [
+        {
+          "annotator": "Tool: trivy-0.74.0",
+          "annotationDate": "2026-10-09T08:41:29Z",
+          "annotationType": "OTHER",
+          "comment": "PkgID: @asamuzakjp/css-color@5.1.11"
+        },
+        {
+          "annotator": "Tool: trivy-0.74.0",
+          "annotationDate": "2026-10-09T08:41:29Z",
+          "annotationType": "OTHER",
+          "comment": "PkgType: pnpm"
+        }
+      ]
+    },
+    {
+      "name": "@asamuzakjp/dom-selector",
+      "SPDXID": "SPDXRef-Package-c0803b1f3446bff5",
+      "versionInfo": "7.1.1",
+      "supplier": "NOASSERTION",
+      "downloadLocation": "NONE",
+      "filesAnalyzed": false,
+      "sourceInfo": "package found in: pnpm-lock.yaml",
+      "licenseConcluded": "NOASSERTION",
+      "licenseDeclared": "NOASSERTION",
+      "externalRefs": [
+        {
+          "referenceCategory": "PACKAGE-MANAGER",
+          "referenceType": "purl",
+          "referenceLocator": "pkg:npm/%40asamuzakjp/dom-selector@7.1.1"
+        }
+      ],
+      "primaryPackagePurpose": "LIBRARY",
+      "annotations": [
+        {
+          "annotator": "Tool: trivy-0.74.0",
+          "annotationDate": "2026-10-09T08:41:29Z",
+          "annotationType": "OTHER",
+          "comment": "PkgID: @asamuzakjp/dom-selector@7.1.1"
+        },
+        {
+          "annotator": "Tool: trivy-0.74.0",
+          "annotationDate": "2026-10-09T08:41:29Z",
+          "annotationType": "OTHER",
+          "comment": "PkgType: pnpm"
+        }
+      ]
+    }
+  ]
+}

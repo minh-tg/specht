@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "CodeQL",
+          "semanticVersion": "2.27.0",
+          "rules": [
+            {
+              "id": "go/clear-text-logging",
+              "name": "go/clear-text-logging",
+              "shortDescription": {
+                "text": "Clear-text logging of sensitive information"
+              },
+              "fullDescription": {
+                "text": "Logging sensitive information without encryption or hashing can expose it to an attacker."
+              },
+              "defaultConfiguration": {
+                "enabled": true,
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-312",
+                  "external/cwe/cwe-315",
+                  "external/cwe/cwe-359"
+                ],
+                "description": "Logging sensitive information without encryption or hashing can\n              expose it to an attacker.",
+                "id": "go/clear-text-logging",
+                "kind": "path-problem",
+                "name": "Clear-text logging of sensitive information",
+                "precision": "high",
+                "problem.severity": "error",
+                "security-severity": "7.5"
+              }
+            },
+            {
+              "id": "go/log-injection",
+              "name": "go/log-injection",
+              "shortDescription": {
+                "text": "Log entries created from user input"
+              },
+              "fullDescription": {
+                "text": "Building log entries from user-controlled sources is vulnerable to insertion of forged log entries by a malicious user."
+              },
+              "defaultConfiguration": {
+                "enabled": true,
+                "level": "error"
+              },
+              "properties": {
+                "tags": [
+                  "security",
+                  "external/cwe/cwe-117"
+                ],
+                "description": "Building log entries from user-controlled sources is vulnerable to\n              insertion of forged log entries by a malicious user.",
+                "id": "go/log-injection",
+                "kind": "path-problem",
+                "name": "Log entries created from user input",
+                "precision": "medium",
+                "problem.severity": "error",
+                "security-severity": "6.1"
+              }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "go/clear-text-logging",
+          "ruleIndex": 7,
+          "rule": {
+            "id": "go/clear-text-logging",
+            "index": 7
+          },
+          "message": {
+            "text": "[Sensitive data returned by an access to IsAPIKey](1) flows to a logging call."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/audit/audit.go",
+                  "uriBaseId": "%SRCROOT%",
+                  "index": 0
+                },
+                "region": {
+                  "startLine": 92,
+                  "startColumn": 37,
+                  "endColumn": 43
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "f55b7df60e00934a:1",
+            "primaryLocationStartColumnFingerprint": "35"
+          }
+        },
+        {
+          "ruleId": "go/log-injection",
+          "ruleIndex": 33,
+          "rule": {
+            "id": "go/log-injection",
+            "index": 33
+          },
+          "message": {
+            "text": "This log entry depends on a [user-provided value](1).\nThis log entry depends on a [user-provided value](2).\nThis log entry depends on a [user-provided value](3).\nThis log entry depends on a [user-provided value](4).\nThis log entry depends on a [user-provided value](5).\nThis log entry depends on a [user-provided value](6).\nThis log entry depends on a [user-provided value](7).\nThis log entry depends on a [user-provided value](8).\nThis log entry depends on a [user-provided value](9).\nThis log entry depends on a [user-provided value](10).\nThis log entry depends on a [user-provided value](11)."
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "internal/audit/audit.go",
+                  "uriBaseId": "%SRCROOT%",
+                  "index": 0
+                },
+                "region": {
+                  "startLine": 92,
+                  "startColumn": 37,
+                  "endColumn": 43
+                }
+              }
+            }
+          ],
+          "partialFingerprints": {
+            "primaryLocationLineHash": "f55b7df60e00934a:1",
+            "primaryLocationStartColumnFingerprint": "35"
+          }
+        }
+      ]
+    }
+  ]
+}

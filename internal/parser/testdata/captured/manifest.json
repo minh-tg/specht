@@ -1,0 +1,167 @@
+{
+  "fixtures": [
+    {
+      "file": "trivy.json",
+      "scanner": "trivy",
+      "tool_version": "0.74.0",
+      "source_file": "trivy.json",
+      "source_sha256": "52e2e4fcce954136e3b1ac2ef25a275688b19a818ee2ea91b6ea3f9eaa6ba9da",
+      "fixture_sha256": "c938937ef5fa1f6a4e531ec07641d1ad8d5a98ddcfc9b04bb499bbdd48e1a5cb",
+      "transformations": [
+        "Keep first two vulnerabilities per result and all nine IaC checks; remove package inventory, source excerpts and reference lists; replace local artifact path."
+      ],
+      "capture_command": "trivy fs --scanners vuln,misconfig --skip-version-check --format json --output trivy.json TARGET",
+      "capture_scope": "disposable local targets; generated 2026-10-09"
+    },
+    {
+      "file": "osv-scanner.json",
+      "scanner": "osv-scanner",
+      "tool_version": "2.6.0",
+      "source_file": "osv-scanner.json",
+      "source_sha256": "3aacb42468bd80477515d696c417cd728b79cccf241c9421811e96e627bd3f94",
+      "fixture_sha256": "ad45c5f1d5c5fedc69b75a6581fdfa30e26d01b91796b109c7462b4e3bc834c7",
+      "transformations": [
+        "Keep one package and two advisories, including every affected-package entry; replace source path."
+      ],
+      "capture_command": "osv-scanner scan source --lockfile TARGET/package-lock.json --no-resolve --all-packages --format json --output-file osv-scanner.json",
+      "capture_scope": "disposable local targets; generated 2026-10-09"
+    },
+    {
+      "file": "grype.json",
+      "scanner": "grype",
+      "tool_version": "0.120.1",
+      "source_file": "grype.json",
+      "source_sha256": "839f8ecc8ce21e73ef64a41dc2113c8cdeee260b4cf90ebcbe1847386254f714",
+      "fixture_sha256": "6d45493da530b022183209615c285e3188b5a170f65b9f337dddaef658238ae2",
+      "transformations": [
+        "Keep two native matches; drop scanner configuration and source metadata; replace package location."
+      ],
+      "capture_command": "grype sbom:grype-input.cyclonedx.json -o json",
+      "capture_scope": "disposable local targets; generated 2026-10-09"
+    },
+    {
+      "file": "dependency-check.json",
+      "scanner": "dependency-check",
+      "tool_version": "12.1.0",
+      "source_file": "dependency-check.json",
+      "source_sha256": "0a413dfd0c7d3e7002390b9ffad07972ed890d23b6531bc2bbcca6efb78cae28",
+      "fixture_sha256": "b66144db929b39e5add70f813c5bda953211d854b5cd0738463e5a2f193a9057",
+      "transformations": [
+        "Keep both dependencies with two vulnerabilities each; remove evidence/reference lists and project/scan metadata; replace paths. NVD scan was limited to CVE-2021-23337; RetireJS and npm audit were enabled."
+      ],
+      "capture_command": "dependency-check --scan TARGET --project specht-report-fixture --format JSON --out dependency-check.json --propertyfile scan.properties --disableOssIndex --disableCentral --disableKnownExploited --disableVersionCheck --nvdApiEndpoint https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=CVE-2021-23337 --nvdMaxRetryCount 1 --nvdApiDelay 6000",
+      "capture_scope": "disposable local targets; generated 2026-10-09",
+      "image_digest": "sha256:60ee7af9cf80ac009761e397b2d4ba5ddbf072c2a0ead1c068dc24dc62155600"
+    },
+    {
+      "file": "checkov.json",
+      "scanner": "checkov",
+      "tool_version": "3.3.26",
+      "source_file": "checkov.json",
+      "source_sha256": "47674061a259de3cb573ec6a47d6189e9d4070a4d2e7f8679a7ea68e74ffceb0",
+      "fixture_sha256": "30d85382fc98ac59873cf6b5f2bd8ecf9b8cfcdb1a21e571906c050206bca313",
+      "transformations": [
+        "Keep three failed checks; remove source excerpts/evaluations and summary; replace paths. Native null severities are retained.",
+        "Omit absolute, repository and definition-context path fields."
+      ],
+      "capture_command": "checkov --directory TARGET --framework terraform --output json --quiet --skip-download --soft-fail --compact",
+      "capture_scope": "disposable local targets; generated 2026-10-09"
+    },
+    {
+      "file": "tfsec.json",
+      "scanner": "tfsec",
+      "tool_version": "1.28.14",
+      "source_file": "tfsec.json",
+      "source_sha256": "117a71b20223fbfaeed34c48308d55bee020d49c6b85b2da3c04a653143ca4c0",
+      "fixture_sha256": "56a0fc134ec44f4bb2caa2ff12017869cb9dc195e38174e90292539a6f9d7829",
+      "transformations": [
+        "Keep three status-0 failures; replace local filename."
+      ],
+      "capture_command": "tfsec TARGET --format json --out tfsec.json --soft-fail --no-color --no-module-downloads",
+      "capture_scope": "disposable local targets; generated 2026-10-09",
+      "status_source": "https://github.com/aquasecurity/defsec/blob/v0.84.1/pkg/scan/result.go"
+    },
+    {
+      "file": "nuclei.json",
+      "scanner": "nuclei",
+      "tool_version": "3.11.1",
+      "source_file": "nuclei.jsonl",
+      "source_sha256": "59905857a91909ebfb5f942d240cbaeeabeb01980b648cd117cbac4bbe6a90b2",
+      "fixture_sha256": "c8c2f00d7f0e1116ce24be1b4ac49d9cec4eb57c085ba762d00c1c92c0624916",
+      "transformations": [
+        "Convert JSONL to JSON array; omit embedded payloads, template bytes and local template path; preserve localhost target and native info."
+      ],
+      "capture_command": "nuclei -u http://127.0.0.1:18084 -t git-config.yaml -ni -duc -jle nuclei.jsonl",
+      "capture_scope": "disposable local targets; generated 2026-10-09",
+      "template_source": "https://github.com/projectdiscovery/nuclei-templates/blob/c8664a14c6078ae9da2d19dbb4c479981454cf65/http/exposures/configs/git-config.yaml"
+    },
+    {
+      "file": "gitleaks.json",
+      "scanner": "gitleaks",
+      "tool_version": "8.30.1",
+      "source_file": "gitleaks.json",
+      "source_sha256": "98d51989bc7c6c51cd248c354c34d1a32972dae813f521047b71de9d7872b680",
+      "fixture_sha256": "4189603b545d07b99554587928eac8a6fb1c699662739a1f5868eb3e3558f2c6",
+      "transformations": [
+        "Replace the deliberately fake token and matching source text with redaction markers; replace file path and matching fingerprint path."
+      ],
+      "capture_command": "gitleaks dir TARGET --report-format json --report-path gitleaks.json --exit-code 0",
+      "capture_scope": "disposable local targets; generated 2026-10-09"
+    },
+    {
+      "file": "semgrep.json",
+      "scanner": "semgrep",
+      "tool_version": "1.172.0",
+      "source_file": "semgrep.sarif",
+      "source_sha256": "9b2ff83e57887b14b06e4c7b631d695ed9aa630d48fbd36aca745f974aa2e93e",
+      "fixture_sha256": "bc0e77669a3db099ce0ba1b0bbccbca099d7fc0ee5b64694e70420c8e7ffcb60",
+      "transformations": [
+        "Extract the first two results and their rules from a previously captured scan; remove code flows, snippets and run-local metadata. Capture command/date not recorded; no current-HEAD scan claim.",
+        "Remove the local ruleset-directory prefix from rule IDs consistently in result and rule records.",
+        "Omit unused SARIF tool/run metadata and remove local root paths and ruleset prefixes from descriptive text."
+      ],
+      "capture_command": null,
+      "capture_scope": "previously captured scanner output; original command and date unavailable"
+    },
+    {
+      "file": "codeql.json",
+      "scanner": "sarif",
+      "tool_version": "2.27.0",
+      "source_file": "codeql-go.sarif",
+      "source_sha256": "373408eea9f774e7fa1221ee003103ca0d9f1f5746ae7a6396a7cf848819c9a2",
+      "fixture_sha256": "4edb4c963448e578c3da873fd59544b0bd594c57562177f221d3967fc76da671",
+      "transformations": [
+        "Extract the first two results and their rules from a previously captured scan; remove code flows, snippets and run-local metadata. Capture command/date not recorded; no current-HEAD scan claim.",
+        "Omit unused SARIF tool/run metadata and remove local root paths and ruleset prefixes from descriptive text."
+      ],
+      "capture_command": null,
+      "capture_scope": "previously captured scanner output; original command and date unavailable"
+    },
+    {
+      "file": "cyclonedx.json",
+      "scanner": "sbom",
+      "tool_version": "Trivy 0.74.0",
+      "source_file": "cyclonedx.json",
+      "source_sha256": "89fcc58af06b0c1768f380029eacbe3f83930f2a883d80aabc8e5024a762c28e",
+      "fixture_sha256": "9d2b7e84233e03e60d0fe8d350294384e4cdfdf0a1f1fbab4850f0c84adf8260",
+      "transformations": [
+        "Keep three native package entries; omit graph edges and local document metadata."
+      ],
+      "capture_command": "trivy fs --skip-version-check --format cyclonedx --output cyclonedx.json TARGET",
+      "capture_scope": "disposable local targets; generated 2026-10-09"
+    },
+    {
+      "file": "spdx.json",
+      "scanner": "sbom",
+      "tool_version": "Trivy 0.74.0",
+      "source_file": "spdx.json",
+      "source_sha256": "722d5eaa44f537b31758996acc62517d88f3a2174d5b353f3a98ef6f5d21c8fd",
+      "fixture_sha256": "41163bd202c9c82f98367f88331565948fd35d33044ea633318d32153160de7d",
+      "transformations": [
+        "Keep three native packages with purl references; omit graph edges and replace local document metadata."
+      ],
+      "capture_command": "trivy fs --skip-version-check --format spdx-json --output spdx.json TARGET",
+      "capture_scope": "disposable local targets; generated 2026-10-09"
+    }
+  ]
+}

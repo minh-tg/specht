@@ -50,6 +50,25 @@ func TestParseSkipsNonFailures(t *testing.T) {
 	assert.Equal(t, "var.db_password", variable.Resource)
 }
 
+func TestParseUpstreamStatuses(t *testing.T) {
+	data := []byte(`{"results":[
+		{"rule_id":"failed","long_id":"aws-s3-failed","status":0,"severity":"HIGH"},
+		{"rule_id":"passed","long_id":"aws-s3-passed","status":1,"severity":"HIGH"},
+		{"rule_id":"ignored","long_id":"aws-s3-ignored","status":2,"severity":"HIGH"},
+		{"rule_id":"unknown","long_id":"aws-s3-unknown","status":3,"severity":"HIGH"},
+		{"rule_id":"missing","long_id":"aws-s3-missing","severity":"HIGH"},
+		{"rule_id":"null","long_id":"aws-s3-null","status":null,"severity":"HIGH"},
+		{"rule_id":"","long_id":"aws-s3-empty","status":0,"severity":"HIGH"}
+	]}`)
+	s := NewScanner()
+	assert.True(t, s.DetectFormat(data), "native tfsec output has no statistics block")
+	report, err := s.Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.Len(t, report.Findings, 1)
+	assert.Equal(t, "iac:failed:", report.Findings[0].Fingerprint)
+	assert.False(t, s.DetectFormat([]byte(`{"results":[{"rule_id":"another-scanner"}]}`)))
+}
+
 func TestParseInvalidJSON(t *testing.T) {
 	_, err := NewScanner().Parse(context.Background(), []byte(`not json`))
 	require.Error(t, err)

@@ -164,6 +164,50 @@ func TestParse_MissingAffectedRecordUsesPackageInventory(t *testing.T) {
 	assert.Equal(t, "GO-2026-0001:pkg:golang/example.com/app@v1.0.0", report.Findings[0].Fingerprint)
 }
 
+func TestParse_AffectedPackageSelection(t *testing.T) {
+	cases := []struct {
+		name     string
+		affected string
+		purl     string
+		fixed    string
+	}{
+		{"legacy object", `{"package":{"name":"lodash","ecosystem":"npm","purl":"pkg:npm/lodash"},"ranges":[{"events":[{"fixed":"4.17.21"}]}]}`, "pkg:npm/lodash", "4.17.21"},
+		{"matching package is not first", `[{"package":{"name":"lodash.trim","ecosystem":"npm","purl":"pkg:npm/lodash.trim"},"ranges":[{"events":[{"fixed":"4.5.1"}]}]},{"package":{"name":"lodash","ecosystem":"npm","purl":"pkg:npm/lodash"},"ranges":[{"events":[{"fixed":"4.17.21"}]}]}]`, "pkg:npm/lodash", "4.17.21"},
+		{"same name in another ecosystem", `[{"package":{"name":"lodash","ecosystem":"RubyGems","purl":"pkg:gem/lodash"},"ranges":[{"events":[{"fixed":"1.0.0"}]}]},{"package":{"name":"lodash","ecosystem":"npm","purl":"pkg:npm/lodash"},"ranges":[{"events":[{"fixed":"4.17.21"}]}]}]`, "pkg:npm/lodash", "4.17.21"},
+		{"no matching package", `[{"package":{"name":"lodash.trim","ecosystem":"npm","purl":"pkg:npm/lodash.trim"}}]`, "pkg:npm/lodash@4.17.20", ""},
+		{"package-less advisory", `[{"ranges":[{"events":[{"fixed":"99.0.0"}]}]}]`, "pkg:npm/lodash@4.17.20", ""},
+		{"empty list", `[]`, "pkg:npm/lodash@4.17.20", ""},
+		{"null", `null`, "pkg:npm/lodash@4.17.20", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data := []byte(`{"results":[{"source":{"path":"package-lock.json","type":"lockfile"},"packages":[{"package":{"name":"lodash","version":"4.17.20","ecosystem":"npm","purl":"pkg:npm/lodash@4.17.20"},"vulnerabilities":[{"id":"GHSA-test","affected":` + tc.affected + `}]}]}]}`)
+			report, err := osvscanner.NewScanner().Parse(context.Background(), data)
+			require.NoError(t, err)
+			require.Len(t, report.Findings, 1)
+			f := report.Findings[0]
+			assert.Equal(t, "GHSA-test:"+tc.purl, f.Fingerprint)
+			assert.Contains(t, f.Dimensions, domain.Dimension{Key: domain.DimPackageName, Value: "lodash"})
+			if tc.fixed == "" {
+				assert.Nil(t, f.Fix, "unrelated package fixes must not leak into this finding")
+			} else {
+				require.NotNil(t, f.Fix)
+				assert.Equal(t, tc.fixed, f.Fix.Summary)
+			}
+		})
+	}
+}
+
+func TestParse_RejectsMalformedAffectedRecords(t *testing.T) {
+	for _, affected := range []string{`"bad"`, `7`, `[7]`} {
+		t.Run(affected, func(t *testing.T) {
+			data := []byte(`{"results":[{"packages":[{"vulnerabilities":[{"affected":` + affected + `}]}]}]}`)
+			_, err := osvscanner.NewScanner().Parse(context.Background(), data)
+			require.Error(t, err)
+		})
+	}
+}
+
 func TestFindingKind(t *testing.T) {
 	s := osvscanner.NewScanner()
 	assert.Equal(t, "sca", string(s.Descriptor().FindingKinds[0]))

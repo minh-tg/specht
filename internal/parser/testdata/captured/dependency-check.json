@@ -1,0 +1,120 @@
+{
+  "reportSchema": "1.1",
+  "dependencies": [
+    {
+      "isVirtual": false,
+      "fileName": "jquery-1.6.1.js",
+      "filePath": "jquery-1.6.1.js",
+      "md5": "137d4b8b58f69c747fed3415894e73f4",
+      "sha1": "22c1eefcce5be20a3e0966f5bcdf88ed81e9f5e7",
+      "sha256": "0eef76a9583a6c7a1eb764d33fe376bfe1861df79fab82c2c3f5d16183e82016",
+      "packages": [
+        {
+          "id": "pkg:javascript/jquery@1.6.1",
+          "confidence": "HIGHEST"
+        }
+      ],
+      "vulnerabilities": [
+        {
+          "source": "RETIREJS",
+          "name": "CVE-2011-4969",
+          "unscored": "true",
+          "severity": "medium",
+          "cwes": [],
+          "description": "",
+          "notes": "",
+          "vulnerableSoftware": []
+        },
+        {
+          "source": "RETIREJS",
+          "name": "CVE-2012-6708",
+          "unscored": "true",
+          "severity": "medium",
+          "cwes": [],
+          "description": "",
+          "notes": "",
+          "vulnerableSoftware": []
+        }
+      ]
+    },
+    {
+      "isVirtual": true,
+      "fileName": "lodash:4.17.20",
+      "filePath": "lodash:4.17.20",
+      "projectReferences": [
+        "package-lock.json: transitive"
+      ],
+      "packages": [
+        {
+          "id": "pkg:npm/lodash@4.17.20",
+          "confidence": "HIGHEST"
+        }
+      ],
+      "vulnerabilities": [
+        {
+          "source": "NPM",
+          "name": "GHSA-r5fr-rjxr-66jc",
+          "unscored": "true",
+          "severity": "high",
+          "cvssv3": {
+            "baseScore": 8.100000381469727,
+            "attackVector": "NETWORK",
+            "attackComplexity": "HIGH",
+            "privilegesRequired": "NONE",
+            "userInteraction": "NONE",
+            "scope": "UNCHANGED",
+            "confidentialityImpact": "HIGH",
+            "integrityImpact": "HIGH",
+            "availabilityImpact": "HIGH",
+            "baseSeverity": "HIGH",
+            "version": "3.1"
+          },
+          "cwes": [
+            "CWE-94"
+          ],
+          "description": "### Impact\n\nThe fix for [CVE-2021-23337](https://github.com/advisories/GHSA-35jh-r3h4-6jhm) added validation for the `variable` option in `_.template` but did not apply the same validation to `options.imports` key names. Both paths flow into the same `Function()` constructor sink.\n\nWhen an application passes untrusted input as `options.imports` key names, an attacker can inject default-parameter expressions that execute arbitrary code at template compilation time.\n\nAdditionally, `_.template` uses `assignInWith` to merge imports, which enumerates inherited properties via `for..in`. If `Object.prototype` has been polluted by any other vector, the polluted keys are copied into the imports object and passed to `Function()`.\n\n### Patches\n\nUsers should upgrade to version 4.18.0.\n\nThe fix applies two changes:\n1. Validate `importsKeys` against the existing `reForbiddenIdentifierChars` regex (same check already used for the `variable` option)\n2. Replace `assignInWith` with `assignWith` when merging imports, so only own properties are enumerated\n\n### Workarounds\n\nDo not pass untrusted input as key names in `options.imports`. Only use developer-controlled, static key names.",
+          "notes": "",
+          "vulnerableSoftware": [
+            {
+              "software": {
+                "id": "cpe:2.3:a:*:lodash:\\>\\=4.0.0\\<\\=4.17.23:*:*:*:*:*:*:*"
+              }
+            }
+          ]
+        },
+        {
+          "source": "NPM",
+          "name": "GHSA-35jh-r3h4-6jhm",
+          "unscored": "true",
+          "severity": "high",
+          "cvssv3": {
+            "baseScore": 7.199999809265137,
+            "attackVector": "NETWORK",
+            "attackComplexity": "LOW",
+            "privilegesRequired": "HIGH",
+            "userInteraction": "NONE",
+            "scope": "UNCHANGED",
+            "confidentialityImpact": "HIGH",
+            "integrityImpact": "HIGH",
+            "availabilityImpact": "HIGH",
+            "baseSeverity": "HIGH",
+            "version": "3.1"
+          },
+          "cwes": [
+            "CWE-77",
+            "CWE-94"
+          ],
+          "description": "`lodash` versions prior to 4.17.21 are vulnerable to Command Injection via the template function.",
+          "notes": "",
+          "vulnerableSoftware": [
+            {
+              "software": {
+                "id": "cpe:2.3:a:*:lodash:\\<4.17.21:*:*:*:*:*:*:*"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
