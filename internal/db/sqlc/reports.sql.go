@@ -357,6 +357,64 @@ func (q *Queries) HasCompletedReportForCommit(ctx context.Context, arg HasComple
 	return exists, err
 }
 
+const latestCompletedFullReportInFindingScope = `-- name: LatestCompletedFullReportInFindingScope :one
+WITH latest_observation AS (
+    SELECT r.scan_scope_hash
+    FROM finding_occurrences fo
+    JOIN reports r ON r.id = fo.report_id
+    WHERE fo.finding_id = $2
+    ORDER BY fo.observed_at DESC, r.id DESC
+    LIMIT 1
+)
+SELECT r.id, r.tool_name, r.branch, r.commit_sha, r.base_revision, r.scan_mode, r.scan_completeness, r.created_at
+FROM reports r
+WHERE r.project_id = $1
+  AND r.scan_scope_hash = (SELECT lo.scan_scope_hash FROM latest_observation lo)
+  AND r.status = 'completed'
+  AND r.scan_mode = 'full'
+ORDER BY r.created_at DESC, r.id DESC
+LIMIT 1
+`
+
+type LatestCompletedFullReportInFindingScopeParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	FindingID pgtype.UUID `json:"finding_id"`
+}
+
+type LatestCompletedFullReportInFindingScopeRow struct {
+	ID               pgtype.UUID        `json:"id"`
+	ToolName         string             `json:"tool_name"`
+	Branch           pgtype.Text        `json:"branch"`
+	CommitSha        pgtype.Text        `json:"commit_sha"`
+	BaseRevision     pgtype.Text        `json:"base_revision"`
+	ScanMode         string             `json:"scan_mode"`
+	ScanCompleteness string             `json:"scan_completeness"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
+// Verification basis for one finding: the newest completed full report that
+// shares the scan scope of the report that most recently observed the finding.
+// Completeness is not filtered here: a partial report in that scope that still
+// observes the finding must be seen, and the caller decides what a partial
+// report can prove. Reports from other images, targets, or branches never
+// qualify. pgx.ErrNoRows means the finding has no observation in a report, or
+// no completed full report exists in that scope.
+func (q *Queries) LatestCompletedFullReportInFindingScope(ctx context.Context, arg LatestCompletedFullReportInFindingScopeParams) (LatestCompletedFullReportInFindingScopeRow, error) {
+	row := q.db.QueryRow(ctx, latestCompletedFullReportInFindingScope, arg.ProjectID, arg.FindingID)
+	var i LatestCompletedFullReportInFindingScopeRow
+	err := row.Scan(
+		&i.ID,
+		&i.ToolName,
+		&i.Branch,
+		&i.CommitSha,
+		&i.BaseRevision,
+		&i.ScanMode,
+		&i.ScanCompleteness,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const latestCompletedReportByScanner = `-- name: LatestCompletedReportByScanner :one
 SELECT id, tool_name, branch, commit_sha, scan_completeness, created_at
 FROM reports

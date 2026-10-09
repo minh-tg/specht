@@ -125,6 +125,13 @@ func (r *pgReportRepo) GetLatestFullByBranch(ctx context.Context, projectID pgty
 	})
 }
 
+func (r *pgReportRepo) LatestCompletedInFindingScope(ctx context.Context, projectID, findingID pgtype.UUID) (sqlc.LatestCompletedFullReportInFindingScopeRow, error) {
+	return r.q.LatestCompletedFullReportInFindingScope(ctx, sqlc.LatestCompletedFullReportInFindingScopeParams{
+		ProjectID: projectID,
+		FindingID: findingID,
+	})
+}
+
 func (r *pgReportRepo) CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error) {
 	return r.q.CountStaleReports(ctx, uuidFromTime(cutoff))
 }

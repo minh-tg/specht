@@ -856,6 +856,11 @@ type ReportStore interface {
 	// one scanner on a branch, or ErrNotFound. It is the baseline fallback
 	// when base_revision names a branch instead of a commit.
 	GetLatestFullByBranch(ctx context.Context, projectID, scanner, branch string) (CompletedReport, error)
+	// LatestCompletedInFindingScope returns the newest completed full report
+	// that shares the scan scope of the report that most recently observed
+	// findingID, or ErrNotFound when no such report exists. Completeness is
+	// left to the caller.
+	LatestCompletedInFindingScope(ctx context.Context, projectID, findingID string) (CompletedReport, error)
 	// CountStaleReports counts settled (completed/failed) reports older
 	// than the cutoff. Processing reports are never counted.
 	CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error)
