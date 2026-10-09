@@ -1,9 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { adapterRefFor, githubActionsSnippet, gitlabCiSnippet } from "./ciSnippets";
+import {
+  githubActionsSnippet,
+  gitlabCiSnippet,
+  releaseTagFor,
+  VERSION_PLACEHOLDER,
+} from "./ciSnippets";
 
 const API_URL = "https://specht.example.com";
 const PROJECT = "acme-api";
-const ADAPTER_REF = "4f93c32a1b2c3d4e5f60718293a4b5c6d7e8f901";
+const VERSION = "v1.2.3";
+const OPTIONS = { apiUrl: API_URL, project: PROJECT, version: VERSION };
 /** Stand-in for the one-time secret: it must never reach a snippet. */
 const RAW_KEY = "sk-live-0123456789abcdef";
 
@@ -14,104 +20,139 @@ const snippets = [
 
 describe("ciSnippets", () => {
   it.each(snippets)(
-    "%s embeds the API URL, the project slug and the adapter ref",
+    "%s embeds the API URL, the project slug and the pinned release tag",
     (_name, build) => {
-      const snippet = build({ apiUrl: API_URL, project: PROJECT, adapterRef: ADAPTER_REF });
+      const snippet = build(OPTIONS);
       expect(snippet).toContain(API_URL);
       expect(snippet).toContain(PROJECT);
-      expect(snippet).toContain(`cmd/adapter@${ADAPTER_REF}`);
-      expect(snippet).not.toContain("./cmd/adapter");
+      expect(snippet).toContain(VERSION);
     },
   );
 
+  it.each(snippets)("%s needs no Go toolchain and no jq", (_name, build) => {
+    const snippet = build(OPTIONS);
+    expect(snippet).not.toContain("go run");
+    expect(snippet).not.toContain("./cmd/adapter");
+    expect(snippet).not.toContain("jq");
+    expect(snippet).not.toContain("cmd/adapter@");
+  });
+
   it.each(snippets)("%s never embeds a key value", (_name, build) => {
-    const snippet = build({ apiUrl: API_URL, project: PROJECT, adapterRef: ADAPTER_REF });
+    const snippet = build(OPTIONS);
     expect(snippet).not.toContain("raw_key");
     expect(snippet).not.toContain(RAW_KEY);
   });
 
-  it.each(snippets)("%s keeps the documented environment variable names", (_name, build) => {
-    const snippet = build({ apiUrl: API_URL, project: PROJECT, adapterRef: ADAPTER_REF });
-    expect(snippet).toContain("SPECHT_API_URL");
-    expect(snippet).toContain("SPECHT_API_KEY");
-    expect(snippet).toContain("SPECHT_PROJECT");
+  it("scans with the same Trivy version in both pipelines", () => {
+    const github = githubActionsSnippet(OPTIONS);
+    const gitlab = gitlabCiSnippet(OPTIONS);
+    const match = /version: v(\d+\.\d+\.\d+)/.exec(github);
+    expect(match).not.toBeNull();
+    const version = match?.[1] ?? "";
+    expect(version).not.toBe("");
+    expect(gitlab).toContain(`aquasec/trivy:${version}`);
   });
 
-  it.each(snippets)("%s explains that the adapter runs from source", (_name, build) => {
-    const snippet = build({ apiUrl: API_URL, project: PROJECT, adapterRef: ADAPTER_REF });
+  it("pins the GitHub Actions steps by commit hash", () => {
+    const snippet = githubActionsSnippet(OPTIONS);
+    expect(snippet).toContain("actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4");
     expect(snippet).toContain(
-      "# The adapter runs from source at the same build as your Specht server (standalone binaries are not published yet; requires Go).",
+      "aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0",
     );
+    expect(snippet).toContain("scan-type: fs");
+    expect(snippet).toContain("format: json");
+    expect(snippet).toContain("output: trivy-results.json");
+    expect(snippet).toContain("exit-code: \"0\"");
+    expect(snippet).toContain("severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL");
+    expect(snippet).toContain("version: v");
+  });
+
+  it("runs the Specht action at the pinned release tag", () => {
+    const snippet = githubActionsSnippet(OPTIONS);
+    expect(snippet).toContain(`uses: minh-tg/specht@${VERSION}`);
+    expect(snippet).toContain("file: trivy-results.json");
+    expect(snippet).toContain("tool: trivy");
+  });
+
+  it("grants only contents: read and marks checks: write as optional", () => {
+    const snippet = githubActionsSnippet(OPTIONS);
+    expect(snippet).toContain("contents: read");
+    expect(snippet).toContain("Optional");
+    expect(snippet).toContain("# checks: write");
+    expect(snippet).not.toMatch(/^\s+checks: write$/m);
+  });
+
+  it("explains that fork pull requests skip the gate", () => {
+    expect(githubActionsSnippet(OPTIONS)).toContain("forks skip the gate");
   });
 
   it("references the key as a secret in the GitHub Actions workflow", () => {
-    const snippet = githubActionsSnippet({
-      apiUrl: API_URL,
-      project: PROJECT,
-      adapterRef: ADAPTER_REF,
-    });
+    const snippet = githubActionsSnippet(OPTIONS);
     expect(snippet).toContain("${{ secrets.SPECHT_API_KEY }}");
     expect(snippet).not.toContain("API_KEY: sk-");
   });
 
-  it("pins the GitHub Actions steps by commit hash", () => {
-    const snippet = githubActionsSnippet({
-      apiUrl: API_URL,
-      project: PROJECT,
-      adapterRef: ADAPTER_REF,
-    });
-    expect(snippet).toContain(
-      "actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4",
-    );
-    expect(snippet).toContain(
-      "aquasecurity/trivy-action@6e7b7d1fd3e4fef0c5fa8cce1229c54b2c9bd0d8 # v0.24.0",
-    );
-    expect(snippet).toContain("severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL");
+  it("runs the adapter image at the pinned release tag in GitLab", () => {
+    const snippet = gitlabCiSnippet(OPTIONS);
+    expect(snippet).toContain(`ghcr.io/minh-tg/specht-adapter:${VERSION}`);
+    expect(snippet).toContain("specht-adapter -file trivy-results.json -tool trivy");
+    expect(snippet).toContain("-project \"$SPECHT_PROJECT\"");
   });
 
-  it("references the key as a variable in the GitLab CI pipeline", () => {
-    const snippet = gitlabCiSnippet({ apiUrl: API_URL, project: PROJECT, adapterRef: ADAPTER_REF });
-    expect(snippet).toContain("$SPECHT_API_KEY");
+  it("clears the image entrypoint so the GitLab runner can use a shell", () => {
+    const snippet = gitlabCiSnippet(OPTIONS);
+    expect(snippet).toContain("entrypoint: [\"\"]");
   });
 
-  it("keeps the scan, adapter and gate steps of the shipped examples", () => {
-    const github = githubActionsSnippet({
-      apiUrl: API_URL,
-      project: PROJECT,
-      adapterRef: ADAPTER_REF,
-    });
-    expect(github).toContain("aquasecurity/trivy-action");
-    expect(github).toContain("github.com/minh-tg/specht/cmd/adapter@");
+  it("keeps the variables the GitLab adapter reads", () => {
+    const snippet = gitlabCiSnippet(OPTIONS);
+    expect(snippet).toContain("SPECHT_API_URL");
+    expect(snippet).toContain("SPECHT_PROJECT");
+    expect(snippet).toContain("masked SPECHT_API_KEY");
+  });
 
-    const gitlab = gitlabCiSnippet({ apiUrl: API_URL, project: PROJECT, adapterRef: ADAPTER_REF });
-    expect(gitlab).toContain("aquasec/trivy");
-    expect(gitlab).toContain("github.com/minh-tg/specht/cmd/adapter@");
-    expect(gitlab).toContain("specht-gate");
+  it("produces the scan artifact the gate job consumes", () => {
+    const snippet = gitlabCiSnippet(OPTIONS);
+    expect(snippet).toContain("stage: scan");
+    expect(snippet).toContain("stage: gate");
+    expect(snippet).toContain("paths: [trivy-results.json]");
+    expect(snippet).toContain("needs: [trivy-scan]");
   });
 });
 
-describe("adapterRefFor", () => {
-  it("returns the server commit when it is a hex hash", () => {
-    expect(adapterRefFor({ version: "1.2.3", commit: "4f93c32" })).toBe("4f93c32");
-    expect(adapterRefFor({ version: "dev", commit: "a1b2c3d" })).toBe("a1b2c3d");
-    expect(adapterRefFor({ version: "dev", commit: "a".repeat(40) })).toBe("a".repeat(40));
+describe("releaseTagFor", () => {
+  it("pins a plain release version with a leading v", () => {
+    expect(releaseTagFor({ version: "1.2.3", commit: "4f93c32" })).toBe("v1.2.3");
+    expect(releaseTagFor({ version: "v1.2.3", commit: "4f93c32" })).toBe("v1.2.3");
+    expect(releaseTagFor({ version: "10.20.30", commit: "" })).toBe("v10.20.30");
   });
 
-  it("falls back to main when the commit is unusable", () => {
-    expect(adapterRefFor()).toBe("main");
-    expect(adapterRefFor({ version: "1.2.3", commit: "" })).toBe("main");
-    expect(adapterRefFor({ version: "1.2.3", commit: "unknown" })).toBe("main");
-    expect(adapterRefFor({ version: "1.2.3", commit: "main" })).toBe("main");
+  it("keeps the prerelease suffix", () => {
+    expect(releaseTagFor({ version: "1.2.3-rc.1", commit: "" })).toBe("v1.2.3-rc.1");
+    expect(releaseTagFor({ version: "v1.2.3-beta.2", commit: "" })).toBe("v1.2.3-beta.2");
   });
 
-  it("rejects hashes that are too short or too long", () => {
-    expect(adapterRefFor({ version: "1.2.3", commit: "abc123" })).toBe("main");
-    expect(adapterRefFor({ version: "1.2.3", commit: "f".repeat(41) })).toBe("main");
+  it("ignores whitespace around the version", () => {
+    expect(releaseTagFor({ version: " v1.2.3 ", commit: "" })).toBe("v1.2.3");
   });
 
-  it("rejects anything that is not made of hex digits", () => {
-    expect(adapterRefFor({ version: "1.2.3", commit: "4f93c32z" })).toBe("main");
-    expect(adapterRefFor({ version: "1.2.3", commit: "3.14.15" })).toBe("main");
-    expect(adapterRefFor({ version: "1.2.3", commit: "release-1" })).toBe("main");
+  it("falls back when the build is not a release", () => {
+    expect(releaseTagFor()).toBeUndefined();
+    expect(releaseTagFor({ version: "dev", commit: "4f93c32" })).toBeUndefined();
+    expect(releaseTagFor({ version: "unknown", commit: "" })).toBeUndefined();
+    expect(releaseTagFor({ version: "", commit: "" })).toBeUndefined();
+  });
+
+  it("never pins a commit-like or moving ref", () => {
+    expect(releaseTagFor({ version: "4f93c32a1b2c3d4e5f60718293a4b5c6d7e8f901", commit: "" }))
+      .toBeUndefined();
+    expect(releaseTagFor({ version: "main", commit: "4f93c32" })).toBeUndefined();
+    expect(releaseTagFor({ version: "latest", commit: "" })).toBeUndefined();
+    expect(releaseTagFor({ version: "1.2", commit: "" })).toBeUndefined();
+    expect(releaseTagFor({ version: "1.2.3.4", commit: "" })).toBeUndefined();
+  });
+
+  it("offers a placeholder for the setup page to fall back to", () => {
+    expect(VERSION_PLACEHOLDER).toBe("vX.Y.Z");
   });
 });
