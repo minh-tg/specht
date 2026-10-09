@@ -460,7 +460,7 @@ func (m *mockReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Tim
 	return m.deleteStaleFn(ctx, cutoff)
 }
 
-func (m *mockReportRepo) FindCompletedByHash(ctx context.Context, projectID, rawHash string) (string, error) {
+func (m *mockReportRepo) FindCompletedByHashAndCommit(ctx context.Context, projectID, rawHash, commit string) (string, error) {
 	if m.findCompletedByHashFn == nil {
 		return "", port.ErrNotFound
 	}

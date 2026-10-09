@@ -140,10 +140,11 @@ func (r *pgReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Time)
 	return r.q.DeleteStaleReports(ctx, uuidFromTime(cutoff))
 }
 
-func (r *pgReportRepo) FindCompletedByHash(ctx context.Context, projectID pgtype.UUID, rawHash pgtype.Text) (pgtype.UUID, error) {
-	return r.q.FindCompletedByHash(ctx, sqlc.FindCompletedByHashParams{
+func (r *pgReportRepo) FindCompletedByHashAndCommit(ctx context.Context, projectID pgtype.UUID, rawHash, commitSha pgtype.Text) (pgtype.UUID, error) {
+	return r.q.FindCompletedByHashAndCommit(ctx, sqlc.FindCompletedByHashAndCommitParams{
 		ProjectID:     projectID,
 		RawReportHash: rawHash,
+		CommitSha:     commitSha,
 	})
 }
 

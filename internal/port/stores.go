@@ -868,9 +868,10 @@ type ReportStore interface {
 	// returning their ids. Occurrences, watcher rows, and inventory
 	// cascade; finding attribution nulls; findings survive.
 	DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]string, error)
-	// FindCompletedByHash returns a completed report's id for identical
-	// raw content, or ErrNotFound. The duplicate-content guard.
-	FindCompletedByHash(ctx context.Context, projectID, rawHash string) (string, error)
+	// FindCompletedByHashAndCommit returns a completed report's id for identical
+	// raw content at the same commit, or ErrNotFound. The replay guard: a NULL
+	// commit_sha and an empty commit compare equal.
+	FindCompletedByHashAndCommit(ctx context.Context, projectID, rawHash, commit string) (string, error)
 	// DeleteReport removes one report row (duplicate-cleanup path).
 	DeleteReport(ctx context.Context, id, projectID string) error
 }
