@@ -120,6 +120,18 @@ func (r *pgReportPort) LatestCompletedByScanner(ctx context.Context, projectID, 
 	}, nil
 }
 
+func (r *pgReportPort) HasCompletedForCommit(ctx context.Context, projectID, commit string) (bool, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return false, err
+	}
+	found, err := r.inner.HasCompletedReportForCommit(ctx, pid, textPtrFromString(&commit))
+	if err != nil {
+		return false, mappingErr(err)
+	}
+	return found, nil
+}
+
 func (r *pgReportPort) GetCompletedByCommit(ctx context.Context, projectID, scanner, commit string) (port.CompletedReport, error) {
 	pid, err := parseID(projectID)
 	if err != nil {

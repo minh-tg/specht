@@ -1213,6 +1213,8 @@ paths:
       description: |
         Returns the conclusion and annotations a provider check would publish,
         with no side effects — nothing is created, updated, or posted.
+        A commit that no completed scan carries is refused with 404 rather than
+        planned as a passing check.
       x-required-scope: read
       security:
         - sessionAuth: []
@@ -1234,7 +1236,7 @@ paths:
           schema: { type: string, format: uuid }
         - name: severity
           in: query
-          description: Floor for the findings the check considers. Defaults to high.
+          description: Floor for the findings the check considers. Omitted, the project policy floor applies; a value can only tighten that floor.
           schema: { type: string }
       responses:
         "200":
@@ -1245,7 +1247,12 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/ProjectAccessDenied" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "404":
+          description: No completed scan carries the commit, so there is no evidence to plan a check from. Scan the commit first.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: no_report_for_commit, message: no completed scan report carries this commit; scan it before requesting a check } }
 
   /api/v1/policy-templates:
     get:

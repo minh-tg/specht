@@ -110,6 +110,13 @@ func (r *pgReportRepo) GetCompletedByCommit(ctx context.Context, projectID pgtyp
 	})
 }
 
+func (r *pgReportRepo) HasCompletedReportForCommit(ctx context.Context, projectID pgtype.UUID, commit pgtype.Text) (bool, error) {
+	return r.q.HasCompletedReportForCommit(ctx, sqlc.HasCompletedReportForCommitParams{
+		ProjectID: projectID,
+		CommitSha: commit,
+	})
+}
+
 func (r *pgReportRepo) CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error) {
 	return r.q.CountStaleReports(ctx, uuidFromTime(cutoff))
 }

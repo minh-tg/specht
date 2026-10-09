@@ -2050,6 +2050,21 @@ func TestPreviewPRCheck_SeverityRequest(t *testing.T) {
 	}
 }
 
+func TestPreviewPRCheck_NoReportForCommit(t *testing.T) {
+	mock := &mockUsecases{
+		previewPRCheckFn: func(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error) {
+			return nil, usecase.ErrNoReportForCommit
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/pr-check?commit=abc123", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+	assert.Contains(t, w.Body.String(), "no_report_for_commit")
+}
+
 func TestPreviewPRCheck_MissingCommit(t *testing.T) {
 	router := testRouter(&mockUsecases{})
 	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/pr-check", nil)

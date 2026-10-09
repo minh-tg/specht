@@ -291,6 +291,28 @@ func (q *Queries) GetReportByID(ctx context.Context, id pgtype.UUID) (Report, er
 	return i, err
 }
 
+const hasCompletedReportForCommit = `-- name: HasCompletedReportForCommit :one
+SELECT EXISTS (
+    SELECT 1 FROM reports
+    WHERE project_id = $1 AND commit_sha = $2 AND status = 'completed'
+)
+`
+
+type HasCompletedReportForCommitParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	CommitSha pgtype.Text `json:"commit_sha"`
+}
+
+// Whether any scanner completed a scan of an exact revision. A PR check
+// needs this to tell a commit with no scan evidence from a scan that found
+// nothing new.
+func (q *Queries) HasCompletedReportForCommit(ctx context.Context, arg HasCompletedReportForCommitParams) (bool, error) {
+	row := q.db.QueryRow(ctx, hasCompletedReportForCommit, arg.ProjectID, arg.CommitSha)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
 const latestCompletedReportByScanner = `-- name: LatestCompletedReportByScanner :one
 SELECT id, tool_name, branch, commit_sha, scan_completeness, created_at
 FROM reports

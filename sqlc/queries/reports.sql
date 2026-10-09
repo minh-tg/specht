@@ -56,6 +56,15 @@ WHERE project_id = $1 AND tool_name = $2 AND commit_sha = $3 AND status = 'compl
 ORDER BY created_at DESC, id DESC
 LIMIT 1;
 
+-- name: HasCompletedReportForCommit :one
+-- Whether any scanner completed a scan of an exact revision. A PR check
+-- needs this to tell a commit with no scan evidence from a scan that found
+-- nothing new.
+SELECT EXISTS (
+    SELECT 1 FROM reports
+    WHERE project_id = $1 AND commit_sha = $2 AND status = 'completed'
+);
+
 -- name: CountStaleReports :one
 -- Retention preview: settled (completed/failed) reports older
 -- than the cutoff. Processing reports are never counted — an in-flight
