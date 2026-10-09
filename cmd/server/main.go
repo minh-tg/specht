@@ -166,6 +166,7 @@ func main() {
 
 	repos := repo.NewRepos(pool)
 	stores := repo.NewPortStores(pool)
+	jwtAuth.WithTokenVersions(stores.Users)
 
 	// Admin elevation path: ADMIN_EMAILS (comma-separated) promotes
 	// existing accounts to the global admin role at startup so tenant

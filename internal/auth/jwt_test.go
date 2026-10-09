@@ -82,7 +82,7 @@ func TestJWT_NewJWTAuthenticator_AcceptsLongRandomSecret(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, a)
 
-	raw, err := a.CreateToken("user-1", "user@example.com", RoleViewer)
+	raw, err := a.CreateToken("user-1", "user@example.com", RoleViewer, 0)
 	require.NoError(t, err)
 
 	ident, err := a.Authenticate(context.Background(), raw)
@@ -95,7 +95,7 @@ func TestJWT_CreateTokenIncludesBoundClaims(t *testing.T) {
 	a, err := NewJWTAuthenticator(jwtBindingTestSecret)
 	require.NoError(t, err)
 
-	raw, err := a.CreateToken("user-1", "user@example.com", RoleViewer)
+	raw, err := a.CreateToken("user-1", "user@example.com", RoleViewer, 0)
 	require.NoError(t, err)
 
 	claims := parseClaims(t, a, raw)
@@ -118,7 +118,7 @@ func TestJWT_Authenticate_AcceptsMintedToken(t *testing.T) {
 	a, err := NewJWTAuthenticator(jwtBindingTestSecret)
 	require.NoError(t, err)
 
-	raw, err := a.CreateToken("user-1", "user@example.com", RoleEditor)
+	raw, err := a.CreateToken("user-1", "user@example.com", RoleEditor, 0)
 	require.NoError(t, err)
 
 	ident, err := a.Authenticate(context.Background(), raw)
@@ -126,6 +126,43 @@ func TestJWT_Authenticate_AcceptsMintedToken(t *testing.T) {
 	assert.Equal(t, "user-1", ident.UserID)
 	assert.Equal(t, "user@example.com", ident.Email)
 	assert.Equal(t, RoleEditor, ident.Role)
+}
+
+type stubTokenVersions struct {
+	version int32
+	err     error
+}
+
+func (s stubTokenVersions) TokenVersion(_ context.Context, _ string) (int32, error) {
+	return s.version, s.err
+}
+
+func TestJWT_Authenticate_RejectsStaleTokenVersion(t *testing.T) {
+	a, err := NewJWTAuthenticator(jwtBindingTestSecret)
+	require.NoError(t, err)
+	a.WithTokenVersions(stubTokenVersions{version: 2})
+
+	stale, err := a.CreateToken("user-1", "user@example.com", RoleEditor, 1)
+	require.NoError(t, err)
+	_, err = a.Authenticate(context.Background(), stale)
+	assert.ErrorIs(t, err, ErrInvalidCredential, "a token from before the generation bump must not authenticate")
+
+	current, err := a.CreateToken("user-1", "user@example.com", RoleEditor, 2)
+	require.NoError(t, err)
+	ident, err := a.Authenticate(context.Background(), current)
+	require.NoError(t, err)
+	assert.Equal(t, "user-1", ident.UserID)
+}
+
+func TestJWT_Authenticate_FailsClosedWhenTokenVersionLookupFails(t *testing.T) {
+	a, err := NewJWTAuthenticator(jwtBindingTestSecret)
+	require.NoError(t, err)
+	a.WithTokenVersions(stubTokenVersions{err: errors.New("database unavailable")})
+
+	raw, err := a.CreateToken("user-1", "user@example.com", RoleEditor, 0)
+	require.NoError(t, err)
+	_, err = a.Authenticate(context.Background(), raw)
+	assert.ErrorIs(t, err, ErrInvalidCredential, "an unconfirmable generation must be refused")
 }
 
 func TestJWT_Authenticate_RejectsMissingOrWrongBoundClaims(t *testing.T) {
@@ -236,7 +273,7 @@ func TestJWT_Authenticate_FailsClosedWhenRevocationCheckFails(t *testing.T) {
 	a, err := NewJWTAuthenticatorWithRevoker(jwtBindingTestSecret, failingRevoker{err: revocationErr})
 	require.NoError(t, err)
 
-	raw, err := a.CreateToken("user-1", "user@example.com", RoleViewer)
+	raw, err := a.CreateToken("user-1", "user@example.com", RoleViewer, 0)
 	require.NoError(t, err)
 
 	ident, err := a.Authenticate(context.Background(), raw)
@@ -254,7 +291,7 @@ func TestJWT_NilRevokerIsRejected(t *testing.T) {
 func TestJWT_RevokeTokenRejectsSubsequentAuthentication(t *testing.T) {
 	a, err := NewJWTAuthenticator(jwtBindingTestSecret)
 	require.NoError(t, err)
-	raw, err := a.CreateToken("user-1", "user@example.com", RoleViewer)
+	raw, err := a.CreateToken("user-1", "user@example.com", RoleViewer, 0)
 	require.NoError(t, err)
 	_, err = a.Authenticate(context.Background(), raw)
 	require.NoError(t, err)

@@ -103,7 +103,7 @@ func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthR
 	}
 
 	userID := user.ID
-	token, err := u.deps.Tokens.CreateToken(userID, user.Email, auth.RoleViewer)
+	token, err := u.issueAccessToken(ctx, userID, user.Email, auth.RoleViewer)
 	if err != nil {
 		slog.Error("register: create token failed", "email", auth.MaskEmail(email), "error", err)
 		return nil, ErrRegistrationFailed
@@ -221,11 +221,26 @@ func (u *Usecases) linkExistingSSOUser(ctx context.Context, user port.User, issu
 	if err := u.deps.Stores.RefreshTokens.RevokeAllForUser(ctx, user.ID); err != nil {
 		return "", "", false, fmt.Errorf("revoke sessions for sso link: %w", err)
 	}
+	// Bump the account's token generation so access tokens minted for the
+	// previous owner stop working now, not when they expire.
+	if err := u.deps.Stores.Users.BumpTokenVersion(ctx, user.ID); err != nil {
+		return "", "", false, fmt.Errorf("revoke access tokens for sso link: %w", err)
+	}
 	if err := u.linkSSOIdentity(ctx, user.ID, issuer, sub); err != nil {
 		return "", "", false, err
 	}
 	slog.Info("sso login: linked existing account", "user_id", user.ID, "sub", sub, "password_disabled", user.PasswordHash != "")
 	return user.ID, auth.TokenRole(user.Role), false, nil
+}
+
+// issueAccessToken mints an access token bound to the account's current token
+// generation, so bumping that generation later invalidates the token.
+func (u *Usecases) issueAccessToken(ctx context.Context, userID, email, role string) (string, error) {
+	version, err := u.deps.Stores.Users.TokenVersion(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("load token version: %w", err)
+	}
+	return u.deps.Tokens.CreateToken(userID, email, role, version)
 }
 
 // provisionSSOUser creates and links an account for a first-time subject whose
@@ -307,7 +322,7 @@ func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResp
 	}
 
 	userID := user.ID
-	token, err := u.deps.Tokens.CreateToken(userID, user.Email, auth.TokenRole(user.Role))
+	token, err := u.issueAccessToken(ctx, userID, user.Email, auth.TokenRole(user.Role))
 	if err != nil {
 		return nil, fmt.Errorf("create token: %w", err)
 	}
@@ -486,7 +501,7 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 		return nil, errors.New(authMsgUserNotFound)
 	}
 
-	token, err := u.deps.Tokens.CreateToken(userID, user.Email, auth.TokenRole(user.Role))
+	token, err := u.issueAccessToken(ctx, userID, user.Email, auth.TokenRole(user.Role))
 	if err != nil {
 		return nil, fmt.Errorf("create token: %w", err)
 	}
@@ -638,7 +653,7 @@ func (u *Usecases) ExchangeSSOCode(ctx context.Context, code string) (*AuthRespo
 		return nil, auth.ErrInvalidCredential
 	}
 
-	token, err := u.deps.Tokens.CreateToken(user.ID, user.Email, auth.TokenRole(user.Role))
+	token, err := u.issueAccessToken(ctx, user.ID, user.Email, auth.TokenRole(user.Role))
 	if err != nil {
 		return nil, fmt.Errorf("create token: %w", err)
 	}
