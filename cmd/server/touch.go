@@ -18,10 +18,11 @@ const (
 // database write to a single hot row. Only keys that already passed every
 // check are ever recorded, so unauthenticated traffic cannot grow it.
 type touchThrottle struct {
-	mu       sync.Mutex
-	interval time.Duration
-	seen     map[string]time.Time
-	now      func() time.Time
+	mu        sync.Mutex
+	interval  time.Duration
+	seen      map[string]time.Time
+	now       func() time.Time
+	lastPrune time.Time
 }
 
 func newTouchThrottle(interval time.Duration) *touchThrottle {
@@ -36,7 +37,10 @@ func (t *touchThrottle) due(id string) bool {
 	if last, ok := t.seen[id]; ok && now.Sub(last) < t.interval {
 		return false
 	}
-	if len(t.seen) >= touchThrottlePruneAt {
+	// The full scan runs at most once per interval, so a map that is large but
+	// still fresh does not turn every write into an O(n) pass.
+	if len(t.seen) >= touchThrottlePruneAt && now.Sub(t.lastPrune) >= t.interval {
+		t.lastPrune = now
 		for k, last := range t.seen {
 			if now.Sub(last) >= t.interval {
 				delete(t.seen, k)
