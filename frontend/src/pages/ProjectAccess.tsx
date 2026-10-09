@@ -422,10 +422,10 @@ export function ProjectAccess() {
                   onChange={(e) => setMemberRole(e.target.value as ProjectRole)}
                   className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 >
-                  <option value="member">Member — View findings and reports</option>
-                  <option value="manager">Manager — Triage findings and manage members</option>
+                  <option value="member">Member: view findings and reports</option>
+                  <option value="manager">Manager: triage findings and manage members</option>
                   <option value="admin" disabled={!isAdmin}>
-                    Admin — Full project control {!isAdmin ? "(Project Admins only)" : ""}
+                    Admin: full project control {!isAdmin ? "(Project Admins only)" : ""}
                   </option>
                 </select>
                 {!isAdmin && (
@@ -511,10 +511,10 @@ export function ProjectAccess() {
                   onChange={(e) => setTeamRole(e.target.value as ProjectRole)}
                   className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 >
-                  <option value="member">Member — View findings and reports</option>
-                  <option value="manager">Manager — Triage findings and manage members</option>
+                  <option value="member">Member: view findings and reports</option>
+                  <option value="manager">Manager: triage findings and manage members</option>
                   <option value="admin" disabled={!isAdmin}>
-                    Admin — Full project control {!isAdmin ? "(Project Admins only)" : ""}
+                    Admin: full project control {!isAdmin ? "(Project Admins only)" : ""}
                   </option>
                 </select>
               </div>
