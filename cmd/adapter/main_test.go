@@ -696,6 +696,19 @@ func TestRun_ExcludeTool(t *testing.T) {
 	assert.Contains(t, stderr.String(), `skipped: scanner "trivy" excluded`)
 }
 
+func TestRun_ExcludeToolSkipsBeforeRequiringAPIURL(t *testing.T) {
+	clearCIEnvironment(t)
+	t.Setenv("CI", "true")
+	t.Setenv("API_KEY", "dummy")
+	t.Setenv("API_URL", "")
+	t.Setenv("SPECHT_API_URL", "")
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=test", "-tool=trivy", "-exclude-tool=trivy"}, strings.NewReader(`{}`), &stdout, &stderr, nil)
+	assert.Equal(t, 0, code, "a skipped scanner needs no server")
+	assert.Contains(t, stderr.String(), `skipped: scanner "trivy" excluded`)
+	assert.NotContains(t, stderr.String(), "SPECHT_API_URL is not set")
+}
+
 func TestRun_IntroducedOnly_Pass(t *testing.T) {
 	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")

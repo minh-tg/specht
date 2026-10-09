@@ -517,11 +517,6 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 		writeDiagnosticLine(stderr, "error: API_KEY environment variable is required (set API_KEY or SPECHT_API_KEY)")
 		return 2
 	}
-	apiURL, code := resolveAPIURL(stderr)
-	if code != 0 {
-		return code
-	}
-
 	rawInput, code := readRawInput(f.file, stdin, stderr)
 	if code != 0 {
 		return code
@@ -530,6 +525,12 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 	if code == -1 {
 		return 0 // skipped by -exclude-tool
 	}
+	if code != 0 {
+		return code
+	}
+	// Resolved after the exclusion check: a skipped scanner talks to no
+	// server, so it must not fail on a missing API URL.
+	apiURL, code := resolveAPIURL(stderr)
 	if code != 0 {
 		return code
 	}
