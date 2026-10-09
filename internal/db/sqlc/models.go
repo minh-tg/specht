@@ -355,8 +355,6 @@ type Signoff struct {
 type SsoExchangeCode struct {
 	CodeHash  string             `json:"code_hash"`
 	UserID    pgtype.UUID        `json:"user_id"`
-	Email     string             `json:"email"`
-	Role      string             `json:"role"`
 	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
 }
 

@@ -38,7 +38,7 @@ type mockUsecases struct {
 	ingestReportFn          func(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
 	registerFn              func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
 	loginFn                 func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
-	createSSOExchangeCodeFn func(ctx context.Context, userID, email, role string) (string, error)
+	createSSOExchangeCodeFn func(ctx context.Context, userID string) (string, error)
 	exchangeSSOCodeFn       func(ctx context.Context, code string) (*usecase.AuthResponse, error)
 	createAPIKeyFn          func(ctx context.Context, projectSlug, name string, expiresAt *time.Time) (*usecase.APIKeyResponse, error)
 	listAPIKeysFn           func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
@@ -218,9 +218,9 @@ func (m *mockUsecases) FindOrProvisionSSOUser(ctx context.Context, claims auth.S
 	return "", "", false, fmt.Errorf("unexpected call to FindOrProvisionSSOUser")
 }
 
-func (m *mockUsecases) CreateSSOExchangeCode(ctx context.Context, userID, email, role string) (string, error) {
+func (m *mockUsecases) CreateSSOExchangeCode(ctx context.Context, userID string) (string, error) {
 	if m.createSSOExchangeCodeFn != nil {
-		return m.createSSOExchangeCodeFn(ctx, userID, email, role)
+		return m.createSSOExchangeCodeFn(ctx, userID)
 	}
 	return "", fmt.Errorf("unexpected call to CreateSSOExchangeCode")
 }

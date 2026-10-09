@@ -614,7 +614,7 @@ func strPtr(s string) *string { return &s }
 // CreateSSOExchangeCode issues a high-entropy, short-lived (60s) single-use authorization code
 // for an authenticated SSO identity. The code is delivered to the browser and exchanged via
 // ExchangeSSOCode for session tokens, ensuring no bearer tokens appear in URL fragments.
-func (u *Usecases) CreateSSOExchangeCode(ctx context.Context, userID, email, role string) (string, error) {
+func (u *Usecases) CreateSSOExchangeCode(ctx context.Context, userID string) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", fmt.Errorf("generate sso exchange code: %w", err)
@@ -624,7 +624,7 @@ func (u *Usecases) CreateSSOExchangeCode(ctx context.Context, userID, email, rol
 	codeHash := hex.EncodeToString(hash[:])
 
 	expiresAt := time.Now().Add(60 * time.Second)
-	if err := u.deps.Stores.SSOCodes.Create(ctx, codeHash, userID, email, role, expiresAt); err != nil {
+	if err := u.deps.Stores.SSOCodes.Create(ctx, codeHash, userID, expiresAt); err != nil {
 		return "", fmt.Errorf("store sso exchange code: %w", err)
 	}
 	return code, nil

@@ -182,14 +182,12 @@ type IdentityStore interface {
 type SSOCode struct {
 	CodeHash  string
 	UserID    string
-	Email     string
-	Role      string
 	ExpiresAt time.Time
 }
 
 // SSOCodeStore persists single-use SSO exchange codes.
 type SSOCodeStore interface {
-	Create(ctx context.Context, codeHash, userID, email, role string, expiresAt time.Time) error
+	Create(ctx context.Context, codeHash, userID string, expiresAt time.Time) error
 	Consume(ctx context.Context, codeHash string, now time.Time) (SSOCode, error)
 }
 
