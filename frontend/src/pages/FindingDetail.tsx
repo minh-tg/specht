@@ -1,4 +1,5 @@
 import { useFinding, useFindingEvents, useGateStatus, useReachability } from "@/api/hooks";
+import { Skeleton } from "@/components/ui/skeleton";
 import { analysisStateLabel } from "@/lib/enums";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
 import { Link, useLocation, useParams } from "react-router-dom";
@@ -37,9 +38,9 @@ export function FindingDetail() {
   if (isLoading) {
     return (
       <div className="mx-auto max-w-3xl space-y-4 px-4 py-8">
-        <div className="bg-muted h-6 w-48 animate-pulse rounded" />
-        <div className="bg-muted h-4 w-96 animate-pulse rounded" />
-        <div className="bg-muted h-32 animate-pulse rounded" />
+        <Skeleton className="h-6 w-48 rounded" />
+        <Skeleton className="h-4 w-96 rounded" />
+        <Skeleton className="h-32 rounded" />
       </div>
     );
   }

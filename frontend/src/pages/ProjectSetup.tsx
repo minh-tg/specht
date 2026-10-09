@@ -8,6 +8,7 @@ import {
   useVersion,
 } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   githubActionsSnippet,
   gitlabCiSnippet,
@@ -115,8 +116,8 @@ export function ProjectSetup() {
   if (meLoading || projectLoading) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
-        <div className="bg-muted h-8 w-72 animate-pulse rounded" />
-        <div className="bg-muted mt-6 h-96 animate-pulse rounded-lg" />
+        <Skeleton className="h-8 w-72 rounded" />
+        <Skeleton className="mt-6 h-96 rounded-lg" />
       </div>
     );
   }

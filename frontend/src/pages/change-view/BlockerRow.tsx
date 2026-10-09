@@ -1,5 +1,6 @@
 import { useFinding } from "@/api/hooks";
 import { SeverityBadge } from "@/components/ui/severity-badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { fixAction, locationLine } from "@/pages/change-view/resolve";
 import type { Finding } from "@/types/api";
 import { type ReactNode } from "react";
@@ -36,8 +37,8 @@ export function BlockerRowView(
   if (isLoading) {
     return (
       <Row busy>
-        <div className="bg-muted h-4 w-1/2 animate-pulse rounded" />
-        <div className="bg-muted mt-2 h-3 w-2/3 animate-pulse rounded" />
+        <Skeleton className="h-4 w-1/2 rounded" />
+        <Skeleton className="mt-2 h-3 w-2/3 rounded" />
       </Row>
     );
   }

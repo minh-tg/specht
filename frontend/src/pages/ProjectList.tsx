@@ -1,6 +1,7 @@
 import { apiFetch } from "@/api/client";
 import { queryKeys, useMe, useProjects } from "@/api/hooks";
 import { buttonVariants } from "@/components/ui/button-variants";
+import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { formatDateTime, formatRelativeTime } from "@/lib/format";
 import { blockerCount, degradedMessage, projectVerdict, type Verdict } from "@/lib/verdict";
@@ -203,7 +204,7 @@ function ProjectTableSkeleton() {
             <tr key={rowIndex} className="border-border border-b">
               {COLUMNS.map((column) => (
                 <td key={column} className="px-3 py-2">
-                  <div className="bg-muted h-4 animate-pulse rounded" />
+                  <Skeleton className="h-4 rounded" />
                 </td>
               ))}
             </tr>

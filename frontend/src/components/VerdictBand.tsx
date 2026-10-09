@@ -1,6 +1,7 @@
 import { useGateStatus, useMe, useProjectStats } from "@/api/hooks";
 import { InfoTip } from "@/components/InfoTip";
 import { SeverityBadge } from "@/components/ui/severity-badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { SEVERITIES, severityLabel } from "@/lib/enums";
 import { formatDateTime, formatRelativeTime, pluralize } from "@/lib/format";
@@ -84,13 +85,13 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
       <section aria-label="Gate verdict" aria-busy="true" className="rounded-lg border p-4">
         <div className="flex items-center gap-2">
           <VerdictBadge verdict="unknown" />
-          <span className="bg-muted h-4 w-48 animate-pulse rounded" />
+          <Skeleton className="h-4 w-48 rounded" />
         </div>
-        <div className="bg-muted mt-2 h-4 w-72 max-w-full animate-pulse rounded" />
+        <Skeleton className="mt-2 h-4 w-72 max-w-full rounded" />
         <div className="mt-3 flex gap-2">
-          <span className="bg-muted h-5 w-16 animate-pulse rounded" />
-          <span className="bg-muted h-5 w-16 animate-pulse rounded" />
-          <span className="bg-muted h-5 w-16 animate-pulse rounded" />
+          <Skeleton className="h-5 w-16 rounded" />
+          <Skeleton className="h-5 w-16 rounded" />
+          <Skeleton className="h-5 w-16 rounded" />
         </div>
       </section>
     );

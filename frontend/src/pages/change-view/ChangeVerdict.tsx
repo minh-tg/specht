@@ -1,4 +1,5 @@
 import { InfoTip } from "@/components/InfoTip";
+import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { pluralize } from "@/lib/format";
 import type { Verdict } from "@/lib/verdict";
@@ -57,10 +58,10 @@ export function ChangeVerdict(
     return (
       <section aria-label="Change verdict" aria-busy="true" className="rounded-lg border p-4">
         <div className="flex items-center gap-2">
-          <span className="bg-muted h-5 w-20 animate-pulse rounded" />
-          <span className="bg-muted h-4 w-64 max-w-full animate-pulse rounded" />
+          <Skeleton className="h-5 w-20 rounded" />
+          <Skeleton className="h-4 w-64 max-w-full rounded" />
         </div>
-        <div className="bg-muted mt-2 h-4 w-48 max-w-full animate-pulse rounded" />
+        <Skeleton className="mt-2 h-4 w-48 max-w-full rounded" />
       </section>
     );
   }
