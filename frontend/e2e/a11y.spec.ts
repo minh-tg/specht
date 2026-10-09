@@ -33,6 +33,8 @@ let audits = 0;
 
 async function audit(page: Page, name: string): Promise<void> {
   await page.waitForLoadState("networkidle");
+  // Entrance animations (dialogs, tooltips) blend colours while they run; audit the settled state.
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished)));
   // Evaluated through the devtools protocol, which the page CSP does not
   // govern; an inline <script> tag would be blocked by script-src 'self'.
   await page.evaluate(axe.source);
@@ -41,6 +43,7 @@ async function audit(page: Page, name: string): Promise<void> {
       (t) => document.documentElement.classList.toggle("dark", t === "dark"),
       theme,
     );
+    await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished)));
     const result = await page.evaluate(
       async (tags) => {
         const api = (window as unknown as { axe: typeof axe; }).axe;
@@ -143,9 +146,28 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await expect(page.getByRole("heading").first()).toBeVisible();
   await audit(page, "project not found");
 
+  // Dialogs are page content while open: audit each one with its focus trap active.
+  await page.goto(`/${slug}/access`);
+  await page.getByRole("button", { name: "+ Add Member" }).click();
+  await expect(page.getByRole("dialog", { name: "Add Direct Member" })).toBeVisible();
+  await audit(page, "add member dialog");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  await page.getByRole("button", { name: "+ Link Team" }).click();
+  await expect(page.getByRole("dialog", { name: "Link Company Team" })).toBeVisible();
+  await audit(page, "link team dialog");
+  await page.keyboard.press("Escape");
+
+  await page.goto("/teams");
+  await page.getByRole("button", { name: "+ Create Team" }).click();
+  await expect(page.getByRole("dialog", { name: "Create Company Team" })).toBeVisible();
+  await audit(page, "create team dialog");
+  await page.keyboard.press("Escape");
+
   const report = findings
     .map((f) => `[${f.theme}] ${f.page}: ${f.rule} (${f.impact})\n    ${f.nodes.join("\n    ")}`)
     .join("\n");
   expect(findings, `axe found violations in ${audits} audits:\n${report}`).toEqual([]);
-  expect(audits).toBeGreaterThanOrEqual(30);
+  expect(audits).toBeGreaterThanOrEqual(36);
 });
