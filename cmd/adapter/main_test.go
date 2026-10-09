@@ -25,7 +25,35 @@ func writeTestJSONResponse(t *testing.T, w http.ResponseWriter, value any) {
 	}
 }
 
+// ciEnvVars lists every environment variable the adapter reads: the CI markers
+// that change behavior, the GitHub and GitLab values it auto-detects, and the
+// configuration it falls back to. Tests that call run, parseFlags or any other
+// environment-dependent helper clear all of them first, so a developer shell or
+// a GitHub Actions runner cannot change the result.
+var ciEnvVars = []string{
+	// CI detection.
+	"CI", "GITHUB_ACTIONS", "GITLAB_CI",
+	// GitHub Actions context.
+	"GITHUB_BASE_REF", "GITHUB_SHA", "GITHUB_REF_NAME", "GITHUB_EVENT_NAME",
+	"GITHUB_EVENT_PATH", "GITHUB_REPOSITORY", "GITHUB_STEP_SUMMARY",
+	"GITHUB_TOKEN", "GH_TOKEN",
+	// GitLab CI context.
+	"CI_MERGE_REQUEST_TARGET_BRANCH_NAME", "CI_COMMIT_SHA", "CI_COMMIT_REF_NAME",
+	// Adapter configuration.
+	"API_URL", "SPECHT_API_URL", "API_KEY", "SPECHT_API_KEY", "SPECHT_PROJECT",
+}
+
+// clearCIEnvironment isolates a test from the ambient environment. A test that
+// needs one of these variables sets it explicitly after calling this.
+func clearCIEnvironment(t *testing.T) {
+	t.Helper()
+	for _, key := range ciEnvVars {
+		t.Setenv(key, "")
+	}
+}
+
 func TestBuildPayload_PreservesNonEnvelopeScannerOutput(t *testing.T) {
+	clearCIEnvironment(t)
 	raw := []byte(`{"Results":`)
 	flags := &adapterFlags{project: "my-app", tool: "trivy"}
 	var stderr bytes.Buffer
@@ -89,6 +117,7 @@ func TestNormalizeRawJSON(t *testing.T) {
 }
 
 func TestBuildPayload_NormalizesLineDelimitedJSON(t *testing.T) {
+	clearCIEnvironment(t)
 	raw := []byte("{\"template-id\": \"cve-1\", \"host\": \"example.com\"}\n{\"template-id\": \"cve-2\", \"host\": \"example.com\"}\n")
 	flags := &adapterFlags{project: "my-app", tool: "nuclei"}
 	var stderr bytes.Buffer
@@ -254,16 +283,6 @@ func TestIngestReport_IntroducedOnly_Payload(t *testing.T) {
 	assert.False(t, resp.ThresholdBreached)
 }
 
-func clearCIEnvironment(t *testing.T) {
-	t.Helper()
-	for _, key := range []string{
-		"GITHUB_BASE_REF", "GITHUB_SHA", "GITHUB_REF_NAME",
-		"CI_MERGE_REQUEST_TARGET_BRANCH_NAME", "CI_COMMIT_SHA", "CI_COMMIT_REF_NAME",
-	} {
-		t.Setenv(key, "")
-	}
-}
-
 func TestDetectCIEnvironment_GitHub(t *testing.T) {
 	clearCIEnvironment(t)
 	t.Setenv("GITHUB_BASE_REF", "main")
@@ -315,7 +334,7 @@ func TestRun_StatusFlagDeprecated(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	clearCIMarkers(t)
+	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")
 	t.Setenv("API_URL", srv.URL)
 
@@ -338,6 +357,7 @@ func TestRun_StatusFlagDeprecated(t *testing.T) {
 }
 
 func TestRun_Help(t *testing.T) {
+	clearCIEnvironment(t)
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"-help"}, bytes.NewReader(nil), &stdout, &stderr, nil)
 	assert.Equal(t, 0, code)
@@ -345,6 +365,7 @@ func TestRun_Help(t *testing.T) {
 }
 
 func TestRun_Help_SeverityDescribesPolicyFloor(t *testing.T) {
+	clearCIEnvironment(t)
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"-help"}, bytes.NewReader(nil), &stdout, &stderr, nil)
 	require.Equal(t, 0, code)
@@ -354,6 +375,7 @@ func TestRun_Help_SeverityDescribesPolicyFloor(t *testing.T) {
 }
 
 func TestParseFlags_SeverityHelpText(t *testing.T) {
+	clearCIEnvironment(t)
 	var stderr bytes.Buffer
 	f := parseFlags([]string{"-severity"}, &stderr, false)
 	require.Nil(t, f, "a missing flag value fails parsing")
@@ -362,7 +384,7 @@ func TestParseFlags_SeverityHelpText(t *testing.T) {
 }
 
 func TestRun_MissingAPIKey(t *testing.T) {
-	t.Setenv("API_KEY", "")
+	clearCIEnvironment(t)
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"-project=test", "-tool=trivy"}, strings.NewReader(`{}`), &stdout, &stderr, nil)
 	assert.Equal(t, 2, code)
@@ -370,7 +392,7 @@ func TestRun_MissingAPIKey(t *testing.T) {
 }
 
 func TestRun_MissingAPIURLInCI(t *testing.T) {
-	clearCIMarkers(t)
+	clearCIEnvironment(t)
 	t.Setenv("CI", "true")
 	t.Setenv("API_KEY", "test-key")
 	t.Setenv("API_URL", "")
@@ -383,7 +405,7 @@ func TestRun_MissingAPIURLInCI(t *testing.T) {
 }
 
 func TestRun_MissingAPIURLOutsideCIWarns(t *testing.T) {
-	clearCIMarkers(t)
+	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")
 	t.Setenv("API_URL", "")
 	t.Setenv("SPECHT_API_URL", "")
@@ -397,7 +419,7 @@ func TestRun_MissingAPIURLOutsideCIWarns(t *testing.T) {
 
 func TestResolveAPIURL(t *testing.T) {
 	t.Run("API_URL wins over the alias and drops a trailing slash", func(t *testing.T) {
-		clearCIMarkers(t)
+		clearCIEnvironment(t)
 		t.Setenv("API_URL", "https://a.example.com/")
 		t.Setenv("SPECHT_API_URL", "https://b.example.com")
 		var stderr bytes.Buffer
@@ -408,7 +430,7 @@ func TestResolveAPIURL(t *testing.T) {
 	})
 
 	t.Run("SPECHT_API_URL is accepted", func(t *testing.T) {
-		clearCIMarkers(t)
+		clearCIEnvironment(t)
 		t.Setenv("API_URL", "")
 		t.Setenv("SPECHT_API_URL", "https://b.example.com/")
 		var stderr bytes.Buffer
@@ -421,7 +443,7 @@ func TestResolveAPIURL(t *testing.T) {
 	t.Run("every CI marker rejects a missing URL", func(t *testing.T) {
 		for _, marker := range []string{"CI", "GITHUB_ACTIONS", "GITLAB_CI"} {
 			t.Run(marker, func(t *testing.T) {
-				clearCIMarkers(t)
+				clearCIEnvironment(t)
 				if marker == "CI" {
 					t.Setenv("CI", "true")
 				} else {
@@ -437,13 +459,6 @@ func TestResolveAPIURL(t *testing.T) {
 			})
 		}
 	})
-}
-
-func clearCIMarkers(t *testing.T) {
-	t.Helper()
-	for _, key := range []string{"CI", "GITHUB_ACTIONS", "GITLAB_CI"} {
-		t.Setenv(key, "")
-	}
 }
 
 func writeEventPayload(t *testing.T, value any) string {
@@ -462,15 +477,8 @@ func tempSummaryFile(t *testing.T) string {
 	return path
 }
 
-func clearAPIKeyEnv(t *testing.T) {
-	t.Helper()
-	t.Setenv("API_KEY", "")
-	t.Setenv("SPECHT_API_KEY", "")
-}
-
 func TestRun_ForkPullRequestSkipsGate(t *testing.T) {
-	clearCIMarkers(t)
-	clearAPIKeyEnv(t)
+	clearCIEnvironment(t)
 	t.Setenv("GITHUB_ACTIONS", "true")
 	t.Setenv("GITHUB_EVENT_NAME", "pull_request")
 	t.Setenv("API_URL", "")
@@ -495,8 +503,7 @@ func TestRun_ForkPullRequestSkipsGate(t *testing.T) {
 }
 
 func TestRun_ForkPullRequestDetectedByFullName(t *testing.T) {
-	clearCIMarkers(t)
-	clearAPIKeyEnv(t)
+	clearCIEnvironment(t)
 	t.Setenv("GITHUB_EVENT_NAME", "pull_request")
 	t.Setenv("GITHUB_EVENT_PATH", writeEventPayload(t, map[string]any{
 		"pull_request": map[string]any{
@@ -512,8 +519,7 @@ func TestRun_ForkPullRequestDetectedByFullName(t *testing.T) {
 }
 
 func TestRun_NonForkPullRequestMissingKeyFails(t *testing.T) {
-	clearCIMarkers(t)
-	clearAPIKeyEnv(t)
+	clearCIEnvironment(t)
 	t.Setenv("GITHUB_EVENT_NAME", "pull_request")
 	t.Setenv("API_URL", "https://specht.example.com")
 	t.Setenv("GITHUB_EVENT_PATH", writeEventPayload(t, map[string]any{
@@ -531,8 +537,7 @@ func TestRun_NonForkPullRequestMissingKeyFails(t *testing.T) {
 }
 
 func TestRun_MissingAPIKeyOnPushEventFails(t *testing.T) {
-	clearCIMarkers(t)
-	clearAPIKeyEnv(t)
+	clearCIEnvironment(t)
 	t.Setenv("GITHUB_EVENT_NAME", "push")
 	t.Setenv("GITHUB_EVENT_PATH", "")
 	t.Setenv("API_URL", "https://specht.example.com")
@@ -546,8 +551,7 @@ func TestRun_MissingAPIKeyOnPushEventFails(t *testing.T) {
 func TestRun_AcceptsSpechtAPIKeyAlias(t *testing.T) {
 	srv := newChangeLinkServer(t, "rep-alias", false)
 	defer srv.Close()
-	clearCIMarkers(t)
-	clearAPIKeyEnv(t)
+	clearCIEnvironment(t)
 	t.Setenv("SPECHT_API_KEY", "test-key")
 	t.Setenv("API_URL", srv.URL)
 
@@ -557,6 +561,7 @@ func TestRun_AcceptsSpechtAPIKeyAlias(t *testing.T) {
 }
 
 func TestIsForkPullRequest(t *testing.T) {
+	clearCIEnvironment(t)
 	forkEvent := map[string]any{
 		"pull_request": map[string]any{
 			"head": map[string]any{"repo": map[string]any{"fork": true, "full_name": "contributor/specht"}},
@@ -597,6 +602,7 @@ func TestIsForkPullRequest(t *testing.T) {
 }
 
 func TestRun_ExcludeTool(t *testing.T) {
+	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "dummy")
 	var stdout, stderr bytes.Buffer
 	code := run([]string{"-project=test", "-tool=trivy", "-exclude-tool=trivy"}, strings.NewReader(`{}`), &stdout, &stderr, nil)
@@ -605,6 +611,7 @@ func TestRun_ExcludeTool(t *testing.T) {
 }
 
 func TestRun_IntroducedOnly_Pass(t *testing.T) {
+	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -681,6 +688,7 @@ func TestRunWithContextCancelsAPIRequest(t *testing.T) {
 }
 
 func TestRun_IntroducedOnly_PreviewFailureWarnsWithoutChangingVerdict(t *testing.T) {
+	clearCIEnvironment(t)
 	stubRetrySleep(t)
 	t.Setenv("API_KEY", "test-key")
 
@@ -714,6 +722,7 @@ func TestRun_IntroducedOnly_PreviewFailureWarnsWithoutChangingVerdict(t *testing
 }
 
 func TestRun_IntroducedOnly_Fail_WithAnnotations_And_Summary(t *testing.T) {
+	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")
 
 	tmpSummary, err := os.CreateTemp("", "github_step_summary_*.md")
@@ -785,6 +794,7 @@ func TestRun_IntroducedOnly_Fail_WithAnnotations_And_Summary(t *testing.T) {
 }
 
 func TestRun_BaselinePolicy_Warn_And_Fail(t *testing.T) {
+	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -948,6 +958,7 @@ func TestChangeURLWithReport(t *testing.T) {
 
 func TestRun_PrintsChangeLinkOnStdout(t *testing.T) {
 	t.Run("pass with report id", func(t *testing.T) {
+		clearCIEnvironment(t)
 		srv := newChangeLinkServer(t, "rep-link", false)
 		defer srv.Close()
 		t.Setenv("API_KEY", "test-key")
@@ -961,6 +972,7 @@ func TestRun_PrintsChangeLinkOnStdout(t *testing.T) {
 	})
 
 	t.Run("blocked without report id", func(t *testing.T) {
+		clearCIEnvironment(t)
 		srv := newChangeLinkServer(t, "", true)
 		defer srv.Close()
 		t.Setenv("API_KEY", "test-key")
@@ -975,6 +987,7 @@ func TestRun_PrintsChangeLinkOnStdout(t *testing.T) {
 	})
 
 	t.Run("no commit omits the link", func(t *testing.T) {
+		clearCIEnvironment(t)
 		srv := newChangeLinkServer(t, "rep-link", false)
 		defer srv.Close()
 		t.Setenv("API_KEY", "test-key")
@@ -1034,7 +1047,7 @@ func TestRun_RetriesTransientIngestFailure(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	clearCIMarkers(t)
+	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")
 	t.Setenv("API_URL", srv.URL)
 
@@ -1053,7 +1066,7 @@ func TestRun_GivesUpAfterTwoRetries(t *testing.T) {
 		w.WriteHeader(http.StatusBadGateway)
 	}))
 	defer srv.Close()
-	clearCIMarkers(t)
+	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")
 	t.Setenv("API_URL", srv.URL)
 
@@ -1073,7 +1086,7 @@ func TestRun_DoesNotRetryBadRequest(t *testing.T) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer srv.Close()
-	clearCIMarkers(t)
+	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")
 	t.Setenv("API_URL", srv.URL)
 
@@ -1104,7 +1117,7 @@ func TestRun_HonoursRetryAfterOn429(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	clearCIMarkers(t)
+	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")
 	t.Setenv("API_URL", srv.URL)
 
@@ -1125,7 +1138,7 @@ func TestRun_DuplicateReportMessage(t *testing.T) {
 		})
 	}))
 	defer srv.Close()
-	clearCIMarkers(t)
+	clearCIEnvironment(t)
 	t.Setenv("API_KEY", "test-key")
 	t.Setenv("API_URL", srv.URL)
 
