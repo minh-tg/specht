@@ -378,7 +378,7 @@ type mockReportRepo struct {
 	findingScopeFn        func(context.Context, string, string) (port.CompletedReport, error)
 	countStaleFn          func(context.Context, time.Time) (int64, error)
 	deleteStaleFn         func(context.Context, time.Time) ([]string, error)
-	findCompletedByHashFn func(context.Context, string, string) (string, error)
+	findCompletedByHashFn func(context.Context, string, string, string) (string, error)
 	deleteReportFn        func(context.Context, string, string) error
 	hasCommitFn           func(context.Context, string, string) (bool, error)
 }
@@ -464,7 +464,7 @@ func (m *mockReportRepo) FindCompletedByHashAndCommit(ctx context.Context, proje
 	if m.findCompletedByHashFn == nil {
 		return "", port.ErrNotFound
 	}
-	return m.findCompletedByHashFn(ctx, projectID, rawHash)
+	return m.findCompletedByHashFn(ctx, projectID, rawHash, commit)
 }
 
 func (m *mockReportRepo) DeleteReport(ctx context.Context, id, projectID string) error {
@@ -1805,7 +1805,11 @@ func TestIngestReport_ParseError(t *testing.T) {
 	assert.ErrorContains(t, err, "scanner trivy: parse output")
 }
 
-func TestIngestReport_Duplicate(t *testing.T) {
+// TestIngestReport_CreateDuplicateStillRejected documents the defensive 409:
+// when the store reports a duplicate at row creation there is no completed
+// report to replay, so the ingest answers ErrDuplicateReport. Same-commit
+// re-uploads are answered as replays instead (see the replay tests).
+func TestIngestReport_CreateDuplicateStillRejected(t *testing.T) {
 	pr, rr, _ := makeTestRepos()
 
 	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
