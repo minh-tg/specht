@@ -126,12 +126,21 @@ export function gitlabCiSnippet({ apiUrl, project, version }: CiSnippetOptions):
 # variable (Settings > CI/CD > Variables). Never commit it.
 #
 # The adapter reads the commit, branch and project from the GitLab CI
-# variables. Add -introduced-only to gate only on the findings this change
-# introduces, or -base-ref <branch> to name the baseline explicitly.
+# variables. Merge requests gate on what they introduce: on a merge request
+# pipeline the gate script adds -introduced-only, and the adapter takes the
+# target branch from CI_MERGE_REQUEST_TARGET_BRANCH_NAME. The default branch
+# has no merge request, so it gates on the whole project.
 #
 # Exit codes: 0 gate passed, 1 severity threshold breached, 2 runtime error.
 
 stages: [scan, gate]
+
+# One pipeline per change: a merge request event or a push to the default
+# branch, never both jobs from the branch and the merge request at once.
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
 variables:
   SPECHT_API_URL: ${yamlString(apiUrl)}
@@ -154,6 +163,11 @@ specht-gate:
     entrypoint: [""]
   needs: [trivy-scan]
   script:
-    - specht-adapter -file trivy-results.json -tool trivy -project "$SPECHT_PROJECT"
+    - |
+      set -- -file trivy-results.json -tool trivy -project "$SPECHT_PROJECT"
+      if [ -n "$CI_MERGE_REQUEST_IID" ]; then
+        set -- "$@" -introduced-only
+      fi
+      specht-adapter "$@"
 `;
 }

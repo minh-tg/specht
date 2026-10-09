@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   githubActionsSnippet,
@@ -17,6 +21,45 @@ const snippets = [
   ["githubActionsSnippet", githubActionsSnippet],
   ["gitlabCiSnippet", gitlabCiSnippet],
 ] as const;
+
+/**
+ * The literal script block of the GitLab gate job, dedented so sh can run it.
+ * The snippet is the artifact a user copies, so the test runs what it renders
+ * rather than a copy of the script kept next to it.
+ */
+function gitlabGateScript(snippet: string): string {
+  const lines = snippet.split("\n");
+  const job = lines.indexOf("specht-gate:");
+  if (job === -1) throw new Error("no specht-gate job in the snippet");
+  const script = lines.findIndex((line, i) => i > job && line === "  script:");
+  if (script === -1 || lines[script + 1] !== "    - |") {
+    throw new Error("the gate job has no literal script block");
+  }
+  const body: string[] = [];
+  for (let i = script + 2; i < lines.length; i++) {
+    const line = lines[i] ?? "";
+    if (!line.startsWith("      ")) break;
+    body.push(line.slice(6));
+  }
+  return body.join("\n");
+}
+
+/** Run the generated gate script with a fake adapter that prints its args. */
+function runGate(env: Record<string, string>): string[] {
+  const dir = mkdtempSync(join(tmpdir(), "specht-gitlab-gate-"));
+  try {
+    const adapter = join(dir, "specht-adapter");
+    writeFileSync(adapter, "#!/bin/sh\nprintf '%s\\n' \"$@\"\n");
+    chmodSync(adapter, 0o755);
+    const stdout = execFileSync("sh", ["-c", gitlabGateScript(gitlabCiSnippet(OPTIONS))], {
+      encoding: "utf8",
+      env: { PATH: `${dir}:${process.env.PATH ?? ""}`, SPECHT_PROJECT: PROJECT, ...env },
+    });
+    return stdout.split("\n").filter((line) => line !== "");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
 
 describe("ciSnippets", () => {
   it.each(snippets)(
@@ -95,8 +138,10 @@ describe("ciSnippets", () => {
   it("runs the adapter image at the pinned release tag in GitLab", () => {
     const snippet = gitlabCiSnippet(OPTIONS);
     expect(snippet).toContain(`ghcr.io/minh-tg/specht-adapter:${VERSION}`);
-    expect(snippet).toContain("specht-adapter -file trivy-results.json -tool trivy");
-    expect(snippet).toContain("-project \"$SPECHT_PROJECT\"");
+    expect(snippet).toContain(
+      "set -- -file trivy-results.json -tool trivy -project \"$SPECHT_PROJECT\"",
+    );
+    expect(snippet).toContain("specht-adapter \"$@\"");
   });
 
   it("clears the image entrypoint so the GitLab runner can use a shell", () => {
@@ -117,6 +162,44 @@ describe("ciSnippets", () => {
     expect(snippet).toContain("stage: gate");
     expect(snippet).toContain("paths: [trivy-results.json]");
     expect(snippet).toContain("needs: [trivy-scan]");
+  });
+
+  it("runs one pipeline for merge requests and one for the default branch", () => {
+    const snippet = gitlabCiSnippet(OPTIONS);
+    expect(snippet).toContain("workflow:\n  rules:");
+    expect(snippet).toContain("- if: $CI_PIPELINE_SOURCE == \"merge_request_event\"");
+    expect(snippet).toContain("- if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH");
+  });
+
+  it("adds -introduced-only only on a merge request pipeline", () => {
+    const snippet = gitlabCiSnippet(OPTIONS);
+    expect(snippet).toContain("if [ -n \"$CI_MERGE_REQUEST_IID\" ]; then");
+    expect(snippet).toContain("set -- \"$@\" -introduced-only");
+  });
+});
+
+describe("the generated GitLab gate script", () => {
+  it("gates a merge request on the findings it introduces", () => {
+    expect(runGate({ CI_MERGE_REQUEST_IID: "42" })).toEqual([
+      "-file",
+      "trivy-results.json",
+      "-tool",
+      "trivy",
+      "-project",
+      PROJECT,
+      "-introduced-only",
+    ]);
+  });
+
+  it("gates the whole project on the default branch", () => {
+    expect(runGate({})).toEqual([
+      "-file",
+      "trivy-results.json",
+      "-tool",
+      "trivy",
+      "-project",
+      PROJECT,
+    ]);
   });
 });
 
