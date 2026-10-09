@@ -58,12 +58,29 @@ const FIRST_REPORT_COPY: Record<FirstReport, { heading: string; message: string;
   received: { heading: "First report received", message: "" },
 };
 
+/**
+ * The one-line note under the snippets about the server's version. A resolved
+ * non-release build is a development build; a failed version request says the
+ * version could not be read; a pending request says nothing, so the
+ * placeholder stands on its own.
+ */
+function versionNoteFor(
+  releaseTag: string | undefined,
+  version: { isLoading: boolean; isError: boolean; },
+): string | null {
+  if (version.isError) {
+    return `Could not read this server's version. Replace ${VERSION_PLACEHOLDER} with the Specht version you run.`;
+  }
+  if (version.isLoading || releaseTag !== undefined) return null;
+  return `This server is a development build. Replace ${VERSION_PLACEHOLDER} with a released Specht version.`;
+}
+
 export function ProjectSetup() {
   const { slug = "" } = useParams<{ slug: string; }>();
   const queryClient = useQueryClient();
   const { data: me, isLoading: meLoading } = useMe();
   const { data: project, isLoading: projectLoading } = useProject(slug);
-  const { data: serverVersion } = useVersion();
+  const { data: serverVersion, isLoading: versionLoading, isError: versionError } = useVersion();
 
   const createKey = useCreateApiKey();
   const [rawKey, setRawKey] = useState<string | null>(null);
@@ -129,10 +146,14 @@ export function ProjectSetup() {
   }
 
   const apiUrl = window.location.origin;
-  // A release pins the snippets to the server's own tag; any other build (dev,
-  // commit, still loading) keeps the placeholder and says so under the snippets.
+  // A release pins the snippets to the server's own tag; any other build keeps
+  // the placeholder. The note below explains which case the reader is in.
   const releaseTag = releaseTagFor(serverVersion);
   const pinnedVersion = releaseTag ?? VERSION_PLACEHOLDER;
+  const versionNote = versionNoteFor(releaseTag, {
+    isLoading: versionLoading,
+    isError: versionError,
+  });
   // The snippets use the slug the server returned, never the raw URL segment.
   const githubSnippet = githubActionsSnippet({
     apiUrl,
@@ -189,9 +210,9 @@ export function ProjectSetup() {
             Store the key you just created as the SPECHT_API_KEY secret, then commit one of these
             pipelines. The snippets only reference the secret; they never contain the key itself.
           </p>
-          {releaseTag === undefined && (
+          {versionNote && (
             <p className="text-muted-foreground mt-2 text-xs">
-              {`This server is a development build. Replace ${VERSION_PLACEHOLDER} with a released Specht version.`}
+              {versionNote}
             </p>
           )}
 
