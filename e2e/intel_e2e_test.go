@@ -36,6 +36,25 @@ func getFindingDetail(t *testing.T, id string) findingDetail {
 		adminToken, nil, http.StatusOK)
 }
 
+// awaitDetailIntel re-reads the given finding details until one carries intel
+// that match accepts, and returns that detail. A read schedules the refresh
+// that fills the cache, so the first reads may still come back without intel.
+func awaitDetailIntel(t *testing.T, ids []string, match func(*intelBlock) bool) findingDetail {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		for _, id := range ids {
+			if d := getFindingDetail(t, id); d.Intel != nil && match(d.Intel) {
+				return d
+			}
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("background intel refresh did not land within 10s")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 func TestE2E_FindingIntelOnDetail(t *testing.T) {
 	t.Run("armed CVE carries epss and kev, unknown siblings stay bare", func(t *testing.T) {
 		slug := newProject(t, "intel-detail")
@@ -48,19 +67,20 @@ func TestE2E_FindingIntelOnDetail(t *testing.T) {
 		findings := listScanFindings(t, slug)
 		require.Len(t, findings, 2)
 
-		var armed, bare *findingDetail
+		ids := make([]string, 0, len(findings))
 		for _, f := range findings {
-			d := getFindingDetail(t, f.ID)
-			if d.Intel != nil {
-				dd := d
-				armed = &dd
-			} else {
-				dd := d
+			ids = append(ids, f.ID)
+		}
+		armed := awaitDetailIntel(t, ids, func(*intelBlock) bool { return true })
+		var bare *findingDetail
+		for _, id := range ids {
+			if id != armed.ID {
+				dd := getFindingDetail(t, id)
 				bare = &dd
 			}
 		}
-		require.NotNil(t, armed, "the armed CVE's detail carries intel")
 		require.NotNil(t, bare, "the unknown CVE's detail stays bare")
+		require.Nil(t, bare.Intel, "the unknown CVE's detail stays bare")
 
 		require.Equal(t, "CVE-2024-9143", armed.Intel.CVEID)
 		require.NotNil(t, armed.Intel.EPSS)
@@ -95,15 +115,16 @@ func TestE2E_FindingIntelOnDetail(t *testing.T) {
 		// prime with a fresh value — a re-read after TTL picking up 0.42
 		// proves re-reads pull the latest feed data.
 		time.Sleep(1500 * time.Millisecond)
-		var target string
+		ids := make([]string, 0)
 		for _, f := range listScanFindings(t, slug) {
-			if d := getFindingDetail(t, f.ID); d.Intel != nil {
-				target = f.ID
-				require.InDelta(t, 0.42, *d.Intel.EPSS, 0.0001,
-					"a re-read after TTL expiry picks up the new feed value")
-				require.False(t, d.Intel.Stale)
-			}
+			ids = append(ids, f.ID)
 		}
+		// The read after expiry serves the stale record and refreshes it in
+		// the background, so poll until the new feed value lands.
+		fresh := awaitDetailIntel(t, ids, func(in *intelBlock) bool {
+			return in.EPSS != nil && *in.EPSS > 0.41 && *in.EPSS < 0.43 && !in.Stale
+		})
+		target := fresh.ID
 		require.NotEmpty(t, target, "the armed CVE resolved")
 
 		// Let the cache expire while both feeds are down.
