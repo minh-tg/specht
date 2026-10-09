@@ -4,9 +4,12 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/minh-tg/specht/internal/server"
 )
 
 func TestSPAHandler_apiRoutesPassThrough(t *testing.T) {
@@ -131,5 +134,60 @@ func TestSPAHandler_prefersBuiltFrontend(t *testing.T) {
 	}
 	if string(body) != "built frontend" {
 		t.Fatalf("expected built frontend, got %q", body)
+	}
+}
+
+func TestSPAHandler_securityHeadersOnEveryResponse(t *testing.T) {
+	assets := fstest.MapFS{
+		"dist/index.html":          &fstest.MapFile{Data: []byte("<!doctype html><title>Specht</title>")},
+		"dist/assets/app-a1b2.js":  &fstest.MapFile{Data: []byte("console.log('app')")},
+		"dist/assets/app-a1b2.css": &fstest.MapFile{Data: []byte("body{}")},
+	}
+	router := server.NewRouter(server.RouterConfig{
+		Usecases:       nil,
+		TrustedProxies: []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")},
+	})
+	ts := httptest.NewServer(spaHandlerWithFS(router, assets))
+	defer ts.Close()
+
+	wantCSP := "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
+
+	paths := []struct {
+		name string
+		path string
+		code int
+	}{
+		{name: "root document", path: "/", code: http.StatusOK},
+		{name: "deep link fallback", path: "/acme/findings", code: http.StatusOK},
+		{name: "existing asset", path: "/assets/app-a1b2.js", code: http.StatusOK},
+		{name: "api route", path: "/api/v1/health", code: http.StatusOK},
+	}
+	for _, tc := range paths {
+		t.Run(tc.name, func(t *testing.T) {
+			resp, err := http.Get(ts.URL + tc.path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Closing an HTTP response body is best-effort test cleanup.
+			defer func() {
+				_ = resp.Body.Close()
+			}()
+
+			if resp.StatusCode != tc.code {
+				t.Errorf("expected %d, got %d", tc.code, resp.StatusCode)
+			}
+			if got := resp.Header.Get("Content-Security-Policy"); got != wantCSP {
+				t.Errorf("Content-Security-Policy = %q, want %q", got, wantCSP)
+			}
+			if got := resp.Header.Get("X-Frame-Options"); got != "SAMEORIGIN" {
+				t.Errorf("X-Frame-Options = %q, want SAMEORIGIN", got)
+			}
+			if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Errorf("X-Content-Type-Options = %q, want nosniff", got)
+			}
+			if got := resp.Header.Get("Referrer-Policy"); got != "strict-origin-when-cross-origin" {
+				t.Errorf("Referrer-Policy = %q, want strict-origin-when-cross-origin", got)
+			}
+		})
 	}
 }

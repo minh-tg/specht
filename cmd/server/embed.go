@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"path"
 	"strings"
+
+	"github.com/minh-tg/specht/internal/server"
 )
 
 //go:embed dist
@@ -83,11 +85,11 @@ func spaHandlerWithFS(apiHandler http.Handler, assets fs.FS) http.Handler {
 		http.StripPrefix("/", http.FileServer(http.FS(spaFileSystem{sub}))).ServeHTTP(w, r)
 	})
 
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return server.SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/health" {
 			apiHandler.ServeHTTP(w, r)
 			return
 		}
 		fileServer.ServeHTTP(w, r)
-	})
+	}))
 }
