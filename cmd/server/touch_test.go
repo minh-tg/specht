@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -44,6 +45,37 @@ func TestTouchThrottle_ReleaseLetsAFailedWriteRetry(t *testing.T) {
 	th.release("key-a")
 	if !th.due("key-a") {
 		t.Fatal("a write that failed must not suppress the next attempt")
+	}
+}
+
+func TestTouchThrottle_SweepsAtMostOncePerInterval(t *testing.T) {
+	th, clock := newTestThrottle(time.Unix(1000, 0))
+	for i := 0; i < touchThrottlePruneAt; i++ {
+		th.due(fmt.Sprintf("key-%d", i))
+	}
+
+	// Every entry is stale once the interval has passed, so the next write that
+	// reaches the threshold sweeps them all.
+	*clock = clock.Add(2 * time.Minute)
+	th.due("first")
+	if len(th.seen) != 1 {
+		t.Fatalf("stale keys should be swept, have %d entries", len(th.seen))
+	}
+
+	// A stale entry planted inside the same interval survives a burst of writes:
+	// the sweep already ran for this interval.
+	th.seen["planted"] = clock.Add(-time.Hour)
+	for i := 0; i < touchThrottlePruneAt; i++ {
+		th.due(fmt.Sprintf("burst-%d", i))
+	}
+	if _, ok := th.seen["planted"]; !ok {
+		t.Fatal("the map was swept twice within one interval")
+	}
+
+	*clock = clock.Add(2 * time.Minute)
+	th.due("later")
+	if _, ok := th.seen["planted"]; ok {
+		t.Fatal("a stale entry should be swept once the interval has passed")
 	}
 }
 
