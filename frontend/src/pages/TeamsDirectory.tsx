@@ -8,7 +8,27 @@ import {
   useTeams,
 } from "@/api/hooks";
 import { useUserDirectory } from "@/api/users";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { isUuid } from "@/lib/uuid";
 import type { Team } from "@/types/api";
 import { useState } from "react";
@@ -24,7 +44,7 @@ function TeamCard({
   isGlobalAdmin: boolean;
   deleteError?: string;
   onOpenRoster: (team: Team) => void;
-  onDeleteTeam: (teamId: string) => void;
+  onDeleteTeam: (team: Team) => void;
 }) {
   const { data: members, isError: membersError, refetch: refetchMembers } = useTeamMembers(
     team.id,
@@ -72,7 +92,7 @@ function TeamCard({
               variant="ghost"
               size="sm"
               className="text-destructive hover:bg-destructive/10"
-              onClick={() => onDeleteTeam(team.id)}
+              onClick={() => onDeleteTeam(team)}
             >
               Delete
             </Button>
@@ -97,7 +117,12 @@ export function TeamsDirectory() {
   const [newTeamName, setNewTeamName] = useState("");
   const [newTeamDesc, setNewTeamDesc] = useState("");
 
+  // The roster and delete dialogs keep their team until the exit animation ends, so the
+  // content does not blank while the dialog fades out.
   const [activeRosterTeam, setActiveRosterTeam] = useState<Team | null>(null);
+  const [rosterOpen, setRosterOpen] = useState(false);
+  const [teamToDelete, setTeamToDelete] = useState<Team | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const [rosterUserId, setRosterUserId] = useState("");
   const [rosterRole, setRosterRole] = useState<"admin" | "member">("member");
   const [rosterInputError, setRosterInputError] = useState<string | null>(null);
@@ -192,11 +217,13 @@ export function TeamsDirectory() {
                 deleteError={deleteTeamMutation.isError && deleteTeamMutation.variables === team.id
                   ? deleteTeamMutation.error?.message ?? "Failed to delete team"
                   : undefined}
-                onOpenRoster={(t) => setActiveRosterTeam(t)}
-                onDeleteTeam={(id) => {
-                  if (window.confirm("Are you sure you want to delete this company team?")) {
-                    deleteTeamMutation.mutate(id);
-                  }
+                onOpenRoster={(t) => {
+                  setActiveRosterTeam(t);
+                  setRosterOpen(true);
+                }}
+                onDeleteTeam={(t) => {
+                  setTeamToDelete(t);
+                  setDeleteOpen(true);
                 }}
               />
             ))}
@@ -211,200 +238,207 @@ export function TeamsDirectory() {
           </div>
         )}
 
-      {/* Create Team Modal */}
-      {showCreateModal && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="create-team-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-        >
-          <div className="bg-card border border-border rounded-lg max-w-md w-full p-6 shadow-xl">
-            <h3 id="create-team-title" className="text-lg font-semibold text-foreground">
-              Create Company Team
-            </h3>
-            <p className="text-muted-foreground text-xs mt-1 mb-4">
-              Add a new group to the central company directory.
-            </p>
-            <form onSubmit={handleCreateTeam} className="space-y-4">
-              <div>
-                <label
-                  htmlFor="team-name-input"
-                  className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
-                >
-                  Team Name
-                </label>
-                <input
-                  id="team-name-input"
+      <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create Company Team</DialogTitle>
+            <DialogDescription>Add a new group to the central company directory.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreateTeam} className="grid gap-4">
+            <div>
+              <label
+                htmlFor="team-name-input"
+                className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
+              >
+                Team Name
+              </label>
+              <Input
+                id="team-name-input"
+                required
+                value={newTeamName}
+                onChange={(e) => setNewTeamName(e.target.value)}
+                placeholder="e.g. Security Operations"
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="team-desc-input"
+                className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
+              >
+                Description
+              </label>
+              <Textarea
+                id="team-desc-input"
+                rows={3}
+                value={newTeamDesc}
+                onChange={(e) => setNewTeamDesc(e.target.value)}
+                placeholder="Scope and purpose of this team..."
+              />
+            </div>
+
+            {createTeamMutation.isError && (
+              <p className="text-destructive text-xs">
+                {createTeamMutation.error?.message ?? "Failed to create team"}
+              </p>
+            )}
+
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setShowCreateModal(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={createTeamMutation.isPending}>
+                {createTeamMutation.isPending ? "Creating..." : "Create Team"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={rosterOpen}
+        onOpenChange={setRosterOpen}
+        onOpenChangeComplete={(open) => {
+          if (!open) setActiveRosterTeam(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{activeRosterTeam?.name} members</DialogTitle>
+            <DialogDescription>
+              {activeRosterTeam?.description || "Manage individuals in this company team."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {isGlobalAdmin && (
+            <form onSubmit={handleAddRosterMember} className="space-y-2">
+              <div className="flex gap-2">
+                <Input
                   required
-                  value={newTeamName}
-                  onChange={(e) => setNewTeamName(e.target.value)}
-                  placeholder="e.g. Security Operations"
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  aria-label="User ID"
+                  value={rosterUserId}
+                  onChange={(e) => {
+                    setRosterUserId(e.target.value);
+                    setRosterInputError(null);
+                    addMemberMutation.reset();
+                  }}
+                  placeholder="User ID"
+                  className="flex-1"
                 />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="team-desc-input"
-                  className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
+                <select
+                  aria-label="Team role"
+                  value={rosterRole}
+                  onChange={(e) => setRosterRole(e.target.value as "admin" | "member")}
+                  className="px-2 py-1.5 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 >
-                  Description
-                </label>
-                <textarea
-                  id="team-desc-input"
-                  rows={3}
-                  value={newTeamDesc}
-                  onChange={(e) => setNewTeamDesc(e.target.value)}
-                  placeholder="Scope and purpose of this team..."
-                  className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                />
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <Button type="submit" size="sm" disabled={addMemberMutation.isPending}>
+                  {addMemberMutation.isPending ? "Adding..." : "Add"}
+                </Button>
               </div>
-
-              {createTeamMutation.isError && (
+              {rosterInputError && <p className="text-destructive text-xs">{rosterInputError}</p>}
+              {addMemberMutation.isError && (
                 <p className="text-destructive text-xs">
-                  {createTeamMutation.error?.message ?? "Failed to create team"}
+                  {addMemberMutation.error?.message ?? "Failed to add member"}
                 </p>
               )}
-
-              <div className="flex justify-end gap-2 pt-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setShowCreateModal(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={createTeamMutation.isPending}>
-                  {createTeamMutation.isPending ? "Creating..." : "Create Team"}
-                </Button>
-              </div>
             </form>
-          </div>
-        </div>
-      )}
+          )}
 
-      {/* Roster Modal */}
-      {activeRosterTeam && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="roster-modal-title"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-        >
-          <div className="bg-card border border-border rounded-lg max-w-lg w-full p-6 shadow-xl space-y-4">
-            <div>
-              <h3 id="roster-modal-title" className="text-lg font-semibold text-foreground">
-                {activeRosterTeam.name} members
-              </h3>
-              <p className="text-muted-foreground text-xs mt-0.5">
-                {activeRosterTeam.description || "Manage individuals in this company team."}
-              </p>
-            </div>
-
-            {isGlobalAdmin && (
-              <form onSubmit={handleAddRosterMember} className="space-y-2">
-                <div className="flex gap-2">
-                  <input
-                    required
-                    aria-label="User ID"
-                    value={rosterUserId}
-                    onChange={(e) => {
-                      setRosterUserId(e.target.value);
-                      setRosterInputError(null);
-                      addMemberMutation.reset();
-                    }}
-                    placeholder="User ID"
-                    className="flex-1 px-3 py-1.5 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                  <select
-                    aria-label="Team role"
-                    value={rosterRole}
-                    onChange={(e) => setRosterRole(e.target.value as "admin" | "member")}
-                    className="px-2 py-1.5 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  >
-                    <option value="member">Member</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                  <Button type="submit" size="sm" disabled={addMemberMutation.isPending}>
-                    {addMemberMutation.isPending ? "Adding..." : "Add"}
-                  </Button>
+          <div className="border border-border rounded-md max-h-60 overflow-y-auto">
+            {rosterLoading
+              ? (
+                <div className="p-4 text-center text-muted-foreground text-xs">
+                  Loading roster...
                 </div>
-                {rosterInputError && <p className="text-destructive text-xs">{rosterInputError}</p>}
-                {addMemberMutation.isError && (
-                  <p className="text-destructive text-xs">
-                    {addMemberMutation.error?.message ?? "Failed to add member"}
-                  </p>
-                )}
-              </form>
-            )}
-
-            <div className="border border-border rounded-md max-h-60 overflow-y-auto">
-              {rosterLoading
-                ? (
-                  <div className="p-4 text-center text-muted-foreground text-xs">
-                    Loading roster...
-                  </div>
-                )
-                : rosterError
-                ? (
-                  <div className="p-4 text-center text-xs">
-                    <p className="text-destructive mb-2">Could not load the roster.</p>
-                    <button
-                      type="button"
-                      className="text-action underline hover:no-underline"
-                      onClick={() => refetchRoster()}
+              )
+              : rosterError
+              ? (
+                <div className="p-4 text-center text-xs">
+                  <p className="text-destructive mb-2">Could not load the roster.</p>
+                  <button
+                    type="button"
+                    className="text-action underline hover:no-underline"
+                    onClick={() => refetchRoster()}
+                  >
+                    Retry
+                  </button>
+                </div>
+              )
+              : activeMembers && activeMembers.length > 0
+              ? (
+                <ul className="divide-y divide-border text-sm">
+                  {activeMembers.map((member) => (
+                    <li
+                      key={member.user_id}
+                      className="px-4 py-2.5 flex items-center justify-between hover:bg-muted/30"
                     >
-                      Retry
-                    </button>
-                  </div>
-                )
-                : activeMembers && activeMembers.length > 0
-                ? (
-                  <ul className="divide-y divide-border text-sm">
-                    {activeMembers.map((member) => (
-                      <li
-                        key={member.user_id}
-                        className="px-4 py-2.5 flex items-center justify-between hover:bg-muted/30"
-                      >
-                        <span className="font-medium text-foreground">
-                          {resolveUserLabel(member.user_id)}
-                        </span>
-                        {isGlobalAdmin && (
-                          <Button
-                            variant="ghost"
-                            size="xs"
-                            className="text-destructive hover:bg-destructive/10"
-                            disabled={removeMemberMutation.isPending}
-                            onClick={() => removeMemberMutation.mutate(member.user_id)}
-                          >
-                            Remove
-                          </Button>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                )
-                : (
-                  <div className="p-4 text-center text-muted-foreground text-xs">
-                    No members in this team yet.
-                  </div>
-                )}
-            </div>
-            {removeMemberMutation.isError && (
-              <p className="text-destructive text-xs">
-                {removeMemberMutation.error?.message ?? "Failed to remove member"}
-              </p>
-            )}
-
-            <div className="flex justify-end pt-2">
-              <Button variant="outline" onClick={() => setActiveRosterTeam(null)}>
-                Close
-              </Button>
-            </div>
+                      <span className="font-medium text-foreground">
+                        {resolveUserLabel(member.user_id)}
+                      </span>
+                      {isGlobalAdmin && (
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          className="text-destructive hover:bg-destructive/10"
+                          disabled={removeMemberMutation.isPending}
+                          onClick={() => removeMemberMutation.mutate(member.user_id)}
+                        >
+                          Remove
+                        </Button>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )
+              : (
+                <div className="p-4 text-center text-muted-foreground text-xs">
+                  No members in this team yet.
+                </div>
+              )}
           </div>
-        </div>
-      )}
+          {removeMemberMutation.isError && (
+            <p className="text-destructive text-xs">
+              {removeMemberMutation.error?.message ?? "Failed to remove member"}
+            </p>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRosterOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        onOpenChangeComplete={(open) => {
+          if (!open) setTeamToDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {teamToDelete?.name ?? "this team"}?</AlertDialogTitle>
+            <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (teamToDelete) deleteTeamMutation.mutate(teamToDelete.id);
+                setDeleteOpen(false);
+              }}
+            >
+              Delete team
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
