@@ -54,7 +54,7 @@ func parseFlags(args []string, stderr io.Writer, inGitHubActions bool) *adapterF
 	fs.SetOutput(stderr)
 	f := &adapterFlags{inGitHubActions: inGitHubActions}
 
-	fs.StringVar(&f.severity, "severity", "", "Severity threshold (comma-separated, default: high,critical)")
+	fs.StringVar(&f.severity, "severity", "", "Severity threshold, comma-separated (the project policy decides; a value here can only tighten it)")
 	fs.StringVar(&f.status, "status", "", "Deprecated and ignored; the project policy decides")
 	fs.StringVar(&f.project, "project", "", "Project slug (overrides stdin)")
 	fs.StringVar(&f.tool, "tool", "", "Scanner name (overrides scanner detected in stdin payload)")
@@ -523,7 +523,7 @@ Flags:
   -project string        Project slug (overrides payload)
   -tool string           Scanner name (overrides payload)
   -exclude-tool string   Skip if scanner name matches this value
-  -severity string       Severity threshold, comma-separated (default: high,critical)
+  -severity string       Severity threshold, comma-separated (the project policy decides; a value here can only tighten it)
   -status string         Deprecated and ignored; the project policy decides
   -file string           Path to scan result file (default: read from stdin)
   -introduced-only       Gate strictly on introduced vulnerabilities
