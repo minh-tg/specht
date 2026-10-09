@@ -42,7 +42,10 @@ func TestParseCycloneDX(t *testing.T) {
 	assert.Equal(t, domain.ScanTypeSBOM, rep.ScanType)
 	assert.Equal(t, domain.CompletenessComplete, rep.Completeness)
 	require.NotNil(t, rep.Target)
+	assert.Equal(t, "package", rep.Target.Kind)
 	assert.Equal(t, "myapp@1.2.3", rep.Target.Identifier)
+	assert.Equal(t, "CycloneDX", rep.ScanScope.Ext["sbom_format"])
+	assert.Equal(t, "urn:uuid:3e671687-395b-41f5-a30f-a58921a69b79", rep.ScanScope.Ext["sbom_serial"])
 
 	lodash := rep.Packages[0]
 	assert.Equal(t, "pkg:npm/lodash@4.17.20", lodash.PURL)
@@ -73,7 +76,10 @@ func TestParseSPDX(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, rep.Findings)
 	require.Len(t, rep.Packages, 2, "document stub and versionless stub skipped")
+	assert.Equal(t, "package", rep.Target.Kind)
 	assert.Equal(t, "myapp-1.2.3", rep.Target.Identifier)
+	assert.Equal(t, "SPDX", rep.ScanScope.Ext["sbom_format"])
+	assert.Equal(t, "SPDX-2.3", rep.ScanScope.Ext["spdx_version"])
 
 	lodash := rep.Packages[0]
 	assert.Equal(t, "pkg:npm/lodash@4.17.20", lodash.PURL)

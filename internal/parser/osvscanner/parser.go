@@ -158,6 +158,26 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	return convert(report), nil
 }
 
+func targetKindForSource(sourceType string) string {
+	switch strings.ToLower(strings.TrimSpace(sourceType)) {
+	case "repository", "git":
+		return "repo"
+	case "image":
+		return "container_image"
+	case "filesystem":
+		return "filesystem"
+	case "iac":
+		return "iac_stack"
+	case "lockfile", "sbom":
+		return "package"
+	default:
+		// OSV results primarily describe package inventory; retain unknown
+		// upstream source types separately rather than persisting them as a
+		// target kind outside the database vocabulary.
+		return "package"
+	}
+}
+
 func convertToScanType(s string) domain.ScanType {
 	switch s {
 	case "lockfile":
@@ -182,6 +202,7 @@ func convert(report osvReport) *domain.NormalizedReport {
 		ContractVersion:    1,
 		FingerprintVersion: 1,
 		Completeness:       domain.CompletenessUnknown,
+		ScanScope:          &domain.ScanScope{Ext: make(map[string]string)},
 		Findings:           nil,
 	}
 
@@ -190,9 +211,11 @@ func convert(report osvReport) *domain.NormalizedReport {
 			nr.ScanType = convertToScanType(result.Source.Type)
 		}
 		nr.Target = &domain.TargetInfo{
-			Kind:       result.Source.Type,
+			Kind:       targetKindForSource(result.Source.Type),
 			Identifier: result.Source.Path,
 		}
+		nr.ScanScope.Ext["osv_source_type"] = result.Source.Type
+		nr.ScanScope.Ext["osv_source_path"] = result.Source.Path
 
 		// full package inventory, vulnerable or not
 		addOsvPackages(nr, result)
