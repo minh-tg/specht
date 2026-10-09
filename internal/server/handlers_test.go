@@ -1029,6 +1029,23 @@ func TestCreateProject_MissingFields(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
+func TestCreateProject_InvalidSlug(t *testing.T) {
+	mock := &mockUsecases{
+		createProjectFn: func(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error) {
+			return nil, fmt.Errorf("%w: %q is reserved", usecase.ErrInvalidSlug, slug)
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("POST", "/api/v1/projects", strings.NewReader(`{"name":"API","slug":"api"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), `"code":"invalid_slug"`)
+	assert.Contains(t, w.Body.String(), "reserved")
+}
+
 func TestUpdateProject_Success(t *testing.T) {
 	mock := &mockUsecases{
 		updateProjectFn: func(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error) {

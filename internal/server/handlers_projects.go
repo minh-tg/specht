@@ -41,6 +41,10 @@ func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.usecase.CreateProject(r.Context(), req.Name, req.Slug, req.Description, ident.UserID)
 	if err != nil {
+		if errors.Is(err, usecase.ErrInvalidSlug) {
+			respondError(w, http.StatusBadRequest, "invalid_slug", err.Error())
+			return
+		}
 		if errors.Is(err, usecase.ErrSlugTaken) {
 			respondError(w, http.StatusConflict, "slug_taken", "project slug already exists")
 			return
