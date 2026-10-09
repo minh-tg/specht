@@ -335,3 +335,33 @@ func TestPreviewPRCheck_RequestedFloorOnlyTightens(t *testing.T) {
 		})
 	}
 }
+
+func TestPreviewPRCheck_RefusesCommitWithoutReport(t *testing.T) {
+	uc, _ := prcheckHarness(t)
+	rr := uc.deps.Stores.Reports.(*mockReportRepo)
+	rr.hasCommitFn = func(ctx context.Context, projectID, commit string) (bool, error) {
+		assert.Equal(t, prcheckCommit, commit)
+		return false, nil
+	}
+
+	_, err := uc.PreviewPRCheck(findingScopeCtx(makeProject(true).ID), PRCheckPreviewInput{
+		ProjectSlug: "my-app", CommitSha: prcheckCommit,
+	})
+	assert.ErrorIs(t, err, ErrNoReportForCommit)
+}
+
+func TestPreviewPRCheck_CleanScanPasses(t *testing.T) {
+	const cleanCommit = "fedcba9876543210fedcba9876543210fedcba98"
+	uc, _ := prcheckHarness(t)
+	rr := uc.deps.Stores.Reports.(*mockReportRepo)
+	rr.hasCommitFn = func(ctx context.Context, projectID, commit string) (bool, error) {
+		return commit == cleanCommit, nil
+	}
+
+	out, err := uc.PreviewPRCheck(findingScopeCtx(makeProject(true).ID), PRCheckPreviewInput{
+		ProjectSlug: "my-app", CommitSha: cleanCommit,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "success", out.Conclusion, "a completed scan that introduced nothing passes")
+	assert.Empty(t, out.Annotations)
+}

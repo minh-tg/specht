@@ -13,7 +13,7 @@ import (
 // PR preview scopes to exactly that change.
 const prCommit = "abcd0000abcd0000abcd0000abcd0000abcd0000"
 
-// unknownCommit names a revision no report ever introduced.
+// unknownCommit names a revision no report ever scanned.
 const unknownCommit = "0000dead0000dead0000dead0000dead0000dead"
 
 // Local response shapes for the planning previews.
@@ -107,11 +107,11 @@ func TestE2E_PreviewsPlanWithoutSideEffects(t *testing.T) {
 		require.Equal(t, "src/config.go", annotation.File)
 		require.Equal(t, 12, annotation.StartLine)
 
-		empty := request[prCheckPreview](t, http.MethodGet,
-			"/api/v1/projects/"+slug+"/pr-check?commit="+unknownCommit, adminToken, nil, http.StatusOK)
-		require.Equal(t, "success", empty.Conclusion,
-			"a commit that introduced nothing passes")
-		require.Empty(t, empty.Annotations)
+		status, raw = doJSON(t, http.MethodGet,
+			"/api/v1/projects/"+slug+"/pr-check?commit="+unknownCommit, adminToken, nil)
+		require.Equal(t, http.StatusNotFound, status,
+			"a check never passes on a commit no completed scan carries")
+		require.Equal(t, "no_report_for_commit", errorCode(t, raw))
 
 		request[prCheckPreview](t, http.MethodGet,
 			"/api/v1/projects/"+slug+"/pr-check?commit="+prCommit, viewerToken, nil, http.StatusOK)

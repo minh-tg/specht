@@ -263,6 +263,10 @@ func (h *Handler) PreviewPRCheck(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusBadRequest, "unknown_provider", "unknown provider")
 			return
 		}
+		if errors.Is(err, usecase.ErrNoReportForCommit) {
+			respondError(w, http.StatusNotFound, "no_report_for_commit", "no completed scan report carries this commit; scan it before requesting a check")
+			return
+		}
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
 			respondAccessDenied(w, r, "report")
 			return

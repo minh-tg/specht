@@ -708,6 +708,8 @@ export interface paths {
      * Plan the pull-request check
      * @description Returns the conclusion and annotations a provider check would publish,
      *     with no side effects — nothing is created, updated, or posted.
+     *     A commit that no completed scan carries is refused with 404 rather than
+     *     planned as a passing check.
      */
     get: operations["previewPRCheck"];
     put?: never;
@@ -3541,7 +3543,7 @@ export interface operations {
         provider?: "github";
         /** @description Ties the check to one exact scan; otherwise scoped by commit. */
         report_id?: string;
-        /** @description Floor for the findings the check considers. Defaults to high. */
+        /** @description Floor for the findings the check considers. Omitted, the project policy floor applies; a value can only tighten that floor. */
         severity?: string;
       };
       header?: never;
@@ -3565,7 +3567,23 @@ export interface operations {
       400: components["responses"]["BadRequest"];
       401: components["responses"]["Unauthorized"];
       403: components["responses"]["ProjectAccessDenied"];
-      404: components["responses"]["NotFound"];
+      /** @description No completed scan carries the commit, so there is no evidence to plan a check from. Scan the commit first. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "error": {
+           *         "code": "no_report_for_commit",
+           *         "message": "no completed scan report carries this commit; scan it before requesting a check"
+           *       }
+           *     }
+           */
+          "application/json": components["schemas"]["Error"];
+        };
+      };
     };
   };
   listPolicyTemplates: {

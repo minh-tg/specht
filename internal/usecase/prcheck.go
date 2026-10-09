@@ -15,6 +15,11 @@ import (
 // registry does not know. Callers map it to a client error (400).
 var ErrUnknownProvider = errors.New("unknown provider")
 
+// ErrNoReportForCommit is returned when a commit-scoped preview finds no
+// completed scan of the commit. A check must not pass on no evidence, so
+// callers map it to a not-found error (404).
+var ErrNoReportForCommit = errors.New("no completed report for commit")
+
 // defaultProvider is the adapter used when callers name none.
 const defaultProvider = "github"
 
@@ -147,6 +152,14 @@ func (u *Usecases) resolvePreviewScope(ctx context.Context, project port.Project
 	policies := gatePoliciesForProject(project)
 	var err error
 	if input.ReportID == "" {
+		var found bool
+		found, err = u.deps.Stores.Reports.HasCompletedForCommit(ctx, project.ID, input.CommitSha)
+		if err != nil {
+			return scope, fmt.Errorf("lookup commit reports: %w", err)
+		}
+		if !found {
+			return scope, ErrNoReportForCommit
+		}
 		scope.introduced, err = u.listIntroducedAtCommit(ctx, project.ID, input.CommitSha)
 		if err != nil {
 			return scope, fmt.Errorf("list findings: %w", err)

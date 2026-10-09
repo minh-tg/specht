@@ -378,6 +378,7 @@ type mockReportRepo struct {
 	deleteStaleFn         func(context.Context, time.Time) ([]string, error)
 	findCompletedByHashFn func(context.Context, string, string) (string, error)
 	deleteReportFn        func(context.Context, string, string) error
+	hasCommitFn           func(context.Context, string, string) (bool, error)
 }
 
 func (m *mockReportRepo) Create(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
@@ -385,6 +386,13 @@ func (m *mockReportRepo) Create(ctx context.Context, arg port.CreateReportInput)
 		return port.Report{}, fmt.Errorf("unexpected call to Create")
 	}
 	return m.createFn(ctx, arg)
+}
+
+func (m *mockReportRepo) HasCompletedForCommit(ctx context.Context, projectID, commit string) (bool, error) {
+	if m.hasCommitFn == nil {
+		return true, nil
+	}
+	return m.hasCommitFn(ctx, projectID, commit)
 }
 
 func (m *mockReportRepo) UpdateStatus(ctx context.Context, id, projectID, status string, totalFindings int32, errorMsg *string) (port.Report, error) {

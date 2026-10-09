@@ -848,6 +848,9 @@ type ReportStore interface {
 	// newest completed same-scanner report for an exact revision, or
 	// ErrNotFound when no baseline exists (caller falls back to full).
 	GetCompletedByCommit(ctx context.Context, projectID, scanner, commit string) (CompletedReport, error)
+	// HasCompletedForCommit reports whether any scanner completed a scan of the
+	// exact revision. A PR check refuses to pass without such a scan.
+	HasCompletedForCommit(ctx context.Context, projectID, commit string) (bool, error)
 	// CountStaleReports counts settled (completed/failed) reports older
 	// than the cutoff. Processing reports are never counted.
 	CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error)
