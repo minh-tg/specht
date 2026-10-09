@@ -1286,6 +1286,84 @@ func TestRunCveWatcher_DynamicallyReloadsProjects(t *testing.T) {
 	<-done
 }
 
+// TestPollDueProjects_RechecksEnabledBeforePolling pins the mid-round
+// disable: the due set is a snapshot taken at the top of the loop, and a
+// poll round can outlast it, so a project turned off while the round runs
+// must be skipped at poll time.
+func TestPollDueProjects_RechecksEnabledBeforePolling(t *testing.T) {
+	deps := baseDeps()
+	deps.Projects = nil
+	var mu sync.Mutex
+	var polled []string
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		mu.Lock()
+		polled = append(polled, pid)
+		mu.Unlock()
+		return nil, nil
+	}
+
+	state := &scheduleState{
+		intervals:      map[string]time.Duration{"p1": time.Second, "p2": time.Second},
+		nextDue:        map[string]time.Time{"p1": fixedNow, "p2": fixedNow},
+		backoffs:       map[string]time.Duration{},
+		failedProjects: map[string]bool{},
+	}
+	cfg := RunCveWatcherConfig{
+		PollDeps:       deps,
+		Logger:         testLogger(),
+		Now:            func() time.Time { return fixedNow },
+		Jitter:         func(d time.Duration) time.Duration { return d },
+		InitialBackoff: 30 * time.Second,
+		MaxBackoff:     5 * time.Minute,
+		ProjectEnabled: func(_ context.Context, projectID string) (bool, error) {
+			return projectID != "p2", nil
+		},
+	}
+
+	outcome, err := pollDueProjects(context.Background(), cfg, []string{"p1", "p2"}, state)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"p1"}, polled,
+		"a project disabled after the schedule snapshot is not polled")
+	assert.Equal(t, 1, outcome.Projects)
+	assert.NotContains(t, state.nextDue, "p2", "the disabled project leaves the schedule")
+	assert.Contains(t, state.nextDue, "p1")
+}
+
+// TestPollDueProjects_EnabledCheckErrorPollsAnyway pins the fail-open choice:
+// a transient control-plane read error must not silently stop watching a
+// project.
+func TestPollDueProjects_EnabledCheckErrorPollsAnyway(t *testing.T) {
+	deps := baseDeps()
+	deps.Projects = nil
+	polled := 0
+	deps.Inventory = func(ctx context.Context, pid string, since time.Duration) ([]port.InventoryPackage, error) {
+		polled++
+		return nil, nil
+	}
+
+	state := &scheduleState{
+		intervals:      map[string]time.Duration{"p1": time.Second},
+		nextDue:        map[string]time.Time{"p1": fixedNow},
+		backoffs:       map[string]time.Duration{},
+		failedProjects: map[string]bool{},
+	}
+	cfg := RunCveWatcherConfig{
+		PollDeps:       deps,
+		Logger:         testLogger(),
+		Now:            func() time.Time { return fixedNow },
+		Jitter:         func(d time.Duration) time.Duration { return d },
+		InitialBackoff: 30 * time.Second,
+		MaxBackoff:     5 * time.Minute,
+		ProjectEnabled: func(_ context.Context, projectID string) (bool, error) {
+			return false, errors.New("control plane unavailable")
+		},
+	}
+
+	_, err := pollDueProjects(context.Background(), cfg, []string{"p1"}, state)
+	require.NoError(t, err)
+	assert.Equal(t, 1, polled, "an unreadable switch polls rather than skipping")
+}
+
 func TestPollOnce_WaitGroupTracksAsyncNotifier(t *testing.T) {
 	deps := baseDeps()
 	client := deps.Client.(*fakeClient)
