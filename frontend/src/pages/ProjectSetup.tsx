@@ -8,7 +8,12 @@ import {
   useVersion,
 } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
-import { adapterRefFor, githubActionsSnippet, gitlabCiSnippet } from "@/lib/ciSnippets";
+import {
+  githubActionsSnippet,
+  gitlabCiSnippet,
+  releaseTagFor,
+  VERSION_PLACEHOLDER,
+} from "@/lib/ciSnippets";
 import { pluralize } from "@/lib/format";
 import { isReportInProgress } from "@/lib/verdict";
 import type { ProjectStats } from "@/types/api";
@@ -58,8 +63,6 @@ export function ProjectSetup() {
   const queryClient = useQueryClient();
   const { data: me, isLoading: meLoading } = useMe();
   const { data: project, isLoading: projectLoading } = useProject(slug);
-  // Until the version resolves the snippets point at main; the text updates
-  // in place once the build info arrives.
   const { data: serverVersion } = useVersion();
 
   const createKey = useCreateApiKey();
@@ -126,10 +129,21 @@ export function ProjectSetup() {
   }
 
   const apiUrl = window.location.origin;
-  const adapterRef = adapterRefFor(serverVersion);
+  // A release pins the snippets to the server's own tag; any other build (dev,
+  // commit, still loading) keeps the placeholder and says so under the snippets.
+  const releaseTag = releaseTagFor(serverVersion);
+  const pinnedVersion = releaseTag ?? VERSION_PLACEHOLDER;
   // The snippets use the slug the server returned, never the raw URL segment.
-  const githubSnippet = githubActionsSnippet({ apiUrl, project: project.slug, adapterRef });
-  const gitlabSnippet = gitlabCiSnippet({ apiUrl, project: project.slug, adapterRef });
+  const githubSnippet = githubActionsSnippet({
+    apiUrl,
+    project: project.slug,
+    version: pinnedVersion,
+  });
+  const gitlabSnippet = gitlabCiSnippet({
+    apiUrl,
+    project: project.slug,
+    version: pinnedVersion,
+  });
   const firstReport = firstReportState(stats.data);
   const totalFindings = stats.data?.total_findings ?? 0;
 
@@ -175,6 +189,11 @@ export function ProjectSetup() {
             Store the key you just created as the SPECHT_API_KEY secret, then commit one of these
             pipelines. The snippets only reference the secret; they never contain the key itself.
           </p>
+          {releaseTag === undefined && (
+            <p className="text-muted-foreground mt-2 text-xs">
+              {`This server is a development build. Replace ${VERSION_PLACEHOLDER} with a released Specht version.`}
+            </p>
+          )}
 
           <div className="mt-3">
             <div className="flex items-center justify-between">

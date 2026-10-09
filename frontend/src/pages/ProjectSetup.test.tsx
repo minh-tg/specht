@@ -12,6 +12,7 @@ const RAW_KEY = "sk-live-0123456789abcdef";
 let meRole: "admin" | "member" = "admin";
 let projectStatus = 200;
 let versionStatus = 200;
+let versionValue = "0.1.0";
 let stats: Record<string, unknown>;
 let statsRequests = 0;
 let statsFailing = false;
@@ -28,6 +29,7 @@ beforeEach(() => {
   statsFailing = false;
   projectStatus = 200;
   versionStatus = 200;
+  versionValue = "0.1.0";
   stats = {
     report_count: 0,
     total_findings: 0,
@@ -67,7 +69,7 @@ beforeEach(() => {
       if (versionStatus >= 400) {
         return jsonResponse({ error: { message: "unavailable" } }, versionStatus);
       }
-      return jsonResponse({ version: "0.1.0", commit: VERSION_COMMIT });
+      return jsonResponse({ version: versionValue, commit: VERSION_COMMIT });
     }
     if (url === "/api/v1/projects/acme/stats") {
       statsRequests += 1;
@@ -194,11 +196,11 @@ describe("ProjectSetup", () => {
     expect(screen.queryByText(RAW_KEY)).not.toBeInTheDocument();
   });
 
-  it("renders both pipeline snippets with the slug, API URL and server build but no key", async () => {
+  it("renders both pipeline snippets with the slug, API URL and pinned server version but no key", async () => {
     renderPage();
     await screen.findByRole("heading", { name: "Set up CI for Acme API" });
     await waitFor(() => {
-      expect(document.body.textContent).toContain(`cmd/adapter@${VERSION_COMMIT}`);
+      expect(document.body.textContent).toContain("minh-tg/specht@v0.1.0");
     });
 
     const snippets = [...document.querySelectorAll("pre")].map((pre) => pre.textContent ?? "");
@@ -206,27 +208,61 @@ describe("ProjectSetup", () => {
     for (const snippet of snippets) {
       expect(snippet).toContain("acme");
       expect(snippet).toContain(window.location.origin);
-      expect(snippet).toContain(`cmd/adapter@${VERSION_COMMIT}`);
+      expect(snippet).toContain("v0.1.0");
       expect(snippet).not.toContain("./cmd/adapter");
+      expect(snippet).not.toContain("go run");
+      expect(snippet).not.toContain("jq");
       expect(snippet).not.toContain("raw_key");
       expect(snippet).not.toContain(RAW_KEY);
     }
     expect(screen.getByText("More examples: examples/ci/ in the repository.")).toBeInTheDocument();
   });
 
-  it("falls back to the main branch when the build info is unavailable", async () => {
+  it("pins the GitHub action and the GitLab adapter image to the release", async () => {
+    renderPage();
+    await screen.findByRole("heading", { name: "Set up CI for Acme API" });
+
+    await waitFor(() => {
+      expect(document.body.textContent).toContain("minh-tg/specht@v0.1.0");
+    });
+    const snippets = [...document.querySelectorAll("pre")].map((pre) => pre.textContent ?? "");
+    expect(snippets[0]).toContain("uses: minh-tg/specht@v0.1.0");
+    expect(snippets[1]).toContain("ghcr.io/minh-tg/specht-adapter:v0.1.0");
+    expect(screen.queryByText(/development build/)).not.toBeInTheDocument();
+  });
+
+  it("keeps the placeholder and shows the development-build note when the version is unavailable", async () => {
     versionStatus = 500;
     renderPage();
     await screen.findByRole("heading", { name: "Set up CI for Acme API" });
     await waitFor(() => {
-      expect(document.body.textContent).toContain("cmd/adapter@main");
+      expect(document.body.textContent).toContain("minh-tg/specht@vX.Y.Z");
     });
 
     const snippets = [...document.querySelectorAll("pre")].map((pre) => pre.textContent ?? "");
     expect(snippets).toHaveLength(2);
     for (const snippet of snippets) {
-      expect(snippet).toContain("cmd/adapter@main");
+      expect(snippet).toContain("vX.Y.Z");
       expect(snippet).not.toContain("./cmd/adapter");
+    }
+    expect(
+      screen.getByText(
+        "This server is a development build. Replace vX.Y.Z with a released Specht version.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("shows the development-build note for a dev build", async () => {
+    versionValue = "dev";
+    renderPage();
+    await screen.findByRole("heading", { name: "Set up CI for Acme API" });
+
+    expect(await screen.findByText(/development build/)).toBeInTheDocument();
+    const snippets = [...document.querySelectorAll("pre")].map((pre) => pre.textContent ?? "");
+    expect(snippets).toHaveLength(2);
+    for (const snippet of snippets) {
+      expect(snippet).toContain("vX.Y.Z");
+      expect(snippet).not.toContain("v0.1.0");
     }
   });
 
@@ -249,7 +285,7 @@ describe("ProjectSetup", () => {
     expect(snippets).toHaveLength(2);
     for (const snippet of snippets) {
       expect(snippet).not.toMatch(/^\s*evil-job:/m);
-      expect(snippet).toContain(`SPECHT_PROJECT: ${JSON.stringify(projectSlug)}`);
+      expect(snippet).toContain(JSON.stringify(projectSlug));
     }
   });
 
@@ -259,8 +295,8 @@ describe("ProjectSetup", () => {
     await screen.findByRole("heading", { name: "Set up CI for Acme API" });
 
     const github = document.querySelector("pre")?.textContent ?? "";
-    expect(github).toContain("SPECHT_PROJECT: \"canonical-slug\"");
-    expect(github).not.toContain("SPECHT_PROJECT: \"acme\"");
+    expect(github).toContain("project: \"canonical-slug\"");
+    expect(github).not.toContain("project: \"acme\"");
   });
 
   it("drops the one-time key from the mutation cache once the page is left", async () => {
