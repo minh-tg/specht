@@ -5,6 +5,21 @@ import (
 	"testing"
 )
 
+func TestInsecureDBTransport_KeywordForm(t *testing.T) {
+	if got := insecureDBTransport("host=db.example.com user=specht sslmode=disable"); !strings.Contains(got, "db.example.com") {
+		t.Errorf("keyword DSN with sslmode=disable should warn, got %q", got)
+	}
+	if got := insecureDBTransport("host=db.example.com user=specht"); !strings.Contains(got, "sslmode=prefer") {
+		t.Errorf("keyword DSN without sslmode should warn about the prefer default, got %q", got)
+	}
+	if got := insecureDBTransport("host=db.example.com sslmode=verify-full"); got != "" {
+		t.Errorf("verify-full should not warn, got %q", got)
+	}
+	if got := insecureDBTransport("host=localhost sslmode=disable"); got != "" {
+		t.Errorf("a local host should not warn, got %q", got)
+	}
+}
+
 func TestInsecureDBTransport(t *testing.T) {
 	tests := []struct {
 		name string
@@ -21,7 +36,8 @@ func TestInsecureDBTransport(t *testing.T) {
 		{"loopback, disabled", "postgres://u:p@127.0.0.1/x?sslmode=disable", ""},
 		{"ipv6 loopback", "postgres://u:p@[::1]:5432/x?sslmode=disable", ""},
 		{"unix socket", "postgres:///x?host=/var/run/postgresql&sslmode=disable", ""},
-		{"not a URL", "host=db user=u", ""},
+		{"keyword form, sslmode unset", "host=db user=u", "sslmode=prefer"},
+		{"not a connection string", "hello", ""},
 		{"empty", "", ""},
 	}
 	for _, tc := range tests {

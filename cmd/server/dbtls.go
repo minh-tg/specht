@@ -13,18 +13,10 @@ import (
 // downgraded by anyone who can interfere with the connection. The warning
 // never includes credentials.
 func insecureDBTransport(dbURL string) string {
-	u, err := url.Parse(dbURL)
-	if err != nil || (u.Scheme != "postgres" && u.Scheme != "postgresql") {
+	host, mode, ok := dbTransportSettings(dbURL)
+	if !ok || isLocalDBHost(host) {
 		return ""
 	}
-	host := u.Hostname()
-	if host == "" {
-		host = u.Query().Get("host")
-	}
-	if isLocalDBHost(host) {
-		return ""
-	}
-	mode := u.Query().Get("sslmode")
 	switch mode {
 	case "disable", "allow", "prefer":
 	case "":
@@ -34,6 +26,29 @@ func insecureDBTransport(dbURL string) string {
 	}
 	return "database connection to " + host + " is not protected by verified TLS (sslmode=" + mode +
 		"); set sslmode=require or verify-full unless this is a trusted local network"
+}
+
+// dbTransportSettings returns the host and sslmode of a Postgres connection
+// string, in either URL form or keyword/value form. ok is false when the string
+// is neither.
+func dbTransportSettings(dbURL string) (host, mode string, ok bool) {
+	if u, err := url.Parse(dbURL); err == nil && (u.Scheme == "postgres" || u.Scheme == "postgresql") {
+		host = u.Hostname()
+		if host == "" {
+			host = u.Query().Get("host")
+		}
+		return host, u.Query().Get("sslmode"), true
+	}
+	if !strings.Contains(dbURL, "=") {
+		return "", "", false
+	}
+	params := map[string]string{}
+	for _, field := range strings.Fields(dbURL) {
+		if key, value, found := strings.Cut(field, "="); found {
+			params[key] = strings.Trim(value, "'")
+		}
+	}
+	return params["host"], params["sslmode"], true
 }
 
 // isLocalDBHost reports whether host is this machine: empty (the default
