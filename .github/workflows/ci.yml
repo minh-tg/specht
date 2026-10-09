@@ -12,22 +12,36 @@ jobs:
   test:
     name: test (unit + integration + migrations)
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: specht
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd="pg_isready -U postgres -d specht"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Anonymous Docker Hub pulls share a per-IP limit that hosted runners exhaust. When the
+      # repository has credentials (variable DOCKERHUB_USERNAME, secret DOCKERHUB_TOKEN) pulls are
+      # authenticated. Forks and Dependabot have no secret; the step then fails softly and the job
+      # pulls anonymously, as before.
+      - name: Log in to Docker Hub
+        if: ${{ vars.DOCKERHUB_USERNAME != '' }}
+        continue-on-error: true
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Started here, after the login above, because a service container is pulled before any step
+      # runs and its credentials cannot be optional.
+      - name: Start PostgreSQL
+        run: |
+          docker run -d --name postgres -p 5432:5432 \
+            -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=specht \
+            --health-cmd="pg_isready -U postgres -d specht" \
+            --health-interval=5s --health-timeout=3s --health-retries=10 \
+            postgres:17
+          for _ in $(seq 1 60); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' postgres)" = healthy ] && exit 0
+            sleep 2
+          done
+          docker logs postgres
+          exit 1
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -75,6 +89,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # Optional authenticated Docker Hub pulls; see the test job.
+      - name: Log in to Docker Hub
+        if: ${{ vars.DOCKERHUB_USERNAME != '' }}
+        continue-on-error: true
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version-file: go.mod
@@ -93,6 +116,15 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Optional authenticated Docker Hub pulls; see the test job.
+      - name: Log in to Docker Hub
+        if: ${{ vars.DOCKERHUB_USERNAME != '' }}
+        continue-on-error: true
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -204,6 +236,15 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
+      # Optional authenticated Docker Hub pulls; see the test job.
+      - name: Log in to Docker Hub
+        if: ${{ vars.DOCKERHUB_USERNAME != '' }}
+        continue-on-error: true
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Build image with version metadata
         run: |
           docker build -f deploy/Dockerfile \
@@ -223,6 +264,15 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Optional authenticated Docker Hub pulls; see the test job.
+      - name: Log in to Docker Hub
+        if: ${{ vars.DOCKERHUB_USERNAME != '' }}
+        continue-on-error: true
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
@@ -422,24 +472,35 @@ jobs:
     name: dogfood (self-ingest)
     runs-on: ubuntu-latest
     needs: [security-scan, trivy]
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_USER: specht
-          POSTGRES_PASSWORD: ${{ github.run_id }}
-          POSTGRES_DB: specht
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U specht"
-          --health-interval 5s
-          --health-timeout 3s
-          --health-retries 5
     env:
       DATABASE_URL: postgres://specht:${{ github.run_id }}@localhost:5432/specht?sslmode=disable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Optional authenticated Docker Hub pulls; see the first job in this file.
+      - name: Log in to Docker Hub
+        if: ${{ vars.DOCKERHUB_USERNAME != '' }}
+        continue-on-error: true
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Started here, after the login above, because a service container is pulled before any step
+      # runs and its credentials cannot be optional.
+      - name: Start PostgreSQL
+        run: |
+          docker run -d --name postgres -p 5432:5432 \
+            -e POSTGRES_USER=specht -e POSTGRES_PASSWORD=${{ github.run_id }} -e POSTGRES_DB=specht \
+            --health-cmd="pg_isready -U specht -d specht" \
+            --health-interval=5s --health-timeout=3s --health-retries=10 \
+            postgres:17-alpine
+          for _ in $(seq 1 60); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' postgres)" = healthy ] && exit 0
+            sleep 2
+          done
+          docker logs postgres
+          exit 1
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
