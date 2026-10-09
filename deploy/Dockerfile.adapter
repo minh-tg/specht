@@ -1,0 +1,25 @@
+FROM docker.io/library/golang:1.26-alpine@sha256:c95332c2af86b6d89b91bd0500f4b9529ccbd090a0d1855c6d1ceaa142ae8615 AS builder
+ARG VERSION=dev
+ARG COMMIT=unknown
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build \
+    -trimpath \
+    -buildvcs=false \
+    -ldflags "-X github.com/minh-tg/specht/internal/version.Version=${VERSION} -X github.com/minh-tg/specht/internal/version.Commit=${COMMIT}" \
+    -o /bin/adapter ./cmd/adapter
+
+FROM docker.io/library/alpine:3.21@sha256:ce64758a109eb420d874a118f87920e625e12d3634e03b4a5573fd9f6e5d3507
+# Package policy matches deploy/Dockerfile: see the note there on why Alpine
+# package versions are not hard-pinned. The adapter talks HTTPS to the Specht
+# API and to GitHub, so it needs the CA bundle.
+RUN apk add --no-cache ca-certificates
+COPY --from=builder /bin/adapter /usr/local/bin/specht-adapter
+RUN addgroup -S specht && adduser -S -G specht specht
+USER specht
+# No HEALTHCHECK: the adapter is a one-shot CLI, there is nothing to probe.
+# It is also used as a GitLab CI job image, where the runner needs a shell in
+# the container and clears the entrypoint, so alpine's busybox sh stays.
+ENTRYPOINT ["specht-adapter"]
