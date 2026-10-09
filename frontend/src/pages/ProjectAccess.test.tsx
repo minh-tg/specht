@@ -220,6 +220,22 @@ describe("ProjectAccess", () => {
     });
   });
 
+  it("closes the add-member dialog with Escape and returns focus to the button that opened it", async () => {
+    const user = userEvent.setup();
+    renderProjectAccess();
+
+    const opener = await screen.findByRole("button", { name: "+ Add Member" });
+    await user.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "Add Direct Member" });
+    expect(dialog).toContainElement(screen.getByLabelText("User ID"));
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog", { name: "Add Direct Member" })).not.toBeInTheDocument();
+    });
+    expect(opener).toHaveFocus();
+  });
+
   it("does not submit a member user ID that is not a UUID", async () => {
     const user = userEvent.setup();
     renderProjectAccess();
