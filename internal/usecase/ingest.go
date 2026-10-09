@@ -388,10 +388,9 @@ func (u *Usecases) resolveEnvironment(ctx context.Context, project port.Project,
 }
 
 // createReport persists the report row, returning ErrDuplicateReport on a
-// raw-data hash collision. The scope hash is computed from the full typed
-// scan scope (scanner, target, artifact, branch, commit SHA, environment)
-// so identical content scanned at a different revision or artifact never
-// collides.
+// raw-data hash collision. The scope hash covers the scan scope (see
+// scopeHashMaterial), so content scanned against a different target,
+// artifact, branch, or environment never shares a scope.
 func (u *Usecases) createReport(ctx context.Context, project port.Project, input IngestReportInput, nr *domain.NormalizedReport, ctxInfo reportContext) (port.Report, error) {
 	rawHash := sha256.Sum256(input.RawData)
 	scopeHash := sha256.Sum256([]byte(scopeHashMaterial(input, nr, ctxInfo)))
@@ -443,8 +442,10 @@ func changedFilesDocument(files []string) json.RawMessage {
 }
 
 // scopeHashMaterial is the deterministic, ordered material the scope hash is
-// computed from: every attribute that distinguishes one scan scope from
-// another.
+// computed from: the scanner, target, artifact name, branch, and environment.
+// Commit SHA and artifact version are left out on purpose. Auto-fix closes a
+// finding only when a scan of the same scope observed it, so a later commit
+// on the same branch must land in the same scope as the commit before it.
 func scopeHashMaterial(input IngestReportInput, nr *domain.NormalizedReport, ctxInfo reportContext) string {
 	target := ""
 	if nr.Target != nil {
@@ -454,9 +455,7 @@ func scopeHashMaterial(input IngestReportInput, nr *domain.NormalizedReport, ctx
 		input.Scanner,
 		target,
 		input.ArtifactName,
-		input.ArtifactVersion,
 		input.Branch,
-		input.CommitSha,
 		input.Environment,
 	}, "\x00")
 }
