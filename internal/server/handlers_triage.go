@@ -322,7 +322,17 @@ func (h *Handler) PreviewNotification(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing_target", "target is required (integration and scope)")
 		return
 	}
-	linked := q.Get("linked") == "1" || q.Get("linked") == "true"
+	// An unparsable flag must not read as "not linked": the plan would say
+	// create for a finding that already has a tracker item.
+	linked := false
+	if raw := q.Get("linked"); raw != "" {
+		parsed, err := strconv.ParseBool(raw)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "invalid_linked", "linked must be true or false")
+			return
+		}
+		linked = parsed
+	}
 
 	result, err := h.usecase.PreviewNotification(r.Context(), id, channel, target, linked)
 	if err != nil {
