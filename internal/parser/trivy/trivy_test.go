@@ -234,6 +234,54 @@ func TestParse_MultiTypeScan(t *testing.T) {
 	}
 }
 
+func TestParse_MisconfigurationRuleIDs(t *testing.T) {
+	cases := []struct {
+		name    string
+		rules   string
+		wantIDs []string
+	}{
+		{
+			name:    "current ID field keeps distinct checks",
+			rules:   `{"ID":"AWS-0086","Severity":"HIGH"},{"ID":"AWS-0087","Severity":"HIGH"}`,
+			wantIDs: []string{"AWS-0086", "AWS-0087"},
+		},
+		{
+			name:    "legacy RuleID field keeps existing fingerprints",
+			rules:   `{"RuleID":"AWS-0086","Severity":"HIGH"},{"RuleID":"AWS-0087","Severity":"HIGH"}`,
+			wantIDs: []string{"AWS-0086", "AWS-0087"},
+		},
+		{
+			name:    "empty RuleID falls back to ID",
+			rules:   `{"RuleID":"","ID":"AWS-0086","Severity":"HIGH"}`,
+			wantIDs: []string{"AWS-0086"},
+		},
+		{
+			name:    "nonempty RuleID retains precedence",
+			rules:   `{"RuleID":"legacy-rule","ID":"AWS-0086","Severity":"HIGH"}`,
+			wantIDs: []string{"legacy-rule"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			data := []byte(`{"SchemaVersion":2,"ArtifactName":"repo","ArtifactType":"filesystem","Results":[{"Target":"./main.tf","Class":"config","Type":"terraform","Misconfigurations":[` + tc.rules + `]}]}`)
+			report, err := trivy.NewScanner().Parse(context.Background(), data)
+			require.NoError(t, err)
+			require.Len(t, report.Findings, len(tc.wantIDs))
+
+			seen := make(map[string]bool)
+			for i, finding := range report.Findings {
+				assert.Equal(t, "iac:"+tc.wantIDs[i]+":./main.tf", finding.Fingerprint)
+				assert.Equal(t, "iac", finding.FindingKind)
+				assert.Equal(t, domain.SeverityHigh, finding.Severity)
+				assert.Equal(t, "main.tf", finding.Location)
+				assert.Contains(t, finding.Dimensions, domain.Dimension{Key: domain.DimRuleID, Value: tc.wantIDs[i]})
+				assert.False(t, seen[finding.Fingerprint], "different rule IDs must not share a fingerprint")
+				seen[finding.Fingerprint] = true
+			}
+		})
+	}
+}
+
 func TestParse_InvalidJSON(t *testing.T) {
 	s := trivy.NewScanner()
 	_, err := s.Parse(context.Background(), []byte(`not json`))
