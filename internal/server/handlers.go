@@ -332,6 +332,14 @@ const maxPageSize = 500
 // msgProjectNotFound is the shared not-found message for project responses.
 const msgProjectNotFound = "project not found"
 
+// Access-denied messages for project routes. The session variant does not
+// mention API keys, and it is worded so it also fits a project that does not
+// exist.
+const (
+	msgProjectAccessDeniedAPIKey  = "API key does not have access to this project"
+	msgProjectAccessDeniedSession = "project not found or you do not have access"
+)
+
 // Request-body size limits. Ingest carries raw scanner output, so it
 // gets a generous cap; every other JSON body carries small, server-derived
 // fields and is capped at 1 MiB. All caps are absolute ceilings: a declared
@@ -379,12 +387,21 @@ var (
 	errProjectAccessDenied = errors.New("project access denied")
 )
 
-func (h *Handler) respondProjectAccessError(w http.ResponseWriter, err error) {
+// respondProjectAccessError answers a failed project access check. A missing
+// project is a 404 only for global admins; everyone else gets the same 403, so
+// the status never reveals whether an invisible project exists. The wording
+// follows the credential: a project key is told about its key, a signed-in
+// user is not.
+func (h *Handler) respondProjectAccessError(w http.ResponseWriter, r *http.Request, err error) {
 	if errors.Is(err, errProjectNotFound) {
 		respondError(w, http.StatusNotFound, "not_found", msgProjectNotFound)
 		return
 	}
-	respondError(w, http.StatusForbidden, "project_access_denied", "API key does not have access to this project")
+	if ident := auth.ContextIdentity(r.Context()); ident != nil && ident.IsAPIKey {
+		respondError(w, http.StatusForbidden, "project_access_denied", msgProjectAccessDeniedAPIKey)
+		return
+	}
+	respondError(w, http.StatusForbidden, "project_access_denied", msgProjectAccessDeniedSession)
 }
 
 // enforceProjectAccess gates slug-scoped routes on tenant membership
@@ -582,7 +599,7 @@ func respondRoleError(w http.ResponseWriter, ident *auth.Identity) {
 func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	limit := parseIntParam(r, "limit", 20)

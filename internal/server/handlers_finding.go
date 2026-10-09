@@ -56,7 +56,7 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, req.Project); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 

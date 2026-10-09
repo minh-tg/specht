@@ -192,7 +192,7 @@ func (h *Handler) GetGateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 
@@ -236,7 +236,7 @@ func (h *Handler) PreviewPRCheck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	q := r.URL.Query()
@@ -555,7 +555,7 @@ func (h *Handler) GetEffectivePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 
@@ -833,7 +833,7 @@ func (h *Handler) ListEnvironments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	envs, err := h.usecase.ListEnvironments(r.Context(), slug)
@@ -852,7 +852,7 @@ func (h *Handler) ListTargets(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	targets, err := h.usecase.ListTargets(r.Context(), slug)
@@ -871,7 +871,7 @@ func (h *Handler) ListArtifacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	artifacts, err := h.usecase.ListArtifacts(r.Context(), slug)
@@ -890,7 +890,7 @@ func (h *Handler) GetProjectStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	stats, err := h.usecase.GetProjectStats(r.Context(), slug)
@@ -909,7 +909,7 @@ func (h *Handler) GetAging(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	resp, err := h.usecase.GetAging(r.Context(), slug)

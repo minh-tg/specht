@@ -21,7 +21,7 @@ const (
 func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	var req struct {
@@ -66,7 +66,7 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
-			h.respondProjectAccessError(w, errProjectAccessDenied)
+			h.respondProjectAccessError(w, r, errProjectAccessDenied)
 			return
 		}
 		slog.Error("create waiver", "error", err)
@@ -79,7 +79,7 @@ func (h *Handler) CreateWaiver(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListWaivers(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	waivers, err := h.usecase.ListWaivers(r.Context(), slug)
@@ -94,7 +94,7 @@ func (h *Handler) ListWaivers(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) GetWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -114,7 +114,7 @@ func (h *Handler) GetWaiver(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -166,7 +166,7 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
-			h.respondProjectAccessError(w, errProjectAccessDenied)
+			h.respondProjectAccessError(w, r, errProjectAccessDenied)
 			return
 		}
 		slog.Error("update waiver", "error", err)
@@ -179,13 +179,13 @@ func (h *Handler) UpdateWaiver(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
 	if err := h.usecase.DeleteWaiver(r.Context(), slug, id); err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
-			h.respondProjectAccessError(w, errProjectAccessDenied)
+			h.respondProjectAccessError(w, r, errProjectAccessDenied)
 			return
 		}
 		if errors.Is(err, port.ErrNotFound) {
@@ -202,7 +202,7 @@ func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -213,7 +213,7 @@ func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 	result, err := h.usecase.ToggleWaiver(r.Context(), slug, id, actorID)
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
-			h.respondProjectAccessError(w, errProjectAccessDenied)
+			h.respondProjectAccessError(w, r, errProjectAccessDenied)
 			return
 		}
 		if errors.Is(err, port.ErrNotFound) {
@@ -231,7 +231,7 @@ func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListWaiverEvents(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	id := chi.URLParam(r, "id")
@@ -251,7 +251,7 @@ func (h *Handler) ListWaiverEvents(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) CheckWaiverMatch(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
-		h.respondProjectAccessError(w, err)
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	var req struct {
@@ -267,7 +267,7 @@ func (h *Handler) CheckWaiverMatch(w http.ResponseWriter, r *http.Request) {
 	matched, err := h.usecase.CheckWaiverMatch(r.Context(), slug, req.FindingID)
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {
-			h.respondProjectAccessError(w, errProjectAccessDenied)
+			h.respondProjectAccessError(w, r, errProjectAccessDenied)
 			return
 		}
 		slog.Error("check waiver match", "error", err)

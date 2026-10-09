@@ -3835,6 +3835,93 @@ func TestAddTeamMember_ErrorMapping(t *testing.T) {
 	}
 }
 
+func TestProjectAccessError_WordingFollowsCaller(t *testing.T) {
+	const projectID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+	const otherProjectID = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+	const sessionMsg = "project not found or you do not have access"
+	const apiKeyMsg = "API key does not have access to this project"
+
+	existing := func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+		return &usecase.ProjectResponse{ID: projectID, Slug: slug, Name: slug}, nil
+	}
+	missing := func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+		return nil, port.ErrNotFound
+	}
+	notMember := func(ctx context.Context, pid, uid string) (bool, error) {
+		return false, nil
+	}
+
+	tests := []struct {
+		name     string
+		getProj  func(context.Context, string) (*usecase.ProjectResponse, error)
+		apiKey   string
+		bearer   string
+		wantCode int
+		wantErr  string
+		wantMsg  string
+	}{
+		{
+			name:     "signed-in non-member gets the session wording",
+			getProj:  existing,
+			bearer:   makeTestToken(t, auth.RoleViewer),
+			wantCode: http.StatusForbidden, wantErr: "project_access_denied", wantMsg: sessionMsg,
+		},
+		{
+			name:     "signed-in user on an unknown slug gets the same denial",
+			getProj:  missing,
+			bearer:   makeTestToken(t, auth.RoleEditor),
+			wantCode: http.StatusForbidden, wantErr: "project_access_denied", wantMsg: sessionMsg,
+		},
+		{
+			name:     "project key for another project gets the key wording",
+			getProj:  existing,
+			apiKey:   otherProjectID,
+			bearer:   "vuln_testapikey",
+			wantCode: http.StatusForbidden, wantErr: "project_access_denied", wantMsg: apiKeyMsg,
+		},
+		{
+			name:     "global admin on an unknown slug still gets 404",
+			getProj:  missing,
+			bearer:   makeTestToken(t, auth.RoleAdmin),
+			wantCode: http.StatusNotFound, wantErr: "not_found", wantMsg: "project not found",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &mockUsecases{
+				getProjectFn:      tt.getProj,
+				isProjectMemberFn: notMember,
+			}
+			router := NewRouter(RouterConfig{
+				Usecases: mock,
+				JWTAuth:  testJWTAuth,
+				APIKeyLookup: func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
+					projectForKey := tt.apiKey
+					if projectForKey == "" {
+						projectForKey = projectID
+					}
+					return "key-user", projectForKey, []string{auth.ScopeRead}, time.Time{}, nil
+				},
+			})
+
+			req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings", nil)
+			req.Header.Set("Authorization", "Bearer "+tt.bearer)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantCode, w.Code)
+			var resp apiError
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+			assert.Equal(t, tt.wantErr, resp.Error.Code)
+			assert.Equal(t, tt.wantMsg, resp.Error.Message)
+			if tt.wantMsg == sessionMsg {
+				assert.NotContains(t, w.Body.String(), "API key", "signed-in users are not told about API keys")
+			}
+		})
+	}
+}
+
 // TestListUsersHandler pins the directory contract the admin UIs pick from:
 // the email filter and pagination pass through untouched, and the response is
 // the account shape without any credential material.
