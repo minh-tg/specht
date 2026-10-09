@@ -32,8 +32,8 @@ func TestVerifyFix_Verified(t *testing.T) {
 	now := time.Now()
 	uc, fr, rr, f := verifyHarness(now)
 	reportID := "11111111-1111-1111-1111-111111111111"
-	rr.latestReportFn = func(ctx context.Context, projectID, scanner string) (port.CompletedReport, error) {
-		assert.Equal(t, "trivy", scanner)
+	rr.findingScopeFn = func(ctx context.Context, projectID, findingID string) (port.CompletedReport, error) {
+		assert.Equal(t, f.ID, findingID)
 		return port.CompletedReport{
 			ID: reportID, ToolName: "trivy",
 			Completeness: "complete", CreatedAt: now,
@@ -67,7 +67,7 @@ func TestVerifyFix_Verified(t *testing.T) {
 func TestVerifyFix_EventFailureDoesNotChangeState(t *testing.T) {
 	now := time.Now()
 	uc, fr, rr, f := verifyHarness(now)
-	rr.latestReportFn = func(ctx context.Context, projectID, scanner string) (port.CompletedReport, error) {
+	rr.findingScopeFn = func(ctx context.Context, projectID, findingID string) (port.CompletedReport, error) {
 		return port.CompletedReport{ID: "11111111-1111-1111-1111-111111111111", ToolName: "trivy", Completeness: "complete", CreatedAt: now}, nil
 	}
 	fr.hasOccurrenceFn = func(ctx context.Context, findingID, reportID string) (bool, error) { return false, nil }
@@ -82,7 +82,7 @@ func TestVerifyFix_EventFailureDoesNotChangeState(t *testing.T) {
 func TestVerifyFix_StillPresent(t *testing.T) {
 	now := time.Now()
 	uc, fr, rr, f := verifyHarness(now)
-	rr.latestReportFn = func(ctx context.Context, projectID, scanner string) (port.CompletedReport, error) {
+	rr.findingScopeFn = func(ctx context.Context, projectID, findingID string) (port.CompletedReport, error) {
 		return port.CompletedReport{
 			ID: "11111111-1111-1111-1111-111111111111", ToolName: "trivy",
 			Completeness: "complete", CreatedAt: now,
@@ -100,7 +100,7 @@ func TestVerifyFix_StillPresent(t *testing.T) {
 func TestVerifyFix_InconclusivePaths(t *testing.T) {
 	now := time.Now()
 
-	t.Run("no completed report", func(t *testing.T) {
+	t.Run("no report in finding scope", func(t *testing.T) {
 		uc, _, _, f := verifyHarness(now)
 		resp, err := uc.VerifyFix(findingScopeCtx(findingFixtureProjectID), f.ID)
 		require.NoError(t, err)
@@ -110,7 +110,7 @@ func TestVerifyFix_InconclusivePaths(t *testing.T) {
 
 	t.Run("partial scope", func(t *testing.T) {
 		uc, fr, rr, f := verifyHarness(now)
-		rr.latestReportFn = func(ctx context.Context, projectID, scanner string) (port.CompletedReport, error) {
+		rr.findingScopeFn = func(ctx context.Context, projectID, findingID string) (port.CompletedReport, error) {
 			return port.CompletedReport{
 				ID: "11111111-1111-1111-1111-111111111111", ToolName: "trivy",
 				Completeness: "unknown", CreatedAt: now,
@@ -126,7 +126,7 @@ func TestVerifyFix_InconclusivePaths(t *testing.T) {
 	})
 	t.Run("stale basis", func(t *testing.T) {
 		uc, fr, rr, f := verifyHarness(now)
-		rr.latestReportFn = func(ctx context.Context, projectID, scanner string) (port.CompletedReport, error) {
+		rr.findingScopeFn = func(ctx context.Context, projectID, findingID string) (port.CompletedReport, error) {
 			return port.CompletedReport{
 				ID: "11111111-1111-1111-1111-111111111111", ToolName: "trivy",
 				Completeness: "complete", CreatedAt: now.Add(-2 * time.Hour),
@@ -139,4 +139,59 @@ func TestVerifyFix_InconclusivePaths(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, VerifyInconclusive, resp.Outcome)
 	})
+}
+
+func TestVerifyFix_IgnoresNewerReportOfOtherScope(t *testing.T) {
+	now := time.Now()
+	uc, fr, rr, f := verifyHarness(now)
+	inScopeID := "11111111-1111-1111-1111-111111111111"
+	rr.findingScopeFn = func(ctx context.Context, projectID, findingID string) (port.CompletedReport, error) {
+		return port.CompletedReport{
+			ID: inScopeID, ToolName: "trivy",
+			Completeness: "complete", CreatedAt: now.Add(-30 * time.Minute),
+		}, nil
+	}
+	// A newer complete full scan of another image or branch lacks the finding.
+	// Verification must not consult the scanner-wide lookup at all.
+	rr.latestReportFn = func(ctx context.Context, projectID, scanner string) (port.CompletedReport, error) {
+		t.Error("scanner-wide lookup must not drive verification")
+		return port.CompletedReport{
+			ID: "22222222-2222-2222-2222-222222222222", ToolName: "trivy",
+			Completeness: "complete", CreatedAt: now,
+		}, nil
+	}
+	fr.hasOccurrenceFn = func(ctx context.Context, findingID, reportID string) (bool, error) {
+		assert.Equal(t, inScopeID, reportID)
+		return false, nil
+	}
+	marked := false
+	fr.markFixedWithEventFn = func(ctx context.Context, findingID string, event port.FindingEventInput) (port.Finding, error) {
+		marked = true
+		return f, nil
+	}
+
+	resp, err := uc.VerifyFix(findingScopeCtx(findingFixtureProjectID), f.ID)
+	require.NoError(t, err)
+	assert.Equal(t, VerifyFixed, resp.Outcome)
+	require.NotNil(t, resp.ReportID)
+	assert.Equal(t, inScopeID, *resp.ReportID)
+	assert.True(t, marked)
+}
+
+func TestVerifyFix_NoReportInFindingScopeIsInconclusive(t *testing.T) {
+	now := time.Now()
+	uc, fr, rr, f := verifyHarness(now)
+	rr.latestReportFn = func(ctx context.Context, projectID, scanner string) (port.CompletedReport, error) {
+		t.Error("scanner-wide lookup must not drive verification")
+		return port.CompletedReport{}, nil
+	}
+	fr.markFixedWithEventFn = func(ctx context.Context, findingID string, event port.FindingEventInput) (port.Finding, error) {
+		t.Error("finding must not be marked fixed without a report in its scope")
+		return port.Finding{}, nil
+	}
+
+	resp, err := uc.VerifyFix(findingScopeCtx(findingFixtureProjectID), f.ID)
+	require.NoError(t, err)
+	assert.Equal(t, VerifyInconclusive, resp.Outcome)
+	assert.Nil(t, resp.ReportID)
 }

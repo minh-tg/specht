@@ -206,7 +206,7 @@ func TestVerifyFix_RegressionDetected(t *testing.T) {
 	}
 
 	// The latest report still has the finding → not fixed.
-	rr.latestReportFn = func(ctx context.Context, projectID, scanner string) (port.CompletedReport, error) {
+	rr.findingScopeFn = func(ctx context.Context, projectID, findingID string) (port.CompletedReport, error) {
 		return port.CompletedReport{
 			ID: "11111111-1111-1111-1111-111111111111", ToolName: "trivy",
 			Completeness: "complete", CreatedAt: time.Now(),

@@ -462,9 +462,9 @@ func TestE2E_AssessmentFlows(t *testing.T) {
 		require.Equal(t, "insufficient_scope", errorCode(t, raw))
 	})
 
-	t.Run("a complete same-scanner rescan settles verified_fixed", func(t *testing.T) {
+	t.Run("verification is bound to the finding's scan scope", func(t *testing.T) {
 		slug := newProject(t, "verify-fixed")
-		ingestRaw(t, slug, "trivy", "trivy-alpine-scan.json",
+		first := ingestRaw(t, slug, "trivy", "trivy-alpine-scan.json",
 			map[string]any{"branch": "main", "commit_sha": baseSHA})
 		findings := listScanFindings(t, slug)
 		require.Len(t, findings, 2)
@@ -475,29 +475,54 @@ func TestE2E_AssessmentFlows(t *testing.T) {
 			map[string]any{"analysis_state": "false_positive", "reason": "already mitigated"},
 			http.StatusOK)
 
-		// A newer COMPLETE trivy report from a *different scope* lacks the
-		// finding: the auto-fix writer must not fire (scope mismatch)…
-		second := ingestRaw(t, slug, "trivy", "trivy-empty-scan.json",
+		// A newer COMPLETE trivy report from another branch lacks the finding.
+		// It is outside the finding's scan scope, so neither the auto-fix writer
+		// nor verification may use it.
+		other := ingestRaw(t, slug, "trivy", "trivy-empty-scan.json",
 			map[string]any{"branch": "release", "commit_sha": deadSHA})
-		require.Zero(t, second.TotalFindings)
+		require.Zero(t, other.TotalFindings)
 		for _, f := range listScanFindings(t, slug) {
 			require.Equal(t, "open", f.State,
-				"scope-mismatched scans never auto-close — only verification may")
+				"scope-mismatched scans never auto-close")
 		}
 
-		// …but the analyst-facing verification accepts that report as
-		// evidence and moves the scan-derived state.
+		// The main-branch report still observes the finding, and it is the
+		// newest report in the finding's scope, so the verdict is still_present
+		// and names that report rather than the release scan.
+		present := request[verifyResponse](t, http.MethodPost,
+			"/api/v1/findings/"+target.ID+"/verify", adminToken, nil, http.StatusOK)
+		require.Equal(t, "still_present", present.Outcome)
+		require.NotNil(t, present.ReportID)
+		require.Equal(t, first.ReportID, *present.ReportID,
+			"the verdict names the finding's own scope, not the release scan")
+
+		// A complete main-branch rescan at a new commit lacks the finding. It is
+		// in the same scope, so the auto-fix writer closes the finding at ingest.
+		// The payload differs from the release scan, since identical bytes are
+		// rejected as duplicates.
+		rescanSHA := "2222222222222222222222222222222222222222"
+		rescan := ingestRaw(t, slug, "trivy", "trivy-empty-rescan.json",
+			map[string]any{"branch": "main", "commit_sha": rescanSHA})
+		require.Zero(t, rescan.TotalFindings)
+
+		closed := request[scanFinding](t, http.MethodGet,
+			"/api/v1/findings/"+target.ID, adminToken, nil, http.StatusOK)
+		require.Equal(t, "fixed", closed.State,
+			"the same-scope rescan closes the finding at ingest")
+		require.Equal(t, "false_positive", closed.AnalysisState,
+			"auto-fix moves scan state, never analyst state")
+
+		// Verification on the already-fixed finding names the same-scope rescan.
 		verified := request[verifyResponse](t, http.MethodPost,
 			"/api/v1/findings/"+target.ID+"/verify", adminToken, nil, http.StatusOK)
 		require.Equal(t, "verified_fixed", verified.Outcome)
 		require.NotNil(t, verified.ReportID)
-		require.Equal(t, second.ReportID, *verified.ReportID,
-			"the verdict names the verifying report")
+		require.Equal(t, rescan.ReportID, *verified.ReportID,
+			"the verdict names the same-scope report that lacks the finding")
 
 		detail := request[scanFinding](t, http.MethodGet,
 			"/api/v1/findings/"+target.ID, adminToken, nil, http.StatusOK)
-		require.Equal(t, "fixed", detail.State,
-			"verification moves the scan-derived state to fixed")
+		require.Equal(t, "fixed", detail.State)
 		require.Equal(t, "false_positive", detail.AnalysisState,
 			"verification moves scan state, never analyst state")
 

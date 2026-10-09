@@ -14,7 +14,7 @@ import (
 
 // Verify outcomes for evidence-backed rescan verification.
 const (
-	// VerifyFixed means a newer complete scan from the same scanner no
+	// VerifyFixed means a newer complete scan from the same scan scope no
 	// longer observes the finding: the technical state moved to fixed and
 	// the verifying scan is recorded on the event.
 	VerifyFixed = "verified_fixed"
@@ -33,8 +33,9 @@ type VerifyResponse struct {
 	Detail    string  `json:"detail"`
 }
 
-// VerifyFix checks a finding against the newest completed full rescan from
-// the scanner that last observed it. Only a complete, newer, same-scanner
+// VerifyFix checks a finding against the newest completed full rescan that
+// shares the scan scope (scanner, target, artifact, branch, environment) of
+// the report that last observed it. Only a complete, newer, same-scope
 // full report that lacks the finding verifies the fix — incremental scans
 // never qualify as a basis (their absence proves nothing); anything else
 // is an explicit still_present or inconclusive verdict with the reason.
@@ -63,11 +64,11 @@ func (u *Usecases) VerifyFix(ctx context.Context, findingID string) (*VerifyResp
 		}, nil
 	}
 
-	report, err := u.deps.Stores.Reports.LatestCompletedByScanner(ctx, f.ProjectID, dc.ToolName)
+	report, err := u.deps.Stores.Reports.LatestCompletedInFindingScope(ctx, f.ProjectID, fid.String())
 	if err != nil {
 		return &VerifyResponse{
 			FindingID: fid.String(), Outcome: VerifyInconclusive,
-			Detail: fmt.Sprintf("scanner %q has no completed report", dc.ToolName),
+			Detail: fmt.Sprintf("no completed full scan in the finding's scan scope (%s)", dc.ToolName),
 		}, nil
 	}
 	reportID := report.ID

@@ -75,6 +75,31 @@ WHERE project_id = $1 AND tool_name = $2 AND branch = $3 AND status = 'completed
 ORDER BY created_at DESC, id DESC
 LIMIT 1;
 
+-- name: LatestCompletedFullReportInFindingScope :one
+-- Verification basis for one finding: the newest completed full report that
+-- shares the scan scope of the report that most recently observed the finding.
+-- Completeness is not filtered here: a partial report in that scope that still
+-- observes the finding must be seen, and the caller decides what a partial
+-- report can prove. Reports from other images, targets, or branches never
+-- qualify. pgx.ErrNoRows means the finding has no observation in a report, or
+-- no completed full report exists in that scope.
+WITH latest_observation AS (
+    SELECT r.scan_scope_hash
+    FROM finding_occurrences fo
+    JOIN reports r ON r.id = fo.report_id
+    WHERE fo.finding_id = $2
+    ORDER BY fo.observed_at DESC, r.id DESC
+    LIMIT 1
+)
+SELECT r.id, r.tool_name, r.branch, r.commit_sha, r.base_revision, r.scan_mode, r.scan_completeness, r.created_at
+FROM reports r
+WHERE r.project_id = $1
+  AND r.scan_scope_hash = (SELECT lo.scan_scope_hash FROM latest_observation lo)
+  AND r.status = 'completed'
+  AND r.scan_mode = 'full'
+ORDER BY r.created_at DESC, r.id DESC
+LIMIT 1;
+
 -- name: CountStaleReports :one
 -- Retention preview: settled (completed/failed) reports older
 -- than the cutoff. Processing reports are never counted — an in-flight

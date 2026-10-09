@@ -153,6 +153,31 @@ func (r *pgReportPort) GetCompletedByCommit(ctx context.Context, projectID, scan
 	}, nil
 }
 
+func (r *pgReportPort) LatestCompletedInFindingScope(ctx context.Context, projectID, findingID string) (port.CompletedReport, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.CompletedReport{}, err
+	}
+	fid, err := parseID(findingID)
+	if err != nil {
+		return port.CompletedReport{}, err
+	}
+	row, err := r.inner.LatestCompletedInFindingScope(ctx, pid, fid)
+	if err != nil {
+		return port.CompletedReport{}, mappingErr(err)
+	}
+	return port.CompletedReport{
+		ID:           toUUID(row.ID),
+		ToolName:     row.ToolName,
+		Branch:       stringFromTextPtr(row.Branch),
+		CommitSha:    stringFromTextPtr(row.CommitSha),
+		BaseRevision: stringFromTextPtr(row.BaseRevision),
+		ScanMode:     row.ScanMode,
+		Completeness: row.ScanCompleteness,
+		CreatedAt:    row.CreatedAt.Time,
+	}, nil
+}
+
 func (r *pgReportPort) GetLatestFullByBranch(ctx context.Context, projectID, scanner, branch string) (port.CompletedReport, error) {
 	pid, err := parseID(projectID)
 	if err != nil {

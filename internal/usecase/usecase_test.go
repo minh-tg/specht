@@ -375,6 +375,7 @@ type mockReportRepo struct {
 	latestReportFn        func(context.Context, string, string) (port.CompletedReport, error)
 	byCommitFn            func(context.Context, string, string, string) (port.CompletedReport, error)
 	byBranchFn            func(context.Context, string, string, string) (port.CompletedReport, error)
+	findingScopeFn        func(context.Context, string, string) (port.CompletedReport, error)
 	countStaleFn          func(context.Context, time.Time) (int64, error)
 	deleteStaleFn         func(context.Context, time.Time) ([]string, error)
 	findCompletedByHashFn func(context.Context, string, string) (string, error)
@@ -429,6 +430,13 @@ func (m *mockReportRepo) GetCompletedByCommit(ctx context.Context, projectID, sc
 		return port.CompletedReport{}, port.ErrNotFound
 	}
 	return m.byCommitFn(ctx, projectID, scanner, commit)
+}
+
+func (m *mockReportRepo) LatestCompletedInFindingScope(ctx context.Context, projectID, findingID string) (port.CompletedReport, error) {
+	if m.findingScopeFn == nil {
+		return port.CompletedReport{}, port.ErrNotFound
+	}
+	return m.findingScopeFn(ctx, projectID, findingID)
 }
 
 func (m *mockReportRepo) GetLatestFullByBranch(ctx context.Context, projectID, scanner, branch string) (port.CompletedReport, error) {
