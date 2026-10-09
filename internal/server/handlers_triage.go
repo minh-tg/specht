@@ -682,9 +682,13 @@ func (h *Handler) AddTeamMember(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusNotFound, "not_found", triageMsgTeamNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
 			respondError(w, http.StatusForbidden, "forbidden", triageMsgTeamAdminRequired)
+		case errors.Is(err, usecase.ErrInvalidID),
+			errors.Is(err, usecase.ErrInvalidMemberRole),
+			errors.Is(err, usecase.ErrMemberUserNotFound):
+			respondMemberError(w, err)
 		default:
 			slog.Error("add team member", "error", err)
-			respondError(w, http.StatusBadRequest, "invalid_member", "invalid team member")
+			respondError(w, http.StatusInternalServerError, "internal_error", "could not add team member")
 		}
 		return
 	}

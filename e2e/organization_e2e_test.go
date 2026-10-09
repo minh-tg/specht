@@ -364,13 +364,13 @@ func TestE2E_TeamAccessGrants(t *testing.T) {
 		status, raw := doJSON(t, http.MethodPost, "/api/v1/teams/"+team.ID+"/members", adminToken,
 			map[string]string{"user_id": viewerMe.ID, "role": "owner"})
 		require.Equal(t, http.StatusBadRequest, status)
-		require.Equal(t, "invalid_member", errorCode(t, raw),
+		require.Equal(t, "invalid_role", errorCode(t, raw),
 			"team roles are admin or member")
 
 		status, raw = doJSON(t, http.MethodPost, "/api/v1/teams/"+team.ID+"/members", adminToken,
 			map[string]string{"user_id": randomHex(16), "role": "member"})
-		require.Equal(t, http.StatusBadRequest, status)
-		require.Equal(t, "invalid_member", errorCode(t, raw),
+		require.Equal(t, http.StatusNotFound, status)
+		require.Equal(t, "user_not_found", errorCode(t, raw),
 			"an unknown user is refused without a server error")
 
 		roster := request[[]teamMemberResponse](t, http.MethodGet,
