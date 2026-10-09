@@ -302,9 +302,13 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 	}
 	detectCIEnvironment(&f.baseRef, &f.commit, &f.branch)
 
-	apiKey := os.Getenv("API_KEY")
+	apiKey := getEnvAny("API_KEY", "SPECHT_API_KEY")
+	if apiKey == "" && isForkPullRequest() {
+		skipForkPullRequest(f.summaryFile, stderr)
+		return 0
+	}
 	if apiKey == "" {
-		writeDiagnosticLine(stderr, "error: API_KEY environment variable is required")
+		writeDiagnosticLine(stderr, "error: API_KEY environment variable is required (set API_KEY or SPECHT_API_KEY)")
 		return 2
 	}
 	apiURL, code := resolveAPIURL(stderr)
@@ -437,6 +441,66 @@ func detectCIEnvironment(baseRef, commit, branch *string) {
 	}
 }
 
+// githubPullRequestEvent is the slice of a GitHub pull_request payload that
+// tells a fork apart from an in-repo branch: secrets are never delivered to
+// fork jobs, so the adapter must recognize this case before checking the key.
+type githubPullRequestEvent struct {
+	PullRequest *struct {
+		Head struct {
+			Repo struct {
+				Fork     bool   `json:"fork"`
+				FullName string `json:"full_name"`
+			} `json:"repo"`
+		} `json:"head"`
+		Base struct {
+			Repo struct {
+				FullName string `json:"full_name"`
+			} `json:"repo"`
+		} `json:"base"`
+	} `json:"pull_request"`
+}
+
+// isForkPullRequest reports whether the current GitHub event is a pull_request
+// whose head repository is a fork. A missing or unreadable event payload is
+// not treated as a fork, so the run keeps failing closed on the missing key.
+func isForkPullRequest() bool {
+	if os.Getenv("GITHUB_EVENT_NAME") != "pull_request" {
+		return false
+	}
+	raw, err := os.ReadFile(os.Getenv("GITHUB_EVENT_PATH"))
+	if err != nil {
+		return false
+	}
+	var event githubPullRequestEvent
+	if err := json.Unmarshal(raw, &event); err != nil || event.PullRequest == nil {
+		return false
+	}
+	head := event.PullRequest.Head.Repo
+	if head.Fork {
+		return true
+	}
+	base := event.PullRequest.Base.Repo.FullName
+	return head.FullName != "" && base != "" && head.FullName != base
+}
+
+// skipForkPullRequest explains on stderr and in the job summary that the gate
+// did not run because a fork pull request receives no repository secrets.
+func skipForkPullRequest(summaryFile string, stderr io.Writer) {
+	writeDiagnosticLine(stderr, forkSkipNotice)
+	if summaryFile == "" {
+		return
+	}
+	if err := writeStepSummary(summaryFile, forkSkipSummary); err != nil {
+		writeDiagnostic(stderr, "⚠️  could not write step summary: %v\n", err)
+	}
+}
+
+// forkSkipNotice is the one-line stderr notice for a skipped fork run.
+const forkSkipNotice = "notice: this pull request is from a fork, so repository secrets such as SPECHT_API_KEY are not available; the Specht gate is skipped"
+
+// forkSkipSummary is the job summary for a skipped fork run.
+const forkSkipSummary = "## Specht gate skipped\n\nThis pull request is from a fork, so repository secrets are not available to the job. The Specht security gate did not run."
+
 func getEnvAny(keys ...string) string {
 	for _, k := range keys {
 		if v := os.Getenv(k); v != "" {
@@ -475,7 +539,7 @@ Flags:
 
 Environment:
   API_URL                Specht API base URL (default "http://localhost:8080", alias SPECHT_API_URL)
-  API_KEY                API key for authentication (required)
+  API_KEY                API key for authentication (required, alias SPECHT_API_KEY)
   GITHUB_BASE_REF        Auto-detected PR target branch in GitHub Actions
   GITHUB_SHA             Auto-detected commit SHA in GitHub Actions
   GITHUB_REPOSITORY      Auto-detected GitHub repository (owner/repo)

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -380,6 +381,156 @@ func clearCIMarkers(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{"CI", "GITHUB_ACTIONS", "GITLAB_CI"} {
 		t.Setenv(key, "")
+	}
+}
+
+func writeEventPayload(t *testing.T, value any) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "event.json")
+	raw, err := json.Marshal(value)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(path, raw, 0o600))
+	return path
+}
+
+func tempSummaryFile(t *testing.T) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "summary.md")
+	require.NoError(t, os.WriteFile(path, nil, 0o600))
+	return path
+}
+
+func clearAPIKeyEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("API_KEY", "")
+	t.Setenv("SPECHT_API_KEY", "")
+}
+
+func TestRun_ForkPullRequestSkipsGate(t *testing.T) {
+	clearCIMarkers(t)
+	clearAPIKeyEnv(t)
+	t.Setenv("GITHUB_ACTIONS", "true")
+	t.Setenv("GITHUB_EVENT_NAME", "pull_request")
+	t.Setenv("API_URL", "")
+	t.Setenv("SPECHT_API_URL", "")
+	t.Setenv("GITHUB_EVENT_PATH", writeEventPayload(t, map[string]any{
+		"pull_request": map[string]any{
+			"head": map[string]any{"repo": map[string]any{"fork": true, "full_name": "contributor/specht"}},
+			"base": map[string]any{"repo": map[string]any{"full_name": "minh-tg/specht"}},
+		},
+	}))
+	summary := tempSummaryFile(t)
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=my-app", "-tool=trivy", "-summary-file=" + summary}, strings.NewReader(`{}`), &stdout, &stderr, nil)
+	require.Equal(t, 0, code, "a fork PR must skip, not fail; stderr:\n%s", stderr.String())
+	assert.Contains(t, stderr.String(), "from a fork")
+	assert.Contains(t, stderr.String(), "skipped")
+
+	got, err := os.ReadFile(summary)
+	require.NoError(t, err)
+	assert.Contains(t, string(got), "Specht gate skipped")
+}
+
+func TestRun_ForkPullRequestDetectedByFullName(t *testing.T) {
+	clearCIMarkers(t)
+	clearAPIKeyEnv(t)
+	t.Setenv("GITHUB_EVENT_NAME", "pull_request")
+	t.Setenv("GITHUB_EVENT_PATH", writeEventPayload(t, map[string]any{
+		"pull_request": map[string]any{
+			"head": map[string]any{"repo": map[string]any{"fork": false, "full_name": "contributor/specht"}},
+			"base": map[string]any{"repo": map[string]any{"full_name": "minh-tg/specht"}},
+		},
+	}))
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=my-app", "-tool=trivy"}, strings.NewReader(`{}`), &stdout, &stderr, nil)
+	require.Equal(t, 0, code, "stderr:\n%s", stderr.String())
+	assert.Contains(t, stderr.String(), "from a fork")
+}
+
+func TestRun_NonForkPullRequestMissingKeyFails(t *testing.T) {
+	clearCIMarkers(t)
+	clearAPIKeyEnv(t)
+	t.Setenv("GITHUB_EVENT_NAME", "pull_request")
+	t.Setenv("API_URL", "https://specht.example.com")
+	t.Setenv("GITHUB_EVENT_PATH", writeEventPayload(t, map[string]any{
+		"pull_request": map[string]any{
+			"head": map[string]any{"repo": map[string]any{"fork": false, "full_name": "minh-tg/specht"}},
+			"base": map[string]any{"repo": map[string]any{"full_name": "minh-tg/specht"}},
+		},
+	}))
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=my-app", "-tool=trivy"}, strings.NewReader(`{}`), &stdout, &stderr, nil)
+	require.Equal(t, 2, code)
+	assert.Contains(t, stderr.String(), "API_KEY environment variable is required")
+	assert.Contains(t, stderr.String(), "SPECHT_API_KEY")
+}
+
+func TestRun_MissingAPIKeyOnPushEventFails(t *testing.T) {
+	clearCIMarkers(t)
+	clearAPIKeyEnv(t)
+	t.Setenv("GITHUB_EVENT_NAME", "push")
+	t.Setenv("GITHUB_EVENT_PATH", "")
+	t.Setenv("API_URL", "https://specht.example.com")
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=my-app", "-tool=trivy"}, strings.NewReader(`{}`), &stdout, &stderr, nil)
+	require.Equal(t, 2, code)
+	assert.Contains(t, stderr.String(), "API_KEY environment variable is required")
+}
+
+func TestRun_AcceptsSpechtAPIKeyAlias(t *testing.T) {
+	srv := newChangeLinkServer(t, "rep-alias", false)
+	defer srv.Close()
+	clearCIMarkers(t)
+	clearAPIKeyEnv(t)
+	t.Setenv("SPECHT_API_KEY", "test-key")
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	code := run([]string{"-project=my-app", "-tool=trivy"}, strings.NewReader(`{"Results":[]}`), &stdout, &stderr, srv.Client())
+	require.Equal(t, 0, code, "stderr:\n%s", stderr.String())
+}
+
+func TestIsForkPullRequest(t *testing.T) {
+	forkEvent := map[string]any{
+		"pull_request": map[string]any{
+			"head": map[string]any{"repo": map[string]any{"fork": true, "full_name": "contributor/specht"}},
+			"base": map[string]any{"repo": map[string]any{"full_name": "minh-tg/specht"}},
+		},
+	}
+	inRepoEvent := map[string]any{
+		"pull_request": map[string]any{
+			"head": map[string]any{"repo": map[string]any{"fork": false, "full_name": "minh-tg/specht"}},
+			"base": map[string]any{"repo": map[string]any{"full_name": "minh-tg/specht"}},
+		},
+	}
+
+	tests := []struct {
+		name      string
+		eventName string
+		payload   any
+		noPath    bool
+		want      bool
+	}{
+		{name: "fork flag", eventName: "pull_request", payload: forkEvent, want: true},
+		{name: "same repo branch", eventName: "pull_request", payload: inRepoEvent, want: false},
+		{name: "push event", eventName: "push", payload: forkEvent, want: false},
+		{name: "missing event name", eventName: "", payload: forkEvent, want: false},
+		{name: "missing payload path", eventName: "pull_request", noPath: true, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("GITHUB_EVENT_NAME", tt.eventName)
+			if tt.noPath {
+				t.Setenv("GITHUB_EVENT_PATH", filepath.Join(t.TempDir(), "absent.json"))
+			} else {
+				t.Setenv("GITHUB_EVENT_PATH", writeEventPayload(t, tt.payload))
+			}
+			assert.Equal(t, tt.want, isForkPullRequest())
+		})
 	}
 }
 
