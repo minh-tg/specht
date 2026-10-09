@@ -325,7 +325,7 @@ func TestBulkTriage_SentinelErrorsKept(t *testing.T) {
 		wantMsg    string
 	}{
 		{"not found", usecase.ErrFindingNotFound, http.StatusNotFound, "not_found", "one or more findings not found"},
-		{"access denied", usecase.ErrProjectAccessDenied, http.StatusForbidden, "project_access_denied", "API key does not have access to this finding"},
+		{"access denied", usecase.ErrProjectAccessDenied, http.StatusForbidden, "project_access_denied", "finding not found or you do not have access"},
 		{"reason required", usecase.ErrReasonRequired, http.StatusUnprocessableEntity, "reason_required", "reason is required for this analysis state"},
 		{"expiry required", usecase.ErrExpiryRequired, http.StatusUnprocessableEntity, "expiry_required", "expiry is required for accepted_risk and wont_fix"},
 		{"invalid state", usecase.ErrInvalidState, http.StatusUnprocessableEntity, "invalid_state", "invalid analysis state"},

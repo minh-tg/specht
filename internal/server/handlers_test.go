@@ -3922,6 +3922,92 @@ func TestProjectAccessError_WordingFollowsCaller(t *testing.T) {
 	}
 }
 
+func TestFindingAndReportAccessWording_FollowsCaller(t *testing.T) {
+	const findingID = "44444444-4444-4444-4444-444444444444"
+	denied := func(ctx context.Context, _ string) (*usecase.FindingResponse, error) {
+		return nil, usecase.ErrProjectAccessDenied
+	}
+	deniedPRCheck := func(ctx context.Context, _ usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error) {
+		return nil, usecase.ErrProjectAccessDenied
+	}
+	// The project-level check passes for both callers, so the denial comes
+	// from the PR-check usecase and is worded as a report.
+	projectOwnedByKey := &mockUsecases{
+		getProjectFn: func(ctx context.Context, slug string) (*usecase.ProjectResponse, error) {
+			return &usecase.ProjectResponse{ID: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", Slug: slug, Name: slug}, nil
+		},
+		isProjectMemberFn: func(ctx context.Context, projectID, userID string) (bool, error) {
+			return true, nil
+		},
+		previewPRCheckFn: deniedPRCheck,
+	}
+
+	tests := []struct {
+		name    string
+		path    string
+		mock    *mockUsecases
+		bearer  string
+		apiKey  bool
+		wantMsg string
+	}{
+		{
+			name:    "finding: signed-in user gets the session wording",
+			path:    "/api/v1/findings/" + findingID,
+			mock:    &mockUsecases{getFindingFn: denied},
+			bearer:  makeTestToken(t, auth.RoleViewer),
+			wantMsg: "finding not found or you do not have access",
+		},
+		{
+			name:    "finding: project key gets the key wording",
+			path:    "/api/v1/findings/" + findingID,
+			mock:    &mockUsecases{getFindingFn: denied},
+			bearer:  "vuln_testapikey",
+			apiKey:  true,
+			wantMsg: "API key does not have access to this finding",
+		},
+		{
+			name:    "report: signed-in user gets the session wording",
+			path:    "/api/v1/projects/my-app/pr-check?commit=abc123",
+			mock:    projectOwnedByKey,
+			bearer:  makeTestToken(t, auth.RoleEditor),
+			wantMsg: "report not found or you do not have access",
+		},
+		{
+			name:    "report: project key gets the key wording",
+			path:    "/api/v1/projects/my-app/pr-check?commit=abc123",
+			mock:    projectOwnedByKey,
+			bearer:  "vuln_testapikey",
+			apiKey:  true,
+			wantMsg: "API key does not have access to this report",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			router := NewRouter(RouterConfig{
+				Usecases: tt.mock,
+				JWTAuth:  testJWTAuth,
+				APIKeyLookup: func(ctx context.Context, keyHash string) (string, string, []string, time.Time, error) {
+					return "key-user", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", []string{auth.ScopeRead}, time.Time{}, nil
+				},
+			})
+			req := httptest.NewRequest("GET", tt.path, nil)
+			req.Header.Set("Authorization", "Bearer "+tt.bearer)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusForbidden, w.Code)
+			var resp apiError
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+			assert.Equal(t, "project_access_denied", resp.Error.Code)
+			assert.Equal(t, tt.wantMsg, resp.Error.Message)
+			if !tt.apiKey {
+				assert.NotContains(t, w.Body.String(), "API key", "signed-in users are not told about API keys")
+			}
+		})
+	}
+}
+
 // TestListUsersHandler pins the directory contract the admin UIs pick from:
 // the email filter and pagination pass through untouched, and the response is
 // the account shape without any credential material.
