@@ -518,6 +518,18 @@ func runWatcherDaemon(ctx context.Context, stores *port.Stores, cfg *config.Serv
 		ReloadProjects:   stores.Projects.List,
 		PollDeps:         deps,
 		ProjectIntervals: intervals,
+		// The schedule is a snapshot; re-check the switch right before each
+		// poll so a project disabled mid-round is not polled anyway.
+		ProjectEnabled: func(ctx context.Context, projectID string) (bool, error) {
+			project, err := stores.Projects.GetByID(ctx, projectID)
+			if errors.Is(err, port.ErrNotFound) {
+				return false, nil
+			}
+			if err != nil {
+				return false, err
+			}
+			return project.CveWatcherEnabled, nil
+		},
 	})
 	return nil
 }

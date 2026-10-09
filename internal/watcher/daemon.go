@@ -540,6 +540,12 @@ type RunCveWatcherConfig struct {
 	// When provided, the scheduled watcher re-queries the project list to pick up
 	// newly enabled, disabled, or configured projects without restarting the server.
 	ReloadProjects func(ctx context.Context) ([]port.Project, error)
+	// ProjectEnabled optionally re-checks a project's watcher switch
+	// immediately before its scheduled poll. The due set is a snapshot taken
+	// at the top of the loop, and a poll round can outlast it; without this
+	// check a project disabled while the round is running would still be
+	// polled. Nil means every scheduled project is considered enabled.
+	ProjectEnabled func(ctx context.Context, projectID string) (bool, error)
 	// InitialBackoff is the wait after the first failed poll; it doubles
 	// per failure up to MaxBackoff. Defaults to 30 seconds.
 	InitialBackoff time.Duration
@@ -821,11 +827,16 @@ func pruneInactive(state *scheduleState, activeIDs map[string]bool) {
 		if activeIDs[id] {
 			continue
 		}
-		delete(state.nextDue, id)
-		delete(state.intervals, id)
-		delete(state.backoffs, id)
-		delete(state.failedProjects, id)
+		dropProject(state, id)
 	}
+}
+
+// dropProject removes every scheduler entry for one project.
+func dropProject(state *scheduleState, projectID string) {
+	delete(state.nextDue, projectID)
+	delete(state.intervals, projectID)
+	delete(state.backoffs, projectID)
+	delete(state.failedProjects, projectID)
 }
 
 // sleepIdle waits the capped idle delay between reloads with no active
@@ -894,6 +905,9 @@ func pollDueProjects(
 	outcome := PollOutcome{}
 	var pollErr error
 	for _, projectID := range due {
+		if !projectIsWatchable(ctx, cfg, projectID, state) {
+			continue
+		}
 		pollDeps := cfg.PollDeps
 		pollDeps.Projects = []string{projectID}
 		projectOutcome, err := PollOnce(ctx, pollDeps)
@@ -918,6 +932,29 @@ func pollDueProjects(
 		cfg.Logger.Error("cve watcher poll failed", "project", projectID, "error", err, "next_retry", delay.String())
 	}
 	return outcome, pollErr
+}
+
+// projectIsWatchable re-checks one due project's watcher switch immediately
+// before polling it. The due set is a snapshot taken at the top of the loop,
+// and a poll round can outlast it: a project disabled while the round runs
+// must not be polled. A disabled project is dropped from the scheduler state
+// so this round and the next reload agree. A failed read is logged and
+// treated as enabled: a transient control-plane error must not silently stop
+// watching a project.
+func projectIsWatchable(ctx context.Context, cfg RunCveWatcherConfig, projectID string, state *scheduleState) bool {
+	if cfg.ProjectEnabled == nil {
+		return true
+	}
+	enabled, err := cfg.ProjectEnabled(ctx, projectID)
+	if err != nil {
+		cfg.Logger.Warn("cve watcher enabled check failed", "project", projectID, "error", err)
+		return true
+	}
+	if enabled {
+		return true
+	}
+	dropProject(state, projectID)
+	return false
 }
 
 func (o *PollOutcome) add(other PollOutcome) {
