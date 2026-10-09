@@ -6,6 +6,7 @@ import {
   getStoredRefreshToken,
   getStoredSession,
   setAuthToken,
+  setRefreshFailedHandler,
   setStoredSession,
   setUnauthorizedHandler,
 } from "./client";
@@ -33,6 +34,7 @@ afterEach(() => {
   sessionStorage.clear();
   setAuthToken(null);
   setUnauthorizedHandler(null);
+  setRefreshFailedHandler(null);
   vi.unstubAllGlobals();
 });
 
@@ -190,5 +192,103 @@ describe("apiFetchWithTotal", () => {
       "/api/v1/projects/p1/findings",
     ]);
     expect(calls.at(-1)?.headers.Authorization).toBe("Bearer access-2");
+  });
+});
+
+/** A stand-in for the API's refresh flow: each refresh token is single-use and
+ * a reused or unknown one is refused, as the server does after rotation. */
+function mockAuthServer(refresh: string) {
+  const state = {
+    access: null as string | null,
+    refresh,
+    refreshBodies: [] as string[],
+    rejectRefresh: false,
+    serial: 1,
+    resourceAuth: [] as string[],
+  };
+  const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const headers = (init?.headers as Record<string, string>) ?? {};
+    if (url === "/api/v1/auth/refresh") {
+      const { refresh_token: presented } = JSON.parse(String(init?.body)) as {
+        refresh_token: string;
+      };
+      state.refreshBodies.push(presented);
+      if (state.rejectRefresh || presented !== state.refresh) {
+        return Promise.resolve(
+          responseWithHeaders({ error: { code: "unauthorized", message: "refused" } }, {}, 401),
+        );
+      }
+      state.serial += 1;
+      state.access = `access-${state.serial}`;
+      state.refresh = `refresh-${state.serial}`;
+      return Promise.resolve(
+        responseWithHeaders({
+          token: state.access,
+          refresh_token: state.refresh,
+          user_id: "u1",
+          email: "a@b.c",
+        }),
+      );
+    }
+    const auth = headers.Authorization ?? "";
+    state.resourceAuth.push(auth);
+    if (state.access !== null && auth === `Bearer ${state.access}`) {
+      return Promise.resolve(responseWithHeaders([{ url }]));
+    }
+    return Promise.resolve(
+      responseWithHeaders({ error: { code: "unauthorized", message: "expired" } }, {}, 401),
+    );
+  });
+  return { fetchMock, state };
+}
+
+describe("concurrent 401 handling", () => {
+  const paths = ["/api/v1/projects", "/api/v1/projects/p1/stats", "/api/v1/projects/p1/gate"];
+
+  it("shares one refresh across parallel requests that all get 401", async () => {
+    const { fetchMock, state } = mockAuthServer("refresh-1");
+    vi.stubGlobal("fetch", fetchMock);
+    setStoredSession("access-1", "refresh-1", { userId: "u1", email: "a@b.c" });
+
+    const results = await Promise.all(paths.map((path) => apiFetch<{ url: string; }[]>(path)));
+
+    expect(state.refreshBodies).toEqual(["refresh-1"]);
+    expect(results).toEqual(paths.map((path) => [{ url: path }]));
+    const retries = state.resourceAuth.filter((auth) => auth === "Bearer access-2");
+    expect(retries).toHaveLength(paths.length);
+    expect(getStoredRefreshToken()).toBe("refresh-2");
+  });
+
+  it("ends the session once when the shared refresh is rejected", async () => {
+    const { fetchMock, state } = mockAuthServer("refresh-1");
+    state.rejectRefresh = true;
+    vi.stubGlobal("fetch", fetchMock);
+    const refreshFailed = vi.fn();
+    const unauthorized = vi.fn();
+    setRefreshFailedHandler(refreshFailed);
+    setUnauthorizedHandler(unauthorized);
+    setStoredSession("access-1", "refresh-1", { userId: "u1", email: "a@b.c" });
+
+    const outcomes = await Promise.allSettled(paths.map((path) => apiFetch(path)));
+
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(["rejected", "rejected", "rejected"]);
+    expect(state.refreshBodies).toEqual(["refresh-1"]);
+    expect(refreshFailed).toHaveBeenCalledTimes(1);
+    expect(unauthorized).toHaveBeenCalledTimes(1);
+    expect(readStore()).toBeNull();
+  });
+
+  it("starts a new refresh for a later expiry after a completed refresh", async () => {
+    const { fetchMock, state } = mockAuthServer("refresh-1");
+    vi.stubGlobal("fetch", fetchMock);
+    setStoredSession("access-1", "refresh-1", { userId: "u1", email: "a@b.c" });
+
+    await Promise.all(paths.map((path) => apiFetch(path)));
+    state.access = null;
+    await apiFetch("/api/v1/projects/p1/findings");
+
+    expect(state.refreshBodies).toEqual(["refresh-1", "refresh-2"]);
+    expect(state.resourceAuth.at(-1)).toBe("Bearer access-3");
   });
 });
