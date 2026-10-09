@@ -734,9 +734,9 @@ func TestIngestReport_DuplicateRaceReplaysWinner(t *testing.T) {
 		assert.Equal(t, winner, id, "the replay must load the winner, not the orphan")
 		return makeReport(), nil
 	}
-	var deletedID, deletedProject string
-	rr.deleteReportFn = func(ctx context.Context, id, projectID string) error {
-		deletedID, deletedProject = id, projectID
+	var cleanedOrphan, cleanedWinner, cleanedProject string
+	rr.deleteDuplicateReportFn = func(ctx context.Context, id, projectID, winnerID string) error {
+		cleanedOrphan, cleanedProject, cleanedWinner = id, projectID, winnerID
 		return nil
 	}
 
@@ -748,8 +748,9 @@ func TestIngestReport_DuplicateRaceReplaysWinner(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, out.Replayed, "the loser answers as a replay, not a 409")
 	assert.Equal(t, winner, out.ReportID)
-	assert.Equal(t, makeReport().ID, deletedID, "the orphaned processing row must go")
-	assert.Equal(t, makeProject(true).ID, deletedProject)
+	assert.Equal(t, makeReport().ID, cleanedOrphan, "the orphaned processing row must go")
+	assert.Equal(t, makeProject(true).ID, cleanedProject)
+	assert.Equal(t, winner, cleanedWinner, "cleanup must know the winner to repair attribution")
 	assert.Equal(t, 2, lookups, "the pre-check and the post-race lookup both run")
 }
 

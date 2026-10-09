@@ -45,7 +45,7 @@ func NewRepos(pool *pgxpool.Pool) *Repos {
 	q := sqlc.New(pool)
 	return &Repos{
 		Projects:      &pgProjectRepo{q: q},
-		Reports:       &pgReportRepo{q: q},
+		Reports:       &pgReportRepo{q: q, pool: pool},
 		Findings:      &pgFindingRepo{q: q, pool: pool},
 		Users:         &pgUserRepo{q: q},
 		APIKeys:       &pgAPIKeyRepo{q: q},
@@ -107,6 +107,7 @@ type ReportRepo interface {
 	DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]pgtype.UUID, error)
 	FindCompletedByReplayKey(ctx context.Context, projectID pgtype.UUID, rawHash, commitSha, scopeHash pgtype.Text) (pgtype.UUID, error)
 	DeleteReport(ctx context.Context, id, projectID pgtype.UUID) error
+	DeleteDuplicateReport(ctx context.Context, id, projectID, winnerID pgtype.UUID) error
 }
 
 // UserRepo persists user accounts.

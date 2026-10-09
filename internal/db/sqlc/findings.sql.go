@@ -1611,6 +1611,28 @@ func (q *Queries) OccurrenceExists(ctx context.Context, arg OccurrenceExistsPara
 	return exists, err
 }
 
+const reassignFindingIntroducedBy = `-- name: ReassignFindingIntroducedBy :exec
+UPDATE findings SET
+    introduced_by_report_id = $3,
+    updated_at = NOW()
+WHERE project_id = $1 AND introduced_by_report_id = $2
+`
+
+type ReassignFindingIntroducedByParams struct {
+	ProjectID              pgtype.UUID `json:"project_id"`
+	IntroducedByReportID   pgtype.UUID `json:"introduced_by_report_id"`
+	IntroducedByReportID_2 pgtype.UUID `json:"introduced_by_report_id_2"`
+}
+
+// Duplicate-race cleanup: re-points findings that a losing processing report
+// introduced at the report that won the race, so deleting the loser does not
+// null their attribution. Findings the winner introduced itself are left
+// alone because their report id is not the loser's.
+func (q *Queries) ReassignFindingIntroducedBy(ctx context.Context, arg ReassignFindingIntroducedByParams) error {
+	_, err := q.db.Exec(ctx, reassignFindingIntroducedBy, arg.ProjectID, arg.IntroducedByReportID, arg.IntroducedByReportID_2)
+	return err
+}
+
 const recordReportIntroducedFindings = `-- name: RecordReportIntroducedFindings :exec
 INSERT INTO report_introduced_findings (
     report_id, finding_id, baseline_report_id, change_type

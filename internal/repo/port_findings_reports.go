@@ -281,6 +281,22 @@ func (r *pgReportPort) DeleteReport(ctx context.Context, id, projectID string) e
 	return mappingErr(r.inner.DeleteReport(ctx, rid, pid))
 }
 
+func (r *pgReportPort) DeleteDuplicateReport(ctx context.Context, id, projectID, winnerID string) error {
+	rid, err := parseID(id)
+	if err != nil {
+		return err
+	}
+	pid, err := parseID(projectID)
+	if err != nil {
+		return err
+	}
+	wid, err := parseID(winnerID)
+	if err != nil {
+		return err
+	}
+	return mappingErr(r.inner.DeleteDuplicateReport(ctx, rid, pid, wid))
+}
+
 // ---------- Findings port over the existing repo methods ----------
 
 const findingIngestBatchSize = 500
