@@ -332,7 +332,7 @@ func addSecrets(nr *domain.NormalizedReport, result trivyResult) {
 		cleanTarget = "unknown"
 	}
 	for _, s := range result.Secrets {
-		fp := "secret:" + s.RuleID + ":" + cleanTarget
+		fp := "secret:" + s.RuleID + ":" + result.Target
 		nr.Findings = append(nr.Findings, parseutil.HardenFinding(domain.NormalizedFinding{
 			Fingerprint: fp,
 			FindingKind: kindSecret,
@@ -355,7 +355,7 @@ func addMisconfigs(nr *domain.NormalizedReport, result trivyResult) {
 		cleanTarget = "unknown"
 	}
 	for _, m := range result.Misconfigs {
-		fp := "iac:" + m.RuleID + ":" + cleanTarget
+		fp := "iac:" + m.RuleID + ":" + result.Target
 		nr.Findings = append(nr.Findings, parseutil.HardenFinding(domain.NormalizedFinding{
 			Fingerprint: fp,
 			FindingKind: kindIaC,
