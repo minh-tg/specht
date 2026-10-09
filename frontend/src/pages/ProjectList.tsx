@@ -1,5 +1,6 @@
 import { apiFetch } from "@/api/client";
 import { queryKeys, useMe, useProjects } from "@/api/hooks";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { formatDateTime, formatRelativeTime } from "@/lib/format";
 import { blockerCount, degradedMessage, projectVerdict, type Verdict } from "@/lib/verdict";
@@ -13,14 +14,6 @@ const EMPTY = "–";
 
 const COLUMNS = ["Project", "Verdict", "Blocking", "Findings", "Last scan"] as const;
 const SKELETON_ROW_COUNT = 3;
-
-/** Primary button styling from components/ui/button, applied to a real link. */
-const PRIMARY_LINK_CLASS =
-  "bg-primary text-primary-foreground hover:bg-primary/80 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg px-2.5 text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
-
-/** The outline variant of the same button, for an action that is not the one to take first. */
-const SECONDARY_LINK_CLASS =
-  "border-border bg-background hover:bg-muted dark:border-input dark:bg-input/30 dark:hover:bg-input/50 inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
 const VERDICT_PRIORITY: Record<Verdict, number> = {
   blocked: 0,
@@ -139,7 +132,7 @@ export function ProjectList() {
           <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
             Do this
           </p>
-          <Link to={`/${startWith.slug}/findings`} className={PRIMARY_LINK_CLASS}>
+          <Link to={`/${startWith.slug}/findings`} className={buttonVariants()}>
             Open {startWith.name}
           </Link>
         </section>
@@ -148,7 +141,7 @@ export function ProjectList() {
         <div className="flex justify-end">
           <Link
             to="/projects/new"
-            className={startWith ? SECONDARY_LINK_CLASS : PRIMARY_LINK_CLASS}
+            className={buttonVariants({ variant: startWith ? "outline" : "default" })}
           >
             New project
           </Link>

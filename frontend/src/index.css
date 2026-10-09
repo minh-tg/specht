@@ -2,8 +2,7 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
-
-@plugin "tailwindcss-animate";
+@import "@fontsource-variable/geist-mono";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -129,6 +128,10 @@
   --color-sidebar-ring: var(--sidebar-ring);
   --font-heading: var(--font-sans);
   --font-sans: 'Geist Variable', sans-serif;
+  /* Identifiers, SHAs, paths, versions and number columns. */
+  --font-mono: 'Geist Mono Variable', ui-monospace, monospace;
+  /* Small uppercase labels: column headers, severity chips, verdict badges. */
+  --font-label: var(--font-sans);
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
@@ -213,9 +216,6 @@
   --dur-quick: 150ms;
   --dur-base: 220ms;
   --dur-slow: 320ms;
-  --ease-entering: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-exiting: cubic-bezier(0.55, 0, 1, 0.45);
-  --ease-moving: cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 .dark {
@@ -255,6 +255,14 @@
 [data-mode="govern"],
 [data-mode="prove"],
 [data-mode="operate"] { --row-density: var(--row-compact); }
+
+/* Easing curves are theme tokens so utilities exist (ease-entering, ease-exiting,
+   ease-moving). Durations are --dur-* above; use them as duration-(--dur-quick). */
+@theme {
+  --ease-entering: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-exiting: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-moving: cubic-bezier(0.65, 0, 0.35, 1);
+}
 
 @theme inline {
   --color-sev-critical: var(--sev-critical);
@@ -300,14 +308,17 @@
     outline-offset: var(--focus-ring-offset);
   }
 
-  /* Motion is feedback or it does not ship. */
+  /* Motion is feedback or it does not ship. Reduced motion removes movement and scale
+     and keeps colour and opacity changes, so a state change stays visible. Keyframe
+     animations (dialog and tooltip entrances) collapse to their end state. */
   @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
     *::after {
       animation-duration: 1ms !important;
       animation-iteration-count: 1 !important;
-      transition-duration: 1ms !important;
+      transition-property: color, background-color, border-color, text-decoration-color, fill,
+        stroke, opacity, box-shadow !important;
       scroll-behavior: auto !important;
     }
   }
