@@ -646,6 +646,75 @@ func githubCheckRunClient(ghSrv *httptest.Server) *http.Client {
 	}
 }
 
+func TestChangeURLWithReport(t *testing.T) {
+	base := "https://specht.example.com"
+	assert.Equal(t, base+"/my-app/changes/abc", changeURLWithReport(base, "my-app", "abc", ""))
+	assert.Equal(t, base+"/my-app/changes/abc?report=rep-1", changeURLWithReport(base, "my-app", "abc", "rep-1"))
+	assert.Equal(t, base+"/my-app/changes/abc?report=a%26b", changeURLWithReport(base, "my-app", "abc", "a&b"))
+	assert.Empty(t, changeURLWithReport(base, "", "abc", "rep-1"), "a missing project omits the link")
+	assert.Empty(t, changeURLWithReport(base, "my-app", "", "rep-1"), "a missing commit omits the link")
+}
+
+func TestRun_PrintsChangeLinkOnStdout(t *testing.T) {
+	t.Run("pass with report id", func(t *testing.T) {
+		srv := newChangeLinkServer(t, "rep-link", false)
+		defer srv.Close()
+		t.Setenv("API_KEY", "test-key")
+		t.Setenv("API_URL", srv.URL)
+
+		var stdout, stderr bytes.Buffer
+		code := run([]string{"-project=my-app", "-tool=trivy", "-commit=abc12345", "-branch=feat/x"},
+			strings.NewReader(`{"Results":[]}`), &stdout, &stderr, srv.Client())
+		require.Equal(t, 0, code, "stderr:\n%s", stderr.String())
+		assert.Contains(t, stdout.String(), "View this change in Specht: "+srv.URL+"/my-app/changes/abc12345?report=rep-link")
+	})
+
+	t.Run("blocked without report id", func(t *testing.T) {
+		srv := newChangeLinkServer(t, "", true)
+		defer srv.Close()
+		t.Setenv("API_KEY", "test-key")
+		t.Setenv("API_URL", srv.URL)
+
+		var stdout, stderr bytes.Buffer
+		code := run([]string{"-project=my-app", "-tool=trivy", "-commit=abc12345"},
+			strings.NewReader(`{"Results":[]}`), &stdout, &stderr, srv.Client())
+		require.Equal(t, 1, code, "stderr:\n%s", stderr.String())
+		assert.Contains(t, stdout.String(), "View this change in Specht: "+srv.URL+"/my-app/changes/abc12345")
+		assert.NotContains(t, stdout.String(), "?report=", "an unknown report id must not add a query")
+	})
+
+	t.Run("no commit omits the link", func(t *testing.T) {
+		srv := newChangeLinkServer(t, "rep-link", false)
+		defer srv.Close()
+		t.Setenv("API_KEY", "test-key")
+		t.Setenv("API_URL", srv.URL)
+
+		var stdout, stderr bytes.Buffer
+		code := run([]string{"-project=my-app", "-tool=trivy"},
+			strings.NewReader(`{"Results":[]}`), &stdout, &stderr, srv.Client())
+		require.Equal(t, 0, code, "stderr:\n%s", stderr.String())
+		assert.NotContains(t, stdout.String(), "View this change in Specht")
+	})
+}
+
+// newChangeLinkServer serves the ingest, preview and gate calls one adapter
+// run makes, with a controllable report id and gate verdict.
+func newChangeLinkServer(t *testing.T, reportID string, breached bool) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/reports":
+			writeTestJSONResponse(t, w, client.IngestResponse{ReportID: reportID, TotalFindings: 1, ThresholdBreached: breached})
+		case "/api/v1/projects/my-app/pr-check":
+			writeTestJSONResponse(t, w, client.PRCheckPreview{Conclusion: "success", Title: "t", Summary: "s"})
+		case "/api/v1/projects/my-app/gate":
+			writeTestJSONResponse(t, w, client.GateStatus{ThresholdBreached: breached, BlockingCount: 1})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+}
+
 func TestChangeURL(t *testing.T) {
 	tests := []struct {
 		name    string

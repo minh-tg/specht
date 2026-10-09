@@ -163,6 +163,16 @@ func changeURL(apiURL, project, commit string) string {
 	return apiURL + "/" + url.PathEscape(project) + "/changes/" + url.PathEscape(commit)
 }
 
+// changeURLWithReport builds the change page link and, when the report id is
+// known, adds the report query the change page uses to select that report.
+func changeURLWithReport(apiURL, project, commit, reportID string) string {
+	link := changeURL(apiURL, project, commit)
+	if link == "" || reportID == "" {
+		return link
+	}
+	return link + "?report=" + url.QueryEscape(reportID)
+}
+
 // withChangeLink appends a link back to the Specht change page to a check
 // summary. It returns the summary unchanged when link is empty.
 func withChangeLink(summary, link string) string {
