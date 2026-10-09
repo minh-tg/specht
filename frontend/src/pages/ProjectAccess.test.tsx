@@ -1,4 +1,5 @@
 import { AuthContext, type AuthContextValue } from "@/auth/context";
+import { Toaster } from "@/components/ui/sonner";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
@@ -27,6 +28,7 @@ function renderProjectAccess(slug = "core-api") {
           </Routes>
         </MemoryRouter>
       </AuthContext.Provider>
+      <Toaster />
     </QueryClientProvider>,
   );
 }
@@ -237,6 +239,20 @@ describe("ProjectAccess", () => {
       expect(screen.queryByRole("dialog", { name: "Add Direct Member" })).not.toBeInTheDocument();
     });
     expect(opener).toHaveFocus();
+  });
+
+  it("confirms an added member with a toast", async () => {
+    const user = userEvent.setup();
+    renderProjectAccess();
+
+    await user.click(await screen.findByRole("button", { name: "+ Add Member" }));
+    await user.type(
+      screen.getByLabelText("User ID"),
+      "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+    );
+    await user.click(screen.getByRole("button", { name: "Add Member" }));
+
+    expect(await screen.findByText("Member added")).toBeInTheDocument();
   });
 
   it("does not submit a member user ID that is not a UUID", async () => {

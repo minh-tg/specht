@@ -1,5 +1,5 @@
 import { useProjectRole, useTriageFinding } from "@/api/hooks";
-import { type AnalysisState, gateEffectLabel, isAnalysisState } from "@/lib/enums";
+import { type AnalysisState, isAnalysisState } from "@/lib/enums";
 import { GLOSSARY } from "@/lib/glossary";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
@@ -111,11 +111,6 @@ export function TriageSection({
       <OutcomeRegions
         label="Triage result"
         error={triageMutation.isError ? triageMutation.error.message : null}
-        success={triageMutation.isSuccess
-          ? `Triage saved (effect: ${
-            gateEffectLabel(triageMutation.data.gate_effect) ?? "Unknown"
-          })`
-          : null}
       />
     </section>
   );

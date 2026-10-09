@@ -31,10 +31,25 @@ interface Finding {
 const findings: Finding[] = [];
 let audits = 0;
 
+/**
+ * Entrance animations (dialogs, tooltips, toasts) blend colours while they run, so audit the
+ * settled state. Two frames let a transition that starts on the next render begin before the
+ * wait; the loop then repeats until nothing is running.
+ */
+async function settle(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const running = document.getAnimations();
+      if (running.length === 0) return;
+      await Promise.all(running.map((animation) => animation.finished.catch(() => undefined)));
+    }
+  });
+}
+
 async function audit(page: Page, name: string): Promise<void> {
   await page.waitForLoadState("networkidle");
-  // Entrance animations (dialogs, tooltips) blend colours while they run; audit the settled state.
-  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished)));
+  await settle(page);
   // Evaluated through the devtools protocol, which the page CSP does not
   // govern; an inline <script> tag would be blocked by script-src 'self'.
   await page.evaluate(axe.source);
@@ -43,7 +58,7 @@ async function audit(page: Page, name: string): Promise<void> {
       (t) => document.documentElement.classList.toggle("dark", t === "dark"),
       theme,
     );
-    await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished)));
+    await settle(page);
     const result = await page.evaluate(
       async (tags) => {
         const api = (window as unknown as { axe: typeof axe; }).axe;
@@ -109,6 +124,12 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await expect(page.getByRole("heading", { name: "Triage" })).toBeVisible();
   await page.getByLabel("Triage action").selectOption("not_affected");
   await audit(page, "finding detail with a triage hint");
+
+  // A success toast is page content for as long as it shows. "reachable" keeps the change blocked.
+  await page.getByLabel("Reachability assessment").selectOption("reachable");
+  await page.getByRole("button", { name: "Assess" }).click();
+  await expect(page.getByText("Reachability saved")).toBeVisible();
+  await audit(page, "finding detail with a success toast");
 
   await page.goto(`/${slug}/reports`);
   await expect(page.getByRole("heading").first()).toBeVisible();
