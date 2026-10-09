@@ -38,11 +38,13 @@ describe("ProjectAccess", () => {
   let userRole = "admin";
   let fetchCalls: { url: string; method: string; body?: string; }[] = [];
   let deleteError: { status: number; code: string; message: string; } | null = null;
+  let addMemberError: { status: number; code: string; message: string; } | null = null;
 
   beforeEach(() => {
     fetchCalls = [];
     userRole = "admin";
     deleteError = null;
+    addMemberError = null;
     mockMembers = [
       { project_id: "p1", user_id: "u1", role: "admin", created_at: "2026-09-12T00:00:00Z" },
       { project_id: "p1", user_id: "u2", role: "manager", created_at: "2026-09-18T00:00:00Z" },
@@ -64,7 +66,12 @@ describe("ProjectAccess", () => {
       }
       if (u.includes("/members")) {
         if (method === "POST") {
-          return jsonResponse({ ok: true });
+          return addMemberError
+            ? jsonResponse(
+              { error: { code: addMemberError.code, message: addMemberError.message } },
+              addMemberError.status,
+            )
+            : jsonResponse({ ok: true }, 201);
         }
         if (method === "DELETE") {
           return deleteError
@@ -184,7 +191,10 @@ describe("ProjectAccess", () => {
     await user.click(screen.getByRole("button", { name: "+ Add Member" }));
     expect(screen.getByRole("heading", { name: "Add Direct Member" })).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText("User ID or Email"), "newbie@acme.corp");
+    await user.type(
+      screen.getByLabelText("User ID"),
+      "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+    );
     await user.selectOptions(screen.getByLabelText("Project Role"), "admin");
 
     const submitBtn = screen.getByRole("button", { name: "Add Member" });
@@ -196,10 +206,47 @@ describe("ProjectAccess", () => {
       );
       expect(postCall).toBeDefined();
       expect(JSON.parse(postCall!.body!)).toEqual({
-        user_id: "newbie@acme.corp",
+        user_id: "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
         role: "admin",
       });
     });
+  });
+
+  it("does not submit a member user ID that is not a UUID", async () => {
+    const user = userEvent.setup();
+    renderProjectAccess();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "+ Add Member" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "+ Add Member" }));
+    await user.type(screen.getByLabelText("User ID"), "newbie@acme.corp");
+    await user.click(screen.getByRole("button", { name: "Add Member" }));
+
+    expect(await screen.findByText(/User ID must be a UUID/)).toBeInTheDocument();
+    expect(
+      fetchCalls.some((c) => c.url.includes("/members") && c.method === "POST"),
+    ).toBe(false);
+  });
+
+  it("shows the server message when the member user does not exist", async () => {
+    const user = userEvent.setup();
+    addMemberError = { status: 404, code: "user_not_found", message: "user not found" };
+    renderProjectAccess();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "+ Add Member" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "+ Add Member" }));
+    await user.type(
+      screen.getByLabelText("User ID"),
+      "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+    );
+    await user.click(screen.getByRole("button", { name: "Add Member" }));
+
+    expect(await screen.findByText("user not found")).toBeInTheDocument();
   });
 
   it("enforces peer protection when actor is project manager", async () => {

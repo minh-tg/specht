@@ -415,6 +415,9 @@ export function useDeleteTeam() {
   });
 }
 
+/** Roles a company team member can hold; the server rejects anything else. */
+type TeamMemberRole = "admin" | "member";
+
 export function useTeamMembers(teamId: string) {
   return useQuery({
     queryKey: queryKeys.teamMembers(teamId),
@@ -426,10 +429,10 @@ export function useTeamMembers(teamId: string) {
 export function useAddTeamMember(teamId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (userId: string) =>
+    mutationFn: ({ userId, role }: { userId: string; role: TeamMemberRole; }) =>
       apiFetch<void>(`/api/v1/teams/${encodeURIComponent(teamId)}/members`, {
         method: "POST",
-        body: JSON.stringify({ user_id: userId }),
+        body: JSON.stringify({ user_id: userId, role }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers(teamId) });

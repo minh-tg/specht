@@ -10,6 +10,7 @@ import {
 } from "@/api/hooks";
 import { useUserDirectory } from "@/api/users";
 import { Button } from "@/components/ui/button";
+import { isUuid } from "@/lib/uuid";
 import type { ProjectRole } from "@/types/api";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
@@ -52,6 +53,7 @@ export function ProjectAccess() {
   const [showAddMember, setShowAddMember] = useState(false);
   const [memberUserId, setMemberUserId] = useState("");
   const [memberRole, setMemberRole] = useState<ProjectRole>("member");
+  const [memberInputError, setMemberInputError] = useState<string | null>(null);
 
   const [showLinkTeam, setShowLinkTeam] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState("");
@@ -75,10 +77,18 @@ export function ProjectAccess() {
 
   async function handleAddMember(e: React.FormEvent) {
     e.preventDefault();
-    if (!memberUserId.trim()) return;
+    const userId = memberUserId.trim();
+    if (!userId) return;
+    if (!isUuid(userId)) {
+      setMemberInputError(
+        "User ID must be a UUID, for example 3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f.",
+      );
+      return;
+    }
+    setMemberInputError(null);
     try {
       await addMemberMutation.mutateAsync({
-        user_id: memberUserId.trim(),
+        user_id: userId,
         role: memberRole,
       });
       setMemberUserId("");
@@ -347,14 +357,18 @@ export function ProjectAccess() {
                   htmlFor="member-id-input"
                   className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
                 >
-                  User ID or Email
+                  User ID
                 </label>
                 <input
                   id="member-id-input"
                   required
                   value={memberUserId}
-                  onChange={(e) => setMemberUserId(e.target.value)}
-                  placeholder="e.g. user-uuid or email"
+                  onChange={(e) => {
+                    setMemberUserId(e.target.value);
+                    setMemberInputError(null);
+                    addMemberMutation.reset();
+                  }}
+                  placeholder="e.g. 3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f"
                   className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
@@ -385,6 +399,7 @@ export function ProjectAccess() {
                 )}
               </div>
 
+              {memberInputError && <p className="text-destructive text-xs">{memberInputError}</p>}
               {addMemberMutation.isError && (
                 <p className="text-destructive text-xs">
                   {addMemberMutation.error?.message ?? "Failed to add member"}
