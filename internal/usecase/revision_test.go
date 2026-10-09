@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -525,6 +526,7 @@ type replayFixture struct {
 	created       bool
 	statusUpdated bool
 	lookupCommit  string
+	lookupScope   string
 }
 
 func newReplayFixture(t *testing.T, existingID string) *replayFixture {
@@ -533,8 +535,9 @@ func newReplayFixture(t *testing.T, existingID string) *replayFixture {
 		return port.Finding{}, port.ErrNotFound
 	})
 	f := &replayFixture{uc: uc, reports: rr, findings: fr}
-	rr.findCompletedByHashFn = func(ctx context.Context, projectID, rawHash, commit string) (string, error) {
+	rr.findCompletedByReplayKeyFn = func(ctx context.Context, projectID, rawHash, commit, scopeHash string) (string, error) {
 		f.lookupCommit = commit
+		f.lookupScope = scopeHash
 		return existingID, nil
 	}
 	rr.getByIDFn = func(ctx context.Context, id string) (port.Report, error) {
@@ -570,6 +573,7 @@ func TestIngestReport_ReplaySameCommit(t *testing.T) {
 	assert.True(t, out.Replayed)
 	assert.Equal(t, existing, out.ReportID)
 	assert.Equal(t, "abc123", f.lookupCommit, "the lookup must carry the request commit")
+	assert.Len(t, f.lookupScope, 64, "the lookup must carry the request's scope hash")
 	assert.False(t, f.created, "a replay must not write a processing row")
 	assert.False(t, f.statusUpdated, "a replay must not touch the stored report")
 	assert.Equal(t, 1, out.IntroducedCount)
@@ -599,7 +603,7 @@ func TestIngestReport_DifferentCommitIngestsNewReport(t *testing.T) {
 		return port.Finding{}, port.ErrNotFound
 	})
 	var lookupCommit string
-	rr.findCompletedByHashFn = func(ctx context.Context, projectID, rawHash, commit string) (string, error) {
+	rr.findCompletedByReplayKeyFn = func(ctx context.Context, projectID, rawHash, commit, scopeHash string) (string, error) {
 		lookupCommit = commit
 		return "", port.ErrNotFound
 	}
@@ -621,6 +625,90 @@ func TestIngestReport_DifferentCommitIngestsNewReport(t *testing.T) {
 	assert.Equal(t, "different-commit", *createdCommit)
 }
 
+// TestIngestReport_SameBytesCommitDifferentBranchIngestsTwoReports pins the
+// scope in the replay key: the same bytes at the same commit on two branches
+// are two scans. Each gets its own completed report and its own auto-fix run
+// against its own scope, so a fast-forward merge on main is not answered with
+// the PR branch's report.
+func TestIngestReport_SameBytesCommitDifferentBranchIngestsTwoReports(t *testing.T) {
+	uc, rr, fr, _ := revisionHarness(t, func(context.Context, string, string, string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
+	})
+
+	// completed keys the replay lookup on commit and scope, like the dedup
+	// index does. creation records every scope that reached createReport.
+	completed := map[string]string{}
+	var createdScopes, createdBranches []string
+	reportSeq := 0
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
+		reportSeq++
+		r := makeReport()
+		r.ID = fmt.Sprintf("rep-scope-%d", reportSeq)
+		scope := arg.ScanScopeHash
+		commit := ""
+		if arg.CommitSha != nil {
+			commit = *arg.CommitSha
+		}
+		completed[commit+"\x00"+scope] = r.ID
+		createdScopes = append(createdScopes, scope)
+		if arg.Branch != nil {
+			createdBranches = append(createdBranches, *arg.Branch)
+		}
+		return r, nil
+	}
+	rr.updateStatusFn = func(ctx context.Context, id, projectID, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
+		assert.Equal(t, "completed", status)
+		return makeReport(), nil
+	}
+	rr.findCompletedByReplayKeyFn = func(ctx context.Context, projectID, rawHash, commit, scopeHash string) (string, error) {
+		if id, ok := completed[commit+"\x00"+scopeHash]; ok {
+			return id, nil
+		}
+		return "", port.ErrNotFound
+	}
+	rr.getByIDFn = func(ctx context.Context, id string) (port.Report, error) {
+		r := makeReport()
+		r.ID = id
+		return r, nil
+	}
+
+	var fixedScopes []string
+	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
+		fixedScopes = append(fixedScopes, scopeHash)
+		return nil, nil
+	}
+
+	in := IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy",
+		RawData:   json.RawMessage(`{"test": true}`),
+		CommitSha: "same-commit",
+	}
+
+	branch := in
+	branch.Branch = "feature"
+	featureOut, err := uc.IngestReport(context.Background(), branch)
+	require.NoError(t, err)
+	assert.False(t, featureOut.Replayed, "the first branch scan creates a report")
+
+	main := in
+	main.Branch = "main"
+	mainOut, err := uc.IngestReport(context.Background(), main)
+	require.NoError(t, err)
+	assert.False(t, mainOut.Replayed, "the same bytes and commit on another branch is a second report")
+	assert.NotEqual(t, featureOut.ReportID, mainOut.ReportID)
+
+	require.Len(t, createdScopes, 2, "both scopes create their own report")
+	assert.Equal(t, []string{"feature", "main"}, createdBranches)
+	assert.NotEqual(t, createdScopes[0], createdScopes[1], "the two branches hash to different scopes")
+	assert.Equal(t, createdScopes, fixedScopes, "auto-fix runs once per scope with that scope's hash")
+
+	// Re-uploading the main scan replays main's report, not the branch's.
+	replayOut, err := uc.IngestReport(context.Background(), main)
+	require.NoError(t, err)
+	assert.True(t, replayOut.Replayed)
+	assert.Equal(t, mainOut.ReportID, replayOut.ReportID)
+}
+
 // TestIngestReport_DuplicateRaceReplaysWinner replaced the old race-cleanup
 // assertion: when completion loses the dedup race, the orphaned processing
 // row is removed and the winner is replayed instead of answering 409.
@@ -632,7 +720,7 @@ func TestIngestReport_DuplicateRaceReplaysWinner(t *testing.T) {
 	// The pre-check misses (nothing completed yet); after the index
 	// violation the second lookup finds the twin that finished first.
 	lookups := 0
-	rr.findCompletedByHashFn = func(ctx context.Context, projectID, rawHash, commit string) (string, error) {
+	rr.findCompletedByReplayKeyFn = func(ctx context.Context, projectID, rawHash, commit, scopeHash string) (string, error) {
 		lookups++
 		if lookups == 1 {
 			return "", port.ErrNotFound

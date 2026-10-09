@@ -336,7 +336,7 @@ func TestCheckGateAfterIngest_RequestedFloorOnlyTightens(t *testing.T) {
 
 			_, _, err := uc.checkGateAfterIngest(context.Background(), project,
 				IngestReportInput{ProjectSlug: "my-app", Scanner: "trivy", GateSeverity: tc.gateSeverity},
-				port.Report{ID: "00000000-0000-0000-0000-000000000097", ProjectID: project.ID}, 0)
+				port.Report{ID: "00000000-0000-0000-0000-000000000097", ProjectID: project.ID}, 0, "scope-hash")
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, got)
 		})

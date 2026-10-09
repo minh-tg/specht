@@ -368,19 +368,19 @@ func (m *mockProjectRepo) Delete(ctx context.Context, slug string) (port.Project
 
 type mockReportRepo struct {
 	port.ReportStore
-	createFn              func(context.Context, port.CreateReportInput) (port.Report, error)
-	getByIDFn             func(context.Context, string) (port.Report, error)
-	listByProjectFn       func(context.Context, string, int32, int32) ([]port.Report, error)
-	updateStatusFn        func(context.Context, string, string, string, int32, *string) (port.Report, error)
-	latestReportFn        func(context.Context, string, string) (port.CompletedReport, error)
-	byCommitFn            func(context.Context, string, string, string) (port.CompletedReport, error)
-	byBranchFn            func(context.Context, string, string, string) (port.CompletedReport, error)
-	findingScopeFn        func(context.Context, string, string) (port.CompletedReport, error)
-	countStaleFn          func(context.Context, time.Time) (int64, error)
-	deleteStaleFn         func(context.Context, time.Time) ([]string, error)
-	findCompletedByHashFn func(context.Context, string, string, string) (string, error)
-	deleteReportFn        func(context.Context, string, string) error
-	hasCommitFn           func(context.Context, string, string) (bool, error)
+	createFn                   func(context.Context, port.CreateReportInput) (port.Report, error)
+	getByIDFn                  func(context.Context, string) (port.Report, error)
+	listByProjectFn            func(context.Context, string, int32, int32) ([]port.Report, error)
+	updateStatusFn             func(context.Context, string, string, string, int32, *string) (port.Report, error)
+	latestReportFn             func(context.Context, string, string) (port.CompletedReport, error)
+	byCommitFn                 func(context.Context, string, string, string) (port.CompletedReport, error)
+	byBranchFn                 func(context.Context, string, string, string) (port.CompletedReport, error)
+	findingScopeFn             func(context.Context, string, string) (port.CompletedReport, error)
+	countStaleFn               func(context.Context, time.Time) (int64, error)
+	deleteStaleFn              func(context.Context, time.Time) ([]string, error)
+	findCompletedByReplayKeyFn func(context.Context, string, string, string, string) (string, error)
+	deleteReportFn             func(context.Context, string, string) error
+	hasCommitFn                func(context.Context, string, string) (bool, error)
 }
 
 func (m *mockReportRepo) Create(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
@@ -460,11 +460,11 @@ func (m *mockReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Tim
 	return m.deleteStaleFn(ctx, cutoff)
 }
 
-func (m *mockReportRepo) FindCompletedByHashAndCommit(ctx context.Context, projectID, rawHash, commit string) (string, error) {
-	if m.findCompletedByHashFn == nil {
+func (m *mockReportRepo) FindCompletedByReplayKey(ctx context.Context, projectID, rawHash, commit, scopeHash string) (string, error) {
+	if m.findCompletedByReplayKeyFn == nil {
 		return "", port.ErrNotFound
 	}
-	return m.findCompletedByHashFn(ctx, projectID, rawHash, commit)
+	return m.findCompletedByReplayKeyFn(ctx, projectID, rawHash, commit, scopeHash)
 }
 
 func (m *mockReportRepo) DeleteReport(ctx context.Context, id, projectID string) error {
