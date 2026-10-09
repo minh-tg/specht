@@ -36,9 +36,7 @@ func TestScopeHashMaterial_StableAndSensitive(t *testing.T) {
 	}{
 		{"scanner", func(i *IngestReportInput) { i.Scanner = "grype" }},
 		{"artifact name", func(i *IngestReportInput) { i.ArtifactName = "other" }},
-		{"artifact version", func(i *IngestReportInput) { i.ArtifactVersion = "2.0.0" }},
 		{"branch", func(i *IngestReportInput) { i.Branch = "dev" }},
-		{"commit sha", func(i *IngestReportInput) { i.CommitSha = "def456" }},
 		{"environment", func(i *IngestReportInput) { i.Environment = "dev" }},
 	}
 	for _, tt := range sensitive {
@@ -47,6 +45,24 @@ func TestScopeHashMaterial_StableAndSensitive(t *testing.T) {
 			tt.mut(&in)
 			assert.NotEqual(t, scopeHashMaterial(base(), nr, ctxInfo), scopeHashMaterial(in, nr, ctxInfo),
 				"scope material must change when %s changes", tt.name)
+		})
+	}
+
+	// Commit and artifact version are not scope: a later commit on the same
+	// branch must stay in the scope its predecessor established.
+	stable := []struct {
+		name string
+		mut  func(*IngestReportInput)
+	}{
+		{"artifact version", func(i *IngestReportInput) { i.ArtifactVersion = "2.0.0" }},
+		{"commit sha", func(i *IngestReportInput) { i.CommitSha = "def456" }},
+	}
+	for _, tt := range stable {
+		t.Run(tt.name+" is not scope", func(t *testing.T) {
+			in := base()
+			tt.mut(&in)
+			assert.Equal(t, scopeHashMaterial(base(), nr, ctxInfo), scopeHashMaterial(in, nr, ctxInfo),
+				"scope material must not change when %s changes", tt.name)
 		})
 	}
 }
