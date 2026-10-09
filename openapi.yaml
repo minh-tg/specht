@@ -992,7 +992,7 @@ paths:
         - name: channel
           in: query
           required: true
-          description: "`issue` or `message`."
+          description: "`issue` or `message`. Any other value is not an error: the response is a refusal with a reason."
           schema: { type: string, enum: [issue, message] }
         - name: target
           in: query
@@ -1001,7 +1001,7 @@ paths:
           schema: { type: string }
         - name: linked
           in: query
-          description: Set when the finding is already linked, so the plan describes an update.
+          description: Set when the finding is already linked, so the plan describes an update. A value that is not a boolean returns `invalid_linked`.
           schema: { type: boolean }
       responses:
         "200":

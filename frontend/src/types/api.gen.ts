@@ -3303,11 +3303,11 @@ export interface operations {
   previewNotification: {
     parameters: {
       query: {
-        /** @description `issue` or `message`. */
+        /** @description `issue` or `message`. Any other value is not an error: the response is a refusal with a reason. */
         channel: "issue" | "message";
         /** @description Integration and scope to notify, as `integration:scope`. */
         target: string;
-        /** @description Set when the finding is already linked, so the plan describes an update. */
+        /** @description Set when the finding is already linked, so the plan describes an update. A value that is not a boolean returns `invalid_linked`. */
         linked?: boolean;
       };
       header?: never;

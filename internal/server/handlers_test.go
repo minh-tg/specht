@@ -4295,3 +4295,76 @@ func TestRequireRole_RejectsUnknownRole(t *testing.T) {
 		})
 	}
 }
+
+func TestPreviewNotification_LinkedFlag(t *testing.T) {
+	const findingID = "11111111-1111-4111-8111-111111111111"
+	cases := []struct {
+		query      string
+		wantLinked bool
+		wantStatus int
+	}{
+		{"", false, http.StatusOK},
+		{"&linked=true", true, http.StatusOK},
+		{"&linked=TRUE", true, http.StatusOK},
+		{"&linked=1", true, http.StatusOK},
+		{"&linked=false", false, http.StatusOK},
+		{"&linked=0", false, http.StatusOK},
+		{"&linked=yes", false, http.StatusBadRequest},
+		{"&linked=maybe", false, http.StatusBadRequest},
+	}
+	for _, tc := range cases {
+		t.Run(tc.query, func(t *testing.T) {
+			var gotLinked bool
+			called := false
+			mock := &mockUsecases{
+				previewNotifyFn: func(ctx context.Context, id, channel, target string, alreadyLinked bool) (*notify.Outcome, error) {
+					called = true
+					gotLinked = alreadyLinked
+					return &notify.Outcome{}, nil
+				},
+			}
+			req := httptest.NewRequest("GET", "/api/v1/findings/"+findingID+"/notify-preview?channel=issue&target=gh"+tc.query, nil)
+			w := httptest.NewRecorder()
+			testRouter(mock).ServeHTTP(w, req)
+
+			require.Equal(t, tc.wantStatus, w.Code, w.Body.String())
+			if tc.wantStatus == http.StatusOK {
+				assert.Equal(t, tc.wantLinked, gotLinked)
+				return
+			}
+			assert.False(t, called, "an unparsable flag must not reach the usecase")
+			assert.Contains(t, w.Body.String(), `"code":"invalid_linked"`)
+		})
+	}
+}
+
+func TestPreviewNotification_ErrorMapping(t *testing.T) {
+	const findingID = "11111111-1111-4111-8111-111111111111"
+	cases := []struct {
+		name     string
+		err      error
+		wantCode int
+		wantBody string
+	}{
+		{"malformed id", usecase.ErrInvalidFindingID, http.StatusBadRequest, "invalid_id"},
+		{"unknown finding", usecase.ErrFindingNotFound, http.StatusNotFound, "not_found"},
+		{"no project access", usecase.ErrProjectAccessDenied, http.StatusForbidden, "project_access_denied"},
+		{"unexpected failure", errors.New("db down"), http.StatusInternalServerError, "notify_failed"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := &mockUsecases{
+				previewNotifyFn: func(context.Context, string, string, string, bool) (*notify.Outcome, error) {
+					return nil, tc.err
+				},
+			}
+			req := httptest.NewRequest("GET", "/api/v1/findings/"+findingID+"/notify-preview?channel=issue&target=gh", nil)
+			w := httptest.NewRecorder()
+			testRouter(mock).ServeHTTP(w, req)
+
+			require.Equal(t, tc.wantCode, w.Code, w.Body.String())
+			assert.Contains(t, w.Body.String(), `"code":"`+tc.wantBody+`"`)
+			assert.NotContains(t, w.Body.String(), "db down", "internal errors are logged, not returned")
+		})
+	}
+}
