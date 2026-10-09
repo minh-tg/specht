@@ -122,12 +122,19 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	}
 	input.RawData = redactRaw(sc, input.RawData)
 
-	// Replay guard: byte-identical input for the same project and commit
+	// The scan-scope hash is computed before the replay lookup and before any
+	// write: the replay key is (project, raw hash, commit, scope), so the
+	// same bytes at the same commit only replay within one scope. A PR-branch
+	// scan and its fast-forward merge on main share bytes and commit but not
+	// branch, so each keeps its own report and its own auto-fix run.
+	scopeHash := scanScopeHash(input, nr)
+
+	// Replay guard: identical input for the same project, commit, and scope
 	// that already completed answers with the stored report instead of
 	// writing a second one. The hash covers the redacted bytes (the stored
-	// form). A different commit with the same bytes ingests normally:
-	// scanner output is often byte-identical when nothing changed.
-	replayID, err := u.findReplayReport(ctx, project.ID, input.RawData, input.CommitSha)
+	// form). A different commit or scope with the same bytes ingests
+	// normally: scanner output is often byte-identical when nothing changed.
+	replayID, err := u.findReplayReport(ctx, project.ID, input.RawData, input.CommitSha, scopeHash)
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +161,7 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, err
 	}
 
-	report, err := u.createReport(ctx, project, input, nr, ctxInfo)
+	report, err := u.createReport(ctx, project, input, nr, ctxInfo, scopeHash)
 	if err != nil {
 		return nil, err
 	}
@@ -172,12 +179,12 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 
 	// Scan-equivalence auto-fix: runs after every finding is persisted and
 	// before the threshold check so the response reflects the post-fix state.
-	if err := u.autoFixAbsentFindings(ctx, project, input, report, nr, ctxInfo); err != nil {
+	if err := u.autoFixAbsentFindings(ctx, project, input, report, nr, scopeHash); err != nil {
 		u.markReportFailed(ctx, input, report, reportFailureAutoFix, err)
 		return nil, err
 	}
 
-	thresholdBreached, replay, err := u.checkGateAfterIngest(ctx, project, input, report, outcome.total)
+	thresholdBreached, replay, err := u.checkGateAfterIngest(ctx, project, input, report, outcome.total, scopeHash)
 	if err != nil {
 		return nil, err
 	}
@@ -202,13 +209,12 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 // that this report no longer observes move to fixed, each with a
 // state_changed event naming the source report. Incremental scans prove
 // nothing by absence, and parsers that cannot vouch for completeness
-// default to unknown — neither ever reaches the store.
-func (u *Usecases) autoFixAbsentFindings(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, nr *domain.NormalizedReport, ctxInfo reportContext) error {
+// default to unknown, neither of which ever reaches the store.
+func (u *Usecases) autoFixAbsentFindings(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, nr *domain.NormalizedReport, scopeHash string) error {
 	if input.ScanMode != ScanModeFull || nr.Completeness != domain.CompletenessComplete {
 		return nil
 	}
-	scopeHash := sha256.Sum256([]byte(scopeHashMaterial(input, nr, ctxInfo)))
-	fixed, err := u.deps.Stores.Findings.MarkAbsentFindingsFixed(ctx, project.ID, hex.EncodeToString(scopeHash[:]), report.ID)
+	fixed, err := u.deps.Stores.Findings.MarkAbsentFindingsFixed(ctx, project.ID, scopeHash, report.ID)
 	if err != nil {
 		return fmt.Errorf("auto-fix absent findings: %w", err)
 	}
@@ -247,12 +253,12 @@ func (u *Usecases) autoFixAbsentFindings(ctx context.Context, project port.Proje
 }
 
 // findReplayReport returns the id of a completed report whose (redacted)
-// bytes and commit match this ingest, or the empty string when the content is
-// new for this commit. A NULL stored commit and an empty request commit are
-// the same key.
-func (u *Usecases) findReplayReport(ctx context.Context, projectID string, rawData []byte, commit string) (string, error) {
+// bytes, commit, and scan scope match this ingest, or the empty string when
+// the content is new for this commit and scope. A NULL stored commit or scope
+// and an empty request one are the same key.
+func (u *Usecases) findReplayReport(ctx context.Context, projectID string, rawData []byte, commit, scopeHash string) (string, error) {
 	rawHash := sha256.Sum256(rawData)
-	id, err := u.deps.Stores.Reports.FindCompletedByHashAndCommit(ctx, projectID, hex.EncodeToString(rawHash[:]), commit)
+	id, err := u.deps.Stores.Reports.FindCompletedByReplayKey(ctx, projectID, hex.EncodeToString(rawHash[:]), commit, scopeHash)
 	if err == nil {
 		return id, nil
 	}
@@ -451,12 +457,12 @@ func (u *Usecases) resolveEnvironment(ctx context.Context, project port.Project,
 }
 
 // createReport persists the report row, returning ErrDuplicateReport on a
-// raw-data hash collision. The scope hash covers the scan scope (see
-// scopeHashMaterial), so content scanned against a different target,
-// artifact, branch, or environment never shares a scope.
-func (u *Usecases) createReport(ctx context.Context, project port.Project, input IngestReportInput, nr *domain.NormalizedReport, ctxInfo reportContext) (port.Report, error) {
+// raw-data hash collision. scopeHash covers the scan scope (see
+// scopeHashMaterial) and is computed before the replay lookup, so content
+// scanned against a different target, artifact, branch, or environment never
+// shares a scope.
+func (u *Usecases) createReport(ctx context.Context, project port.Project, input IngestReportInput, nr *domain.NormalizedReport, ctxInfo reportContext, scopeHash string) (port.Report, error) {
 	rawHash := sha256.Sum256(input.RawData)
-	scopeHash := sha256.Sum256([]byte(scopeHashMaterial(input, nr, ctxInfo)))
 
 	scanTarget := ""
 	if nr.Target != nil {
@@ -473,7 +479,7 @@ func (u *Usecases) createReport(ctx context.Context, project port.Project, input
 		ArtifactID:       ctxInfo.artifactID,
 		EnvironmentID:    ctxInfo.environmentID,
 		ScanScope:        mustMarshal(scopeDocument(nr)),
-		ScanScopeHash:    hex.EncodeToString(scopeHash[:]),
+		ScanScopeHash:    scopeHash,
 		Branch:           textPtr(input.Branch),
 		CommitSha:        textPtr(input.CommitSha),
 		BaseRevision:     textPtr(input.BaseRevision),
@@ -511,7 +517,7 @@ func changedFilesDocument(files []string) json.RawMessage {
 // on the same branch must land in the same scope as the commit before it.
 // The target enters with its build-specific parts removed (see
 // scopeTargetIdentifier).
-func scopeHashMaterial(input IngestReportInput, nr *domain.NormalizedReport, ctxInfo reportContext) string {
+func scopeHashMaterial(input IngestReportInput, nr *domain.NormalizedReport) string {
 	target := ""
 	if nr.Target != nil {
 		target = scopeTargetIdentifier(nr.Target.Kind, nr.Target.Identifier)
@@ -523,6 +529,14 @@ func scopeHashMaterial(input IngestReportInput, nr *domain.NormalizedReport, ctx
 		input.Branch,
 		input.Environment,
 	}, "\x00")
+}
+
+// scanScopeHash returns the hex SHA-256 of the scope material for one request
+// and its parsed report. It reads no resolved row and writes nothing, so the
+// ingest can compute it before the replay lookup.
+func scanScopeHash(input IngestReportInput, nr *domain.NormalizedReport) string {
+	sum := sha256.Sum256([]byte(scopeHashMaterial(input, nr)))
+	return hex.EncodeToString(sum[:])
 }
 
 // scopeTargetIdentifier strips the parts of a target identifier that change on
@@ -1097,11 +1111,11 @@ func (u *Usecases) persistInventory(ctx context.Context, input IngestReportInput
 // When completion loses a duplicate-content race, the returned replay output
 // answers as the winner's report instead of an error. The bool return is
 // meaningless then; the caller returns the replay output directly.
-func (u *Usecases) checkGateAfterIngest(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, total int) (bool, *IngestReportOutput, error) {
+func (u *Usecases) checkGateAfterIngest(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, total int, scopeHash string) (bool, *IngestReportOutput, error) {
 	_, err := u.deps.Stores.Reports.UpdateStatus(ctx, report.ID, project.ID, "completed", int32(total), nil)
 	if err != nil {
 		if errors.Is(err, port.ErrDuplicateReport) {
-			return u.replayRaceWinner(ctx, project, input, report.ID)
+			return u.replayRaceWinner(ctx, project, input, report.ID, scopeHash)
 		}
 		slog.Error("update report status failed", "scanner", input.Scanner, "report_id", report.ID, "error", err)
 		return false, nil, fmt.Errorf("scanner %s: update report status: %w", input.Scanner, err)
@@ -1112,7 +1126,7 @@ func (u *Usecases) checkGateAfterIngest(ctx context.Context, project port.Projec
 		// Duplicate-content race: a twin ingest completed first, so the
 		// partial dedup index rejected this completion.
 		if errors.Is(err, port.ErrDuplicateReport) {
-			return u.replayRaceWinner(ctx, project, input, report.ID)
+			return u.replayRaceWinner(ctx, project, input, report.ID, scopeHash)
 		}
 		slog.Error("gate check failed", "scanner", input.Scanner, "project", project.ID, "error", err)
 		return false, nil, fmt.Errorf("scanner %s: gate check: %w", input.Scanner, err)
@@ -1140,15 +1154,16 @@ func (u *Usecases) evaluateIngestGate(ctx context.Context, project port.Project,
 	return decision.Status == gate.StatusFail, nil
 }
 
-// replayRaceWinner answers a lost duplicate-completion race: a twin ingest
-// completed first, so this report's completion violated the dedup index.
-// The orphaned processing row is removed and the winner is replayed.
-// ErrDuplicateReport is returned only when the winner cannot be found, for
-// example when a concurrent retention purge removed it between the index
-// violation and the lookup. That is the one remaining case that answers 409.
-func (u *Usecases) replayRaceWinner(ctx context.Context, project port.Project, input IngestReportInput, orphanID string) (bool, *IngestReportOutput, error) {
+// replayRaceWinner answers a lost duplicate-completion race: a twin ingest of
+// the same scope, commit, and bytes completed first, so this report's
+// completion violated the dedup index. The orphaned processing row is removed
+// and the winner is replayed. ErrDuplicateReport is returned only when the
+// winner cannot be found, for example when a concurrent retention purge
+// removed it between the index violation and the lookup. That is the one
+// remaining case that answers 409.
+func (u *Usecases) replayRaceWinner(ctx context.Context, project port.Project, input IngestReportInput, orphanID, scopeHash string) (bool, *IngestReportOutput, error) {
 	u.deleteDuplicateReport(ctx, project.ID, orphanID)
-	winnerID, err := u.findReplayReport(ctx, project.ID, input.RawData, input.CommitSha)
+	winnerID, err := u.findReplayReport(ctx, project.ID, input.RawData, input.CommitSha, scopeHash)
 	if err != nil {
 		return false, nil, err
 	}
@@ -1162,11 +1177,11 @@ func (u *Usecases) replayRaceWinner(ctx context.Context, project port.Project, i
 	return out.ThresholdBreached, out, nil
 }
 
-// deleteDuplicateReport removes a processing row orphaned by a lost
-// duplicate race. Occurrences cascade; shared finding rows are untouched.
-// Failures log only: the row is garbage either way (retention purges
-// processing rows never, so leaving it would strand it permanently —
-// hence best-effort delete here, loud log on failure).
+// deleteDuplicateReport removes a processing row orphaned by a lost duplicate
+// race. Occurrences cascade; shared finding rows are untouched. Failures log
+// only: the row is garbage either way (retention purges processing rows never,
+// so leaving it would strand it permanently, hence best-effort delete here,
+// loud log on failure).
 func (u *Usecases) deleteDuplicateReport(ctx context.Context, projectID, reportID string) {
 	if err := u.deps.Stores.Reports.DeleteReport(ctx, reportID, projectID); err != nil {
 		slog.Error("delete duplicate report failed", "report", reportID, "error", err)

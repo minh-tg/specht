@@ -160,7 +160,7 @@ func TestAutoFixAbsentFindings_SkipsIncrementalScans(t *testing.T) {
 		IngestReportInput{ProjectSlug: "my-app", Scanner: "trivy", ScanMode: ScanModeIncremental},
 		port.Report{ID: "rep-1"},
 		&domain.NormalizedReport{Completeness: domain.CompletenessComplete},
-		reportContext{})
+		"scope-hash")
 	require.NoError(t, err)
 }
 

@@ -21,12 +21,11 @@ func TestScopeHashMaterial_StableAndSensitive(t *testing.T) {
 		}
 	}
 	nr := &domain.NormalizedReport{Target: &domain.TargetInfo{Identifier: "img:latest"}}
-	ctxInfo := reportContext{}
 
 	// Deterministic: identical inputs hash identically.
 	assert.Equal(t,
-		scopeHashMaterial(base(), nr, ctxInfo),
-		scopeHashMaterial(base(), nr, ctxInfo),
+		scopeHashMaterial(base(), nr),
+		scopeHashMaterial(base(), nr),
 	)
 
 	// Every scope attribute must change the material (thus the hash).
@@ -43,7 +42,7 @@ func TestScopeHashMaterial_StableAndSensitive(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			in := base()
 			tt.mut(&in)
-			assert.NotEqual(t, scopeHashMaterial(base(), nr, ctxInfo), scopeHashMaterial(in, nr, ctxInfo),
+			assert.NotEqual(t, scopeHashMaterial(base(), nr), scopeHashMaterial(in, nr),
 				"scope material must change when %s changes", tt.name)
 		})
 	}
@@ -61,7 +60,7 @@ func TestScopeHashMaterial_StableAndSensitive(t *testing.T) {
 		t.Run(tt.name+" is not scope", func(t *testing.T) {
 			in := base()
 			tt.mut(&in)
-			assert.Equal(t, scopeHashMaterial(base(), nr, ctxInfo), scopeHashMaterial(in, nr, ctxInfo),
+			assert.Equal(t, scopeHashMaterial(base(), nr), scopeHashMaterial(in, nr),
 				"scope material must not change when %s changes", tt.name)
 		})
 	}
@@ -72,12 +71,12 @@ func TestScopeHashMaterial_StableAndSensitive(t *testing.T) {
 		return &domain.NormalizedReport{Target: &domain.TargetInfo{Kind: "container_image", Identifier: identifier}}
 	}
 	assert.Equal(t,
-		scopeHashMaterial(base(), image("img:1"), ctxInfo),
-		scopeHashMaterial(base(), image("img:2"), ctxInfo),
+		scopeHashMaterial(base(), image("img:1")),
+		scopeHashMaterial(base(), image("img:2")),
 		"scope material must not change when only the image tag changes")
 	assert.NotEqual(t,
-		scopeHashMaterial(base(), image("img-a:1"), ctxInfo),
-		scopeHashMaterial(base(), image("img-b:1"), ctxInfo),
+		scopeHashMaterial(base(), image("img-a:1")),
+		scopeHashMaterial(base(), image("img-b:1")),
 		"scope material must change when the image name changes")
 }
 
@@ -115,8 +114,8 @@ func TestScopeTargetIdentifier(t *testing.T) {
 }
 
 func TestScopeHashMaterial_TargetChanges(t *testing.T) {
-	a := scopeHashMaterial(IngestReportInput{Scanner: "trivy"}, &domain.NormalizedReport{Target: &domain.TargetInfo{Identifier: "img:a"}}, reportContext{})
-	b := scopeHashMaterial(IngestReportInput{Scanner: "trivy"}, &domain.NormalizedReport{Target: &domain.TargetInfo{Identifier: "img:b"}}, reportContext{})
+	a := scopeHashMaterial(IngestReportInput{Scanner: "trivy"}, &domain.NormalizedReport{Target: &domain.TargetInfo{Identifier: "img:a"}})
+	b := scopeHashMaterial(IngestReportInput{Scanner: "trivy"}, &domain.NormalizedReport{Target: &domain.TargetInfo{Identifier: "img:b"}})
 	assert.NotEqual(t, a, b)
 }
 

@@ -186,27 +186,34 @@ func (q *Queries) DeleteStaleReports(ctx context.Context, completedAt pgtype.Tim
 	return items, nil
 }
 
-const findCompletedByHashAndCommit = `-- name: FindCompletedByHashAndCommit :one
+const findCompletedByReplayKey = `-- name: FindCompletedByReplayKey :one
 SELECT id FROM reports
 WHERE project_id = $1 AND raw_report_hash = $2
   AND COALESCE(commit_sha, '') = COALESCE($3, '')
+  AND COALESCE(scan_scope_hash, '') = COALESCE($4, '')
   AND status = 'completed'
 LIMIT 1
 `
 
-type FindCompletedByHashAndCommitParams struct {
+type FindCompletedByReplayKeyParams struct {
 	ProjectID     pgtype.UUID `json:"project_id"`
 	RawReportHash pgtype.Text `json:"raw_report_hash"`
 	CommitSha     pgtype.Text `json:"commit_sha"`
+	ScanScopeHash pgtype.Text `json:"scan_scope_hash"`
 }
 
 // Replay lookup: a completed report for the same project, raw-content hash,
-// and commit. A NULL commit_sha compares as the empty string, so ingests
-// that both omit a commit still find each other. pgx.ErrNoRows means this
-// content is new for this commit (or only ever failed) — the caller ingests
-// normally.
-func (q *Queries) FindCompletedByHashAndCommit(ctx context.Context, arg FindCompletedByHashAndCommitParams) (pgtype.UUID, error) {
-	row := q.db.QueryRow(ctx, findCompletedByHashAndCommit, arg.ProjectID, arg.RawReportHash, arg.CommitSha)
+// commit, and scan scope. A NULL commit_sha or scan_scope_hash compares as
+// the empty string, so ingests that both omit one still find each other.
+// pgx.ErrNoRows means this content is new for this scope at this commit (or
+// only ever failed), so the caller ingests normally.
+func (q *Queries) FindCompletedByReplayKey(ctx context.Context, arg FindCompletedByReplayKeyParams) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, findCompletedByReplayKey,
+		arg.ProjectID,
+		arg.RawReportHash,
+		arg.CommitSha,
+		arg.ScanScopeHash,
+	)
 	var id pgtype.UUID
 	err := row.Scan(&id)
 	return id, err

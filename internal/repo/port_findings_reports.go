@@ -257,12 +257,12 @@ func (r *pgReportPort) DeleteStaleReports(ctx context.Context, cutoff time.Time)
 	return out, nil
 }
 
-func (r *pgReportPort) FindCompletedByHashAndCommit(ctx context.Context, projectID, rawHash, commit string) (string, error) {
+func (r *pgReportPort) FindCompletedByReplayKey(ctx context.Context, projectID, rawHash, commit, scopeHash string) (string, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
 		return "", err
 	}
-	id, err := r.inner.FindCompletedByHashAndCommit(ctx, pid, textPtrFromString(&rawHash), textPtrFromString(&commit))
+	id, err := r.inner.FindCompletedByReplayKey(ctx, pid, textPtrFromString(&rawHash), textPtrFromString(&commit), textPtrFromString(&scopeHash))
 	if err != nil {
 		return "", mappingErr(err)
 	}
