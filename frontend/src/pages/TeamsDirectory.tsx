@@ -8,6 +8,8 @@ import {
   useTeams,
 } from "@/api/hooks";
 import { useUserDirectory } from "@/api/users";
+import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -200,12 +202,7 @@ export function TeamsDirectory() {
       {teamsLoading
         ? <div className="py-12 text-center text-muted-foreground text-sm">Loading teams...</div>
         : teamsError
-        ? (
-          <div className="bg-card border border-border rounded-lg p-12 text-center">
-            <p className="text-destructive text-sm mb-4">Could not load company teams.</p>
-            <Button variant="outline" onClick={() => refetchTeams()}>Retry</Button>
-          </div>
-        )
+        ? <ErrorState title="Could not load company teams." onRetry={() => refetchTeams()} />
         : teams && teams.length > 0
         ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -230,12 +227,12 @@ export function TeamsDirectory() {
           </div>
         )
         : (
-          <div className="bg-card border border-border rounded-lg p-12 text-center">
-            <p className="text-muted-foreground text-sm mb-4">No company teams exist yet.</p>
-            {isGlobalAdmin && (
-              <Button onClick={() => setShowCreateModal(true)}>Create First Team</Button>
-            )}
-          </div>
+          <EmptyState
+            title="No company teams exist yet."
+            action={isGlobalAdmin
+              ? <Button onClick={() => setShowCreateModal(true)}>Create First Team</Button>
+              : undefined}
+          />
         )}
 
       <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
@@ -356,15 +353,8 @@ export function TeamsDirectory() {
               )
               : rosterError
               ? (
-                <div className="p-4 text-center text-xs">
-                  <p className="text-destructive mb-2">Could not load the roster.</p>
-                  <button
-                    type="button"
-                    className="text-action underline hover:no-underline"
-                    onClick={() => refetchRoster()}
-                  >
-                    Retry
-                  </button>
+                <div className="p-4">
+                  <ErrorState title="Could not load the roster." onRetry={() => refetchRoster()} />
                 </div>
               )
               : activeMembers && activeMembers.length > 0

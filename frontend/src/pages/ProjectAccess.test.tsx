@@ -182,7 +182,10 @@ describe("ProjectAccess", () => {
     const removeButtons = screen.getAllByRole("button", { name: "Remove" });
     // First remove button is for Sarah Chen (the only admin)
     expect(removeButtons[0]).toBeDisabled();
-    expect(removeButtons[0]).toHaveAttribute("title", "Cannot remove the last project admin");
+    expect(removeButtons[0].parentElement).toHaveAttribute("tabindex", "0");
+    expect(removeButtons[0].parentElement).toHaveTextContent(
+      "Cannot remove the last project admin",
+    );
 
     // Second remove button is for Alex Rivera (manager), enabled for Admin
     expect(removeButtons[1]).not.toBeDisabled();
@@ -291,8 +294,7 @@ describe("ProjectAccess", () => {
     const removeButtons = screen.getAllByRole("button", { name: "Remove" });
     // First button: u1 (fellow manager) -> disabled
     expect(removeButtons[0]).toBeDisabled();
-    expect(removeButtons[0]).toHaveAttribute(
-      "title",
+    expect(removeButtons[0].parentElement).toHaveTextContent(
       "Managers cannot modify fellow Managers or Admins",
     );
 
