@@ -911,7 +911,29 @@ const (
 	reportFailureFindings  = "Internal error: could not store findings."
 	reportFailureInventory = "Internal error: could not persist package inventory."
 	reportFailureAutoFix   = "Internal error: could not close findings absent from this scan."
+	// reportFailureGeneric is what a response shows for a stored failure
+	// reason that is not one of the fixed reasons above. Rows written before
+	// the fixed reasons existed hold raw store errors.
+	reportFailureGeneric = "Internal error: the report could not be processed."
 )
+
+// reportFailureReasonForResponse decides what a report response shows for its
+// stored failure reason. Only the fixed reasons pass through. Any other
+// non-empty value is replaced with reportFailureGeneric, so raw store output
+// from older rows never reaches a client. Nil and empty values are returned
+// unchanged.
+func reportFailureReasonForResponse(stored *string) *string {
+	if stored == nil || *stored == "" {
+		return stored
+	}
+	switch *stored {
+	case reportFailureFindings, reportFailureInventory, reportFailureAutoFix:
+		return stored
+	default:
+		generic := reportFailureGeneric
+		return &generic
+	}
+}
 
 // markReportFailed transitions a report created with status 'processing' to
 // 'failed' when a downstream ingest stage (finding persistence, inventory, or

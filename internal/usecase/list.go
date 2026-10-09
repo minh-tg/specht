@@ -245,7 +245,7 @@ func toReport(r port.Report) ReportResponse {
 		BaseRevision:  strOpt(r.BaseRevision),
 		ScanMode:      r.ScanMode,
 		ChangedFiles:  changedFilesOpt(r.ChangedFiles),
-		ErrorMessage:  strOpt(r.ErrorMessage),
+		ErrorMessage:  reportFailureReasonForResponse(r.ErrorMessage),
 		CreatedAt:     timePtr(r.CreatedAt),
 		CompletedAt:   timeOpt(r.CompletedAt),
 	}
