@@ -295,7 +295,7 @@ export function TeamsDirectory() {
           <div className="bg-card border border-border rounded-lg max-w-lg w-full p-6 shadow-xl space-y-4">
             <div>
               <h3 id="roster-modal-title" className="text-lg font-semibold text-foreground">
-                {activeRosterTeam.name} — Members
+                {activeRosterTeam.name} members
               </h3>
               <p className="text-muted-foreground text-xs mt-0.5">
                 {activeRosterTeam.description || "Manage individuals in this company team."}
