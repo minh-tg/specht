@@ -459,9 +459,6 @@ func (a *OIDCAuthenticator) identityFromUserInfo(ctx context.Context, tokenResp 
 // idTokenGroups extracts the groups claim from an already-validated
 // id_token. Callers must have validated the token first; this only decodes
 // the payload.
-// idTokenGroups extracts the groups claim from an already-validated
-// id_token. Callers must have validated the token first; this only decodes
-// the payload.
 func idTokenGroups(idToken, groupsClaim string) ([]string, error) {
 	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
 	claims := jwt.MapClaims{}
