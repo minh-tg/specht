@@ -1,4 +1,12 @@
 import "@testing-library/jest-dom";
+import { toast } from "sonner";
+import { afterEach } from "vitest";
+
+// Sonner keeps its toasts in a module-level store that outlives a test's Toaster, so a toast
+// raised by one test would otherwise be on screen in the next.
+afterEach(() => {
+  toast.dismiss();
+});
 
 /**
  * Newer Node versions ship an experimental global `localStorage` that shadows
