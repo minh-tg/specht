@@ -263,9 +263,16 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # A prerelease tag must not become the release GitHub hands out by
+          # default, so mark it and keep it out of the latest slot.
+          prerelease=()
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            prerelease=(--prerelease --latest=false)
+          fi
           gh release create "${GITHUB_REF_NAME}" \
             --repo "${GITHUB_REPOSITORY}" \
             --verify-tag \
+            "${prerelease[@]}" \
             --title "Specht ${GITHUB_REF_NAME}" \
             --notes "Adapter and CLI binaries for ${GITHUB_REF_NAME}, plus the adapter image ghcr.io/${GITHUB_REPOSITORY_OWNER}/specht-adapter:${GITHUB_REF_NAME}. Check every download against SHA256SUMS and verify SHA256SUMS with cosign verify-blob and SHA256SUMS.pem." \
             ./*.tar.gz ./*.zip SHA256SUMS SHA256SUMS.sig SHA256SUMS.pem
