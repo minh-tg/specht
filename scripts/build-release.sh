@@ -11,8 +11,10 @@
 #
 # Archives are reproducible: paths are trimmed, the VCS stamp is dropped,
 # archive members are sorted, and every member mtime is pinned to
-# SOURCE_DATE_EPOCH (the commit time by default). Set SOURCE_DATE_EPOCH or
-# COMMIT to override what the current checkout would produce.
+# SOURCE_DATE_EPOCH (the commit time by default). Windows zips are written by
+# python3's zipfile module rather than whichever zip(1) a builder happens to
+# have installed, so two builders produce the same bytes. Set SOURCE_DATE_EPOCH
+# or COMMIT to override what the current checkout would produce.
 set -euo pipefail
 
 if [[ $# -ne 2 ]]; then
@@ -75,19 +77,16 @@ tar_file() {
     -cf - -C "$STAGE" "$@" | gzip -n -9 >"$archive"
 }
 
-# zip_file <archive> <member>... : Windows assets. zip(1) is not part of the
-# dev shell, so python3 writes the same layout with fixed metadata when it is
-# missing. Each tool is deterministic on its own; a single run uses one of
-# them for every archive.
+# zip_file <archive> <member>... : Windows assets, always written by the
+# python3 zipfile module. Picking between zip(1) and python3 by what a builder
+# has installed makes the archive bytes depend on the builder, so there is one
+# implementation; python3 is on the GitHub runners and in the dev shell.
+# Members are sorted and carry fixed mtimes and permissions.
 zip_file() {
   local archive="$1"
   shift
-  if command -v zip >/dev/null 2>&1; then
-    (cd "$STAGE" && TZ=UTC zip -X -q -9 "$archive" "$@")
-    return
-  fi
   if ! command -v python3 >/dev/null 2>&1; then
-    echo "error: building zip archives needs zip or python3" >&2
+    echo "error: building zip archives needs python3" >&2
     return 1
   fi
   local members=()
