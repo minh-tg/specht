@@ -38,7 +38,9 @@ type PRCheckPreviewInput struct {
 	// ReportID ties the check to one exact scan. Empty scopes by commit:
 	// findings the commit introduced, whatever report observed them.
 	ReportID string
-	// MinSeverityRank floors the findings a check considers (<=0 means high).
+	// MinSeverityRank requests a floor for the findings a check considers.
+	// Zero applies the project policy floor; a positive rank can only tighten
+	// it (see tightenSeverityFloor).
 	MinSeverityRank int16
 }
 
@@ -108,9 +110,9 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 		return nil, fmt.Errorf("%w %q", ErrUnknownProvider, name)
 	}
 
-	floor := input.MinSeverityRank
-	if floor <= 0 {
-		floor = 3
+	floor, _, err := u.gateFloor(ctx, project, input.MinSeverityRank)
+	if err != nil {
+		return nil, fmt.Errorf("resolve policy: %w", err)
 	}
 
 	u.initGate()

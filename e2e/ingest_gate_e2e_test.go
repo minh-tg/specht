@@ -68,10 +68,13 @@ func TestE2E_IngestFindingsAndGate(t *testing.T) {
 		require.EqualValues(t, 1, gs.BlockingCount)
 	})
 
-	t.Run("raising the floor above high unblocks the gate", func(t *testing.T) {
+	t.Run("a requested floor above the policy cannot unblock the gate", func(t *testing.T) {
+		// A severity request can only tighten the project policy floor, so
+		// asking for critical under a high policy keeps the high finding
+		// blocking.
 		gs := getGate(t, slug, "severity=critical")
-		require.False(t, gs.ThresholdBreached, "no critical findings exist")
-		require.Zero(t, gs.BlockingCount)
+		require.True(t, gs.ThresholdBreached, "the high policy floor still applies")
+		require.EqualValues(t, 1, gs.BlockingCount)
 	})
 
 	t.Run("lowering the floor to medium blocks both findings", func(t *testing.T) {

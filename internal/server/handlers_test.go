@@ -2022,6 +2022,34 @@ func TestPreviewPRCheck_Success(t *testing.T) {
 	assert.Equal(t, "abc123", got.CommitSha)
 }
 
+func TestPreviewPRCheck_SeverityRequest(t *testing.T) {
+	cases := map[string]struct {
+		query string
+		want  int16
+	}{
+		"absent severity is no request": {query: "commit=abc123", want: 0},
+		"named severity is a request":   {query: "commit=abc123&severity=critical", want: 4},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var got usecase.PRCheckPreviewInput
+			mock := &mockUsecases{
+				previewPRCheckFn: func(ctx context.Context, input usecase.PRCheckPreviewInput) (*usecase.PRCheckPreview, error) {
+					got = input
+					return &usecase.PRCheckPreview{Provider: "github", CommitSha: "abc123", Conclusion: "success"}, nil
+				},
+			}
+			router := testRouter(mock)
+			req := httptest.NewRequest("GET", "/api/v1/projects/my-app/pr-check?"+tc.query, nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusOK, w.Code)
+			assert.Equal(t, tc.want, got.MinSeverityRank)
+		})
+	}
+}
+
 func TestPreviewPRCheck_MissingCommit(t *testing.T) {
 	router := testRouter(&mockUsecases{})
 	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/pr-check", nil)

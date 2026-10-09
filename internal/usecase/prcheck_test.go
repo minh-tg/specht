@@ -311,3 +311,27 @@ func TestPreviewPRCheck_BatchedDisplayContexts(t *testing.T) {
 	assert.Equal(t, 20, out.Annotations[0].StartLine)
 	assert.Equal(t, 25, out.Annotations[0].EndLine)
 }
+
+func TestPreviewPRCheck_RequestedFloorOnlyTightens(t *testing.T) {
+	for _, tc := range floorRequestCases {
+		t.Run(tc.name, func(t *testing.T) {
+			uc, fr := prcheckHarness(t)
+			project := projectWithSettings(tc.settings)
+			pr := uc.deps.Stores.Projects.(*mockProjectRepo)
+			pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+				return project, nil
+			}
+			var got int16
+			fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minRank int16) ([]port.GateCandidate, error) {
+				got = minRank
+				return nil, nil
+			}
+
+			_, err := uc.PreviewPRCheck(findingScopeCtx(project.ID), PRCheckPreviewInput{
+				ProjectSlug: "my-app", CommitSha: prcheckCommit, MinSeverityRank: tc.requested,
+			})
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
