@@ -1,0 +1,257 @@
+name: action self-test
+
+# Exercises action.yml end to end without publishing anything: the build job
+# produces a disposable release (synthetic version, throwaway cosign keys) and
+# the run job drives the action against local servers on Linux, macOS and
+# Windows. Cases a and b prove a verified release runs and that a blocking
+# verdict fails the step; cases c, d and e prove a tampered archive, a foreign
+# signature and a missing version all fail closed before the adapter runs.
+on:
+  pull_request:
+    paths:
+      - "action.yml"
+      - ".github/action-selftest/**"
+      - ".github/workflows/action-selftest.yml"
+      - "cmd/adapter/**"
+      - "scripts/build-release.sh"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build + sign a disposable release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The same script the tag release runs, with a synthetic version so the
+      # self-test never depends on a published release.
+      - name: Build the release archives
+        run: ./scripts/build-release.sh 0.0.0-selftest dist
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@053f9b74638557590800a301da1ba82351507e2c # v3.8.1
+
+      - name: Sign the checksum manifest with throwaway keys
+        run: bash .github/action-selftest/sign-release.sh dist .selftest-keys
+
+      # The action fetches <base>/<tag>/<asset>, so the tag is a directory in
+      # the served tree. The unrelated public key stays beside the manifest
+      # only for the bad-signature case.
+      - name: Assemble the disposable release
+        run: |
+          mkdir -p release/v0.0.0-selftest
+          cp dist/* release/v0.0.0-selftest/
+          cp .selftest-keys/signing/cosign.pub release/cosign.pub
+          cp .selftest-keys/other/cosign.pub release/other.pub
+
+      - name: Upload the disposable release
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selftest-release
+          path: release/
+          if-no-files-found: error
+          retention-days: 1
+
+  run:
+    name: run the action (${{ matrix.os }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Download the disposable release
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: selftest-release
+          path: release
+
+      - name: Read the test public keys
+        id: keys
+        shell: bash
+        run: |
+          {
+            echo "signing<<SELFTEST_SIGNING_EOF"
+            cat release/cosign.pub
+            echo "SELFTEST_SIGNING_EOF"
+            echo "other<<SELFTEST_OTHER_EOF"
+            cat release/other.pub
+            echo "SELFTEST_OTHER_EOF"
+          } >>"$GITHUB_OUTPUT"
+
+      - name: Serve the release and start the fake Specht API
+        shell: bash
+        run: |
+          set -euo pipefail
+          py=python3
+          if ! command -v python3 >/dev/null 2>&1; then
+            py=python
+          fi
+          rm -rf tampered
+          cp -r release tampered
+          "$py" .github/action-selftest/tamper.py 0.0.0-selftest tampered/v0.0.0-selftest
+          nohup "$py" -m http.server 8123 --bind 127.0.0.1 --directory release >release-server.log 2>&1 &
+          nohup "$py" -m http.server 8125 --bind 127.0.0.1 --directory tampered >tampered-server.log 2>&1 &
+          nohup "$py" .github/action-selftest/fake-api.py --port 8124 --api-key selftest-key >fake-api.log 2>&1 &
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8123/v0.0.0-selftest/SHA256SUMS >/dev/null 2>&1 &&
+              curl -fsS http://127.0.0.1:8124/api/v1/health >/dev/null 2>&1; then
+              echo "release server and fake API are up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::the local servers did not become ready"
+          cat release-server.log fake-api.log || true
+          exit 1
+
+      - name: "a: a verified release runs and passes (project pass)"
+        id: pass
+        uses: ./
+        with:
+          api-url: http://127.0.0.1:8124
+          api-key: selftest-key
+          project: pass
+          file: .github/action-selftest/scan.json
+          tool: trivy
+          version: v0.0.0-selftest
+          release-base-url: http://127.0.0.1:8123
+          cosign-public-key: ${{ steps.keys.outputs.signing }}
+          github-token: ""
+
+      - name: "a: assert the action succeeded"
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.pass.outcome }}
+          VERSION: ${{ steps.pass.outputs.version }}
+          SKIPPED: ${{ steps.pass.outputs.skipped }}
+        run: |
+          bash .github/action-selftest/assert-outcome.sh success "$OUTCOME"
+          if [[ "$VERSION" != "0.0.0-selftest" ]]; then
+            echo "::error::expected the version output to be 0.0.0-selftest, got '$VERSION'"
+            exit 1
+          fi
+          if [[ "$SKIPPED" != "false" ]]; then
+            echo "::error::expected skipped=false, got '$SKIPPED'"
+            exit 1
+          fi
+
+      - name: "b: a blocking verdict fails the step (project blocked)"
+        id: blocked
+        continue-on-error: true
+        uses: ./
+        with:
+          api-url: http://127.0.0.1:8124
+          api-key: selftest-key
+          project: blocked
+          file: .github/action-selftest/scan.json
+          tool: trivy
+          version: v0.0.0-selftest
+          release-base-url: http://127.0.0.1:8123
+          cosign-public-key: ${{ steps.keys.outputs.signing }}
+          github-token: ""
+
+      - name: "b: assert the action failed"
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.blocked.outcome }}
+        run: bash .github/action-selftest/assert-outcome.sh failure "$OUTCOME"
+
+      - name: "c: a tampered archive is rejected"
+        id: tampered
+        continue-on-error: true
+        uses: ./
+        with:
+          api-url: http://127.0.0.1:8124
+          api-key: selftest-key
+          project: pass
+          file: .github/action-selftest/scan.json
+          tool: trivy
+          version: v0.0.0-selftest
+          release-base-url: http://127.0.0.1:8125
+          cosign-public-key: ${{ steps.keys.outputs.signing }}
+          github-token: ""
+
+      - name: "c: assert the action failed"
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.tampered.outcome }}
+        run: bash .github/action-selftest/assert-outcome.sh failure "$OUTCOME"
+
+      - name: "d: a signature from another key is rejected"
+        id: badsig
+        continue-on-error: true
+        uses: ./
+        with:
+          api-url: http://127.0.0.1:8124
+          api-key: selftest-key
+          project: pass
+          file: .github/action-selftest/scan.json
+          tool: trivy
+          version: v0.0.0-selftest
+          release-base-url: http://127.0.0.1:8123
+          cosign-public-key: ${{ steps.keys.outputs.other }}
+          github-token: ""
+
+      - name: "d: assert the action failed"
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.badsig.outcome }}
+        run: bash .github/action-selftest/assert-outcome.sh failure "$OUTCOME"
+
+      # No version input: this workflow runs on a pull request or a manual
+      # dispatch, so github.action_ref is never a release tag and the action
+      # must refuse to guess a version. A dispatch from a tag is the one case
+      # where a tag ref exists, so it is skipped here.
+      - name: "e: a missing release tag is rejected"
+        id: noversion
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        continue-on-error: true
+        uses: ./
+        with:
+          api-url: http://127.0.0.1:8124
+          api-key: selftest-key
+          project: pass
+          file: .github/action-selftest/scan.json
+          tool: trivy
+          release-base-url: http://127.0.0.1:8123
+          cosign-public-key: ${{ steps.keys.outputs.signing }}
+          github-token: ""
+
+      - name: "e: assert the action failed"
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.noversion.outcome }}
+        run: bash .github/action-selftest/assert-outcome.sh failure "$OUTCOME"
+
+      # Cases c, d and e must fail closed. The fake API logs one line per
+      # successful ingest, so the two runs from cases a and b are all there
+      # should ever be: a rejected release never reaches the adapter.
+      - name: "c/d/e: assert no rejected release reached the adapter"
+        shell: bash
+        run: |
+          ingests="$(grep -c '^ingest ' fake-api.log || true)"
+          if [[ "$ingests" != "2" ]]; then
+            echo "::error::expected 2 ingests (cases a and b), found $ingests; a rejected release must not run the adapter"
+            cat fake-api.log
+            exit 1
+          fi
+
+      - name: Show the fake API log
+        if: always()
+        shell: bash
+        run: cat fake-api.log || true
