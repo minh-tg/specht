@@ -9,6 +9,8 @@ import {
   useUnlinkProjectTeam,
 } from "@/api/hooks";
 import { useUserDirectory } from "@/api/users";
+import { DisabledReason } from "@/components/DisabledReason";
+import { ErrorState } from "@/components/ErrorState";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,6 +23,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { isUuid } from "@/lib/uuid";
 import type { ProjectRole } from "@/types/api";
+import { LockIcon, ShieldCheckIcon } from "lucide-react";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -134,7 +137,7 @@ export function ProjectAccess() {
     <div className="space-y-8">
       {currentRole === "manager" && (
         <div className="border border-ring/40 bg-ring/5 text-foreground rounded-lg p-3 text-sm flex items-center gap-2">
-          <span aria-hidden="true">🛡️</span>
+          <ShieldCheckIcon aria-hidden="true" className="size-4 shrink-0" />
           <div>
             <strong>Manager Authority:</strong>{" "}
             You can manage direct members and link company teams. Assigning or removing Admin roles
@@ -145,7 +148,7 @@ export function ProjectAccess() {
 
       {currentRole === "member" && (
         <div className="border border-border bg-muted/50 text-muted-foreground rounded-lg p-3 text-sm flex items-center gap-2">
-          <span aria-hidden="true">🔒</span>
+          <LockIcon aria-hidden="true" className="size-4 shrink-0" />
           <div>
             <strong>Read-Only Member View:</strong>{" "}
             You are viewing project members and linked teams. Modifications require Project Manager
@@ -179,15 +182,8 @@ export function ProjectAccess() {
           ? <div className="p-6 text-center text-muted-foreground text-sm">Loading members...</div>
           : membersError
           ? (
-            <div className="p-6 text-center text-sm">
-              <p className="text-destructive mb-2">Could not load members.</p>
-              <button
-                type="button"
-                className="text-action underline hover:no-underline"
-                onClick={() => refetchMembers()}
-              >
-                Retry
-              </button>
+            <div className="p-4">
+              <ErrorState title="Could not load members." onRetry={() => refetchMembers()} />
             </div>
           )
           : (
@@ -235,16 +231,17 @@ export function ProjectAccess() {
                             <td className="px-5 py-3.5 text-right">
                               {canManageMembers
                                 ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="xs"
-                                    disabled={!canRemove || removeMemberMutation.isPending}
-                                    title={disabledReason}
-                                    className="text-destructive hover:bg-destructive/10"
-                                    onClick={() => removeMemberMutation.mutate(member.user_id)}
-                                  >
-                                    Remove
-                                  </Button>
+                                  <DisabledReason reason={disabledReason}>
+                                    <Button
+                                      variant="ghost"
+                                      size="xs"
+                                      disabled={!canRemove || removeMemberMutation.isPending}
+                                      className="text-destructive hover:bg-destructive/10"
+                                      onClick={() => removeMemberMutation.mutate(member.user_id)}
+                                    >
+                                      Remove
+                                    </Button>
+                                  </DisabledReason>
                                 )
                                 : <span className="text-muted-foreground text-xs">View only</span>}
                             </td>
@@ -302,15 +299,8 @@ export function ProjectAccess() {
           )
           : teamsError
           ? (
-            <div className="p-6 text-center text-sm">
-              <p className="text-destructive mb-2">Could not load linked teams.</p>
-              <button
-                type="button"
-                className="text-action underline hover:no-underline"
-                onClick={() => refetchTeams()}
-              >
-                Retry
-              </button>
+            <div className="p-4">
+              <ErrorState title="Could not load linked teams." onRetry={() => refetchTeams()} />
             </div>
           )
           : (
@@ -341,18 +331,21 @@ export function ProjectAccess() {
                             <td className="px-5 py-3.5 text-right">
                               {canManageMembers
                                 ? (
-                                  <Button
-                                    variant="ghost"
-                                    size="xs"
-                                    disabled={!canUnlink || unlinkTeamMutation.isPending}
-                                    title={isRestrictedAdminTeam
+                                  <DisabledReason
+                                    reason={isRestrictedAdminTeam
                                       ? "Only Project Admins can unlink Admin-tier teams"
                                       : undefined}
-                                    className="text-destructive hover:bg-destructive/10"
-                                    onClick={() => unlinkTeamMutation.mutate(team.team_id)}
                                   >
-                                    Unlink
-                                  </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="xs"
+                                      disabled={!canUnlink || unlinkTeamMutation.isPending}
+                                      className="text-destructive hover:bg-destructive/10"
+                                      onClick={() => unlinkTeamMutation.mutate(team.team_id)}
+                                    >
+                                      Unlink
+                                    </Button>
+                                  </DisabledReason>
                                 )
                                 : <span className="text-muted-foreground text-xs">View only</span>}
                             </td>
