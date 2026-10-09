@@ -78,6 +78,21 @@ func TestSafeLine(t *testing.T) {
 	assert.Equal(t, 42, SafeLine(42))
 }
 
+func TestBoundFingerprint_OverlongFingerprintsSharingAPrefixStayDistinct(t *testing.T) {
+	shared := make([]byte, MaxFingerprintLength*3)
+	for i := range shared {
+		shared[i] = 'a'
+	}
+	a := BoundFingerprint(string(shared) + "x")
+	b := BoundFingerprint(string(shared) + "y")
+	if a == b {
+		t.Fatalf("overlong fingerprints differing only at the end collapsed to %q", a)
+	}
+	if len(a) > MaxFingerprintLength || len(b) > MaxFingerprintLength {
+		t.Fatalf("bounded fingerprints exceed the limit: %d and %d bytes", len(a), len(b))
+	}
+}
+
 func TestBoundFingerprint(t *testing.T) {
 	short := "sast:rule-1:main.go"
 	assert.Equal(t, short, BoundFingerprint(short))
