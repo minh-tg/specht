@@ -383,8 +383,11 @@ export interface paths {
     put?: never;
     /**
      * Ingest a scanner report
-     * @description The core write path. The raw scanner output is hashed; re-posting
-     *     identical bytes for the same project is a `409`. The payload is parsed
+     * @description The core write path. The raw scanner output is hashed together with
+     *     the commit; re-posting identical bytes for the same project and
+     *     commit returns the stored report with `replayed: true` and a freshly
+     *     evaluated verdict at `200`, writing nothing. Identical bytes for a
+     *     different commit ingest as a new report. The payload is parsed
      *     by the named scanner, findings are upserted by fingerprint, and the gate
      *     is evaluated inline so the response is the post-ingest verdict. A parse
      *     failure persists no report row.
@@ -1451,6 +1454,8 @@ export interface components {
       fallback_reason?: "unsupported_scanner" | "missing_baseline";
       introduced_count: number;
       pre_existing_count: number;
+      /** @description True when identical bytes for the same commit returned an existing report instead of ingesting again. */
+      replayed: boolean;
     };
     Report: {
       /** Format: uuid */
@@ -2958,6 +2963,18 @@ export interface operations {
       };
     };
     responses: {
+      /**
+       * @description Identical bytes for the same project and commit: the stored report
+       *     is returned with its freshly evaluated verdict and `replayed: true`.
+       */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["IngestResponse"];
+        };
+      };
       /** @description Ingested and evaluated. */
       201: {
         headers: {
@@ -2971,7 +2988,11 @@ export interface operations {
       401: components["responses"]["Unauthorized"];
       403: components["responses"]["ProjectAccessDenied"];
       404: components["responses"]["NotFound"];
-      /** @description Identical report bytes already ingested for this project. */
+      /**
+       * @description Identical report bytes for the same commit, but the stored report
+       *     could not be found for a replay (for example, a concurrent retention
+       *     purge removed it).
+       */
       409: {
         headers: {
           [name: string]: unknown;

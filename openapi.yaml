@@ -655,8 +655,11 @@ paths:
       operationId: ingestReport
       summary: Ingest a scanner report
       description: |
-        The core write path. The raw scanner output is hashed; re-posting
-        identical bytes for the same project is a `409`. The payload is parsed
+        The core write path. The raw scanner output is hashed together with
+        the commit; re-posting identical bytes for the same project and
+        commit returns the stored report with `replayed: true` and a freshly
+        evaluated verdict at `200`, writing nothing. Identical bytes for a
+        different commit ingest as a new report. The payload is parsed
         by the named scanner, findings are upserted by fingerprint, and the gate
         is evaluated inline so the response is the post-ingest verdict. A parse
         failure persists no report row.
@@ -675,6 +678,13 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/IngestRequest" }
       responses:
+        "200":
+          description: |
+            Identical bytes for the same project and commit: the stored report
+            is returned with its freshly evaluated verdict and `replayed: true`.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IngestResponse" }
         "201":
           description: Ingested and evaluated.
           content:
@@ -685,7 +695,10 @@ paths:
         "403": { $ref: "#/components/responses/ProjectAccessDenied" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
-          description: Identical report bytes already ingested for this project.
+          description: |
+            Identical report bytes for the same commit, but the stored report
+            could not be found for a replay (for example, a concurrent retention
+            purge removed it).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
@@ -2440,7 +2453,7 @@ components:
 
     IngestResponse:
       type: object
-      required: [report_id, total_findings, threshold_breached, scan_mode, introduced_count, pre_existing_count]
+      required: [report_id, total_findings, threshold_breached, scan_mode, introduced_count, pre_existing_count, replayed]
       properties:
         report_id: { type: string, format: uuid }
         total_findings: { type: integer, description: "Every entry the scanner reported, before fingerprint deduplication." }
@@ -2452,6 +2465,9 @@ components:
           enum: [unsupported_scanner, missing_baseline]
         introduced_count: { type: integer }
         pre_existing_count: { type: integer }
+        replayed:
+          type: boolean
+          description: True when identical bytes for the same commit returned an existing report instead of ingesting again.
 
     Report:
       type: object

@@ -334,8 +334,11 @@ func TestE2E_CapturedReportIngest(t *testing.T) {
 			}
 			require.Equal(t, tc.kinds, kinds)
 
-			// Identical reports are rejected without adding findings.
-			request[map[string]any](t, http.MethodPost, "/api/v1/reports", adminToken, body, http.StatusConflict)
+			// Identical reports replay the stored report without adding findings.
+			replay := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", adminToken, body, http.StatusOK)
+			require.True(t, replay.Replayed)
+			require.Equal(t, first.ReportID, replay.ReportID)
+			require.Equal(t, want, replay.TotalFindings)
 
 			// Change ignored metadata, not scanner observations: a new report
 			// must reuse the existing finding identities.

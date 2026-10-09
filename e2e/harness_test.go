@@ -514,6 +514,7 @@ type ingestResponse struct {
 	FallbackReason    string `json:"fallback_reason"`
 	IntroducedCount   int    `json:"introduced_count"`
 	PreExistingCount  int    `json:"pre_existing_count"`
+	Replayed          bool   `json:"replayed"`
 }
 
 type triageOutput struct {
