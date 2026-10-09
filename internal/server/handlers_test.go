@@ -3779,6 +3779,62 @@ func TestGetReport_FailedReportReturnsReason(t *testing.T) {
 	assert.False(t, present, "a report that did not fail omits error_message")
 }
 
+func TestAddTeamMember_ErrorMapping(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		wantCode int
+		wantErr  string
+		wantMsg  string
+	}{
+		{name: "malformed team id", err: usecase.ErrInvalidID, wantCode: http.StatusBadRequest, wantErr: "invalid_id"},
+		{
+			name:     "invalid role",
+			err:      fmt.Errorf("%w %q: want admin or member", usecase.ErrInvalidMemberRole, "owner"),
+			wantCode: http.StatusBadRequest, wantErr: "invalid_role", wantMsg: "admin or member",
+		},
+		{
+			name:     "missing role",
+			err:      fmt.Errorf("%w %q: want admin or member", usecase.ErrInvalidMemberRole, ""),
+			wantCode: http.StatusBadRequest, wantErr: "invalid_role", wantMsg: "admin or member",
+		},
+		{name: "unknown user", err: usecase.ErrMemberUserNotFound, wantCode: http.StatusNotFound, wantErr: "user_not_found"},
+		{name: "team not found", err: usecase.ErrTeamNotFound, wantCode: http.StatusNotFound, wantErr: "not_found"},
+		{name: "not a team admin", err: usecase.ErrProjectAccessDenied, wantCode: http.StatusForbidden, wantErr: "forbidden"},
+		{
+			name:     "store failure",
+			err:      fmt.Errorf("add team member: connection reset by peer"),
+			wantCode: http.StatusInternalServerError, wantErr: "internal_error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &mockUsecases{
+				addTeamMemberFn: func(ctx context.Context, teamID, userID, role string) (*usecase.TeamMemberResponse, error) {
+					return nil, tt.err
+				},
+			}
+			router := NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth})
+			body := strings.NewReader(`{"user_id":"33333333-3333-3333-3333-333333333333","role":"member"}`)
+			req := httptest.NewRequest("POST", "/api/v1/teams/11111111-1111-1111-1111-111111111111/members", body)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("Authorization", "Bearer "+makeTestToken(t, auth.RoleAdmin))
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantCode, w.Code)
+			var resp apiError
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+			assert.Equal(t, tt.wantErr, resp.Error.Code)
+			if tt.wantMsg != "" {
+				assert.Contains(t, resp.Error.Message, tt.wantMsg)
+			}
+			assert.NotContains(t, w.Body.String(), "connection reset", "store errors must not reach the client")
+		})
+	}
+}
+
 // TestListUsersHandler pins the directory contract the admin UIs pick from:
 // the email filter and pagination pass through untouched, and the response is
 // the account shape without any credential material.

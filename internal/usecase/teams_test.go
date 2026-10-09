@@ -96,6 +96,25 @@ func TestAddTeamMember_TeamAdminGate(t *testing.T) {
 	require.Error(t, err, "link roles validate against the vocabulary")
 }
 
+func TestAddTeamMember_InvalidRoleAndUnknownUserAreTyped(t *testing.T) {
+	uc, _, tr, ur := teamHarness()
+	tr.getByIDFn = func(ctx context.Context, id string) (port.Team, error) {
+		return port.Team{ID: "11111111-1111-1111-1111-111111111111", Name: "backend"}, nil
+	}
+	tr.isAdminFn = func(ctx context.Context, teamID, userID string) (bool, error) {
+		return true, nil
+	}
+
+	_, err := uc.AddTeamMember(teamMemberCtx(), "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "")
+	assert.ErrorIs(t, err, ErrInvalidMemberRole, "a missing role is an invalid role")
+
+	ur.getByIDFn = func(ctx context.Context, id string) (port.User, error) {
+		return port.User{}, port.ErrNotFound
+	}
+	_, err = uc.AddTeamMember(teamMemberCtx(), "11111111-1111-1111-1111-111111111111", "22222222-2222-2222-2222-222222222222", "member")
+	assert.ErrorIs(t, err, ErrMemberUserNotFound)
+}
+
 func TestLinkProjectTeam_ProjectAdminGate(t *testing.T) {
 	uc, pr, _, _ := teamHarness()
 	project := makeProject(true)

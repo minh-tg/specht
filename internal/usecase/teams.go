@@ -194,13 +194,16 @@ func (u *Usecases) AddTeamMember(ctx context.Context, teamID, userID, role strin
 		return nil, err
 	}
 	if !validTeamMemberRoles[role] {
-		return nil, fmt.Errorf("invalid team role %q: want admin or member", role)
+		return nil, fmt.Errorf("%w %q: want admin or member", ErrInvalidMemberRole, role)
 	}
 	if err := u.requireDelegationCeiling(ctx, teamID); err != nil {
 		return nil, err
 	}
 	user, err := u.deps.Stores.Users.GetByID(ctx, userID)
 	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return nil, ErrMemberUserNotFound
+		}
 		return nil, fmt.Errorf("lookup user: %w", err)
 	}
 	m, err := u.deps.Stores.Teams.UpsertTeamMember(ctx, teamID, user.ID, role)
