@@ -148,6 +148,10 @@ type Usecases struct {
 	gate     gate.Gate
 	gateOnce sync.Once
 
+	// intelRefresh runs EPSS/KEV refreshes for finding reads off the
+	// request path.
+	intelRefresh intelRefresher
+
 	// dummyHash is a password hash of the same cost as real ones, built on
 	// first use from the injected hasher. Login verifies against it when the
 	// account does not exist so that case costs as much as a real check.

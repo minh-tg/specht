@@ -543,11 +543,11 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 	return &resp, nil
 }
 
-// attachIntel resolves the finding's CVE through the intel store with
-// read-time enrichment:
-// a miss or a TTL-stale entry triggers a refresh whose failure degrades to
-// the cached record — a feed outage never fails a detail read. Findings
-// without a CVE-shaped vulnerability_id dimension carry no intel at all.
+// attachIntel resolves the finding's CVE through the intel store on the read
+// path. It never waits on a feed: the response carries whatever is cached
+// right now, and a miss or a TTL-stale entry schedules a background refresh
+// that lands on a later read. Findings without a CVE-shaped vulnerability_id
+// dimension carry no intel at all.
 func (u *Usecases) attachIntel(ctx context.Context, dims []port.FindingDimension, resp *FindingResponse) {
 	if u.deps.Intel == nil {
 		return
@@ -562,10 +562,11 @@ func (u *Usecases) attachIntel(ctx context.Context, dims []port.FindingDimension
 	if cve == "" {
 		return
 	}
-	if _, stale, ok := u.deps.Intel.Lookup(cve); !ok || stale {
-		_ = u.deps.Intel.Refresh(ctx, []string{cve})
+	rec, stale, ok := u.deps.Intel.Lookup(cve)
+	if !ok || stale {
+		u.intelRefresh.schedule(ctx, u.deps.Intel, cve)
 	}
-	if rec, _, ok := u.deps.Intel.Lookup(cve); ok {
+	if ok {
 		resp.Intel = &rec
 	}
 }
