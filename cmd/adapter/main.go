@@ -302,11 +302,14 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 	}
 	detectCIEnvironment(&f.baseRef, &f.commit, &f.branch)
 
-	apiURL := strings.TrimRight(envOr("API_URL", "http://localhost:8080"), "/")
 	apiKey := os.Getenv("API_KEY")
 	if apiKey == "" {
 		writeDiagnosticLine(stderr, "error: API_KEY environment variable is required")
 		return 2
+	}
+	apiURL, code := resolveAPIURL(stderr)
+	if code != 0 {
+		return code
 	}
 
 	rawInput, code := readRawInput(f.file, stdin, stderr)
@@ -372,12 +375,26 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 	return 0
 }
 
-// envOr reads an environment variable, falling back to a default.
-func envOr(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+// resolveAPIURL returns the Specht base URL. A CI run must configure it: the
+// localhost fallback can silently gate against a server that is not there.
+// Outside CI the fallback stays, with a one-line notice.
+func resolveAPIURL(stderr io.Writer) (string, int) {
+	raw := getEnvAny("API_URL", "SPECHT_API_URL")
+	if raw == "" {
+		if isCI() {
+			writeDiagnosticLine(stderr, "error: SPECHT_API_URL is not set; refusing to default to http://localhost:8080 in CI")
+			return "", 2
+		}
+		writeDiagnosticLine(stderr, "notice: SPECHT_API_URL is not set, using http://localhost:8080")
+		raw = "http://localhost:8080"
 	}
-	return def
+	return strings.TrimRight(raw, "/"), 0
+}
+
+// isCI reports whether the adapter runs in a CI system. Both spellings of the
+// GitHub and GitLab markers count, because the snippets set them differently.
+func isCI() bool {
+	return os.Getenv("CI") == "true" || os.Getenv("GITHUB_ACTIONS") != "" || os.Getenv("GITLAB_CI") != ""
 }
 
 func printContextBanner(w io.Writer, p client.IngestPayload) {
@@ -457,7 +474,7 @@ Flags:
   -help                  Show this usage message
 
 Environment:
-  API_URL                Specht API base URL (default "http://localhost:8080")
+  API_URL                Specht API base URL (default "http://localhost:8080", alias SPECHT_API_URL)
   API_KEY                API key for authentication (required)
   GITHUB_BASE_REF        Auto-detected PR target branch in GitHub Actions
   GITHUB_SHA             Auto-detected commit SHA in GitHub Actions
