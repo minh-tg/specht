@@ -39,12 +39,14 @@ describe("ProjectAccess", () => {
   let fetchCalls: { url: string; method: string; body?: string; }[] = [];
   let deleteError: { status: number; code: string; message: string; } | null = null;
   let addMemberError: { status: number; code: string; message: string; } | null = null;
+  let membersLoadFailing = false;
 
   beforeEach(() => {
     fetchCalls = [];
     userRole = "admin";
     deleteError = null;
     addMemberError = null;
+    membersLoadFailing = false;
     mockMembers = [
       { project_id: "p1", user_id: "u1", role: "admin", created_at: "2026-09-12T00:00:00Z" },
       { project_id: "p1", user_id: "u2", role: "manager", created_at: "2026-09-18T00:00:00Z" },
@@ -72,6 +74,12 @@ describe("ProjectAccess", () => {
               addMemberError.status,
             )
             : jsonResponse({ ok: true }, 201);
+        }
+        if (method === "GET" && membersLoadFailing) {
+          return jsonResponse(
+            { error: { code: "internal", message: "database unavailable" } },
+            500,
+          );
         }
         if (method === "DELETE") {
           return deleteError
@@ -340,5 +348,20 @@ describe("ProjectAccess", () => {
     expect(screen.queryByRole("button", { name: "+ Add Member" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "+ Link Team" })).not.toBeInTheDocument();
     expect(screen.getAllByText("View only").length).toBeGreaterThan(0);
+  });
+
+  it("shows a load error for members with a retry instead of an empty table", async () => {
+    const user = userEvent.setup();
+    membersLoadFailing = true;
+    renderProjectAccess();
+
+    expect(await screen.findByText("Could not load members.")).toBeInTheDocument();
+    expect(screen.queryByText("No direct members granted yet.")).not.toBeInTheDocument();
+
+    membersLoadFailing = false;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("Sarah Chen")).toBeInTheDocument();
+    expect(screen.queryByText("Could not load members.")).not.toBeInTheDocument();
   });
 });

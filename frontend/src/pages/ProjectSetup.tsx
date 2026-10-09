@@ -78,6 +78,8 @@ export function ProjectSetup() {
   const stats = useProjectStats(slug, {
     refetchInterval: firstReportState(cachedStats) === "received" ? false : 5000,
   });
+  // A failed poll says nothing about the report, so it must not read as "waiting".
+  const statsFailed = stats.isError;
 
   function handleCreateKey() {
     setKeyError(null);
@@ -207,18 +209,39 @@ export function ProjectSetup() {
         </li>
 
         <li>
-          <h2 className="text-lg font-semibold">{FIRST_REPORT_COPY[firstReport].heading}</h2>
-          <p role="status" className="text-muted-foreground mt-1 text-sm">
-            {firstReport === "received"
-              ? `First report received: ${pluralize(totalFindings, "finding")}.`
-              : FIRST_REPORT_COPY[firstReport].message}
-          </p>
-          {firstReport === "failed" && (
+          <h2 className="text-lg font-semibold">
+            {statsFailed
+              ? "First report status unavailable"
+              : FIRST_REPORT_COPY[firstReport].heading}
+          </h2>
+          {statsFailed
+            ? (
+              <div className="mt-1 flex items-center gap-3">
+                <p role="alert" className="text-destructive text-sm">
+                  Could not check for the first report.
+                </p>
+                <button
+                  type="button"
+                  className={LINK_CLASS}
+                  onClick={() => stats.refetch()}
+                >
+                  Retry
+                </button>
+              </div>
+            )
+            : (
+              <p role="status" className="text-muted-foreground mt-1 text-sm">
+                {firstReport === "received"
+                  ? `First report received: ${pluralize(totalFindings, "finding")}.`
+                  : FIRST_REPORT_COPY[firstReport].message}
+              </p>
+            )}
+          {!statsFailed && firstReport === "failed" && (
             <div className="mt-2">
               <Link to={`/${project.slug}/reports`} className={LINK_CLASS}>View reports</Link>
             </div>
           )}
-          {firstReport === "received" && (
+          {!statsFailed && firstReport === "received" && (
             <div className="mt-2 flex gap-4">
               <Link to={`/${project.slug}/findings`} className={LINK_CLASS}>View findings</Link>
               <Link to="/" className={LINK_CLASS}>Back to projects</Link>

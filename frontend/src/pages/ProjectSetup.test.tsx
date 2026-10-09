@@ -14,6 +14,7 @@ let projectStatus = 200;
 let versionStatus = 200;
 let stats: Record<string, unknown>;
 let statsRequests = 0;
+let statsFailing = false;
 let postCalls: Array<Record<string, unknown>> = [];
 let writeText: ReturnType<typeof vi.fn>;
 let projectSlug = "acme";
@@ -24,6 +25,7 @@ const VERSION_COMMIT = "4f93c32a1b2c3d4e5f60718293a4b5c6d7e8f901";
 beforeEach(() => {
   meRole = "admin";
   projectSlug = "acme";
+  statsFailing = false;
   projectStatus = 200;
   versionStatus = 200;
   stats = {
@@ -69,6 +71,9 @@ beforeEach(() => {
     }
     if (url === "/api/v1/projects/acme/stats") {
       statsRequests += 1;
+      if (statsFailing) {
+        return jsonResponse({ error: { code: "internal", message: "stats unavailable" } }, 500);
+      }
       return jsonResponse(stats);
     }
     if (url === "/api/v1/auth/apikeys" && method === "POST") {
@@ -328,6 +333,29 @@ describe("ProjectSetup", () => {
       await vi.advanceTimersByTimeAsync(15000);
     });
     expect(statsRequests).toBe(requestsAfterFirstReport);
+  });
+
+  it("does not say it is waiting when the status poll fails, and retries on demand", async () => {
+    const user = userEvent.setup();
+    statsFailing = true;
+    renderPage();
+
+    expect(await screen.findByText("Could not check for the first report.")).toHaveAttribute(
+      "role",
+      "alert",
+    );
+    expect(screen.getByRole("heading", { name: "First report status unavailable" }))
+      .toBeInTheDocument();
+    expect(screen.queryByText("Waiting for the first report...")).not.toBeInTheDocument();
+
+    statsFailing = false;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await screen.findByText("Waiting for the first report...")).toHaveAttribute(
+      "role",
+      "status",
+    );
+    expect(screen.queryByText("Could not check for the first report.")).not.toBeInTheDocument();
   });
 
   it("keeps polling while the first report is processing, then reports its findings", async () => {
