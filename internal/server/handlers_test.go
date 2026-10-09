@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -2070,6 +2071,57 @@ func TestPreviewPatch_Unsupported(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
+}
+
+func TestPreviewPatch_ErrorStatuses(t *testing.T) {
+	tests := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantCode   string
+	}{
+		{
+			name:       "finding not found",
+			err:        fmt.Errorf("get finding: %w", usecase.ErrFindingNotFound),
+			wantStatus: http.StatusNotFound,
+			wantCode:   "not_found",
+		},
+		{
+			name:       "project access denied",
+			err:        usecase.ErrProjectAccessDenied,
+			wantStatus: http.StatusForbidden,
+			wantCode:   "project_access_denied",
+		},
+		{
+			name:       "invalid finding id",
+			err:        usecase.ErrInvalidFindingID,
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "invalid_id",
+		},
+		{
+			name:       "unexpected failure",
+			err:        errors.New("ListDimensions: connection reset"),
+			wantStatus: http.StatusInternalServerError,
+			wantCode:   "patch_failed",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mock := &mockUsecases{
+				previewPatchFn: func(ctx context.Context, findingID string) (*patch.Outcome, error) {
+					return nil, tt.err
+				},
+			}
+			router := testRouter(mock)
+			req := httptest.NewRequest("GET", "/api/v1/findings/f1/patch-preview", nil)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			assert.Contains(t, w.Body.String(), tt.wantCode)
+			assert.NotContains(t, w.Body.String(), "connection reset", "internal error text must not reach the client")
+		})
+	}
 }
 
 func TestPreviewNotification_Success(t *testing.T) {
