@@ -191,3 +191,74 @@ func TestSPAHandler_securityHeadersOnEveryResponse(t *testing.T) {
 		})
 	}
 }
+
+func newSPATestHandler(t *testing.T) http.Handler {
+	t.Helper()
+	assets := fstest.MapFS{
+		"dist/index.html":         &fstest.MapFile{Data: []byte("<!doctype html><title>Specht</title>")},
+		"dist/assets/app-a1b2.js": &fstest.MapFile{Data: []byte("console.log('app')")},
+	}
+	return spaHandlerWithFS(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	}), assets)
+}
+
+func TestSPAHandler_missingAssetReturns404NotShell(t *testing.T) {
+	handler := newSPATestHandler(t)
+
+	for _, path := range []string{
+		"/assets/does-not-exist.js",
+		"/assets/",
+		"/assets",
+		"/favicon.svg",
+	} {
+		t.Run(path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+
+			if rec.Code != http.StatusNotFound {
+				t.Errorf("expected 404, got %d", rec.Code)
+			}
+			if cc := rec.Header().Get("Cache-Control"); cc != "no-store" {
+				t.Errorf("Cache-Control = %q, want no-store", cc)
+			}
+			if strings.Contains(rec.Body.String(), "<!doctype html>") {
+				t.Errorf("missing file answered with the app shell: %q", rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestSPAHandler_existingAssetIsImmutable(t *testing.T) {
+	handler := newSPATestHandler(t)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/assets/app-a1b2.js", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "public, max-age=31536000, immutable" {
+		t.Errorf("Cache-Control = %q, want immutable", cc)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/javascript" {
+		t.Errorf("Content-Type = %q, want text/javascript", ct)
+	}
+}
+
+func TestSPAHandler_deepLinkFallsBackToIndex(t *testing.T) {
+	handler := newSPATestHandler(t)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/acme/findings", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", rec.Code)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("Cache-Control = %q, want no-cache", cc)
+	}
+	if !strings.Contains(rec.Body.String(), "<title>Specht</title>") {
+		t.Errorf("expected app shell, got %q", rec.Body.String())
+	}
+}
