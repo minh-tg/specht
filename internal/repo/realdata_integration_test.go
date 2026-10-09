@@ -265,7 +265,7 @@ func TestIngestBatchPreservesDuplicateAndNullableOccurrenceData(t *testing.T) {
 	assert.Len(t, introduced, 2, "duplicate finding IDs are deduplicated in report attribution")
 }
 
-func TestRealDataIdenticalIngest_Duplicate(t *testing.T) {
+func TestRealDataIdenticalIngest_Replay(t *testing.T) {
 	pool, cleanup := setupIngestPool(t)
 	defer cleanup()
 	ctx := context.Background()
@@ -284,15 +284,17 @@ func TestRealDataIdenticalIngest_Duplicate(t *testing.T) {
 
 	raw, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
 	require.NoError(t, err)
-	_, err = uc.IngestReport(ctx, usecase.IngestReportInput{
+	first, err := uc.IngestReport(ctx, usecase.IngestReportInput{
 		ProjectSlug: "my-app", Scanner: "trivy", RawData: raw,
 	})
 	require.NoError(t, err)
 
-	_, err = uc.IngestReport(ctx, usecase.IngestReportInput{
+	second, err := uc.IngestReport(ctx, usecase.IngestReportInput{
 		ProjectSlug: "my-app", Scanner: "trivy", RawData: raw,
 	})
-	assert.ErrorIs(t, err, usecase.ErrDuplicateReport, "identical bytes ingest as a duplicate, not a 422")
+	require.NoError(t, err, "identical bytes for the same commit replay, not a 409")
+	assert.True(t, second.Replayed)
+	assert.Equal(t, first.ReportID, second.ReportID, "the replay names the stored report")
 
 	project, err := stores.Projects.GetBySlug(ctx, "my-app")
 	require.NoError(t, err)

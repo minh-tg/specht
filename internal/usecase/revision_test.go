@@ -516,32 +516,135 @@ func TestIngestReport_GateIntroducedOnly(t *testing.T) {
 	assert.Equal(t, currentReport, introducedOut.ReportID)
 }
 
-func TestIngestReport_DuplicateContentRejected(t *testing.T) {
+// replayFixture wires an ingest stack whose replay lookup finds existingID,
+// and records whether a replay wrote a report row or touched report status.
+type replayFixture struct {
+	uc            *Usecases
+	reports       *mockReportRepo
+	findings      *mockFindingRepo
+	created       bool
+	statusUpdated bool
+	lookupCommit  string
+}
+
+func newReplayFixture(t *testing.T, existingID string) *replayFixture {
+	t.Helper()
+	uc, rr, fr, _ := revisionHarness(t, func(context.Context, string, string, string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
+	})
+	f := &replayFixture{uc: uc, reports: rr, findings: fr}
+	rr.findCompletedByHashFn = func(ctx context.Context, projectID, rawHash, commit string) (string, error) {
+		f.lookupCommit = commit
+		return existingID, nil
+	}
+	rr.getByIDFn = func(ctx context.Context, id string) (port.Report, error) {
+		return makeReport(), nil
+	}
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
+		f.created = true
+		return makeReport(), nil
+	}
+	rr.updateStatusFn = func(ctx context.Context, id, projectID, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
+		f.statusUpdated = true
+		return makeReport(), nil
+	}
+	return f
+}
+
+// TestIngestReport_ReplaySameCommit replaced the old 409 assertion: identical
+// bytes for a commit that already completed return the stored report with a
+// freshly evaluated verdict, and write nothing.
+func TestIngestReport_ReplaySameCommit(t *testing.T) {
+	const existing = "00000000-0000-0000-0000-0000000000aa"
+	f := newReplayFixture(t, existing)
+	f.findings.listIntroducedByFn = func(context.Context, string, string) ([]port.Finding, error) {
+		return []port.Finding{makeFinding(1)}, nil
+	}
+
+	out, err := f.uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy",
+		RawData:   json.RawMessage(`{"test": true}`),
+		CommitSha: "abc123",
+	})
+	require.NoError(t, err)
+	assert.True(t, out.Replayed)
+	assert.Equal(t, existing, out.ReportID)
+	assert.Equal(t, "abc123", f.lookupCommit, "the lookup must carry the request commit")
+	assert.False(t, f.created, "a replay must not write a processing row")
+	assert.False(t, f.statusUpdated, "a replay must not touch the stored report")
+	assert.Equal(t, 1, out.IntroducedCount)
+	assert.Equal(t, 1, out.PreExistingCount)
+}
+
+// TestIngestReport_ReplayEmptyCommit pins that an omitted commit on both
+// sides is one key, so a re-upload without a commit still replays.
+func TestIngestReport_ReplayEmptyCommit(t *testing.T) {
+	const existing = "00000000-0000-0000-0000-0000000000ab"
+	f := newReplayFixture(t, existing)
+
+	out, err := f.uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy", RawData: json.RawMessage(`{"test": true}`),
+	})
+	require.NoError(t, err)
+	assert.True(t, out.Replayed)
+	assert.Equal(t, existing, out.ReportID)
+	assert.Empty(t, f.lookupCommit, "an omitted commit is looked up as the empty string")
+	assert.False(t, f.created)
+}
+
+// TestIngestReport_DifferentCommitIngestsNewReport pins that byte-identical
+// scanner output from another commit is a new report, not a replay.
+func TestIngestReport_DifferentCommitIngestsNewReport(t *testing.T) {
 	uc, rr, _, _ := revisionHarness(t, func(context.Context, string, string, string) (port.Finding, error) {
 		return port.Finding{}, port.ErrNotFound
 	})
-	rr.findCompletedByHashFn = func(ctx context.Context, projectID, rawHash string) (string, error) {
-		return "existing-report", nil
+	var lookupCommit string
+	rr.findCompletedByHashFn = func(ctx context.Context, projectID, rawHash, commit string) (string, error) {
+		lookupCommit = commit
+		return "", port.ErrNotFound
 	}
-	created := false
+	var createdCommit *string
 	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
-		created = true
+		createdCommit = arg.CommitSha
 		return makeReport(), nil
 	}
 
-	_, err := uc.IngestReport(context.Background(), IngestReportInput{
-		ProjectSlug: "my-app", Scanner: "trivy", RawData: json.RawMessage(`{"test": true}`),
+	out, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy",
+		RawData:   json.RawMessage(`{"test": true}`),
+		CommitSha: "different-commit",
 	})
-	assert.ErrorIs(t, err, ErrDuplicateReport)
-	assert.False(t, created, "duplicates must not write a processing row")
+	require.NoError(t, err)
+	assert.False(t, out.Replayed, "another commit ingests a new report")
+	assert.Equal(t, "different-commit", lookupCommit)
+	require.NotNil(t, createdCommit)
+	assert.Equal(t, "different-commit", *createdCommit)
 }
 
-func TestIngestReport_DuplicateRaceCleansUp(t *testing.T) {
+// TestIngestReport_DuplicateRaceReplaysWinner replaced the old race-cleanup
+// assertion: when completion loses the dedup race, the orphaned processing
+// row is removed and the winner is replayed instead of answering 409.
+func TestIngestReport_DuplicateRaceReplaysWinner(t *testing.T) {
+	const winner = "00000000-0000-0000-0000-0000000000ac"
 	uc, rr, _, _ := revisionHarness(t, func(context.Context, string, string, string) (port.Finding, error) {
 		return port.Finding{}, port.ErrNotFound
 	})
+	// The pre-check misses (nothing completed yet); after the index
+	// violation the second lookup finds the twin that finished first.
+	lookups := 0
+	rr.findCompletedByHashFn = func(ctx context.Context, projectID, rawHash, commit string) (string, error) {
+		lookups++
+		if lookups == 1 {
+			return "", port.ErrNotFound
+		}
+		return winner, nil
+	}
 	rr.updateStatusFn = func(ctx context.Context, id, projectID, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
 		return port.Report{}, port.ErrDuplicateReport
+	}
+	rr.getByIDFn = func(ctx context.Context, id string) (port.Report, error) {
+		assert.Equal(t, winner, id, "the replay must load the winner, not the orphan")
+		return makeReport(), nil
 	}
 	var deletedID, deletedProject string
 	rr.deleteReportFn = func(ctx context.Context, id, projectID string) error {
@@ -549,12 +652,38 @@ func TestIngestReport_DuplicateRaceCleansUp(t *testing.T) {
 		return nil
 	}
 
+	out, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy",
+		RawData:   json.RawMessage(`{"test": true}`),
+		CommitSha: "race-commit",
+	})
+	require.NoError(t, err)
+	assert.True(t, out.Replayed, "the loser answers as a replay, not a 409")
+	assert.Equal(t, winner, out.ReportID)
+	assert.Equal(t, makeReport().ID, deletedID, "the orphaned processing row must go")
+	assert.Equal(t, makeProject(true).ID, deletedProject)
+	assert.Equal(t, 2, lookups, "the pre-check and the post-race lookup both run")
+}
+
+// TestIngestReport_DuplicateRaceWithoutWinnerStillConflicts documents the one
+// remaining 409: the winner vanished (for example, a retention purge) between
+// the index violation and the replay lookup, so the request cannot be
+// answered as a replay.
+func TestIngestReport_DuplicateRaceWithoutWinnerStillConflicts(t *testing.T) {
+	uc, rr, _, _ := revisionHarness(t, func(context.Context, string, string, string) (port.Finding, error) {
+		return port.Finding{}, port.ErrNotFound
+	})
+	rr.updateStatusFn = func(ctx context.Context, id, projectID, status string, totalFindings int32, errorMsg *string) (port.Report, error) {
+		return port.Report{}, port.ErrDuplicateReport
+	}
+	rr.deleteReportFn = func(ctx context.Context, id, projectID string) error {
+		return nil
+	}
+
 	_, err := uc.IngestReport(context.Background(), IngestReportInput{
 		ProjectSlug: "my-app", Scanner: "trivy", RawData: json.RawMessage(`{"test": true}`),
 	})
 	assert.ErrorIs(t, err, ErrDuplicateReport)
-	assert.Equal(t, makeReport().ID, deletedID, "the orphaned processing row must go")
-	assert.Equal(t, makeProject(true).ID, deletedProject)
 }
 
 func TestIngestReport_MaterializesIntroducedFindings(t *testing.T) {

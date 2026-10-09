@@ -122,13 +122,17 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	}
 	input.RawData = redactRaw(sc, input.RawData)
 
-	// Duplicate-content guard: identical bytes already completed for this
-	// project ingest as a 409, before any row is written. The hash covers
-	// the redacted bytes (the stored form), so reporting the same scan
-	// twice collides here instead of stranding a processing row at
-	// completion time.
-	if err := u.rejectDuplicateContent(ctx, project.ID, input.RawData, input.CommitSha); err != nil {
+	// Replay guard: byte-identical input for the same project and commit
+	// that already completed answers with the stored report instead of
+	// writing a second one. The hash covers the redacted bytes (the stored
+	// form). A different commit with the same bytes ingests normally:
+	// scanner output is often byte-identical when nothing changed.
+	replayID, err := u.findReplayReport(ctx, project.ID, input.RawData, input.CommitSha)
+	if err != nil {
 		return nil, err
+	}
+	if replayID != "" {
+		return u.replayReport(ctx, project, input, replayID)
 	}
 
 	ctxInfo, err := u.resolveReportContext(ctx, project, input, nr)
@@ -173,9 +177,12 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, err
 	}
 
-	thresholdBreached, err := u.checkGateAfterIngest(ctx, project, input, report, outcome.total)
+	thresholdBreached, replay, err := u.checkGateAfterIngest(ctx, project, input, report, outcome.total)
 	if err != nil {
 		return nil, err
+	}
+	if replay != nil {
+		return replay, nil
 	}
 
 	return &IngestReportOutput{
@@ -239,16 +246,72 @@ func (u *Usecases) autoFixAbsentFindings(ctx context.Context, project port.Proje
 	return nil
 }
 
-// rejectDuplicateContent returns ErrDuplicateReport when identical (redacted)
-// bytes already completed an ingest for this project at the same commit.
-func (u *Usecases) rejectDuplicateContent(ctx context.Context, projectID string, rawData []byte, commit string) error {
+// findReplayReport returns the id of a completed report whose (redacted)
+// bytes and commit match this ingest, or the empty string when the content is
+// new for this commit. A NULL stored commit and an empty request commit are
+// the same key.
+func (u *Usecases) findReplayReport(ctx context.Context, projectID string, rawData []byte, commit string) (string, error) {
 	rawHash := sha256.Sum256(rawData)
-	if _, err := u.deps.Stores.Reports.FindCompletedByHashAndCommit(ctx, projectID, hex.EncodeToString(rawHash[:]), commit); err == nil {
-		return ErrDuplicateReport
-	} else if !errors.Is(err, port.ErrNotFound) {
-		return fmt.Errorf("check duplicate report: %w", err)
+	id, err := u.deps.Stores.Reports.FindCompletedByHashAndCommit(ctx, projectID, hex.EncodeToString(rawHash[:]), commit)
+	if err == nil {
+		return id, nil
 	}
-	return nil
+	if errors.Is(err, port.ErrNotFound) {
+		return "", nil
+	}
+	return "", fmt.Errorf("check duplicate report: %w", err)
+}
+
+// replayReport answers an identical re-upload for the same commit: it
+// re-evaluates the stored report's gate under this request's options (which
+// can only tighten policy) and returns the stored report with Replayed set.
+// Findings, occurrences, and events are left untouched.
+func (u *Usecases) replayReport(ctx context.Context, project port.Project, input IngestReportInput, reportID string) (*IngestReportOutput, error) {
+	report, err := u.deps.Stores.Reports.GetByID(ctx, reportID)
+	if err != nil {
+		return nil, fmt.Errorf("load report %q for replay: %w", reportID, err)
+	}
+	breached, err := u.evaluateIngestGate(ctx, project, input, reportID)
+	if err != nil {
+		return nil, err
+	}
+	introduced, preExisting := u.replayCounts(ctx, project.ID, report)
+	slog.Info("ingest replay", "project", project.ID, "report", reportID, "commit", input.CommitSha)
+	return &IngestReportOutput{
+		ReportID:          reportID,
+		TotalFindings:     reportTotalFindings(report),
+		ThresholdBreached: breached,
+		ScanMode:          report.ScanMode,
+		IntroducedCount:   introduced,
+		PreExistingCount:  preExisting,
+		Replayed:          true,
+	}, nil
+}
+
+// replayCounts splits a replayed report's findings into introduced and
+// pre-existing. The introduced set is the one materialized at ingest time;
+// anything the report counted beyond it is pre-existing. A failed read only
+// costs the split, never the replay.
+func (u *Usecases) replayCounts(ctx context.Context, projectID string, report port.Report) (int, int) {
+	total := reportTotalFindings(report)
+	introduced, err := u.deps.Stores.Findings.ListIntroducedByReport(ctx, projectID, report.ID)
+	if err != nil {
+		slog.Warn("replay introduced count failed", "report", report.ID, "error", err)
+		return 0, total
+	}
+	if len(introduced) > total {
+		return total, 0
+	}
+	return len(introduced), total - len(introduced)
+}
+
+// reportTotalFindings reads a stored report's finding count, treating a
+// missing count as zero.
+func reportTotalFindings(report port.Report) int {
+	if report.TotalFindings == nil {
+		return 0
+	}
+	return int(*report.TotalFindings)
 }
 
 // findBaselineReport resolves a base revision to a completed full report.
@@ -1030,38 +1093,73 @@ func (u *Usecases) persistInventory(ctx context.Context, input IngestReportInput
 // always agrees with a subsequent GET /api/v1/projects/{slug}/gate for the
 // same report: both consume the batch candidate loader, waiver matching,
 // reachability exemptions, and source policies.
-func (u *Usecases) checkGateAfterIngest(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, total int) (bool, error) {
+//
+// When completion loses a duplicate-content race, the returned replay output
+// answers as the winner's report instead of an error. The bool return is
+// meaningless then; the caller returns the replay output directly.
+func (u *Usecases) checkGateAfterIngest(ctx context.Context, project port.Project, input IngestReportInput, report port.Report, total int) (bool, *IngestReportOutput, error) {
 	_, err := u.deps.Stores.Reports.UpdateStatus(ctx, report.ID, project.ID, "completed", int32(total), nil)
 	if err != nil {
 		if errors.Is(err, port.ErrDuplicateReport) {
-			u.deleteDuplicateReport(ctx, project.ID, report.ID)
-			return false, ErrDuplicateReport
+			return u.replayRaceWinner(ctx, project, input, report.ID)
 		}
 		slog.Error("update report status failed", "scanner", input.Scanner, "report_id", report.ID, "error", err)
-		return false, fmt.Errorf("scanner %s: update report status: %w", input.Scanner, err)
+		return false, nil, fmt.Errorf("scanner %s: update report status: %w", input.Scanner, err)
 	}
 
+	breached, err := u.evaluateIngestGate(ctx, project, input, report.ID)
+	if err != nil {
+		// Duplicate-content race: a twin ingest completed first, so the
+		// partial dedup index rejected this completion.
+		if errors.Is(err, port.ErrDuplicateReport) {
+			return u.replayRaceWinner(ctx, project, input, report.ID)
+		}
+		slog.Error("gate check failed", "scanner", input.Scanner, "project", project.ID, "error", err)
+		return false, nil, fmt.Errorf("scanner %s: gate check: %w", input.Scanner, err)
+	}
+	return breached, nil, nil
+}
+
+// evaluateIngestGate runs the post-ingest threshold check for one report with
+// the request's gate options. Replays share it so a replay's verdict matches
+// what the same request would have produced at ingest time.
+func (u *Usecases) evaluateIngestGate(ctx context.Context, project port.Project, input IngestReportInput, reportID string) (bool, error) {
 	u.initGate()
 	minRank := u.effectiveSeverityFloor(ctx, project, input.GateSeverity)
 	policies := gatePoliciesForProject(project)
 	var decision gate.Decision
+	var err error
 	if input.GateIntroducedOnly {
-		decision, err = u.gate.EvaluateIntroducedOnly(ctx, project.ID, minRank, report.ID, policies)
+		decision, err = u.gate.EvaluateIntroducedOnly(ctx, project.ID, minRank, reportID, policies)
 	} else {
 		decision, err = u.gate.EvaluateWithPolicies(ctx, project.ID, minRank, policies)
 	}
 	if err != nil {
-		// Duplicate-content race: a twin ingest completed first, so the
-		// partial dedup index rejected this completion. Remove the
-		// orphaned processing row and report the duplicate.
-		if errors.Is(err, port.ErrDuplicateReport) {
-			u.deleteDuplicateReport(ctx, project.ID, report.ID)
-			return false, ErrDuplicateReport
-		}
-		slog.Error("gate check failed", "scanner", input.Scanner, "project", project.ID, "error", err)
-		return false, fmt.Errorf("scanner %s: gate check: %w", input.Scanner, err)
+		return false, err
 	}
 	return decision.Status == gate.StatusFail, nil
+}
+
+// replayRaceWinner answers a lost duplicate-completion race: a twin ingest
+// completed first, so this report's completion violated the dedup index.
+// The orphaned processing row is removed and the winner is replayed.
+// ErrDuplicateReport is returned only when the winner cannot be found, for
+// example when a concurrent retention purge removed it between the index
+// violation and the lookup. That is the one remaining case that answers 409.
+func (u *Usecases) replayRaceWinner(ctx context.Context, project port.Project, input IngestReportInput, orphanID string) (bool, *IngestReportOutput, error) {
+	u.deleteDuplicateReport(ctx, project.ID, orphanID)
+	winnerID, err := u.findReplayReport(ctx, project.ID, input.RawData, input.CommitSha)
+	if err != nil {
+		return false, nil, err
+	}
+	if winnerID == "" {
+		return false, nil, ErrDuplicateReport
+	}
+	out, err := u.replayReport(ctx, project, input, winnerID)
+	if err != nil {
+		return false, nil, err
+	}
+	return out.ThresholdBreached, out, nil
 }
 
 // deleteDuplicateReport removes a processing row orphaned by a lost

@@ -98,6 +98,10 @@ type IngestReportOutput struct {
 	// full scans); PreExistingCount is the remainder.
 	IntroducedCount  int
 	PreExistingCount int
+	// Replayed is true when the request matched a completed report for the
+	// same project, bytes, and commit, and the stored report was returned
+	// with a freshly evaluated verdict instead of ingesting again.
+	Replayed bool
 }
 
 // ScannerRegistry is the scanner capability consumed by the application.
