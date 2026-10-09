@@ -1,0 +1,110 @@
+# Test-only Specht gate action.
+#
+# The public action at the repository root never lets a caller change the
+# download origin or the verification policy. The self-test needs those knobs
+# to run against a disposable release, so this action calls the same
+# action/specht-gate.sh script with SPECHT_SELFTEST=1 and passes the overrides
+# through. The script refuses them without that flag. Never use this action
+# outside .github/workflows/action-selftest.yml.
+name: Specht gate self-test
+description: Test-only wrapper around the Specht gate script with release overrides
+inputs:
+  api-url:
+    description: Base URL of the Specht API, for example http://127.0.0.1:8124
+    required: true
+  api-key:
+    description: Specht API key
+    required: true
+  project:
+    description: Specht project slug
+    required: false
+    default: ""
+  file:
+    description: Path to the scanner output file to ingest
+    required: true
+  tool:
+    description: Scanner name, for example trivy
+    required: true
+  introduced-only:
+    description: Gate only on findings introduced by this change
+    required: false
+    default: ""
+  base-ref:
+    description: Baseline git ref for the change scope
+    required: false
+    default: ""
+  github-token:
+    description: GitHub token used to publish the check run
+    required: false
+    default: ${{ github.token }}
+  version:
+    description: Release tag to download, for example v0.0.0-selftest
+    required: false
+    default: ""
+  release-base-url:
+    description: Test-only release download origin, for example http://127.0.0.1:8123
+    required: false
+    default: ""
+  cosign-public-key:
+    description: Test-only PEM public key for cosign verify-blob. Empty verifies keyless.
+    required: false
+    default: ""
+  certificate-identity:
+    description: Test-only certificate identity for the keyless branch
+    required: false
+    default: ""
+outputs:
+  skipped:
+    description: "true when the action skipped"
+    value: ${{ steps.setup.outputs.skipped }}
+  version:
+    description: The adapter release version that ran, without the leading v
+    value: ${{ steps.setup.outputs.version }}
+runs:
+  using: composite
+  steps:
+    - name: Resolve the release, platform and skip state
+      id: setup
+      shell: bash
+      env:
+        SPECHT_SELFTEST: "1"
+        SPECHT_RELEASE_BASE_URL: ${{ inputs.release-base-url }}
+        SPECHT_COSIGN_PUBLIC_KEY: ${{ inputs.cosign-public-key }}
+        SPECHT_CERTIFICATE_IDENTITY: ${{ inputs.certificate-identity }}
+        SPECHT_INPUT_VERSION: ${{ inputs.version }}
+        SPECHT_INPUT_API_KEY: ${{ inputs.api-key }}
+        SPECHT_ACTION_REF: ${{ github.action_ref }}
+        SPECHT_EVENT_NAME: ${{ github.event_name }}
+        SPECHT_PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        SPECHT_PR_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+      run: bash "${{ github.action_path }}/../../action/specht-gate.sh" prepare
+
+    - name: Install cosign
+      id: cosign
+      if: steps.setup.outputs.skipped != 'true'
+      uses: sigstore/cosign-installer@053f9b74638557590800a301da1ba82351507e2c # v3.8.1
+
+    - name: Download, verify and run the Specht adapter
+      id: gate
+      if: steps.setup.outputs.skipped != 'true'
+      shell: bash
+      env:
+        SPECHT_SELFTEST: "1"
+        SPECHT_RELEASE_BASE_URL: ${{ inputs.release-base-url }}
+        SPECHT_COSIGN_PUBLIC_KEY: ${{ inputs.cosign-public-key }}
+        SPECHT_CERTIFICATE_IDENTITY: ${{ inputs.certificate-identity }}
+        SPECHT_INPUT_VERSION: ${{ inputs.version }}
+        SPECHT_INPUT_API_URL: ${{ inputs.api-url }}
+        SPECHT_INPUT_API_KEY: ${{ inputs.api-key }}
+        SPECHT_INPUT_PROJECT: ${{ inputs.project }}
+        SPECHT_INPUT_FILE: ${{ inputs.file }}
+        SPECHT_INPUT_TOOL: ${{ inputs.tool }}
+        SPECHT_INPUT_INTRODUCED_ONLY: ${{ inputs.introduced-only }}
+        SPECHT_INPUT_BASE_REF: ${{ inputs.base-ref }}
+        SPECHT_INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        SPECHT_ACTION_REF: ${{ github.action_ref }}
+        SPECHT_EVENT_NAME: ${{ github.event_name }}
+        SPECHT_PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        SPECHT_PR_BASE_REPO: ${{ github.event.pull_request.base.repo.full_name }}
+        SPECHT_EVENT_BASE_REF: ${{ github.base_ref }}
+      run: bash "${{ github.action_path }}/../../action/specht-gate.sh" run
