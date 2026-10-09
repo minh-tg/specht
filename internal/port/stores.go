@@ -804,6 +804,9 @@ type Report struct {
 	BaseRevision *string
 	ChangedFiles json.RawMessage
 	ScanMode     string
+	// ErrorMessage is the sanitized reason a failed report failed. It is
+	// never the raw store error.
+	ErrorMessage *string
 	CreatedAt    time.Time
 	CompletedAt  *time.Time
 }

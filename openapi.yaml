@@ -2461,6 +2461,9 @@ components:
         changed_files:
           type: array
           items: { type: string }
+        error_message:
+          type: string
+          description: Fixed, sanitized reason a failed report failed. Absent unless status is failed.
         created_at: { type: string, format: date-time }
         completed_at: { type: [string, "null"], format: date-time }
 

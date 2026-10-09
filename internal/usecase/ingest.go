@@ -157,19 +157,19 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 
 	outcome, err := u.ingestReportFindings(ctx, project, input, report, nr, baselineID)
 	if err != nil {
-		u.markReportFailed(ctx, input, report, err)
+		u.markReportFailed(ctx, input, report, reportFailureFindings, err)
 		return nil, err
 	}
 
 	if err := u.persistInventory(ctx, input, report, nr); err != nil {
-		u.markReportFailed(ctx, input, report, err)
+		u.markReportFailed(ctx, input, report, reportFailureInventory, err)
 		return nil, err
 	}
 
 	// Scan-equivalence auto-fix: runs after every finding is persisted and
 	// before the threshold check so the response reflects the post-fix state.
 	if err := u.autoFixAbsentFindings(ctx, project, input, report, nr, ctxInfo); err != nil {
-		u.markReportFailed(ctx, input, report, err)
+		u.markReportFailed(ctx, input, report, reportFailureAutoFix, err)
 		return nil, err
 	}
 
@@ -904,18 +904,27 @@ func (u *Usecases) applyMaterialChange(ctx context.Context, input IngestReportIn
 	return nil
 }
 
+// Reasons stored in error_message for a failed report. Store errors can carry
+// SQL text or connection details, so the stored value is one of these fixed
+// strings; the raw error is written to the server log only.
+const (
+	reportFailureFindings  = "Internal error: could not store findings."
+	reportFailureInventory = "Internal error: could not persist package inventory."
+	reportFailureAutoFix   = "Internal error: could not close findings absent from this scan."
+)
+
 // markReportFailed transitions a report created with status 'processing' to
-// 'failed' when a downstream ingest stage (finding persistence or inventory)
-// errors out. Without this the report row would stay stuck in 'processing'
-// forever — the unique dedup index only admits 'completed' reports, so a
-// terminal 'failed' row still lets a retry re-ingest the same raw content.
-// The status write is best-effort: the original ingest error is what the
-// caller returns.
-func (u *Usecases) markReportFailed(ctx context.Context, input IngestReportInput, report port.Report, cause error) {
+// 'failed' when a downstream ingest stage (finding persistence, inventory, or
+// auto-fix) errors out. Without this the report row would stay stuck in
+// 'processing' forever — the unique dedup index only admits 'completed'
+// reports, so a terminal 'failed' row still lets a retry re-ingest the same
+// raw content. The status write is best-effort: the original ingest error is
+// what the caller returns.
+func (u *Usecases) markReportFailed(ctx context.Context, input IngestReportInput, report port.Report, reason string, cause error) {
 	if cause == nil {
 		return
 	}
-	msg := cause.Error()
+	msg := reason
 	_, err := u.deps.Stores.Reports.UpdateStatus(ctx, report.ID, report.ProjectID, "failed", 0, &msg)
 	if err != nil {
 		slog.Error("mark report failed errored", "scanner", input.Scanner, "report_id", report.ID, "error", err)

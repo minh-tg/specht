@@ -3742,6 +3742,43 @@ func TestListScanners_AnySessionRoleAllowed(t *testing.T) {
 	}
 }
 
+func TestGetReport_FailedReportReturnsReason(t *testing.T) {
+	const failedID = "11111111-1111-1111-1111-111111111111"
+	const okID = "22222222-2222-2222-2222-222222222222"
+	reason := "Internal error: could not store findings."
+	mock := &mockUsecases{
+		getReportFn: func(ctx context.Context, reportID string) (*usecase.ReportResponse, error) {
+			if reportID == failedID {
+				return &usecase.ReportResponse{ID: reportID, Status: "failed", ErrorMessage: &reason}, nil
+			}
+			return &usecase.ReportResponse{ID: reportID, Status: "completed"}, nil
+		},
+	}
+	router := NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth})
+
+	req := httptest.NewRequest("GET", "/api/v1/reports/"+failedID, nil)
+	req.Header.Set("Authorization", "Bearer "+makeTestToken(t, auth.RoleViewer))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var failed map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &failed))
+	assert.Equal(t, "failed", failed["status"])
+	assert.Equal(t, reason, failed["error_message"])
+
+	req = httptest.NewRequest("GET", "/api/v1/reports/"+okID, nil)
+	req.Header.Set("Authorization", "Bearer "+makeTestToken(t, auth.RoleViewer))
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var completed map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &completed))
+	_, present := completed["error_message"]
+	assert.False(t, present, "a report that did not fail omits error_message")
+}
+
 // TestListUsersHandler pins the directory contract the admin UIs pick from:
 // the email filter and pagination pass through untouched, and the response is
 // the account shape without any credential material.

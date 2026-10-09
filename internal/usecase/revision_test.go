@@ -247,6 +247,20 @@ func TestToReport_MapsRevisionContext(t *testing.T) {
 	assert.Equal(t, []string{"app/main.go"}, resp.ChangedFiles)
 }
 
+func TestToReport_MapsErrorMessage(t *testing.T) {
+	reason := "Internal error: could not store findings."
+	r := makeReport()
+	r.Status = "failed"
+	r.ErrorMessage = &reason
+
+	resp := toReport(r)
+	require.NotNil(t, resp.ErrorMessage)
+	assert.Equal(t, reason, *resp.ErrorMessage)
+
+	completed := toReport(makeReport())
+	assert.Nil(t, completed.ErrorMessage)
+}
+
 // incrementalHarness builds an ingest stack whose scanner emits two
 // findings: fp-new (absent from the baseline) and fp-old (present in the
 // baseline). hasBase controls whether a baseline report resolves.

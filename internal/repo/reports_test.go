@@ -4,6 +4,9 @@ import (
 	"math"
 	"strings"
 	"testing"
+
+	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/minh-tg/specht/internal/db/sqlc"
 )
 
 func TestInt32CountRejectsOverflow(t *testing.T) {
@@ -29,5 +32,19 @@ func TestInt32CountAcceptsBounds(t *testing.T) {
 		if got != want {
 			t.Fatalf("int32Count(%d) = %d, want %d", want, got, want)
 		}
+	}
+}
+
+func TestReportRowToPort_MapsErrorMessage(t *testing.T) {
+	failed := reportRowToPort(sqlc.Report{
+		ErrorMessage: pgtype.Text{String: "Internal error: could not store findings.", Valid: true},
+	})
+	if failed.ErrorMessage == nil || *failed.ErrorMessage != "Internal error: could not store findings." {
+		t.Fatalf("ErrorMessage = %v, want the stored reason", failed.ErrorMessage)
+	}
+
+	completed := reportRowToPort(sqlc.Report{})
+	if completed.ErrorMessage != nil {
+		t.Fatalf("ErrorMessage = %q for a report without a failure, want nil", *completed.ErrorMessage)
 	}
 }
