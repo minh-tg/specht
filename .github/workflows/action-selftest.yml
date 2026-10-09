@@ -1,11 +1,14 @@
 name: action self-test
 
-# Exercises action.yml end to end without publishing anything: the build job
+# Exercises the action end to end without publishing anything: the build job
 # produces a disposable release (synthetic version, throwaway cosign keys) and
 # the run job drives the action against local servers on Linux, macOS and
 # Windows. Cases a and b prove a verified release runs and that a blocking
 # verdict fails the step; cases c, d and e prove a tampered archive, a foreign
-# signature and a missing version all fail closed before the adapter runs.
+# signature and a missing version all fail closed before the adapter runs. The
+# policy job checks the script's identity and override rules without a runner,
+# and the keyless job proves the default certificate path against a keyless
+# signature from this workflow (same-repo pull requests and dispatches only).
 on:
   pull_request:
     paths:
@@ -21,6 +24,18 @@ permissions:
   contents: read
 
 jobs:
+  policy:
+    name: gate script policy checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # The certificate identity for a tag and the refusal of the test-only
+      # overrides, with no runner and no network.
+      - name: Check the identity policy and override refusal
+        run: bash action/specht-gate_test.sh
+
   build:
     name: build + sign a disposable release
     runs-on: ubuntu-latest
@@ -256,3 +271,80 @@ jobs:
         if: always()
         shell: bash
         run: cat fake-api.log || true
+
+  keyless:
+    name: keyless verification (same-repo only)
+    needs: build
+    # Keyless signing needs an OIDC token, which a pull request from a fork
+    # cannot request. Run for same-repo pull requests and manual dispatches.
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Download the disposable release
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: selftest-release
+          path: release
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@053f9b74638557590800a301da1ba82351507e2c # v3.8.1
+
+      # Sign the manifest keyless so the default certificate path, not the
+      # throwaway key path, is what verifies it.
+      - name: Sign the checksum manifest keyless
+        run: |
+          cosign sign-blob --yes \
+            --output-signature release/v0.0.0-selftest/SHA256SUMS.sig \
+            --output-certificate release/v0.0.0-selftest/SHA256SUMS.pem \
+            release/v0.0.0-selftest/SHA256SUMS
+
+      - name: Serve the release and start the fake Specht API
+        shell: bash
+        run: |
+          set -euo pipefail
+          py=python3
+          if ! command -v python3 >/dev/null 2>&1; then
+            py=python
+          fi
+          nohup "$py" -m http.server 8123 --bind 127.0.0.1 --directory release >release-server.log 2>&1 &
+          nohup "$py" .github/action-selftest/fake-api.py --port 8124 --api-key selftest-key >fake-api.log 2>&1 &
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8123/v0.0.0-selftest/SHA256SUMS >/dev/null 2>&1 &&
+              curl -fsS http://127.0.0.1:8124/api/v1/health >/dev/null 2>&1; then
+              echo "release server and fake API are up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::the local servers did not become ready"
+          cat release-server.log fake-api.log || true
+          exit 1
+
+      # No cosign-public-key: the action takes its default keyless branch and
+      # checks the certificate identity against this workflow through the
+      # test-only identity override.
+      - name: "f: a keyless-signed release verifies and runs"
+        id: keyless
+        uses: ./.github/action-selftest
+        with:
+          api-url: http://127.0.0.1:8124
+          api-key: selftest-key
+          project: pass
+          file: .github/action-selftest/scan.json
+          tool: trivy
+          version: v0.0.0-selftest
+          release-base-url: http://127.0.0.1:8123
+          certificate-identity: https://github.com/${{ github.workflow_ref }}
+          github-token: ""
+
+      - name: "f: assert the keyless run succeeded"
+        shell: bash
+        env:
+          OUTCOME: ${{ steps.keyless.outcome }}
+        run: bash .github/action-selftest/assert-outcome.sh success "$OUTCOME"
