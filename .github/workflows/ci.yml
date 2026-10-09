@@ -211,6 +211,101 @@ jobs:
             --build-arg COMMIT="$(git rev-parse --short HEAD)" \
             -t specht:ci .
 
+  release-dry-run:
+    # Exercises the whole release path (archives, checksums, adapter image,
+    # extraction) on pull requests without publishing or pushing anything.
+    # Not a required check: it is advisory for release changes.
+    name: release dry-run (no publish)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The same script the tag release runs, with a synthetic version so the
+      # packaging path is covered before any tag exists.
+      - name: Build release archives
+        run: ./scripts/build-release.sh 0.0.0-dryrun dist
+
+      - name: Rebuild and compare (reproducibility)
+        run: |
+          ./scripts/build-release.sh 0.0.0-dryrun dist-rebuild
+          diff -u dist/SHA256SUMS dist-rebuild/SHA256SUMS
+
+      - name: Build the adapter image
+        run: |
+          docker build --load -f deploy/Dockerfile.adapter \
+            --build-arg VERSION=0.0.0-dryrun \
+            --build-arg COMMIT="$(git rev-parse --short HEAD)" \
+            -t specht-adapter:dryrun .
+
+      - name: Smoke test the adapter image
+        run: |
+          docker run --rm specht-adapter:dryrun -help
+          # GitLab Runner clears the entrypoint and runs the binary from the
+          # job script, so the image must carry a shell as well.
+          docker run --rm --entrypoint "" specht-adapter:dryrun sh -c 'specht-adapter -help'
+
+      - name: Verify archives and checksums
+        run: |
+          ls -l dist
+          cd dist
+          sha256sum -c SHA256SUMS
+          for a in *.tar.gz; do
+            case "$a" in
+              specht-adapter_*) bin=specht-adapter ;;
+              specht_*) bin=specht ;;
+              *) echo "::error::unexpected archive $a"; exit 1 ;;
+            esac
+            for want in "$bin" LICENSE; do
+              if ! tar -tzf "$a" | grep -qx "$want"; then
+                echo "::error::$a does not contain $want"
+                exit 1
+              fi
+            done
+          done
+          for a in *.zip; do
+            case "$a" in
+              specht-adapter_*) bin=specht-adapter.exe ;;
+              specht_*) bin=specht.exe ;;
+              *) echo "::error::unexpected archive $a"; exit 1 ;;
+            esac
+            for want in "$bin" LICENSE; do
+              if ! unzip -Z1 "$a" | grep -qx "$want"; then
+                echo "::error::$a does not contain $want"
+                exit 1
+              fi
+            done
+          done
+
+      - name: Extract one archive per OS
+        run: |
+          rm -rf extracted
+          mkdir -p extracted/linux extracted/darwin extracted/windows
+          tar -xzf dist/specht-adapter_0.0.0-dryrun_linux_amd64.tar.gz -C extracted/linux
+          tar -xzf dist/specht_0.0.0-dryrun_darwin_arm64.tar.gz -C extracted/darwin
+          unzip -q dist/specht-adapter_0.0.0-dryrun_windows_amd64.zip -d extracted/windows
+          test -x extracted/linux/specht-adapter
+          test -x extracted/darwin/specht
+          test -f extracted/windows/specht-adapter.exe
+          # Linux is the only one of the three this runner can execute.
+          ./extracted/linux/specht-adapter -help
+
+      - name: Upload dry-run release artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-dryrun
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7
+
   security-scan:
     name: security scan (Semgrep)
     runs-on: ubuntu-latest
