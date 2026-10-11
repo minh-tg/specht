@@ -1,3 +1,4 @@
+import { SkeletonLines } from "@/components/SkeletonLines";
 import type { ScannerDescriptor } from "@/types/api";
 import { type ReactNode } from "react";
 import type { ReportUpload } from "./useReportUpload";
@@ -27,7 +28,7 @@ export function UploadForm({
 }: UploadFormProps) {
   let scannerPicker: ReactNode;
   if (scannersLoading) {
-    scannerPicker = <div className="text-muted-foreground mt-1 text-sm">Loading scanners…</div>;
+    scannerPicker = <SkeletonLines label="Loading scanners" lines={1} className="mt-1" />;
   } else if (scannersError) {
     scannerPicker = (
       <div className="text-destructive mt-1 text-sm">

@@ -11,6 +11,7 @@ import {
 import { useUserDirectory } from "@/api/users";
 import { DisabledReason } from "@/components/DisabledReason";
 import { ErrorState } from "@/components/ErrorState";
+import { SkeletonLines } from "@/components/SkeletonLines";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -179,7 +180,7 @@ export function ProjectAccess() {
         </div>
 
         {membersLoading
-          ? <div className="p-6 text-center text-muted-foreground text-sm">Loading members...</div>
+          ? <SkeletonLines label="Loading members" className="p-6" />
           : membersError
           ? (
             <div className="p-4">
@@ -292,11 +293,7 @@ export function ProjectAccess() {
         </div>
 
         {teamsLoading
-          ? (
-            <div className="p-6 text-center text-muted-foreground text-sm">
-              Loading linked teams...
-            </div>
-          )
+          ? <SkeletonLines label="Loading linked teams" className="p-6" />
           : teamsError
           ? (
             <div className="p-4">

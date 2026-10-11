@@ -10,6 +10,7 @@ import {
 import { useUserDirectory } from "@/api/users";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
+import { SkeletonLines } from "@/components/SkeletonLines";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -200,7 +201,7 @@ export function TeamsDirectory() {
       </div>
 
       {teamsLoading
-        ? <div className="py-12 text-center text-muted-foreground text-sm">Loading teams...</div>
+        ? <SkeletonLines label="Loading teams" lines={4} className="py-6" />
         : teamsError
         ? <ErrorState title="Could not load company teams." onRetry={() => refetchTeams()} />
         : teams && teams.length > 0
@@ -346,11 +347,7 @@ export function TeamsDirectory() {
 
           <div className="border border-border rounded-md max-h-60 overflow-y-auto">
             {rosterLoading
-              ? (
-                <div className="p-4 text-center text-muted-foreground text-xs">
-                  Loading roster...
-                </div>
-              )
+              ? <SkeletonLines label="Loading roster" className="p-4" />
               : rosterError
               ? (
                 <div className="p-4">

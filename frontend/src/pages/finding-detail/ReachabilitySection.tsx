@@ -1,5 +1,6 @@
 import { useUpsertReachability } from "@/api/hooks";
 import { InfoTip } from "@/components/InfoTip";
+import { SkeletonLines } from "@/components/SkeletonLines";
 import { isReachabilityState, type ReachabilityState, reachabilityStateLabel } from "@/lib/enums";
 import { formatDateTime } from "@/lib/format";
 import { truncateText } from "@/lib/utils";
@@ -59,7 +60,7 @@ export function ReachabilitySection({
 
   let body: ReactNode;
   if (isLoading) {
-    body = <p className="text-muted-foreground mb-3 text-xs">Latest: Loading...</p>;
+    body = <SkeletonLines label="Loading reachability" lines={1} className="mb-3" />;
   } else if (isError) {
     body = (
       <p className="text-destructive mb-3 text-xs">
@@ -67,7 +68,7 @@ export function ReachabilitySection({
       </p>
     );
   } else if (!isSuccess) {
-    body = <p className="text-muted-foreground mb-3 text-xs">Latest: Loading...</p>;
+    body = <SkeletonLines label="Loading reachability" lines={1} className="mb-3" />;
   } else {
     body = <p className="text-muted-foreground mb-3 text-xs">{latestAssessmentLine(latest)}</p>;
   }
