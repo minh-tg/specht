@@ -1,5 +1,5 @@
 import { AuthContext, type AuthContextValue } from "@/auth/context";
-import { createTestQueryClient } from "@/test/utils";
+import { chooseOption, createTestQueryClient } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -120,11 +120,11 @@ describe("ApiKeys", () => {
     renderApiKeys();
     const user = userEvent.setup();
 
-    await waitFor(() => {
-      expect(screen.getByText("Test Project")).toBeInTheDocument();
-    });
-
-    await user.selectOptions(screen.getByRole("combobox", { name: /project/i }), "test-project");
+    await chooseOption(
+      user,
+      await screen.findByRole("combobox", { name: /project/i }),
+      "Test Project",
+    );
     await user.type(screen.getByPlaceholderText("Key name"), "My Key");
     await user.click(screen.getByRole("button", { name: /create/i }));
 
@@ -142,11 +142,11 @@ describe("ApiKeys", () => {
     renderApiKeys();
     const user = userEvent.setup();
 
-    await waitFor(() => {
-      expect(screen.getByText("Test Project")).toBeInTheDocument();
-    });
-
-    await user.selectOptions(screen.getByRole("combobox", { name: /project/i }), "test-project");
+    await chooseOption(
+      user,
+      await screen.findByRole("combobox", { name: /project/i }),
+      "Test Project",
+    );
 
     await waitFor(() => {
       expect(screen.getByText("My Key")).toBeInTheDocument();
@@ -162,18 +162,14 @@ describe("ApiKeys", () => {
     renderApiKeys();
     const user = userEvent.setup();
 
-    await waitFor(() => {
-      expect(screen.getByText("Test Project")).toBeInTheDocument();
-    });
-
-    const select = screen.getByRole("combobox", { name: /project/i });
-    await user.selectOptions(select, "test-project");
+    const select = await screen.findByRole("combobox", { name: /project/i });
+    await chooseOption(user, select, "Test Project");
 
     await waitFor(() => {
       expect(screen.getByText("My Key")).toBeInTheDocument();
     });
 
-    await user.selectOptions(select, "");
+    await chooseOption(user, select, "Select a project");
 
     await waitFor(() => {
       expect(screen.queryByText("My Key")).not.toBeInTheDocument();
@@ -185,11 +181,11 @@ describe("ApiKeys", () => {
     renderApiKeys();
     const user = userEvent.setup();
 
-    await waitFor(() => {
-      expect(screen.getByText("Test Project")).toBeInTheDocument();
-    });
-
-    await user.selectOptions(screen.getByRole("combobox", { name: /project/i }), "test-project");
+    await chooseOption(
+      user,
+      await screen.findByRole("combobox", { name: /project/i }),
+      "Test Project",
+    );
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toHaveTextContent("load failed");
@@ -209,11 +205,11 @@ describe("ApiKeys", () => {
     renderApiKeys();
     const user = userEvent.setup();
 
-    await waitFor(() => {
-      expect(screen.getByText("Test Project")).toBeInTheDocument();
-    });
-
-    await user.selectOptions(screen.getByRole("combobox", { name: /project/i }), "test-project");
+    await chooseOption(
+      user,
+      await screen.findByRole("combobox", { name: /project/i }),
+      "Test Project",
+    );
 
     await waitFor(() => {
       expect(screen.getByText("My Key")).toBeInTheDocument();

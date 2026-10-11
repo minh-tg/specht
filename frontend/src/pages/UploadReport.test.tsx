@@ -1,4 +1,4 @@
-import { createTestQueryClient } from "@/test/utils";
+import { chooseOption, createTestQueryClient } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -74,7 +74,7 @@ async function fillValidForm() {
   await waitFor(() => {
     expect(screen.getByRole("combobox", { name: /scanner/i })).toBeInTheDocument();
   });
-  await user.selectOptions(screen.getByRole("combobox", { name: /scanner/i }), "trivy (2)");
+  await chooseOption(user, screen.getByRole("combobox", { name: /scanner/i }), "trivy (2)");
   await user.upload(screen.getByLabelText(/scan file/i), createJsonFile("{\"vuln\":true}"));
   return user;
 }
@@ -129,7 +129,9 @@ describe("UploadReport", () => {
 
     await user.click(within(card).getByRole("button", { name: "Upload another" }));
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: /scanner/i })).toHaveValue("");
+    expect(screen.getByRole("combobox", { name: /scanner/i })).toHaveTextContent(
+      "Select a scanner",
+    );
   });
 
   it("shows a passing result card", async () => {
@@ -183,7 +185,7 @@ describe("UploadReport", () => {
     await waitFor(() => {
       expect(screen.getByRole("combobox", { name: /scanner/i })).toBeInTheDocument();
     });
-    await user.selectOptions(screen.getByRole("combobox", { name: /scanner/i }), "trivy (2)");
+    await chooseOption(user, screen.getByRole("combobox", { name: /scanner/i }), "trivy (2)");
     await user.upload(screen.getByLabelText(/scan file/i), createJsonFile("not json"));
 
     expect(await screen.findByText("Invalid JSON")).toBeInTheDocument();

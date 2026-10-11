@@ -1,4 +1,4 @@
-import type { APIRequestContext, Page } from "@playwright/test";
+import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -22,6 +22,16 @@ export const FIXTURE_HIGH_NEW = path.resolve(process.cwd(), "../e2e/testdata/hig
 // A baseline scan and the pull-request scan that adds one blocking finding on top of it.
 export const BASE_SHA = "1111111111111111111111111111111111111111";
 export const CHANGE_SHA = "2222222222222222222222222222222222222222";
+
+/** Opens a dropdown (the Base UI Select) and picks the option with this visible label. */
+export async function chooseOption(
+  page: Page,
+  control: Locator,
+  label: string | RegExp,
+): Promise<void> {
+  await control.click();
+  await page.getByRole("option", { name: label, exact: true }).click();
+}
 
 export function uniq(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;

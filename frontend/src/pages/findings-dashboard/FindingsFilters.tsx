@@ -1,3 +1,4 @@
+import { SelectField } from "@/components/SelectField";
 import {
   FINDING_KINDS,
   findingKindLabel,
@@ -26,49 +27,46 @@ export function FindingsFilters(
 ) {
   return (
     <div className="flex flex-wrap gap-2">
-      <select
+      <SelectField
         aria-label="Filter by severity"
-        className="border-input bg-background rounded-md border px-3 py-1 text-sm"
         value={filters.severity}
-        onChange={(e) => onFilterChange("severity", e.target.value)}
-      >
-        <option value="">All severities</option>
-        {SEVERITIES.map((value) => <option key={value} value={value}>{severityLabel(value)}
-        </option>)}
-      </select>
-      <select
+        onValueChange={(v) => onFilterChange("severity", v)}
+        options={[
+          { value: "", label: "All severities" },
+          ...SEVERITIES.map((value) => ({ value, label: severityLabel(value) ?? value })),
+        ]}
+      />
+      <SelectField
         aria-label="Filter by status"
-        className="border-input bg-background rounded-md border px-3 py-1 text-sm"
         value={filters.status}
-        onChange={(e) => onFilterChange("status", e.target.value)}
-      >
-        <option value="">All statuses</option>
-        {TECHNICAL_STATES.map((value) => (
-          <option key={value} value={value}>{technicalStateLabel(value)}</option>
-        ))}
-      </select>
-      <select
+        onValueChange={(v) => onFilterChange("status", v)}
+        options={[
+          { value: "", label: "All statuses" },
+          ...TECHNICAL_STATES.map((value) => ({
+            value,
+            label: technicalStateLabel(value) ?? value,
+          })),
+        ]}
+      />
+      <SelectField
         aria-label="Filter by finding type"
-        className="border-input bg-background rounded-md border px-3 py-1 text-sm"
         value={filters.kind}
-        onChange={(e) => onFilterChange("kind", e.target.value)}
-      >
-        <option value="">All kinds</option>
-        {FINDING_KINDS.map((value) => (
-          <option key={value} value={value}>{findingKindLabel(value)}</option>
-        ))}
-      </select>
-      <select
+        onValueChange={(v) => onFilterChange("kind", v)}
+        options={[
+          { value: "", label: "All kinds" },
+          ...FINDING_KINDS.map((value) => ({ value, label: findingKindLabel(value) ?? value })),
+        ]}
+      />
+      <SelectField
         aria-label="Sort findings"
-        className="border-input bg-background rounded-md border px-3 py-1 text-sm md:hidden"
+        className="md:hidden"
         value={`${sort.by}:${sort.dir}`}
-        onChange={(e) => {
-          const [by, dir] = e.target.value.split(":");
+        onValueChange={(v) => {
+          const [by, dir] = v.split(":");
           onSortChange(by, dir === "asc" ? "asc" : "desc");
         }}
-      >
-        {SORT_OPTIONS.map(({ value, label }) => <option key={value} value={value}>{label}</option>)}
-      </select>
+        options={SORT_OPTIONS}
+      />
     </div>
   );
 }

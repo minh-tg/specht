@@ -1,5 +1,5 @@
 import { formatDate } from "@/lib/format";
-import { createTestQueryClient, jsonResponse } from "@/test/utils";
+import { chooseOption, createTestQueryClient, jsonResponse, listOptions } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -136,9 +136,10 @@ describe("FindingsDashboard", () => {
     const user = userEvent.setup();
 
     expect(await screen.findByText("High risk")).toBeInTheDocument();
-    await user.selectOptions(
+    await chooseOption(
+      user,
       screen.getByRole("combobox", { name: "Filter by severity" }),
-      "critical",
+      "Critical",
     );
 
     expect(await screen.findByText("Critical risk")).toBeInTheDocument();
@@ -158,10 +159,11 @@ describe("FindingsDashboard", () => {
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
     const severity = screen.getByRole("combobox", { name: "Filter by severity" });
-    expect(within(severity).getByRole("option", { name: "Unrated" })).toBeInTheDocument();
-    expect(within(severity).queryByRole("option", { name: "None" })).not.toBeInTheDocument();
+    const severityLabels = await listOptions(user, severity);
+    expect(severityLabels).toContain("Unrated");
+    expect(severityLabels).not.toContain("None");
 
-    await user.selectOptions(severity, "unknown");
+    await chooseOption(user, severity, "Unrated");
 
     expect(await screen.findByText("No findings match these filters.")).toBeInTheDocument();
     expect(String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0])).toContain(
@@ -180,9 +182,9 @@ describe("FindingsDashboard", () => {
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
     const kind = screen.getByRole("combobox", { name: "Filter by finding type" });
-    expect(within(kind).getByRole("option", { name: "DAST" })).toBeInTheDocument();
+    expect(await listOptions(user, kind)).toContain("DAST");
 
-    await user.selectOptions(kind, "dast");
+    await chooseOption(user, kind, "DAST");
 
     expect(await screen.findByText("No findings match these filters.")).toBeInTheDocument();
     expect(String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0])).toContain("kind=dast");
@@ -279,14 +281,14 @@ describe("FindingsDashboard", () => {
 
     await screen.findByText("Old finding");
     const sort = screen.getByRole("combobox", { name: "Sort findings" });
-    expect(sort).toHaveValue("severity:desc");
+    expect(sort).toHaveTextContent("Most severe first");
 
-    await user.selectOptions(sort, "last_seen:desc");
+    await chooseOption(user, sort, "Last seen, newest first");
     const titles = () =>
       within(screen.getByRole("grid")).getAllByRole("link").map((link) => link.textContent);
     expect(titles()).toEqual(["New finding", "Old finding"]);
 
-    await user.selectOptions(sort, "last_seen:asc");
+    await chooseOption(user, sort, "Last seen, oldest first");
     expect(titles()).toEqual(["Old finding", "New finding"]);
   });
 
@@ -327,7 +329,7 @@ describe("FindingsDashboard", () => {
     const user = userEvent.setup();
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("Filter by severity"), "critical");
+    await chooseOption(user, screen.getByLabelText("Filter by severity"), "Critical");
 
     expect(await screen.findByText("No findings match these filters.")).toBeInTheDocument();
     expect(screen.getByLabelText("Filter by severity")).toBeInTheDocument();
@@ -360,10 +362,10 @@ describe("FindingsDashboard", () => {
     const user = userEvent.setup();
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("Filter by severity"), "critical");
+    await chooseOption(user, screen.getByLabelText("Filter by severity"), "Critical");
 
     await waitFor(() => expect(releaseFiltered).toBeDefined());
-    expect(screen.getByLabelText("Filter by severity")).toHaveValue("critical");
+    expect(screen.getByLabelText("Filter by severity")).toHaveTextContent("Critical");
     const region = document.querySelector("[aria-busy]");
     expect(region).toHaveAttribute("aria-busy", "true");
     // Stale rows stay visible instead of collapsing into a skeleton.

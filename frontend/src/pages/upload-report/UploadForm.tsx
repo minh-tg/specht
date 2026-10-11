@@ -1,4 +1,5 @@
 import { ErrorState } from "@/components/ErrorState";
+import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import type { ScannerDescriptor } from "@/types/api";
 import { type ReactNode } from "react";
@@ -44,19 +45,16 @@ export function UploadForm({
     );
   } else {
     scannerPicker = (
-      <select
+      <SelectField
         id="ingest-scanner"
-        className="border-input bg-background mt-1 block w-full rounded-md border px-3 py-2 text-sm"
+        className="mt-1 w-full"
         value={selectedScanner}
-        onChange={(e) => setSelectedScanner(e.target.value)}
-      >
-        <option value="">Select a scanner</option>
-        {scanners.map((s) => (
-          <option key={s.name} value={s.name}>
-            {s.name} ({s.version})
-          </option>
-        ))}
-      </select>
+        onValueChange={setSelectedScanner}
+        options={[
+          { value: "", label: "Select a scanner" },
+          ...scanners.map((s) => ({ value: s.name, label: `${s.name} (${s.version})` })),
+        ]}
+      />
     );
   }
 

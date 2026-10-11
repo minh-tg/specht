@@ -3,6 +3,7 @@ import { useMe, useProjects } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
+import { SelectField } from "@/components/SelectField";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ApiKey } from "@/types/api";
 import { type ReactNode, useState } from "react";
@@ -196,19 +197,16 @@ function ApiKeysManager() {
 
       <div className="mb-6">
         <label htmlFor="apikeys-project" className="text-sm font-medium">Project</label>
-        <select
+        <SelectField
           id="apikeys-project"
-          className="border-input bg-background mt-1 block w-full rounded-md border px-3 py-2 text-sm"
+          className="mt-1 w-full"
           value={selectedProject}
-          onChange={(e) => handleProjectChange(e.target.value)}
-        >
-          <option value="">Select a project</option>
-          {projects?.map((p) => (
-            <option key={p.id} value={p.slug}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+          onValueChange={handleProjectChange}
+          options={[
+            { value: "", label: "Select a project" },
+            ...(projects ?? []).map((p) => ({ value: p.slug, label: p.name })),
+          ]}
+        />
       </div>
 
       {selectedProject && (

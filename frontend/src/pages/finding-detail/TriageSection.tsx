@@ -1,4 +1,5 @@
 import { useProjectRole, useTriageFinding } from "@/api/hooks";
+import { SelectField } from "@/components/SelectField";
 import { type AnalysisState, isAnalysisState } from "@/lib/enums";
 import { GLOSSARY } from "@/lib/glossary";
 import { useState } from "react";
@@ -53,26 +54,21 @@ export function TriageSection({
     <section aria-labelledby="triage-heading">
       <h3 id="triage-heading" className="mb-3 text-sm font-medium">Triage</h3>
       <div className="flex flex-wrap gap-2">
-        <select
+        <SelectField
           aria-label="Triage action"
           aria-describedby={hint ? "triage-hint" : undefined}
           disabled={!canTriage}
-          className="border-input bg-background rounded-md border px-3 py-1.5 text-sm disabled:opacity-50"
           value={selectedState}
-          onChange={(e) => {
-            const value = e.target.value;
+          onValueChange={(value) => {
             setSelectedState(isAnalysisState(value) ? value : "");
             setReason("");
             setExpiresAt("");
           }}
-        >
-          <option value="">Select action...</option>
-          {TRIAGE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          options={[
+            { value: "", label: "Select action..." },
+            ...TRIAGE_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label })),
+          ]}
+        />
         {selectedOption?.requiresReason && (
           <input
             className="border-input bg-background min-w-[200px] rounded-md border px-3 py-1.5 text-sm disabled:opacity-50"
