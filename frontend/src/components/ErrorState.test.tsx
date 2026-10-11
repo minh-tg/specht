@@ -11,6 +11,12 @@ describe("ErrorState", () => {
     expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
   });
 
+  it("shows the server's reason under the title", () => {
+    render(<ErrorState title="Could not load reports." detail="database unavailable" />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent("database unavailable");
+  });
+
   it("offers a retry that calls back", async () => {
     const onRetry = vi.fn();
     render(<ErrorState title="Could not load members." onRetry={onRetry} />);

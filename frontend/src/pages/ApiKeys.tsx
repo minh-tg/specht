@@ -1,6 +1,8 @@
 import { APIError, apiFetch } from "@/api/client";
 import { useMe, useProjects } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
+import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ApiKey } from "@/types/api";
 import { type ReactNode, useState } from "react";
@@ -126,23 +128,14 @@ function ApiKeysManager() {
     keysBody = <Skeleton className="h-20 rounded" />;
   } else if (loadError) {
     keysBody = (
-      <div role="alert" className="bg-card rounded-lg border p-4">
-        <p className="text-destructive text-sm">{loadError}</p>
-        <button
-          className="text-action hover:text-action/80 mt-2 text-xs font-medium"
-          onClick={() => loadKeys(selectedProject)}
-        >
-          Retry
-        </button>
-      </div>
+      <ErrorState
+        title="Could not load API keys."
+        detail={loadError}
+        onRetry={() => loadKeys(selectedProject)}
+      />
     );
   } else if (keys.length === 0) {
-    keysBody = (
-      <div className="flex flex-col items-center gap-2 py-8">
-        <p className="text-muted-foreground text-sm">No API keys yet</p>
-        <p className="text-muted-foreground text-xs">Create one above</p>
-      </div>
-    );
+    keysBody = <EmptyState title="No API keys yet" description="Create one above." />;
   } else {
     keysBody = (
       <div className="space-y-2">

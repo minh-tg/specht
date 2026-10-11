@@ -1,3 +1,4 @@
+import { ErrorState } from "@/components/ErrorState";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import type { ScannerDescriptor } from "@/types/api";
 import { type ReactNode } from "react";
@@ -31,16 +32,11 @@ export function UploadForm({
     scannerPicker = <SkeletonLines label="Loading scanners" lines={1} className="mt-1" />;
   } else if (scannersError) {
     scannerPicker = (
-      <div className="text-destructive mt-1 text-sm">
-        Failed to load scanners.
-        <button
-          type="button"
-          onClick={() => onRetryScanners()}
-          className="text-action ml-2 text-sm underline underline-offset-2 hover:no-underline"
-        >
-          Retry
-        </button>
-      </div>
+      <ErrorState
+        className="mt-1"
+        title="Could not load scanners."
+        onRetry={() => onRetryScanners()}
+      />
     );
   } else if (!scanners || scanners.length === 0) {
     scannerPicker = (

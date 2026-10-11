@@ -1,4 +1,5 @@
 import { useFinding, useFindingEvents, useGateStatus, useReachability } from "@/api/hooks";
+import { ErrorState } from "@/components/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { analysisStateLabel } from "@/lib/enums";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
@@ -55,14 +56,11 @@ export function FindingDetail() {
           &larr; Back to findings
         </Link>
         <h1 className="text-2xl font-bold">Couldn't load this finding</h1>
-        <p className="text-destructive mt-2 text-sm">{error?.message ?? "Finding not found"}</p>
-        <button
-          type="button"
-          className="text-action text-sm underline hover:no-underline"
-          onClick={() => refetch()}
-        >
-          Retry
-        </button>
+        <ErrorState
+          className="mt-4"
+          title={error?.message ?? "Finding not found"}
+          onRetry={() => refetch()}
+        />
       </div>
     );
   }

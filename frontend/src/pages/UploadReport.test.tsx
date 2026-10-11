@@ -238,7 +238,7 @@ describe("UploadReport scanner loading and error states", () => {
 
     renderUpload();
     await waitFor(() => {
-      expect(screen.getByText(/failed to load scanners/i)).toBeInTheDocument();
+      expect(screen.getByText(/could not load scanners/i)).toBeInTheDocument();
     });
   });
 

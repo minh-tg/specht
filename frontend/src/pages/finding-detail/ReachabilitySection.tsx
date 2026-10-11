@@ -1,4 +1,5 @@
 import { useUpsertReachability } from "@/api/hooks";
+import { ErrorState } from "@/components/ErrorState";
 import { InfoTip } from "@/components/InfoTip";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { isReachabilityState, type ReachabilityState, reachabilityStateLabel } from "@/lib/enums";
@@ -63,9 +64,11 @@ export function ReachabilitySection({
     body = <SkeletonLines label="Loading reachability" lines={1} className="mb-3" />;
   } else if (isError) {
     body = (
-      <p className="text-destructive mb-3 text-xs">
-        Unable to load reachability: {error?.message ?? "request failed"}
-      </p>
+      <ErrorState
+        className="mb-3"
+        title="Could not load reachability."
+        detail={error?.message ?? "request failed"}
+      />
     );
   } else if (!isSuccess) {
     body = <SkeletonLines label="Loading reachability" lines={1} className="mb-3" />;
