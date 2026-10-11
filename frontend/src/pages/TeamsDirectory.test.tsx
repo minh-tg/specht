@@ -1,5 +1,5 @@
 import { AuthContext, type AuthContextValue } from "@/auth/context";
-import { createTestQueryClient, jsonResponse } from "@/test/utils";
+import { chooseOption, createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -203,7 +203,7 @@ describe("TeamsDirectory", () => {
       screen.getByRole("textbox", { name: "User ID" }),
       "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
     );
-    await user.selectOptions(screen.getByRole("combobox", { name: "Team role" }), "admin");
+    await chooseOption(user, screen.getByRole("combobox", { name: "Team role" }), "Admin");
     await user.click(screen.getByRole("button", { name: "Add" }));
 
     await waitFor(() => {
@@ -223,7 +223,7 @@ describe("TeamsDirectory", () => {
     renderTeamsDirectory();
 
     await user.click((await screen.findAllByRole("button", { name: "Manage Roster" }))[0]);
-    expect(screen.getByRole("combobox", { name: "Team role" })).toHaveValue("member");
+    expect(screen.getByRole("combobox", { name: "Team role" })).toHaveTextContent("Member");
 
     await user.type(
       screen.getByRole("textbox", { name: "User ID" }),

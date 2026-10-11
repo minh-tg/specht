@@ -1,5 +1,7 @@
 import { createQueryClient } from "@/api/queryClient";
 import type { QueryClient } from "@tanstack/react-query";
+import { screen } from "@testing-library/react";
+import type { UserEvent } from "@testing-library/user-event";
 
 /** Statuses the `Response` constructor refuses to pair with a body. */
 const NULL_BODY_STATUSES = new Set([204, 205, 304]);
@@ -30,4 +32,25 @@ export function jsonResponse(body: unknown, status = 200): Response {
  */
 export function createTestQueryClient(): QueryClient {
   return createQueryClient(false);
+}
+
+/** Opens a dropdown (the Base UI Select) and picks the option with this visible label. */
+export async function chooseOption(
+  user: UserEvent,
+  control: HTMLElement,
+  label: string | RegExp,
+): Promise<void> {
+  await user.click(control);
+  await user.click(await screen.findByRole("option", { name: label }));
+}
+
+/** The labels a dropdown offers, in order. The dropdown is left closed. */
+export async function listOptions(
+  user: UserEvent,
+  control: HTMLElement,
+): Promise<Array<string | null>> {
+  await user.click(control);
+  const labels = (await screen.findAllByRole("option")).map((o) => o.textContent);
+  await user.keyboard("{Escape}");
+  return labels;
 }

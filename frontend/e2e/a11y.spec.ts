@@ -6,6 +6,7 @@ import {
   apiToken,
   BASE_SHA,
   CHANGE_SHA,
+  chooseOption,
   FIXTURE_HIGH_MEDIUM,
   FIXTURE_HIGH_NEW,
   ingestFixture,
@@ -120,13 +121,19 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await audit(page, "findings list with a tooltip open");
   await page.mouse.move(0, 0);
 
+  // The dropdown popup is a portal outside the page tree: audit it open as well.
+  await page.getByLabel("Filter by severity").click();
+  await expect(page.getByRole("option", { name: "All severities", exact: true })).toBeVisible();
+  await audit(page, "findings list with a dropdown open");
+  await page.keyboard.press("Escape");
+
   await page.locator("a[href*=\"/findings/\"]").first().click();
   await expect(page.getByRole("heading", { name: "Triage" })).toBeVisible();
-  await page.getByLabel("Triage action").selectOption("not_affected");
+  await chooseOption(page, page.getByLabel("Triage action"), "Not affected");
   await audit(page, "finding detail with a triage hint");
 
   // A success toast is page content for as long as it shows. "reachable" keeps the change blocked.
-  await page.getByLabel("Reachability assessment").selectOption("reachable");
+  await chooseOption(page, page.getByLabel("Reachability assessment"), "Reachable");
   await page.getByRole("button", { name: "Assess" }).click();
   await expect(page.getByText("Reachability saved")).toBeVisible();
   await audit(page, "finding detail with a success toast");

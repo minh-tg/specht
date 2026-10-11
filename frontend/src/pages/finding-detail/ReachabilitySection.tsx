@@ -1,6 +1,7 @@
 import { useUpsertReachability } from "@/api/hooks";
 import { ErrorState } from "@/components/ErrorState";
 import { InfoTip } from "@/components/InfoTip";
+import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { isReachabilityState, type ReachabilityState, reachabilityStateLabel } from "@/lib/enums";
 import { formatDateTime } from "@/lib/format";
@@ -84,22 +85,15 @@ export function ReachabilitySection({
       </div>
       {body}
       <div className="flex flex-wrap gap-2">
-        <select
+        <SelectField
           aria-label="Reachability assessment"
-          className="border-input bg-background rounded-md border px-3 py-1.5 text-sm"
           value={reachState}
-          onChange={(e) => {
-            const value = e.target.value;
-            setReachState(isReachabilityState(value) ? value : "");
-          }}
-        >
-          <option value="">Select assessment...</option>
-          {REACHABILITY_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+          onValueChange={(value) => setReachState(isReachabilityState(value) ? value : "")}
+          options={[
+            { value: "", label: "Select assessment..." },
+            ...REACHABILITY_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label })),
+          ]}
+        />
         <input
           className="border-input bg-background min-w-[200px] rounded-md border px-3 py-1.5 text-sm"
           aria-label="Evidence"

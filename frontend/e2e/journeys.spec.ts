@@ -3,6 +3,7 @@ import {
   apiToken,
   BASE_SHA,
   CHANGE_SHA,
+  chooseOption,
   FIXTURE_HIGH,
   FIXTURE_HIGH_MEDIUM,
   FIXTURE_HIGH_NEW,
@@ -34,11 +35,11 @@ test("findings dashboard filters live rows", async ({ page, request }) => {
   const rows = page.locator("tbody tr");
   await expect(rows).toHaveCount(2);
 
-  await page.getByLabel("Filter by severity").selectOption("high");
+  await chooseOption(page, page.getByLabel("Filter by severity"), "High");
   await expect(rows).toHaveCount(1);
   await expect(page.getByText(HIGH_TITLE)).toBeVisible();
 
-  await page.getByLabel("Filter by severity").selectOption("");
+  await chooseOption(page, page.getByLabel("Filter by severity"), "All severities");
   await expect(rows).toHaveCount(2);
 });
 
@@ -54,12 +55,12 @@ test("finding detail triage applies states and enforces reasons", async ({ page,
   await expect(page).toHaveURL(new RegExp(`/${slug}/findings/`));
   await expect(page.getByRole("heading", { name: "Triage" })).toBeVisible();
 
-  const triageSelect = page.locator("select:has(option[value=\"exploitable\"])");
+  const triageSelect = page.getByLabel("Triage action");
   const apply = page.getByRole("button", { name: "Apply" });
 
   // The reason-required branch: Apply stays disabled until the reason
   // exists, then applies and reports the gate effect.
-  await triageSelect.selectOption("false_positive");
+  await chooseOption(page, triageSelect, "False positive");
   await expect(apply).toBeDisabled();
   await page.getByPlaceholder("Reason").fill("browser journey: not reachable in our build");
   await expect(apply).toBeEnabled();
@@ -71,7 +72,7 @@ test("finding detail triage applies states and enforces reasons", async ({ page,
   // picker, not a state display).
   // Wait for the PATCH itself: the first confirmation is still on screen, so
   // asserting on its text would let the reload cut the second save short.
-  await triageSelect.selectOption("exploitable");
+  await chooseOption(page, triageSelect, "Exploitable");
   const saved = page.waitForResponse((res) => res.request().method() === "PATCH" && res.ok());
   await apply.click();
   await saved;
@@ -101,7 +102,7 @@ test("manual ingest uploads a scan file", async ({ page, request }) => {
   await uiLogin(page);
 
   await page.goto(`/${slug}/reports/upload`);
-  await page.getByLabel("Scanner").selectOption("sarif");
+  await chooseOption(page, page.getByLabel("Scanner"), /^sarif/);
   await page.setInputFiles("#ingest-file", FIXTURE_HIGH);
   await expect(page.getByText("high.sarif.json loaded")).toBeVisible();
 
@@ -125,7 +126,7 @@ test("API keys create with one-time reveal and revoke", async ({ page, request }
   await uiLogin(page);
 
   await page.goto("/api-keys");
-  await page.getByLabel("Project").selectOption(slug);
+  await chooseOption(page, page.getByLabel("Project"), slug);
   await page.fill("#apikeys-name", "journey-key");
   await page.getByRole("button", { name: "Create" }).click();
 
@@ -240,7 +241,7 @@ test("the project header gives an honest verdict and links severity counts to th
   await expect(page.getByText(/Floor: /)).toBeVisible();
   await page.getByRole("link", { name: "1 high finding" }).click();
   await expect(page).toHaveURL(/severity=high/);
-  await expect(page.getByLabel("Filter by severity")).toHaveValue("high");
+  await expect(page.getByLabel("Filter by severity")).toHaveText("High");
 
   await page.goto(`/${passing}/findings`);
   await expect(page.getByText("PASSING", { exact: true })).toBeVisible();
@@ -299,7 +300,7 @@ test("back to findings returns to the filtered list the finding was opened from"
 
   await page.getByRole("link", { name: "← Back to findings" }).click();
   await expect(page).toHaveURL(new RegExp(`/${slug}/findings\\?severity=high$`));
-  await expect(page.getByLabel("Filter by severity")).toHaveValue("high");
+  await expect(page.getByLabel("Filter by severity")).toHaveText("High");
 });
 
 test("keyboard users can skip the navigation", async ({ page }) => {
@@ -325,7 +326,7 @@ test("triaging the only blocker flips the project verdict to passing", async ({ 
   await page.getByRole("link", { name: HIGH_TITLE }).click();
   await expect(page.locator("span", { hasText: /^Blocks gate$/ })).toBeVisible();
 
-  await page.locator("select:has(option[value=\"false_positive\"])").selectOption("false_positive");
+  await chooseOption(page, page.getByLabel("Triage action"), "False positive");
   await page.getByPlaceholder("Reason").fill("e2e: test credential, not a real secret");
   await page.getByRole("button", { name: "Apply" }).click();
   await expect(page.getByText(/Triage saved \(effect:/)).toBeVisible();
@@ -348,7 +349,7 @@ test("marking the only blocker not reachable flips the project verdict to passin
 
   const assess = page.getByRole("button", { name: "Assess" });
   await expect(assess).toBeDisabled();
-  await page.getByLabel("Reachability assessment").selectOption("not_reachable");
+  await chooseOption(page, page.getByLabel("Reachability assessment"), "Not Reachable");
   await page.getByLabel("Evidence").fill("e2e: the vulnerable code path is never called");
   await expect(assess).toBeEnabled();
   await assess.click();

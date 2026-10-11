@@ -1,6 +1,6 @@
 import { AuthContext, type AuthContextValue } from "@/auth/context";
 import { Toaster } from "@/components/ui/sonner";
-import { createTestQueryClient, jsonResponse } from "@/test/utils";
+import { chooseOption, createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -208,7 +208,7 @@ describe("ProjectAccess", () => {
       screen.getByLabelText("User ID"),
       "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
     );
-    await user.selectOptions(screen.getByLabelText("Project Role"), "admin");
+    await chooseOption(user, screen.getByLabelText("Project Role"), /^Admin: full project control/);
 
     const submitBtn = screen.getByRole("button", { name: "Add Member" });
     await user.click(submitBtn);

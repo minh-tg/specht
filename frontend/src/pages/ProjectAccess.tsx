@@ -11,6 +11,7 @@ import {
 import { useUserDirectory } from "@/api/users";
 import { DisabledReason } from "@/components/DisabledReason";
 import { ErrorState } from "@/components/ErrorState";
+import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,6 +47,23 @@ function RoleBadge({ role }: { role: ProjectRole; }) {
       {role}
     </span>
   );
+}
+
+function toProjectRole(value: string): ProjectRole {
+  return value === "admin" || value === "manager" ? value : "member";
+}
+
+/** The grantable project roles; only a project admin may grant admin. */
+function roleOptions(isAdmin: boolean) {
+  return [
+    { value: "member", label: "Member: view findings and reports" },
+    { value: "manager", label: "Manager: triage findings and manage members" },
+    {
+      value: "admin",
+      label: `Admin: full project control${isAdmin ? "" : " (Project Admins only)"}`,
+      disabled: !isAdmin,
+    },
+  ];
 }
 
 export function ProjectAccess() {
@@ -405,18 +423,13 @@ export function ProjectAccess() {
               >
                 Project Role
               </label>
-              <select
+              <SelectField
                 id="member-role-select"
+                className="w-full"
                 value={memberRole}
-                onChange={(e) => setMemberRole(e.target.value as ProjectRole)}
-                className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="member">Member: view findings and reports</option>
-                <option value="manager">Manager: triage findings and manage members</option>
-                <option value="admin" disabled={!isAdmin}>
-                  Admin: full project control {!isAdmin ? "(Project Admins only)" : ""}
-                </option>
-              </select>
+                onValueChange={(v) => setMemberRole(toProjectRole(v))}
+                options={roleOptions(isAdmin)}
+              />
               {!isAdmin && (
                 <p className="text-xs text-muted-foreground mt-1">
                   * Only Project Admins can grant the Admin role.
@@ -459,20 +472,17 @@ export function ProjectAccess() {
               >
                 Company Team
               </label>
-              <select
+              <SelectField
                 id="link-team-select"
                 required
+                className="w-full"
                 value={selectedTeamId}
-                onChange={(e) => setSelectedTeamId(e.target.value)}
-                className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="">Select a team...</option>
-                {allCompanyTeams?.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+                onValueChange={setSelectedTeamId}
+                options={[
+                  { value: "", label: "Select a team..." },
+                  ...(allCompanyTeams ?? []).map((t) => ({ value: t.id, label: t.name })),
+                ]}
+              />
             </div>
 
             <div>
@@ -482,18 +492,13 @@ export function ProjectAccess() {
               >
                 Granted Role
               </label>
-              <select
+              <SelectField
                 id="link-team-role-select"
+                className="w-full"
                 value={teamRole}
-                onChange={(e) => setTeamRole(e.target.value as ProjectRole)}
-                className="w-full px-3 py-2 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="member">Member: view findings and reports</option>
-                <option value="manager">Manager: triage findings and manage members</option>
-                <option value="admin" disabled={!isAdmin}>
-                  Admin: full project control {!isAdmin ? "(Project Admins only)" : ""}
-                </option>
-              </select>
+                onValueChange={(v) => setTeamRole(toProjectRole(v))}
+                options={roleOptions(isAdmin)}
+              />
             </div>
 
             {linkTeamMutation.isError && (

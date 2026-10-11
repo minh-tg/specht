@@ -10,6 +10,7 @@ import {
 import { useUserDirectory } from "@/api/users";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
+import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import {
   AlertDialog,
@@ -106,6 +107,11 @@ function TeamCard({
     </div>
   );
 }
+
+const TEAM_ROLE_OPTIONS = [
+  { value: "member", label: "Member" },
+  { value: "admin", label: "Admin" },
+] as const;
 
 export function TeamsDirectory() {
   const me = useMe();
@@ -323,15 +329,12 @@ export function TeamsDirectory() {
                   placeholder="User ID"
                   className="flex-1"
                 />
-                <select
+                <SelectField
                   aria-label="Team role"
                   value={rosterRole}
-                  onChange={(e) => setRosterRole(e.target.value as "admin" | "member")}
-                  className="px-2 py-1.5 border border-border rounded-md bg-background text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="member">Member</option>
-                  <option value="admin">Admin</option>
-                </select>
+                  onValueChange={(v) => setRosterRole(v === "admin" ? "admin" : "member")}
+                  options={TEAM_ROLE_OPTIONS}
+                />
                 <Button type="submit" size="sm" disabled={addMemberMutation.isPending}>
                   {addMemberMutation.isPending ? "Adding..." : "Add"}
                 </Button>

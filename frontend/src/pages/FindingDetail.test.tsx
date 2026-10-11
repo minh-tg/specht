@@ -1,6 +1,6 @@
 import { Toaster } from "@/components/ui/sonner";
 import { GLOSSARY } from "@/lib/glossary";
-import { createTestQueryClient } from "@/test/utils";
+import { chooseOption, createTestQueryClient, listOptions } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -201,7 +201,7 @@ describe("FindingDetail triage validation", () => {
     const selects = screen.getAllByRole("combobox");
     expect(selects.length).toBeGreaterThanOrEqual(2);
     const triageSelect = selects[0];
-    await user.selectOptions(triageSelect, "accepted_risk");
+    await chooseOption(user, triageSelect, "Accepted risk");
     const apply = screen.getByRole("button", { name: "Apply" });
     expect(apply).toBeDisabled();
 
@@ -233,7 +233,7 @@ describe("FindingDetail triage validation", () => {
 
     const selects = screen.getAllByRole("combobox");
     const triageSelect = selects[0];
-    await user.selectOptions(triageSelect, "false_positive");
+    await chooseOption(user, triageSelect, "False positive");
     const apply = screen.getByRole("button", { name: "Apply" });
     expect(apply).toBeDisabled();
 
@@ -254,15 +254,15 @@ describe("FindingDetail triage explanations", () => {
     const select = screen.getByLabelText("Triage action");
     expect(select).not.toHaveAttribute("aria-describedby");
 
-    await user.selectOptions(select, "false_positive");
+    await chooseOption(user, select, "False positive");
     const hint = screen.getByText(GLOSSARY.falsePositive.short);
     expect(select).toHaveAttribute("aria-describedby", hint.id);
 
-    await user.selectOptions(select, "exploitable");
+    await chooseOption(user, select, "Exploitable");
     expect(screen.queryByText(GLOSSARY.falsePositive.short)).not.toBeInTheDocument();
     expect(screen.getByText(GLOSSARY.exploitable.short)).toBeInTheDocument();
 
-    await user.selectOptions(select, "");
+    await chooseOption(user, select, "Select action...");
     expect(select).not.toHaveAttribute("aria-describedby");
   });
 });
@@ -273,7 +273,7 @@ describe("FindingDetail accessibility", () => {
     renderDetail();
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
-    await user.selectOptions(screen.getByLabelText("Triage action"), "accepted_risk");
+    await chooseOption(user, screen.getByLabelText("Triage action"), "Accepted risk");
 
     expect(screen.getByLabelText("Triage action")).toBeInTheDocument();
     expect(screen.getByLabelText("Reason")).toBeInTheDocument();
@@ -287,7 +287,7 @@ describe("FindingDetail accessibility", () => {
     renderDetail();
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
-    await user.selectOptions(screen.getByLabelText("Triage action"), "exploitable");
+    await chooseOption(user, screen.getByLabelText("Triage action"), "Exploitable");
     await user.click(screen.getByRole("button", { name: "Apply" }));
 
     const message = await screen.findByText(/Triage saved \(effect:/);
@@ -322,7 +322,7 @@ describe("FindingDetail accessibility", () => {
     renderDetail();
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
-    await user.selectOptions(screen.getByLabelText("Triage action"), "exploitable");
+    await chooseOption(user, screen.getByLabelText("Triage action"), "Exploitable");
     await user.click(screen.getByRole("button", { name: "Apply" }));
 
     const alert = screen.getByRole("alert", { name: "Triage result error" });
@@ -363,7 +363,7 @@ describe("FindingDetail decision flow", () => {
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
     const reachability = screen.getByLabelText("Reachability assessment");
-    expect(within(reachability).getAllByRole("option").map((o) => o.textContent)).toEqual([
+    expect(await listOptions(userEvent.setup(), reachability)).toEqual([
       "Select assessment...",
       "Reachable",
       "Not Reachable",
@@ -372,7 +372,7 @@ describe("FindingDetail decision flow", () => {
     ]);
 
     const triage = screen.getByLabelText("Triage action");
-    expect(within(triage).getAllByRole("option").map((o) => o.textContent)).toEqual([
+    expect(await listOptions(userEvent.setup(), triage)).toEqual([
       "Select action...",
       "Exploitable",
       "False positive",
@@ -417,7 +417,7 @@ describe("FindingDetail decision flow", () => {
     renderDetail();
     await screen.findByRole("heading", { name: "Test Vulnerability" });
 
-    await user.selectOptions(screen.getByLabelText("Reachability assessment"), "reachable");
+    await chooseOption(user, screen.getByLabelText("Reachability assessment"), "Reachable");
     await user.click(screen.getByRole("button", { name: "Assess" }));
 
     expect(await screen.findByText("Reachability saved")).toBeInTheDocument();
@@ -643,7 +643,7 @@ describe("FindingDetail reachability rendering", () => {
 
     const selects = screen.getAllByRole("combobox");
     const reachSelect = selects[1];
-    await user.selectOptions(reachSelect, "reachable");
+    await chooseOption(user, reachSelect, "Reachable");
 
     const evidenceInput = screen.getByPlaceholderText("Evidence") as HTMLInputElement;
     await user.type(evidenceInput, "trace confirmed");
@@ -652,7 +652,7 @@ describe("FindingDetail reachability rendering", () => {
     await user.click(assessBtn);
 
     expect(await screen.findByText("Reachability saved")).toBeInTheDocument();
-    expect(reachSelect).toHaveValue("");
+    expect(reachSelect).toHaveTextContent("Select assessment...");
     expect(evidenceInput.value).toBe("");
   });
 });
