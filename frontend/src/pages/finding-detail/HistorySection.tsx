@@ -1,5 +1,6 @@
 import { useMe } from "@/api/hooks";
 import { actorLabel, useUserDirectory } from "@/api/users";
+import { SkeletonLines } from "@/components/SkeletonLines";
 import { formatDateTime } from "@/lib/format";
 import type { FindingEvent } from "@/types/api";
 import type { ReactNode } from "react";
@@ -20,7 +21,7 @@ export function HistorySection({
 
   let body: ReactNode;
   if (isLoading) {
-    body = <p className="text-muted-foreground text-sm">Loading history...</p>;
+    body = <SkeletonLines label="Loading history" />;
   } else if (isError) {
     body = <p className="text-destructive text-sm">Unable to load history.</p>;
   } else if (!Array.isArray(events) || events.length === 0) {
