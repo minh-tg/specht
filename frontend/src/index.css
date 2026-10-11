@@ -257,11 +257,15 @@
 [data-mode="operate"] { --row-density: var(--row-compact); }
 
 /* Easing curves are theme tokens so utilities exist (ease-entering, ease-exiting,
-   ease-moving). Durations are --dur-* above; use them as duration-(--dur-quick). */
+   ease-moving, ease-drawer). Durations are --dur-* above; use them as duration-(--dur-quick).
+   The built-in CSS curves are too weak and ease-in starts slow, which is the moment the eye is
+   watching, so nothing here accelerates from rest. Exits use the same strong ease-out as
+   entrances and are made faster through a shorter duration instead. */
 @theme {
-  --ease-entering: cubic-bezier(0.16, 1, 0.3, 1);
-  --ease-exiting: cubic-bezier(0.55, 0, 1, 0.45);
-  --ease-moving: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-entering: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-exiting: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-moving: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @theme inline {
