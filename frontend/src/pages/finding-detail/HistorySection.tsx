@@ -1,5 +1,6 @@
 import { useMe } from "@/api/hooks";
 import { actorLabel, useUserDirectory } from "@/api/users";
+import { ErrorState } from "@/components/ErrorState";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { formatDateTime } from "@/lib/format";
 import type { FindingEvent } from "@/types/api";
@@ -23,7 +24,7 @@ export function HistorySection({
   if (isLoading) {
     body = <SkeletonLines label="Loading history" />;
   } else if (isError) {
-    body = <p className="text-destructive text-sm">Unable to load history.</p>;
+    body = <ErrorState title="Could not load history." />;
   } else if (!Array.isArray(events) || events.length === 0) {
     body = <p className="text-muted-foreground text-sm">No history yet.</p>;
   } else {

@@ -1,5 +1,7 @@
 import { apiFetch } from "@/api/client";
 import { queryKeys, useMe, useProjects } from "@/api/hooks";
+import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
@@ -62,37 +64,27 @@ export function ProjectList() {
 
   if (isError) {
     return (
-      <div className="flex flex-col items-center gap-2 py-16">
-        <p className="text-destructive text-sm">{error?.message ?? "Failed to load projects"}</p>
-        <button
-          className="text-action text-sm underline hover:no-underline"
-          onClick={() => refetch()}
-        >
-          Retry
-        </button>
-      </div>
+      <ErrorState
+        title="Could not load projects."
+        detail={error?.message}
+        onRetry={() => refetch()}
+      />
     );
   }
 
   if (projectList.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-2 py-16">
-        <p className="text-muted-foreground text-sm">No projects yet</p>
-        {isAdmin
+      <EmptyState
+        title="No projects yet"
+        description={isAdmin ? undefined : "Ask an administrator to create one."}
+        action={isAdmin
           ? (
-            <Link
-              to="/projects/new"
-              className="text-action text-sm underline hover:no-underline"
-            >
+            <Link to="/projects/new" className={buttonVariants()}>
               Create your first project
             </Link>
           )
-          : (
-            <p className="text-muted-foreground text-xs">
-              Ask an administrator to create one.
-            </p>
-          )}
-      </div>
+          : undefined}
+      />
     );
   }
 

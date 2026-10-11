@@ -1,4 +1,7 @@
 import { useReports } from "@/api/hooks";
+import { EmptyState } from "@/components/EmptyState";
+import { ErrorState } from "@/components/ErrorState";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime, pluralize } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -44,29 +47,25 @@ export function ReportHistory() {
 
   if (isError) {
     return (
-      <div className="flex flex-col items-center gap-2 py-16">
-        <p className="text-destructive text-sm">{error?.message ?? "Failed to load reports"}</p>
-        <button
-          className="text-action text-sm underline hover:no-underline"
-          onClick={() => refetch()}
-        >
-          Retry
-        </button>
-      </div>
+      <ErrorState
+        title="Could not load reports."
+        detail={error?.message}
+        onRetry={() => refetch()}
+      />
     );
   }
 
   if (!reports?.length) {
     return (
-      <div className="flex flex-col items-center gap-2 py-16">
-        <p className="text-muted-foreground text-sm">No reports yet.</p>
-        <Link
-          to={`/${slug}/reports/upload`}
-          className="text-action text-sm underline hover:no-underline"
-        >
-          Upload a report
-        </Link>
-      </div>
+      <EmptyState
+        title="No reports yet."
+        description="Upload a scanner report and its findings appear here."
+        action={
+          <Link to={`/${slug}/reports/upload`} className={buttonVariants()}>
+            Upload a report
+          </Link>
+        }
+      />
     );
   }
 
