@@ -607,3 +607,29 @@ func TestEvaluate_CVEIDWaiverMatching(t *testing.T) {
 		})
 	}
 }
+
+func TestEvaluate_WaiverWithoutScopeCoversNothing(t *testing.T) {
+	g := New(
+		&mockFindingsRepo{findings: []Finding{{ID: "f1", CurrentSeverityRank: 4}}},
+		&mockWaiversRepo{waivers: []Waiver{{ID: "w1"}}},
+	)
+	d, err := g.Evaluate(context.Background(), "proj-1", 3)
+	require.NoError(t, err)
+	assert.Equal(t, StatusFail, d.Status)
+	assert.Equal(t, []string{"f1"}, d.BlockedBy)
+	assert.Equal(t, 0, d.WaivedCount)
+}
+
+func TestEvaluate_ScopeAllWaiverCoversEveryFinding(t *testing.T) {
+	g := New(
+		&mockFindingsRepo{findings: []Finding{
+			{ID: "f1", CurrentSeverityRank: 4},
+			{ID: "f2", CurrentSeverityRank: 5},
+		}},
+		&mockWaiversRepo{waivers: []Waiver{{ID: "w1", ScopeAll: true}}},
+	)
+	d, err := g.Evaluate(context.Background(), "proj-1", 3)
+	require.NoError(t, err)
+	assert.Equal(t, StatusPass, d.Status)
+	assert.Equal(t, 2, d.WaivedCount)
+}

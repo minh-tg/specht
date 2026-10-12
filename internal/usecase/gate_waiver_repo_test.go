@@ -55,3 +55,27 @@ func TestGateWaiverRepoFailsClosedWhenScopeDetailsCannotBeLoaded(t *testing.T) {
 		})
 	}
 }
+
+func TestGateWaiverRepoCarriesScopeAll(t *testing.T) {
+	wr := &mockWaiverRepo{
+		listActiveFn: func(context.Context, string) ([]port.Waiver, error) {
+			return []port.Waiver{{ID: "w-all", ScopeAll: true}, {ID: "w-none"}}, nil
+		},
+		listConditionsByWaiverIDsFn: func(context.Context, []string) ([]port.WaiverCondition, error) {
+			return nil, nil
+		},
+		listContextsByWaiverIDsFn: func(context.Context, []string) ([]port.WaiverContext, error) {
+			return nil, nil
+		},
+		listFindingTargetsByWaiverIDsFn: func(context.Context, []string) ([]port.WaiverFindingTarget, error) {
+			return nil, nil
+		},
+	}
+
+	got, err := (&gateWaiverRepo{stores: &port.Stores{Waivers: wr}}).ListActiveWaivers(context.Background(), "project-1")
+
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	assert.True(t, got[0].ScopeAll)
+	assert.False(t, got[1].ScopeAll)
+}

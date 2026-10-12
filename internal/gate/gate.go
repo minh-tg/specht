@@ -115,9 +115,11 @@ type WaiverContext struct {
 
 // Waiver is an active waiver policy. A finding is waived when its context
 // matches any of Contexts (contexts OR together), its id matches any of
-// Targets, and every Condition holds.
+// Targets, and every Condition holds. A waiver with none of the three covers
+// nothing unless ScopeAll is set, so a malformed row never waives everything.
 type Waiver struct {
 	ID         string
+	ScopeAll   bool
 	Conditions []WaiverCondition
 	Contexts   []WaiverContext
 	Targets    []WaiverTarget
@@ -369,6 +371,9 @@ func IsFindingWaived(f Finding, waivers []Waiver) bool {
 // waiverCovers reports whether one waiver applies to the finding: its
 // context and target scopes accept the finding and every condition matches.
 func waiverCovers(f Finding, w Waiver) bool {
+	if len(w.Contexts) == 0 && len(w.Targets) == 0 && len(w.Conditions) == 0 && !w.ScopeAll {
+		return false
+	}
 	if len(w.Contexts) > 0 && !contextMatchesContexts(f, w.Contexts) {
 		return false
 	}

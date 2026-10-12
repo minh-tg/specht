@@ -321,6 +321,7 @@ func (a *gateWaiverRepo) ListActiveWaivers(ctx context.Context, projectID string
 	for i, waiver := range rows {
 		result[i] = gate.Waiver{
 			ID:         waiver.ID,
+			ScopeAll:   waiver.ScopeAll,
 			Conditions: conditionsByWaiver[waiver.ID],
 			Contexts:   contextsByWaiver[waiver.ID],
 			Targets:    targetsByWaiver[waiver.ID],
