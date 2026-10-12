@@ -256,6 +256,37 @@ describe("useFindings", () => {
     await waitFor(() => expect(result.current.data).toEqual({ findings, total: 45 }));
   });
 
+  it("sends the search, the triage states and the sort to the server, and leaves out what is empty", async () => {
+    const requested: string[] = [];
+    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      requested.push(String(input));
+      return Promise.resolve(jsonResponse([]));
+    });
+
+    const { result } = renderHook(
+      () =>
+        useFindings("p1", {
+          q: "log4j",
+          analysisState: "unanalyzed,in_triage",
+          sort: "first_seen",
+          dir: "asc",
+          severity: "",
+          offset: 0,
+          limit: 20,
+        }),
+      { wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const url = new URL(requested[0], "http://localhost");
+    expect(url.pathname).toBe("/api/v1/projects/p1/findings");
+    expect(url.searchParams.get("q")).toBe("log4j");
+    expect(url.searchParams.get("analysis_state")).toBe("unanalyzed,in_triage");
+    expect(url.searchParams.get("sort")).toBe("first_seen");
+    expect(url.searchParams.get("dir")).toBe("asc");
+    expect(url.searchParams.has("severity")).toBe(false);
+  });
+
   it("keeps the previous page of findings while a filtered refetch is pending", async () => {
     const previousPage = [{ id: "f1" }, { id: "f2" }];
     const requested: string[] = [];

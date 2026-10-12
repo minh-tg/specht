@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDate, formatDateTime, formatRelativeTime, pluralize } from "./format";
+import { formatAge, formatDate, formatDateTime, formatRelativeTime, pluralize } from "./format";
 
 // Fixed reference point so relative formatting never depends on the wall clock.
 const NOW = new Date("2026-10-01T12:00:00Z");
@@ -103,5 +103,26 @@ describe("pluralize", () => {
   it("uses an explicit irregular plural", () => {
     expect(pluralize(1, "match", "matches")).toBe("1 match");
     expect(pluralize(3, "match", "matches")).toBe("3 matches");
+  });
+});
+
+describe("formatAge", () => {
+  it("says Today for anything under a day, and never goes negative", () => {
+    expect(formatAge("2026-10-01T03:00:00Z", NOW)).toBe("Today");
+    expect(formatAge("2026-10-02T03:00:00Z", NOW)).toBe("Today");
+  });
+
+  it("counts whole days up to 99, then months, then years", () => {
+    expect(formatAge("2026-09-30T11:00:00Z", NOW)).toBe("1d");
+    expect(formatAge("2026-09-19T12:00:00Z", NOW)).toBe("12d");
+    expect(formatAge("2026-06-24T12:00:00Z", NOW)).toBe("99d");
+    expect(formatAge("2026-06-23T12:00:00Z", NOW)).toBe("3mo");
+    expect(formatAge("2025-12-01T12:00:00Z", NOW)).toBe("10mo");
+    expect(formatAge("2024-10-01T12:00:00Z", NOW)).toBe("2y");
+  });
+
+  it("shows a dash for empty or unparsable input", () => {
+    expect(formatAge(null, NOW)).toBe("–");
+    expect(formatAge("not a date", NOW)).toBe("–");
   });
 });

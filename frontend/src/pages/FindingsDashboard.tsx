@@ -1,11 +1,12 @@
 import { useFindings, useGateStatus } from "@/api/hooks";
+import type { FindingSort } from "@/api/hooks";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useParams } from "react-router-dom";
 import { ClearFiltersButton, FindingsFilters } from "./findings-dashboard/FindingsFilters";
 import { FindingsPager } from "./findings-dashboard/FindingsPager";
 import { FindingsTable } from "./findings-dashboard/FindingsTable";
-import { PAGE_SIZE, sortFindings } from "./findings-dashboard/sort";
-import { useFindingsQuery } from "./findings-dashboard/useFindingsQuery";
+import { PAGE_SIZE } from "./findings-dashboard/sort";
+import { defaultSortDir, useFindingsQuery } from "./findings-dashboard/useFindingsQuery";
 
 export function FindingsDashboard() {
   const { slug } = useParams<{ slug: string; }>();
@@ -18,6 +19,10 @@ export function FindingsDashboard() {
       severity: filters.severity || undefined,
       status: filters.status || undefined,
       kind: filters.kind || undefined,
+      analysisState: filters.analysisState || undefined,
+      q: filters.q || undefined,
+      sort: sort.by,
+      dir: sort.dir,
       offset,
       limit: PAGE_SIZE,
     },
@@ -27,15 +32,19 @@ export function FindingsDashboard() {
   const { data: gate } = useGateStatus(slug ?? "");
 
   function toggleSort(column: string) {
-    if (sort.by === column) {
-      setSort(column, sort.dir === "asc" ? "desc" : "asc");
+    const by = column as FindingSort;
+    if (sort.by === by) {
+      setSort(by, sort.dir === "asc" ? "desc" : "asc");
     } else {
-      setSort(column, column === "severity" ? "desc" : "asc");
+      setSort(by, defaultSortDir(by));
     }
   }
 
-  const sorted = findings ? sortFindings(findings, sort.by, sort.dir) : [];
-  const hasFilters = Boolean(filters.severity || filters.status || filters.kind);
+  // The server orders the whole result, so the page shows the rows as they come.
+  const sorted = findings ?? [];
+  const hasFilters = Boolean(
+    filters.severity || filters.status || filters.kind || filters.analysisState || filters.q,
+  );
   // Rows already on screen stay put while the next request is in flight, so the
   // toolbar the user is operating never unmounts under them.
   const isRefetching = isFetching && findings !== undefined;

@@ -27,6 +27,24 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { useEffect, useRef, useState } from "react";
 import { apiFetch, apiFetchWithTotal } from "./client";
 
+/** What the findings list asks the server for. Empty values are left out of the request. */
+export interface FindingsQuery {
+  severity?: string;
+  status?: string;
+  kind?: string;
+  /** Comma list of analysis states; `unanalyzed` matches findings nobody has looked at. */
+  analysisState?: string;
+  /** Text matched against the title and the fingerprint. */
+  q?: string;
+  sort?: FindingSort;
+  dir?: "asc" | "desc";
+  offset?: number;
+  limit?: number;
+}
+
+/** The orderings the server offers. `first_seen` ascending lists the oldest findings first. */
+export type FindingSort = "severity" | "first_seen" | "last_seen" | "title";
+
 export const queryKeys = {
   waivers: (slug?: string, status?: string) =>
     slug === undefined ? (["waivers"] as const) : (["waivers", slug, status ?? ""] as const),
@@ -50,13 +68,7 @@ export const queryKeys = {
   scanners: () => ["scanners"] as const,
   findings: (
     projectSlug?: string,
-    filters?: {
-      severity?: string;
-      status?: string;
-      kind?: string;
-      offset?: number;
-      limit?: number;
-    },
+    filters?: FindingsQuery,
   ) =>
     projectSlug === undefined
       ? (["findings"] as const)
@@ -206,10 +218,7 @@ export function useCreateApiKey() {
   });
 }
 
-export function useFindings(
-  projectSlug: string,
-  filters: { severity?: string; status?: string; kind?: string; offset?: number; limit?: number; },
-) {
+export function useFindings(projectSlug: string, filters: FindingsQuery) {
   return useQuery({
     queryKey: queryKeys.findings(projectSlug, filters),
     queryFn: async () => {
@@ -217,6 +226,10 @@ export function useFindings(
       if (filters.severity) params.set("severity", filters.severity);
       if (filters.status) params.set("status", filters.status);
       if (filters.kind) params.set("kind", filters.kind);
+      if (filters.analysisState) params.set("analysis_state", filters.analysisState);
+      if (filters.q) params.set("q", filters.q);
+      if (filters.sort) params.set("sort", filters.sort);
+      if (filters.dir) params.set("dir", filters.dir);
       if (filters.offset != null) params.set("offset", String(filters.offset));
       if (filters.limit != null) params.set("limit", String(filters.limit));
       const qs = params.toString();
