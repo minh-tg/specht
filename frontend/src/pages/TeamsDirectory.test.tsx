@@ -44,8 +44,18 @@ describe("TeamsDirectory", () => {
   let removeMemberError: { status: number; code: string; message: string; } | null = null;
   let deleteTeamError: { status: number; code: string; message: string; } | null = null;
   let teamsLoadFailing = false;
+  let rosterRows: Record<string, unknown>[] = [];
 
   beforeEach(() => {
+    rosterRows = [
+      {
+        team_id: "t1",
+        user_id: "u1",
+        user_email: "admin@acme.corp",
+        display_name: "Admin User",
+        role: "admin",
+      },
+    ];
     fetchCalls = [];
     userRole = "admin";
     addMemberError = null;
@@ -95,9 +105,7 @@ describe("TeamsDirectory", () => {
             )
             : jsonResponse(null, 204);
         }
-        return jsonResponse([
-          { team_id: "t1", user_id: "u1", created_at: "2026-09-01T00:00:00Z" },
-        ]);
+        return jsonResponse(rosterRows);
       }
       if (u.endsWith("/api/v1/teams")) {
         if (method === "GET" && teamsLoadFailing) {
@@ -285,6 +293,50 @@ describe("TeamsDirectory", () => {
 
     expect(await screen.findByText("Security Operations")).toBeInTheDocument();
     expect(screen.queryByText("Could not load company teams.")).not.toBeInTheDocument();
+  });
+
+  it("shows names to a signed-in member, with no emails, controls or directory call", async () => {
+    const user = userEvent.setup();
+    userRole = "member";
+    rosterRows = [
+      { team_id: "t1", user_id: "u2", display_name: "Ada Okafor", role: "admin" },
+      { team_id: "t1", user_id: "u3", role: "member" },
+    ];
+    renderTeamsDirectory();
+
+    expect(await screen.findAllByText("2 members")).not.toHaveLength(0);
+    expect(screen.queryByText("Could not load members")).not.toBeInTheDocument();
+    await user.click((await screen.findAllByRole("button", { name: "View Roster" }))[0]);
+
+    expect(await screen.findByText("Ada Okafor")).toBeInTheDocument();
+    expect(screen.getByText("Unnamed account")).toBeInTheDocument();
+    expect(screen.queryByText(/@/)).not.toBeInTheDocument();
+    expect(screen.queryByText("u2")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "User ID" })).not.toBeInTheDocument();
+    expect(fetchCalls.some((c) => c.url.includes("/api/v1/users"))).toBe(false);
+  });
+
+  it("shows an admin each member's name with the email beneath it", async () => {
+    const user = userEvent.setup();
+    rosterRows = [
+      {
+        team_id: "t1",
+        user_id: "u2",
+        user_email: "ada@acme.corp",
+        display_name: "Ada Okafor",
+        role: "member",
+      },
+      { team_id: "t1", user_id: "u3", user_email: "bo@acme.corp", role: "member" },
+    ];
+    renderTeamsDirectory();
+
+    await user.click((await screen.findAllByRole("button", { name: "Manage Roster" }))[0]);
+
+    expect(await screen.findByText("Ada Okafor")).toBeInTheDocument();
+    expect(screen.getByText("ada@acme.corp")).toBeInTheDocument();
+    expect(screen.getByText("bo@acme.corp")).toBeInTheDocument();
+    expect(screen.queryByText("Unnamed account")).not.toBeInTheDocument();
   });
 
   it("shows why removing a roster member failed", async () => {
