@@ -25,6 +25,8 @@ import (
 )
 
 type mockUsecases struct {
+	getProjectWatcherFn     func(ctx context.Context, slug string) (*usecase.ProjectWatcherResponse, error)
+	updateProjectWatcherFn  func(ctx context.Context, slug string, in usecase.WatcherSettingsInput) (*usecase.ProjectWatcherResponse, error)
 	deleteReportFn          func(ctx context.Context, slug, id string) (*usecase.ReportDeleteResponse, error)
 	createInviteFn          func(ctx context.Context, slug string, in usecase.CreateInviteInput) (*usecase.InviteResponse, error)
 	listInvitesFn           func(ctx context.Context, slug string) ([]usecase.InviteResponse, error)
@@ -601,6 +603,20 @@ func (m *mockUsecases) WithdrawWaiver(ctx context.Context, projectSlug, waiverID
 		return nil, fmt.Errorf("unexpected call to WithdrawWaiver")
 	}
 	return m.withdrawWaiverFn(ctx, projectSlug, waiverID)
+}
+
+func (m *mockUsecases) GetProjectWatcher(ctx context.Context, slug string) (*usecase.ProjectWatcherResponse, error) {
+	if m.getProjectWatcherFn == nil {
+		return nil, fmt.Errorf("unexpected call to GetProjectWatcher")
+	}
+	return m.getProjectWatcherFn(ctx, slug)
+}
+
+func (m *mockUsecases) UpdateProjectWatcher(ctx context.Context, slug string, in usecase.WatcherSettingsInput) (*usecase.ProjectWatcherResponse, error) {
+	if m.updateProjectWatcherFn == nil {
+		return nil, fmt.Errorf("unexpected call to UpdateProjectWatcher")
+	}
+	return m.updateProjectWatcherFn(ctx, slug, in)
 }
 
 func (m *mockUsecases) DeleteReport(ctx context.Context, slug, id string) (*usecase.ReportDeleteResponse, error) {
