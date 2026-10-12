@@ -29,6 +29,9 @@ type WatcherRepo interface {
 	// GetProjectConfig returns a project's per-project watcher enable +
 	// interval override.
 	GetProjectConfig(ctx context.Context, projectID pgtype.UUID) (sqlc.GetProjectWatcherConfigRow, error)
+	// UpdateProjectConfig writes the per-project enable and interval; a
+	// Valid=false argument leaves that column unchanged.
+	UpdateProjectConfig(ctx context.Context, arg sqlc.UpdateProjectWatcherSettingsParams) (sqlc.UpdateProjectWatcherSettingsRow, error)
 	// GetProjectState returns a project's own watermark (watcher_project_state,
 	// migration 000023) or pgx.ErrNoRows when it has never polled.
 	GetProjectState(ctx context.Context, projectID pgtype.UUID) (sqlc.WatcherProjectState, error)
@@ -70,6 +73,10 @@ func (r *pgWatcherRepo) RecordFailure(ctx context.Context, errText string, ts ti
 
 func (r *pgWatcherRepo) ResetFailure(ctx context.Context) error {
 	return r.q.ResetWatcherFailure(ctx)
+}
+
+func (r *pgWatcherRepo) UpdateProjectConfig(ctx context.Context, arg sqlc.UpdateProjectWatcherSettingsParams) (sqlc.UpdateProjectWatcherSettingsRow, error) {
+	return r.q.UpdateProjectWatcherSettings(ctx, arg)
 }
 
 func (r *pgWatcherRepo) GetProjectConfig(ctx context.Context, projectID pgtype.UUID) (sqlc.GetProjectWatcherConfigRow, error) {
