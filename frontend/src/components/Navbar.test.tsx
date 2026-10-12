@@ -106,6 +106,7 @@ describe("Navbar", () => {
     await waitFor(() => {
       expect(screen.getByRole("link", { name: "API Keys" })).toHaveAttribute("href", "/api-keys");
     });
+    expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/admin");
 
     const logoutButton = screen.getByRole("button", { name: "Logout" });
     expect(logoutButton).toHaveAttribute("type", "button");
@@ -119,6 +120,7 @@ describe("Navbar", () => {
 
     await waitFor(() => expect(meSettled).toBe(true));
     expect(screen.queryByRole("link", { name: "API Keys" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
   });
 
   it("hides API Keys while the profile is loading", async () => {
