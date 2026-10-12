@@ -25,6 +25,8 @@ import (
 )
 
 type mockUsecases struct {
+	setupRequiredFn         func(ctx context.Context) (bool, error)
+	setupFn                 func(ctx context.Context, input usecase.SetupInput) (*usecase.AuthResponse, error)
 	reportFilter            usecase.ReportFilter
 	changeUserRoleFn        func(ctx context.Context, userID, role string) (*usecase.UserProfile, error)
 	deactivateUserFn        func(ctx context.Context, userID string) (*usecase.UserProfile, error)
@@ -592,6 +594,20 @@ func (m *mockUsecases) WithdrawWaiver(ctx context.Context, projectSlug, waiverID
 		return nil, fmt.Errorf("unexpected call to WithdrawWaiver")
 	}
 	return m.withdrawWaiverFn(ctx, projectSlug, waiverID)
+}
+
+func (m *mockUsecases) SetupRequired(ctx context.Context) (bool, error) {
+	if m.setupRequiredFn == nil {
+		return false, nil
+	}
+	return m.setupRequiredFn(ctx)
+}
+
+func (m *mockUsecases) Setup(ctx context.Context, input usecase.SetupInput) (*usecase.AuthResponse, error) {
+	if m.setupFn == nil {
+		return nil, fmt.Errorf("unexpected call to Setup")
+	}
+	return m.setupFn(ctx, input)
 }
 
 func (m *mockUsecases) ChangeUserRole(ctx context.Context, userID, role string) (*usecase.UserProfile, error) {

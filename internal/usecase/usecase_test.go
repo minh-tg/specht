@@ -932,6 +932,8 @@ type mockUserRepo struct {
 	clearPasswordFn     func(context.Context, string) error
 	tokenVersionFn      func(context.Context, string) (int32, error)
 	bumpTokenVersionFn  func(context.Context, string) error
+	countFn             func(context.Context) (int64, error)
+	createFirstAdminFn  func(context.Context, string, *string, string) (port.User, error)
 }
 
 func (m *mockUserRepo) ClearPassword(ctx context.Context, userID string) error {
@@ -939,6 +941,20 @@ func (m *mockUserRepo) ClearPassword(ctx context.Context, userID string) error {
 		return fmt.Errorf("unexpected call to ClearPassword")
 	}
 	return m.clearPasswordFn(ctx, userID)
+}
+
+func (m *mockUserRepo) Count(ctx context.Context) (int64, error) {
+	if m.countFn == nil {
+		return 0, fmt.Errorf("unexpected call to Count")
+	}
+	return m.countFn(ctx)
+}
+
+func (m *mockUserRepo) CreateFirstAdmin(ctx context.Context, email string, displayName *string, passwordHash string) (port.User, error) {
+	if m.createFirstAdminFn == nil {
+		return port.User{}, fmt.Errorf("unexpected call to CreateFirstAdmin")
+	}
+	return m.createFirstAdminFn(ctx, email, displayName, passwordHash)
 }
 
 func (m *mockUserRepo) TokenVersion(ctx context.Context, userID string) (int32, error) {

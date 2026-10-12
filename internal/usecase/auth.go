@@ -63,20 +63,40 @@ type APIKeyResponse struct {
 	ExpiresAt *string `json:"expires_at,omitempty"`
 }
 
-func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthResponse, error) {
+// validateCredentials checks the email address and password of a new account
+// and returns the address in its normal form.
+// ErrInvalidCredentialInput wraps the reasons a new account's email or password
+// is refused. The message says what to fix.
+var ErrInvalidCredentialInput = errors.New("invalid email or password")
+
+type credentialInputError struct{ message string }
+
+func (e *credentialInputError) Error() string        { return e.message }
+func (e *credentialInputError) Is(target error) bool { return target == ErrInvalidCredentialInput }
+
+func badCredentials(message string) error { return &credentialInputError{message: message} }
+
+func validateCredentials(email, password string) (string, error) {
 	if email == "" || password == "" {
-		return nil, fmt.Errorf("email and password are required")
+		return "", badCredentials("email and password are required")
 	}
 	addr, err := mail.ParseAddress(email)
 	if err != nil || addr.Address != email || !strings.Contains(addr.Address, "@") {
-		return nil, fmt.Errorf("invalid email address")
+		return "", badCredentials("invalid email address")
 	}
-	email = auth.NormalizeEmail(addr.Address)
 	if len(password) < 8 {
-		return nil, fmt.Errorf("password must be at least 8 characters")
+		return "", badCredentials("password must be at least 8 characters")
 	}
 	if len(password) > 72 {
-		return nil, fmt.Errorf("password must be at most 72 characters")
+		return "", badCredentials("password must be at most 72 characters")
+	}
+	return auth.NormalizeEmail(addr.Address), nil
+}
+
+func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthResponse, error) {
+	email, err := validateCredentials(email, password)
+	if err != nil {
+		return nil, err
 	}
 
 	_, err = u.deps.Stores.Users.GetByEmail(ctx, email)

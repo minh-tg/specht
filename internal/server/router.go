@@ -113,7 +113,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	r.Get("/api/v1/health", healthHandler)
 	r.Get("/api/v1/version", versionHandler)
-	r.Get("/api/v1/capabilities", capabilitiesHandler(cfg.RegistrationDisabled, cfg.OIDCEnabled && cfg.OIDC != nil))
+	r.Get("/api/v1/capabilities", capabilitiesHandler(cfg.RegistrationDisabled, cfg.OIDCEnabled && cfg.OIDC != nil, h.setupRequired))
 	// SSO/OIDC entry point: redirect to the provider's authorization URL.
 	if cfg.OIDCEnabled && cfg.OIDC != nil {
 		r.Get("/api/v1/auth/sso/login", ssoLoginHandler(cfg.OIDC))
@@ -166,6 +166,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 				r.Post("/api/v1/auth/register", h.Register)
 			}
 			r.Post("/api/v1/auth/login", h.Login)
+			// First-run setup guesses a token, so it shares the login bucket.
+			r.Post("/api/v1/setup", h.Setup)
 		})
 	})
 
@@ -380,8 +382,10 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 // capabilitiesHandler tells a signed-out client which sign-in options this
 // server offers, so the login page shows a Register link or an SSO button only
 // when they work. It is unauthenticated and carries no secrets or provider
-// details. The flags change only at startup, so a short cache is safe.
-func capabilitiesHandler(registrationDisabled, ssoEnabled bool) http.HandlerFunc {
+// details. The sign-in flags change only at startup, so once setup is done a
+// short cache is safe; while the server waits for its first admin the answer
+// is not cached, so it flips the moment setup completes.
+func capabilitiesHandler(registrationDisabled, ssoEnabled bool, setupRequired func(context.Context) bool) http.HandlerFunc {
 	type toggle struct {
 		Enabled bool `json:"enabled"`
 	}
@@ -390,23 +394,35 @@ func capabilitiesHandler(registrationDisabled, ssoEnabled bool) http.HandlerFunc
 		// LoginPath is where the browser goes to start SSO. Empty when SSO is off.
 		LoginPath string `json:"login_path,omitempty"`
 	}
+	type setup struct {
+		// Required is true while the server has no account and waits for its
+		// first admin, so the app shows the setup screen instead of sign-in.
+		Required bool `json:"required"`
+	}
 	type body struct {
 		Registration toggle `json:"registration"`
 		SSO          sso    `json:"sso"`
+		Setup        setup  `json:"setup"`
 		Version      string `json:"version"`
 		Commit       string `json:"commit"`
 	}
-	resp := body{
+	base := body{
 		Registration: toggle{Enabled: !registrationDisabled},
 		SSO:          sso{Enabled: ssoEnabled},
 		Version:      version.Version,
 		Commit:       version.Commit,
 	}
 	if ssoEnabled {
-		resp.SSO.LoginPath = "/api/v1/auth/sso/login"
+		base.SSO.LoginPath = "/api/v1/auth/sso/login"
 	}
-	return func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Cache-Control", "public, max-age=60")
+	return func(w http.ResponseWriter, r *http.Request) {
+		resp := base
+		resp.Setup.Required = setupRequired(r.Context())
+		if resp.Setup.Required {
+			w.Header().Set("Cache-Control", "no-store")
+		} else {
+			w.Header().Set("Cache-Control", "public, max-age=60")
+		}
 		respondJSON(w, http.StatusOK, resp)
 	}
 }

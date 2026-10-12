@@ -149,6 +149,9 @@ type Deps struct {
 	// never send email_verified (for example a single-tenant directory whose
 	// administrators control every address) and is off by default.
 	SSOAllowUnverifiedEmail bool
+	// SetupToken guards first-run setup while no account exists. Nil means
+	// setup is not offered.
+	SetupToken *SetupToken
 }
 
 // Usecases groups the application's use-case methods. It is safe for
