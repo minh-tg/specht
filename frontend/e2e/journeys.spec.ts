@@ -43,6 +43,50 @@ test("findings dashboard filters live rows", async ({ page, request }) => {
   await expect(rows).toHaveCount(2);
 });
 
+test("the findings list searches, filters by triage state and sorts on the server", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("findings-server");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH_MEDIUM);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings`);
+  const titles = page.locator("tbody tr a[href*=\"/findings/\"]");
+  await expect(titles).toHaveCount(2);
+  // Worst first by default.
+  await expect(titles.first()).toHaveText("Hardcoded credentials in app config");
+
+  // A search narrows the whole list, and it is in the URL, so the page can be shared.
+  await page.getByRole("searchbox", { name: "Search findings" }).fill("urllib3");
+  await expect(titles).toHaveCount(1);
+  await expect(titles.first()).toHaveText("Outdated dependency urllib3");
+  await expect(page).toHaveURL(/q=urllib3/);
+
+  // Reloading restores it from the URL.
+  await page.reload();
+  await expect(page.getByRole("searchbox", { name: "Search findings" })).toHaveValue("urllib3");
+  await expect(titles).toHaveCount(1);
+
+  await page.getByRole("searchbox", { name: "Search findings" }).fill("");
+  await expect(titles).toHaveCount(2);
+
+  // Nothing is triaged yet, so "needs triage" keeps both, and "exploitable" keeps none.
+  await chooseOption(page, page.getByLabel("Filter by triage state"), "Needs triage");
+  await expect(titles).toHaveCount(2);
+  await chooseOption(page, page.getByLabel("Filter by triage state"), "Exploitable");
+  await expect(page.getByText("No findings match these filters.")).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await expect(titles).toHaveCount(2);
+
+  // Sorting by title reorders the server's answer, and the choice stays in the URL.
+  await page.getByRole("button", { name: /^Title/ }).click();
+  await expect(page).toHaveURL(/sort=title/);
+  await expect(titles.first()).toHaveText("Hardcoded credentials in app config");
+  await page.getByRole("button", { name: /^Title/ }).click();
+  await expect(page).toHaveURL(/dir=desc/);
+  await expect(titles.first()).toHaveText("Outdated dependency urllib3");
+});
+
 test("finding detail triage applies states and enforces reasons", async ({ page, request }) => {
   const token = await apiToken(request);
   const slug = uniq("finding-detail");
