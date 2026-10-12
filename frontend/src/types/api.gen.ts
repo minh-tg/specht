@@ -219,8 +219,9 @@ export interface paths {
      * @description Exchanges the authorization code, validates the ID token (signature,
      *     issuer, audience, expiry, nonce) against the state cookie, resolves the
      *     IdP subject to a local account, and redirects to the validated SPA path
-     *     with the session token in the URL **fragment** so it never reaches a
-     *     server log or `Referer` header.
+     *     with a short-lived single-use code in the URL **fragment** so it never
+     *     reaches a server log or `Referer` header. The SPA trades the code for
+     *     tokens at `/api/v1/auth/sso/exchange`.
      *
      *     Unknown IdP subjects are provisioned only when their email domain is in
      *     `SSO_ALLOWED_DOMAINS`; otherwise the request is refused. An existing
