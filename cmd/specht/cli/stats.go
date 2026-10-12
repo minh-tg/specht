@@ -88,6 +88,11 @@ func newStatsAgingCmd(d Deps) *cobra.Command {
 			if _, err := fmt.Fprintf(d.Out, "  reopened ever: %d\n", aging.Reopened); err != nil {
 				return err
 			}
+			if aging.Truncated {
+				if _, err := fmt.Fprintln(d.Out, "  note: more open findings than the report evaluates; these numbers cover the oldest ones"); err != nil {
+					return err
+				}
+			}
 			if len(aging.Overdue) > 0 {
 				if _, err := fmt.Fprintln(d.Out, "  Oldest overdue:"); err != nil {
 					return err

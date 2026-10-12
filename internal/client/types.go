@@ -571,6 +571,9 @@ type AgingResponse struct {
 	Overdue      []OverdueFinding   `json:"overdue"`
 	Reopened     int32              `json:"reopened"`
 	NewPerWeek   []WeeklyNew        `json:"new_per_week"`
+	// Truncated is true when the project has more open findings than the
+	// report evaluates; the numbers then cover the oldest ones.
+	Truncated bool `json:"truncated"`
 }
 
 // WeeklyNew is one week's newly introduced finding count.
