@@ -74,9 +74,9 @@ func (r *pgStatsPort) GetProjectStats(ctx context.Context, projectID string) ([]
 	out := make([]port.SeverityStat, len(rows))
 	for i, row := range rows {
 		out[i] = port.SeverityStat{
-			Severity:      row.Severity,
-			Count:         row.Count,
-			BlockingCount: row.BlockingCount,
+			Severity: row.Severity,
+			Rank:     row.SeverityRank,
+			Count:    row.Count,
 		}
 	}
 	return out, nil
@@ -125,14 +125,19 @@ func (r *pgStatsPort) GetProjectReportCount(ctx context.Context, projectID strin
 	return r.inner.GetProjectReportCount(ctx, pid)
 }
 
-func (r *pgStatsPort) GetAgingRows(ctx context.Context, projectID string) ([]port.AgingRow, error) {
+func (r *pgStatsPort) GetAgingRows(ctx context.Context, projectID string) ([]port.AgingRow, bool, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	rows, err := r.inner.GetAgingRows(ctx, pid)
+	// One row past the cap tells a full result from a truncated one.
+	rows, err := r.inner.GetAgingRows(ctx, sqlc.GetAgingRowsParams{ProjectID: pid, Limit: port.MaxAgingRows + 1})
 	if err != nil {
-		return nil, err
+		return nil, false, err
+	}
+	truncated := len(rows) > port.MaxAgingRows
+	if truncated {
+		rows = rows[:port.MaxAgingRows]
 	}
 	out := make([]port.AgingRow, len(rows))
 	for i, row := range rows {
@@ -145,6 +150,24 @@ func (r *pgStatsPort) GetAgingRows(ctx context.Context, projectID string) ([]por
 			State:        row.State,
 			Reopened:     row.Reopened,
 		}
+	}
+	return out, truncated, nil
+}
+
+func (r *pgStatsPort) GetNewFindingCounts(ctx context.Context, projectID string, since time.Time) ([]port.WeeklyCount, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.inner.GetNewFindingCounts(ctx, sqlc.GetNewFindingCountsParams{
+		ProjectID: pid, FirstSeenAt: timestamptzFromAny(since),
+	})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.WeeklyCount, len(rows))
+	for i, row := range rows {
+		out[i] = port.WeeklyCount{WeekStart: row.WeekStart.Time.Format("2006-01-02"), Count: row.Count}
 	}
 	return out, nil
 }

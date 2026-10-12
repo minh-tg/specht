@@ -158,8 +158,8 @@ func TestE2E_ProjectStatsAndAging(t *testing.T) {
 
 		stats := readStats(t, slug, adminToken, http.StatusOK)
 		require.EqualValues(t, 2, stats.TotalFindings)
-		require.EqualValues(t, 2, stats.BlockingCount,
-			"both findings block until an analyst decides otherwise")
+		require.EqualValues(t, 1, stats.BlockingCount,
+			"the high finding blocks; the medium one is below the policy's severity floor")
 		require.EqualValues(t, 1, stats.ReportCount)
 		require.Zero(t, stats.WaiverCount)
 
@@ -171,10 +171,12 @@ func TestE2E_ProjectStatsAndAging(t *testing.T) {
 		require.EqualValues(t, 1, bySeverity["high"].Count)
 		require.EqualValues(t, 1, bySeverity["high"].BlockingCount)
 		require.EqualValues(t, 1, bySeverity["medium"].Count)
-		require.EqualValues(t, 1, bySeverity["medium"].BlockingCount)
+		require.Zero(t, bySeverity["medium"].BlockingCount, "below the floor, so the gate lets it through")
 
 		require.Equal(t, []analysisStateCount{{State: "unanalyzed", Count: 2}}, stats.ByAnalysisState,
 			"fresh findings are untriaged and bucket under unanalyzed")
+		require.EqualValues(t, getGate(t, slug, "").BlockingCount, stats.BlockingCount,
+			"the roll-up and the gate count the same blockers")
 
 		require.NotNil(t, stats.LatestReport)
 		require.Equal(t, "sarif", stats.LatestReport.ToolName)
@@ -201,8 +203,10 @@ func TestE2E_ProjectStatsAndAging(t *testing.T) {
 
 		stats := readStats(t, slug, adminToken, http.StatusOK)
 		require.EqualValues(t, 2, stats.TotalFindings, "deciding a finding never removes it")
-		require.EqualValues(t, 1, stats.BlockingCount,
-			"an ignoring analysis state leaves the roll-up")
+		require.Zero(t, stats.BlockingCount,
+			"an ignoring analysis state leaves the roll-up, and the medium one is below the floor")
+		require.EqualValues(t, getGate(t, slug, "").BlockingCount, stats.BlockingCount,
+			"the roll-up and the gate still agree")
 		require.Equal(t, []analysisStateCount{
 			{State: "false_positive", Count: 1},
 			{State: "unanalyzed", Count: 1},
@@ -212,7 +216,7 @@ func TestE2E_ProjectStatsAndAging(t *testing.T) {
 				require.Zero(t, s.BlockingCount)
 			}
 			if s.Severity == "medium" {
-				require.EqualValues(t, 1, s.BlockingCount)
+				require.Zero(t, s.BlockingCount)
 			}
 		}
 	})

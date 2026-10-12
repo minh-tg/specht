@@ -1313,7 +1313,7 @@ SELECT
     ctx.environment_id,
     ctx.target_id,
     ctx.artifact_id
-FROM findings f
+FROM open_findings f
 LEFT JOIN LATERAL (
     SELECT r.environment_id, r.target_id, r.artifact_id
     FROM finding_occurrences fo
@@ -1332,7 +1332,6 @@ LEFT JOIN LATERAL (
 WHERE f.project_id = $1
   AND f.current_severity_rank >= $2
   AND f.gate_effect = 'block'
-  AND f.state IN ('open', 'reopened')
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 `
 
@@ -1414,7 +1413,7 @@ SELECT
     ctx.artifact_id,
     rif.change_type
 FROM report_introduced_findings rif
-JOIN findings f ON rif.finding_id = f.id
+JOIN open_findings f ON rif.finding_id = f.id
 LEFT JOIN LATERAL (
     SELECT r.environment_id, r.target_id, r.artifact_id
     FROM finding_occurrences fo
@@ -1433,7 +1432,6 @@ LEFT JOIN LATERAL (
 WHERE rif.report_id = $1
   AND f.current_severity_rank >= $2
   AND f.gate_effect = 'block'
-  AND f.state IN ('open', 'reopened')
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 `
 

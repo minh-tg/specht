@@ -1015,10 +1015,22 @@ type InventoryStore interface {
 
 // SeverityStat is one severity bucket of project stats.
 type SeverityStat struct {
-	Severity      string
-	Count         int32
-	BlockingCount int32
+	Severity string
+	// Rank is the severity's rank, which the gate's per-rank blocking counts
+	// are keyed by.
+	Rank  int16
+	Count int32
 }
+
+// WeeklyCount is the number of findings first seen in one week.
+type WeeklyCount struct {
+	// WeekStart is the Monday of the week, as 2006-01-02 (UTC).
+	WeekStart string
+	Count     int32
+}
+
+// MaxAgingRows caps the open findings the aging report evaluates.
+const MaxAgingRows = 10000
 
 // AnalysisStateStat is one analysis-state bucket of project stats.
 type AnalysisStateStat struct {
@@ -1034,9 +1046,12 @@ type StatsStore interface {
 	GetProjectPendingWaiverCount(ctx context.Context, projectID string) (int32, error)
 	GetProjectReportCount(ctx context.Context, projectID string) (int32, error)
 	GetProjectLatestReport(ctx context.Context, projectID string) (Report, error)
-	// GetAgingRows loads every finding's aging input for a project,
-	// oldest first, capped at 10000 rows.
-	GetAgingRows(ctx context.Context, projectID string) ([]AgingRow, error)
+	// GetAgingRows loads the aging input of a project's open findings, oldest
+	// first, up to MaxAgingRows. truncated is true when the project has more.
+	GetAgingRows(ctx context.Context, projectID string) (rows []AgingRow, truncated bool, err error)
+	// GetNewFindingCounts counts the findings first seen since a time, per
+	// week, whatever state they are in now.
+	GetNewFindingCounts(ctx context.Context, projectID string, since time.Time) ([]WeeklyCount, error)
 }
 
 // AgingRow is one finding's aging input: identity, severity, first

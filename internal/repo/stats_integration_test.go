@@ -101,7 +101,7 @@ func TestStatsRepo_AnalysisStateCounts(t *testing.T) {
 }
 
 // TestStatsRepo_SeverityCountsLeaveOutFixed verifies that the per-severity
-// roll-up (and so the project's total and blocking counts) covers open and
+// roll-up (and so the project's total) covers open and
 // reopened findings only. A finding the scanner stopped reporting is marked
 // fixed and must not keep counting toward the project's findings.
 func TestStatsRepo_SeverityCountsLeaveOutFixed(t *testing.T) {
@@ -145,8 +145,8 @@ func TestStatsRepo_SeverityCountsLeaveOutFixed(t *testing.T) {
 	rows, err := stores.Stats.GetProjectStats(ctx, project.ID)
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []port.SeverityStat{
-		{Severity: "high", Count: 1, BlockingCount: 1},
-		{Severity: "low", Count: 1, BlockingCount: 1},
-		{Severity: "unknown", Count: 1, BlockingCount: 1},
+		{Severity: "high", Rank: 3, Count: 1},
+		{Severity: "low", Rank: 1, Count: 1},
+		{Severity: "unknown", Rank: 0, Count: 1},
 	}, rows, "fixed findings are left out; open and reopened ones stay")
 }
