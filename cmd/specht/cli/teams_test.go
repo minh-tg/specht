@@ -109,6 +109,23 @@ func TestTeamsMembers(t *testing.T) {
 	}
 }
 
+func TestTeamsMembers_NameStandsInWhenTheEmailIsWithheld(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/teams/t1/members", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := w.Write([]byte(`[{"team_id":"t1","user_id":"u1","display_name":"Ada Okafor","role":"member"}]`)); err != nil {
+			t.Errorf("write team members response: %v", err)
+		}
+	})
+	d, out, _ := testDeps(t, mux)
+
+	if err := runTeamsCmd(t, d, "teams", "members", "--id", "t1"); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != "Ada Okafor\tu1\tmember\n" {
+		t.Fatalf("unexpected output: %q", got)
+	}
+}
+
 func TestTeamsAdd(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/teams/t1/members", func(w http.ResponseWriter, r *http.Request) {

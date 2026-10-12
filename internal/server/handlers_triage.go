@@ -27,6 +27,7 @@ const (
 	triageMsgInvalidTeamID        = "invalid team id format"
 	triageMsgTeamNotFound         = "team not found"
 	triageMsgTeamAdminRequired    = "team admin is required"
+	triageMsgRosterNeedsAccount   = "team rosters are only shown to signed-in accounts"
 )
 
 // Limit messages derive from the limits themselves so they cannot drift.
@@ -669,7 +670,7 @@ func (h *Handler) ListTeamMembers(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrTeamNotFound):
 			respondError(w, http.StatusNotFound, "not_found", triageMsgTeamNotFound)
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
-			respondError(w, http.StatusForbidden, "forbidden", triageMsgTeamAdminRequired)
+			respondError(w, http.StatusForbidden, "forbidden", triageMsgRosterNeedsAccount)
 		default:
 			slog.Error("list team members", "error", err)
 			respondError(w, http.StatusInternalServerError, "teams_failed", "could not list team members")
