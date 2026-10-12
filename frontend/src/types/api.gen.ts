@@ -821,7 +821,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List a project's waivers */
+    /**
+     * List a project's waivers
+     * @description Newest first, including pending requests. Only approved waivers count in the gate.
+     */
     get: operations["listWaivers"];
     put?: never;
     /**
@@ -829,8 +832,102 @@ export interface paths {
      * @description A waiver suppresses the findings it targets, or the findings its
      *     conditions match, until it expires or is disabled. An expiry sweep
      *     disables it automatically and records why.
+     *
+     *     The caller needs the project manager or admin role. The waiver is
+     *     approved on creation. It must say what it covers: at least one
+     *     condition, context or target, or `scope: "all"` with none of those.
+     *     To ask for a waiver without that role, use `POST /waivers/requests`.
      */
     post: operations["createWaiver"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{slug}/waivers/requests": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Ask for a waiver
+     * @description Files a pending request to waive specific findings. Any project member
+     *     can ask; the caller must be a signed-in person, not an API key. The
+     *     request does not change the gate until a project manager or admin
+     *     approves it. A request needs a reason, an expiry no more than 90 days
+     *     away, and at least one finding of this project. A second pending
+     *     request for the same finding is refused.
+     */
+    post: operations["requestWaiver"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{slug}/waivers/{id}/approve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Approve a waiver request
+     * @description Moves a pending request to approved, after which it counts in the gate.
+     *     Needs the project manager or admin role. The requester cannot approve
+     *     their own request, except a global admin, whose approval is marked
+     *     `self_approved` in the audit event. An expired request cannot be
+     *     approved.
+     */
+    post: operations["approveWaiver"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{slug}/waivers/{id}/reject": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Reject a waiver request
+     * @description Moves a pending request to rejected. Needs the project manager or admin role and a note that tells the requester why.
+     */
+    post: operations["rejectWaiver"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{slug}/waivers/{id}/withdraw": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Withdraw a waiver request
+     * @description The requester takes back a pending request. Nobody else can withdraw it.
+     */
+    post: operations["withdrawWaiver"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1883,6 +1980,27 @@ export interface components {
       name: string;
       description: string;
       enabled: boolean;
+      /**
+       * @description Review state. Only approved waivers count in the gate.
+       * @enum {string}
+       */
+      status: "pending" | "approved" | "rejected" | "withdrawn";
+      /** @description True for a waiver that covers every finding of the project. */
+      scope_all: boolean;
+      /** @description The requester's justification. Empty for waivers created directly. */
+      reason: string;
+      /**
+       * Format: uuid
+       * @description User who asked for the waiver. Absent for waivers created directly.
+       */
+      requested_by?: string;
+      /** Format: date-time */
+      requested_at?: string;
+      /** Format: uuid */
+      decided_by?: string;
+      /** Format: date-time */
+      decided_at?: string;
+      decision_note: string;
       /** Format: date-time */
       expires_at?: string | null;
       conditions: components["schemas"]["WaiverCondition"][];
@@ -1922,6 +2040,13 @@ export interface components {
       name: string;
       description?: string;
       /**
+       * @description Send `all` for a waiver that covers every finding of the project,
+       *     with no conditions, contexts or target_ids. Omit it when the
+       *     waiver names a scope. A waiver with neither is refused.
+       * @enum {string}
+       */
+      scope?: "all";
+      /**
        * @description RFC 3339. Omit for a waiver that never expires.
        * @example 2026-12-31T00:00:00Z
        */
@@ -1946,6 +2071,11 @@ export interface components {
       name?: string;
       description?: string;
       /**
+       * @description Send `all` when the update leaves the waiver with no conditions, contexts or targets and it should cover everything. An update that would leave no scope without it is refused.
+       * @enum {string}
+       */
+      scope?: "all";
+      /**
        * @description Tri-state: omit to keep the stored expiry, send `""` to clear it,
        *     send an RFC 3339 value to set it.
        */
@@ -1965,13 +2095,41 @@ export interface components {
       }[];
       target_ids?: string[];
     };
+    RequestWaiverRequest: {
+      /** @description Findings of this project to waive. */
+      target_ids: string[];
+      reason: string;
+      /**
+       * Format: date-time
+       * @description RFC 3339, in the future and no more than 90 days ahead.
+       */
+      expires_at: string;
+    };
+    WaiverDecisionRequest: {
+      /** @description Optional comment shown with the decision. */
+      note?: string;
+    };
+    WaiverRejectRequest: {
+      /** @description Why the request was rejected. */
+      note: string;
+    };
     WaiverEvent: {
       /** Format: uuid */
       id: string;
       /** Format: uuid */
       waiver_id: string;
       /** @enum {string} */
-      event_type: "created" | "updated" | "enabled" | "disabled" | "auto_disabled";
+      event_type:
+        | "created"
+        | "updated"
+        | "enabled"
+        | "disabled"
+        | "auto_disabled"
+        | "requested"
+        | "approved"
+        | "rejected"
+        | "withdrawn"
+        | "auto_rejected";
       /** Format: uuid */
       actor_id?: string;
       /** @description Event-specific detail, such as the reason an expiry sweep disabled the waiver. */
@@ -2076,8 +2234,10 @@ export interface components {
       total_findings: number;
       /** @description Open and reopened findings not in an ignoring analysis state. */
       blocking_count: number;
-      /** @description Enabled waivers only. */
+      /** @description Approved */
       waiver_count: number;
+      /** @description Waiver requests waiting for a decision. */
+      pending_waiver_count: number;
       report_count: number;
       /** @description Counts per severity among the project's open and reopened findings (findings already fixed are not counted). */
       by_severity: components["schemas"]["SeverityCount"][];
@@ -2257,6 +2417,23 @@ export interface components {
          *       "error": {
          *         "code": "not_found",
          *         "message": "not found"
+         *       }
+         *     }
+         */
+        "application/json": components["schemas"]["Error"];
+      };
+    };
+    /** @description The request conflicts with the current state of the resource. */
+    Conflict: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        /**
+         * @example {
+         *       "error": {
+         *         "code": "waiver_not_pending",
+         *         "message": "waiver is not pending"
          *       }
          *     }
          */
@@ -3817,7 +3994,10 @@ export interface operations {
   };
   listWaivers: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description Comma-separated review states to keep. Omit for all. */
+        status?: string;
+      };
       header?: never;
       path: {
         /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
@@ -3836,6 +4016,7 @@ export interface operations {
           "application/json": components["schemas"]["Waiver"][];
         };
       };
+      400: components["responses"]["BadRequest"];
       401: components["responses"]["Unauthorized"];
       403: components["responses"]["Forbidden"];
       404: components["responses"]["NotFound"];
@@ -3869,6 +4050,130 @@ export interface operations {
       400: components["responses"]["BadRequest"];
       403: components["responses"]["Forbidden"];
       500: components["responses"]["InternalError"];
+    };
+  };
+  requestWaiver: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["RequestWaiverRequest"];
+      };
+    };
+    responses: {
+      /** @description The pending request. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Waiver"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      403: components["responses"]["Forbidden"];
+      409: components["responses"]["Conflict"];
+      500: components["responses"]["InternalError"];
+    };
+  };
+  approveWaiver: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+        /** @description Resource identifier. */
+        id: components["parameters"]["Id"];
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["WaiverDecisionRequest"];
+      };
+    };
+    responses: {
+      /** @description The approved waiver. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Waiver"];
+        };
+      };
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
+      409: components["responses"]["Conflict"];
+    };
+  };
+  rejectWaiver: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+        /** @description Resource identifier. */
+        id: components["parameters"]["Id"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["WaiverRejectRequest"];
+      };
+    };
+    responses: {
+      /** @description The rejected waiver. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Waiver"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
+      409: components["responses"]["Conflict"];
+    };
+  };
+  withdrawWaiver: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+        /** @description Resource identifier. */
+        id: components["parameters"]["Id"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The withdrawn waiver. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Waiver"];
+        };
+      };
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
+      409: components["responses"]["Conflict"];
     };
   };
   getWaiver: {

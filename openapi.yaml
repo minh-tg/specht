@@ -1445,12 +1445,20 @@ paths:
       tags: [Waivers]
       operationId: listWaivers
       summary: List a project's waivers
+      description: Newest first, including pending requests. Only approved waivers count in the gate.
       x-required-scope: read
       security:
         - sessionAuth: []
         - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
+        - name: status
+          in: query
+          required: false
+          description: Comma-separated review states to keep. Omit for all.
+          schema:
+            type: string
+            example: pending,rejected
       responses:
         "200":
           description: The waivers.
@@ -1459,6 +1467,7 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/Waiver" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
@@ -1470,6 +1479,11 @@ paths:
         A waiver suppresses the findings it targets, or the findings its
         conditions match, until it expires or is disabled. An expiry sweep
         disables it automatically and records why.
+
+        The caller needs the project manager or admin role. The waiver is
+        approved on creation. It must say what it covers: at least one
+        condition, context or target, or `scope: "all"` with none of those.
+        To ask for a waiver without that role, use `POST /waivers/requests`.
       x-required-scope: admin
       security:
         - sessionAuth: []
@@ -1490,6 +1504,122 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/projects/{slug}/waivers/requests:
+    post:
+      tags: [Waivers]
+      operationId: requestWaiver
+      summary: Ask for a waiver
+      description: |
+        Files a pending request to waive specific findings. Any project member
+        can ask; the caller must be a signed-in person, not an API key. The
+        request does not change the gate until a project manager or admin
+        approves it. A request needs a reason, an expiry no more than 90 days
+        away, and at least one finding of this project. A second pending
+        request for the same finding is refused.
+      x-required-scope: read
+      x-auth: session
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RequestWaiverRequest" }
+      responses:
+        "201":
+          description: The pending request.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Waiver" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /api/v1/projects/{slug}/waivers/{id}/approve:
+    post:
+      tags: [Waivers]
+      operationId: approveWaiver
+      summary: Approve a waiver request
+      description: |
+        Moves a pending request to approved, after which it counts in the gate.
+        Needs the project manager or admin role. The requester cannot approve
+        their own request, except a global admin, whose approval is marked
+        `self_approved` in the audit event. An expired request cannot be
+        approved.
+      x-auth: session
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WaiverDecisionRequest" }
+      responses:
+        "200":
+          description: The approved waiver.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Waiver" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/v1/projects/{slug}/waivers/{id}/reject:
+    post:
+      tags: [Waivers]
+      operationId: rejectWaiver
+      summary: Reject a waiver request
+      description: Moves a pending request to rejected. Needs the project manager or admin role and a note that tells the requester why.
+      x-auth: session
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WaiverRejectRequest" }
+      responses:
+        "200":
+          description: The rejected waiver.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Waiver" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/v1/projects/{slug}/waivers/{id}/withdraw:
+    post:
+      tags: [Waivers]
+      operationId: withdrawWaiver
+      summary: Withdraw a waiver request
+      description: The requester takes back a pending request. Nobody else can withdraw it.
+      x-auth: session
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: The withdrawn waiver.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Waiver" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /api/v1/projects/{slug}/waivers/{id}:
     get:
@@ -2243,6 +2373,12 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
           example: { error: { code: not_found, message: not found } }
+    Conflict:
+      description: The request conflicts with the current state of the resource.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: waiver_not_pending, message: waiver is not pending } }
     BodyTooLarge:
       description: The request body exceeded the size cap.
       content:
@@ -2903,13 +3039,26 @@ components:
 
     Waiver:
       type: object
-      required: [id, project_id, name, description, enabled, conditions, contexts, targets, created_at, updated_at]
+      required: [id, project_id, name, description, enabled, status, scope_all, reason, decision_note, conditions, contexts, targets, created_at, updated_at]
       properties:
         id: { type: string, format: uuid }
         project_id: { type: string, format: uuid }
         name: { type: string }
         description: { type: string }
         enabled: { type: boolean }
+        status:
+          type: string
+          enum: [pending, approved, rejected, withdrawn]
+          description: Review state. Only approved waivers count in the gate.
+        scope_all:
+          type: boolean
+          description: True for a waiver that covers every finding of the project.
+        reason: { type: string, description: The requester's justification. Empty for waivers created directly. }
+        requested_by: { type: string, format: uuid, description: User who asked for the waiver. Absent for waivers created directly. }
+        requested_at: { type: string, format: date-time }
+        decided_by: { type: string, format: uuid }
+        decided_at: { type: string, format: date-time }
+        decision_note: { type: string }
         expires_at: { type: [string, "null"], format: date-time }
         conditions:
           type: array
@@ -2954,6 +3103,13 @@ components:
       properties:
         name: { type: string }
         description: { type: string }
+        scope:
+          type: string
+          enum: [all]
+          description: |
+            Send `all` for a waiver that covers every finding of the project,
+            with no conditions, contexts or target_ids. Omit it when the
+            waiver names a scope. A waiver with neither is refused.
         expires_at:
           type: string
           description: RFC 3339. Omit for a waiver that never expires.
@@ -2985,6 +3141,10 @@ components:
       properties:
         name: { type: string }
         description: { type: string }
+        scope:
+          type: string
+          enum: [all]
+          description: Send `all` when the update leaves the waiver with no conditions, contexts or targets and it should cover everything. An update that would leave no scope without it is refused.
         expires_at:
           type: [string, "null"]
           description: |
@@ -3011,13 +3171,42 @@ components:
           type: array
           items: { type: string, format: uuid }
 
+    RequestWaiverRequest:
+      type: object
+      required: [target_ids, reason, expires_at]
+      properties:
+        target_ids:
+          type: array
+          minItems: 1
+          maxItems: 50
+          description: Findings of this project to waive.
+          items: { type: string, format: uuid }
+        reason: { type: string, maxLength: 1000 }
+        expires_at:
+          type: string
+          format: date-time
+          description: RFC 3339, in the future and no more than 90 days ahead.
+
+    WaiverDecisionRequest:
+      type: object
+      properties:
+        note: { type: string, description: Optional comment shown with the decision. }
+
+    WaiverRejectRequest:
+      type: object
+      required: [note]
+      properties:
+        note: { type: string, description: Why the request was rejected. }
+
     WaiverEvent:
       type: object
       required: [id, waiver_id, event_type, created_at]
       properties:
         id: { type: string, format: uuid }
         waiver_id: { type: string, format: uuid }
-        event_type: { type: string, enum: [created, updated, enabled, disabled, auto_disabled] }
+        event_type:
+          type: string
+          enum: [created, updated, enabled, disabled, auto_disabled, requested, approved, rejected, withdrawn, auto_rejected]
         actor_id: { type: string, format: uuid }
         metadata:
           description: Event-specific detail, such as the reason an expiry sweep disabled the waiver.
@@ -3123,7 +3312,7 @@ components:
 
     ProjectStats:
       type: object
-      required: [total_findings, blocking_count, waiver_count, report_count, by_severity, by_analysis_state]
+      required: [total_findings, blocking_count, waiver_count, pending_waiver_count, report_count, by_severity, by_analysis_state]
       properties:
         total_findings:
           type: integer
@@ -3131,7 +3320,8 @@ components:
         blocking_count:
           type: integer
           description: Open and reopened findings not in an ignoring analysis state.
-        waiver_count: { type: integer, description: Enabled waivers only. }
+        waiver_count: { type: integer, description: Approved, enabled waivers only. }
+        pending_waiver_count: { type: integer, description: Waiver requests waiting for a decision. }
         report_count: { type: integer }
         by_severity:
           type: array
