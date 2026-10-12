@@ -742,6 +742,45 @@ func (c *Client) CreateWaiver(projectSlug string, req *CreateWaiverRequest) (*Wa
 	return &resp, nil
 }
 
+// RequestWaiver files a pending waiver request. It needs a signed-in person,
+// not an API key.
+func (c *Client) RequestWaiver(projectSlug string, req *RequestWaiverRequest) (*Waiver, error) {
+	var resp Waiver
+	if err := c.do(context.Background(), "POST", apiProjectsPrefix+url.PathEscape(projectSlug)+"/waivers/requests", req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ApproveWaiver approves a pending waiver request. The note is optional.
+func (c *Client) ApproveWaiver(projectSlug, waiverID, note string) (*Waiver, error) {
+	return c.decideWaiver(projectSlug, waiverID, "/approve", note)
+}
+
+// RejectWaiver rejects a pending waiver request. The note says why and is
+// required by the server.
+func (c *Client) RejectWaiver(projectSlug, waiverID, note string) (*Waiver, error) {
+	return c.decideWaiver(projectSlug, waiverID, "/reject", note)
+}
+
+// WithdrawWaiver takes back the caller's own pending waiver request.
+func (c *Client) WithdrawWaiver(projectSlug, waiverID string) (*Waiver, error) {
+	return c.decideWaiver(projectSlug, waiverID, "/withdraw", "")
+}
+
+func (c *Client) decideWaiver(projectSlug, waiverID, action, note string) (*Waiver, error) {
+	var body any
+	if note != "" {
+		body = map[string]string{"note": note}
+	}
+	var resp Waiver
+	path := apiProjectsPrefix + url.PathEscape(projectSlug) + waiverSegment + url.PathEscape(waiverID) + action
+	if err := c.do(context.Background(), "POST", path, body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
 func (c *Client) ListWaivers(projectSlug string) ([]Waiver, error) {
 	var resp []Waiver
 	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(projectSlug)+"/waivers", nil, &resp); err != nil {

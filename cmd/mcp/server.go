@@ -195,7 +195,7 @@ func registerMutationTools(server *mcp.Server, api API) {
 	mcp.AddTool(server, &mcp.Tool{Name: "reachability_set", Description: "Set a finding's reachability assessment"}, func(_ context.Context, _ *mcp.CallToolRequest, input reachabilitySetInput) (*mcp.CallToolResult, any, error) {
 		return handleReachabilitySet(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "waivers_create", Description: "Create a new waiver for a project"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverCreateInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "waivers_create", Description: "Create an approved waiver for specific findings (finding_ids). Needs the project manager or admin role."}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverCreateInput) (*mcp.CallToolResult, any, error) {
 		return handleWaiversCreate(api, input)
 	})
 	mcp.AddTool(server, &mcp.Tool{Name: "waivers_toggle", Description: "Enable or disable a waiver"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverInput) (*mcp.CallToolResult, any, error) {
@@ -497,6 +497,9 @@ func handleWaiversGet(api API, input waiverInput) (*mcp.CallToolResult, any, err
 func handleWaiversCreate(api API, input waiverCreateInput) (*mcp.CallToolResult, any, error) {
 	if input.Project == "" || input.Name == "" {
 		return nil, nil, fmt.Errorf("project and name are required")
+	}
+	if len(input.FindingIDs) == 0 {
+		return nil, nil, fmt.Errorf("finding_ids is required: a waiver must name the findings it covers")
 	}
 	waiver, err := api.CreateWaiver(input.Project, &client.CreateWaiverRequest{
 		Name:        input.Name,

@@ -364,17 +364,29 @@ type Artifact struct {
 
 // Waiver is a waiver policy with its conditions, contexts, and targets.
 type Waiver struct {
-	ID          string                `json:"id"`
-	ProjectID   string                `json:"project_id"`
-	Name        string                `json:"name"`
-	Description string                `json:"description"`
-	Enabled     bool                  `json:"enabled"`
-	ExpiresAt   string                `json:"expires_at,omitempty"`
-	Conditions  []WaiverCondition     `json:"conditions"`
-	Contexts    []WaiverContext       `json:"contexts"`
-	Targets     []WaiverFindingTarget `json:"targets"`
-	CreatedAt   string                `json:"created_at"`
-	UpdatedAt   string                `json:"updated_at"`
+	ID          string `json:"id"`
+	ProjectID   string `json:"project_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Enabled     bool   `json:"enabled"`
+	// Status is the review state: pending, approved, rejected or withdrawn.
+	// Only approved waivers count in the gate.
+	Status   string `json:"status"`
+	ScopeAll bool   `json:"scope_all"`
+	Reason   string `json:"reason"`
+	// RequestedBy and DecidedBy are user ids; both are empty for a waiver
+	// created directly or still undecided.
+	RequestedBy  string                `json:"requested_by,omitempty"`
+	RequestedAt  string                `json:"requested_at,omitempty"`
+	DecidedBy    string                `json:"decided_by,omitempty"`
+	DecidedAt    string                `json:"decided_at,omitempty"`
+	DecisionNote string                `json:"decision_note"`
+	ExpiresAt    string                `json:"expires_at,omitempty"`
+	Conditions   []WaiverCondition     `json:"conditions"`
+	Contexts     []WaiverContext       `json:"contexts"`
+	Targets      []WaiverFindingTarget `json:"targets"`
+	CreatedAt    string                `json:"created_at"`
+	UpdatedAt    string                `json:"updated_at"`
 }
 
 // WaiverCondition is a predicate on a finding field.
@@ -419,12 +431,15 @@ type WaiverEvent struct {
 
 // CreateWaiverRequest is the request body for creating a waiver.
 type CreateWaiverRequest struct {
-	Name        string                  `json:"name"`
-	Description string                  `json:"description"`
-	ExpiresAt   string                  `json:"expires_at,omitempty"`
-	Conditions  []CreateWaiverCondition `json:"conditions,omitempty"`
-	Contexts    []CreateWaiverContext   `json:"contexts,omitempty"`
-	TargetIDs   []string                `json:"target_ids,omitempty"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	ExpiresAt   string `json:"expires_at,omitempty"`
+	// Scope is "all" for a waiver that covers every finding of the project,
+	// with no conditions, contexts or targets. Leave it empty otherwise.
+	Scope      string                  `json:"scope,omitempty"`
+	Conditions []CreateWaiverCondition `json:"conditions,omitempty"`
+	Contexts   []CreateWaiverContext   `json:"contexts,omitempty"`
+	TargetIDs  []string                `json:"target_ids,omitempty"`
 }
 
 // CreateWaiverCondition is a condition input for waiver creation.
@@ -450,9 +465,18 @@ type UpdateWaiverRequest struct {
 	// A plain string with omitempty could not express "clear", which is
 	// why this is a pointer.
 	ExpiresAt  *string                 `json:"expires_at,omitempty"`
+	Scope      string                  `json:"scope,omitempty"`
 	Conditions []CreateWaiverCondition `json:"conditions,omitempty"`
 	Contexts   []CreateWaiverContext   `json:"contexts,omitempty"`
 	TargetIDs  []string                `json:"target_ids,omitempty"`
+}
+
+// RequestWaiverRequest is the request body for asking for a waiver.
+type RequestWaiverRequest struct {
+	TargetIDs []string `json:"target_ids"`
+	Reason    string   `json:"reason"`
+	// ExpiresAt is RFC 3339, in the future and at most 90 days ahead.
+	ExpiresAt string `json:"expires_at"`
 }
 
 // CheckWaiverMatchResponse reports whether a single finding is waived.
@@ -493,13 +517,15 @@ type AnalysisStateCount struct {
 
 // ProjectStats is a project's aggregate finding/waiver/report statistics.
 type ProjectStats struct {
-	TotalFindings   int32                `json:"total_findings"`
-	BlockingCount   int32                `json:"blocking_count"`
-	WaiverCount     int32                `json:"waiver_count"`
-	ReportCount     int32                `json:"report_count"`
-	BySeverity      []SeverityCount      `json:"by_severity"`
-	ByAnalysisState []AnalysisStateCount `json:"by_analysis_state"`
-	LatestReport    *Report              `json:"latest_report,omitempty"`
+	TotalFindings int32 `json:"total_findings"`
+	BlockingCount int32 `json:"blocking_count"`
+	WaiverCount   int32 `json:"waiver_count"`
+	// PendingWaiverCount is the number of waiver requests waiting for a decision.
+	PendingWaiverCount int32                `json:"pending_waiver_count"`
+	ReportCount        int32                `json:"report_count"`
+	BySeverity         []SeverityCount      `json:"by_severity"`
+	ByAnalysisState    []AnalysisStateCount `json:"by_analysis_state"`
+	LatestReport       *Report              `json:"latest_report,omitempty"`
 }
 
 // AgingBucketCount is one age bucket with its overdue subset.

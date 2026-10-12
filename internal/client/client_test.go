@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -277,6 +278,56 @@ func TestListEndpoints(t *testing.T) {
 	arts, err := cl.ListArtifacts("my-app")
 	require.NoError(t, err)
 	assert.Len(t, arts, 1)
+}
+
+func TestWaiverReview(t *testing.T) {
+	type call struct{ method, path, body string }
+	var calls []call
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read body: %v", err)
+		}
+		calls = append(calls, call{r.Method, r.URL.Path, string(body)})
+		status := "pending"
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/approve"):
+			status = "approved"
+		case strings.HasSuffix(r.URL.Path, "/reject"):
+			status = "rejected"
+		case strings.HasSuffix(r.URL.Path, "/withdraw"):
+			status = "withdrawn"
+		}
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(Waiver{ID: "w-1", Status: status, RequestedBy: "u1"}); err != nil {
+			t.Errorf("encode waiver: %v", err)
+		}
+	}))
+	defer srv.Close()
+	cl := New(srv.URL, WithToken("session"))
+
+	w, err := cl.RequestWaiver("my-app", &RequestWaiverRequest{TargetIDs: []string{"f1"}, Reason: "not reachable", ExpiresAt: "2030-01-01T00:00:00Z"})
+	require.NoError(t, err)
+	assert.Equal(t, "pending", w.Status)
+	assert.Equal(t, "u1", w.RequestedBy)
+
+	w, err = cl.ApproveWaiver("my-app", "w-1", "fine")
+	require.NoError(t, err)
+	assert.Equal(t, "approved", w.Status)
+
+	w, err = cl.RejectWaiver("my-app", "w-1", "fix it")
+	require.NoError(t, err)
+	assert.Equal(t, "rejected", w.Status)
+
+	w, err = cl.WithdrawWaiver("my-app", "w-1")
+	require.NoError(t, err)
+	assert.Equal(t, "withdrawn", w.Status)
+
+	require.Len(t, calls, 4)
+	assert.Equal(t, call{"POST", "/api/v1/projects/my-app/waivers/requests", `{"target_ids":["f1"],"reason":"not reachable","expires_at":"2030-01-01T00:00:00Z"}`}, calls[0])
+	assert.Equal(t, call{"POST", "/api/v1/projects/my-app/waivers/w-1/approve", `{"note":"fine"}`}, calls[1])
+	assert.Equal(t, call{"POST", "/api/v1/projects/my-app/waivers/w-1/reject", `{"note":"fix it"}`}, calls[2])
+	assert.Equal(t, call{"POST", "/api/v1/projects/my-app/waivers/w-1/withdraw", ""}, calls[3], "withdraw sends no body")
 }
 
 func TestWaivers(t *testing.T) {

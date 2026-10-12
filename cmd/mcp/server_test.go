@@ -153,7 +153,8 @@ func TestMCPServerWaiversCreateForwardsExpiry(t *testing.T) {
 		Name: "waivers_create",
 		Arguments: map[string]any{
 			"project": "my-app", "name": "release-window",
-			"expires_at": "2030-06-30T12:00:00Z",
+			"expires_at":  "2030-06-30T12:00:00Z",
+			"finding_ids": []string{"f1"},
 		},
 	})
 	if err != nil {
@@ -169,12 +170,32 @@ func TestMCPServerWaiversCreateForwardsExpiry(t *testing.T) {
 	// Omitting the field keeps the request free of it (omitempty).
 	if _, err := session.CallTool(context.Background(), &mcp.CallToolParams{
 		Name:      "waivers_create",
-		Arguments: map[string]any{"project": "my-app", "name": "open-ended"},
+		Arguments: map[string]any{"project": "my-app", "name": "open-ended", "finding_ids": []string{"f1"}},
 	}); err != nil {
 		t.Fatal(err)
 	}
 	if mc.waiverReq == nil || mc.waiverReq.ExpiresAt != "" {
 		t.Fatalf("absent expires_at must stay absent: %+v", mc.waiverReq)
+	}
+}
+
+// A waiver has to name what it covers; the tool refuses one without findings
+// before it reaches the API.
+func TestMCPServerWaiversCreateNeedsFindings(t *testing.T) {
+	mc := &mockClient{waiver: &client.Waiver{ID: "w1"}}
+	session := connectMCPServer(t, mc)
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "waivers_create",
+		Arguments: map[string]any{"project": "my-app", "name": "everything"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatal("expected an error for a waiver without finding_ids")
+	}
+	if mc.waiverReq != nil {
+		t.Fatalf("the request must not reach the API: %+v", mc.waiverReq)
 	}
 }
 
