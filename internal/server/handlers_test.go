@@ -25,6 +25,12 @@ import (
 )
 
 type mockUsecases struct {
+	createInviteFn          func(ctx context.Context, slug string, in usecase.CreateInviteInput) (*usecase.InviteResponse, error)
+	listInvitesFn           func(ctx context.Context, slug string) ([]usecase.InviteResponse, error)
+	revokeInviteFn          func(ctx context.Context, slug, id string) (*usecase.InviteResponse, error)
+	lookupInviteFn          func(ctx context.Context, token string) (*usecase.InviteLookupResponse, error)
+	acceptInviteFn          func(ctx context.Context, token string, in usecase.AcceptInviteInput) (*usecase.AcceptInviteResponse, error)
+	joinInviteFn            func(ctx context.Context, token string) (*usecase.JoinInviteResponse, error)
 	setupRequiredFn         func(ctx context.Context) (bool, error)
 	setupFn                 func(ctx context.Context, input usecase.SetupInput) (*usecase.AuthResponse, error)
 	reportFilter            usecase.ReportFilter
@@ -594,6 +600,48 @@ func (m *mockUsecases) WithdrawWaiver(ctx context.Context, projectSlug, waiverID
 		return nil, fmt.Errorf("unexpected call to WithdrawWaiver")
 	}
 	return m.withdrawWaiverFn(ctx, projectSlug, waiverID)
+}
+
+func (m *mockUsecases) CreateInvite(ctx context.Context, slug string, in usecase.CreateInviteInput) (*usecase.InviteResponse, error) {
+	if m.createInviteFn == nil {
+		return nil, fmt.Errorf("unexpected call to CreateInvite")
+	}
+	return m.createInviteFn(ctx, slug, in)
+}
+
+func (m *mockUsecases) ListInvites(ctx context.Context, slug string) ([]usecase.InviteResponse, error) {
+	if m.listInvitesFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListInvites")
+	}
+	return m.listInvitesFn(ctx, slug)
+}
+
+func (m *mockUsecases) RevokeInvite(ctx context.Context, slug, id string) (*usecase.InviteResponse, error) {
+	if m.revokeInviteFn == nil {
+		return nil, fmt.Errorf("unexpected call to RevokeInvite")
+	}
+	return m.revokeInviteFn(ctx, slug, id)
+}
+
+func (m *mockUsecases) LookupInvite(ctx context.Context, token string) (*usecase.InviteLookupResponse, error) {
+	if m.lookupInviteFn == nil {
+		return nil, fmt.Errorf("unexpected call to LookupInvite")
+	}
+	return m.lookupInviteFn(ctx, token)
+}
+
+func (m *mockUsecases) AcceptInvite(ctx context.Context, token string, in usecase.AcceptInviteInput) (*usecase.AcceptInviteResponse, error) {
+	if m.acceptInviteFn == nil {
+		return nil, fmt.Errorf("unexpected call to AcceptInvite")
+	}
+	return m.acceptInviteFn(ctx, token, in)
+}
+
+func (m *mockUsecases) JoinInvite(ctx context.Context, token string) (*usecase.JoinInviteResponse, error) {
+	if m.joinInviteFn == nil {
+		return nil, fmt.Errorf("unexpected call to JoinInvite")
+	}
+	return m.joinInviteFn(ctx, token)
 }
 
 func (m *mockUsecases) SetupRequired(ctx context.Context) (bool, error) {

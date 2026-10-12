@@ -168,6 +168,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 			r.Post("/api/v1/auth/login", h.Login)
 			// First-run setup guesses a token, so it shares the login bucket.
 			r.Post("/api/v1/setup", h.Setup)
+			// Invite links work while registration is closed; that is their
+			// purpose. The token is 256 bits, the shared bucket only blunts probing.
+			r.Get("/api/v1/invites/{token}", h.LookupInvite)
+			r.Post("/api/v1/invites/{token}/accept", h.AcceptInvite)
 		})
 	})
 
@@ -242,6 +246,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(readScope).Get("/api/v1/projects/{slug}/pr-check", h.PreviewPRCheck)
 		r.With(readScope).Get("/api/v1/projects/{slug}/environments", h.ListEnvironments)
 		r.With(readScope).Get("/api/v1/projects/{slug}/targets", h.ListTargets)
+		r.With(session).Get("/api/v1/projects/{slug}/invites", h.ListInvites)
+		r.With(session).Post("/api/v1/projects/{slug}/invites", h.CreateInvite)
+		r.With(session).Delete("/api/v1/projects/{slug}/invites/{id}", h.RevokeInvite)
+		r.With(session).Post("/api/v1/invites/{token}/join", h.JoinInvite)
 		r.With(readScope).Get("/api/v1/projects/{slug}/members", h.ListProjectMembers)
 		r.With(adminScope).Post("/api/v1/projects/{slug}/members", h.AddProjectMember)
 		r.With(adminScope).Delete("/api/v1/projects/{slug}/members/{userID}", h.RemoveProjectMember)
