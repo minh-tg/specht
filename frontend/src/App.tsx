@@ -131,6 +131,14 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/:slug/policy"
+        element={
+          <ProtectedRoute>
+            <ProjectLayout />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/teams"
         element={
           <ProtectedRoute>
