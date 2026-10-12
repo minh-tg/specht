@@ -17,11 +17,17 @@ import type {
   TeamMember,
   TriageResponse,
   UserProfile,
+  Waiver,
+  WaiverStatus,
 } from "@/types/api";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { apiFetch, apiFetchWithTotal } from "./client";
 
 export const queryKeys = {
+  waivers: (slug?: string, status?: string) =>
+    slug === undefined ? (["waivers"] as const) : (["waivers", slug, status ?? ""] as const),
+  scanSignal: (slug: string, branch: string) => ["scan-signal", slug, branch] as const,
   projects: () => ["projects"] as const,
   me: () => ["me"] as const,
   version: () => ["version"] as const,
@@ -539,4 +545,107 @@ export function useProjectRole(slug: string): {
     canTriage: rank >= 2,
     isAdmin: rank >= 3,
   };
+}
+
+/** The project's waivers, optionally only those in the given review states. */
+export function useWaivers(slug: string, statuses?: readonly WaiverStatus[]) {
+  const status = statuses?.join(",");
+  return useQuery({
+    queryKey: queryKeys.waivers(slug, status),
+    queryFn: () =>
+      apiFetch<Waiver[]>(
+        `/api/v1/projects/${encodeURIComponent(slug)}/waivers${
+          status ? `?status=${encodeURIComponent(status)}` : ""
+        }`,
+      ),
+    enabled: !!slug,
+  });
+}
+
+/**
+ * Asks for a waiver on specific findings. The request stays pending and changes no verdict until a
+ * manager or admin approves it.
+ */
+export function useRequestWaiver(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { success: () => "Waiver requested. A manager will decide." },
+    mutationFn: ({ findingIds, reason, expiresAt }: {
+      findingIds: string[];
+      reason: string;
+      expiresAt: string;
+    }) =>
+      apiFetch<Waiver>(`/api/v1/projects/${encodeURIComponent(slug)}/waivers/requests`, {
+        method: "POST",
+        body: JSON.stringify({ target_ids: findingIds, reason, expires_at: expiresAt }),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.waivers() });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projectStats() });
+    },
+  });
+}
+
+/**
+ * How often to ask whether the next scan has landed: every 4 s for the first minute, then every 10 s,
+ * and not at all after ten minutes, when the page says to check the CI job instead. A scan takes
+ * minutes, so a slow poll costs the reader nothing and the server one indexed read per visitor.
+ */
+export function scanPollInterval(elapsedMs: number): number | false {
+  if (elapsedMs < 60_000) return 4_000;
+  if (elapsedMs < 600_000) return 10_000;
+  return false;
+}
+
+/**
+ * Watches for the newest report on a branch while the page waits for a scan. It polls only while
+ * `enabled`, only while the tab is visible, and gives up after ten minutes (`stalled`).
+ */
+export function useScanSignal(
+  slug: string,
+  options: {
+    branch: string | null | undefined;
+    enabled: boolean;
+    /** Bump to start the ten minutes again and ask right away, after the page gave up. */
+    attempt?: number;
+  },
+) {
+  const { branch, enabled, attempt = 0 } = options;
+  const startedAt = useRef<number | null>(null);
+  // One key per run of waiting; the page counts as stalled when the run that is current gave up. A
+  // new run (another attempt, or waiting started again) has a new key, so no reset is needed.
+  const runKey = enabled ? `run-${attempt}` : "";
+  const [stalledRun, setStalledRun] = useState("");
+
+  useEffect(() => {
+    if (!enabled) {
+      startedAt.current = null;
+      return;
+    }
+    startedAt.current = Date.now();
+    const timer = setTimeout(() => setStalledRun(runKey), 600_000);
+    return () => clearTimeout(timer);
+  }, [enabled, runKey]);
+  const stalled = enabled && stalledRun === runKey;
+
+  const query = useQuery({
+    queryKey: queryKeys.scanSignal(slug, branch ?? ""),
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: "1" });
+      if (branch) params.set("branch", branch);
+      const rows = await apiFetch<Report[]>(
+        `/api/v1/projects/${encodeURIComponent(slug)}/reports?${params.toString()}`,
+      );
+      return rows[0] ?? null;
+    },
+    enabled: enabled && !!slug,
+    refetchInterval: () =>
+      startedAt.current === null ? false : scanPollInterval(Date.now() - startedAt.current),
+    refetchIntervalInBackground: false,
+  });
+  const { refetch } = query;
+  useEffect(() => {
+    if (enabled && attempt > 0) void refetch();
+  }, [enabled, attempt, refetch]);
+  return { newest: query.data ?? null, stalled, isError: query.isError };
 }

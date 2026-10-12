@@ -22,9 +22,50 @@ export interface Project {
   description: string | null;
   created_at: string;
   updated_at: string;
+  /** The signed-in caller's effective role. Present when a person reads a single project. */
+  role?: ProjectRole;
+  permissions?: ProjectPermissions;
 }
 
 export type ProjectRole = "admin" | "manager" | "member";
+
+/** What the caller may do on a project, for showing and hiding controls. The server checks again. */
+export interface ProjectPermissions {
+  request_waiver: boolean;
+  manage_waivers: boolean;
+  approve_waivers: boolean;
+  manage_members: boolean;
+  manage_ci: boolean;
+  triage: boolean;
+}
+
+export type WaiverStatus = "pending" | "approved" | "rejected" | "withdrawn";
+
+export interface WaiverFindingTarget {
+  id: string;
+  finding_id: string;
+}
+
+/** A waiver with the findings it names. Only approved waivers count in the gate. */
+export interface Waiver {
+  id: string;
+  project_id: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  status: WaiverStatus;
+  scope_all: boolean;
+  reason: string;
+  requested_by?: string;
+  requested_at?: string;
+  decided_by?: string;
+  decided_at?: string;
+  decision_note: string;
+  expires_at?: string | null;
+  targets: WaiverFindingTarget[];
+  created_at: string;
+  updated_at: string;
+}
 
 export interface ProjectMember {
   project_id: string;
