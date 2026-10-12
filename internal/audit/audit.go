@@ -42,6 +42,9 @@ const (
 	EventApproveWaiver  = "waiver.approve"
 	EventRejectWaiver   = "waiver.reject"
 	EventWithdrawWaiver = "waiver.withdraw"
+	EventCreateInvite   = "invite.create"
+	EventAcceptInvite   = "invite.accept"
+	EventRevokeInvite   = "invite.revoke"
 )
 
 // Outcome describes the success or failure of an audited operation.
