@@ -3,6 +3,7 @@ import { VerdictBand } from "@/components/VerdictBand";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { FindingsDashboard } from "@/pages/FindingsDashboard";
 import { ProjectAccess } from "@/pages/ProjectAccess";
+import { ProjectInsights } from "@/pages/ProjectInsights";
 import { ProjectPolicy } from "@/pages/ProjectPolicy";
 import { ProjectWaivers } from "@/pages/ProjectWaivers";
 import { ReportHistory } from "@/pages/ReportHistory";
@@ -20,6 +21,8 @@ export function ProjectLayout() {
     ? "policy"
     : path.endsWith("/waivers")
     ? "waivers"
+    : path.endsWith("/insights")
+    ? "insights"
     : "findings";
 
   useDocumentTitle(
@@ -31,6 +34,8 @@ export function ProjectLayout() {
       ? `${slug} · Policy`
       : currentTab === "waivers"
       ? `${slug} · Waivers`
+      : currentTab === "insights"
+      ? `${slug} · Insights`
       : `${slug} · Findings`,
   );
 
@@ -108,6 +113,17 @@ export function ProjectLayout() {
         >
           Waivers
         </Link>
+        <Link
+          to={`/${slug}/insights`}
+          aria-current={currentTab === "insights" ? "page" : undefined}
+          className={`pb-2 text-sm font-medium ${
+            currentTab === "insights"
+              ? "border-primary text-foreground border-b-2"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Insights
+        </Link>
       </nav>
       {currentTab === "findings"
         ? <FindingsDashboard />
@@ -117,6 +133,8 @@ export function ProjectLayout() {
         ? <ProjectPolicy />
         : currentTab === "waivers"
         ? <ProjectWaivers />
+        : currentTab === "insights"
+        ? <ProjectInsights />
         : <ProjectAccess />}
     </div>
   );
