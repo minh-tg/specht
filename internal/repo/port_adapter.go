@@ -364,13 +364,20 @@ func (r *pgProjectPort) ListMembers(ctx context.Context, projectID string) ([]po
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.q.ListProjectMembers(ctx, pid)
+	rows, err := r.q.ListProjectMembersWithUsers(ctx, pid)
 	if err != nil {
 		return nil, err
 	}
 	out := make([]port.ProjectMember, len(rows))
 	for i, row := range rows {
-		out[i] = memberToPort(row)
+		out[i] = port.ProjectMember{
+			ProjectID:   toUUID(row.ProjectID),
+			UserID:      toUUID(row.UserID),
+			Role:        row.Role,
+			CreatedAt:   row.CreatedAt.Time,
+			Email:       row.Email,
+			DisplayName: row.DisplayName.String,
+		}
 	}
 	return out, nil
 }

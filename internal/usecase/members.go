@@ -26,6 +26,10 @@ type ProjectMemberResponse struct {
 	UserID    string `json:"user_id"`
 	Role      string `json:"role"`
 	CreatedAt string `json:"created_at"`
+	// Email and DisplayName say who the member is. They are filled for a signed-in person only: a
+	// project API key can read the roster, and a key sitting in a CI log should not leak addresses.
+	Email       string `json:"email,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
 }
 
 // memberRoles is the allowed project_members.role vocabulary.
@@ -86,6 +90,8 @@ func (u *Usecases) ListProjectMembers(ctx context.Context, projectSlug string) (
 	if err != nil {
 		return nil, fmt.Errorf("list members: %w", err)
 	}
+	ident := auth.ContextIdentity(ctx)
+	named := ident != nil && !ident.IsAPIKey
 	resp := make([]ProjectMemberResponse, len(members))
 	for i, m := range members {
 		resp[i] = ProjectMemberResponse{
@@ -93,6 +99,10 @@ func (u *Usecases) ListProjectMembers(ctx context.Context, projectSlug string) (
 			UserID:    m.UserID,
 			Role:      normalizeMemberRole(m.Role),
 			CreatedAt: m.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		}
+		if named {
+			resp[i].Email = m.Email
+			resp[i].DisplayName = m.DisplayName
 		}
 	}
 	return resp, nil

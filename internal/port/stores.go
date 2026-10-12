@@ -99,6 +99,9 @@ type ProjectMember struct {
 	UserID    string
 	Role      string
 	CreatedAt time.Time
+	// Email and DisplayName name the person. Only ListMembers fills them.
+	Email       string
+	DisplayName string
 }
 
 type ProjectStore interface {

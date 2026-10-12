@@ -2670,6 +2670,13 @@ export interface components {
       role: "admin" | "manager" | "member";
       /** Format: date-time */
       created_at: string;
+      /**
+       * Format: email
+       * @description The member's address. Sent to a signed-in person only
+       */
+      email?: string;
+      /** @description The member's display name */
+      display_name?: string;
     };
     Environment: {
       /** Format: uuid */

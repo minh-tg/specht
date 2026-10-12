@@ -45,6 +45,15 @@ SELECT * FROM project_members
 WHERE project_id = $1
 ORDER BY created_at ASC, user_id ASC;
 
+-- name: ListProjectMembersWithUsers :many
+-- The roster with each person's email and display name, so a screen shows who a
+-- member is without asking the admin-only user directory.
+SELECT pm.project_id, pm.user_id, pm.role, pm.created_at, u.email, u.display_name
+FROM project_members pm
+JOIN users u ON u.id = pm.user_id
+WHERE pm.project_id = $1
+ORDER BY pm.created_at ASC, pm.user_id ASC;
+
 -- name: IsProjectMember :one
 SELECT EXISTS(SELECT 1 FROM project_members WHERE project_id = $1 AND user_id = $2);
 
