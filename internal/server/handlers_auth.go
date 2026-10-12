@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -374,4 +375,55 @@ func (h *Handler) setUserActive(w http.ResponseWriter, r *http.Request, active b
 	}
 	respondJSON(w, http.StatusOK, profile)
 	h.audit.HTTP(r, event, audit.OutcomeSuccess, "", id, nil)
+}
+
+// Setup creates the first admin on a fresh server. It is public, so it works
+// only while no account exists and only with the token the server showed at
+// startup; afterwards the route answers 404 as if it were not there.
+func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token       string `json:"token"`
+		Email       string `json:"email"`
+		Password    string `json:"password"`
+		DisplayName string `json:"display_name"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", authMsgInvalidBody) {
+		return
+	}
+	resp, err := h.usecase.Setup(r.Context(), usecase.SetupInput{
+		Token: req.Token, Email: req.Email, Password: req.Password, DisplayName: req.DisplayName,
+	})
+	switch {
+	case err == nil:
+	case errors.Is(err, usecase.ErrSetupClosed):
+		respondError(w, http.StatusNotFound, "not_found", "not found")
+		return
+	case errors.Is(err, usecase.ErrInvalidSetupToken):
+		respondError(w, http.StatusForbidden, "invalid_setup_token", "the setup token is wrong")
+		return
+	case errors.Is(err, usecase.ErrInvalidCredentialInput):
+		respondError(w, http.StatusBadRequest, "invalid_credentials", err.Error())
+		return
+	default:
+		slog.Error("setup", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not complete setup")
+		return
+	}
+	respondJSON(w, http.StatusCreated, resp)
+	h.audit.HTTP(r, audit.EventSetupComplete, audit.OutcomeSuccess, "", resp.UserID, nil)
+}
+
+// setupRequired reports whether the server is waiting for its first admin. A
+// failed check counts as not required, so an unreachable database never
+// invents a setup screen.
+func (h *Handler) setupRequired(ctx context.Context) bool {
+	if h.usecase == nil {
+		return false
+	}
+	required, err := h.usecase.SetupRequired(ctx)
+	if err != nil {
+		slog.Error("setup required check", "error", err)
+		return false
+	}
+	return required
 }

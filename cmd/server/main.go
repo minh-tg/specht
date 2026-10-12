@@ -179,7 +179,10 @@ func main() {
 			"the identity provider did not verify; use it only if your provider's emails are administrator-controlled")
 	}
 
+	setupToken := offerFirstRunSetup(context.Background(), stores)
+
 	uc := usecase.New(usecase.Deps{
+		SetupToken:              setupToken,
 		Stores:                  stores,
 		Registry:                reg,
 		Providers:               providers,
@@ -549,4 +552,30 @@ func apiKeyScopes(raw []byte) ([]string, error) {
 		return nil, fmt.Errorf("decode key scopes: %w", err)
 	}
 	return scopes, nil
+}
+
+// offerFirstRunSetup returns the token that guards first-run setup, or nil
+// when the server already has an account. The token comes from SETUP_TOKEN
+// when it is set and is otherwise random; it is written to the log once, so
+// whoever can read the server's logs can set the server up, and nobody else.
+func offerFirstRunSetup(ctx context.Context, stores *port.Stores) *usecase.SetupToken {
+	count, err := stores.Users.Count(ctx)
+	if err != nil {
+		slog.Error("setup: could not count accounts", "error", err)
+		return nil
+	}
+	if count > 0 {
+		return nil
+	}
+	token, err := usecase.NewSetupToken(os.Getenv("SETUP_TOKEN"))
+	if err != nil {
+		slog.Error("setup: could not create a setup token", "error", err)
+		return nil
+	}
+	if os.Getenv("SETUP_TOKEN") != "" {
+		slog.Info("first run: the server has no accounts; open the app and set it up with the token in SETUP_TOKEN")
+	} else {
+		slog.Info("first run: the server has no accounts; open the app and set it up with this token", "setup_token", token.Value())
+	}
+	return token
 }

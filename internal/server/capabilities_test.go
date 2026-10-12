@@ -18,12 +18,21 @@ type capabilitiesBody struct {
 		Enabled   bool   `json:"enabled"`
 		LoginPath string `json:"login_path"`
 	} `json:"sso"`
+	Setup struct {
+		Required bool `json:"required"`
+	} `json:"setup"`
 	Version string `json:"version"`
 }
 
 func getCapabilities(t *testing.T, cfg RouterConfig) (*httptest.ResponseRecorder, capabilitiesBody) {
 	t.Helper()
 	cfg.Usecases = &mockUsecases{}
+	return getCapabilitiesWith(t, cfg)
+}
+
+// getCapabilitiesWith reads the capabilities with the use cases the config carries.
+func getCapabilitiesWith(t *testing.T, cfg RouterConfig) (*httptest.ResponseRecorder, capabilitiesBody) {
+	t.Helper()
 	cfg.JWTAuth = testJWTAuth
 	req := httptest.NewRequest("GET", "/api/v1/capabilities", nil)
 	req.RemoteAddr = "192.0.2.90:1234"
