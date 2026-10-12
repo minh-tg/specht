@@ -112,15 +112,73 @@ SELECT COUNT(*) FROM reports
 WHERE status IN ('completed', 'failed')
   AND COALESCE(completed_at, created_at) < $1;
 
--- name: DeleteStaleReports :many
--- Retention purge: deletes settled reports older than the
--- cutoff, returning their ids. Occurrences, watcher rows, and package
--- inventory cascade; finding attribution nulls (SET NULL); findings
--- themselves survive. Returns zero rows when nothing qualifies.
-DELETE FROM reports
+-- name: ListStaleReports :many
+-- Retention purge: the settled reports older than the cutoff, oldest first.
+-- Each one is removed with the same routine as an explicit delete, so both
+-- paths leave the same state behind.
+SELECT id, project_id FROM reports
 WHERE status IN ('completed', 'failed')
   AND COALESCE(completed_at, created_at) < $1
-RETURNING id;
+ORDER BY COALESCE(completed_at, created_at), id;
+
+-- name: LockReportForDelete :one
+-- Takes the report row for the rest of the transaction, so a scan that moves
+-- it to processing cannot slip in between the check and the delete.
+SELECT status FROM reports WHERE id = $1 AND project_id = $2 FOR UPDATE;
+
+-- name: ListFindingsTouchedByReport :many
+-- The findings a report is evidence for, and whether it is the one that
+-- introduced them. Read before the delete, which nulls the attribution.
+SELECT f.id, (f.introduced_by_report_id = sqlc.arg(report_id)::uuid) AS introduced
+FROM findings f
+WHERE f.project_id = sqlc.arg(project_id)
+  AND (f.introduced_by_report_id = sqlc.arg(report_id)::uuid
+       OR EXISTS (
+           SELECT 1 FROM finding_occurrences fo
+           WHERE fo.finding_id = f.id AND fo.report_id = sqlc.arg(report_id)::uuid));
+
+-- name: ArchiveOrphanedFindings :many
+-- Archives the open findings among the given ones that no occurrence supports
+-- any more, and records why. Fixed findings keep their state: fixed is still
+-- true of them.
+WITH orphaned AS (
+    SELECT f.id, f.state
+    FROM findings f
+    WHERE f.id = ANY(sqlc.arg(finding_ids)::uuid[])
+      AND f.state IN ('open', 'reopened')
+      AND NOT EXISTS (SELECT 1 FROM finding_occurrences fo WHERE fo.finding_id = f.id)
+    FOR UPDATE
+), archived AS (
+    UPDATE findings f
+    SET state = 'archived', updated_at = NOW()
+    FROM orphaned o
+    WHERE f.id = o.id
+    RETURNING f.id
+), logged AS (
+    INSERT INTO finding_events (finding_id, user_id, event_type, old_value, new_value, changes)
+    SELECT o.id, sqlc.narg(actor_id)::uuid, 'report_deleted', o.state, 'archived',
+           jsonb_build_object('report_id', sqlc.arg(report_id)::text)
+    FROM orphaned o
+    JOIN archived a ON a.id = o.id
+    RETURNING finding_id
+)
+SELECT finding_id FROM logged;
+
+-- name: RepointIntroducedBy :execrows
+-- Gives findings whose introducing report is gone the earliest report that
+-- still shows them, so "introduced by this change" stays as true as what
+-- remains allows. Findings with no remaining evidence are left alone.
+UPDATE findings f
+SET introduced_by_report_id = e.report_id, introduced_commit_sha = e.commit_sha
+FROM (
+    SELECT DISTINCT ON (fo.finding_id) fo.finding_id, r.id AS report_id, r.commit_sha
+    FROM finding_occurrences fo
+    JOIN reports r ON r.id = fo.report_id
+    WHERE fo.finding_id = ANY(sqlc.arg(finding_ids)::uuid[])
+    ORDER BY fo.finding_id, r.created_at ASC, r.id ASC
+) e
+WHERE f.id = e.finding_id
+  AND f.introduced_by_report_id IS NULL;
 
 -- name: FindCompletedByReplayKey :one
 -- Replay lookup: a completed report for the same project, raw-content hash,

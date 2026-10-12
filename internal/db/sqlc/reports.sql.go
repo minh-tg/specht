@@ -11,6 +11,60 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const archiveOrphanedFindings = `-- name: ArchiveOrphanedFindings :many
+WITH orphaned AS (
+    SELECT f.id, f.state
+    FROM findings f
+    WHERE f.id = ANY($1::uuid[])
+      AND f.state IN ('open', 'reopened')
+      AND NOT EXISTS (SELECT 1 FROM finding_occurrences fo WHERE fo.finding_id = f.id)
+    FOR UPDATE
+), archived AS (
+    UPDATE findings f
+    SET state = 'archived', updated_at = NOW()
+    FROM orphaned o
+    WHERE f.id = o.id
+    RETURNING f.id
+), logged AS (
+    INSERT INTO finding_events (finding_id, user_id, event_type, old_value, new_value, changes)
+    SELECT o.id, $2::uuid, 'report_deleted', o.state, 'archived',
+           jsonb_build_object('report_id', $3::text)
+    FROM orphaned o
+    JOIN archived a ON a.id = o.id
+    RETURNING finding_id
+)
+SELECT finding_id FROM logged
+`
+
+type ArchiveOrphanedFindingsParams struct {
+	FindingIds []pgtype.UUID `json:"finding_ids"`
+	ActorID    pgtype.UUID   `json:"actor_id"`
+	ReportID   string        `json:"report_id"`
+}
+
+// Archives the open findings among the given ones that no occurrence supports
+// any more, and records why. Fixed findings keep their state: fixed is still
+// true of them.
+func (q *Queries) ArchiveOrphanedFindings(ctx context.Context, arg ArchiveOrphanedFindingsParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, archiveOrphanedFindings, arg.FindingIds, arg.ActorID, arg.ReportID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var finding_id pgtype.UUID
+		if err := rows.Scan(&finding_id); err != nil {
+			return nil, err
+		}
+		items = append(items, finding_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countStaleReports = `-- name: CountStaleReports :one
 SELECT COUNT(*) FROM reports
 WHERE status IN ('completed', 'failed')
@@ -153,37 +207,6 @@ type DeleteReportParams struct {
 func (q *Queries) DeleteReport(ctx context.Context, arg DeleteReportParams) error {
 	_, err := q.db.Exec(ctx, deleteReport, arg.ID, arg.ProjectID)
 	return err
-}
-
-const deleteStaleReports = `-- name: DeleteStaleReports :many
-DELETE FROM reports
-WHERE status IN ('completed', 'failed')
-  AND COALESCE(completed_at, created_at) < $1
-RETURNING id
-`
-
-// Retention purge: deletes settled reports older than the
-// cutoff, returning their ids. Occurrences, watcher rows, and package
-// inventory cascade; finding attribution nulls (SET NULL); findings
-// themselves survive. Returns zero rows when nothing qualifies.
-func (q *Queries) DeleteStaleReports(ctx context.Context, completedAt pgtype.Timestamptz) ([]pgtype.UUID, error) {
-	rows, err := q.db.Query(ctx, deleteStaleReports, completedAt)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []pgtype.UUID
-	for rows.Next() {
-		var id pgtype.UUID
-		if err := rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		items = append(items, id)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const findCompletedByReplayKey = `-- name: FindCompletedByReplayKey :one
@@ -463,6 +486,48 @@ func (q *Queries) LatestCompletedReportByScanner(ctx context.Context, arg Latest
 	return i, err
 }
 
+const listFindingsTouchedByReport = `-- name: ListFindingsTouchedByReport :many
+SELECT f.id, (f.introduced_by_report_id = $1::uuid) AS introduced
+FROM findings f
+WHERE f.project_id = $2
+  AND (f.introduced_by_report_id = $1::uuid
+       OR EXISTS (
+           SELECT 1 FROM finding_occurrences fo
+           WHERE fo.finding_id = f.id AND fo.report_id = $1::uuid))
+`
+
+type ListFindingsTouchedByReportParams struct {
+	ReportID  pgtype.UUID `json:"report_id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+type ListFindingsTouchedByReportRow struct {
+	ID         pgtype.UUID `json:"id"`
+	Introduced bool        `json:"introduced"`
+}
+
+// The findings a report is evidence for, and whether it is the one that
+// introduced them. Read before the delete, which nulls the attribution.
+func (q *Queries) ListFindingsTouchedByReport(ctx context.Context, arg ListFindingsTouchedByReportParams) ([]ListFindingsTouchedByReportRow, error) {
+	rows, err := q.db.Query(ctx, listFindingsTouchedByReport, arg.ReportID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFindingsTouchedByReportRow
+	for rows.Next() {
+		var i ListFindingsTouchedByReportRow
+		if err := rows.Scan(&i.ID, &i.Introduced); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listReportsByProject = `-- name: ListReportsByProject :many
 SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode FROM reports
 WHERE project_id = $1
@@ -534,6 +599,84 @@ func (q *Queries) ListReportsByProject(ctx context.Context, arg ListReportsByPro
 		return nil, err
 	}
 	return items, nil
+}
+
+const listStaleReports = `-- name: ListStaleReports :many
+SELECT id, project_id FROM reports
+WHERE status IN ('completed', 'failed')
+  AND COALESCE(completed_at, created_at) < $1
+ORDER BY COALESCE(completed_at, created_at), id
+`
+
+type ListStaleReportsRow struct {
+	ID        pgtype.UUID `json:"id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+// Retention purge: the settled reports older than the cutoff, oldest first.
+// Each one is removed with the same routine as an explicit delete, so both
+// paths leave the same state behind.
+func (q *Queries) ListStaleReports(ctx context.Context, completedAt pgtype.Timestamptz) ([]ListStaleReportsRow, error) {
+	rows, err := q.db.Query(ctx, listStaleReports, completedAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListStaleReportsRow
+	for rows.Next() {
+		var i ListStaleReportsRow
+		if err := rows.Scan(&i.ID, &i.ProjectID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const lockReportForDelete = `-- name: LockReportForDelete :one
+SELECT status FROM reports WHERE id = $1 AND project_id = $2 FOR UPDATE
+`
+
+type LockReportForDeleteParams struct {
+	ID        pgtype.UUID `json:"id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+// Takes the report row for the rest of the transaction, so a scan that moves
+// it to processing cannot slip in between the check and the delete.
+func (q *Queries) LockReportForDelete(ctx context.Context, arg LockReportForDeleteParams) (string, error) {
+	row := q.db.QueryRow(ctx, lockReportForDelete, arg.ID, arg.ProjectID)
+	var status string
+	err := row.Scan(&status)
+	return status, err
+}
+
+const repointIntroducedBy = `-- name: RepointIntroducedBy :execrows
+UPDATE findings f
+SET introduced_by_report_id = e.report_id, introduced_commit_sha = e.commit_sha
+FROM (
+    SELECT DISTINCT ON (fo.finding_id) fo.finding_id, r.id AS report_id, r.commit_sha
+    FROM finding_occurrences fo
+    JOIN reports r ON r.id = fo.report_id
+    WHERE fo.finding_id = ANY($1::uuid[])
+    ORDER BY fo.finding_id, r.created_at ASC, r.id ASC
+) e
+WHERE f.id = e.finding_id
+  AND f.introduced_by_report_id IS NULL
+`
+
+// Gives findings whose introducing report is gone the earliest report that
+// still shows them, so "introduced by this change" stays as true as what
+// remains allows. Findings with no remaining evidence are left alone.
+func (q *Queries) RepointIntroducedBy(ctx context.Context, findingIds []pgtype.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, repointIntroducedBy, findingIds)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const updateReportStatus = `-- name: UpdateReportStatus :one

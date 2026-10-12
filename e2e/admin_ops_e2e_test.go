@@ -178,9 +178,13 @@ func TestE2E_AdminStatusAndRetention(t *testing.T) {
 			"/api/v1/projects/"+slug+"/reports", adminToken, nil, http.StatusOK)
 		require.Empty(t, reports, "the purged reports are gone")
 
-		findings := listFindings(t, slug)
-		require.Len(t, findings, 2,
-			"findings survive their reports — purge cascades occurrences, not analysis")
+		require.Empty(t, listFindings(t, slug),
+			"findings whose only evidence was purged are archived, out of the default list")
+		archived := listFindingsPage(t, slug, "status=archived&limit=50")
+		require.Len(t, archived, 2,
+			"findings survive their reports as archived — purge cascades occurrences, not analysis")
+		require.Zero(t, readStats(t, slug, adminToken, http.StatusOK).TotalFindings,
+			"archived findings are not open")
 
 		stdout, stderr, exit = runBin(t, cliBin,
 			[]string{"API_URL=" + baseURL, "API_KEY=" + adminToken},

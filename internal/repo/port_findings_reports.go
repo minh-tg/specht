@@ -281,6 +281,24 @@ func (r *pgReportPort) DeleteReport(ctx context.Context, id, projectID string) e
 	return mappingErr(r.inner.DeleteReport(ctx, rid, pid))
 }
 
+func (r *pgReportPort) DeleteReportAndSettle(ctx context.Context, id, projectID string, actorID *string) (port.ReportDeletion, error) {
+	rid, err := parseID(id)
+	if err != nil {
+		return port.ReportDeletion{}, err
+	}
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.ReportDeletion{}, err
+	}
+	var actor pgtype.UUID
+	if actorID != nil {
+		if actor, err = parseID(*actorID); err != nil {
+			return port.ReportDeletion{}, err
+		}
+	}
+	return r.inner.DeleteReportAndSettle(ctx, rid, pid, actor)
+}
+
 func (r *pgReportPort) DeleteDuplicateReport(ctx context.Context, id, projectID, winnerID string) error {
 	rid, err := parseID(id)
 	if err != nil {

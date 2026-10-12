@@ -17,6 +17,7 @@ INSERT INTO findings (
     last_seen_at = EXCLUDED.last_seen_at,
     state = CASE
         WHEN findings.state = 'fixed' THEN 'reopened'
+        WHEN findings.state = 'archived' THEN 'open'
         ELSE findings.state
     END,
     updated_at = NOW()
@@ -65,7 +66,7 @@ RETURNING *;
 SELECT f.* FROM findings f
 WHERE f.project_id = $1
   AND (array_length($2::text[], 1) IS NULL OR f.current_severity = ANY($2))
-  AND (array_length($3::text[], 1) IS NULL OR f.state = ANY($3))
+  AND (CASE WHEN array_length($3::text[], 1) IS NULL THEN f.state <> 'archived' ELSE f.state = ANY($3) END)
   AND (array_length($4::text[], 1) IS NULL OR f.finding_kind = ANY($4))
   AND (array_length($5::text[], 1) IS NULL OR EXISTS (
     SELECT 1 FROM finding_occurrences fo
@@ -101,7 +102,7 @@ LIMIT $7 OFFSET $8;
 SELECT COUNT(*) FROM findings f
 WHERE f.project_id = $1
   AND (array_length($2::text[], 1) IS NULL OR f.current_severity = ANY($2))
-  AND (array_length($3::text[], 1) IS NULL OR f.state = ANY($3))
+  AND (CASE WHEN array_length($3::text[], 1) IS NULL THEN f.state <> 'archived' ELSE f.state = ANY($3) END)
   AND (array_length($4::text[], 1) IS NULL OR f.finding_kind = ANY($4))
   AND (array_length($5::text[], 1) IS NULL OR EXISTS (
     SELECT 1 FROM finding_occurrences fo
@@ -408,6 +409,7 @@ ON CONFLICT (project_id, finding_kind, fingerprint) DO UPDATE SET
     last_seen_at = GREATEST(findings.last_seen_at, EXCLUDED.last_seen_at),
     state = CASE
         WHEN findings.state = 'fixed' THEN 'reopened'
+        WHEN findings.state = 'archived' THEN 'open'
         ELSE findings.state
     END,
     updated_at = NOW()
@@ -514,6 +516,7 @@ ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC;
 SELECT * FROM findings
 WHERE project_id = $1
   AND introduced_commit_sha = $2
+  AND state <> 'archived'
 ORDER BY current_severity_rank DESC, created_at DESC, id DESC;
 
 -- name: MarkAbsentScopedFindingsFixed :many

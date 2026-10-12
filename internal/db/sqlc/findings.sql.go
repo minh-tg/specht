@@ -241,6 +241,7 @@ ON CONFLICT (project_id, finding_kind, fingerprint) DO UPDATE SET
     last_seen_at = GREATEST(findings.last_seen_at, EXCLUDED.last_seen_at),
     state = CASE
         WHEN findings.state = 'fixed' THEN 'reopened'
+        WHEN findings.state = 'archived' THEN 'open'
         ELSE findings.state
     END,
     updated_at = NOW()
@@ -303,7 +304,7 @@ const countFindingsByProject = `-- name: CountFindingsByProject :one
 SELECT COUNT(*) FROM findings f
 WHERE f.project_id = $1
   AND (array_length($2::text[], 1) IS NULL OR f.current_severity = ANY($2))
-  AND (array_length($3::text[], 1) IS NULL OR f.state = ANY($3))
+  AND (CASE WHEN array_length($3::text[], 1) IS NULL THEN f.state <> 'archived' ELSE f.state = ANY($3) END)
   AND (array_length($4::text[], 1) IS NULL OR f.finding_kind = ANY($4))
   AND (array_length($5::text[], 1) IS NULL OR EXISTS (
     SELECT 1 FROM finding_occurrences fo
@@ -1065,7 +1066,7 @@ const listFindingsByProject = `-- name: ListFindingsByProject :many
 SELECT f.id, f.project_id, f.finding_kind, f.fingerprint, f.current_title, f.current_severity, f.current_severity_rank, f.current_score, f.state, f.triage_status, f.assignee_id, f.first_seen_at, f.last_seen_at, f.fixed_at, f.created_at, f.updated_at, f.analysis_state, f.gate_effect, f.analysis_expires_at, f.analysis_reason, f.analysis_source, f.analysis_updated_at, f.analysis_updated_by, f.manual_override, f.review_required, f.fingerprint_version, f.introduced_by_report_id, f.introduced_commit_sha FROM findings f
 WHERE f.project_id = $1
   AND (array_length($2::text[], 1) IS NULL OR f.current_severity = ANY($2))
-  AND (array_length($3::text[], 1) IS NULL OR f.state = ANY($3))
+  AND (CASE WHEN array_length($3::text[], 1) IS NULL THEN f.state <> 'archived' ELSE f.state = ANY($3) END)
   AND (array_length($4::text[], 1) IS NULL OR f.finding_kind = ANY($4))
   AND (array_length($5::text[], 1) IS NULL OR EXISTS (
     SELECT 1 FROM finding_occurrences fo
@@ -1178,6 +1179,7 @@ const listFindingsIntroducedByCommit = `-- name: ListFindingsIntroducedByCommit 
 SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version, introduced_by_report_id, introduced_commit_sha FROM findings
 WHERE project_id = $1
   AND introduced_commit_sha = $2
+  AND state <> 'archived'
 ORDER BY current_severity_rank DESC, created_at DESC, id DESC
 `
 
@@ -1877,6 +1879,7 @@ INSERT INTO findings (
     last_seen_at = EXCLUDED.last_seen_at,
     state = CASE
         WHEN findings.state = 'fixed' THEN 'reopened'
+        WHEN findings.state = 'archived' THEN 'open'
         ELSE findings.state
     END,
     updated_at = NOW()
