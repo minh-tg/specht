@@ -32,6 +32,10 @@ var ErrWaiverNotPending = errors.New("waiver is not pending")
 // per-project lock so concurrent writes cannot both pass the check.
 var ErrLastAdmin = errors.New("last project admin")
 
+// ErrLastGlobalAdmin is returned when a role change or deactivation would
+// leave the instance without an active global admin.
+var ErrLastGlobalAdmin = errors.New("last global admin")
+
 // ErrDuplicateReport is returned when a report with the same raw-content
 // hash has already been ingested for the project.
 var ErrDuplicateReport = errors.New("duplicate report")
@@ -125,7 +129,10 @@ type User struct {
 	DisplayName  *string
 	PasswordHash string
 	Role         string
-	CreatedAt    time.Time
+	// DisabledAt is set while the account is deactivated: it keeps its
+	// history and memberships but cannot sign in.
+	DisabledAt *time.Time
+	CreatedAt  time.Time
 }
 
 // UserStore persists user accounts.
@@ -138,6 +145,14 @@ type UserStore interface {
 	List(ctx context.Context, filter string, limit, offset int32) ([]User, error)
 	// SetRole changes a user's global role. Role must be a valid users.role value.
 	SetRole(ctx context.Context, userID, role string) (User, error)
+	// ChangeRole changes a user's global role, starts a new token generation
+	// so open sessions pick the role up, and refuses to remove the last
+	// active admin with ErrLastGlobalAdmin.
+	ChangeRole(ctx context.Context, userID, role string) (User, error)
+	// SetDisabled deactivates or reactivates an account. Deactivating starts a
+	// new token generation and refuses to remove the last active admin with
+	// ErrLastGlobalAdmin.
+	SetDisabled(ctx context.Context, userID string, disabled bool) (User, error)
 	// ClearPassword removes the account's password hash so it can no longer
 	// sign in with a password. It is idempotent.
 	ClearPassword(ctx context.Context, userID string) error

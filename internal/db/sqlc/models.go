@@ -393,6 +393,7 @@ type User struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 	TokenVersion int32              `json:"token_version"`
+	DisabledAt   pgtype.Timestamptz `json:"disabled_at"`
 }
 
 type UserIdentity struct {

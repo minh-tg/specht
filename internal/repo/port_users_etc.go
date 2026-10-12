@@ -11,7 +11,12 @@ import (
 )
 
 // pgUserPort adapts UserStore.
-type pgUserPort struct{ q *sqlc.Queries }
+type pgUserPort struct {
+	q *sqlc.Queries
+	// withTx runs a function in a database transaction; role changes and
+	// deactivation need it to guard the last active admin.
+	withTx func(ctx context.Context, fn func(q *sqlc.Queries) error) error
+}
 
 func (r *pgUserPort) Create(ctx context.Context, email string, displayName, passwordHash *string) (port.User, error) {
 	row, err := r.q.CreateUser(ctx, sqlc.CreateUserParams{
@@ -79,6 +84,82 @@ func (r *pgUserPort) SetRole(ctx context.Context, userID, role string) (port.Use
 	return userToPort(row), nil
 }
 
+// ChangeRole changes the global role inside a transaction that locks the
+// active admins first, so demoting the last one is refused even when two
+// requests race.
+func (r *pgUserPort) ChangeRole(ctx context.Context, userID, role string) (port.User, error) {
+	uid, err := parseID(userID)
+	if err != nil {
+		return port.User{}, err
+	}
+	var out port.User
+	err = r.withTx(ctx, func(q *sqlc.Queries) error {
+		target, err := q.GetUserByID(ctx, uid)
+		if err != nil {
+			return err
+		}
+		if role != "admin" {
+			if err := guardLastAdmin(ctx, q, target); err != nil {
+				return err
+			}
+		}
+		row, err := q.ChangeUserRole(ctx, sqlc.ChangeUserRoleParams{ID: uid, Role: role})
+		if err != nil {
+			return err
+		}
+		out = userToPort(row)
+		return nil
+	})
+	if err != nil {
+		return port.User{}, mappingErr(err)
+	}
+	return out, nil
+}
+
+// SetDisabled deactivates or reactivates an account, refusing to deactivate
+// the last active admin.
+func (r *pgUserPort) SetDisabled(ctx context.Context, userID string, disabled bool) (port.User, error) {
+	uid, err := parseID(userID)
+	if err != nil {
+		return port.User{}, err
+	}
+	var out port.User
+	err = r.withTx(ctx, func(q *sqlc.Queries) error {
+		target, err := q.GetUserByID(ctx, uid)
+		if err != nil {
+			return err
+		}
+		if disabled {
+			if err := guardLastAdmin(ctx, q, target); err != nil {
+				return err
+			}
+		}
+		row, err := q.SetUserDisabled(ctx, sqlc.SetUserDisabledParams{ID: uid, Disabled: disabled})
+		if err != nil {
+			return err
+		}
+		out = userToPort(row)
+		return nil
+	})
+	if err != nil {
+		return port.User{}, mappingErr(err)
+	}
+	return out, nil
+}
+
+// guardLastAdmin locks the active admins and returns ErrLastGlobalAdmin when
+// target is the only one, which a role change or deactivation would remove.
+func guardLastAdmin(ctx context.Context, q *sqlc.Queries, target sqlc.User) error {
+	admins, err := q.LockActiveAdmins(ctx)
+	if err != nil {
+		return err
+	}
+	if target.Role == "admin" && !target.DisabledAt.Valid && len(admins) <= 1 {
+		return port.ErrLastGlobalAdmin
+	}
+	return nil
+}
+
 func (r *pgUserPort) ClearPassword(ctx context.Context, userID string) error {
 	uid, err := parseID(userID)
 	if err != nil {
@@ -125,6 +206,7 @@ func userToPort(u sqlc.User) port.User {
 		DisplayName:  stringFromTextPtr(u.DisplayName),
 		PasswordHash: strVal(u.PasswordHash),
 		Role:         u.Role,
+		DisabledAt:   timePtrFromTimestamptz(u.DisabledAt),
 		CreatedAt:    u.CreatedAt.Time,
 	}
 }
