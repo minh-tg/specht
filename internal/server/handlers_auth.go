@@ -232,6 +232,10 @@ func (h *Handler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.usecase.CreateAPIKey(r.Context(), req.Project, req.Name, ident.UserID, expiresAt)
 	if err != nil {
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			h.respondProjectAccessError(w, r, errProjectAccessDenied)
+			return
+		}
 		slog.Error("create api key", "project", req.Project, "error", err)
 		respondError(w, http.StatusUnprocessableEntity, "create_failed", "could not create API key")
 		return
@@ -253,6 +257,10 @@ func (h *Handler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 
 	keys, err := h.usecase.ListAPIKeys(r.Context(), project)
 	if err != nil {
+		if errors.Is(err, usecase.ErrProjectAccessDenied) {
+			h.respondProjectAccessError(w, r, errProjectAccessDenied)
+			return
+		}
 		respondError(w, http.StatusNotFound, "not_found", "project not found")
 		return
 	}
@@ -273,6 +281,8 @@ func (h *Handler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := h.usecase.RevokeAPIKey(r.Context(), project, keyID); err != nil {
 		switch {
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			h.respondProjectAccessError(w, r, errProjectAccessDenied)
 		case errors.Is(err, usecase.ErrInvalidID):
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid key id format")
 		case errors.Is(err, usecase.ErrAPIKeyNotFound):

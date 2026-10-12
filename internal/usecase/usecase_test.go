@@ -3286,7 +3286,7 @@ func TestCreateAPIKey_Success(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, APIKeys: akr},
 	})
 
-	resp, err := uc.CreateAPIKey(context.Background(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001", nil)
+	resp, err := uc.CreateAPIKey(adminCtx(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001", nil)
 	require.NoError(t, err)
 	require.NotNil(t, resp)
 	assert.Equal(t, "ci-key", resp.Name)
@@ -3334,7 +3334,7 @@ func TestCreateAPIKey_ExpiresAtRoundTrip(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, APIKeys: akr},
 	})
 
-	resp, err := uc.CreateAPIKey(context.Background(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001", &expiry)
+	resp, err := uc.CreateAPIKey(adminCtx(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001", &expiry)
 	require.NoError(t, err)
 	require.NotNil(t, gotExpiry, "expiry must be forwarded to the store")
 	assert.True(t, gotExpiry.Equal(expiry), "store must receive the requested expiry")
@@ -3352,7 +3352,7 @@ func TestCreateAPIKey_ProjectNotFound(t *testing.T) {
 		Stores: &port.Stores{Projects: pr},
 	})
 
-	_, err := uc.CreateAPIKey(context.Background(), "nonexistent", "ci-key", "00000000-0000-0000-0000-000000000001", nil)
+	_, err := uc.CreateAPIKey(adminCtx(), "nonexistent", "ci-key", "00000000-0000-0000-0000-000000000001", nil)
 	assert.ErrorContains(t, err, "project not found")
 }
 
@@ -3376,7 +3376,7 @@ func TestListAPIKeys_Success(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, APIKeys: akr},
 	})
 
-	keys, err := uc.ListAPIKeys(context.Background(), "my-app")
+	keys, err := uc.ListAPIKeys(adminCtx(), "my-app")
 	require.NoError(t, err)
 	assert.Len(t, keys, 1)
 	assert.Equal(t, "ci-key", keys[0].Name)
@@ -3393,7 +3393,7 @@ func TestListAPIKeys_ProjectNotFound(t *testing.T) {
 		Stores: &port.Stores{Projects: pr},
 	})
 
-	_, err := uc.ListAPIKeys(context.Background(), "nonexistent")
+	_, err := uc.ListAPIKeys(adminCtx(), "nonexistent")
 	assert.ErrorContains(t, err, "project not found")
 }
 
@@ -3414,7 +3414,7 @@ func TestRevokeAPIKey_Success(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, APIKeys: akr},
 	})
 
-	err := uc.RevokeAPIKey(context.Background(), "my-app", "00000000-0000-0000-0000-000000000050")
+	err := uc.RevokeAPIKey(adminCtx(), "my-app", "00000000-0000-0000-0000-000000000050")
 	require.NoError(t, err)
 }
 
@@ -3428,7 +3428,7 @@ func TestRevokeAPIKey_ProjectNotFound(t *testing.T) {
 		Stores: &port.Stores{Projects: pr},
 	})
 
-	err := uc.RevokeAPIKey(context.Background(), "nonexistent", "some-id")
+	err := uc.RevokeAPIKey(adminCtx(), "nonexistent", "some-id")
 	assert.ErrorContains(t, err, "project not found")
 }
 
@@ -3445,7 +3445,7 @@ func TestRevokeAPIKey_InvalidID(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, APIKeys: akr},
 	})
 
-	err := uc.RevokeAPIKey(context.Background(), "my-app", "not-a-uuid")
+	err := uc.RevokeAPIKey(adminCtx(), "my-app", "not-a-uuid")
 	assert.ErrorIs(t, err, ErrInvalidID)
 }
 
@@ -3464,7 +3464,7 @@ func TestRevokeAPIKey_NotFound(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, APIKeys: akr},
 	})
 
-	err := uc.RevokeAPIKey(context.Background(), "my-app", "00000000-0000-0000-0000-000000000099")
+	err := uc.RevokeAPIKey(adminCtx(), "my-app", "00000000-0000-0000-0000-000000000099")
 	assert.ErrorIs(t, err, ErrAPIKeyNotFound)
 }
 
@@ -3961,7 +3961,7 @@ func TestCreateAPIKey_RecordsCreator(t *testing.T) {
 	}
 
 	uc := New(Deps{Stores: &port.Stores{Projects: pr, APIKeys: akr}})
-	_, err := uc.CreateAPIKey(context.Background(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001", nil)
+	_, err := uc.CreateAPIKey(adminCtx(), "my-app", "ci-key", "00000000-0000-0000-0000-000000000001", nil)
 	require.NoError(t, err)
 	assert.Equal(t, "00000000-0000-0000-0000-000000000001", gotCreator)
 }
