@@ -276,6 +276,10 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await expect(page.getByRole("list", { name: "Open findings by severity" })).toBeVisible();
   await audit(page, "project insights");
 
+  await page.goto(`/${slug}/watcher`);
+  await expect(page.getByRole("switch", { name: "Watch this project" })).toBeVisible();
+  await audit(page, "project watcher");
+
   await page.goto("/teams");
   await page.getByRole("button", { name: "+ Create Team" }).click();
   await expect(page.getByRole("dialog", { name: "Create Company Team" })).toBeVisible();
