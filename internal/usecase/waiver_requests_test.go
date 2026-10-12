@@ -394,3 +394,57 @@ func TestListWaiversFiltersByStatus(t *testing.T) {
 	require.Len(t, some, 2)
 	assert.Equal(t, []string{"1", "3"}, []string{some[0].ID, some[1].ID})
 }
+
+func TestListWaiversAttachesScopeRows(t *testing.T) {
+	wr := &mockWaiverRepo{
+		listFn: func(context.Context, string) ([]port.Waiver, error) {
+			return []port.Waiver{
+				{ID: "w1", Status: WaiverStatusPending},
+				{ID: "w2", Status: WaiverStatusApproved},
+				{ID: "w3", Status: WaiverStatusRejected},
+			}, nil
+		},
+		listConditionsByWaiverIDsFn: func(_ context.Context, ids []string) ([]port.WaiverCondition, error) {
+			assert.Equal(t, []string{"w1", "w2"}, ids, "only the waivers that pass the status filter are read")
+			return []port.WaiverCondition{{WaiverID: "w2", Field: "severity_rank", Operator: "lte", Value: "2"}}, nil
+		},
+		listContextsByWaiverIDsFn: func(context.Context, []string) ([]port.WaiverContext, error) {
+			return []port.WaiverContext{{WaiverID: "w2", EnvironmentID: "env-1"}}, nil
+		},
+		listFindingTargetsByWaiverIDsFn: func(context.Context, []string) ([]port.WaiverFindingTarget, error) {
+			return []port.WaiverFindingTarget{
+				{WaiverID: "w1", FindingID: requestFindingID},
+				{WaiverID: "w1", FindingID: "00000000-0000-0000-0000-0000000000f2"},
+				{WaiverID: "unknown", FindingID: "ignored"},
+			}, nil
+		},
+	}
+	uc := waiverRequestUsecase(t, auth.RoleMember, wr)
+	uc.deps.Stores.Projects.(*mockProjectRepo).isMemberFn = func(context.Context, string, string) (bool, error) { return true, nil }
+
+	got, err := uc.ListWaivers(sessionCtx(requesterID, auth.RoleMember), "my-app", WaiverStatusPending, WaiverStatusApproved)
+
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+	require.Len(t, got[0].Targets, 2, "a pending request names the findings it covers")
+	assert.Equal(t, requestFindingID, got[0].Targets[0].FindingID)
+	assert.Empty(t, got[0].Conditions)
+	require.Len(t, got[1].Conditions, 1)
+	require.Len(t, got[1].Contexts, 1)
+	assert.Empty(t, got[1].Targets)
+	assert.NotNil(t, got[1].Targets, "an empty set stays an array in the JSON, never null")
+}
+
+func TestListWaiversSkipsTheScopeReadsWhenNothingMatches(t *testing.T) {
+	wr := &mockWaiverRepo{listFn: func(context.Context, string) ([]port.Waiver, error) {
+		return []port.Waiver{{ID: "w1", Status: WaiverStatusApproved}}, nil
+	}}
+	uc := waiverRequestUsecase(t, auth.RoleMember, wr)
+	uc.deps.Stores.Projects.(*mockProjectRepo).isMemberFn = func(context.Context, string, string) (bool, error) { return true, nil }
+
+	got, err := uc.ListWaivers(sessionCtx(requesterID, auth.RoleMember), "my-app", WaiverStatusPending)
+
+	require.NoError(t, err)
+	assert.Empty(t, got, "the scope readers are not set on the mock, so any call would fail the test")
+	assert.NotNil(t, got)
+}

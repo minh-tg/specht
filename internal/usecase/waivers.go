@@ -291,8 +291,10 @@ func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*
 	return &r, nil
 }
 
-// ListWaivers returns the project's waivers, newest first. With statuses it
-// keeps only waivers in one of those review states.
+// ListWaivers returns the project's waivers, newest first, each with its
+// conditions, contexts and finding targets, so a screen can tell which
+// findings a pending request covers without a read per waiver. With statuses
+// it keeps only waivers in one of those review states.
 func (u *Usecases) ListWaivers(ctx context.Context, projectSlug string, statuses ...string) ([]WaiverResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
@@ -307,12 +309,53 @@ func (u *Usecases) ListWaivers(ctx context.Context, projectSlug string, statuses
 		return nil, fmt.Errorf("list waivers: %w", err)
 	}
 
-	resp := make([]WaiverResponse, 0, len(waivers))
+	kept := make([]port.Waiver, 0, len(waivers))
+	ids := make([]string, 0, len(waivers))
 	for _, w := range waivers {
 		if len(statuses) > 0 && !slices.Contains(statuses, w.Status) {
 			continue
 		}
-		resp = append(resp, toWaiver(w))
+		kept = append(kept, w)
+		ids = append(ids, w.ID)
+	}
+	resp := make([]WaiverResponse, len(kept))
+	for i, w := range kept {
+		resp[i] = toWaiver(w)
+	}
+	if len(ids) == 0 {
+		return resp, nil
+	}
+
+	conditions, err := u.deps.Stores.Waivers.ListConditionsByWaiverIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list waiver conditions: %w", err)
+	}
+	contexts, err := u.deps.Stores.Waivers.ListContextsByWaiverIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list waiver contexts: %w", err)
+	}
+	targets, err := u.deps.Stores.Waivers.ListFindingTargetsByWaiverIDs(ctx, ids)
+	if err != nil {
+		return nil, fmt.Errorf("list waiver finding targets: %w", err)
+	}
+	position := make(map[string]int, len(kept))
+	for i, w := range kept {
+		position[w.ID] = i
+	}
+	for _, c := range conditions {
+		if i, ok := position[c.WaiverID]; ok {
+			resp[i].Conditions = append(resp[i].Conditions, toWaiverCondition(c))
+		}
+	}
+	for _, c := range contexts {
+		if i, ok := position[c.WaiverID]; ok {
+			resp[i].Contexts = append(resp[i].Contexts, toWaiverContext(c))
+		}
+	}
+	for _, t := range targets {
+		if i, ok := position[t.WaiverID]; ok {
+			resp[i].Targets = append(resp[i].Targets, toWaiverFindingTarget(t))
+		}
 	}
 	return resp, nil
 }
