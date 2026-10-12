@@ -1450,6 +1450,42 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/projects/{slug}/watcher": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read a project's CVE watcher settings and status
+     * @description The project's own switch and interval, the range the server accepts,
+     *     and what they amount to: `effective_enabled` is false when the server
+     *     does not run the watcher, and `status` says in one word why the
+     *     project is or is not being polled (`disabled`, `server_off`,
+     *     `waiting`, `ok`, `stale`, `failing`). Any project member can read it.
+     */
+    get: operations["getProjectWatcher"];
+    /**
+     * Change a project's CVE watcher settings
+     * @description Send `enabled`, `interval_seconds`, or both; a field you leave out
+     *     stays as it is, and `interval_seconds: null` returns the interval to
+     *     its default. The interval must lie between `min_interval_seconds`
+     *     (the server's polling cadence, never above the default of one hour)
+     *     and seven days. Switching a project on while the server has the
+     *     watcher off is allowed and stored; the response shows
+     *     `effective_enabled: false` until the server runs it. The daemon picks
+     *     the change up at its next cycle, without a restart. Needs the project
+     *     admin role and a session (API keys are refused).
+     */
+    put: operations["updateProjectWatcher"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/projects/{slug}/environments": {
     parameters: {
       query?: never;
@@ -1755,6 +1791,40 @@ export interface components {
        * @enum {string}
        */
       role: "member" | "manager" | "admin";
+    };
+    ProjectWatcher: {
+      /** @description The project's own switch. */
+      enabled: boolean;
+      /** @description The project's own polling interval. */
+      interval_seconds: number;
+      /** @description What a reset returns the interval to. */
+      default_interval_seconds: number;
+      /** @description The shortest interval the server accepts. */
+      min_interval_seconds: number;
+      /** @description The longest interval the server accepts */
+      max_interval_seconds: number;
+      /** @description Whether the server runs the watcher at all. */
+      server_enabled: boolean;
+      /** @description `enabled` and `server_enabled`: whether the project is polled. */
+      effective_enabled: boolean;
+      effective_interval_seconds: number;
+      /**
+       * Format: date-time
+       * @description When the project's last poll finished. Absent before the first.
+       */
+      last_poll_at?: string;
+      /**
+       * @description `disabled` the project's switch is off; `server_off` the server does not run the watcher; `waiting` on, no poll has finished yet; `ok`; `stale` the last poll is older than the interval explains; `failing` the watcher's recent polls are failing.
+       * @enum {string}
+       */
+      status: "disabled" | "server_off" | "waiting" | "ok" | "stale" | "failing";
+      /** @description False when the status is `stale` or `failing`. */
+      healthy: boolean;
+    };
+    ProjectWatcherUpdate: {
+      enabled?: boolean;
+      /** @description Seconds between polls; `null` returns it to the default. */
+      interval_seconds?: number | null;
     };
     EmailPasswordRequest: {
       /** Format: email */
@@ -5460,6 +5530,63 @@ export interface operations {
           "application/json": components["schemas"]["JoinInviteResponse"];
         };
       };
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
+    };
+  };
+  getProjectWatcher: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The settings and status. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectWatcher"];
+        };
+      };
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
+    };
+  };
+  updateProjectWatcher: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProjectWatcherUpdate"];
+      };
+    };
+    responses: {
+      /** @description The settings after the change. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProjectWatcher"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
       401: components["responses"]["Unauthorized"];
       403: components["responses"]["Forbidden"];
       404: components["responses"]["NotFound"];
