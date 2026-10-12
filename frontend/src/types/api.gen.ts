@@ -1246,7 +1246,14 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List a team's roster */
+    /**
+     * List a team's roster
+     * @description Any signed-in account can read a roster; the team directory is already
+     *     open to them. Every member carries a `display_name` (omitted when the
+     *     person never set one). `user_email` is returned only to global admins
+     *     and to admins of this team. A project-scoped API key is refused with
+     *     403.
+     */
     get: operations["listTeamMembers"];
     put?: never;
     /** Add or re-role a team member */
@@ -2642,8 +2649,12 @@ export interface components {
       team_id: string;
       /** Format: uuid */
       user_id: string;
-      /** Format: email */
+      /**
+       * Format: email
+       * @description Only for global admins and admins of the team.
+       */
       user_email?: string;
+      display_name?: string;
       /** @enum {string} */
       role: "admin" | "member";
     };
@@ -5155,7 +5166,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description The roster, with member emails. */
+      /** @description The roster, sorted by display name, then email. */
       200: {
         headers: {
           [name: string]: unknown;

@@ -7,7 +7,6 @@ import {
   useTeamMembers,
   useTeams,
 } from "@/api/hooks";
-import { useUserDirectory } from "@/api/users";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { SelectField } from "@/components/SelectField";
@@ -142,7 +141,6 @@ export function TeamsDirectory() {
     isError: rosterError,
     refetch: refetchRoster,
   } = useTeamMembers(activeRosterTeam?.id ?? "");
-  const { data: directory } = useUserDirectory();
 
   const addMemberMutation = useAddTeamMember(activeRosterTeam?.id ?? "");
   const removeMemberMutation = useRemoveTeamMember(activeRosterTeam?.id ?? "");
@@ -177,14 +175,6 @@ export function TeamsDirectory() {
       setRosterUserId("");
       setRosterRole("member");
     } catch {}
-  }
-
-  function resolveUserLabel(userId: string) {
-    const user = directory?.find((u) => u.id === userId);
-    if (user) {
-      return user.display_name || user.email;
-    }
-    return userId;
   }
 
   return (
@@ -365,8 +355,15 @@ export function TeamsDirectory() {
                       key={member.user_id}
                       className="px-4 py-2.5 flex items-center justify-between hover:bg-muted/30"
                     >
-                      <span className="font-medium text-foreground">
-                        {resolveUserLabel(member.user_id)}
+                      <span className="min-w-0">
+                        <span className="block font-medium text-foreground">
+                          {member.display_name || member.user_email || "Unnamed account"}
+                        </span>
+                        {member.display_name && member.user_email && (
+                          <span className="block text-xs text-muted-foreground">
+                            {member.user_email}
+                          </span>
+                        )}
                       </span>
                       {isGlobalAdmin && (
                         <Button

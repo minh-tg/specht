@@ -95,7 +95,12 @@ export interface Team {
 export interface TeamMember {
   team_id: string;
   user_id: string;
-  created_at: string;
+  role?: "admin" | "member";
+  /** Omitted when the person never set one. */
+  display_name?: string;
+  /** Only sent to global admins and admins of the team. */
+  user_email?: string;
+  created_at?: string;
 }
 
 /** Build information reported by the server on /api/v1/version. */
