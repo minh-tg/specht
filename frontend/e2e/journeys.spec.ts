@@ -639,3 +639,39 @@ test("the insights page counts only open findings and shows what blocks the gate
   await expect(ages.getByRole("listitem").first()).toContainText("2");
   await expect(page.getByRole("heading", { name: "Past their fix date" })).toHaveCount(0);
 });
+
+test("a project admin switches the watcher off and sets how often it polls", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("watcher");
+  await seedProject(request, token, slug);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings`);
+  await page.getByRole("link", { name: "Watcher", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/${slug}/watcher$`));
+  const watch = page.getByRole("switch", { name: "Watch this project" });
+  const interval = page.getByRole("combobox", { name: "Interval" });
+  await expect(watch).toHaveAttribute("aria-checked", "true");
+  await expect(interval).toContainText("every hour");
+
+  // A new interval is saved at once, survives a reload, and can be taken back.
+  await chooseOption(page, interval, "every 6 hours");
+  await expect(page.getByRole("button", { name: "Reset to every hour" })).toBeVisible();
+  await page.reload();
+  await expect(interval).toContainText("every 6 hours");
+  await page.getByRole("button", { name: "Reset to every hour" }).click();
+  await expect(interval).toContainText("every hour");
+  await expect(page.getByRole("button", { name: /^Reset/ })).toHaveCount(0);
+
+  // Switching a project off reads as off, not as a fault, and stays off.
+  await watch.click();
+  await expect(watch).toHaveAttribute("aria-checked", "false");
+  await expect(page.getByText("Off for this project")).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByRole("switch", { name: "Watch this project" })).toHaveAttribute(
+    "aria-checked",
+    "false",
+  );
+  await expect(page.getByText("Off for this project")).toBeVisible();
+});
