@@ -35,11 +35,14 @@ test("findings dashboard filters live rows", async ({ page, request }) => {
   const rows = page.locator("tbody tr");
   await expect(rows).toHaveCount(2);
 
-  await chooseOption(page, page.getByLabel("Filter by severity"), "High");
+  const highChip = page.getByRole("button", { name: /^High/ });
+  await highChip.click();
+  await expect(highChip).toHaveAttribute("aria-pressed", "true");
   await expect(rows).toHaveCount(1);
   await expect(page.getByText(HIGH_TITLE)).toBeVisible();
 
-  await chooseOption(page, page.getByLabel("Filter by severity"), "All severities");
+  await highChip.click();
+  await expect(highChip).toHaveAttribute("aria-pressed", "false");
   await expect(rows).toHaveCount(2);
 });
 
@@ -79,12 +82,43 @@ test("the findings list searches, filters by triage state and sorts on the serve
   await expect(titles).toHaveCount(2);
 
   // Sorting by title reorders the server's answer, and the choice stays in the URL.
-  await page.getByRole("button", { name: /^Title/ }).click();
+  await page.getByRole("button", { name: /^Finding/ }).click();
   await expect(page).toHaveURL(/sort=title/);
   await expect(titles.first()).toHaveText("Hardcoded credentials in app config");
-  await page.getByRole("button", { name: /^Title/ }).click();
+  await page.getByRole("button", { name: /^Finding/ }).click();
   await expect(page).toHaveURL(/dir=desc/);
   await expect(titles.first()).toHaveText("Outdated dependency urllib3");
+});
+
+test("selecting findings in the list triages them together", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("findings-bulk");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH_MEDIUM);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings`);
+  await page.getByRole("checkbox", { name: "Select all findings on this page" }).check();
+  const bar = page.getByRole("region", { name: "Bulk actions" });
+  await expect(bar).toContainText("2 selected");
+
+  await bar.getByRole("button", { name: "Triage…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Triage 2 findings" });
+  await chooseOption(page, dialog.getByRole("combobox", { name: "Decision" }), "Exploitable");
+  await dialog.getByRole("button", { name: "Apply to 2 findings" }).click();
+
+  await expect(page.getByText("Triage saved for 2 findings")).toBeVisible();
+  await expect(bar).toHaveCount(0);
+  const states = page.locator("tbody tr td:nth-child(5)");
+  await expect(states.first()).toContainText("Exploitable");
+  await expect(states.nth(1)).toContainText("Exploitable");
+
+  // j and k move the cursor and x selects the row under it.
+  await page.locator("tbody tr").first().focus();
+  await page.keyboard.press("j");
+  await page.keyboard.press("x");
+  await expect(page.locator("tbody input[type=checkbox]").nth(1)).toBeChecked();
+  await expect(bar).toContainText("1 selected");
 });
 
 test("finding detail triage applies states and enforces reasons", async ({ page, request }) => {
@@ -285,7 +319,7 @@ test("the project header gives an honest verdict and links severity counts to th
   await expect(page.getByText(/Floor: /)).toBeVisible();
   await page.getByRole("link", { name: "1 high finding" }).click();
   await expect(page).toHaveURL(/severity=high/);
-  await expect(page.getByLabel("Filter by severity")).toHaveText("High");
+  await expect(page.getByRole("button", { name: /^High/ })).toHaveAttribute("aria-pressed", "true");
 
   await page.goto(`/${passing}/findings`);
   await expect(page.getByText("PASSING", { exact: true })).toBeVisible();
@@ -344,7 +378,7 @@ test("back to findings returns to the filtered list the finding was opened from"
 
   await page.getByRole("link", { name: "← Back to findings" }).click();
   await expect(page).toHaveURL(new RegExp(`/${slug}/findings\\?severity=high$`));
-  await expect(page.getByLabel("Filter by severity")).toHaveText("High");
+  await expect(page.getByRole("button", { name: /^High/ })).toHaveAttribute("aria-pressed", "true");
 });
 
 test("keyboard users can skip the navigation", async ({ page }) => {
