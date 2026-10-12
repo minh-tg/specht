@@ -1,6 +1,7 @@
 import { useMe } from "@/api/hooks";
 import { useAuth } from "@/auth/useAuth";
 import { BrandMark } from "@/components/BrandMark";
+import { CommandPalette } from "@/components/CommandPalette";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { NavLink } from "react-router-dom";
 
@@ -16,6 +17,7 @@ function SignedInLinks({ email, onLogout }: { email: string | null; onLogout: ()
 
   return (
     <>
+      <CommandPalette />
       {email && (
         <span
           className="text-muted-foreground hidden max-w-[10rem] truncate text-xs sm:inline"
