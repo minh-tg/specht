@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"regexp"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -264,4 +265,38 @@ func (h *Handler) RemoveProjectMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// DeleteReport removes one report and settles the findings it was evidence
+// for. Project admin only.
+func (h *Handler) DeleteReport(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	id := chi.URLParam(r, "id")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		h.respondProjectAccessError(w, r, err)
+		return
+	}
+	result, err := h.usecase.DeleteReport(r.Context(), slug, id)
+	switch {
+	case err == nil:
+	case errors.Is(err, usecase.ErrProjectAccessDenied):
+		h.respondProjectAccessError(w, r, errProjectAccessDenied)
+		return
+	case errors.Is(err, usecase.ErrInvalidID):
+		respondError(w, http.StatusBadRequest, "invalid_id", "invalid report id format")
+		return
+	case errors.Is(err, usecase.ErrReportNotFound):
+		respondError(w, http.StatusNotFound, "not_found", "report not found")
+		return
+	case errors.Is(err, usecase.ErrReportProcessing):
+		respondError(w, http.StatusConflict, "report_processing", "the report is still being processed; try again when the scan has finished")
+		return
+	default:
+		log.Printf("delete report: %v", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "internal server error")
+		return
+	}
+	w.Header().Set("X-Archived-Findings", strconv.Itoa(result.ArchivedFindings))
+	w.WriteHeader(http.StatusNoContent)
+	h.audit.HTTP(r, audit.EventDeleteReport, audit.OutcomeSuccess, slug, id, nil)
 }

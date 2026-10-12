@@ -25,6 +25,7 @@ import (
 )
 
 type mockUsecases struct {
+	deleteReportFn          func(ctx context.Context, slug, id string) (*usecase.ReportDeleteResponse, error)
 	createInviteFn          func(ctx context.Context, slug string, in usecase.CreateInviteInput) (*usecase.InviteResponse, error)
 	listInvitesFn           func(ctx context.Context, slug string) ([]usecase.InviteResponse, error)
 	revokeInviteFn          func(ctx context.Context, slug, id string) (*usecase.InviteResponse, error)
@@ -600,6 +601,13 @@ func (m *mockUsecases) WithdrawWaiver(ctx context.Context, projectSlug, waiverID
 		return nil, fmt.Errorf("unexpected call to WithdrawWaiver")
 	}
 	return m.withdrawWaiverFn(ctx, projectSlug, waiverID)
+}
+
+func (m *mockUsecases) DeleteReport(ctx context.Context, slug, id string) (*usecase.ReportDeleteResponse, error) {
+	if m.deleteReportFn == nil {
+		return nil, fmt.Errorf("unexpected call to DeleteReport")
+	}
+	return m.deleteReportFn(ctx, slug, id)
 }
 
 func (m *mockUsecases) CreateInvite(ctx context.Context, slug string, in usecase.CreateInviteInput) (*usecase.InviteResponse, error) {

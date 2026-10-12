@@ -246,6 +246,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(readScope).Get("/api/v1/projects/{slug}/pr-check", h.PreviewPRCheck)
 		r.With(readScope).Get("/api/v1/projects/{slug}/environments", h.ListEnvironments)
 		r.With(readScope).Get("/api/v1/projects/{slug}/targets", h.ListTargets)
+		r.With(session).Delete("/api/v1/projects/{slug}/reports/{id}", h.DeleteReport)
 		r.With(session).Get("/api/v1/projects/{slug}/invites", h.ListInvites)
 		r.With(session).Post("/api/v1/projects/{slug}/invites", h.CreateInvite)
 		r.With(session).Delete("/api/v1/projects/{slug}/invites/{id}", h.RevokeInvite)
