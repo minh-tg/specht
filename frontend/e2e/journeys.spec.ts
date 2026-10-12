@@ -675,3 +675,57 @@ test("a project admin switches the watcher off and sets how often it polls", asy
   );
   await expect(page.getByText("Off for this project")).toBeVisible();
 });
+
+test("a global admin manages accounts and sees the server's totals", async ({ page, request }) => {
+  const email = `admin-journey-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
+  const registered = await request.post("/api/v1/auth/register", {
+    data: { email, password: "journey-person-123" },
+  });
+  expect(registered.ok(), await registered.text()).toBeTruthy();
+  await uiLogin(page);
+
+  await page.goto("/");
+  await page.getByRole("link", { name: "Admin", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+  await expect(page.getByRole("heading", { name: "Admin", level: 1 })).toBeVisible();
+  const total = (label: string) =>
+    page.getByText(label, { exact: true }).locator("xpath=preceding-sibling::div[1]");
+  await expect(total("projects")).not.toHaveText("0");
+  await expect(total("people")).not.toHaveText("0");
+
+  // You cannot change or deactivate yourself.
+  const you = page.getByRole("listitem").filter({ hasText: "(you)" });
+  await expect(you).toContainText("That is you");
+  await expect(you.getByRole("combobox")).toBeDisabled();
+
+  await page.getByRole("searchbox", { name: "Find a person by email" }).fill(email);
+  const people = page.getByRole("list", { name: "People" });
+  await expect(people.getByRole("listitem")).toHaveCount(1);
+  const row = people.getByRole("listitem").first();
+  await expect(row).toContainText("Active");
+
+  // A role change takes effect at once and can be undone.
+  await chooseOption(page, page.getByRole("combobox", { name: `Role of ${email}` }), "Admin");
+  await expect(page.getByText("Role changed")).toBeVisible();
+  await page.reload();
+  await page.getByRole("searchbox", { name: "Find a person by email" }).fill(email);
+  await expect(page.getByRole("combobox", { name: `Role of ${email}` })).toContainText("Admin");
+  await chooseOption(page, page.getByRole("combobox", { name: `Role of ${email}` }), "User");
+  await expect(page.getByRole("combobox", { name: `Role of ${email}` })).toContainText("User");
+
+  // Deactivating asks first, then ends the account; reactivating does not ask.
+  await page.getByRole("button", { name: `Deactivate ${email}` }).click();
+  const dialog = page.getByRole("alertdialog", { name: `Deactivate ${email}?` });
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(row).toContainText("Active");
+  await page.getByRole("button", { name: `Deactivate ${email}` }).click();
+  await dialog.getByRole("button", { name: "Deactivate" }).click();
+  await expect(row).toContainText("Deactivated");
+  await page.getByRole("button", { name: `Reactivate ${email}` }).click();
+  await expect(row).toContainText("Active");
+  await expect(row).not.toContainText("Deactivated");
+
+  // A fresh server has no report old enough to remove, so the button has nothing to do.
+  await expect(page.getByText("Nothing to remove")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remove them…" })).toBeDisabled();
+});
