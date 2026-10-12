@@ -175,6 +175,9 @@ type waiverReview struct {
 	RequestedBy  *string `json:"requested_by"`
 	DecidedBy    *string `json:"decided_by"`
 	DecisionNote string  `json:"decision_note"`
+	Targets      []struct {
+		FindingID string `json:"finding_id"`
+	} `json:"targets"`
 }
 
 // TestE2E_WaiverRequestApproval covers the review lifecycle: a member asks
@@ -249,6 +252,8 @@ func TestE2E_WaiverRequestApproval(t *testing.T) {
 		got := request[[]waiverReview](t, http.MethodGet, base+"?status=pending", memberToken, nil, http.StatusOK)
 		require.Len(t, got, 1)
 		require.Equal(t, pending.ID, got[0].ID)
+		require.Len(t, got[0].Targets, 1, "the list says which finding a request covers")
+		require.Equal(t, target.ID, got[0].Targets[0].FindingID)
 		got = request[[]waiverReview](t, http.MethodGet, base+"?status=approved", memberToken, nil, http.StatusOK)
 		require.Empty(t, got)
 		status, raw := doJSON(t, http.MethodGet, base+"?status=bogus", memberToken, nil)
