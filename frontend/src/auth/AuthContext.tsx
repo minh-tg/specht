@@ -143,6 +143,17 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
     }
   }, []);
 
+  const adopt = useCallback((res: LoginResponse) => {
+    setAuthToken(res.token);
+    setStoredSession(res.token, res.refresh_token, { userId: res.user_id, email: res.email });
+    setState({
+      token: res.token,
+      refreshToken: res.refresh_token,
+      userId: res.user_id,
+      email: res.email,
+    });
+  }, []);
+
   const logout = useCallback(() => {
     const { refreshToken } = getStoredSession() ?? {};
     if (refreshToken) {
@@ -154,8 +165,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
   }, []);
 
   const value = useMemo(
-    () => ({ ...state, login, logout, loading }),
-    [state, login, logout, loading],
+    () => ({ ...state, login, logout, adopt, loading }),
+    [state, login, logout, adopt, loading],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

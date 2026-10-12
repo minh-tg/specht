@@ -33,6 +33,7 @@ function authContext(): AuthContextValue {
     email: authState.token ? "test@test.com" : null,
     login: authState.login,
     logout: () => {},
+    adopt: () => {},
     loading: false,
   };
 }
@@ -195,7 +196,7 @@ describe("Login", () => {
     authState.login = async () => {};
     renderLoginWithAuth("/login");
 
-    const link = screen.getByRole("link", { name: /sign in with sso/i });
+    const link = await screen.findByRole("link", { name: /sign in with sso/i });
     expect(link).toHaveAttribute("href", "/api/v1/auth/sso/login");
   });
 
@@ -203,7 +204,7 @@ describe("Login", () => {
     authState.login = async () => {};
     renderLoginWithAuth("/login?redirect=%2Fdashboard%3Ftab%3Dfindings");
 
-    const link = screen.getByRole("link", { name: /sign in with sso/i });
+    const link = await screen.findByRole("link", { name: /sign in with sso/i });
     expect(link).toHaveAttribute(
       "href",
       "/api/v1/auth/sso/login?redirect=%2Fdashboard%3Ftab%3Dfindings",
@@ -214,7 +215,7 @@ describe("Login", () => {
     authState.login = async () => {};
     renderLoginWithAuth("/login");
 
-    const link = screen.getByRole("link", { name: /sign in with sso/i });
+    const link = await screen.findByRole("link", { name: /sign in with sso/i });
     // jsdom cannot navigate; the click handler is what is under test.
     link.addEventListener("click", (event) => event.preventDefault());
     expect(hasPendingSsoAttempt()).toBe(false);

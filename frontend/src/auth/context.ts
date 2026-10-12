@@ -1,3 +1,4 @@
+import type { LoginResponse } from "@/types/api";
 import { createContext } from "react";
 
 export interface AuthState {
@@ -10,6 +11,8 @@ export interface AuthState {
 export interface AuthContextValue extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  /** Signs in with a session the server just issued, for pages that create the account (setup, invite). */
+  adopt: (session: LoginResponse) => void;
   loading: boolean;
 }
 

@@ -13,6 +13,7 @@ const authCtx: AuthContextValue = {
   email: "admin@acme.corp",
   login: async () => {},
   logout: () => {},
+  adopt: () => {},
   loading: false,
 };
 

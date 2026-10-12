@@ -13,6 +13,7 @@ const signedOut: AuthContextValue = {
   email: null,
   login: async () => {},
   logout: () => {},
+  adopt: () => {},
   loading: false,
 };
 
@@ -23,6 +24,7 @@ function signedIn(email = "user@example.com"): AuthContextValue {
     email,
     login: async () => {},
     logout: () => {},
+    adopt: () => {},
     loading: false,
   };
 }

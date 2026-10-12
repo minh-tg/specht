@@ -10,6 +10,7 @@ function renderProtected(token: string | null, loading = false) {
     email: token ? "test@test.com" : null,
     login: async () => {},
     logout: () => {},
+    adopt: () => {},
     loading,
   };
 

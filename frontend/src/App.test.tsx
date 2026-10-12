@@ -13,6 +13,7 @@ const auth: AuthContextValue = {
   email: "test@test.com",
   login: async () => {},
   logout: () => {},
+  adopt: () => {},
   loading: false,
 };
 
