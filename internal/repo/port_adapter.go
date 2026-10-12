@@ -476,7 +476,6 @@ func projectToPort(p sqlc.Project) port.Project {
 		Name:                   p.Name,
 		Description:            stringFromTextPtr(p.Description),
 		DeploymentThreshold:    p.DeploymentThreshold,
-		CveWatcherGate:         p.CveWatcherGate,
 		CveWatcherEnabled:      p.CveWatcherEnabled,
 		CveWatcherIntervalSecs: p.CveWatcherIntervalSeconds,
 		Settings:               rawOrNil(p.Settings),

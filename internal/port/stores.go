@@ -71,7 +71,6 @@ type Project struct {
 	Name                   string
 	Description            *string
 	DeploymentThreshold    string
-	CveWatcherGate         string
 	CveWatcherEnabled      bool
 	CveWatcherIntervalSecs int32
 	// Settings carries namespaced project configuration; the "policy"
