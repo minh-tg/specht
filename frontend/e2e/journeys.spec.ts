@@ -609,3 +609,33 @@ test("a manager approves a waiver request, the verdict passes, and revoking it b
   await page.getByRole("tab", { name: "Closed 1" }).click();
   await expect(page.getByText(/^Revoked by /)).toBeVisible();
 });
+
+test("the insights page counts only open findings and shows what blocks the gate", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("insights");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH_MEDIUM);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings`);
+  await page.getByRole("link", { name: "Insights", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/${slug}/insights$`));
+  const stat = (label: string) =>
+    page.getByText(label, { exact: true }).locator("xpath=preceding-sibling::div[1]");
+  await expect(stat("open findings")).toHaveText("2");
+  await expect(stat("block the gate now")).toHaveText("1");
+
+  const severity = page.getByRole("list", { name: "Open findings by severity" });
+  await expect(severity.getByRole("listitem").nth(1)).toContainText("High");
+  await expect(severity.getByRole("listitem").nth(1)).toContainText("1, 1 block the gate");
+  await expect(severity.getByRole("listitem").nth(2)).toContainText("Medium");
+
+  const states = page.getByRole("list", { name: "Open findings by triage state" });
+  await expect(states.getByRole("listitem")).toHaveText(["Not triaged2"]);
+
+  // Both findings are new, so none is past its fix date and the age chart puts them under 7 days.
+  const ages = page.getByRole("list", { name: "Open findings by age" });
+  await expect(ages.getByRole("listitem").first()).toContainText("Under 7 days");
+  await expect(ages.getByRole("listitem").first()).toContainText("2");
+  await expect(page.getByRole("heading", { name: "Past their fix date" })).toHaveCount(0);
+});
