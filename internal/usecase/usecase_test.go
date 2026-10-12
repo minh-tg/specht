@@ -4069,10 +4069,10 @@ func newTestRegistryWithCriticalFinding() *scanner.Registry {
 	return reg
 }
 
-// TestGatePoliciesForProject maps the stored project mode to gate source
-// policies — the SQL literal policy is gone; the watcher source category is
-// data, not a core constant.
-func TestGatePoliciesForProject(t *testing.T) {
+// TestGatePoliciesForMode maps the effective policy's watcher gate mode to
+// gate source policies — the SQL literal policy is gone; the watcher source
+// category is data, not a core constant.
+func TestGatePoliciesForMode(t *testing.T) {
 	tests := []struct {
 		mode string
 		want []gate.GatePolicy
@@ -4083,7 +4083,7 @@ func TestGatePoliciesForProject(t *testing.T) {
 		{"require_triage", []gate.GatePolicy{{Source: "cve_watcher", Mode: gate.PolicyRequireTriage}}},
 	}
 	for _, tt := range tests {
-		got := gatePoliciesForProject(port.Project{CveWatcherGate: tt.mode})
+		got := gatePoliciesForMode(tt.mode)
 		assert.Equal(t, tt.want, got, "mode %q", tt.mode)
 	}
 }
@@ -4113,22 +4113,27 @@ func TestGetGateStatus_WatcherRequireTriageDropsUntriaged(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, Findings: fr, Waivers: wr},
 	})
 
-	// Default project (cve_watcher_gate = "" -> immediate): both block.
+	// A project with no policy of its own gets the built-in default,
+	// require_triage: only the triaged watcher finding blocks.
 	status, err := uc.GetGateStatus(adminCtx(), "my-app", 3)
 	require.NoError(t, err)
 	assert.True(t, status.ThresholdBreached)
-	assert.Len(t, status.BlockedBy, 2)
+	assert.Equal(t, []string{"w2"}, status.BlockedBy)
+	assert.Equal(t, "require_triage", status.Policy.WatcherGate)
+	assert.Equal(t, "default", status.Policy.WatcherSource)
 
-	// require_triage project: only the triaged watcher finding blocks.
+	// An override asking for immediate makes both block, and the response
+	// says where the value came from.
 	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		p := makeProject(true)
-		p.CveWatcherGate = "require_triage"
+		p.Settings = []byte(`{"policy":{"watcher_gate":"immediate"}}`)
 		return p, nil
 	}
 	status, err = uc.GetGateStatus(adminCtx(), "my-app", 3)
 	require.NoError(t, err)
 	assert.True(t, status.ThresholdBreached)
-	assert.Equal(t, []string{"w2"}, status.BlockedBy)
+	assert.Len(t, status.BlockedBy, 2)
+	assert.Equal(t, "override", status.Policy.WatcherSource)
 }
 
 // TestGetGateStatus_WatcherOffDropsAll asserts 'off' admits no watcher
@@ -4140,7 +4145,7 @@ func TestGetGateStatus_WatcherOffDropsAll(t *testing.T) {
 
 	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		p := makeProject(true)
-		p.CveWatcherGate = "off"
+		p.Settings = []byte(`{"policy":{"watcher_gate":"off"}}`)
 		return p, nil
 	}
 	fr.listGateCandidatesFn = func(ctx context.Context, projectID string, minSeverityRank int16) ([]port.GateCandidate, error) {

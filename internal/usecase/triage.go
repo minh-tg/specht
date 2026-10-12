@@ -259,21 +259,17 @@ func validateBulkTriageRequirements(input BulkTriageInput, findings []port.Findi
 	return nil
 }
 
-// gatePoliciesForProject translates a project's stored cve_watcher_gate mode
-// into gate source policies. The mode names match the DB column
-// ('immediate' | 'off' | 'require_triage'); the source category is the
-// watcher finding kind (cve_watcher), supplied by the watcher registration —
-// the gate core itself never hard-codes that literal.
-func gatePoliciesForProject(p port.Project) []gate.GatePolicy {
-	if p.CveWatcherGate == "" || p.CveWatcherGate == "immediate" {
-		return nil // default: watcher findings gate immediately
-	}
-	mode := p.CveWatcherGate
+// gatePoliciesForMode translates a watcher gate mode from the effective
+// policy ('immediate' | 'off' | 'require_triage') into gate source policies.
+// The source category is the watcher finding kind (cve_watcher), supplied by
+// the watcher registration — the gate core itself never hard-codes that
+// literal. The effective policy is the only source of the mode.
+func gatePoliciesForMode(mode string) []gate.GatePolicy {
 	switch mode {
 	case gate.PolicyOff, gate.PolicyRequireTriage:
 		return []gate.GatePolicy{{Source: "cve_watcher", Mode: mode}}
 	default:
-		return nil
+		return nil // immediate: watcher findings gate like any other
 	}
 }
 
@@ -288,7 +284,7 @@ func (u *Usecases) evaluateProjectGate(ctx context.Context, project port.Project
 		return gate.Decision{}, policy, fmt.Errorf("resolve policy: %w", err)
 	}
 	u.initGate()
-	decision, err := u.gate.EvaluateWithPolicies(ctx, project.ID, floor, gatePoliciesForProject(project))
+	decision, err := u.gate.EvaluateWithPolicies(ctx, project.ID, floor, gatePoliciesForMode(policy.WatcherGate))
 	if err != nil {
 		return gate.Decision{}, policy, fmt.Errorf("gate eval: %w", err)
 	}
@@ -346,7 +342,7 @@ func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug stri
 	}
 
 	u.initGate()
-	decision, err := u.gate.EvaluateIntroducedOnly(ctx, project.ID, floor, reportID, gatePoliciesForProject(project))
+	decision, err := u.gate.EvaluateIntroducedOnly(ctx, project.ID, floor, reportID, gatePoliciesForMode(policy.WatcherGate))
 	if err != nil {
 		return nil, fmt.Errorf("gate eval: %w", err)
 	}

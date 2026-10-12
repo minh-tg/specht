@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/minh-tg/specht/internal/gate"
 	"github.com/minh-tg/specht/internal/policy"
 	"github.com/minh-tg/specht/internal/port"
 )
@@ -319,17 +320,19 @@ func tightenSeverityFloor(policyFloor, requested int16) int16 {
 	return policyFloor
 }
 
-// effectiveSeverityFloor resolves the ingest gate floor from the severity
-// labels a caller sent. The labels can only tighten the project policy;
-// an empty list means no request.
-func (u *Usecases) effectiveSeverityFloor(ctx context.Context, project port.Project, requested []string) int16 {
+// ingestGateSettings resolves the ingest gate floor and the watcher admission
+// policies. The severity labels a caller sent can only tighten the project
+// policy; an empty list means no request. When the policy cannot be resolved
+// the built-in defaults apply, which is the strictest sensible reading.
+func (u *Usecases) ingestGateSettings(ctx context.Context, project port.Project, requested []string) (int16, []gate.GatePolicy) {
 	var asked int16
 	if len(requested) > 0 {
 		asked = gateSeverityRank(requested, nil)
 	}
-	floor, _, err := u.gateFloor(ctx, project, asked)
+	floor, effective, err := u.gateFloor(ctx, project, asked)
 	if err != nil {
-		return tightenSeverityFloor(policy.SeverityRank(policy.DefaultSeverityFloor), asked)
+		return tightenSeverityFloor(policy.SeverityRank(policy.DefaultSeverityFloor), asked),
+			gatePoliciesForMode(policy.DefaultWatcherGate)
 	}
-	return floor
+	return floor, gatePoliciesForMode(effective.WatcherGate)
 }

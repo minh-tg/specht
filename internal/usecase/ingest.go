@@ -1142,8 +1142,7 @@ func (u *Usecases) checkGateAfterIngest(ctx context.Context, project port.Projec
 // what the same request would have produced at ingest time.
 func (u *Usecases) evaluateIngestGate(ctx context.Context, project port.Project, input IngestReportInput, reportID string) (bool, error) {
 	u.initGate()
-	minRank := u.effectiveSeverityFloor(ctx, project, input.GateSeverity)
-	policies := gatePoliciesForProject(project)
+	minRank, policies := u.ingestGateSettings(ctx, project, input.GateSeverity)
 	var decision gate.Decision
 	var err error
 	if input.GateIntroducedOnly {

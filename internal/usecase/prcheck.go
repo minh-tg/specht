@@ -115,13 +115,13 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 		return nil, fmt.Errorf("%w %q", ErrUnknownProvider, name)
 	}
 
-	floor, _, err := u.gateFloor(ctx, project, input.MinSeverityRank)
+	floor, effective, err := u.gateFloor(ctx, project, input.MinSeverityRank)
 	if err != nil {
 		return nil, fmt.Errorf("resolve policy: %w", err)
 	}
 
 	u.initGate()
-	scope, err := u.resolvePreviewScope(ctx, project, input, floor)
+	scope, err := u.resolvePreviewScope(ctx, project, input, floor, gatePoliciesForMode(effective.WatcherGate))
 	if err != nil {
 		return nil, err
 	}
@@ -147,9 +147,8 @@ func (u *Usecases) PreviewPRCheck(ctx context.Context, input PRCheckPreviewInput
 
 // resolvePreviewScope resolves the introduced set and the breach verdict
 // together for the requested scope (report ID or commit).
-func (u *Usecases) resolvePreviewScope(ctx context.Context, project port.Project, input PRCheckPreviewInput, floor int16) (previewScope, error) {
+func (u *Usecases) resolvePreviewScope(ctx context.Context, project port.Project, input PRCheckPreviewInput, floor int16, policies []gate.GatePolicy) (previewScope, error) {
 	var scope previewScope
-	policies := gatePoliciesForProject(project)
 	var err error
 	if input.ReportID == "" {
 		var found bool
