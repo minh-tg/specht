@@ -155,10 +155,11 @@ type Team struct {
 
 // TeamMember binds a user to a team.
 type TeamMember struct {
-	TeamID    string `json:"team_id"`
-	UserID    string `json:"user_id"`
-	UserEmail string `json:"user_email,omitempty"`
-	Role      string `json:"role"`
+	TeamID      string `json:"team_id"`
+	UserID      string `json:"user_id"`
+	UserEmail   string `json:"user_email,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
+	Role        string `json:"role"`
 }
 
 // ProjectTeam links a team to a project with the conferred role.

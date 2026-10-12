@@ -133,7 +133,12 @@ func newTeamsMembersCmd(d Deps) *cobra.Command {
 				return nil
 			}
 			for _, member := range members {
-				if _, err := fmt.Fprintf(d.Out, "%s\t%s\t%s\n", member.UserEmail, member.UserID, member.Role); err != nil {
+				// The server withholds addresses from people who do not manage the team.
+				label := member.UserEmail
+				if label == "" {
+					label = member.DisplayName
+				}
+				if _, err := fmt.Fprintf(d.Out, "%s\t%s\t%s\n", label, member.UserID, member.Role); err != nil {
 					return err
 				}
 			}
