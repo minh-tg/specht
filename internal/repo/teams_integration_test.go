@@ -60,3 +60,43 @@ func TestTeams_ConferAccessEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, effective, "unlink revokes conferred access")
 }
+
+// TestTeams_RosterCarriesNamesAndSortsByThem proves the roster query returns
+// each person's display name and orders by it, falling back to the email for
+// someone who never set one. Sorting by name keeps the order from hinting at
+// addresses the viewer is not allowed to see.
+func TestTeams_RosterCarriesNamesAndSortsByThem(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	teams := &pgTeamPort{q: sqlc.New(repos.pool)}
+
+	team, err := teams.CreateTeam(ctx, "platform", "")
+	require.NoError(t, err)
+
+	for _, u := range []struct {
+		email, name string
+	}{
+		{"a@test.com", "zoe"},
+		{"z@test.com", "ann"},
+		{"mid@test.com", ""},
+	} {
+		name := pgtype.Text{}
+		if u.name != "" {
+			name = pgtype.Text{Valid: true, String: u.name}
+		}
+		user, err := repos.Users.Create(ctx, u.email, name, pgtype.Text{Valid: true, String: "unused-hash"})
+		require.NoError(t, err)
+		_, err = teams.UpsertTeamMember(ctx, team.ID, uuid.UUID(user.ID.Bytes).String(), "member")
+		require.NoError(t, err)
+	}
+
+	roster, err := teams.ListTeamMembers(ctx, team.ID)
+	require.NoError(t, err)
+	require.Len(t, roster, 3)
+	assert.Equal(t, "ann", roster[0].DisplayName)
+	assert.Equal(t, "z@test.com", roster[0].UserEmail)
+	assert.Equal(t, "mid@test.com", roster[1].UserEmail)
+	assert.Empty(t, roster[1].DisplayName, "no name set")
+	assert.Equal(t, "zoe", roster[2].DisplayName)
+}
