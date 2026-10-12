@@ -25,6 +25,11 @@ type ProjectResponse struct {
 	Description *string   `json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+	// Role is the signed-in caller's effective role on the project (admin,
+	// manager or member), including team-conferred membership. Permissions
+	// derive from it. Both are omitted for API keys and on list endpoints.
+	Role        string              `json:"role,omitempty"`
+	Permissions *ProjectPermissions `json:"permissions,omitempty"`
 }
 
 // FindingResponse is the API representation of a finding.
@@ -435,18 +440,20 @@ func (u *Usecases) GetProject(ctx context.Context, slug string) (*ProjectRespons
 		resp := toProject(p)
 		return &resp, nil
 	}
-	if ident.Role == auth.RoleAdmin {
-		resp := toProject(p)
-		return &resp, nil
-	}
-	ok, err := u.deps.Stores.Projects.IsMemberEffective(ctx, p.ID, ident.UserID)
-	if err != nil {
-		return nil, fmt.Errorf("check membership: %w", err)
-	}
-	if !ok {
-		return nil, ErrProjectAccessDenied
+	if ident.Role != auth.RoleAdmin {
+		ok, err := u.deps.Stores.Projects.IsMemberEffective(ctx, p.ID, ident.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("check membership: %w", err)
+		}
+		if !ok {
+			return nil, ErrProjectAccessDenied
+		}
 	}
 	resp := toProject(p)
+	resp.Role, resp.Permissions, err = u.callerPermissions(ctx, p.ID)
+	if err != nil {
+		return nil, err
+	}
 	return &resp, nil
 }
 

@@ -185,6 +185,21 @@ type Project struct {
 	Description *string   `json:"description"`
 	CreatedAt   time.Time `json:"created_at"`
 	UpdatedAt   time.Time `json:"updated_at"`
+	// Role is the caller's effective role (admin, manager or member) when a
+	// person reads a single project; empty for API keys and in lists.
+	Role        string              `json:"role,omitempty"`
+	Permissions *ProjectPermissions `json:"permissions,omitempty"`
+}
+
+// ProjectPermissions says which actions the caller may take on a project. It
+// is for display; the server checks the role on every request.
+type ProjectPermissions struct {
+	RequestWaiver  bool `json:"request_waiver"`
+	ManageWaivers  bool `json:"manage_waivers"`
+	ApproveWaivers bool `json:"approve_waivers"`
+	ManageMembers  bool `json:"manage_members"`
+	ManageCI       bool `json:"manage_ci"`
+	Triage         bool `json:"triage"`
 }
 
 // CreateProjectRequest is the request body for creating a project.

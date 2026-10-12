@@ -74,7 +74,7 @@ func TestRequestWaiverCreatesPendingRequest(t *testing.T) {
 func TestRequestWaiverRoles(t *testing.T) {
 	for role, allowed := range map[string]bool{
 		auth.RoleAdmin: true, auth.RoleManager: true, auth.RoleEditor: true,
-		auth.RoleMember: true, auth.RoleViewer: false, "": false,
+		auth.RoleMember: true, auth.RoleViewer: true, "guest": false, "": false,
 	} {
 		t.Run("role "+role, func(t *testing.T) {
 			wr := &mockWaiverRepo{
