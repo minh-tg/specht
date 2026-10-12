@@ -291,6 +291,17 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await page.keyboard.press("Escape");
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
 
+  // The command palette, open over a project page with a query typed.
+  await page.goto(`/${slug}/findings`);
+  await page.keyboard.press("Control+k");
+  await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+  await audit(page, "command palette");
+  await page.getByRole("combobox", { name: "Search commands" }).fill("zzzzqq");
+  await expect(page.getByText("Nothing matches")).toBeVisible();
+  await audit(page, "command palette with no match");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
   await page.goto("/teams");
   await page.getByRole("button", { name: "+ Create Team" }).click();
   await expect(page.getByRole("dialog", { name: "Create Company Team" })).toBeVisible();
