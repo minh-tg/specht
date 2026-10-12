@@ -929,6 +929,8 @@ export interface paths {
     /**
      * List a project's waivers
      * @description Newest first, including pending requests. Only approved waivers count in the gate.
+     *     Each waiver carries its conditions, contexts and finding targets, so a screen can
+     *     tell which findings a pending request covers without reading each waiver.
      */
     get: operations["listWaivers"];
     put?: never;
