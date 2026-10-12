@@ -341,6 +341,13 @@ type Waiver struct {
 	Name        string
 	Description string
 	Enabled     bool
+	// Status is the review state: pending, approved, rejected or withdrawn.
+	// Only approved waivers count in the gate.
+	Status string
+	// ScopeAll marks a waiver that covers every finding of the project. A
+	// waiver without contexts, targets or conditions covers nothing unless
+	// this is set.
+	ScopeAll bool
 	// ExpiresAt bounds an auto-disabled waiver; nil means it never expires.
 	ExpiresAt *time.Time
 	CreatedAt time.Time

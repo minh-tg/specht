@@ -1010,3 +1010,61 @@ func TestGateQueries_BatchCandidates(t *testing.T) {
 	}
 	assert.True(t, found, "batch candidate must carry the latest reachability")
 }
+
+func TestWaiverStatusAndScopeAll(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	project := createTestProject(t, repos)
+	stores := NewPortStores(repos.pool)
+
+	blanket, err := repos.Waivers.CreateWithDetails(ctx, CreateWaiverDetailsParams{
+		ProjectID: project.ID,
+		Name:      "blanket",
+		Enabled:   true,
+		Event:     WaiverEventInput{EventType: "created", Metadata: []byte("{}")},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "approved", blanket.Status)
+	assert.True(t, blanket.ScopeAll, "a waiver created without scope rows records that it covers everything")
+
+	scoped, err := repos.Waivers.CreateWithDetails(ctx, CreateWaiverDetailsParams{
+		ProjectID: project.ID,
+		Name:      "scoped",
+		Enabled:   true,
+		Conditions: []WaiverConditionInput{
+			{Field: "severity_rank", Operator: "lte", Value: "2"},
+		},
+		Event: WaiverEventInput{EventType: "created", Metadata: []byte("{}")},
+	})
+	require.NoError(t, err)
+	assert.False(t, scoped.ScopeAll)
+
+	cleared, err := repos.Waivers.UpdateWithDetails(ctx, UpdateWaiverDetailsParams{
+		ID:         scoped.ID,
+		ProjectID:  project.ID,
+		Conditions: []WaiverConditionInput{},
+		Event:      WaiverEventInput{EventType: "updated", Metadata: []byte("{}")},
+	})
+	require.NoError(t, err)
+	assert.True(t, cleared.ScopeAll, "clearing the last scope row turns the waiver into a blanket waiver")
+
+	for _, status := range []string{"pending", "rejected", "withdrawn"} {
+		_, err = repos.pool.Exec(ctx, `UPDATE waivers SET status = $1 WHERE id = $2`, status, blanket.ID)
+		require.NoError(t, err)
+		active, err := stores.Waivers.ListActive(ctx, project.ID.String())
+		require.NoError(t, err)
+		for _, w := range active {
+			assert.NotEqual(t, blanket.ID.String(), w.ID, "a %s waiver must not count in the gate", status)
+		}
+	}
+
+	_, err = repos.pool.Exec(ctx, `UPDATE waivers SET status = 'approved' WHERE id = $1`, blanket.ID)
+	require.NoError(t, err)
+	active, err := stores.Waivers.ListActive(ctx, project.ID.String())
+	require.NoError(t, err)
+	assert.Len(t, active, 2)
+
+	_, err = repos.pool.Exec(ctx, `UPDATE waivers SET status = 'archived' WHERE id = $1`, blanket.ID)
+	assert.Error(t, err, "the status column only accepts the lifecycle values")
+}

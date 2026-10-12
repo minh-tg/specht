@@ -39,9 +39,21 @@ RETURNING *;
 -- name: ListActiveWaivers :many
 SELECT * FROM waivers
 WHERE project_id = $1
+  AND status = 'approved'
   AND enabled = true
   AND (expires_at IS NULL OR expires_at > NOW())
 ORDER BY created_at DESC, id DESC;
+
+-- name: RefreshWaiverScopeAll :one
+-- A waiver with no contexts, targets or conditions covers every finding.
+-- Recompute the flag after the child rows of a create or update are written.
+UPDATE waivers w SET scope_all = (
+    NOT EXISTS (SELECT 1 FROM waiver_conditions c WHERE c.waiver_id = w.id)
+    AND NOT EXISTS (SELECT 1 FROM waiver_contexts x WHERE x.waiver_id = w.id)
+    AND NOT EXISTS (SELECT 1 FROM waiver_finding_targets t WHERE t.waiver_id = w.id)
+)
+WHERE w.id = $1
+RETURNING *;
 
 -- name: CreateWaiverCondition :one
 INSERT INTO waiver_conditions (waiver_id, field, operator, value)

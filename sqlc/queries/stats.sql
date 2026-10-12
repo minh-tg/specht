@@ -22,7 +22,7 @@ ORDER BY state ASC;
 -- name: GetProjectWaiverCount :one
 SELECT COUNT(*)::int AS count
 FROM waivers
-WHERE project_id = $1 AND enabled = true;
+WHERE project_id = $1 AND status = 'approved' AND enabled = true;
 
 -- name: GetProjectReportCount :one
 SELECT COUNT(*)::int AS count

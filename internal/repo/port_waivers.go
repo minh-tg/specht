@@ -361,6 +361,8 @@ func waiverRowToPort(w sqlc.Waiver) port.Waiver {
 		Name:        w.Name,
 		Description: w.Description,
 		Enabled:     w.Enabled,
+		Status:      w.Status,
+		ScopeAll:    w.ScopeAll,
 		ExpiresAt:   timePtrFromTimestamptz(w.ExpiresAt),
 		CreatedAt:   w.CreatedAt.Time,
 		UpdatedAt:   w.UpdatedAt.Time,
