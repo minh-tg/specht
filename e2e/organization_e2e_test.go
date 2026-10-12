@@ -406,10 +406,17 @@ func TestE2E_TeamAccessGrants(t *testing.T) {
 		require.Equal(t, viewerMe.Email, member.UserEmail, "the roster carries the member email")
 		require.Equal(t, "member", member.Role)
 
-		status, raw = doJSON(t, http.MethodGet, "/api/v1/teams/"+team.ID+"/members", viewerToken, nil)
+		plain := request[[]teamMemberResponse](t, http.MethodGet,
+			"/api/v1/teams/"+team.ID+"/members", viewerToken, nil, http.StatusOK)
+		require.Len(t, plain, 2, "a plain team member can read who is on the team")
+		for _, m := range plain {
+			require.Empty(t, m.UserEmail, "but not their addresses")
+		}
+
+		status, raw = doJSON(t, http.MethodGet, "/api/v1/teams/"+team.ID+"/members", mintKey(t, slug), nil)
 		require.Equal(t, http.StatusForbidden, status)
-		require.Equal(t, "forbidden", errorCode(t, raw),
-			"a plain team member is not a team admin")
+		require.Equal(t, "insufficient_role", errorCode(t, raw),
+			"a project API key is stopped at the route before any roster is read")
 	})
 
 	t.Run("a project-team link confers access only while membership lasts", func(t *testing.T) {
