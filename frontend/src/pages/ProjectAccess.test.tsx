@@ -399,4 +399,24 @@ describe("ProjectAccess", () => {
     expect(await screen.findByText("Sarah Chen")).toBeInTheDocument();
     expect(screen.queryByText("Could not load members.")).not.toBeInTheDocument();
   });
+
+  it("offers invite links to people who may manage members", async () => {
+    renderProjectAccess();
+
+    expect(await screen.findByRole("heading", { name: "Invite links" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Invite people" })).toBeInTheDocument();
+  });
+
+  it("hides invite links from plain members, and never asks for them", async () => {
+    userRole = "member";
+    mockMembers = [
+      { project_id: "p1", user_id: "u1", role: "member", created_at: "2026-09-12T00:00:00Z" },
+      { project_id: "p1", user_id: "u2", role: "admin", created_at: "2026-09-01T00:00:00Z" },
+    ];
+    renderProjectAccess();
+
+    await screen.findByText("Read-Only Member View:");
+    expect(screen.queryByRole("heading", { name: "Invite links" })).not.toBeInTheDocument();
+    expect(fetchCalls.some((c) => c.url.endsWith("/invites"))).toBe(false);
+  });
 });

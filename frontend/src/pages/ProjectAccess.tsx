@@ -28,6 +28,7 @@ import type { ProjectRole } from "@/types/api";
 import { LockIcon, ShieldCheckIcon } from "lucide-react";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
+import { InvitesSection } from "./project-access/InvitesSection";
 
 function RoleBadge({ role }: { role: ProjectRole; }) {
   const styles: Record<ProjectRole, string> = {
@@ -288,6 +289,8 @@ export function ProjectAccess() {
           </p>
         )}
       </section>
+
+      {canManageMembers && <InvitesSection slug={currentSlug} />}
 
       {/* Linked Teams Section */}
       <section className="bg-card border border-border rounded-lg overflow-hidden shadow-xs">
