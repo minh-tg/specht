@@ -402,7 +402,7 @@ test("triaging the only blocker flips the project verdict to passing", async ({ 
   await page.goto(`/${slug}/findings`);
   await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: HIGH_TITLE }).click();
-  await expect(page.locator("span", { hasText: /^Blocks gate$/ })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Why this blocks" })).toBeVisible();
 
   await chooseOption(page, page.getByLabel("Triage action"), "False positive");
   await page.getByPlaceholder("Reason").fill("e2e: test credential, not a real secret");
