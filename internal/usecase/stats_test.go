@@ -21,6 +21,35 @@ type mockStatsStore struct {
 	pending     int32
 }
 
+// gateRows is what the fake finding store offers the gate as blocking
+// candidates. The fake filters by the floor it is asked for, as the query does.
+type gateRows struct {
+	candidates []port.GateCandidate
+	err        error
+	askedFloor int16
+}
+
+func (g *gateRows) list(_ context.Context, _ string, minRank int16) ([]port.GateCandidate, error) {
+	g.askedFloor = minRank
+	if g.err != nil {
+		return nil, g.err
+	}
+	var out []port.GateCandidate
+	for _, c := range g.candidates {
+		if c.CurrentSeverityRank >= minRank {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+func blocker(id string, rank int16) port.GateCandidate {
+	f := makeFindingRow(1)
+	f.ID = id
+	f.CurrentSeverityRank = rank
+	return port.GateCandidate{Finding: f}
+}
+
 func (m *mockStatsStore) GetProjectStats(context.Context, string) ([]port.SeverityStat, error) {
 	if m.severityErr != nil {
 		return nil, m.severityErr
@@ -48,16 +77,21 @@ func (m *mockStatsStore) GetProjectLatestReport(context.Context, string) (port.R
 }
 
 func statsUsecase(store *mockStatsStore) *Usecases {
+	return statsUsecaseWithGate(store, &gateRows{})
+}
+
+func statsUsecaseWithGate(store *mockStatsStore, rows *gateRows) *Usecases {
 	pr := &mockProjectRepo{}
 	pr.getBySlugFn = func(context.Context, string) (port.Project, error) {
 		return makeProject(true), nil
 	}
-	return New(Deps{Stores: &port.Stores{Projects: pr, Stats: store}})
+	fr := &mockFindingRepo{listGateCandidatesFn: rows.list}
+	return New(Deps{Stores: &port.Stores{Projects: pr, Stats: store, Findings: fr, Waivers: &mockWaiverRepo{}}})
 }
 
 func TestGetProjectStats_ByAnalysisState(t *testing.T) {
 	store := &mockStatsStore{
-		severity: []port.SeverityStat{{Severity: "high", Count: 2, BlockingCount: 1}},
+		severity: []port.SeverityStat{{Severity: "high", Rank: 3, Count: 2}},
 		analysis: []port.AnalysisStateStat{
 			{State: "exploitable", Count: 1},
 			{State: "unanalyzed", Count: 1},
@@ -100,4 +134,36 @@ func TestGetProjectStats_PendingWaiverCount(t *testing.T) {
 	raw, err := json.Marshal(stats)
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), `"pending_waiver_count":3`)
+}
+
+func TestGetProjectStats_BlockingComesFromTheGate(t *testing.T) {
+	store := &mockStatsStore{severity: []port.SeverityStat{
+		{Severity: "low", Rank: 1, Count: 4},
+		{Severity: "high", Rank: 3, Count: 2},
+		{Severity: "critical", Rank: 4, Count: 3},
+	}}
+	rows := &gateRows{candidates: []port.GateCandidate{
+		blocker("c1", 4), blocker("c2", 4), blocker("h1", 3), blocker("l1", 1),
+	}}
+
+	stats, err := statsUsecaseWithGate(store, rows).GetProjectStats(adminCtx(), "my-app")
+
+	require.NoError(t, err)
+	assert.Equal(t, int32(9), stats.TotalFindings, "every open finding counts")
+	byName := map[string]SeverityCount{}
+	for _, s := range stats.BySeverity {
+		byName[s.Severity] = s
+	}
+	assert.Equal(t, int32(2), byName["critical"].BlockingCount)
+	assert.Equal(t, int32(1), byName["high"].BlockingCount)
+	assert.Equal(t, int32(0), byName["low"].BlockingCount, "below the policy floor, so the gate lets it through")
+	assert.Equal(t, int32(3), stats.BlockingCount)
+	assert.Positive(t, rows.askedFloor, "the gate is asked with the policy floor")
+}
+
+func TestGetProjectStats_GateFailureIsAnError(t *testing.T) {
+	store := &mockStatsStore{severity: []port.SeverityStat{{Severity: "high", Rank: 3, Count: 1}}}
+	_, err := statsUsecaseWithGate(store, &gateRows{err: errors.New("boom")}).GetProjectStats(adminCtx(), "my-app")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "gate eval")
 }

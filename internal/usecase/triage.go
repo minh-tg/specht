@@ -277,6 +277,24 @@ func gatePoliciesForProject(p port.Project) []gate.GatePolicy {
 	}
 }
 
+// evaluateProjectGate runs the gate the way the gate endpoint does: the
+// project policy sets the floor (a positive requested rank can only tighten
+// it, zero means no explicit severity) and the watcher admission policies apply.
+// The statistics take their blocking numbers from the same call, so the two
+// cannot disagree.
+func (u *Usecases) evaluateProjectGate(ctx context.Context, project port.Project, minSeverityRank int16) (gate.Decision, *PolicyEffectiveResponse, error) {
+	floor, policy, err := u.gateFloor(ctx, project, minSeverityRank)
+	if err != nil {
+		return gate.Decision{}, policy, fmt.Errorf("resolve policy: %w", err)
+	}
+	u.initGate()
+	decision, err := u.gate.EvaluateWithPolicies(ctx, project.ID, floor, gatePoliciesForProject(project))
+	if err != nil {
+		return gate.Decision{}, policy, fmt.Errorf("gate eval: %w", err)
+	}
+	return decision, policy, nil
+}
+
 func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16) (*GateStatusOutput, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
@@ -286,17 +304,9 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 		return nil, err
 	}
 
-	// The project policy sets the floor; a positive requested rank can only
-	// tighten it. Zero means no explicit severity.
-	floor, policy, err := u.gateFloor(ctx, project, minSeverityRank)
+	decision, policy, err := u.evaluateProjectGate(ctx, project, minSeverityRank)
 	if err != nil {
-		return nil, fmt.Errorf("resolve policy: %w", err)
-	}
-
-	u.initGate()
-	decision, err := u.gate.EvaluateWithPolicies(ctx, project.ID, floor, gatePoliciesForProject(project))
-	if err != nil {
-		return nil, fmt.Errorf("gate eval: %w", err)
+		return nil, err
 	}
 
 	reachability := make(map[string]string, len(decision.BlockedByReachability))

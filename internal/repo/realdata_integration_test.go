@@ -434,8 +434,9 @@ func TestAgingRows_EndToEnd(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	rows, err := stores.Stats.GetAgingRows(ctx, project.ID)
+	rows, truncated, err := stores.Stats.GetAgingRows(ctx, project.ID)
 	require.NoError(t, err)
+	assert.False(t, truncated)
 	require.Len(t, rows, 2)
 	byID := map[string]port.AgingRow{}
 	for _, r := range rows {

@@ -95,16 +95,25 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 		latest = &r
 	}
 
+	// Blocking comes from the gate itself: the policy floor, source policy,
+	// reachability exemptions and waivers all decide what blocks, and only the
+	// gate applies them.
+	decision, _, err := u.evaluateProjectGate(ctx, project, 0)
+	if err != nil {
+		return nil, err
+	}
+
 	var totalFindings int32
 	var totalBlocking int32
 	sevCounts := make([]SeverityCount, len(rows))
 	for i, r := range rows {
+		blocking := int32(decision.BlockingByRank[r.Rank])
 		totalFindings += r.Count
-		totalBlocking += r.BlockingCount
+		totalBlocking += blocking
 		sevCounts[i] = SeverityCount{
 			Severity:      r.Severity,
 			Count:         r.Count,
-			BlockingCount: r.BlockingCount,
+			BlockingCount: blocking,
 		}
 	}
 
@@ -160,6 +169,10 @@ type AgingResponse struct {
 	Overdue      []OverdueFinding   `json:"overdue"`
 	Reopened     int32              `json:"reopened"`
 	NewPerWeek   []WeeklyNew        `json:"new_per_week"`
+	// Truncated is true when the project has more open findings than the
+	// report evaluates (port.MaxAgingRows, oldest first), so the bucket and
+	// overdue numbers cover only the oldest ones.
+	Truncated bool `json:"truncated"`
 }
 
 // maxOverdueListed caps the overdue detail list; OverdueTotal is uncapped.
@@ -176,15 +189,28 @@ func (u *Usecases) GetAging(ctx context.Context, projectSlug string) (*AgingResp
 	if err := u.requireProjectMember(ctx, project.ID); err != nil {
 		return nil, err
 	}
-	rows, err := u.deps.Stores.Stats.GetAgingRows(ctx, project.ID)
+	rows, truncated, err := u.deps.Stores.Stats.GetAgingRows(ctx, project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get aging rows: %w", err)
 	}
-	return AssembleAging(rows, time.Now().UTC()), nil
+	now := time.Now().UTC()
+	weekly, err := u.deps.Stores.Stats.GetNewFindingCounts(ctx, project.ID, trendStart(now))
+	if err != nil {
+		return nil, fmt.Errorf("get new finding counts: %w", err)
+	}
+	resp := AssembleAging(rows, weekly, now)
+	resp.Truncated = truncated
+	return resp, nil
 }
 
-// AssembleAging folds aging rows into a response at now. Pure, so tests
-// and callers can pin exact snapshots.
+// trendWeeks is how many weeks the new-findings trend covers.
+const trendWeeks = 12
+
+// trendStart is the Monday the trend window begins on.
+func trendStart(now time.Time) time.Time {
+	return weekStart(now).AddDate(0, 0, -7*(trendWeeks-1))
+}
+
 // agingOverdue is one overdue row accumulated while classifying.
 type agingOverdue struct {
 	row port.AgingRow
@@ -199,7 +225,6 @@ func tallyAgingRow(
 	resp *AgingResponse,
 	buckets map[string]*AgingBucketCount,
 	overdueRows *[]agingOverdue,
-	weeks map[string]int32,
 	row port.AgingRow,
 	c aging.Classification,
 ) {
@@ -213,14 +238,13 @@ func tallyAgingRow(
 	if row.Reopened {
 		resp.Reopened++
 	}
-	if wk := weekStart(row.FirstSeen.UTC()).Format("2006-01-02"); true {
-		if _, ok := weeks[wk]; ok {
-			weeks[wk]++
-		}
-	}
 }
 
-func AssembleAging(rows []port.AgingRow, now time.Time) *AgingResponse {
+// AssembleAging folds the open findings' aging rows and the weekly count of
+// new findings into a response at now. Only open and reopened rows are
+// tallied, so the buckets always describe open risk whatever the source hands
+// in. Pure, so tests and callers can pin exact snapshots.
+func AssembleAging(rows []port.AgingRow, weekly []port.WeeklyCount, now time.Time) *AgingResponse {
 	now = now.UTC()
 	buckets := map[string]*AgingBucketCount{}
 	order := []string{aging.BucketNew, aging.BucketAging, aging.BucketStale, aging.BucketDebt}
@@ -230,16 +254,24 @@ func AssembleAging(rows []port.AgingRow, now time.Time) *AgingResponse {
 	resp := &AgingResponse{}
 	var overdueRows []agingOverdue
 	weeks := map[string]int32{}
-	weekKeys := make([]string, 0, 12)
+	weekKeys := make([]string, 0, trendWeeks)
 	monday := weekStart(now)
-	for i := 11; i >= 0; i-- {
+	for i := trendWeeks - 1; i >= 0; i-- {
 		key := monday.AddDate(0, 0, -7*i).Format("2006-01-02")
 		weekKeys = append(weekKeys, key)
 		weeks[key] = 0
 	}
+	for _, w := range weekly {
+		if _, ok := weeks[w.WeekStart]; ok {
+			weeks[w.WeekStart] = w.Count
+		}
+	}
 	for _, row := range rows {
+		if !aging.OpenState(row.State) {
+			continue
+		}
 		c := aging.Classify(row.FirstSeen, now, row.SeverityRank, row.State, row.Reopened)
-		tallyAgingRow(resp, buckets, &overdueRows, weeks, row, c)
+		tallyAgingRow(resp, buckets, &overdueRows, row, c)
 	}
 	for _, b := range order {
 		resp.Buckets = append(resp.Buckets, *buckets[b])

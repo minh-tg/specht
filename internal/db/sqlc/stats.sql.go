@@ -23,11 +23,16 @@ SELECT
         SELECT 1 FROM finding_events e
         WHERE e.finding_id = f.id AND e.event_type LIKE 'reopened%'
     ) AS reopened
-FROM findings f
+FROM open_findings f
 WHERE f.project_id = $1
 ORDER BY f.first_seen_at ASC, f.id ASC
-LIMIT 10000
+LIMIT $2
 `
+
+type GetAgingRowsParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	Limit     int32       `json:"limit"`
+}
 
 type GetAgingRowsRow struct {
 	ID                  pgtype.UUID        `json:"id"`
@@ -39,8 +44,11 @@ type GetAgingRowsRow struct {
 	Reopened            bool               `json:"reopened"`
 }
 
-func (q *Queries) GetAgingRows(ctx context.Context, projectID pgtype.UUID) ([]GetAgingRowsRow, error) {
-	rows, err := q.db.Query(ctx, getAgingRows, projectID)
+// Open findings, oldest first, for the aging report. The caller asks for one
+// row more than it will use, so that it can tell when the project has more than
+// the cap instead of silently dropping them.
+func (q *Queries) GetAgingRows(ctx context.Context, arg GetAgingRowsParams) ([]GetAgingRowsRow, error) {
+	rows, err := q.db.Query(ctx, getAgingRows, arg.ProjectID, arg.Limit)
 	if err != nil {
 		return nil, err
 	}
@@ -67,13 +75,55 @@ func (q *Queries) GetAgingRows(ctx context.Context, projectID pgtype.UUID) ([]Ge
 	return items, nil
 }
 
+const getNewFindingCounts = `-- name: GetNewFindingCounts :many
+SELECT
+    date_trunc('week', f.first_seen_at AT TIME ZONE 'UTC')::date AS week_start,
+    COUNT(*)::int AS count
+FROM findings f
+WHERE f.project_id = $1
+  AND f.first_seen_at >= $2
+GROUP BY 1
+ORDER BY 1
+`
+
+type GetNewFindingCountsParams struct {
+	ProjectID   pgtype.UUID        `json:"project_id"`
+	FirstSeenAt pgtype.Timestamptz `json:"first_seen_at"`
+}
+
+type GetNewFindingCountsRow struct {
+	WeekStart pgtype.Date `json:"week_start"`
+	Count     int32       `json:"count"`
+}
+
+// Findings first seen since a date, counted per week (weeks start on Monday,
+// UTC). Counts every finding introduced in the window, whatever it is today.
+func (q *Queries) GetNewFindingCounts(ctx context.Context, arg GetNewFindingCountsParams) ([]GetNewFindingCountsRow, error) {
+	rows, err := q.db.Query(ctx, getNewFindingCounts, arg.ProjectID, arg.FirstSeenAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetNewFindingCountsRow
+	for rows.Next() {
+		var i GetNewFindingCountsRow
+		if err := rows.Scan(&i.WeekStart, &i.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getProjectAnalysisStateCounts = `-- name: GetProjectAnalysisStateCounts :many
 SELECT
     COALESCE(NULLIF(f.analysis_state, ''), 'unanalyzed')::text AS state,
     COUNT(*)::int AS count
-FROM findings f
+FROM open_findings f
 WHERE f.project_id = $1
-  AND f.state <> 'fixed'
 GROUP BY COALESCE(NULLIF(f.analysis_state, ''), 'unanalyzed')
 ORDER BY state ASC
 `
@@ -178,21 +228,23 @@ func (q *Queries) GetProjectReportCount(ctx context.Context, projectID pgtype.UU
 const getProjectStats = `-- name: GetProjectStats :many
 SELECT
     f.current_severity AS severity,
-    COUNT(*)::int AS count,
-    COUNT(*) FILTER (WHERE f.gate_effect = 'block')::int AS blocking_count
-FROM findings f
+    MIN(f.current_severity_rank)::smallint AS severity_rank,
+    COUNT(*)::int AS count
+FROM open_findings f
 WHERE f.project_id = $1
-  AND f.state <> 'fixed'
 GROUP BY f.current_severity
 ORDER BY MIN(f.current_severity_rank)
 `
 
 type GetProjectStatsRow struct {
-	Severity      string `json:"severity"`
-	Count         int32  `json:"count"`
-	BlockingCount int32  `json:"blocking_count"`
+	Severity     string `json:"severity"`
+	SeverityRank int16  `json:"severity_rank"`
+	Count        int32  `json:"count"`
 }
 
+// Open findings by severity. Blocking is not counted here: whether a finding
+// blocks depends on the policy floor, source policy and waivers, which only the
+// gate evaluates, so the use case takes the blocking numbers from the gate.
 func (q *Queries) GetProjectStats(ctx context.Context, projectID pgtype.UUID) ([]GetProjectStatsRow, error) {
 	rows, err := q.db.Query(ctx, getProjectStats, projectID)
 	if err != nil {
@@ -202,7 +254,7 @@ func (q *Queries) GetProjectStats(ctx context.Context, projectID pgtype.UUID) ([
 	var items []GetProjectStatsRow
 	for rows.Next() {
 		var i GetProjectStatsRow
-		if err := rows.Scan(&i.Severity, &i.Count, &i.BlockingCount); err != nil {
+		if err := rows.Scan(&i.Severity, &i.SeverityRank, &i.Count); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
