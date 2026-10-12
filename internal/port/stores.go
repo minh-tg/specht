@@ -36,6 +36,12 @@ var ErrLastAdmin = errors.New("last project admin")
 // account exists.
 var ErrSetupClosed = errors.New("setup is closed")
 
+// ErrInviteEmailMismatch is returned when an invite is bound to another address.
+var ErrInviteEmailMismatch = errors.New("invite is for another email address")
+
+// ErrEmailTaken is returned when a new account's email already belongs to one.
+var ErrEmailTaken = errors.New("email already registered")
+
 // ErrLastGlobalAdmin is returned when a role change or deactivation would
 // leave the instance without an active global admin.
 var ErrLastGlobalAdmin = errors.New("last global admin")
@@ -1099,6 +1105,7 @@ type Stores struct {
 	Teams         TeamStore
 	Identities    IdentityStore
 	SSOCodes      SSOCodeStore
+	Invites       InviteStore
 }
 
 // Team is a named group of users that projects link for access.
@@ -1208,4 +1215,71 @@ type WaiverExpiryStore interface {
 	// ExpireExpired runs one transaction that disables expired waivers and
 	// logs their auto_disabled events, returning the disabled waivers.
 	ExpireExpired(ctx context.Context) ([]Waiver, error)
+}
+
+// Invite is a single-use link that brings a person into one project.
+type Invite struct {
+	ID             string
+	ProjectID      string
+	Role           string
+	Email          *string
+	CreatedBy      *string
+	CreatedByEmail *string
+	CreatedAt      time.Time
+	ExpiresAt      time.Time
+}
+
+// NewInvite is the data to store for a new invite. TokenHash is the SHA-256 of
+// the link's token; the token itself is never stored.
+type NewInvite struct {
+	TokenHash string
+	ProjectID string
+	Role      string
+	Email     *string
+	CreatedBy string
+	ExpiresAt time.Time
+}
+
+// InviteView is what the accept page may show to whoever holds the link.
+type InviteView struct {
+	ProjectName string
+	Role        string
+	Email       *string
+}
+
+// InviteeAccount is the account an invite creates when the person has none.
+type InviteeAccount struct {
+	Email        string
+	DisplayName  *string
+	PasswordHash string
+}
+
+// AcceptedInvite reports what accepting an invite did.
+type AcceptedInvite struct {
+	User        User
+	ProjectID   string
+	ProjectSlug string
+	// Role is the project role the person holds now; a stronger role they
+	// already had is kept.
+	Role     string
+	InviteID string
+}
+
+// InviteStore persists invite links. Pending means not used, not revoked and
+// not expired.
+type InviteStore interface {
+	Create(ctx context.Context, in NewInvite) (Invite, error)
+	CountPending(ctx context.Context, projectID string) (int64, error)
+	ListPending(ctx context.Context, projectID string) ([]Invite, error)
+	// GetPending and Revoke return ErrNotFound for an invite that is not pending.
+	GetPending(ctx context.Context, projectID, id string) (Invite, error)
+	Revoke(ctx context.Context, projectID, id string) (Invite, error)
+	// Lookup returns ErrNotFound for a token that is unknown, used, revoked or expired.
+	Lookup(ctx context.Context, tokenHash string) (InviteView, error)
+	// AcceptWithNewAccount marks the invite used, creates the account and adds
+	// it to the project in one transaction. Errors: ErrNotFound (not pending),
+	// ErrInviteEmailMismatch, ErrEmailTaken. A failure leaves the invite pending.
+	AcceptWithNewAccount(ctx context.Context, tokenHash string, account InviteeAccount) (AcceptedInvite, error)
+	// AcceptAsUser does the same for an existing account.
+	AcceptAsUser(ctx context.Context, tokenHash, userID string) (AcceptedInvite, error)
 }

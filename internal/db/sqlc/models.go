@@ -225,6 +225,20 @@ type FindingOccurrence struct {
 	ObservedAt      pgtype.Timestamptz `json:"observed_at"`
 }
 
+type Invite struct {
+	ID         pgtype.UUID        `json:"id"`
+	TokenHash  string             `json:"token_hash"`
+	ProjectID  pgtype.UUID        `json:"project_id"`
+	Role       string             `json:"role"`
+	Email      pgtype.Text        `json:"email"`
+	CreatedBy  pgtype.UUID        `json:"created_by"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	AcceptedBy pgtype.UUID        `json:"accepted_by"`
+	AcceptedAt pgtype.Timestamptz `json:"accepted_at"`
+	RevokedAt  pgtype.Timestamptz `json:"revoked_at"`
+}
+
 type Migration000037UserEmailOriginal struct {
 	ID    pgtype.UUID `json:"id"`
 	Email string      `json:"email"`
