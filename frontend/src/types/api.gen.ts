@@ -54,13 +54,41 @@ export interface paths {
     /**
      * Sign-in options this server offers
      * @description Unauthenticated, so a signed-out page can show a Register link or an
-     *     SSO button only when they work. Carries no secrets and no identity
-     *     provider details. The flags change only when the server restarts, so
-     *     the response may be cached for a minute.
+     *     SSO button only when they work, and the setup screen on a fresh
+     *     install. Carries no secrets and no identity provider details. The
+     *     flags change only when the server restarts, so the response may be
+     *     cached for a minute. While `setup.required` is true it is sent with
+     *     `Cache-Control: no-store`, because the answer flips as soon as setup
+     *     completes.
      */
     get: operations["getCapabilities"];
     put?: never;
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/setup": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create the first administrator
+     * @description First-run setup for a server with no accounts. The caller proves access
+     *     to the server with the setup token it logs at startup (or the value of
+     *     `SETUP_TOKEN`). The account is created as a global admin and signed in.
+     *     Two requests at once create one account. Once an account exists the
+     *     route answers 404, the same as a server that offers no setup.
+     *     Shares the credential rate limit with login and registration.
+     */
+    post: operations["setup"];
     delete?: never;
     options?: never;
     head?: never;
@@ -78,8 +106,9 @@ export interface paths {
     put?: never;
     /**
      * Create an account
-     * @description Public signup. The first account created is promoted to admin by the
-     *     `ADMIN_EMAILS` bootstrap on the next boot, not by this endpoint.
+     * @description Public signup. This endpoint never creates an admin: the first
+     *     administrator comes from `POST /api/v1/setup`, later ones from the
+     *     `ADMIN_EMAILS` bootstrap on the next boot.
      *     A duplicate email is indistinguishable from any other failure, by
      *     design, so this cannot enumerate accounts.
      */
@@ -1497,6 +1526,10 @@ export interface components {
       commit: string;
     };
     Capabilities: {
+      setup: {
+        /** @description True while the server has no accounts and waits for its first administrator. The client shows the setup screen instead of sign-in. */
+        required: boolean;
+      };
       registration: {
         /** @description False when self-service registration answers 403. */
         enabled: boolean;
@@ -1511,6 +1544,15 @@ export interface components {
       };
       version: string;
       commit: string;
+    };
+    SetupRequest: {
+      /** @description The setup token from the server log or `SETUP_TOKEN`. */
+      token: string;
+      /** Format: email */
+      email: string;
+      /** Format: password */
+      password: string;
+      display_name?: string;
     };
     EmailPasswordRequest: {
       /** Format: email */
@@ -2619,6 +2661,23 @@ export interface components {
         "application/json": components["schemas"]["Error"];
       };
     };
+    /** @description Too many requests from this address; retry later. */
+    RateLimited: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        /**
+         * @example {
+         *       "error": {
+         *         "code": "rate_limited",
+         *         "message": "rate limit exceeded, retry later"
+         *       }
+         *     }
+         */
+        "application/json": components["schemas"]["Error"];
+      };
+    };
     /** @description The request was understood but rejected on a domain rule. */
     Unprocessable: {
       headers: {
@@ -2716,7 +2775,7 @@ export interface operations {
       /** @description The sign-in options and the build version. */
       200: {
         headers: {
-          /** @description public, max-age=60 */
+          /** @description public, max-age=60, or no-store while first-run setup is required. */
           "Cache-Control"?: string;
           [name: string]: unknown;
         };
@@ -2724,6 +2783,51 @@ export interface operations {
           "application/json": components["schemas"]["Capabilities"];
         };
       };
+    };
+  };
+  setup: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetupRequest"];
+      };
+    };
+    responses: {
+      /** @description Administrator created and signed in. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AuthResponse"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      /** @description The setup token is missing or wrong. */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "error": {
+           *         "code": "invalid_setup_token",
+           *         "message": "invalid setup token"
+           *       }
+           *     }
+           */
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      404: components["responses"]["NotFound"];
+      413: components["responses"]["BodyTooLarge"];
+      429: components["responses"]["RateLimited"];
     };
   };
   register: {
