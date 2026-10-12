@@ -22,8 +22,13 @@ import * as React from "react";
  * - Selection is separate from the cursor, and only selectable grids set
  *   `aria-selected`.
  *
+ * - **Multi-select**, when the owner passes `multiSelect`. The set of selected keys is the
+ *   owner's; the grid marks those rows `aria-selected`, and `x` or Space toggles the cursor row.
+ *   The checkboxes themselves are ordinary cells the owner renders, so each one has its own
+ *   accessible name. Single selection (`selectedKey`) is unchanged.
+ *
  * Not included deliberately: virtualisation (`aria-rowcount` is wired for when it
- * arrives), grouping, and multi-select. Add them when a screen needs them.
+ * arrives) and grouping. Add them when a screen needs them.
  */
 
 export interface DataGridColumn<Row> {
@@ -49,6 +54,12 @@ export interface DataGridColumn<Row> {
   readonly cell: (row: Row) => React.ReactNode;
 }
 
+export interface DataGridMultiSelect<Row> {
+  readonly selectedKeys: ReadonlySet<string>;
+  /** Called when `x` or Space is pressed on the cursor row. */
+  readonly onToggle: (row: Row) => void;
+}
+
 export interface DataGridSort {
   readonly columnId: string;
   readonly direction: "ascending" | "descending";
@@ -72,6 +83,8 @@ export interface DataGridProps<Row> {
    * owner can apply its own guards. `onSelect` still runs as before.
    */
   readonly onRowClick?: (row: Row, event: React.MouseEvent<HTMLTableRowElement>) => void;
+  /** Turns on multi-select. The owner keeps the set; see the file comment. */
+  readonly multiSelect?: DataGridMultiSelect<Row>;
   /**
    * The ledger default is mono with tabular numerals. Prose-heavy grids read
    * better in the app font; a cell that still needs aligned digits can add
@@ -115,6 +128,7 @@ export function DataGrid<Row>({
   onSelect,
   onActivate,
   onRowClick,
+  multiSelect,
   proportionalFont = false,
   sort = null,
   onSortChange,
@@ -184,7 +198,13 @@ export function DataGrid<Row>({
       case "x": {
         if (onControl) return;
         const row = rows[cursor];
-        if (!row || !onSelect) return;
+        if (!row) return;
+        if (multiSelect) {
+          event.preventDefault();
+          multiSelect.onToggle(row);
+          return;
+        }
+        if (!onSelect) return;
         event.preventDefault();
         onSelect(row);
         return;
@@ -193,7 +213,7 @@ export function DataGrid<Row>({
     }
   };
 
-  const selectable = typeof onSelect === "function";
+  const selectable = multiSelect !== undefined || typeof onSelect === "function";
 
   // Derived rather than stored: a live region announces when its text changes, so
   // the cursored row is enough and no extra state is needed.
@@ -211,6 +231,7 @@ export function DataGrid<Row>({
         role="grid"
         aria-label={label}
         aria-rowcount={ariaRowCount ?? rows.length}
+        aria-multiselectable={multiSelect ? true : undefined}
         onKeyDown={handleKeyDown}
         className="w-full border-collapse text-left"
       >
@@ -271,7 +292,9 @@ export function DataGrid<Row>({
               rows.map((row, index) => {
                 const key = rowKey(row);
                 const isCursor = index === cursor;
-                const isSelected = selectedKey !== null && selectedKey === key;
+                const isSelected = multiSelect
+                  ? multiSelect.selectedKeys.has(key)
+                  : selectedKey !== null && selectedKey === key;
                 return (
                   <tr
                     key={key}
