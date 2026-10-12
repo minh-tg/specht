@@ -28,6 +28,7 @@ describe("SeverityBadge", () => {
     // Unrated is the absence of severity, so it must not look like a filled chip.
     render(<SeverityBadge severity="unknown" />);
     expect(screen.getByText("Unrated").className).toContain("border");
+    expect(screen.getByText("Unrated").className).not.toContain("bg-sev");
   });
 
   it("pairs a tinted severity with its matching background token", () => {
@@ -49,5 +50,36 @@ describe("SeverityBadge", () => {
   it("renders a controlled label for blank severities", () => {
     render(<SeverityBadge severity="" />);
     expect(screen.getByText("Unknown")).toBeInTheDocument();
+  });
+});
+
+describe("SeverityBadge depth meter", () => {
+  it.each([
+    ["critical", 4],
+    ["high", 3],
+    ["medium", 2],
+    ["low", 1],
+  ])("lights %s bars for %s", (severity, lit) => {
+    const { container } = render(<SeverityBadge severity={severity} />);
+    const bars = Array.from(container.querySelectorAll("i"));
+    expect(bars).toHaveLength(4);
+    expect(bars.filter((bar) => bar.dataset.lit === "true")).toHaveLength(lit);
+  });
+
+  it("hides the bars from assistive technology, since the word carries the level", () => {
+    const { container } = render(<SeverityBadge severity="high" />);
+    expect(container.querySelector("i")?.parentElement).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("draws no bars for an unrated finding", () => {
+    const { container } = render(<SeverityBadge severity="unknown" />);
+    expect(container.querySelectorAll("i")).toHaveLength(0);
+  });
+
+  it("drops the tint in plain mode and keeps the coloured word", () => {
+    render(<SeverityBadge severity="critical" plain />);
+    const el = screen.getByText("Critical");
+    expect(el.className).toContain("text-sev-critical-fg");
+    expect(el.className).not.toContain("bg-sev-critical-bg");
   });
 });
