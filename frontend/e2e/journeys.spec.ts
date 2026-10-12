@@ -729,3 +729,43 @@ test("a global admin manages accounts and sees the server's totals", async ({ pa
   await expect(page.getByText("Nothing to remove")).toBeVisible();
   await expect(page.getByRole("button", { name: "Remove them…" })).toBeDisabled();
 });
+
+test("the command palette jumps between pages from the keyboard", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("palette");
+  const other = uniq("palette-other");
+  await seedProject(request, token, slug);
+  await seedProject(request, token, other);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings`);
+  await page.keyboard.press("Control+k");
+  const input = page.getByRole("combobox", { name: "Search commands" });
+  await expect(input).toBeFocused();
+
+  // A page of this project, found by a word and reached with Enter.
+  await input.fill("policy");
+  await expect(page.getByRole("option").first()).toContainText("Policy");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`/${slug}/policy$`));
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  // Another project, picked with the arrow keys and Enter.
+  await page.keyboard.press("Control+k");
+  await page.getByRole("combobox", { name: "Search commands" }).fill(other);
+  await expect(page.getByRole("option")).toHaveCount(1);
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(new RegExp(`/${other}/findings$`));
+
+  // Pages of a project are offered only inside one; Escape closes without going anywhere.
+  await page.goto("/teams");
+  await page.keyboard.press("Control+k");
+  await expect(page.getByRole("group", { name: "This project" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/teams$/);
+
+  // The button opens it too.
+  await page.getByRole("button", { name: "Open command palette" }).click();
+  await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+});
