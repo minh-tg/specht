@@ -81,6 +81,11 @@ type mockUsecases struct {
 	listTargetsFn           func(ctx context.Context, slug string) ([]usecase.TargetResponse, error)
 	listArtifactsFn         func(ctx context.Context, slug string) ([]usecase.ArtifactResponse, error)
 	createWaiverFn          func(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error)
+	waiverStatuses          []string
+	requestWaiverFn         func(ctx context.Context, input usecase.RequestWaiverInput) (*usecase.WaiverResponse, error)
+	approveWaiverFn         func(ctx context.Context, projectSlug, waiverID, note string) (*usecase.WaiverResponse, error)
+	rejectWaiverFn          func(ctx context.Context, projectSlug, waiverID, note string) (*usecase.WaiverResponse, error)
+	withdrawWaiverFn        func(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverResponse, error)
 	listWaiversFn           func(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error)
 	getWaiverFn             func(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverDetailResponse, error)
 	updateWaiverFn          func(ctx context.Context, input usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error)
@@ -513,7 +518,8 @@ func (m *mockUsecases) CreateWaiver(ctx context.Context, input usecase.CreateWai
 	return m.createWaiverFn(ctx, input)
 }
 
-func (m *mockUsecases) ListWaivers(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error) {
+func (m *mockUsecases) ListWaivers(ctx context.Context, projectSlug string, statuses ...string) ([]usecase.WaiverResponse, error) {
+	m.waiverStatuses = statuses
 	if m.listWaiversFn == nil {
 		return nil, fmt.Errorf("unexpected call to ListWaivers")
 	}
@@ -553,6 +559,34 @@ func (m *mockUsecases) ListWaiverEvents(ctx context.Context, projectSlug, waiver
 		return nil, fmt.Errorf("unexpected call to ListWaiverEvents")
 	}
 	return m.listWaiverEventsFn(ctx, projectSlug, waiverID)
+}
+
+func (m *mockUsecases) RequestWaiver(ctx context.Context, input usecase.RequestWaiverInput) (*usecase.WaiverResponse, error) {
+	if m.requestWaiverFn == nil {
+		return nil, fmt.Errorf("unexpected call to RequestWaiver")
+	}
+	return m.requestWaiverFn(ctx, input)
+}
+
+func (m *mockUsecases) ApproveWaiver(ctx context.Context, projectSlug, waiverID, note string) (*usecase.WaiverResponse, error) {
+	if m.approveWaiverFn == nil {
+		return nil, fmt.Errorf("unexpected call to ApproveWaiver")
+	}
+	return m.approveWaiverFn(ctx, projectSlug, waiverID, note)
+}
+
+func (m *mockUsecases) RejectWaiver(ctx context.Context, projectSlug, waiverID, note string) (*usecase.WaiverResponse, error) {
+	if m.rejectWaiverFn == nil {
+		return nil, fmt.Errorf("unexpected call to RejectWaiver")
+	}
+	return m.rejectWaiverFn(ctx, projectSlug, waiverID, note)
+}
+
+func (m *mockUsecases) WithdrawWaiver(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverResponse, error) {
+	if m.withdrawWaiverFn == nil {
+		return nil, fmt.Errorf("unexpected call to WithdrawWaiver")
+	}
+	return m.withdrawWaiverFn(ctx, projectSlug, waiverID)
 }
 
 func (m *mockUsecases) CheckWaiverMatch(ctx context.Context, projectSlug, findingID string) (bool, error) {
@@ -3279,8 +3313,12 @@ func authRouter(h *Handler) http.Handler {
 		r.Put("/{id}", h.UpdateWaiver)
 		r.Delete("/{id}", h.DeleteWaiver)
 		r.Post("/{id}/toggle", h.ToggleWaiver)
+		r.Post("/{id}/approve", h.ApproveWaiver)
+		r.Post("/{id}/reject", h.RejectWaiver)
+		r.Post("/{id}/withdraw", h.WithdrawWaiver)
 		r.Get("/{id}/events", h.ListWaiverEvents)
 		r.Post("/check-match", h.CheckWaiverMatch)
+		r.Post("/requests", h.RequestWaiver)
 	})
 	return r
 }

@@ -154,7 +154,11 @@ type (
 
 	WaiverUsecases interface {
 		CreateWaiver(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error)
-		ListWaivers(ctx context.Context, projectSlug string) ([]usecase.WaiverResponse, error)
+		ListWaivers(ctx context.Context, projectSlug string, statuses ...string) ([]usecase.WaiverResponse, error)
+		RequestWaiver(ctx context.Context, input usecase.RequestWaiverInput) (*usecase.WaiverResponse, error)
+		ApproveWaiver(ctx context.Context, projectSlug, waiverID, note string) (*usecase.WaiverResponse, error)
+		RejectWaiver(ctx context.Context, projectSlug, waiverID, note string) (*usecase.WaiverResponse, error)
+		WithdrawWaiver(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverResponse, error)
 		GetWaiver(ctx context.Context, projectSlug, waiverID string) (*usecase.WaiverDetailResponse, error)
 		UpdateWaiver(ctx context.Context, input usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error)
 		DeleteWaiver(ctx context.Context, projectSlug, waiverID string) error

@@ -136,10 +136,16 @@ func TestRequireProjectIngest_RequiresEditorRoleOrIngestScope(t *testing.T) {
 func TestRequireProjectAdminForWaiver_EnforcesRoleAndKeyScope(t *testing.T) {
 	pr := &mockProjectRepo{}
 	pr.effectiveRoleFn = func(ctx context.Context, projectID, userID string) (string, error) {
-		return auth.RoleEditor, nil
+		return auth.RoleMember, nil
 	}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
-	assert.ErrorIs(t, uc.requireProjectAdminForWaiver(sessionCtx("u1", auth.RoleEditor), findingFixtureProjectID), ErrProjectAccessDenied)
+	assert.ErrorIs(t, uc.requireProjectAdminForWaiver(sessionCtx("u1", auth.RoleMember), findingFixtureProjectID), ErrProjectAccessDenied)
+
+	pr.effectiveRoleFn = func(ctx context.Context, projectID, userID string) (string, error) {
+		return auth.RoleManager, nil
+	}
+	assert.NoError(t, uc.requireProjectAdminForWaiver(sessionCtx("u1", auth.RoleMember), findingFixtureProjectID),
+		"project managers manage waivers")
 
 	adminKey := auth.ContextWithIdentity(context.Background(), &auth.Identity{
 		UserID: "key-1", ProjectID: findingFixtureProjectID, IsAPIKey: true,
