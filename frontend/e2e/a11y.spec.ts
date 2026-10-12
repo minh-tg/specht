@@ -104,6 +104,39 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await expect(page.getByRole("heading").first()).toBeVisible();
   await audit(page, "/register");
 
+  // First run: the page exists only on a server with no account, so the answer is staged. The
+  // password rules appear with the first character; audit them showing.
+  await page.route("**/api/v1/capabilities", (route) =>
+    route.fulfill({
+      json: {
+        registration: { enabled: true },
+        sso: { enabled: false },
+        setup: { required: true },
+        version: "dev",
+        commit: "none",
+      },
+    }));
+  await page.goto("/setup");
+  await expect(page.getByRole("heading", { name: "Set up Specht" })).toBeVisible();
+  await audit(page, "/setup");
+  await page.getByLabel("Password").fill("abc");
+  await expect(page.getByRole("list", { name: "Requirements" })).toBeVisible();
+  await audit(page, "/setup with password rules showing");
+  await page.unroute("**/api/v1/capabilities");
+
+  // An invitation, as the person who opens the link sees it, and a link that no longer works.
+  const invited = await request.post(`/api/v1/projects/${slug}/invites`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { role: "manager" },
+  });
+  expect(invited.ok(), await invited.text()).toBeTruthy();
+  await page.goto((await invited.json()).link as string);
+  await expect(page.getByRole("heading", { name: `Join ${slug}` })).toBeVisible();
+  await audit(page, "/invite/:token");
+  await page.goto("/invite/not-a-real-link");
+  await expect(page.getByRole("heading", { name: "This invite link does not work" })).toBeVisible();
+  await audit(page, "/invite/:token (not valid)");
+
   await uiLogin(page);
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   await audit(page, "/ (projects)");
@@ -178,6 +211,15 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await page.goto(`/${slug}/access`);
   await expect(page.getByRole("heading", { name: /Direct Members/ })).toBeVisible();
   await audit(page, "project access");
+  // The invite dialog, then the step that shows the link once.
+  await page.getByRole("button", { name: "Invite people" }).click();
+  await expect(page.getByRole("dialog", { name: "Invite someone to this project" })).toBeVisible();
+  await audit(page, "invite dialog");
+  await page.getByRole("button", { name: "Create link" }).click();
+  await expect(page.getByRole("dialog", { name: "Send this link" })).toBeVisible();
+  await audit(page, "invite link shown once");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   // The only admin cannot be removed: hovering the disabled control explains why.
   await page.locator("span[tabindex=\"0\"]").first().hover();
   await expect(

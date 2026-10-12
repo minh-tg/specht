@@ -412,3 +412,46 @@ test("a commit with no scan says so instead of failing", async ({ page, request 
   await expect(page.getByText("No scan found for commit deadbee")).toBeVisible();
   await expect(page.getByRole("link", { name: "Upload a report" })).toBeVisible();
 });
+
+test("an admin invites a teammate by link, the teammate joins, and the link works once", async ({ page, request, browser }) => {
+  const token = await apiToken(request);
+  const slug = uniq("invite");
+  await seedProject(request, token, slug);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/access`);
+  await page.getByRole("button", { name: "Invite people" }).click();
+  await page.getByRole("button", { name: "Create link" }).click();
+  const link = (await page.getByTestId("invite-link").textContent()) ?? "";
+  expect(link).toContain("/invite/");
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByRole("list", { name: "Pending invites" })).toContainText(
+    "Anyone with the link",
+  );
+
+  // The newcomer opens the link in a browser with no session.
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  await guest.goto(link);
+  await expect(guest.getByRole("heading", { name: `Join ${slug}` })).toBeVisible();
+  await guest.getByLabel("Email").fill(`${uniq("guest")}@example.com`);
+  await guest.getByLabel("Choose a password").fill("short");
+  await expect(guest.getByRole("list", { name: "Requirements" })).toContainText(
+    "At least 8 characters (not met)",
+  );
+  await guest.getByLabel("Choose a password").fill("correct-horse-battery");
+  await expect(guest.getByRole("list", { name: "Requirements" })).toContainText(
+    "At least 8 characters (met)",
+  );
+  await guest.getByRole("button", { name: "Create account and join" }).click();
+  await expect(guest).toHaveURL(new RegExp(`/${slug}/`));
+
+  // The link is single use.
+  await guest.goto(link);
+  await expect(guest.getByRole("heading", { name: "This invite link does not work" }))
+    .toBeVisible();
+  await guestContext.close();
+
+  await page.reload();
+  await expect(page.getByText("No open invites.")).toBeVisible();
+});
