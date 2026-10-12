@@ -125,22 +125,17 @@ type RequestWaiverInput struct {
 }
 
 // waiverRequesterRole reports whether a project role may ask for a waiver.
+// Legacy roles count as their modern equivalents: a viewer is a member.
 func waiverRequesterRole(role string) bool {
-	switch role {
-	case auth.RoleAdmin, auth.RoleManager, auth.RoleEditor, auth.RoleMember:
+	switch normalizeMemberRole(role) {
+	case auth.RoleAdmin, auth.RoleManager, auth.RoleMember:
 		return true
 	}
 	return false
 }
 
 // waiverApproverRole reports whether a project role may decide on requests.
-func waiverApproverRole(role string) bool {
-	switch role {
-	case auth.RoleAdmin, auth.RoleManager, auth.RoleEditor:
-		return true
-	}
-	return false
-}
+func waiverApproverRole(role string) bool { return isManagerRole(role) }
 
 // RequestWaiver files a pending waiver request for specific findings. It is
 // open to project members. The request never changes the gate until a
