@@ -1511,8 +1511,8 @@ paths:
       tags: [Policy]
       operationId: listPolicyTemplates
       summary: List policy templates
+      description: Any signed-in person can read the list, so a project admin can pick a template to link. Changing templates stays with global admins.
       x-auth: session
-      x-required-role: admin
       security:
         - sessionAuth: []
       responses:

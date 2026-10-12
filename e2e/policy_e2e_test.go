@@ -48,6 +48,9 @@ func TestE2E_PolicyTemplatesAndOverrides(t *testing.T) {
 		require.Equal(t, "insufficient_role", errorCode(t, raw),
 			"template management is admin-session only")
 
+		// Reading the list is open to any signed-in person: a project admin picks a template from it.
+		_ = request[[]policyTemplate](t, http.MethodGet, "/api/v1/policy-templates", viewerToken, nil, http.StatusOK)
+
 		created := request[policyTemplate](t, http.MethodPost, "/api/v1/policy-templates", adminToken,
 			map[string]any{
 				"name": templateName, "description": "e2e baseline",
