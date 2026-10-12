@@ -280,6 +280,17 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await expect(page.getByRole("switch", { name: "Watch this project" })).toBeVisible();
   await audit(page, "project watcher");
 
+  // Admin: the page, and the confirmation that ends an account.
+  await page.goto("/admin");
+  await expect(page.getByRole("list", { name: "People" })).toBeVisible();
+  await expect(page.getByText("Nothing to remove")).toBeVisible();
+  await audit(page, "admin");
+  await page.getByRole("button", { name: /^Deactivate / }).first().click();
+  await expect(page.getByRole("alertdialog")).toBeVisible();
+  await audit(page, "admin deactivate confirmation");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+
   await page.goto("/teams");
   await page.getByRole("button", { name: "+ Create Team" }).click();
   await expect(page.getByRole("dialog", { name: "Create Company Team" })).toBeVisible();
