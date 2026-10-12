@@ -28,7 +28,11 @@ const (
 // sets a key.
 const (
 	DefaultSeverityFloor = "high"
-	DefaultWatcherGate   = "immediate"
+	// DefaultWatcherGate holds watcher findings out of the gate until someone
+	// has triaged them. Before this was the policy default, the gate read a
+	// separate project column with this same default, so the policy screen
+	// and the gate disagreed.
+	DefaultWatcherGate = "require_triage"
 )
 
 var validValues = map[string][]string{

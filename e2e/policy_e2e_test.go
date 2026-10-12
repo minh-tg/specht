@@ -127,7 +127,7 @@ func TestE2E_PolicyTemplatesAndOverrides(t *testing.T) {
 		require.Nil(t, initial.TemplateName)
 		require.Equal(t, "high", initial.SeverityFloor)
 		require.Equal(t, "default", initial.SeveritySource)
-		require.Equal(t, "immediate", initial.WatcherGate)
+		require.Equal(t, "require_triage", initial.WatcherGate)
 		require.Equal(t, "default", initial.WatcherSource)
 
 		status, raw := doJSON(t, http.MethodGet, "/api/v1/projects/"+slug+"/policy", viewerToken, nil)
