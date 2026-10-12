@@ -45,6 +45,7 @@ const (
 	EventCreateInvite   = "invite.create"
 	EventAcceptInvite   = "invite.accept"
 	EventRevokeInvite   = "invite.revoke"
+	EventDeleteReport   = "report.delete"
 )
 
 // Outcome describes the success or failure of an audited operation.

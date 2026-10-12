@@ -88,6 +88,7 @@ type (
 		LookupInvite(ctx context.Context, token string) (*usecase.InviteLookupResponse, error)
 		AcceptInvite(ctx context.Context, token string, in usecase.AcceptInviteInput) (*usecase.AcceptInviteResponse, error)
 		JoinInvite(ctx context.Context, token string) (*usecase.JoinInviteResponse, error)
+		DeleteReport(ctx context.Context, projectSlug, reportID string) (*usecase.ReportDeleteResponse, error)
 		ChangeUserRole(ctx context.Context, userID, role string) (*usecase.UserProfile, error)
 		DeactivateUser(ctx context.Context, userID string) (*usecase.UserProfile, error)
 		ReactivateUser(ctx context.Context, userID string) (*usecase.UserProfile, error)
