@@ -11,6 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const acquireSetupLock = `-- name: AcquireSetupLock :exec
+SELECT pg_advisory_xact_lock($1::bigint)
+`
+
+func (q *Queries) AcquireSetupLock(ctx context.Context, dollar_1 int64) error {
+	_, err := q.db.Exec(ctx, acquireSetupLock, dollar_1)
+	return err
+}
+
 const bumpUserTokenVersion = `-- name: BumpUserTokenVersion :exec
 UPDATE users SET token_version = token_version + 1, updated_at = NOW() WHERE id = $1
 `
@@ -58,6 +67,54 @@ UPDATE users SET password_hash = NULL, updated_at = NOW() WHERE id = $1
 func (q *Queries) ClearUserPassword(ctx context.Context, id pgtype.UUID) error {
 	_, err := q.db.Exec(ctx, clearUserPassword, id)
 	return err
+}
+
+const countUsers = `-- name: CountUsers :one
+SELECT COUNT(*) FROM users WHERE email <> 'system@specht.local'
+`
+
+// Counts real accounts. The system account that migration 21 seeds on every
+// install is not a person and does not count.
+func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countUsers)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const createFirstAdmin = `-- name: CreateFirstAdmin :one
+INSERT INTO users (email, display_name, password_hash, role)
+SELECT lower($1::text), $2, $3::text, 'admin'
+WHERE NOT EXISTS (SELECT 1 FROM users WHERE email <> 'system@specht.local')
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at
+`
+
+type CreateFirstAdminParams struct {
+	Email        string      `json:"email"`
+	DisplayName  pgtype.Text `json:"display_name"`
+	PasswordHash string      `json:"password_hash"`
+}
+
+// Creates the first account as a global admin, and only while no real account
+// exists (the seeded system account does not count). No row comes back when one
+// does, so two racing setups cannot both win; the caller serialises them with
+// an advisory lock.
+func (q *Queries) CreateFirstAdmin(ctx context.Context, arg CreateFirstAdminParams) (User, error) {
+	row := q.db.QueryRow(ctx, createFirstAdmin, arg.Email, arg.DisplayName, arg.PasswordHash)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.DisplayName,
+		&i.PasswordHash,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TokenVersion,
+		&i.DisabledAt,
+	)
+	return i, err
 }
 
 const createUser = `-- name: CreateUser :one

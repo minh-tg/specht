@@ -38,6 +38,24 @@ RETURNING *;
 -- concurrent demotions cannot each see another admin and leave none.
 SELECT id FROM users WHERE role = 'admin' AND disabled_at IS NULL FOR UPDATE;
 
+-- name: AcquireSetupLock :exec
+SELECT pg_advisory_xact_lock($1::bigint);
+
+-- name: CountUsers :one
+-- Counts real accounts. The system account that migration 21 seeds on every
+-- install is not a person and does not count.
+SELECT COUNT(*) FROM users WHERE email <> 'system@specht.local';
+
+-- name: CreateFirstAdmin :one
+-- Creates the first account as a global admin, and only while no real account
+-- exists (the seeded system account does not count). No row comes back when one
+-- does, so two racing setups cannot both win; the caller serialises them with
+-- an advisory lock.
+INSERT INTO users (email, display_name, password_hash, role)
+SELECT lower(sqlc.arg(email)::text), sqlc.narg(display_name), sqlc.arg(password_hash)::text, 'admin'
+WHERE NOT EXISTS (SELECT 1 FROM users WHERE email <> 'system@specht.local')
+RETURNING *;
+
 -- name: ListUsers :many
 -- Account directory for admin surfaces (project members, team rosters).
 -- The filter matches a case-insensitive substring of the email; an empty
