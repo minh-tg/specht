@@ -48,7 +48,7 @@ func TestResolve_Defaults(t *testing.T) {
 	eff := Resolve(nil, 0, nil, nil)
 	assert.Equal(t, "high", eff.SeverityFloor)
 	assert.Equal(t, SourceDefault, eff.SeveritySource)
-	assert.Equal(t, "immediate", eff.WatcherGate)
+	assert.Equal(t, "require_triage", eff.WatcherGate)
 	assert.Equal(t, SourceDefault, eff.WatcherSource)
 	assert.Nil(t, eff.TemplateName)
 }
