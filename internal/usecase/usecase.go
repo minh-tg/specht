@@ -152,6 +152,9 @@ type Deps struct {
 	// SetupToken guards first-run setup while no account exists. Nil means
 	// setup is not offered.
 	SetupToken *SetupToken
+	// Watcher is the server-wide CVE watcher configuration that the
+	// per-project settings sit under.
+	Watcher WatcherSettings
 }
 
 // Usecases groups the application's use-case methods. It is safe for
