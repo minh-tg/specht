@@ -139,6 +139,14 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/:slug/waivers"
+        element={
+          <ProtectedRoute>
+            <ProjectLayout />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/teams"
         element={
           <ProtectedRoute>

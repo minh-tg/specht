@@ -806,3 +806,65 @@ export function useSetPolicyOverrides(slug: string) {
     onSuccess: changed,
   });
 }
+
+/** A waiver decision changes what blocks a change, so the verdict and the numbers behind it are stale. */
+function useWaiverDecided(slug: string) {
+  const queryClient = useQueryClient();
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.waivers() });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.gate(slug) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.projectStats(slug) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.project(slug) });
+  };
+}
+
+/** A manager approves or rejects a pending request. Rejecting needs a note that tells the requester why. */
+export function useDecideWaiver(slug: string) {
+  const decided = useWaiverDecided(slug);
+  return useMutation({
+    meta: {
+      success: (_data: unknown, vars: { decision: "approve" | "reject"; }) =>
+        vars.decision === "approve" ? "Waiver approved" : "Waiver rejected",
+    },
+    mutationFn: ({ id, decision, note }: {
+      id: string;
+      decision: "approve" | "reject";
+      note: string;
+    }) =>
+      apiFetch<Waiver>(
+        `/api/v1/projects/${encodeURIComponent(slug)}/waivers/${
+          encodeURIComponent(id)
+        }/${decision}`,
+        { method: "POST", body: JSON.stringify({ note }) },
+      ),
+    onSuccess: decided,
+  });
+}
+
+/** The requester takes back a request that is still waiting. */
+export function useWithdrawWaiver(slug: string) {
+  const decided = useWaiverDecided(slug);
+  return useMutation({
+    meta: { success: () => "Request withdrawn" },
+    mutationFn: (id: string) =>
+      apiFetch<Waiver>(
+        `/api/v1/projects/${encodeURIComponent(slug)}/waivers/${encodeURIComponent(id)}/withdraw`,
+        { method: "POST" },
+      ),
+    onSuccess: decided,
+  });
+}
+
+/** Switches an approved waiver off without deleting it, so its findings block again. */
+export function useRevokeWaiver(slug: string) {
+  const decided = useWaiverDecided(slug);
+  return useMutation({
+    meta: { success: () => "Waiver revoked" },
+    mutationFn: (id: string) =>
+      apiFetch<Waiver>(
+        `/api/v1/projects/${encodeURIComponent(slug)}/waivers/${encodeURIComponent(id)}/toggle`,
+        { method: "POST" },
+      ),
+    onSuccess: decided,
+  });
+}

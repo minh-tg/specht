@@ -4,6 +4,7 @@ import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { FindingsDashboard } from "@/pages/FindingsDashboard";
 import { ProjectAccess } from "@/pages/ProjectAccess";
 import { ProjectPolicy } from "@/pages/ProjectPolicy";
+import { ProjectWaivers } from "@/pages/ProjectWaivers";
 import { ReportHistory } from "@/pages/ReportHistory";
 import { Link, useLocation, useParams } from "react-router-dom";
 
@@ -17,6 +18,8 @@ export function ProjectLayout() {
     ? "access"
     : path.endsWith("/policy")
     ? "policy"
+    : path.endsWith("/waivers")
+    ? "waivers"
     : "findings";
 
   useDocumentTitle(
@@ -26,6 +29,8 @@ export function ProjectLayout() {
       ? `${slug} · Access & Members`
       : currentTab === "policy"
       ? `${slug} · Policy`
+      : currentTab === "waivers"
+      ? `${slug} · Waivers`
       : `${slug} · Findings`,
   );
 
@@ -92,6 +97,17 @@ export function ProjectLayout() {
         >
           Policy
         </Link>
+        <Link
+          to={`/${slug}/waivers`}
+          aria-current={currentTab === "waivers" ? "page" : undefined}
+          className={`pb-2 text-sm font-medium ${
+            currentTab === "waivers"
+              ? "border-primary text-foreground border-b-2"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Waivers
+        </Link>
       </nav>
       {currentTab === "findings"
         ? <FindingsDashboard />
@@ -99,6 +115,8 @@ export function ProjectLayout() {
         ? <ReportHistory />
         : currentTab === "policy"
         ? <ProjectPolicy />
+        : currentTab === "waivers"
+        ? <ProjectWaivers />
         : <ProjectAccess />}
     </div>
   );
