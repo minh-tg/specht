@@ -4406,3 +4406,38 @@ func TestPreviewNotification_ErrorMapping(t *testing.T) {
 		})
 	}
 }
+
+func TestListFindings_QueryParams(t *testing.T) {
+	var got usecase.FindingFilter
+	mock := &mockUsecases{
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
+			got = filter
+			return sampleFindings(), 1, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings?analysis_state=unanalyzed,in_triage&q=CVE-2025&sort=first_seen&dir=asc", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, []string{"unanalyzed", "in_triage"}, got.AnalysisStates)
+	assert.Equal(t, "CVE-2025", got.Search)
+	assert.Equal(t, "first_seen", got.Sort)
+	assert.Equal(t, "asc", got.Dir)
+}
+
+func TestListFindings_InvalidQueryIs400(t *testing.T) {
+	mock := &mockUsecases{
+		listFindingsFn: func(ctx context.Context, projectSlug string, filter usecase.FindingFilter, limit, offset int32) ([]usecase.FindingResponse, int64, error) {
+			return nil, 0, usecase.ErrInvalidFindingQuery
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/findings?sort=age", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), "invalid_query")
+}

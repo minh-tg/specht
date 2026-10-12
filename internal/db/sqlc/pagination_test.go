@@ -11,7 +11,9 @@ func TestPaginatedQueriesUseStableTieBreakers(t *testing.T) {
 		query string
 		order string
 	}{
-		{"findings", listFindingsByProject, "ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC"},
+		// The list takes a sort key, so the tie-breakers are the tail of the ORDER BY
+		// that every sort falls back to.
+		{"findings", listFindingsByProject, "  f.current_severity_rank DESC, f.created_at DESC, f.id DESC\nLIMIT"},
 		{"latest finding context", getFindingContext, "ORDER BY fo.observed_at DESC, fo.id DESC"},
 		{"latest finding display context", getFindingDisplayContext, "ORDER BY fo.observed_at DESC, fo.id DESC"},
 		{"finding contexts by IDs", listFindingDisplayContextsByIDs, "ORDER BY fo.finding_id, fo.observed_at DESC, fo.id DESC"},

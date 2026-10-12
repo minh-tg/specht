@@ -459,6 +459,16 @@ type FindingFilter struct {
 	Kinds        []string
 	Environments []string
 	Targets      []string
+	// AnalysisStates keeps findings in these analysis states; "unanalyzed"
+	// stands for a finding nobody has looked at.
+	AnalysisStates []string
+	// Search is free text matched against the title and the fingerprint (which
+	// carries the CVE id and package for dependency findings).
+	Search string
+	// Sort is severity (default), first_seen, last_seen or title. Dir is asc
+	// or desc; empty means desc, except for title where it means asc.
+	Sort string
+	Dir  string
 }
 
 // ListFindings returns one page of findings plus the total the same filter
@@ -474,12 +484,20 @@ func (u *Usecases) ListFindings(ctx context.Context, projectSlug string, filter 
 		return nil, 0, err
 	}
 
+	query, err := filter.normalize()
+	if err != nil {
+		return nil, 0, err
+	}
 	scope := port.ListFindingsParams{
-		Severities:   filter.Severities,
-		States:       filter.States,
-		Kinds:        filter.Kinds,
-		Environments: filter.Environments,
-		Targets:      filter.Targets,
+		Severities:     filter.Severities,
+		States:         filter.States,
+		Kinds:          filter.Kinds,
+		Environments:   filter.Environments,
+		Targets:        filter.Targets,
+		AnalysisStates: filter.AnalysisStates,
+		Search:         query.search,
+		SortKey:        query.sortKey,
+		SortDir:        query.sortDir,
 	}
 	page := scope
 	page.Limit = limit

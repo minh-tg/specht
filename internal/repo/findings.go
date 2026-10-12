@@ -41,6 +41,11 @@ func (r *pgFindingRepo) ListByProject(ctx context.Context, projectID pgtype.UUID
 		Column6:   params.Targets,
 		Limit:     params.Limit,
 		Offset:    params.Offset,
+
+		AnalysisStates: params.AnalysisStates,
+		Search:         params.Search,
+		SortKey:        orDefault(params.SortKey, "severity"),
+		SortDir:        orDefault(params.SortDir, "desc"),
 	})
 }
 
@@ -54,7 +59,17 @@ func (r *pgFindingRepo) CountByProject(ctx context.Context, projectID pgtype.UUI
 		Column4:   params.Kinds,
 		Column5:   params.Environments,
 		Column6:   params.Targets,
+
+		AnalysisStates: params.AnalysisStates,
+		Search:         params.Search,
 	})
+}
+
+func orDefault(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
 }
 
 func (r *pgFindingRepo) Upsert(ctx context.Context, arg UpsertFindingParams) (sqlc.Finding, error) {

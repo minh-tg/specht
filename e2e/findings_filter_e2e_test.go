@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"net/url"
+	"strconv"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -144,5 +146,74 @@ func TestE2E_FindingsFiltersAndPagination(t *testing.T) {
 		require.Len(t, listFindingsPage(t, fixedSlug, "status=fixed"), 2)
 		require.Len(t, listFindingsPage(t, fixedSlug, "status=open%2Cfixed"), 2,
 			"a comma-separated status list unions")
+	})
+}
+
+// TestE2E_FindingsSortSearchAndAnalysisState covers the list's ordering and
+// text and analysis-state filters. The order has to hold across pages, so a
+// Critical on page two can never sit behind a Medium on page one.
+func TestE2E_FindingsSortSearchAndAnalysisState(t *testing.T) {
+	slug := newProject(t, "sortq")
+	key := mintKey(t, slug)
+	ingestFixture(t, slug, key, "high-medium.sarif.json")
+	ingestRaw(t, slug, "trivy", "trivy-alpine-full.json", nil)
+	all := listFindingsPage(t, slug, "limit=100")
+	require.Len(t, all, 10)
+
+	rank := map[string]int{"low": 1, "medium": 2, "high": 3, "critical": 4}
+	severities := func(findings []scanFinding) []int {
+		out := make([]int, len(findings))
+		for i, f := range findings {
+			out[i] = rank[f.CurrentSeverity]
+		}
+		return out
+	}
+
+	t.Run("severity order holds across pages", func(t *testing.T) {
+		for dir, want := range map[string]func(a, b int) bool{
+			"desc": func(a, b int) bool { return a >= b },
+			"asc":  func(a, b int) bool { return a <= b },
+		} {
+			var paged []scanFinding
+			for offset := 0; offset < 10; offset += 3 {
+				paged = append(paged, listFindingsPage(t, slug, "sort=severity&dir="+dir+"&limit=3&offset="+strconv.Itoa(offset))...)
+			}
+			require.Len(t, paged, 10)
+			order := severities(paged)
+			for i := 1; i < len(order); i++ {
+				require.Truef(t, want(order[i-1], order[i]), "severity %s order broken at %d: %v", dir, i, order)
+			}
+			seen := map[string]bool{}
+			for _, f := range paged {
+				require.False(t, seen[f.ID], "a finding repeated across pages")
+				seen[f.ID] = true
+			}
+		}
+	})
+
+	t.Run("search narrows by title text", func(t *testing.T) {
+		title := all[0].CurrentTitle
+		hits := listFindingsPage(t, slug, "q="+url.QueryEscape(title))
+		require.NotEmpty(t, hits)
+		for _, f := range hits {
+			require.Contains(t, f.CurrentTitle, title)
+		}
+		_, total := findingsPage(t, slug, "q="+url.QueryEscape(title))
+		require.Equal(t, strconv.Itoa(len(hits)), total, "the total follows the search")
+		require.Empty(t, listFindingsPage(t, slug, "q=zzz-no-such-finding"))
+		require.Len(t, listFindingsPage(t, slug, "q=%25&limit=100"), 0, "a percent sign is literal text, not a wildcard")
+	})
+
+	t.Run("analysis state filter", func(t *testing.T) {
+		require.Len(t, listFindingsPage(t, slug, "analysis_state=unanalyzed&limit=100"), 10)
+		require.Empty(t, listFindingsPage(t, slug, "analysis_state=exploitable"))
+	})
+
+	t.Run("bad values are refused with the accepted ones", func(t *testing.T) {
+		for _, query := range []string{"sort=age", "dir=up", "analysis_state=bogus"} {
+			status, raw := doJSON(t, http.MethodGet, "/api/v1/projects/"+slug+"/findings?"+query, adminToken, nil)
+			require.Equal(t, http.StatusBadRequest, status, query+": "+string(raw))
+			require.Equal(t, "invalid_query", errorCode(t, raw))
+		}
 	})
 }

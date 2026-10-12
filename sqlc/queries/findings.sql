@@ -60,6 +60,8 @@ INSERT INTO finding_occurrences (
 RETURNING *;
 
 -- name: ListFindingsByProject :many
+-- search is a LIKE pattern the caller has escaped; sort_key and sort_dir are
+-- validated by the caller and fall back to the severity order below.
 SELECT f.* FROM findings f
 WHERE f.project_id = $1
   AND (array_length($2::text[], 1) IS NULL OR f.current_severity = ANY($2))
@@ -75,7 +77,21 @@ WHERE f.project_id = $1
     JOIN reports r ON fo.report_id = r.id
     JOIN targets t ON r.target_id = t.id
     WHERE fo.finding_id = f.id AND t.name = ANY($6)))
-ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
+  AND (array_length(sqlc.arg(analysis_states)::text[], 1) IS NULL
+    OR COALESCE(NULLIF(f.analysis_state, ''), 'unanalyzed') = ANY(sqlc.arg(analysis_states)::text[]))
+  AND (sqlc.arg(search)::text = ''
+    OR f.current_title ILIKE '%' || sqlc.arg(search)::text || '%'
+    OR f.fingerprint ILIKE '%' || sqlc.arg(search)::text || '%')
+ORDER BY
+  CASE WHEN sqlc.arg(sort_key)::text = 'severity' AND sqlc.arg(sort_dir)::text = 'desc' THEN f.current_severity_rank END DESC,
+  CASE WHEN sqlc.arg(sort_key)::text = 'severity' AND sqlc.arg(sort_dir)::text = 'asc' THEN f.current_severity_rank END ASC,
+  CASE WHEN sqlc.arg(sort_key)::text = 'first_seen' AND sqlc.arg(sort_dir)::text = 'desc' THEN f.first_seen_at END DESC,
+  CASE WHEN sqlc.arg(sort_key)::text = 'first_seen' AND sqlc.arg(sort_dir)::text = 'asc' THEN f.first_seen_at END ASC,
+  CASE WHEN sqlc.arg(sort_key)::text = 'last_seen' AND sqlc.arg(sort_dir)::text = 'desc' THEN f.last_seen_at END DESC,
+  CASE WHEN sqlc.arg(sort_key)::text = 'last_seen' AND sqlc.arg(sort_dir)::text = 'asc' THEN f.last_seen_at END ASC,
+  CASE WHEN sqlc.arg(sort_key)::text = 'title' AND sqlc.arg(sort_dir)::text = 'desc' THEN lower(f.current_title) END DESC,
+  CASE WHEN sqlc.arg(sort_key)::text = 'title' AND sqlc.arg(sort_dir)::text = 'asc' THEN lower(f.current_title) END ASC,
+  f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 LIMIT $7 OFFSET $8;
 
 -- name: CountFindingsByProject :one
@@ -96,7 +112,12 @@ WHERE f.project_id = $1
     SELECT 1 FROM finding_occurrences fo
     JOIN reports r ON fo.report_id = r.id
     JOIN targets t ON r.target_id = t.id
-    WHERE fo.finding_id = f.id AND t.name = ANY($6)));
+    WHERE fo.finding_id = f.id AND t.name = ANY($6)))
+  AND (array_length(sqlc.arg(analysis_states)::text[], 1) IS NULL
+    OR COALESCE(NULLIF(f.analysis_state, ''), 'unanalyzed') = ANY(sqlc.arg(analysis_states)::text[]))
+  AND (sqlc.arg(search)::text = ''
+    OR f.current_title ILIKE '%' || sqlc.arg(search)::text || '%'
+    OR f.fingerprint ILIKE '%' || sqlc.arg(search)::text || '%');
 
 -- name: GetFindingByID :one
 SELECT * FROM findings WHERE id = $1;

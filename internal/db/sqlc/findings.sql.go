@@ -315,15 +315,22 @@ WHERE f.project_id = $1
     JOIN reports r ON fo.report_id = r.id
     JOIN targets t ON r.target_id = t.id
     WHERE fo.finding_id = f.id AND t.name = ANY($6)))
+  AND (array_length($7::text[], 1) IS NULL
+    OR COALESCE(NULLIF(f.analysis_state, ''), 'unanalyzed') = ANY($7::text[]))
+  AND ($8::text = ''
+    OR f.current_title ILIKE '%' || $8::text || '%'
+    OR f.fingerprint ILIKE '%' || $8::text || '%')
 `
 
 type CountFindingsByProjectParams struct {
-	ProjectID pgtype.UUID `json:"project_id"`
-	Column2   []string    `json:"column_2"`
-	Column3   []string    `json:"column_3"`
-	Column4   []string    `json:"column_4"`
-	Column5   []string    `json:"column_5"`
-	Column6   []string    `json:"column_6"`
+	ProjectID      pgtype.UUID `json:"project_id"`
+	Column2        []string    `json:"column_2"`
+	Column3        []string    `json:"column_3"`
+	Column4        []string    `json:"column_4"`
+	Column5        []string    `json:"column_5"`
+	Column6        []string    `json:"column_6"`
+	AnalysisStates []string    `json:"analysis_states"`
+	Search         string      `json:"search"`
 }
 
 // The same filter predicates as ListFindingsByProject, without the page
@@ -337,6 +344,8 @@ func (q *Queries) CountFindingsByProject(ctx context.Context, arg CountFindingsB
 		arg.Column4,
 		arg.Column5,
 		arg.Column6,
+		arg.AnalysisStates,
+		arg.Search,
 	)
 	var count int64
 	err := row.Scan(&count)
@@ -1068,21 +1077,41 @@ WHERE f.project_id = $1
     JOIN reports r ON fo.report_id = r.id
     JOIN targets t ON r.target_id = t.id
     WHERE fo.finding_id = f.id AND t.name = ANY($6)))
-ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
+  AND (array_length($9::text[], 1) IS NULL
+    OR COALESCE(NULLIF(f.analysis_state, ''), 'unanalyzed') = ANY($9::text[]))
+  AND ($10::text = ''
+    OR f.current_title ILIKE '%' || $10::text || '%'
+    OR f.fingerprint ILIKE '%' || $10::text || '%')
+ORDER BY
+  CASE WHEN $11::text = 'severity' AND $12::text = 'desc' THEN f.current_severity_rank END DESC,
+  CASE WHEN $11::text = 'severity' AND $12::text = 'asc' THEN f.current_severity_rank END ASC,
+  CASE WHEN $11::text = 'first_seen' AND $12::text = 'desc' THEN f.first_seen_at END DESC,
+  CASE WHEN $11::text = 'first_seen' AND $12::text = 'asc' THEN f.first_seen_at END ASC,
+  CASE WHEN $11::text = 'last_seen' AND $12::text = 'desc' THEN f.last_seen_at END DESC,
+  CASE WHEN $11::text = 'last_seen' AND $12::text = 'asc' THEN f.last_seen_at END ASC,
+  CASE WHEN $11::text = 'title' AND $12::text = 'desc' THEN lower(f.current_title) END DESC,
+  CASE WHEN $11::text = 'title' AND $12::text = 'asc' THEN lower(f.current_title) END ASC,
+  f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 LIMIT $7 OFFSET $8
 `
 
 type ListFindingsByProjectParams struct {
-	ProjectID pgtype.UUID `json:"project_id"`
-	Column2   []string    `json:"column_2"`
-	Column3   []string    `json:"column_3"`
-	Column4   []string    `json:"column_4"`
-	Column5   []string    `json:"column_5"`
-	Column6   []string    `json:"column_6"`
-	Limit     int32       `json:"limit"`
-	Offset    int32       `json:"offset"`
+	ProjectID      pgtype.UUID `json:"project_id"`
+	Column2        []string    `json:"column_2"`
+	Column3        []string    `json:"column_3"`
+	Column4        []string    `json:"column_4"`
+	Column5        []string    `json:"column_5"`
+	Column6        []string    `json:"column_6"`
+	Limit          int32       `json:"limit"`
+	Offset         int32       `json:"offset"`
+	AnalysisStates []string    `json:"analysis_states"`
+	Search         string      `json:"search"`
+	SortKey        string      `json:"sort_key"`
+	SortDir        string      `json:"sort_dir"`
 }
 
+// search is a LIKE pattern the caller has escaped; sort_key and sort_dir are
+// validated by the caller and fall back to the severity order below.
 func (q *Queries) ListFindingsByProject(ctx context.Context, arg ListFindingsByProjectParams) ([]Finding, error) {
 	rows, err := q.db.Query(ctx, listFindingsByProject,
 		arg.ProjectID,
@@ -1093,6 +1122,10 @@ func (q *Queries) ListFindingsByProject(ctx context.Context, arg ListFindingsByP
 		arg.Column6,
 		arg.Limit,
 		arg.Offset,
+		arg.AnalysisStates,
+		arg.Search,
+		arg.SortKey,
+		arg.SortDir,
 	)
 	if err != nil {
 		return nil, err
