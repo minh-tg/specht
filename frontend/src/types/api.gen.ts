@@ -1510,6 +1510,7 @@ export interface paths {
      * @description Buckets open findings by age (`new` under 7 days, `aging` under 30,
      *     `stale` under 90, `debt` beyond), reports which have passed their
      *     severity's SLA, and trends new findings over the trailing twelve weeks.
+     *     Closed findings (fixed) take no part in the buckets.
      *
      *     The SLA table is critical 7 days, high 30, medium 90, low 180, unknown
      *     90. Only open and reopened findings can be overdue.
@@ -2603,7 +2604,7 @@ export interface components {
     ProjectStats: {
       /** @description Open and reopened findings; findings already fixed are not counted. */
       total_findings: number;
-      /** @description Open and reopened findings not in an ignoring analysis state. */
+      /** @description Findings the gate holds back right now, so the number always equals the gate's `blocking_count`: open findings at or above the policy's severity floor, admitted by source policy, not exempted by a reachability assessment and not covered by an approved waiver. */
       blocking_count: number;
       /** @description Approved */
       waiver_count: number;
@@ -2619,6 +2620,7 @@ export interface components {
     SeverityCount: {
       severity: string;
       count: number;
+      /** @description The gate's blockers of this severity. The values add up to the project's `blocking_count`. */
       blocking_count: number;
     };
     AnalysisStateCount: {
@@ -2626,7 +2628,7 @@ export interface components {
       count: number;
     };
     AgingResponse: {
-      /** @description Always all four buckets, in age order. */
+      /** @description Always all four buckets, in age order. They count open findings only. */
       buckets: components["schemas"]["AgingBucket"][];
       /** @description Every finding past its SLA; the `overdue` list is capped at 100. */
       overdue_total: number;
@@ -2634,8 +2636,10 @@ export interface components {
       overdue: components["schemas"]["OverdueFinding"][];
       /** @description Findings ever reopened. */
       reopened: number;
-      /** @description The trailing twelve weeks, oldest first. */
+      /** @description Findings first seen in each of the trailing twelve weeks, oldest first, whatever their state today. */
       new_per_week: components["schemas"]["WeeklyNew"][];
+      /** @description True when the project has more than 10000 open findings. The buckets and the overdue numbers then cover the 10000 oldest. */
+      truncated: boolean;
     };
     AgingBucket: {
       /** @enum {string} */

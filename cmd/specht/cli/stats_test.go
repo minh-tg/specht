@@ -112,6 +112,22 @@ func TestStatsAging(t *testing.T) {
 	}
 }
 
+func TestStatsAgingSaysWhenTruncated(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/projects/demo/aging", func(w http.ResponseWriter, r *http.Request) {
+		if _, err := w.Write([]byte(`{"buckets":[],"overdue_total":0,"overdue":[],"reopened":0,"new_per_week":[],"truncated":true}`)); err != nil {
+			t.Errorf("write truncated aging response: %v", err)
+		}
+	})
+	d, out, _ := testDeps(t, mux)
+	if err := runStats(t, d, "aging", "demo"); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); !strings.Contains(got, "cover the oldest ones") {
+		t.Fatalf("missing truncation note in output: %q", got)
+	}
+}
+
 func TestStatsAgingNoOverdue(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v1/projects/demo/aging", func(w http.ResponseWriter, r *http.Request) {
