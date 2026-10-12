@@ -313,6 +313,9 @@ export interface UserProfile {
   email: string;
   display_name?: string | null;
   role: "admin" | "member";
+  /** A deactivated account keeps its history and memberships but cannot sign in. */
+  disabled?: boolean;
+  disabled_at?: string;
   created_at: string;
 }
 
@@ -430,4 +433,27 @@ export interface WatcherHealth {
   healthy: boolean;
   stale: boolean;
   staleness_window?: string;
+}
+
+/** The whole server at a glance, for global admins. */
+export interface AdminStatus {
+  projects: number;
+  users: number;
+  open_findings: number;
+  reports: number;
+  oldest_settled_report_at?: string | null;
+}
+
+export interface RetentionPreview {
+  older_than_days: number;
+  cutoff: string;
+  stale_reports: number;
+}
+
+export interface RetentionResult {
+  older_than_days: number;
+  cutoff: string;
+  deleted_reports: number;
+  /** More reports are past the window than one run removes; run it again for the rest. */
+  truncated?: boolean;
 }

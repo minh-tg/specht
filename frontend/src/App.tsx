@@ -4,6 +4,7 @@ import { SessionCacheGuard } from "@/auth/SessionCacheGuard";
 import { AppShell } from "@/components/AppShell";
 import { Navbar } from "@/components/Navbar";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
+import { Admin } from "@/pages/Admin";
 import { ApiKeys } from "@/pages/ApiKeys";
 import { ChangeView } from "@/pages/ChangeView";
 import { FindingDetail } from "@/pages/FindingDetail";
@@ -159,6 +160,16 @@ export function AppRoutes() {
         element={
           <ProtectedRoute>
             <ProjectLayout />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          <ProtectedRoute>
+            <Titled title="Admin">
+              <Admin />
+            </Titled>
           </ProtectedRoute>
         }
       />

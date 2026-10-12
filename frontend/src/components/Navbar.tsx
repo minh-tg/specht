@@ -28,9 +28,14 @@ function SignedInLinks({ email, onLogout }: { email: string | null; onLogout: ()
         Teams
       </NavLink>
       {me.data?.role === "admin" && (
-        <NavLink to="/api-keys" className={navLinkClass}>
-          API Keys
-        </NavLink>
+        <>
+          <NavLink to="/admin" className={navLinkClass}>
+            Admin
+          </NavLink>
+          <NavLink to="/api-keys" className={navLinkClass}>
+            API Keys
+          </NavLink>
+        </>
       )}
       <button
         type="button"

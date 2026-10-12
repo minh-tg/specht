@@ -3,6 +3,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { SelectField } from "@/components/SelectField";
 import { SettingLine } from "@/components/SettingLine";
 import { SkeletonLines } from "@/components/SkeletonLines";
+import { StatusPill } from "@/components/StatusPill";
 import { Switch } from "@/components/Switch";
 import { Button } from "@/components/ui/button";
 import { formatDateTime, formatRelativeTime } from "@/lib/format";
@@ -13,36 +14,7 @@ import {
   intervalLabel,
   intervalOptions,
   STATUS,
-  type StatusTone,
 } from "./project-watcher/watcherCopy";
-
-const TONE_CLASS: Record<StatusTone, string> = {
-  ok: "text-sev-success-fg",
-  warn: "text-sev-high-fg",
-  bad: "text-sev-critical-fg",
-  off: "text-muted-foreground",
-};
-
-function StatusPill({ tone, children }: { readonly tone: StatusTone; readonly children: string; }) {
-  return (
-    <span
-      data-tone={tone}
-      className={cn(
-        "border-border inline-flex h-[26px] items-center gap-[7px] rounded border px-2.5 text-[0.8125rem] font-semibold",
-        TONE_CLASS[tone],
-      )}
-    >
-      <span
-        aria-hidden="true"
-        className={cn(
-          "size-[7px] rounded-full",
-          tone === "off" ? "border-[1.5px] border-current" : "bg-current",
-        )}
-      />
-      {children}
-    </span>
-  );
-}
 
 /**
  * The CVE watcher for one project: whether it checks this project's packages against new CVEs

@@ -1,3 +1,4 @@
+import type { StatusTone } from "@/components/StatusPill";
 import type { ProjectWatcher, WatcherStatus } from "@/types/api";
 
 const MINUTE = 60;
@@ -41,8 +42,6 @@ export function intervalOptions(
   const all = [...new Set([...allowed, watcher.interval_seconds])].sort((a, b) => a - b);
   return all.map((s) => ({ value: String(s), label: intervalLabel(s) }));
 }
-
-export type StatusTone = "ok" | "warn" | "bad" | "off";
 
 export interface StatusPresentation {
   readonly label: string;
