@@ -20,7 +20,7 @@ export const ANALYSIS_STATES = [
 ] as const;
 export type AnalysisState = typeof ANALYSIS_STATES[number];
 
-export const TECHNICAL_STATES = ["open", "fixed", "reopened"] as const;
+export const TECHNICAL_STATES = ["open", "fixed", "reopened", "archived"] as const;
 export type TechnicalState = typeof TECHNICAL_STATES[number];
 
 export const GATE_EFFECTS = ["block", "ignore"] as const;
@@ -122,6 +122,7 @@ const TECHNICAL_LABELS: Record<TechnicalState, string> = {
   open: "Open",
   fixed: "Fixed",
   reopened: "Reopened",
+  archived: "Archived",
 };
 
 const GATE_EFFECT_LABELS: Record<GateEffect, string> = {

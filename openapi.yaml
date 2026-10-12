@@ -907,6 +907,48 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+
+  /api/v1/projects/{slug}/reports/{id}:
+    delete:
+      tags: [Reports]
+      operationId: deleteReport
+      summary: Delete a report
+      description: |
+        Removes the report with its occurrences and inventory, in one
+        transaction, and settles the findings it was evidence for:
+
+        - an open or reopened finding that no other report shows becomes
+          `archived`: readable with its history, but not counted, not blocking
+          and not aging. A `report_deleted` event records who did it.
+        - a finding the report introduced is attributed to the earliest report
+          that still shows it.
+        - fixed findings stay fixed.
+
+        A later scan that sees an archived finding again opens it afresh. The
+        retention purge uses the same routine. The count of archived findings
+        comes back in `X-Archived-Findings`. A report that is still processing
+        answers `409 report_processing`. Needs the project admin role and a
+        session (API keys are refused).
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Deleted.
+          headers:
+            X-Archived-Findings:
+              description: How many findings lost their only evidence and were archived.
+              schema: { type: integer }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /api/v1/reports/{id}:
     get:
       tags: [Reports]
@@ -954,7 +996,9 @@ paths:
           schema: { type: string, example: "critical,high" }
         - name: status
           in: query
-          description: Comma-separated lifecycle states (open, fixed, reopened).
+          description: >-
+            Comma-separated lifecycle states (open, fixed, reopened, archived). Without it the list
+            leaves out archived findings, which lost their only evidence when a report was deleted.
           schema: { type: string, example: open }
         - name: kind
           in: query
@@ -3828,7 +3872,7 @@ components:
       properties:
         total_findings:
           type: integer
-          description: Open and reopened findings; findings already fixed are not counted.
+          description: Open and reopened findings; fixed and archived findings are not counted.
         blocking_count:
           type: integer
           description: >-
@@ -3841,7 +3885,7 @@ components:
         report_count: { type: integer }
         by_severity:
           type: array
-          description: Counts per severity among the project's open and reopened findings (findings already fixed are not counted).
+          description: Counts per severity among the project's open and reopened findings (fixed and archived findings are not counted).
           items: { $ref: "#/components/schemas/SeverityCount" }
         by_analysis_state:
           type: array
