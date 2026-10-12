@@ -109,7 +109,8 @@ func TestE2E_APIKeyLifecycle(t *testing.T) {
 		status, raw = doJSON(t, http.MethodPost, "/api/v1/auth/apikeys", viewerToken,
 			map[string]any{"project": slug, "name": "viewer-key"})
 		require.Equal(t, http.StatusForbidden, status, string(raw))
-		require.Equal(t, "insufficient_role", errorCode(t, raw), "creating keys is admin-only")
+		require.Equal(t, "project_access_denied", errorCode(t, raw),
+			"a person with no role on the project cannot create keys for it")
 
 		created := request[apiKeyEnvelope](t, http.MethodPost, "/api/v1/auth/apikeys", adminToken,
 			map[string]any{"project": slug, "name": "e2e-main"}, http.StatusCreated)
@@ -192,7 +193,7 @@ func TestE2E_APIKeyLifecycle(t *testing.T) {
 		status, raw = doJSON(t, http.MethodDelete,
 			"/api/v1/auth/apikeys/"+unknown+"?project="+slug, viewerToken, nil)
 		require.Equal(t, http.StatusForbidden, status, string(raw))
-		require.Equal(t, "insufficient_role", errorCode(t, raw))
+		require.Equal(t, "project_access_denied", errorCode(t, raw))
 
 		status, raw = doJSON(t, http.MethodDelete,
 			"/api/v1/auth/apikeys/"+unknown+"?project="+slug, mintKey(t, slug), nil)

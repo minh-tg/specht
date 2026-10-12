@@ -352,10 +352,20 @@ func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResp
 	return resp, nil
 }
 
+// requireProjectKeyManager lets a project manager or admin manage the
+// project's API keys. A key with the admin scope for the same project may too,
+// as it could before keys were opened to project managers.
+func (u *Usecases) requireProjectKeyManager(ctx context.Context, projectID string) error {
+	return u.requireProjectManager(ctx, projectID)
+}
+
 func (u *Usecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string, expiresAt *time.Time) (*APIKeyResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf(authMsgProjectNotFound, err)
+	}
+	if err := u.requireProjectKeyManager(ctx, project.ID); err != nil {
+		return nil, err
 	}
 	creatorID, err := uuid.Parse(createdBy)
 	if err != nil {
@@ -404,6 +414,9 @@ func (u *Usecases) ListAPIKeys(ctx context.Context, projectSlug string) ([]APIKe
 	if err != nil {
 		return nil, fmt.Errorf(authMsgProjectNotFound, err)
 	}
+	if err := u.requireProjectKeyManager(ctx, project.ID); err != nil {
+		return nil, err
+	}
 
 	keys, err := u.deps.Stores.APIKeys.ListByProject(ctx, project.ID)
 	if err != nil {
@@ -431,6 +444,9 @@ func (u *Usecases) RevokeAPIKey(ctx context.Context, projectSlug, keyID string) 
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return fmt.Errorf(authMsgProjectNotFound, err)
+	}
+	if err := u.requireProjectKeyManager(ctx, project.ID); err != nil {
+		return err
 	}
 
 	id, err := uuid.Parse(keyID)

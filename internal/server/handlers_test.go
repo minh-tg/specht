@@ -4594,3 +4594,34 @@ func TestListReports_ConditionalRequest(t *testing.T) {
 	assert.Equal(t, http.StatusOK, changed.Code, "a report that moved on invalidates the tag")
 	assert.NotEqual(t, etag, changed.Header().Get("ETag"))
 }
+
+// A project member without the manager role reaches the use case and is
+// refused there; the response is the same 403 as for a non-member.
+func TestAPIKeyManagementMapsRoleDenialTo403(t *testing.T) {
+	denied := func(context.Context, string, string, *time.Time) (*usecase.APIKeyResponse, error) {
+		return nil, usecase.ErrProjectAccessDenied
+	}
+	mock := &mockUsecases{
+		createAPIKeyFn: denied,
+		listAPIKeysFn: func(context.Context, string) ([]usecase.APIKeyResponse, error) {
+			return nil, usecase.ErrProjectAccessDenied
+		},
+		revokeAPIKeyFn: func(context.Context, string, string) error { return usecase.ErrProjectAccessDenied },
+	}
+	router := testRouter(mock)
+	user := func(req *http.Request) *http.Request {
+		return req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "test-user"}))
+	}
+
+	create := user(httptest.NewRequest("POST", "/api/v1/auth/apikeys", strings.NewReader(`{"project":"my-app","name":"ci"}`)))
+	create.Header.Set("Content-Type", "application/json")
+	list := user(httptest.NewRequest("GET", "/api/v1/auth/apikeys?project=my-app", nil))
+	revoke := user(httptest.NewRequest("DELETE", "/api/v1/auth/apikeys/00000000-0000-0000-0000-000000000099?project=my-app", nil))
+
+	for name, req := range map[string]*http.Request{"create": create, "list": list, "revoke": revoke} {
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusForbidden, w.Code, name)
+		assert.Contains(t, w.Body.String(), "project_access_denied", name)
+	}
+}
