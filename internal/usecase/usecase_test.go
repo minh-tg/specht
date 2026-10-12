@@ -927,6 +927,8 @@ type mockUserRepo struct {
 	listFn              func(context.Context, string, int32, int32) ([]port.User, error)
 	updateDisplayNameFn func(context.Context, string, *string) (port.User, error)
 	setRoleFn           func(context.Context, string, string) (port.User, error)
+	changeRoleFn        func(context.Context, string, string) (port.User, error)
+	setDisabledFn       func(context.Context, string, bool) (port.User, error)
 	clearPasswordFn     func(context.Context, string) error
 	tokenVersionFn      func(context.Context, string) (int32, error)
 	bumpTokenVersionFn  func(context.Context, string) error
@@ -993,6 +995,20 @@ func (m *mockUserRepo) SetRole(ctx context.Context, userID, role string) (port.U
 		return port.User{}, fmt.Errorf("unexpected call to SetRole")
 	}
 	return m.setRoleFn(ctx, userID, role)
+}
+
+func (m *mockUserRepo) ChangeRole(ctx context.Context, userID, role string) (port.User, error) {
+	if m.changeRoleFn == nil {
+		return port.User{}, fmt.Errorf("unexpected call to ChangeRole")
+	}
+	return m.changeRoleFn(ctx, userID, role)
+}
+
+func (m *mockUserRepo) SetDisabled(ctx context.Context, userID string, disabled bool) (port.User, error) {
+	if m.setDisabledFn == nil {
+		return port.User{}, fmt.Errorf("unexpected call to SetDisabled")
+	}
+	return m.setDisabledFn(ctx, userID, disabled)
 }
 
 type mockRefreshTokenRepo struct {

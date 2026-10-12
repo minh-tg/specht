@@ -37,7 +37,11 @@ type UserProfile struct {
 	Email       string `json:"email"`
 	DisplayName string `json:"display_name,omitempty"`
 	Role        string `json:"role"`
-	CreatedAt   string `json:"created_at"`
+	// Disabled is true for a deactivated account, which keeps its history and
+	// memberships but cannot sign in. DisabledAt says since when.
+	Disabled   bool    `json:"disabled"`
+	DisabledAt *string `json:"disabled_at,omitempty"`
+	CreatedAt  string  `json:"created_at"`
 }
 
 // AuthResponse carries the tokens and identity returned by login/register.
@@ -172,6 +176,10 @@ func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, claims auth.SSOCl
 		if err != nil {
 			return "", "", false, fmt.Errorf("lookup linked sso user: %w", err)
 		}
+		if user.DisabledAt != nil {
+			slog.Warn("sso login: deactivated account", "user_id", user.ID, "sub", sub)
+			return "", "", false, auth.ErrSSONotProvisioned
+		}
 		slog.Info("sso login: linked account", "user_id", user.ID, "sub", sub)
 		return user.ID, auth.TokenRole(user.Role), false, nil
 	case !errors.Is(err, port.ErrNotFound):
@@ -186,6 +194,9 @@ func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, claims auth.SSOCl
 
 	user, err := u.deps.Stores.Users.GetByEmail(ctx, email)
 	switch {
+	case err == nil && user.DisabledAt != nil:
+		slog.Warn("sso login: deactivated account", "user_id", user.ID, "sub", sub)
+		return "", "", false, auth.ErrSSONotProvisioned
 	case err == nil:
 		return u.linkExistingSSOUser(ctx, user, issuer, sub)
 	case errors.Is(err, port.ErrNotFound):
@@ -318,6 +329,12 @@ func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResp
 	}
 
 	if !u.deps.Passwords.Verify(password, user.PasswordHash) {
+		return nil, errors.New(authMsgInvalidCredentials)
+	}
+	if user.DisabledAt != nil {
+		// Same answer as a wrong password, so the response does not tell
+		// whoever holds the password that the account exists but is off.
+		slog.Warn("login: deactivated account", "user_id", user.ID)
 		return nil, errors.New(authMsgInvalidCredentials)
 	}
 
@@ -500,6 +517,9 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 	if err != nil {
 		return nil, errors.New(authMsgUserNotFound)
 	}
+	if user.DisabledAt != nil {
+		return nil, errors.New(authMsgUserNotFound)
+	}
 
 	token, err := u.issueAccessToken(ctx, userID, user.Email, auth.TokenRole(user.Role))
 	if err != nil {
@@ -600,13 +620,19 @@ func toUserProfile(user port.User) UserProfile {
 	if user.DisplayName != nil {
 		name = *user.DisplayName
 	}
-	return UserProfile{
+	profile := UserProfile{
 		ID:          user.ID,
 		Email:       user.Email,
 		DisplayName: name,
 		Role:        user.Role,
+		Disabled:    user.DisabledAt != nil,
 		CreatedAt:   user.CreatedAt.Format(time.RFC3339),
 	}
+	if user.DisabledAt != nil {
+		since := user.DisabledAt.Format(time.RFC3339)
+		profile.DisabledAt = &since
+	}
+	return profile
 }
 
 func strPtr(s string) *string { return &s }
@@ -649,7 +675,7 @@ func (u *Usecases) ExchangeSSOCode(ctx context.Context, code string) (*AuthRespo
 	}
 
 	user, err := u.deps.Stores.Users.GetByID(ctx, ssoCode.UserID)
-	if err != nil {
+	if err != nil || user.DisabledAt != nil {
 		return nil, auth.ErrInvalidCredential
 	}
 

@@ -78,6 +78,9 @@ type (
 		GetProfile(ctx context.Context, userID string) (*usecase.UserProfile, error)
 		UpdateProfile(ctx context.Context, userID string, displayName *string) (*usecase.UserProfile, error)
 		ListUsers(ctx context.Context, filter string, limit, offset int32) ([]usecase.UserProfile, error)
+		ChangeUserRole(ctx context.Context, userID, role string) (*usecase.UserProfile, error)
+		DeactivateUser(ctx context.Context, userID string) (*usecase.UserProfile, error)
+		ReactivateUser(ctx context.Context, userID string) (*usecase.UserProfile, error)
 	}
 
 	APIKeyUsecases interface {

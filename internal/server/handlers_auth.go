@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/minh-tg/specht/internal/audit"
 	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/usecase"
 )
 
@@ -284,4 +285,83 @@ func (h *Handler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusNoContent)
 	h.audit.HTTP(r, audit.EventRevokeAPIKey, audit.OutcomeSuccess, project, keyID, nil)
+}
+
+// respondUserAdminError maps the user admin errors to responses. It returns
+// false for an error it does not recognise.
+func respondUserAdminError(w http.ResponseWriter, err error) bool {
+	switch {
+	case errors.Is(err, usecase.ErrProjectAccessDenied):
+		respondError(w, http.StatusForbidden, "insufficient_role", "requires admin role")
+	case errors.Is(err, usecase.ErrInvalidID):
+		respondError(w, http.StatusBadRequest, "invalid_id", "invalid user id")
+	case errors.Is(err, usecase.ErrInvalidGlobalRole):
+		respondError(w, http.StatusBadRequest, "invalid_role", err.Error())
+	case errors.Is(err, usecase.ErrLastGlobalAdmin):
+		respondError(w, http.StatusConflict, "last_admin", "this is the last active admin")
+	case errors.Is(err, usecase.ErrCannotDeactivateSelf):
+		respondError(w, http.StatusConflict, "cannot_deactivate_self", err.Error())
+	case errors.Is(err, port.ErrNotFound):
+		respondError(w, http.StatusNotFound, "not_found", "user not found")
+	default:
+		return false
+	}
+	return true
+}
+
+// ChangeUserRole sets an account's global role.
+func (h *Handler) ChangeUserRole(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Role string `json:"role"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", authMsgInvalidBody) {
+		return
+	}
+	profile, err := h.usecase.ChangeUserRole(r.Context(), id, req.Role)
+	if err != nil {
+		if respondUserAdminError(w, err) {
+			return
+		}
+		slog.Error("change user role", "user_id", id, "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not change the role")
+		return
+	}
+	respondJSON(w, http.StatusOK, profile)
+	h.audit.HTTP(r, audit.EventChangeUserRole, audit.OutcomeSuccess, "", id, nil)
+}
+
+// DeactivateUser ends an account's access without deleting it.
+func (h *Handler) DeactivateUser(w http.ResponseWriter, r *http.Request) {
+	h.setUserActive(w, r, false)
+}
+
+// ReactivateUser lets a deactivated account sign in again.
+func (h *Handler) ReactivateUser(w http.ResponseWriter, r *http.Request) {
+	h.setUserActive(w, r, true)
+}
+
+func (h *Handler) setUserActive(w http.ResponseWriter, r *http.Request, active bool) {
+	id := chi.URLParam(r, "id")
+	var (
+		profile *usecase.UserProfile
+		err     error
+		event   = audit.EventReactivateUser
+	)
+	if active {
+		profile, err = h.usecase.ReactivateUser(r.Context(), id)
+	} else {
+		event = audit.EventDeactivateUser
+		profile, err = h.usecase.DeactivateUser(r.Context(), id)
+	}
+	if err != nil {
+		if respondUserAdminError(w, err) {
+			return
+		}
+		slog.Error("set user active", "user_id", id, "active", active, "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not update the account")
+		return
+	}
+	respondJSON(w, http.StatusOK, profile)
+	h.audit.HTTP(r, event, audit.OutcomeSuccess, "", id, nil)
 }
