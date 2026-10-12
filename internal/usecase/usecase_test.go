@@ -370,7 +370,7 @@ type mockReportRepo struct {
 	port.ReportStore
 	createFn                   func(context.Context, port.CreateReportInput) (port.Report, error)
 	getByIDFn                  func(context.Context, string) (port.Report, error)
-	listByProjectFn            func(context.Context, string, int32, int32) ([]port.Report, error)
+	listByProjectFn            func(context.Context, string, port.ReportFilter, int32, int32) ([]port.Report, error)
 	updateStatusFn             func(context.Context, string, string, string, int32, *string) (port.Report, error)
 	latestReportFn             func(context.Context, string, string) (port.CompletedReport, error)
 	byCommitFn                 func(context.Context, string, string, string) (port.CompletedReport, error)
@@ -412,11 +412,11 @@ func (m *mockReportRepo) GetByID(ctx context.Context, id string) (port.Report, e
 	return m.getByIDFn(ctx, id)
 }
 
-func (m *mockReportRepo) ListByProject(ctx context.Context, projectID string, limit, offset int32) ([]port.Report, error) {
+func (m *mockReportRepo) ListByProject(ctx context.Context, projectID string, filter port.ReportFilter, limit, offset int32) ([]port.Report, error) {
 	if m.listByProjectFn == nil {
 		return nil, fmt.Errorf("unexpected call to ListByProject")
 	}
-	return m.listByProjectFn(ctx, projectID, limit, offset)
+	return m.listByProjectFn(ctx, projectID, filter, limit, offset)
 }
 
 func (m *mockReportRepo) LatestCompletedByScanner(ctx context.Context, projectID, scanner string) (port.CompletedReport, error) {
@@ -3156,7 +3156,7 @@ func TestListReports_Success(t *testing.T) {
 	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
-	rr.listByProjectFn = func(ctx context.Context, projectID string, limit, offset int32) ([]port.Report, error) {
+	rr.listByProjectFn = func(ctx context.Context, projectID string, _ port.ReportFilter, limit, offset int32) ([]port.Report, error) {
 		return []port.Report{makeReport()}, nil
 	}
 
@@ -3164,7 +3164,7 @@ func TestListReports_Success(t *testing.T) {
 		Stores: &port.Stores{Projects: pr, Reports: rr},
 	})
 
-	reports, err := uc.ListReports(adminCtx(), "my-app", 20, 0)
+	reports, err := uc.ListReports(adminCtx(), "my-app", ReportFilter{}, 20, 0)
 	require.NoError(t, err)
 	assert.Len(t, reports, 1)
 	assert.Equal(t, "trivy", reports[0].ToolName)
@@ -3180,7 +3180,7 @@ func TestListReports_ProjectNotFound(t *testing.T) {
 		Stores: &port.Stores{Projects: pr},
 	})
 
-	_, err := uc.ListReports(context.Background(), "nonexistent", 20, 0)
+	_, err := uc.ListReports(context.Background(), "nonexistent", ReportFilter{}, 20, 0)
 	assert.ErrorContains(t, err, "lookup project")
 }
 
@@ -4218,4 +4218,20 @@ func TestIngestUnknownScan_CannotCloseUnseenFinding(t *testing.T) {
 	assert.Equal(t, 1, out.TotalFindings)
 	assert.Equal(t, "high", upsertedSeverity, "fresh unknown-scan finding upserts as open/high, never fixed")
 	// No update-analysis call may have fired (no fixed write, no expiry).
+}
+
+func TestListReports_PassesFilterToStore(t *testing.T) {
+	pr := &mockProjectRepo{getBySlugFn: func(context.Context, string) (port.Project, error) { return makeProject(true), nil }}
+	var got port.ReportFilter
+	rr := &mockReportRepo{listByProjectFn: func(_ context.Context, _ string, filter port.ReportFilter, limit, offset int32) ([]port.Report, error) {
+		got = filter
+		assert.Equal(t, int32(1), limit)
+		return nil, nil
+	}}
+	uc := New(Deps{Stores: &port.Stores{Projects: pr, Reports: rr}})
+
+	_, err := uc.ListReports(adminCtx(), "my-app", ReportFilter{Branch: "main", CommitSha: "abcdef0"}, 1, 0)
+
+	require.NoError(t, err)
+	assert.Equal(t, port.ReportFilter{Branch: "main", CommitSha: "abcdef0"}, got)
 }

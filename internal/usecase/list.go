@@ -713,7 +713,15 @@ func fixFallback(kind string) string {
 	}
 }
 
-func (u *Usecases) ListReports(ctx context.Context, projectSlug string, limit, offset int32) ([]ReportResponse, error) {
+// ReportFilter narrows the report list to one branch or one commit. Empty
+// fields match every report.
+type ReportFilter struct {
+	Branch    string
+	CommitSha string
+}
+
+// ListReports returns the project's reports, newest first.
+func (u *Usecases) ListReports(ctx context.Context, projectSlug string, filter ReportFilter, limit, offset int32) ([]ReportResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
@@ -722,7 +730,10 @@ func (u *Usecases) ListReports(ctx context.Context, projectSlug string, limit, o
 		return nil, err
 	}
 
-	reports, err := u.deps.Stores.Reports.ListByProject(ctx, project.ID, limit, offset)
+	reports, err := u.deps.Stores.Reports.ListByProject(ctx, project.ID, port.ReportFilter{
+		Branch:    filter.Branch,
+		CommitSha: filter.CommitSha,
+	}, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list reports: %w", err)
 	}

@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -117,7 +119,7 @@ type (
 
 	ReportUsecases interface {
 		IngestReport(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
-		ListReports(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error)
+		ListReports(ctx context.Context, projectSlug string, filter usecase.ReportFilter, limit, offset int32) ([]usecase.ReportResponse, error)
 		GetReport(ctx context.Context, reportID string) (*usecase.ReportResponse, error)
 	}
 
@@ -293,6 +295,42 @@ func respondJSON(w http.ResponseWriter, status int, v any) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		log.Printf("encode response: %v", err)
 	}
+}
+
+// respondJSONConditional answers 200 with a weak ETag derived from the body,
+// or 304 with no body when the client already holds that version. A poller
+// then costs one read and no payload while nothing changed.
+func respondJSONConditional(w http.ResponseWriter, r *http.Request, v any) {
+	body, err := json.Marshal(v)
+	if err != nil {
+		log.Printf("encode response: %v", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "internal server error")
+		return
+	}
+	sum := sha256.Sum256(body)
+	etag := `W/"` + hex.EncodeToString(sum[:16]) + `"`
+	w.Header().Set("ETag", etag)
+	if etagMatches(r.Header.Get("If-None-Match"), etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write(append(body, '\n')); err != nil {
+		log.Printf("write response: %v", err)
+	}
+}
+
+// etagMatches reports whether an If-None-Match header lists etag (weak
+// comparison) or the wildcard.
+func etagMatches(header, etag string) bool {
+	for _, candidate := range strings.Split(header, ",") {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "*" || strings.TrimPrefix(candidate, "W/") == strings.TrimPrefix(etag, "W/") {
+			return true
+		}
+	}
+	return false
 }
 
 func respondError(w http.ResponseWriter, status int, code, message string) {

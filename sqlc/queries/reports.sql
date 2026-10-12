@@ -25,8 +25,12 @@ INSERT INTO reports (
 SELECT * FROM reports WHERE id = $1;
 
 -- name: ListReportsByProject :many
+-- An empty branch or commit_sha selects every report. commit_sha is an exact
+-- match served by the (project_id, commit_sha) index.
 SELECT * FROM reports
 WHERE project_id = $1
+  AND (sqlc.arg(branch)::text = '' OR branch = sqlc.arg(branch)::text)
+  AND (sqlc.arg(commit_sha)::text = '' OR commit_sha = sqlc.arg(commit_sha)::text)
 ORDER BY created_at DESC, id DESC
 LIMIT $2 OFFSET $3;
 

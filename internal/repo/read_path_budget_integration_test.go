@@ -89,7 +89,7 @@ func TestReadPathQueryBudget(t *testing.T) {
 		"finding detail is a fixed set of reads (row, display context, dimensions)")
 
 	qReports := measure(func() {
-		_, rerr := uc.ListReports(actx, "read-budget", 50, 0)
+		_, rerr := uc.ListReports(actx, "read-budget", usecase.ReportFilter{}, 50, 0)
 		require.NoError(t, rerr, "report history must read cleanly")
 	})
 	t.Logf("list reports: q=%d", qReports)

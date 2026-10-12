@@ -852,6 +852,14 @@ type SignoffStore interface {
 
 // ---------- Reports ----------
 
+// ReportFilter narrows a report listing. Empty fields match every report.
+type ReportFilter struct {
+	// Branch is an exact branch name.
+	Branch string
+	// CommitSha is an exact commit id.
+	CommitSha string
+}
+
 // Report is an ingested scan report row.
 type Report struct {
 	ID            string
@@ -905,7 +913,7 @@ type CreateReportInput struct {
 type ReportStore interface {
 	Create(ctx context.Context, input CreateReportInput) (Report, error)
 	GetByID(ctx context.Context, id string) (Report, error)
-	ListByProject(ctx context.Context, projectID string, limit, offset int32) ([]Report, error)
+	ListByProject(ctx context.Context, projectID string, filter ReportFilter, limit, offset int32) ([]Report, error)
 	UpdateStatus(ctx context.Context, id, projectID string, status string, totalFindings int32, errorMessage *string) (Report, error)
 	// LatestCompletedByScanner returns the newest completed report from
 	// one scanner, or ErrNotFound when the scanner never completed.

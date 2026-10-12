@@ -298,7 +298,7 @@ func TestRealDataIdenticalIngest_Replay(t *testing.T) {
 
 	project, err := stores.Projects.GetBySlug(ctx, "my-app")
 	require.NoError(t, err)
-	reports, err := stores.Reports.ListByProject(ctx, project.ID, 100, 0)
+	reports, err := stores.Reports.ListByProject(ctx, project.ID, port.ReportFilter{}, 100, 0)
 	require.NoError(t, err)
 	for _, r := range reports {
 		assert.NotEqual(t, "processing", r.Status, "no stranded processing rows")
@@ -518,7 +518,7 @@ func TestNucleiIngest_EndToEnd(t *testing.T) {
 	for _, f := range findings {
 		assert.Equal(t, "dast", f.FindingKind)
 	}
-	stored, err := stores.Reports.ListByProject(ctx, project.ID, 10, 0)
+	stored, err := stores.Reports.ListByProject(ctx, project.ID, port.ReportFilter{}, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, stored, 1)
 	assert.Equal(t, "dast", stored[0].ScanType)

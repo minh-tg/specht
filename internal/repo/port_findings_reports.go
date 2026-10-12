@@ -85,12 +85,12 @@ func (r *pgReportPort) GetByID(ctx context.Context, id string) (port.Report, err
 	return reportRowToPort(row), nil
 }
 
-func (r *pgReportPort) ListByProject(ctx context.Context, projectID string, limit, offset int32) ([]port.Report, error) {
+func (r *pgReportPort) ListByProject(ctx context.Context, projectID string, filter port.ReportFilter, limit, offset int32) ([]port.Report, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.inner.ListByProject(ctx, pid, limit, offset)
+	rows, err := r.inner.ListByProject(ctx, pid, filter, limit, offset)
 	if err != nil {
 		return nil, err
 	}
