@@ -44,6 +44,29 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/capabilities": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Sign-in options this server offers
+     * @description Unauthenticated, so a signed-out page can show a Register link or an
+     *     SSO button only when they work. Carries no secrets and no identity
+     *     provider details. The flags change only when the server restarts, so
+     *     the response may be cached for a minute.
+     */
+    get: operations["getCapabilities"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/auth/register": {
     parameters: {
       query?: never;
@@ -1394,6 +1417,22 @@ export interface components {
       version: string;
       commit: string;
     };
+    Capabilities: {
+      registration: {
+        /** @description False when self-service registration answers 403. */
+        enabled: boolean;
+      };
+      sso: {
+        enabled: boolean;
+        /**
+         * @description Where the browser goes to start SSO. Present only when SSO is enabled.
+         * @example /api/v1/auth/sso/login
+         */
+        login_path?: string;
+      };
+      version: string;
+      commit: string;
+    };
     EmailPasswordRequest: {
       /** Format: email */
       email: string;
@@ -2543,6 +2582,28 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Version"];
+        };
+      };
+    };
+  };
+  getCapabilities: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The sign-in options and the build version. */
+      200: {
+        headers: {
+          /** @description public, max-age=60 */
+          "Cache-Control"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Capabilities"];
         };
       };
     };
