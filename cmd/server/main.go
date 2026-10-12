@@ -190,6 +190,7 @@ func main() {
 		Passwords:               auth.NewPasswordHasher(),
 		InventoryTTL:            cfg.InventoryTTL,
 		SSOAllowUnverifiedEmail: cfg.SSO.AllowUnverifiedEmail,
+		Watcher:                 usecase.WatcherSettings{Enabled: cfg.Watcher.Enable, PollInterval: cfg.Watcher.PollInterval},
 		Tracker:                 buildTrackerDispatcher(),
 		Intel: intel.NewStore(cfg.Intel.TTL, nil,
 			&intel.EPSSProvider{BaseURL: cfg.Intel.EPSSBaseURL},
