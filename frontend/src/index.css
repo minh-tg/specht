@@ -268,6 +268,18 @@
   --ease-exiting: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-moving: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+
+  /* The verdict stamp settles once when the verdict changes. A one-off feedback animation, so a
+     keyframe, not a transition; reduced motion collapses it to its end state. */
+  --animate-stamp-land: stamp-land 180ms cubic-bezier(0.23, 1, 0.32, 1);
+  @keyframes stamp-land {
+    from {
+      transform: scale(1.08);
+    }
+    to {
+      transform: scale(1);
+    }
+  }
 }
 
 @theme inline {
@@ -308,6 +320,36 @@
 }
 
 @layer components {
+  /* The drum: three dots that tap in sequence while the app waits for a scan. A looping indicator, so
+     it is a keyframe animation. Reduced motion stills it (the global rule below). */
+  .drum i {
+    display: block;
+    width: 7px;
+    height: 7px;
+    border-radius: 9999px;
+    background: currentColor;
+    animation: drum-tap 1.2s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+  }
+  .drum i:nth-child(2) {
+    animation-delay: 130ms;
+  }
+  .drum i:nth-child(3) {
+    animation-delay: 260ms;
+  }
+  @keyframes drum-tap {
+    0%,
+    38%,
+    100% {
+      transform: translateY(0);
+    }
+    10% {
+      transform: translateY(-5px);
+    }
+    20% {
+      transform: translateY(0);
+    }
+  }
+
   /* Labels, severity words and verdict stamps are set condensed and heavy, in capitals, so they read
      as marks and stay narrow in a table column. The family comes from the font-label utility; this
      adds the width, weight and spacing a theme variable cannot carry. */
