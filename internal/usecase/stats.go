@@ -27,13 +27,16 @@ type AnalysisStateCount struct {
 
 // ProjectStats is a project's aggregate finding/waiver/report statistics.
 type ProjectStats struct {
-	TotalFindings   int32                `json:"total_findings"`
-	BlockingCount   int32                `json:"blocking_count"`
-	WaiverCount     int32                `json:"waiver_count"`
-	ReportCount     int32                `json:"report_count"`
-	BySeverity      []SeverityCount      `json:"by_severity"`
-	ByAnalysisState []AnalysisStateCount `json:"by_analysis_state"`
-	LatestReport    *ReportResponse      `json:"latest_report,omitempty"`
+	TotalFindings int32 `json:"total_findings"`
+	BlockingCount int32 `json:"blocking_count"`
+	WaiverCount   int32 `json:"waiver_count"`
+	// PendingWaiverCount is the number of waiver requests waiting for a
+	// decision. They do not count in the gate until approved.
+	PendingWaiverCount int32                `json:"pending_waiver_count"`
+	ReportCount        int32                `json:"report_count"`
+	BySeverity         []SeverityCount      `json:"by_severity"`
+	ByAnalysisState    []AnalysisStateCount `json:"by_analysis_state"`
+	LatestReport       *ReportResponse      `json:"latest_report,omitempty"`
 }
 
 func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*ProjectStats, error) {
@@ -58,6 +61,11 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 	waiverCount, err := u.deps.Stores.Stats.GetProjectWaiverCount(ctx, project.ID)
 	if err != nil {
 		return nil, fmt.Errorf("get waiver count: %w", err)
+	}
+
+	pendingWaiverCount, err := u.deps.Stores.Stats.GetProjectPendingWaiverCount(ctx, project.ID)
+	if err != nil {
+		return nil, fmt.Errorf("get pending waiver count: %w", err)
 	}
 
 	reportCount, err := u.deps.Stores.Stats.GetProjectReportCount(ctx, project.ID)
@@ -109,13 +117,14 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 	}
 
 	return &ProjectStats{
-		TotalFindings:   totalFindings,
-		BlockingCount:   totalBlocking,
-		WaiverCount:     waiverCount,
-		ReportCount:     reportCount,
-		BySeverity:      sevCounts,
-		ByAnalysisState: stateCounts,
-		LatestReport:    latest,
+		TotalFindings:      totalFindings,
+		BlockingCount:      totalBlocking,
+		WaiverCount:        waiverCount,
+		PendingWaiverCount: pendingWaiverCount,
+		ReportCount:        reportCount,
+		BySeverity:         sevCounts,
+		ByAnalysisState:    stateCounts,
+		LatestReport:       latest,
 	}, nil
 }
 

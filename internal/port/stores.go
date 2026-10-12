@@ -982,6 +982,7 @@ type StatsStore interface {
 	GetProjectStats(ctx context.Context, projectID string) ([]SeverityStat, error)
 	GetProjectAnalysisStateCounts(ctx context.Context, projectID string) ([]AnalysisStateStat, error)
 	GetProjectWaiverCount(ctx context.Context, projectID string) (int32, error)
+	GetProjectPendingWaiverCount(ctx context.Context, projectID string) (int32, error)
 	GetProjectReportCount(ctx context.Context, projectID string) (int32, error)
 	GetProjectLatestReport(ctx context.Context, projectID string) (Report, error)
 	// GetAgingRows loads every finding's aging input for a project,

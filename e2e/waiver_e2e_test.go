@@ -198,6 +198,14 @@ func TestE2E_WaiverRequestApproval(t *testing.T) {
 		return map[string]any{"target_ids": []string{findingID}, "reason": "not reachable from the public API", "expires_at": expires}
 	}
 
+	type waiverCounts struct {
+		WaiverCount        int `json:"waiver_count"`
+		PendingWaiverCount int `json:"pending_waiver_count"`
+	}
+	counts := func() waiverCounts {
+		return request[waiverCounts](t, http.MethodGet, "/api/v1/projects/"+slug+"/stats", adminToken, nil, http.StatusOK)
+	}
+
 	var pending waiverReview
 	t.Run("a member's request stays pending and the gate stays blocked", func(t *testing.T) {
 		pending = request[waiverReview](t, http.MethodPost, base+"/requests", memberToken, requestBody(target.ID), http.StatusCreated)
@@ -207,6 +215,7 @@ func TestE2E_WaiverRequestApproval(t *testing.T) {
 		require.Equal(t, memberMe.ID, *pending.RequestedBy)
 
 		require.True(t, getGate(t, slug, "").ThresholdBreached, "a pending request must not silence the gate")
+		require.Equal(t, waiverCounts{WaiverCount: 0, PendingWaiverCount: 1}, counts(), "the request shows as pending, not as a waiver")
 		matched := request[checkMatchResponse](t, http.MethodPost, base+"/check-match", adminToken,
 			map[string]string{"finding_id": target.ID}, http.StatusOK)
 		require.False(t, matched.Matched)
@@ -256,6 +265,7 @@ func TestE2E_WaiverRequestApproval(t *testing.T) {
 		gs := getGate(t, slug, "")
 		require.False(t, gs.ThresholdBreached)
 		require.EqualValues(t, 1, gs.WaivedCount)
+		require.Equal(t, waiverCounts{WaiverCount: 1, PendingWaiverCount: 0}, counts())
 
 		status, raw := doJSON(t, http.MethodPost, base+"/"+pending.ID+"/approve", adminToken, map[string]string{})
 		require.Equal(t, http.StatusConflict, status, string(raw))
