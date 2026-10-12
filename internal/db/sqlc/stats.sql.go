@@ -82,6 +82,7 @@ SELECT
 FROM findings f
 WHERE f.project_id = $1
   AND f.first_seen_at >= $2
+  AND f.state <> 'archived'
 GROUP BY 1
 ORDER BY 1
 `

@@ -2,10 +2,12 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minh-tg/specht/internal/db/sqlc"
@@ -141,8 +143,80 @@ func (r *pgReportRepo) CountStaleReports(ctx context.Context, cutoff time.Time) 
 	return r.q.CountStaleReports(ctx, uuidFromTime(cutoff))
 }
 
+// DeleteStaleReports removes the settled reports older than the cutoff, one
+// transaction each, and returns the ids it removed. A report that a scan took
+// back or someone else already deleted is skipped.
 func (r *pgReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]pgtype.UUID, error) {
-	return r.q.DeleteStaleReports(ctx, uuidFromTime(cutoff))
+	stale, err := r.q.ListStaleReports(ctx, uuidFromTime(cutoff))
+	if err != nil {
+		return nil, err
+	}
+	deleted := make([]pgtype.UUID, 0, len(stale))
+	for _, report := range stale {
+		_, err := r.DeleteReportAndSettle(ctx, report.ID, report.ProjectID, pgtype.UUID{})
+		if errors.Is(err, port.ErrNotFound) || errors.Is(err, port.ErrReportProcessing) {
+			continue
+		}
+		if err != nil {
+			return deleted, fmt.Errorf("delete report %s: %w", toUUID(report.ID), err)
+		}
+		deleted = append(deleted, report.ID)
+	}
+	return deleted, nil
+}
+
+// DeleteReportAndSettle deletes a report and settles the findings it was
+// evidence for, in one transaction. See port.ReportStore.
+func (r *pgReportRepo) DeleteReportAndSettle(ctx context.Context, id, projectID, actor pgtype.UUID) (port.ReportDeletion, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return port.ReportDeletion{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+
+	status, err := q.LockReportForDelete(ctx, sqlc.LockReportForDeleteParams{ID: id, ProjectID: projectID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return port.ReportDeletion{}, port.ErrNotFound
+	}
+	if err != nil {
+		return port.ReportDeletion{}, fmt.Errorf("lock report: %w", err)
+	}
+	if status != "completed" && status != "failed" {
+		return port.ReportDeletion{}, port.ErrReportProcessing
+	}
+
+	touched, err := q.ListFindingsTouchedByReport(ctx, sqlc.ListFindingsTouchedByReportParams{ReportID: id, ProjectID: projectID})
+	if err != nil {
+		return port.ReportDeletion{}, fmt.Errorf("list findings touched by report: %w", err)
+	}
+	all := make([]pgtype.UUID, len(touched))
+	var introduced []pgtype.UUID
+	for i, f := range touched {
+		all[i] = f.ID
+		if f.Introduced {
+			introduced = append(introduced, f.ID)
+		}
+	}
+
+	if err := q.DeleteReport(ctx, sqlc.DeleteReportParams{ID: id, ProjectID: projectID}); err != nil {
+		return port.ReportDeletion{}, fmt.Errorf("delete report: %w", err)
+	}
+	archived, err := q.ArchiveOrphanedFindings(ctx, sqlc.ArchiveOrphanedFindingsParams{
+		FindingIds: all, ActorID: actor, ReportID: toUUID(id),
+	})
+	if err != nil {
+		return port.ReportDeletion{}, fmt.Errorf("archive orphaned findings: %w", err)
+	}
+	if len(introduced) > 0 {
+		if _, err := q.RepointIntroducedBy(ctx, introduced); err != nil {
+			return port.ReportDeletion{}, fmt.Errorf("repoint attribution: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return port.ReportDeletion{}, fmt.Errorf("commit: %w", err)
+	}
+	return port.ReportDeletion{ArchivedFindings: len(archived)}, nil
 }
 
 func (r *pgReportRepo) FindCompletedByReplayKey(ctx context.Context, projectID pgtype.UUID, rawHash, commitSha, scopeHash pgtype.Text) (pgtype.UUID, error) {

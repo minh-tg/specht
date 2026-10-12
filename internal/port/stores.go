@@ -39,6 +39,10 @@ var ErrSetupClosed = errors.New("setup is closed")
 // ErrInviteEmailMismatch is returned when an invite is bound to another address.
 var ErrInviteEmailMismatch = errors.New("invite is for another email address")
 
+// ErrReportProcessing is returned when a report cannot be deleted because a
+// scan is still writing it.
+var ErrReportProcessing = errors.New("report is still processing")
+
 // ErrEmailTaken is returned when a new account's email already belongs to one.
 var ErrEmailTaken = errors.New("email already registered")
 
@@ -955,9 +959,17 @@ type ReportStore interface {
 	// than the cutoff. Processing reports are never counted.
 	CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error)
 	// DeleteStaleReports deletes settled reports older than the cutoff,
-	// returning their ids. Occurrences, watcher rows, and inventory
-	// cascade; finding attribution nulls; findings survive.
+	// returning their ids. Each goes through DeleteReportAndSettle, so a
+	// retention purge and an explicit delete leave the same state behind.
 	DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]string, error)
+	// DeleteReportAndSettle deletes one report in a transaction and settles
+	// the findings it was evidence for: open findings with no occurrence left
+	// become archived (with a report_deleted event naming actorID, nil for the
+	// system), and findings the report introduced are attributed to the
+	// earliest report that still shows them. Returns ErrNotFound for a report
+	// that is not in the project and ErrReportProcessing while a scan is
+	// writing it.
+	DeleteReportAndSettle(ctx context.Context, id, projectID string, actorID *string) (ReportDeletion, error)
 	// FindCompletedByReplayKey returns a completed report's id for identical
 	// raw content at the same commit and scan scope, or ErrNotFound. The replay
 	// guard: a NULL commit_sha or scan_scope_hash and an empty one compare
@@ -1027,6 +1039,13 @@ type WeeklyCount struct {
 	// WeekStart is the Monday of the week, as 2006-01-02 (UTC).
 	WeekStart string
 	Count     int32
+}
+
+// ReportDeletion reports what deleting a report changed.
+type ReportDeletion struct {
+	// ArchivedFindings is the number of findings archived because the report
+	// was their only evidence.
+	ArchivedFindings int
 }
 
 // MaxAgingRows caps the open findings the aging report evaluates.

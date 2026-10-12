@@ -44,6 +44,10 @@ const (
 	TechOpen     TechnicalState = "open"
 	TechFixed    TechnicalState = "fixed"
 	TechReopened TechnicalState = "reopened"
+	// TechArchived marks a finding whose only evidence was deleted with its
+	// report. It does not block, count as open or age; a later scan that sees
+	// the finding again opens it afresh.
+	TechArchived TechnicalState = "archived"
 )
 
 // ParseAnalysisState validates a state string against the canonical

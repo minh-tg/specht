@@ -760,6 +760,9 @@ func classifyIngestChange(exists, regression bool, baselineID string, baselineSe
 func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState, f domain.NormalizedFinding) error {
 	existing, exists := st.known[f.FindingKind+"\x00"+f.Fingerprint]
 	newRank := severityRank(f.Severity)
+	// An archived finding lost its evidence with a deleted report. Seeing it
+	// again is a new finding as far as this report is concerned.
+	known := exists && existing.State != string(finding.TechArchived)
 
 	upserted, err := u.upsertFindingRow(ctx, st, f, newRank)
 	if err != nil {
@@ -771,15 +774,15 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 
 	regression := exists && existing.State == string(finding.TechFixed)
 	introduced, changeType := classifyIngestChange(
-		exists, regression, st.baselineID,
-		exists && st.baselineSeen[existing.ID],
+		known, regression, st.baselineID,
+		known && st.baselineSeen[existing.ID],
 	)
 	st.tallyIngest(introduced, changeType, upserted.ID)
 
 	if regression {
 		u.logRegressionEvent(ctx, st, upserted, f, newRank, existing.State)
 	}
-	u.dispatchCreatedEvent(ctx, st, upserted, f, newRank, !exists)
+	u.dispatchCreatedEvent(ctx, st, upserted, f, newRank, !known)
 
 	if st.batchStore == nil {
 		if err := u.createFindingOccurrence(ctx, st, upserted, f); err != nil {
