@@ -12,7 +12,7 @@ import (
 const adminOverview = `-- name: AdminOverview :one
 SELECT
     (SELECT COUNT(*) FROM projects) AS project_count,
-    (SELECT COUNT(*) FROM users) AS user_count,
+    (SELECT COUNT(*) FROM users WHERE email <> 'system@specht.local') AS user_count,
     (SELECT COUNT(*) FROM open_findings) AS open_finding_count,
     (SELECT COUNT(*) FROM reports) AS report_count,
     (SELECT MIN(COALESCE(completed_at, created_at)) FROM reports WHERE status IN ('completed', 'failed')) AS oldest_settled_report_at
@@ -27,7 +27,8 @@ type AdminOverviewRow struct {
 }
 
 // Platform observability: one row with global counts and the
-// oldest settled report, for the admin status surface.
+// oldest settled report, for the admin status surface. The seeded
+// system account is not a person, so it is not counted as one.
 func (q *Queries) AdminOverview(ctx context.Context) (AdminOverviewRow, error) {
 	row := q.db.QueryRow(ctx, adminOverview)
 	var i AdminOverviewRow
