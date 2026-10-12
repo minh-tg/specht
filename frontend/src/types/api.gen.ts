@@ -1312,6 +1312,110 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/projects/{slug}/invites": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * List a project's open invite links
+     * @description Links that are not used, revoked or expired, newest first. The token is never shown again after creation, so the entries carry no `link`. Needs the project manager role or above, and a session (API keys are refused).
+     */
+    get: operations["listInvites"];
+    put?: never;
+    /**
+     * Create an invite link
+     * @description Returns the link once, with `Cache-Control: no-store`. Only a hash of the token is stored. The invited role is `member` or `manager` and cannot exceed the caller's own project role, the same ceiling as adding a member directly. `expires_in_days` is 1 to 30 and defaults to 7. With `email` set, only that address can accept. A project holds at most 100 open links (`409 too_many_invites`). Needs the project manager role or above. No email is sent: pass the link on yourself.
+     */
+    post: operations["createInvite"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{slug}/invites/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Revoke an invite link
+     * @description A manager cannot revoke a link that carries a role above their own.
+     */
+    delete: operations["revokeInvite"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/invites/{token}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * See what an invite link is for
+     * @description Public, for the accept page. Returns only the project name, the role and the address the invite is bound to. A link that is unknown, used, revoked or expired answers the same `404`, so this cannot be used to probe. Shares the credential rate limit.
+     */
+    get: operations["lookupInvite"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/invites/{token}/accept": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Create an account through an invite link
+     * @description Public, and it works while self-service registration is closed. Creates the account (global role `member`), adds it to the project with the invited role, marks the link used and signs the account in, all in one transaction. A failed attempt leaves the link usable. If the invite is bound to an address, a different one is `403 invite_email_mismatch`. An address that already has an account answers `422 registration_failed`, the same as registration, so the link cannot reveal who is registered. People who already have an account use `/join`.
+     */
+    post: operations["acceptInvite"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/invites/{token}/join": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Join a project with the signed-in account
+     * @description For a person who already has an account. Adds the caller to the project with the invited role and marks the link used. A stronger role the caller already holds in the project is kept. API keys are refused.
+     */
+    post: operations["joinInvite"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/projects/{slug}/environments": {
     parameters: {
       query?: never;
@@ -1553,6 +1657,69 @@ export interface components {
       /** Format: password */
       password: string;
       display_name?: string;
+    };
+    Invite: {
+      /** Format: uuid */
+      id: string;
+      /** @enum {string} */
+      role: "member" | "manager";
+      /**
+       * Format: email
+       * @description Present when the invite is bound to an address.
+       */
+      email?: string;
+      /** @description Email of the person who made the link. Present in listings. */
+      created_by?: string;
+      /** Format: date-time */
+      created_at: string;
+      /** Format: date-time */
+      expires_at: string;
+      /**
+       * @description Path to open on this server, `/invite/<token>`. Present only in the response to creation.
+       * @example /invite/q3Zk0wY1b8Vn4hPq6m1xT0o2u5rA7sLdC9eFgHiJkLm
+       */
+      link?: string;
+    };
+    CreateInviteRequest: {
+      /** @enum {string} */
+      role: "member" | "manager";
+      /**
+       * Format: email
+       * @description Bind the link to one address.
+       */
+      email?: string;
+      /** @default 7 */
+      expires_in_days: number;
+    };
+    InviteLookup: {
+      project_name: string;
+      /** @enum {string} */
+      role: "member" | "manager";
+      /**
+       * Format: email
+       * @description Present when the invite is bound to an address.
+       */
+      email?: string;
+    };
+    AcceptInviteRequest: {
+      /** Format: email */
+      email: string;
+      /** Format: password */
+      password: string;
+      display_name?: string;
+    };
+    AcceptInviteResponse: components["schemas"]["AuthResponse"] & {
+      project_slug: string;
+      /** @enum {string} */
+      role: "member" | "manager" | "admin";
+    };
+    JoinInviteResponse: {
+      project_slug: string;
+      /**
+       * @description The role held now; a stronger existing role is kept.
+       * @enum {string}
+       */
+      role: "member" | "manager" | "admin";
     };
     EmailPasswordRequest: {
       /** Format: email */
@@ -2708,6 +2875,8 @@ export interface components {
   parameters: {
     /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
     Slug: string;
+    /** @description The token from an invite link, the part after `/invite/`. */
+    InviteToken: string;
     /** @description Resource identifier. */
     Id: string;
     /** @description Finding identifier. */
@@ -5047,6 +5216,186 @@ export interface operations {
       403: components["responses"]["Forbidden"];
       404: components["responses"]["NotFound"];
       500: components["responses"]["InternalError"];
+    };
+  };
+  listInvites: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The open invites. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Invite"][];
+        };
+      };
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
+    };
+  };
+  createInvite: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateInviteRequest"];
+      };
+    };
+    responses: {
+      /** @description Created. `link` is a path on this server, `/invite/<token>`. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Invite"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
+      409: components["responses"]["Conflict"];
+    };
+  };
+  revokeInvite: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      204: components["responses"]["NoContent"];
+      400: components["responses"]["BadRequest"];
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
+    };
+  };
+  lookupInvite: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description The token from an invite link, the part after `/invite/`. */
+        token: components["parameters"]["InviteToken"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The invite. */
+      200: {
+        headers: {
+          /** @description no-store */
+          "Cache-Control"?: string;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["InviteLookup"];
+        };
+      };
+      404: components["responses"]["NotFound"];
+      429: components["responses"]["RateLimited"];
+    };
+  };
+  acceptInvite: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description The token from an invite link, the part after `/invite/`. */
+        token: components["parameters"]["InviteToken"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["AcceptInviteRequest"];
+      };
+    };
+    responses: {
+      /** @description Account created and signed in. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AcceptInviteResponse"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
+      413: components["responses"]["BodyTooLarge"];
+      /** @description Registration failed (generic). */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "error": {
+           *         "code": "registration_failed",
+           *         "message": "registration failed"
+           *       }
+           *     }
+           */
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      429: components["responses"]["RateLimited"];
+    };
+  };
+  joinInvite: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description The token from an invite link, the part after `/invite/`. */
+        token: components["parameters"]["InviteToken"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Joined. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["JoinInviteResponse"];
+        };
+      };
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
     };
   };
   listEnvironments: {
