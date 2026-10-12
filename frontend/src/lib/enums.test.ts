@@ -41,7 +41,7 @@ describe("enum vocabularies", () => {
   });
 
   it("mirrors the backend technical state vocabulary", () => {
-    expect(TECHNICAL_STATES).toEqual(["open", "fixed", "reopened"]);
+    expect(TECHNICAL_STATES).toEqual(["open", "fixed", "reopened", "archived"]);
   });
 
   it("mirrors the backend reachability vocabulary", () => {

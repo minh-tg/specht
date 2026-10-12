@@ -550,6 +550,40 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/projects/{slug}/reports/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /**
+     * Delete a report
+     * @description Removes the report with its occurrences and inventory, in one
+     *     transaction, and settles the findings it was evidence for:
+     *
+     *     - an open or reopened finding that no other report shows becomes
+     *       `archived`: readable with its history, but not counted, not blocking
+     *       and not aging. A `report_deleted` event records who did it.
+     *     - a finding the report introduced is attributed to the earliest report
+     *       that still shows it.
+     *     - fixed findings stay fixed.
+     *
+     *     A later scan that sees an archived finding again opens it afresh. The
+     *     retention purge uses the same routine. The count of archived findings
+     *     comes back in `X-Archived-Findings`. A report that is still processing
+     *     answers `409 report_processing`. Needs the project admin role and a
+     *     session (API keys are refused).
+     */
+    delete: operations["deleteReport"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/reports/{id}": {
     parameters: {
       query?: never;
@@ -2602,7 +2636,7 @@ export interface components {
       created_at: string;
     };
     ProjectStats: {
-      /** @description Open and reopened findings; findings already fixed are not counted. */
+      /** @description Open and reopened findings; fixed and archived findings are not counted. */
       total_findings: number;
       /** @description Findings the gate holds back right now, so the number always equals the gate's `blocking_count`: open findings at or above the policy's severity floor, admitted by source policy, not exempted by a reachability assessment and not covered by an approved waiver. */
       blocking_count: number;
@@ -2611,7 +2645,7 @@ export interface components {
       /** @description Waiver requests waiting for a decision. */
       pending_waiver_count: number;
       report_count: number;
-      /** @description Counts per severity among the project's open and reopened findings (findings already fixed are not counted). */
+      /** @description Counts per severity among the project's open and reopened findings (fixed and archived findings are not counted). */
       by_severity: components["schemas"]["SeverityCount"][];
       /** @description Counts per analysis state among the project's open and reopened findings (findings already fixed are not counted), ordered by state name; empty when there are none. A missing analysis state counts as unanalyzed. */
       by_analysis_state: components["schemas"]["AnalysisStateCount"][];
@@ -3799,6 +3833,35 @@ export interface operations {
       404: components["responses"]["NotFound"];
     };
   };
+  deleteReport: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Deleted. */
+      204: {
+        headers: {
+          /** @description How many findings lost their only evidence and were archived. */
+          "X-Archived-Findings"?: number;
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      400: components["responses"]["BadRequest"];
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
+      409: components["responses"]["Conflict"];
+    };
+  };
   getReport: {
     parameters: {
       query?: never;
@@ -3830,7 +3893,7 @@ export interface operations {
       query?: {
         /** @description Comma-separated severities (critical, high, medium, low, unknown). `unknown` is a finding the scanner did not rate. */
         severity?: string;
-        /** @description Comma-separated lifecycle states (open, fixed, reopened). */
+        /** @description Comma-separated lifecycle states (open, fixed, reopened, archived). Without it the list leaves out archived findings, which lost their only evidence when a report was deleted. */
         status?: string;
         /** @description Comma-separated finding kinds (sca, sast, iac, secret, dast, image_config, license, cve_watcher). */
         kind?: string;
