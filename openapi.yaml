@@ -2444,6 +2444,66 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/v1/projects/{slug}/watcher:
+    get:
+      tags: [Watcher]
+      operationId: getProjectWatcher
+      summary: Read a project's CVE watcher settings and status
+      description: |
+        The project's own switch and interval, the range the server accepts,
+        and what they amount to: `effective_enabled` is false when the server
+        does not run the watcher, and `status` says in one word why the
+        project is or is not being polled (`disabled`, `server_off`,
+        `waiting`, `ok`, `stale`, `failing`). Any project member can read it.
+      x-required-scope: read
+      security:
+        - sessionAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      responses:
+        "200":
+          description: The settings and status.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectWatcher" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [Watcher]
+      operationId: updateProjectWatcher
+      summary: Change a project's CVE watcher settings
+      description: |
+        Send `enabled`, `interval_seconds`, or both; a field you leave out
+        stays as it is, and `interval_seconds: null` returns the interval to
+        its default. The interval must lie between `min_interval_seconds`
+        (the server's polling cadence, never above the default of one hour)
+        and seven days. Switching a project on while the server has the
+        watcher off is allowed and stored; the response shows
+        `effective_enabled: false` until the server runs it. The daemon picks
+        the change up at its next cycle, without a restart. Needs the project
+        admin role and a session (API keys are refused).
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProjectWatcherUpdate" }
+      responses:
+        "200":
+          description: The settings after the change.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProjectWatcher" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/v1/projects/{slug}/environments:
     get:
       tags: [Context]
@@ -2952,6 +3012,43 @@ components:
       properties:
         project_slug: { type: string }
         role: { type: string, enum: [member, manager, admin], description: The role held now; a stronger existing role is kept. }
+
+    ProjectWatcher:
+      type: object
+      required: [enabled, interval_seconds, default_interval_seconds, min_interval_seconds, max_interval_seconds, server_enabled, effective_enabled, effective_interval_seconds, status, healthy]
+      properties:
+        enabled: { type: boolean, description: The project's own switch. }
+        interval_seconds: { type: integer, description: The project's own polling interval. }
+        default_interval_seconds: { type: integer, description: What a reset returns the interval to. }
+        min_interval_seconds: { type: integer, description: The shortest interval the server accepts. }
+        max_interval_seconds: { type: integer, description: The longest interval the server accepts, seven days. }
+        server_enabled: { type: boolean, description: Whether the server runs the watcher at all. }
+        effective_enabled: { type: boolean, description: "`enabled` and `server_enabled`: whether the project is polled." }
+        effective_interval_seconds: { type: integer }
+        last_poll_at:
+          type: string
+          format: date-time
+          description: When the project's last poll finished. Absent before the first.
+        status:
+          type: string
+          enum: [disabled, server_off, waiting, ok, stale, failing]
+          description: >-
+            `disabled` the project's switch is off; `server_off` the server does not
+            run the watcher; `waiting` on, no poll has finished yet; `ok`; `stale` the
+            last poll is older than the interval explains; `failing` the watcher's
+            recent polls are failing.
+        healthy: { type: boolean, description: False when the status is `stale` or `failing`. }
+
+    ProjectWatcherUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean }
+        interval_seconds:
+          type: [integer, "null"]
+          description: Seconds between polls; `null` returns it to the default.
+          minimum: 1
+          maximum: 604800
 
     EmailPasswordRequest:
       type: object
