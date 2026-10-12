@@ -1,7 +1,7 @@
 import { DataGrid, type DataGridColumn } from "@/components/ui/data-grid";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { analysisStateLabel, findingKindLabel, technicalStateLabel } from "@/lib/enums";
-import { formatDate } from "@/lib/format";
+import { formatAge, formatDate } from "@/lib/format";
 import { blocksGate, blocksGateLabel } from "@/lib/gate";
 import type { Finding, GateStatus } from "@/types/api";
 import { type MouseEvent } from "react";
@@ -122,6 +122,18 @@ export function FindingsTable(
       },
     },
     {
+      id: "first_seen",
+      header: "Age",
+      sortable: true,
+      hideBelow: "md",
+      cellClassName: "text-muted-foreground tabular-nums",
+      cell: (f) => (
+        <span title={`First seen ${formatDate(f.first_seen_at)}`}>
+          {formatAge(f.first_seen_at)}
+        </span>
+      ),
+    },
+    {
       id: "last_seen",
       header: "Last Seen",
       sortable: true,
@@ -150,9 +162,6 @@ export function FindingsTable(
           onRowClick={(f, event) => openFinding(event, f.id)}
         />
       </div>
-      <p className="text-muted-foreground text-xs">
-        Sorting applies only to the findings on this page.
-      </p>
     </div>
   );
 }

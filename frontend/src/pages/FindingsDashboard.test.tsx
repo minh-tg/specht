@@ -39,6 +39,17 @@ beforeEach(() => {
   });
 });
 
+/** The calls that asked for findings, as URLs, oldest first. */
+function findingsRequests(): URL[] {
+  return vi.mocked(globalThis.fetch).mock.calls
+    .map(([input]) => new URL(String(input), "http://localhost"))
+    .filter((url) => url.pathname.endsWith("/findings"));
+}
+
+function lastFindingsRequest(): URL {
+  return findingsRequests().at(-1) as URL;
+}
+
 function renderWithProviders(ui: React.ReactElement, initialPath = "/test-project/findings") {
   const qc = createTestQueryClient();
   return render(
@@ -190,57 +201,58 @@ describe("FindingsDashboard", () => {
     expect(String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0])).toContain("kind=dast");
   });
 
-  it("sorts findings in both directions when the title column is selected", async () => {
+  it("asks the server to sort by a column and flips the direction on a second click", async () => {
+    renderWithProviders(<FindingsDashboard />);
+    const user = userEvent.setup();
+    await screen.findByText("Test Vuln");
+    expect(lastFindingsRequest().searchParams.get("sort")).toBe("severity");
+    expect(lastFindingsRequest().searchParams.get("dir")).toBe("desc");
+
+    const titleButton = within(screen.getByRole("columnheader", { name: /Title/ })).getByRole(
+      "button",
+      { name: /Title/ },
+    );
+    await user.click(titleButton);
+    await waitFor(() => expect(lastFindingsRequest().searchParams.get("sort")).toBe("title"));
+    expect(lastFindingsRequest().searchParams.get("dir")).toBe("asc");
+
+    await user.click(titleButton);
+    await waitFor(() => expect(lastFindingsRequest().searchParams.get("dir")).toBe("desc"));
+  });
+
+  it("starts each column in the direction that answers what to look at first", async () => {
+    renderWithProviders(<FindingsDashboard />);
+    const user = userEvent.setup();
+    await screen.findByText("Test Vuln");
+
+    const sortBy = async (header: RegExp) => {
+      await user.click(
+        within(screen.getByRole("columnheader", { name: header })).getByRole("button", {
+          name: header,
+        }),
+      );
+    };
+    await sortBy(/Age/);
+    await waitFor(() => expect(lastFindingsRequest().searchParams.get("sort")).toBe("first_seen"));
+    expect(lastFindingsRequest().searchParams.get("dir")).toBe("asc");
+
+    await sortBy(/Last Seen/);
+    await waitFor(() => expect(lastFindingsRequest().searchParams.get("sort")).toBe("last_seen"));
+    expect(lastFindingsRequest().searchParams.get("dir")).toBe("desc");
+  });
+  it("shows the rows in the order the server returns them", async () => {
+    // The server orders the whole result. The page must not reorder its own twenty rows.
     findingsFixture = [
-      { ...findingsFixture[0], id: "f1", current_title: "Zebra", current_severity: "critical" },
-      { ...findingsFixture[0], id: "f2", current_title: "Alpha", current_severity: "low" },
+      { ...findingsFixture[0], id: "f1", current_title: "Zebra", current_severity: "low" },
+      { ...findingsFixture[0], id: "f2", current_title: "Alpha", current_severity: "critical" },
       { ...findingsFixture[0], id: "f3", current_title: "Mystery", current_severity: "unknown" },
     ];
     renderWithProviders(<FindingsDashboard />);
-    const user = userEvent.setup();
 
     await screen.findByText("Zebra");
-    const rows = () => within(screen.getByRole("grid")).getAllByRole("row").slice(1);
-    expect(rows()[0]).toHaveTextContent("Zebra");
-    expect(rows().at(-1)).toHaveTextContent("Mystery");
-
-    const title = screen.getByRole("columnheader", { name: /Title/ });
-    const titleButton = within(title).getByRole("button", { name: /Title/ });
-    await user.click(titleButton);
-    expect(rows()[0]).toHaveTextContent("Alpha");
-    await user.click(titleButton);
-    expect(rows()[0]).toHaveTextContent("Zebra");
+    const titles = within(screen.getByRole("grid")).getAllByRole("link").map((l) => l.textContent);
+    expect(titles).toEqual(["Zebra", "Alpha", "Mystery"]);
   });
-
-  it("sorts an unrated finding below low and an unrecognised value below that", async () => {
-    findingsFixture = [
-      {
-        ...findingsFixture[0],
-        id: "f1",
-        current_title: "Unrated finding",
-        current_severity: "unknown",
-      },
-      { ...findingsFixture[0], id: "f2", current_title: "Low severity", current_severity: "low" },
-      { ...findingsFixture[0], id: "f3", current_title: "Odd severity", current_severity: "bogus" },
-    ];
-    renderWithProviders(<FindingsDashboard />);
-    const user = userEvent.setup();
-
-    await screen.findByText("Unrated finding");
-    const rows = () => within(screen.getByRole("grid")).getAllByRole("row").slice(1);
-    // Default sort is severity descending: low(1), unrated(0), unrecognised(-1).
-    expect(rows()[0]).toHaveTextContent("Low severity");
-    expect(rows()[1]).toHaveTextContent("Unrated finding");
-    expect(rows()[2]).toHaveTextContent("Odd severity");
-
-    const severity = screen.getByRole("columnheader", { name: /Severity/ });
-    await user.click(within(severity).getByRole("button", { name: /Severity/ }));
-
-    expect(rows()[0]).toHaveTextContent("Odd severity");
-    expect(rows()[1]).toHaveTextContent("Unrated finding");
-    expect(rows()[2]).toHaveTextContent("Low severity");
-  });
-
   it("labels an unrecognised kind instead of echoing the wire value", async () => {
     findingsFixture[0].finding_kind = "<img src=x>";
     renderWithProviders(<FindingsDashboard />);
@@ -261,37 +273,23 @@ describe("FindingsDashboard", () => {
     );
   });
 
-  it("offers a sort control for narrow screens that covers last seen", async () => {
-    findingsFixture = [
-      {
-        ...findingsFixture[0],
-        id: "f1",
-        current_title: "Old finding",
-        last_seen_at: "2025-01-01T00:00:00Z",
-      },
-      {
-        ...findingsFixture[0],
-        id: "f2",
-        current_title: "New finding",
-        last_seen_at: "2025-03-01T00:00:00Z",
-      },
-    ];
+  it("offers a sort control for narrow screens that covers age and last seen", async () => {
     renderWithProviders(<FindingsDashboard />);
     const user = userEvent.setup();
 
-    await screen.findByText("Old finding");
+    await screen.findByText("Test Vuln");
     const sort = screen.getByRole("combobox", { name: "Sort findings" });
     expect(sort).toHaveTextContent("Most severe first");
 
     await chooseOption(user, sort, "Last seen, newest first");
-    const titles = () =>
-      within(screen.getByRole("grid")).getAllByRole("link").map((link) => link.textContent);
-    expect(titles()).toEqual(["New finding", "Old finding"]);
+    await waitFor(() => expect(lastFindingsRequest().searchParams.get("sort")).toBe("last_seen"));
+    expect(lastFindingsRequest().searchParams.get("dir")).toBe("desc");
 
-    await chooseOption(user, sort, "Last seen, oldest first");
-    expect(titles()).toEqual(["Old finding", "New finding"]);
+    await chooseOption(user, sort, "Oldest first");
+    await waitFor(() => expect(lastFindingsRequest().searchParams.get("sort")).toBe("first_seen"));
+    expect(lastFindingsRequest().searchParams.get("dir")).toBe("asc");
+    expect(sort).toHaveTextContent("Oldest first");
   });
-
   it("exposes the sort direction on every sortable header", async () => {
     renderWithProviders(<FindingsDashboard />);
     await screen.findByText("Test Vuln");
@@ -299,25 +297,91 @@ describe("FindingsDashboard", () => {
 
     const severityHeader = screen.getByRole("columnheader", { name: /Severity/ });
     const titleHeader = screen.getByRole("columnheader", { name: /Title/ });
+    const ageHeader = screen.getByRole("columnheader", { name: /Age/ });
     const lastSeenHeader = screen.getByRole("columnheader", { name: /Last Seen/ });
 
     expect(severityHeader).toHaveAttribute("aria-sort", "descending");
     expect(titleHeader).toHaveAttribute("aria-sort", "none");
+    expect(ageHeader).toHaveAttribute("aria-sort", "none");
     expect(lastSeenHeader).toHaveAttribute("aria-sort", "none");
-    expect(
-      screen.getByText("Sorting applies only to the findings on this page."),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/Sorting applies to the 20/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Sorting applies only/)).not.toBeInTheDocument();
 
     const titleButton = within(titleHeader).getByRole("button", { name: /Title/ });
     await user.click(titleButton);
-    expect(titleHeader).toHaveAttribute("aria-sort", "ascending");
+    await waitFor(() => expect(titleHeader).toHaveAttribute("aria-sort", "ascending"));
     expect(severityHeader).toHaveAttribute("aria-sort", "none");
 
     await user.click(titleButton);
-    expect(titleHeader).toHaveAttribute("aria-sort", "descending");
+    await waitFor(() => expect(titleHeader).toHaveAttribute("aria-sort", "descending"));
   });
 
+  it("searches on the server once typing pauses, not on every key", async () => {
+    renderWithProviders(<FindingsDashboard />);
+    const user = userEvent.setup();
+    await screen.findByText("Test Vuln");
+    const before = findingsRequests().length;
+
+    await user.type(screen.getByRole("searchbox", { name: "Search findings" }), "log4j");
+
+    // Nothing has been asked yet for the keys typed one by one.
+    expect(findingsRequests().length).toBe(before);
+    await waitFor(() => expect(lastFindingsRequest().searchParams.get("q")).toBe("log4j"), {
+      timeout: 2000,
+    });
+    expect(lastFindingsRequest().searchParams.get("offset")).toBe("0");
+    expect(findingsRequests().length).toBe(before + 1);
+  });
+
+  it("restores the search from the URL and clears it with the filters", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname.endsWith("/gate")) return jsonResponse(gateFixture);
+      return jsonResponse(url.searchParams.get("q") ? [] : findingsFixture);
+    });
+    renderWithProviders(<FindingsDashboard />, "/test-project/findings?q=nothing-like-this");
+    const user = userEvent.setup();
+
+    expect(screen.getByRole("searchbox", { name: "Search findings" })).toHaveValue(
+      "nothing-like-this",
+    );
+    expect(await screen.findByText("No findings match these filters.")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Search findings" })).toHaveValue("");
+  });
+
+  it("filters by triage state, with a ready-made view of what needs triage", async () => {
+    renderWithProviders(<FindingsDashboard />);
+    const user = userEvent.setup();
+    await screen.findByText("Test Vuln");
+
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "Filter by triage state" }),
+      "Needs triage",
+    );
+    await waitFor(() =>
+      expect(lastFindingsRequest().searchParams.get("analysis_state")).toBe("unanalyzed,in_triage")
+    );
+
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "Filter by triage state" }),
+      "Exploitable",
+    );
+    await waitFor(() =>
+      expect(lastFindingsRequest().searchParams.get("analysis_state")).toBe("exploitable")
+    );
+  });
+
+  it("shows how old each finding is", async () => {
+    findingsFixture[0].first_seen_at = new Date(Date.now() - 12 * 86_400_000).toISOString();
+    renderWithProviders(<FindingsDashboard />);
+
+    await screen.findByText("Test Vuln");
+    expect(within(screen.getByRole("grid")).getByText("12d")).toBeInTheDocument();
+  });
   it("keeps the filters reachable when they match nothing and clears them on demand", async () => {
     vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
       const url = new URL(String(input), "http://localhost");

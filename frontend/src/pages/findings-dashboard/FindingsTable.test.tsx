@@ -222,9 +222,9 @@ describe("FindingsTable on the data grid", () => {
       .toHaveAttribute("aria-sort", "none");
     expect(screen.getByRole("columnheader", { name: /Last Seen/ }))
       .toHaveAttribute("aria-sort", "none");
-    expect(
-      screen.getByText("Sorting applies only to the findings on this page."),
-    ).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /Age/ }))
+      .toHaveAttribute("aria-sort", "none");
+    expect(screen.queryByText(/Sorting applies only/)).not.toBeInTheDocument();
   });
 
   it("does not show the grid's empty state while rows exist", () => {

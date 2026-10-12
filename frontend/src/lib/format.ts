@@ -64,3 +64,17 @@ export function formatDate(iso: string | null | undefined): string {
 export function pluralize(count: number, one: string, other?: string): string {
   return `${count} ${count === 1 ? one : (other ?? `${one}s`)}`;
 }
+
+/**
+ * How long a finding has existed, in the shortest honest form: "Today", then whole days up to
+ * 99, then whole months, then years. Empty or unparsable input yields an em-dash.
+ */
+export function formatAge(iso: string | null | undefined, now: Date = new Date()): string {
+  const date = parseDate(iso);
+  if (!date) return EMPTY;
+  const days = Math.max(0, Math.floor((now.getTime() - date.getTime()) / DAY_MS));
+  if (days < 1) return "Today";
+  if (days < 100) return `${days}d`;
+  if (days < 730) return `${Math.floor(days / 30)}mo`;
+  return `${Math.floor(days / 365)}y`;
+}

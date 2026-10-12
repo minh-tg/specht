@@ -1,5 +1,8 @@
 import { SelectField } from "@/components/SelectField";
+import { Input } from "@/components/ui/input";
 import {
+  ANALYSIS_STATES,
+  analysisStateLabel,
   FINDING_KINDS,
   findingKindLabel,
   SEVERITIES,
@@ -7,26 +10,76 @@ import {
   TECHNICAL_STATES,
   technicalStateLabel,
 } from "@/lib/enums";
+import { SearchIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { SORT_OPTIONS } from "./sort";
 import type { FindingsFilters as FindingsFilterState, FindingsSort } from "./useFindingsQuery";
+
+/** What the person is still typing, until they pause. */
+const SEARCH_PAUSE_MS = 300;
+
+/** The triage states that mean "someone should look at this". */
+const NEEDS_TRIAGE = "unanalyzed,in_triage";
 
 interface FindingsFiltersProps {
   filters: FindingsFilterState;
   sort: FindingsSort;
   onFilterChange: (key: string, value: string) => void;
-  onSortChange: (by: string, dir: "asc" | "desc") => void;
+  onSortChange: (by: FindingsSort["by"], dir: "asc" | "desc") => void;
+}
+
+/**
+ * The search box. It keeps what is being typed until the typing pauses, then writes it to the
+ * URL, so the server is asked once per pause and not once per key. Whatever the URL holds is
+ * shown whenever nothing is being typed, so the back button and "Clear filters" are honoured.
+ */
+function SearchBox({ value, onSearch }: { value: string; onSearch: (value: string) => void; }) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
+  function change(next: string) {
+    setDraft(next);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      onSearch(next.trim());
+      setDraft(null);
+    }, SEARCH_PAUSE_MS);
+  }
+
+  return (
+    <div className="relative w-full sm:w-64">
+      <SearchIcon
+        aria-hidden="true"
+        className="text-muted-foreground pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2"
+      />
+      <Input
+        type="search"
+        aria-label="Search findings"
+        placeholder="Search title or package"
+        maxLength={100}
+        className="pl-8"
+        value={draft ?? value}
+        onChange={(e) => change(e.target.value)}
+      />
+    </div>
+  );
 }
 
 /**
  * The filter bar above the findings table. It is fully controlled: the route
- * component owns the search params and the sort, so this only renders the
- * current values and reports changes.
+ * component owns the search params, so this only renders the current values and
+ * reports changes.
  */
 export function FindingsFilters(
   { filters, sort, onFilterChange, onSortChange }: FindingsFiltersProps,
 ) {
   return (
     <div className="flex flex-wrap gap-2">
+      <SearchBox value={filters.q} onSearch={(v) => onFilterChange("q", v)} />
       <SelectField
         aria-label="Filter by severity"
         value={filters.severity}
@@ -34,6 +87,19 @@ export function FindingsFilters(
         options={[
           { value: "", label: "All severities" },
           ...SEVERITIES.map((value) => ({ value, label: severityLabel(value) ?? value })),
+        ]}
+      />
+      <SelectField
+        aria-label="Filter by triage state"
+        value={filters.analysisState}
+        onValueChange={(v) => onFilterChange("analysis_state", v)}
+        options={[
+          { value: "", label: "All triage states" },
+          { value: NEEDS_TRIAGE, label: "Needs triage" },
+          ...ANALYSIS_STATES.map((value) => ({
+            value,
+            label: analysisStateLabel(value) ?? value,
+          })),
         ]}
       />
       <SelectField
@@ -63,7 +129,8 @@ export function FindingsFilters(
         value={`${sort.by}:${sort.dir}`}
         onValueChange={(v) => {
           const [by, dir] = v.split(":");
-          onSortChange(by, dir === "asc" ? "asc" : "desc");
+          const known = SORT_OPTIONS.some((o) => o.value === v);
+          if (known) onSortChange(by as FindingsSort["by"], dir === "asc" ? "asc" : "desc");
         }}
         options={SORT_OPTIONS}
       />
