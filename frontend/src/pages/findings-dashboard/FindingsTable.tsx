@@ -1,16 +1,25 @@
 import { DataGrid, type DataGridColumn } from "@/components/ui/data-grid";
 import { SeverityBadge } from "@/components/ui/severity-badge";
-import { analysisStateLabel, findingKindLabel, technicalStateLabel } from "@/lib/enums";
+import { findingKindLabel } from "@/lib/enums";
+import { findingWorkflowState } from "@/lib/findingState";
 import { formatAge, formatDate } from "@/lib/format";
-import { blocksGate, blocksGateLabel } from "@/lib/gate";
 import type { Finding, GateStatus } from "@/types/api";
-import { type MouseEvent } from "react";
+import { ChevronRightIcon } from "lucide-react";
+import { type MouseEvent, useEffect, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { locationText } from "./location";
 import { compactMeta } from "./sort";
 import type { FindingsSort } from "./useFindingsQuery";
 
 /** Clicks on these keep their own behaviour instead of opening the finding. */
 const INTERACTIVE_SELECTOR = "a, button, input, select, textarea, label";
+
+export interface FindingsSelection {
+  readonly keys: ReadonlySet<string>;
+  readonly onToggle: (findingId: string) => void;
+  /** Selects every finding on the page, or none. */
+  readonly onToggleAll: (selectAll: boolean) => void;
+}
 
 interface FindingsTableProps {
   slug: string | undefined;
@@ -18,17 +27,51 @@ interface FindingsTableProps {
   gate: GateStatus | undefined;
   sort: FindingsSort;
   onToggleSort: (column: string) => void;
+  /** Absent when the person can do nothing to a selection, so there is nothing to select. */
+  selection?: FindingsSelection;
+}
+
+/** Blocking severities carry a bar of their colour on the row's left edge. */
+function edgeClass(finding: Finding): string | undefined {
+  if (finding.state !== "open" && finding.state !== "reopened") return undefined;
+  const edge = "[&>td:first-child]:shadow-[inset_4px_0_0_var(--edge)]";
+  if (finding.current_severity === "critical") return `[--edge:var(--sev-critical)] ${edge}`;
+  if (finding.current_severity === "high") return `[--edge:var(--sev-high)] ${edge}`;
+  return undefined;
+}
+
+function SelectAll({ findings, selection }: {
+  readonly findings: readonly Finding[];
+  readonly selection: FindingsSelection;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const chosen = findings.filter((f) => selection.keys.has(f.id)).length;
+  const all = findings.length > 0 && chosen === findings.length;
+  useEffect(() => {
+    if (ref.current) ref.current.indeterminate = chosen > 0 && !all;
+  }, [chosen, all]);
+  return (
+    <input
+      ref={ref}
+      type="checkbox"
+      aria-label="Select all findings on this page"
+      checked={all}
+      onChange={(event) => selection.onToggleAll(event.target.checked)}
+      className="size-4 accent-foreground pointer-coarse:size-6"
+    />
+  );
 }
 
 /**
- * The findings ledger, rendered on the shared DataGrid so sorting, the roving
- * cursor and the keyboard model are the grid's, not a second hand-rolled table.
+ * The findings ledger, rendered on the shared DataGrid so sorting, the roving cursor and the
+ * keyboard model (j and k to move, x to select, Enter to open) are the grid's, not a second
+ * hand-rolled table.
  *
- * The narrow-screen columns are hidden below `md` by the grid and repeated as one
- * line under the title, so no field is lost to a small viewport.
+ * The narrow-screen columns are hidden below `md` by the grid and repeated as one line under the
+ * title, so no field is lost to a small viewport.
  */
 export function FindingsTable(
-  { slug, findings, gate, sort, onToggleSort }: FindingsTableProps,
+  { slug, findings, gate, sort, onToggleSort, selection }: FindingsTableProps,
 ) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -46,26 +89,16 @@ export function FindingsTable(
     navigate(detailPath(findingId), { state: detailState });
   }
 
-  const columns: readonly DataGridColumn<Finding>[] = [
+  const columns: DataGridColumn<Finding>[] = [
     {
       id: "severity",
       header: "Severity",
       sortable: true,
-      cell: (f) => <SeverityBadge severity={f.current_severity} />,
-    },
-    {
-      id: "kind",
-      header: "Kind",
-      hideBelow: "md",
-      cell: (f) => (
-        <span className="bg-muted text-muted-foreground inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium">
-          {findingKindLabel(f.finding_kind) ?? "–"}
-        </span>
-      ),
+      cell: (f) => <SeverityBadge severity={f.current_severity} plain />,
     },
     {
       id: "title",
-      header: "Title",
+      header: "Finding",
       sortable: true,
       // The meta line below the title makes this cell two lines on phones.
       wrap: true,
@@ -74,51 +107,46 @@ export function FindingsTable(
           <Link
             to={detailPath(f.id)}
             state={detailState}
-            className="underline-offset-2 hover:underline"
+            className="font-medium underline-offset-2 hover:underline"
           >
             {f.current_title}
           </Link>
-          <p className="text-muted-foreground mt-0.5 text-xs md:hidden">
-            {compactMeta(f)}
+          <p className="text-muted-foreground mt-0.5 hidden font-mono text-xs md:block">
+            {findingKindLabel(f.finding_kind) ?? "–"}
           </p>
+          <p className="text-muted-foreground mt-0.5 text-xs md:hidden">{compactMeta(f)}</p>
         </>
       ),
     },
     {
-      id: "status",
-      header: "Status",
+      id: "where",
+      header: "Where",
       hideBelow: "md",
-      cellClassName: "capitalize",
-      cell: (f) => technicalStateLabel(f.state) ?? "–",
+      cellClassName: "max-w-[22rem] font-mono text-xs",
+      cell: (f) => <span title={locationText(f.location)}>{locationText(f.location)}</span>,
     },
     {
-      id: "triage",
-      header: "Triage",
+      id: "state",
+      header: "State",
       hideBelow: "md",
-      cellClassName: "text-xs",
       cell: (f) => {
-        const label = analysisStateLabel(f.analysis_state);
-        return label
-          ? <span className="bg-muted rounded px-1.5 py-0.5 whitespace-nowrap">{label}</span>
-          : <span className="text-muted-foreground">–</span>;
-      },
-    },
-    {
-      id: "blocks",
-      header: "Blocks gate",
-      cell: (f) => {
-        const result = blocksGate(f, gate);
-        return result?.blocks
-          ? (
-            <span className="bg-sev-critical-bg text-sev-critical-fg rounded-sm px-1.5 py-0.5 text-xs font-medium">
-              Yes
-            </span>
-          )
-          : (
-            <span className="text-muted-foreground text-xs">
-              {blocksGateLabel(result)}
-            </span>
-          );
+        const workflow = findingWorkflowState(f, gate);
+        return (
+          <span
+            data-open={workflow.open}
+            className={`inline-flex items-center gap-[7px] ${
+              workflow.open ? "" : "text-muted-foreground"
+            }`}
+          >
+            <span
+              aria-hidden="true"
+              className={`size-[7px] rounded-full ring-[1.5px] ring-current ring-inset ${
+                workflow.open ? "bg-current" : ""
+              }`}
+            />
+            {workflow.label}
+          </span>
+        );
       },
     },
     {
@@ -126,6 +154,7 @@ export function FindingsTable(
       header: "Age",
       sortable: true,
       hideBelow: "md",
+      align: "end",
       cellClassName: "text-muted-foreground tabular-nums",
       cell: (f) => (
         <span title={`First seen ${formatDate(f.first_seen_at)}`}>
@@ -134,34 +163,50 @@ export function FindingsTable(
       ),
     },
     {
-      id: "last_seen",
-      header: "Last Seen",
-      sortable: true,
-      hideBelow: "md",
-      cellClassName: "text-muted-foreground tabular-nums",
-      cell: (f) => formatDate(f.last_seen_at),
+      id: "open",
+      header: <span className="sr-only">Open</span>,
+      cellClassName: "w-7 text-muted-foreground",
+      cell: () => <ChevronRightIcon aria-hidden="true" className="size-4" />,
     },
   ];
 
-  return (
-    <div className="space-y-2">
-      <div className="overflow-x-auto">
-        <DataGrid
-          label="Findings"
-          rows={findings}
-          columns={columns}
-          rowKey={(f) => f.id}
-          proportionalFont
-          rowClassName={() => "cursor-pointer"}
-          sort={{
-            columnId: sort.by,
-            direction: sort.dir === "asc" ? "ascending" : "descending",
-          }}
-          onSortChange={onToggleSort}
-          onActivate={(f) => navigate(detailPath(f.id), { state: detailState })}
-          onRowClick={(f, event) => openFinding(event, f.id)}
+  if (selection) {
+    columns.unshift({
+      id: "select",
+      header: <SelectAll findings={findings} selection={selection} />,
+      cellClassName: "w-10",
+      cell: (f) => (
+        <input
+          type="checkbox"
+          aria-label={`Select ${f.current_title}`}
+          checked={selection.keys.has(f.id)}
+          onChange={() => selection.onToggle(f.id)}
+          className="size-4 accent-foreground pointer-coarse:size-6"
         />
-      </div>
+      ),
+    });
+  }
+
+  return (
+    <div className="border-foreground overflow-x-auto border-t-2">
+      <DataGrid
+        label="Findings"
+        rows={findings}
+        columns={columns}
+        rowKey={(f) => f.id}
+        proportionalFont
+        rowClassName={(f) => `cursor-pointer ${edgeClass(f) ?? ""}`}
+        sort={{
+          columnId: sort.by,
+          direction: sort.dir === "asc" ? "ascending" : "descending",
+        }}
+        onSortChange={onToggleSort}
+        multiSelect={selection
+          ? { selectedKeys: selection.keys, onToggle: (f) => selection.onToggle(f.id) }
+          : undefined}
+        onActivate={(f) => navigate(detailPath(f.id), { state: detailState })}
+        onRowClick={(f, event) => openFinding(event, f.id)}
+      />
     </div>
   );
 }

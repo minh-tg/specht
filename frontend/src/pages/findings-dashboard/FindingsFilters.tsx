@@ -5,13 +5,13 @@ import {
   analysisStateLabel,
   FINDING_KINDS,
   findingKindLabel,
-  SEVERITIES,
-  severityLabel,
   TECHNICAL_STATES,
   technicalStateLabel,
 } from "@/lib/enums";
+import type { SeverityCount } from "@/types/api";
 import { SearchIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { SeverityChips } from "./SeverityChips";
 import { SORT_OPTIONS } from "./sort";
 import type { FindingsFilters as FindingsFilterState, FindingsSort } from "./useFindingsQuery";
 
@@ -26,6 +26,8 @@ interface FindingsFiltersProps {
   sort: FindingsSort;
   onFilterChange: (key: string, value: string) => void;
   onSortChange: (by: FindingsSort["by"], dir: "asc" | "desc") => void;
+  /** How many open findings each severity holds, for the chips. */
+  severityCounts?: readonly SeverityCount[];
 }
 
 /**
@@ -75,19 +77,15 @@ function SearchBox({ value, onSearch }: { value: string; onSearch: (value: strin
  * reports changes.
  */
 export function FindingsFilters(
-  { filters, sort, onFilterChange, onSortChange }: FindingsFiltersProps,
+  { filters, sort, onFilterChange, onSortChange, severityCounts }: FindingsFiltersProps,
 ) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <SearchBox value={filters.q} onSearch={(v) => onFilterChange("q", v)} />
-      <SelectField
-        aria-label="Filter by severity"
+      <SeverityChips
         value={filters.severity}
-        onValueChange={(v) => onFilterChange("severity", v)}
-        options={[
-          { value: "", label: "All severities" },
-          ...SEVERITIES.map((value) => ({ value, label: severityLabel(value) ?? value })),
-        ]}
+        counts={severityCounts}
+        onChange={(v) => onFilterChange("severity", v)}
       />
       <SelectField
         aria-label="Filter by triage state"
@@ -125,7 +123,6 @@ export function FindingsFilters(
       />
       <SelectField
         aria-label="Sort findings"
-        className="md:hidden"
         value={`${sort.by}:${sort.dir}`}
         onValueChange={(v) => {
           const [by, dir] = v.split(":");

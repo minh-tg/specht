@@ -335,6 +335,40 @@ export function useTriageFinding() {
   });
 }
 
+export function useBulkTriage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: {
+      success: (data: { results: TriageResponse[]; }) =>
+        `Triage saved for ${data.results.length} ${
+          data.results.length === 1 ? "finding" : "findings"
+        }`,
+    },
+    mutationFn: ({ findingIds, analysisState, reason, analysisExpiresAt }: {
+      findingIds: readonly string[];
+      analysisState: AnalysisState;
+      reason?: string;
+      analysisExpiresAt?: string;
+    }) =>
+      apiFetch<{ results: TriageResponse[]; }>("/api/v1/findings/bulk-analysis", {
+        method: "POST",
+        body: JSON.stringify({
+          finding_ids: findingIds,
+          analysis_state: analysisState,
+          ...(reason ? { reason } : {}),
+          ...(analysisExpiresAt ? { analysis_expires_at: analysisExpiresAt } : {}),
+        }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.findings() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.finding() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.findingEvents() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.gate() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectStats() });
+    },
+  });
+}
+
 export function useReachability(findingId: string) {
   return useQuery({
     queryKey: queryKeys.reachability(findingId),

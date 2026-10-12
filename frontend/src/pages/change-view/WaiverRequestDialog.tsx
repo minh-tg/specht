@@ -23,8 +23,10 @@ const MAX_REASON = 1000;
 
 export interface WaiverRequestDialogProps {
   readonly slug: string;
-  readonly findingId: string;
-  readonly findingTitle: string;
+  /** The findings the request names: one from the change view, several from the list. */
+  readonly findingIds: readonly string[];
+  /** What to call them in the sentence: a title, or "3 findings". */
+  readonly subject: string;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   /** Called once the request is saved, so the page can show it as waiting. */
@@ -40,7 +42,7 @@ function expiryFromNow(days: number): string {
  * the dialog says so, because the page keeps saying Blocked until someone approves.
  */
 export function WaiverRequestDialog(
-  { slug, findingId, findingTitle, open, onOpenChange, onRequested }: WaiverRequestDialogProps,
+  { slug, findingIds, subject, open, onOpenChange, onRequested }: WaiverRequestDialogProps,
 ) {
   const mutation = useRequestWaiver(slug);
   const [reason, setReason] = useState("");
@@ -56,7 +58,7 @@ export function WaiverRequestDialog(
     event.preventDefault();
     if (!trimmed) return;
     mutation.mutate(
-      { findingIds: [findingId], reason: trimmed, expiresAt: expiryFromNow(Number(days)) },
+      { findingIds: [...findingIds], reason: trimmed, expiresAt: expiryFromNow(Number(days)) },
       {
         onSuccess: () => {
           setReason("");
@@ -81,7 +83,7 @@ export function WaiverRequestDialog(
           <DialogHeader>
             <DialogTitle>Request a waiver</DialogTitle>
             <DialogDescription>
-              Ask a manager to let <strong className="text-foreground">{findingTitle}</strong>{" "}
+              Ask a manager to let <strong className="text-foreground">{subject}</strong>{" "}
               through until the date you pick. The verdict does not change until they approve it.
             </DialogDescription>
           </DialogHeader>
