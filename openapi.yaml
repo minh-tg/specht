@@ -824,22 +824,41 @@ paths:
       tags: [Reports]
       operationId: listReports
       summary: List a project's reports
+      description: |
+        With `limit=1` and a `branch`, this answers "what is the newest report
+        for this branch", which is how a client waits for the next scan to land.
+        The response carries a weak `ETag`; send it back as `If-None-Match` to
+        get `304 Not Modified` with no body while nothing has changed.
       x-required-scope: read
       security:
         - sessionAuth: []
         - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
+        - name: branch
+          in: query
+          description: Exact branch name. Omit for every branch.
+          schema: { type: string, maxLength: 255, example: feature/refund-retry }
+        - name: commit
+          in: query
+          description: Exact commit id, 7 to 64 hexadecimal characters. An abbreviation only finds reports stored with that same abbreviation.
+          schema: { type: string, pattern: "^[0-9a-fA-F]{7,64}$", example: 3f9a1c2 }
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
       responses:
         "200":
           description: The reports, newest first.
+          headers:
+            ETag:
+              description: Weak validator of the list. Changes when any listed report changes, including its status.
+              schema: { type: string }
           content:
             application/json:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/Report" }
+        "304":
+          description: The list is unchanged since the `If-None-Match` version. No body.
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }

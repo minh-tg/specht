@@ -501,7 +501,13 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List a project's reports */
+    /**
+     * List a project's reports
+     * @description With `limit=1` and a `branch`, this answers "what is the newest report
+     *     for this branch", which is how a client waits for the next scan to land.
+     *     The response carries a weak `ETag`; send it back as `If-None-Match` to
+     *     get `304 Not Modified` with no body while nothing has changed.
+     */
     get: operations["listReports"];
     put?: never;
     post?: never;
@@ -3440,6 +3446,10 @@ export interface operations {
   listReports: {
     parameters: {
       query?: {
+        /** @description Exact branch name. Omit for every branch. */
+        branch?: string;
+        /** @description Exact commit id, 7 to 64 hexadecimal characters. An abbreviation only finds reports stored with that same abbreviation. */
+        commit?: string;
         /** @description Page size. Default 20, maximum 500. A malformed, negative, or oversized value falls back to the default. */
         limit?: components["parameters"]["Limit"];
         /** @description Items to skip. A malformed, negative, or out-of-range value falls back to 0. */
@@ -3457,11 +3467,20 @@ export interface operations {
       /** @description The reports, newest first. */
       200: {
         headers: {
+          /** @description Weak validator of the list. Changes when any listed report changes, including its status. */
+          ETag?: string;
           [name: string]: unknown;
         };
         content: {
           "application/json": components["schemas"]["Report"][];
         };
+      };
+      /** @description The list is unchanged since the `If-None-Match` version. No body. */
+      304: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       400: components["responses"]["BadRequest"];
       401: components["responses"]["Unauthorized"];
