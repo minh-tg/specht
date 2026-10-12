@@ -15,6 +15,7 @@ import type {
   ProjectRole,
   ProjectStats,
   ProjectTeam,
+  ProjectWatcher,
   ReachabilityAssessment,
   Report,
   ScannerDescriptor,
@@ -56,6 +57,7 @@ export const queryKeys = {
   invites: (slug: string) => ["invites", slug] as const,
   policy: (slug: string) => ["policy", slug] as const,
   aging: (slug: string) => ["aging", slug] as const,
+  watcher: (slug: string) => ["watcher", slug] as const,
   policyTemplates: () => ["policy-templates"] as const,
   projects: () => ["projects"] as const,
   me: () => ["me"] as const,
@@ -900,4 +902,31 @@ export function normalizeAging(aging: Aging): Aging {
     overdue: aging.overdue ?? [],
     new_per_week: aging.new_per_week ?? [],
   };
+}
+
+/** A project's CVE watcher settings and its health. Any member can read it. */
+export function useProjectWatcher(slug: string) {
+  return useQuery({
+    queryKey: queryKeys.watcher(slug),
+    queryFn: () => apiFetch<ProjectWatcher>(`/api/v1/projects/${encodeURIComponent(slug)}/watcher`),
+    enabled: !!slug,
+  });
+}
+
+/**
+ * Changes the project's switch or interval; a field left out stays as it is. `null` for the
+ * interval returns it to the default.
+ */
+export function useUpdateProjectWatcher(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (change: { enabled?: boolean; interval_seconds?: number | null; }) =>
+      apiFetch<ProjectWatcher>(`/api/v1/projects/${encodeURIComponent(slug)}/watcher`, {
+        method: "PUT",
+        body: JSON.stringify(change),
+      }),
+    onSuccess: (watcher) => {
+      queryClient.setQueryData(queryKeys.watcher(slug), watcher);
+    },
+  });
 }

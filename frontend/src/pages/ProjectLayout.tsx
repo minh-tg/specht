@@ -6,6 +6,7 @@ import { ProjectAccess } from "@/pages/ProjectAccess";
 import { ProjectInsights } from "@/pages/ProjectInsights";
 import { ProjectPolicy } from "@/pages/ProjectPolicy";
 import { ProjectWaivers } from "@/pages/ProjectWaivers";
+import { ProjectWatcher } from "@/pages/ProjectWatcher";
 import { ReportHistory } from "@/pages/ReportHistory";
 import { Link, useLocation, useParams } from "react-router-dom";
 
@@ -23,6 +24,8 @@ export function ProjectLayout() {
     ? "waivers"
     : path.endsWith("/insights")
     ? "insights"
+    : path.endsWith("/watcher")
+    ? "watcher"
     : "findings";
 
   useDocumentTitle(
@@ -36,6 +39,8 @@ export function ProjectLayout() {
       ? `${slug} · Waivers`
       : currentTab === "insights"
       ? `${slug} · Insights`
+      : currentTab === "watcher"
+      ? `${slug} · Watcher`
       : `${slug} · Findings`,
   );
 
@@ -57,7 +62,10 @@ export function ProjectLayout() {
         <VerdictBand slug={slug ?? ""} />
       </div>
 
-      <nav aria-label="Project sections" className="mb-6 flex gap-4 border-b">
+      <nav
+        aria-label="Project sections"
+        className="mb-6 flex gap-4 overflow-x-auto border-b whitespace-nowrap"
+      >
         <Link
           to={`/${slug}/findings`}
           aria-current={currentTab === "findings" ? "page" : undefined}
@@ -124,6 +132,17 @@ export function ProjectLayout() {
         >
           Insights
         </Link>
+        <Link
+          to={`/${slug}/watcher`}
+          aria-current={currentTab === "watcher" ? "page" : undefined}
+          className={`pb-2 text-sm font-medium ${
+            currentTab === "watcher"
+              ? "border-primary text-foreground border-b-2"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Watcher
+        </Link>
       </nav>
       {currentTab === "findings"
         ? <FindingsDashboard />
@@ -135,6 +154,8 @@ export function ProjectLayout() {
         ? <ProjectWaivers />
         : currentTab === "insights"
         ? <ProjectInsights />
+        : currentTab === "watcher"
+        ? <ProjectWatcher />
         : <ProjectAccess />}
     </div>
   );

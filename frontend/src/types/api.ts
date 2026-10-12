@@ -401,3 +401,33 @@ export interface Aging {
   /** The project has more open findings than the report covers; the oldest were counted. */
   truncated: boolean;
 }
+
+export type WatcherStatus = "disabled" | "server_off" | "waiting" | "ok" | "stale" | "failing";
+
+/** A project's own watcher settings and what they amount to on this server. */
+export interface ProjectWatcher {
+  enabled: boolean;
+  interval_seconds: number;
+  default_interval_seconds: number;
+  min_interval_seconds: number;
+  max_interval_seconds: number;
+  /** The server runs the watcher at all. A project can be on while the server has it off. */
+  server_enabled: boolean;
+  effective_enabled: boolean;
+  effective_interval_seconds: number;
+  last_poll_at?: string;
+  status: WatcherStatus;
+  /** False when the status is stale or failing. */
+  healthy: boolean;
+}
+
+/** The watcher's health across the whole server. */
+export interface WatcherHealth {
+  last_successful_poll_at?: string;
+  last_poll_attempt_at?: string;
+  last_error?: string;
+  consecutive_failures: number;
+  healthy: boolean;
+  stale: boolean;
+  staleness_window?: string;
+}
