@@ -12,6 +12,7 @@ type StatsRepo interface {
 	GetProjectStats(ctx context.Context, projectID pgtype.UUID) ([]sqlc.GetProjectStatsRow, error)
 	GetProjectAnalysisStateCounts(ctx context.Context, projectID pgtype.UUID) ([]sqlc.GetProjectAnalysisStateCountsRow, error)
 	GetProjectWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error)
+	GetProjectPendingWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error)
 	GetProjectReportCount(ctx context.Context, projectID pgtype.UUID) (int32, error)
 	GetProjectLatestReport(ctx context.Context, projectID pgtype.UUID) (sqlc.GetProjectLatestReportRow, error)
 	GetAgingRows(ctx context.Context, projectID pgtype.UUID) ([]sqlc.GetAgingRowsRow, error)
@@ -31,6 +32,10 @@ func (r *pgStatsRepo) GetProjectStats(ctx context.Context, projectID pgtype.UUID
 
 func (r *pgStatsRepo) GetProjectAnalysisStateCounts(ctx context.Context, projectID pgtype.UUID) ([]sqlc.GetProjectAnalysisStateCountsRow, error) {
 	return r.q.GetProjectAnalysisStateCounts(ctx, projectID)
+}
+
+func (r *pgStatsRepo) GetProjectPendingWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error) {
+	return r.q.GetProjectPendingWaiverCount(ctx, projectID)
 }
 
 func (r *pgStatsRepo) GetProjectWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error) {

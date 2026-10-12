@@ -18,6 +18,7 @@ type mockStatsStore struct {
 	analysis    []port.AnalysisStateStat
 	severityErr error
 	analysisErr error
+	pending     int32
 }
 
 func (m *mockStatsStore) GetProjectStats(context.Context, string) ([]port.SeverityStat, error) {
@@ -35,6 +36,10 @@ func (m *mockStatsStore) GetProjectAnalysisStateCounts(context.Context, string) 
 }
 
 func (m *mockStatsStore) GetProjectWaiverCount(context.Context, string) (int32, error) { return 0, nil }
+
+func (m *mockStatsStore) GetProjectPendingWaiverCount(context.Context, string) (int32, error) {
+	return m.pending, nil
+}
 
 func (m *mockStatsStore) GetProjectReportCount(context.Context, string) (int32, error) { return 0, nil }
 
@@ -84,4 +89,15 @@ func TestGetProjectStats_AnalysisStateError(t *testing.T) {
 	_, err := statsUsecase(store).GetProjectStats(adminCtx(), "my-app")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "get analysis state counts")
+}
+
+func TestGetProjectStats_PendingWaiverCount(t *testing.T) {
+	stats, err := statsUsecase(&mockStatsStore{pending: 3}).GetProjectStats(adminCtx(), "my-app")
+	require.NoError(t, err)
+	assert.Equal(t, int32(3), stats.PendingWaiverCount)
+	assert.Equal(t, int32(0), stats.WaiverCount, "pending requests do not count as waivers")
+
+	raw, err := json.Marshal(stats)
+	require.NoError(t, err)
+	assert.Contains(t, string(raw), `"pending_waiver_count":3`)
 }

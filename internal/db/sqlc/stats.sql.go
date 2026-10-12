@@ -149,6 +149,19 @@ func (q *Queries) GetProjectLatestReport(ctx context.Context, projectID pgtype.U
 	return i, err
 }
 
+const getProjectPendingWaiverCount = `-- name: GetProjectPendingWaiverCount :one
+SELECT COUNT(*)::int AS count
+FROM waivers
+WHERE project_id = $1 AND status = 'pending'
+`
+
+func (q *Queries) GetProjectPendingWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, getProjectPendingWaiverCount, projectID)
+	var count int32
+	err := row.Scan(&count)
+	return count, err
+}
+
 const getProjectReportCount = `-- name: GetProjectReportCount :one
 SELECT COUNT(*)::int AS count
 FROM reports
