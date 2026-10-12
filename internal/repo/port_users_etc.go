@@ -2,9 +2,11 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/minh-tg/specht/internal/db/sqlc"
 	"github.com/minh-tg/specht/internal/port"
@@ -82,6 +84,43 @@ func (r *pgUserPort) SetRole(ctx context.Context, userID, role string) (port.Use
 		return port.User{}, mappingErr(err)
 	}
 	return userToPort(row), nil
+}
+
+// Count returns the number of accounts.
+func (r *pgUserPort) Count(ctx context.Context) (int64, error) {
+	return r.q.CountUsers(ctx)
+}
+
+// setupLockKey is the advisory-lock key that serialises first-run setup.
+const setupLockKey int64 = 0x53706563687453 // "SpechtS"
+
+// CreateFirstAdmin creates the first account as a global admin. The advisory
+// lock makes two racing setups take turns, so the second sees the account the
+// first created and is refused.
+func (r *pgUserPort) CreateFirstAdmin(ctx context.Context, email string, displayName *string, passwordHash string) (port.User, error) {
+	var out port.User
+	err := r.withTx(ctx, func(q *sqlc.Queries) error {
+		if err := q.AcquireSetupLock(ctx, setupLockKey); err != nil {
+			return err
+		}
+		row, err := q.CreateFirstAdmin(ctx, sqlc.CreateFirstAdminParams{
+			Email:        email,
+			DisplayName:  textPtrFromString(displayName),
+			PasswordHash: passwordHash,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return port.ErrSetupClosed
+		}
+		if err != nil {
+			return err
+		}
+		out = userToPort(row)
+		return nil
+	})
+	if err != nil {
+		return port.User{}, err
+	}
+	return out, nil
 }
 
 // ChangeRole changes the global role inside a transaction that locks the

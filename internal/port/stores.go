@@ -32,6 +32,10 @@ var ErrWaiverNotPending = errors.New("waiver is not pending")
 // per-project lock so concurrent writes cannot both pass the check.
 var ErrLastAdmin = errors.New("last project admin")
 
+// ErrSetupClosed is returned when first-run setup is attempted after an
+// account exists.
+var ErrSetupClosed = errors.New("setup is closed")
+
 // ErrLastGlobalAdmin is returned when a role change or deactivation would
 // leave the instance without an active global admin.
 var ErrLastGlobalAdmin = errors.New("last global admin")
@@ -143,6 +147,12 @@ type UserStore interface {
 	// List returns accounts ordered by email. filter matches a
 	// case-insensitive substring of the email; empty lists every account.
 	List(ctx context.Context, filter string, limit, offset int32) ([]User, error)
+	// Count returns the number of accounts.
+	Count(ctx context.Context) (int64, error)
+	// CreateFirstAdmin creates the first account as a global admin. It returns
+	// ErrSetupClosed when any account already exists, including when another
+	// request created it a moment earlier.
+	CreateFirstAdmin(ctx context.Context, email string, displayName *string, passwordHash string) (User, error)
 	// SetRole changes a user's global role. Role must be a valid users.role value.
 	SetRole(ctx context.Context, userID, role string) (User, error)
 	// ChangeRole changes a user's global role, starts a new token generation
