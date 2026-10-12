@@ -1,15 +1,19 @@
+import { CopyButton } from "@/components/CopyButton";
 import type { Finding } from "@/types/api";
 import { confidenceLabel, parseSourceLink } from "./format";
 
 /** Remediation guidance and the suggested fix for one finding. */
 export function HowToFix({ finding }: { readonly finding: Finding; }) {
   return (
-    <div className="mt-8 rounded-lg border p-4">
-      <h2 className="mb-3 text-sm font-semibold">How to fix</h2>
+    <div className="border-border mt-8 border-t pt-5">
+      <h2 className="mb-3 text-lg font-semibold">How to fix</h2>
       {finding.remediation?.summary
         ? (
           <div className="space-y-2 text-sm">
-            <p className="font-medium">{finding.remediation.summary}</p>
+            <div className="bg-muted flex items-center gap-3 rounded-md py-2 pr-2 pl-3.5">
+              <p className="min-w-0 flex-1 font-medium">{finding.remediation.summary}</p>
+              <CopyButton text={finding.remediation.summary} label="fix" />
+            </div>
             {finding.remediation.fallback && (
               <p className="text-muted-foreground text-xs">
                 General guidance — the scanner reported no specific fix.

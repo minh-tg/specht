@@ -101,6 +101,15 @@ export interface ServerVersion {
   commit: string;
 }
 
+export interface FindingIntel {
+  cve_id: string;
+  /** Probability of exploitation in the next 30 days, 0 to 1. */
+  epss?: number;
+  /** Listed in the CISA catalogue of known exploited vulnerabilities. */
+  kev: boolean;
+  stale?: boolean;
+}
+
 export interface Finding {
   id: string;
   project_id: string;
@@ -126,6 +135,8 @@ export interface Finding {
   location?: FindingLocation;
   /** Reviewable remediation proposal built from dimensions + guidance. */
   suggestion?: FindingSuggestion;
+  /** Exploit intelligence for the finding's CVE. Absent when no feed knows it. */
+  intel?: FindingIntel;
   /** Report that first observed the finding. Absent when unattributed. */
   introduced_by_report_id?: string;
   /** Revision the introducing report scanned. Absent when unattributed. */

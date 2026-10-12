@@ -1,50 +1,51 @@
 import { SeverityBadge } from "@/components/ui/severity-badge";
-import { findingKindLabel } from "@/lib/enums";
-import { type BlocksGateResult, blocksGateSentence } from "@/lib/gate";
+import { findingKindLabel, technicalStateLabel } from "@/lib/enums";
+import { formatAge } from "@/lib/format";
+import { type BlocksGateResult } from "@/lib/gate";
 import type { Finding } from "@/types/api";
-import { ShieldCheck } from "lucide-react";
-import type { ReactNode } from "react";
+import { WhyItBlocks } from "./WhyItBlocks";
 
-/** Severity, kind, gate verdict and title for one finding. */
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** "Open for 4 days", or the state in words once a scan or a deleted report has closed it. */
+function openFor(finding: Finding, now: Date = new Date()): string {
+  if (finding.state !== "open" && finding.state !== "reopened") {
+    return technicalStateLabel(finding.state) ?? "–";
+  }
+  const days = Math.floor((now.getTime() - new Date(finding.first_seen_at).getTime()) / DAY_MS);
+  if (Number.isNaN(days) || days < 1) return "Open since today";
+  return `Open for ${days} ${days === 1 ? "day" : "days"}`;
+}
+
+/** The kind and age line, the severity and title, and the gate's reason, for one finding. */
 export function FindingHeader({
   finding,
   gateResult,
+  floor,
 }: {
   readonly finding: Finding;
   readonly gateResult: BlocksGateResult | null;
+  readonly floor?: string;
 }) {
-  let gateChip: ReactNode = null;
-  if (gateResult?.blocks) {
-    gateChip = (
-      <span className="bg-sev-critical-bg text-sev-critical-fg rounded-sm px-1.5 py-0.5 text-xs font-medium">
-        {blocksGateSentence(gateResult)}
-      </span>
-    );
-  } else if (gateResult?.reason === "waived") {
-    gateChip = (
-      <span className="inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 text-xs font-medium text-foreground">
-        <ShieldCheck className="size-3" aria-hidden="true" />
-        {blocksGateSentence(gateResult)}
-      </span>
-    );
-  } else if (gateResult) {
-    gateChip = (
-      <span className="inline-flex items-center rounded-sm border px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
-        {blocksGateSentence(gateResult)}
-      </span>
-    );
-  }
-
   return (
-    <div className="mb-6">
-      <div className="mb-2 flex items-center gap-3">
+    <header>
+      <p className="font-label text-muted-foreground mb-3 flex flex-wrap items-center gap-x-2.5 text-xs">
+        <span>{findingKindLabel(finding.finding_kind) ?? "–"}</span>
+        <span aria-hidden="true">·</span>
+        <span title={`First seen ${formatAge(finding.first_seen_at)} ago`}>{openFor(finding)}</span>
+      </p>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <SeverityBadge severity={finding.current_severity} />
-        <span className="text-muted-foreground text-xs">
-          {findingKindLabel(finding.finding_kind) ?? "–"}
-        </span>
-        {gateChip}
+        <h1 className="text-[1.625rem] leading-[1.1] font-bold tracking-tight break-words sm:text-3xl">
+          {finding.current_title}
+        </h1>
       </div>
-      <h1 className="text-2xl font-bold break-words">{finding.current_title}</h1>
-    </div>
+      <WhyItBlocks
+        severity={finding.current_severity}
+        gateResult={gateResult}
+        floor={floor}
+      />
+      <div aria-hidden="true" className="page-rule" />
+    </header>
   );
 }

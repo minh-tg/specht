@@ -4,8 +4,8 @@ import { locationLineRange, locationSubjectLabel } from "./format";
 /** The file, resource or URL the scanner observed the finding at. */
 export function WhereItOccurs({ finding }: { readonly finding: Finding; }) {
   return (
-    <div className="mt-8 rounded-lg border p-4">
-      <h2 className="mb-3 text-sm font-semibold">Where it occurs</h2>
+    <div className="border-border mt-8 border-t pt-5">
+      <h2 className="mb-3 text-lg font-semibold">Where it occurs</h2>
       {finding.location
           && (finding.location.file || finding.location.resource || finding.location.summary)
         ? (

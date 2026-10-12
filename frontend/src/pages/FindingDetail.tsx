@@ -1,9 +1,19 @@
-import { useFinding, useFindingEvents, useGateStatus, useReachability } from "@/api/hooks";
+import {
+  useFinding,
+  useFindingEvents,
+  useGateStatus,
+  useProject,
+  useReachability,
+  useWaivers,
+} from "@/api/hooks";
 import { ErrorState } from "@/components/ErrorState";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { analysisStateLabel } from "@/lib/enums";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
+import { useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
+import { WaiverRequestDialog } from "./change-view/WaiverRequestDialog";
 import { ContextGrid } from "./finding-detail/ContextGrid";
 import { FindingHeader } from "./finding-detail/FindingHeader";
 import { HistorySection } from "./finding-detail/HistorySection";
@@ -25,6 +35,9 @@ export function FindingDetail() {
   const location = useLocation();
   const { data: finding, isLoading, isError, error, refetch } = useFinding(findingId ?? "");
   const { data: gate } = useGateStatus(slug ?? "");
+  const { data: project } = useProject(slug ?? "");
+  const pendingWaivers = useWaivers(slug ?? "", ["pending"]);
+  const [waiverOpen, setWaiverOpen] = useState(false);
   const {
     data: reachability,
     isLoading: reachabilityLoading,
@@ -66,11 +79,15 @@ export function FindingDetail() {
   }
 
   const gateResult = blocksGate(finding, gate);
-
   const currentGate = blocksGateSentence(gateResult);
+  const canRequestWaiver = project?.permissions?.request_waiver === true
+    && gateResult?.blocks === true;
+  const waiverPending = (Array.isArray(pendingWaivers.data) ? pendingWaivers.data : []).some((
+    waiver,
+  ) => waiver.targets?.some((target) => target.finding_id === finding.id));
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <div className="mx-auto max-w-5xl px-4 py-8">
       <Link
         to={backToFindingsPath(slug ?? "", location.state)}
         className="text-muted-foreground hover:text-foreground mb-6 inline-block text-sm"
@@ -78,37 +95,70 @@ export function FindingDetail() {
         &larr; Back to findings
       </Link>
 
-      <FindingHeader finding={finding} gateResult={gateResult} />
+      <FindingHeader
+        finding={finding}
+        gateResult={gateResult}
+        floor={gate?.policy?.severity_floor}
+      />
 
-      <MetadataGrid finding={finding} />
+      <div className="mt-2 grid gap-x-10 lg:grid-cols-[minmax(0,1fr)_17rem]">
+        <div className="min-w-0">
+          <HowToFix finding={finding} />
 
-      <HowToFix finding={finding} />
+          <WhereItOccurs finding={finding} />
 
-      <WhereItOccurs finding={finding} />
+          <div className="border-border mt-8 border-t pt-5">
+            <h2 className="mb-1 text-lg font-semibold">Decide</h2>
+            <p className="text-muted-foreground mb-4 text-xs">
+              Currently: {analysisStateLabel(finding.analysis_state) ?? "Not triaged"}
+              {currentGate && <>{" · "}{currentGate}</>}
+            </p>
+            <TriageSection findingId={finding.id} projectSlug={slug} />
+            <ReachabilitySection
+              findingId={finding.id}
+              reachability={reachability}
+              isLoading={reachabilityLoading}
+              isError={reachabilityIsError}
+              error={reachabilityError}
+              isSuccess={reachabilityLoaded}
+            />
+          </div>
 
-      <div className="mt-8 rounded-lg border p-4">
-        <h2 className="mb-1 text-sm font-semibold">Decide</h2>
-        <p className="text-muted-foreground mb-4 text-xs">
-          Currently: {analysisStateLabel(finding.analysis_state) ?? "Not triaged"}
-          {currentGate && <>{" · "}{currentGate}</>}
-        </p>
-        <TriageSection findingId={finding.id} projectSlug={slug} />
-        <ReachabilitySection
-          findingId={finding.id}
-          reachability={reachability}
-          isLoading={reachabilityLoading}
-          isError={reachabilityIsError}
-          error={reachabilityError}
-          isSuccess={reachabilityLoaded}
-        />
+          <ContextGrid context={finding.context} />
+
+          <HistorySection
+            events={events}
+            isLoading={eventsLoading}
+            isError={eventsIsError}
+          />
+        </div>
+
+        <aside aria-label="About this finding" className="mt-8 grid content-start gap-5">
+          {canRequestWaiver && (
+            waiverPending
+              ? (
+                <p className="bg-muted text-muted-foreground rounded-md px-3.5 py-3 text-[0.8125rem]">
+                  Waiver requested. A manager will decide. The verdict does not change until they
+                  approve it.
+                </p>
+              )
+              : (
+                <Button variant="outline" onClick={() => setWaiverOpen(true)}>
+                  Request waiver
+                </Button>
+              )
+          )}
+          <MetadataGrid finding={finding} />
+        </aside>
       </div>
 
-      <ContextGrid context={finding.context} />
-
-      <HistorySection
-        events={events}
-        isLoading={eventsLoading}
-        isError={eventsIsError}
+      <WaiverRequestDialog
+        slug={slug ?? ""}
+        findingIds={[finding.id]}
+        subject={finding.current_title}
+        open={waiverOpen}
+        onOpenChange={setWaiverOpen}
+        onRequested={() => void pendingWaivers.refetch()}
       />
     </div>
   );

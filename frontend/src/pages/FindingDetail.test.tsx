@@ -476,8 +476,8 @@ describe("FindingDetail enum labels", () => {
     renderDetail();
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
-    expect(screen.getByText("Accepted risk", { selector: "p" })).toBeInTheDocument();
-    expect(screen.queryByText("accepted_risk", { selector: "p" })).not.toBeInTheDocument();
+    expect(screen.getByText("Accepted risk", { selector: "dd" })).toBeInTheDocument();
+    expect(screen.queryByText("accepted_risk", { selector: "dd" })).not.toBeInTheDocument();
   });
 
   it("renders a controlled label when analysis_state is unvalidated", async () => {
@@ -486,7 +486,7 @@ describe("FindingDetail enum labels", () => {
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
     expect(screen.queryByText("pending_review")).not.toBeInTheDocument();
-    expect(screen.getByText("Unknown", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByText("Unknown", { selector: "dd" })).toBeInTheDocument();
   });
 
   it("no longer shows a Gate Effect field", async () => {
@@ -502,7 +502,7 @@ describe("FindingDetail enum labels", () => {
     renderDetail();
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
-    expect(screen.getByText("Reopened", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByText("Reopened", { selector: "dd" })).toBeInTheDocument();
   });
 
   it("renders a controlled label when state is unvalidated", async () => {
@@ -511,7 +511,7 @@ describe("FindingDetail enum labels", () => {
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
     expect(screen.queryByText("closed")).not.toBeInTheDocument();
-    expect(screen.getByText("Unknown", { selector: "p" })).toBeInTheDocument();
+    expect(screen.getByText("Unknown", { selector: "dd" })).toBeInTheDocument();
   });
 });
 
@@ -527,41 +527,43 @@ describe("FindingDetail kind", () => {
 });
 
 describe("FindingDetail gate status", () => {
-  it("shows a prominent chip when the finding blocks the gate", async () => {
-    gateFixture = { blocked_by: ["f1"] };
+  it("says why the finding blocks, in the panel under the title", async () => {
+    gateFixture = { blocked_by: ["f1"], policy: { severity_floor: "high" } };
     renderDetail();
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
-    const chip = screen.getByText("Blocks gate");
-    expect(chip).toHaveClass("bg-sev-critical-bg", "text-sev-critical-fg");
+    const panel = await screen.findByRole("region", { name: "Why this blocks" });
+    expect(panel).toHaveAttribute("data-blocks", "true");
+    expect(panel).toHaveTextContent(
+      "Severity HIGH is at or above the project floor (HIGH). The gate stops a change that carries it until it is fixed or waived.",
+    );
   });
-
-  it("explains an ignored finding in the gate chip", async () => {
+  it("explains an ignored finding in the panel", async () => {
     findingFixture = { gate_effect: "ignore" };
     renderDetail();
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
-    const chip = screen.getByText("Does not block gate (ignored by triage)");
-    expect(chip).toHaveClass("border", "text-muted-foreground");
+    const panel = await screen.findByRole("region", { name: "Why this does not block" });
+    expect(panel).toHaveTextContent("Triage marked this finding as not blocking the gate");
+    expect(panel).toHaveAttribute("data-blocks", "false");
   });
-
-  it("explains a below-floor finding in the gate chip", async () => {
+  it("explains a below-floor finding in the panel", async () => {
     findingFixture = { current_severity: "low" };
     gateFixture = { blocked_by: [], policy: { severity_floor: "high" } };
     renderDetail();
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
-    expect(screen.getByText("Does not block gate (below the floor)")).toBeInTheDocument();
+    expect(await screen.findByText(/Severity LOW is below the project floor \(HIGH\)/))
+      .toBeInTheDocument();
   });
-
-  it("shows the Waived chip when an active waiver silences the finding", async () => {
+  it("says an approved waiver lets the finding through", async () => {
     gateFixture = { blocked_by: [], waived_finding_ids: ["f1"] };
     renderDetail();
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
-    expect(screen.getByText("Waived: does not block gate")).toBeInTheDocument();
+    expect(await screen.findByText(/An approved waiver lets this finding through the gate/))
+      .toBeInTheDocument();
   });
-
   it("renders no chip while the gate status is unknown", async () => {
     gateFails = true;
     renderDetail();
