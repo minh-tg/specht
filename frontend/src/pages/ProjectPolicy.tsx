@@ -7,6 +7,7 @@ import {
 } from "@/api/hooks";
 import { ErrorState } from "@/components/ErrorState";
 import { SelectField } from "@/components/SelectField";
+import { SettingLine } from "@/components/SettingLine";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { InfoIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
@@ -17,7 +18,7 @@ import {
   WATCHER_GATE_OPTIONS,
   watcherGateHelp,
 } from "./project-policy/policyCopy";
-import { PolicyLine, PolicyRow } from "./project-policy/PolicyRow";
+import { PolicyRow } from "./project-policy/PolicyRow";
 
 const NO_TEMPLATE = "";
 
@@ -60,7 +61,7 @@ export function ProjectPolicy() {
       </div>
 
       <div className="border-foreground border-t-2">
-        <PolicyLine
+        <SettingLine
           title="Template"
           help="A shared baseline from your platform team. Overrides below win over it."
         >
@@ -89,7 +90,7 @@ export function ProjectPolicy() {
               v{policy.template_version}
             </span>
           )}
-        </PolicyLine>
+        </SettingLine>
 
         <PolicyRow
           title="Severity floor"

@@ -1,7 +1,8 @@
 import { SelectField } from "@/components/SelectField";
+import { SettingLine } from "@/components/SettingLine";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { type ReactNode, useId, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { optionLabel, type PolicyOption, type PolicySource, SOURCE_LABEL } from "./policyCopy";
 
 /** Where a value comes from. An override is filled in, so it stands out from the inherited rest. */
@@ -18,28 +19,6 @@ export function SourceTag({ source }: { readonly source: PolicySource; }) {
     >
       {SOURCE_LABEL[source]}
     </span>
-  );
-}
-
-/** The frame every policy line shares: a name and its explanation on the left, the control on the right. */
-export function PolicyLine({ title, help, children }: {
-  readonly title: string;
-  readonly help: ReactNode;
-  readonly children: ReactNode;
-}) {
-  const headingId = useId();
-  return (
-    <div
-      role="group"
-      aria-labelledby={headingId}
-      className="border-border grid items-center gap-x-6 gap-y-3 border-b px-0.5 py-4 sm:grid-cols-[minmax(0,1fr)_auto]"
-    >
-      <div>
-        <h3 id={headingId} className="text-[0.9375rem] font-semibold">{title}</h3>
-        <p className="text-muted-foreground mt-0.5 max-w-[62ch] text-[0.8125rem]">{help}</p>
-      </div>
-      <div className="flex flex-wrap items-center gap-2.5">{children}</div>
-    </div>
   );
 }
 
@@ -91,7 +70,7 @@ export function PolicyRow({
   }
 
   return (
-    <PolicyLine title={title} help={help}>
+    <SettingLine title={title} help={help}>
       <SourceTag source={source} />
       {editing
         ? (
@@ -138,6 +117,6 @@ export function PolicyRow({
             )}
           </>
         )}
-    </PolicyLine>
+    </SettingLine>
   );
 }
