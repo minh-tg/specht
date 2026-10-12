@@ -3,6 +3,7 @@ import { useUserDirectory } from "@/api/users";
 import { useAuth } from "@/auth/useAuth";
 import { ErrorState } from "@/components/ErrorState";
 import { SkeletonLines } from "@/components/SkeletonLines";
+import { latestFailure } from "@/lib/latestFailure";
 import { cn } from "@/lib/utils";
 import type { Waiver } from "@/types/api";
 import { type KeyboardEvent, useMemo, useRef, useState } from "react";
@@ -81,7 +82,7 @@ export function ProjectWaivers() {
 
   const permissions = project?.permissions;
   const busy = withdraw.isPending || revoke.isPending;
-  const failure = withdraw.error ?? revoke.error;
+  const failure = latestFailure(withdraw, revoke);
 
   return (
     <section aria-labelledby="waivers-heading" className="grid gap-5">

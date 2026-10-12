@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { isSystemAccount } from "@/lib/accounts";
+import { latestFailure } from "@/lib/latestFailure";
 import { cn } from "@/lib/utils";
 import type { UserProfile } from "@/types/api";
 import { useDeferredValue, useState } from "react";
@@ -48,7 +49,7 @@ export function PeopleSection() {
   // The server's page may be full even when the system account is one of its rows.
   const received = users.data ?? [];
   const list = received.filter((u) => !isSystemAccount(u));
-  const failure = changeRole.error ?? setActive.error;
+  const failure = latestFailure(changeRole, setActive);
 
   async function deactivate() {
     if (!deactivating) return;

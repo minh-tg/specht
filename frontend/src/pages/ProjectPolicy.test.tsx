@@ -169,6 +169,23 @@ describe("ProjectPolicy", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("bad value");
   });
 
+  it("drops a refused change's message once another change goes through", async () => {
+    failNextWrite = true;
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("button", { name: "Override Severity floor" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("bad value");
+
+    failNextWrite = false;
+    await chooseOption(
+      user,
+      screen.getByRole("combobox", { name: "Template" }),
+      "Relaxed internal",
+    );
+    await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
+  });
+
   it("offers a retry when the policy cannot be loaded", async () => {
     globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
