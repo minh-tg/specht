@@ -766,7 +766,12 @@ paths:
       summary: List a project's findings
       description: |
         Every filter is a comma-separated list, and separate filters intersect.
-        An unknown value in any list simply selects nothing.
+        An unknown value in `severity`, `status`, `kind`, `environment` or
+        `target` simply selects nothing. `analysis_state`, `sort` and `dir`
+        are checked and refused with 400 when they hold an unknown value.
+
+        The order holds across pages: ties are broken by severity, creation
+        time and id, so a page boundary never repeats or skips a finding.
       x-required-scope: read
       security:
         - sessionAuth: []
@@ -793,6 +798,25 @@ paths:
           in: query
           description: Comma-separated target names.
           schema: { type: string }
+        - name: analysis_state
+          in: query
+          description: |
+            Comma-separated analysis states (unanalyzed, in_triage, exploitable,
+            false_positive, not_affected, accepted_risk, wont_fix). A finding nobody has
+            looked at counts as `unanalyzed`.
+          schema: { type: string, example: "unanalyzed,in_triage" }
+        - name: q
+          in: query
+          description: Text to find in the title or the fingerprint, which carries the CVE id and package for dependency findings. Case-insensitive, matched literally, at most 100 characters.
+          schema: { type: string, maxLength: 100, example: CVE-2025-20006 }
+        - name: sort
+          in: query
+          description: Sort key. `severity` is the default.
+          schema: { type: string, enum: [severity, first_seen, last_seen, title], default: severity }
+        - name: dir
+          in: query
+          description: Sort direction. Defaults to `desc`, or `asc` for `title`. For `first_seen`, `asc` lists the oldest findings first.
+          schema: { type: string, enum: [asc, desc] }
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
       responses:
@@ -809,6 +833,7 @@ paths:
               schema:
                 type: array
                 items: { $ref: "#/components/schemas/Finding" }
+        "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
