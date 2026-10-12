@@ -113,6 +113,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	r.Get("/api/v1/health", healthHandler)
 	r.Get("/api/v1/version", versionHandler)
+	r.Get("/api/v1/capabilities", capabilitiesHandler(cfg.RegistrationDisabled, cfg.OIDCEnabled && cfg.OIDC != nil))
 	// SSO/OIDC entry point: redirect to the provider's authorization URL.
 	if cfg.OIDCEnabled && cfg.OIDC != nil {
 		r.Get("/api/v1/auth/sso/login", ssoLoginHandler(cfg.OIDC))
@@ -368,6 +369,40 @@ func versionHandler(w http.ResponseWriter, r *http.Request) {
 		Version string `json:"version"`
 		Commit  string `json:"commit"`
 	}{Version: version.Version, Commit: version.Commit})
+}
+
+// capabilitiesHandler tells a signed-out client which sign-in options this
+// server offers, so the login page shows a Register link or an SSO button only
+// when they work. It is unauthenticated and carries no secrets or provider
+// details. The flags change only at startup, so a short cache is safe.
+func capabilitiesHandler(registrationDisabled, ssoEnabled bool) http.HandlerFunc {
+	type toggle struct {
+		Enabled bool `json:"enabled"`
+	}
+	type sso struct {
+		Enabled bool `json:"enabled"`
+		// LoginPath is where the browser goes to start SSO. Empty when SSO is off.
+		LoginPath string `json:"login_path,omitempty"`
+	}
+	type body struct {
+		Registration toggle `json:"registration"`
+		SSO          sso    `json:"sso"`
+		Version      string `json:"version"`
+		Commit       string `json:"commit"`
+	}
+	resp := body{
+		Registration: toggle{Enabled: !registrationDisabled},
+		SSO:          sso{Enabled: ssoEnabled},
+		Version:      version.Version,
+		Commit:       version.Commit,
+	}
+	if ssoEnabled {
+		resp.SSO.LoginPath = "/api/v1/auth/sso/login"
+	}
+	return func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=60")
+		respondJSON(w, http.StatusOK, resp)
+	}
 }
 
 // ssoLoginHandler redirects unauthenticated users to the OIDC provider's
