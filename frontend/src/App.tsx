@@ -155,6 +155,14 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/:slug/watcher"
+        element={
+          <ProtectedRoute>
+            <ProjectLayout />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/teams"
         element={
           <ProtectedRoute>
