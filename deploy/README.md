@@ -53,7 +53,7 @@ compose defaults differ, which is noted.
 | `CORS_ORIGINS` | *(empty)* | Comma/space-separated origins allowed to call the API from a browser. Empty allows none: the bundled UI is same-origin and needs no entry. Set it only when the UI is hosted elsewhere (use exact `https://` origins). |
 | `ADMIN_EMAILS` | *(empty)* | Comma-separated emails promoted to global admin at startup. Idempotent; unknown addresses are skipped with a warning. Matching ignores case. While `REGISTRATION_ENABLED` is on, an address that is not registered yet can be claimed by anyone, so register it before listing it (or turn registration off); the server logs an error for each such address. |
 | `SETUP_TOKEN` | *(random)* | Proof of access for first-run setup. While the database has no accounts the server logs a random token at startup (`setup_token=...`); set this variable to choose it instead (at least 16 characters, never logged). Ignored once an account exists. |
-| `REGISTRATION_ENABLED` | `true` | Allow self-service `POST /api/v1/auth/register`. Open by default because the first administrator has to register before anyone can be promoted. Set `false` once your admins exist (and always for SSO-only deployments); the endpoint then answers `403 registration_disabled`. Anything other than a boolean fails startup. |
+| `REGISTRATION_ENABLED` | `true` | Allow self-service `POST /api/v1/auth/register`. Open by default. Set `false` to close self-service signup (and always for SSO-only deployments); the endpoint then answers `403 registration_disabled`. First-run setup and invite links keep working while it is closed. Anything other than a boolean fails startup. |
 | `TRUSTED_PROXIES` | *(empty)* | Comma/space-separated CIDRs of proxy hops allowed to set `X-Forwarded-For` / `X-Real-IP` / `X-Forwarded-Proto`. Empty trusts nobody. |
 | `INVENTORY_TTL` | `2160h` | How long a scanned package stays in the watcher's active inventory. |
 | `INGEST_MAX_CONCURRENCY` | `8` | Report ingests processed at once. Each parse holds several times the request body in memory (bodies are capped at 25 MiB), so this bounds the worst case. Further ingests wait up to 15 s for a slot and then get `503 ingest_busy` with `Retry-After`. An ingest may take up to two minutes, upload included. Must be a positive integer. |
@@ -180,6 +180,9 @@ administration needs a global admin.
 2. To promote more accounts, add their emails to `ADMIN_EMAILS` in
    `deploy/.env.prod` and restart (`up -d` again — promotion is idempotent).
 3. Create projects and grant membership via `POST /projects/:slug/members`.
+4. Bring teammates in with invite links (`POST /projects/:slug/invites`, valid
+   1 to 30 days, single use). The link works while `REGISTRATION_ENABLED` is
+   `false`, so registration can stay closed.
 
 ### Changing or removing a global admin
 
