@@ -9,6 +9,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { SelectField } from "@/components/SelectField";
 import { SettingLine } from "@/components/SettingLine";
 import { SkeletonLines } from "@/components/SkeletonLines";
+import { latestFailure } from "@/lib/latestFailure";
 import { InfoIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
 import {
@@ -49,7 +50,7 @@ export function ProjectPolicy() {
   };
 
   const templateName = policy.template_name ?? NO_TEMPLATE;
-  const failure = setTemplate.error ?? setOverrides.error;
+  const failure = latestFailure(setTemplate, setOverrides);
 
   return (
     <section aria-labelledby="policy-heading" className="grid gap-6">
