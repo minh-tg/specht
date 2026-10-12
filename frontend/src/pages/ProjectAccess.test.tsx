@@ -2,7 +2,7 @@ import { AuthContext, type AuthContextValue } from "@/auth/context";
 import { Toaster } from "@/components/ui/sonner";
 import { chooseOption, createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -173,6 +173,66 @@ describe("ProjectAccess", () => {
       expect(screen.getByText("Backend Platform")).toBeInTheDocument();
       expect(screen.getByText("Security Champions")).toBeInTheDocument();
     });
+  });
+
+  it("lists each member and team as a row with the role written out", async () => {
+    renderProjectAccess();
+
+    await screen.findByText("Sarah Chen");
+    const members = screen.getByRole("list", { name: "Direct members" });
+    const rows = within(members).getAllByRole("listitem");
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toHaveTextContent("Sarah Chen");
+    expect(rows[0]).toHaveTextContent("sarah@acme.corp");
+    expect(rows[0]).toHaveTextContent("admin");
+    expect(rows[0]).toHaveTextContent(/^Sarah Chensarah@acme\.corpadminAdded /);
+
+    const teams = screen.getByRole("list", { name: "Linked teams" });
+    const teamRows = within(teams).getAllByRole("listitem");
+    expect(teamRows).toHaveLength(2);
+    expect(teamRows[1]).toHaveTextContent("Security Champions");
+    expect(teamRows[1]).toHaveTextContent("admin");
+  });
+
+  it("names members from the roster, so a manager who cannot read the directory still sees who they are", async () => {
+    userRole = "member";
+    mockMembers = [
+      {
+        project_id: "p1",
+        user_id: "u9",
+        role: "manager",
+        created_at: "2026-09-18T00:00:00Z",
+        email: "lena@acme.corp",
+        display_name: "Lena Brandt",
+      },
+      {
+        project_id: "p1",
+        user_id: "u8",
+        role: "member",
+        created_at: "2026-09-19T00:00:00Z",
+        email: "tomas@acme.corp",
+      },
+      { project_id: "p1", user_id: "u7", role: "member", created_at: "2026-09-20T00:00:00Z" },
+    ];
+    renderProjectAccess();
+
+    const members = await screen.findByRole("list", { name: "Direct members" });
+    const rows = within(members).getAllByRole("listitem");
+    expect(rows[0]).toHaveTextContent("Lena Brandt");
+    expect(rows[0]).toHaveTextContent("lena@acme.corp");
+    expect(rows[1]).toHaveTextContent("tomas@acme.corp");
+    expect(rows[2]).toHaveTextContent("A team member");
+    expect(members).not.toHaveTextContent("u7");
+    expect(members).not.toHaveTextContent("u9");
+  });
+
+  it("says so in the list when nobody is granted yet", async () => {
+    mockMembers = [];
+    mockTeams = [];
+    renderProjectAccess();
+
+    expect(await screen.findByText("No direct members granted yet.")).toBeInTheDocument();
+    expect(screen.getByText("No company teams linked to this project.")).toBeInTheDocument();
   });
 
   it("guards the last project admin from deletion", async () => {

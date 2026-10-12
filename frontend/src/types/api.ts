@@ -72,6 +72,9 @@ export interface ProjectMember {
   user_id: string;
   role: ProjectRole;
   created_at: string;
+  /** Who the member is. Sent to a signed-in person only, so it can be missing. */
+  email?: string;
+  display_name?: string;
 }
 
 export interface ProjectTeam {

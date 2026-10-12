@@ -24,27 +24,16 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { isUuid } from "@/lib/uuid";
-import type { ProjectRole } from "@/types/api";
+import type { ProjectMember, ProjectRole } from "@/types/api";
 import { LockIcon, ShieldCheckIcon } from "lucide-react";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { InvitesSection } from "./project-access/InvitesSection";
 
+/** The role as a word in an outline. The word carries the meaning; nothing relies on colour. */
 function RoleBadge({ role }: { role: ProjectRole; }) {
-  const styles: Record<ProjectRole, string> = {
-    admin:
-      "bg-[oklch(0.92_0.05_305)] text-[oklch(0.4_0.14_305)] dark:bg-[oklch(0.28_0.06_305)] dark:text-[oklch(0.85_0.1_305)]",
-    manager:
-      "bg-[oklch(0.92_0.04_250)] text-[oklch(0.4_0.12_250)] dark:bg-[oklch(0.28_0.05_250)] dark:text-[oklch(0.85_0.08_250)]",
-    member: "bg-muted text-muted-foreground",
-  };
-
   return (
-    <span
-      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold uppercase tracking-wider ${
-        styles[role]
-      }`}
-    >
+    <span className="font-label border-border justify-self-start rounded border px-2 py-0.5 text-[0.6875rem]">
       {role}
     </span>
   );
@@ -103,18 +92,19 @@ export function ProjectAccess() {
 
   const adminCount = members?.filter((m) => m.role === "admin").length ?? 0;
 
-  function resolveUserLabel(userId: string) {
-    const user = directory?.find((u) => u.id === userId);
-    if (user) {
-      return {
-        name: user.display_name || user.email,
-        email: user.email,
-      };
+  /**
+   * Who a member is. The roster names them; the admin directory fills in for older answers. A raw id
+   * is never shown: someone who cannot be named is "A team member".
+   */
+  function resolveUserLabel(member: ProjectMember) {
+    if (member.email) {
+      return { name: member.display_name || member.email, email: member.email };
     }
-    return {
-      name: userId,
-      email: null,
-    };
+    const user = directory?.find((u) => u.id === member.user_id);
+    if (user) {
+      return { name: user.display_name || user.email, email: user.email };
+    }
+    return { name: "A team member", email: null };
   }
 
   async function handleAddMember(e: React.FormEvent) {
@@ -177,17 +167,16 @@ export function ProjectAccess() {
         </div>
       )}
 
-      {/* Direct Members Section */}
-      <section className="bg-card border border-border rounded-lg overflow-hidden shadow-xs">
-        <div className="p-4 sm:p-5 border-b border-border flex items-center justify-between gap-4">
+      <section aria-labelledby="members-heading">
+        <div className="flex items-end justify-between gap-4">
           <div>
-            <h2 className="text-base font-semibold flex items-center gap-2">
+            <h2 id="members-heading" className="flex items-center gap-2 text-lg font-semibold">
               Direct Members
-              <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-normal">
+              <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-normal tabular-nums">
                 {members?.length ?? 0}
               </span>
             </h2>
-            <p className="text-muted-foreground text-xs mt-0.5">
+            <p className="text-muted-foreground mt-0.5 max-w-[60ch] text-sm">
               Individual contributors with explicit access grants on this project.
             </p>
           </div>
@@ -199,92 +188,80 @@ export function ProjectAccess() {
         </div>
 
         {membersLoading
-          ? <SkeletonLines label="Loading members" className="p-6" />
+          ? <SkeletonLines label="Loading members" className="mt-4" />
           : membersError
           ? (
-            <div className="p-4">
+            <div className="mt-4">
               <ErrorState title="Could not load members." onRetry={() => refetchMembers()} />
             </div>
           )
           : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-sm">
-                <thead>
-                  <tr className="bg-muted text-muted-foreground text-xs uppercase tracking-wider border-b border-border">
-                    <th scope="col" className="px-5 py-3">User</th>
-                    <th scope="col" className="px-5 py-3">Role</th>
-                    <th scope="col" className="px-5 py-3">Added</th>
-                    <th scope="col" className="px-5 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {members && members.length > 0
-                    ? (
-                      members.map((member) => {
-                        const { name, email } = resolveUserLabel(member.user_id);
-                        const isLastAdmin = member.role === "admin" && adminCount <= 1;
-                        const isPeerRestricted = !isAdmin
-                          && (member.role === "admin" || member.role === "manager");
-                        const canRemove = canManageMembers && !isLastAdmin && !isPeerRestricted;
+            <ul
+              aria-label="Direct members"
+              className="border-foreground m-0 mt-3 list-none border-t-2 p-0"
+            >
+              {members && members.length > 0
+                ? (
+                  members.map((member) => {
+                    const { name, email } = resolveUserLabel(member);
+                    const isLastAdmin = member.role === "admin" && adminCount <= 1;
+                    const isPeerRestricted = !isAdmin
+                      && (member.role === "admin" || member.role === "manager");
+                    const canRemove = canManageMembers && !isLastAdmin && !isPeerRestricted;
 
-                        let disabledReason: string | undefined;
-                        if (isLastAdmin) {
-                          disabledReason = "Cannot remove the last project admin";
-                        } else if (isPeerRestricted) {
-                          disabledReason = "Managers cannot modify fellow Managers or Admins";
-                        }
+                    let disabledReason: string | undefined;
+                    if (isLastAdmin) {
+                      disabledReason = "Cannot remove the last project admin";
+                    } else if (isPeerRestricted) {
+                      disabledReason = "Managers cannot modify fellow Managers or Admins";
+                    }
 
-                        return (
-                          <tr key={member.user_id} className="hover:bg-muted/30">
-                            <td className="px-5 py-3.5">
-                              <div className="font-medium text-foreground">{name}</div>
-                              {email && (
-                                <div className="text-muted-foreground text-xs">{email}</div>
-                              )}
-                            </td>
-                            <td className="px-5 py-3.5">
-                              <RoleBadge role={member.role} />
-                            </td>
-                            <td className="px-5 py-3.5 text-muted-foreground text-xs">
-                              {new Date(member.created_at).toLocaleDateString()}
-                            </td>
-                            <td className="px-5 py-3.5 text-right">
-                              {canManageMembers
-                                ? (
-                                  <DisabledReason reason={disabledReason}>
-                                    <Button
-                                      variant="ghost"
-                                      size="xs"
-                                      disabled={!canRemove || removeMemberMutation.isPending}
-                                      className="text-destructive hover:bg-destructive/10"
-                                      onClick={() => removeMemberMutation.mutate(member.user_id)}
-                                    >
-                                      Remove
-                                    </Button>
-                                  </DisabledReason>
-                                )
-                                : <span className="text-muted-foreground text-xs">View only</span>}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )
-                    : (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="px-5 py-6 text-center text-muted-foreground text-sm"
-                        >
-                          No direct members granted yet.
-                        </td>
-                      </tr>
-                    )}
-                </tbody>
-              </table>
-            </div>
+                    return (
+                      <li
+                        key={member.user_id}
+                        className="border-border grid items-center gap-x-5 gap-y-1 border-b px-0.5 py-3.5 sm:grid-cols-[minmax(0,1fr)_auto_auto_5.5rem]"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold">{name}</p>
+                          {email && email !== name && (
+                            <p className="text-muted-foreground truncate text-[0.8125rem]">
+                              {email}
+                            </p>
+                          )}
+                        </div>
+                        <RoleBadge role={member.role} />
+                        <span className="text-muted-foreground text-[0.8125rem]">
+                          Added {new Date(member.created_at).toLocaleDateString()}
+                        </span>
+                        <div className="sm:text-right">
+                          {canManageMembers
+                            ? (
+                              <DisabledReason reason={disabledReason}>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={!canRemove || removeMemberMutation.isPending}
+                                  onClick={() => removeMemberMutation.mutate(member.user_id)}
+                                >
+                                  Remove
+                                </Button>
+                              </DisabledReason>
+                            )
+                            : <span className="text-muted-foreground text-xs">View only</span>}
+                        </div>
+                      </li>
+                    );
+                  })
+                )
+                : (
+                  <li className="text-muted-foreground border-border border-b py-5 text-sm">
+                    No direct members granted yet.
+                  </li>
+                )}
+            </ul>
           )}
         {removeMemberMutation.isError && (
-          <p role="alert" className="border-t border-border px-5 py-3 text-destructive text-xs">
+          <p role="alert" className="text-destructive mt-2 text-xs">
             {removeMemberMutation.error?.message ?? "Failed to remove member"}
           </p>
         )}
@@ -292,17 +269,16 @@ export function ProjectAccess() {
 
       {canManageMembers && <InvitesSection slug={currentSlug} />}
 
-      {/* Linked Teams Section */}
-      <section className="bg-card border border-border rounded-lg overflow-hidden shadow-xs">
-        <div className="p-4 sm:p-5 border-b border-border flex items-center justify-between gap-4">
+      <section aria-labelledby="teams-heading">
+        <div className="flex items-end justify-between gap-4">
           <div>
-            <h2 className="text-base font-semibold flex items-center gap-2">
+            <h2 id="teams-heading" className="flex items-center gap-2 text-lg font-semibold">
               Linked Teams
-              <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-normal">
+              <span className="bg-muted text-muted-foreground rounded-full px-2 py-0.5 text-xs font-normal tabular-nums">
                 {teams?.length ?? 0}
               </span>
             </h2>
-            <p className="text-muted-foreground text-xs mt-0.5">
+            <p className="text-muted-foreground mt-0.5 max-w-[60ch] text-sm">
               Company-wide teams linked to delegate blanket role access.
             </p>
           </div>
@@ -314,79 +290,64 @@ export function ProjectAccess() {
         </div>
 
         {teamsLoading
-          ? <SkeletonLines label="Loading linked teams" className="p-6" />
+          ? <SkeletonLines label="Loading linked teams" className="mt-4" />
           : teamsError
           ? (
-            <div className="p-4">
+            <div className="mt-4">
               <ErrorState title="Could not load linked teams." onRetry={() => refetchTeams()} />
             </div>
           )
           : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-sm">
-                <thead>
-                  <tr className="bg-muted text-muted-foreground text-xs uppercase tracking-wider border-b border-border">
-                    <th scope="col" className="px-5 py-3">Team Name</th>
-                    <th scope="col" className="px-5 py-3">Inherited Role</th>
-                    <th scope="col" className="px-5 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {teams && teams.length > 0
-                    ? (
-                      teams.map((team) => {
-                        const isRestrictedAdminTeam = !isAdmin && team.role === "admin";
-                        const canUnlink = canManageMembers && !isRestrictedAdminTeam;
+            <ul
+              aria-label="Linked teams"
+              className="border-foreground m-0 mt-3 list-none border-t-2 p-0"
+            >
+              {teams && teams.length > 0
+                ? (
+                  teams.map((team) => {
+                    const isRestrictedAdminTeam = !isAdmin && team.role === "admin";
+                    const canUnlink = canManageMembers && !isRestrictedAdminTeam;
 
-                        return (
-                          <tr key={team.team_id} className="hover:bg-muted/30">
-                            <td className="px-5 py-3.5 font-medium text-foreground">
-                              {team.team_name}
-                            </td>
-                            <td className="px-5 py-3.5">
-                              <RoleBadge role={team.role} />
-                            </td>
-                            <td className="px-5 py-3.5 text-right">
-                              {canManageMembers
-                                ? (
-                                  <DisabledReason
-                                    reason={isRestrictedAdminTeam
-                                      ? "Only Project Admins can unlink Admin-tier teams"
-                                      : undefined}
-                                  >
-                                    <Button
-                                      variant="ghost"
-                                      size="xs"
-                                      disabled={!canUnlink || unlinkTeamMutation.isPending}
-                                      className="text-destructive hover:bg-destructive/10"
-                                      onClick={() => unlinkTeamMutation.mutate(team.team_id)}
-                                    >
-                                      Unlink
-                                    </Button>
-                                  </DisabledReason>
-                                )
-                                : <span className="text-muted-foreground text-xs">View only</span>}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )
-                    : (
-                      <tr>
-                        <td
-                          colSpan={3}
-                          className="px-5 py-6 text-center text-muted-foreground text-sm"
-                        >
-                          No company teams linked to this project.
-                        </td>
-                      </tr>
-                    )}
-                </tbody>
-              </table>
-            </div>
+                    return (
+                      <li
+                        key={team.team_id}
+                        className="border-border grid items-center gap-x-5 gap-y-1 border-b px-0.5 py-3.5 sm:grid-cols-[minmax(0,1fr)_auto_5.5rem]"
+                      >
+                        <p className="truncate font-semibold">{team.team_name}</p>
+                        <RoleBadge role={team.role} />
+                        <div className="sm:text-right">
+                          {canManageMembers
+                            ? (
+                              <DisabledReason
+                                reason={isRestrictedAdminTeam
+                                  ? "Only Project Admins can unlink Admin-tier teams"
+                                  : undefined}
+                              >
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={!canUnlink || unlinkTeamMutation.isPending}
+                                  onClick={() => unlinkTeamMutation.mutate(team.team_id)}
+                                >
+                                  Unlink
+                                </Button>
+                              </DisabledReason>
+                            )
+                            : <span className="text-muted-foreground text-xs">View only</span>}
+                        </div>
+                      </li>
+                    );
+                  })
+                )
+                : (
+                  <li className="text-muted-foreground border-border border-b py-5 text-sm">
+                    No company teams linked to this project.
+                  </li>
+                )}
+            </ul>
           )}
         {unlinkTeamMutation.isError && (
-          <p role="alert" className="border-t border-border px-5 py-3 text-destructive text-xs">
+          <p role="alert" className="text-destructive mt-2 text-xs">
             {unlinkTeamMutation.error?.message ?? "Failed to unlink team"}
           </p>
         )}
