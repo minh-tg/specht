@@ -21,7 +21,9 @@ project policies in CI to decide whether a change should pass.
   package inventory and remediation details.
 - Use the HTTP API, `specht` CLI, or `specht-adapter` for CI. The adapter
   can fail a build when policy blocks a change, print annotations, and publish
-  GitHub check runs. Pipeline examples for GitHub Actions and GitLab are in
+  GitHub check runs. On GitHub, the `minh-tg/specht` action downloads the
+  adapter for a release tag, verifies its signature, and runs the gate.
+  Pipeline examples for GitHub Actions and GitLab are in
   [`examples/ci/`](examples/ci/).
 - Check tracked packages against OSV for newly published advisories and send
   notifications to Slack or a webhook.
@@ -167,23 +169,27 @@ SONAR_ADMIN_PASSWORD=admin make sonar  # disposable local SonarQube scan; needs 
   ([ci.yml](.github/workflows/ci.yml)), CodeQL runs separately
   ([codeql.yml](.github/workflows/codeql.yml)), and Dependabot opens dependency
   PRs with a cooldown window
-  ([dependabot.yml](.github/workflows/dependabot.yml)).
+  ([dependabot.yml](.github/dependabot.yml)).
 - Include tests for code changes. The suites cover Go packages, PostgreSQL
   integration, the API and command-line tools, and browser journeys.
 - Contributions follow the
   [Developer Certificate of Origin](CONTRIBUTING.md#developer-certificate-of-origin).
-- Push a semantic-version tag and [release.yml](.github/workflows/release.yml)
-  publishes a version-tagged container image. It does not create a GitHub
-  Release or provide standalone CLI binaries.
+- Pushing a `vMAJOR.MINOR.PATCH` tag runs [release.yml](.github/workflows/release.yml).
+  It builds the server and adapter images, signs them with cosign, boots the
+  server image before tagging it, cross-compiles the `specht` and
+  `specht-adapter` binaries, and publishes a GitHub Release with a signed
+  `SHA256SUMS`. A tag with a suffix (`v1.2.0-rc.1`) is marked as a prerelease.
 
 ## Project status
 
-Specht is an experimental preview. The web UI supports project setup, findings
-and report history, triage, reachability decisions, API keys, and access
-management. The API and CLI cover additional workflows.
+Specht is an experimental preview. The web UI covers project setup, the change
+view that explains a blocked build, findings and report history, triage and
+bulk triage, reachability decisions, waivers, policy and templates, insights,
+API keys, access management, the CVE watcher, and administration. The API and
+CLI cover the same workflows plus a few that have no screen yet.
 
-The release workflow publishes version-tagged container images, not a mutable
-`latest` image or standalone binaries. Expect breaking changes.
+Releases publish version-tagged images and binaries only, with no mutable
+`latest` image. Expect breaking changes before 1.0.
 
 Bug reports and general feedback are welcome via
 [GitHub issues](https://github.com/minh-tg/specht/issues); security reports

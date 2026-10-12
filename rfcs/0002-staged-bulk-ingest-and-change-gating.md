@@ -2,7 +2,7 @@
 rfc: 0002
 title: Staged Bulk Ingest Pipeline & Change-Scoped CI Gating
 author: minh-tg
-status: Accepted
+status: Implemented
 created: 2026-09-17
 updated: 2026-09-17
 applies_to:
