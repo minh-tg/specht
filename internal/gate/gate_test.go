@@ -633,3 +633,40 @@ func TestEvaluate_ScopeAllWaiverCoversEveryFinding(t *testing.T) {
 	assert.Equal(t, StatusPass, d.Status)
 	assert.Equal(t, 2, d.WaivedCount)
 }
+
+func TestEvaluate_BlockingByRankCountsOnlyUnwaivedBlockers(t *testing.T) {
+	g := New(
+		&mockFindingsRepo{findings: []Finding{
+			{ID: "crit-1", CurrentSeverityRank: 4},
+			{ID: "crit-2", CurrentSeverityRank: 4},
+			{ID: "crit-waived", CurrentSeverityRank: 4},
+			{ID: "high-1", CurrentSeverityRank: 3},
+			{ID: "high-exempt", CurrentSeverityRank: 3, Reachability: ReachabilityNotReachable},
+		}},
+		&mockWaiversRepo{waivers: []Waiver{{ID: "w1", Targets: []WaiverTarget{{FindingID: "crit-waived"}}}}},
+	)
+
+	d, err := g.Evaluate(context.Background(), "proj-1", 3)
+
+	require.NoError(t, err)
+	assert.Equal(t, StatusFail, d.Status)
+	assert.Equal(t, map[int16]int{4: 2, 3: 1}, d.BlockingByRank)
+	total := 0
+	for _, n := range d.BlockingByRank {
+		total += n
+	}
+	assert.Equal(t, len(d.BlockedBy), total, "per-severity numbers add up to the blockers")
+}
+
+func TestEvaluate_PassHasNoBlockingByRank(t *testing.T) {
+	g := New(
+		&mockFindingsRepo{findings: []Finding{{ID: "f1", CurrentSeverityRank: 4}}},
+		&mockWaiversRepo{waivers: []Waiver{{ID: "w1", ScopeAll: true}}},
+	)
+
+	d, err := g.Evaluate(context.Background(), "proj-1", 3)
+
+	require.NoError(t, err)
+	assert.Equal(t, StatusPass, d.Status)
+	assert.Empty(t, d.BlockingByRank)
+}

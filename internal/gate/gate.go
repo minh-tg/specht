@@ -56,6 +56,10 @@ type Decision struct {
 	WaivedFindingIDs []string
 	// TotalBlocking is the number of blocking findings considered.
 	TotalBlocking int
+	// BlockingByRank counts the unwaived blockers by severity rank, so a
+	// caller can report per-severity blocking numbers that add up to
+	// len(BlockedBy). Empty on pass.
+	BlockingByRank map[int16]int
 }
 
 // Finding is the subset of a finding the gate needs to decide whether an
@@ -281,8 +285,9 @@ func filterGateFindings(findings []Finding, p sourcePolicies, keep func(Finding)
 // partitionGateFindings splits applicable findings into waived and blocking.
 // It returns the waived findings' ids in input order and always yields a
 // non-nil slice so callers can rely on it serializing as an array.
-func partitionGateFindings(applicable []Finding, waivers []Waiver) (blockedBy []string, reach map[string]ReachabilityState, waivedFindingIDs []string) {
+func partitionGateFindings(applicable []Finding, waivers []Waiver) (blockedBy []string, reach map[string]ReachabilityState, waivedFindingIDs []string, byRank map[int16]int) {
 	reach = make(map[string]ReachabilityState, len(applicable))
+	byRank = map[int16]int{}
 	waivedFindingIDs = make([]string, 0, len(applicable))
 	for _, f := range applicable {
 		if IsFindingWaived(f, waivers) {
@@ -290,9 +295,10 @@ func partitionGateFindings(applicable []Finding, waivers []Waiver) (blockedBy []
 		} else {
 			blockedBy = append(blockedBy, f.ID)
 			reach[f.ID] = f.Reachability
+			byRank[f.CurrentSeverityRank]++
 		}
 	}
-	return blockedBy, reach, waivedFindingIDs
+	return blockedBy, reach, waivedFindingIDs, byRank
 }
 
 func (g *gate) evaluateFindings(ctx context.Context, projectID string, findings []Finding, policies []GatePolicy, keep func(Finding) bool) (Decision, error) {
@@ -315,7 +321,7 @@ func (g *gate) evaluateFindings(ctx context.Context, projectID string, findings 
 		return Decision{Status: StatusError}, fmt.Errorf("list active waivers: %w", err)
 	}
 
-	blockedBy, blockedByReachability, waivedFindingIDs := partitionGateFindings(applicableFindings, waivers)
+	blockedBy, blockedByReachability, waivedFindingIDs, blockingByRank := partitionGateFindings(applicableFindings, waivers)
 	waivedCount := len(waivedFindingIDs)
 
 	if len(blockedBy) == 0 {
@@ -331,6 +337,7 @@ func (g *gate) evaluateFindings(ctx context.Context, projectID string, findings 
 		Status:                StatusFail,
 		BlockedBy:             blockedBy,
 		BlockedByReachability: blockedByReachability,
+		BlockingByRank:        blockingByRank,
 		WaivedCount:           waivedCount,
 		WaivedFindingIDs:      waivedFindingIDs,
 		TotalBlocking:         len(applicableFindings),
