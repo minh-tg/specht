@@ -52,6 +52,7 @@ compose defaults differ, which is noted.
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`. |
 | `CORS_ORIGINS` | *(empty)* | Comma/space-separated origins allowed to call the API from a browser. Empty allows none: the bundled UI is same-origin and needs no entry. Set it only when the UI is hosted elsewhere (use exact `https://` origins). |
 | `ADMIN_EMAILS` | *(empty)* | Comma-separated emails promoted to global admin at startup. Idempotent; unknown addresses are skipped with a warning. Matching ignores case. While `REGISTRATION_ENABLED` is on, an address that is not registered yet can be claimed by anyone, so register it before listing it (or turn registration off); the server logs an error for each such address. |
+| `SETUP_TOKEN` | *(random)* | Proof of access for first-run setup. While the database has no accounts the server logs a random token at startup (`setup_token=...`); set this variable to choose it instead (at least 16 characters, never logged). Ignored once an account exists. |
 | `REGISTRATION_ENABLED` | `true` | Allow self-service `POST /api/v1/auth/register`. Open by default because the first administrator has to register before anyone can be promoted. Set `false` once your admins exist (and always for SSO-only deployments); the endpoint then answers `403 registration_disabled`. Anything other than a boolean fails startup. |
 | `TRUSTED_PROXIES` | *(empty)* | Comma/space-separated CIDRs of proxy hops allowed to set `X-Forwarded-For` / `X-Real-IP` / `X-Forwarded-Proto`. Empty trusts nobody. |
 | `INVENTORY_TTL` | `2160h` | How long a scanned package stays in the watcher's active inventory. |
@@ -172,9 +173,12 @@ you intend to deploy.
 Tenant isolation is enforced: every project needs members, and project
 administration needs a global admin.
 
-1. Register an account in the UI (or `POST /api/v1/auth/register`).
-2. Add its email to `ADMIN_EMAILS` in `deploy/.env.prod` and restart
-   (`up -d` again — promotion is idempotent).
+1. On the first start, read the setup token from the server log
+   (`docker compose logs server | grep setup_token`), open the app and create
+   the first administrator with it. Or set `SETUP_TOKEN` in `deploy/.env.prod`
+   and use that value. Setup closes as soon as the account exists.
+2. To promote more accounts, add their emails to `ADMIN_EMAILS` in
+   `deploy/.env.prod` and restart (`up -d` again — promotion is idempotent).
 3. Create projects and grant membership via `POST /projects/:slug/members`.
 
 ### Changing or removing a global admin

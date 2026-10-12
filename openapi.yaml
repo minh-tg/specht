@@ -145,20 +145,58 @@ paths:
       summary: Sign-in options this server offers
       description: |
         Unauthenticated, so a signed-out page can show a Register link or an
-        SSO button only when they work. Carries no secrets and no identity
-        provider details. The flags change only when the server restarts, so
-        the response may be cached for a minute.
+        SSO button only when they work, and the setup screen on a fresh
+        install. Carries no secrets and no identity provider details. The
+        flags change only when the server restarts, so the response may be
+        cached for a minute. While `setup.required` is true it is sent with
+        `Cache-Control: no-store`, because the answer flips as soon as setup
+        completes.
       security: []
       responses:
         "200":
           description: The sign-in options and the build version.
           headers:
             Cache-Control:
-              description: public, max-age=60
+              description: public, max-age=60, or no-store while first-run setup is required.
               schema: { type: string }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Capabilities" }
+
+  /api/v1/setup:
+    post:
+      tags: [Authentication]
+      operationId: setup
+      summary: Create the first administrator
+      description: |
+        First-run setup for a server with no accounts. The caller proves access
+        to the server with the setup token it logs at startup (or the value of
+        `SETUP_TOKEN`). The account is created as a global admin and signed in.
+        Two requests at once create one account. Once an account exists the
+        route answers 404, the same as a server that offers no setup.
+        Shares the credential rate limit with login and registration.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetupRequest" }
+      responses:
+        "201":
+          description: Administrator created and signed in.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403":
+          description: The setup token is missing or wrong.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: invalid_setup_token, message: invalid setup token } }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "413": { $ref: "#/components/responses/BodyTooLarge" }
+        "429": { $ref: "#/components/responses/RateLimited" }
 
   /api/v1/auth/register:
     post:
@@ -166,8 +204,9 @@ paths:
       operationId: register
       summary: Create an account
       description: |
-        Public signup. The first account created is promoted to admin by the
-        `ADMIN_EMAILS` bootstrap on the next boot, not by this endpoint.
+        Public signup. This endpoint never creates an admin: the first
+        administrator comes from `POST /api/v1/setup`, later ones from the
+        `ADMIN_EMAILS` bootstrap on the next boot.
         A duplicate email is indistinguishable from any other failure, by
         design, so this cannot enumerate accounts.
       security: []
@@ -2542,6 +2581,12 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
           example: { error: { code: body_too_large, message: request body too large } }
+    RateLimited:
+      description: Too many requests from this address; retry later.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: rate_limited, message: "rate limit exceeded, retry later" } }
     Unprocessable:
       description: The request was understood but rejected on a domain rule.
       content:
@@ -2593,8 +2638,15 @@ components:
 
     Capabilities:
       type: object
-      required: [registration, sso, version, commit]
+      required: [registration, sso, setup, version, commit]
       properties:
+        setup:
+          type: object
+          required: [required]
+          properties:
+            required:
+              type: boolean
+              description: True while the server has no accounts and waits for its first administrator. The client shows the setup screen instead of sign-in.
         registration:
           type: object
           required: [enabled]
@@ -2611,6 +2663,15 @@ components:
               example: /api/v1/auth/sso/login
         version: { type: string }
         commit: { type: string }
+
+    SetupRequest:
+      type: object
+      required: [token, email, password]
+      properties:
+        token: { type: string, description: The setup token from the server log or `SETUP_TOKEN`. }
+        email: { type: string, format: email }
+        password: { type: string, format: password, minLength: 8, maxLength: 72 }
+        display_name: { type: string }
 
     EmailPasswordRequest:
       type: object

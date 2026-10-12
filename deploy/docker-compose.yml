@@ -45,6 +45,8 @@ services:
       # Empty ADMIN_EMAILS promotes nobody; empty TRUSTED_PROXIES trusts
       # forwarding headers from nobody (deploy directly or set the hops).
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      # First-run setup token; empty makes the server log a random one.
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
       # Open so the first admin can register; set to false afterwards, and for
       # SSO-only deployments.
       REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}

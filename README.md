@@ -67,22 +67,21 @@ make build
 ./bin/server
 ```
 
-Open <http://localhost:8080> to register and sign in. The server applies database
-migrations on startup. In another terminal, check the API:
+The server applies database migrations on startup. On a database with no
+accounts it logs a one-time setup token (`setup_token=...`). Open
+<http://localhost:8080>, enter that token and create the first administrator.
+Set `SETUP_TOKEN` (at least 16 characters) to choose the token yourself for a
+scripted install. In another terminal, check the API:
 
 ```bash
 curl --fail http://localhost:8080/api/v1/health
 ```
 
-To create projects and manage membership, stop the server and restart it from
-the same shell with your registered email:
+The setup screen is available only until the first account exists. After that
+`POST /api/v1/setup` answers 404. To promote further accounts to global admin,
+restart the server with their emails in `ADMIN_EMAILS`.
 
-```bash
-ADMIN_EMAILS=you@example.com ./bin/server
-```
-
-This promotes that account to global admin. Create a project in the UI, then
-follow its CI setup page to create an API key and connect a scanner. Pipeline
+Create a project in the UI, then follow its CI setup page to create an API key and connect a scanner. Pipeline
 examples are also available in [`examples/ci/`](examples/ci/).
 
 For API-only development, skip the frontend installation and build, and run
