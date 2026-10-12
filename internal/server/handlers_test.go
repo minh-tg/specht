@@ -25,6 +25,9 @@ import (
 )
 
 type mockUsecases struct {
+	changeUserRoleFn        func(ctx context.Context, userID, role string) (*usecase.UserProfile, error)
+	deactivateUserFn        func(ctx context.Context, userID string) (*usecase.UserProfile, error)
+	reactivateUserFn        func(ctx context.Context, userID string) (*usecase.UserProfile, error)
 	createProjectFn         func(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error)
 	listProjectMembersFn    func(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error)
 	addProjectMemberFn      func(ctx context.Context, projectSlug, userID, role string) (*usecase.ProjectMemberResponse, error)
@@ -589,6 +592,27 @@ func (m *mockUsecases) WithdrawWaiver(ctx context.Context, projectSlug, waiverID
 	return m.withdrawWaiverFn(ctx, projectSlug, waiverID)
 }
 
+func (m *mockUsecases) ChangeUserRole(ctx context.Context, userID, role string) (*usecase.UserProfile, error) {
+	if m.changeUserRoleFn == nil {
+		return nil, fmt.Errorf("unexpected call to ChangeUserRole")
+	}
+	return m.changeUserRoleFn(ctx, userID, role)
+}
+
+func (m *mockUsecases) DeactivateUser(ctx context.Context, userID string) (*usecase.UserProfile, error) {
+	if m.deactivateUserFn == nil {
+		return nil, fmt.Errorf("unexpected call to DeactivateUser")
+	}
+	return m.deactivateUserFn(ctx, userID)
+}
+
+func (m *mockUsecases) ReactivateUser(ctx context.Context, userID string) (*usecase.UserProfile, error) {
+	if m.reactivateUserFn == nil {
+		return nil, fmt.Errorf("unexpected call to ReactivateUser")
+	}
+	return m.reactivateUserFn(ctx, userID)
+}
+
 func (m *mockUsecases) CheckWaiverMatch(ctx context.Context, projectSlug, findingID string) (bool, error) {
 	if m.checkWaiverMatchFn == nil {
 		return false, fmt.Errorf("unexpected call to CheckWaiverMatch")
@@ -903,6 +927,9 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/projects/{slug}", h.GetProject)
 	r.Put("/api/v1/projects/{slug}", h.UpdateProject)
 	r.Delete("/api/v1/projects/{slug}", h.DeleteProject)
+	r.Put("/api/v1/users/{id}/role", h.ChangeUserRole)
+	r.Post("/api/v1/users/{id}/deactivate", h.DeactivateUser)
+	r.Post("/api/v1/users/{id}/reactivate", h.ReactivateUser)
 	r.Get("/api/v1/projects/{slug}/findings", h.ListFindings)
 	r.Get("/api/v1/projects/{slug}/reports", h.ListReports)
 	r.Get("/api/v1/reports/{id}", h.GetReport)
@@ -4440,4 +4467,61 @@ func TestListFindings_InvalidQueryIs400(t *testing.T) {
 
 	require.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Contains(t, w.Body.String(), "invalid_query")
+}
+
+func TestUserAdminRoutes(t *testing.T) {
+	profile := &usecase.UserProfile{ID: "u2", Email: "t@example.com", Role: "admin"}
+	var gotRole string
+	mock := &mockUsecases{
+		changeUserRoleFn: func(_ context.Context, id, role string) (*usecase.UserProfile, error) {
+			gotRole = role
+			return profile, nil
+		},
+		deactivateUserFn: func(context.Context, string) (*usecase.UserProfile, error) {
+			return &usecase.UserProfile{ID: "u2", Disabled: true}, nil
+		},
+		reactivateUserFn: func(context.Context, string) (*usecase.UserProfile, error) {
+			return &usecase.UserProfile{ID: "u2"}, nil
+		},
+	}
+	router := testRouter(mock)
+	do := func(method, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	w := do("PUT", "/api/v1/users/u2/role", `{"role":"admin"}`)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.Equal(t, "admin", gotRole)
+	assert.Contains(t, do("POST", "/api/v1/users/u2/deactivate", "").Body.String(), `"disabled":true`)
+	assert.Equal(t, http.StatusOK, do("POST", "/api/v1/users/u2/reactivate", "").Code)
+}
+
+func TestUserAdminErrorMapping(t *testing.T) {
+	for _, tc := range []struct {
+		err    error
+		status int
+		code   string
+	}{
+		{usecase.ErrProjectAccessDenied, http.StatusForbidden, "insufficient_role"},
+		{usecase.ErrInvalidID, http.StatusBadRequest, "invalid_id"},
+		{usecase.ErrInvalidGlobalRole, http.StatusBadRequest, "invalid_role"},
+		{usecase.ErrLastGlobalAdmin, http.StatusConflict, "last_admin"},
+		{usecase.ErrCannotDeactivateSelf, http.StatusConflict, "cannot_deactivate_self"},
+		{port.ErrNotFound, http.StatusNotFound, "not_found"},
+		{errors.New("pq: connection refused at 10.0.0.5"), http.StatusInternalServerError, "internal_error"},
+	} {
+		t.Run(tc.code, func(t *testing.T) {
+			mock := &mockUsecases{deactivateUserFn: func(context.Context, string) (*usecase.UserProfile, error) { return nil, tc.err }}
+			req := httptest.NewRequest("POST", "/api/v1/users/u2/deactivate", nil)
+			w := httptest.NewRecorder()
+			testRouter(mock).ServeHTTP(w, req)
+			assert.Equal(t, tc.status, w.Code)
+			assert.Contains(t, w.Body.String(), tc.code)
+			assert.NotContains(t, w.Body.String(), "10.0.0.5", "store detail does not reach the client")
+		})
+	}
 }

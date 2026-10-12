@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -221,4 +222,39 @@ func TestFindOrProvisionSSOUser_UnverifiedEmailAllowedByOperatorOptIn(t *testing
 	require.NoError(t, err, "providers that never send email_verified need the explicit opt-in")
 	assert.Equal(t, "user-1", userID)
 	require.Len(t, ids.links, 1, "even then the login is bound to its subject, so later email changes do not matter")
+}
+
+func TestFindOrProvisionSSOUser_DeactivatedAccountIsRefused(t *testing.T) {
+	disabledAt := time.Now()
+
+	t.Run("by linked identity", func(t *testing.T) {
+		ids := newMockIdentityRepo()
+		ids.seed("user-1", ssoTestIssuer, "sub-1")
+		ur := &mockUserRepo{getByIDFn: func(_ context.Context, id string) (port.User, error) {
+			u := makeUser(id)
+			u.DisabledAt = &disabledAt
+			return u, nil
+		}}
+		claims := auth.SSOClaims{Issuer: ssoTestIssuer, Subject: "sub-1", Email: "a@corp.example", EmailVerified: true}
+
+		_, _, _, err := New(ssoDepsWith(ur, ids)).FindOrProvisionSSOUser(context.Background(), claims, nil, nil)
+
+		assert.ErrorIs(t, err, auth.ErrSSONotProvisioned)
+	})
+
+	t.Run("by verified email, before a link is made", func(t *testing.T) {
+		ids := newMockIdentityRepo()
+		ur := &mockUserRepo{getByEmailFn: func(_ context.Context, email string) (port.User, error) {
+			u := makeUser("user-2")
+			u.Email = email
+			u.DisabledAt = &disabledAt
+			return u, nil
+		}}
+		claims := auth.SSOClaims{Issuer: ssoTestIssuer, Subject: "sub-2", Email: "b@corp.example", EmailVerified: true}
+
+		_, _, _, err := New(ssoDepsWith(ur, ids)).FindOrProvisionSSOUser(context.Background(), claims, []string{"corp.example"}, nil)
+
+		assert.ErrorIs(t, err, auth.ErrSSONotProvisioned)
+		assert.Empty(t, ids.links, "a deactivated account is not linked to a new identity")
+	})
 }

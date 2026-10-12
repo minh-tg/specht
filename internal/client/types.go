@@ -287,7 +287,10 @@ type UserProfile struct {
 	Email       string `json:"email"`
 	DisplayName string `json:"display_name,omitempty"`
 	Role        string `json:"role"`
-	CreatedAt   string `json:"created_at"`
+	// Disabled is true for a deactivated account; DisabledAt says since when.
+	Disabled   bool   `json:"disabled"`
+	DisabledAt string `json:"disabled_at,omitempty"`
+	CreatedAt  string `json:"created_at"`
 }
 
 // APIKey is a project-scoped API key. RawKey is only present in the create
