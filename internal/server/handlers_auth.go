@@ -312,6 +312,8 @@ func respondUserAdminError(w http.ResponseWriter, err error) bool {
 		respondError(w, http.StatusConflict, "last_admin", "this is the last active admin")
 	case errors.Is(err, usecase.ErrCannotDeactivateSelf):
 		respondError(w, http.StatusConflict, "cannot_deactivate_self", err.Error())
+	case errors.Is(err, usecase.ErrSystemAccount):
+		respondError(w, http.StatusConflict, "system_account", err.Error())
 	case errors.Is(err, port.ErrNotFound):
 		respondError(w, http.StatusNotFound, "not_found", "user not found")
 	default:

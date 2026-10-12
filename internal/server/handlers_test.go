@@ -4601,6 +4601,7 @@ func TestUserAdminErrorMapping(t *testing.T) {
 		{usecase.ErrInvalidGlobalRole, http.StatusBadRequest, "invalid_role"},
 		{usecase.ErrLastGlobalAdmin, http.StatusConflict, "last_admin"},
 		{usecase.ErrCannotDeactivateSelf, http.StatusConflict, "cannot_deactivate_self"},
+		{usecase.ErrSystemAccount, http.StatusConflict, "system_account"},
 		{port.ErrNotFound, http.StatusNotFound, "not_found"},
 		{errors.New("pq: connection refused at 10.0.0.5"), http.StatusInternalServerError, "internal_error"},
 	} {
