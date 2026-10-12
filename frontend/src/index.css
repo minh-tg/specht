@@ -350,6 +350,18 @@
     }
   }
 
+  /* The mark at the end of a page header: a short ink tab on a hairline. Used once per page. */
+  .page-rule {
+    height: 3px;
+    margin-top: 22px;
+    background-repeat: no-repeat;
+    background-image:
+      linear-gradient(var(--foreground), var(--foreground)),
+      linear-gradient(var(--border), var(--border));
+    background-size: 56px 3px, 100% 1px;
+    background-position: 0 0, 0 1px;
+  }
+
   /* Labels, severity words and verdict stamps are set condensed and heavy, in capitals, so they read
      as marks and stay narrow in a table column. The family comes from the font-label utility; this
      adds the width, weight and spacing a theme variable cannot carry. */

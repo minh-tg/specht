@@ -1,36 +1,35 @@
 import { APIError } from "@/api/client";
 import {
-  findingQueryOptions,
+  queryKeys,
   useChangeGate,
   useGateStatus,
   useProject,
   useReports,
+  useScanSignal,
 } from "@/api/hooks";
-import { Skeleton } from "@/components/ui/skeleton";
-import { formatDateTime, formatRelativeTime } from "@/lib/format";
+import { ErrorState } from "@/components/ErrorState";
+import { formatRelativeTime } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { blockerCount, isReportInProgress } from "@/lib/verdict";
-import { BlockerRowView } from "@/pages/change-view/BlockerRow";
-import { ChangeVerdict } from "@/pages/change-view/ChangeVerdict";
+import { BlockerSection, MAX_BLOCKER_ROWS } from "@/pages/change-view/BlockerSection";
+import { ChangeHero, ChangeHeroSkeleton, type ChangeState } from "@/pages/change-view/ChangeHero";
 import { ExistingDebt } from "@/pages/change-view/ExistingDebt";
 import { existingBlockers, resolveReport, shortCommit } from "@/pages/change-view/resolve";
-import type { Report } from "@/types/api";
-import { useQueries } from "@tanstack/react-query";
-import { type ReactNode, useState } from "react";
-import { Link, useParams, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 
-/** Rows rendered before the "Show all" control reveals the rest. */
-export const MAX_BLOCKER_ROWS = 20;
+export { MAX_BLOCKER_ROWS };
 
-const LINK_CLASS = "text-action underline underline-offset-2 hover:no-underline";
+const LINK_CLASS = "text-foreground underline underline-offset-3 hover:decoration-2";
 
 function Page({ children }: { children: ReactNode; }) {
-  return <div className="mx-auto max-w-3xl px-4 py-8">{children}</div>;
+  return <div className="mx-auto max-w-5xl px-4 py-8">{children}</div>;
 }
 
 function ProjectNotFound() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
+    <Page>
       <h1 className="text-2xl font-bold">Project not found</h1>
       <p className="text-muted-foreground mt-2 text-sm">
         There is no project with this address, or you don&apos;t have access to it.
@@ -38,157 +37,57 @@ function ProjectNotFound() {
       <Link to="/" className={`${LINK_CLASS} mt-4 inline-block text-sm`}>
         Back to projects
       </Link>
-    </div>
+    </Page>
   );
 }
 
-interface ChangeHeaderProps {
-  slug: string;
-  commit: string;
-  projectName: string;
-  report: Report | null;
-}
-
-function ChangeHeader({ slug, commit, projectName, report }: ChangeHeaderProps) {
-  const short = shortCommit(commit);
-
+function Crumbs(
+  { slug, commit, projectName }: { slug: string; commit: string; projectName: string; },
+) {
   return (
-    <>
-      <nav aria-label="Breadcrumb" className="mb-4 flex flex-wrap items-center gap-2">
-        <Link to="/" className="text-muted-foreground hover:text-foreground text-sm">
-          Projects
-        </Link>
-        <span aria-hidden="true" className="text-muted-foreground">
-          ›
-        </span>
-        <Link
-          to={`/${slug}/findings`}
-          className="text-muted-foreground hover:text-foreground text-sm"
-        >
-          {projectName}
-        </Link>
-        <span aria-hidden="true" className="text-muted-foreground">
-          ›
-        </span>
-        <span className="text-muted-foreground text-sm">Change {short}</span>
-      </nav>
-      <h1 className="text-2xl font-bold">Change {short}</h1>
-      {report && (
-        <p className="text-muted-foreground mt-1 text-sm">
-          {report.branch && <span>{report.branch}</span>}
-          {report.branch && " · "}
-          <span title={formatDateTime(report.created_at)}>
-            scanned {formatRelativeTime(report.created_at)}
-          </span>
-          {report.tool_name ? ` · ${report.tool_name}` : ""}
-        </p>
-      )}
-    </>
-  );
-}
-
-/** The verdict block reserve while the page or the gate is loading. */
-function ChangeLoading() {
-  return (
-    <div className="mt-6 space-y-3">
-      <ChangeVerdict kind="no_verdict" blockers={0} waived={0} loading />
-      {Array.from({ length: 3 }).map((_, index) => (
-        <Skeleton
-          key={index}
-          className="h-16 rounded"
-        />
-      ))}
-    </div>
-  );
-}
-
-function BlockerList({ slug, ids }: { slug: string; ids: string[]; }) {
-  const [showAll, setShowAll] = useState(false);
-  const shown = showAll ? ids : ids.slice(0, MAX_BLOCKER_ROWS);
-  const results = useQueries({ queries: shown.map((id) => findingQueryOptions(id)) });
-
-  if (ids.length === 0) return null;
-
-  return (
-    <section aria-label="Findings introduced by this change" className="mt-6">
-      <h2 className="mb-2 text-sm font-semibold">Introduced by this change</h2>
-      <ul className="bg-card rounded-lg border">
-        {shown.map((id, index) => {
-          const query = results[index];
-          return (
-            <BlockerRowView
-              key={id}
-              slug={slug}
-              findingId={id}
-              finding={query.data}
-              isLoading={query.isPending}
-              isError={query.isError}
-              onRetry={() => void query.refetch()}
-            />
-          );
-        })}
-      </ul>
-      {shown.length < ids.length && (
-        <button
-          type="button"
-          className={`${LINK_CLASS} mt-2 text-sm`}
-          onClick={() => setShowAll(true)}
-        >
-          Show all {ids.length}
-        </button>
-      )}
-    </section>
+    <nav
+      aria-label="Breadcrumb"
+      className="text-muted-foreground mb-5 flex flex-wrap items-center gap-2 text-[13px]"
+    >
+      <Link to="/" className="text-muted-foreground hover:text-foreground">Projects</Link>
+      <span aria-hidden="true">/</span>
+      <Link to={`/${slug}/findings`} className="text-muted-foreground hover:text-foreground">
+        {projectName}
+      </Link>
+      <span aria-hidden="true">/</span>
+      <span>Change {shortCommit(commit)}</span>
+    </nav>
   );
 }
 
 function NoReport({ slug, commit }: { slug: string; commit: string; }) {
   return (
-    <div className="bg-card mt-6 rounded-lg border p-4">
-      <p className="font-medium">No scan found for commit {shortCommit(commit)}</p>
-      <p className="text-muted-foreground mt-1 text-sm">
+    <div className="mt-8">
+      <h1 className="text-[1.625rem] leading-tight font-bold sm:text-3xl">
+        No scan found for commit {shortCommit(commit)}
+      </h1>
+      <p className="mt-2 max-w-[58ch] text-lg leading-snug">
         The pipeline may still be running, or this commit was never scanned.
       </p>
-      <div className="mt-3 flex flex-wrap gap-4 text-sm">
-        <Link to={`/${slug}/reports`} className={LINK_CLASS}>
-          Reports
-        </Link>
-        <Link to={`/${slug}/reports/upload`} className={LINK_CLASS}>
-          Upload a report
-        </Link>
+      <div className="mt-4 flex flex-wrap gap-4 text-sm">
+        <Link to={`/${slug}/reports`} className={LINK_CLASS}>Reports</Link>
+        <Link to={`/${slug}/reports/upload`} className={LINK_CLASS}>Upload a report</Link>
       </div>
     </div>
   );
 }
 
-function DegradedBanner({ failed, reason }: { failed: boolean; reason?: string; }) {
-  if (failed) {
-    return (
-      <div
-        role="alert"
-        className="border-destructive text-destructive mb-3 rounded border px-3 py-2 text-sm"
-      >
-        <p>This scan failed</p>
-        {reason && <p className="mt-1 text-xs break-words">{reason}</p>}
-      </div>
-    );
-  }
-  return (
-    <p role="status" className="bg-muted text-muted-foreground mb-3 rounded px-3 py-2 text-sm">
-      This scan is still processing
-    </p>
-  );
-}
-
 /**
- * The page a developer lands on from a failing check: what this change
- * introduced, and what to do about the findings that block it. Pre-existing
- * debt is folded away below the verdict.
+ * The page a developer lands on from a failing check: what this change introduced and what to do
+ * about the findings that block it. Pre-existing debt is folded away below.
  */
 export function ChangeView() {
   const { slug = "", commit = "" } = useParams<{ slug: string; commit: string; }>();
   const [searchParams] = useSearchParams();
   const reportParam = searchParams.get("report");
   const short = shortCommit(commit);
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
   useDocumentTitle(`${slug} · Change ${short}`);
 
@@ -201,6 +100,35 @@ export function ChangeView() {
   const changeGateQuery = useChangeGate(slug, degraded ? undefined : report?.id);
   const projectGateQuery = useGateStatus(slug);
 
+  // Waiting for the next scan: begins when the reader says they pushed, or has handled every
+  // blocker. It ends when a newer report on this branch is final, and the page moves to its change.
+  const [waitingFor, setWaitingFor] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const waiting = report !== null && waitingFor === report.id;
+  const reportId = report?.id ?? null;
+  const startWaiting = useCallback(() => setWaitingFor(reportId), [reportId]);
+  const checkAgain = useCallback(() => setAttempt((count) => count + 1), []);
+  const signal = useScanSignal(slug, {
+    branch: report?.branch,
+    enabled: waiting && report !== null,
+    attempt,
+  });
+  const newer = signal.newest && report && signal.newest.id !== report.id
+      && signal.newest.created_at > report.created_at
+    ? signal.newest
+    : null;
+  const scanningNewer = newer !== null && isReportInProgress(newer.status);
+  const landed = newer !== null && !scanningNewer ? newer : null;
+
+  useEffect(() => {
+    if (!landed) return;
+    void queryClient.invalidateQueries({ queryKey: queryKeys.reports(slug) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.gate() });
+    if (landed.commit_sha) {
+      navigate(`/${slug}/changes/${shortCommit(landed.commit_sha)}`, { replace: true });
+    }
+  }, [landed, navigate, queryClient, slug]);
+
   if (
     projectQuery.isError && projectQuery.error instanceof APIError
     && projectQuery.error.status === 404
@@ -208,20 +136,15 @@ export function ChangeView() {
     return <ProjectNotFound />;
   }
 
-  const header = (
-    <ChangeHeader
-      slug={slug}
-      commit={commit}
-      projectName={projectQuery.data?.name ?? slug}
-      report={report}
-    />
+  const crumbs = (
+    <Crumbs slug={slug} commit={commit} projectName={projectQuery.data?.name ?? slug} />
   );
 
   if (reportsQuery.isPending) {
     return (
       <Page>
-        {header}
-        <ChangeLoading />
+        {crumbs}
+        <ChangeHeroSkeleton commit={commit} />
       </Page>
     );
   }
@@ -230,13 +153,11 @@ export function ChangeView() {
   if (reportsQuery.isError || projectQuery.isError || changeGateQuery.isError) {
     return (
       <Page>
-        {header}
-        <div
-          role="alert"
-          className="border-destructive text-destructive mt-6 rounded border px-3 py-2 text-sm"
-        >
-          {requestError instanceof Error ? requestError.message : "Could not load this change"}
-        </div>
+        {crumbs}
+        <ErrorState
+          title="Could not load this change"
+          detail={requestError instanceof Error ? requestError.message : undefined}
+        />
         <Link to={`/${slug}/findings`} className={`${LINK_CLASS} mt-4 inline-block text-sm`}>
           Back to project
         </Link>
@@ -247,20 +168,25 @@ export function ChangeView() {
   if (!report) {
     return (
       <Page>
-        {header}
+        {crumbs}
         <NoReport slug={slug} commit={commit} />
       </Page>
     );
   }
 
   if (degraded) {
+    const state: ChangeState = report.status === "failed" ? "failed" : "processing";
     return (
       <Page>
-        {header}
-        <div className="mt-6">
-          <DegradedBanner failed={report.status === "failed"} reason={report.error_message} />
-          <ChangeVerdict kind="no_verdict" blockers={0} waived={0} />
-        </div>
+        {crumbs}
+        <ChangeHero
+          commit={commit}
+          report={report}
+          state={state}
+          blockers={0}
+          existing={0}
+          waived={0}
+        />
       </Page>
     );
   }
@@ -268,30 +194,52 @@ export function ChangeView() {
   if (changeGateQuery.isPending || !changeGateQuery.data) {
     return (
       <Page>
-        {header}
-        <ChangeLoading />
+        {crumbs}
+        <ChangeHeroSkeleton commit={commit} />
       </Page>
     );
   }
 
   const gate = changeGateQuery.data;
   const blockedBy = gate.blocked_by ?? [];
-  const kind = gate.threshold_breached ? "blocked" : "passing";
   const existing = existingBlockers(projectGateQuery.data?.blocked_by, blockedBy);
+  const state: ChangeState = scanningNewer
+    ? "scanning"
+    : gate.threshold_breached
+    ? "blocked"
+    : "passing";
 
   return (
     <Page>
-      {header}
-      <div className="mt-6">
-        <ChangeVerdict
-          kind={kind}
-          blockers={blockerCount(gate)}
-          waived={gate.waived_count ?? 0}
-          policy={gate.policy}
+      {crumbs}
+      <ChangeHero
+        commit={commit}
+        report={report}
+        state={state}
+        blockers={blockerCount(gate)}
+        existing={existing.length}
+        waived={gate.waived_count ?? 0}
+        policy={gate.policy}
+      />
+      {gate.threshold_breached && (
+        <BlockerSection
+          key={report.id}
+          slug={slug}
+          ids={blockedBy}
+          floor={gate.policy?.severity_floor}
+          canRequestWaiver={projectQuery.data?.permissions?.request_waiver ?? false}
+          waiting={waiting}
+          stalled={signal.stalled}
+          onStartWaiting={startWaiting}
+          onCheckAgain={checkAgain}
         />
-      </div>
-      <BlockerList slug={slug} ids={blockedBy} />
+      )}
       <ExistingDebt slug={slug} ids={existing} />
+      <p className="sr-only" role="status">
+        {scanningNewer && newer
+          ? `A new scan started ${formatRelativeTime(newer.created_at)}.`
+          : ""}
+      </p>
     </Page>
   );
 }
