@@ -29,7 +29,7 @@ export function HistorySection({
     body = <p className="text-muted-foreground text-sm">No history yet.</p>;
   } else {
     body = (
-      <ul className="space-y-2 text-sm">
+      <ol className="border-border space-y-3 border-l pl-4 text-sm">
         {events.map((event) => (
           <li key={event.id} className="flex flex-wrap items-baseline gap-x-2">
             <span className="font-medium">{eventTypeLabel(event.event_type)}</span>
@@ -53,13 +53,13 @@ export function HistorySection({
             )}
           </li>
         ))}
-      </ul>
+      </ol>
     );
   }
 
   return (
-    <div className="mt-8 rounded-lg border p-4">
-      <h2 className="mb-3 text-sm font-semibold">History</h2>
+    <div className="border-border mt-8 border-t pt-5">
+      <h2 className="mb-3 text-lg font-semibold">History</h2>
       {body}
     </div>
   );

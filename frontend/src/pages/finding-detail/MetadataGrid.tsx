@@ -2,40 +2,45 @@ import { analysisStateLabel, technicalStateLabel } from "@/lib/enums";
 import { formatDateTime } from "@/lib/format";
 import type { Finding } from "@/types/api";
 
-/** Status, triage, timestamps and provenance for one finding. */
-export function MetadataGrid({ finding }: { readonly finding: Finding; }) {
+function Fact({ label, children, mono = false }: {
+  readonly label: string;
+  readonly children: React.ReactNode;
+  readonly mono?: boolean;
+}) {
   return (
-    <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
-      <div>
-        <span className="text-muted-foreground">Status</span>
-        <p className="font-medium">{technicalStateLabel(finding.state) ?? "–"}</p>
-      </div>
-      <div>
-        <span className="text-muted-foreground">Triage</span>
-        <p className="font-medium">
-          {analysisStateLabel(finding.analysis_state) ?? "Not triaged"}
-        </p>
-      </div>
-      <div>
-        <span className="text-muted-foreground">First Seen</span>
-        <p className="font-medium">{formatDateTime(finding.first_seen_at)}</p>
-      </div>
-      <div>
-        <span className="text-muted-foreground">Last Seen</span>
-        <p className="font-medium">{formatDateTime(finding.last_seen_at)}</p>
-      </div>
-      <div>
-        <span className="text-muted-foreground">Introduced</span>
-        <p className="font-mono text-xs">
-          {finding.introduced_commit_sha
-            ? finding.introduced_commit_sha.slice(0, 12)
-            : "Unattributed"}
-        </p>
-      </div>
-      <div className="sm:col-span-2">
-        <span className="text-muted-foreground">Fingerprint</span>
-        <p className="font-mono text-xs break-all">{finding.fingerprint}</p>
-      </div>
-    </div>
+    <>
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className={mono ? "font-mono text-xs break-all" : "font-medium"}>{children}</dd>
+    </>
+  );
+}
+
+/** What is known about one finding, as a plain list of facts beside the page. */
+export function MetadataGrid({ finding }: { readonly finding: Finding; }) {
+  const intel = finding.intel;
+  return (
+    <dl className="border-border grid grid-cols-[auto_1fr] gap-x-5 gap-y-2.5 border-t pt-4 text-sm">
+      <Fact label="Status">{technicalStateLabel(finding.state) ?? "–"}</Fact>
+      <Fact label="Triage">{analysisStateLabel(finding.analysis_state) ?? "Not triaged"}</Fact>
+      {finding.current_score !== null && (
+        <Fact label="CVSS" mono>{finding.current_score.toFixed(1)}</Fact>
+      )}
+      {intel?.epss !== undefined && <Fact label="EPSS" mono>{intel.epss.toFixed(2)}</Fact>}
+      {intel && (
+        <Fact label="Known exploited">
+          {intel.kev
+            ? <span className="text-sev-critical-fg">Yes</span>
+            : <span className="text-muted-foreground">No</span>}
+        </Fact>
+      )}
+      <Fact label="First Seen">{formatDateTime(finding.first_seen_at)}</Fact>
+      <Fact label="Last Seen">{formatDateTime(finding.last_seen_at)}</Fact>
+      <Fact label="Introduced" mono>
+        {finding.introduced_commit_sha
+          ? finding.introduced_commit_sha.slice(0, 12)
+          : "Unattributed"}
+      </Fact>
+      <Fact label="Fingerprint" mono>{finding.fingerprint}</Fact>
+    </dl>
   );
 }
