@@ -203,7 +203,7 @@ func (q *Queries) GetProjectStats(ctx context.Context, projectID pgtype.UUID) ([
 const getProjectWaiverCount = `-- name: GetProjectWaiverCount :one
 SELECT COUNT(*)::int AS count
 FROM waivers
-WHERE project_id = $1 AND enabled = true
+WHERE project_id = $1 AND status = 'approved' AND enabled = true
 `
 
 func (q *Queries) GetProjectWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error) {

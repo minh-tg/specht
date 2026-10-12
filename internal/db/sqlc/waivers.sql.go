@@ -14,7 +14,7 @@ import (
 const createWaiver = `-- name: CreateWaiver :one
 INSERT INTO waivers (project_id, name, description, enabled, expires_at)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at
+RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at, status, scope_all, reason, requested_by, requested_at, decided_by, decided_at, decision_note
 `
 
 type CreateWaiverParams struct {
@@ -43,6 +43,14 @@ func (q *Queries) CreateWaiver(ctx context.Context, arg CreateWaiverParams) (Wai
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ExpiresAt,
+		&i.Status,
+		&i.ScopeAll,
+		&i.Reason,
+		&i.RequestedBy,
+		&i.RequestedAt,
+		&i.DecidedBy,
+		&i.DecidedAt,
+		&i.DecisionNote,
 	)
 	return i, err
 }
@@ -169,7 +177,7 @@ func (q *Queries) CreateWaiverFindingTarget(ctx context.Context, arg CreateWaive
 const deleteWaiver = `-- name: DeleteWaiver :one
 DELETE FROM waivers
 WHERE id = $1 AND project_id = $2
-RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at
+RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at, status, scope_all, reason, requested_by, requested_at, decided_by, decided_at, decision_note
 `
 
 type DeleteWaiverParams struct {
@@ -189,6 +197,14 @@ func (q *Queries) DeleteWaiver(ctx context.Context, arg DeleteWaiverParams) (Wai
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ExpiresAt,
+		&i.Status,
+		&i.ScopeAll,
+		&i.Reason,
+		&i.RequestedBy,
+		&i.RequestedAt,
+		&i.DecidedBy,
+		&i.DecidedAt,
+		&i.DecisionNote,
 	)
 	return i, err
 }
@@ -221,7 +237,7 @@ func (q *Queries) DeleteWaiverFindingTargets(ctx context.Context, waiverID pgtyp
 }
 
 const getWaiver = `-- name: GetWaiver :one
-SELECT id, project_id, name, description, enabled, created_at, updated_at, expires_at FROM waivers
+SELECT id, project_id, name, description, enabled, created_at, updated_at, expires_at, status, scope_all, reason, requested_by, requested_at, decided_by, decided_at, decision_note FROM waivers
 WHERE id = $1 AND project_id = $2
 `
 
@@ -242,13 +258,22 @@ func (q *Queries) GetWaiver(ctx context.Context, arg GetWaiverParams) (Waiver, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ExpiresAt,
+		&i.Status,
+		&i.ScopeAll,
+		&i.Reason,
+		&i.RequestedBy,
+		&i.RequestedAt,
+		&i.DecidedBy,
+		&i.DecidedAt,
+		&i.DecisionNote,
 	)
 	return i, err
 }
 
 const listActiveWaivers = `-- name: ListActiveWaivers :many
-SELECT id, project_id, name, description, enabled, created_at, updated_at, expires_at FROM waivers
+SELECT id, project_id, name, description, enabled, created_at, updated_at, expires_at, status, scope_all, reason, requested_by, requested_at, decided_by, decided_at, decision_note FROM waivers
 WHERE project_id = $1
+  AND status = 'approved'
   AND enabled = true
   AND (expires_at IS NULL OR expires_at > NOW())
 ORDER BY created_at DESC, id DESC
@@ -272,6 +297,14 @@ func (q *Queries) ListActiveWaivers(ctx context.Context, projectID pgtype.UUID) 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ExpiresAt,
+			&i.Status,
+			&i.ScopeAll,
+			&i.Reason,
+			&i.RequestedBy,
+			&i.RequestedAt,
+			&i.DecidedBy,
+			&i.DecidedAt,
+			&i.DecisionNote,
 		); err != nil {
 			return nil, err
 		}
@@ -511,7 +544,7 @@ func (q *Queries) ListWaiverFindingTargetsByWaiverIDs(ctx context.Context, dolla
 }
 
 const listWaivers = `-- name: ListWaivers :many
-SELECT id, project_id, name, description, enabled, created_at, updated_at, expires_at FROM waivers
+SELECT id, project_id, name, description, enabled, created_at, updated_at, expires_at, status, scope_all, reason, requested_by, requested_at, decided_by, decided_at, decision_note FROM waivers
 WHERE project_id = $1
 ORDER BY created_at DESC, id DESC
 `
@@ -534,6 +567,14 @@ func (q *Queries) ListWaivers(ctx context.Context, projectID pgtype.UUID) ([]Wai
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ExpiresAt,
+			&i.Status,
+			&i.ScopeAll,
+			&i.Reason,
+			&i.RequestedBy,
+			&i.RequestedAt,
+			&i.DecidedBy,
+			&i.DecidedAt,
+			&i.DecisionNote,
 		); err != nil {
 			return nil, err
 		}
@@ -545,12 +586,48 @@ func (q *Queries) ListWaivers(ctx context.Context, projectID pgtype.UUID) ([]Wai
 	return items, nil
 }
 
+const refreshWaiverScopeAll = `-- name: RefreshWaiverScopeAll :one
+UPDATE waivers w SET scope_all = (
+    NOT EXISTS (SELECT 1 FROM waiver_conditions c WHERE c.waiver_id = w.id)
+    AND NOT EXISTS (SELECT 1 FROM waiver_contexts x WHERE x.waiver_id = w.id)
+    AND NOT EXISTS (SELECT 1 FROM waiver_finding_targets t WHERE t.waiver_id = w.id)
+)
+WHERE w.id = $1
+RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at, status, scope_all, reason, requested_by, requested_at, decided_by, decided_at, decision_note
+`
+
+// A waiver with no contexts, targets or conditions covers every finding.
+// Recompute the flag after the child rows of a create or update are written.
+func (q *Queries) RefreshWaiverScopeAll(ctx context.Context, id pgtype.UUID) (Waiver, error) {
+	row := q.db.QueryRow(ctx, refreshWaiverScopeAll, id)
+	var i Waiver
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Description,
+		&i.Enabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExpiresAt,
+		&i.Status,
+		&i.ScopeAll,
+		&i.Reason,
+		&i.RequestedBy,
+		&i.RequestedAt,
+		&i.DecidedBy,
+		&i.DecidedAt,
+		&i.DecisionNote,
+	)
+	return i, err
+}
+
 const toggleWaiver = `-- name: ToggleWaiver :one
 UPDATE waivers SET
     enabled = NOT enabled,
     updated_at = NOW()
 WHERE id = $1 AND project_id = $2
-RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at
+RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at, status, scope_all, reason, requested_by, requested_at, decided_by, decided_at, decision_note
 `
 
 type ToggleWaiverParams struct {
@@ -570,6 +647,14 @@ func (q *Queries) ToggleWaiver(ctx context.Context, arg ToggleWaiverParams) (Wai
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ExpiresAt,
+		&i.Status,
+		&i.ScopeAll,
+		&i.Reason,
+		&i.RequestedBy,
+		&i.RequestedAt,
+		&i.DecidedBy,
+		&i.DecidedAt,
+		&i.DecisionNote,
 	)
 	return i, err
 }
@@ -582,7 +667,7 @@ UPDATE waivers SET
         THEN $6::timestamptz ELSE expires_at END,
     updated_at = NOW()
 WHERE id = $1 AND project_id = $2
-RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at
+RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at, status, scope_all, reason, requested_by, requested_at, decided_by, decided_at, decision_note
 `
 
 type UpdateWaiverParams struct {
@@ -615,6 +700,14 @@ func (q *Queries) UpdateWaiver(ctx context.Context, arg UpdateWaiverParams) (Wai
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ExpiresAt,
+		&i.Status,
+		&i.ScopeAll,
+		&i.Reason,
+		&i.RequestedBy,
+		&i.RequestedAt,
+		&i.DecidedBy,
+		&i.DecidedAt,
+		&i.DecisionNote,
 	)
 	return i, err
 }

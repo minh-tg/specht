@@ -225,6 +225,9 @@ func (r *pgWaiverRepo) CreateWithDetails(ctx context.Context, arg CreateWaiverDe
 	if err := createWaiverChildren(ctx, q, w.ID, arg.Conditions, arg.Contexts, arg.Targets); err != nil {
 		return sqlc.Waiver{}, err
 	}
+	if w, err = q.RefreshWaiverScopeAll(ctx, w.ID); err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("refresh waiver scope: %w", err)
+	}
 
 	if _, err := q.CreateWaiverEvent(ctx, sqlc.CreateWaiverEventParams{
 		WaiverID:  w.ID,
@@ -262,6 +265,9 @@ func (r *pgWaiverRepo) UpdateWithDetails(ctx context.Context, arg UpdateWaiverDe
 
 	if err := replaceWaiverDetails(ctx, q, w.ID, arg); err != nil {
 		return sqlc.Waiver{}, err
+	}
+	if w, err = q.RefreshWaiverScopeAll(ctx, w.ID); err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("refresh waiver scope: %w", err)
 	}
 
 	if err := tx.Commit(ctx); err != nil {
