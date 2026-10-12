@@ -150,6 +150,7 @@ type WaiverRepo interface {
 	GetByID(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Waiver, error)
 	Update(ctx context.Context, arg sqlc.UpdateWaiverParams) (sqlc.Waiver, error)
 	UpdateWithDetails(ctx context.Context, arg UpdateWaiverDetailsParams) (sqlc.Waiver, error)
+	Decide(ctx context.Context, arg DecideWaiverParams) (sqlc.Waiver, error)
 	Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Waiver, error)
 	Toggle(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Waiver, error)
 	ListActive(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Waiver, error)

@@ -1,6 +1,26 @@
 -- name: CreateWaiver :one
-INSERT INTO waivers (project_id, name, description, enabled, expires_at)
-VALUES ($1, $2, $3, $4, $5)
+-- An empty status defaults to approved, so direct creation by a manager or
+-- admin keeps working; a member's request passes pending and the requester.
+INSERT INTO waivers (project_id, name, description, enabled, expires_at, status, reason, requested_by, requested_at)
+VALUES (
+    $1, $2, $3, $4, $5,
+    COALESCE(NULLIF(sqlc.arg(status)::text, ''), 'approved'),
+    sqlc.arg(reason)::text,
+    sqlc.narg(requested_by)::uuid,
+    sqlc.narg(requested_at)::timestamptz
+)
+RETURNING *;
+
+-- name: DecideWaiver :one
+-- Moves a pending waiver to a final status. No row comes back when the
+-- waiver is missing or no longer pending; the caller tells the two apart.
+UPDATE waivers SET
+    status = sqlc.arg(status)::text,
+    decided_by = sqlc.narg(decided_by)::uuid,
+    decided_at = NOW(),
+    decision_note = sqlc.arg(decision_note)::text,
+    updated_at = NOW()
+WHERE id = $1 AND project_id = $2 AND status = 'pending'
 RETURNING *;
 
 -- name: ListWaivers :many

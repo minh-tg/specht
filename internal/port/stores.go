@@ -23,6 +23,10 @@ import (
 // Postgres adapter maps pgx.ErrNoRows to it at the boundary.
 var ErrNotFound = errors.New("not found")
 
+// ErrWaiverNotPending is returned when a waiver decision targets a waiver
+// that already has a final status.
+var ErrWaiverNotPending = errors.New("waiver is not pending")
+
 // ErrLastAdmin is returned when a membership write would remove or demote the
 // only remaining admin of a project. The Postgres adapter enforces it under a
 // per-project lock so concurrent writes cannot both pass the check.
@@ -350,8 +354,17 @@ type Waiver struct {
 	ScopeAll bool
 	// ExpiresAt bounds an auto-disabled waiver; nil means it never expires.
 	ExpiresAt *time.Time
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	// Reason is the requester's justification. RequestedBy and RequestedAt
+	// are nil for waivers created directly or before the review lifecycle.
+	Reason      string
+	RequestedBy *string
+	RequestedAt *time.Time
+	// DecidedBy, DecidedAt and DecisionNote record the review outcome.
+	DecidedBy    *string
+	DecidedAt    *time.Time
+	DecisionNote string
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // WaiverCondition is one waiver predicate.
@@ -419,15 +432,36 @@ type CreateWaiverInput struct {
 	Description string
 	Enabled     bool
 	// ExpiresAt optionally bounds the waiver; nil creates a permanent one.
-	ExpiresAt  *time.Time
-	Conditions []WaiverCondition
-	Contexts   []WaiverContext
-	Targets    []WaiverFindingTarget
-	Event      WaiverEventInput
+	ExpiresAt *time.Time
+	// Status is the initial review state; empty means approved.
+	Status      string
+	Reason      string
+	RequestedBy *string
+	RequestedAt *time.Time
+	Conditions  []WaiverCondition
+	Contexts    []WaiverContext
+	Targets     []WaiverFindingTarget
+	Event       WaiverEventInput
+}
+
+// WaiverDecision moves a pending waiver to a final status.
+type WaiverDecision struct {
+	// Status is the target: approved, rejected or withdrawn.
+	Status string
+	// ActorID is the user id of the decider.
+	ActorID string
+	// Note is the decision note (required for a rejection).
+	Note  string
+	Event WaiverEventInput
 }
 
 // WaiverStore persists waivers and their children/events atomically.
 type WaiverStore interface {
+	// Decide moves a pending waiver to a final status and appends the audit
+	// event in one transaction. It returns ErrNotFound when the waiver does
+	// not exist in the project and ErrWaiverNotPending when it already has
+	// a final status.
+	Decide(ctx context.Context, id, projectID string, decision WaiverDecision) (Waiver, error)
 	CreateWithDetails(ctx context.Context, input CreateWaiverInput) (Waiver, error)
 	List(ctx context.Context, projectID string) ([]Waiver, error)
 	GetByID(ctx context.Context, id, projectID string) (Waiver, error)

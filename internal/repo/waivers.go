@@ -2,11 +2,14 @@ package repo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minh-tg/specht/internal/db/sqlc"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 type pgWaiverRepo struct {
@@ -172,10 +175,25 @@ type CreateWaiverDetailsParams struct {
 	Description string
 	Enabled     bool
 	ExpiresAt   pgtype.Timestamptz
+	// Status is the initial review state; empty means approved.
+	Status      string
+	Reason      string
+	RequestedBy pgtype.UUID
+	RequestedAt pgtype.Timestamptz
 	Conditions  []WaiverConditionInput
 	Contexts    []WaiverContextInput
 	Targets     []WaiverTargetInput
 	Event       WaiverEventInput
+}
+
+// DecideWaiverParams is the input to Decide.
+type DecideWaiverParams struct {
+	ID        pgtype.UUID
+	ProjectID pgtype.UUID
+	Status    string
+	DecidedBy pgtype.UUID
+	Note      string
+	Event     WaiverEventInput
 }
 
 // UpdateWaiverDetailsParams is the input to UpdateWithDetails. A nil slice
@@ -217,6 +235,10 @@ func (r *pgWaiverRepo) CreateWithDetails(ctx context.Context, arg CreateWaiverDe
 		Description: arg.Description,
 		Enabled:     arg.Enabled,
 		ExpiresAt:   arg.ExpiresAt,
+		Status:      arg.Status,
+		Reason:      arg.Reason,
+		RequestedBy: arg.RequestedBy,
+		RequestedAt: arg.RequestedAt,
 	})
 	if err != nil {
 		return sqlc.Waiver{}, fmt.Errorf("create waiver: %w", err)
@@ -227,6 +249,52 @@ func (r *pgWaiverRepo) CreateWithDetails(ctx context.Context, arg CreateWaiverDe
 	}
 	if w, err = q.RefreshWaiverScopeAll(ctx, w.ID); err != nil {
 		return sqlc.Waiver{}, fmt.Errorf("refresh waiver scope: %w", err)
+	}
+
+	if _, err := q.CreateWaiverEvent(ctx, sqlc.CreateWaiverEventParams{
+		WaiverID:  w.ID,
+		EventType: arg.Event.EventType,
+		ActorID:   arg.Event.ActorID,
+		Metadata:  arg.Event.Metadata,
+	}); err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("create waiver event: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("commit tx: %w", err)
+	}
+	return w, nil
+}
+
+// Decide moves a pending waiver to a final status and appends the audit event
+// in one transaction. A waiver that is missing returns pgx.ErrNoRows; one that
+// exists but is no longer pending returns port.ErrWaiverNotPending.
+func (r *pgWaiverRepo) Decide(ctx context.Context, arg DecideWaiverParams) (sqlc.Waiver, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("begin tx: %w", err)
+	}
+	// Rollback is best-effort; after Commit the transaction is already closed.
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	q := sqlc.New(tx)
+	w, err := q.DecideWaiver(ctx, sqlc.DecideWaiverParams{
+		ID:           arg.ID,
+		ProjectID:    arg.ProjectID,
+		Status:       arg.Status,
+		DecidedBy:    arg.DecidedBy,
+		DecisionNote: arg.Note,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		if _, getErr := q.GetWaiver(ctx, sqlc.GetWaiverParams{ID: arg.ID, ProjectID: arg.ProjectID}); getErr != nil {
+			return sqlc.Waiver{}, getErr
+		}
+		return sqlc.Waiver{}, port.ErrWaiverNotPending
+	}
+	if err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("decide waiver: %w", err)
 	}
 
 	if _, err := q.CreateWaiverEvent(ctx, sqlc.CreateWaiverEventParams{
