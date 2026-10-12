@@ -86,10 +86,15 @@ func TestChangeUserRoleSurfacesTheLastAdminGuard(t *testing.T) {
 func TestDeactivateUser(t *testing.T) {
 	disabledAt := time.Now()
 	var revoked string
-	users := &mockUserRepo{setDisabledFn: func(_ context.Context, id string, disabled bool) (port.User, error) {
-		require.True(t, disabled)
-		return port.User{ID: id, Email: "t@example.com", Role: auth.RoleMember, DisabledAt: &disabledAt, CreatedAt: time.Now()}, nil
-	}}
+	users := &mockUserRepo{
+		getByIDFn: func(_ context.Context, id string) (port.User, error) {
+			return port.User{ID: id, Email: "t@example.com", Role: auth.RoleMember}, nil
+		},
+		setDisabledFn: func(_ context.Context, id string, disabled bool) (port.User, error) {
+			require.True(t, disabled)
+			return port.User{ID: id, Email: "t@example.com", Role: auth.RoleMember, DisabledAt: &disabledAt, CreatedAt: time.Now()}, nil
+		},
+	}
 	refresh := &mockRefreshTokenRepo{revokeAllFn: func(_ context.Context, id string) error { revoked = id; return nil }}
 	uc := userAdminUsecase(users, refresh)
 
@@ -108,7 +113,9 @@ func TestDeactivateUserRefusesYourself(t *testing.T) {
 }
 
 func TestDeactivateUserSurfacesTheLastAdminGuard(t *testing.T) {
-	users := &mockUserRepo{setDisabledFn: func(context.Context, string, bool) (port.User, error) {
+	users := &mockUserRepo{getByIDFn: func(_ context.Context, id string) (port.User, error) {
+		return port.User{ID: id, Email: "t@example.com", Role: auth.RoleAdmin}, nil
+	}, setDisabledFn: func(context.Context, string, bool) (port.User, error) {
 		return port.User{}, port.ErrLastGlobalAdmin
 	}}
 	_, err := userAdminUsecase(users, &mockRefreshTokenRepo{}).DeactivateUser(sessionCtx(adminUserID, auth.RoleAdmin), targetUserID)
@@ -173,4 +180,29 @@ func TestDeactivatedAccountCannotSignIn(t *testing.T) {
 func codeHashOf(code string) string {
 	sum := sha256.Sum256([]byte(code))
 	return hex.EncodeToString(sum[:])
+}
+
+func TestTheSystemAccountCannotBeChanged(t *testing.T) {
+	changed := false
+	users := &mockUserRepo{
+		getByIDFn: func(_ context.Context, id string) (port.User, error) {
+			return port.User{ID: id, Email: "System@Specht.Local", Role: auth.RoleMember}, nil
+		},
+		changeRoleFn: func(context.Context, string, string) (port.User, error) {
+			changed = true
+			return port.User{}, nil
+		},
+		setDisabledFn: func(context.Context, string, bool) (port.User, error) {
+			changed = true
+			return port.User{}, nil
+		},
+	}
+	uc := userAdminUsecase(users, &mockRefreshTokenRepo{})
+	ctx := sessionCtx(adminUserID, auth.RoleAdmin)
+
+	_, err := uc.ChangeUserRole(ctx, targetUserID, auth.RoleAdmin)
+	require.ErrorIs(t, err, ErrSystemAccount)
+	_, err = uc.DeactivateUser(ctx, targetUserID)
+	require.ErrorIs(t, err, ErrSystemAccount)
+	assert.False(t, changed, "nothing is written for the system account")
 }

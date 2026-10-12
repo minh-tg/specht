@@ -52,6 +52,25 @@ func TestE2E_UserDeactivationAndRoleChange(t *testing.T) {
 		require.Equal(t, "cannot_deactivate_self", errorCode(t, raw))
 	})
 
+	t.Run("the seeded system account is not an admin's to change", func(t *testing.T) {
+		listed := request[[]adminUserRow](t, http.MethodGet,
+			"/api/v1/users?email=system@specht.local", adminToken, nil, http.StatusOK)
+		require.Len(t, listed, 1, "the account is listed, so a client has to know to leave it out")
+		system := "/api/v1/users/" + listed[0].ID
+
+		status, raw := doJSON(t, http.MethodPut, system+"/role", adminToken, map[string]string{"role": "admin"})
+		require.Equal(t, http.StatusConflict, status, string(raw))
+		require.Equal(t, "system_account", errorCode(t, raw))
+		status, raw = doJSON(t, http.MethodPost, system+"/deactivate", adminToken, nil)
+		require.Equal(t, http.StatusConflict, status, string(raw))
+		require.Equal(t, "system_account", errorCode(t, raw))
+
+		again := request[[]adminUserRow](t, http.MethodGet,
+			"/api/v1/users?email=system@specht.local", adminToken, nil, http.StatusOK)
+		require.False(t, again[0].Disabled)
+		require.Equal(t, "member", again[0].Role)
+	})
+
 	t.Run("validation and unknown users", func(t *testing.T) {
 		status, raw := doJSON(t, http.MethodPut, base+"/role", adminToken, map[string]string{"role": "superuser"})
 		require.Equal(t, http.StatusBadRequest, status, string(raw))

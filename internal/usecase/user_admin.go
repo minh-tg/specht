@@ -19,7 +19,16 @@ var (
 	ErrLastGlobalAdmin = port.ErrLastGlobalAdmin
 	// ErrCannotDeactivateSelf is returned when an admin deactivates their own account.
 	ErrCannotDeactivateSelf = errors.New("you cannot deactivate your own account")
+	// ErrSystemAccount is returned when a change targets the seeded system account.
+	ErrSystemAccount = errors.New("the system account cannot be changed")
 )
+
+// SystemAccountEmail is the account the server seeds to act for things with no person behind
+// them, such as an API key created before keys recorded their owner. Deactivating it would stop
+// those keys, and it is nobody's login, so its role and state are not an admin's to change.
+const SystemAccountEmail = "system@specht.local"
+
+func isSystemAccount(email string) bool { return strings.EqualFold(email, SystemAccountEmail) }
 
 // requireInstanceAdmin lets only a signed-in global admin through. The routes
 // already require it; checking again keeps the use case safe if it is reached
@@ -50,6 +59,9 @@ func (u *Usecases) ChangeUserRole(ctx context.Context, userID, role string) (*Us
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
+	if isSystemAccount(current.Email) {
+		return nil, ErrSystemAccount
+	}
 	if current.Role == role {
 		profile := toUserProfile(current)
 		return &profile, nil
@@ -65,7 +77,8 @@ func (u *Usecases) ChangeUserRole(ctx context.Context, userID, role string) (*Us
 // DeactivateUser ends an account's access: open sessions stop at their next
 // request, refresh tokens are revoked, and the account cannot sign in again
 // until it is reactivated. History and memberships stay. An admin cannot
-// deactivate themselves, and the last active admin cannot be deactivated.
+// deactivate themselves, the last active admin cannot be deactivated, and the
+// seeded system account cannot be deactivated at all.
 func (u *Usecases) DeactivateUser(ctx context.Context, userID string) (*UserProfile, error) {
 	ident, err := requireInstanceAdmin(ctx)
 	if err != nil {
@@ -77,6 +90,13 @@ func (u *Usecases) DeactivateUser(ctx context.Context, userID string) (*UserProf
 	}
 	if strings.EqualFold(id, ident.UserID) {
 		return nil, ErrCannotDeactivateSelf
+	}
+	target, err := u.deps.Stores.Users.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+	if isSystemAccount(target.Email) {
+		return nil, ErrSystemAccount
 	}
 	user, err := u.deps.Stores.Users.SetDisabled(ctx, id, true)
 	if err != nil {

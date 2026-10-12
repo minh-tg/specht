@@ -441,7 +441,8 @@ export interface paths {
      * @description Session admins only. The change reaches sessions that are already
      *     open: the account's token generation advances, so its old tokens stop
      *     working and the person signs in again to get the new role. The last
-     *     active admin cannot be demoted.
+     *     active admin cannot be demoted, and the seeded system account
+     *     (`system@specht.local`) cannot be changed at all; both answer 409.
      */
     put: operations["changeUserRole"];
     post?: never;
@@ -466,7 +467,9 @@ export interface paths {
      *     their next request, refresh tokens are revoked, and sign-in is refused
      *     until the account is reactivated; the refusal looks like a wrong
      *     password. History and memberships stay. An admin cannot deactivate
-     *     themselves, and the last active admin cannot be deactivated.
+     *     themselves, the last active admin cannot be deactivated, and the
+     *     seeded system account (`system@specht.local`) cannot be deactivated;
+     *     each answers 409.
      */
     post: operations["deactivateUser"];
     delete?: never;
