@@ -23,11 +23,11 @@ ON CONFLICT (team_id, user_id) DO UPDATE SET role = EXCLUDED.role
 RETURNING *;
 
 -- name: ListTeamMembers :many
-SELECT tm.team_id, tm.user_id, tm.role, tm.created_at, u.email
+SELECT tm.team_id, tm.user_id, tm.role, tm.created_at, u.email, u.display_name
 FROM team_members tm
 JOIN users u ON u.id = tm.user_id
 WHERE tm.team_id = $1
-ORDER BY u.email ASC;
+ORDER BY COALESCE(NULLIF(u.display_name, ''), u.email) ASC, tm.user_id ASC;
 
 -- name: RemoveTeamMember :exec
 DELETE FROM team_members WHERE team_id = $1 AND user_id = $2;

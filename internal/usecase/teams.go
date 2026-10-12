@@ -25,10 +25,11 @@ type TeamResponse struct {
 
 // TeamMemberResponse binds a user to a team.
 type TeamMemberResponse struct {
-	TeamID    string `json:"team_id"`
-	UserID    string `json:"user_id"`
-	UserEmail string `json:"user_email,omitempty"`
-	Role      string `json:"role"`
+	TeamID      string `json:"team_id"`
+	UserID      string `json:"user_id"`
+	UserEmail   string `json:"user_email,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
+	Role        string `json:"role"`
 }
 
 // ProjectTeamResponse links a team to a project with the conferred role.
@@ -213,13 +214,28 @@ func (u *Usecases) AddTeamMember(ctx context.Context, teamID, userID, role strin
 	return &TeamMemberResponse{TeamID: m.TeamID, UserID: m.UserID, Role: m.Role}, nil
 }
 
-// ListTeamMembers returns a team's roster with member emails.
+// ListTeamMembers returns a team's roster. Any signed-in person sees who is on
+// a team by display name; the team directory is already open to them. Email
+// addresses go only to global admins and the team's own admins. API keys get
+// nothing: a pipeline has no use for the people behind a team.
 func (u *Usecases) ListTeamMembers(ctx context.Context, teamID string) ([]TeamMemberResponse, error) {
 	if _, err := validID(teamID); err != nil {
 		return nil, err
 	}
-	if err := u.requireTeamAdmin(ctx, teamID); err != nil {
-		return nil, err
+	ident := auth.ContextIdentity(ctx)
+	if ident == nil || ident.IsAPIKey {
+		return nil, ErrProjectAccessDenied
+	}
+	if _, err := u.deps.Stores.Teams.GetTeamByID(ctx, teamID); err != nil {
+		return nil, notFoundAsTeam(err)
+	}
+	withEmails := ident.Role == auth.RoleAdmin
+	if !withEmails {
+		isAdmin, err := u.deps.Stores.Teams.IsTeamAdmin(ctx, teamID, ident.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("check team admin: %w", err)
+		}
+		withEmails = isAdmin
 	}
 	members, err := u.deps.Stores.Teams.ListTeamMembers(ctx, teamID)
 	if err != nil {
@@ -227,7 +243,10 @@ func (u *Usecases) ListTeamMembers(ctx context.Context, teamID string) ([]TeamMe
 	}
 	out := make([]TeamMemberResponse, len(members))
 	for i, m := range members {
-		out[i] = TeamMemberResponse{TeamID: m.TeamID, UserID: m.UserID, UserEmail: m.UserEmail, Role: m.Role}
+		out[i] = TeamMemberResponse{TeamID: m.TeamID, UserID: m.UserID, DisplayName: m.DisplayName, Role: m.Role}
+		if withEmails {
+			out[i].UserEmail = m.UserEmail
+		}
 	}
 	return out, nil
 }

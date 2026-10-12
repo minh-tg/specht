@@ -113,11 +113,12 @@ func (r *pgTeamPort) ListTeamMembers(ctx context.Context, teamID string) ([]port
 	out := make([]port.TeamMember, len(rows))
 	for i, row := range rows {
 		out[i] = port.TeamMember{
-			TeamID:    toUUID(row.TeamID),
-			UserID:    toUUID(row.UserID),
-			UserEmail: row.Email,
-			Role:      row.Role,
-			CreatedAt: row.CreatedAt.Time,
+			TeamID:      toUUID(row.TeamID),
+			UserID:      toUUID(row.UserID),
+			UserEmail:   row.Email,
+			DisplayName: row.DisplayName.String,
+			Role:        row.Role,
+			CreatedAt:   row.CreatedAt.Time,
 		}
 	}
 	return out, nil

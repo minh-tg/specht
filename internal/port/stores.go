@@ -1159,11 +1159,12 @@ type Team struct {
 
 // TeamMember binds a user to a team as admin (manages the team) or member.
 type TeamMember struct {
-	TeamID    string
-	UserID    string
-	UserEmail string
-	Role      string
-	CreatedAt time.Time
+	TeamID      string
+	UserID      string
+	UserEmail   string
+	DisplayName string
+	Role        string
+	CreatedAt   time.Time
 }
 
 // ProjectTeam links a team to a project, conferring the link role on

@@ -268,19 +268,20 @@ func (q *Queries) ListProjectTeams(ctx context.Context, projectID pgtype.UUID) (
 }
 
 const listTeamMembers = `-- name: ListTeamMembers :many
-SELECT tm.team_id, tm.user_id, tm.role, tm.created_at, u.email
+SELECT tm.team_id, tm.user_id, tm.role, tm.created_at, u.email, u.display_name
 FROM team_members tm
 JOIN users u ON u.id = tm.user_id
 WHERE tm.team_id = $1
-ORDER BY u.email ASC
+ORDER BY COALESCE(NULLIF(u.display_name, ''), u.email) ASC, tm.user_id ASC
 `
 
 type ListTeamMembersRow struct {
-	TeamID    pgtype.UUID        `json:"team_id"`
-	UserID    pgtype.UUID        `json:"user_id"`
-	Role      string             `json:"role"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	Email     string             `json:"email"`
+	TeamID      pgtype.UUID        `json:"team_id"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	Role        string             `json:"role"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	Email       string             `json:"email"`
+	DisplayName pgtype.Text        `json:"display_name"`
 }
 
 func (q *Queries) ListTeamMembers(ctx context.Context, teamID pgtype.UUID) ([]ListTeamMembersRow, error) {
@@ -298,6 +299,7 @@ func (q *Queries) ListTeamMembers(ctx context.Context, teamID pgtype.UUID) ([]Li
 			&i.Role,
 			&i.CreatedAt,
 			&i.Email,
+			&i.DisplayName,
 		); err != nil {
 			return nil, err
 		}
