@@ -230,6 +230,46 @@ export interface LoginResponse {
   email: string;
 }
 
+/** What a signed-out page needs to know: which sign-in options exist, and whether the server wants its first admin. */
+export interface Capabilities {
+  registration: { enabled: boolean; };
+  sso: { enabled: boolean; login_path?: string; };
+  setup: { required: boolean; };
+  version: string;
+  commit: string;
+}
+
+export type InviteRole = "member" | "manager";
+
+/** An open invite link. `link` is present only in the response to creating it. */
+export interface Invite {
+  id: string;
+  role: InviteRole;
+  email?: string;
+  created_by?: string;
+  created_at: string;
+  expires_at: string;
+  link?: string;
+}
+
+/** What the accept page learns from a link. */
+export interface InviteLookup {
+  project_name: string;
+  role: InviteRole;
+  email?: string;
+}
+
+/** A new session plus the project it landed in. */
+export interface AcceptInviteResponse extends LoginResponse {
+  project_slug: string;
+  role: ProjectRole;
+}
+
+export interface JoinInviteResponse {
+  project_slug: string;
+  role: ProjectRole;
+}
+
 export interface ApiKey {
   id: string;
   name: string;

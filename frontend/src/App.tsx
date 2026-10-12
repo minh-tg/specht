@@ -7,6 +7,7 @@ import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { ApiKeys } from "@/pages/ApiKeys";
 import { ChangeView } from "@/pages/ChangeView";
 import { FindingDetail } from "@/pages/FindingDetail";
+import { Invite } from "@/pages/Invite";
 import { Login } from "@/pages/Login";
 import { NewProject } from "@/pages/NewProject";
 import { NotFound } from "@/pages/NotFound";
@@ -14,6 +15,7 @@ import { ProjectLayout } from "@/pages/ProjectLayout";
 import { ProjectList } from "@/pages/ProjectList";
 import { ProjectSetup } from "@/pages/ProjectSetup";
 import { Register } from "@/pages/Register";
+import { Setup } from "@/pages/Setup";
 import { TeamsDirectory } from "@/pages/TeamsDirectory";
 import { UploadReport } from "@/pages/UploadReport";
 import { type ReactNode } from "react";
@@ -49,6 +51,22 @@ export function AppRoutes() {
         element={
           <Titled title="Sign in">
             <Login />
+          </Titled>
+        }
+      />
+      <Route
+        path="/setup"
+        element={
+          <Titled title="Set up Specht">
+            <Setup />
+          </Titled>
+        }
+      />
+      <Route
+        path="/invite/:token"
+        element={
+          <Titled title="Invitation">
+            <Invite />
           </Titled>
         }
       />

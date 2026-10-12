@@ -12,6 +12,7 @@ function auth(overrides: Partial<AuthContextValue> = {}): AuthContextValue {
     email: "a@example.com",
     login: async () => {},
     logout: () => {},
+    adopt: () => {},
     loading: false,
     ...overrides,
   };

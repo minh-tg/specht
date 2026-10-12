@@ -1,5 +1,11 @@
 import { APIError, apiFetch } from "@/api/client";
+import { useCapabilities } from "@/api/hooks";
 import { useAuth } from "@/auth/useAuth";
+import { AuthLayout } from "@/components/AuthLayout";
+import { FormField } from "@/components/FormField";
+import { PasswordRequirements } from "@/components/PasswordRequirements";
+import { Button } from "@/components/ui/button";
+import { isPasswordValid } from "@/lib/passwordRules";
 import type { RegisterResponse } from "@/types/api";
 import { type SubmitEvent, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
@@ -7,19 +13,32 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 export function Register() {
   const auth = useAuth();
   const navigate = useNavigate();
+  const capabilities = useCapabilities();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordError, setPasswordError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   if (auth.token) {
     return <Navigate to="/" replace />;
   }
+  if (capabilities.data?.setup?.required) {
+    return <Navigate to="/setup" replace />;
+  }
+  // The server says registration is closed: sign in, or open an invite link.
+  if (capabilities.data?.registration?.enabled === false) {
+    return <Navigate to="/login" replace />;
+  }
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
     setError(null);
+    if (!isPasswordValid(password)) {
+      setPasswordError("Choose a password that meets the requirements.");
+      return;
+    }
     setSubmitting(true);
     try {
       await apiFetch<RegisterResponse>("/api/v1/auth/register", {
@@ -40,62 +59,50 @@ export function Register() {
   }
 
   return (
-    <div className="mx-auto flex min-h-[60vh] max-w-sm items-center justify-center px-4">
-      <form onSubmit={handleSubmit} className="w-full space-y-4">
-        <h1 className="text-2xl font-bold">Create account</h1>
-
+    <AuthLayout eyebrow="Specht" title="Create account">
+      <form onSubmit={handleSubmit} className="grid gap-4">
         {error && (
-          <p className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm">
+          <p
+            role="alert"
+            className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
+          >
             {error}
           </p>
         )}
-
-        <div>
-          <label htmlFor="reg-email" className="text-sm font-medium">
-            Email
-          </label>
-          <input
-            id="reg-email"
-            type="email"
-            autoComplete="email"
-            required
-            className="border-input bg-background mt-1 block w-full rounded-md border px-3 py-2 text-sm"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </div>
-
-        <div>
-          <label htmlFor="reg-password" className="text-sm font-medium">
-            Password
-          </label>
-          <input
-            id="reg-password"
-            type="password"
-            autoComplete="new-password"
-            required
-            minLength={8}
-            className="border-input bg-background mt-1 block w-full rounded-md border px-3 py-2 text-sm"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={submitting}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 w-full rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
-        >
+        <FormField
+          label="Email"
+          id="reg-email"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <FormField
+          label="Password"
+          id="reg-password"
+          type="password"
+          autoComplete="new-password"
+          required
+          value={password}
+          onChange={(e) => {
+            setPassword(e.target.value);
+            setPasswordError(null);
+          }}
+          extra={{
+            id: "reg-password-rules",
+            node: <PasswordRequirements id="reg-password-rules" value={password} />,
+          }}
+          error={passwordError}
+        />
+        <Button type="submit" size="lg" disabled={submitting} className="h-10 w-full text-base">
           {submitting ? "Creating account..." : "Create account"}
-        </button>
-
-        <p className="text-muted-foreground text-center text-sm">
+        </Button>
+        <p className="text-muted-foreground text-[0.8125rem]">
           Already have an account?{" "}
-          <Link to="/login" className="text-action underline underline-offset-2 hover:no-underline">
-            Sign in
-          </Link>
+          <Link to="/login" className="text-action underline underline-offset-4">Sign in</Link>
         </p>
       </form>
-    </div>
+    </AuthLayout>
   );
 }

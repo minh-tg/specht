@@ -1,9 +1,12 @@
 import { type AnalysisState, gateEffectLabel, type ReachabilityState } from "@/lib/enums";
 import type {
+  Capabilities,
   CreatedApiKey,
   Finding,
   FindingEvent,
   GateStatus,
+  Invite,
+  InviteRole,
   Project,
   ProjectMember,
   ProjectRole,
@@ -28,6 +31,8 @@ export const queryKeys = {
   waivers: (slug?: string, status?: string) =>
     slug === undefined ? (["waivers"] as const) : (["waivers", slug, status ?? ""] as const),
   scanSignal: (slug: string, branch: string) => ["scan-signal", slug, branch] as const,
+  capabilities: () => ["capabilities"] as const,
+  invites: (slug: string) => ["invites", slug] as const,
   projects: () => ["projects"] as const,
   me: () => ["me"] as const,
   version: () => ["version"] as const,
@@ -98,6 +103,52 @@ export function useMe() {
 
 /** Server build info; unauthenticated and effectively static, so it is cached
  * for an hour. */
+/** The sign-in options and first-run state. Public, so it works before anyone is signed in. */
+export function useCapabilities() {
+  return useQuery({
+    queryKey: queryKeys.capabilities(),
+    queryFn: () => apiFetch<Capabilities>("/api/v1/capabilities", { skipAuthRedirect: true }),
+    staleTime: 60 * 1000,
+  });
+}
+
+export function useInvites(slug: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.invites(slug),
+    queryFn: () => apiFetch<Invite[]>(`/api/v1/projects/${encodeURIComponent(slug)}/invites`),
+    enabled: !!slug && enabled,
+  });
+}
+
+export function useCreateInvite(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { role: InviteRole; email?: string; expires_in_days?: number; }) =>
+      apiFetch<Invite>(`/api/v1/projects/${encodeURIComponent(slug)}/invites`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invites(slug) });
+    },
+  });
+}
+
+export function useRevokeInvite(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { success: "Invite revoked" },
+    mutationFn: (id: string) =>
+      apiFetch<void>(
+        `/api/v1/projects/${encodeURIComponent(slug)}/invites/${encodeURIComponent(id)}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.invites(slug) });
+    },
+  });
+}
+
 export function useVersion() {
   return useQuery({
     queryKey: queryKeys.version(),
