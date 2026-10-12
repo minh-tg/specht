@@ -272,6 +272,10 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await expect(page.getByText("No waiver is letting a finding through.")).toBeVisible();
   await audit(page, "project waivers, empty list");
 
+  await page.goto(`/${slug}/insights`);
+  await expect(page.getByRole("list", { name: "Open findings by severity" })).toBeVisible();
+  await audit(page, "project insights");
+
   await page.goto("/teams");
   await page.getByRole("button", { name: "+ Create Team" }).click();
   await expect(page.getByRole("dialog", { name: "Create Company Team" })).toBeVisible();
