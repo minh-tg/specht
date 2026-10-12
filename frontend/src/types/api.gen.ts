@@ -451,7 +451,12 @@ export interface paths {
     /**
      * List a project's findings
      * @description Every filter is a comma-separated list, and separate filters intersect.
-     *     An unknown value in any list simply selects nothing.
+     *     An unknown value in `severity`, `status`, `kind`, `environment` or
+     *     `target` simply selects nothing. `analysis_state`, `sort` and `dir`
+     *     are checked and refused with 400 when they hold an unknown value.
+     *
+     *     The order holds across pages: ties are broken by severity, creation
+     *     time and id, so a page boundary never repeats or skips a finding.
      */
     get: operations["listFindings"];
     put?: never;
@@ -3277,6 +3282,18 @@ export interface operations {
         environment?: string;
         /** @description Comma-separated target names. */
         target?: string;
+        /**
+         * @description Comma-separated analysis states (unanalyzed, in_triage, exploitable,
+         *     false_positive, not_affected, accepted_risk, wont_fix). A finding nobody has
+         *     looked at counts as `unanalyzed`.
+         */
+        analysis_state?: string;
+        /** @description Text to find in the title or the fingerprint, which carries the CVE id and package for dependency findings. Case-insensitive, matched literally, at most 100 characters. */
+        q?: string;
+        /** @description Sort key. `severity` is the default. */
+        sort?: "severity" | "first_seen" | "last_seen" | "title";
+        /** @description Sort direction. Defaults to `desc`, or `asc` for `title`. For `first_seen`, `asc` lists the oldest findings first. */
+        dir?: "asc" | "desc";
         /** @description Page size. Default 20, maximum 500. A malformed, negative, or oversized value falls back to the default. */
         limit?: components["parameters"]["Limit"];
         /** @description Items to skip. A malformed, negative, or out-of-range value falls back to 0. */
@@ -3305,6 +3322,7 @@ export interface operations {
           "application/json": components["schemas"]["Finding"][];
         };
       };
+      400: components["responses"]["BadRequest"];
       401: components["responses"]["Unauthorized"];
       403: components["responses"]["Forbidden"];
       404: components["responses"]["NotFound"];
