@@ -23,7 +23,7 @@ func projectReaders(uc *Usecases, slug string) map[string]func(context.Context) 
 			return err
 		},
 		"ListReports": func(ctx context.Context) error {
-			_, err := uc.ListReports(ctx, slug, 10, 0)
+			_, err := uc.ListReports(ctx, slug, ReportFilter{}, 10, 0)
 			return err
 		},
 		"ListEnvironments": func(ctx context.Context) error {

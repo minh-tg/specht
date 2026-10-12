@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minh-tg/specht/internal/db/sqlc"
+	"github.com/minh-tg/specht/internal/port"
 )
 
 type pgReportRepo struct {
@@ -89,9 +90,11 @@ func (r *pgReportRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Report
 	return r.q.GetReportByID(ctx, id)
 }
 
-func (r *pgReportRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, limit, offset int32) ([]sqlc.Report, error) {
+func (r *pgReportRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, filter port.ReportFilter, limit, offset int32) ([]sqlc.Report, error) {
 	return r.q.ListReportsByProject(ctx, sqlc.ListReportsByProjectParams{
 		ProjectID: projectID,
+		Branch:    filter.Branch,
+		CommitSha: filter.CommitSha,
 		Limit:     limit,
 		Offset:    offset,
 	})

@@ -5,6 +5,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"regexp"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -18,7 +19,15 @@ const (
 	projectsMsgInvalidBody  = "invalid request body"
 	projectsMsgAccessDenied = "project access denied"
 	projectsMsgNotFound     = "project not found"
+
+	// maxReportBranchLen bounds the branch filter on the report list.
+	maxReportBranchLen = 255
 )
+
+// commitFilterPattern accepts a full or abbreviated commit id for the report
+// list filter. The match is exact, so an abbreviation only finds reports
+// stored with that same abbreviation.
+var commitFilterPattern = regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`)
 
 func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -134,7 +143,20 @@ func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
 	limit := parseIntParam(r, "limit", 20)
 	offset := parseOffsetParam(r, "offset", 0)
 
-	reports, err := h.usecase.ListReports(r.Context(), slug, limit, offset)
+	filter := usecase.ReportFilter{
+		Branch:    r.URL.Query().Get("branch"),
+		CommitSha: r.URL.Query().Get("commit"),
+	}
+	if len(filter.Branch) > maxReportBranchLen {
+		respondError(w, http.StatusBadRequest, "invalid_branch", "branch is too long")
+		return
+	}
+	if filter.CommitSha != "" && !commitFilterPattern.MatchString(filter.CommitSha) {
+		respondError(w, http.StatusBadRequest, "invalid_commit", "commit must be 7 to 64 hexadecimal characters")
+		return
+	}
+
+	reports, err := h.usecase.ListReports(r.Context(), slug, filter, limit, offset)
 	if err != nil {
 		log.Printf("list reports: %v", err)
 		if errors.Is(err, port.ErrNotFound) {
@@ -144,7 +166,7 @@ func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	respondJSON(w, http.StatusOK, reports)
+	respondJSONConditional(w, r, reports)
 }
 
 func (h *Handler) GetReport(w http.ResponseWriter, r *http.Request) {

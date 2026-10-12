@@ -262,11 +262,11 @@ func TestReportRepo_ListByProject(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	reports, err := repos.Reports.ListByProject(context.Background(), project.ID, 10, 0)
+	reports, err := repos.Reports.ListByProject(context.Background(), project.ID, port.ReportFilter{}, 10, 0)
 	require.NoError(t, err)
 	assert.Len(t, reports, 3)
 
-	reportsPage2, err := repos.Reports.ListByProject(context.Background(), project.ID, 2, 0)
+	reportsPage2, err := repos.Reports.ListByProject(context.Background(), project.ID, port.ReportFilter{}, 2, 0)
 	require.NoError(t, err)
 	assert.Len(t, reportsPage2, 2)
 }

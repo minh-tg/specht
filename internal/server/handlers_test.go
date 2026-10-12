@@ -25,6 +25,7 @@ import (
 )
 
 type mockUsecases struct {
+	reportFilter            usecase.ReportFilter
 	changeUserRoleFn        func(ctx context.Context, userID, role string) (*usecase.UserProfile, error)
 	deactivateUserFn        func(ctx context.Context, userID string) (*usecase.UserProfile, error)
 	reactivateUserFn        func(ctx context.Context, userID string) (*usecase.UserProfile, error)
@@ -188,7 +189,8 @@ func (m *mockUsecases) GetFinding(ctx context.Context, findingID string) (*useca
 	return m.getFindingFn(ctx, findingID)
 }
 
-func (m *mockUsecases) ListReports(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error) {
+func (m *mockUsecases) ListReports(ctx context.Context, projectSlug string, filter usecase.ReportFilter, limit, offset int32) ([]usecase.ReportResponse, error) {
+	m.reportFilter = filter
 	if m.listReportsFn == nil {
 		return nil, fmt.Errorf("unexpected call to ListReports")
 	}
@@ -4524,4 +4526,71 @@ func TestUserAdminErrorMapping(t *testing.T) {
 			assert.NotContains(t, w.Body.String(), "10.0.0.5", "store detail does not reach the client")
 		})
 	}
+}
+
+func TestListReports_FilterParams(t *testing.T) {
+	mock := &mockUsecases{
+		listReportsFn: func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error) {
+			return []usecase.ReportResponse{}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("GET", "/api/v1/projects/my-app/reports?branch=feature/refund-retry&commit=3f9a1c2&limit=1", nil)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, usecase.ReportFilter{Branch: "feature/refund-retry", CommitSha: "3f9a1c2"}, mock.reportFilter)
+}
+
+func TestListReports_RejectsMalformedFilters(t *testing.T) {
+	router := testRouter(&mockUsecases{})
+	for query, code := range map[string]string{
+		"commit=nothex": "invalid_commit",
+		"commit=abc":    "invalid_commit",
+		"branch=" + strings.Repeat("b", maxReportBranchLen+1): "invalid_branch",
+	} {
+		req := httptest.NewRequest("GET", "/api/v1/projects/my-app/reports?"+query, nil)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusBadRequest, w.Code, query)
+		assert.Contains(t, w.Body.String(), code)
+	}
+}
+
+func TestListReports_ConditionalRequest(t *testing.T) {
+	status := "processing"
+	mock := &mockUsecases{
+		listReportsFn: func(ctx context.Context, projectSlug string, limit, offset int32) ([]usecase.ReportResponse, error) {
+			return []usecase.ReportResponse{{ID: "r1", Status: status}}, nil
+		},
+	}
+	router := testRouter(mock)
+	get := func(etag string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest("GET", "/api/v1/projects/my-app/reports?limit=1", nil)
+		if etag != "" {
+			req.Header.Set("If-None-Match", etag)
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	first := get("")
+	require.Equal(t, http.StatusOK, first.Code)
+	etag := first.Header().Get("ETag")
+	require.NotEmpty(t, etag)
+	require.Contains(t, first.Body.String(), `"status":"processing"`)
+
+	same := get(etag)
+	assert.Equal(t, http.StatusNotModified, same.Code)
+	assert.Equal(t, etag, same.Header().Get("ETag"))
+	assert.Empty(t, same.Body.String(), "a 304 carries no body")
+	assert.Equal(t, http.StatusNotModified, get("*").Code)
+	assert.Equal(t, http.StatusNotModified, get(`"other", `+etag).Code, "any listed tag may match")
+
+	status = "completed"
+	changed := get(etag)
+	assert.Equal(t, http.StatusOK, changed.Code, "a report that moved on invalidates the tag")
+	assert.NotEqual(t, etag, changed.Header().Get("ETag"))
 }

@@ -95,7 +95,7 @@ type ProjectRepo interface {
 type ReportRepo interface {
 	Create(ctx context.Context, arg CreateReportParams) (sqlc.Report, error)
 	GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Report, error)
-	ListByProject(ctx context.Context, projectID pgtype.UUID, limit, offset int32) ([]sqlc.Report, error)
+	ListByProject(ctx context.Context, projectID pgtype.UUID, filter port.ReportFilter, limit, offset int32) ([]sqlc.Report, error)
 	UpdateStatus(ctx context.Context, id, projectID pgtype.UUID, status string, totalFindings int, errorMsg pgtype.Text) (sqlc.Report, error)
 	LatestCompletedByScanner(ctx context.Context, projectID pgtype.UUID, toolName string) (sqlc.LatestCompletedReportByScannerRow, error)
 	GetCompletedByCommit(ctx context.Context, projectID pgtype.UUID, toolName string, commit pgtype.Text) (sqlc.GetCompletedReportByCommitRow, error)
