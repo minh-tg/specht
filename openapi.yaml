@@ -671,6 +671,92 @@ paths:
         "403": { $ref: "#/components/responses/SessionRequired" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+
+  /api/v1/users/{id}/role:
+    put:
+      tags: [Users]
+      operationId: changeUserRole
+      summary: Change an account's global role
+      description: |
+        Session admins only. The change reaches sessions that are already
+        open: the account's token generation advances, so its old tokens stop
+        working and the person signs in again to get the new role. The last
+        active admin cannot be demoted.
+      x-auth: session
+      x-required-role: admin
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChangeRoleRequest" }
+      responses:
+        "200":
+          description: The updated account.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserProfile" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/SessionRequired" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/v1/users/{id}/deactivate:
+    post:
+      tags: [Users]
+      operationId: deactivateUser
+      summary: Deactivate an account
+      description: |
+        Ends the account's access without deleting it. Open sessions stop at
+        their next request, refresh tokens are revoked, and sign-in is refused
+        until the account is reactivated; the refusal looks like a wrong
+        password. History and memberships stay. An admin cannot deactivate
+        themselves, and the last active admin cannot be deactivated.
+      x-auth: session
+      x-required-role: admin
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: The deactivated account.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserProfile" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/SessionRequired" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/v1/users/{id}/reactivate:
+    post:
+      tags: [Users]
+      operationId: reactivateUser
+      summary: Reactivate an account
+      description: Lets a deactivated account sign in again.
+      x-auth: session
+      x-required-role: admin
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: The reactivated account.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserProfile" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/SessionRequired" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/v1/reports:
     post:
       tags: [Reports]
@@ -2526,7 +2612,7 @@ components:
 
     UserProfile:
       type: object
-      required: [id, email, role, created_at]
+      required: [id, email, role, disabled, created_at]
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
@@ -2540,7 +2626,20 @@ components:
             self-service registration; token issuance maps it to `viewer`, and
             an operator promotion writes `admin`.
           enum: [admin, member]
+        disabled:
+          type: boolean
+          description: True for a deactivated account, which keeps its history and memberships but cannot sign in.
+        disabled_at:
+          type: string
+          format: date-time
+          description: When the account was deactivated. Present only while it is.
         created_at: { type: string, format: date-time }
+
+    ChangeRoleRequest:
+      type: object
+      required: [role]
+      properties:
+        role: { type: string, enum: [admin, member] }
 
     ProfileUpdateRequest:
       type: object
