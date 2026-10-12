@@ -166,3 +166,147 @@ func TestE2E_WaiverLifecycleAndExpirySweep(t *testing.T) {
 		require.False(t, matched.Matched, "an expired waiver must not match")
 	})
 }
+
+type waiverReview struct {
+	ID           string  `json:"id"`
+	Status       string  `json:"status"`
+	Reason       string  `json:"reason"`
+	ScopeAll     bool    `json:"scope_all"`
+	RequestedBy  *string `json:"requested_by"`
+	DecidedBy    *string `json:"decided_by"`
+	DecisionNote string  `json:"decision_note"`
+}
+
+// TestE2E_WaiverRequestApproval covers the review lifecycle: a member asks
+// for a waiver, the gate stays blocked until a manager or admin approves it,
+// and rejected or withdrawn requests never silence anything.
+func TestE2E_WaiverRequestApproval(t *testing.T) {
+	slug := newProject(t, "waiver-review")
+	key := mintKey(t, slug)
+	ingestFixture(t, slug, key, "high-medium.sarif.json")
+	target := highFinding(t, slug)
+
+	memberToken := login(t, "e2e-viewer@example.com", adminPass)
+	memberMe := request[userProfile](t, http.MethodGet, "/api/v1/me", memberToken, nil, http.StatusOK)
+	status, raw := doJSON(t, http.MethodPost, "/api/v1/projects/"+slug+"/members", adminToken,
+		map[string]string{"user_id": memberMe.ID, "role": "member"})
+	require.Contains(t, []int{http.StatusOK, http.StatusCreated}, status, string(raw))
+
+	base := "/api/v1/projects/" + slug + "/waivers"
+	expires := time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339)
+	requestBody := func(findingID string) map[string]any {
+		return map[string]any{"target_ids": []string{findingID}, "reason": "not reachable from the public API", "expires_at": expires}
+	}
+
+	var pending waiverReview
+	t.Run("a member's request stays pending and the gate stays blocked", func(t *testing.T) {
+		pending = request[waiverReview](t, http.MethodPost, base+"/requests", memberToken, requestBody(target.ID), http.StatusCreated)
+		require.Equal(t, "pending", pending.Status)
+		require.Equal(t, "not reachable from the public API", pending.Reason)
+		require.NotNil(t, pending.RequestedBy)
+		require.Equal(t, memberMe.ID, *pending.RequestedBy)
+
+		require.True(t, getGate(t, slug, "").ThresholdBreached, "a pending request must not silence the gate")
+		matched := request[checkMatchResponse](t, http.MethodPost, base+"/check-match", adminToken,
+			map[string]string{"finding_id": target.ID}, http.StatusOK)
+		require.False(t, matched.Matched)
+
+		status, raw := doJSON(t, http.MethodPost, base+"/requests", memberToken, requestBody(target.ID))
+		require.Equal(t, http.StatusConflict, status, string(raw))
+		require.Equal(t, "waiver_request_exists", errorCode(t, raw))
+	})
+
+	t.Run("a member cannot decide, create or manage waivers", func(t *testing.T) {
+		status, raw := doJSON(t, http.MethodPost, base+"/"+pending.ID+"/approve", memberToken, map[string]string{})
+		require.Equal(t, http.StatusForbidden, status, string(raw))
+		status, _ = doJSON(t, http.MethodPost, base, memberToken,
+			map[string]any{"name": "mine", "target_ids": []string{target.ID}})
+		require.Equal(t, http.StatusForbidden, status)
+		require.True(t, getGate(t, slug, "").ThresholdBreached)
+	})
+
+	t.Run("requests are validated", func(t *testing.T) {
+		for name, body := range map[string]map[string]any{
+			"no reason": {"target_ids": []string{target.ID}, "expires_at": expires},
+			"no expiry": {"target_ids": []string{target.ID}, "reason": "x"},
+			"no target": {"reason": "x", "expires_at": expires},
+		} {
+			status, raw := doJSON(t, http.MethodPost, base+"/requests", memberToken, body)
+			require.Equal(t, http.StatusBadRequest, status, name+": "+string(raw))
+		}
+	})
+
+	t.Run("the list shows the request and filters by status", func(t *testing.T) {
+		got := request[[]waiverReview](t, http.MethodGet, base+"?status=pending", memberToken, nil, http.StatusOK)
+		require.Len(t, got, 1)
+		require.Equal(t, pending.ID, got[0].ID)
+		got = request[[]waiverReview](t, http.MethodGet, base+"?status=approved", memberToken, nil, http.StatusOK)
+		require.Empty(t, got)
+		status, raw := doJSON(t, http.MethodGet, base+"?status=bogus", memberToken, nil)
+		require.Equal(t, http.StatusBadRequest, status, string(raw))
+	})
+
+	t.Run("approval silences the gate and cannot be repeated", func(t *testing.T) {
+		approved := request[waiverReview](t, http.MethodPost, base+"/"+pending.ID+"/approve", adminToken,
+			map[string]string{"note": "agreed"}, http.StatusOK)
+		require.Equal(t, "approved", approved.Status)
+		require.Equal(t, "agreed", approved.DecisionNote)
+		require.NotNil(t, approved.DecidedBy)
+
+		gs := getGate(t, slug, "")
+		require.False(t, gs.ThresholdBreached)
+		require.EqualValues(t, 1, gs.WaivedCount)
+
+		status, raw := doJSON(t, http.MethodPost, base+"/"+pending.ID+"/approve", adminToken, map[string]string{})
+		require.Equal(t, http.StatusConflict, status, string(raw))
+		require.Equal(t, "waiver_not_pending", errorCode(t, raw))
+
+		events := request[[]waiverEvent](t, http.MethodGet, base+"/"+pending.ID+"/events", adminToken, nil, http.StatusOK)
+		types := make([]string, 0, len(events))
+		for _, e := range events {
+			types = append(types, e.EventType)
+		}
+		require.Contains(t, types, "requested")
+		require.Contains(t, types, "approved")
+	})
+
+	t.Run("a rejection needs a note and a withdrawn request never counts", func(t *testing.T) {
+		var other findingResponse
+		for _, f := range listFindings(t, slug) {
+			if f.ID != target.ID {
+				other = f
+				break
+			}
+		}
+		require.NotEmpty(t, other.ID)
+
+		second := request[waiverReview](t, http.MethodPost, base+"/requests", memberToken, requestBody(other.ID), http.StatusCreated)
+		status, raw := doJSON(t, http.MethodPost, base+"/"+second.ID+"/reject", adminToken, map[string]string{})
+		require.Equal(t, http.StatusBadRequest, status, string(raw))
+		rejected := request[waiverReview](t, http.MethodPost, base+"/"+second.ID+"/reject", adminToken,
+			map[string]string{"note": "fix the dependency instead"}, http.StatusOK)
+		require.Equal(t, "rejected", rejected.Status)
+		require.Equal(t, "fix the dependency instead", rejected.DecisionNote)
+
+		third := request[waiverReview](t, http.MethodPost, base+"/requests", memberToken, requestBody(other.ID), http.StatusCreated)
+		status, raw = doJSON(t, http.MethodPost, base+"/"+third.ID+"/withdraw", adminToken, nil)
+		require.Equal(t, http.StatusForbidden, status, "only the requester withdraws: "+string(raw))
+		withdrawn := request[waiverReview](t, http.MethodPost, base+"/"+third.ID+"/withdraw", memberToken, nil, http.StatusOK)
+		require.Equal(t, "withdrawn", withdrawn.Status)
+
+		matched := request[checkMatchResponse](t, http.MethodPost, base+"/check-match", adminToken,
+			map[string]string{"finding_id": other.ID}, http.StatusOK)
+		require.False(t, matched.Matched, "rejected and withdrawn requests silence nothing")
+	})
+
+	t.Run("a waiver must say what it covers", func(t *testing.T) {
+		status, raw := doJSON(t, http.MethodPost, base, adminToken, map[string]any{"name": "everything"})
+		require.Equal(t, http.StatusBadRequest, status, string(raw))
+		require.Equal(t, "waiver_scope_required", errorCode(t, raw))
+
+		all := request[waiverReview](t, http.MethodPost, base, adminToken,
+			map[string]any{"name": "everything", "scope": "all"}, http.StatusCreated)
+		require.True(t, all.ScopeAll)
+		require.Equal(t, "approved", all.Status)
+	})
+}
