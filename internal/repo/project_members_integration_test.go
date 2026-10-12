@@ -51,4 +51,6 @@ func TestProjectMembers_EndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, members, 1)
 	assert.Equal(t, "manager", members[0].Role)
+	assert.Equal(t, "member@test.com", members[0].Email, "the roster says who each member is")
+	assert.Empty(t, members[0].DisplayName, "a person without a display name has none")
 }

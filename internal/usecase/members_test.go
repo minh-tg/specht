@@ -29,6 +29,33 @@ func TestListProjectMembers_GlobalAdminAllowed(t *testing.T) {
 	assert.Equal(t, "u1", members[0].UserID)
 }
 
+func TestListProjectMembers_NamesGoToPeopleAndNotToKeys(t *testing.T) {
+	pr := &mockProjectRepo{}
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return memberTestProject(), nil
+	}
+	pr.listMembersFn = func(ctx context.Context, projectID string) ([]port.ProjectMember, error) {
+		return []port.ProjectMember{{
+			ProjectID: projectID, UserID: "u1", Role: auth.RoleViewer,
+			Email: "ada@acme.example", DisplayName: "Ada Okafor",
+		}}, nil
+	}
+	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+
+	person, err := uc.ListProjectMembers(sessionCtx("00000000-0000-4000-8000-000000000007", auth.RoleAdmin), "my-app")
+	require.NoError(t, err)
+	require.Len(t, person, 1)
+	assert.Equal(t, "ada@acme.example", person[0].Email)
+	assert.Equal(t, "Ada Okafor", person[0].DisplayName)
+
+	key, err := uc.ListProjectMembers(apiKeyCtx("key-1", memberTestProject().ID), "my-app")
+	require.NoError(t, err)
+	require.Len(t, key, 1)
+	assert.Equal(t, "u1", key[0].UserID, "a key still sees who holds which role")
+	assert.Empty(t, key[0].Email, "but not their addresses")
+	assert.Empty(t, key[0].DisplayName)
+}
+
 func TestListProjectMembers_NonMemberDenied(t *testing.T) {
 	pr := &mockProjectRepo{}
 	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {

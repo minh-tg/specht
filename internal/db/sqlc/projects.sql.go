@@ -246,6 +246,52 @@ func (q *Queries) ListProjectMembers(ctx context.Context, projectID pgtype.UUID)
 	return items, nil
 }
 
+const listProjectMembersWithUsers = `-- name: ListProjectMembersWithUsers :many
+SELECT pm.project_id, pm.user_id, pm.role, pm.created_at, u.email, u.display_name
+FROM project_members pm
+JOIN users u ON u.id = pm.user_id
+WHERE pm.project_id = $1
+ORDER BY pm.created_at ASC, pm.user_id ASC
+`
+
+type ListProjectMembersWithUsersRow struct {
+	ProjectID   pgtype.UUID        `json:"project_id"`
+	UserID      pgtype.UUID        `json:"user_id"`
+	Role        string             `json:"role"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	Email       string             `json:"email"`
+	DisplayName pgtype.Text        `json:"display_name"`
+}
+
+// The roster with each person's email and display name, so a screen shows who a
+// member is without asking the admin-only user directory.
+func (q *Queries) ListProjectMembersWithUsers(ctx context.Context, projectID pgtype.UUID) ([]ListProjectMembersWithUsersRow, error) {
+	rows, err := q.db.Query(ctx, listProjectMembersWithUsers, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListProjectMembersWithUsersRow
+	for rows.Next() {
+		var i ListProjectMembersWithUsersRow
+		if err := rows.Scan(
+			&i.ProjectID,
+			&i.UserID,
+			&i.Role,
+			&i.CreatedAt,
+			&i.Email,
+			&i.DisplayName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProjects = `-- name: ListProjects :many
 SELECT id, slug, name, description, deployment_threshold, settings, created_at, updated_at, cve_watcher_gate, cve_watcher_enabled, cve_watcher_interval_seconds, policy_template_id FROM projects
 ORDER BY created_at DESC, id DESC

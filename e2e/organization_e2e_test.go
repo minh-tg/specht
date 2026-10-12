@@ -21,9 +21,11 @@ type projectEnvelope struct {
 }
 
 type memberResponse struct {
-	ProjectID string `json:"project_id"`
-	UserID    string `json:"user_id"`
-	Role      string `json:"role"`
+	ProjectID   string `json:"project_id"`
+	UserID      string `json:"user_id"`
+	Role        string `json:"role"`
+	Email       string `json:"email"`
+	DisplayName string `json:"display_name"`
 }
 
 type teamResponse struct {
@@ -205,6 +207,15 @@ func TestE2E_ProjectMembership(t *testing.T) {
 		require.Len(t, members, 1)
 		require.Equal(t, adminMe.ID, members[0].UserID)
 		require.Equal(t, "admin", members[0].Role)
+		require.Equal(t, adminMe.Email, members[0].Email, "a signed-in person sees who each member is")
+
+		// A project key can read the roster too, but a key in a CI log should not leak addresses.
+		keyed := request[[]memberResponse](t, http.MethodGet,
+			"/api/v1/projects/"+slug+"/members", mintKey(t, slug), nil, http.StatusOK)
+		require.Len(t, keyed, 1)
+		require.Equal(t, adminMe.ID, keyed[0].UserID)
+		require.Empty(t, keyed[0].Email)
+		require.Empty(t, keyed[0].DisplayName)
 
 		status, raw := doJSON(t, http.MethodGet, "/api/v1/projects/"+slug+"/members", viewerToken, nil)
 		require.Equal(t, http.StatusForbidden, status)
