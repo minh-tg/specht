@@ -12,8 +12,14 @@ import (
 )
 
 const createWaiver = `-- name: CreateWaiver :one
-INSERT INTO waivers (project_id, name, description, enabled, expires_at)
-VALUES ($1, $2, $3, $4, $5)
+INSERT INTO waivers (project_id, name, description, enabled, expires_at, status, reason, requested_by, requested_at)
+VALUES (
+    $1, $2, $3, $4, $5,
+    COALESCE(NULLIF($6::text, ''), 'approved'),
+    $7::text,
+    $8::uuid,
+    $9::timestamptz
+)
 RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at, status, scope_all, reason, requested_by, requested_at, decided_by, decided_at, decision_note
 `
 
@@ -23,8 +29,14 @@ type CreateWaiverParams struct {
 	Description string             `json:"description"`
 	Enabled     bool               `json:"enabled"`
 	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	Status      string             `json:"status"`
+	Reason      string             `json:"reason"`
+	RequestedBy pgtype.UUID        `json:"requested_by"`
+	RequestedAt pgtype.Timestamptz `json:"requested_at"`
 }
 
+// An empty status defaults to approved, so direct creation by a manager or
+// admin keeps working; a member's request passes pending and the requester.
 func (q *Queries) CreateWaiver(ctx context.Context, arg CreateWaiverParams) (Waiver, error) {
 	row := q.db.QueryRow(ctx, createWaiver,
 		arg.ProjectID,
@@ -32,6 +44,10 @@ func (q *Queries) CreateWaiver(ctx context.Context, arg CreateWaiverParams) (Wai
 		arg.Description,
 		arg.Enabled,
 		arg.ExpiresAt,
+		arg.Status,
+		arg.Reason,
+		arg.RequestedBy,
+		arg.RequestedAt,
 	)
 	var i Waiver
 	err := row.Scan(
@@ -170,6 +186,57 @@ func (q *Queries) CreateWaiverFindingTarget(ctx context.Context, arg CreateWaive
 		&i.WaiverID,
 		&i.FindingID,
 		&i.CreatedAt,
+	)
+	return i, err
+}
+
+const decideWaiver = `-- name: DecideWaiver :one
+UPDATE waivers SET
+    status = $3::text,
+    decided_by = $4::uuid,
+    decided_at = NOW(),
+    decision_note = $5::text,
+    updated_at = NOW()
+WHERE id = $1 AND project_id = $2 AND status = 'pending'
+RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at, status, scope_all, reason, requested_by, requested_at, decided_by, decided_at, decision_note
+`
+
+type DecideWaiverParams struct {
+	ID           pgtype.UUID `json:"id"`
+	ProjectID    pgtype.UUID `json:"project_id"`
+	Status       string      `json:"status"`
+	DecidedBy    pgtype.UUID `json:"decided_by"`
+	DecisionNote string      `json:"decision_note"`
+}
+
+// Moves a pending waiver to a final status. No row comes back when the
+// waiver is missing or no longer pending; the caller tells the two apart.
+func (q *Queries) DecideWaiver(ctx context.Context, arg DecideWaiverParams) (Waiver, error) {
+	row := q.db.QueryRow(ctx, decideWaiver,
+		arg.ID,
+		arg.ProjectID,
+		arg.Status,
+		arg.DecidedBy,
+		arg.DecisionNote,
+	)
+	var i Waiver
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Description,
+		&i.Enabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExpiresAt,
+		&i.Status,
+		&i.ScopeAll,
+		&i.Reason,
+		&i.RequestedBy,
+		&i.RequestedAt,
+		&i.DecidedBy,
+		&i.DecidedAt,
+		&i.DecisionNote,
 	)
 	return i, err
 }

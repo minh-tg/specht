@@ -1068,3 +1068,153 @@ func TestWaiverStatusAndScopeAll(t *testing.T) {
 	_, err = repos.pool.Exec(ctx, `UPDATE waivers SET status = 'archived' WHERE id = $1`, blanket.ID)
 	assert.Error(t, err, "the status column only accepts the lifecycle values")
 }
+
+func TestWaiverRequestAndDecision(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	project := createTestProject(t, repos)
+	stores := NewPortStores(repos.pool)
+
+	requester, err := repos.Users.Create(ctx, "requester@test.com", pgtype.Text{Valid: false}, pgtype.Text{String: "$2a$10$hash", Valid: true})
+	require.NoError(t, err)
+	approver, err := repos.Users.Create(ctx, "approver@test.com", pgtype.Text{Valid: false}, pgtype.Text{String: "$2a$10$hash", Valid: true})
+	require.NoError(t, err)
+	requesterID := toUUID(requester.ID)
+
+	expires := time.Now().Add(48 * time.Hour)
+	requestedAt := time.Now()
+	created, err := stores.Waivers.CreateWithDetails(ctx, port.CreateWaiverInput{
+		ProjectID:   toUUID(project.ID),
+		Name:        "Waiver request: openssh",
+		Enabled:     true,
+		ExpiresAt:   &expires,
+		Status:      "pending",
+		Reason:      "not reachable",
+		RequestedBy: &requesterID,
+		RequestedAt: &requestedAt,
+		Event:       port.WaiverEventInput{EventType: "requested", Metadata: []byte(`{}`)},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "pending", created.Status)
+	assert.Equal(t, "not reachable", created.Reason)
+	require.NotNil(t, created.RequestedBy)
+	assert.Equal(t, requesterID, *created.RequestedBy)
+	assert.Nil(t, created.DecidedBy)
+
+	active, err := stores.Waivers.ListActive(ctx, toUUID(project.ID))
+	require.NoError(t, err)
+	assert.Empty(t, active, "a pending request does not count in the gate")
+
+	decision := port.WaiverDecision{
+		Status:  "approved",
+		ActorID: toUUID(approver.ID),
+		Note:    "fine",
+		Event:   port.WaiverEventInput{EventType: "approved", Metadata: []byte(`{"note":"fine"}`)},
+	}
+	decided, err := stores.Waivers.Decide(ctx, created.ID, toUUID(project.ID), decision)
+	require.NoError(t, err)
+	assert.Equal(t, "approved", decided.Status)
+	assert.Equal(t, "fine", decided.DecisionNote)
+	require.NotNil(t, decided.DecidedBy)
+	assert.Equal(t, toUUID(approver.ID), *decided.DecidedBy)
+	require.NotNil(t, decided.DecidedAt)
+
+	active, err = stores.Waivers.ListActive(ctx, toUUID(project.ID))
+	require.NoError(t, err)
+	assert.Len(t, active, 1, "the approved waiver counts")
+
+	_, err = stores.Waivers.Decide(ctx, created.ID, toUUID(project.ID), decision)
+	assert.ErrorIs(t, err, port.ErrWaiverNotPending, "a second decision is refused")
+
+	_, err = stores.Waivers.Decide(ctx, "00000000-0000-0000-0000-00000000dead", toUUID(project.ID), decision)
+	assert.ErrorIs(t, err, port.ErrNotFound, "a missing waiver is not-found, not not-pending")
+
+	events, err := repos.Waivers.ListEvents(ctx, mustParseUUID(t, created.ID))
+	require.NoError(t, err)
+	types := map[string]bool{}
+	for _, e := range events {
+		types[e.EventType] = true
+	}
+	assert.True(t, types["requested"])
+	assert.True(t, types["approved"])
+}
+
+func TestWaiverDecisionIsAtomicWithItsEvent(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	project := createTestProject(t, repos)
+	stores := NewPortStores(repos.pool)
+	user, err := repos.Users.Create(ctx, "decider@test.com", pgtype.Text{Valid: false}, pgtype.Text{String: "$2a$10$hash", Valid: true})
+	require.NoError(t, err)
+
+	created, err := stores.Waivers.CreateWithDetails(ctx, port.CreateWaiverInput{
+		ProjectID: toUUID(project.ID), Name: "pending", Enabled: true, Status: "pending",
+		Event: port.WaiverEventInput{EventType: "requested", Metadata: []byte(`{}`)},
+	})
+	require.NoError(t, err)
+
+	_, err = repos.pool.Exec(ctx, `ALTER TABLE waiver_events ADD CONSTRAINT test_reject_rejected CHECK (event_type <> 'rejected')`)
+	require.NoError(t, err)
+	_, err = stores.Waivers.Decide(ctx, created.ID, toUUID(project.ID), port.WaiverDecision{
+		Status: "rejected", ActorID: toUUID(user.ID), Note: "no",
+		Event: port.WaiverEventInput{EventType: "rejected", Metadata: []byte(`{}`)},
+	})
+	require.Error(t, err)
+
+	still, err := stores.Waivers.GetByID(ctx, created.ID, toUUID(project.ID))
+	require.NoError(t, err)
+	assert.Equal(t, "pending", still.Status, "a failed audit write rolls the decision back")
+}
+
+func TestExpiredPendingRequestIsRejectedAndApprovedOneDisabled(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	project := createTestProject(t, repos)
+	stores := NewPortStores(repos.pool)
+
+	past := time.Now().Add(-time.Minute)
+	pending, err := stores.Waivers.CreateWithDetails(ctx, port.CreateWaiverInput{
+		ProjectID: toUUID(project.ID), Name: "stale request", Enabled: true, Status: "pending", ExpiresAt: &past,
+		Event: port.WaiverEventInput{EventType: "requested", Metadata: []byte(`{}`)},
+	})
+	require.NoError(t, err)
+	approved, err := stores.Waivers.CreateWithDetails(ctx, port.CreateWaiverInput{
+		ProjectID: toUUID(project.ID), Name: "stale waiver", Enabled: true, ExpiresAt: &past,
+		Event: port.WaiverEventInput{EventType: "created", Metadata: []byte(`{}`)},
+	})
+	require.NoError(t, err)
+
+	expired, err := NewWaiverExpiryStore(repos.pool).ExpireExpired(ctx)
+	require.NoError(t, err)
+	assert.Len(t, expired, 2)
+
+	gotPending, err := stores.Waivers.GetByID(ctx, pending.ID, toUUID(project.ID))
+	require.NoError(t, err)
+	assert.Equal(t, "rejected", gotPending.Status)
+	assert.Equal(t, "expired before a decision", gotPending.DecisionNote)
+	gotApproved, err := stores.Waivers.GetByID(ctx, approved.ID, toUUID(project.ID))
+	require.NoError(t, err)
+	assert.Equal(t, "approved", gotApproved.Status)
+	assert.False(t, gotApproved.Enabled)
+
+	pendingEvents, err := stores.Waivers.ListEvents(ctx, pending.ID)
+	require.NoError(t, err)
+	approvedEvents, err := stores.Waivers.ListEvents(ctx, approved.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "auto_rejected", pendingEvents[0].EventType)
+	assert.Equal(t, "auto_disabled", approvedEvents[0].EventType)
+
+	again, err := NewWaiverExpiryStore(repos.pool).ExpireExpired(ctx)
+	require.NoError(t, err)
+	assert.Empty(t, again, "a rejected request is not swept twice")
+}
+
+func mustParseUUID(t *testing.T, s string) pgtype.UUID {
+	t.Helper()
+	id, err := parseID(s)
+	require.NoError(t, err)
+	return id
+}

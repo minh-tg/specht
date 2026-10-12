@@ -77,8 +77,8 @@ func (s *pgAnalysisExpiryStore) ExpireExpired(ctx context.Context) ([]port.Findi
 }
 
 // pgWaiverExpiryStore implements port.WaiverExpiryStore. ExpireExpired runs
-// one transaction that disables every expired waiver and logs its
-// auto_disabled event.
+// one transaction that disables every expired approved waiver (auto_disabled
+// event) and rejects every expired pending request (auto_rejected event).
 type pgWaiverExpiryStore struct {
 	pool *pgxpool.Pool
 }
@@ -112,9 +112,14 @@ func (s *pgWaiverExpiryStore) ExpireExpired(ctx context.Context) ([]port.Waiver,
 		if err != nil {
 			return nil, fmt.Errorf("marshal waiver event metadata: %w", err)
 		}
+		eventType := "auto_disabled"
+		if w.Status == "rejected" {
+			// A request that expired before anyone decided on it.
+			eventType = "auto_rejected"
+		}
 		if _, err := q.CreateWaiverEvent(ctx, sqlc.CreateWaiverEventParams{
 			WaiverID:  w.ID,
-			EventType: "auto_disabled",
+			EventType: eventType,
 			ActorID:   pgtype.Text{Valid: false},
 			Metadata:  metadata,
 		}); err != nil {

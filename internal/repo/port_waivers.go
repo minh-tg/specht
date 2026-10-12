@@ -31,12 +31,22 @@ func (r *pgWaiverPort) CreateWithDetails(ctx context.Context, input port.CreateW
 	for i, t := range input.Targets {
 		tgts[i] = WaiverTargetInput{FindingID: uuidFromString(t.FindingID)}
 	}
+	var requestedBy pgtype.UUID
+	if input.RequestedBy != nil {
+		if requestedBy, err = parseID(*input.RequestedBy); err != nil {
+			return port.Waiver{}, err
+		}
+	}
 	row, err := r.inner.CreateWithDetails(ctx, CreateWaiverDetailsParams{
+		RequestedBy: requestedBy,
 		ProjectID:   pid,
 		Name:        input.Name,
 		Description: input.Description,
 		Enabled:     input.Enabled,
 		ExpiresAt:   timestamptzPtrFromTime(input.ExpiresAt),
+		Status:      input.Status,
+		Reason:      input.Reason,
+		RequestedAt: timestamptzPtrFromTime(input.RequestedAt),
 		Conditions:  conds,
 		Contexts:    ctxs,
 		Targets:     tgts,
@@ -44,6 +54,33 @@ func (r *pgWaiverPort) CreateWithDetails(ctx context.Context, input port.CreateW
 	})
 	if err != nil {
 		return port.Waiver{}, err
+	}
+	return waiverRowToPort(row), nil
+}
+
+func (r *pgWaiverPort) Decide(ctx context.Context, id, projectID string, decision port.WaiverDecision) (port.Waiver, error) {
+	wid, err := parseID(id)
+	if err != nil {
+		return port.Waiver{}, err
+	}
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.Waiver{}, err
+	}
+	actor, err := parseID(decision.ActorID)
+	if err != nil {
+		return port.Waiver{}, err
+	}
+	row, err := r.inner.Decide(ctx, DecideWaiverParams{
+		ID:        wid,
+		ProjectID: pid,
+		Status:    decision.Status,
+		DecidedBy: actor,
+		Note:      decision.Note,
+		Event:     waiverEventInputToRepo(decision.Event),
+	})
+	if err != nil {
+		return port.Waiver{}, mappingErr(err)
 	}
 	return waiverRowToPort(row), nil
 }
@@ -364,7 +401,23 @@ func waiverRowToPort(w sqlc.Waiver) port.Waiver {
 		Status:      w.Status,
 		ScopeAll:    w.ScopeAll,
 		ExpiresAt:   timePtrFromTimestamptz(w.ExpiresAt),
-		CreatedAt:   w.CreatedAt.Time,
-		UpdatedAt:   w.UpdatedAt.Time,
+		Reason:      w.Reason,
+		RequestedBy: uuidPtrString(w.RequestedBy),
+		RequestedAt: timePtrFromTimestamptz(w.RequestedAt),
+		DecidedBy:   uuidPtrString(w.DecidedBy),
+		DecidedAt:   timePtrFromTimestamptz(w.DecidedAt),
+
+		DecisionNote: w.DecisionNote,
+		CreatedAt:    w.CreatedAt.Time,
+		UpdatedAt:    w.UpdatedAt.Time,
 	}
+}
+
+// uuidPtrString renders a nullable UUID column as an optional string.
+func uuidPtrString(id pgtype.UUID) *string {
+	if !id.Valid {
+		return nil
+	}
+	s := toUUID(id)
+	return &s
 }
