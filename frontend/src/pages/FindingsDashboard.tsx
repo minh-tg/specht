@@ -1,12 +1,23 @@
-import { useFindings, useGateStatus } from "@/api/hooks";
-import type { FindingSort } from "@/api/hooks";
+import {
+  type FindingSort,
+  useFindings,
+  useGateStatus,
+  useProject,
+  useProjectStats,
+} from "@/api/hooks";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useState } from "react";
 import { useParams } from "react-router-dom";
+import { WaiverRequestDialog } from "./change-view/WaiverRequestDialog";
+import { BulkBar } from "./findings-dashboard/BulkBar";
+import { BulkTriageDialog } from "./findings-dashboard/BulkTriageDialog";
 import { ClearFiltersButton, FindingsFilters } from "./findings-dashboard/FindingsFilters";
 import { FindingsPager } from "./findings-dashboard/FindingsPager";
 import { FindingsTable } from "./findings-dashboard/FindingsTable";
 import { PAGE_SIZE } from "./findings-dashboard/sort";
 import { defaultSortDir, useFindingsQuery } from "./findings-dashboard/useFindingsQuery";
+
+const EMPTY_SELECTION: ReadonlySet<string> = new Set();
 
 export function FindingsDashboard() {
   const { slug } = useParams<{ slug: string; }>();
@@ -30,6 +41,38 @@ export function FindingsDashboard() {
   const findings = data?.findings;
   const total = data?.total ?? null;
   const { data: gate } = useGateStatus(slug ?? "");
+  const { data: stats } = useProjectStats(slug ?? "");
+  const { data: project } = useProject(slug ?? "");
+  // The server says what this person may do; until it has, nothing is offered.
+  const canTriage = project?.permissions?.triage === true;
+  const canRequestWaiver = project?.permissions?.request_waiver === true;
+
+  // What is selected belongs to the view it was selected in. A different filter, sort or page is a
+  // different list, so the selection is not carried over: it reads as empty there.
+  const viewKey = JSON.stringify([slug, filters, sort, offset]);
+  const [picked, setPicked] = useState<{ view: string; ids: ReadonlySet<string>; }>({
+    view: viewKey,
+    ids: new Set(),
+  });
+  const selectedIds = picked.view === viewKey ? picked.ids : EMPTY_SELECTION;
+  const [triageOpen, setTriageOpen] = useState(false);
+  const [waiverOpen, setWaiverOpen] = useState(false);
+
+  function toggleSelected(findingId: string) {
+    const next = new Set(selectedIds);
+    if (next.has(findingId)) next.delete(findingId);
+    else next.add(findingId);
+    setPicked({ view: viewKey, ids: next });
+  }
+
+  function toggleAll(selectAll: boolean) {
+    setPicked({
+      view: viewKey,
+      ids: new Set(selectAll ? (findings ?? []).map((f) => f.id) : []),
+    });
+  }
+
+  const clearSelection = () => setPicked({ view: viewKey, ids: new Set() });
 
   function toggleSort(column: string) {
     const by = column as FindingSort;
@@ -60,6 +103,7 @@ export function FindingsDashboard() {
         sort={sort}
         onFilterChange={setFilter}
         onSortChange={setSort}
+        severityCounts={stats?.by_severity}
       />
 
       <div
@@ -118,6 +162,9 @@ export function FindingsDashboard() {
             gate={gate}
             sort={sort}
             onToggleSort={toggleSort}
+            selection={canTriage || canRequestWaiver
+              ? { keys: selectedIds, onToggle: toggleSelected, onToggleAll: toggleAll }
+              : undefined}
           />
         )}
 
@@ -133,6 +180,28 @@ export function FindingsDashboard() {
           />
         )}
       </div>
+      <BulkBar
+        count={selectedIds.size}
+        onTriage={canTriage ? () => setTriageOpen(true) : undefined}
+        onRequestWaiver={canRequestWaiver ? () => setWaiverOpen(true) : undefined}
+        onClear={clearSelection}
+      />
+      <BulkTriageDialog
+        findingIds={[...selectedIds]}
+        open={triageOpen}
+        onOpenChange={setTriageOpen}
+        onApplied={clearSelection}
+      />
+      <WaiverRequestDialog
+        slug={slug ?? ""}
+        findingIds={[...selectedIds]}
+        subject={selectedIds.size === 1
+          ? "the finding you selected"
+          : `${selectedIds.size} findings`}
+        open={waiverOpen}
+        onOpenChange={setWaiverOpen}
+        onRequested={clearSelection}
+      />
     </div>
   );
 }

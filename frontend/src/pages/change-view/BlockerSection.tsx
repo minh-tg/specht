@@ -136,8 +136,8 @@ export function BlockerSection(
       {dialog && (
         <WaiverRequestDialog
           slug={slug}
-          findingId={dialog.id}
-          findingTitle={dialog.title}
+          findingIds={[dialog.id]}
+          subject={dialog.title}
           open
           onOpenChange={(next) => {
             if (!next) setDialog(null);

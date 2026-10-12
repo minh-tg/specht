@@ -86,46 +86,63 @@ describe("FindingsDashboard", () => {
     expect(screen.queryByText("accepted_risk")).not.toBeInTheDocument();
   });
 
-  it("shows Not triaged for a finding with no analysis", async () => {
+  it("says Open in the State column for a finding nobody has dealt with", async () => {
     renderWithProviders(<FindingsDashboard />);
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
-    expect(screen.getByText("Not triaged")).toBeInTheDocument();
+    expect(stateCell()).toHaveTextContent("Open");
+    expect(stateCell().querySelector("[data-open]")).toHaveAttribute("data-open", "true");
   });
 
-  it("renders a controlled chip when analysis_state is unvalidated", async () => {
+  it("names the triage decision in the State column once someone has made one", async () => {
+    findingsFixture[0].analysis_state = "accepted_risk";
+    renderWithProviders(<FindingsDashboard />);
+
+    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
+    expect(stateCell()).toHaveTextContent("Accepted risk");
+    expect(stateCell().querySelector("[data-open]")).toHaveAttribute("data-open", "false");
+  });
+
+  it("says Waived when the gate says an approved waiver covers the finding", async () => {
+    gateFixture = { blocked_by: [], waived_finding_ids: ["f1"] };
+    renderWithProviders(<FindingsDashboard />);
+
+    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
+    await waitFor(() => expect(stateCell()).toHaveTextContent("Waived"));
+  });
+
+  it("says Fixed for a finding a scan has closed", async () => {
+    findingsFixture[0].state = "fixed";
+    renderWithProviders(<FindingsDashboard />);
+
+    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
+    expect(stateCell()).toHaveTextContent("Fixed");
+  });
+  it("renders a controlled label when analysis_state is unvalidated", async () => {
     findingsFixture[0].analysis_state = "pending_review";
     renderWithProviders(<FindingsDashboard />);
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
     expect(screen.queryByText("pending_review")).not.toBeInTheDocument();
-    // "Unknown" also exists as a reachability <option>, so assert the chip's text.
-    const chip = [...document.querySelectorAll("span")].find(
-      (el) => el.textContent === "Unknown" && el.className.includes("rounded"),
-    );
-    expect(chip).toBeDefined();
+    expect(stateCell()).toHaveTextContent("Unknown");
   });
-
   it("labels technical state instead of rendering the raw enum", async () => {
     findingsFixture[0].state = "reopened";
     renderWithProviders(<FindingsDashboard />);
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
-    const cell = [...document.querySelectorAll("td")].find((el) => el.textContent === "Reopened");
-    expect(cell).toBeDefined();
+    // The narrow-screen line repeats the technical state in words.
+    expect(screen.getByText(/Reopened/)).toBeInTheDocument();
     expect(screen.queryByText("reopened")).not.toBeInTheDocument();
   });
-
   it("renders a controlled label when technical state is unvalidated", async () => {
     findingsFixture[0].state = "closed";
     renderWithProviders(<FindingsDashboard />);
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
-    const cell = [...document.querySelectorAll("td")].find((el) => el.textContent === "Unknown");
-    expect(cell).toBeDefined();
+    expect(screen.getByText(/Unknown/)).toBeInTheDocument();
     expect(screen.queryByText("closed")).not.toBeInTheDocument();
   });
-
   it("filters findings and resets pagination after a filter changes", async () => {
     findingsFixture = [
       { ...findingsFixture[0], id: "f1", current_title: "High risk", current_severity: "high" },
@@ -147,41 +164,90 @@ describe("FindingsDashboard", () => {
     const user = userEvent.setup();
 
     expect(await screen.findByText("High risk")).toBeInTheDocument();
-    await chooseOption(
-      user,
-      screen.getByRole("combobox", { name: "Filter by severity" }),
-      "Critical",
-    );
+    await user.click(screen.getByRole("button", { name: /^Critical/ }));
 
     expect(await screen.findByText("Critical risk")).toBeInTheDocument();
     expect(screen.queryByText("High risk")).not.toBeInTheDocument();
-    expect(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0]).toContain("severity=critical");
-    expect(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0]).toContain("offset=0");
+    expect(lastFindingsRequest().searchParams.get("severity")).toBe("critical");
+    expect(lastFindingsRequest().searchParams.get("offset")).toBe("0");
   });
 
-  it("offers Unrated as a severity filter and requests severity=unknown", async () => {
+  it("combines severity chips into one comma list, in severity order", async () => {
+    renderWithProviders(<FindingsDashboard />);
+    const user = userEvent.setup();
+    await screen.findByText("Test Vuln");
+
+    await user.click(screen.getByRole("button", { name: /^High/ }));
+    await user.click(screen.getByRole("button", { name: /^Critical/ }));
+
+    await waitFor(() =>
+      expect(lastFindingsRequest().searchParams.get("severity")).toBe("critical,high")
+    );
+    expect(screen.getByRole("button", { name: /^High/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /^Medium/ })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    await user.click(screen.getByRole("button", { name: /^High/ }));
+    await waitFor(() =>
+      expect(lastFindingsRequest().searchParams.get("severity")).toBe("critical")
+    );
+  });
+
+  it("shows how many open findings each severity holds on its chip", async () => {
     vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
-      if (String(input).endsWith("/gate")) return jsonResponse(gateFixture);
+      const url = String(input);
+      if (url.endsWith("/stats")) {
+        return jsonResponse({
+          total_findings: 14,
+          blocking_count: 3,
+          waiver_count: 0,
+          report_count: 1,
+          by_severity: [
+            { severity: "critical", count: 2, blocking_count: 2 },
+            { severity: "high", count: 5, blocking_count: 1 },
+            { severity: "low", count: 7, blocking_count: 0 },
+          ],
+        });
+      }
+      if (url.endsWith("/gate")) return jsonResponse(gateFixture);
+      return jsonResponse(findingsFixture);
+    });
+    renderWithProviders(<FindingsDashboard />);
+
+    expect(await screen.findByRole("button", { name: "Critical, 2 open" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "High, 5 open" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Low, 7 open" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Medium" })).toBeInTheDocument();
+  });
+  it("offers Unrated as a severity filter when something is unrated, and requests severity=unknown", async () => {
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
       const url = new URL(String(input), "http://localhost");
+      if (url.pathname.endsWith("/gate")) return jsonResponse(gateFixture);
+      if (url.pathname.endsWith("/stats")) {
+        return jsonResponse({
+          total_findings: 1,
+          blocking_count: 0,
+          waiver_count: 0,
+          report_count: 1,
+          by_severity: [{ severity: "unknown", count: 1, blocking_count: 0 }],
+        });
+      }
       return jsonResponse(url.searchParams.get("severity") === "unknown" ? [] : findingsFixture);
     });
     renderWithProviders(<FindingsDashboard />);
     const user = userEvent.setup();
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
-    const severity = screen.getByRole("combobox", { name: "Filter by severity" });
-    const severityLabels = await listOptions(user, severity);
-    expect(severityLabels).toContain("Unrated");
-    expect(severityLabels).not.toContain("None");
-
-    await chooseOption(user, severity, "Unrated");
+    expect(screen.queryByRole("button", { name: /None/ })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: /^Unrated/ }));
 
     expect(await screen.findByText("No findings match these filters.")).toBeInTheDocument();
     expect(String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0])).toContain(
       "severity=unknown",
     );
   });
-
   it("offers DAST as a finding kind filter and requests kind=dast", async () => {
     vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
       if (String(input).endsWith("/gate")) return jsonResponse(gateFixture);
@@ -208,9 +274,9 @@ describe("FindingsDashboard", () => {
     expect(lastFindingsRequest().searchParams.get("sort")).toBe("severity");
     expect(lastFindingsRequest().searchParams.get("dir")).toBe("desc");
 
-    const titleButton = within(screen.getByRole("columnheader", { name: /Title/ })).getByRole(
+    const titleButton = within(screen.getByRole("columnheader", { name: /Finding/ })).getByRole(
       "button",
-      { name: /Title/ },
+      { name: /Finding/ },
     );
     await user.click(titleButton);
     await waitFor(() => expect(lastFindingsRequest().searchParams.get("sort")).toBe("title"));
@@ -236,8 +302,8 @@ describe("FindingsDashboard", () => {
     await waitFor(() => expect(lastFindingsRequest().searchParams.get("sort")).toBe("first_seen"));
     expect(lastFindingsRequest().searchParams.get("dir")).toBe("asc");
 
-    await sortBy(/Last Seen/);
-    await waitFor(() => expect(lastFindingsRequest().searchParams.get("sort")).toBe("last_seen"));
+    await sortBy(/Severity/);
+    await waitFor(() => expect(lastFindingsRequest().searchParams.get("sort")).toBe("severity"));
     expect(lastFindingsRequest().searchParams.get("dir")).toBe("desc");
   });
   it("shows the rows in the order the server returns them", async () => {
@@ -296,17 +362,15 @@ describe("FindingsDashboard", () => {
     const user = userEvent.setup();
 
     const severityHeader = screen.getByRole("columnheader", { name: /Severity/ });
-    const titleHeader = screen.getByRole("columnheader", { name: /Title/ });
+    const titleHeader = screen.getByRole("columnheader", { name: /Finding/ });
     const ageHeader = screen.getByRole("columnheader", { name: /Age/ });
-    const lastSeenHeader = screen.getByRole("columnheader", { name: /Last Seen/ });
 
     expect(severityHeader).toHaveAttribute("aria-sort", "descending");
     expect(titleHeader).toHaveAttribute("aria-sort", "none");
     expect(ageHeader).toHaveAttribute("aria-sort", "none");
-    expect(lastSeenHeader).toHaveAttribute("aria-sort", "none");
     expect(screen.queryByText(/Sorting applies only/)).not.toBeInTheDocument();
 
-    const titleButton = within(titleHeader).getByRole("button", { name: /Title/ });
+    const titleButton = within(titleHeader).getByRole("button", { name: /Finding/ });
     await user.click(titleButton);
     await waitFor(() => expect(titleHeader).toHaveAttribute("aria-sort", "ascending"));
     expect(severityHeader).toHaveAttribute("aria-sort", "none");
@@ -393,10 +457,10 @@ describe("FindingsDashboard", () => {
     const user = userEvent.setup();
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
-    await chooseOption(user, screen.getByLabelText("Filter by severity"), "Critical");
+    await user.click(screen.getByRole("button", { name: /^Critical/ }));
 
     expect(await screen.findByText("No findings match these filters.")).toBeInTheDocument();
-    expect(screen.getByLabelText("Filter by severity")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Filter by severity" })).toBeInTheDocument();
     expect(screen.getByLabelText("Filter by status")).toBeInTheDocument();
     expect(screen.getByLabelText("Filter by finding type")).toBeInTheDocument();
 
@@ -404,13 +468,10 @@ describe("FindingsDashboard", () => {
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
     await waitFor(() => {
-      expect(String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0])).not.toContain(
-        "severity=critical",
-      );
+      expect(lastFindingsRequest().searchParams.get("severity")).toBeNull();
     });
-    expect(String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[0])).toContain("offset=0");
+    expect(lastFindingsRequest().searchParams.get("offset")).toBe("0");
   });
-
   it("keeps the filter controls mounted while a filtered refetch is pending", async () => {
     let releaseFiltered: ((response: Response) => void) | undefined;
     vi.mocked(globalThis.fetch).mockImplementation((input) => {
@@ -426,10 +487,13 @@ describe("FindingsDashboard", () => {
     const user = userEvent.setup();
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
-    await chooseOption(user, screen.getByLabelText("Filter by severity"), "Critical");
+    await user.click(screen.getByRole("button", { name: /^Critical/ }));
 
     await waitFor(() => expect(releaseFiltered).toBeDefined());
-    expect(screen.getByLabelText("Filter by severity")).toHaveTextContent("Critical");
+    expect(screen.getByRole("button", { name: /^Critical/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     const region = document.querySelector("[aria-busy]");
     expect(region).toHaveAttribute("aria-busy", "true");
     // Stale rows stay visible instead of collapsing into a skeleton.
@@ -441,9 +505,8 @@ describe("FindingsDashboard", () => {
     });
 
     expect(await screen.findByText("No findings match these filters.")).toBeInTheDocument();
-    expect(screen.getByLabelText("Filter by severity")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Filter by severity" })).toBeInTheDocument();
   });
-
   it("does not claim the project is empty when the user paged past the last page", async () => {
     vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
       const url = new URL(String(input), "http://localhost");
@@ -548,44 +611,6 @@ describe("FindingsDashboard", () => {
     await userEvent.setup().click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByText("No findings found")).toBeInTheDocument();
   });
-
-  it("marks a gate-blocked finding with a Yes chip", async () => {
-    gateFixture = { blocked_by: ["f1"] };
-    renderWithProviders(<FindingsDashboard />);
-
-    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
-    const cell = gateCell();
-    expect(cell).toHaveTextContent("Yes");
-  });
-
-  it("explains an ignored and a below-floor finding in the gate column", async () => {
-    findingsFixture = [
-      { ...findingsFixture[0], id: "f1", current_title: "Ignored finding", gate_effect: "ignore" },
-      {
-        ...findingsFixture[0],
-        id: "f2",
-        current_title: "Below floor finding",
-        current_severity: "low",
-      },
-    ];
-    gateFixture = { blocked_by: [], policy: { severity_floor: "high" } };
-    renderWithProviders(<FindingsDashboard />);
-
-    expect(await screen.findByText("Ignored finding")).toBeInTheDocument();
-    expect(screen.getByText("No (ignored by triage)")).toBeInTheDocument();
-    expect(screen.getByText("No (below the floor)")).toBeInTheDocument();
-  });
-
-  it("shows a dash in the gate column while the gate is still loading", async () => {
-    vi.mocked(globalThis.fetch).mockImplementation((input) => {
-      if (String(input).endsWith("/gate")) return new Promise<Response>(() => {});
-      return Promise.resolve(jsonResponse(findingsFixture));
-    });
-    renderWithProviders(<FindingsDashboard />);
-
-    expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
-    expect(gateCell()).toHaveTextContent("–");
-  });
 });
 
 describe("FindingsDashboard links and table semantics", () => {
@@ -681,13 +706,13 @@ describe("FindingsDashboard links and table semantics", () => {
     for (const header of headers) expect(header).toHaveAttribute("scope", "col");
   });
 
-  it("shows the kind as a neutral chip rather than a hue that collides with severity", async () => {
+  it("names the kind under the title in plain ink, with no hue that collides with severity", async () => {
     renderWithDetailRoute();
 
     await screen.findByText("Test Vuln");
-    const chip = within(screen.getByRole("grid")).getByText("SCA");
-    expect(chip.className).toContain("bg-muted");
-    expect(chip.className).not.toMatch(/blue|purple|amber|rose/);
+    const kind = within(screen.getByRole("grid")).getByText("SCA");
+    expect(kind.className).toContain("text-muted-foreground");
+    expect(kind.className).not.toMatch(/blue|purple|amber|rose/);
   });
 });
 
@@ -712,10 +737,11 @@ function renderWithDetailRoute(initialPath = "/test-project/findings") {
   );
 }
 
-function gateCell(): HTMLElement {
+/** The State cell of the first row. */
+function stateCell(): HTMLElement {
   const table = screen.getByRole("grid");
   const headers = within(table).getAllByRole("columnheader");
-  const index = headers.indexOf(within(table).getByRole("columnheader", { name: "Blocks gate" }));
+  const index = headers.indexOf(within(table).getByRole("columnheader", { name: "State" }));
   const rows = within(table).getAllByRole("row");
   return within(rows[1]).getAllByRole("gridcell")[index];
 }

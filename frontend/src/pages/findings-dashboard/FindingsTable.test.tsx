@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { FindingsTable } from "./FindingsTable";
+import { locationText } from "./location";
 import type { FindingsSort } from "./useFindingsQuery";
 
 const FINDINGS: Finding[] = [
@@ -63,6 +64,8 @@ const FINDINGS: Finding[] = [
 
 const GATE: GateStatus = { threshold_breached: false, blocking_count: 0, blocked_by: [] };
 
+const NO_SELECTION = { keys: new Set<string>(), onToggle: vi.fn(), onToggleAll: vi.fn() };
+
 /** Exact token match, because "overflow-hidden" is a different class to "hidden". */
 function hasClass(element: Element, token: string): boolean {
   return element.className.split(/\s+/).includes(token);
@@ -78,7 +81,11 @@ function dataCells(rowIndex: number): HTMLElement[] {
 }
 
 function renderTable(
-  options: { readonly initialPath?: string; readonly sort?: FindingsSort; } = {},
+  options: {
+    readonly initialPath?: string;
+    readonly sort?: FindingsSort;
+    readonly selection?: Parameters<typeof FindingsTable>[0]["selection"];
+  } = {},
 ) {
   const sort: FindingsSort = options.sort ?? { by: "severity", dir: "desc" };
   return render(
@@ -93,6 +100,7 @@ function renderTable(
               gate={GATE}
               sort={sort}
               onToggleSort={vi.fn()}
+              selection={options.selection}
             />
           }
         />
@@ -179,32 +187,34 @@ describe("FindingsTable on the data grid", () => {
     expect(screen.queryByTestId("detail-state")).not.toBeInTheDocument();
   });
 
-  it("hides Kind, Status, Triage and Last Seen below md but keeps them in the DOM", () => {
+  it("hides Where, State and Age below md but keeps them in the DOM", () => {
     renderTable();
 
-    for (const name of ["Kind", "Status", "Triage", "Last Seen"]) {
+    for (const name of ["Where", "State", "Age"]) {
       const header = screen.getByRole("columnheader", { name: new RegExp(name) });
       expect(hasClass(header, "hidden")).toBe(true);
       expect(hasClass(header, "md:table-cell")).toBe(true);
     }
-    for (const name of ["Severity", "Title", "Blocks gate"]) {
+    for (const name of ["Severity", "Finding"]) {
       const header = screen.getByRole("columnheader", { name: new RegExp(name) });
       expect(hasClass(header, "hidden")).toBe(false);
     }
 
+    // Severity, Finding, Where, State, Age, and the chevron that says the row opens.
     const cells = dataCells(0);
-    for (const index of [1, 3, 4, 6]) {
+    expect(cells).toHaveLength(6);
+    for (const index of [2, 3, 4]) {
       expect(hasClass(cells[index], "hidden")).toBe(true);
       expect(hasClass(cells[index], "md:table-cell")).toBe(true);
     }
-    for (const index of [0, 2, 5]) {
+    for (const index of [0, 1, 5]) {
       expect(hasClass(cells[index], "hidden")).toBe(false);
     }
   });
 
   it("repeats the hidden columns as one meta line under the title", () => {
     renderTable();
-    const titleCell = dataCells(1)[2];
+    const titleCell = dataCells(1)[1];
 
     expect(titleCell).toHaveTextContent(
       `Accepted risk · Last seen ${formatDate("2025-02-01T00:00:00Z")}`,
@@ -213,14 +223,35 @@ describe("FindingsTable on the data grid", () => {
     expect(hasClass(meta, "md:hidden")).toBe(true);
   });
 
+  it("shows where a finding was seen, in the shortest form it has", () => {
+    expect(locationText(undefined)).toBe("–");
+    expect(locationText({ summary: "package openssh-server 9.6p1-2" })).toBe(
+      "package openssh-server 9.6p1-2",
+    );
+    expect(locationText({ file: "internal/auth/token.go", start_line: 42 })).toBe(
+      "internal/auth/token.go:42",
+    );
+    expect(locationText({ file: "Dockerfile" })).toBe("Dockerfile");
+    expect(locationText({ resource: "aws_s3_bucket.logs" })).toBe("aws_s3_bucket.logs");
+    expect(locationText({})).toBe("–");
+  });
+
+  it("marks a critical or high finding that is still open with its colour on the row's edge", () => {
+    renderTable();
+    const rows = gridRows();
+
+    expect(rows[0].className).toContain("--edge:var(--sev-critical)");
+    expect(rows[1].className).toContain("--edge:var(--sev-high)");
+    // A fixed finding, whatever its severity, is no longer a thing in the way.
+    expect(rows[2].className).not.toContain("--edge");
+  });
+
   it("reports the sort state on the sorted header and none on the others", () => {
     renderTable({ sort: { by: "title", dir: "asc" } });
 
-    expect(screen.getByRole("columnheader", { name: /Title/ }))
+    expect(screen.getByRole("columnheader", { name: /Finding/ }))
       .toHaveAttribute("aria-sort", "ascending");
     expect(screen.getByRole("columnheader", { name: /Severity/ }))
-      .toHaveAttribute("aria-sort", "none");
-    expect(screen.getByRole("columnheader", { name: /Last Seen/ }))
       .toHaveAttribute("aria-sort", "none");
     expect(screen.getByRole("columnheader", { name: /Age/ }))
       .toHaveAttribute("aria-sort", "none");
@@ -230,6 +261,87 @@ describe("FindingsTable on the data grid", () => {
   it("does not show the grid's empty state while rows exist", () => {
     renderTable();
     expect(screen.queryByText("Nothing to show.")).not.toBeInTheDocument();
+  });
+});
+
+describe("FindingsTable selection", () => {
+  it("has no checkboxes when there is nothing a person could do to a selection", () => {
+    renderTable();
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  });
+
+  it("gives every row a checkbox named for its finding, and one to select the page", () => {
+    renderTable({ selection: NO_SELECTION });
+
+    expect(screen.getByRole("checkbox", { name: "Select all findings on this page" }))
+      .not.toBeChecked();
+    for (const finding of FINDINGS) {
+      expect(screen.getByRole("checkbox", { name: `Select ${finding.current_title}` }))
+        .not.toBeChecked();
+    }
+  });
+
+  it("reports a click on a row's checkbox without opening the finding", async () => {
+    const onToggle = vi.fn();
+    renderTable({ selection: { ...NO_SELECTION, onToggle } });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("checkbox", { name: "Select net/http DoS" }));
+
+    expect(onToggle).toHaveBeenCalledWith("f2");
+    expect(screen.queryByTestId("detail-state")).not.toBeInTheDocument();
+  });
+
+  it("shows what is selected, and marks the rows", () => {
+    renderTable({ selection: { ...NO_SELECTION, keys: new Set(["f1", "f3"]) } });
+
+    expect(screen.getByRole("checkbox", { name: "Select runc breakout" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Select net/http DoS" })).not.toBeChecked();
+    expect(gridRows().map((r) => r.getAttribute("aria-selected"))).toEqual([
+      "true",
+      "false",
+      "true",
+    ]);
+    expect(screen.getByRole("grid", { name: "Findings" })).toHaveAttribute(
+      "aria-multiselectable",
+      "true",
+    );
+  });
+
+  it("selects the whole page, or none of it, from the header checkbox", async () => {
+    const onToggleAll = vi.fn();
+    renderTable({ selection: { ...NO_SELECTION, onToggleAll } });
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("checkbox", { name: "Select all findings on this page" }));
+    expect(onToggleAll).toHaveBeenLastCalledWith(true);
+  });
+
+  it("shows the header checkbox as checked when every row is, and as mixed when some are", () => {
+    const { unmount } = renderTable({
+      selection: { ...NO_SELECTION, keys: new Set(["f1", "f2", "f3"]) },
+    });
+    expect(screen.getByRole("checkbox", { name: "Select all findings on this page" }))
+      .toBeChecked();
+    unmount();
+
+    renderTable({ selection: { ...NO_SELECTION, keys: new Set(["f2"]) } });
+    const some = screen.getByRole("checkbox", {
+      name: "Select all findings on this page",
+    }) as HTMLInputElement;
+    expect(some.indeterminate).toBe(true);
+    expect(some).not.toBeChecked();
+  });
+
+  it("toggles the cursor row with x", () => {
+    const onToggle = vi.fn();
+    renderTable({ selection: { ...NO_SELECTION, onToggle } });
+    const grid = screen.getByRole("grid", { name: "Findings" });
+
+    fireEvent.keyDown(grid, { key: "j" });
+    fireEvent.keyDown(gridRows()[1], { key: "x" });
+
+    expect(onToggle).toHaveBeenCalledWith("f2");
   });
 });
 
