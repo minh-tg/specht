@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { chromaticDistance, contrastRatio, parseColour } from "./colour";
+import {
+  chroma,
+  chromaticDistance,
+  contrastRatio,
+  parseColour,
+  perceptualDistance,
+} from "./colour";
 
 describe("parseColour", () => {
   it("reads short and long hex", () => {
@@ -62,5 +68,32 @@ describe("chromaticDistance", () => {
     expect(chromaticDistance(red, green, "protanopia")).toBeLessThan(
       chromaticDistance(red, green, "normal") / 2,
     );
+  });
+});
+
+describe("perceptualDistance", () => {
+  const ink = parseColour("oklch(0.2 0.012 60)");
+  const paper = parseColour("oklch(0.968 0.007 90)");
+  const red = parseColour("oklch(0.5 0.185 29)");
+
+  it("is zero for the same colour and grows with lightness as well as hue", () => {
+    expect(perceptualDistance(ink, ink, "normal")).toBe(0);
+    expect(perceptualDistance(ink, paper, "normal")).toBeGreaterThan(60);
+    expect(perceptualDistance(ink, red, "normal")).toBeGreaterThan(20);
+  });
+
+  it("tells ink from a red by lightness even when red-green vision removes the hue", () => {
+    expect(chromaticDistance(ink, red, "protanopia")).toBeLessThan(
+      perceptualDistance(ink, red, "protanopia"),
+    );
+    expect(perceptualDistance(ink, red, "protanopia")).toBeGreaterThan(15);
+  });
+});
+
+describe("chroma", () => {
+  it("is near zero for ink and paper and high for a saturated red", () => {
+    expect(chroma(parseColour("oklch(0.2 0.012 60)"))).toBeLessThan(3);
+    expect(chroma(parseColour("oklch(0.968 0.007 90)"))).toBeLessThan(3);
+    expect(chroma(parseColour("oklch(0.5 0.185 29)"))).toBeGreaterThan(15);
   });
 });

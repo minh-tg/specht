@@ -111,6 +111,15 @@ function simulate(rgb: LinearRgb, vision: Vision): LinearRgb {
   ];
 }
 
+/** OKLab lightness, 0 (black) to 1 (white). */
+function oklabL(rgb: LinearRgb): number {
+  const [r, g, b] = [clamp01(rgb[0]), clamp01(rgb[1]), clamp01(rgb[2])];
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return 0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s;
+}
+
 /** The a and b axes of OKLab (the colour plane, lightness ignored). */
 function oklabAB(rgb: LinearRgb): readonly [number, number] {
   const [r, g, b] = [clamp01(rgb[0]), clamp01(rgb[1]), clamp01(rgb[2])];
@@ -132,4 +141,23 @@ export function chromaticDistance(a: LinearRgb, b: LinearRgb, vision: Vision): n
   const [aa, ab] = oklabAB(simulate(a, vision));
   const [ba, bb] = oklabAB(simulate(b, vision));
   return Math.hypot(aa - ba, ab - bb) * 100;
+}
+
+/** How coloured a colour is: OKLab chroma times 100. Ink and chalk sit near 1; a severity red is above 15. */
+export function chroma(rgb: LinearRgb): number {
+  const [a, b] = oklabAB(rgb);
+  return Math.hypot(a, b) * 100;
+}
+
+/**
+ * How different two colours look overall, lightness included, to someone with the given vision.
+ * OKLab distance times 100. Use it when one of the two colours is neutral: a neutral against a
+ * hued colour is told apart by lightness as much as by hue, which chromaticDistance ignores.
+ */
+export function perceptualDistance(a: LinearRgb, b: LinearRgb, vision: Vision): number {
+  const sa = simulate(a, vision);
+  const sb = simulate(b, vision);
+  const [aa, ab] = oklabAB(sa);
+  const [ba, bb] = oklabAB(sb);
+  return Math.hypot(oklabL(sa) - oklabL(sb), aa - ba, ab - bb) * 100;
 }
