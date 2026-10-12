@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,17 +18,28 @@ const errInvalidWaiverIDFormat = "invalid waiver id: %w"
 // WaiverResponse is the API representation of a waiver with its condition,
 // context, and target rows attached.
 type WaiverResponse struct {
-	ID          string                    `json:"id"`
-	ProjectID   string                    `json:"project_id"`
-	Name        string                    `json:"name"`
-	Description string                    `json:"description"`
-	Enabled     bool                      `json:"enabled"`
-	ExpiresAt   *string                   `json:"expires_at,omitempty"`
-	Conditions  []WaiverConditionResp     `json:"conditions"`
-	Contexts    []WaiverContextResp       `json:"contexts"`
-	Targets     []WaiverFindingTargetResp `json:"targets"`
-	CreatedAt   string                    `json:"created_at"`
-	UpdatedAt   string                    `json:"updated_at"`
+	ID          string `json:"id"`
+	ProjectID   string `json:"project_id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Enabled     bool   `json:"enabled"`
+	// Status is the review state: pending, approved, rejected or withdrawn.
+	// Only approved waivers count in the gate.
+	Status string `json:"status"`
+	// ScopeAll marks a waiver that covers every finding of the project.
+	ScopeAll     bool                      `json:"scope_all"`
+	Reason       string                    `json:"reason"`
+	RequestedBy  *string                   `json:"requested_by,omitempty"`
+	RequestedAt  *string                   `json:"requested_at,omitempty"`
+	DecidedBy    *string                   `json:"decided_by,omitempty"`
+	DecidedAt    *string                   `json:"decided_at,omitempty"`
+	DecisionNote string                    `json:"decision_note"`
+	ExpiresAt    *string                   `json:"expires_at,omitempty"`
+	Conditions   []WaiverConditionResp     `json:"conditions"`
+	Contexts     []WaiverContextResp       `json:"contexts"`
+	Targets      []WaiverFindingTargetResp `json:"targets"`
+	CreatedAt    string                    `json:"created_at"`
+	UpdatedAt    string                    `json:"updated_at"`
 }
 
 // WaiverConditionResp is a waiver condition in API responses.
@@ -64,8 +76,9 @@ type WaiverEventResp struct {
 
 // CreateWaiverInput is a request to create a waiver: a name/description plus
 // optional conditions, deployment-context scopes, and directly-targeted
-// finding ids. An empty Conditions/Contexts/Targets set makes the waiver
-// apply to every blocking finding in the project.
+// finding ids. A waiver that covers every blocking finding in the project has
+// to say so with ScopeAll and no other scope; an empty scope without ScopeAll
+// is rejected.
 type CreateWaiverInput struct {
 	ProjectSlug string
 	Name        string
@@ -73,6 +86,7 @@ type CreateWaiverInput struct {
 	// ExpiresAt optionally bounds the waiver (RFC3339 at the API edge);
 	// nil creates a waiver that never expires.
 	ExpiresAt  *time.Time
+	ScopeAll   bool
 	Conditions []CreateWaiverConditionInput
 	Contexts   []CreateWaiverContextInput
 	TargetIDs  []string
@@ -105,10 +119,13 @@ type UpdateWaiverInput struct {
 	// leaves the stored expiry untouched.
 	ExpiresAt      *time.Time
 	ClearExpiresAt bool
-	Conditions     []CreateWaiverConditionInput
-	Contexts       []CreateWaiverContextInput
-	TargetIDs      []string
-	ActorID        string
+	// ScopeAll states that the waiver should cover every finding; it needs
+	// an empty scope after the update.
+	ScopeAll   bool
+	Conditions []CreateWaiverConditionInput
+	Contexts   []CreateWaiverContextInput
+	TargetIDs  []string
+	ActorID    string
 }
 
 // WaiverDetailResponse is a waiver with full condition/context/target rows.
@@ -126,18 +143,34 @@ func toWaiver(w port.Waiver) WaiverResponse {
 		expiresAt = &s
 	}
 	return WaiverResponse{
-		ID:          w.ID,
-		ProjectID:   w.ProjectID,
-		Name:        w.Name,
-		Description: w.Description,
-		Enabled:     w.Enabled,
-		ExpiresAt:   expiresAt,
-		Conditions:  make([]WaiverConditionResp, 0),
-		Contexts:    make([]WaiverContextResp, 0),
-		Targets:     make([]WaiverFindingTargetResp, 0),
-		CreatedAt:   w.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   w.UpdatedAt.Format(time.RFC3339),
+		ID:           w.ID,
+		ProjectID:    w.ProjectID,
+		Name:         w.Name,
+		Description:  w.Description,
+		Enabled:      w.Enabled,
+		Status:       w.Status,
+		ScopeAll:     w.ScopeAll,
+		Reason:       w.Reason,
+		RequestedBy:  w.RequestedBy,
+		RequestedAt:  formatTimePtr(w.RequestedAt),
+		DecidedBy:    w.DecidedBy,
+		DecidedAt:    formatTimePtr(w.DecidedAt),
+		DecisionNote: w.DecisionNote,
+		ExpiresAt:    expiresAt,
+		Conditions:   make([]WaiverConditionResp, 0),
+		Contexts:     make([]WaiverContextResp, 0),
+		Targets:      make([]WaiverFindingTargetResp, 0),
+		CreatedAt:    w.CreatedAt.Format(time.RFC3339),
+		UpdatedAt:    w.UpdatedAt.Format(time.RFC3339),
 	}
+}
+
+func formatTimePtr(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	s := t.Format(time.RFC3339)
+	return &s
 }
 
 func toWaiverCondition(c port.WaiverCondition) WaiverConditionResp {
@@ -206,6 +239,10 @@ func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*
 		return nil, err
 	}
 
+	if err := validateWaiverScope(input.ScopeAll, len(input.Conditions)+len(input.Contexts)+len(input.TargetIDs)); err != nil {
+		return nil, err
+	}
+
 	conditions := make([]port.WaiverCondition, len(input.Conditions))
 	for i, c := range input.Conditions {
 		conditions[i] = port.WaiverCondition{
@@ -236,6 +273,7 @@ func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*
 		Description: input.Description,
 		Enabled:     true,
 		ExpiresAt:   input.ExpiresAt,
+		Status:      WaiverStatusApproved,
 		Conditions:  conditions,
 		Contexts:    contexts,
 		Targets:     targets,
@@ -253,7 +291,9 @@ func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*
 	return &r, nil
 }
 
-func (u *Usecases) ListWaivers(ctx context.Context, projectSlug string) ([]WaiverResponse, error) {
+// ListWaivers returns the project's waivers, newest first. With statuses it
+// keeps only waivers in one of those review states.
+func (u *Usecases) ListWaivers(ctx context.Context, projectSlug string, statuses ...string) ([]WaiverResponse, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
@@ -267,9 +307,12 @@ func (u *Usecases) ListWaivers(ctx context.Context, projectSlug string) ([]Waive
 		return nil, fmt.Errorf("list waivers: %w", err)
 	}
 
-	resp := make([]WaiverResponse, len(waivers))
-	for i, w := range waivers {
-		resp[i] = toWaiver(w)
+	resp := make([]WaiverResponse, 0, len(waivers))
+	for _, w := range waivers {
+		if len(statuses) > 0 && !slices.Contains(statuses, w.Status) {
+			continue
+		}
+		resp = append(resp, toWaiver(w))
 	}
 	return resp, nil
 }
@@ -361,6 +404,10 @@ func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*
 			tgts[i] = port.WaiverFindingTarget{FindingID: uid.String()}
 		}
 		targets = &tgts
+	}
+
+	if err := u.validateWaiverUpdateScope(ctx, id.String(), input); err != nil {
+		return nil, err
 	}
 
 	var expiry *port.WaiverExpiry

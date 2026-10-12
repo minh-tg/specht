@@ -247,6 +247,7 @@ func TestCreateWaiverForwardsExpiryToStoreAndResponse(t *testing.T) {
 		ProjectSlug: "my-app",
 		Name:        "release exception",
 		ExpiresAt:   &expiresAt,
+		ScopeAll:    true,
 	})
 
 	require.NoError(t, err)
@@ -272,7 +273,7 @@ func TestCreateWaiverWithoutExpiryOmitsField(t *testing.T) {
 	uc := waiverUsecaseForProject(project, wr, "")
 
 	got, err := uc.CreateWaiver(sessionCtx("admin", auth.RoleAdmin), CreateWaiverInput{
-		ProjectSlug: "my-app", Name: "permanent waiver",
+		ProjectSlug: "my-app", Name: "permanent waiver", ScopeAll: true,
 	})
 
 	require.NoError(t, err)
@@ -498,6 +499,10 @@ func TestUpdateWaiverPreservesOmittedDetailsAndClearsExplicitEmptyDetails(t *tes
 			assert.Nil(t, targets)
 			return port.Waiver{ID: waiverID, ProjectID: project.ID, Name: "unchanged scopes"}, nil
 		},
+		listConditionsFn: func(context.Context, string) ([]port.WaiverCondition, error) {
+			return []port.WaiverCondition{{ID: "c1", Field: "severity_rank", Operator: "lte", Value: "2"}}, nil
+		},
+		listFindingTargetsFn: func(context.Context, string) ([]port.WaiverFindingTarget, error) { return nil, nil },
 	}
 	uc := waiverUsecaseForProject(project, wr, "")
 

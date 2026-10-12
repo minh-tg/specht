@@ -1069,6 +1069,7 @@ func (m *mockAPIKeyRepo) GetByHash(ctx context.Context, keyHash string) (port.AP
 
 type mockWaiverRepo struct {
 	port.WaiverStore
+	decideFn                        func(context.Context, string, string, port.WaiverDecision) (port.Waiver, error)
 	createWithDetailsFn             func(context.Context, port.CreateWaiverInput) (port.Waiver, error)
 	listFn                          func(context.Context, string) ([]port.Waiver, error)
 	getByIDFn                       func(context.Context, string, string) (port.Waiver, error)
@@ -1104,6 +1105,13 @@ func (m *mockWaiverRepo) GetByID(ctx context.Context, id, projectID string) (por
 		return port.Waiver{}, fmt.Errorf("unexpected call to GetByID")
 	}
 	return m.getByIDFn(ctx, id, projectID)
+}
+
+func (m *mockWaiverRepo) Decide(ctx context.Context, id, projectID string, decision port.WaiverDecision) (port.Waiver, error) {
+	if m.decideFn == nil {
+		return port.Waiver{}, fmt.Errorf("unexpected call to Decide")
+	}
+	return m.decideFn(ctx, id, projectID, decision)
 }
 
 func (m *mockWaiverRepo) UpdateWithDetails(ctx context.Context, waiver port.Waiver, expiry *port.WaiverExpiry, conditions *[]port.WaiverCondition, contexts *[]port.WaiverContext, targets *[]port.WaiverFindingTarget, event port.WaiverEventInput) (port.Waiver, error) {

@@ -137,7 +137,7 @@ func TestWaiverOperationsPreserveStoreFailures(t *testing.T) {
 		wr := &mockWaiverRepo{createWithDetailsFn: func(context.Context, port.CreateWaiverInput) (port.Waiver, error) {
 			return port.Waiver{}, storeErr
 		}}
-		_, err := waiverUsecaseForProject(project, wr, "").CreateWaiver(admin, CreateWaiverInput{ProjectSlug: "my-app", Name: "exception"})
+		_, err := waiverUsecaseForProject(project, wr, "").CreateWaiver(admin, CreateWaiverInput{ProjectSlug: "my-app", Name: "exception", ScopeAll: true})
 		require.ErrorIs(t, err, storeErr)
 	})
 

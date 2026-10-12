@@ -164,8 +164,10 @@ func (u *Usecases) requireProjectIngest(ctx context.Context, projectID string) e
 	return u.requireProjectRole(ctx, projectID, auth.ScopeIngest, auth.RoleAdmin, auth.RoleManager, auth.RoleEditor)
 }
 
+// requireProjectAdminForWaiver gates direct waiver management (create,
+// update, delete, toggle). Project managers manage waivers alongside admins.
 func (u *Usecases) requireProjectAdminForWaiver(ctx context.Context, projectID string) error {
-	return u.requireProjectRole(ctx, projectID, auth.ScopeAdmin, auth.RoleAdmin)
+	return u.requireProjectManager(ctx, projectID)
 }
 
 func (u *Usecases) findingWithProjectEditor(ctx context.Context, findingID uuid.UUID) (port.Finding, error) {
