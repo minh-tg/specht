@@ -106,7 +106,7 @@ func TestPreviewPRCheck_WaivedIntroducedPasses(t *testing.T) {
 	uc, _ := prcheckHarness(t)
 	uc.deps.Stores.Waivers = &mockWaiverRepo{
 		listActiveFn: func(ctx context.Context, projectID string) ([]port.Waiver, error) {
-			return []port.Waiver{{ID: "w1"}}, nil
+			return []port.Waiver{{ID: "w1", ScopeAll: true}}, nil
 		},
 	}
 	ctx := findingScopeCtx(makeProject(true).ID)
