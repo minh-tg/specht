@@ -147,6 +147,14 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/:slug/insights"
+        element={
+          <ProtectedRoute>
+            <ProjectLayout />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/teams"
         element={
           <ProtectedRoute>

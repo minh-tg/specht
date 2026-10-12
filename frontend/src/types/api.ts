@@ -351,6 +351,8 @@ export interface ProjectStats {
   total_findings: number;
   blocking_count: number;
   waiver_count: number;
+  /** Waiver requests still waiting for a decision. They do not count in the gate. */
+  pending_waiver_count?: number;
   report_count: number;
   by_severity: SeverityCount[];
   by_analysis_state?: AnalysisStateCount[];
@@ -362,4 +364,40 @@ export interface IngestResponse {
   total_findings: number;
   threshold_breached: boolean;
   replayed: boolean;
+}
+
+export type AgingBucketName = "new" | "aging" | "stale" | "debt";
+
+export interface AgingBucketCount {
+  bucket: AgingBucketName;
+  count: number;
+  overdue: number;
+}
+
+/** An open finding past the date its severity says it should be fixed by. */
+export interface OverdueFinding {
+  id: string;
+  title: string;
+  severity: string;
+  age_days: number;
+  sla_days: number;
+  due_date: string;
+  reopened: boolean;
+}
+
+export interface WeeklyNew {
+  /** The Monday the week starts on. */
+  week: string;
+  count: number;
+}
+
+/** How old a project's open findings are, which are overdue, and how many arrive each week. */
+export interface Aging {
+  buckets: AgingBucketCount[];
+  overdue_total: number;
+  overdue: OverdueFinding[];
+  reopened: number;
+  new_per_week: WeeklyNew[];
+  /** The project has more open findings than the report covers; the oldest were counted. */
+  truncated: boolean;
 }

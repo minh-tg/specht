@@ -1,5 +1,6 @@
 import { type AnalysisState, gateEffectLabel, type ReachabilityState } from "@/lib/enums";
 import type {
+  Aging,
   Capabilities,
   CreatedApiKey,
   Finding,
@@ -54,6 +55,7 @@ export const queryKeys = {
   capabilities: () => ["capabilities"] as const,
   invites: (slug: string) => ["invites", slug] as const,
   policy: (slug: string) => ["policy", slug] as const,
+  aging: (slug: string) => ["aging", slug] as const,
   policyTemplates: () => ["policy-templates"] as const,
   projects: () => ["projects"] as const,
   me: () => ["me"] as const,
@@ -187,7 +189,15 @@ export function useProjectStats(
 ) {
   return useQuery({
     queryKey: queryKeys.projectStats(slug),
-    queryFn: () => apiFetch<ProjectStats>(`/api/v1/projects/${encodeURIComponent(slug)}/stats`),
+    queryFn: async () => {
+      const stats = await apiFetch<ProjectStats>(
+        `/api/v1/projects/${encodeURIComponent(slug)}/stats`,
+      );
+      return {
+        ...stats,
+        by_severity: stats.by_severity ?? [],
+      };
+    },
     enabled: !!slug,
     refetchInterval: options?.refetchInterval,
   });
@@ -867,4 +877,27 @@ export function useRevokeWaiver(slug: string) {
       ),
     onSuccess: decided,
   });
+}
+
+/** How old the project's open findings are, which are overdue, and how many arrive each week. */
+export function useProjectAging(slug: string) {
+  return useQuery({
+    queryKey: queryKeys.aging(slug),
+    queryFn: async () =>
+      normalizeAging(await apiFetch<Aging>(`/api/v1/projects/${encodeURIComponent(slug)}/aging`)),
+    enabled: !!slug,
+  });
+}
+
+/**
+ * The server encodes an empty list as `null`, and a project with nothing to report has several. The
+ * page reads these as arrays, so empty ones are made real here, once, instead of at every use.
+ */
+export function normalizeAging(aging: Aging): Aging {
+  return {
+    ...aging,
+    buckets: aging.buckets ?? [],
+    overdue: aging.overdue ?? [],
+    new_per_week: aging.new_per_week ?? [],
+  };
 }
