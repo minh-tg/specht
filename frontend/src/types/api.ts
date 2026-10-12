@@ -188,6 +188,15 @@ export interface PolicyEffective {
   watcher_source: "default" | "template" | "override";
 }
 
+/** A shared baseline a project can link. Its definition holds the same keys an override can set. */
+export interface PolicyTemplate {
+  id: string;
+  name: string;
+  description: string;
+  definition: Record<string, string>;
+  version: number;
+}
+
 export interface GateStatus {
   threshold_breached: boolean;
   blocking_count: number;

@@ -3,6 +3,7 @@ import { VerdictBand } from "@/components/VerdictBand";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { FindingsDashboard } from "@/pages/FindingsDashboard";
 import { ProjectAccess } from "@/pages/ProjectAccess";
+import { ProjectPolicy } from "@/pages/ProjectPolicy";
 import { ReportHistory } from "@/pages/ReportHistory";
 import { Link, useLocation, useParams } from "react-router-dom";
 
@@ -14,6 +15,8 @@ export function ProjectLayout() {
     ? "reports"
     : path.endsWith("/access")
     ? "access"
+    : path.endsWith("/policy")
+    ? "policy"
     : "findings";
 
   useDocumentTitle(
@@ -21,6 +24,8 @@ export function ProjectLayout() {
       ? `${slug} · Reports`
       : currentTab === "access"
       ? `${slug} · Access & Members`
+      : currentTab === "policy"
+      ? `${slug} · Policy`
       : `${slug} · Findings`,
   );
 
@@ -76,11 +81,24 @@ export function ProjectLayout() {
         >
           Access & Members
         </Link>
+        <Link
+          to={`/${slug}/policy`}
+          aria-current={currentTab === "policy" ? "page" : undefined}
+          className={`pb-2 text-sm font-medium ${
+            currentTab === "policy"
+              ? "border-primary text-foreground border-b-2"
+              : "text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Policy
+        </Link>
       </nav>
       {currentTab === "findings"
         ? <FindingsDashboard />
         : currentTab === "reports"
         ? <ReportHistory />
+        : currentTab === "policy"
+        ? <ProjectPolicy />
         : <ProjectAccess />}
     </div>
   );

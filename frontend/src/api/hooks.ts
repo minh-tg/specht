@@ -7,6 +7,8 @@ import type {
   GateStatus,
   Invite,
   InviteRole,
+  PolicyEffective,
+  PolicyTemplate,
   Project,
   ProjectMember,
   ProjectRole,
@@ -51,6 +53,8 @@ export const queryKeys = {
   scanSignal: (slug: string, branch: string) => ["scan-signal", slug, branch] as const,
   capabilities: () => ["capabilities"] as const,
   invites: (slug: string) => ["invites", slug] as const,
+  policy: (slug: string) => ["policy", slug] as const,
+  policyTemplates: () => ["policy-templates"] as const,
   projects: () => ["projects"] as const,
   me: () => ["me"] as const,
   version: () => ["version"] as const,
@@ -746,4 +750,59 @@ export function useScanSignal(
     if (enabled && attempt > 0) void refetch();
   }, [enabled, attempt, refetch]);
   return { newest: query.data ?? null, stalled, isError: query.isError };
+}
+
+/** The policy that applies to a project, with the layer that supplied each value. */
+export function usePolicy(slug: string) {
+  return useQuery({
+    queryKey: queryKeys.policy(slug),
+    queryFn: () => apiFetch<PolicyEffective>(`/api/v1/projects/${encodeURIComponent(slug)}/policy`),
+    enabled: !!slug,
+  });
+}
+
+/** The shared baselines. Read by anyone signed in; only a project admin links one. */
+export function usePolicyTemplates(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.policyTemplates(),
+    queryFn: () => apiFetch<PolicyTemplate[]>("/api/v1/policy-templates"),
+    enabled,
+  });
+}
+
+/** A policy change moves what blocks a change, so everything computed from the gate is stale. */
+function usePolicyChanged(slug: string) {
+  const queryClient = useQueryClient();
+  return (effective: PolicyEffective) => {
+    queryClient.setQueryData(queryKeys.policy(slug), effective);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.gate(slug) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.projectStats(slug) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.project(slug) });
+  };
+}
+
+/** Links a template by name; the empty name unlinks it. */
+export function useSetPolicyTemplate(slug: string) {
+  const changed = usePolicyChanged(slug);
+  return useMutation({
+    mutationFn: (templateName: string) =>
+      apiFetch<PolicyEffective>(`/api/v1/projects/${encodeURIComponent(slug)}/policy`, {
+        method: "PUT",
+        body: JSON.stringify({ template_name: templateName }),
+      }),
+    onSuccess: changed,
+  });
+}
+
+/** Replaces the project's overrides as a whole; an empty map clears them. */
+export function useSetPolicyOverrides(slug: string) {
+  const changed = usePolicyChanged(slug);
+  return useMutation({
+    mutationFn: (overrides: Record<string, string>) =>
+      apiFetch<PolicyEffective>(
+        `/api/v1/projects/${encodeURIComponent(slug)}/policy/overrides`,
+        { method: "PUT", body: JSON.stringify({ overrides }) },
+      ),
+    onSuccess: changed,
+  });
 }
