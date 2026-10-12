@@ -155,10 +155,20 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await page.mouse.move(0, 0);
 
   // The dropdown popup is a portal outside the page tree: audit it open as well.
-  await page.getByLabel("Filter by severity").click();
-  await expect(page.getByRole("option", { name: "All severities", exact: true })).toBeVisible();
+  await page.getByLabel("Filter by triage state").click();
+  await expect(page.getByRole("option", { name: "All triage states", exact: true })).toBeVisible();
   await audit(page, "findings list with a dropdown open");
   await page.keyboard.press("Escape");
+
+  // A selection raises the bulk bar; audit it, and the dialog it opens.
+  await page.getByRole("checkbox", { name: "Select all findings on this page" }).check();
+  await expect(page.getByRole("region", { name: "Bulk actions" })).toBeVisible();
+  await audit(page, "findings list with a selection");
+  await page.getByRole("button", { name: "Triage…" }).click();
+  await expect(page.getByRole("dialog", { name: /^Triage \d+ findings?$/ })).toBeVisible();
+  await audit(page, "bulk triage dialog");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Clear" }).click();
 
   await page.locator("a[href*=\"/findings/\"]").first().click();
   await expect(page.getByRole("heading", { name: "Triage" })).toBeVisible();
