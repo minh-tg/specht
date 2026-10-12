@@ -16,7 +16,7 @@ func NewPortStores(pool *pgxpool.Pool) *port.Stores {
 
 	return &port.Stores{
 		Projects:      &pgProjectPort{q: q, withTx: repos.WithTx},
-		Users:         &pgUserPort{q: q},
+		Users:         &pgUserPort{q: q, withTx: repos.WithTx},
 		RefreshTokens: &pgRefreshTokenPort{q: q},
 		APIKeys:       &pgAPIKeyPort{q: q},
 		Environments:  &pgEnvironmentPort{q: q},
@@ -46,7 +46,7 @@ func NewPortStores(pool *pgxpool.Pool) *port.Stores {
 func PortStoresFromRepos(repos *Repos, q *sqlc.Queries) *port.Stores {
 	return &port.Stores{
 		Projects:      &pgProjectPort{q: q, withTx: repos.WithTx},
-		Users:         &pgUserPort{q: q},
+		Users:         &pgUserPort{q: q, withTx: repos.WithTx},
 		RefreshTokens: &pgRefreshTokenPort{q: q},
 		APIKeys:       &pgAPIKeyPort{q: q},
 		Environments:  &pgEnvironmentPort{q: q},

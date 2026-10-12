@@ -20,6 +20,37 @@ func (q *Queries) BumpUserTokenVersion(ctx context.Context, id pgtype.UUID) erro
 	return err
 }
 
+const changeUserRole = `-- name: ChangeUserRole :one
+UPDATE users SET role = $2, token_version = token_version + 1, updated_at = NOW()
+WHERE id = $1
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at
+`
+
+type ChangeUserRoleParams struct {
+	ID   pgtype.UUID `json:"id"`
+	Role string      `json:"role"`
+}
+
+// Changes the global role and starts a new token generation, so the new role
+// applies to sessions that are already open instead of at their next refresh.
+func (q *Queries) ChangeUserRole(ctx context.Context, arg ChangeUserRoleParams) (User, error) {
+	row := q.db.QueryRow(ctx, changeUserRole, arg.ID, arg.Role)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.DisplayName,
+		&i.PasswordHash,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TokenVersion,
+		&i.DisabledAt,
+	)
+	return i, err
+}
+
 const clearUserPassword = `-- name: ClearUserPassword :exec
 UPDATE users SET password_hash = NULL, updated_at = NOW() WHERE id = $1
 `
@@ -32,7 +63,7 @@ func (q *Queries) ClearUserPassword(ctx context.Context, id pgtype.UUID) error {
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, display_name, password_hash, role)
 VALUES (lower($1::text), $2, $3, 'member')
-RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at
 `
 
 type CreateUserParams struct {
@@ -54,12 +85,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TokenVersion,
+		&i.DisabledAt,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version FROM users WHERE lower(email) = lower($1::text)
+SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at FROM users WHERE lower(email) = lower($1::text)
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -75,12 +107,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TokenVersion,
+		&i.DisabledAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version FROM users WHERE id = $1
+SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error) {
@@ -96,6 +129,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id pgtype.UUID) (User, error)
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TokenVersion,
+		&i.DisabledAt,
 	)
 	return i, err
 }
@@ -112,7 +146,7 @@ func (q *Queries) GetUserTokenVersion(ctx context.Context, id pgtype.UUID) (int3
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version FROM users
+SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at FROM users
 WHERE ($1::text = '' OR email ILIKE ('%' || $1::text || '%') ESCAPE E'\\')
 ORDER BY email ASC, id ASC
 LIMIT $3 OFFSET $2
@@ -146,6 +180,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.TokenVersion,
+			&i.DisabledAt,
 		); err != nil {
 			return nil, err
 		}
@@ -157,9 +192,69 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 	return items, nil
 }
 
+const lockActiveAdmins = `-- name: LockActiveAdmins :many
+SELECT id FROM users WHERE role = 'admin' AND disabled_at IS NULL FOR UPDATE
+`
+
+// Locks the active global admins for the rest of the transaction, so two
+// concurrent demotions cannot each see another admin and leave none.
+func (q *Queries) LockActiveAdmins(ctx context.Context) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, lockActiveAdmins)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setUserDisabled = `-- name: SetUserDisabled :one
+UPDATE users SET
+    disabled_at = CASE WHEN $1::boolean THEN COALESCE(disabled_at, NOW()) ELSE NULL END,
+    token_version = CASE WHEN $1::boolean THEN token_version + 1 ELSE token_version END,
+    updated_at = NOW()
+WHERE id = $2
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at
+`
+
+type SetUserDisabledParams struct {
+	Disabled bool        `json:"disabled"`
+	ID       pgtype.UUID `json:"id"`
+}
+
+// Deactivating also starts a new token generation, which ends open sessions at
+// their next request. Reactivating leaves the generation alone.
+func (q *Queries) SetUserDisabled(ctx context.Context, arg SetUserDisabledParams) (User, error) {
+	row := q.db.QueryRow(ctx, setUserDisabled, arg.Disabled, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.DisplayName,
+		&i.PasswordHash,
+		&i.AvatarUrl,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TokenVersion,
+		&i.DisabledAt,
+	)
+	return i, err
+}
+
 const setUserRole = `-- name: SetUserRole :one
 UPDATE users SET role = $2 WHERE id = $1
-RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at
 `
 
 type SetUserRoleParams struct {
@@ -180,13 +275,14 @@ func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) (User,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TokenVersion,
+		&i.DisabledAt,
 	)
 	return i, err
 }
 
 const updateUserDisplayName = `-- name: UpdateUserDisplayName :one
 UPDATE users SET display_name = $2, updated_at = NOW() WHERE id = $1
-RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version
+RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at
 `
 
 type UpdateUserDisplayNameParams struct {
@@ -207,6 +303,7 @@ func (q *Queries) UpdateUserDisplayName(ctx context.Context, arg UpdateUserDispl
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.TokenVersion,
+		&i.DisabledAt,
 	)
 	return i, err
 }
