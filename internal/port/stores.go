@@ -616,8 +616,18 @@ type ListFindingsParams struct {
 	Kinds        []string
 	Environments []string
 	Targets      []string
-	Limit        int32
-	Offset       int32
+	// AnalysisStates filters on the analysis state; "unanalyzed" also
+	// matches findings whose state was never written.
+	AnalysisStates []string
+	// Search is a LIKE pattern, already escaped, matched against the title
+	// and the fingerprint. Empty means no text filter.
+	Search string
+	// SortKey is severity, first_seen, last_seen or title; SortDir is asc or
+	// desc. Empty values give the default order: severity, most severe first.
+	SortKey string
+	SortDir string
+	Limit   int32
+	Offset  int32
 }
 
 // FindingStore persists findings, occurrences, dimensions, events, and the

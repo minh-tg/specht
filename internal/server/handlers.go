@@ -630,9 +630,19 @@ func (h *Handler) ListFindings(w http.ResponseWriter, r *http.Request) {
 	if s := r.URL.Query().Get("target"); s != "" {
 		filter.Targets = strings.Split(s, ",")
 	}
+	if s := r.URL.Query().Get("analysis_state"); s != "" {
+		filter.AnalysisStates = strings.Split(s, ",")
+	}
+	filter.Search = r.URL.Query().Get("q")
+	filter.Sort = r.URL.Query().Get("sort")
+	filter.Dir = r.URL.Query().Get("dir")
 
 	findings, total, err := h.usecase.ListFindings(r.Context(), slug, filter, limit, offset)
 	if err != nil {
+		if errors.Is(err, usecase.ErrInvalidFindingQuery) {
+			respondError(w, http.StatusBadRequest, "invalid_query", err.Error())
+			return
+		}
 		log.Printf("list findings: %v", err)
 		if errors.Is(err, port.ErrNotFound) {
 			respondError(w, http.StatusNotFound, "not_found", msgProjectNotFound)
