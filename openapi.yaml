@@ -432,9 +432,10 @@ paths:
         in `raw_key`, and never again — later reads expose only the prefix and
         the last four characters.
 
-        Reachable by an admin session, or by an API key that itself holds the
-        `admin` scope.
-      x-required-role: admin
+        Needs the manager or admin role on the project, or an API key that
+        itself holds the `admin` scope for it. A person with no role on the
+        project, or with the member role, gets 403.
+      x-required-role: manager
       x-required-scope: admin
       security:
         - sessionAuth: []
@@ -458,8 +459,8 @@ paths:
       tags: [API keys]
       operationId: listApiKeys
       summary: List API keys
-      description: Lists the caller's key set with the secret masked.
-      x-required-role: admin
+      description: Lists a project's keys with the secret masked. Needs the manager or admin role on the project.
+      x-required-role: manager
       x-required-scope: admin
       security:
         - sessionAuth: []
@@ -480,7 +481,8 @@ paths:
       tags: [API keys]
       operationId: revokeApiKey
       summary: Revoke an API key
-      x-required-role: admin
+      description: Needs the manager or admin role on the project.
+      x-required-role: manager
       x-required-scope: admin
       security:
         - sessionAuth: []
@@ -2703,6 +2705,30 @@ components:
         description: { type: [string, "null"] }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        role:
+          type: string
+          enum: [admin, manager, member]
+          description: |
+            The signed-in caller's effective role on the project, including
+            roles conferred by team membership. A global admin is `admin`
+            everywhere. Legacy roles are reported as their modern equivalents.
+            Present only when reading a single project as a person, not for
+            API keys or in list responses.
+        permissions: { $ref: "#/components/schemas/ProjectPermissions" }
+
+    ProjectPermissions:
+      type: object
+      description: |
+        What the caller may do on the project, for showing and hiding controls.
+        The server checks the role again on every request.
+      required: [request_waiver, manage_waivers, approve_waivers, manage_members, manage_ci, triage]
+      properties:
+        request_waiver: { type: boolean, description: Ask for a waiver. Every project member. }
+        manage_waivers: { type: boolean, description: Create, edit, delete and toggle waivers. }
+        approve_waivers: { type: boolean, description: Approve or reject waiver requests. }
+        manage_members: { type: boolean, description: Add and remove members, up to the caller's own role. }
+        manage_ci: { type: boolean, description: Create, list and revoke the project's API keys. }
+        triage: { type: boolean, description: Change analysis state and reachability. }
 
     CreateProjectRequest:
       type: object
