@@ -250,6 +250,14 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await audit(page, "link team dialog");
   await page.keyboard.press("Escape");
 
+  // The policy page, and its editor for one setting.
+  await page.goto(`/${slug}/policy`);
+  await expect(page.getByRole("heading", { name: "Policy", exact: true })).toBeVisible();
+  await audit(page, "project policy");
+  await page.getByRole("button", { name: "Override Severity floor" }).click();
+  await expect(page.getByRole("combobox", { name: "Severity floor" })).toBeVisible();
+  await audit(page, "project policy while overriding a setting");
+
   await page.goto("/teams");
   await page.getByRole("button", { name: "+ Create Team" }).click();
   await expect(page.getByRole("dialog", { name: "Create Company Team" })).toBeVisible();

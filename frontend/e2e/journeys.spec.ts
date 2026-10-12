@@ -533,3 +533,35 @@ test("an admin invites a teammate by link, the teammate joins, and the link work
   await page.reload();
   await expect(page.getByText("No open invites.")).toBeVisible();
 });
+
+test("an admin overrides the severity floor and the project verdict follows", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("policy-floor");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings`);
+  await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
+
+  await page.getByRole("link", { name: "Policy", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/${slug}/policy$`));
+  const floor = page.getByRole("group", { name: "Severity floor" });
+  await expect(floor).toContainText("Default");
+  await expect(floor).toContainText("High");
+
+  // A high finding no longer blocks once the floor sits at critical.
+  await page.getByRole("button", { name: "Override Severity floor" }).click();
+  await chooseOption(page, page.getByRole("combobox", { name: "Severity floor" }), "Critical");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(floor).toContainText("Override");
+  await expect(floor).toContainText("Critical");
+  await expect(page.getByText("PASSING", { exact: true })).toBeVisible();
+
+  // The override survives a reload, and taking it back restores the verdict.
+  await page.reload();
+  await expect(floor).toContainText("Override");
+  await page.getByRole("button", { name: "Remove override for Severity floor" }).click();
+  await expect(floor).toContainText("Default");
+  await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
+});
