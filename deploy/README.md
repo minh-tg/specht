@@ -3,9 +3,8 @@
 Specht is an early preview and is not production-ready. Docker Compose
 (`deploy/docker-compose.yml`) is the documented single-node self-hosting path
 for evaluation: Postgres 17 + the Specht server. Migrations run automatically
-at startup (`DB_MIGRATE=true`). The web UI is unfinished; use the API and CLI
-for now. No Helm deployment or standalone binary package is currently
-provided.
+at startup (`DB_MIGRATE=true`). The `specht` and `specht-adapter` binaries are
+attached to each GitHub Release. No Helm deployment is provided.
 
 ## 1. Secrets
 
@@ -179,30 +178,28 @@ administration needs a global admin.
    and use that value. Setup closes as soon as the account exists.
 2. To promote more accounts, add their emails to `ADMIN_EMAILS` in
    `deploy/.env.prod` and restart (`up -d` again — promotion is idempotent).
-3. Create projects and grant membership via `POST /projects/:slug/members`.
-4. Bring teammates in with invite links (`POST /projects/:slug/invites`, valid
-   1 to 30 days, single use). The link works while `REGISTRATION_ENABLED` is
-   `false`, so registration can stay closed.
+3. Create projects in the UI, then add members from the project's Access page
+   (or `POST /projects/:slug/members`).
+4. Bring teammates in with invite links (Access page, or
+   `POST /projects/:slug/invites`; valid 1 to 30 days, single use). The link
+   works while `REGISTRATION_ENABLED` is `false`, so registration can stay
+   closed.
 
-### Changing or removing a global admin
+### Changing or deactivating an account
 
-Access tokens last 15 minutes and carry the account's global role. The server
-does not re-read that role on each request, so a token issued before a change
-keeps working until it expires, even after the account is demoted or deleted.
-Project roles are different: they are looked up on every request, so removing
-someone from a project or a team takes effect immediately.
+Global admins manage accounts from the admin area or the API:
 
-Specht has no endpoint that demotes or deletes accounts; do it in the database
-and then end the sessions explicitly:
+- `PUT /api/v1/users/{id}/role` changes the global role. The account's token
+  generation advances, so its open sessions stop working and the person signs
+  in again to get the new role.
+- `POST /api/v1/users/{id}/deactivate` ends access without deleting history or
+  memberships: open sessions stop at their next request, refresh tokens are
+  revoked, and sign-in is refused until `POST /api/v1/users/{id}/reactivate`.
 
-1. Change the role or delete the row in `users`.
-2. When demoting, also run
-   `UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = '<user id>'`.
-   A refresh re-reads the role, so the new role applies from then on, but
-   without this the account keeps its refresh token until it expires. Deleting
-   the user needs no extra step because its refresh tokens are removed with it.
-3. To cut off already-issued access tokens at once rather than waiting out the
-   15 minutes, rotate `JWT_SECRET` and restart. That signs every user out.
+The last active admin, the signed-in admin themselves (for deactivation) and
+the seeded `system@specht.local` account cannot be demoted or deactivated;
+those requests answer 409. Specht has no endpoint that deletes an account.
+Removing someone from a project or a team takes effect on their next request.
 
 ## 6. Reverse proxy
 
@@ -235,9 +232,10 @@ stored and any replica can complete a login another one started. Providers
 that do not support PKCE ignore the extra parameters. Logins that were
 already in flight when you upgrade fail once and succeed on retry.
 
-The session token still reaches the SPA in the URL fragment after a
-successful login; it is never sent to the server or in a `Referer` header, but
-page scripts can read it.
+After a successful login the SPA receives a single-use code in the URL
+fragment, valid for 60 seconds, and trades it for an access and a refresh token
+at `POST /api/v1/auth/sso/exchange`. The fragment is never sent to the server
+or in a `Referer` header, and a replayed or expired code answers 401.
 
 ## SSO account linking
 
@@ -280,6 +278,8 @@ gunzip -c specht-YYYY-MM-DD.sql.gz | docker compose -f deploy/docker-compose.yml
 ```
 
 ## 8. Upgrades
+
+Take a backup first (section 7); migrations are forward-only.
 
 ```bash
 git pull

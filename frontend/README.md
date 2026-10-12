@@ -5,9 +5,12 @@ The frontend is Specht's React and TypeScript web app. It helps teams review and
 ## What it covers today
 
 - **Projects:** a table of every project with its gate verdict (blocked, passing or never scanned), the number of blocking findings and the last scan. Admins can create projects.
-- **Project view:** a header with the verdict, the policy floor and where it comes from, the last scan and severity counts, above the Findings and Reports tabs. Reports are uploaded from the Reports tab.
-- **CI setup:** after creating a project, a guided page creates an API key (shown once) and offers copyable GitHub Actions and GitLab CI pipelines.
-- **Findings:** a filterable list with a "Blocks gate" answer taken from the gate's own `blocked_by` list, and a detail page ordered how to fix, where it occurs, decide (triage and reachability), context, history.
+- **Change view:** the page a CI link opens. It shows the verdict, which findings block, the smallest fix or waiver path, and the policy floor behind the answer.
+- **Findings:** a filterable ledger with bulk triage and a "Blocks gate" answer taken from the gate's own `blocked_by` list. The detail page is ordered how to fix, where it occurs, decide (triage, reachability, waiver request), context, history.
+- **Project settings:** CI setup with a one-time API key and copyable pipelines, policy and templates, waivers with a request and approval flow, insights and SLA aging, access (members, teams, invite links) and the CVE watcher.
+- **Administration:** accounts, the retention preview and purge, and watcher health.
+- **First run:** a setup screen creates the first administrator; invite pages let people join without open registration.
+- **Command palette:** Ctrl+K or ⌘K jumps to project pages, other projects, admin places and two actions.
 - **Accessibility and theming:** a skip link, focus moved to the content after navigation, live regions for outcomes, an error boundary, a not-found page, and a light, dark or system theme.
 
 ## Development
@@ -30,10 +33,6 @@ pnpm exec dprint check
 - Colours come from the tokens in `src/index.css`, not from raw palette classes. A `-fg` token is only used on its matching `-bg`, and severity and verdict are always shown as text as well as colour.
 - The theme is applied before first paint by `public/theme-init.js`. It is an external file, not an inline script, so a strict `script-src 'self'` Content-Security-Policy keeps working. Keep it in step with `src/lib/theme.ts`.
 - Add tests with every change. The accessibility baseline is an axe-core pass with no WCAG 2.2 AA violations in light and dark. `e2e/a11y.spec.ts` enforces it on every page (run it with `make e2e-ui`).
-
-## What is next
-
-Show an honest "1-20 of N" pager and finding history with names (both need the list total and account directory the API now provides), add policy, waiver and evidence views, and support verifying fixes. This is a direction, not a promise or a schedule. See the [roadmap discussion](https://github.com/minh-tg/specht/discussions/1) for updates and to share feedback.
 
 ## Authentication and CSRF
 
