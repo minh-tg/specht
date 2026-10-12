@@ -147,3 +147,22 @@ func TestLastAdminGuardHoldsUnderConcurrency(t *testing.T) {
 	require.NoError(t, repos.pool.QueryRow(ctx, `SELECT count(*) FROM users WHERE role = 'admin'`).Scan(&admins))
 	assert.Equal(t, 1, admins, "an admin is always left")
 }
+
+// The seeded system account acts for things with no person behind them, so the admin totals do not
+// count it as one.
+func TestAdminOverviewDoesNotCountTheSystemAccount(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(repos.pool)
+
+	empty, err := stores.Admin.Overview(ctx)
+	require.NoError(t, err)
+	assert.Zero(t, empty.UserCount, "only the seeded system account exists")
+
+	newUser(t, repos, "ada@test.com", "admin")
+	newUser(t, repos, "lena@test.com", "member")
+	counted, err := stores.Admin.Overview(ctx)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, counted.UserCount)
+}
