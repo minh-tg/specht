@@ -260,7 +260,7 @@ export interface paths {
     };
     /**
      * List API keys
-     * @description Lists the caller's key set with the secret masked.
+     * @description Lists a project's keys with the secret masked. Needs the manager or admin role on the project.
      */
     get: operations["listApiKeys"];
     put?: never;
@@ -270,8 +270,9 @@ export interface paths {
      *     in `raw_key`, and never again — later reads expose only the prefix and
      *     the last four characters.
      *
-     *     Reachable by an admin session, or by an API key that itself holds the
-     *     `admin` scope.
+     *     Needs the manager or admin role on the project, or an API key that
+     *     itself holds the `admin` scope for it. A person with no role on the
+     *     project, or with the member role, gets 403.
      */
     post: operations["createApiKey"];
     delete?: never;
@@ -290,7 +291,10 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** Revoke an API key */
+    /**
+     * Revoke an API key
+     * @description Needs the manager or admin role on the project.
+     */
     delete: operations["revokeApiKey"];
     options?: never;
     head?: never;
@@ -1594,6 +1598,34 @@ export interface components {
       created_at: string;
       /** Format: date-time */
       updated_at: string;
+      /**
+       * @description The signed-in caller's effective role on the project, including
+       *     roles conferred by team membership. A global admin is `admin`
+       *     everywhere. Legacy roles are reported as their modern equivalents.
+       *     Present only when reading a single project as a person, not for
+       *     API keys or in list responses.
+       * @enum {string}
+       */
+      role?: "admin" | "manager" | "member";
+      permissions?: components["schemas"]["ProjectPermissions"];
+    };
+    /**
+     * @description What the caller may do on the project, for showing and hiding controls.
+     *     The server checks the role again on every request.
+     */
+    ProjectPermissions: {
+      /** @description Ask for a waiver. Every project member. */
+      request_waiver: boolean;
+      /** @description Create */
+      manage_waivers: boolean;
+      /** @description Approve or reject waiver requests. */
+      approve_waivers: boolean;
+      /** @description Add and remove members */
+      manage_members: boolean;
+      /** @description Create */
+      manage_ci: boolean;
+      /** @description Change analysis state and reachability. */
+      triage: boolean;
     };
     CreateProjectRequest: {
       name: string;
