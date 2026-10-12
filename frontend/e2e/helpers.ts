@@ -84,3 +84,27 @@ export async function uiLogin(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/\/$/);
 }
+
+/** Files a waiver request for the project's first finding and returns that request's id. */
+export async function requestWaiver(
+  request: APIRequestContext,
+  token: string,
+  slug: string,
+  reason: string,
+): Promise<string> {
+  const headers = { Authorization: `Bearer ${token}` };
+  const list = await request.get(`/api/v1/projects/${slug}/findings`, { headers });
+  expect(list.ok(), await list.text()).toBeTruthy();
+  const findings = (await list.json()) as Array<{ id: string; }>;
+  expect(findings.length).toBeGreaterThan(0);
+  const res = await request.post(`/api/v1/projects/${slug}/waivers/requests`, {
+    headers,
+    data: {
+      target_ids: [findings[0]!.id],
+      reason,
+      expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+    },
+  });
+  expect(res.ok(), await res.text()).toBeTruthy();
+  return (await res.json()).id as string;
+}

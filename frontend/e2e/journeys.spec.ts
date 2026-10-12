@@ -9,6 +9,7 @@ import {
   FIXTURE_HIGH_NEW,
   FIXTURE_MEDIUM,
   ingestFixture,
+  requestWaiver,
   seedProject,
   uiLogin,
   uniq,
@@ -564,4 +565,47 @@ test("an admin overrides the severity floor and the project verdict follows", as
   await page.getByRole("button", { name: "Remove override for Severity floor" }).click();
   await expect(floor).toContainText("Default");
   await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
+});
+
+test("a manager approves a waiver request, the verdict passes, and revoking it blocks again", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("waivers");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
+  await requestWaiver(request, token, slug, "Not reachable from the public API.");
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings`);
+  await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
+
+  await page.getByRole("link", { name: "Waivers", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/${slug}/waivers$`));
+  await expect(page.getByRole("tab", { name: "Waiting 1" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByText("Not reachable from the public API.")).toBeVisible();
+
+  // Rejecting needs a note; approving does not.
+  await page.getByRole("button", { name: /^Reject / }).click();
+  await expect(page.getByRole("dialog", { name: "Reject this waiver?" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Reject", exact: true })).toBeDisabled();
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: /^Approve / }).click();
+  await page.getByLabel(/^Note/).fill("Fine until the image bump.");
+  await page.getByRole("button", { name: "Approve", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "Waiting 0" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "In force 1" })).toBeVisible();
+  await expect(page.getByText("PASSING", { exact: true })).toBeVisible();
+
+  await page.getByRole("tab", { name: "In force 1" }).click();
+  await expect(page).toHaveURL(/state=in_force/);
+  await expect(page.getByText("Fine until the image bump.")).toBeVisible();
+  await page.getByRole("button", { name: /^Revoke / }).click();
+  await expect(page.getByRole("tab", { name: "In force 0" })).toBeVisible();
+  await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
+
+  await page.getByRole("tab", { name: "Closed 1" }).click();
+  await expect(page.getByText(/^Revoked by /)).toBeVisible();
 });

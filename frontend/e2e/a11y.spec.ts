@@ -10,6 +10,7 @@ import {
   FIXTURE_HIGH_MEDIUM,
   FIXTURE_HIGH_NEW,
   ingestFixture,
+  requestWaiver,
   seedProject,
   uiLogin,
   uniq,
@@ -257,6 +258,19 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await page.getByRole("button", { name: "Override Severity floor" }).click();
   await expect(page.getByRole("combobox", { name: "Severity floor" })).toBeVisible();
   await audit(page, "project policy while overriding a setting");
+
+  // Waivers: the waiting list with a request in it, the decision dialog, and the other lists.
+  await requestWaiver(request, token, slug, "Not reachable from the public API.");
+  await page.goto(`/${slug}/waivers`);
+  await expect(page.getByRole("tab", { name: "Waiting 1" })).toBeVisible();
+  await audit(page, "project waivers");
+  await page.getByRole("button", { name: /^Approve / }).click();
+  await expect(page.getByRole("dialog", { name: "Approve this waiver?" })).toBeVisible();
+  await audit(page, "waiver decision dialog");
+  await page.keyboard.press("Escape");
+  await page.getByRole("tab", { name: "In force 0" }).click();
+  await expect(page.getByText("No waiver is letting a finding through.")).toBeVisible();
+  await audit(page, "project waivers, empty list");
 
   await page.goto("/teams");
   await page.getByRole("button", { name: "+ Create Team" }).click();
