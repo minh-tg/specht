@@ -898,7 +898,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List policy templates */
+    /**
+     * List policy templates
+     * @description Any signed-in person can read the list, so a project admin can pick a template to link. Changing templates stays with global admins.
+     */
     get: operations["listPolicyTemplates"];
     put?: never;
     /**

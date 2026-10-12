@@ -212,7 +212,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(sessionAdmin).Get("/api/v1/admin/status", h.GetAdminStatus)
 		r.With(sessionAdmin).Get("/api/v1/admin/retention/preview", h.PreviewRetention)
 		r.With(sessionAdmin).Post("/api/v1/admin/retention/purge", h.PurgeRetention)
-		r.With(sessionAdmin).Get("/api/v1/policy-templates", h.ListPolicyTemplates)
+		r.With(session).Get("/api/v1/policy-templates", h.ListPolicyTemplates)
 		r.With(sessionAdmin).Post("/api/v1/policy-templates", h.CreatePolicyTemplate)
 		r.With(sessionAdmin).Put("/api/v1/policy-templates/{id}", h.UpdatePolicyTemplate)
 		r.With(sessionAdmin).Delete("/api/v1/policy-templates/{id}", h.DeletePolicyTemplate)
