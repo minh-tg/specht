@@ -46,6 +46,7 @@ const (
 	EventAcceptInvite   = "invite.accept"
 	EventRevokeInvite   = "invite.revoke"
 	EventDeleteReport   = "report.delete"
+	EventUpdateWatcher  = "project.watcher.update"
 )
 
 // Outcome describes the success or failure of an audited operation.
