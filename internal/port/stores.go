@@ -1108,6 +1108,10 @@ type WatcherStore interface {
 	RecordFailure(ctx context.Context, errText string, ts time.Time) error
 	ResetFailure(ctx context.Context) error
 	GetProjectConfig(ctx context.Context, projectID string) (Project, error)
+	// UpdateProjectConfig sets the per-project watcher switch and interval; a
+	// nil argument leaves that setting unchanged. It returns ErrNotFound for
+	// an unknown project.
+	UpdateProjectConfig(ctx context.Context, projectID string, enabled *bool, intervalSeconds *int32) (Project, error)
 	GetProjectState(ctx context.Context, projectID string) (WatcherProjectState, error)
 	UpsertProjectState(ctx context.Context, projectID string, ts time.Time) error
 }

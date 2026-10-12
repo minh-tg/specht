@@ -132,6 +132,45 @@ func (q *Queries) ResetWatcherFailure(ctx context.Context) error {
 	return err
 }
 
+const updateProjectWatcherSettings = `-- name: UpdateProjectWatcherSettings :one
+UPDATE projects
+SET cve_watcher_enabled = COALESCE($1::boolean, cve_watcher_enabled),
+    cve_watcher_interval_seconds = COALESCE($2::int, cve_watcher_interval_seconds),
+    updated_at = NOW()
+WHERE id = $3
+RETURNING id, slug, name, cve_watcher_enabled, cve_watcher_interval_seconds
+`
+
+type UpdateProjectWatcherSettingsParams struct {
+	Enabled         pgtype.Bool `json:"enabled"`
+	IntervalSeconds pgtype.Int4 `json:"interval_seconds"`
+	ID              pgtype.UUID `json:"id"`
+}
+
+type UpdateProjectWatcherSettingsRow struct {
+	ID                        pgtype.UUID `json:"id"`
+	Slug                      string      `json:"slug"`
+	Name                      string      `json:"name"`
+	CveWatcherEnabled         bool        `json:"cve_watcher_enabled"`
+	CveWatcherIntervalSeconds int32       `json:"cve_watcher_interval_seconds"`
+}
+
+// Writes the per-project watcher switch and interval. A null argument leaves
+// that column as it is. The daemon reloads the project list every cycle, so
+// the change takes effect without a restart.
+func (q *Queries) UpdateProjectWatcherSettings(ctx context.Context, arg UpdateProjectWatcherSettingsParams) (UpdateProjectWatcherSettingsRow, error) {
+	row := q.db.QueryRow(ctx, updateProjectWatcherSettings, arg.Enabled, arg.IntervalSeconds, arg.ID)
+	var i UpdateProjectWatcherSettingsRow
+	err := row.Scan(
+		&i.ID,
+		&i.Slug,
+		&i.Name,
+		&i.CveWatcherEnabled,
+		&i.CveWatcherIntervalSeconds,
+	)
+	return i, err
+}
+
 const updateWatcherState = `-- name: UpdateWatcherState :exec
 INSERT INTO watcher_state (id, last_successful_poll_at)
 VALUES (1, $1::timestamptz)

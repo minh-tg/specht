@@ -47,6 +47,17 @@ SELECT id, slug, name, cve_watcher_enabled, cve_watcher_interval_seconds
 FROM projects
 WHERE id = $1;
 
+-- name: UpdateProjectWatcherSettings :one
+-- Writes the per-project watcher switch and interval. A null argument leaves
+-- that column as it is. The daemon reloads the project list every cycle, so
+-- the change takes effect without a restart.
+UPDATE projects
+SET cve_watcher_enabled = COALESCE(sqlc.narg(enabled)::boolean, cve_watcher_enabled),
+    cve_watcher_interval_seconds = COALESCE(sqlc.narg(interval_seconds)::int, cve_watcher_interval_seconds),
+    updated_at = NOW()
+WHERE id = sqlc.arg(id)
+RETURNING id, slug, name, cve_watcher_enabled, cve_watcher_interval_seconds;
+
 -- name: GetProjectWatcherState :one
 -- A project's own watcher watermark (per-project cutoff so disabling a
 -- project cannot lose advisories). Returns pgx.ErrNoRows when the project

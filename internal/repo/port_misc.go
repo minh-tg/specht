@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/minh-tg/specht/internal/db/sqlc"
 	"github.com/minh-tg/specht/internal/port"
 )
@@ -231,6 +232,31 @@ func (r *pgWatcherPort) GetProjectConfig(ctx context.Context, projectID string) 
 		return port.Project{}, err
 	}
 	row, err := r.inner.GetProjectConfig(ctx, pid)
+	if err != nil {
+		return port.Project{}, mappingErr(err)
+	}
+	return port.Project{
+		ID:                     toUUID(row.ID),
+		Slug:                   row.Slug,
+		Name:                   row.Name,
+		CveWatcherEnabled:      row.CveWatcherEnabled,
+		CveWatcherIntervalSecs: row.CveWatcherIntervalSeconds,
+	}, nil
+}
+
+func (r *pgWatcherPort) UpdateProjectConfig(ctx context.Context, projectID string, enabled *bool, intervalSeconds *int32) (port.Project, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.Project{}, err
+	}
+	arg := sqlc.UpdateProjectWatcherSettingsParams{ID: pid}
+	if enabled != nil {
+		arg.Enabled = pgtype.Bool{Bool: *enabled, Valid: true}
+	}
+	if intervalSeconds != nil {
+		arg.IntervalSeconds = pgtype.Int4{Int32: *intervalSeconds, Valid: true}
+	}
+	row, err := r.inner.UpdateProjectConfig(ctx, arg)
 	if err != nil {
 		return port.Project{}, mappingErr(err)
 	}
