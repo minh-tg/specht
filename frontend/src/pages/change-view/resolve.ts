@@ -76,6 +76,17 @@ export function fixAction(
   return null;
 }
 
+/**
+ * The fix as a sentence: the scanner's text as written, except that a suggestion such as
+ * "review src/db.ts" starts with a capital. Null when there is no fix to offer.
+ */
+export function fixSentence(
+  finding: { remediation?: FindingRemediation; suggestion?: FindingSuggestion; },
+): string | null {
+  const raw = fixAction(finding);
+  return raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : null;
+}
+
 /** Human name for the layer that supplied the effective policy floor. */
 export function floorSourceLabel(source: string): string {
   switch (source) {

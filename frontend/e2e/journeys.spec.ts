@@ -377,20 +377,27 @@ test("a CI link opens the change view with only what the change introduced", asy
 
   // The CI check links by commit; a 7-character prefix is enough.
   await page.goto(`/${slug}/changes/${CHANGE_SHA.slice(0, 7)}`);
-  await expect(page.getByRole("heading", { name: "Change 2222222" })).toBeVisible();
   await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
-  await expect(page.getByText("1 finding blocks this change")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("1 finding blocks this change.");
 
   // Only the introduced finding is listed as a blocker; the baseline debt is folded away.
   const introduced = page.getByRole("region", { name: "Findings introduced by this change" });
-  await expect(introduced.getByRole("link", { name: NEW_TITLE })).toBeVisible();
-  await expect(introduced.getByRole("link", { name: HIGH_TITLE })).toHaveCount(0);
+  await expect(introduced.getByRole("button", { name: NEW_TITLE, exact: true })).toBeVisible();
+  await expect(introduced.getByRole("button", { name: HIGH_TITLE, exact: true })).toHaveCount(0);
 
   await page.getByText(/1 other finding blocks this project/).click();
   await expect(page.getByRole("link", { name: HIGH_TITLE })).toBeVisible();
 
+  // Ticking a fix tracks progress and leaves the verdict alone: only a scan changes it.
+  await expect(page.getByText("0 of 1 handled")).toBeVisible();
+  await introduced.getByRole("checkbox", { name: `I've done this: ${NEW_TITLE}` }).check();
+  await expect(page.getByText("1 of 1 handled")).toBeVisible();
+  await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
+  await expect(page.getByText("Waiting for the next scan")).toBeVisible();
+  await introduced.getByRole("checkbox", { name: `I've done this: ${NEW_TITLE}` }).uncheck();
+
   // Deciding is one click away.
-  await introduced.getByRole("link", { name: NEW_TITLE }).click();
+  await introduced.getByRole("link", { name: "Open the full finding" }).click();
   await expect(page).toHaveURL(new RegExp(`/${slug}/findings/`));
   await expect(page.getByRole("heading", { name: "Triage" })).toBeVisible();
 });
