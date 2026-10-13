@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Browser journeys: boots the real release artifact — Go server with the
 # embedded React build — against a throwaway PostgreSQL, bootstraps the
-# journey admin (two phases, like the Go harness: register first, then
-# restart with ADMIN_EMAILS so bootstrapAdmins promotes the account), then
+# journey admin (two phases, like the Go harness: explicitly enable signup
+# to register first, then restart with ADMIN_EMAILS so bootstrap promotes it), then
 # drives the page journeys in Chromium via Playwright.
 #
 # Requirements: Docker, Go, pnpm, curl, and a Playwright Chromium
@@ -77,6 +77,7 @@ start_server() {
     JWT_SECRET="$(head -c 48 /dev/urandom | base64)" \
     SERVER_ADDR="127.0.0.1:$PORT" \
     DB_MIGRATE=true \
+    REGISTRATION_ENABLED=true \
     LOG_LEVEL=warn \
     RATE_LIMIT_LOGIN_PER_MINUTE=100000 \
     RATE_LIMIT_LOGIN_BURST=100000 \

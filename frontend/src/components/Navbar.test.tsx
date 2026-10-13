@@ -1,5 +1,6 @@
+import { queryKeys } from "@/api/hooks";
 import { AuthContext, type AuthContextValue } from "@/auth/context";
-import { createTestQueryClient } from "@/test/utils";
+import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -33,67 +34,124 @@ let meCalls: string[];
 let meRole: "admin" | "member";
 let meSettled: boolean;
 let mePending: boolean;
+let capabilitiesMode: "open" | "closed" | "pending" | "error";
+let capabilitiesCalls: string[];
 
 beforeEach(() => {
   meCalls = [];
   meRole = "admin";
   meSettled = false;
   mePending = false;
+  capabilitiesMode = "open";
+  capabilitiesCalls = [];
   globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
     const url = String(input);
+    if (url.endsWith("/api/v1/capabilities")) {
+      capabilitiesCalls.push(url);
+      if (capabilitiesMode === "pending") {
+        // Never resolves: keeps the public capabilities query loading.
+        return await new Promise<Response>(() => {});
+      }
+      if (capabilitiesMode === "error") {
+        return jsonResponse({ error: { code: "unavailable", message: "Unavailable" } }, 503);
+      }
+      return jsonResponse({
+        registration: { enabled: capabilitiesMode === "open" },
+        sso: { enabled: false },
+        setup: { required: false },
+        version: "test",
+        commit: "none",
+      });
+    }
+    if (url.endsWith("/api/v1/projects")) return jsonResponse([]);
     if (url.includes("/api/v1/me")) {
       meCalls.push(url);
       if (mePending) {
         // Never resolves: keeps the query in its loading state.
         return await new Promise<Response>(() => {});
       }
-      return {
-        ok: true,
-        json: () => {
-          meSettled = true;
-          return Promise.resolve({
-            id: "user-1",
-            email: "user@example.com",
-            role: meRole,
-            created_at: "2025-01-01T00:00:00Z",
-          });
-        },
-      } as Response;
+      meSettled = true;
+      return jsonResponse({
+        id: "user-1",
+        email: "user@example.com",
+        role: meRole,
+        created_at: "2025-01-01T00:00:00Z",
+      });
     }
-    return { ok: true, json: () => Promise.resolve(undefined) } as Response;
+    return jsonResponse({});
   });
 });
 
 function renderNavbar(auth: AuthContextValue, path = "/") {
   const queryClient = createTestQueryClient();
-  return render(
-    <QueryClientProvider client={queryClient}>
-      <AuthContext.Provider value={auth}>
-        <MemoryRouter initialEntries={[path]}>
-          <Navbar />
-          <Routes>
-            <Route path="/ingest" element={<p>Ingest page</p>} />
-            <Route path="/api-keys" element={<p>API keys page</p>} />
-          </Routes>
-        </MemoryRouter>
-      </AuthContext.Provider>
-    </QueryClientProvider>,
-  );
+  return {
+    queryClient,
+    ...render(
+      <QueryClientProvider client={queryClient}>
+        <AuthContext.Provider value={auth}>
+          <MemoryRouter initialEntries={[path]}>
+            <Navbar />
+            <Routes>
+              <Route path="/ingest" element={<p>Ingest page</p>} />
+              <Route path="/api-keys" element={<p>API keys page</p>} />
+            </Routes>
+          </MemoryRouter>
+        </AuthContext.Provider>
+      </QueryClientProvider>,
+    ),
+  };
 }
 
 describe("Navbar", () => {
-  it("offers public sign-in and registration links when signed out", () => {
+  it("offers public registration when capabilities explicitly enable it", async () => {
     renderNavbar(signedOut);
 
-    expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute("href", "/register");
     expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
+    expect(await screen.findByRole("link", { name: "Register" })).toHaveAttribute(
+      "href",
+      "/register",
+    );
     expect(screen.queryByRole("link", { name: "API Keys" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Logout" })).not.toBeInTheDocument();
   });
 
-  it("does not request the account profile for signed-out visitors", () => {
-    renderNavbar(signedOut);
+  it("hides registration when capabilities disable it", async () => {
+    capabilitiesMode = "closed";
+    const { queryClient } = renderNavbar(signedOut);
 
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
+    await waitFor(() => {
+      expect(queryClient.getQueryState(queryKeys.capabilities())?.status).toBe("success");
+    });
+    expect(screen.queryByRole("link", { name: "Register" })).not.toBeInTheDocument();
+  });
+
+  it("hides registration while capabilities are loading", () => {
+    capabilitiesMode = "pending";
+    const { queryClient } = renderNavbar(signedOut);
+
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
+    expect(queryClient.getQueryState(queryKeys.capabilities())?.fetchStatus).toBe("fetching");
+    expect(screen.queryByRole("link", { name: "Register" })).not.toBeInTheDocument();
+  });
+
+  it("hides registration when capabilities fail to load", async () => {
+    capabilitiesMode = "error";
+    const { queryClient } = renderNavbar(signedOut);
+
+    expect(screen.getByRole("link", { name: "Sign in" })).toHaveAttribute("href", "/login");
+    await waitFor(() => {
+      expect(queryClient.getQueryState(queryKeys.capabilities())?.status).toBe("error");
+    });
+    expect(screen.queryByRole("link", { name: "Register" })).not.toBeInTheDocument();
+  });
+
+  it("does not request the account profile for signed-out visitors", async () => {
+    const { queryClient } = renderNavbar(signedOut);
+
+    await waitFor(() => {
+      expect(queryClient.getQueryState(queryKeys.capabilities())?.status).toBe("success");
+    });
     expect(meCalls).toHaveLength(0);
   });
 
@@ -106,6 +164,7 @@ describe("Navbar", () => {
     await waitFor(() => {
       expect(screen.getByRole("link", { name: "API Keys" })).toHaveAttribute("href", "/api-keys");
     });
+    expect(capabilitiesCalls).toHaveLength(0);
     expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/admin");
 
     const logoutButton = screen.getByRole("button", { name: "Logout" });
@@ -139,10 +198,10 @@ describe("Navbar", () => {
     expect(email).toHaveClass("truncate", "max-w-[10rem]", "hidden", "sm:inline");
   });
 
-  it("marks the active link with aria-current", () => {
+  it("marks the active link with aria-current", async () => {
     renderNavbar(signedOut, "/register");
 
-    expect(screen.getByRole("link", { name: "Register" })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: "Register" })).toHaveAttribute(
       "aria-current",
       "page",
     );

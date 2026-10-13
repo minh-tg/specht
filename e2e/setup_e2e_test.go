@@ -135,11 +135,30 @@ func (s *freshServer) setupRequired(t *testing.T) (bool, http.Header) {
 
 var setupTokenInLog = regexp.MustCompile(`setup_token=(\S+)`)
 
-// TestE2E_FirstRunSetup walks a fresh install: the capabilities say setup is
-// needed, a wrong token is refused, the logged token creates the admin, and the
-// door closes behind it.
+// TestE2E_FirstRunSetup walks a fresh install with registration left unset:
+// signup is closed, but the setup token still creates the first administrator.
 func TestE2E_FirstRunSetup(t *testing.T) {
 	srv := startFreshServer(t, "specht_setup_logged")
+
+	status, _, raw := srv.do(t, http.MethodGet, "/api/v1/capabilities", "", nil)
+	require.Equal(t, http.StatusOK, status, string(raw))
+	var capabilities struct {
+		Registration struct {
+			Enabled bool `json:"enabled"`
+		} `json:"registration"`
+		Setup struct {
+			Required bool `json:"required"`
+		} `json:"setup"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &capabilities), string(raw))
+	require.False(t, capabilities.Registration.Enabled,
+		"capabilities must reflect the closed default so the UI hides signup")
+	require.True(t, capabilities.Setup.Required)
+
+	status, _, raw = srv.do(t, http.MethodPost, "/api/v1/auth/register", "", map[string]any{
+		"email": "walkin@example.com", "password": "correct-horse-battery",
+	})
+	require.Equal(t, http.StatusForbidden, status, string(raw))
 
 	required, header := srv.setupRequired(t)
 	require.True(t, required, "a server with no accounts asks for setup")
@@ -151,11 +170,11 @@ func TestE2E_FirstRunSetup(t *testing.T) {
 
 	account := map[string]any{"email": "root@example.com", "password": "correct-horse-battery", "display_name": "Root"}
 
-	status, _, _ := srv.do(t, http.MethodPost, "/api/v1/setup", "", merge(account, "token", "not-the-token"))
+	status, _, _ = srv.do(t, http.MethodPost, "/api/v1/setup", "", merge(account, "token", "not-the-token"))
 	require.Equal(t, http.StatusForbidden, status)
 	status, _, _ = srv.do(t, http.MethodPost, "/api/v1/setup", "", merge(account, "token", ""))
 	require.Equal(t, http.StatusForbidden, status)
-	status, _, raw := srv.do(t, http.MethodPost, "/api/v1/setup", "", merge(map[string]any{"email": "root@example.com", "password": "short"}, "token", token))
+	status, _, raw = srv.do(t, http.MethodPost, "/api/v1/setup", "", merge(map[string]any{"email": "root@example.com", "password": "short"}, "token", token))
 	require.Equal(t, http.StatusBadRequest, status, string(raw))
 
 	status, _, raw = srv.do(t, http.MethodPost, "/api/v1/setup", "", merge(account, "token", token))
@@ -183,6 +202,12 @@ func TestE2E_FirstRunSetup(t *testing.T) {
 	required, header = srv.setupRequired(t)
 	require.False(t, required)
 	require.Equal(t, "public, max-age=60", header.Get("Cache-Control"))
+	status, _, raw = srv.do(t, http.MethodGet, "/api/v1/capabilities", "", nil)
+	require.Equal(t, http.StatusOK, status, string(raw))
+	require.NoError(t, json.Unmarshal(raw, &capabilities), string(raw))
+	require.False(t, capabilities.Registration.Enabled,
+		"signup remains closed after first-run setup completes")
+	require.False(t, capabilities.Setup.Required)
 }
 
 // TestE2E_FirstRunSetupWithOperatorToken covers scripted installs: the token

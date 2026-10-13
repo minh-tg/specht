@@ -1,4 +1,4 @@
-import { useMe } from "@/api/hooks";
+import { useCapabilities, useMe } from "@/api/hooks";
 import { useAuth } from "@/auth/useAuth";
 import { BrandMark } from "@/components/BrandMark";
 import { CommandPalette } from "@/components/CommandPalette";
@@ -10,6 +10,23 @@ function navLinkClass({ isActive }: { isActive: boolean; }): string {
   return isActive
     ? "text-foreground text-sm font-medium py-1"
     : "text-muted-foreground hover:text-foreground text-sm py-1";
+}
+
+function SignedOutLinks() {
+  const capabilities = useCapabilities();
+
+  return (
+    <>
+      {capabilities.data?.registration.enabled === true && (
+        <NavLink to="/register" className={navLinkClass}>
+          Register
+        </NavLink>
+      )}
+      <NavLink to="/login" className={navLinkClass}>
+        Sign in
+      </NavLink>
+    </>
+  );
 }
 
 function SignedInLinks({ email, onLogout }: { email: string | null; onLogout: () => void; }) {
@@ -67,16 +84,7 @@ export function Navbar() {
           <ThemeToggle />
           {auth.token
             ? <SignedInLinks email={auth.email} onLogout={auth.logout} />
-            : (
-              <>
-                <NavLink to="/register" className={navLinkClass}>
-                  Register
-                </NavLink>
-                <NavLink to="/login" className={navLinkClass}>
-                  Sign in
-                </NavLink>
-              </>
-            )}
+            : <SignedOutLinks />}
         </div>
       </nav>
     </header>

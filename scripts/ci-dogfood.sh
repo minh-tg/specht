@@ -4,10 +4,11 @@
 # gates, and verified-fixed closure then run on real data every pipeline.
 #
 # The server must be running with DB_MIGRATE=true and ADMIN_EMAILS
-# including SPECHT_ADMIN_EMAIL. Bootstrap promotes only accounts that
-# exist, so register first, then (re)start the server:
+# including SPECHT_ADMIN_EMAIL. Signup is closed by default. If bootstrapping
+# through public registration, explicitly enable it for account creation, then
+# restart with ADMIN_EMAILS:
 #
-#   1. start server (DB_MIGRATE=true)
+#   1. start server (DB_MIGRATE=true REGISTRATION_ENABLED=true)
 #   2. POST /api/v1/auth/register {email, password}
 #   3. restart server with ADMIN_EMAILS=<email>
 #   4. run this script

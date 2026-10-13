@@ -74,9 +74,8 @@ type Server struct {
 	// dev UX; self-host production enables it via RATE_LIMIT_ENABLED.
 	RateLimit RateLimit
 	// RegistrationDisabled turns off self-service account creation
-	// (REGISTRATION_ENABLED=false). It defaults to open because the first
-	// administrator has to register before anyone can be promoted; SSO-only
-	// and locked-down deployments close it once their admins exist.
+	// (REGISTRATION_ENABLED=false). It defaults to closed; first-run setup
+	// creates the initial administrator, and invite links remain available.
 	RegistrationDisabled bool
 	// IngestConcurrency caps report ingests processed at once; zero leaves
 	// the server's built-in default.
@@ -310,15 +309,16 @@ func loadWatcher(s *Server) error {
 // reported when the watcher is enabled.
 func Load() (*Server, error) {
 	s := &Server{
-		Addr:          strOr(os.Getenv("SERVER_ADDR"), DefaultServerAddr),
-		DBURL:         os.Getenv("DATABASE_URL"),
-		DBMigrate:     strOr(os.Getenv("DB_MIGRATE"), "true") == "true",
-		CORSOrigins:   os.Getenv("CORS_ORIGINS"),
-		JWTSecret:     os.Getenv("JWT_SECRET"),
-		LogLevel:      strOr(os.Getenv("LOG_LEVEL"), "info"),
-		InventoryTTL:  DefaultInventoryTTL,
-		SweepInterval: DefaultSweepInterval,
-		SSO:           loadSSO(),
+		Addr:                 strOr(os.Getenv("SERVER_ADDR"), DefaultServerAddr),
+		DBURL:                os.Getenv("DATABASE_URL"),
+		DBMigrate:            strOr(os.Getenv("DB_MIGRATE"), "true") == "true",
+		CORSOrigins:          os.Getenv("CORS_ORIGINS"),
+		JWTSecret:            os.Getenv("JWT_SECRET"),
+		LogLevel:             strOr(os.Getenv("LOG_LEVEL"), "info"),
+		InventoryTTL:         DefaultInventoryTTL,
+		SweepInterval:        DefaultSweepInterval,
+		SSO:                  loadSSO(),
+		RegistrationDisabled: true,
 	}
 
 	if v := os.Getenv("TRUSTED_PROXIES"); v != "" {

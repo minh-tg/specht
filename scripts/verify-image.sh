@@ -94,7 +94,9 @@ done
 docker exec "$DB_CONTAINER" pg_isready -U specht >/dev/null 2>&1 || fail "postgres did not become ready"
 
 echo "== boot (phase 1: register) ==" >&2
-start_app
+# This fixture tests public signup, so it opts in rather than relying on the
+# server's closed-by-default setting.
+start_app REGISTRATION_ENABLED=true
 wait_healthy
 api POST /api/v1/auth/register \
   "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" || fail "register request failed"

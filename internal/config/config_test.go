@@ -2,6 +2,7 @@ package config
 
 import (
 	"net/netip"
+	"os"
 	"testing"
 	"time"
 
@@ -19,6 +20,7 @@ func TestDefaults(t *testing.T) {
 	t.Setenv("TRUSTED_PROXIES", "")
 	t.Setenv("LIFECYCLE_SWEEP_INTERVAL", "")
 	t.Setenv("CORS_ORIGINS", "")
+	t.Setenv("REGISTRATION_ENABLED", "")
 
 	cfg, err := Load()
 	assert.NoError(t, err)
@@ -33,6 +35,7 @@ func TestDefaults(t *testing.T) {
 	assert.Equal(t, DefaultOSVVulnEndpoint, cfg.Watcher.OSVVulnEndpoint)
 	assert.Empty(t, cfg.TrustedProxies, "forwarded headers are never trusted by default")
 	assert.False(t, cfg.SSO.AllowUserInfoOnly, "userinfo-only OIDC downgrade is disabled by default")
+	assert.True(t, cfg.RegistrationDisabled, "self-service registration is closed by default")
 }
 
 func TestLoad_TrustedProxies(t *testing.T) {
@@ -216,13 +219,32 @@ func TestLoad_SSOGroupMappingDefaults(t *testing.T) {
 	assert.Empty(t, cfg.SSO.AdminGroups, "empty admin groups disable elevation")
 }
 
-func TestLoad_RegistrationIsOpenByDefault(t *testing.T) {
-	t.Setenv("REGISTRATION_ENABLED", "")
+func TestLoad_RegistrationDefaultsClosed(t *testing.T) {
+	t.Run("unset", func(t *testing.T) {
+		value, wasSet := os.LookupEnv("REGISTRATION_ENABLED")
+		require.NoError(t, os.Unsetenv("REGISTRATION_ENABLED"))
+		t.Cleanup(func() {
+			if wasSet {
+				assert.NoError(t, os.Setenv("REGISTRATION_ENABLED", value))
+			} else {
+				assert.NoError(t, os.Unsetenv("REGISTRATION_ENABLED"))
+			}
+		})
 
-	cfg, err := Load()
+		cfg, err := Load()
 
-	assert.NoError(t, err)
-	assert.False(t, cfg.RegistrationDisabled, "the first admin has to register, so the default stays open")
+		require.NoError(t, err)
+		assert.True(t, cfg.RegistrationDisabled)
+	})
+
+	t.Run("empty", func(t *testing.T) {
+		t.Setenv("REGISTRATION_ENABLED", "")
+
+		cfg, err := Load()
+
+		require.NoError(t, err)
+		assert.True(t, cfg.RegistrationDisabled)
+	})
 }
 
 func TestLoad_RegistrationCanBeDisabled(t *testing.T) {

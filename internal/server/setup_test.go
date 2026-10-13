@@ -16,7 +16,11 @@ import (
 
 func postSetup(t *testing.T, mock *mockUsecases, body string) *httptest.ResponseRecorder {
 	t.Helper()
-	router := NewRouter(RouterConfig{Usecases: mock, JWTAuth: testJWTAuth})
+	router := NewRouter(RouterConfig{
+		Usecases:             mock,
+		JWTAuth:              testJWTAuth,
+		RegistrationDisabled: true,
+	})
 	req := httptest.NewRequest("POST", "/api/v1/setup", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = "192.0.2.77:1234"
