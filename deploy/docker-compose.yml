@@ -47,9 +47,9 @@ services:
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # First-run setup token; empty makes the server log a random one.
       SETUP_TOKEN: ${SETUP_TOKEN:-}
-      # Open so the first admin can register; set to false afterwards, and for
-      # SSO-only deployments.
-      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
+      # Self-service signup is closed by default. First-run setup creates the
+      # initial admin; set true only when open registration is intended.
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-false}
       TRUSTED_PROXIES: ${TRUSTED_PROXIES:-}
       # Rate limiting: on by default in compose (self-host is internet-facing
       # until proven otherwise). Dev `go run` stays unlimited unless enabled.

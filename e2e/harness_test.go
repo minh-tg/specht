@@ -229,6 +229,9 @@ func startServer(adminEmails string) error {
 			"SERVER_ADDR="+addr,
 			"LOG_LEVEL=info",
 			"DB_MIGRATE=true",
+			// This shared API suite exercises self-service registration;
+			// default-closed onboarding is covered by the fresh-server tests.
+			"REGISTRATION_ENABLED=true",
 			// Sweep every second so expiry business processes are
 			// observable in tests instead of waiting out 5 minutes.
 			"LIFECYCLE_SWEEP_INTERVAL=1s",
@@ -336,6 +339,7 @@ func cleanEnv(overrides ...string) []string {
 		"RATE_LIMIT_LOGIN_PER_MINUTE": true, "RATE_LIMIT_LOGIN_BURST": true,
 		"WATCHER_ENABLE": true, "API_URL": true, "API_KEY": true,
 		"MCP_ALLOW_MUTATIONS": true, "SETUP_TOKEN": true,
+		"REGISTRATION_ENABLED": true,
 		// Fake-wired endpoints: developer or CI exports must never leak
 		// into the experiment (the fakes are the only authority).
 		"WATCHER_OSV_ENDPOINT": true, "WATCHER_OSV_VULN_ENDPOINT": true,

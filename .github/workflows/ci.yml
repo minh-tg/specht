@@ -522,7 +522,7 @@ jobs:
           export JWT_SECRET
           echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           go build -o /tmp/specht-ci ./cmd/server
-          DB_MIGRATE=true /tmp/specht-ci >> /tmp/specht-ci.log 2>&1 &
+          DB_MIGRATE=true REGISTRATION_ENABLED=true /tmp/specht-ci >> /tmp/specht-ci.log 2>&1 &
           for _ in $(seq 1 30); do
             curl -sf http://127.0.0.1:8080/api/v1/health && break
             sleep 2
