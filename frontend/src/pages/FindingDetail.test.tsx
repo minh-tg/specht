@@ -854,7 +854,7 @@ describe("FindingDetail history", () => {
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
     expect(screen.getByText(/regression/i)).toBeInTheDocument();
-    expect(screen.getByText(/fixed.*reopened/)).toBeInTheDocument();
+    expect(screen.getByText(/Fixed.*Reopened/)).toBeInTheDocument();
   });
 
   it("states explicitly when no history exists", async () => {

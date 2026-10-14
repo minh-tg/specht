@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   confidenceLabel,
   eventTypeLabel,
+  eventValueLabel,
   locationLineRange,
   locationSubjectLabel,
   parseSourceLink,
@@ -105,5 +106,27 @@ describe("eventTypeLabel", () => {
   it("renders unknown for missing input", () => {
     expect(eventTypeLabel(undefined)).toBe("Unknown");
     expect(eventTypeLabel("")).toBe("Unknown");
+  });
+});
+
+describe("eventValueLabel", () => {
+  it("names triage states in words for triage events", () => {
+    expect(eventValueLabel("analysis_changed", "in_triage")).toBe("In triage");
+    expect(eventValueLabel("analysis_changed", "false_positive")).toBe("False positive");
+    expect(eventValueLabel("bulk_triage_applied", "unanalyzed")).toBe("Not triaged");
+  });
+
+  it("names scan states in words for lifecycle events", () => {
+    expect(eventValueLabel("state_changed", "reopened")).toBe("Reopened");
+    expect(eventValueLabel("regression", "fixed")).toBe("Fixed");
+  });
+
+  it("never echoes an unknown value of a known kind", () => {
+    expect(eventValueLabel("analysis_changed", "<script>")).toBe("Unknown");
+  });
+
+  it("leaves the value of any other event alone", () => {
+    expect(eventValueLabel("requested", "pending")).toBe("pending");
+    expect(eventValueLabel(undefined, "x")).toBe("x");
   });
 });

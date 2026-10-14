@@ -5,7 +5,7 @@ import { SkeletonLines } from "@/components/SkeletonLines";
 import { EMPTY_VALUE, formatDateTime } from "@/lib/format";
 import type { FindingEvent } from "@/types/api";
 import type { ReactNode } from "react";
-import { eventTypeLabel } from "./format";
+import { eventTypeLabel, eventValueLabel } from "./format";
 
 /** Lifecycle event history for one finding. */
 export function HistorySection({
@@ -34,8 +34,14 @@ export function HistorySection({
             <span className="font-medium">{eventTypeLabel(event.event_type)}</span>
             {event.old_value != null || event.new_value != null
               ? (
-                <span className="text-muted-foreground font-mono text-xs">
-                  {event.old_value || EMPTY_VALUE} → {event.new_value || EMPTY_VALUE}
+                <span className="text-muted-foreground text-xs">
+                  {event.old_value
+                    ? eventValueLabel(event.event_type, event.old_value)
+                    : EMPTY_VALUE}
+                  {" → "}
+                  {event.new_value
+                    ? eventValueLabel(event.event_type, event.new_value)
+                    : EMPTY_VALUE}
                 </span>
               )
               : null}
