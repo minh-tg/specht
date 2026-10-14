@@ -1,3 +1,4 @@
+import { APIError } from "@/api/client";
 import { useProject, useProjectRole } from "@/api/hooks";
 import { VerdictBand } from "@/components/VerdictBand";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
@@ -49,8 +50,29 @@ export function ProjectLayout() {
       : `${slug} · Findings`,
   );
 
-  const { data: project } = useProject(slug ?? "");
+  const { data: project, error: projectError } = useProject(slug ?? "");
   const { isAdmin } = useProjectRole(slug ?? "");
+
+  // The server answers 403 for a project the person cannot see and for one that does not exist, so
+  // the page says both at once and offers no tabs that would each fail the same way.
+  if (
+    projectError instanceof APIError && (projectError.status === 403 || projectError.status === 404)
+  ) {
+    return (
+      <div className="mx-auto max-w-5xl px-4 py-8">
+        <h1 className="text-2xl font-bold">You cannot open this project</h1>
+        <p className="text-muted-foreground mt-2 max-w-[60ch]">
+          The project does not exist or you are not a member. Ask a project admin to add you.
+        </p>
+        <Link
+          to="/"
+          className="text-action mt-4 inline-block text-sm underline underline-offset-4"
+        >
+          Back to projects
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
