@@ -217,8 +217,8 @@ instead; it is read from standard input and never printed. A deactivated
 account stays deactivated, and the command says so. `grant-admin` makes the
 account a global admin; a session the person already has picks the role up at
 the next sign-in. Neither command touches the seeded `system@specht.local`
-account. Anyone signed in can change their own password with
-`PUT /api/v1/me/password`.
+account. Anyone signed in can change their own password, and the name others
+see, on the Profile page (the API is `PUT /api/v1/me/password`).
 
 ### Changing or deactivating an account
 
