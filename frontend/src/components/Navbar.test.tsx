@@ -173,6 +173,20 @@ describe("Navbar", () => {
     expect(logout).toHaveBeenCalledOnce();
   });
 
+  it("links to the profile page for every signed-in person, members included", async () => {
+    meRole = "member";
+    renderNavbar(signedIn());
+
+    expect(screen.getByRole("link", { name: "Profile" })).toHaveAttribute("href", "/profile");
+    await waitFor(() => expect(meSettled).toBe(true));
+    expect(screen.getByRole("link", { name: "Profile" })).toBeInTheDocument();
+  });
+
+  it("does not offer the profile page to a signed-out visitor", () => {
+    renderNavbar(signedOut);
+    expect(screen.queryByRole("link", { name: "Profile" })).not.toBeInTheDocument();
+  });
+
   it("hides API keys from members", async () => {
     meRole = "member";
     renderNavbar(signedIn());

@@ -43,6 +43,9 @@ function SignedInLinks({ email, onLogout }: { email: string | null; onLogout: ()
           {email}
         </span>
       )}
+      <NavLink to="/profile" className={navLinkClass}>
+        Profile
+      </NavLink>
       <NavLink to="/teams" className={navLinkClass}>
         Teams
       </NavLink>
