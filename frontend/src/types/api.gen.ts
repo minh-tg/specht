@@ -3591,7 +3591,10 @@ export interface operations {
   };
   listApiKeys: {
     parameters: {
-      query?: never;
+      query: {
+        /** @description The slug of the project the key belongs to. */
+        project: string;
+      };
       header?: never;
       path?: never;
       cookie?: never;
@@ -3641,7 +3644,10 @@ export interface operations {
   };
   revokeApiKey: {
     parameters: {
-      query?: never;
+      query: {
+        /** @description The slug of the project the key belongs to. */
+        project: string;
+      };
       header?: never;
       path: {
         /** @description Resource identifier. */
