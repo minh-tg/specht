@@ -8,6 +8,7 @@ import {
   useVersion,
 } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
+import { ErrorState } from "@/components/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   githubActionsSnippet,
@@ -80,7 +81,12 @@ export function ProjectSetup() {
   const { slug = "" } = useParams<{ slug: string; }>();
   const queryClient = useQueryClient();
   const { data: me, isLoading: meLoading } = useMe();
-  const { data: project, isLoading: projectLoading } = useProject(slug);
+  const {
+    data: project,
+    isLoading: projectLoading,
+    isError: projectError,
+    refetch: refetchProject,
+  } = useProject(slug);
   const { data: serverVersion, isLoading: versionLoading, isError: versionError } = useVersion();
 
   const createKey = useCreateApiKey();
@@ -134,14 +140,15 @@ export function ProjectSetup() {
     );
   }
 
-  if (!project) {
+  if (projectError || !project) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="mb-6 text-2xl font-bold">Project not found</h1>
-        <p className="text-muted-foreground text-sm">
-          There is no project with this address, or you don&apos;t have access to it.
-        </p>
-        <Link to="/" className={`${LINK_CLASS} mt-2 inline-block`}>Back to projects</Link>
+      <div className="mx-auto max-w-2xl space-y-4 px-4 py-8">
+        <ErrorState
+          title="Could not load this project."
+          detail="There is no project with this address, or you don't have access to it."
+          onRetry={() => void refetchProject()}
+        />
+        <Link to="/" className={`${LINK_CLASS} inline-block`}>Back to projects</Link>
       </div>
     );
   }
