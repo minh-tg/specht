@@ -68,6 +68,13 @@ export function useCommands(): Command[] {
       run: go("/profile"),
     });
     list.push({ id: "go:teams", group: "Go to", label: "Teams", run: go("/teams") });
+    list.push({
+      id: "go:keys",
+      group: "Go to",
+      label: "API keys",
+      keywords: "tokens",
+      run: go("/api-keys"),
+    });
     if (isAdmin) {
       list.push({ id: "go:new", group: "Go to", label: "New project", run: go("/projects/new") });
       list.push({
@@ -76,13 +83,6 @@ export function useCommands(): Command[] {
         label: "Admin",
         keywords: "people server retention",
         run: go("/admin"),
-      });
-      list.push({
-        id: "go:keys",
-        group: "Go to",
-        label: "API keys",
-        keywords: "tokens",
-        run: go("/api-keys"),
       });
     }
 

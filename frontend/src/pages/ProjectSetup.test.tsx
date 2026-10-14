@@ -10,6 +10,7 @@ import { ProjectSetup } from "./ProjectSetup";
 const RAW_KEY = "sk-live-0123456789abcdef";
 
 let meRole: "admin" | "member" = "admin";
+let managesProject = true;
 let projectStatus = 200;
 let versionStatus = 200;
 let versionPending = false;
@@ -26,6 +27,7 @@ const VERSION_COMMIT = "4f93c32a1b2c3d4e5f60718293a4b5c6d7e8f901";
 
 beforeEach(() => {
   meRole = "admin";
+  managesProject = true;
   projectSlug = "acme";
   statsFailing = false;
   projectStatus = 200;
@@ -65,6 +67,7 @@ beforeEach(() => {
         description: null,
         created_at: "",
         updated_at: "",
+        permissions: projectPermissions(),
       });
     }
     if (url === "/api/v1/version") {
@@ -99,6 +102,18 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+function projectPermissions() {
+  const manageCI = meRole === "admin" || managesProject;
+  return {
+    request_waiver: true,
+    manage_waivers: manageCI,
+    approve_waivers: meRole === "admin",
+    manage_members: manageCI,
+    manage_ci: manageCI,
+    triage: manageCI,
+  };
+}
+
 function renderPage() {
   const qc = createTestQueryClient();
   lastClient = qc;
@@ -122,12 +137,28 @@ function step(name: string): HTMLElement {
 }
 
 describe("ProjectSetup", () => {
-  it("tells members that only administrators can create projects", async () => {
+  it("lets a member who manages the project set up its CI", async () => {
     meRole = "member";
+    managesProject = true;
     renderPage();
 
-    expect(await screen.findByText("Only administrators can set up CI for a project."))
+    expect(await screen.findByRole("heading", { name: "Set up CI for Acme API" }))
       .toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create key" })).toBeInTheDocument();
+  });
+
+  it("tells a person who does not manage the project that only its managers can set up CI", async () => {
+    meRole = "member";
+    managesProject = false;
+    renderPage();
+
+    expect(
+      await screen.findByText(
+        "Only project managers and administrators can set up CI for this project.",
+      ),
+    )
+      .toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create key" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /back to projects/i })).toHaveAttribute("href", "/");
   });
 
@@ -182,6 +213,7 @@ describe("ProjectSetup", () => {
           description: null,
           created_at: "",
           updated_at: "",
+          permissions: projectPermissions(),
         });
       }
       if (url === "/api/v1/projects/acme/stats") return jsonResponse(stats);

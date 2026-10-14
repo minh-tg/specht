@@ -165,7 +165,7 @@ describe("Navbar", () => {
       expect(screen.getByRole("link", { name: "API keys" })).toHaveAttribute("href", "/api-keys");
     });
     expect(capabilitiesCalls).toHaveLength(0);
-    expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/admin");
+    expect(await screen.findByRole("link", { name: "Admin" })).toHaveAttribute("href", "/admin");
 
     const logoutButton = screen.getByRole("button", { name: "Sign out" });
     expect(logoutButton).toHaveAttribute("type", "button");
@@ -187,21 +187,21 @@ describe("Navbar", () => {
     expect(screen.queryByRole("link", { name: "Profile" })).not.toBeInTheDocument();
   });
 
-  it("hides API keys from members", async () => {
+  it("shows API keys to members, who manage keys for their own projects", async () => {
     meRole = "member";
     renderNavbar(signedIn());
 
     await waitFor(() => expect(meSettled).toBe(true));
-    expect(screen.queryByRole("link", { name: "API keys" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "API keys" })).toHaveAttribute("href", "/api-keys");
     expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
   });
 
-  it("hides API keys while the profile is loading", async () => {
+  it("shows API keys while the profile is still loading", async () => {
     mePending = true;
     renderNavbar(signedIn());
 
     await waitFor(() => expect(meCalls).toHaveLength(1));
-    expect(screen.queryByRole("link", { name: "API keys" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "API keys" })).toHaveAttribute("href", "/api-keys");
   });
 
   it("truncates and titles the signed-in email", async () => {

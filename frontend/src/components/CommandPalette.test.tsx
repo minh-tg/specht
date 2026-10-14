@@ -161,8 +161,15 @@ describe("CommandPalette", () => {
     await waitFor(() =>
       expect(screen.queryByRole("option", { name: "Admin" })).not.toBeInTheDocument()
     );
-    expect(screen.queryByRole("option", { name: "API keys" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "New project" })).not.toBeInTheDocument();
+  });
+
+  it("offers API keys to a member, who manages keys for their own projects", async () => {
+    role = "member";
+    const user = userEvent.setup();
+    renderPalette();
+    await openWithShortcut(user);
+    expect(await screen.findByRole("option", { name: "API keys" })).toBeInTheDocument();
   });
 
   it("shows the admin places to an admin", async () => {

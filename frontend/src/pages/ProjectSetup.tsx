@@ -1,12 +1,5 @@
 import { APIError } from "@/api/client";
-import {
-  queryKeys,
-  useCreateApiKey,
-  useMe,
-  useProject,
-  useProjectStats,
-  useVersion,
-} from "@/api/hooks";
+import { queryKeys, useCreateApiKey, useProject, useProjectStats, useVersion } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
 import { ErrorState } from "@/components/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -80,7 +73,6 @@ function versionNoteFor(
 export function ProjectSetup() {
   const { slug = "" } = useParams<{ slug: string; }>();
   const queryClient = useQueryClient();
-  const { data: me, isLoading: meLoading } = useMe();
   const {
     data: project,
     isLoading: projectLoading,
@@ -119,23 +111,11 @@ export function ProjectSetup() {
     });
   }
 
-  if (meLoading || projectLoading) {
+  if (projectLoading) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
         <Skeleton className="h-8 w-72 rounded" />
         <Skeleton className="mt-6 h-96 rounded-lg" />
-      </div>
-    );
-  }
-
-  if (me?.role !== "admin") {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="mb-6 text-2xl font-bold">CI setup</h1>
-        <p className="text-muted-foreground text-sm">
-          Only administrators can set up CI for a project.
-        </p>
-        <Link to="/" className={`${LINK_CLASS} mt-2 inline-block`}>Back to projects</Link>
       </div>
     );
   }
@@ -149,6 +129,18 @@ export function ProjectSetup() {
           onRetry={() => void refetchProject()}
         />
         <Link to="/" className={`${LINK_CLASS} inline-block`}>Back to projects</Link>
+      </div>
+    );
+  }
+
+  if (project.permissions?.manage_ci !== true) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-8">
+        <h1 className="mb-6 text-2xl font-bold">CI setup</h1>
+        <p className="text-muted-foreground text-sm">
+          Only project managers and administrators can set up CI for this project.
+        </p>
+        <Link to="/" className={`${LINK_CLASS} mt-2 inline-block`}>Back to projects</Link>
       </div>
     );
   }
