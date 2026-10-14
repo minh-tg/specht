@@ -62,9 +62,26 @@ export interface Waiver {
   decided_at?: string;
   decision_note: string;
   expires_at?: string | null;
+  conditions: WaiverCondition[];
+  contexts: WaiverContext[];
   targets: WaiverFindingTarget[];
   created_at: string;
   updated_at: string;
+}
+
+export interface WaiverCondition {
+  id: string;
+  field: string;
+  operator: string;
+  value: string;
+}
+
+/** Scopes a waiver to an environment, target, or artifact. Unset ids leave that dimension open. */
+export interface WaiverContext {
+  id: string;
+  environment_id?: string;
+  target_id?: string;
+  artifact_id?: string;
 }
 
 export interface ProjectMember {
@@ -87,20 +104,19 @@ export interface ProjectTeam {
 export interface Team {
   id: string;
   name: string;
-  description: string | null;
-  created_at: string;
-  updated_at: string;
+  description: string;
+  /** Not in the schema. TeamsDirectory renders it, so it stays until the server sends it. */
+  created_at?: string;
 }
 
 export interface TeamMember {
   team_id: string;
   user_id: string;
-  role?: "admin" | "member";
+  role: "admin" | "member";
   /** Omitted when the person never set one. */
   display_name?: string;
   /** Only sent to global admins and admins of the team. */
   user_email?: string;
-  created_at?: string;
 }
 
 /** Build information reported by the server on /api/v1/version. */
@@ -111,10 +127,15 @@ export interface ServerVersion {
 
 export interface FindingIntel {
   cve_id: string;
-  /** Probability of exploitation in the next 30 days, 0 to 1. */
-  epss?: number;
+  /** Probability of exploitation in the next 30 days, 0 to 1. Null when the feed has no score. */
+  epss?: number | null;
+  epss_date?: string;
   /** Listed in the CISA catalogue of known exploited vulnerabilities. */
   kev: boolean;
+  kev_added?: string;
+  sources: string[];
+  fetched_at: string;
+  /** True when a refresh failed and the served record is past its TTL. */
   stale?: boolean;
 }
 
@@ -125,15 +146,15 @@ export interface Finding {
   fingerprint: string;
   current_title: string;
   current_severity: Severity;
-  current_score: number | null;
+  current_score?: number | null;
   state: TechnicalState;
-  triage_status: string;
+  triage_status?: string;
   analysis_state: AnalysisState;
   gate_effect: GateEffect;
   first_seen_at: string;
   last_seen_at: string;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
   /** Deployment context of the finding's latest observation. Absent when
    * the finding has no linked scan occurrence. */
   context?: FindingContext;
@@ -183,7 +204,7 @@ export interface FindingSuggestion {
   action: string;
   target?: string;
   detail?: string;
-  confidence: string;
+  confidence: "low" | "medium" | "high";
   source?: string;
 }
 
@@ -232,9 +253,11 @@ export interface FindingEvent {
   finding_id: string;
   user_id: string;
   event_type: string;
-  old_value?: string | null;
-  new_value?: string | null;
-  comment?: string | null;
+  old_value?: string;
+  new_value?: string;
+  comment?: string;
+  /** Base64-encoded JSON with the structured detail of the change. */
+  changes?: string;
   created_at: string;
 }
 
@@ -302,18 +325,16 @@ export interface ApiKey {
   id: string;
   name: string;
   key_prefix: string;
-  project_id: string;
-  created_at: string;
-}
-
-export interface CreatedApiKey {
-  id: string;
-  name: string;
-  key_prefix: string;
-  raw_key: string;
+  /** The secret. Present only in the creation response. */
+  raw_key?: string;
   last_four?: string | null;
   created_at: string;
   expires_at?: string | null;
+}
+
+/** The creation response always carries the secret, so `raw_key` is required here. */
+export interface CreatedApiKey extends ApiKey {
+  raw_key: string;
 }
 
 export interface UserProfile {
@@ -331,16 +352,19 @@ export interface Report {
   id: string;
   project_id: string;
   tool_name: string;
-  tool_version: string | null;
+  tool_version?: string | null;
   scan_type: string;
-  scan_target: string | null;
+  scan_target?: string | null;
   status: string;
-  total_findings: number | null;
-  branch: string | null;
-  commit_sha: string | null;
+  total_findings?: number | null;
+  branch?: string | null;
+  commit_sha?: string | null;
+  base_revision?: string;
+  scan_mode?: "full" | "incremental";
+  changed_files?: string[];
   error_message?: string;
   created_at: string;
-  completed_at: string | null;
+  completed_at?: string | null;
 }
 
 // The server stores an unfinished report as `processing`; openapi.yaml documents the
@@ -374,6 +398,12 @@ export interface IngestResponse {
   report_id: string;
   total_findings: number;
   threshold_breached: boolean;
+  /** The mode actually used. */
+  scan_mode: "full" | "incremental";
+  /** Present when an incremental scan had to fall back to full. */
+  fallback_reason?: "unsupported_scanner" | "missing_baseline";
+  introduced_count: number;
+  pre_existing_count: number;
   replayed: boolean;
 }
 
@@ -462,6 +492,7 @@ export interface RetentionResult {
   older_than_days: number;
   cutoff: string;
   deleted_reports: number;
+  deleted_report_ids?: string[];
   /** More reports are past the window than one run removes; run it again for the rest. */
   truncated?: boolean;
 }
