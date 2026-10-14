@@ -1,5 +1,5 @@
 import { useMe } from "@/api/hooks";
-import { actorLabel, useUserDirectory } from "@/api/users";
+import { actorLabel } from "@/api/users";
 import { ErrorState } from "@/components/ErrorState";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { EMPTY_VALUE, formatDateTime } from "@/lib/format";
@@ -18,7 +18,6 @@ export function HistorySection({
   readonly isError: boolean;
 }) {
   const { data: me } = useMe();
-  const { data: directory } = useUserDirectory();
 
   let body: ReactNode;
   if (isLoading) {
@@ -41,7 +40,7 @@ export function HistorySection({
               )
               : null}
             <span className="text-muted-foreground text-xs">
-              by {actorLabel(event, { me, directory })}
+              by {actorLabel(event, { me })}
             </span>
             <span className="text-muted-foreground text-xs">
               {formatDateTime(event.created_at)}

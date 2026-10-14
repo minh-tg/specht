@@ -82,15 +82,16 @@ afterEach(() => {
 });
 
 describe("HistorySection actors", () => {
-  it("shows display names and email fallbacks for an admin", async () => {
+  it("shows the names the API sends, for an admin too, without asking for the directory", async () => {
     mockApi(ADMIN, requested, [ADA, GRACE]);
     renderHistory([
-      event({ id: "e1", user_id: "u-ada" }),
-      event({ id: "e2", user_id: "u-grace" }),
+      event({ id: "e1", user_id: "u-ada", user_name: "Ada Lovelace" }),
+      event({ id: "e2", user_id: "u-grace", user_name: "grace@example.test" }),
     ]);
 
     expect(await screen.findByText("by Ada Lovelace")).toBeInTheDocument();
     expect(screen.getByText("by grace@example.test")).toBeInTheDocument();
+    expect(requested.filter((url) => url.startsWith("/api/v1/users"))).toHaveLength(0);
   });
 
   it("shows You for the viewer and a generic label for others", async () => {
@@ -112,7 +113,7 @@ describe("HistorySection actors", () => {
     expect(await screen.findByText("by System")).toBeInTheDocument();
   });
 
-  it("falls back to a generic label when the admin directory fails", async () => {
+  it("uses a generic label when the event carries no name", async () => {
     mockApi(ADMIN, requested, null);
     renderHistory([event({ id: "e1", user_id: UUID })]);
 
