@@ -9,12 +9,12 @@ import (
 
 func TestHealthcheckURL(t *testing.T) {
 	tests := []struct{ addr, want string }{
-		{":8080", "http://127.0.0.1:8080/api/v1/health"},
-		{"", "http://127.0.0.1:8080/api/v1/health"},
-		{"0.0.0.0:9000", "http://127.0.0.1:9000/api/v1/health"},
-		{"[::]:9000", "http://127.0.0.1:9000/api/v1/health"},
-		{"127.0.0.1:8081", "http://127.0.0.1:8081/api/v1/health"},
-		{"10.1.2.3:8080", "http://10.1.2.3:8080/api/v1/health"},
+		{":8080", "http://127.0.0.1:8080/api/v1/ready"},
+		{"", "http://127.0.0.1:8080/api/v1/ready"},
+		{"0.0.0.0:9000", "http://127.0.0.1:9000/api/v1/ready"},
+		{"[::]:9000", "http://127.0.0.1:9000/api/v1/ready"},
+		{"127.0.0.1:8081", "http://127.0.0.1:8081/api/v1/ready"},
+		{"10.1.2.3:8080", "http://10.1.2.3:8080/api/v1/ready"},
 	}
 	for _, tc := range tests {
 		if got := healthcheckURL(tc.addr); got != tc.want {
