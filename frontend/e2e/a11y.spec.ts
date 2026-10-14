@@ -210,6 +210,14 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await expect(page.getByRole("heading").first()).toBeVisible();
   await audit(page, "api keys");
 
+  await page.goto("/profile");
+  await expect(page.getByRole("heading", { name: "Your profile" })).toBeVisible();
+  await audit(page, "profile");
+  // The password rules appear once typing starts; audit that state too.
+  await page.getByLabel("New password", { exact: true }).fill("abc");
+  await expect(page.getByRole("list", { name: "Requirements" })).toBeVisible();
+  await audit(page, "profile with password rules");
+
   await page.goto(`/${emptySlug}/findings`);
   await expect(page.getByRole("heading").first()).toBeVisible();
   await audit(page, "empty project");

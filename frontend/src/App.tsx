@@ -12,6 +12,7 @@ import { Invite } from "@/pages/Invite";
 import { Login } from "@/pages/Login";
 import { NewProject } from "@/pages/NewProject";
 import { NotFound } from "@/pages/NotFound";
+import { Profile } from "@/pages/Profile";
 import { ProjectLayout } from "@/pages/ProjectLayout";
 import { ProjectList } from "@/pages/ProjectList";
 import { ProjectSetup } from "@/pages/ProjectSetup";
@@ -169,6 +170,16 @@ export function AppRoutes() {
           <ProtectedRoute>
             <Titled title="Admin">
               <Admin />
+            </Titled>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/profile"
+        element={
+          <ProtectedRoute>
+            <Titled title="Your profile">
+              <Profile />
             </Titled>
           </ProtectedRoute>
         }
