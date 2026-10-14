@@ -88,6 +88,17 @@ export interface WaiverContext {
   artifact_id?: string;
 }
 
+/** One entry in a waiver's audit trail. The actor is absent for system events. */
+export interface WaiverEvent {
+  id: string;
+  waiver_id: string;
+  event_type: string;
+  actor_id?: string | null;
+  /** Display name or email of the actor; "System" for automated actions. Left out for API keys. */
+  actor_name?: string;
+  created_at: string;
+}
+
 export interface ProjectMember {
   project_id: string;
   user_id: string;
