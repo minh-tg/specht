@@ -47,6 +47,19 @@ releases.
   and a published server image.
 - Web UI pages for findings, reports, policy, waivers, insights, the watcher,
   access, and administration, with a command palette.
+- A profile page to change your name and password, and a one-time password
+  reset link an administrator can hand to someone who is locked out.
+- Project settings to rename, describe and delete a project.
+- Evidence, reviewer sign-off, a fix check, and a way back to "not triaged"
+  on the finding page; report deletion; waiver editing, deletion and history.
+- API key expiry, and project managers can manage their project's keys.
+- Add a project or team member by email address.
+- An inventory of environments, scan targets and artifacts on the Insights
+  page.
+- Audit log entries for membership, team, policy, waiver, evidence, sign-off
+  and retention changes, including refused attempts.
+- A published-image compose file with a source-build override, backup and
+  restore instructions, and a CI check that restores a dump.
 
 ### Changed
 
@@ -57,6 +70,12 @@ releases.
 - The server waits for the database at startup, up to `DB_CONNECT_TIMEOUT`.
 - The database pool size comes from `DB_MAX_CONNS` and `DB_MIN_CONNS`.
 - A stop waits for in-flight requests up to `SHUTDOWN_TIMEOUT`.
+- A report left in processing by a stopped server is marked failed after 15
+  minutes, so the scan can be uploaded again.
+- Report history pages through older reports, and a finding's history shows
+  every event instead of the newest 20.
+- Roles granted through a linked team now show the controls they allow.
+- Fonts are served as files, which the Content-Security-Policy allows.
 
 ### Security
 
