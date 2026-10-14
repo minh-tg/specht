@@ -316,7 +316,7 @@ test("an admin creates a project and follows the guided CI setup", async ({ page
   await expect(page.getByRole("heading", { name: `Set up CI for ${slug}` })).toBeVisible();
 
   // The key is shown once; the pipeline snippets only reference the secret.
-  await page.getByRole("button", { name: "Create key" }).click();
+  await page.getByRole("button", { name: "Create a key for this pipeline" }).click();
   await expect(page.locator("code").filter({ hasText: /^vuln_/ })).toBeVisible();
   await expect(page.getByText("Copy it now. It will not be shown again.")).toBeVisible();
 
@@ -462,7 +462,9 @@ test("marking the only blocker not reachable flips the project verdict to passin
   const assess = page.getByRole("button", { name: "Assess" });
   await expect(assess).toBeDisabled();
   await chooseOption(page, page.getByLabel("Reachability assessment"), "Not Reachable");
-  await page.getByLabel("Evidence").fill("e2e: the vulnerable code path is never called");
+  await page.getByLabel("Evidence", { exact: true }).fill(
+    "e2e: the vulnerable code path is never called",
+  );
   await expect(assess).toBeEnabled();
   await assess.click();
 
