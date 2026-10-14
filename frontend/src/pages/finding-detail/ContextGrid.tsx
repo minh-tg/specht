@@ -1,3 +1,4 @@
+import { EMPTY_VALUE } from "@/lib/format";
 import type { FindingContext } from "@/types/api";
 import { parseSourceLink } from "./format";
 
@@ -14,21 +15,21 @@ export function ContextGrid({ context }: { readonly context?: FindingContext; })
           <p className="font-medium">
             {[context.target_name, context.target_kind]
               .filter(Boolean)
-              .join(" · ") || "–"}
+              .join(" · ") || EMPTY_VALUE}
           </p>
         </div>
         <div>
           <span className="text-muted-foreground">Environment</span>
-          <p className="font-medium">{context.environment_name || "–"}</p>
+          <p className="font-medium">{context.environment_name || EMPTY_VALUE}</p>
         </div>
         <div>
           <span className="text-muted-foreground">Branch</span>
-          <p className="font-mono text-xs">{context.branch || "–"}</p>
+          <p className="font-mono text-xs">{context.branch || EMPTY_VALUE}</p>
         </div>
         <div>
           <span className="text-muted-foreground">Commit</span>
           <p className="font-mono text-xs">
-            {context.commit_sha ? context.commit_sha.slice(0, 12) : "–"}
+            {context.commit_sha ? context.commit_sha.slice(0, 12) : EMPTY_VALUE}
           </p>
         </div>
         {parseSourceLink(context.source_link) && (

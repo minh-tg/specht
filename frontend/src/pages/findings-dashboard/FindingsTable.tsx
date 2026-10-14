@@ -2,7 +2,7 @@ import { DataGrid, type DataGridColumn } from "@/components/ui/data-grid";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { findingKindLabel } from "@/lib/enums";
 import { findingWorkflowState } from "@/lib/findingState";
-import { formatAge, formatDate } from "@/lib/format";
+import { EMPTY_VALUE, formatAge, formatDate } from "@/lib/format";
 import type { Finding, GateStatus } from "@/types/api";
 import { ChevronRightIcon } from "lucide-react";
 import { type MouseEvent, useEffect, useRef } from "react";
@@ -112,7 +112,7 @@ export function FindingsTable(
             {f.current_title}
           </Link>
           <p className="text-muted-foreground mt-0.5 hidden font-mono text-xs md:block">
-            {findingKindLabel(f.finding_kind) ?? "–"}
+            {findingKindLabel(f.finding_kind) ?? EMPTY_VALUE}
           </p>
           <p className="text-muted-foreground mt-0.5 text-xs md:hidden">{compactMeta(f)}</p>
         </>
