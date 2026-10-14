@@ -19,6 +19,7 @@ let stats: Record<string, unknown>;
 let statsRequests = 0;
 let statsFailing = false;
 let postCalls: Array<Record<string, unknown>> = [];
+let existingKeys: Array<Record<string, unknown>> = [];
 let writeText: ReturnType<typeof vi.fn>;
 let projectSlug = "acme";
 let lastClient: QueryClient;
@@ -43,6 +44,7 @@ beforeEach(() => {
   };
   statsRequests = 0;
   postCalls = [];
+  existingKeys = [];
   writeText = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, "clipboard", {
     value: { writeText },
@@ -83,6 +85,9 @@ beforeEach(() => {
         return jsonResponse({ error: { code: "internal", message: "stats unavailable" } }, 500);
       }
       return jsonResponse(stats);
+    }
+    if (url.startsWith("/api/v1/auth/apikeys") && method === "GET") {
+      return jsonResponse(existingKeys);
     }
     if (url === "/api/v1/auth/apikeys" && method === "POST") {
       postCalls.push(JSON.parse((init as RequestInit).body as string));
@@ -144,7 +149,8 @@ describe("ProjectSetup", () => {
 
     expect(await screen.findByRole("heading", { name: "Set up CI for Acme API" }))
       .toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Create key" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create a key for this pipeline" }))
+      .toBeInTheDocument();
   });
 
   it("tells a person who does not manage the project that only its managers can set up CI", async () => {
@@ -158,7 +164,8 @@ describe("ProjectSetup", () => {
       ),
     )
       .toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Create key" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create a key for this pipeline" })).not
+      .toBeInTheDocument();
     expect(screen.getByRole("link", { name: /back to projects/i })).toHaveAttribute("href", "/");
   });
 
@@ -168,6 +175,45 @@ describe("ProjectSetup", () => {
       .toBeInTheDocument();
   });
 
+  it("counts the project's existing keys and creates none on load", async () => {
+    existingKeys = [
+      { id: "k1", name: "ci", key_prefix: "sk-old", project_id: "p1", created_at: "" },
+      { id: "k2", name: "ci", key_prefix: "sk-new", project_id: "p1", created_at: "" },
+    ];
+    renderPage();
+
+    expect(await screen.findByText(/This project has 2 keys\./)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage API keys" })).toHaveAttribute(
+      "href",
+      "/api-keys",
+    );
+    expect(screen.getByRole("textbox", { name: "Key name" })).toHaveValue("ci");
+    expect(postCalls).toEqual([]);
+  });
+
+  it("says a project with no keys has none yet", async () => {
+    renderPage();
+
+    expect(await screen.findByText(/This project has no keys yet\./)).toBeInTheDocument();
+    expect(postCalls).toEqual([]);
+  });
+
+  it("creates the key only when the button is pressed, under the name in the input", async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText(/This project has no keys yet\./);
+    const nameInput = screen.getByRole("textbox", { name: "Key name" });
+    await user.clear(nameInput);
+    await user.type(nameInput, "gitlab-main");
+    expect(postCalls).toEqual([]);
+
+    await user.click(screen.getByRole("button", { name: "Create a key for this pipeline" }));
+
+    expect(await screen.findByText(RAW_KEY)).toBeInTheDocument();
+    expect(postCalls).toEqual([{ project: "acme", name: "gitlab-main" }]);
+  });
+
   it("creates the CI key with the expiry chosen on the page", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-13T12:00:00Z"));
@@ -175,11 +221,11 @@ describe("ProjectSetup", () => {
     renderPage();
 
     await chooseOption(user, await screen.findByRole("combobox", { name: /expires/i }), "1 year");
-    await user.click(await screen.findByRole("button", { name: "Create key" }));
+    await user.click(await screen.findByRole("button", { name: "Create a key for this pipeline" }));
 
     await screen.findByText(RAW_KEY);
     expect(postCalls).toEqual([
-      { project: "acme", name: "CI", expires_at: "2027-10-13T12:00:00.000Z" },
+      { project: "acme", name: "ci", expires_at: "2027-10-13T12:00:00.000Z" },
     ]);
   });
 
@@ -193,10 +239,10 @@ describe("ProjectSetup", () => {
     renderPage();
 
     expect(screen.queryByText(RAW_KEY)).not.toBeInTheDocument();
-    await user.click(await screen.findByRole("button", { name: "Create key" }));
+    await user.click(await screen.findByRole("button", { name: "Create a key for this pipeline" }));
 
     expect(await screen.findByText(RAW_KEY)).toBeInTheDocument();
-    expect(postCalls).toEqual([{ project: "acme", name: "CI" }]);
+    expect(postCalls).toEqual([{ project: "acme", name: "ci" }]);
     expect(screen.getByText("Copy it now. It will not be shown again.")).toBeInTheDocument();
     expect(
       screen.getByText(
@@ -232,6 +278,7 @@ describe("ProjectSetup", () => {
         });
       }
       if (url === "/api/v1/projects/acme/stats") return jsonResponse(stats);
+      if (url.startsWith("/api/v1/auth/apikeys") && method === "GET") return jsonResponse([]);
       if (method === "POST") {
         return jsonResponse({ error: { code: "internal", message: "key creation failed" } }, 500);
       }
@@ -240,7 +287,7 @@ describe("ProjectSetup", () => {
 
     renderPage();
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Create key" }));
+    await user.click(await screen.findByRole("button", { name: "Create a key for this pipeline" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("key creation failed");
     expect(screen.queryByText(RAW_KEY)).not.toBeInTheDocument();
@@ -341,7 +388,8 @@ describe("ProjectSetup", () => {
     expect(await screen.findByText("Could not load this project.")).toBeInTheDocument();
     expect(document.querySelector("[data-slot=\"skeleton\"]")).not.toBeInTheDocument();
     expect(document.querySelectorAll("pre")).toHaveLength(0);
-    expect(screen.queryByRole("button", { name: "Create key" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create a key for this pipeline" })).not
+      .toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to projects" })).toHaveAttribute("href", "/");
   });
@@ -372,7 +420,7 @@ describe("ProjectSetup", () => {
   it("drops the one-time key from the mutation cache once the page is left", async () => {
     const view = renderPage();
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Create key" }));
+    await user.click(await screen.findByRole("button", { name: "Create a key for this pipeline" }));
     expect(await screen.findByText(RAW_KEY)).toBeInTheDocument();
 
     view.unmount();
@@ -387,7 +435,7 @@ describe("ProjectSetup", () => {
       configurable: true,
     });
     renderPage();
-    await user.click(await screen.findByRole("button", { name: "Create key" }));
+    await user.click(await screen.findByRole("button", { name: "Create a key for this pipeline" }));
     await screen.findByText(RAW_KEY);
 
     const keyStep = step("Create an API key");
