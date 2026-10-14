@@ -103,7 +103,7 @@ describe("ApiKeys", () => {
 
   it("shows heading and project selector", async () => {
     renderApiKeys();
-    expect(await screen.findByText("API Keys")).toBeInTheDocument();
+    expect(await screen.findByText("API keys")).toBeInTheDocument();
     expect(screen.getByText("Select a project")).toBeInTheDocument();
   });
 

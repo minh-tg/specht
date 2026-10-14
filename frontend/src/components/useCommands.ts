@@ -73,7 +73,7 @@ export function useCommands(): Command[] {
       list.push({
         id: "go:keys",
         group: "Go to",
-        label: "API Keys",
+        label: "API keys",
         keywords: "tokens",
         run: go("/api-keys"),
       });
