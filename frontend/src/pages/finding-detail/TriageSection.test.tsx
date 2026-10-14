@@ -1,6 +1,7 @@
-import { createTestQueryClient, jsonResponse } from "@/test/utils";
+import { chooseOption, createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TriageSection } from "./TriageSection";
@@ -21,67 +22,61 @@ function renderTriageSection(projectSlug = "core-api") {
   );
 }
 
+interface Call {
+  method: string;
+  url: string;
+  body?: unknown;
+}
+
+/** Serves the person, the project with the role the server computed for them, and a triage write. */
+function mockApi(projectRole: "manager" | "member"): Call[] {
+  const calls: Call[] = [];
+  globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+    const u = String(url);
+    const method = init?.method ?? "GET";
+    calls.push({ method, url: u, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+    if (u.endsWith("/api/v1/me")) {
+      return jsonResponse({ id: "u-1", email: "person@example.corp", role: "member" });
+    }
+    if (u.endsWith("/api/v1/projects/core-api")) {
+      const manager = projectRole === "manager";
+      return jsonResponse({
+        id: "p1",
+        slug: "core-api",
+        name: "core-api",
+        role: projectRole,
+        permissions: { triage: manager, manage_members: manager },
+      });
+    }
+    if (u.endsWith("/api/v1/findings/f1") && method === "PATCH") {
+      return jsonResponse({ id: "f1", analysis_state: "unanalyzed" });
+    }
+    return jsonResponse({});
+  });
+  return calls;
+}
+
 describe("TriageSection RBAC permissions", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("enables triage controls for project manager", async () => {
-    globalThis.fetch = vi.fn().mockImplementation(async (url) => {
-      const u = String(url);
-      if (u.endsWith("/api/v1/me")) {
-        return jsonResponse({
-          id: "u-mgr",
-          email: "manager@example.corp",
-          role: "member",
-        });
-      }
-      if (u.includes("/members")) {
-        return jsonResponse([
-          {
-            project_id: "p1",
-            user_id: "u-mgr",
-            role: "manager",
-            created_at: "2026-09-01T00:00:00Z",
-          },
-        ]);
-      }
-      return jsonResponse({});
-    });
+  it("enables triage controls for a project manager, once the role has loaded", async () => {
+    const calls = mockApi("manager");
 
     renderTriageSection();
 
-    await waitFor(() => {
-      const select = screen.getByLabelText("Triage action");
-      expect(select).not.toBeDisabled();
-      expect(
-        screen.queryByText(/Requires Project Manager role to triage findings/),
-      ).not.toBeInTheDocument();
-    });
+    await waitFor(() =>
+      expect(calls.some((c) => c.url.endsWith("/api/v1/projects/core-api"))).toBe(true)
+    );
+    await act(async () => {});
+    expect(screen.getByLabelText("Triage action")).not.toBeDisabled();
+    expect(screen.queryByText(/Requires Project Manager role to triage findings/))
+      .not.toBeInTheDocument();
   });
 
   it("disables triage controls and shows notice for project member", async () => {
-    globalThis.fetch = vi.fn().mockImplementation(async (url) => {
-      const u = String(url);
-      if (u.endsWith("/api/v1/me")) {
-        return jsonResponse({
-          id: "u-mem",
-          email: "member@example.corp",
-          role: "member",
-        });
-      }
-      if (u.includes("/members")) {
-        return jsonResponse([
-          {
-            project_id: "p1",
-            user_id: "u-mem",
-            role: "member",
-            created_at: "2026-09-01T00:00:00Z",
-          },
-        ]);
-      }
-      return jsonResponse({});
-    });
+    mockApi("member");
 
     renderTriageSection();
 
@@ -97,4 +92,34 @@ describe("TriageSection RBAC permissions", () => {
     expect(applyBtn).toBeDisabled();
     expect(applyBtn).toHaveAttribute("title", "Requires Project Manager role");
   });
+});
+
+describe("TriageSection undecided states", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ["Not triaged", "unanalyzed"],
+    ["In triage", "in_triage"],
+  ])(
+    "takes a finding back to %s without asking for a reason or an expiry",
+    async (label, state) => {
+      const calls = mockApi("manager");
+      const user = userEvent.setup();
+      renderTriageSection();
+
+      await waitFor(() => expect(screen.getByLabelText("Triage action")).not.toBeDisabled());
+      await chooseOption(user, screen.getByLabelText("Triage action"), label);
+      expect(screen.queryByLabelText("Reason")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Expiry date")).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Apply" }));
+
+      await waitFor(() => {
+        const patch = calls.find((c) => c.method === "PATCH");
+        expect(patch).toBeDefined();
+        expect(patch?.body).toMatchObject({ analysis_state: state });
+      });
+    },
+  );
 });
