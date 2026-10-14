@@ -576,6 +576,12 @@ paths:
       security:
         - sessionAuth: []
         - apiKeyAuth: []
+      parameters:
+        - name: project
+          in: query
+          required: true
+          description: The slug of the project the key belongs to.
+          schema: { type: string }
       responses:
         "200":
           description: The keys.
@@ -600,6 +606,11 @@ paths:
         - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Id"
+        - name: project
+          in: query
+          required: true
+          description: The slug of the project the key belongs to.
+          schema: { type: string }
       responses:
         "204": { $ref: "#/components/responses/NoContent" }
         "400": { $ref: "#/components/responses/BadRequest" }
