@@ -51,6 +51,8 @@ docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml \
 ```
 
 Without the override file, compose only pulls the image and never builds it.
+Until the first release is published there is no image to pull, so use the
+override for a first start.
 
 ## 3. Configuration reference
 
