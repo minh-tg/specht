@@ -262,6 +262,17 @@ export interface ReachabilityAssessment {
   updated_at: string;
 }
 
+/** An evidence artifact attached to a finding. `uploaded_by` is null for system-attached evidence. */
+export interface FindingEvidence {
+  id: string;
+  finding_id: string;
+  type: string;
+  url: string;
+  description: string;
+  uploaded_by: string | null;
+  created_at: string;
+}
+
 /** One finding lifecycle audit event. */
 export interface FindingEvent {
   id: string;
