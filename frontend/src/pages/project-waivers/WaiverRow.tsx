@@ -4,9 +4,11 @@ import { Button } from "@/components/ui/button";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { formatRelativeTime, pluralize } from "@/lib/format";
 import type { Waiver } from "@/types/api";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { expiresIn } from "../project-access/expiry";
 import { closedReason, type WaiverBucket, waiverTitle } from "./classify";
+import { WaiverHistory } from "./WaiverHistory";
 
 /** The severity of the first finding a request names. A request for several shows the first's. */
 function FirstSeverity({ findingId }: { readonly findingId: string; }) {
@@ -60,6 +62,8 @@ export function WaiverRow({ slug, waiver, bucket, now, who, actions }: {
     : null;
   const mine = !!waiver.requested_by && waiver.requested_by === actions.currentUserId;
   const decision = bucket === "pending" ? null : decisionLine(waiver, who, closed);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyId = `waiver-history-${waiver.id}`;
 
   return (
     <li className="border-border grid gap-x-5 gap-y-2 border-b px-0.5 py-4 sm:grid-cols-[minmax(0,1fr)_auto]">
@@ -96,6 +100,17 @@ export function WaiverRow({ slug, waiver, bucket, now, who, actions }: {
           </blockquote>
         )}
         {decision && <p className="text-muted-foreground mt-2 text-[0.8125rem]">{decision}</p>}
+        <button
+          type="button"
+          aria-expanded={historyOpen}
+          aria-controls={historyId}
+          aria-label={`History of ${title}`}
+          onClick={() => setHistoryOpen((open) => !open)}
+          className="text-muted-foreground hover:text-foreground mt-2 text-[0.8125rem] underline-offset-4 hover:underline"
+        >
+          History
+        </button>
+        {historyOpen && <WaiverHistory id={historyId} slug={slug} waiverId={waiver.id} who={who} />}
       </div>
       <div className="flex flex-wrap items-start gap-2 sm:justify-end">
         {bucket === "pending" && actions.canDecide && (

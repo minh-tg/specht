@@ -52,3 +52,21 @@ export function countByBucket(waivers: readonly Waiver[], now: Date): Record<Wai
   for (const waiver of waivers) counts[waiverBucket(waiver, now)] += 1;
   return counts;
 }
+
+const EVENT_LABEL = new Map<string, string>([
+  ["created", "Created"],
+  ["updated", "Edited"],
+  ["enabled", "Switched on"],
+  ["disabled", "Switched off"],
+  ["auto_disabled", "Switched off automatically"],
+  ["requested", "Requested"],
+  ["approved", "Approved"],
+  ["rejected", "Rejected"],
+  ["auto_rejected", "Rejected automatically"],
+  ["withdrawn", "Withdrawn"],
+]);
+
+/** Plain words for a waiver audit event. A type this screen does not know shows its raw value. */
+export function waiverEventLabel(eventType: string): string {
+  return EVENT_LABEL.get(eventType) ?? eventType;
+}

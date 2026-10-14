@@ -1,7 +1,7 @@
 import { AuthContext, type AuthContextValue } from "@/auth/context";
 import { Toaster } from "@/components/ui/sonner";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
-import type { Waiver } from "@/types/api";
+import type { Waiver, WaiverEvent } from "@/types/api";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -36,6 +36,8 @@ let waivers: Waiver[];
 let permissions: { approve_waivers: boolean; manage_waivers: boolean; };
 let calls: { url: string; method: string; body?: unknown; }[];
 let listFails: boolean;
+let eventsMode: "ok" | "empty" | "fail" | "slow";
+let events: WaiverEvent[];
 let updateError: string | null;
 
 function renderPage(userId = "u-ada") {
@@ -76,6 +78,30 @@ function renderPage(userId = "u-ada") {
 describe("ProjectWaivers", () => {
   beforeEach(() => {
     listFails = false;
+    eventsMode = "ok";
+    events = [
+      {
+        id: "e1",
+        waiver_id: "w1",
+        event_type: "requested",
+        actor_id: "u-tomas",
+        created_at: "2026-10-01T09:00:00Z",
+      },
+      {
+        id: "e2",
+        waiver_id: "w1",
+        event_type: "approved",
+        actor_id: "u-ada",
+        created_at: "2026-10-01T10:00:00Z",
+      },
+      {
+        id: "e3",
+        waiver_id: "w1",
+        event_type: "mystery_step",
+        actor_id: null,
+        created_at: "2026-10-01T11:00:00Z",
+      },
+    ];
     updateError = null;
     calls = [];
     permissions = { approve_waivers: true, manage_waivers: true };
@@ -124,6 +150,13 @@ describe("ProjectWaivers", () => {
           return listFails
             ? jsonResponse({ error: { code: "internal", message: "down" } }, 500)
             : jsonResponse(waivers);
+        }
+        if (method === "GET" && url.endsWith("/waivers/w1/events")) {
+          if (eventsMode === "fail") {
+            return jsonResponse({ error: { code: "internal", message: "down" } }, 500);
+          }
+          if (eventsMode === "slow") return new Promise(() => {});
+          return jsonResponse(eventsMode === "empty" ? [] : events);
         }
         if (method === "DELETE" && /\/waivers\/[^/]+$/.test(url)) {
           return jsonResponse(undefined, 204);
@@ -358,5 +391,68 @@ describe("ProjectWaivers", () => {
     await waitFor(() => expect(calls.some((c) => c.method === "DELETE")).toBe(true));
     expect(calls.find((c) => c.method === "DELETE")!.url).toMatch(/\/waivers\/w1$/);
     expect(await screen.findByText("Waiver deleted")).toBeInTheDocument();
+  });
+
+  it("shows History to people who cannot manage waivers", async () => {
+    permissions = { approve_waivers: false, manage_waivers: false };
+    renderPage();
+    expect(
+      await screen.findByRole("button", { name: "History of openssh-server: security issue" }),
+    ).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("loads a waiver's history only when it is opened, and labels each step", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    const toggle = await screen.findByRole("button", {
+      name: "History of openssh-server: security issue",
+    });
+    expect(calls.some((c) => c.url.endsWith("/waivers/w1/events"))).toBe(false);
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(await screen.findByText("Requested")).toBeInTheDocument();
+    expect(screen.getByText("Approved")).toBeInTheDocument();
+    expect(screen.getByText("mystery_step")).toBeInTheDocument();
+    expect(screen.getByText("by You")).toBeInTheDocument();
+    expect(screen.getByText("by System")).toBeInTheDocument();
+    expect(calls.filter((c) => c.url.endsWith("/waivers/w1/events"))).toHaveLength(1);
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByText("Requested")).not.toBeInTheDocument();
+  });
+
+  it("says so when a waiver has no history", async () => {
+    eventsMode = "empty";
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByRole("button", { name: "History of openssh-server: security issue" }),
+    );
+    expect(await screen.findByText("No history yet.")).toBeInTheDocument();
+  });
+
+  it("shows a loading state while the history is on its way", async () => {
+    eventsMode = "slow";
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByRole("button", { name: "History of openssh-server: security issue" }),
+    );
+    expect(await screen.findByRole("status", { name: "Loading history" })).toBeInTheDocument();
+  });
+
+  it("offers a retry when the history cannot be loaded", async () => {
+    eventsMode = "fail";
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByRole("button", { name: "History of openssh-server: security issue" }),
+    );
+    expect(await screen.findByText("Could not load history.")).toBeInTheDocument();
+    eventsMode = "ok";
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("Requested")).toBeInTheDocument();
   });
 });

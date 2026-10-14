@@ -1,7 +1,7 @@
 import { apiFetch } from "@/api/client";
 import { queryKeys } from "@/api/hooks";
-import type { Waiver } from "@/types/api";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { Waiver, WaiverEvent } from "@/types/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 /** The fields an edit may send. An omitted field keeps the stored value. */
 export interface WaiverUpdate {
@@ -53,5 +53,20 @@ export function useDeleteWaiver(slug: string) {
       void queryClient.invalidateQueries({ queryKey: queryKeys.gate(slug) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.projectStats(slug) });
     },
+  });
+}
+
+/**
+ * A waiver's audit trail. The request is made only while `enabled`, so a row that nobody opened
+ * costs nothing.
+ */
+export function useWaiverEvents(slug: string, id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.waiverEvents(slug, id),
+    queryFn: () =>
+      apiFetch<WaiverEvent[]>(
+        `/api/v1/projects/${encodeURIComponent(slug)}/waivers/${encodeURIComponent(id)}/events`,
+      ),
+    enabled: enabled && !!slug && !!id,
   });
 }
