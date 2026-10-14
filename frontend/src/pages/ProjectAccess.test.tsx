@@ -401,12 +401,52 @@ describe("ProjectAccess", () => {
 
     // Second Remove button belongs to Alex Rivera (manager).
     await user.click(screen.getAllByRole("button", { name: "Remove" })[1]);
+    await user.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remove" }),
+    );
     expect(await screen.findByRole("alert")).toHaveTextContent("project access denied");
 
     deleteError = null;
     await user.click(screen.getAllByRole("button", { name: "Remove" })[1]);
+    await user.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remove" }),
+    );
     await waitFor(() => {
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    });
+  });
+
+  it("asks before removing a member and sends nothing until the removal is confirmed", async () => {
+    const user = userEvent.setup();
+    renderProjectAccess();
+
+    await waitFor(() => {
+      expect(screen.getByText("Alex Rivera")).toBeInTheDocument();
+    });
+    const memberDeletes = () =>
+      vi.mocked(globalThis.fetch).mock.calls.filter(
+        ([url, opts]) => opts?.method === "DELETE" && String(url).includes("/members/"),
+      );
+
+    await user.click(screen.getAllByRole("button", { name: "Remove" })[1]);
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByRole("heading", { name: "Remove Alex Rivera?" }))
+      .toBeInTheDocument();
+    expect(dialog).toHaveTextContent("lose access to this project");
+    expect(memberDeletes()).toHaveLength(0);
+
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    });
+    expect(memberDeletes()).toHaveLength(0);
+
+    await user.click(screen.getAllByRole("button", { name: "Remove" })[1]);
+    await user.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remove" }),
+    );
+    await waitFor(() => {
+      expect(memberDeletes()).toHaveLength(1);
     });
   });
 
