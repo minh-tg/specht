@@ -203,14 +203,14 @@ describe("TeamsDirectory", () => {
     expect(screen.queryByRole("button", { name: "+ Create Team" })).not.toBeInTheDocument();
   });
 
-  it("sends the user and the selected role when adding a roster member", async () => {
+  it("sends the email address and the selected role when adding a roster member", async () => {
     const user = userEvent.setup();
     renderTeamsDirectory();
 
     await user.click((await screen.findAllByRole("button", { name: "Manage Roster" }))[0]);
     await user.type(
-      screen.getByRole("textbox", { name: "User ID" }),
-      "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+      screen.getByRole("textbox", { name: "Email address" }),
+      "ada@acme.example",
     );
     await chooseOption(user, screen.getByRole("combobox", { name: "Team role" }), "Admin");
     await user.click(screen.getByRole("button", { name: "Add" }));
@@ -221,7 +221,7 @@ describe("TeamsDirectory", () => {
       );
       expect(postCall).toBeDefined();
       expect(JSON.parse(postCall!.body!)).toEqual({
-        user_id: "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+        email: "ada@acme.example",
         role: "admin",
       });
     });
@@ -235,8 +235,8 @@ describe("TeamsDirectory", () => {
     expect(screen.getByRole("combobox", { name: "Team role" })).toHaveTextContent("Member");
 
     await user.type(
-      screen.getByRole("textbox", { name: "User ID" }),
-      "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+      screen.getByRole("textbox", { name: "Email address" }),
+      "ada@acme.example",
     );
     await user.click(screen.getByRole("button", { name: "Add" }));
 
@@ -245,21 +245,21 @@ describe("TeamsDirectory", () => {
         (c) => c.url.endsWith("/api/v1/teams/t1/members") && c.method === "POST",
       );
       expect(JSON.parse(postCall!.body!)).toEqual({
-        user_id: "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+        email: "ada@acme.example",
         role: "member",
       });
     });
   });
 
-  it("does not submit a user ID that is not a UUID", async () => {
+  it("does not submit an address that is not an email", async () => {
     const user = userEvent.setup();
     renderTeamsDirectory();
 
     await user.click((await screen.findAllByRole("button", { name: "Manage Roster" }))[0]);
-    await user.type(screen.getByRole("textbox", { name: "User ID" }), "alex@acme.corp");
+    await user.type(screen.getByRole("textbox", { name: "Email address" }), "alex@acme");
     await user.click(screen.getByRole("button", { name: "Add" }));
 
-    expect(await screen.findByText(/User ID must be a UUID/)).toBeInTheDocument();
+    expect(await screen.findByText(/Enter the person's email address/)).toBeInTheDocument();
     expect(
       fetchCalls.some((c) => c.url.includes("/members") && c.method === "POST"),
     ).toBe(false);
@@ -272,8 +272,8 @@ describe("TeamsDirectory", () => {
 
     await user.click((await screen.findAllByRole("button", { name: "Manage Roster" }))[0]);
     await user.type(
-      screen.getByRole("textbox", { name: "User ID" }),
-      "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+      screen.getByRole("textbox", { name: "Email address" }),
+      "ada@acme.example",
     );
     await user.click(screen.getByRole("button", { name: "Add" }));
 
@@ -313,7 +313,7 @@ describe("TeamsDirectory", () => {
     expect(screen.queryByText(/@/)).not.toBeInTheDocument();
     expect(screen.queryByText("u2")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "User ID" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Email address" })).not.toBeInTheDocument();
     expect(fetchCalls.some((c) => c.url.includes("/api/v1/users"))).toBe(false);
   });
 

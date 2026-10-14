@@ -32,7 +32,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { isUuid } from "@/lib/uuid";
+import { looksLikeEmail } from "@/lib/email";
 import type { Team } from "@/types/api";
 import { useState } from "react";
 
@@ -131,7 +131,7 @@ export function TeamsDirectory() {
   const [rosterOpen, setRosterOpen] = useState(false);
   const [teamToDelete, setTeamToDelete] = useState<Team | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [rosterUserId, setRosterUserId] = useState("");
+  const [rosterEmail, setRosterEmail] = useState("");
   const [rosterRole, setRosterRole] = useState<"admin" | "member">("member");
   const [rosterInputError, setRosterInputError] = useState<string | null>(null);
 
@@ -161,18 +161,16 @@ export function TeamsDirectory() {
 
   async function handleAddRosterMember(e: React.FormEvent) {
     e.preventDefault();
-    const userId = rosterUserId.trim();
-    if (!userId) return;
-    if (!isUuid(userId)) {
-      setRosterInputError(
-        "User ID must be a UUID, for example 3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f.",
-      );
+    const email = rosterEmail.trim();
+    if (!email) return;
+    if (!looksLikeEmail(email)) {
+      setRosterInputError("Enter the person's email address, for example ada@example.com.");
       return;
     }
     setRosterInputError(null);
     try {
-      await addMemberMutation.mutateAsync({ userId, role: rosterRole });
-      setRosterUserId("");
+      await addMemberMutation.mutateAsync({ email, role: rosterRole });
+      setRosterEmail("");
       setRosterRole("member");
     } catch {}
   }
@@ -309,14 +307,15 @@ export function TeamsDirectory() {
               <div className="flex gap-2">
                 <Input
                   required
-                  aria-label="User ID"
-                  value={rosterUserId}
+                  type="email"
+                  aria-label="Email address"
+                  value={rosterEmail}
                   onChange={(e) => {
-                    setRosterUserId(e.target.value);
+                    setRosterEmail(e.target.value);
                     setRosterInputError(null);
                     addMemberMutation.reset();
                   }}
-                  placeholder="User ID"
+                  placeholder="Email address"
                   className="flex-1"
                 />
                 <SelectField

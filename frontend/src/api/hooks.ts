@@ -521,10 +521,12 @@ export function useAddProjectMember(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
     meta: { success: "Member added" },
-    mutationFn: ({ user_id, role }: { user_id: string; role: ProjectRole; }) =>
+    mutationFn: (
+      grant: { email: string; role: ProjectRole; } | { user_id: string; role: ProjectRole; },
+    ) =>
       apiFetch<void>(`/api/v1/projects/${encodeURIComponent(slug)}/members`, {
         method: "POST",
-        body: JSON.stringify({ user_id, role }),
+        body: JSON.stringify(grant),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projectMembers(slug) });
@@ -636,10 +638,10 @@ export function useAddTeamMember(teamId: string) {
   const queryClient = useQueryClient();
   return useMutation({
     meta: { success: "Added to the team" },
-    mutationFn: ({ userId, role }: { userId: string; role: TeamMemberRole; }) =>
+    mutationFn: ({ email, role }: { email: string; role: TeamMemberRole; }) =>
       apiFetch<void>(`/api/v1/teams/${encodeURIComponent(teamId)}/members`, {
         method: "POST",
-        body: JSON.stringify({ user_id: userId, role }),
+        body: JSON.stringify({ email, role }),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.teamMembers(teamId) });

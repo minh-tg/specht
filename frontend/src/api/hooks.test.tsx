@@ -525,7 +525,7 @@ describe("useCreateApiKey", () => {
 });
 
 describe("useAddTeamMember", () => {
-  it("posts the user and the role to the team roster", async () => {
+  it("posts the email address and the role to the team roster", async () => {
     const mutations: Array<{ url: string; method: string; body: string; }> = [];
     globalThis.fetch = vi.fn().mockImplementation(
       (input: RequestInfo | URL, init?: RequestInit) => {
@@ -542,7 +542,7 @@ describe("useAddTeamMember", () => {
 
     await act(async () => {
       await result.current.mutateAsync({
-        userId: "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+        email: "ada@acme.example",
         role: "admin",
       });
     });
@@ -551,7 +551,7 @@ describe("useAddTeamMember", () => {
     expect(mutations[0].url).toBe("/api/v1/teams/t1/members");
     expect(mutations[0].method).toBe("POST");
     expect(JSON.parse(mutations[0].body)).toEqual({
-      user_id: "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+      email: "ada@acme.example",
       role: "admin",
     });
   });

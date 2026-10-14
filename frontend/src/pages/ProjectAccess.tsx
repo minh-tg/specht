@@ -33,7 +33,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { isUuid } from "@/lib/uuid";
+import { looksLikeEmail } from "@/lib/email";
 import type { ProjectMember, ProjectRole } from "@/types/api";
 import { LockIcon, ShieldCheckIcon } from "lucide-react";
 import { useState } from "react";
@@ -92,7 +92,7 @@ export function ProjectAccess() {
   const unlinkTeamMutation = useUnlinkProjectTeam(currentSlug);
 
   const [showAddMember, setShowAddMember] = useState(false);
-  const [memberUserId, setMemberUserId] = useState("");
+  const [memberEmail, setMemberEmail] = useState("");
   const [memberRole, setMemberRole] = useState<ProjectRole>("member");
   const [memberInputError, setMemberInputError] = useState<string | null>(null);
 
@@ -122,21 +122,19 @@ export function ProjectAccess() {
 
   async function handleAddMember(e: React.FormEvent) {
     e.preventDefault();
-    const userId = memberUserId.trim();
-    if (!userId) return;
-    if (!isUuid(userId)) {
-      setMemberInputError(
-        "User ID must be a UUID, for example 3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f.",
-      );
+    const email = memberEmail.trim();
+    if (!email) return;
+    if (!looksLikeEmail(email)) {
+      setMemberInputError("Enter the person's email address, for example ada@example.com.");
       return;
     }
     setMemberInputError(null);
     try {
       await addMemberMutation.mutateAsync({
-        user_id: userId,
+        email,
         role: memberRole,
       });
-      setMemberUserId("");
+      setMemberEmail("");
       setMemberRole("member");
       setShowAddMember(false);
     } catch {}
@@ -373,26 +371,30 @@ export function ProjectAccess() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add Direct Member</DialogTitle>
-            <DialogDescription>Grant a user direct permissions on this project.</DialogDescription>
+            <DialogDescription>
+              Grant the person with this email address direct permissions on this project. They need
+              an account already; to bring in someone new, send an invite.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAddMember} className="grid gap-4">
             <div>
               <label
-                htmlFor="member-id-input"
+                htmlFor="member-email-input"
                 className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1"
               >
-                User ID
+                Email address
               </label>
               <Input
-                id="member-id-input"
+                id="member-email-input"
+                type="email"
                 required
-                value={memberUserId}
+                value={memberEmail}
                 onChange={(e) => {
-                  setMemberUserId(e.target.value);
+                  setMemberEmail(e.target.value);
                   setMemberInputError(null);
                   addMemberMutation.reset();
                 }}
-                placeholder="e.g. 3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f"
+                placeholder="ada@example.com"
               />
             </div>
 
