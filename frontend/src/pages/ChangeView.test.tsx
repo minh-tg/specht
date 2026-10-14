@@ -379,6 +379,18 @@ describe("ChangeView", () => {
     );
   });
 
+  it("retries the requests behind the error and renders the change once they succeed", async () => {
+    changeGateStatus = 500;
+    renderPage();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("gate failed");
+    changeGateStatus = 200;
+    await userEvent.setup().click(screen.getByRole("button", { name: "Retry" }));
+
+    expect(await loadedLedger()).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("alerts when the reports request fails", async () => {
     reportsStatus = 403;
     renderPage();
