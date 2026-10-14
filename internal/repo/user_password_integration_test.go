@@ -102,3 +102,38 @@ func TestUsers_ClearPasswordRemovesOnlyThePassword(t *testing.T) {
 
 	assert.NoError(t, users.ClearPassword(ctx, created.ID), "clearing twice is harmless, so a retry works")
 }
+
+func TestUsers_ListByIDsReturnsTheKnownAccountsInOneQuery(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	users := &pgUserPort{q: sqlc.New(repos.pool)}
+
+	name := "Ada Okafor"
+	ada, err := users.Create(ctx, "ada@example.com", &name, nil)
+	require.NoError(t, err)
+	bo, err := users.Create(ctx, "bo@example.com", nil, nil)
+	require.NoError(t, err)
+	_, err = users.Create(ctx, "cy@example.com", nil, nil)
+	require.NoError(t, err)
+
+	got, err := users.ListByIDs(ctx, []string{
+		bo.ID, ada.ID, ada.ID,
+		"not-a-uuid",
+		"00000000-0000-4000-8000-00000000dead",
+	})
+
+	require.NoError(t, err)
+	require.Len(t, got, 2, "malformed and unknown ids are skipped, a repeated id counts once")
+	assert.Equal(t, "ada@example.com", got[0].Email, "ordered by email")
+	require.NotNil(t, got[0].DisplayName)
+	assert.Equal(t, "Ada Okafor", *got[0].DisplayName)
+	assert.Equal(t, "bo@example.com", got[1].Email)
+
+	none, err := users.ListByIDs(ctx, nil)
+	require.NoError(t, err)
+	assert.Empty(t, none)
+	none, err = users.ListByIDs(ctx, []string{"not-a-uuid"})
+	require.NoError(t, err)
+	assert.Empty(t, none)
+}

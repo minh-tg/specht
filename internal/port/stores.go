@@ -178,6 +178,9 @@ type UserStore interface {
 	// ClearPassword removes the account's password hash so it can no longer
 	// sign in with a password. It is idempotent.
 	ClearPassword(ctx context.Context, userID string) error
+	// ListByIDs returns the accounts with the given ids in one query. Ids that
+	// are malformed or unknown are skipped.
+	ListByIDs(ctx context.Context, ids []string) ([]User, error)
 	// SetPassword replaces the account's password hash and starts a new token
 	// generation in one statement, so every open access token stops working.
 	SetPassword(ctx context.Context, userID, passwordHash string) error

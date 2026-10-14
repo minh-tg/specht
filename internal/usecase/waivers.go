@@ -27,19 +27,23 @@ type WaiverResponse struct {
 	// Only approved waivers count in the gate.
 	Status string `json:"status"`
 	// ScopeAll marks a waiver that covers every finding of the project.
-	ScopeAll     bool                      `json:"scope_all"`
-	Reason       string                    `json:"reason"`
-	RequestedBy  *string                   `json:"requested_by,omitempty"`
-	RequestedAt  *string                   `json:"requested_at,omitempty"`
-	DecidedBy    *string                   `json:"decided_by,omitempty"`
-	DecidedAt    *string                   `json:"decided_at,omitempty"`
-	DecisionNote string                    `json:"decision_note"`
-	ExpiresAt    *string                   `json:"expires_at,omitempty"`
-	Conditions   []WaiverConditionResp     `json:"conditions"`
-	Contexts     []WaiverContextResp       `json:"contexts"`
-	Targets      []WaiverFindingTargetResp `json:"targets"`
-	CreatedAt    string                    `json:"created_at"`
-	UpdatedAt    string                    `json:"updated_at"`
+	ScopeAll    bool    `json:"scope_all"`
+	Reason      string  `json:"reason"`
+	RequestedBy *string `json:"requested_by,omitempty"`
+	// RequestedByName and DecidedByName say who those ids are, for people reading a
+	// project's waivers. They are left out for API keys.
+	RequestedByName string                    `json:"requested_by_name,omitempty"`
+	DecidedByName   string                    `json:"decided_by_name,omitempty"`
+	RequestedAt     *string                   `json:"requested_at,omitempty"`
+	DecidedBy       *string                   `json:"decided_by,omitempty"`
+	DecidedAt       *string                   `json:"decided_at,omitempty"`
+	DecisionNote    string                    `json:"decision_note"`
+	ExpiresAt       *string                   `json:"expires_at,omitempty"`
+	Conditions      []WaiverConditionResp     `json:"conditions"`
+	Contexts        []WaiverContextResp       `json:"contexts"`
+	Targets         []WaiverFindingTargetResp `json:"targets"`
+	CreatedAt       string                    `json:"created_at"`
+	UpdatedAt       string                    `json:"updated_at"`
 }
 
 // WaiverConditionResp is a waiver condition in API responses.
@@ -70,6 +74,7 @@ type WaiverEventResp struct {
 	WaiverID  string          `json:"waiver_id"`
 	EventType string          `json:"event_type"`
 	ActorID   string          `json:"actor_id,omitempty"`
+	ActorName string          `json:"actor_name,omitempty"`
 	Metadata  json.RawMessage `json:"metadata,omitempty"`
 	CreatedAt string          `json:"created_at"`
 }
@@ -322,6 +327,7 @@ func (u *Usecases) ListWaivers(ctx context.Context, projectSlug string, statuses
 	for i, w := range kept {
 		resp[i] = toWaiver(w)
 	}
+	u.nameWaiverPeople(ctx, resp)
 	if len(ids) == 0 {
 		return resp, nil
 	}
@@ -395,6 +401,9 @@ func (u *Usecases) GetWaiver(ctx context.Context, projectSlug, waiverID string) 
 	}
 
 	resp := toWaiverDetail(w, conditions, contexts, targets)
+	named := []WaiverResponse{resp.WaiverResponse}
+	u.nameWaiverPeople(ctx, named)
+	resp.WaiverResponse = named[0]
 	return &resp, nil
 }
 
@@ -580,8 +589,14 @@ func (u *Usecases) ListWaiverEvents(ctx context.Context, projectSlug, waiverID s
 	}
 
 	resp := make([]WaiverEventResp, len(events))
+	actors := make([]string, 0, len(events))
 	for i, e := range events {
 		resp[i] = toWaiverEvent(e)
+		actors = append(actors, e.ActorID)
+	}
+	labels := u.peopleLabels(ctx, actors)
+	for i := range resp {
+		resp[i].ActorName = labels[resp[i].ActorID]
 	}
 	return resp, nil
 }

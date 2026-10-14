@@ -207,6 +207,29 @@ func (r *pgUserPort) ClearPassword(ctx context.Context, userID string) error {
 	return r.q.ClearUserPassword(ctx, uid)
 }
 
+func (r *pgUserPort) ListByIDs(ctx context.Context, ids []string) ([]port.User, error) {
+	parsed := make([]pgtype.UUID, 0, len(ids))
+	for _, id := range ids {
+		uid, err := parseID(id)
+		if err != nil {
+			continue
+		}
+		parsed = append(parsed, uid)
+	}
+	if len(parsed) == 0 {
+		return nil, nil
+	}
+	rows, err := r.q.ListUsersByIDs(ctx, parsed)
+	if err != nil {
+		return nil, mappingErr(err)
+	}
+	out := make([]port.User, len(rows))
+	for i, row := range rows {
+		out[i] = userToPort(row)
+	}
+	return out, nil
+}
+
 func (r *pgUserPort) SetPassword(ctx context.Context, userID, passwordHash string) error {
 	uid, err := parseID(userID)
 	if err != nil {
