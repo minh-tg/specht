@@ -281,6 +281,36 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/me/password": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Change the signed-in account's password
+     * @description Checks the current password, then replaces it. Every refresh token for
+     *     the account is revoked first, and the write starts a new token
+     *     generation, so every other open session ends. The response is a fresh
+     *     session for the caller, who stays signed in.
+     *
+     *     The new password follows the registration rules (8 to 72 characters)
+     *     and must differ from the current one. A wrong current password answers
+     *     400 `wrong_password`, never 401, so a client does not read it as an
+     *     expired session. An account that signs in through SSO has no password
+     *     and answers 409 `no_local_password`. The route shares the sign-in rate
+     *     limit per client address.
+     */
+    put: operations["changePassword"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/auth/apikeys": {
     parameters: {
       query?: never;
@@ -1887,6 +1917,15 @@ export interface components {
       /** @enum {string} */
       role: "admin" | "member";
     };
+    ChangePasswordRequest: {
+      /** Format: password */
+      current_password: string;
+      /**
+       * Format: password
+       * @description Must differ from the current password.
+       */
+      new_password: string;
+    };
     ProfileUpdateRequest: {
       /** @description Omit to leave unchanged; `""` clears it. */
       display_name?: string | null;
@@ -3446,6 +3485,51 @@ export interface operations {
       400: components["responses"]["BadRequest"];
       401: components["responses"]["Unauthorized"];
       403: components["responses"]["SessionRequired"];
+    };
+  };
+  changePassword: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ChangePasswordRequest"];
+      };
+    };
+    responses: {
+      /** @description A new session for the caller. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["AuthResponse"];
+        };
+      };
+      /** @description The current password is wrong (`wrong_password`), or the new one breaks the rules (`invalid_password`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["SessionRequired"];
+      /** @description The account has no local password (`no_local_password`). */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      429: components["responses"]["RateLimited"];
     };
   };
   listApiKeys: {

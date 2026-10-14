@@ -38,6 +38,40 @@ func TestUsers_BumpTokenVersionAdvancesTheGeneration(t *testing.T) {
 	assert.Equal(t, int32(0), version, "other accounts keep their generation")
 }
 
+func TestUsers_SetPasswordReplacesTheHashAndStartsANewGeneration(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	users := &pgUserPort{q: sqlc.New(repos.pool)}
+
+	oldHash := "old-hash"
+	name := "Eve"
+	created, err := users.Create(ctx, "eve@example.com", &name, &oldHash)
+	require.NoError(t, err)
+	other, err := users.Create(ctx, "fay@example.com", nil, &oldHash)
+	require.NoError(t, err)
+
+	require.NoError(t, users.SetPassword(ctx, created.ID, "new-hash"))
+
+	got, err := users.GetByID(ctx, created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "new-hash", got.PasswordHash)
+	assert.Equal(t, "eve@example.com", got.Email, "nothing else changes")
+	require.NotNil(t, got.DisplayName)
+	assert.Equal(t, "Eve", *got.DisplayName)
+
+	version, err := users.TokenVersion(ctx, created.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), version, "the write starts a new token generation in the same statement")
+
+	untouched, err := users.GetByID(ctx, other.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "old-hash", untouched.PasswordHash, "other accounts keep their password")
+	otherVersion, err := users.TokenVersion(ctx, other.ID)
+	require.NoError(t, err)
+	assert.Equal(t, int32(0), otherVersion)
+}
+
 func TestUsers_ClearPasswordRemovesOnlyThePassword(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()

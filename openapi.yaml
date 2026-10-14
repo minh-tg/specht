@@ -464,6 +464,51 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/SessionRequired" }
 
+  /api/v1/me/password:
+    put:
+      tags: [Profile]
+      operationId: changePassword
+      summary: Change the signed-in account's password
+      description: |
+        Checks the current password, then replaces it. Every refresh token for
+        the account is revoked first, and the write starts a new token
+        generation, so every other open session ends. The response is a fresh
+        session for the caller, who stays signed in.
+
+        The new password follows the registration rules (8 to 72 characters)
+        and must differ from the current one. A wrong current password answers
+        400 `wrong_password`, never 401, so a client does not read it as an
+        expired session. An account that signs in through SSO has no password
+        and answers 409 `no_local_password`. The route shares the sign-in rate
+        limit per client address.
+      x-auth: session
+      security:
+        - sessionAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChangePasswordRequest" }
+      responses:
+        "200":
+          description: A new session for the caller.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuthResponse" }
+        "400":
+          description: The current password is wrong (`wrong_password`), or the new one breaks the rules (`invalid_password`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/SessionRequired" }
+        "409":
+          description: The account has no local password (`no_local_password`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
   /api/v1/auth/apikeys:
     post:
       tags: [API keys]
@@ -3112,6 +3157,18 @@ components:
       required: [role]
       properties:
         role: { type: string, enum: [admin, member] }
+
+    ChangePasswordRequest:
+      type: object
+      required: [current_password, new_password]
+      properties:
+        current_password: { type: string, format: password }
+        new_password:
+          type: string
+          format: password
+          minLength: 8
+          maxLength: 72
+          description: Must differ from the current password.
 
     ProfileUpdateRequest:
       type: object
