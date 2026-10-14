@@ -1,5 +1,6 @@
-import { APIError, apiFetch } from "@/api/client";
+import { APIError } from "@/api/client";
 import { queryKeys, useCapabilities } from "@/api/hooks";
+import { useSetup } from "@/api/pageRequests";
 import { useAuth } from "@/auth/useAuth";
 import { AuthLayout } from "@/components/AuthLayout";
 import { ErrorState } from "@/components/ErrorState";
@@ -8,7 +9,6 @@ import { PasswordRequirements } from "@/components/PasswordRequirements";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { Button } from "@/components/ui/button";
 import { isPasswordValid } from "@/lib/passwordRules";
-import type { LoginResponse } from "@/types/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { type SubmitEvent, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
@@ -22,6 +22,7 @@ export function Setup() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const capabilities = useCapabilities();
+  const setup = useSetup();
 
   const [token, setToken] = useState("");
   const [email, setEmail] = useState("");
@@ -61,15 +62,11 @@ export function Setup() {
     }
     setSubmitting(true);
     try {
-      const session = await apiFetch<LoginResponse>("/api/v1/setup", {
-        method: "POST",
-        body: JSON.stringify({
-          token: token.trim(),
-          email: email.trim(),
-          password,
-          ...(name.trim() ? { display_name: name.trim() } : {}),
-        }),
-        skipAuthRedirect: true,
+      const session = await setup.mutateAsync({
+        token: token.trim(),
+        email: email.trim(),
+        password,
+        ...(name.trim() ? { display_name: name.trim() } : {}),
       });
       auth.adopt(session);
       await queryClient.invalidateQueries({ queryKey: queryKeys.capabilities() });

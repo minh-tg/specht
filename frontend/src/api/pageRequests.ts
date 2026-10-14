@@ -3,6 +3,7 @@ import type {
   GateStatus,
   InviteLookup,
   JoinInviteResponse,
+  LoginResponse,
   ProjectStats,
 } from "@/types/api";
 import { queryOptions, useMutation, useQuery } from "@tanstack/react-query";
@@ -38,6 +39,25 @@ export function useAcceptInvite(token: string) {
   return useMutation({
     mutationFn: (body: AcceptInviteBody) =>
       apiFetch<AcceptInviteResponse>(`/api/v1/invites/${encodeURIComponent(token)}/accept`, {
+        method: "POST",
+        body: JSON.stringify(body),
+        skipAuthRedirect: true,
+      }),
+  });
+}
+
+export interface SetupBody {
+  token: string;
+  email: string;
+  password: string;
+  display_name?: string;
+}
+
+/** Creates the first administrator of a new server. The caller handles the error. */
+export function useSetup() {
+  return useMutation({
+    mutationFn: (body: SetupBody) =>
+      apiFetch<LoginResponse>("/api/v1/setup", {
         method: "POST",
         body: JSON.stringify(body),
         skipAuthRedirect: true,
