@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/reqctx"
 )
 
 // Event names for the canonical security-relevant operations.
@@ -110,13 +111,18 @@ func (a *Logger) Log(ctx context.Context, event Event) {
 // context, populates the principal, and logs.
 func (a *Logger) HTTP(r *http.Request, name string, outcome Outcome, project, target string, err error) {
 	ident := auth.ContextIdentity(r.Context())
+	started := reqctx.Start(r.Context())
+	if started.IsZero() {
+		started = time.Now()
+	}
 	a.Log(r.Context(), Event{
 		Name:      name,
 		Outcome:   outcome,
 		Principal: ident,
 		Project:   project,
 		Target:    target,
-		StartedAt: time.Now(),
+		RequestID: reqctx.ID(r.Context()),
+		StartedAt: started,
 		Error:     errMsg(err),
 	})
 }
