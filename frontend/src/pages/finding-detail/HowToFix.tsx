@@ -16,7 +16,7 @@ export function HowToFix({ finding }: { readonly finding: Finding; }) {
             </div>
             {finding.remediation.fallback && (
               <p className="text-muted-foreground text-xs">
-                General guidance — the scanner reported no specific fix.
+                General guidance. The scanner reported no specific fix.
               </p>
             )}
             {finding.remediation.url && parseSourceLink(finding.remediation.url) && (
@@ -41,7 +41,7 @@ export function HowToFix({ finding }: { readonly finding: Finding; }) {
                 Suggested: {finding.suggestion.action}
                 {finding.suggestion.target ? ` ${finding.suggestion.target}` : ""} (confidence{" "}
                 {confidenceLabel(finding.suggestion.confidence)})
-                {finding.suggestion.detail ? ` — ${finding.suggestion.detail}` : ""}
+                {finding.suggestion.detail ? `. ${finding.suggestion.detail}` : ""}
               </p>
             )}
           </div>

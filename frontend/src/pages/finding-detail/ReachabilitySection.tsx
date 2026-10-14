@@ -16,9 +16,9 @@ function latestAssessmentLine(latest: ReachabilityAssessment | null): ReactNode 
   if (!latest) {
     return (
       <>
-        Latest: <span className="font-medium">Unknown</span>{" "}
-        — no assessment yet; an unassessed finding still blocks the gate until marked not reachable
-        or not applicable.
+        Latest: <span className="font-medium">Unknown</span>.{" "}
+        No assessment yet; an unassessed finding still blocks the gate until marked not reachable or
+        not applicable.
       </>
     );
   }
@@ -29,9 +29,8 @@ function latestAssessmentLine(latest: ReachabilityAssessment | null): ReactNode 
       <span className="font-medium">
         {reachabilityStateLabel(latest.state) ?? "Unknown"}
       </span>
-      {evidence && (
-        <span title={evidence}>{" — "}{truncateText(evidence, MAX_EVIDENCE_LENGTH)}</span>
-      )} ({formatDateTime(latest.updated_at)})
+      {evidence && <span title={evidence}>{". "}{truncateText(evidence, MAX_EVIDENCE_LENGTH)}
+      </span>} ({formatDateTime(latest.updated_at)})
     </>
   );
 }

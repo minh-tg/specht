@@ -29,7 +29,7 @@ export function WhereItOccurs({ finding }: { readonly finding: Finding; }) {
         )
         : (
           <p className="text-muted-foreground text-sm">
-            No location reported — the scanner gave no file, resource, or URL.
+            No location reported. The scanner gave no file, resource, or URL.
           </p>
         )}
     </div>
