@@ -1,5 +1,5 @@
 import { APIError } from "@/api/client";
-import { useProjectRole, useReports } from "@/api/hooks";
+import { MAX_PAGE_SIZE, useProjectRole, useReports } from "@/api/hooks";
 import { useDeleteReport } from "@/api/reportActions";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
@@ -48,9 +48,15 @@ function statusMeta(status: string): { label: string; style: string; } {
     : { label: status, style: "bg-muted text-muted-foreground" };
 }
 
+const PAGE_SIZE = 20;
+
 export function ReportHistory() {
   const { slug } = useParams<{ slug: string; }>();
-  const { data: reports, isLoading, isError, error, refetch } = useReports(slug ?? "");
+  const [limit, setLimit] = useState(PAGE_SIZE);
+  const { data: reports, isLoading, isError, error, refetch, isFetching } = useReports(
+    slug ?? "",
+    limit,
+  );
   const { isAdmin } = useProjectRole(slug ?? "");
   const deleteMutation = useDeleteReport(slug ?? "");
   const [pendingDelete, setPendingDelete] = useState<Report | null>(null);
@@ -177,6 +183,19 @@ export function ReportHistory() {
           </div>
         );
       })}
+
+      {reports.length >= limit && limit < MAX_PAGE_SIZE && (
+        <div>
+          <button
+            type="button"
+            disabled={isFetching}
+            onClick={() => setLimit((current) => Math.min(current + PAGE_SIZE, MAX_PAGE_SIZE))}
+            className="border-input hover:bg-muted rounded-md border px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+          >
+            Show more reports
+          </button>
+        </div>
+      )}
 
       <AlertDialog
         open={pendingDelete !== null}

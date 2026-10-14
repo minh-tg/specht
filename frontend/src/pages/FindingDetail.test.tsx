@@ -90,7 +90,7 @@ beforeEach(() => {
     async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       const method = (init?.method ?? "GET").toUpperCase();
-      if (url.endsWith("/events") && method === "GET") {
+      if (/\/events(\?|$)/.test(url) && method === "GET") {
         return { ok: true, json: () => Promise.resolve(eventsFixture) } as Response;
       }
       if (url.endsWith("/reachability") && method === "GET") {
@@ -300,7 +300,7 @@ describe("FindingDetail accessibility", () => {
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
         const method = (init?.method ?? "GET").toUpperCase();
-        if (url.endsWith("/events") && method === "GET") {
+        if (/\/events(\?|$)/.test(url) && method === "GET") {
           return { ok: true, json: () => Promise.resolve(eventsFixture) } as Response;
         }
         if (url.endsWith("/reachability") && method === "GET") {

@@ -127,10 +127,12 @@ beforeEach(() => {
         }),
       );
     }
-    if (url.startsWith("/api/v1/projects/acme/reports?")) {
+    if (url.startsWith("/api/v1/projects/acme/reports?") && !url.endsWith("?limit=500")) {
       return Promise.resolve(jsonResponse(signalReports));
     }
-    if (url === "/api/v1/projects/acme/reports") {
+    if (
+      url === "/api/v1/projects/acme/reports" || url === "/api/v1/projects/acme/reports?limit=500"
+    ) {
       if (reportsPending) return new Promise<Response>(() => {});
       if (reportsStatus >= 400) {
         return Promise.resolve(

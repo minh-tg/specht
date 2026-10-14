@@ -354,12 +354,24 @@ export function useFinding(findingId: string) {
   return useQuery(findingQueryOptions(findingId));
 }
 
-export function useReports(projectSlug: string) {
+/**
+ * A project's reports, newest first. The server returns 20 unless told otherwise and never more
+ * than 500, so a caller that needs to see further back says how many it wants. The previous list
+ * stays on screen while a longer one loads.
+ */
+export function useReports(projectSlug: string, limit?: number) {
   return useQuery({
-    queryKey: queryKeys.reports(projectSlug),
+    queryKey: limit === undefined
+      ? queryKeys.reports(projectSlug)
+      : [...queryKeys.reports(projectSlug), limit],
     queryFn: () =>
-      apiFetch<Report[]>(`/api/v1/projects/${encodeURIComponent(projectSlug)}/reports`),
+      apiFetch<Report[]>(
+        `/api/v1/projects/${encodeURIComponent(projectSlug)}/reports${
+          limit === undefined ? "" : `?limit=${limit}`
+        }`,
+      ),
     enabled: !!projectSlug,
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -471,11 +483,16 @@ export function useReachability(findingId: string) {
   });
 }
 
+/** The most rows the server returns for one list request. */
+export const MAX_PAGE_SIZE = 500;
+
 export function useFindingEvents(findingId: string) {
   return useQuery({
     queryKey: queryKeys.findingEvents(findingId),
     queryFn: () =>
-      apiFetch<FindingEvent[]>(`/api/v1/findings/${encodeURIComponent(findingId)}/events`),
+      apiFetch<FindingEvent[]>(
+        `/api/v1/findings/${encodeURIComponent(findingId)}/events?limit=${MAX_PAGE_SIZE}`,
+      ),
     enabled: !!findingId,
   });
 }
