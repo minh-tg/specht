@@ -1,7 +1,59 @@
-import type { GateStatus, ProjectStats } from "@/types/api";
-import { queryOptions } from "@tanstack/react-query";
+import type {
+  AcceptInviteResponse,
+  GateStatus,
+  InviteLookup,
+  JoinInviteResponse,
+  ProjectStats,
+} from "@/types/api";
+import { queryOptions, useMutation, useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
 import { queryKeys } from "./hooks";
+
+/** Keys for requests that only one page makes. Shared keys come from `queryKeys` in hooks.ts. */
+export const pageKeys = {
+  invite: (token: string) => ["invite", token] as const,
+};
+
+/** The project and role an invite link is for. Stale at once so a revisit asks the server again. */
+export function useInviteLookup(token: string) {
+  return useQuery({
+    queryKey: pageKeys.invite(token),
+    queryFn: () =>
+      apiFetch<InviteLookup>(`/api/v1/invites/${encodeURIComponent(token)}`, {
+        skipAuthRedirect: true,
+      }),
+    retry: false,
+    staleTime: 0,
+  });
+}
+
+export interface AcceptInviteBody {
+  email: string;
+  password: string;
+  display_name?: string;
+}
+
+/** Creates the account an invite is for and joins it. The caller handles the error. */
+export function useAcceptInvite(token: string) {
+  return useMutation({
+    mutationFn: (body: AcceptInviteBody) =>
+      apiFetch<AcceptInviteResponse>(`/api/v1/invites/${encodeURIComponent(token)}/accept`, {
+        method: "POST",
+        body: JSON.stringify(body),
+        skipAuthRedirect: true,
+      }),
+  });
+}
+
+/** Joins the signed-in account to the project an invite is for. The caller handles the error. */
+export function useJoinInvite(token: string) {
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<JoinInviteResponse>(`/api/v1/invites/${encodeURIComponent(token)}/join`, {
+        method: "POST",
+      }),
+  });
+}
 
 /** The gate status of a project, one query per row of the project list. */
 export function projectGateQuery(slug: string) {
