@@ -163,6 +163,7 @@ export function ReportHistory() {
               {isAdmin && !isReportInProgress(r.status) && (
                 <button
                   type="button"
+                  aria-label={`Delete ${r.tool_name} report from ${formatDateTime(r.created_at)}`}
                   onClick={() => {
                     deleteMutation.reset();
                     setPendingDelete(r);
