@@ -5,6 +5,7 @@ import type {
   JoinInviteResponse,
   LoginResponse,
   ProjectStats,
+  RegisterResponse,
 } from "@/types/api";
 import { queryOptions, useMutation, useQuery } from "@tanstack/react-query";
 import { apiFetch } from "./client";
@@ -39,6 +40,18 @@ export function useAcceptInvite(token: string) {
   return useMutation({
     mutationFn: (body: AcceptInviteBody) =>
       apiFetch<AcceptInviteResponse>(`/api/v1/invites/${encodeURIComponent(token)}/accept`, {
+        method: "POST",
+        body: JSON.stringify(body),
+        skipAuthRedirect: true,
+      }),
+  });
+}
+
+/** Creates an account on a server that allows self-registration. The caller handles the error. */
+export function useRegister() {
+  return useMutation({
+    mutationFn: (body: { email: string; password: string; }) =>
+      apiFetch<RegisterResponse>("/api/v1/auth/register", {
         method: "POST",
         body: JSON.stringify(body),
         skipAuthRedirect: true,
