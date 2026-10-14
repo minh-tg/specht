@@ -1,7 +1,9 @@
+import { expiresAtFor, EXPIRY_OPTIONS, type ExpiryOption } from "@/api/apiKeys";
 import { APIError } from "@/api/client";
 import { queryKeys, useCreateApiKey, useProject, useProjectStats, useVersion } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
 import { ErrorState } from "@/components/ErrorState";
+import { SelectField } from "@/components/SelectField";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   githubActionsSnippet,
@@ -82,6 +84,7 @@ export function ProjectSetup() {
   const { data: serverVersion, isLoading: versionLoading, isError: versionError } = useVersion();
 
   const createKey = useCreateApiKey();
+  const [expiry, setExpiry] = useState<ExpiryOption>("none");
   const [rawKey, setRawKey] = useState<string | null>(null);
   const [keyError, setKeyError] = useState<string | null>(null);
 
@@ -102,7 +105,7 @@ export function ProjectSetup() {
 
   function handleCreateKey() {
     setKeyError(null);
-    createKey.mutate({ project: slug, name: "CI" }, {
+    createKey.mutate({ project: slug, name: "CI", expiresAt: expiresAtFor(expiry, new Date()) }, {
       onSuccess: (created) => setRawKey(created.raw_key),
       onError: (error) => {
         setRawKey(null);
@@ -178,6 +181,16 @@ export function ProjectSetup() {
           <p className="text-muted-foreground mt-1 text-sm">
             Create a key for your pipeline. It is shown only once.
           </p>
+          <div className="mt-3 w-40">
+            <label htmlFor="ci-key-expiry" className="text-sm font-medium">Expires</label>
+            <SelectField
+              id="ci-key-expiry"
+              className="mt-1 w-full"
+              value={expiry}
+              onValueChange={(v) => setExpiry(v as ExpiryOption)}
+              options={EXPIRY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+            />
+          </div>
           <button
             type="button"
             className={`${BUTTON_CLASS} mt-3`}

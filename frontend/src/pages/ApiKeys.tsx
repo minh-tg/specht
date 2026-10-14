@@ -1,11 +1,19 @@
-import { APIError, apiFetch } from "@/api/client";
-import { useCiManagedProjects } from "@/api/hooks";
+import {
+  expiresAtFor,
+  EXPIRY_OPTIONS,
+  type ExpiryOption,
+  keyEndLabel,
+  useApiKeys,
+  useRevokeApiKey,
+} from "@/api/apiKeys";
+import { APIError } from "@/api/client";
+import { useCiManagedProjects, useCreateApiKey } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { SelectField } from "@/components/SelectField";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ApiKey, Project } from "@/types/api";
+import type { Project } from "@/types/api";
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
 
@@ -48,95 +56,72 @@ export function ApiKeys() {
 
 function ApiKeysManager({ projects }: { projects: Project[]; }) {
   const [selectedProject, setSelectedProject] = useState("");
-  const [keys, setKeys] = useState<ApiKey[]>([]);
-  const [loadingKeys, setLoadingKeys] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const keysQuery = useApiKeys(selectedProject);
+  const keys = keysQuery.data ?? [];
 
   const [newKeyName, setNewKeyName] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [expiry, setExpiry] = useState<ExpiryOption>("none");
+  const createKey = useCreateApiKey();
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
 
-  const [revokingId, setRevokingId] = useState<string | null>(null);
+  const revoke = useRevokeApiKey(selectedProject);
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
   const [revokeError, setRevokeError] = useState<string | null>(null);
-
-  async function loadKeys(project: string) {
-    if (!project) return;
-    setLoadingKeys(true);
-    setLoadError(null);
-    try {
-      const data = await apiFetch<ApiKey[]>(`/api/v1/auth/apikeys?project=${project}`);
-      setKeys(data);
-    } catch (err) {
-      setKeys([]);
-      setLoadError(err instanceof APIError ? err.message : "Failed to load API keys");
-    } finally {
-      setLoadingKeys(false);
-    }
-  }
 
   function handleProjectChange(slug: string) {
     setSelectedProject(slug);
     setCreatedKey(null);
-    setLoadError(null);
-    if (slug) {
-      loadKeys(slug);
-    } else {
-      setKeys([]);
-    }
+    setConfirmRevoke(null);
+    setRevokeError(null);
   }
 
-  async function handleCreate(e: React.SubmitEvent) {
+  function handleCreate(e: React.SubmitEvent) {
     e.preventDefault();
     if (!newKeyName.trim() || !selectedProject) {
       setCreateError(newKeyName.trim() ? "Project is required" : "Name is required");
       return;
     }
     setCreateError(null);
-    setCreating(true);
-    try {
+    createKey.mutate({
+      project: selectedProject,
+      name: newKeyName.trim(),
+      expiresAt: expiresAtFor(expiry, new Date()),
+    }, {
       // The server's one-time secret rides in raw_key (APIKeyResponse);
       // reading any other field silently discards the only copy.
-      const res = await apiFetch<{ raw_key: string; }>("/api/v1/auth/apikeys", {
-        method: "POST",
-        body: JSON.stringify({ project: selectedProject, name: newKeyName.trim() }),
-      });
-      setCreatedKey(res.raw_key);
-      setNewKeyName("");
-      loadKeys(selectedProject);
-    } catch (err) {
-      setCreateError(err instanceof APIError ? err.message : "Failed to create key");
-    } finally {
-      setCreating(false);
-    }
+      onSuccess: (created) => {
+        setCreatedKey(created.raw_key);
+        setNewKeyName("");
+      },
+      onError: (err) => {
+        setCreateError(err instanceof APIError ? err.message : "Failed to create key");
+      },
+    });
   }
 
-  async function handleRevoke(id: string) {
-    setRevokingId(id);
+  function handleRevoke(id: string) {
     setRevokeError(null);
-    try {
-      await apiFetch(`/api/v1/auth/apikeys/${id}?project=${selectedProject}`, {
-        method: "DELETE",
-      });
-      setKeys((prev) => prev.filter((k) => k.id !== id));
-      setConfirmRevoke(null);
-    } catch (err) {
-      setRevokeError(err instanceof APIError ? err.message : "Failed to revoke key");
-    } finally {
-      setRevokingId(null);
-    }
+    revoke.mutate(id, {
+      onSuccess: () => setConfirmRevoke(null),
+      onError: (err) => {
+        setRevokeError(err instanceof APIError ? err.message : "Failed to revoke key");
+      },
+    });
   }
 
+  const now = new Date();
   let keysBody: ReactNode;
-  if (loadingKeys) {
+  if (keysQuery.isPending && selectedProject) {
     keysBody = <Skeleton className="h-20 rounded" />;
-  } else if (loadError) {
+  } else if (keysQuery.isError) {
     keysBody = (
       <ErrorState
         title="Could not load API keys."
-        detail={loadError}
-        onRetry={() => loadKeys(selectedProject)}
+        detail={keysQuery.error instanceof APIError
+          ? keysQuery.error.message
+          : "Failed to load API keys"}
+        onRetry={() => void keysQuery.refetch()}
       />
     );
   } else if (keys.length === 0) {
@@ -144,53 +129,63 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
   } else {
     keysBody = (
       <div className="space-y-2">
-        {keys.map((k) => (
-          <div key={k.id} className="bg-card rounded-lg border p-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium">{k.name}</p>
-                <p className="text-muted-foreground text-xs">
-                  {k.key_prefix}... &middot; {new Date(k.created_at).toLocaleDateString()}
-                </p>
-              </div>
-              {confirmRevoke === k.id
-                ? (
-                  <div className="flex items-center gap-2">
+        {keys.map((k) => {
+          const end = keyEndLabel(k.expires_at, now);
+          return (
+            <div key={k.id} className="bg-card rounded-lg border p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">{k.name}</p>
+                  <p className="text-muted-foreground text-xs">
+                    {k.key_prefix}...{k.last_four ?? ""} &middot; created{" "}
+                    {new Date(k.created_at).toLocaleDateString()}
+                  </p>
+                  <p className="text-xs">
+                    <span className="text-muted-foreground">Ends</span>
+                    <span className={end.expired ? "text-destructive font-medium" : undefined}>
+                      {end.label}
+                    </span>
+                  </p>
+                </div>
+                {confirmRevoke === k.id
+                  ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="text-destructive hover:text-destructive/80 text-xs font-medium"
+                        onClick={() => handleRevoke(k.id)}
+                        disabled={revoke.isPending && revoke.variables === k.id}
+                      >
+                        {revoke.isPending && revoke.variables === k.id ? "Revoking..." : "Confirm"}
+                      </button>
+                      <button
+                        className="text-muted-foreground hover:text-foreground text-xs"
+                        onClick={() => {
+                          setConfirmRevoke(null);
+                          setRevokeError(null);
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )
+                  : (
                     <button
                       className="text-destructive hover:text-destructive/80 text-xs font-medium"
-                      onClick={() => handleRevoke(k.id)}
-                      disabled={revokingId === k.id}
-                    >
-                      {revokingId === k.id ? "Revoking..." : "Confirm"}
-                    </button>
-                    <button
-                      className="text-muted-foreground hover:text-foreground text-xs"
                       onClick={() => {
-                        setConfirmRevoke(null);
+                        setConfirmRevoke(k.id);
                         setRevokeError(null);
                       }}
                     >
-                      Cancel
+                      Revoke
                     </button>
-                  </div>
-                )
-                : (
-                  <button
-                    className="text-destructive hover:text-destructive/80 text-xs font-medium"
-                    onClick={() => {
-                      setConfirmRevoke(k.id);
-                      setRevokeError(null);
-                    }}
-                  >
-                    Revoke
-                  </button>
-                )}
+                  )}
+              </div>
+              {confirmRevoke === k.id && revokeError && (
+                <p role="alert" className="text-destructive mt-2 text-xs">{revokeError}</p>
+              )}
             </div>
-            {confirmRevoke === k.id && revokeError && (
-              <p role="alert" className="text-destructive mt-2 text-xs">{revokeError}</p>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
     );
   }
@@ -217,7 +212,7 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
         <>
           <section className="mb-8">
             <h2 className="mb-3 text-lg font-semibold">Create Key</h2>
-            <form onSubmit={handleCreate} className="flex gap-2">
+            <form onSubmit={handleCreate} className="flex flex-wrap gap-2">
               <input
                 id="apikeys-name"
                 className="border-input bg-background flex-1 rounded-md border px-3 py-2 text-sm"
@@ -225,12 +220,22 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
                 value={newKeyName}
                 onChange={(e) => setNewKeyName(e.target.value)}
               />
+              <div className="w-40">
+                <label htmlFor="apikeys-expiry" className="sr-only">Expires</label>
+                <SelectField
+                  id="apikeys-expiry"
+                  className="w-full"
+                  value={expiry}
+                  onValueChange={(v) => setExpiry(v as ExpiryOption)}
+                  options={EXPIRY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                />
+              </div>
               <button
                 type="submit"
-                disabled={creating}
+                disabled={createKey.isPending}
                 className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
-                {creating ? "Creating..." : "Create"}
+                {createKey.isPending ? "Creating..." : "Create"}
               </button>
             </form>
             {createError && <p className="text-destructive mt-1 text-xs">{createError}</p>}
