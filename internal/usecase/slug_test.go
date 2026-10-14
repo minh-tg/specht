@@ -42,6 +42,7 @@ func TestValidateProjectSlug(t *testing.T) {
 		"reserved ingest":   "ingest",
 		"reserved invite":   "invite",
 		"reserved profile":  "profile",
+		"reserved reset":    "reset",
 		"reserved projects": "projects",
 		"reserved register": "register",
 		"reserved setup":    "setup",
