@@ -25,7 +25,7 @@ export function ApiKeys() {
   if (me?.role !== "admin") {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
-        <h1 className="mb-6 text-2xl font-bold">API Keys</h1>
+        <h1 className="mb-6 text-2xl font-bold">API keys</h1>
         <p className="text-muted-foreground text-sm">Only administrators can manage API keys.</p>
         <Link
           to="/"
@@ -193,7 +193,7 @@ function ApiKeysManager() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold">API Keys</h1>
+      <h1 className="mb-6 text-2xl font-bold">API keys</h1>
 
       <div className="mb-6">
         <label htmlFor="apikeys-project" className="text-sm font-medium">Project</label>

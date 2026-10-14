@@ -160,7 +160,7 @@ describe("Login", () => {
     await user.click(screen.getByRole("button", { name: /sign in/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("Login failed. Please try again.")).toBeInTheDocument();
+      expect(screen.getByText("Sign in failed. Please try again.")).toBeInTheDocument();
     });
   });
 

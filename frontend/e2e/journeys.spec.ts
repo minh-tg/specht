@@ -222,7 +222,7 @@ test("logout and session expiry both return to sign in", async ({ page }) => {
   await uiLogin(page);
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Logout" }).click();
+  await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/login/);
 
   // Session expiry: the stored session vanishes and the guard bounces the

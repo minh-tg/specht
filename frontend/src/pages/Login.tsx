@@ -54,7 +54,7 @@ export function Login() {
       if (err instanceof APIError && err.status === 401) {
         setError("Invalid email or password");
       } else {
-        setError("Login failed. Please try again.");
+        setError("Sign in failed. Please try again.");
       }
     } finally {
       setSubmitting(false);
