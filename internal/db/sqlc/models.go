@@ -275,6 +275,17 @@ type OpenFinding struct {
 	IntroducedCommitSha  pgtype.Text        `json:"introduced_commit_sha"`
 }
 
+type PasswordReset struct {
+	ID        pgtype.UUID        `json:"id"`
+	TokenHash string             `json:"token_hash"`
+	UserID    pgtype.UUID        `json:"user_id"`
+	CreatedBy pgtype.UUID        `json:"created_by"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	UsedAt    pgtype.Timestamptz `json:"used_at"`
+	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
+}
+
 type PolicyTemplate struct {
 	ID          pgtype.UUID        `json:"id"`
 	Name        string             `json:"name"`
