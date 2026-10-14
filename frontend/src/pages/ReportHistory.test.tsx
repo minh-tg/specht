@@ -297,7 +297,8 @@ describe("ReportHistory delete action", () => {
 
     await screen.findByText("trivy");
     await waitFor(() => expect(requests.some((r) => r.path === "/api/v1/me")).toBe(true));
-    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Delete .+ report from / })).not
+      .toBeInTheDocument();
   });
 
   it("shows delete on settled reports only, for a project admin", async () => {
@@ -306,10 +307,14 @@ describe("ReportHistory delete action", () => {
 
     await screen.findByText("trivy");
     await waitFor(() =>
-      expect(within(cardFor("trivy")).getByRole("button", { name: "Delete" })).toBeInTheDocument()
+      expect(within(cardFor("trivy")).getByRole("button", { name: /^Delete .+ report from / }))
+        .toBeInTheDocument()
     );
-    expect(within(cardFor("semgrep")).getByRole("button", { name: "Delete" })).toBeInTheDocument();
-    expect(within(cardFor("osv-scanner")).queryByRole("button", { name: "Delete" })).toBeNull();
+    expect(within(cardFor("semgrep")).getByRole("button", { name: /^Delete .+ report from / }))
+      .toBeInTheDocument();
+    expect(
+      within(cardFor("osv-scanner")).queryByRole("button", { name: /^Delete .+ report from / }),
+    ).toBeNull();
   });
 
   it("shows delete to a global admin who is not a project member", async () => {
@@ -318,7 +323,8 @@ describe("ReportHistory delete action", () => {
 
     await screen.findByText("trivy");
     await waitFor(() =>
-      expect(within(cardFor("trivy")).getByRole("button", { name: "Delete" })).toBeInTheDocument()
+      expect(within(cardFor("trivy")).getByRole("button", { name: /^Delete .+ report from / }))
+        .toBeInTheDocument()
     );
   });
 
@@ -328,7 +334,9 @@ describe("ReportHistory delete action", () => {
     const user = userEvent.setup();
 
     await user.click(
-      await within(await cardForAsync("trivy")).findByRole("button", { name: "Delete" }),
+      await within(await cardForAsync("trivy")).findByRole("button", {
+        name: /^Delete .+ report from /,
+      }),
     );
     const dialog = await screen.findByRole("alertdialog");
     expect(within(dialog).getByText("Delete this report?")).toBeInTheDocument();
@@ -350,7 +358,9 @@ describe("ReportHistory delete action", () => {
     const user = userEvent.setup();
 
     await user.click(
-      await within(await cardForAsync("trivy")).findByRole("button", { name: "Delete" }),
+      await within(await cardForAsync("trivy")).findByRole("button", {
+        name: /^Delete .+ report from /,
+      }),
     );
     const dialog = await screen.findByRole("alertdialog");
     await user.click(within(dialog).getByRole("button", { name: "Delete report" }));
@@ -372,7 +382,9 @@ describe("ReportHistory delete action", () => {
     const user = userEvent.setup();
 
     await user.click(
-      await within(await cardForAsync("trivy")).findByRole("button", { name: "Delete" }),
+      await within(await cardForAsync("trivy")).findByRole("button", {
+        name: /^Delete .+ report from /,
+      }),
     );
     await user.click(
       within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Delete report" }),
@@ -389,7 +401,9 @@ describe("ReportHistory delete action", () => {
     const user = userEvent.setup();
 
     await user.click(
-      await within(await cardForAsync("semgrep")).findByRole("button", { name: "Delete" }),
+      await within(await cardForAsync("semgrep")).findByRole("button", {
+        name: /^Delete .+ report from /,
+      }),
     );
     const dialog = await screen.findByRole("alertdialog");
     await user.click(within(dialog).getByRole("button", { name: "Delete report" }));
@@ -414,7 +428,9 @@ describe("ReportHistory delete action", () => {
     const user = userEvent.setup();
 
     await user.click(
-      await within(await cardForAsync("semgrep")).findByRole("button", { name: "Delete" }),
+      await within(await cardForAsync("semgrep")).findByRole("button", {
+        name: /^Delete .+ report from /,
+      }),
     );
     const dialog = await screen.findByRole("alertdialog");
     await user.click(within(dialog).getByRole("button", { name: "Delete report" }));

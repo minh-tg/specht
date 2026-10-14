@@ -85,6 +85,7 @@ describe("ProjectWaivers", () => {
         waiver_id: "w1",
         event_type: "requested",
         actor_id: "u-tomas",
+        actor_name: "Tomas Reyes",
         created_at: "2026-10-01T09:00:00Z",
       },
       {
@@ -414,6 +415,7 @@ describe("ProjectWaivers", () => {
     expect(await screen.findByText("Requested")).toBeInTheDocument();
     expect(screen.getByText("Approved")).toBeInTheDocument();
     expect(screen.getByText("mystery_step")).toBeInTheDocument();
+    expect(screen.getByText("by Tomas Reyes")).toBeInTheDocument();
     expect(screen.getByText("by You")).toBeInTheDocument();
     expect(screen.getByText("by System")).toBeInTheDocument();
     expect(calls.filter((c) => c.url.endsWith("/waivers/w1/events"))).toHaveLength(1);
