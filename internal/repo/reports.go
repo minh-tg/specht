@@ -143,6 +143,15 @@ func (r *pgReportRepo) CountStaleReports(ctx context.Context, cutoff time.Time) 
 	return r.q.CountStaleReports(ctx, uuidFromTime(cutoff))
 }
 
+// FailStaleReports settles the reports still processing since before the cutoff as failed and
+// returns how many it changed.
+func (r *pgReportRepo) FailStaleReports(ctx context.Context, cutoff time.Time, reason string) (int64, error) {
+	return r.q.FailStaleReports(ctx, sqlc.FailStaleReportsParams{
+		CreatedAt:    uuidFromTime(cutoff),
+		ErrorMessage: pgtype.Text{String: reason, Valid: true},
+	})
+}
+
 // DeleteStaleReports removes the settled reports older than the cutoff, one
 // transaction each, and returns the ids it removed. A report that a scan took
 // back or someone else already deleted is skipped.
