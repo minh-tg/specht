@@ -119,22 +119,26 @@ export function useProjects() {
 /**
  * The projects the signed-in person may manage CI for. The list omits
  * permissions, so each project is read once and kept where its `manage_ci`
- * permission is set. A global admin holds it on every project.
+ * permission is set. A global admin holds it on every project and needs no reads.
  */
 export function useCiManagedProjects() {
+  const me = useMe();
   const projects = useProjects();
+  // A global admin holds the permission on every project, so reading each one to find out
+  // would be hundreds of requests for an answer that is already known.
+  const isGlobalAdmin = me.data?.role === "admin";
   const details = useQueries({
-    queries: (projects.data ?? []).map((p) => ({
+    queries: isGlobalAdmin ? [] : (projects.data ?? []).map((p) => ({
       queryKey: queryKeys.project(p.slug),
       queryFn: () => apiFetch<Project>(`/api/v1/projects/${encodeURIComponent(p.slug)}`),
     })),
   });
-  const data = (projects.data ?? []).filter((_, i) =>
-    details[i]?.data?.permissions?.manage_ci === true
-  );
+  const data = isGlobalAdmin
+    ? projects.data ?? []
+    : (projects.data ?? []).filter((_, i) => details[i]?.data?.permissions?.manage_ci === true);
   return {
     data,
-    isLoading: projects.isLoading || details.some((d) => d.isLoading),
+    isLoading: projects.isLoading || me.isLoading || details.some((d) => d.isLoading),
   };
 }
 
