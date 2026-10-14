@@ -6,7 +6,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { vi } from "vitest";
 import { Login } from "./Login";
 import { safeRedirect } from "./safeRedirect";
@@ -38,6 +38,11 @@ function authContext(): AuthContextValue {
   };
 }
 
+function FindingsPage() {
+  const location = useLocation();
+  return <p>Findings page {location.search}</p>;
+}
+
 function renderLoginWithAuth(initialPath = "/login") {
   const qc = createTestQueryClient();
   return render(
@@ -48,6 +53,7 @@ function renderLoginWithAuth(initialPath = "/login") {
             <Route path="/login" element={<Login />} />
             <Route path="/" element={<div>Home page</div>} />
             <Route path="/dashboard" element={<div>Dashboard page</div>} />
+            <Route path="/my-app/findings" element={<FindingsPage />} />
           </Routes>
         </AuthContext.Provider>
       </MemoryRouter>
@@ -173,6 +179,17 @@ describe("Login", () => {
     await user.click(screen.getByRole("button", { name: /sign in/i }));
 
     expect(await screen.findByText("Dashboard page")).toBeInTheDocument();
+  });
+
+  it("returns to the full path and query after login", async () => {
+    authState.login = async () => {};
+    renderLoginWithAuth("/login?redirect=%2Fmy-app%2Ffindings%3Fseverity%3Dhigh%26tab%3Dopen");
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Email"), "test@test.com");
+    await user.type(screen.getByLabelText("Password"), "test");
+    await user.click(screen.getByRole("button", { name: /sign in/i }));
+
+    expect(await screen.findByText(/Findings page/)).toHaveTextContent("?severity=high&tab=open");
   });
 
   it.each([
