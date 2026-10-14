@@ -152,6 +152,7 @@ func main() {
 	}
 	cfg, err := config.Load()
 	exitOnError("config", err)
+	exitOnError("config", cfg.Validate())
 	setupLogging(cfg.LogLevel)
 	if warning := insecureDBTransport(cfg.DBURL); warning != "" {
 		slog.Warn(warning)

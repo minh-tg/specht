@@ -6,6 +6,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"os"
@@ -33,6 +34,14 @@ const (
 	// DefaultDBConnectTimeout is how long startup waits for the database to
 	// answer before giving up.
 	DefaultDBConnectTimeout = 30 * time.Second
+	// DefaultDBMaxConns and DefaultDBMinConns size the database pool. The
+	// maximum must stay below the database server's max_connections.
+	DefaultDBMaxConns = 20
+	DefaultDBMinConns = 2
+	// DefaultShutdownTimeout is how long shutdown waits for in-flight
+	// requests. It exceeds the longest an ingest may run (two minutes plus
+	// the time to write the response), so a stop does not cut one off.
+	DefaultShutdownTimeout = 150 * time.Second
 	// DefaultSweepInterval is how often the analysis/waiver expiry
 	// sweepers look for expired rows. Tests shorten it via
 	// LIFECYCLE_SWEEP_INTERVAL to observe sweeps in seconds.
@@ -57,10 +66,15 @@ type Server struct {
 	// DBConnectTimeout is how long startup waits for the database. Zero
 	// means a single attempt.
 	DBConnectTimeout time.Duration
-	CORSOrigins      string
-	JWTSecret        string
-	LogLevel         string
-	InventoryTTL     time.Duration
+	// DBMaxConns and DBMinConns size the database pool.
+	DBMaxConns int
+	DBMinConns int
+	// ShutdownTimeout is how long a stop waits for in-flight requests.
+	ShutdownTimeout time.Duration
+	CORSOrigins     string
+	JWTSecret       string
+	LogLevel        string
+	InventoryTTL    time.Duration
 	// SweepInterval is the period of the analysis-expiry and waiver-expiry
 	// background sweepers. Must be positive.
 	SweepInterval time.Duration
@@ -319,6 +333,9 @@ func Load() (*Server, error) {
 		DBURL:                os.Getenv("DATABASE_URL"),
 		DBMigrate:            strOr(os.Getenv("DB_MIGRATE"), "true") == "true",
 		DBConnectTimeout:     DefaultDBConnectTimeout,
+		DBMaxConns:           DefaultDBMaxConns,
+		DBMinConns:           DefaultDBMinConns,
+		ShutdownTimeout:      DefaultShutdownTimeout,
 		CORSOrigins:          os.Getenv("CORS_ORIGINS"),
 		JWTSecret:            os.Getenv("JWT_SECRET"),
 		LogLevel:             strOr(os.Getenv("LOG_LEVEL"), "info"),
@@ -358,6 +375,28 @@ func Load() (*Server, error) {
 			return nil, fmt.Errorf("DB_CONNECT_TIMEOUT must be a duration such as 30s (0s tries once), got %q", v)
 		}
 		s.DBConnectTimeout = d
+	}
+
+	if v := os.Getenv("DB_MAX_CONNS"); v != "" {
+		n, err := parsePositiveInt("DB_MAX_CONNS", v)
+		if err != nil {
+			return nil, err
+		}
+		s.DBMaxConns = n
+	}
+	if v := os.Getenv("DB_MIN_CONNS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("DB_MIN_CONNS must be zero or a positive integer, got %q", v)
+		}
+		s.DBMinConns = n
+	}
+	if v := os.Getenv("SHUTDOWN_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return nil, fmt.Errorf("SHUTDOWN_TIMEOUT must be a duration such as 150s: %w", err)
+		}
+		s.ShutdownTimeout = d
 	}
 
 	if v := os.Getenv("REGISTRATION_ENABLED"); v != "" {
@@ -407,6 +446,38 @@ func loadIntel(s *Server) error {
 		s.Intel.TTL = d
 	}
 	return nil
+}
+
+// Validate checks the settings Load cannot reject on its own because a test or
+// a subcommand may build a Server without them. The server calls it at
+// startup, and it reports every problem together so one attempt shows
+// everything to fix instead of one error per restart.
+func (s *Server) Validate() error {
+	var problems []error
+	if s.DBURL == "" {
+		problems = append(problems, errors.New("DATABASE_URL is required"))
+	}
+	switch strings.ToLower(s.LogLevel) {
+	case "debug", "info", "warn", "error":
+	default:
+		problems = append(problems, fmt.Errorf("LOG_LEVEL must be debug, info, warn or error, got %q", s.LogLevel))
+	}
+	if s.InventoryTTL <= 0 {
+		problems = append(problems, errors.New("INVENTORY_TTL must be a positive duration"))
+	}
+	if s.Intel.TTL <= 0 {
+		problems = append(problems, errors.New("INTEL_TTL must be a positive duration"))
+	}
+	if s.DBMaxConns < 1 {
+		problems = append(problems, errors.New("DB_MAX_CONNS must be at least 1"))
+	}
+	if s.DBMinConns < 0 || s.DBMinConns > s.DBMaxConns {
+		problems = append(problems, fmt.Errorf("DB_MIN_CONNS must be between 0 and DB_MAX_CONNS (%d), got %d", s.DBMaxConns, s.DBMinConns))
+	}
+	if s.ShutdownTimeout <= 0 {
+		problems = append(problems, errors.New("SHUTDOWN_TIMEOUT must be a positive duration"))
+	}
+	return errors.Join(problems...)
 }
 
 // WatcherConfig validates watcher settings standalone (the CLI backfill path,
