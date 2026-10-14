@@ -1,5 +1,5 @@
-import { apiFetch } from "@/api/client";
-import { queryKeys, useMe, useProjects } from "@/api/hooks";
+import { useMe, useProjects } from "@/api/hooks";
+import { projectGateQuery, projectStatsQuery } from "@/api/pageRequests";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { buttonVariants } from "@/components/ui/button-variants";
@@ -42,17 +42,11 @@ export function ProjectList() {
   const projectList = projects ?? [];
 
   const gateQueries = useQueries({
-    queries: projectList.map((project) => ({
-      queryKey: queryKeys.gate(project.slug),
-      queryFn: () => apiFetch<GateStatus>(`/api/v1/projects/${project.slug}/gate`),
-    })),
+    queries: projectList.map((project) => projectGateQuery(project.slug)),
   });
 
   const statsQueries = useQueries({
-    queries: projectList.map((project) => ({
-      queryKey: queryKeys.projectStats(project.slug),
-      queryFn: () => apiFetch<ProjectStats>(`/api/v1/projects/${project.slug}/stats`),
-    })),
+    queries: projectList.map((project) => projectStatsQuery(project.slug)),
   });
 
   if (isLoading) {
