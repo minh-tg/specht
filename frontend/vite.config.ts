@@ -35,6 +35,9 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
+    // The server's Content-Security-Policy allows fonts only from its own origin, so a small font
+    // file inlined as a data: URI is blocked and the page quietly falls back to another face.
+    assetsInlineLimit: (file) => (/\.(woff2?|ttf|otf)$/i.test(file) ? false : undefined),
   },
   server: {
     proxy: {
