@@ -28,11 +28,29 @@ and run `specht migrate` as a separately controlled release step.
 ## 2. Start
 
 ```bash
-docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod up -d --build
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod up -d
 curl -fsS http://localhost:8080/api/v1/health   # liveness: the process is up
 curl -fsS http://localhost:8080/api/v1/ready    # readiness: the database answers
 curl -fsS http://localhost:8080/api/v1/version
 ```
+
+The server service pulls `ghcr.io/minh-tg/specht:${SPECHT_VERSION}` (default
+`latest`). Set `SPECHT_VERSION` in `deploy/.env.prod` to a release tag such as
+`v0.1.0` so a restart never moves you to a new build. The GHCR package is
+private after its first push: open the package settings on GitHub and change
+its visibility to public once, or hosts cannot pull it without a login.
+
+### Build from source
+
+The override file replaces the pulled image with a local build from the
+repository root. Run it from the checkout:
+
+```bash
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml \
+  --env-file deploy/.env.prod up -d --build
+```
+
+Without the override file, compose only pulls the image and never builds it.
 
 ## 3. Configuration reference
 
@@ -62,6 +80,9 @@ compose defaults differ, which is noted.
 | `INVENTORY_TTL` | `2160h` | How long a scanned package stays in the watcher's active inventory. |
 | `INGEST_MAX_CONCURRENCY` | `8` | Report ingests processed at once. Each parse holds several times the request body in memory (bodies are capped at 25 MiB), so this bounds the worst case. Further ingests wait up to 15 s for a slot and then get `503 ingest_busy` with `Retry-After`. An ingest may take up to two minutes, upload included. Must be a positive integer. |
 | `LIFECYCLE_SWEEP_INTERVAL` | `5m` | Period of the analysis-expiry and waiver-expiry sweeps; must be a positive duration. |
+
+Registration does not verify email addresses: an account holds whatever address
+its creator typed, so keep `REGISTRATION_ENABLED` closed unless you accept that.
 
 ### Rate limiting
 
@@ -301,32 +322,83 @@ server logs a warning at startup while it is on.
 
 ## 7. Backup and restore
 
-Postgres holds everything (the server is stateless). Nightly logical backup:
+Postgres holds all state; the server keeps nothing on disk. Dump in custom
+format (`-Fc`): `pg_restore` can read it selectively and restores faster than
+plain SQL. The `-T` flag turns off the TTY so the redirect gets clean binary:
 
 ```bash
-docker compose -f deploy/docker-compose.yml exec db \
-  pg_dump -U specht specht | gzip > specht-$(date +%F).sql.gz
+docker compose -f deploy/docker-compose.yml exec -T db \
+  pg_dump -U specht -Fc specht > specht-$(date +%F).dump
 ```
 
-Restore into a fresh stack:
+A nightly cron entry that keeps 14 days of dumps. In a crontab, `%` must be
+escaped as `\%`. Create the directory first with `mkdir -p /var/backups/specht`.
+
+```cron
+30 2 * * * cd /opt/specht && docker compose -f deploy/docker-compose.yml exec -T db pg_dump -U specht -Fc specht > /var/backups/specht/specht-$(date +\%F).dump && find /var/backups/specht -name 'specht-*.dump' -mtime +14 -delete
+```
+
+A dump on the same disk as the database protects against a bad migration or
+a deleted row, not against losing the host. Copy each dump off the host in the
+same job (for example `rsync` to another machine or `aws s3 cp` to a bucket),
+and check that the copy arrived.
+
+### Restore into an empty database
+
+Restore with migrations off, so the server cannot touch the schema while the
+dump loads. Set `DB_MIGRATE=false` in `deploy/.env.prod`, then start only the
+database:
 
 ```bash
-gunzip -c specht-YYYY-MM-DD.sql.gz | docker compose -f deploy/docker-compose.yml exec -T db \
-  psql -U specht specht
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod up -d db
+docker compose -f deploy/docker-compose.yml cp specht-YYYY-MM-DD.dump db:/tmp/specht.dump
+docker compose -f deploy/docker-compose.yml exec db \
+  pg_restore -U specht -d specht --no-owner /tmp/specht.dump
+docker compose -f deploy/docker-compose.yml exec db rm /tmp/specht.dump
+```
+
+Read the `pg_restore` output for errors before you continue. Then remove
+`DB_MIGRATE=false` (or set it back to `true`) and start the server normally.
+Any migrations newer than the dump run at that start:
+
+```bash
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod up -d
+curl -fsS http://localhost:8080/api/v1/ready
 ```
 
 ## 8. Upgrades
 
-Take a backup first (section 7); migrations are forward-only.
+Migrations are forward-only and run when the server starts. A rollback
+therefore depends on a backup taken before the upgrade, so take one first
+(section 7).
 
-```bash
-git pull
-docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod up -d --build
-```
+1. Set `SPECHT_VERSION` in `deploy/.env.prod` to the new tag.
+2. Pull the new image and recreate the server:
 
-Migrations are forward-only and run at startup. To roll back, restore a
-compatible database backup and redeploy a compatible revision. Schema
-migrations never migrate down automatically.
+   ```bash
+   docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod pull server
+   docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod up -d
+   curl -fsS http://localhost:8080/api/v1/ready
+   ```
+
+   Pending migrations run before the new server takes traffic. Check
+   `docker compose -f deploy/docker-compose.yml logs server` if `ready` does
+   not answer 200.
+
+   From a source checkout, add the override and `--build` instead of `pull`:
+   `docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env.prod up -d --build`.
+
+### Rolling back
+
+An older server cannot read a schema that a newer migration changed, so a
+rollback restores the pre-upgrade dump:
+
+1. Stop the server and drop the database: `docker compose -f deploy/docker-compose.yml stop server`, then
+   `docker compose -f deploy/docker-compose.yml exec db dropdb -U specht specht`
+   and `... exec db createdb -U specht specht`.
+2. Set `SPECHT_VERSION` back to the previous tag.
+3. Follow the restore steps above with the pre-upgrade dump, then start the
+   previous version.
 
 ## 9. Hardening checklist
 
