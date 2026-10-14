@@ -10,8 +10,46 @@ permissions:
   id-token: write
 
 jobs:
+  # A tag publishes a signed image, so it must point at a commit whose CI run passed. The check
+  # reads the ci workflow's push run for this exact commit and waits for it to finish.
+  require-ci:
+    name: require a passing CI run for the tagged commit
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Wait for the ci workflow on this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 120); do
+            runs="$(gh run list --repo "$REPO" --workflow ci.yml --commit "$SHA" --event push --json status,conclusion,url)"
+            total="$(jq 'length' <<<"$runs")"
+            if [ "$total" -eq 0 ]; then
+              echo "No ci run for $SHA yet (attempt $attempt)."
+            elif jq -e 'any(.[]; .status == "completed" and .conclusion == "success")' <<<"$runs" >/dev/null; then
+              echo "ci passed for $SHA."
+              exit 0
+            elif jq -e 'all(.[]; .status == "completed")' <<<"$runs" >/dev/null; then
+              echo "::error::ci did not pass for $SHA. Fix main, then tag a commit whose ci run is green."
+              jq -r '.[] | .url + " " + .conclusion' <<<"$runs"
+              exit 1
+            else
+              echo "ci is still running for $SHA (attempt $attempt)."
+            fi
+            sleep 30
+          done
+          echo "::error::timed out waiting for the ci run of $SHA"
+          exit 1
+
   build-image:
     name: build + publish versioned image
+    needs: require-ci
     outputs:
       image_digest: ${{ steps.build.outputs.digest }}
     runs-on: ubuntu-latest
