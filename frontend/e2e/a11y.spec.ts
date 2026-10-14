@@ -285,6 +285,7 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
 
   await page.goto(`/${slug}/insights`);
   await expect(page.getByRole("list", { name: "Open findings by severity" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Where it runs" })).toBeVisible();
   await audit(page, "project insights");
 
   await page.goto(`/${slug}/watcher`);
