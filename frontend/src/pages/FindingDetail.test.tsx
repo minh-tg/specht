@@ -862,7 +862,7 @@ describe("FindingDetail history", () => {
     expect(screen.getByText(/no history yet/i)).toBeInTheDocument();
   });
 
-  it("renders a dash for empty transition values", async () => {
+  it("renders None for empty transition values", async () => {
     eventsFixture = [
       {
         id: "e1",
@@ -878,6 +878,6 @@ describe("FindingDetail history", () => {
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
     const entry = screen.getByText(/commented/i).closest("li");
     expect(entry).not.toBeNull();
-    expect(entry!.textContent).toContain("– → –");
+    expect(entry!.textContent).toContain("None → None");
   });
 });

@@ -2,7 +2,7 @@ import { useMe } from "@/api/hooks";
 import { actorLabel, useUserDirectory } from "@/api/users";
 import { ErrorState } from "@/components/ErrorState";
 import { SkeletonLines } from "@/components/SkeletonLines";
-import { formatDateTime } from "@/lib/format";
+import { EMPTY_VALUE, formatDateTime } from "@/lib/format";
 import type { FindingEvent } from "@/types/api";
 import type { ReactNode } from "react";
 import { eventTypeLabel } from "./format";
@@ -36,7 +36,7 @@ export function HistorySection({
             {event.old_value != null || event.new_value != null
               ? (
                 <span className="text-muted-foreground font-mono text-xs">
-                  {event.old_value || "–"} → {event.new_value || "–"}
+                  {event.old_value || EMPTY_VALUE} → {event.new_value || EMPTY_VALUE}
                 </span>
               )
               : null}

@@ -224,7 +224,7 @@ describe("FindingsTable on the data grid", () => {
   });
 
   it("shows where a finding was seen, in the shortest form it has", () => {
-    expect(locationText(undefined)).toBe("–");
+    expect(locationText(undefined)).toBe("None");
     expect(locationText({ summary: "package openssh-server 9.6p1-2" })).toBe(
       "package openssh-server 9.6p1-2",
     );
@@ -233,7 +233,7 @@ describe("FindingsTable on the data grid", () => {
     );
     expect(locationText({ file: "Dockerfile" })).toBe("Dockerfile");
     expect(locationText({ resource: "aws_s3_bucket.logs" })).toBe("aws_s3_bucket.logs");
-    expect(locationText({})).toBe("–");
+    expect(locationText({})).toBe("None");
   });
 
   it("marks a critical or high finding that is still open with its colour on the row's edge", () => {
