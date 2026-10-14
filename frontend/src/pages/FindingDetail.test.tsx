@@ -379,6 +379,8 @@ describe("FindingDetail decision flow", () => {
       "Not affected",
       "Accepted risk",
       "Won't fix",
+      "Not triaged",
+      "In triage",
     ]);
   });
 

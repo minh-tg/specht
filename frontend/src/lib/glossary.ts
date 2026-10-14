@@ -39,6 +39,16 @@ export const GLOSSARY = {
     short:
       "Whether your code can actually run the vulnerable part of a library. A person records it, with evidence.",
   },
+  notTriaged: {
+    label: "Not triaged",
+    short:
+      "Nobody has decided yet. It keeps blocking the gate like any open finding. Choose it to take back an earlier decision.",
+  },
+  inTriage: {
+    label: "In triage",
+    short:
+      "Someone is looking at it but has not decided. It keeps blocking the gate until a decision is made.",
+  },
   exploitable: {
     label: "Exploitable",
     short:

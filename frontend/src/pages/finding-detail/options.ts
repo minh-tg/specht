@@ -24,6 +24,8 @@ export const REACHABILITY_OPTIONS: Array<{ value: ReachabilityState; label: stri
 export const TRIAGE_REQUIREMENTS: Partial<
   Record<AnalysisState, { requiresReason: boolean; requiresExpiry: boolean; }>
 > = {
+  unanalyzed: { requiresReason: false, requiresExpiry: false },
+  in_triage: { requiresReason: false, requiresExpiry: false },
   exploitable: { requiresReason: false, requiresExpiry: false },
   false_positive: { requiresReason: true, requiresExpiry: false },
   not_affected: { requiresReason: true, requiresExpiry: false },
@@ -31,7 +33,13 @@ export const TRIAGE_REQUIREMENTS: Partial<
   wont_fix: { requiresReason: true, requiresExpiry: true },
 };
 
-export const TRIAGE_OPTIONS = ANALYSIS_STATES.flatMap((value) => {
+/** States that undo a decision rather than make one. They are offered after the decisions. */
+const UNDECIDED_STATES: readonly AnalysisState[] = ["unanalyzed", "in_triage"];
+
+export const TRIAGE_OPTIONS = [
+  ...ANALYSIS_STATES.filter((value) => !UNDECIDED_STATES.includes(value)),
+  ...UNDECIDED_STATES,
+].flatMap((value) => {
   const requirements = TRIAGE_REQUIREMENTS[value];
   if (!requirements) return [];
   return [{ value, label: analysisStateLabel(value) ?? value, ...requirements }];
@@ -44,6 +52,8 @@ export const SOURCE_LINK_SCHEMES = new Set(["http:", "https:"]);
  * Keyed by every option so a new triage state cannot ship without an explanation (see the test).
  */
 export const TRIAGE_GLOSSARY: Readonly<Record<string, GlossaryKey>> = {
+  unanalyzed: "notTriaged",
+  in_triage: "inTriage",
   exploitable: "exploitable",
   false_positive: "falsePositive",
   not_affected: "notAffected",
