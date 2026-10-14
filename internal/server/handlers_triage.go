@@ -689,13 +689,24 @@ func (h *Handler) AddTeamMember(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		UserID string `json:"user_id"`
+		Email  string `json:"email"`
 		Role   string `json:"role"`
 	}
 	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", triageMsgInvalidBody) {
 		return
 	}
+	if req.UserID != "" && req.Email != "" {
+		respondError(w, http.StatusBadRequest, "missing_field", "give user_id or email, not both")
+		return
+	}
 
-	result, err := h.usecase.AddTeamMember(r.Context(), id, req.UserID, req.Role)
+	var result *usecase.TeamMemberResponse
+	var err error
+	if req.Email != "" {
+		result, err = h.usecase.AddTeamMemberByEmail(r.Context(), id, req.Email, req.Role)
+	} else {
+		result, err = h.usecase.AddTeamMember(r.Context(), id, req.UserID, req.Role)
+	}
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrTeamNotFound):
@@ -704,6 +715,7 @@ func (h *Handler) AddTeamMember(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusForbidden, "forbidden", triageMsgTeamAdminRequired)
 		case errors.Is(err, usecase.ErrInvalidID),
 			errors.Is(err, usecase.ErrInvalidMemberRole),
+			errors.Is(err, usecase.ErrInvalidMemberEmail),
 			errors.Is(err, usecase.ErrMemberUserNotFound):
 			respondMemberError(w, err)
 		default:

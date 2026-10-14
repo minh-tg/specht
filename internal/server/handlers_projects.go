@@ -203,13 +203,14 @@ func (h *Handler) AddProjectMember(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	var req struct {
 		UserID string `json:"user_id"`
+		Email  string `json:"email"`
 		Role   string `json:"role"`
 	}
 	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", projectsMsgInvalidBody) {
 		return
 	}
-	if req.UserID == "" || req.Role == "" {
-		respondError(w, http.StatusBadRequest, "missing_field", "user_id and role are required")
+	if req.Role == "" || (req.UserID == "") == (req.Email == "") {
+		respondError(w, http.StatusBadRequest, "missing_field", "role and exactly one of user_id or email are required")
 		return
 	}
 	// Stop outsiders here so the specific errors below cannot reveal whether a
@@ -218,7 +219,13 @@ func (h *Handler) AddProjectMember(w http.ResponseWriter, r *http.Request) {
 		h.respondProjectAccessError(w, r, err)
 		return
 	}
-	member, err := h.usecase.AddProjectMember(r.Context(), slug, req.UserID, req.Role)
+	var member *usecase.ProjectMemberResponse
+	var err error
+	if req.Email != "" {
+		member, err = h.usecase.AddProjectMemberByEmail(r.Context(), slug, req.Email, req.Role)
+	} else {
+		member, err = h.usecase.AddProjectMember(r.Context(), slug, req.UserID, req.Role)
+	}
 	if err != nil {
 		respondMemberError(w, err)
 		return
@@ -241,6 +248,8 @@ func respondMemberError(w http.ResponseWriter, err error) {
 		respondError(w, http.StatusNotFound, "member_not_found", "project member not found")
 	case errors.Is(err, usecase.ErrMemberUserNotFound):
 		respondError(w, http.StatusNotFound, "user_not_found", "user not found")
+	case errors.Is(err, usecase.ErrInvalidMemberEmail):
+		respondError(w, http.StatusBadRequest, "invalid_email", err.Error())
 	case errors.Is(err, usecase.ErrProjectAccessDenied):
 		respondError(w, http.StatusForbidden, "project_access_denied", projectsMsgAccessDenied)
 	default:

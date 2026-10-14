@@ -2739,6 +2739,19 @@ export interface components {
       /** @enum {string} */
       role: "admin" | "manager" | "member";
     };
+    /**
+     * @description Names the person by account id or by email address; send exactly one.
+     *     An address with no account answers 404 `user_not_found`, the same as an
+     *     unknown id, and only callers allowed to add members get that answer.
+     */
+    MemberGrantRequest: {
+      /** Format: uuid */
+      user_id?: string;
+      /** Format: email */
+      email?: string;
+      /** @enum {string} */
+      role: "admin" | "manager" | "member";
+    };
     ProjectTeam: {
       /** Format: uuid */
       project_id: string;
@@ -5347,7 +5360,7 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["AddMemberRequest"];
+        "application/json": components["schemas"]["MemberGrantRequest"];
       };
     };
     responses: {
@@ -5496,7 +5509,7 @@ export interface operations {
     };
     requestBody: {
       content: {
-        "application/json": components["schemas"]["AddMemberRequest"];
+        "application/json": components["schemas"]["MemberGrantRequest"];
       };
     };
     responses: {
