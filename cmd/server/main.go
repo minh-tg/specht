@@ -50,7 +50,10 @@ func connectDB(cfg *config.Server) *pgxpool.Pool {
 		db.WarnInsecureMigrationURL(cfg.DBURL)
 		exitOnError("startup migration failed", db.RunMigrations(cfg.DBURL, "migrations"))
 	}
-	pool, err := db.ConnectPool(context.Background(), cfg.DBURL)
+	pool, err := db.ConnectPoolWithOptions(context.Background(), cfg.DBURL, db.PoolOptions{
+		MaxConns: cfg.DBMaxConns,
+		MinConns: cfg.DBMinConns,
+	})
 	exitOnError("connect db", err)
 	return pool
 }
