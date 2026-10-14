@@ -520,9 +520,11 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 		skipForkPullRequest(f.summaryFile, stderr)
 		return 0
 	}
-	if apiKey == "" {
-		writeDiagnosticLine(stderr, "error: API_KEY environment variable is required (set API_KEY or SPECHT_API_KEY)")
-		return 2
+	// A run that names a scanner to exclude may skip without credentials, so
+	// the missing-key error waits for the exclusion check. Without the flag it
+	// stays first, before any input is read.
+	if apiKey == "" && f.excludeTool == "" {
+		return failMissingAPIKey(stderr)
 	}
 	rawInput, code := readRawInput(f.file, stdin, stderr)
 	if code != 0 {
@@ -534,6 +536,9 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 	}
 	if code != 0 {
 		return code
+	}
+	if apiKey == "" {
+		return failMissingAPIKey(stderr)
 	}
 	// Resolved after the exclusion check: a skipped scanner talks to no
 	// server, so it must not fail on a missing API URL.
@@ -548,6 +553,13 @@ func runWithContext(ctx context.Context, args []string, stdin io.Reader, stdout,
 	}
 	cl := client.New(apiURL, clientOptions...).WithContext(ctx)
 	return runReportWorkflow(ctx, cl, f, payload, apiURL, stdout, stderr, hc)
+}
+
+// failMissingAPIKey reports the missing credential and returns the runtime
+// error exit code.
+func failMissingAPIKey(stderr io.Writer) int {
+	writeDiagnosticLine(stderr, "error: API_KEY environment variable is required (set API_KEY or SPECHT_API_KEY)")
+	return 2
 }
 
 func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, payload client.IngestPayload, apiURL string, stdout, stderr io.Writer, hc *http.Client) int {
