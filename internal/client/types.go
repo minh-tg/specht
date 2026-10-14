@@ -281,6 +281,7 @@ type FindingEvent struct {
 	ID        string    `json:"id"`
 	FindingID string    `json:"finding_id"`
 	UserID    string    `json:"user_id"`
+	UserName  string    `json:"user_name,omitempty"`
 	EventType string    `json:"event_type"`
 	OldValue  *string   `json:"old_value,omitempty"`
 	NewValue  *string   `json:"new_value,omitempty"`
@@ -395,17 +396,21 @@ type Waiver struct {
 	Reason   string `json:"reason"`
 	// RequestedBy and DecidedBy are user ids; both are empty for a waiver
 	// created directly or still undecided.
-	RequestedBy  string                `json:"requested_by,omitempty"`
-	RequestedAt  string                `json:"requested_at,omitempty"`
-	DecidedBy    string                `json:"decided_by,omitempty"`
-	DecidedAt    string                `json:"decided_at,omitempty"`
-	DecisionNote string                `json:"decision_note"`
-	ExpiresAt    string                `json:"expires_at,omitempty"`
-	Conditions   []WaiverCondition     `json:"conditions"`
-	Contexts     []WaiverContext       `json:"contexts"`
-	Targets      []WaiverFindingTarget `json:"targets"`
-	CreatedAt    string                `json:"created_at"`
-	UpdatedAt    string                `json:"updated_at"`
+	RequestedBy string `json:"requested_by,omitempty"`
+	// RequestedByName and DecidedByName say who those ids are; the server leaves
+	// them out for API keys.
+	RequestedByName string                `json:"requested_by_name,omitempty"`
+	DecidedByName   string                `json:"decided_by_name,omitempty"`
+	RequestedAt     string                `json:"requested_at,omitempty"`
+	DecidedBy       string                `json:"decided_by,omitempty"`
+	DecidedAt       string                `json:"decided_at,omitempty"`
+	DecisionNote    string                `json:"decision_note"`
+	ExpiresAt       string                `json:"expires_at,omitempty"`
+	Conditions      []WaiverCondition     `json:"conditions"`
+	Contexts        []WaiverContext       `json:"contexts"`
+	Targets         []WaiverFindingTarget `json:"targets"`
+	CreatedAt       string                `json:"created_at"`
+	UpdatedAt       string                `json:"updated_at"`
 }
 
 // WaiverCondition is a predicate on a finding field.
@@ -444,6 +449,7 @@ type WaiverEvent struct {
 	WaiverID  string          `json:"waiver_id"`
 	EventType string          `json:"event_type"`
 	ActorID   string          `json:"actor_id,omitempty"`
+	ActorName string          `json:"actor_name,omitempty"`
 	Metadata  json.RawMessage `json:"metadata,omitempty"`
 	CreatedAt string          `json:"created_at"`
 }

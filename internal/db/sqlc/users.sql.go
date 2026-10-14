@@ -249,6 +249,41 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]User, e
 	return items, nil
 }
 
+const listUsersByIDs = `-- name: ListUsersByIDs :many
+SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at FROM users WHERE id = ANY($1::uuid[]) ORDER BY email
+`
+
+func (q *Queries) ListUsersByIDs(ctx context.Context, dollar_1 []pgtype.UUID) ([]User, error) {
+	rows, err := q.db.Query(ctx, listUsersByIDs, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []User
+	for rows.Next() {
+		var i User
+		if err := rows.Scan(
+			&i.ID,
+			&i.Email,
+			&i.DisplayName,
+			&i.PasswordHash,
+			&i.AvatarUrl,
+			&i.Role,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.TokenVersion,
+			&i.DisabledAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockActiveAdmins = `-- name: LockActiveAdmins :many
 SELECT id FROM users WHERE role = 'admin' AND disabled_at IS NULL FOR UPDATE
 `
