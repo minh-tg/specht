@@ -1,7 +1,8 @@
-import { useProject } from "@/api/hooks";
+import { useProject, useProjectRole } from "@/api/hooks";
 import { VerdictBand } from "@/components/VerdictBand";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { FindingsDashboard } from "@/pages/FindingsDashboard";
+import { ProjectSettings } from "@/pages/project-settings/ProjectSettings";
 import { ProjectAccess } from "@/pages/ProjectAccess";
 import { ProjectInsights } from "@/pages/ProjectInsights";
 import { ProjectPolicy } from "@/pages/ProjectPolicy";
@@ -26,6 +27,8 @@ export function ProjectLayout() {
     ? "insights"
     : path.endsWith("/watcher")
     ? "watcher"
+    : path.endsWith("/settings")
+    ? "settings"
     : "findings";
 
   useDocumentTitle(
@@ -41,10 +44,13 @@ export function ProjectLayout() {
       ? `${slug} · Insights`
       : currentTab === "watcher"
       ? `${slug} · Watcher`
+      : currentTab === "settings"
+      ? `${slug} · Settings`
       : `${slug} · Findings`,
   );
 
   const { data: project } = useProject(slug ?? "");
+  const { isAdmin } = useProjectRole(slug ?? "");
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
@@ -143,6 +149,19 @@ export function ProjectLayout() {
         >
           Watcher
         </Link>
+        {isAdmin && (
+          <Link
+            to={`/${slug}/settings`}
+            aria-current={currentTab === "settings" ? "page" : undefined}
+            className={`pb-2 text-sm font-medium ${
+              currentTab === "settings"
+                ? "border-primary text-foreground border-b-2"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Settings
+          </Link>
+        )}
       </nav>
       {currentTab === "findings"
         ? <FindingsDashboard />
@@ -156,6 +175,8 @@ export function ProjectLayout() {
         ? <ProjectInsights />
         : currentTab === "watcher"
         ? <ProjectWatcher />
+        : currentTab === "settings"
+        ? <ProjectSettings />
         : <ProjectAccess />}
     </div>
   );

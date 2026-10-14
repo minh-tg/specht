@@ -60,8 +60,25 @@ describe("CommandPalette", () => {
           { id: "p2", slug: "billing", name: "Billing" },
         ]);
       }
+      if (url.endsWith("/payments/members")) return jsonResponse([]);
       throw new Error(`unexpected request ${url}`);
     });
+  });
+
+  it("offers project settings in the project group only to admins", async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderPalette("/payments/findings");
+    await openWithShortcut(user);
+    expect(screen.getByRole("option", { name: "Project settings" })).toBeInTheDocument();
+    unmount();
+
+    role = "member";
+    renderPalette("/payments/findings");
+    await openWithShortcut(user);
+    await waitFor(() =>
+      expect(screen.getByRole("group", { name: "This project" })).toBeInTheDocument()
+    );
+    expect(screen.queryByRole("option", { name: "Project settings" })).not.toBeInTheDocument();
   });
 
   it("opens from the keyboard anywhere and closes with Escape", async () => {

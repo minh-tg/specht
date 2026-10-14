@@ -165,6 +165,14 @@ export function AppRoutes() {
         }
       />
       <Route
+        path="/:slug/settings"
+        element={
+          <ProtectedRoute>
+            <ProjectLayout />
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/admin"
         element={
           <ProtectedRoute>
