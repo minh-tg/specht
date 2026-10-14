@@ -394,3 +394,104 @@ func TestLoad_IngestConcurrency(t *testing.T) {
 		})
 	}
 }
+
+func validServer() *Server {
+	return &Server{
+		DBURL:           "postgres://specht:pw@db:5432/specht",
+		LogLevel:        "info",
+		InventoryTTL:    time.Hour,
+		SweepInterval:   time.Minute,
+		Intel:           IntelConfig{TTL: time.Hour},
+		DBMaxConns:      20,
+		DBMinConns:      2,
+		ShutdownTimeout: time.Minute,
+	}
+}
+
+func TestServerValidate_AcceptsAWorkingConfiguration(t *testing.T) {
+	assert.NoError(t, validServer().Validate())
+}
+
+func TestServerValidate_NamesEachProblemByItsVariable(t *testing.T) {
+	cases := map[string]struct {
+		mutate func(*Server)
+		want   string
+	}{
+		"no database":          {func(s *Server) { s.DBURL = "" }, "DATABASE_URL"},
+		"unknown log level":    {func(s *Server) { s.LogLevel = "verbose" }, "LOG_LEVEL"},
+		"zero inventory ttl":   {func(s *Server) { s.InventoryTTL = 0 }, "INVENTORY_TTL"},
+		"negative intel ttl":   {func(s *Server) { s.Intel.TTL = -time.Second }, "INTEL_TTL"},
+		"no connections":       {func(s *Server) { s.DBMaxConns = 0 }, "DB_MAX_CONNS"},
+		"negative min":         {func(s *Server) { s.DBMinConns = -1 }, "DB_MIN_CONNS"},
+		"min above max":        {func(s *Server) { s.DBMinConns, s.DBMaxConns = 30, 20 }, "DB_MIN_CONNS"},
+		"zero shutdown window": {func(s *Server) { s.ShutdownTimeout = 0 }, "SHUTDOWN_TIMEOUT"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			s := validServer()
+			tc.mutate(s)
+			err := s.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+func TestServerValidate_LogLevelIsCaseInsensitive(t *testing.T) {
+	for _, level := range []string{"debug", "INFO", "Warn", "error"} {
+		s := validServer()
+		s.LogLevel = level
+		assert.NoError(t, s.Validate(), level)
+	}
+}
+
+func TestServerValidate_ReportsEveryProblemAtOnce(t *testing.T) {
+	s := validServer()
+	s.DBURL = ""
+	s.LogLevel = "loud"
+	s.DBMaxConns = 0
+
+	err := s.Validate()
+
+	require.Error(t, err)
+	for _, want := range []string{"DATABASE_URL", "LOG_LEVEL", "DB_MAX_CONNS"} {
+		assert.Contains(t, err.Error(), want, "one startup attempt shows everything to fix")
+	}
+}
+
+func TestLoad_DBPoolAndShutdownSettings(t *testing.T) {
+	t.Run("defaults", func(t *testing.T) {
+		for _, k := range []string{"DB_MAX_CONNS", "DB_MIN_CONNS", "SHUTDOWN_TIMEOUT"} {
+			t.Setenv(k, "")
+		}
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, 20, cfg.DBMaxConns)
+		assert.Equal(t, 2, cfg.DBMinConns)
+		assert.Equal(t, 150*time.Second, cfg.ShutdownTimeout, "longer than an ingest may run")
+	})
+	t.Run("overrides", func(t *testing.T) {
+		t.Setenv("DB_MAX_CONNS", "50")
+		t.Setenv("DB_MIN_CONNS", "5")
+		t.Setenv("SHUTDOWN_TIMEOUT", "3m")
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, 50, cfg.DBMaxConns)
+		assert.Equal(t, 5, cfg.DBMinConns)
+		assert.Equal(t, 3*time.Minute, cfg.ShutdownTimeout)
+	})
+	for name, env := range map[string][2]string{
+		"max not a number":    {"DB_MAX_CONNS", "lots"},
+		"max negative":        {"DB_MAX_CONNS", "-3"},
+		"min not a number":    {"DB_MIN_CONNS", "few"},
+		"shutdown no unit":    {"SHUTDOWN_TIMEOUT", "30"},
+		"shutdown not a time": {"SHUTDOWN_TIMEOUT", "soon"},
+	} {
+		t.Run("rejects "+name, func(t *testing.T) {
+			t.Setenv(env[0], env[1])
+			_, err := Load()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), env[0])
+		})
+	}
+}
