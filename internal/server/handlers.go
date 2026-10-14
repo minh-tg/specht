@@ -114,6 +114,8 @@ type (
 		GetProfile(ctx context.Context, userID string) (*usecase.UserProfile, error)
 		UpdateProfile(ctx context.Context, userID string, displayName *string) (*usecase.UserProfile, error)
 		ChangePassword(ctx context.Context, userID, current, next string) (*usecase.AuthResponse, error)
+		CreatePasswordResetLink(ctx context.Context, userID string) (*usecase.PasswordResetLinkResponse, error)
+		RedeemPasswordReset(ctx context.Context, token, password string) error
 		ListUsers(ctx context.Context, filter string, limit, offset int32) ([]usecase.UserProfile, error)
 		SetupRequired(ctx context.Context) (bool, error)
 		Setup(ctx context.Context, input usecase.SetupInput) (*usecase.AuthResponse, error)
