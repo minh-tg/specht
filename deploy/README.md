@@ -308,7 +308,12 @@ migrations never migrate down automatically.
   unauthenticated routes, generous per-caller budgets behind auth. Login and
   register always get their own 5-per-minute per-IP bucket.
 - Request bodies are size-capped; ingest rejects oversized scans with 413.
-- `LOG_LEVEL=info` (or `warn`); audit events go to structured logs.
+- `LOG_LEVEL=info` (or `warn`); audit events go to structured logs. Every
+  response carries an `X-Request-Id` header, and the access log line and any
+  audit line for that request carry the same `request_id`, so a report that
+  quotes the header leads straight to the log. The access log names the route
+  pattern (`/api/v1/invites/{token}`), never the raw path or query, so tokens
+  stay out of it; the health and readiness probes log at `debug`.
 - Keep the image updated; rebuilds pull a fresh Alpine + `go mod` pins.
 - Watcher (`WATCHER_ENABLE`) and SSO stay off unless configured.
 - Database TLS: the compose default `POSTGRES_SSLMODE=disable` is for a

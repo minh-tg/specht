@@ -15,11 +15,13 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/minh-tg/specht/internal/audit"
 	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/notify"
 	"github.com/minh-tg/specht/internal/patch"
 	"github.com/minh-tg/specht/internal/port"
+	"github.com/minh-tg/specht/internal/reqctx"
 	"github.com/minh-tg/specht/internal/usecase"
 )
 
@@ -55,18 +57,50 @@ func AuthMiddleware(authenticators ...auth.Authenticator) func(http.Handler) htt
 	}
 }
 
-// LoggerMiddleware logs each request method, path, status, and duration.
+// LoggerMiddleware writes one line per request, when it finishes: request id,
+// method, status, duration, bytes and caller. It logs the route pattern, never
+// the raw path or query, because those can hold single-use tokens (an invite
+// link) or text an attacker chose. Server errors log at error level, the
+// liveness and readiness probes at debug so they do not drown the log.
 func LoggerMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		slog.Info(
-			"request",
+		start := reqctx.Start(r.Context())
+		if start.IsZero() {
+			start = time.Now()
+		}
+		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+		next.ServeHTTP(ww, r)
+
+		status := ww.Status()
+		if status == 0 {
+			status = http.StatusOK
+		}
+		route := unmatchedRoute
+		if rc := chi.RouteContext(r.Context()); rc != nil && rc.RoutePattern() != "" {
+			route = rc.RoutePattern()
+		}
+		level := slog.LevelInfo
+		switch {
+		case status >= http.StatusInternalServerError:
+			level = slog.LevelError
+		case route == "/api/v1/health" || route == "/api/v1/ready":
+			level = slog.LevelDebug
+		}
+		slog.Log(r.Context(), level, "request",
+			"request_id", reqctx.ID(r.Context()),
 			"method", r.Method,
-			"path", r.URL.Path,
+			"route", route,
+			"status", status,
+			"duration_ms", time.Since(start).Milliseconds(),
+			"bytes", ww.BytesWritten(),
 			"remote", r.RemoteAddr,
 		)
-		next.ServeHTTP(w, r)
 	})
 }
+
+// unmatchedRoute stands in for the route of a request no handler claimed, so
+// a scanner's chosen path never reaches the log.
+const unmatchedRoute = "(unmatched)"
 
 type (
 	AuthUsecases interface {

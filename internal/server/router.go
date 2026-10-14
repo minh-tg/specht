@@ -94,7 +94,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		apiKeyAuth = auth.NewAPIKeyAuthenticator(cfg.APIKeyLookup)
 	}
 
-	r.Use(middleware.RequestID)
+	r.Use(RequestIDMiddleware)
 	r.Use(realIPMiddleware(cfg.TrustedProxies))
 	r.Use(SecurityHeaders)
 	if cfg.RateLimit.Enabled {
