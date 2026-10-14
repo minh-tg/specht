@@ -157,6 +157,34 @@ describe("ApiKeys", () => {
     ]);
   });
 
+  it("does not read every project one by one for an administrator, who manages them all", async () => {
+    renderApiKeys();
+    const user = userEvent.setup();
+    const select = await screen.findByRole("combobox", { name: /project/i });
+    await listOptions(user, select);
+
+    const perProject = fetchCalls.filter((c) =>
+      c.method === "GET" && /^\/api\/v1\/projects\/[^/]+$/.test(c.url)
+    );
+    expect(perProject).toHaveLength(0);
+  });
+
+  it("reads each project once for a member, to see where they manage CI", async () => {
+    role = "member";
+    renderApiKeys();
+    const user = userEvent.setup();
+    const select = await screen.findByRole("combobox", { name: /project/i });
+    await listOptions(user, select);
+
+    const perProject = fetchCalls.filter((c) =>
+      c.method === "GET" && /^\/api\/v1\/projects\/[^/]+$/.test(c.url)
+    );
+    expect(perProject.map((c) => c.url).sort()).toEqual([
+      "/api/v1/projects/other-project",
+      "/api/v1/projects/test-project",
+    ]);
+  });
+
   it("tells a person who manages no project that they need a manager or admin, without loading keys", async () => {
     role = "member";
     managedSlugs = [];
