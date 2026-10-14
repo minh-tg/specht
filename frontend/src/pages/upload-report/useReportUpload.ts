@@ -1,5 +1,6 @@
-import { APIError, apiFetch } from "@/api/client";
+import { APIError } from "@/api/client";
 import { queryKeys } from "@/api/hooks";
+import { useUploadReport } from "@/api/pageRequests";
 import type { IngestResponse } from "@/types/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, type RefObject, type SubmitEvent, useRef, useState } from "react";
@@ -24,6 +25,7 @@ export interface ReportUpload {
 /** Owns the report upload form: scanner choice, file validation, submit and result. */
 export function useReportUpload(slug: string): ReportUpload {
   const queryClient = useQueryClient();
+  const upload = useUploadReport(slug);
 
   const [selectedScanner, setSelectedScanner] = useState("");
   const [fileContent, setFileContent] = useState<string | null>(null);
@@ -92,14 +94,10 @@ export function useReportUpload(slug: string): ReportUpload {
     setResult(null);
 
     try {
-      const report = await apiFetch<IngestResponse>("/api/v1/reports", {
-        method: "POST",
-        body: JSON.stringify({
-          project: slug,
-          scanner: selectedScanner,
-          // Validated at file selection: the wire needs a JSON value.
-          raw_data: JSON.parse(fileContent),
-        }),
+      const report = await upload.mutateAsync({
+        scanner: selectedScanner,
+        // Validated at file selection: the wire needs a JSON value.
+        raw_data: JSON.parse(fileContent),
       });
       setResult(report);
       setFileContent(null);

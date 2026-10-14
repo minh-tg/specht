@@ -1,6 +1,7 @@
 import type {
   AcceptInviteResponse,
   GateStatus,
+  IngestResponse,
   InviteLookup,
   JoinInviteResponse,
   LoginResponse,
@@ -43,6 +44,17 @@ export function useAcceptInvite(token: string) {
         method: "POST",
         body: JSON.stringify(body),
         skipAuthRedirect: true,
+      }),
+  });
+}
+
+/** Uploads one scanner report to a project. The caller handles the error and refreshes the project. */
+export function useUploadReport(slug: string) {
+  return useMutation({
+    mutationFn: (report: { scanner: string; raw_data: unknown; }) =>
+      apiFetch<IngestResponse>("/api/v1/reports", {
+        method: "POST",
+        body: JSON.stringify({ project: slug, scanner: report.scanner, raw_data: report.raw_data }),
       }),
   });
 }
