@@ -53,7 +53,7 @@ describe("API paths built from route params", () => {
       () => useReachability(HOSTILE),
       `/api/v1/findings/${ENCODED}/reachability`,
     ],
-    ["events", () => useFindingEvents(HOSTILE), `/api/v1/findings/${ENCODED}/events`],
+    ["events", () => useFindingEvents(HOSTILE), `/api/v1/findings/${ENCODED}/events?limit=500`],
   ])("encodes the %s path", async (_name, hook, expected) => {
     renderHook(hook, { wrapper });
 

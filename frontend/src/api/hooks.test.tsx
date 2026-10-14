@@ -11,6 +11,7 @@ import {
   useCreateApiKey,
   useCreateProject,
   useFinding,
+  useFindingEvents,
   useFindings,
   useGateStatus,
   useMe,
@@ -18,6 +19,7 @@ import {
   useProjects,
   useProjectStats,
   useReachability,
+  useReports,
   useTriageFinding,
   useUpsertReachability,
   useVersion,
@@ -599,5 +601,36 @@ describe("findingQueryOptions", () => {
     const options = findingQueryOptions("f1");
     expect(options.queryKey).toEqual(queryKeys.finding("f1"));
     expect(qc.getQueryData(options.queryKey)).toEqual({ id: "f1" });
+  });
+});
+
+describe("useReports", () => {
+  it("asks for no more than the page it is given, and for the server default without one", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return Promise.resolve(jsonResponse([]));
+    });
+
+    const withLimit = renderHook(() => useReports("payments", 500), { wrapper });
+    await waitFor(() => expect(withLimit.result.current.isSuccess).toBe(true));
+    const plain = renderHook(() => useReports("payments"), { wrapper });
+    await waitFor(() => expect(plain.result.current.isSuccess).toBe(true));
+
+    expect(urls).toContain("/api/v1/projects/payments/reports?limit=500");
+    expect(urls).toContain("/api/v1/projects/payments/reports");
+  });
+});
+
+describe("useFindingEvents", () => {
+  it("asks for the longest history the server allows", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return Promise.resolve(jsonResponse([]));
+    });
+    const { result } = renderHook(() => useFindingEvents("f1"), { wrapper });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(urls).toContain("/api/v1/findings/f1/events?limit=500");
   });
 });
