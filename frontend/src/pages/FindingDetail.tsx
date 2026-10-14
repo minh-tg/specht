@@ -21,6 +21,7 @@ import { HistorySection } from "./finding-detail/HistorySection";
 import { HowToFix } from "./finding-detail/HowToFix";
 import { MetadataGrid } from "./finding-detail/MetadataGrid";
 import { ReachabilitySection } from "./finding-detail/ReachabilitySection";
+import { SignoffSection } from "./finding-detail/SignoffSection";
 import { TriageSection } from "./finding-detail/TriageSection";
 import { VerifyFixSection } from "./finding-detail/VerifyFixSection";
 import { WhereItOccurs } from "./finding-detail/WhereItOccurs";
@@ -130,6 +131,8 @@ export function FindingDetail() {
           <ContextGrid context={finding.context} />
 
           <EvidenceSection findingId={finding.id} projectSlug={slug} />
+
+          <SignoffSection findingId={finding.id} projectSlug={slug} />
 
           <HistorySection
             events={events}
