@@ -6,6 +6,13 @@ import { defineConfig, devices } from "@playwright/test";
 // (and other FHS-less hosts) substitute a system Chromium for the bundled
 // download.
 const baseURL = process.env.E2E_BASE_URL ?? "http://127.0.0.1:18081";
+const launchOptions = process.env.CHROMIUM_BIN
+  ? { executablePath: process.env.CHROMIUM_BIN }
+  : {};
+
+// The mobile project runs only its own spec, at a 360x740 phone viewport (the
+// Galaxy S8 preset), and the desktop project skips it.
+const mobileSpec = /mobile\.spec\.ts$/;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -17,9 +24,18 @@ export default defineConfig({
   use: {
     baseURL,
     trace: "retain-on-failure",
-    ...devices["Desktop Chrome"],
-    ...(process.env.CHROMIUM_BIN
-      ? { launchOptions: { executablePath: process.env.CHROMIUM_BIN } }
-      : {}),
+    launchOptions,
   },
+  projects: [
+    {
+      name: "desktop",
+      testIgnore: mobileSpec,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      name: "mobile",
+      testMatch: mobileSpec,
+      use: { ...devices["Galaxy S8"] },
+    },
+  ],
 });
