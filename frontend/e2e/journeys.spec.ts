@@ -518,6 +518,21 @@ test("a CI link opens the change view with only what the change introduced", asy
   await expect(page.getByRole("heading", { name: "Triage" })).toBeVisible();
 });
 
+test("the pages load without a Content-Security-Policy violation", async ({ page }) => {
+  const violations: string[] = [];
+  page.on("console", (message) => {
+    if (/Content Security Policy|violates the following/i.test(message.text())) {
+      violations.push(message.text().slice(0, 160));
+    }
+  });
+  for (const path of ["/login", "/register", "/invite/not-a-link"]) {
+    await page.goto(path, { waitUntil: "networkidle" });
+  }
+  await uiLogin(page);
+  await page.goto("/", { waitUntil: "networkidle" });
+  expect(violations, "a font or script was blocked by the CSP").toEqual([]);
+});
+
 test("a commit with no scan says so instead of failing", async ({ page, request }) => {
   const token = await apiToken(request);
   const slug = uniq("change-none");
