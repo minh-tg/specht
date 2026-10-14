@@ -566,6 +566,26 @@ test("the pages load without a Content-Security-Policy violation", async ({ page
   expect(violations, "a font or script was blocked by the CSP").toEqual([]);
 });
 
+test("the navigation fits a 360px screen without cutting or wrapping a link", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 740 });
+  await uiLogin(page);
+  await page.goto("/", { waitUntil: "networkidle" });
+
+  const nav = page.getByRole("navigation", { name: "Main" });
+  for (const name of ["Profile", "Teams", "API keys", "Admin", "Sign out"]) {
+    const item = nav.getByText(name, { exact: true });
+    await expect(item).toBeVisible();
+    const box = await item.boundingBox();
+    expect(box, name).not.toBeNull();
+    expect(box!.x + box!.width, `${name} stays inside the screen`).toBeLessThanOrEqual(360);
+    expect(box!.height, `${name} stays on one line`).toBeLessThan(40);
+  }
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    "the page does not scroll sideways",
+  ).toBe(true);
+});
+
 test("a commit with no scan says so instead of failing", async ({ page, request }) => {
   const token = await apiToken(request);
   const slug = uniq("change-none");
