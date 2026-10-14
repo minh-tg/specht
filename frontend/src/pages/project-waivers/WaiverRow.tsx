@@ -34,7 +34,7 @@ export interface WaiverRowActions {
 function decisionLine(waiver: Waiver, who: ActorContext, reason: string | null): string | null {
   if (!waiver.decided_by && !reason) return null;
   const by = waiver.decided_by
-    ? actorLabel({ user_id: waiver.decided_by }, who)
+    ? actorLabel({ user_id: waiver.decided_by, user_name: waiver.decided_by_name }, who)
     : null;
   const verb = reason ?? "Decided";
   const head = by ? `${verb} by ${by}` : verb;
@@ -58,7 +58,7 @@ export function WaiverRow({ slug, waiver, bucket, now, who, actions }: {
   const count = waiver.targets.length;
   const closed = bucket === "closed" ? closedReason(waiver, now) : null;
   const requester = waiver.requested_by
-    ? actorLabel({ user_id: waiver.requested_by }, who)
+    ? actorLabel({ user_id: waiver.requested_by, user_name: waiver.requested_by_name }, who)
     : null;
   const mine = !!waiver.requested_by && waiver.requested_by === actions.currentUserId;
   const decision = bucket === "pending" ? null : decisionLine(waiver, who, closed);

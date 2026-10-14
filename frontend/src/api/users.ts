@@ -27,16 +27,19 @@ export interface ActorContext {
 }
 
 /**
- * Describes who performed a finding event without ever leaking the raw user
- * id. System events (empty user id) and the viewer's own events are always
- * nameable; another person resolves only when the admin directory loaded.
+ * Describes who performed an action without ever leaking the raw user id.
+ * System actions (empty user id) and the viewer's own are always nameable.
+ * For anyone else the name the API sent along (`user_name`) is used, which
+ * every project member receives; the admin directory is only a fallback for
+ * data that carries no name.
  */
 export function actorLabel(
-  event: Pick<FindingEvent, "user_id">,
+  event: Pick<FindingEvent, "user_id"> & { readonly user_name?: string | undefined; },
   { me, directory }: ActorContext,
 ): string {
   if (!event.user_id) return "System";
   if (me && event.user_id === me.id) return "You";
+  if (event.user_name) return event.user_name;
   const actor = directory?.find((user) => user.id === event.user_id);
   if (actor) return actor.display_name || actor.email;
   return "A team member";

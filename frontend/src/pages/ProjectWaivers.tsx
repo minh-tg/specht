@@ -1,5 +1,4 @@
 import { useMe, useProject, useRevokeWaiver, useWaivers, useWithdrawWaiver } from "@/api/hooks";
-import { useUserDirectory } from "@/api/users";
 import { useDeleteWaiver } from "@/api/waiverActions";
 import { useAuth } from "@/auth/useAuth";
 import { ErrorState } from "@/components/ErrorState";
@@ -47,7 +46,6 @@ export function ProjectWaivers() {
   const { data: waivers, isLoading, isError, refetch, dataUpdatedAt } = useWaivers(currentSlug);
   const { data: project } = useProject(currentSlug);
   const { data: me } = useMe();
-  const { data: directory } = useUserDirectory();
   const { userId } = useAuth();
   const withdraw = useWithdrawWaiver(currentSlug);
   const revoke = useRevokeWaiver(currentSlug);
@@ -152,7 +150,7 @@ export function ProjectWaivers() {
                   waiver={waiver}
                   bucket={tab}
                   now={now}
-                  who={{ me, directory }}
+                  who={{ me }}
                   actions={{
                     canDecide: !!permissions?.approve_waivers,
                     canRevoke: !!permissions?.manage_waivers,

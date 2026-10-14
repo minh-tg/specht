@@ -147,3 +147,41 @@ describe("useUserDirectory", () => {
       .toBe("A team member");
   });
 });
+
+describe("actorLabel with the names the API sends", () => {
+  const ada = { user_id: "u-ada", user_name: "Ada Okafor" };
+
+  it("uses the name that came with the event, for a viewer who cannot read the directory", () => {
+    expect(actorLabel(ada, { me: null, directory: null })).toBe("Ada Okafor");
+  });
+
+  it("still says You for the viewer's own actions and System for automated ones", () => {
+    const me = { id: "u-ada", email: "ada@acme.example", role: "member", created_at: "" } as const;
+    expect(actorLabel(ada, { me, directory: null })).toBe("You");
+    expect(actorLabel({ user_id: "", user_name: undefined }, { me, directory: null })).toBe(
+      "System",
+    );
+  });
+
+  it("prefers the name from the API over the directory", () => {
+    const directory = [{
+      id: "u-ada",
+      email: "old@acme.example",
+      display_name: "Old Name",
+      role: "member",
+      created_at: "",
+    }] as const;
+    expect(actorLabel(ada, { me: null, directory })).toBe("Ada Okafor");
+  });
+
+  it("falls back to the directory, then to a generic label", () => {
+    const directory = [{
+      id: "u-bo",
+      email: "bo@acme.example",
+      role: "member",
+      created_at: "",
+    }] as const;
+    expect(actorLabel({ user_id: "u-bo" }, { me: null, directory })).toBe("bo@acme.example");
+    expect(actorLabel({ user_id: "u-nobody" }, { me: null, directory })).toBe("A team member");
+  });
+});
