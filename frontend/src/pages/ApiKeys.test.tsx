@@ -1,5 +1,5 @@
 import { AuthContext, type AuthContextValue } from "@/auth/context";
-import { chooseOption, createTestQueryClient } from "@/test/utils";
+import { chooseOption, createTestQueryClient, jsonResponse, listOptions } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -34,6 +34,33 @@ let fetchCalls: { url: string; method: string; body?: string; }[] = [];
 let listShouldFail = false;
 let deleteShouldFail = false;
 let role = "admin";
+let managedSlugs = ["test-project"];
+
+const PROJECTS = [
+  { id: "p1", slug: "test-project", name: "Test Project" },
+  { id: "p2", slug: "other-project", name: "Other Project" },
+];
+
+function projectBody(slug: string) {
+  const found = PROJECTS.find((p) => p.slug === slug);
+  const manageCI = role === "admin" || managedSlugs.includes(slug);
+  return {
+    id: found?.id ?? slug,
+    slug,
+    name: found?.name ?? slug,
+    description: null,
+    created_at: "",
+    updated_at: "",
+    permissions: {
+      request_waiver: true,
+      manage_waivers: manageCI,
+      approve_waivers: role === "admin",
+      manage_members: manageCI,
+      manage_ci: manageCI,
+      triage: manageCI,
+    },
+  };
+}
 
 describe("ApiKeys", () => {
   beforeEach(() => {
@@ -41,6 +68,7 @@ describe("ApiKeys", () => {
     listShouldFail = false;
     deleteShouldFail = false;
     role = "admin";
+    managedSlugs = ["test-project"];
     globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
       const u = String(url);
       const method = ((opts as RequestInit)?.method ?? "GET").toUpperCase();
@@ -84,20 +112,15 @@ describe("ApiKeys", () => {
             }]),
         } as Response;
       }
-      return {
-        ok: true,
-        json: () =>
-          Promise.resolve([
-            {
-              id: "p1",
-              slug: "test-project",
-              name: "Test Project",
-              description: null,
-              created_at: "",
-              updated_at: "",
-            },
-          ]),
-      } as Response;
+      if (u === "/api/v1/projects") {
+        return jsonResponse(
+          PROJECTS.map((p) => ({ ...p, description: null, created_at: "", updated_at: "" })),
+        );
+      }
+      if (u.startsWith("/api/v1/projects/")) {
+        return jsonResponse(projectBody(u.slice("/api/v1/projects/".length)));
+      }
+      return jsonResponse({});
     });
   });
 
@@ -107,11 +130,38 @@ describe("ApiKeys", () => {
     expect(screen.getByText("Select a project")).toBeInTheDocument();
   });
 
-  it("tells a member that only administrators manage keys, without loading any", async () => {
+  it("lists only the projects the signed-in person manages", async () => {
     role = "member";
     renderApiKeys();
+    const user = userEvent.setup();
 
-    expect(await screen.findByText("Only administrators can manage API keys.")).toBeInTheDocument();
+    const select = await screen.findByRole("combobox", { name: /project/i });
+    expect(await listOptions(user, select)).toEqual(["Select a project", "Test Project"]);
+    expect(screen.queryByText("Only administrators can manage API keys.")).not.toBeInTheDocument();
+  });
+
+  it("lists every project to an administrator", async () => {
+    renderApiKeys();
+    const user = userEvent.setup();
+
+    const select = await screen.findByRole("combobox", { name: /project/i });
+    expect(await listOptions(user, select)).toEqual([
+      "Select a project",
+      "Test Project",
+      "Other Project",
+    ]);
+  });
+
+  it("tells a person who manages no project that they need a manager or admin, without loading keys", async () => {
+    role = "member";
+    managedSlugs = [];
+    renderApiKeys();
+
+    expect(
+      await screen.findByText(
+        "You do not manage any project's CI. Ask a project manager or an admin.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to projects" })).toHaveAttribute("href", "/");
     expect(fetchCalls.some((c) => c.url.includes("/apikeys"))).toBe(false);

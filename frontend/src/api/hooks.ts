@@ -28,7 +28,13 @@ import type {
   Waiver,
   WaiverStatus,
 } from "@/types/api";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { apiFetch, apiFetchWithTotal } from "./client";
 
@@ -106,6 +112,28 @@ export function useProjects() {
     queryKey: queryKeys.projects(),
     queryFn: () => apiFetch<Project[]>("/api/v1/projects"),
   });
+}
+
+/**
+ * The projects the signed-in person may manage CI for. The list omits
+ * permissions, so each project is read once and kept where its `manage_ci`
+ * permission is set. A global admin holds it on every project.
+ */
+export function useCiManagedProjects() {
+  const projects = useProjects();
+  const details = useQueries({
+    queries: (projects.data ?? []).map((p) => ({
+      queryKey: queryKeys.project(p.slug),
+      queryFn: () => apiFetch<Project>(`/api/v1/projects/${encodeURIComponent(p.slug)}`),
+    })),
+  });
+  const data = (projects.data ?? []).filter((_, i) =>
+    details[i]?.data?.permissions?.manage_ci === true
+  );
+  return {
+    data,
+    isLoading: projects.isLoading || details.some((d) => d.isLoading),
+  };
 }
 
 export function useScanners() {

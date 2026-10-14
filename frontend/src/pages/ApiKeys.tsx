@@ -1,19 +1,23 @@
 import { APIError, apiFetch } from "@/api/client";
-import { useMe, useProjects } from "@/api/hooks";
+import { useCiManagedProjects } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { SelectField } from "@/components/SelectField";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ApiKey } from "@/types/api";
+import type { ApiKey, Project } from "@/types/api";
 import { type ReactNode, useState } from "react";
 import { Link } from "react-router-dom";
 
-/** Keys are created and revoked by administrators; the server refuses everyone else. */
+/**
+ * Keys are minted, listed and revoked per project by its managers and by
+ * administrators (the `manage_ci` permission). The picker offers only the
+ * projects the signed-in person manages; the server refuses everything else.
+ */
 export function ApiKeys() {
-  const { data: me, isLoading } = useMe();
+  const managed = useCiManagedProjects();
 
-  if (isLoading) {
+  if (managed.isLoading) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
         <Skeleton className="h-8 w-48 rounded" />
@@ -22,11 +26,13 @@ export function ApiKeys() {
     );
   }
 
-  if (me?.role !== "admin") {
+  if (managed.data.length === 0) {
     return (
       <div className="mx-auto max-w-2xl px-4 py-8">
         <h1 className="mb-6 text-2xl font-bold">API keys</h1>
-        <p className="text-muted-foreground text-sm">Only administrators can manage API keys.</p>
+        <p className="text-muted-foreground text-sm">
+          You do not manage any project's CI. Ask a project manager or an admin.
+        </p>
         <Link
           to="/"
           className="text-action hover:text-action/80 mt-2 inline-block text-sm underline"
@@ -37,12 +43,10 @@ export function ApiKeys() {
     );
   }
 
-  return <ApiKeysManager />;
+  return <ApiKeysManager projects={managed.data} />;
 }
 
-function ApiKeysManager() {
-  const { data: projects } = useProjects();
-
+function ApiKeysManager({ projects }: { projects: Project[]; }) {
   const [selectedProject, setSelectedProject] = useState("");
   const [keys, setKeys] = useState<ApiKey[]>([]);
   const [loadingKeys, setLoadingKeys] = useState(false);
@@ -204,7 +208,7 @@ function ApiKeysManager() {
           onValueChange={handleProjectChange}
           options={[
             { value: "", label: "Select a project" },
-            ...(projects ?? []).map((p) => ({ value: p.slug, label: p.name })),
+            ...projects.map((p) => ({ value: p.slug, label: p.name })),
           ]}
         />
       </div>
