@@ -9,9 +9,11 @@ import {
   FIXTURE_HIGH_NEW,
   FIXTURE_MEDIUM,
   ingestFixture,
+  registerPerson,
   requestWaiver,
   seedProject,
   uiLogin,
+  uiLoginAs,
   uniq,
 } from "./helpers";
 
@@ -843,4 +845,58 @@ test("the command palette jumps between pages from the keyboard", async ({ page,
   // The button opens it too.
   await page.getByRole("button", { name: "Open command palette" }).click();
   await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+});
+
+test("a global admin creates a team, rosters a person and deletes the team", async ({ page, request }) => {
+  const member = await registerPerson(request, "team-member");
+  const teamName = uniq("Team Journey");
+  await uiLogin(page);
+
+  await page.goto("/teams");
+  await page.getByRole("button", { name: "+ Create Team" }).click();
+  const create = page.getByRole("dialog", { name: "Create Company Team" });
+  await create.getByLabel("Team Name").fill(teamName);
+  await create.getByRole("button", { name: "Create Team" }).click();
+  await expect(create).toHaveCount(0);
+
+  const card = page.locator(".bg-card").filter({
+    has: page.getByRole("heading", { name: teamName, exact: true }),
+  });
+  // The creator is granted team admin on create, so the roster starts with one person.
+  await expect(card).toContainText("1 members");
+  await card.getByRole("button", { name: "Manage Roster" }).click();
+
+  const roster = page.getByRole("dialog", { name: `${teamName} members` });
+  await roster.getByLabel("Email address").fill(member.email);
+  await roster.getByRole("button", { name: "Add", exact: true }).click();
+  const list = roster.getByRole("list");
+  await expect(list.getByRole("listitem").filter({ hasText: member.email })).toHaveCount(1);
+
+  await list.getByRole("listitem").filter({ hasText: member.email })
+    .getByRole("button", { name: "Remove" }).click();
+  await expect(list.getByRole("listitem").filter({ hasText: member.email })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await expect(roster).toHaveCount(0);
+  await expect(card).toContainText("1 members");
+
+  await card.getByRole("button", { name: "Delete", exact: true }).click();
+  await page.getByRole("alertdialog", { name: `Delete ${teamName}?` })
+    .getByRole("button", { name: "Delete team" }).click();
+  await expect(page.getByRole("heading", { name: teamName, exact: true })).toHaveCount(0);
+});
+
+test("a person who is not a global admin cannot reach admin tools", async ({ page, request }) => {
+  const person = await registerPerson(request, "forbidden-person");
+  await uiLoginAs(page, person.email, person.password);
+
+  await page.goto("/admin");
+  await expect(page.getByText("Only global admins can see this page.")).toBeVisible();
+  await expect(page.getByRole("list", { name: "People" })).toHaveCount(0);
+
+  await page.goto("/teams");
+  await expect(page.getByRole("heading", { name: "Company Teams" })).toBeVisible();
+  await expect(page.getByText("Global Admin required to create teams")).toBeVisible();
+  await expect(page.getByRole("button", { name: "+ Create Team" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Create First Team" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Manage Roster" })).toHaveCount(0);
 });
