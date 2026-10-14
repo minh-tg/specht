@@ -17,6 +17,7 @@ import { ProjectLayout } from "@/pages/ProjectLayout";
 import { ProjectList } from "@/pages/ProjectList";
 import { ProjectSetup } from "@/pages/ProjectSetup";
 import { Register } from "@/pages/Register";
+import { ResetPassword } from "@/pages/ResetPassword";
 import { Setup } from "@/pages/Setup";
 import { TeamsDirectory } from "@/pages/TeamsDirectory";
 import { UploadReport } from "@/pages/UploadReport";
@@ -69,6 +70,14 @@ export function AppRoutes() {
         element={
           <Titled title="Invitation">
             <Invite />
+          </Titled>
+        }
+      />
+      <Route
+        path="/reset/:token"
+        element={
+          <Titled title="Reset password">
+            <ResetPassword />
           </Titled>
         }
       />

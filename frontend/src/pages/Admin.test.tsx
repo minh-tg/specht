@@ -89,6 +89,9 @@ describe("Admin", () => {
             });
         }
         if (url.includes("/api/v1/users?")) return jsonResponse(users);
+        if (method === "POST" && url.endsWith("/reset-link") && !writeError) {
+          return jsonResponse({ link: "/reset/tok-abc", expires_at: "2026-10-15T12:00:00Z" }, 201);
+        }
         if (method !== "GET" && url.includes("/api/v1/users/")) {
           if (writeError) {
             return jsonResponse({ error: writeError }, 409);
@@ -212,6 +215,45 @@ describe("Admin", () => {
         )
           .toBe(true)
       );
+    });
+
+    it("issues a reset link, shows it once with its expiry, and never for yourself or a deactivated account", async () => {
+      const user = userEvent.setup();
+      renderPage();
+      expect(await screen.findByRole("button", { name: "Reset password for Lena Brandt" }))
+        .toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Reset password for Ada/ })).not
+        .toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Reset password for jonas/ })).not
+        .toBeInTheDocument();
+
+      await user.click(screen.getByRole("button", { name: "Reset password for Lena Brandt" }));
+      const dialog = await screen.findByRole("dialog", { name: "Send this link to Lena Brandt" });
+      expect(calls.filter((c) => c.method === "POST" && c.url.endsWith("/users/u-lena/reset-link")))
+        .toHaveLength(1);
+      expect(within(dialog).getByTestId("reset-link")).toHaveTextContent(
+        `${window.location.origin}/reset/tok-abc`,
+      );
+      expect(within(dialog).getByText(/shown only once/)).toBeInTheDocument();
+      expect(within(dialog).getByText(new RegExp(formatDate("2026-10-15T12:00:00Z"))))
+        .toBeInTheDocument();
+
+      await user.click(within(dialog).getByRole("button", { name: "Done" }));
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    });
+
+    it("relays the server's refusal to issue a reset link", async () => {
+      writeError = { code: "no_local_password", message: "this account has no local password" };
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(
+        await screen.findByRole("button", { name: "Reset password for Lena Brandt" }),
+      );
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "this account has no local password",
+      );
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
     it("relays the server's refusal, for example for the last admin", async () => {

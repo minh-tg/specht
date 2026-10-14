@@ -134,6 +134,9 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await page.goto((await invited.json()).link as string);
   await expect(page.getByRole("heading", { name: `Join ${slug}` })).toBeVisible();
   await audit(page, "/invite/:token");
+  await page.goto("/reset/not-a-real-link");
+  await expect(page.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
+  await audit(page, "/reset/:token");
   await page.goto("/invite/not-a-real-link");
   await expect(page.getByRole("heading", { name: "This invite link does not work" })).toBeVisible();
   await audit(page, "/invite/:token (not valid)");

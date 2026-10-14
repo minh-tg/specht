@@ -765,6 +765,46 @@ test("a global admin manages accounts and sees the server's totals", async ({ pa
   await expect(page.getByRole("button", { name: "Remove them…" })).toBeDisabled();
 });
 
+test("an admin hands a locked-out person a reset link that works once", async ({ page, request, browser }) => {
+  const email = `reset-journey-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@example.com`;
+  const registered = await request.post("/api/v1/auth/register", {
+    data: { email, password: "forgotten-password-1" },
+  });
+  expect(registered.ok(), await registered.text()).toBeTruthy();
+  await uiLogin(page);
+
+  await page.goto("/admin");
+  await page.getByRole("searchbox", { name: "Find a person by email" }).fill(email);
+  await page.getByRole("button", { name: `Reset password for ${email}` }).click();
+  const dialog = page.getByRole("dialog", { name: `Send this link to ${email}` });
+  const link = (await dialog.getByTestId("reset-link").textContent()) ?? "";
+  expect(link).toContain("/reset/");
+  await dialog.getByRole("button", { name: "Done" }).click();
+
+  // The person opens the link in a browser with no session.
+  const guestContext = await browser.newContext();
+  const guest = await guestContext.newPage();
+  await guest.goto(link);
+  await expect(guest.getByRole("heading", { name: "Choose a new password" })).toBeVisible();
+  await guest.getByLabel("New password", { exact: true }).fill("a-new-password-for-me");
+  await guest.getByLabel("Confirm new password").fill("a-new-password-for-me");
+  await guest.getByRole("button", { name: "Set password" }).click();
+  await expect(guest.getByRole("heading", { name: "Password changed" })).toBeVisible();
+
+  // The new password signs in; the link does not work a second time.
+  await guest.getByRole("link", { name: "Go to sign in" }).click();
+  await guest.getByLabel("Email").fill(email);
+  await guest.getByLabel("Password").fill("a-new-password-for-me");
+  await guest.getByRole("button", { name: "Sign in" }).click();
+  await expect(guest).toHaveURL(/\/$/);
+  await guest.goto(link);
+  await guest.getByLabel("New password", { exact: true }).fill("another-password-again");
+  await guest.getByLabel("Confirm new password").fill("another-password-again");
+  await guest.getByRole("button", { name: "Set password" }).click();
+  await expect(guest.getByRole("heading", { name: "This reset link does not work" })).toBeVisible();
+  await guestContext.close();
+});
+
 test("the command palette jumps between pages from the keyboard", async ({ page, request }) => {
   const token = await apiToken(request);
   const slug = uniq("palette");
