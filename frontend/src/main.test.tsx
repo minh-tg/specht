@@ -1,6 +1,22 @@
 import { jsonResponse } from "@/test/utils";
-import { cleanup, screen } from "@testing-library/react";
+import { act, cleanup, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// main.tsx creates its own root, which testing-library's cleanup does not know about. A root left
+// mounted keeps React's scheduler working after the test ends and the DOM is gone, which fails the
+// whole run intermittently with "window is not defined". Keep every root so the test can unmount it.
+const roots = vi.hoisted(() => [] as Array<{ unmount: () => void; }>);
+vi.mock("react-dom/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("react-dom/client")>();
+  return {
+    ...actual,
+    createRoot: (...args: Parameters<typeof actual.createRoot>) => {
+      const root = actual.createRoot(...args);
+      roots.push(root);
+      return root;
+    },
+  };
+});
 
 beforeEach(() => {
   window.history.replaceState(null, "", "/");
@@ -19,7 +35,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await act(async () => {
+    for (const root of roots.splice(0)) root.unmount();
+  });
   cleanup();
   document.body.innerHTML = "";
 });
