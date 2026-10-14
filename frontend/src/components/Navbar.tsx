@@ -43,27 +43,29 @@ function SignedInLinks({ email, onLogout }: { email: string | null; onLogout: ()
           {email}
         </span>
       )}
-      <NavLink to="/profile" className={navLinkClass}>
-        Profile
-      </NavLink>
-      <NavLink to="/teams" className={navLinkClass}>
-        Teams
-      </NavLink>
-      <NavLink to="/api-keys" className={navLinkClass}>
-        API keys
-      </NavLink>
-      {me.data?.role === "admin" && (
-        <NavLink to="/admin" className={navLinkClass}>
-          Admin
+      <div className="flex basis-full flex-wrap items-center gap-x-4 gap-y-1 sm:contents">
+        <NavLink to="/profile" className={navLinkClass}>
+          Profile
         </NavLink>
-      )}
-      <button
-        type="button"
-        onClick={onLogout}
-        className="text-muted-foreground hover:text-foreground py-1 text-sm"
-      >
-        Sign out
-      </button>
+        <NavLink to="/teams" className={navLinkClass}>
+          Teams
+        </NavLink>
+        <NavLink to="/api-keys" className={navLinkClass}>
+          API keys
+        </NavLink>
+        {me.data?.role === "admin" && (
+          <NavLink to="/admin" className={navLinkClass}>
+            Admin
+          </NavLink>
+        )}
+        <button
+          type="button"
+          onClick={onLogout}
+          className="text-muted-foreground hover:text-foreground py-1 text-sm whitespace-nowrap"
+        >
+          Sign out
+        </button>
+      </div>
     </>
   );
 }
@@ -75,13 +77,13 @@ export function Navbar() {
     <header className="border-border bg-background border-b">
       <nav
         aria-label="Main"
-        className="mx-auto flex h-12 max-w-5xl items-center justify-between gap-3 px-4"
+        className="mx-auto flex min-h-12 max-w-5xl flex-wrap items-center max-sm:items-start justify-between gap-x-3 gap-y-0 px-4 py-1"
       >
-        <NavLink to="/" className="inline-flex items-center gap-2 text-sm font-semibold">
+        <NavLink to="/" className="inline-flex items-center gap-2 py-1.5 text-sm font-semibold">
           <BrandMark className="text-action h-5 w-5" />
           Specht
         </NavLink>
-        <div className="flex min-w-0 items-center gap-3">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-3 gap-y-0 max-sm:flex-1">
           <ThemeToggle />
           {auth.token
             ? <SignedInLinks email={auth.email} onLogout={auth.logout} />
