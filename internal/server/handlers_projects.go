@@ -230,6 +230,7 @@ func (h *Handler) AddProjectMember(w http.ResponseWriter, r *http.Request) {
 		respondMemberError(w, err)
 		return
 	}
+	setAuditTarget(r, member.UserID)
 	respondJSON(w, http.StatusCreated, member)
 }
 
