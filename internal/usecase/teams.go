@@ -185,10 +185,36 @@ func (u *Usecases) requireDelegationCeiling(ctx context.Context, teamID string) 
 // alone would surface a raw constraint violation); the role validates
 // against the team vocabulary.
 func (u *Usecases) AddTeamMember(ctx context.Context, teamID, userID, role string) (*TeamMemberResponse, error) {
-	if _, err := validID(teamID); err != nil {
+	if _, err := validID(userID); err != nil {
 		return nil, err
 	}
-	if _, err := validID(userID); err != nil {
+	return u.addTeamMember(ctx, teamID, role, func(ctx context.Context) (port.User, error) {
+		user, err := u.deps.Stores.Users.GetByID(ctx, userID)
+		if err != nil {
+			if errors.Is(err, port.ErrNotFound) {
+				return port.User{}, ErrMemberUserNotFound
+			}
+			return port.User{}, fmt.Errorf("lookup user: %w", err)
+		}
+		return user, nil
+	})
+}
+
+// AddTeamMemberByEmail adds the account behind an address to a team, under the
+// same rules as AddTeamMember. The address is looked up only after the caller
+// has passed the team and delegation checks.
+func (u *Usecases) AddTeamMemberByEmail(ctx context.Context, teamID, email, role string) (*TeamMemberResponse, error) {
+	email, err := memberEmail(email)
+	if err != nil {
+		return nil, err
+	}
+	return u.addTeamMember(ctx, teamID, role, func(ctx context.Context) (port.User, error) {
+		return u.userByEmail(ctx, email)
+	})
+}
+
+func (u *Usecases) addTeamMember(ctx context.Context, teamID, role string, resolveUser func(context.Context) (port.User, error)) (*TeamMemberResponse, error) {
+	if _, err := validID(teamID); err != nil {
 		return nil, err
 	}
 	if err := u.requireTeamAdmin(ctx, teamID); err != nil {
@@ -200,12 +226,9 @@ func (u *Usecases) AddTeamMember(ctx context.Context, teamID, userID, role strin
 	if err := u.requireDelegationCeiling(ctx, teamID); err != nil {
 		return nil, err
 	}
-	user, err := u.deps.Stores.Users.GetByID(ctx, userID)
+	user, err := resolveUser(ctx)
 	if err != nil {
-		if errors.Is(err, port.ErrNotFound) {
-			return nil, ErrMemberUserNotFound
-		}
-		return nil, fmt.Errorf("lookup user: %w", err)
+		return nil, err
 	}
 	m, err := u.deps.Stores.Teams.UpsertTeamMember(ctx, teamID, user.ID, role)
 	if err != nil {

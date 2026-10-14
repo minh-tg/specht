@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/mail"
+	"strings"
 
 	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/port"
@@ -18,6 +20,9 @@ var (
 	// ErrMemberUserNotFound is returned when the user to grant access does
 	// not exist. Handlers map it to 404.
 	ErrMemberUserNotFound = errors.New("user not found")
+	// ErrInvalidMemberEmail is returned when an address given to add a member
+	// is not a plain email address. Handlers map it to 400.
+	ErrInvalidMemberEmail = errors.New("invalid email address")
 )
 
 // ProjectMemberResponse is the API representation of a project membership.
@@ -156,14 +161,57 @@ func (u *Usecases) canRemoveMember(ctx context.Context, projectID, callerRole, t
 	return nil
 }
 
+// memberEmail checks and normalizes an address typed into an add-member form.
+func memberEmail(email string) (string, error) {
+	email = strings.TrimSpace(email)
+	addr, err := mail.ParseAddress(email)
+	if err != nil || addr.Address != email {
+		return "", ErrInvalidMemberEmail
+	}
+	return auth.NormalizeEmail(email), nil
+}
+
+// userByEmail finds the account behind an address. A missing account is
+// ErrMemberUserNotFound, the same answer an unknown user id gets, so the
+// response does not depend on how the caller named the person. Callers run it
+// only after their permission checks pass.
+func (u *Usecases) userByEmail(ctx context.Context, email string) (port.User, error) {
+	user, err := u.deps.Stores.Users.GetByEmail(ctx, email)
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return port.User{}, ErrMemberUserNotFound
+		}
+		return port.User{}, fmt.Errorf("lookup user by email: %w", err)
+	}
+	return user, nil
+}
+
 // AddProjectMember grants a user a role on a project (upsert) subject to
 // delegation boundaries and the last-admin invariant.
 func (u *Usecases) AddProjectMember(ctx context.Context, projectSlug, userID, role string) (*ProjectMemberResponse, error) {
-	if !memberRoles[role] {
-		return nil, fmt.Errorf("%w %q: must be admin, manager, or member", ErrInvalidMemberRole, role)
-	}
 	if _, err := validID(userID); err != nil {
 		return nil, err
+	}
+	return u.addProjectMember(ctx, projectSlug, role, func(context.Context) (string, error) { return userID, nil })
+}
+
+// AddProjectMemberByEmail grants the account behind an address a role on a
+// project. It applies the same rules as AddProjectMember and looks the address
+// up only once the caller is known to be allowed to add members.
+func (u *Usecases) AddProjectMemberByEmail(ctx context.Context, projectSlug, email, role string) (*ProjectMemberResponse, error) {
+	email, err := memberEmail(email)
+	if err != nil {
+		return nil, err
+	}
+	return u.addProjectMember(ctx, projectSlug, role, func(ctx context.Context) (string, error) {
+		user, err := u.userByEmail(ctx, email)
+		return user.ID, err
+	})
+}
+
+func (u *Usecases) addProjectMember(ctx context.Context, projectSlug, role string, resolveUser func(context.Context) (string, error)) (*ProjectMemberResponse, error) {
+	if !memberRoles[role] {
+		return nil, fmt.Errorf("%w %q: must be admin, manager, or member", ErrInvalidMemberRole, role)
 	}
 	role = normalizeMemberRole(role)
 	p, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
@@ -182,6 +230,11 @@ func (u *Usecases) AddProjectMember(ctx context.Context, projectSlug, userID, ro
 	}
 	if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleManager) || auth.RoleRank(role) > auth.RoleRank(callerRole) {
 		return nil, ErrProjectAccessDenied
+	}
+
+	userID, err := resolveUser(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	// Check existing member status for peer-protection and last-admin invariant.

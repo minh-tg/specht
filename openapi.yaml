@@ -2192,7 +2192,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/AddMemberRequest" }
+            schema: { $ref: "#/components/schemas/MemberGrantRequest" }
       responses:
         "201":
           description: Added.
@@ -2332,7 +2332,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/AddMemberRequest" }
+            schema: { $ref: "#/components/schemas/MemberGrantRequest" }
       responses:
         "201":
           description: Granted.
@@ -4022,6 +4022,18 @@ components:
       required: [user_id, role]
       properties:
         user_id: { type: string, format: uuid }
+        role: { type: string, enum: [admin, manager, member] }
+
+    MemberGrantRequest:
+      type: object
+      required: [role]
+      description: |
+        Names the person by account id or by email address; send exactly one.
+        An address with no account answers 404 `user_not_found`, the same as an
+        unknown id, and only callers allowed to add members get that answer.
+      properties:
+        user_id: { type: string, format: uuid }
+        email: { type: string, format: email }
         role: { type: string, enum: [admin, manager, member] }
 
     ProjectTeam:

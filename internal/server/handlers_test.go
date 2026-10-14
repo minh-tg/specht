@@ -43,6 +43,7 @@ type mockUsecases struct {
 	createProjectFn         func(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error)
 	listProjectMembersFn    func(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error)
 	addProjectMemberFn      func(ctx context.Context, projectSlug, userID, role string) (*usecase.ProjectMemberResponse, error)
+	addProjectMemberByEmail func(ctx context.Context, projectSlug, email, role string) (*usecase.ProjectMemberResponse, error)
 	isProjectMemberFn       func(ctx context.Context, projectID, userID string) (bool, error)
 	listProjectsFn          func(ctx context.Context) ([]usecase.ProjectResponse, error)
 	getProjectFn            func(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
@@ -80,6 +81,7 @@ type mockUsecases struct {
 	listTeamsFn             func(ctx context.Context) ([]usecase.TeamResponse, error)
 	deleteTeamFn            func(ctx context.Context, teamID string) error
 	addTeamMemberFn         func(ctx context.Context, teamID, userID, role string) (*usecase.TeamMemberResponse, error)
+	addTeamMemberByEmail    func(ctx context.Context, teamID, email, role string) (*usecase.TeamMemberResponse, error)
 	listTeamMembersFn       func(ctx context.Context, teamID string) ([]usecase.TeamMemberResponse, error)
 	removeTeamMemberFn      func(ctx context.Context, teamID, userID string) error
 	linkProjectTeamFn       func(ctx context.Context, projectSlug, teamID, role string) (*usecase.ProjectTeamResponse, error)
@@ -143,6 +145,13 @@ func (m *mockUsecases) AddProjectMember(ctx context.Context, projectSlug, userID
 		return nil, fmt.Errorf("unexpected call to AddProjectMember")
 	}
 	return m.addProjectMemberFn(ctx, projectSlug, userID, role)
+}
+
+func (m *mockUsecases) AddProjectMemberByEmail(ctx context.Context, projectSlug, email, role string) (*usecase.ProjectMemberResponse, error) {
+	if m.addProjectMemberByEmail == nil {
+		return nil, fmt.Errorf("unexpected call to AddProjectMemberByEmail")
+	}
+	return m.addProjectMemberByEmail(ctx, projectSlug, email, role)
 }
 
 func (m *mockUsecases) RemoveProjectMember(ctx context.Context, projectSlug, userID string) error {
@@ -428,6 +437,13 @@ func (m *mockUsecases) AddTeamMember(ctx context.Context, teamID, userID, role s
 		return nil, fmt.Errorf("unexpected call to AddTeamMember")
 	}
 	return m.addTeamMemberFn(ctx, teamID, userID, role)
+}
+
+func (m *mockUsecases) AddTeamMemberByEmail(ctx context.Context, teamID, email, role string) (*usecase.TeamMemberResponse, error) {
+	if m.addTeamMemberByEmail == nil {
+		return nil, fmt.Errorf("unexpected call to AddTeamMemberByEmail")
+	}
+	return m.addTeamMemberByEmail(ctx, teamID, email, role)
 }
 
 func (m *mockUsecases) ListTeamMembers(ctx context.Context, teamID string) ([]usecase.TeamMemberResponse, error) {

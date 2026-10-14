@@ -141,6 +141,7 @@ type (
 		CreateProject(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error)
 		ListProjectMembers(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error)
 		AddProjectMember(ctx context.Context, projectSlug, userID, role string) (*usecase.ProjectMemberResponse, error)
+		AddProjectMemberByEmail(ctx context.Context, projectSlug, email, role string) (*usecase.ProjectMemberResponse, error)
 		RemoveProjectMember(ctx context.Context, projectSlug, userID string) error
 		IsProjectMember(ctx context.Context, projectID, userID string) (bool, error)
 		ListProjects(ctx context.Context) ([]usecase.ProjectResponse, error)
@@ -196,6 +197,7 @@ type (
 		ListTeams(ctx context.Context) ([]usecase.TeamResponse, error)
 		DeleteTeam(ctx context.Context, teamID string) error
 		AddTeamMember(ctx context.Context, teamID, userID, role string) (*usecase.TeamMemberResponse, error)
+		AddTeamMemberByEmail(ctx context.Context, teamID, email, role string) (*usecase.TeamMemberResponse, error)
 		ListTeamMembers(ctx context.Context, teamID string) ([]usecase.TeamMemberResponse, error)
 		RemoveTeamMember(ctx context.Context, teamID, userID string) error
 		LinkProjectTeam(ctx context.Context, projectSlug, teamID, role string) (*usecase.ProjectTeamResponse, error)
