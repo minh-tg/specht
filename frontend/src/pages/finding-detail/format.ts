@@ -1,3 +1,4 @@
+import { analysisStateLabel, technicalStateLabel } from "@/lib/enums";
 import type { FindingLocation } from "@/types/api";
 import { SOURCE_LINK_SCHEMES } from "./options";
 
@@ -52,6 +53,25 @@ export function eventTypeLabel(value: string | undefined): string {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+/**
+ * A before or after value in the history, in words. Triage and lifecycle events carry states from
+ * the shared vocabularies, so they get the same labels as the rest of the page; the wire value is
+ * never echoed for those. Events of any other kind keep their value as sent.
+ */
+export function eventValueLabel(eventType: string | undefined, value: string): string {
+  switch (eventType) {
+    case "analysis_changed":
+    case "bulk_triage_applied":
+      return analysisStateLabel(value) ?? value;
+    case "state_changed":
+    case "regression":
+    case "verified_fixed":
+      return technicalStateLabel(value) ?? value;
+    default:
+      return value;
+  }
 }
 
 /** Normalizes a date-input value to a server-accepted RFC3339 expiry. */
