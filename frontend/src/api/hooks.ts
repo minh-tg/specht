@@ -671,9 +671,9 @@ const roleRank: Record<ProjectRole, number> = {
 };
 
 /**
- * Resolves the effective role of the current user on the specified project.
- * Global platform admins automatically have "admin" authority.
- * Otherwise, the highest rank among direct grants and linked team grants is returned.
+ * The signed-in person's authority on a project. The server computes the role, direct grants and
+ * team grants together, and says what it allows; this hook reads that answer instead of working it
+ * out again from the member roster. Global platform admins have "admin" authority everywhere.
  */
 export function useProjectRole(slug: string): {
   role: ProjectRole | null;
@@ -683,9 +683,9 @@ export function useProjectRole(slug: string): {
   isAdmin: boolean;
 } {
   const me = useMe();
-  const members = useProjectMembers(slug);
+  const project = useProject(slug);
 
-  if (me.isLoading || members.isLoading) {
+  if (me.isLoading || project.isLoading) {
     return {
       role: null,
       isLoading: true,
@@ -717,23 +717,15 @@ export function useProjectRole(slug: string): {
     };
   }
 
-  const userId = me.data.id;
-  let highestRole: ProjectRole | null = null;
-  if (Array.isArray(members.data)) {
-    const direct = members.data.find((m) => m.user_id === userId);
-    if (direct) {
-      highestRole = direct.role;
-    }
-  }
-
-  const effectiveRole = highestRole ?? "member";
+  const effectiveRole = project.data?.role ?? "member";
   const rank = roleRank[effectiveRole] ?? 1;
+  const permissions = project.data?.permissions;
 
   return {
     role: effectiveRole,
     isLoading: false,
-    canManageMembers: rank >= 2,
-    canTriage: rank >= 2,
+    canManageMembers: permissions?.manage_members ?? rank >= 2,
+    canTriage: permissions?.triage ?? rank >= 2,
     isAdmin: rank >= 3,
   };
 }

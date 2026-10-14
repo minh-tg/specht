@@ -255,6 +255,10 @@ function routeFetch(options: RouteOptions = {}) {
       if (url.pathname === "/api/v1/me") {
         return jsonResponse(options.me ?? { id: "u-mem", email: "m@example.corp", role: "member" });
       }
+      if (url.pathname === "/api/v1/projects/test-project") {
+        const role = (options.members?.[0] as { role?: string; } | undefined)?.role ?? "member";
+        return jsonResponse({ id: "p1", slug: "test-project", name: "test-project", role });
+      }
       if (url.pathname.endsWith("/members")) return jsonResponse(options.members ?? []);
       return jsonResponse(options.reports ?? REPORTS);
     },

@@ -73,7 +73,13 @@ beforeEach(() => {
         return jsonResponse([]);
       }
       if (url.pathname === "/api/v1/projects/payments") {
-        return jsonResponse({ id: "p1", slug: "payments", name: "payments", permissions: {} });
+        return jsonResponse({
+          id: "p1",
+          slug: "payments",
+          name: "payments",
+          role,
+          permissions: {},
+        });
       }
       if (url.pathname === "/api/v1/findings/f1") return jsonResponse(finding);
       return jsonResponse({});
@@ -116,7 +122,9 @@ describe("the finding page's fix check", () => {
     renderDetail();
 
     await screen.findByRole("heading", { name: "Decide" });
-    await waitFor(() => expect(requests.some((r) => r.path.endsWith("/members"))).toBe(true));
+    await waitFor(() =>
+      expect(requests.some((r) => r.path === "/api/v1/projects/payments")).toBe(true)
+    );
     expect(screen.queryByRole("button", { name: BUTTON })).not.toBeInTheDocument();
   });
 
