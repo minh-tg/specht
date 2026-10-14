@@ -1,4 +1,4 @@
-import { expiresAtFor, EXPIRY_OPTIONS, type ExpiryOption } from "@/api/apiKeys";
+import { expiresAtFor, EXPIRY_OPTIONS, type ExpiryOption, useApiKeys } from "@/api/apiKeys";
 import { APIError } from "@/api/client";
 import { queryKeys, useCreateApiKey, useProject, useProjectStats, useVersion } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
@@ -84,6 +84,10 @@ export function ProjectSetup() {
   const { data: serverVersion, isLoading: versionLoading, isError: versionError } = useVersion();
 
   const createKey = useCreateApiKey();
+  const existingKeys = useApiKeys(slug);
+  const keyCount = existingKeys.data?.length;
+  const keysFailed = existingKeys.isError;
+  const [keyName, setKeyName] = useState("ci");
   const [expiry, setExpiry] = useState<ExpiryOption>("none");
   const [rawKey, setRawKey] = useState<string | null>(null);
   const [keyError, setKeyError] = useState<string | null>(null);
@@ -105,7 +109,11 @@ export function ProjectSetup() {
 
   function handleCreateKey() {
     setKeyError(null);
-    createKey.mutate({ project: slug, name: "CI", expiresAt: expiresAtFor(expiry, new Date()) }, {
+    createKey.mutate({
+      project: slug,
+      name: keyName.trim(),
+      expiresAt: expiresAtFor(expiry, new Date()),
+    }, {
       onSuccess: (created) => setRawKey(created.raw_key),
       onError: (error) => {
         setRawKey(null);
@@ -181,6 +189,28 @@ export function ProjectSetup() {
           <p className="text-muted-foreground mt-1 text-sm">
             Create a key for your pipeline. It is shown only once.
           </p>
+          {keyCount !== undefined && (
+            <p role="status" className="text-muted-foreground mt-2 text-sm">
+              {keyCount === 0
+                ? "This project has no keys yet."
+                : `This project has ${pluralize(keyCount, "key")}.`}{" "}
+              <Link to="/api-keys" className={LINK_CLASS}>Manage API keys</Link>
+            </p>
+          )}
+          {keysFailed && (
+            <p role="alert" className="text-destructive mt-2 text-xs">
+              Could not check the project's existing keys.
+            </p>
+          )}
+          <div className="mt-3">
+            <label htmlFor="ci-key-name" className="text-sm font-medium">Key name</label>
+            <input
+              id="ci-key-name"
+              className="border-input bg-background mt-1 w-full rounded-md border px-3 py-2 text-sm sm:w-72"
+              value={keyName}
+              onChange={(e) => setKeyName(e.target.value)}
+            />
+          </div>
           <div className="mt-3 w-40">
             <label htmlFor="ci-key-expiry" className="text-sm font-medium">Expires</label>
             <SelectField
@@ -195,9 +225,9 @@ export function ProjectSetup() {
             type="button"
             className={`${BUTTON_CLASS} mt-3`}
             onClick={handleCreateKey}
-            disabled={createKey.isPending}
+            disabled={createKey.isPending || !keyName.trim()}
           >
-            {createKey.isPending ? "Creating..." : "Create key"}
+            {createKey.isPending ? "Creating..." : "Create a key for this pipeline"}
           </button>
           {keyError && <p role="alert" className="text-destructive mt-2 text-xs">{keyError}</p>}
           {rawKey && (
