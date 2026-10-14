@@ -62,6 +62,8 @@ export const queryKeys = {
   scanSignal: (slug: string, branch: string) => ["scan-signal", slug, branch] as const,
   waiverEvents: (slug: string, id: string) => ["waiver-events", slug, id] as const,
   capabilities: () => ["capabilities"] as const,
+  apiKeys: (project?: string) =>
+    project === undefined ? (["api-keys"] as const) : (["api-keys", project] as const),
   invites: (slug: string) => ["invites", slug] as const,
   policy: (slug: string) => ["policy", slug] as const,
   aging: (slug: string) => ["aging", slug] as const,
@@ -281,16 +283,25 @@ export function useCreateProject() {
   });
 }
 
+/** Mints a key for a project. `expiresAt` is an RFC 3339 instant; omit it for a key that never expires. */
 export function useCreateApiKey() {
+  const queryClient = useQueryClient();
   return useMutation({
     // The response carries the key's only copy of its secret; do not keep it
     // in the shared mutation cache once nothing observes it.
     gcTime: 0,
-    mutationFn: ({ project, name }: { project: string; name: string; }) =>
+    mutationFn: ({ project, name, expiresAt }: {
+      project: string;
+      name: string;
+      expiresAt?: string;
+    }) =>
       apiFetch<CreatedApiKey>("/api/v1/auth/apikeys", {
         method: "POST",
-        body: JSON.stringify({ project, name }),
+        body: JSON.stringify({ project, name, expires_at: expiresAt }),
       }),
+    onSuccess: (_created, { project }) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.apiKeys(project) });
+    },
   });
 }
 

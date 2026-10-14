@@ -36,6 +36,17 @@ let deleteShouldFail = false;
 let role = "admin";
 let managedSlugs = ["test-project"];
 
+const MY_KEY = {
+  id: "k1",
+  name: "My Key",
+  key_prefix: "sk-foo",
+  last_four: "abcd",
+  project_id: "p1",
+  created_at: "2025-01-01T00:00:00Z",
+  expires_at: null,
+};
+let keys: Array<Record<string, unknown>> = [];
+
 const PROJECTS = [
   { id: "p1", slug: "test-project", name: "Test Project" },
   { id: "p2", slug: "other-project", name: "Other Project" },
@@ -69,6 +80,7 @@ describe("ApiKeys", () => {
     deleteShouldFail = false;
     role = "admin";
     managedSlugs = ["test-project"];
+    keys = [MY_KEY];
     globalThis.fetch = vi.fn().mockImplementation(async (url, opts) => {
       const u = String(url);
       const method = ((opts as RequestInit)?.method ?? "GET").toUpperCase();
@@ -102,14 +114,7 @@ describe("ApiKeys", () => {
         }
         return {
           ok: true,
-          json: () =>
-            Promise.resolve([{
-              id: "k1",
-              name: "My Key",
-              key_prefix: "sk-foo",
-              project_id: "p1",
-              created_at: "2025-01-01T00:00:00Z",
-            }]),
+          json: () => Promise.resolve(keys),
         } as Response;
       }
       if (u === "/api/v1/projects") {
@@ -187,6 +192,79 @@ describe("ApiKeys", () => {
     const postCall = fetchCalls.find((c) => c.method === "POST");
     expect(postCall).toBeDefined();
     expect(JSON.parse(postCall!.body!)).toEqual({ project: "test-project", name: "My Key" });
+  });
+
+  it("shows the last four characters and when each key ends", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-13T12:00:00Z"));
+    keys = [
+      MY_KEY,
+      {
+        ...MY_KEY,
+        id: "k2",
+        name: "Future Key",
+        last_four: "efgh",
+        expires_at: "2027-01-01T00:00:00Z",
+      },
+      {
+        ...MY_KEY,
+        id: "k3",
+        name: "Past Key",
+        last_four: "ijkl",
+        expires_at: "2026-01-01T00:00:00Z",
+      },
+    ];
+    renderApiKeys();
+    const user = userEvent.setup();
+
+    await chooseOption(
+      user,
+      await screen.findByRole("combobox", { name: /project/i }),
+      "Test Project",
+    );
+
+    expect(await screen.findByText(/sk-foo\.\.\.abcd/)).toBeInTheDocument();
+    expect(screen.getByText(/sk-foo\.\.\.efgh/)).toBeInTheDocument();
+    expect(screen.getByText(/sk-foo\.\.\.ijkl/)).toBeInTheDocument();
+    expect(screen.getByText("Never")).toBeInTheDocument();
+    expect(screen.getByText(new Date("2027-01-01T00:00:00Z").toLocaleDateString()))
+      .toBeInTheDocument();
+    const expired = screen.getByText(/^Expired /);
+    expect(expired).toHaveTextContent(new Date("2026-01-01T00:00:00Z").toLocaleDateString());
+    expect(expired).toHaveClass("text-destructive");
+    expect(screen.getByText(new Date("2027-01-01T00:00:00Z").toLocaleDateString()))
+      .not.toHaveClass("text-destructive");
+  });
+
+  it.each([
+    ["No expiry", undefined],
+    ["30 days", "2026-11-12T12:00:00.000Z"],
+    ["90 days", "2027-01-11T12:00:00.000Z"],
+    ["1 year", "2027-10-13T12:00:00.000Z"],
+  ])("creates a key with the expiry chosen as %s", async (choice, expiresAt) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-13T12:00:00Z"));
+    renderApiKeys();
+    const user = userEvent.setup();
+
+    await chooseOption(
+      user,
+      await screen.findByRole("combobox", { name: /project/i }),
+      "Test Project",
+    );
+    await chooseOption(user, screen.getByRole("combobox", { name: /expires/i }), choice);
+    await user.type(screen.getByPlaceholderText("Key name"), "My Key");
+    await user.click(screen.getByRole("button", { name: /create/i }));
+
+    await waitFor(() => {
+      expect(fetchCalls.some((c) => c.method === "POST")).toBe(true);
+    });
+    const body = JSON.parse(fetchCalls.find((c) => c.method === "POST")!.body!);
+    expect(body).toEqual(
+      expiresAt === undefined
+        ? { project: "test-project", name: "My Key" }
+        : { project: "test-project", name: "My Key", expires_at: expiresAt },
+    );
   });
 
   it("shows confirm dialog before revoking", async () => {

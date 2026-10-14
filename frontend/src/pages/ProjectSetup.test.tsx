@@ -1,4 +1,4 @@
-import { createTestQueryClient, jsonResponse } from "@/test/utils";
+import { chooseOption, createTestQueryClient, jsonResponse } from "@/test/utils";
 import { type QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -166,6 +166,21 @@ describe("ProjectSetup", () => {
     renderPage();
     expect(await screen.findByRole("heading", { name: "Set up CI for Acme API" }))
       .toBeInTheDocument();
+  });
+
+  it("creates the CI key with the expiry chosen on the page", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-13T12:00:00Z"));
+    const user = userEvent.setup();
+    renderPage();
+
+    await chooseOption(user, await screen.findByRole("combobox", { name: /expires/i }), "1 year");
+    await user.click(await screen.findByRole("button", { name: "Create key" }));
+
+    await screen.findByText(RAW_KEY);
+    expect(postCalls).toEqual([
+      { project: "acme", name: "CI", expires_at: "2027-10-13T12:00:00.000Z" },
+    ]);
   });
 
   it("reveals the raw key once and copies it to the clipboard", async () => {
