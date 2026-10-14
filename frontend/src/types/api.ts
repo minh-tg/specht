@@ -57,8 +57,12 @@ export interface Waiver {
   scope_all: boolean;
   reason: string;
   requested_by?: string;
+  /** Display name or email of the requester. Left out for API keys. */
+  requested_by_name?: string;
   requested_at?: string;
   decided_by?: string;
+  /** Display name or email of the decider. Left out for API keys. */
+  decided_by_name?: string;
   decided_at?: string;
   decision_note: string;
   expires_at?: string | null;
@@ -252,6 +256,8 @@ export interface FindingEvent {
   id: string;
   finding_id: string;
   user_id: string;
+  /** Display name or email of whoever did it; "System" for automated actions. Left out for API keys. */
+  user_name?: string;
   event_type: string;
   old_value?: string;
   new_value?: string;
