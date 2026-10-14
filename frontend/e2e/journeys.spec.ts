@@ -218,6 +218,39 @@ test("API keys create with one-time reveal and revoke", async ({ page, request }
   await expect(page.getByText("No API keys yet")).toBeVisible();
 });
 
+test("a person renames themselves on the profile page and it sticks", async ({ page }) => {
+  await uiLogin(page);
+
+  await page.goto("/profile");
+  const field = page.getByLabel("Display name");
+  await expect(field).toBeVisible();
+  const original = await field.inputValue();
+  try {
+    await field.fill("Journey Tester");
+    await page.getByRole("button", { name: "Save name" }).click();
+    await expect(page.getByRole("button", { name: "Save name" })).toBeDisabled();
+
+    await page.reload();
+    await expect(page.getByLabel("Display name")).toHaveValue("Journey Tester");
+  } finally {
+    // The account is shared with other journeys: leave it as it was found.
+    await page.getByLabel("Display name").fill(original);
+    await page.getByRole("button", { name: "Save name" }).click();
+  }
+});
+
+test("a mismatched new password is caught on the page before anything is sent", async ({ page }) => {
+  await uiLogin(page);
+
+  await page.goto("/profile");
+  await page.getByLabel("Current password").fill("whatever-it-is-now");
+  await page.getByLabel("New password", { exact: true }).fill("a-brand-new-password-1");
+  await page.getByLabel("Confirm new password").fill("a-different-password-2");
+  await page.getByRole("button", { name: "Change password" }).click();
+
+  await expect(page.getByText("The two passwords do not match.")).toBeVisible();
+});
+
 test("logout and session expiry both return to sign in", async ({ page }) => {
   await uiLogin(page);
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();

@@ -8,6 +8,7 @@ import type {
   GateStatus,
   Invite,
   InviteRole,
+  LoginResponse,
   PolicyEffective,
   PolicyTemplate,
   Project,
@@ -118,6 +119,36 @@ export function useMe() {
     queryKey: queryKeys.me(),
     queryFn: () => apiFetch<UserProfile>("/api/v1/me"),
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** Saves the signed-in person's display name; an empty string clears it. */
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { success: "Name saved" },
+    mutationFn: (displayName: string) =>
+      apiFetch<UserProfile>("/api/v1/me", {
+        method: "PUT",
+        body: JSON.stringify({ display_name: displayName }),
+      }),
+    onSuccess: (profile) => {
+      queryClient.setQueryData(queryKeys.me(), profile);
+    },
+  });
+}
+
+/**
+ * Replaces the signed-in person's password. The server ends every other session and answers with
+ * a fresh one for this browser, which the caller adopts.
+ */
+export function useChangePassword() {
+  return useMutation({
+    mutationFn: ({ current, next }: { current: string; next: string; }) =>
+      apiFetch<LoginResponse>("/api/v1/me/password", {
+        method: "PUT",
+        body: JSON.stringify({ current_password: current, new_password: next }),
+      }),
   });
 }
 
