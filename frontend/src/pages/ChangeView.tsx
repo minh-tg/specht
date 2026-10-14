@@ -99,6 +99,17 @@ export function ChangeView() {
   // A scan without a verdict must not be scoped through the gate.
   const changeGateQuery = useChangeGate(slug, degraded ? undefined : report?.id);
   const projectGateQuery = useGateStatus(slug);
+  // Refetches every query the page reads. The change gate stays out while it is disabled
+  // (no report, or a scan still running), since refetching it would request a gate for nothing.
+  const retryLoad = () => {
+    const pending = [
+      projectQuery.refetch(),
+      reportsQuery.refetch(),
+      projectGateQuery.refetch(),
+    ];
+    if (!degraded && report) pending.push(changeGateQuery.refetch());
+    return Promise.all(pending);
+  };
 
   // Waiting for the next scan: begins when the reader says they pushed, or has handled every
   // blocker. It ends when a newer report on this branch is final, and the page moves to its change.
@@ -157,6 +168,7 @@ export function ChangeView() {
         <ErrorState
           title="Could not load this change"
           detail={requestError instanceof Error ? requestError.message : undefined}
+          onRetry={() => void retryLoad()}
         />
         <Link to={`/${slug}/findings`} className={`${LINK_CLASS} mt-4 inline-block text-sm`}>
           Back to project
