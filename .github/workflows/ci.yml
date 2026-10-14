@@ -184,6 +184,27 @@ jobs:
         env:
           DOCKER_HOST: unix:///var/run/docker.sock
 
+  compose-smoke:
+    name: "compose smoke (documented first start)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      # Optional authenticated Docker Hub pulls; see the test job.
+      - name: Log in to Docker Hub
+        if: ${{ vars.DOCKERHUB_USERNAME != '' }}
+        continue-on-error: true
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # Builds the image from source with the build override and walks the "Start" section of
+      # deploy/README.md: setup token, first admin, project, scan, verdict, restart.
+      - name: Compose smoke
+        run: ./scripts/compose-smoke.sh
+
   lint:
     name: lint + format
     runs-on: ubuntu-latest
