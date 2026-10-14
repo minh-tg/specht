@@ -151,15 +151,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		// Login and register accept guessable credentials, so they get a much
 		// tighter bucket than the SPA's automatic token refresh needs.
 		r.Group(func(r chi.Router) {
-			perMinute := cfg.RateLimit.LoginPerMinute
-			if perMinute <= 0 {
-				perMinute = defaultLoginPerMinute
-			}
-			loginBurst := cfg.RateLimit.LoginBurst
-			if loginBurst <= 0 {
-				loginBurst = defaultLoginBurst
-			}
-			r.Use(NewLoginRateLimiter(perMinute, loginBurst).MiddlewareByIP())
+			r.Use(loginBucket(cfg))
 			if cfg.RegistrationDisabled {
 				r.Post("/api/v1/auth/register", registrationDisabledHandler)
 			} else {
@@ -189,6 +181,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 		r.With(session).Get("/api/v1/me", h.Me)
 		r.With(session).Put("/api/v1/me", h.UpdateMe)
+		// Changing a password checks the current one, so it is a guessing target
+		// for anyone holding a stolen session. It gets its own login-sized bucket.
+		r.With(session, loginBucket(cfg)).Put("/api/v1/me/password", h.ChangePassword)
 		r.With(session).Get("/api/v1/scanners", h.ListScanners)
 		r.With(sessionAdmin).Get("/api/v1/users", h.ListUsers)
 		r.With(sessionAdmin).Put("/api/v1/users/{id}/role", h.ChangeUserRole)
@@ -371,6 +366,21 @@ func isTrustedProxyAddr(addr netip.Addr, trusted []netip.Prefix) bool {
 // operator has closed it. It never reaches the usecase.
 func registrationDisabledHandler(w http.ResponseWriter, _ *http.Request) {
 	respondError(w, http.StatusForbidden, "registration_disabled", "self-service registration is disabled")
+}
+
+// loginBucket is the per-IP limiter for endpoints that accept guessable
+// credentials: sign-in, registration, setup and a password change. Each call
+// builds its own buckets, so these endpoints do not share one budget.
+func loginBucket(cfg RouterConfig) func(http.Handler) http.Handler {
+	perMinute := cfg.RateLimit.LoginPerMinute
+	if perMinute <= 0 {
+		perMinute = defaultLoginPerMinute
+	}
+	burst := cfg.RateLimit.LoginBurst
+	if burst <= 0 {
+		burst = defaultLoginBurst
+	}
+	return NewLoginRateLimiter(perMinute, burst).MiddlewareByIP()
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {

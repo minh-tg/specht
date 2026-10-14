@@ -172,6 +172,45 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, profile)
 }
 
+// ChangePassword lets a signed-in person replace their own password. A wrong
+// current password answers 400, never 401: the client treats a 401 as an
+// expired session and would sign the person out of a form they just mistyped.
+func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", authMsgInvalidBody) {
+		return
+	}
+	ident := auth.ContextIdentity(r.Context())
+	if ident == nil || ident.IsAPIKey {
+		respondError(w, http.StatusUnauthorized, "unauthorized", "not authenticated")
+		return
+	}
+
+	result, err := h.usecase.ChangePassword(r.Context(), ident.UserID, req.CurrentPassword, req.NewPassword)
+	if err != nil {
+		h.audit.HTTP(r, audit.EventChangePassword, audit.OutcomeFailure, "", ident.UserID, err)
+		switch {
+		case errors.Is(err, usecase.ErrWrongPassword):
+			respondError(w, http.StatusBadRequest, "wrong_password", "the current password is not correct")
+		case errors.Is(err, usecase.ErrInvalidCredentialInput):
+			respondError(w, http.StatusBadRequest, "invalid_password", err.Error())
+		case errors.Is(err, usecase.ErrNoLocalPassword):
+			respondError(w, http.StatusConflict, "no_local_password", "this account signs in through your identity provider and has no password to change")
+		case errors.Is(err, usecase.ErrInvalidID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid user id")
+		default:
+			slog.Error("change password", "error", err)
+			respondError(w, http.StatusInternalServerError, "internal_error", "could not change the password")
+		}
+		return
+	}
+	respondJSON(w, http.StatusOK, result)
+	h.audit.HTTP(r, audit.EventChangePassword, audit.OutcomeSuccess, "", ident.UserID, nil)
+}
+
 // ListUsers serves the account directory that admin surfaces pick from:
 // grant project membership, add a team member. Session admins only — a
 // project-scoped key has no business enumerating the organization, and the

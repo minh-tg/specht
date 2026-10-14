@@ -309,6 +309,20 @@ func (q *Queries) SetUserDisabled(ctx context.Context, arg SetUserDisabledParams
 	return i, err
 }
 
+const setUserPassword = `-- name: SetUserPassword :exec
+UPDATE users SET password_hash = $2, token_version = token_version + 1, updated_at = NOW() WHERE id = $1
+`
+
+type SetUserPasswordParams struct {
+	ID           pgtype.UUID `json:"id"`
+	PasswordHash pgtype.Text `json:"password_hash"`
+}
+
+func (q *Queries) SetUserPassword(ctx context.Context, arg SetUserPasswordParams) error {
+	_, err := q.db.Exec(ctx, setUserPassword, arg.ID, arg.PasswordHash)
+	return err
+}
+
 const setUserRole = `-- name: SetUserRole :one
 UPDATE users SET role = $2 WHERE id = $1
 RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at

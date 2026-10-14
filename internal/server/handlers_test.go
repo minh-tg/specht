@@ -91,6 +91,7 @@ type mockUsecases struct {
 	logoutFn                func(ctx context.Context, refreshToken string) error
 	getProfileFn            func(ctx context.Context, userID string) (*usecase.UserProfile, error)
 	updateProfileFn         func(ctx context.Context, userID string, displayName *string) (*usecase.UserProfile, error)
+	changePasswordFn        func(ctx context.Context, userID, current, next string) (*usecase.AuthResponse, error)
 	listUsersFn             func(ctx context.Context, filter string, limit, offset int32) ([]usecase.UserProfile, error)
 	listEnvironmentsFn      func(ctx context.Context, slug string) ([]usecase.EnvironmentResponse, error)
 	listTargetsFn           func(ctx context.Context, slug string) ([]usecase.TargetResponse, error)
@@ -490,6 +491,13 @@ func (m *mockUsecases) GetProfile(ctx context.Context, userID string) (*usecase.
 		return nil, fmt.Errorf("unexpected call to GetProfile")
 	}
 	return m.getProfileFn(ctx, userID)
+}
+
+func (m *mockUsecases) ChangePassword(ctx context.Context, userID, current, next string) (*usecase.AuthResponse, error) {
+	if m.changePasswordFn == nil {
+		return nil, fmt.Errorf("unexpected call to ChangePassword")
+	}
+	return m.changePasswordFn(ctx, userID, current, next)
 }
 
 func (m *mockUsecases) UpdateProfile(ctx context.Context, userID string, displayName *string) (*usecase.UserProfile, error) {
@@ -1060,6 +1068,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Post("/api/v1/auth/logout", h.Logout)
 	r.Get("/api/v1/me", h.Me)
 	r.Put("/api/v1/me", h.UpdateMe)
+	r.Put("/api/v1/me/password", h.ChangePassword)
 	r.Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
 	r.Get("/api/v1/projects/{slug}/pr-check", h.PreviewPRCheck)
 	r.Get("/api/v1/projects/{slug}/stats", h.GetProjectStats)

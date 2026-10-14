@@ -207,6 +207,17 @@ func (r *pgUserPort) ClearPassword(ctx context.Context, userID string) error {
 	return r.q.ClearUserPassword(ctx, uid)
 }
 
+func (r *pgUserPort) SetPassword(ctx context.Context, userID, passwordHash string) error {
+	uid, err := parseID(userID)
+	if err != nil {
+		return err
+	}
+	return r.q.SetUserPassword(ctx, sqlc.SetUserPasswordParams{
+		ID:           uid,
+		PasswordHash: pgtype.Text{String: passwordHash, Valid: true},
+	})
+}
+
 func (r *pgUserPort) TokenVersion(ctx context.Context, userID string) (int32, error) {
 	uid, err := parseID(userID)
 	if err != nil {

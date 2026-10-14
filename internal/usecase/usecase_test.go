@@ -930,6 +930,7 @@ type mockUserRepo struct {
 	changeRoleFn        func(context.Context, string, string) (port.User, error)
 	setDisabledFn       func(context.Context, string, bool) (port.User, error)
 	clearPasswordFn     func(context.Context, string) error
+	setPasswordFn       func(context.Context, string, string) error
 	tokenVersionFn      func(context.Context, string) (int32, error)
 	bumpTokenVersionFn  func(context.Context, string) error
 	countFn             func(context.Context) (int64, error)
@@ -1025,6 +1026,13 @@ func (m *mockUserRepo) SetDisabled(ctx context.Context, userID string, disabled 
 		return port.User{}, fmt.Errorf("unexpected call to SetDisabled")
 	}
 	return m.setDisabledFn(ctx, userID, disabled)
+}
+
+func (m *mockUserRepo) SetPassword(ctx context.Context, userID, passwordHash string) error {
+	if m.setPasswordFn == nil {
+		return fmt.Errorf("unexpected call to SetPassword")
+	}
+	return m.setPasswordFn(ctx, userID, passwordHash)
 }
 
 type mockRefreshTokenRepo struct {

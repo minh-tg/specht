@@ -71,6 +71,11 @@ var ErrInvalidCredentialInput = errors.New("invalid email or password")
 
 type credentialInputError struct{ message string }
 
+// NewCredentialInputError builds a credential rule violation whose message
+// tells the person what to fix. Callers outside the package use it to report
+// the same class of error the password rules produce.
+func NewCredentialInputError(message string) error { return badCredentials(message) }
+
 func (e *credentialInputError) Error() string        { return e.message }
 func (e *credentialInputError) Is(target error) bool { return target == ErrInvalidCredentialInput }
 
@@ -84,13 +89,23 @@ func validateCredentials(email, password string) (string, error) {
 	if err != nil || addr.Address != email || !strings.Contains(addr.Address, "@") {
 		return "", badCredentials("invalid email address")
 	}
-	if len(password) < 8 {
-		return "", badCredentials("password must be at least 8 characters")
-	}
-	if len(password) > 72 {
-		return "", badCredentials("password must be at most 72 characters")
+	if err := checkPasswordLength(password); err != nil {
+		return "", err
 	}
 	return auth.NormalizeEmail(addr.Address), nil
+}
+
+// checkPasswordLength holds the password rules every way of choosing a
+// password shares: registration, setup, invites and a password change. 72 bytes
+// is the longest input bcrypt reads.
+func checkPasswordLength(password string) error {
+	if len(password) < 8 {
+		return badCredentials("password must be at least 8 characters")
+	}
+	if len(password) > 72 {
+		return badCredentials("password must be at most 72 characters")
+	}
+	return nil
 }
 
 func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthResponse, error) {
@@ -647,6 +662,65 @@ func (u *Usecases) UpdateProfile(ctx context.Context, userID string, displayName
 
 	profile := toUserProfile(user)
 	return &profile, nil
+}
+
+// ErrWrongPassword means the current password given to ChangePassword did not
+// match the account's password.
+var ErrWrongPassword = errors.New("current password is incorrect")
+
+// ErrNoLocalPassword means the account has no password because it signs in
+// through an identity provider, so there is nothing to change.
+var ErrNoLocalPassword = errors.New("this account has no local password")
+
+// ChangePassword replaces the caller's password after checking the current one.
+// Every refresh token is revoked before the new hash is written, so a failure
+// never leaves an old session alive beside a new password, and the write starts
+// a new token generation that ends every open access token. The caller gets a
+// fresh session back and stays signed in.
+func (u *Usecases) ChangePassword(ctx context.Context, userID, current, next string) (*AuthResponse, error) {
+	id, err := validID(userID)
+	if err != nil {
+		return nil, err
+	}
+	if err := checkPasswordLength(next); err != nil {
+		return nil, err
+	}
+	if next == current {
+		return nil, badCredentials("the new password must differ from the current one")
+	}
+
+	user, err := u.deps.Stores.Users.GetByID(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("get user: %w", err)
+	}
+	if user.PasswordHash == "" {
+		return nil, ErrNoLocalPassword
+	}
+	if !u.deps.Passwords.Verify(current, user.PasswordHash) {
+		return nil, ErrWrongPassword
+	}
+
+	hash, err := u.deps.Passwords.Hash(next)
+	if err != nil {
+		return nil, fmt.Errorf("hash password: %w", err)
+	}
+	if err := u.deps.Stores.RefreshTokens.RevokeAllForUser(ctx, id); err != nil {
+		return nil, fmt.Errorf("revoke refresh tokens: %w", err)
+	}
+	if err := u.deps.Stores.Users.SetPassword(ctx, id, hash); err != nil {
+		return nil, fmt.Errorf("set password: %w", err)
+	}
+
+	token, err := u.issueAccessToken(ctx, id, user.Email, auth.TokenRole(user.Role))
+	if err != nil {
+		return nil, fmt.Errorf("create token: %w", err)
+	}
+	resp, err := u.createSession(ctx, id, user.Email)
+	if err != nil {
+		return nil, err
+	}
+	resp.Token = token
+	return resp, nil
 }
 
 // toUserProfile maps a stored account to its API shape. The password hash is

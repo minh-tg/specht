@@ -36,6 +36,7 @@ const (
 	EventToggleWaiver   = "waiver.toggle"
 	EventSetupComplete  = "setup.complete"
 	EventChangeUserRole = "user.role"
+	EventChangePassword = "user.password"
 	EventDeactivateUser = "user.deactivate"
 	EventReactivateUser = "user.reactivate"
 	EventRequestWaiver  = "waiver.request"
