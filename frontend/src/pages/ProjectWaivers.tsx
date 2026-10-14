@@ -1,5 +1,6 @@
 import { useMe, useProject, useRevokeWaiver, useWaivers, useWithdrawWaiver } from "@/api/hooks";
 import { useUserDirectory } from "@/api/users";
+import { useDeleteWaiver } from "@/api/waiverActions";
 import { useAuth } from "@/auth/useAuth";
 import { ErrorState } from "@/components/ErrorState";
 import { SkeletonLines } from "@/components/SkeletonLines";
@@ -16,6 +17,7 @@ import {
   waiverBucket,
 } from "./project-waivers/classify";
 import { DecideDialog, type Decision } from "./project-waivers/DecideDialog";
+import { WaiverDeleteDialog } from "./project-waivers/WaiverDeleteDialog";
 import { WaiverEditDialog } from "./project-waivers/WaiverEditDialog";
 import { WaiverRow } from "./project-waivers/WaiverRow";
 
@@ -49,9 +51,11 @@ export function ProjectWaivers() {
   const { userId } = useAuth();
   const withdraw = useWithdrawWaiver(currentSlug);
   const revoke = useRevokeWaiver(currentSlug);
+  const remove = useDeleteWaiver(currentSlug);
 
   const [deciding, setDeciding] = useState<{ waiver: Waiver; decision: Decision; } | null>(null);
   const [editing, setEditing] = useState<Waiver | null>(null);
+  const [deleting, setDeleting] = useState<Waiver | null>(null);
 
   // Expiry is judged as of the last fetch, so the lists only move when the data does.
   const now = useMemo(() => new Date(dataUpdatedAt), [dataUpdatedAt]);
@@ -83,8 +87,8 @@ export function ProjectWaivers() {
   }
 
   const permissions = project?.permissions;
-  const busy = withdraw.isPending || revoke.isPending;
-  const failure = latestFailure(withdraw, revoke);
+  const busy = withdraw.isPending || revoke.isPending || remove.isPending;
+  const failure = latestFailure(withdraw, revoke, remove);
 
   return (
     <section aria-labelledby="waivers-heading" className="grid gap-5">
@@ -160,6 +164,7 @@ export function ProjectWaivers() {
                     onWithdraw: (w) => withdraw.mutate(w.id),
                     onRevoke: (w) => revoke.mutate(w.id),
                     onEdit: (w) => setEditing(w),
+                    onDelete: (w) => setDeleting(w),
                   }}
                 />
               ))}
@@ -184,6 +189,12 @@ export function ProjectWaivers() {
         slug={currentSlug}
         waiver={editing}
         onClose={() => setEditing(null)}
+      />
+
+      <WaiverDeleteDialog
+        slug={currentSlug}
+        waiver={deleting}
+        onClose={() => setDeleting(null)}
       />
     </section>
   );

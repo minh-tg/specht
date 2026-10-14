@@ -34,3 +34,24 @@ export function useUpdateWaiver(slug: string) {
     },
   });
 }
+
+/**
+ * Deletes a waiver. The findings it covered block again, so the verdict, the gate and the project
+ * numbers are refreshed along with the list.
+ */
+export function useDeleteWaiver(slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    meta: { success: "Waiver deleted" },
+    mutationFn: (id: string) =>
+      apiFetch<void>(
+        `/api/v1/projects/${encodeURIComponent(slug)}/waivers/${encodeURIComponent(id)}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.waivers(slug) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.gate(slug) });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.projectStats(slug) });
+    },
+  });
+}
