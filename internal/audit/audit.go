@@ -19,6 +19,7 @@ import (
 
 // Event names for the canonical security-relevant operations.
 const (
+	EventSSOExchange          = "auth.sso.exchange"
 	EventLogin                = "auth.login"
 	EventLogout               = "auth.logout"
 	EventRegister             = "auth.register"

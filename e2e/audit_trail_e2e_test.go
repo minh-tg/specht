@@ -68,4 +68,26 @@ func TestE2E_AuditTrailCoversAccessAndTeamChanges(t *testing.T) {
 	created := auditLines(t, "team.create")
 	require.Contains(t, created[len(created)-1], "outcome=failure", "the refused create is the latest entry")
 	require.Contains(t, created[len(created)-1], "principal_id="+viewer.UserID)
+
+	// A probe for addresses leaves a masked trace, a fix check is recorded, and a failed SSO code
+	// exchange is recorded without a principal.
+	status, _ = doJSON(t, http.MethodPost, "/api/v1/projects/"+slug+"/members", adminToken,
+		map[string]string{"email": "nobody-" + randomHex(3) + "@example.com", "role": "member"})
+	require.Equal(t, http.StatusNotFound, status)
+	probes := auditLines(t, "project.member.add")
+	require.Contains(t, probes[len(probes)-1], "outcome=failure")
+	require.NotContains(t, probes[len(probes)-1], "nobody-", "the address is masked in the log")
+
+	ingestFixture(t, slug, mintKey(t, slug), "high.sarif.json")
+	finding := highFinding(t, slug)
+	doJSON(t, http.MethodPost, "/api/v1/findings/"+finding.ID+"/verify", adminToken, map[string]string{})
+	verified := auditLines(t, "finding.verify")
+	require.NotEmpty(t, verified)
+	require.Contains(t, verified[len(verified)-1], "target="+finding.ID)
+
+	status, _ = doJSON(t, http.MethodPost, "/api/v1/auth/sso/exchange", "", map[string]string{"code": "not-a-code"})
+	require.Equal(t, http.StatusUnauthorized, status)
+	exchanges := auditLines(t, "auth.sso.exchange")
+	require.NotEmpty(t, exchanges)
+	require.Contains(t, exchanges[len(exchanges)-1], "outcome=failure")
 }
