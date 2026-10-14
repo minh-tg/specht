@@ -13,6 +13,20 @@ project policies in CI to decide whether a change should pass.
 > **Experimental preview.** Specht is not production-ready; APIs, database
 > schemas, and settings may change. Do not use it as your only security control.
 
+## What it looks like
+
+A project's findings, with the gate verdict and the triage state of each one:
+
+![The findings list of a blocked project](docs/screenshots/findings.png)
+
+The page a CI link opens: what a change introduced, where, and what to do about it.
+
+![The change view of a blocked commit](docs/screenshots/change-view.png)
+
+| Projects and their verdicts | A waiver request waiting for a decision |
+| --- | --- |
+| ![The projects list](docs/screenshots/projects.png) | ![The waivers page](docs/screenshots/waivers.png) |
+
 ## What you can do
 
 - Filter findings, review report history, triage issues, upload reports, and
