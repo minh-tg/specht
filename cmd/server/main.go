@@ -262,7 +262,7 @@ func main() {
 	<-ctx.Done()
 	slog.Info("shutting down...")
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 
 	// Stop accepting HTTP first; the worker goroutines observe ctx.Done() and
