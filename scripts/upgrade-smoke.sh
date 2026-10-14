@@ -92,11 +92,13 @@ call() { # method path token [body]
 
 echo "== postgres ==" >&2
 docker rm -f "$CONTAINER" >/dev/null 2>&1 || true
+# The official image starts a socket-only server to run its init scripts, then restarts. Probing
+# over TCP waits for the final server.
 docker run -d --name "$CONTAINER" \
   -e POSTGRES_USER=specht -e POSTGRES_PASSWORD=specht -e POSTGRES_DB=postgres \
   -p "127.0.0.1:$DB_PORT:5432" docker.io/library/postgres:17-alpine >/dev/null
 for _ in $(seq 1 60); do
-  docker exec "$CONTAINER" pg_isready -U specht >/dev/null 2>&1 && break
+  docker exec "$CONTAINER" pg_isready -h 127.0.0.1 -U specht >/dev/null 2>&1 && break
   sleep 1
 done
 
