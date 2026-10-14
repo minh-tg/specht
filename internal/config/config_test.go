@@ -342,6 +342,36 @@ func TestLoad_RateLimitInvalidIgnoredWhenDisabled(t *testing.T) {
 	assert.False(t, cfg.RateLimit.Enable)
 }
 
+func TestLoad_DBConnectTimeout(t *testing.T) {
+	t.Run("defaults to thirty seconds", func(t *testing.T) {
+		t.Setenv("DB_CONNECT_TIMEOUT", "")
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, DefaultDBConnectTimeout, cfg.DBConnectTimeout)
+		assert.Equal(t, 30*time.Second, cfg.DBConnectTimeout)
+	})
+	t.Run("a duration is used", func(t *testing.T) {
+		t.Setenv("DB_CONNECT_TIMEOUT", "2m")
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, 2*time.Minute, cfg.DBConnectTimeout)
+	})
+	t.Run("zero means a single attempt", func(t *testing.T) {
+		t.Setenv("DB_CONNECT_TIMEOUT", "0s")
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Zero(t, cfg.DBConnectTimeout)
+	})
+	for _, bad := range []string{"banana", "-5s", "30"} {
+		t.Run("rejects "+bad, func(t *testing.T) {
+			t.Setenv("DB_CONNECT_TIMEOUT", bad)
+			_, err := Load()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "DB_CONNECT_TIMEOUT")
+		})
+	}
+}
+
 func TestLoad_IngestConcurrency(t *testing.T) {
 	t.Run("unset leaves the router default", func(t *testing.T) {
 		t.Setenv("INGEST_MAX_CONCURRENCY", "")
