@@ -21,6 +21,7 @@ import { HowToFix } from "./finding-detail/HowToFix";
 import { MetadataGrid } from "./finding-detail/MetadataGrid";
 import { ReachabilitySection } from "./finding-detail/ReachabilitySection";
 import { TriageSection } from "./finding-detail/TriageSection";
+import { VerifyFixSection } from "./finding-detail/VerifyFixSection";
 import { WhereItOccurs } from "./finding-detail/WhereItOccurs";
 
 /** Where "Back to findings" goes: the list page the user came from, if known. */
@@ -114,6 +115,7 @@ export function FindingDetail() {
               {currentGate && <>{" · "}{currentGate}</>}
             </p>
             <TriageSection findingId={finding.id} projectSlug={slug} />
+            <VerifyFixSection findingId={finding.id} projectSlug={slug} />
             <ReachabilitySection
               findingId={finding.id}
               reachability={reachability}
