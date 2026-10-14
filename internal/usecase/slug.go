@@ -25,9 +25,12 @@ var reservedSlugs = map[string]struct{}{
 	"api-keys": {},
 	"assets":   {},
 	"ingest":   {},
+	"invite":   {},
 	"login":    {},
+	"profile":  {},
 	"projects": {},
 	"register": {},
+	"setup":    {},
 	"teams":    {},
 }
 
