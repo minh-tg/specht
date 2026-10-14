@@ -169,6 +169,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 			r.Post("/api/v1/auth/login", h.Login)
 			// First-run setup guesses a token, so it shares the login bucket.
 			r.Post("/api/v1/setup", h.Setup)
+			// A reset link is a bearer credential like an invite token.
+			r.Post("/api/v1/auth/reset", h.ResetPassword)
 			// Invite links work while registration is closed; that is their
 			// purpose. The token is 256 bits, the shared bucket only blunts probing.
 			r.Get("/api/v1/invites/{token}", h.LookupInvite)
@@ -196,6 +198,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(session).Get("/api/v1/scanners", h.ListScanners)
 		r.With(sessionAdmin).Get("/api/v1/users", h.ListUsers)
 		r.With(sessionAdmin).Put("/api/v1/users/{id}/role", h.ChangeUserRole)
+		r.With(sessionAdmin).Post("/api/v1/users/{id}/reset-link", h.CreatePasswordResetLink)
 		r.With(sessionAdmin).Post("/api/v1/users/{id}/deactivate", h.DeactivateUser)
 		r.With(sessionAdmin).Post("/api/v1/users/{id}/reactivate", h.ReactivateUser)
 		r.With(readScope).Get("/api/v1/projects", h.ListProjects)

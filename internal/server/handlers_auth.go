@@ -353,12 +353,63 @@ func respondUserAdminError(w http.ResponseWriter, err error) bool {
 		respondError(w, http.StatusConflict, "cannot_deactivate_self", err.Error())
 	case errors.Is(err, usecase.ErrSystemAccount):
 		respondError(w, http.StatusConflict, "system_account", err.Error())
+	case errors.Is(err, usecase.ErrNoLocalPassword):
+		respondError(w, http.StatusConflict, "no_local_password", "this account signs in through an identity provider and has no password to reset")
+	case errors.Is(err, usecase.ErrAccountDeactivated):
+		respondError(w, http.StatusConflict, "account_deactivated", "reactivate the account before issuing a reset link")
+	case errors.Is(err, usecase.ErrAccountNotFound):
+		respondError(w, http.StatusNotFound, "not_found", "user not found")
 	case errors.Is(err, port.ErrNotFound):
 		respondError(w, http.StatusNotFound, "not_found", "user not found")
 	default:
 		return false
 	}
 	return true
+}
+
+// CreatePasswordResetLink issues a one-time link an administrator hands to a person who is locked
+// out. The token is in the response only; it is not stored and cannot be shown again.
+func (h *Handler) CreatePasswordResetLink(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	link, err := h.usecase.CreatePasswordResetLink(r.Context(), id)
+	if err != nil {
+		h.audit.HTTP(r, audit.EventResetLink, audit.OutcomeFailure, "", id, err)
+		if respondUserAdminError(w, err) {
+			return
+		}
+		slog.Error("create password reset link", "user_id", id, "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not create the reset link")
+		return
+	}
+	respondJSON(w, http.StatusCreated, link)
+	h.audit.HTTP(r, audit.EventResetLink, audit.OutcomeSuccess, "", id, nil)
+}
+
+// ResetPassword sets a new password from a reset link. It is public: the link is the credential.
+// Every dead link answers alike.
+func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token    string `json:"token"`
+		Password string `json:"password"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", authMsgInvalidBody) {
+		return
+	}
+	if err := h.usecase.RedeemPasswordReset(r.Context(), req.Token, req.Password); err != nil {
+		h.audit.HTTP(r, audit.EventResetPassword, audit.OutcomeFailure, "", "", err)
+		switch {
+		case errors.Is(err, usecase.ErrResetLinkInvalid):
+			respondError(w, http.StatusBadRequest, "reset_link_invalid", "this reset link is not valid or has expired")
+		case errors.Is(err, usecase.ErrInvalidCredentialInput):
+			respondError(w, http.StatusBadRequest, "invalid_password", err.Error())
+		default:
+			slog.Error("reset password", "error", err)
+			respondError(w, http.StatusInternalServerError, "internal_error", "could not reset the password")
+		}
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+	h.audit.HTTP(r, audit.EventResetPassword, audit.OutcomeSuccess, "", "", nil)
 }
 
 // ChangeUserRole sets an account's global role.

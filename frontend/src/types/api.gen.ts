@@ -143,6 +143,33 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/auth/reset": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Set a new password from a reset link
+     * @description The link an administrator hands over is the credential, so the route is
+     *     public. A link works once; issuing a new link for the account retires
+     *     the older ones, and a link ends after 24 hours. Redeeming ends every
+     *     session of the account. A link that is unknown, used, retired or
+     *     expired answers 400 `reset_link_invalid`, all alike. The password
+     *     follows the registration rules (8 to 72 characters) and is checked
+     *     before the link is spent. The route shares the sign-in rate limit per
+     *     client address.
+     */
+    post: operations["resetPassword"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/auth/login": {
     parameters: {
       query?: never;
@@ -501,6 +528,32 @@ export interface paths {
      */
     put: operations["changeUserRole"];
     post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/users/{id}/reset-link": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Issue a password reset link for an account
+     * @description For a person who is locked out when the instance has no mail
+     *     transport. The response carries a relative link (`/reset/<token>`) that
+     *     is shown once: only a hash of the token is stored. A new link retires
+     *     the earlier ones for the account. Accounts that have no local password
+     *     (they sign in through SSO) answer 409 `no_local_password`, deactivated
+     *     accounts 409 `account_deactivated`, and the system account 409
+     *     `system_account`.
+     */
+    post: operations["createPasswordResetLink"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1945,6 +1998,18 @@ export interface components {
       /** @enum {string} */
       role: "admin" | "member";
     };
+    ResetPasswordRequest: {
+      /** @description The part of the link after `/reset/`. */
+      token: string;
+      /** Format: password */
+      password: string;
+    };
+    PasswordResetLink: {
+      /** @description A path on this instance */
+      link: string;
+      /** Format: date-time */
+      expires_at: string;
+    };
     ChangePasswordRequest: {
       /** Format: password */
       current_password: string;
@@ -3292,6 +3357,38 @@ export interface operations {
       };
     };
   };
+  resetPassword: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ResetPasswordRequest"];
+      };
+    };
+    responses: {
+      /** @description The password is set. The person signs in with it. */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description The link is not valid (`reset_link_invalid`) or the password breaks the rules (`invalid_password`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      429: components["responses"]["RateLimited"];
+    };
+  };
   login: {
     parameters: {
       query?: never;
@@ -3908,6 +4005,34 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["UserProfile"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["SessionRequired"];
+      404: components["responses"]["NotFound"];
+      409: components["responses"]["Conflict"];
+    };
+  };
+  createPasswordResetLink: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Resource identifier. */
+        id: components["parameters"]["Id"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The link. */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PasswordResetLink"];
         };
       };
       400: components["responses"]["BadRequest"];

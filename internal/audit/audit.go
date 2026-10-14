@@ -38,6 +38,8 @@ const (
 	EventSetupComplete  = "setup.complete"
 	EventChangeUserRole = "user.role"
 	EventChangePassword = "user.password"
+	EventResetLink      = "user.reset_link"
+	EventResetPassword  = "user.reset_password"
 	EventDeactivateUser = "user.deactivate"
 	EventReactivateUser = "user.reactivate"
 	EventRequestWaiver  = "waiver.request"

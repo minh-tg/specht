@@ -42,6 +42,8 @@ type mockUsecases struct {
 	reactivateUserFn        func(ctx context.Context, userID string) (*usecase.UserProfile, error)
 	createProjectFn         func(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error)
 	listProjectMembersFn    func(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error)
+	createPasswordResetLink func(ctx context.Context, userID string) (*usecase.PasswordResetLinkResponse, error)
+	redeemPasswordReset     func(ctx context.Context, token, password string) error
 	addProjectMemberFn      func(ctx context.Context, projectSlug, userID, role string) (*usecase.ProjectMemberResponse, error)
 	addProjectMemberByEmail func(ctx context.Context, projectSlug, email, role string) (*usecase.ProjectMemberResponse, error)
 	isProjectMemberFn       func(ctx context.Context, projectID, userID string) (bool, error)
@@ -152,6 +154,20 @@ func (m *mockUsecases) AddProjectMemberByEmail(ctx context.Context, projectSlug,
 		return nil, fmt.Errorf("unexpected call to AddProjectMemberByEmail")
 	}
 	return m.addProjectMemberByEmail(ctx, projectSlug, email, role)
+}
+
+func (m *mockUsecases) CreatePasswordResetLink(ctx context.Context, userID string) (*usecase.PasswordResetLinkResponse, error) {
+	if m.createPasswordResetLink == nil {
+		return nil, fmt.Errorf("unexpected call to CreatePasswordResetLink")
+	}
+	return m.createPasswordResetLink(ctx, userID)
+}
+
+func (m *mockUsecases) RedeemPasswordReset(ctx context.Context, token, password string) error {
+	if m.redeemPasswordReset == nil {
+		return fmt.Errorf("unexpected call to RedeemPasswordReset")
+	}
+	return m.redeemPasswordReset(ctx, token, password)
 }
 
 func (m *mockUsecases) RemoveProjectMember(ctx context.Context, projectSlug, userID string) error {
@@ -1042,6 +1058,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Put("/api/v1/projects/{slug}", h.UpdateProject)
 	r.Delete("/api/v1/projects/{slug}", h.DeleteProject)
 	r.Put("/api/v1/users/{id}/role", h.ChangeUserRole)
+	r.Post("/api/v1/users/{id}/reset-link", h.CreatePasswordResetLink)
 	r.Post("/api/v1/users/{id}/deactivate", h.DeactivateUser)
 	r.Post("/api/v1/users/{id}/reactivate", h.ReactivateUser)
 	r.Get("/api/v1/projects/{slug}/findings", h.ListFindings)
@@ -1049,6 +1066,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/reports/{id}", h.GetReport)
 	r.Post("/api/v1/reports", h.IngestReport)
 	r.Post("/api/v1/auth/register", h.Register)
+	r.Post("/api/v1/auth/reset", h.ResetPassword)
 	r.Post("/api/v1/auth/login", h.Login)
 	r.Post("/api/v1/auth/apikeys", h.CreateAPIKey)
 	r.Get("/api/v1/auth/apikeys", h.ListAPIKeys)
