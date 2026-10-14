@@ -400,6 +400,13 @@ therefore depends on a backup taken before the upgrade, so take one first
    From a source checkout, add the override and `--build` instead of `pull`:
    `docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env.prod up -d --build`.
 
+Every change is checked in CI by letting an earlier build fill a database through
+its own API and starting the current build on it (`scripts/upgrade-smoke.sh`):
+the account, project, scan, triage decision and API key must survive the
+migrations. One thing the migrations cannot fix: an API key made by an early
+preview build carries only the `ingest` scope and cannot read the gate. Create
+a new key for those pipelines.
+
 ### Rolling back
 
 An older server cannot read a schema that a newer migration changed, so a
