@@ -128,4 +128,45 @@ describe("ProjectLayout", () => {
 
     expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument();
   });
+
+  it.each([403, 404])(
+    "says the project is out of reach, and shows nothing else, on a %i",
+    async (status) => {
+      globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith("/me")) return jsonResponse({ id: "u1", email: "a@b.c", role: "member" });
+        return jsonResponse(
+          {
+            error: {
+              code: "project_access_denied",
+              message: "project not found or you do not have access",
+            },
+          },
+          status,
+        );
+      });
+      renderLayoutIn(createTestQueryClient(), "/alpha/findings");
+
+      expect(await screen.findByRole("heading", { name: "You cannot open this project" }))
+        .toBeInTheDocument();
+      expect(screen.getByText(/does not exist or you are not a member/)).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Back to projects" })).toHaveAttribute("href", "/");
+      expect(screen.queryByRole("navigation", { name: "Project sections" })).not
+        .toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    },
+  );
+
+  it("keeps the layout and offers a retry when the project fails for another reason", async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/me")) return jsonResponse({ id: "u1", email: "a@b.c", role: "member" });
+      return jsonResponse({ error: { code: "internal_error", message: "down" } }, 500);
+    });
+    renderLayoutIn(createTestQueryClient(), "/alpha/findings");
+
+    expect(await screen.findByRole("navigation", { name: "Project sections" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "You cannot open this project" }))
+      .not.toBeInTheDocument();
+  });
 });
