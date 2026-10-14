@@ -30,6 +30,9 @@ const (
 	DefaultKEVEndpoint  = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
 	DefaultIntelTTL     = time.Hour
 	DefaultDBMigrate    = true
+	// DefaultDBConnectTimeout is how long startup waits for the database to
+	// answer before giving up.
+	DefaultDBConnectTimeout = 30 * time.Second
 	// DefaultSweepInterval is how often the analysis/waiver expiry
 	// sweepers look for expired rows. Tests shorten it via
 	// LIFECYCLE_SWEEP_INTERVAL to observe sweeps in seconds.
@@ -48,13 +51,16 @@ const (
 
 // Server is the resolved server configuration.
 type Server struct {
-	Addr         string
-	DBURL        string
-	DBMigrate    bool
-	CORSOrigins  string
-	JWTSecret    string
-	LogLevel     string
-	InventoryTTL time.Duration
+	Addr      string
+	DBURL     string
+	DBMigrate bool
+	// DBConnectTimeout is how long startup waits for the database. Zero
+	// means a single attempt.
+	DBConnectTimeout time.Duration
+	CORSOrigins      string
+	JWTSecret        string
+	LogLevel         string
+	InventoryTTL     time.Duration
 	// SweepInterval is the period of the analysis-expiry and waiver-expiry
 	// background sweepers. Must be positive.
 	SweepInterval time.Duration
@@ -312,6 +318,7 @@ func Load() (*Server, error) {
 		Addr:                 strOr(os.Getenv("SERVER_ADDR"), DefaultServerAddr),
 		DBURL:                os.Getenv("DATABASE_URL"),
 		DBMigrate:            strOr(os.Getenv("DB_MIGRATE"), "true") == "true",
+		DBConnectTimeout:     DefaultDBConnectTimeout,
 		CORSOrigins:          os.Getenv("CORS_ORIGINS"),
 		JWTSecret:            os.Getenv("JWT_SECRET"),
 		LogLevel:             strOr(os.Getenv("LOG_LEVEL"), "info"),
@@ -343,6 +350,14 @@ func Load() (*Server, error) {
 			return nil, fmt.Errorf("LIFECYCLE_SWEEP_INTERVAL must be a positive duration, got %q", v)
 		}
 		s.SweepInterval = d
+	}
+
+	if v := os.Getenv("DB_CONNECT_TIMEOUT"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d < 0 {
+			return nil, fmt.Errorf("DB_CONNECT_TIMEOUT must be a duration such as 30s (0s tries once), got %q", v)
+		}
+		s.DBConnectTimeout = d
 	}
 
 	if v := os.Getenv("REGISTRATION_ENABLED"); v != "" {

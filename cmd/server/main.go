@@ -41,6 +41,11 @@ func exitOnError(stage string, err error) {
 
 // connectDB runs configured migrations and opens the pool.
 func connectDB(cfg *config.Server) *pgxpool.Pool {
+	// Postgres may still be starting; wait for it before migrating, so the
+	// order in which containers come up does not decide whether we boot.
+	if cfg.DBURL != "" {
+		exitOnError("database not reachable", db.WaitForDatabase(context.Background(), cfg.DBURL, cfg.DBConnectTimeout))
+	}
 	if cfg.DBMigrate && cfg.DBURL != "" {
 		db.WarnInsecureMigrationURL(cfg.DBURL)
 		exitOnError("startup migration failed", db.RunMigrations(cfg.DBURL, "migrations"))
