@@ -19,7 +19,8 @@ export function ProtectedRoute({ children }: { readonly children: ReactNode; }) 
   }
 
   if (!auth?.token) {
-    return <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />;
+    const target = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to={`/login?redirect=${encodeURIComponent(target)}`} replace />;
   }
 
   return <>{children}</>;
