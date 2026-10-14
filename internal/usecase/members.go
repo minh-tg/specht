@@ -183,6 +183,11 @@ func (u *Usecases) userByEmail(ctx context.Context, email string) (port.User, er
 		}
 		return port.User{}, fmt.Errorf("lookup user by email: %w", err)
 	}
+	// The seeded system account acts for things with no person behind them. Nobody is added to a
+	// project or team as it, and it answers like an address with no account.
+	if isSystemAccount(user.Email) {
+		return port.User{}, ErrMemberUserNotFound
+	}
 	return user, nil
 }
 
