@@ -1,5 +1,6 @@
-import { APIError, apiFetch } from "@/api/client";
+import { APIError } from "@/api/client";
 import { queryKeys } from "@/api/hooks";
+import { useAcceptInvite, useInviteLookup, useJoinInvite } from "@/api/pageRequests";
 import { useAuth } from "@/auth/useAuth";
 import { AuthLayout } from "@/components/AuthLayout";
 import { ErrorState } from "@/components/ErrorState";
@@ -8,13 +9,8 @@ import { PasswordRequirements } from "@/components/PasswordRequirements";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { Button } from "@/components/ui/button";
 import { isPasswordValid } from "@/lib/passwordRules";
-import type {
-  AcceptInviteResponse,
-  InviteLookup,
-  InviteRole,
-  JoinInviteResponse,
-} from "@/types/api";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import type { InviteLookup, InviteRole } from "@/types/api";
+import { useQueryClient } from "@tanstack/react-query";
 import { CheckIcon } from "lucide-react";
 import { type SubmitEvent, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -74,15 +70,9 @@ export function Invite() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const lookup = useQuery({
-    queryKey: ["invite", token],
-    queryFn: () =>
-      apiFetch<InviteLookup>(`/api/v1/invites/${encodeURIComponent(token)}`, {
-        skipAuthRedirect: true,
-      }),
-    retry: false,
-    staleTime: 0,
-  });
+  const lookup = useInviteLookup(token);
+  const accept = useAcceptInvite(token);
+  const join = useJoinInvite(token);
 
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -152,18 +142,11 @@ export function Invite() {
     }
     setSubmitting(true);
     try {
-      const joined = await apiFetch<AcceptInviteResponse>(
-        `/api/v1/invites/${encodeURIComponent(token)}/accept`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            email: (bound ? (details.email ?? "") : email).trim(),
-            password,
-            ...(name.trim() ? { display_name: name.trim() } : {}),
-          }),
-          skipAuthRedirect: true,
-        },
-      );
+      const joined = await accept.mutateAsync({
+        email: (bound ? (details.email ?? "") : email).trim(),
+        password,
+        ...(name.trim() ? { display_name: name.trim() } : {}),
+      });
       auth.adopt(joined);
       await landIn(joined.project_slug);
     } catch (err) {
@@ -177,10 +160,7 @@ export function Invite() {
     setFormError(null);
     setSubmitting(true);
     try {
-      const joined = await apiFetch<JoinInviteResponse>(
-        `/api/v1/invites/${encodeURIComponent(token)}/join`,
-        { method: "POST" },
-      );
+      const joined = await join.mutateAsync();
       await landIn(joined.project_slug);
     } catch (err) {
       explain(err);
