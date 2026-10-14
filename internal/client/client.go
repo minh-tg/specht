@@ -82,7 +82,13 @@ func (c *Client) WithContext(ctx context.Context) *Client {
 // newClientRequest builds an authenticated JSON request for the Specht API.
 func (c *Client) newClientRequest(ctx context.Context, method, path string, body any) (*http.Request, error) {
 	var reqBody io.Reader
-	if body != nil {
+	switch b := body.(type) {
+	case nil:
+	case []byte:
+		// Already encoded by the caller. Marshalling it again would turn the
+		// bytes into a base64 JSON string that the server rejects.
+		reqBody = bytes.NewReader(b)
+	default:
 		data, err := json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("marshal request: %w", err)
