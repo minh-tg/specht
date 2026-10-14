@@ -2252,6 +2252,8 @@ export interface components {
       finding_id: string;
       /** @description Empty for system events left by the expiry sweeps. */
       user_id: string;
+      /** @description The actor's display name, or their email when they set none; "System" for automated actions. Left out for API keys. */
+      user_name?: string;
       /** @example state_changed */
       event_type: string;
       old_value?: string;
@@ -2551,10 +2553,14 @@ export interface components {
        * @description User who asked for the waiver. Absent for waivers created directly.
        */
       requested_by?: string;
+      /** @description The requester's display name, or their email when they set none. Left out for API keys. */
+      requested_by_name?: string;
       /** Format: date-time */
       requested_at?: string;
       /** Format: uuid */
       decided_by?: string;
+      /** @description The decider's display name, or their email when they set none. Left out for API keys. */
+      decided_by_name?: string;
       /** Format: date-time */
       decided_at?: string;
       decision_note: string;
@@ -2689,6 +2695,8 @@ export interface components {
         | "auto_rejected";
       /** Format: uuid */
       actor_id?: string;
+      /** @description The actor's display name, or their email when they set none; "System" for automated actions. Left out for API keys. */
+      actor_name?: string;
       /** @description Event-specific detail, such as the reason an expiry sweep disabled the waiver. */
       metadata?: unknown;
       /** Format: date-time */

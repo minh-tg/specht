@@ -12,6 +12,9 @@ SELECT * FROM users WHERE id = $1;
 -- name: ClearUserPassword :exec
 UPDATE users SET password_hash = NULL, updated_at = NOW() WHERE id = $1;
 
+-- name: ListUsersByIDs :many
+SELECT * FROM users WHERE id = ANY($1::uuid[]) ORDER BY email;
+
 -- name: SetUserPassword :exec
 UPDATE users SET password_hash = $2, token_version = token_version + 1, updated_at = NOW() WHERE id = $1;
 

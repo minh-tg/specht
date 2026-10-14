@@ -168,14 +168,15 @@ func TestE2E_WaiverLifecycleAndExpirySweep(t *testing.T) {
 }
 
 type waiverReview struct {
-	ID           string  `json:"id"`
-	Status       string  `json:"status"`
-	Reason       string  `json:"reason"`
-	ScopeAll     bool    `json:"scope_all"`
-	RequestedBy  *string `json:"requested_by"`
-	DecidedBy    *string `json:"decided_by"`
-	DecisionNote string  `json:"decision_note"`
-	Targets      []struct {
+	ID              string  `json:"id"`
+	Status          string  `json:"status"`
+	Reason          string  `json:"reason"`
+	ScopeAll        bool    `json:"scope_all"`
+	RequestedBy     *string `json:"requested_by"`
+	RequestedByName string  `json:"requested_by_name"`
+	DecidedBy       *string `json:"decided_by"`
+	DecisionNote    string  `json:"decision_note"`
+	Targets         []struct {
 		FindingID string `json:"finding_id"`
 	} `json:"targets"`
 }
@@ -254,6 +255,11 @@ func TestE2E_WaiverRequestApproval(t *testing.T) {
 		require.Equal(t, pending.ID, got[0].ID)
 		require.Len(t, got[0].Targets, 1, "the list says which finding a request covers")
 		require.Equal(t, target.ID, got[0].Targets[0].FindingID)
+		require.NotEmpty(t, got[0].RequestedByName,
+			"a member sees who asked, without the admin-only account directory")
+		keyView := request[[]waiverReview](t, http.MethodGet, base+"?status=pending", key, nil, http.StatusOK)
+		require.Len(t, keyView, 1)
+		require.Empty(t, keyView[0].RequestedByName, "a pipeline key is not told who the people are")
 		got = request[[]waiverReview](t, http.MethodGet, base+"?status=approved", memberToken, nil, http.StatusOK)
 		require.Empty(t, got)
 		status, raw := doJSON(t, http.MethodGet, base+"?status=bogus", memberToken, nil)

@@ -170,6 +170,7 @@ type FindingEvent struct {
 	ID        string    `json:"id"`
 	FindingID string    `json:"finding_id"`
 	UserID    string    `json:"user_id"`
+	UserName  string    `json:"user_name,omitempty"`
 	EventType string    `json:"event_type"`
 	OldValue  *string   `json:"old_value,omitempty"`
 	NewValue  *string   `json:"new_value,omitempty"`

@@ -3494,6 +3494,7 @@ components:
         id: { type: string, format: uuid }
         finding_id: { type: string, format: uuid }
         user_id: { type: string, description: Empty for system events left by the expiry sweeps. }
+        user_name: { type: string, description: "The actor's display name, or their email when they set none; \"System\" for automated actions. Left out for API keys." }
         event_type: { type: string, example: state_changed }
         old_value: { type: string }
         new_value: { type: string }
@@ -3816,8 +3817,10 @@ components:
           description: True for a waiver that covers every finding of the project.
         reason: { type: string, description: The requester's justification. Empty for waivers created directly. }
         requested_by: { type: string, format: uuid, description: User who asked for the waiver. Absent for waivers created directly. }
+        requested_by_name: { type: string, description: "The requester's display name, or their email when they set none. Left out for API keys." }
         requested_at: { type: string, format: date-time }
         decided_by: { type: string, format: uuid }
+        decided_by_name: { type: string, description: "The decider's display name, or their email when they set none. Left out for API keys." }
         decided_at: { type: string, format: date-time }
         decision_note: { type: string }
         expires_at: { type: [string, "null"], format: date-time }
@@ -3969,6 +3972,7 @@ components:
           type: string
           enum: [created, updated, enabled, disabled, auto_disabled, requested, approved, rejected, withdrawn, auto_rejected]
         actor_id: { type: string, format: uuid }
+        actor_name: { type: string, description: "The actor's display name, or their email when they set none; \"System\" for automated actions. Left out for API keys." }
         metadata:
           description: Event-specific detail, such as the reason an expiry sweep disabled the waiver.
         created_at: { type: string, format: date-time }

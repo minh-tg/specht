@@ -378,8 +378,14 @@ func (u *Usecases) GetFindingEvents(ctx context.Context, findingID string, event
 	}
 
 	result := make([]FindingEvent, len(events))
+	actors := make([]string, 0, len(events))
+	for _, e := range events {
+		actors = append(actors, derefStr(e.UserID))
+	}
+	labels := u.peopleLabels(ctx, actors)
 	for i, e := range events {
 		result[i] = FindingEvent{
+			UserName:  labels[derefStr(e.UserID)],
 			ID:        e.ID,
 			FindingID: e.FindingID,
 			UserID:    derefStr(e.UserID),
