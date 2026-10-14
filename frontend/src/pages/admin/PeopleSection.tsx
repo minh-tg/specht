@@ -1,5 +1,7 @@
 import { useChangeUserRole, useSetUserActive, useUsers } from "@/api/admin";
 import { useMe } from "@/api/hooks";
+import { type PasswordResetLink, useCreateResetLink } from "@/api/passwordReset";
+import { CopyButton } from "@/components/CopyButton";
 import { ErrorState } from "@/components/ErrorState";
 import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
@@ -15,11 +17,21 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { isSystemAccount } from "@/lib/accounts";
+import { formatDate } from "@/lib/format";
 import { latestFailure } from "@/lib/latestFailure";
 import { cn } from "@/lib/utils";
 import type { UserProfile } from "@/types/api";
+import { TriangleAlertIcon } from "lucide-react";
 import { useDeferredValue, useState } from "react";
 
 const PAGE_SIZE = 50;
@@ -44,12 +56,16 @@ export function PeopleSection() {
   const { data: me } = useMe();
   const changeRole = useChangeUserRole();
   const setActive = useSetUserActive();
+  const createLink = useCreateResetLink();
   const [deactivating, setDeactivating] = useState<UserProfile | null>(null);
+  const [issued, setIssued] = useState<{ user: UserProfile; link: PasswordResetLink; } | null>(
+    null,
+  );
 
   // The server's page may be full even when the system account is one of its rows.
   const received = users.data ?? [];
   const list = received.filter((u) => !isSystemAccount(u));
-  const failure = latestFailure(changeRole, setActive);
+  const failure = latestFailure(changeRole, setActive, createLink);
 
   async function deactivate() {
     if (!deactivating) return;
@@ -57,6 +73,12 @@ export function PeopleSection() {
       await setActive.mutateAsync({ id: deactivating.id, active: false });
     } catch {}
     setDeactivating(null);
+  }
+
+  async function issueLink(user: UserProfile) {
+    try {
+      setIssued({ user, link: await createLink.mutateAsync(user.id) });
+    } catch {}
   }
 
   return (
@@ -103,7 +125,7 @@ export function PeopleSection() {
                 <li
                   key={user.id}
                   data-off={off}
-                  className="border-border grid items-center gap-x-4 gap-y-2 border-b px-0.5 py-3 sm:grid-cols-[minmax(0,1fr)_7.5rem_8.5rem_7rem]"
+                  className="border-border grid items-center gap-x-4 gap-y-2 border-b px-0.5 py-3 sm:grid-cols-[minmax(0,1fr)_7.5rem_8.5rem_14rem]"
                 >
                   <div className="min-w-0">
                     <p className={cn("font-semibold", off && "text-muted-foreground line-through")}>
@@ -136,7 +158,7 @@ export function PeopleSection() {
                       {off ? "Deactivated" : "Active"}
                     </StatusPill>
                   </div>
-                  <div className="sm:text-right">
+                  <div className="flex flex-wrap gap-2 sm:justify-end">
                     {isMe
                       ? <span className="text-muted-foreground text-[0.8125rem]">That is you</span>
                       : off
@@ -152,14 +174,25 @@ export function PeopleSection() {
                         </Button>
                       )
                       : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          aria-label={`Deactivate ${personName(user)}`}
-                          onClick={() => setDeactivating(user)}
-                        >
-                          Deactivate
-                        </Button>
+                        <>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={createLink.isPending}
+                            aria-label={`Reset password for ${personName(user)}`}
+                            onClick={() => void issueLink(user)}
+                          >
+                            Reset password
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            aria-label={`Deactivate ${personName(user)}`}
+                            onClick={() => setDeactivating(user)}
+                          >
+                            Deactivate
+                          </Button>
+                        </>
                       )}
                   </div>
                 </li>
@@ -186,6 +219,45 @@ export function PeopleSection() {
           {failure.message || "Could not change the account."}
         </p>
       )}
+
+      <Dialog open={issued !== null} onOpenChange={(open) => !open && setIssued(null)}>
+        <DialogContent className="sm:max-w-md">
+          {issued && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Send this link to {personName(issued.user)}</DialogTitle>
+                <DialogDescription>
+                  Whoever opens it can choose a new password for this account, once, until{" "}
+                  {formatDate(issued.link.expires_at)}. A newer link replaces this one.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="bg-muted flex items-center gap-3 rounded-md py-2.5 pr-2.5 pl-3.5">
+                <code
+                  data-testid="reset-link"
+                  className="min-w-0 flex-1 text-[0.8125rem] break-all"
+                >
+                  {`${window.location.origin}${issued.link.link}`}
+                </code>
+                <CopyButton
+                  text={`${window.location.origin}${issued.link.link}`}
+                  label="reset link"
+                />
+              </div>
+              <p className="text-muted-foreground flex items-start gap-2 text-[0.8125rem]">
+                <TriangleAlertIcon
+                  aria-hidden="true"
+                  className="mt-0.5 size-4 shrink-0 text-sev-high-fg"
+                />
+                The link is shown only once. Send it over a channel you trust. Resetting signs the
+                account out everywhere.
+              </p>
+              <DialogFooter>
+                <Button onClick={() => setIssued(null)}>Done</Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         open={deactivating !== null}

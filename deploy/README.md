@@ -246,6 +246,14 @@ the next sign-in. Neither command touches the seeded `system@specht.local`
 account. Anyone signed in can change their own password, and the name others
 see, on the Profile page (the API is `PUT /api/v1/me/password`).
 
+When another administrator can still sign in, they do not need shell access.
+On the Admin page, "Reset password" next to a person issues a one-time link
+(`/reset/<token>`) that is shown once and works for 24 hours. The person opens it,
+chooses a password, and every session the account had ends. A newer link retires
+the older ones. Accounts that sign in through SSO, deactivated accounts and the
+system account get no link. With no mail server, you hand the link over yourself,
+so send it over a channel you trust.
+
 ### Changing or deactivating an account
 
 Global admins manage accounts from the admin area or the API:
