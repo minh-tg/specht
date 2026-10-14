@@ -725,6 +725,7 @@ func (h *Handler) AddTeamMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	setAuditTarget(r, result.UserID)
 	respondJSON(w, http.StatusCreated, result)
 }
 
