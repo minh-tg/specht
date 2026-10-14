@@ -966,6 +966,10 @@ type ReportStore interface {
 	// CountStaleReports counts settled (completed/failed) reports older
 	// than the cutoff. Processing reports are never counted.
 	CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error)
+	// FailStale settles reports still processing since before the cutoff as
+	// failed, with the reason as their error message, and returns how many it
+	// changed. It is the recovery for an ingest the server stopped under.
+	FailStale(ctx context.Context, cutoff time.Time, reason string) (int64, error)
 	// DeleteStaleReports deletes settled reports older than the cutoff,
 	// returning their ids. Each goes through DeleteReportAndSettle, so a
 	// retention purge and an explicit delete leave the same state behind.

@@ -104,6 +104,7 @@ type ReportRepo interface {
 	GetLatestFullByBranch(ctx context.Context, projectID pgtype.UUID, toolName string, branch pgtype.Text) (sqlc.GetLatestCompletedFullReportByBranchRow, error)
 	LatestCompletedInFindingScope(ctx context.Context, projectID, findingID pgtype.UUID) (sqlc.LatestCompletedFullReportInFindingScopeRow, error)
 	CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error)
+	FailStaleReports(ctx context.Context, cutoff time.Time, reason string) (int64, error)
 	DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]pgtype.UUID, error)
 	FindCompletedByReplayKey(ctx context.Context, projectID pgtype.UUID, rawHash, commitSha, scopeHash pgtype.Text) (pgtype.UUID, error)
 	DeleteReport(ctx context.Context, id, projectID pgtype.UUID) error

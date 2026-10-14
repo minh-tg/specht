@@ -209,6 +209,31 @@ func (q *Queries) DeleteReport(ctx context.Context, arg DeleteReportParams) erro
 	return err
 }
 
+const failStaleReports = `-- name: FailStaleReports :execrows
+UPDATE reports SET
+    status = 'failed',
+    completed_at = NOW(),
+    error_message = $2
+WHERE status = 'processing'
+  AND created_at < $1
+`
+
+type FailStaleReportsParams struct {
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	ErrorMessage pgtype.Text        `json:"error_message"`
+}
+
+// A report stays in processing only while its ingest request runs. One that
+// is still there well after the ingest window means the server stopped under
+// it, so it is settled as failed and a retry can ingest the same content.
+func (q *Queries) FailStaleReports(ctx context.Context, arg FailStaleReportsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, failStaleReports, arg.CreatedAt, arg.ErrorMessage)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const findCompletedByReplayKey = `-- name: FindCompletedByReplayKey :one
 SELECT id FROM reports
 WHERE project_id = $1 AND raw_report_hash = $2

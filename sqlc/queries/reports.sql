@@ -104,6 +104,17 @@ WHERE r.project_id = $1
 ORDER BY r.created_at DESC, r.id DESC
 LIMIT 1;
 
+-- name: FailStaleReports :execrows
+-- A report stays in processing only while its ingest request runs. One that
+-- is still there well after the ingest window means the server stopped under
+-- it, so it is settled as failed and a retry can ingest the same content.
+UPDATE reports SET
+    status = 'failed',
+    completed_at = NOW(),
+    error_message = $2
+WHERE status = 'processing'
+  AND created_at < $1;
+
 -- name: CountStaleReports :one
 -- Retention preview: settled (completed/failed) reports older
 -- than the cutoff. Processing reports are never counted — an in-flight

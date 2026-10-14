@@ -241,6 +241,10 @@ func (r *pgReportPort) UpdateStatus(ctx context.Context, id, projectID, status s
 	return reportRowToPort(row), nil
 }
 
+func (r *pgReportPort) FailStale(ctx context.Context, cutoff time.Time, reason string) (int64, error) {
+	return r.inner.FailStaleReports(ctx, cutoff, reason)
+}
+
 func (r *pgReportPort) CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error) {
 	return r.inner.CountStaleReports(ctx, cutoff)
 }
