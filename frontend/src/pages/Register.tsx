@@ -1,12 +1,12 @@
-import { APIError, apiFetch } from "@/api/client";
+import { APIError } from "@/api/client";
 import { useCapabilities } from "@/api/hooks";
+import { useRegister } from "@/api/pageRequests";
 import { useAuth } from "@/auth/useAuth";
 import { AuthLayout } from "@/components/AuthLayout";
 import { FormField } from "@/components/FormField";
 import { PasswordRequirements } from "@/components/PasswordRequirements";
 import { Button } from "@/components/ui/button";
 import { isPasswordValid } from "@/lib/passwordRules";
-import type { RegisterResponse } from "@/types/api";
 import { type SubmitEvent, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
@@ -14,6 +14,7 @@ export function Register() {
   const auth = useAuth();
   const navigate = useNavigate();
   const capabilities = useCapabilities();
+  const register = useRegister();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -41,11 +42,7 @@ export function Register() {
     }
     setSubmitting(true);
     try {
-      await apiFetch<RegisterResponse>("/api/v1/auth/register", {
-        method: "POST",
-        body: JSON.stringify({ email, password }),
-        skipAuthRedirect: true,
-      });
+      await register.mutateAsync({ email, password });
       navigate("/login", { replace: true });
     } catch (err) {
       if (err instanceof APIError) {
