@@ -273,6 +273,20 @@ export interface FindingEvidence {
   created_at: string;
 }
 
+/** A reviewer's decision on a finding. */
+export type SignoffStatus = "pending" | "approved" | "rejected";
+
+/** The reviewer sign-off recorded on a finding. */
+export interface Signoff {
+  id: string;
+  finding_id: string;
+  status: SignoffStatus;
+  reviewed_by: string;
+  comment: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /** One finding lifecycle audit event. */
 export interface FindingEvent {
   id: string;
