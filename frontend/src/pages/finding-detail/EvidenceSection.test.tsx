@@ -36,15 +36,15 @@ function mockApi({ role = "manager", evidence = [EVIDENCE], listStatus = 200 }: 
     if (u.endsWith("/api/v1/me")) {
       return jsonResponse({ id: "u-mgr", email: "manager@example.corp", role: "member" });
     }
-    if (u.includes("/members")) {
-      return jsonResponse([
-        {
-          project_id: "p1",
-          user_id: "u-mgr",
-          role: role === "manager" ? "manager" : "member",
-          created_at: "2026-09-01T00:00:00Z",
-        },
-      ]);
+    if (/\/api\/v1\/projects\/[^/]+$/.test(u)) {
+      const manager = role === "manager";
+      return jsonResponse({
+        id: "p1",
+        slug: "core-api",
+        name: "core-api",
+        role: manager ? "manager" : "member",
+        permissions: { triage: manager, manage_members: manager },
+      });
     }
     if (u.endsWith("/api/v1/findings/f1/evidence") && method === "GET") {
       if (listStatus !== 200) {

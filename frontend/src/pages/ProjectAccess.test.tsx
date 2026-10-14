@@ -69,6 +69,10 @@ describe("ProjectAccess", () => {
       if (u.endsWith("/api/v1/me")) {
         return jsonResponse({ id: "u1", email: "sarah@acme.corp", role: userRole });
       }
+      if (/\/api\/v1\/projects\/[^/]+$/.test(u) && method === "GET") {
+        const own = mockMembers.find((m) => m.user_id === "u1");
+        return jsonResponse({ id: "p1", slug: "my-app", name: "My App", role: own?.role });
+      }
       if (u.includes("/members")) {
         if (method === "POST") {
           return addMemberError
