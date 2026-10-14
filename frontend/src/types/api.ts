@@ -280,6 +280,13 @@ export interface TriageResponse {
   gate_effect: GateEffect;
 }
 
+export interface VerifyResponse {
+  finding_id: string;
+  outcome: "still_present" | "inconclusive" | "verified_fixed";
+  report_id?: string;
+  detail: string;
+}
+
 export interface LoginResponse {
   token: string;
   refresh_token: string;
