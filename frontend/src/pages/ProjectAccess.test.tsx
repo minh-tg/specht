@@ -266,8 +266,8 @@ describe("ProjectAccess", () => {
     expect(screen.getByRole("heading", { name: "Add Direct Member" })).toBeInTheDocument();
 
     await user.type(
-      screen.getByLabelText("User ID"),
-      "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+      screen.getByLabelText("Email address"),
+      "ada@acme.example",
     );
     await chooseOption(user, screen.getByLabelText("Project Role"), /^Admin: full project control/);
 
@@ -280,7 +280,7 @@ describe("ProjectAccess", () => {
       );
       expect(postCall).toBeDefined();
       expect(JSON.parse(postCall!.body!)).toEqual({
-        user_id: "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+        email: "ada@acme.example",
         role: "admin",
       });
     });
@@ -293,7 +293,7 @@ describe("ProjectAccess", () => {
     const opener = await screen.findByRole("button", { name: "+ Add Member" });
     await user.click(opener);
     const dialog = await screen.findByRole("dialog", { name: "Add Direct Member" });
-    expect(dialog).toContainElement(screen.getByLabelText("User ID"));
+    expect(dialog).toContainElement(screen.getByLabelText("Email address"));
 
     await user.keyboard("{Escape}");
     await waitFor(() => {
@@ -308,15 +308,15 @@ describe("ProjectAccess", () => {
 
     await user.click(await screen.findByRole("button", { name: "+ Add Member" }));
     await user.type(
-      screen.getByLabelText("User ID"),
-      "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+      screen.getByLabelText("Email address"),
+      "ada@acme.example",
     );
     await user.click(screen.getByRole("button", { name: "Add Member" }));
 
     expect(await screen.findByText("Member added")).toBeInTheDocument();
   });
 
-  it("does not submit a member user ID that is not a UUID", async () => {
+  it("does not submit an address that is not an email", async () => {
     const user = userEvent.setup();
     renderProjectAccess();
 
@@ -325,10 +325,10 @@ describe("ProjectAccess", () => {
     });
 
     await user.click(screen.getByRole("button", { name: "+ Add Member" }));
-    await user.type(screen.getByLabelText("User ID"), "newbie@acme.corp");
+    await user.type(screen.getByLabelText("Email address"), "newbie@acme");
     await user.click(screen.getByRole("button", { name: "Add Member" }));
 
-    expect(await screen.findByText(/User ID must be a UUID/)).toBeInTheDocument();
+    expect(await screen.findByText(/Enter the person's email address/)).toBeInTheDocument();
     expect(
       fetchCalls.some((c) => c.url.includes("/members") && c.method === "POST"),
     ).toBe(false);
@@ -345,8 +345,8 @@ describe("ProjectAccess", () => {
 
     await user.click(screen.getByRole("button", { name: "+ Add Member" }));
     await user.type(
-      screen.getByLabelText("User ID"),
-      "3f9c1d2e-6b7a-4c1e-9f0a-2d8e5b6c7a8f",
+      screen.getByLabelText("Email address"),
+      "ada@acme.example",
     );
     await user.click(screen.getByRole("button", { name: "Add Member" }));
 
