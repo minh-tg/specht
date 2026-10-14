@@ -138,7 +138,17 @@ Read by `specht-adapter` and `specht`, not by the server.
 |----------|---------|---------|
 | `API_URL` | `http://localhost:8080` | Specht base URL. |
 | `API_KEY` | *required* | A project API key, or a session token for admin operations. |
-| `SPECHT_PROJECT` | *(empty)* | Adapter only: project slug, overriding the one in the report. |
+| `SPECHT_PROJECT` | *(empty)* | Adapter only: project slug, used when the report and `-project` give none. |
+| `SPECHT_API_URL`, `SPECHT_API_KEY` | *(empty)* | Aliases for `API_URL` and `API_KEY`, for runners where those names collide with other tools. |
+| `SPECHT_OWNER` | *(derived)* | Adapter only: repository owner recorded on the report. Defaults to the owner of `GITHUB_REPOSITORY` or `CI_PROJECT_PATH`. |
+| `SPECHT_ENVIRONMENT` | *(empty)* | Adapter only: deployment environment (for example `production`) recorded on the report. |
+
+The adapter also reads the CI provider's own variables when its flags are not
+set: `GITHUB_REPOSITORY`, `GITHUB_SHA`, `GITHUB_REF_NAME`, `GITHUB_BASE_REF`,
+`GITHUB_STEP_SUMMARY`, `GITHUB_EVENT_NAME` and `GITHUB_EVENT_PATH` on GitHub
+Actions, and `CI_PROJECT_PATH`, `CI_COMMIT_SHA`, `CI_COMMIT_REF_NAME` and
+`CI_MERGE_REQUEST_TARGET_BRANCH_NAME` on GitLab CI. A pull request from a fork
+has no secrets, so with an empty API key the adapter logs a notice and exits 0.
 
 ### Compose-only
 
