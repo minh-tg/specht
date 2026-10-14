@@ -151,7 +151,7 @@ describe("CommandPalette", () => {
     await waitFor(() =>
       expect(screen.queryByRole("option", { name: "Admin" })).not.toBeInTheDocument()
     );
-    expect(screen.queryByRole("option", { name: "API Keys" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: "API keys" })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "New project" })).not.toBeInTheDocument();
   });
 
@@ -160,7 +160,7 @@ describe("CommandPalette", () => {
     renderPalette();
     await openWithShortcut(user);
     expect(await screen.findByRole("option", { name: "Admin" })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "API Keys" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "API keys" })).toBeInTheDocument();
   });
 
   it("signs out and switches the theme", async () => {

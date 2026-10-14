@@ -52,7 +52,7 @@ function SignedInLinks({ email, onLogout }: { email: string | null; onLogout: ()
             Admin
           </NavLink>
           <NavLink to="/api-keys" className={navLinkClass}>
-            API Keys
+            API keys
           </NavLink>
         </>
       )}
@@ -61,7 +61,7 @@ function SignedInLinks({ email, onLogout }: { email: string | null; onLogout: ()
         onClick={onLogout}
         className="text-muted-foreground hover:text-foreground py-1 text-sm"
       >
-        Logout
+        Sign out
       </button>
     </>
   );

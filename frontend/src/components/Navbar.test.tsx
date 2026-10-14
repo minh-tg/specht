@@ -111,8 +111,8 @@ describe("Navbar", () => {
       "href",
       "/register",
     );
-    expect(screen.queryByRole("link", { name: "API Keys" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Logout" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "API keys" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
   });
 
   it("hides registration when capabilities disable it", async () => {
@@ -162,32 +162,32 @@ describe("Navbar", () => {
     expect(screen.queryByRole("link", { name: "Ingest" })).not.toBeInTheDocument();
     expect(screen.getByText("user@example.com")).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByRole("link", { name: "API Keys" })).toHaveAttribute("href", "/api-keys");
+      expect(screen.getByRole("link", { name: "API keys" })).toHaveAttribute("href", "/api-keys");
     });
     expect(capabilitiesCalls).toHaveLength(0);
     expect(screen.getByRole("link", { name: "Admin" })).toHaveAttribute("href", "/admin");
 
-    const logoutButton = screen.getByRole("button", { name: "Logout" });
+    const logoutButton = screen.getByRole("button", { name: "Sign out" });
     expect(logoutButton).toHaveAttribute("type", "button");
     await userEvent.setup().click(logoutButton);
     expect(logout).toHaveBeenCalledOnce();
   });
 
-  it("hides API Keys from members", async () => {
+  it("hides API keys from members", async () => {
     meRole = "member";
     renderNavbar(signedIn());
 
     await waitFor(() => expect(meSettled).toBe(true));
-    expect(screen.queryByRole("link", { name: "API Keys" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "API keys" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Admin" })).not.toBeInTheDocument();
   });
 
-  it("hides API Keys while the profile is loading", async () => {
+  it("hides API keys while the profile is loading", async () => {
     mePending = true;
     renderNavbar(signedIn());
 
     await waitFor(() => expect(meCalls).toHaveLength(1));
-    expect(screen.queryByRole("link", { name: "API Keys" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "API keys" })).not.toBeInTheDocument();
   });
 
   it("truncates and titles the signed-in email", async () => {
