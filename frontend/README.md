@@ -10,6 +10,7 @@ The frontend is Specht's React and TypeScript web app. It helps teams review and
 - **Project settings:** CI setup with a one-time API key and copyable pipelines, policy and templates, waivers with a request and approval flow, insights and SLA aging, access (members, teams, invite links) and the CVE watcher.
 - **Administration:** accounts, the retention preview and purge, and watcher health.
 - **First run:** a setup screen creates the first administrator; invite pages let people join without open registration.
+- **Profile:** the name other people see, and a password change that keeps this browser signed in while it ends every other session.
 - **Command palette:** Ctrl+K or ⌘K jumps to project pages, other projects, admin places and two actions.
 - **Accessibility and theming:** a skip link, focus moved to the content after navigation, live regions for outcomes, an error boundary, a not-found page, and a light, dark or system theme.
 
