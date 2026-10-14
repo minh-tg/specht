@@ -1,4 +1,5 @@
-const EMPTY = "–";
+/** Shown wherever a value is missing or unparseable. */
+export const EMPTY_VALUE = "None";
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -36,7 +37,7 @@ export function formatRelativeTime(
   now: Date = new Date(),
 ): string {
   const date = parseDate(iso);
-  if (!date) return EMPTY;
+  if (!date) return EMPTY_VALUE;
 
   const elapsed = now.getTime() - date.getTime();
   if (elapsed < MINUTE_MS) return "just now";
@@ -51,13 +52,13 @@ export function formatRelativeTime(
 /** Absolute date and 24 h time, e.g. "1 Oct 2026, 04:24". */
 export function formatDateTime(iso: string | null | undefined): string {
   const date = parseDate(iso);
-  return date ? DATE_TIME_FORMATTER.format(date) : EMPTY;
+  return date ? DATE_TIME_FORMATTER.format(date) : EMPTY_VALUE;
 }
 
 /** Absolute date without the time; see formatDateTime. */
 export function formatDate(iso: string | null | undefined): string {
   const date = parseDate(iso);
-  return date ? DATE_FORMATTER.format(date) : EMPTY;
+  return date ? DATE_FORMATTER.format(date) : EMPTY_VALUE;
 }
 
 /** "1 finding" / "2 findings"; pass `other` for irregular plurals. */
@@ -71,7 +72,7 @@ export function pluralize(count: number, one: string, other?: string): string {
  */
 export function formatAge(iso: string | null | undefined, now: Date = new Date()): string {
   const date = parseDate(iso);
-  if (!date) return EMPTY;
+  if (!date) return EMPTY_VALUE;
   const days = Math.max(0, Math.floor((now.getTime() - date.getTime()) / DAY_MS));
   if (days < 1) return "Today";
   if (days < 100) return `${days}d`;

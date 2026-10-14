@@ -169,7 +169,7 @@ describe("ProjectList", () => {
     const relative = within(rowFor("Alpha")).getByText("2 min ago");
     expect(relative).toHaveAttribute("title", formatDateTime(scannedAt));
 
-    expect(within(rowFor("Beta")).getByText("–")).toBeInTheDocument();
+    expect(within(rowFor("Beta")).getByText("None")).toBeInTheDocument();
     expect(within(rowFor("Beta")).getByText("4")).toBeInTheDocument();
 
     expect(within(rowFor("Gamma")).getByText("Never")).toBeInTheDocument();
@@ -321,7 +321,7 @@ describe("ProjectList", () => {
     await screen.findByText("UNKNOWN");
     const alpha = rowFor("Alpha");
     expect(within(alpha).getByText("UNKNOWN")).toBeInTheDocument();
-    expect(within(alpha).getAllByText("–")).toHaveLength(3);
+    expect(within(alpha).getAllByText("None")).toHaveLength(3);
 
     const beta = rowFor("Beta");
     expect(within(beta).getByText("PASSING")).toBeInTheDocument();

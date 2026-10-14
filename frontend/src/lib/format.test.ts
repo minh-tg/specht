@@ -40,10 +40,10 @@ describe("formatRelativeTime", () => {
   });
 
   it("uses an em-dash for empty or invalid input", () => {
-    expect(formatRelativeTime(undefined, NOW)).toBe("–");
-    expect(formatRelativeTime(null, NOW)).toBe("–");
-    expect(formatRelativeTime("", NOW)).toBe("–");
-    expect(formatRelativeTime("not-a-date", NOW)).toBe("–");
+    expect(formatRelativeTime(undefined, NOW)).toBe("None");
+    expect(formatRelativeTime(null, NOW)).toBe("None");
+    expect(formatRelativeTime("", NOW)).toBe("None");
+    expect(formatRelativeTime("not-a-date", NOW)).toBe("None");
   });
 });
 
@@ -62,10 +62,10 @@ describe("formatDateTime", () => {
   });
 
   it("uses an em-dash for empty or invalid input", () => {
-    expect(formatDateTime(undefined)).toBe("–");
-    expect(formatDateTime(null)).toBe("–");
-    expect(formatDateTime("")).toBe("–");
-    expect(formatDateTime("nonsense")).toBe("–");
+    expect(formatDateTime(undefined)).toBe("None");
+    expect(formatDateTime(null)).toBe("None");
+    expect(formatDateTime("")).toBe("None");
+    expect(formatDateTime("nonsense")).toBe("None");
   });
 });
 
@@ -83,10 +83,10 @@ describe("formatDate", () => {
   });
 
   it("uses an em-dash for empty or invalid input", () => {
-    expect(formatDate(undefined)).toBe("–");
-    expect(formatDate(null)).toBe("–");
-    expect(formatDate("")).toBe("–");
-    expect(formatDate("13/13/2026")).toBe("–");
+    expect(formatDate(undefined)).toBe("None");
+    expect(formatDate(null)).toBe("None");
+    expect(formatDate("")).toBe("None");
+    expect(formatDate("13/13/2026")).toBe("None");
   });
 });
 
@@ -122,7 +122,7 @@ describe("formatAge", () => {
   });
 
   it("shows a dash for empty or unparsable input", () => {
-    expect(formatAge(null, NOW)).toBe("–");
-    expect(formatAge("not a date", NOW)).toBe("–");
+    expect(formatAge(null, NOW)).toBe("None");
+    expect(formatAge("not a date", NOW)).toBe("None");
   });
 });
