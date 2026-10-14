@@ -156,7 +156,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		}
 		r.Use(NewRateLimiter(rps, burst).MiddlewareByIP())
 		r.Post("/api/v1/auth/refresh", h.Refresh)
-		r.Post("/api/v1/auth/sso/exchange", h.SSOExchange)
+		r.With(h.audited(audit.EventSSOExchange)).Post("/api/v1/auth/sso/exchange", h.SSOExchange)
 		r.Post("/api/v1/auth/logout", h.Logout)
 
 		// Login and register accept guessable credentials, so they get a much
@@ -239,7 +239,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(h.audited(audit.EventUnlinkProjectTeam, "teamID"), adminScope).Delete("/api/v1/projects/{slug}/teams/{teamID}", h.UnlinkProjectTeam)
 		r.With(readScope).Get("/api/v1/findings/{id}", h.GetFinding)
 		r.With(adminScope).Patch("/api/v1/findings/{id}", h.TriageFinding)
-		r.With(adminScope).Post("/api/v1/findings/{id}/verify", h.VerifyFinding)
+		r.With(h.audited(audit.EventVerifyFix, "id"), adminScope).Post("/api/v1/findings/{id}/verify", h.VerifyFinding)
 		r.With(readScope).Get("/api/v1/findings/{id}/patch-preview", h.PreviewPatch)
 		r.With(readScope).Get("/api/v1/findings/{id}/notify-preview", h.PreviewNotification)
 		r.With(h.audited(audit.EventBulkTriage), adminScope).Post("/api/v1/findings/bulk-analysis", h.BulkTriage)
