@@ -142,6 +142,16 @@ describe("CommandPalette", () => {
     expect(screen.getByTestId("where")).toHaveTextContent("/teams");
   });
 
+  it("offers the profile page to everyone, and finds it by what you do there", async () => {
+    role = "member";
+    const user = userEvent.setup();
+    renderPalette();
+    const input = await openWithShortcut(user);
+    await user.type(input, "password");
+    await user.click(await screen.findByRole("option", { name: "Profile" }));
+    expect(screen.getByTestId("where")).toHaveTextContent("/profile");
+  });
+
   it("leaves out the places only an admin can use", async () => {
     role = "member";
     const user = userEvent.setup();

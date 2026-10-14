@@ -60,6 +60,13 @@ export function useCommands(): Command[] {
     }
 
     list.push({ id: "go:home", group: "Go to", label: "All projects", run: go("/") });
+    list.push({
+      id: "go:profile",
+      group: "Go to",
+      label: "Profile",
+      keywords: "account password name display",
+      run: go("/profile"),
+    });
     list.push({ id: "go:teams", group: "Go to", label: "Teams", run: go("/teams") });
     if (isAdmin) {
       list.push({ id: "go:new", group: "Go to", label: "New project", run: go("/projects/new") });
