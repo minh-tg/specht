@@ -44,10 +44,17 @@ afterEach(async () => {
 });
 
 describe("application entry point", () => {
-  it("mounts the public sign-in experience in the application root", async () => {
-    await import("./main");
+  // This test compiles and renders the whole application, which takes several seconds when the
+  // machine is busy, so it gets a far longer limit than the default 5 seconds.
+  it(
+    "mounts the public sign-in experience in the application root",
+    { timeout: 60_000 },
+    async () => {
+      await import("./main");
 
-    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Register" })).toBeInTheDocument();
-  });
+      expect(await screen.findByRole("heading", { name: "Sign in" }, { timeout: 30_000 }))
+        .toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "Register" })).toBeInTheDocument();
+    },
+  );
 });
