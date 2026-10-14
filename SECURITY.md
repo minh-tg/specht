@@ -57,7 +57,12 @@ to stay safe.
   anyone can register, someone can create an account with an address they do
   not own. Registration is closed by default; keep it closed and bring people in
   with invite links, or sign in through your identity provider. Admins are listed
-  by address in `ADMIN_EMAILS`, so register an address before listing it.
+  by address in `ADMIN_EMAILS`, so register an address before listing it. Adding
+  a person to a project or team by email address trusts the same thing: while
+  registration is open, the account behind an address may belong to someone who
+  registered it first, and the forms say so. A manager can also learn whether an
+  address has an account from the answer to an add attempt; such attempts are
+  written to the audit log with the address masked.
 - **Single instance.** The documented deployment is one server and one
   PostgreSQL database. Running several server replicas is not yet supported:
   background jobs and rate limits are per process.
