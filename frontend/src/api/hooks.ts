@@ -54,6 +54,7 @@ export const queryKeys = {
   waivers: (slug?: string, status?: string) =>
     slug === undefined ? (["waivers"] as const) : (["waivers", slug, status ?? ""] as const),
   scanSignal: (slug: string, branch: string) => ["scan-signal", slug, branch] as const,
+  waiverEvents: (slug: string, id: string) => ["waiver-events", slug, id] as const,
   capabilities: () => ["capabilities"] as const,
   invites: (slug: string) => ["invites", slug] as const,
   policy: (slug: string) => ["policy", slug] as const,

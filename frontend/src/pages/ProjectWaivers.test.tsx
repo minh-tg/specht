@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import type { Waiver } from "@/types/api";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -36,6 +36,7 @@ let waivers: Waiver[];
 let permissions: { approve_waivers: boolean; manage_waivers: boolean; };
 let calls: { url: string; method: string; body?: unknown; }[];
 let listFails: boolean;
+let updateError: string | null;
 
 function renderPage(userId = "u-ada") {
   const auth: AuthContextValue = {
@@ -75,6 +76,7 @@ function renderPage(userId = "u-ada") {
 describe("ProjectWaivers", () => {
   beforeEach(() => {
     listFails = false;
+    updateError = null;
     calls = [];
     permissions = { approve_waivers: true, manage_waivers: true };
     waivers = [
@@ -122,6 +124,11 @@ describe("ProjectWaivers", () => {
           return listFails
             ? jsonResponse({ error: { code: "internal", message: "down" } }, 500)
             : jsonResponse(waivers);
+        }
+        if (method === "PUT" && /\/waivers\/[^/]+$/.test(url)) {
+          return updateError
+            ? jsonResponse({ error: { code: "invalid", message: updateError } }, 400)
+            : jsonResponse(waivers[0]);
         }
         if (method === "POST" && /\/waivers\/[^/]+\/(approve|reject|withdraw|toggle)$/.test(url)) {
           return jsonResponse(waivers[0]);
@@ -243,5 +250,73 @@ describe("ProjectWaivers", () => {
     renderPage();
     expect(await screen.findByText("Could not load waivers.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it("hides Edit from people without manage_waivers", async () => {
+    permissions = { approve_waivers: true, manage_waivers: false };
+    renderPage();
+    await screen.findByText("openssh-server: security issue");
+    expect(screen.queryByRole("button", { name: /^Edit / })).not.toBeInTheDocument();
+  });
+
+  it("sends only the fields that changed when a manager edits a waiver", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByRole("button", { name: "Edit openssh-server: security issue" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Edit waiver" });
+    await user.type(within(dialog).getByLabelText("Description"), "Scoped to the bastion.");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
+    const sent = calls.find((c) => c.method === "PUT")!;
+    expect(sent.url).toMatch(/\/waivers\/w1$/);
+    expect(sent.body).toEqual({ description: "Scoped to the bastion." });
+    expect(await screen.findByText("Waiver saved")).toBeInTheDocument();
+  });
+
+  it("sends a new expiry as an RFC 3339 timestamp", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByRole("button", { name: "Edit openssh-server: security issue" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Edit waiver" });
+    fireEvent.change(within(dialog).getByLabelText("Expires"), {
+      target: { value: "2027-03-01" },
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
+    const body = calls.find((c) => c.method === "PUT")!.body as { expires_at: string; };
+    expect(body).toEqual({ expires_at: "2027-03-01T23:59:59.999Z" });
+  });
+
+  it("sends an empty expiry when No expiry is ticked", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByRole("button", { name: "Edit openssh-server: security issue" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Edit waiver" });
+    await user.click(within(dialog).getByRole("checkbox", { name: "No expiry" }));
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT")).toBe(true));
+    expect(calls.find((c) => c.method === "PUT")!.body).toEqual({ expires_at: "" });
+  });
+
+  it("shows a server error inside the edit dialog and keeps it open", async () => {
+    updateError = "Expiry must be in the future.";
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByRole("button", { name: "Edit openssh-server: security issue" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Edit waiver" });
+    await user.type(within(dialog).getByLabelText("Description"), "Scoped.");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+      "Expiry must be in the future.",
+    );
+    expect(screen.getByRole("dialog", { name: "Edit waiver" })).toBeInTheDocument();
   });
 });
