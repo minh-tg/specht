@@ -1152,6 +1152,7 @@ type Stores struct {
 	Identities    IdentityStore
 	SSOCodes      SSOCodeStore
 	Invites       InviteStore
+	PasswordReset PasswordResetStore
 }
 
 // Team is a named group of users that projects link for access.
@@ -1329,4 +1330,25 @@ type InviteStore interface {
 	AcceptWithNewAccount(ctx context.Context, tokenHash string, account InviteeAccount) (AcceptedInvite, error)
 	// AcceptAsUser does the same for an existing account.
 	AcceptAsUser(ctx context.Context, tokenHash, userID string) (AcceptedInvite, error)
+}
+
+// NewPasswordReset is the data to store for a reset link. TokenHash is the
+// SHA-256 of the token; the token itself is never stored.
+type NewPasswordReset struct {
+	TokenHash string
+	UserID    string
+	CreatedBy string
+	ExpiresAt time.Time
+}
+
+// PasswordResetStore persists password reset links.
+type PasswordResetStore interface {
+	// Create stores a link and retires every earlier unused link for the same
+	// account, in one transaction.
+	Create(ctx context.Context, in NewPasswordReset) error
+	// Redeem marks the link used, ends every session of its account and sets the
+	// new password hash, in one transaction. It returns the account id. A link
+	// that is unknown, used, retired or expired returns ErrNotFound and changes
+	// nothing.
+	Redeem(ctx context.Context, tokenHash, passwordHash string) (string, error)
 }
