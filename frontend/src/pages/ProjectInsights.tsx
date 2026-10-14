@@ -3,7 +3,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { SeverityBadge } from "@/components/ui/severity-badge";
-import { pluralize } from "@/lib/format";
+import { EMPTY_VALUE, pluralize } from "@/lib/format";
 import type { ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { BarChart, Sparkline } from "./project-insights/BarChart";
@@ -83,7 +83,10 @@ export function ProjectInsights() {
           label="block the gate now"
           alert={data.blocking_count > 0}
         />
-        <Stat value={agingData ? agingData.overdue_total : "–"} label="past their fix date" />
+        <Stat
+          value={agingData ? agingData.overdue_total : EMPTY_VALUE}
+          label="past their fix date"
+        />
         <Stat
           value={data.waiver_count}
           label={data.waiver_count === 1 ? "waiver in force" : "waivers in force"}

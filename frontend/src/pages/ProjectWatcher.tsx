@@ -6,7 +6,7 @@ import { SkeletonLines } from "@/components/SkeletonLines";
 import { StatusPill } from "@/components/StatusPill";
 import { Switch } from "@/components/Switch";
 import { Button } from "@/components/ui/button";
-import { formatDateTime, formatRelativeTime } from "@/lib/format";
+import { EMPTY_VALUE, formatDateTime, formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useParams } from "react-router-dom";
 import {
@@ -108,7 +108,7 @@ export function ProjectWatcher() {
             : "No poll has finished yet."}
         >
           <span className="font-mono text-[0.8125rem]">
-            {watcher.last_poll_at ? formatDateTime(watcher.last_poll_at) : "–"}
+            {watcher.last_poll_at ? formatDateTime(watcher.last_poll_at) : EMPTY_VALUE}
           </span>
         </SettingLine>
       </div>

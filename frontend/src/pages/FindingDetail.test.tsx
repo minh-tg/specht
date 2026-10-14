@@ -154,7 +154,7 @@ describe("FindingDetail dates", () => {
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
     // The invalid value must never render through toLocaleString() (which
     // throws RangeError on an Invalid Date) — the fallback shows instead.
-    expect(screen.getByText("–", { exact: true })).toBeInTheDocument();
+    expect(screen.getByText("None", { exact: true })).toBeInTheDocument();
   });
 });
 

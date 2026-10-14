@@ -1,4 +1,5 @@
 import { severityRank } from "@/lib/enums";
+import { EMPTY_VALUE } from "@/lib/format";
 import type { GateStatus } from "@/types/api";
 
 /**
@@ -48,9 +49,9 @@ export function blocksGate(
   return { blocks: false };
 }
 
-/** Human answer for a blocksGate result; an em-dash while the gate is unknown. */
+/** Human answer for a blocksGate result; EMPTY_VALUE while the gate is unknown. */
 export function blocksGateLabel(result: BlocksGateResult | null): string {
-  if (!result) return "–";
+  if (!result) return EMPTY_VALUE;
   if (result.blocks) return "Yes";
   if (result.reason === "ignored") return "No (ignored by triage)";
   if (result.reason === "below_floor") return "No (below the floor)";
