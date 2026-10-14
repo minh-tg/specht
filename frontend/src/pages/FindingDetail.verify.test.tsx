@@ -98,6 +98,18 @@ async function clickCheck() {
   await user.click(await screen.findByRole("button", { name: BUTTON }));
 }
 
+// The verdict region is the only status without a label; the evidence and sign-off sections
+// render labelled loading regions with the same role.
+function verdictStatus(): HTMLElement {
+  const found = screen.getAllByRole("status").find((el) => !el.hasAttribute("aria-label"));
+  if (!found) throw new Error("verdict status region not found");
+  return found;
+}
+
+async function findVerdictStatus(): Promise<HTMLElement> {
+  return await waitFor(() => verdictStatus());
+}
+
 describe("the finding page's fix check", () => {
   it("hides the check from a member who may not triage", async () => {
     role = "member";
@@ -112,7 +124,7 @@ describe("the finding page's fix check", () => {
     renderDetail();
 
     expect(await screen.findByRole("button", { name: BUTTON })).toBeEnabled();
-    const status = screen.getByRole("status");
+    const status = verdictStatus();
     expect(status).toHaveTextContent("");
     expect(requests.some((r) => r.method === "POST")).toBe(false);
   });
@@ -128,7 +140,7 @@ describe("the finding page's fix check", () => {
     const pending = await screen.findByRole("button", { name: "Checking..." });
     expect(pending).toBeDisabled();
     expect(pending.querySelector(".animate-spin")).not.toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent("");
+    expect(verdictStatus()).toHaveTextContent("");
 
     release();
     expect(await screen.findByRole("button", { name: BUTTON })).toBeEnabled();
@@ -140,7 +152,7 @@ describe("the finding page's fix check", () => {
     renderDetail();
     await clickCheck();
 
-    const status = await screen.findByRole("status");
+    const status = await findVerdictStatus();
     expect(status).toHaveTextContent("Still present in the latest complete scan.");
   });
 
@@ -153,7 +165,7 @@ describe("the finding page's fix check", () => {
     renderDetail();
     await clickCheck();
 
-    const status = await screen.findByRole("status");
+    const status = await findVerdictStatus();
     expect(status).toHaveTextContent(
       "Not conclusive: the newest scan cannot vouch for completeness.",
     );
@@ -166,7 +178,7 @@ describe("the finding page's fix check", () => {
     renderDetail();
     await clickCheck();
 
-    const status = await screen.findByRole("status");
+    const status = await findVerdictStatus();
     expect(status).toHaveTextContent(
       "Not conclusive: the newest scan cannot vouch for completeness.",
     );
@@ -185,7 +197,7 @@ describe("the finding page's fix check", () => {
     finding = baseFinding("fixed");
     await clickCheck();
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
+    expect(await findVerdictStatus()).toHaveTextContent(
       "Verified fixed. The finding is now marked fixed.",
     );
     await waitFor(() => {
@@ -203,7 +215,7 @@ describe("the finding page's fix check", () => {
     const findingGetsBefore = requests.filter((r) => r.path === "/api/v1/findings/f1").length;
 
     await clickCheck();
-    await screen.findByRole("status");
+    await findVerdictStatus();
     expect(requests.filter((r) => r.path === "/api/v1/findings/f1").length).toBe(findingGetsBefore);
   });
 
