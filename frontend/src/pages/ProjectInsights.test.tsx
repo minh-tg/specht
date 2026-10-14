@@ -75,6 +75,9 @@ describe("ProjectInsights", () => {
       const fail = () => jsonResponse({ error: { code: "internal", message: "down" } }, 500);
       if (url.endsWith("/stats")) return statsFails ? fail() : jsonResponse(stats);
       if (url.endsWith("/aging")) return agingFails ? fail() : jsonResponse(aging);
+      if (url.endsWith("/environments") || url.endsWith("/targets") || url.endsWith("/artifacts")) {
+        return jsonResponse([]);
+      }
       throw new Error(`unexpected request ${url}`);
     });
   });
@@ -177,6 +180,34 @@ describe("ProjectInsights", () => {
     expect(within(severity).getAllByRole("listitem")).toHaveLength(4);
     expect(await screen.findByRole("list", { name: "Open findings by age" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Past their fix date" })).not.toBeInTheDocument();
+  });
+
+  it("lists where the project runs after the findings blocks", async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/stats")) return jsonResponse(stats);
+      if (url.endsWith("/aging")) return jsonResponse(aging);
+      if (url.endsWith("/environments")) {
+        return jsonResponse([
+          {
+            id: "e1",
+            project_id: "p1",
+            name: "prod-eu",
+            tier: "production",
+            internet_facing: true,
+            data_sensitivity: "confidential",
+            created_at: "2026-10-01T00:00:00Z",
+          },
+        ]);
+      }
+      if (url.endsWith("/targets") || url.endsWith("/artifacts")) return jsonResponse([]);
+      throw new Error(`unexpected request ${url}`);
+    });
+    renderPage();
+    expect(await screen.findByRole("heading", { name: "Where it runs" })).toBeInTheDocument();
+    const environments = await screen.findByRole("list", { name: "Environments" });
+    expect(within(environments).getByText("prod-eu")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Open findings by severity" })).toBeInTheDocument();
   });
 
   it("offers a retry when the counts cannot be loaded", async () => {
