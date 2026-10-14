@@ -26,6 +26,7 @@ export interface WaiverRowActions {
   readonly onWithdraw: (waiver: Waiver) => void;
   readonly onRevoke: (waiver: Waiver) => void;
   readonly onEdit: (waiver: Waiver) => void;
+  readonly onDelete: (waiver: Waiver) => void;
 }
 
 function decisionLine(waiver: Waiver, who: ActorContext, reason: string | null): string | null {
@@ -149,6 +150,17 @@ export function WaiverRow({ slug, waiver, bucket, now, who, actions }: {
             onClick={() => actions.onEdit(waiver)}
           >
             Edit
+          </Button>
+        )}
+        {actions.canManage && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={actions.busy}
+            aria-label={`Delete ${title}`}
+            onClick={() => actions.onDelete(waiver)}
+          >
+            Delete
           </Button>
         )}
       </div>

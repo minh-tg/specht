@@ -125,6 +125,9 @@ describe("ProjectWaivers", () => {
             ? jsonResponse({ error: { code: "internal", message: "down" } }, 500)
             : jsonResponse(waivers);
         }
+        if (method === "DELETE" && /\/waivers\/[^/]+$/.test(url)) {
+          return jsonResponse(undefined, 204);
+        }
         if (method === "PUT" && /\/waivers\/[^/]+$/.test(url)) {
           return updateError
             ? jsonResponse({ error: { code: "invalid", message: updateError } }, 400)
@@ -318,5 +321,42 @@ describe("ProjectWaivers", () => {
       "Expiry must be in the future.",
     );
     expect(screen.getByRole("dialog", { name: "Edit waiver" })).toBeInTheDocument();
+  });
+
+  it("hides Delete from people without manage_waivers", async () => {
+    permissions = { approve_waivers: true, manage_waivers: false };
+    renderPage();
+    await screen.findByText("openssh-server: security issue");
+    expect(screen.queryByRole("button", { name: /^Delete / })).not.toBeInTheDocument();
+  });
+
+  it("asks before deleting, and Cancel sends nothing", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByRole("button", { name: "Delete openssh-server: security issue" }),
+    );
+    const dialog = await screen.findByRole("alertdialog", { name: "Delete this waiver?" });
+    expect(
+      within(dialog).getByText(
+        "Findings it covered start blocking the gate again. The waiver and its history are removed. This cannot be undone.",
+      ),
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(calls.some((c) => c.method === "DELETE")).toBe(false);
+  });
+
+  it("deletes the waiver once confirmed", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(
+      await screen.findByRole("button", { name: "Delete openssh-server: security issue" }),
+    );
+    const dialog = await screen.findByRole("alertdialog", { name: "Delete this waiver?" });
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "DELETE")).toBe(true));
+    expect(calls.find((c) => c.method === "DELETE")!.url).toMatch(/\/waivers\/w1$/);
+    expect(await screen.findByText("Waiver deleted")).toBeInTheDocument();
   });
 });
