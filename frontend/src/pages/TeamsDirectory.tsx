@@ -9,6 +9,7 @@ import {
 } from "@/api/hooks";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
+import { OpenRegistrationNote } from "@/components/OpenRegistrationNote";
 import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import {
@@ -328,6 +329,7 @@ export function TeamsDirectory() {
                   {addMemberMutation.isPending ? "Adding..." : "Add"}
                 </Button>
               </div>
+              <OpenRegistrationNote />
               {rosterInputError && <p className="text-destructive text-xs">{rosterInputError}</p>}
               {addMemberMutation.isError && (
                 <p className="text-destructive text-xs">

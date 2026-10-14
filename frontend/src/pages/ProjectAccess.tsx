@@ -11,6 +11,7 @@ import {
 import { useUserDirectory } from "@/api/users";
 import { DisabledReason } from "@/components/DisabledReason";
 import { ErrorState } from "@/components/ErrorState";
+import { OpenRegistrationNote } from "@/components/OpenRegistrationNote";
 import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import {
@@ -396,6 +397,7 @@ export function ProjectAccess() {
                 }}
                 placeholder="ada@example.com"
               />
+              <OpenRegistrationNote />
             </div>
 
             <div>
