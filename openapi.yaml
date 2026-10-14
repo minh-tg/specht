@@ -126,6 +126,30 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Health" }
 
+  /api/v1/ready:
+    get:
+      tags: [Meta]
+      operationId: getReady
+      summary: Readiness probe
+      description: |
+        Unauthenticated. Answers 200 when the instance can serve requests and
+        503 while its database is unreachable. The body never says why; the
+        reason goes to the server log. The answer is reused for one second, so
+        probing it cannot load the database. The container HEALTHCHECK and load
+        balancers use this; `/api/v1/health` stays a pure liveness probe.
+      security: []
+      responses:
+        "200":
+          description: Ready to serve.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ready" }
+        "503":
+          description: Not ready.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ready" }
+
   /api/v1/version:
     get:
       tags: [Meta]
@@ -2918,6 +2942,12 @@ components:
         status: { type: string, example: ok }
         version: { type: string, example: 1.0.0 }
         commit: { type: string, example: 54b60df }
+
+    Ready:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [ready, unavailable] }
 
     Version:
       type: object

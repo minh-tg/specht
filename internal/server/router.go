@@ -68,6 +68,10 @@ type RouterConfig struct {
 	// IngestConcurrency caps report ingests processed at once; zero or less
 	// means DefaultIngestConcurrency.
 	IngestConcurrency int
+	// Ready reports whether the instance can serve requests, normally by
+	// pinging the database. Nil means always ready, which suits tests and a
+	// router without a database.
+	Ready func(ctx context.Context) error
 }
 
 // NewRouter builds the chi router with middleware and all API routes.
@@ -112,6 +116,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	h := NewHandler(cfg.Usecases, revoker)
 
 	r.Get("/api/v1/health", healthHandler)
+	ready := cfg.Ready
+	if ready == nil {
+		ready = func(context.Context) error { return nil }
+	}
+	r.Get("/api/v1/ready", newReadiness(ready).handler)
 	r.Get("/api/v1/version", versionHandler)
 	r.Get("/api/v1/capabilities", capabilitiesHandler(cfg.RegistrationDisabled, cfg.OIDCEnabled && cfg.OIDC != nil, h.setupRequired))
 	// SSO/OIDC entry point: redirect to the provider's authorization URL.

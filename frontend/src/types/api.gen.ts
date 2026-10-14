@@ -24,6 +24,30 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/ready": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Readiness probe
+     * @description Unauthenticated. Answers 200 when the instance can serve requests and
+     *     503 while its database is unreachable. The body never says why; the
+     *     reason goes to the server log. The answer is reused for one second, so
+     *     probing it cannot load the database. The container HEALTHCHECK and load
+     *     balancers use this; `/api/v1/health` stays a pure liveness probe.
+     */
+    get: operations["getReady"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/version": {
     parameters: {
       query?: never;
@@ -1710,6 +1734,10 @@ export interface components {
       /** @example 54b60df */
       commit: string;
     };
+    Ready: {
+      /** @enum {string} */
+      status: "ready" | "unavailable";
+    };
     Version: {
       version: string;
       commit: string;
@@ -3041,6 +3069,35 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["Health"];
+        };
+      };
+    };
+  };
+  getReady: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Ready to serve. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Ready"];
+        };
+      };
+      /** @description Not ready. */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Ready"];
         };
       };
     };

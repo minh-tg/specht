@@ -23,7 +23,7 @@ func healthcheckURL(addr string) string {
 	case "", "0.0.0.0", "::":
 		host = "127.0.0.1"
 	}
-	return "http://" + net.JoinHostPort(host, port) + "/api/v1/health"
+	return "http://" + net.JoinHostPort(host, port) + "/api/v1/ready"
 }
 
 // runHealthcheck reports an error unless url answers 200 within timeout.

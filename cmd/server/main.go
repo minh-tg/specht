@@ -203,6 +203,7 @@ func main() {
 
 		RegistrationDisabled: cfg.RegistrationDisabled,
 		IngestConcurrency:    cfg.IngestConcurrency,
+		Ready:                pool.Ping,
 		TrustedProxies:       cfg.TrustedProxies,
 		RateLimit: server.RateLimitConfig{
 			Enabled:        cfg.RateLimit.Enable,

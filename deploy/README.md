@@ -29,7 +29,8 @@ and run `specht migrate` as a separately controlled release step.
 
 ```bash
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env.prod up -d --build
-curl -fsS http://localhost:8080/api/v1/health
+curl -fsS http://localhost:8080/api/v1/health   # liveness: the process is up
+curl -fsS http://localhost:8080/api/v1/ready    # readiness: the database answers
 curl -fsS http://localhost:8080/api/v1/version
 ```
 
@@ -308,6 +309,11 @@ migrations never migrate down automatically.
   unauthenticated routes, generous per-caller budgets behind auth. Login and
   register always get their own 5-per-minute per-IP bucket.
 - Request bodies are size-capped; ingest rejects oversized scans with 413.
+- `GET /api/v1/ready` answers 200 while the database is reachable and 503
+  when it is not, with no detail in the body. The image's HEALTHCHECK uses it,
+  and so should a load balancer or uptime monitor. `GET /api/v1/health` only
+  says the process is up. Both are public, and readiness reuses its answer for
+  one second so probing it cannot load the database.
 - `LOG_LEVEL=info` (or `warn`); audit events go to structured logs.
 - Keep the image updated; rebuilds pull a fresh Alpine + `go mod` pins.
 - Watcher (`WATCHER_ENABLE`) and SSO stay off unless configured.
