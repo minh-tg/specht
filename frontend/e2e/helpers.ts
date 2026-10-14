@@ -85,6 +85,27 @@ export async function uiLogin(page: Page): Promise<void> {
   await expect(page).toHaveURL(/\/$/);
 }
 
+/** Signs the page in as any account, for the journeys that need a non-admin person. */
+export async function uiLoginAs(page: Page, email: string, password: string): Promise<void> {
+  await page.goto("/login");
+  await page.fill("#login-email", email);
+  await page.fill("#login-password", password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/$/);
+}
+
+/** Registers a new account through the API and returns its credentials. */
+export async function registerPerson(
+  request: APIRequestContext,
+  prefix: string,
+): Promise<{ email: string; password: string; }> {
+  const email = `${uniq(prefix)}@example.com`;
+  const password = "journey-person-123";
+  const res = await request.post("/api/v1/auth/register", { data: { email, password } });
+  expect(res.ok(), await res.text()).toBeTruthy();
+  return { email, password };
+}
+
 /** Files a waiver request for the project's first finding and returns that request's id. */
 export async function requestWaiver(
   request: APIRequestContext,
