@@ -1,11 +1,16 @@
-import { useMe, useProjects } from "@/api/hooks";
+import { useMe, useProjectRole, useProjects } from "@/api/hooks";
 import { useAuth } from "@/auth/useAuth";
 import { type Command, currentProjectSlug } from "@/lib/commands";
 import { nextTheme, useTheme } from "@/lib/theme";
 import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-const PROJECT_PAGES: readonly { path: string; label: string; keywords?: string; }[] = [
+const PROJECT_PAGES: readonly {
+  path: string;
+  label: string;
+  keywords?: string;
+  adminOnly?: boolean;
+}[] = [
   { path: "findings", label: "Findings", keywords: "vulnerabilities issues" },
   { path: "reports", label: "Reports", keywords: "scans history" },
   { path: "access", label: "Access & Members", keywords: "people teams invite" },
@@ -15,6 +20,12 @@ const PROJECT_PAGES: readonly { path: string; label: string; keywords?: string; 
   { path: "watcher", label: "Watcher", keywords: "cve feed" },
   { path: "setup", label: "CI setup", keywords: "pipeline github action key" },
   { path: "reports/upload", label: "Upload a report", keywords: "ingest scan file" },
+  {
+    path: "settings",
+    label: "Project settings",
+    keywords: "rename describe name description delete",
+    adminOnly: true,
+  },
 ];
 
 /**
@@ -31,6 +42,7 @@ export function useCommands(): Command[] {
   const { data: projects } = useProjects();
   const isAdmin = me?.role === "admin";
   const slug = currentProjectSlug(pathname);
+  const { isAdmin: isProjectAdmin } = useProjectRole(slug ?? "");
 
   return useMemo(() => {
     const go = (to: string) => () => navigate(to);
@@ -38,6 +50,7 @@ export function useCommands(): Command[] {
 
     if (slug) {
       for (const page of PROJECT_PAGES) {
+        if (page.adminOnly && !isProjectAdmin) continue;
         list.push({
           id: `project:${page.path}`,
           group: "This project",
@@ -101,5 +114,5 @@ export function useCommands(): Command[] {
       run: logout,
     });
     return list;
-  }, [slug, projects, isAdmin, theme, setTheme, logout, navigate]);
+  }, [slug, isProjectAdmin, projects, isAdmin, theme, setTheme, logout, navigate]);
 }

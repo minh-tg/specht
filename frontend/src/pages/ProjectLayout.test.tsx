@@ -107,4 +107,25 @@ describe("ProjectLayout", () => {
 
     expect(screen.getByRole("link", { name: "Reports" })).toHaveAttribute("aria-current", "page");
   });
+
+  it("offers the settings tab to a project admin", async () => {
+    mockApi();
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    client.setQueryData(queryKeys.project("alpha"), project);
+    client.setQueryData(queryKeys.me(), { id: "u1", email: "a@b.c", role: "admin" });
+    renderLayoutIn(client, "/alpha/findings");
+
+    expect(await screen.findByRole("link", { name: "Settings" })).toHaveAttribute(
+      "href",
+      "/alpha/settings",
+    );
+  });
+
+  it("hides the settings tab from a member", () => {
+    renderLayout();
+
+    expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument();
+  });
 });

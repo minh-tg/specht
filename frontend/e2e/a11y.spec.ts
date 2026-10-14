@@ -288,6 +288,10 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await expect(page.getByRole("switch", { name: "Watch this project" })).toBeVisible();
   await audit(page, "project watcher");
 
+  await page.goto(`/${slug}/settings`);
+  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+  await audit(page, "project settings");
+
   // Admin: the page, and the confirmation that ends an account.
   await page.goto("/admin");
   await expect(page.getByRole("list", { name: "People" })).toBeVisible();
