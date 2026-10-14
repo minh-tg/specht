@@ -134,7 +134,7 @@ describe("blocksGate", () => {
 
 describe("blocksGateLabel", () => {
   it("labels each verdict", () => {
-    expect(blocksGateLabel(null)).toBe("–");
+    expect(blocksGateLabel(null)).toBe("None");
     expect(blocksGateLabel({ blocks: true })).toBe("Yes");
     expect(blocksGateLabel({ blocks: false })).toBe("No");
     expect(blocksGateLabel({ blocks: false, reason: "ignored" })).toBe("No (ignored by triage)");

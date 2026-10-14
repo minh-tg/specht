@@ -5,15 +5,12 @@ import { ErrorState } from "@/components/ErrorState";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
-import { formatDateTime, formatRelativeTime } from "@/lib/format";
+import { EMPTY_VALUE, formatDateTime, formatRelativeTime } from "@/lib/format";
 import { blockerCount, degradedMessage, projectVerdict, type Verdict } from "@/lib/verdict";
 import type { GateStatus, Project, ProjectStats } from "@/types/api";
 import { useQueries } from "@tanstack/react-query";
 import { type ReactNode } from "react";
 import { Link } from "react-router-dom";
-
-/** Em dash shown wherever a project has no value to report. */
-const EMPTY = "–";
 
 const COLUMNS = ["Project", "Verdict", "Blocking", "Findings", "Last scan"] as const;
 const SKELETON_ROW_COUNT = 3;
@@ -212,10 +209,10 @@ function ProjectTableRow({ row }: { readonly row: ProjectRowData; }) {
   const verdict = projectVerdict({ gate, stats });
 
   const degraded = failed ? null : degradedMessage(stats);
-  const blocking = !failed && verdict === "blocked" ? String(blockerCount(gate)) : EMPTY;
-  const findings = !failed && stats ? stats.total_findings : EMPTY;
+  const blocking = !failed && verdict === "blocked" ? String(blockerCount(gate)) : EMPTY_VALUE;
+  const findings = !failed && stats ? stats.total_findings : EMPTY_VALUE;
 
-  let lastScan: ReactNode = EMPTY;
+  let lastScan: ReactNode = EMPTY_VALUE;
   if (!failed && stats) {
     if (stats.report_count === 0) {
       lastScan = "Never";
