@@ -7,6 +7,7 @@ import { EMPTY_VALUE, pluralize } from "@/lib/format";
 import type { ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { BarChart, Sparkline } from "./project-insights/BarChart";
+import { Inventory } from "./project-insights/Inventory";
 import {
   ageBars,
   daysOverdue,
@@ -179,6 +180,8 @@ export function ProjectInsights() {
           )}
         </section>
       )}
+
+      <Inventory slug={currentSlug} />
     </section>
   );
 }
