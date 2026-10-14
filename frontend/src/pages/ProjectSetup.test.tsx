@@ -287,13 +287,15 @@ describe("ProjectSetup", () => {
     }
   });
 
-  it("shows a not-found message and no pipeline when the project does not exist", async () => {
+  it("shows an error with retry and a way back when the project cannot be loaded", async () => {
     projectStatus = 404;
     renderPage();
 
-    expect(await screen.findByRole("heading", { name: "Project not found" })).toBeInTheDocument();
+    expect(await screen.findByText("Could not load this project.")).toBeInTheDocument();
+    expect(document.querySelector("[data-slot=\"skeleton\"]")).not.toBeInTheDocument();
     expect(document.querySelectorAll("pre")).toHaveLength(0);
     expect(screen.queryByRole("button", { name: "Create key" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Back to projects" })).toHaveAttribute("href", "/");
   });
 
