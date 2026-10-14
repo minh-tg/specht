@@ -282,7 +282,7 @@ function parseTotalCount(header: string | null): number | null {
 
 /** Runs a request through the shared auth/refresh path and keeps the response
  * metadata that [`apiFetch`] discards. */
-async function apiFetchResponse<T>(
+export async function apiFetchResponse<T>(
   path: string,
   options: ApiFetchOptions,
 ): Promise<SendResult<T>> {

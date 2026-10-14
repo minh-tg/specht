@@ -1,7 +1,9 @@
+import { Toaster } from "@/components/ui/sonner";
 import { formatDateTime } from "@/lib/format";
-import { createTestQueryClient } from "@/test/utils";
+import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { vi } from "vitest";
 import { ReportHistory } from "./ReportHistory";
@@ -227,3 +229,203 @@ describe("ReportHistory", () => {
     expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 });
+
+interface RouteOptions {
+  me?: Record<string, unknown>;
+  members?: unknown[];
+  reports?: unknown[];
+  onDelete?: () => Response;
+}
+
+let requests: Array<{ path: string; method: string; }>;
+
+function routeFetch(options: RouteOptions = {}) {
+  requests = [];
+  globalThis.fetch = vi.fn().mockImplementation(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input), "http://localhost");
+      const method = (init?.method ?? "GET").toUpperCase();
+      requests.push({ path: url.pathname, method });
+      if (method === "DELETE") {
+        return options.onDelete?.() ?? new Response(null, {
+          status: 204,
+          headers: { "X-Archived-Findings": "3" },
+        });
+      }
+      if (url.pathname === "/api/v1/me") {
+        return jsonResponse(options.me ?? { id: "u-mem", email: "m@example.corp", role: "member" });
+      }
+      if (url.pathname.endsWith("/members")) return jsonResponse(options.members ?? []);
+      return jsonResponse(options.reports ?? REPORTS);
+    },
+  );
+}
+
+function renderAsProject() {
+  return render(
+    <QueryClientProvider client={createTestQueryClient()}>
+      <MemoryRouter initialEntries={["/test-project/reports"]}>
+        <Routes>
+          <Route path="/:slug/reports" element={<ReportHistory />} />
+        </Routes>
+      </MemoryRouter>
+      <Toaster />
+    </QueryClientProvider>,
+  );
+}
+
+const PROJECT_ADMIN = {
+  me: { id: "u-adm", email: "a@example.corp", role: "member" },
+  members: [{
+    project_id: "p1",
+    user_id: "u-adm",
+    role: "admin",
+    created_at: "2026-09-01T00:00:00Z",
+  }],
+};
+
+function cardFor(toolName: string): HTMLElement {
+  const card = screen.getByText(toolName).closest("div.bg-card");
+  if (!(card instanceof HTMLElement)) throw new Error(`no card for ${toolName}`);
+  return card;
+}
+
+describe("ReportHistory delete action", () => {
+  it("hides delete from a project member who is not an admin", async () => {
+    routeFetch({ members: [{ project_id: "p1", user_id: "u-mem", role: "member" }] });
+    renderAsProject();
+
+    await screen.findByText("trivy");
+    await waitFor(() => expect(requests.some((r) => r.path === "/api/v1/me")).toBe(true));
+    expect(screen.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+  });
+
+  it("shows delete on settled reports only, for a project admin", async () => {
+    routeFetch(PROJECT_ADMIN);
+    renderAsProject();
+
+    await screen.findByText("trivy");
+    await waitFor(() =>
+      expect(within(cardFor("trivy")).getByRole("button", { name: "Delete" })).toBeInTheDocument()
+    );
+    expect(within(cardFor("semgrep")).getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    expect(within(cardFor("osv-scanner")).queryByRole("button", { name: "Delete" })).toBeNull();
+  });
+
+  it("shows delete to a global admin who is not a project member", async () => {
+    routeFetch({ me: { id: "u-root", email: "root@example.corp", role: "admin" }, members: [] });
+    renderAsProject();
+
+    await screen.findByText("trivy");
+    await waitFor(() =>
+      expect(within(cardFor("trivy")).getByRole("button", { name: "Delete" })).toBeInTheDocument()
+    );
+  });
+
+  it("asks before sending the delete and sends nothing on Cancel", async () => {
+    routeFetch(PROJECT_ADMIN);
+    renderAsProject();
+    const user = userEvent.setup();
+
+    await user.click(
+      await within(await cardForAsync("trivy")).findByRole("button", { name: "Delete" }),
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("Delete this report?")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "This removes the report's occurrences and package list. Findings that only this report showed are archived, so they stop blocking the gate. This cannot be undone.",
+      ),
+    ).toBeInTheDocument();
+    expect(requests.some((r) => r.method === "DELETE")).toBe(false);
+
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+    expect(requests.some((r) => r.method === "DELETE")).toBe(false);
+  });
+
+  it("sends the delete after confirmation and toasts the archived count", async () => {
+    routeFetch(PROJECT_ADMIN);
+    renderAsProject();
+    const user = userEvent.setup();
+
+    await user.click(
+      await within(await cardForAsync("trivy")).findByRole("button", { name: "Delete" }),
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete report" }));
+
+    expect(await screen.findByText("Report deleted. 3 findings archived.")).toBeInTheDocument();
+    expect(requests).toContainEqual({
+      path: "/api/v1/projects/test-project/reports/r1",
+      method: "DELETE",
+    });
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+  });
+
+  it("uses the singular for one archived finding", async () => {
+    routeFetch({
+      ...PROJECT_ADMIN,
+      onDelete: () => new Response(null, { status: 204, headers: { "X-Archived-Findings": "1" } }),
+    });
+    renderAsProject();
+    const user = userEvent.setup();
+
+    await user.click(
+      await within(await cardForAsync("trivy")).findByRole("button", { name: "Delete" }),
+    );
+    await user.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Delete report" }),
+    );
+    expect(await screen.findByText("Report deleted. 1 finding archived.")).toBeInTheDocument();
+  });
+
+  it("explains a 409 inside the dialog and keeps it open", async () => {
+    routeFetch({
+      ...PROJECT_ADMIN,
+      onDelete: () => jsonResponse({ error: { code: "report_processing", message: "busy" } }, 409),
+    });
+    renderAsProject();
+    const user = userEvent.setup();
+
+    await user.click(
+      await within(await cardForAsync("semgrep")).findByRole("button", { name: "Delete" }),
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete report" }));
+
+    expect(
+      await within(dialog).findByText(
+        "This report is still being processed. Try again when it finishes.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+  });
+
+  it("shows the server message for any other error and keeps the dialog open", async () => {
+    routeFetch({
+      ...PROJECT_ADMIN,
+      onDelete: () =>
+        jsonResponse({
+          error: { code: "forbidden", message: "Only project admins can delete reports." },
+        }, 403),
+    });
+    renderAsProject();
+    const user = userEvent.setup();
+
+    await user.click(
+      await within(await cardForAsync("semgrep")).findByRole("button", { name: "Delete" }),
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete report" }));
+
+    expect(await within(dialog).findByText("Only project admins can delete reports."))
+      .toBeInTheDocument();
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+  });
+});
+
+async function cardForAsync(toolName: string): Promise<HTMLElement> {
+  await screen.findByText(toolName);
+  return cardFor(toolName);
+}

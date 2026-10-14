@@ -1,13 +1,28 @@
-import { useReports } from "@/api/hooks";
+import { APIError } from "@/api/client";
+import { useProjectRole, useReports } from "@/api/hooks";
+import { useDeleteReport } from "@/api/reportActions";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime, pluralize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { isReportInProgress } from "@/lib/verdict";
-import type { ReportStatus } from "@/types/api";
+import type { Report, ReportStatus } from "@/types/api";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
+
+const CONFLICT_MESSAGE = "This report is still being processed. Try again when it finishes.";
 
 const STATUS_LABELS: Record<ReportStatus, string> = {
   processing: "Processing",
@@ -36,6 +51,15 @@ function statusMeta(status: string): { label: string; style: string; } {
 export function ReportHistory() {
   const { slug } = useParams<{ slug: string; }>();
   const { data: reports, isLoading, isError, error, refetch } = useReports(slug ?? "");
+  const { isAdmin } = useProjectRole(slug ?? "");
+  const deleteMutation = useDeleteReport(slug ?? "");
+  const [pendingDelete, setPendingDelete] = useState<Report | null>(null);
+
+  let deleteError: string | null = null;
+  if (deleteMutation.isError) {
+    const err = deleteMutation.error;
+    deleteError = err instanceof APIError && err.status === 409 ? CONFLICT_MESSAGE : err.message;
+  }
 
   if (isLoading) {
     return (
@@ -129,15 +153,67 @@ export function ReportHistory() {
                 )}
               </p>
             )}
-            <div className="text-muted-foreground mt-2 text-xs">
-              {formatDateTime(r.created_at)}
-              {r.total_findings != null && (
-                <span className="ml-3">{pluralize(r.total_findings, "finding")}</span>
+            <div className="mt-2 flex items-center justify-between">
+              <div className="text-muted-foreground text-xs">
+                {formatDateTime(r.created_at)}
+                {r.total_findings != null && (
+                  <span className="ml-3">{pluralize(r.total_findings, "finding")}</span>
+                )}
+              </div>
+              {isAdmin && !isReportInProgress(r.status) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    deleteMutation.reset();
+                    setPendingDelete(r);
+                  }}
+                  className="text-destructive hover:text-destructive/80 text-xs font-medium"
+                >
+                  Delete
+                </button>
               )}
             </div>
           </div>
         );
       })}
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open && !deleteMutation.isPending) setPendingDelete(null);
+        }}
+        onOpenChangeComplete={(open) => {
+          if (!open) deleteMutation.reset();
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this report?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the report's occurrences and package list. Findings that only this report
+              showed are archived, so they stop blocking the gate. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {deleteError && <p role="alert" className="text-destructive text-sm">{deleteError}</p>}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={async (event) => {
+                event.preventDefault();
+                if (!pendingDelete) return;
+                try {
+                  await deleteMutation.mutateAsync(pendingDelete.id);
+                  setPendingDelete(null);
+                } catch {}
+              }}
+            >
+              {deleteMutation.isPending ? "Deleting..." : "Delete report"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
