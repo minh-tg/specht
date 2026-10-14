@@ -492,6 +492,40 @@ export interface Aging {
   truncated: boolean;
 }
 
+/** An environment a scan described: where the code runs, and how exposed it is. */
+export interface Environment {
+  id: string;
+  project_id: string;
+  name: string;
+  tier: string;
+  internet_facing: boolean;
+  data_sensitivity: string;
+  created_at: string;
+}
+
+/** A repository, image, or other subject a scan ran against. */
+export interface Target {
+  id: string;
+  project_id: string;
+  name: string;
+  kind: string;
+  locator?: string;
+  created_at: string;
+}
+
+/** A build artifact seen by scans, such as a container image or an SBOM. */
+export interface Artifact {
+  id: string;
+  project_id: string;
+  target_id?: string;
+  artifact_type: string;
+  name: string;
+  version?: string;
+  digest?: string;
+  locator?: string;
+  created_at: string;
+}
+
 export type WatcherStatus = "disabled" | "server_off" | "waiting" | "ok" | "stale" | "failing";
 
 /** A project's own watcher settings and what they amount to on this server. */
