@@ -1,13 +1,22 @@
 import { useProject, useProjectRole } from "@/api/hooks";
-import { type ProjectChange, useUpdateProject } from "@/api/projectActions";
+import { type ProjectChange, useDeleteProject, useUpdateProject } from "@/api/projectActions";
 import { ErrorState } from "@/components/ErrorState";
 import { SkeletonLines } from "@/components/SkeletonLines";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type { Project } from "@/types/api";
 import { type SubmitEvent, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 /**
  * The project's settings for its admins: the details (name and description) and the delete area.
@@ -40,6 +49,7 @@ export function ProjectSettings() {
     <section aria-labelledby="settings-heading" className="grid gap-8">
       <h2 id="settings-heading" className="text-lg font-semibold">Settings</h2>
       <DetailsForm key={project.updated_at} project={project} />
+      <DeleteSection project={project} />
     </section>
   );
 }
@@ -119,5 +129,91 @@ function DetailsForm({ project }: { project: Project; }) {
         </div>
       </form>
     </div>
+  );
+}
+
+/**
+ * The danger area. Deleting asks for the project's slug to be typed, so the button stays off until
+ * the person has typed it exactly. A failed delete keeps the dialog open with the server's reason.
+ */
+function DeleteSection({ project }: { project: Project; }) {
+  const navigate = useNavigate();
+  const remove = useDeleteProject(project.slug);
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const matches = typed === project.slug;
+
+  function changeOpen(next: boolean) {
+    if (remove.isPending) return;
+    setOpen(next);
+    if (!next) {
+      setTyped("");
+      remove.reset();
+    }
+  }
+
+  function confirm() {
+    if (!matches || remove.isPending) return;
+    remove.mutate(undefined, {
+      onSuccess: () => navigate("/", { replace: true }),
+    });
+  }
+
+  return (
+    <section
+      aria-labelledby="delete-heading"
+      className="border-destructive grid max-w-xl gap-3 rounded-md border-2 p-4"
+    >
+      <h3 id="delete-heading" className="text-[0.9375rem] font-semibold">
+        Delete this project
+      </h3>
+      <p className="text-muted-foreground text-sm">
+        Reports, findings, waivers, members and API keys of this project are deleted for good. This
+        cannot be undone.
+      </p>
+      <div>
+        <Button variant="destructive" onClick={() => changeOpen(true)}>Delete project…</Button>
+      </div>
+
+      <AlertDialog open={open} onOpenChange={changeOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {project.name}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The project and everything in it is removed. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid gap-1.5">
+            <label htmlFor="delete-confirm" className="text-sm font-medium">
+              Type {project.slug} to confirm
+            </label>
+            <Input
+              id="delete-confirm"
+              autoComplete="off"
+              value={typed}
+              onChange={(event) => setTyped(event.target.value)}
+            />
+          </div>
+          {remove.isError && (
+            <p
+              role="alert"
+              className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
+            >
+              {remove.error.message || "Could not delete the project."}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={remove.isPending}>Cancel</AlertDialogCancel>
+            <Button
+              variant="destructive"
+              disabled={!matches || remove.isPending}
+              onClick={confirm}
+            >
+              Delete this project
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </section>
   );
 }

@@ -3,7 +3,7 @@ import { AuthContext, type AuthContextValue } from "@/auth/context";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import type { Project } from "@/types/api";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -33,6 +33,8 @@ let role: "admin" | "member";
 let projectRole: "admin" | "member";
 let writes: { method: string; body: unknown; }[];
 let writeError: string | null;
+let deleteError: string | null;
+let deletes: number;
 
 function renderPage() {
   const client = createTestQueryClient();
@@ -58,6 +60,8 @@ describe("ProjectSettings", () => {
     projectRole = "admin";
     writes = [];
     writeError = null;
+    deleteError = null;
+    deletes = 0;
     globalThis.fetch = vi.fn().mockImplementation(
       async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -85,6 +89,13 @@ describe("ProjectSettings", () => {
             return jsonResponse({ error: { code: "invalid_name", message: writeError } }, 400);
           }
           project = { ...project, ...body, updated_at: "2025-02-01T00:00:00Z" };
+          return jsonResponse(project);
+        }
+        if (url.endsWith("/api/v1/projects/payments") && method === "DELETE") {
+          deletes += 1;
+          if (deleteError) {
+            return jsonResponse({ error: { code: "internal", message: deleteError } }, 500);
+          }
           return jsonResponse(project);
         }
         throw new Error(`unexpected request ${method} ${url}`);
@@ -176,5 +187,74 @@ describe("ProjectSettings", () => {
     projectRole = "member";
     renderPage();
     expect(await screen.findByLabelText("Name")).toBeInTheDocument();
+  });
+
+  describe("delete this project", () => {
+    async function openDialog(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(await screen.findByRole("button", { name: "Delete project…" }));
+      return screen.findByRole("alertdialog");
+    }
+
+    it("explains what is removed before offering the delete", async () => {
+      renderPage();
+      expect(
+        await screen.findByText(
+          "Reports, findings, waivers, members and API keys of this project are deleted for good. This cannot be undone.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("keeps the destructive button disabled until the slug is typed exactly", async () => {
+      const user = userEvent.setup();
+      renderPage();
+      const dialog = await openDialog(user);
+      const confirm = within(dialog).getByRole("button", { name: "Delete this project" });
+      expect(confirm).toBeDisabled();
+
+      await user.type(within(dialog).getByLabelText("Type payments to confirm"), "Payments");
+      expect(confirm).toBeDisabled();
+
+      await user.clear(within(dialog).getByLabelText("Type payments to confirm"));
+      await user.type(within(dialog).getByLabelText("Type payments to confirm"), "payments");
+      expect(confirm).toBeEnabled();
+    });
+
+    it("sends nothing when cancelled", async () => {
+      const user = userEvent.setup();
+      renderPage();
+      const dialog = await openDialog(user);
+      await user.type(within(dialog).getByLabelText("Type payments to confirm"), "payments");
+      await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
+      expect(deletes).toBe(0);
+      expect(screen.getByLabelText("Name")).toBeInTheDocument();
+    });
+
+    it("deletes the project and goes home", async () => {
+      const user = userEvent.setup();
+      renderPage();
+      const dialog = await openDialog(user);
+      await user.type(within(dialog).getByLabelText("Type payments to confirm"), "payments");
+      await user.click(within(dialog).getByRole("button", { name: "Delete this project" }));
+
+      expect(await screen.findByText("Projects home")).toBeInTheDocument();
+      expect(deletes).toBe(1);
+    });
+
+    it("keeps the dialog open and shows the server's reason when the delete fails", async () => {
+      deleteError = "the database is busy";
+      const user = userEvent.setup();
+      renderPage();
+      const dialog = await openDialog(user);
+      await user.type(within(dialog).getByLabelText("Type payments to confirm"), "payments");
+      await user.click(within(dialog).getByRole("button", { name: "Delete this project" }));
+
+      expect(await within(dialog).findByRole("alert")).toHaveTextContent(
+        "the database is busy",
+      );
+      expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+      expect(screen.queryByText("Projects home")).not.toBeInTheDocument();
+    });
   });
 });
