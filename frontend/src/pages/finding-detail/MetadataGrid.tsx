@@ -22,10 +22,10 @@ export function MetadataGrid({ finding }: { readonly finding: Finding; }) {
     <dl className="border-border grid grid-cols-[auto_1fr] gap-x-5 gap-y-2.5 border-t pt-4 text-sm">
       <Fact label="Status">{technicalStateLabel(finding.state) ?? EMPTY_VALUE}</Fact>
       <Fact label="Triage">{analysisStateLabel(finding.analysis_state) ?? "Not triaged"}</Fact>
-      {finding.current_score !== null && (
+      {typeof finding.current_score === "number" && (
         <Fact label="CVSS" mono>{finding.current_score.toFixed(1)}</Fact>
       )}
-      {intel?.epss !== undefined && <Fact label="EPSS" mono>{intel.epss.toFixed(2)}</Fact>}
+      {typeof intel?.epss === "number" && <Fact label="EPSS" mono>{intel.epss.toFixed(2)}</Fact>}
       {intel && (
         <Fact label="Known exploited">
           {intel.kev

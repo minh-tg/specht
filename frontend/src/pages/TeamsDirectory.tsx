@@ -78,7 +78,7 @@ function TeamCard({
               </span>
             )
             : <span>{members?.length ?? 0} members</span>}
-          <span>Created {new Date(team.created_at).toLocaleDateString()}</span>
+          {team.created_at && <span>Created {new Date(team.created_at).toLocaleDateString()}</span>}
         </div>
 
         <div className="flex gap-2">
