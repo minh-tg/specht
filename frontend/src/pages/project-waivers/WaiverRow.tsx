@@ -17,6 +17,7 @@ function FirstSeverity({ findingId }: { readonly findingId: string; }) {
 export interface WaiverRowActions {
   readonly canDecide: boolean;
   readonly canRevoke: boolean;
+  readonly canManage: boolean;
   /** The signed-in person, so they can take back their own request. */
   readonly currentUserId: string | null;
   readonly busy: boolean;
@@ -24,6 +25,7 @@ export interface WaiverRowActions {
   readonly onReject: (waiver: Waiver) => void;
   readonly onWithdraw: (waiver: Waiver) => void;
   readonly onRevoke: (waiver: Waiver) => void;
+  readonly onEdit: (waiver: Waiver) => void;
 }
 
 function decisionLine(waiver: Waiver, who: ActorContext, reason: string | null): string | null {
@@ -136,6 +138,17 @@ export function WaiverRow({ slug, waiver, bucket, now, who, actions }: {
             onClick={() => actions.onRevoke(waiver)}
           >
             Revoke
+          </Button>
+        )}
+        {actions.canManage && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={actions.busy}
+            aria-label={`Edit ${title}`}
+            onClick={() => actions.onEdit(waiver)}
+          >
+            Edit
           </Button>
         )}
       </div>

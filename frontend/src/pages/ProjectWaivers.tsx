@@ -16,6 +16,7 @@ import {
   waiverBucket,
 } from "./project-waivers/classify";
 import { DecideDialog, type Decision } from "./project-waivers/DecideDialog";
+import { WaiverEditDialog } from "./project-waivers/WaiverEditDialog";
 import { WaiverRow } from "./project-waivers/WaiverRow";
 
 const EMPTY_TEXT: Record<WaiverBucket, string> = {
@@ -50,6 +51,7 @@ export function ProjectWaivers() {
   const revoke = useRevokeWaiver(currentSlug);
 
   const [deciding, setDeciding] = useState<{ waiver: Waiver; decision: Decision; } | null>(null);
+  const [editing, setEditing] = useState<Waiver | null>(null);
 
   // Expiry is judged as of the last fetch, so the lists only move when the data does.
   const now = useMemo(() => new Date(dataUpdatedAt), [dataUpdatedAt]);
@@ -150,12 +152,14 @@ export function ProjectWaivers() {
                   actions={{
                     canDecide: !!permissions?.approve_waivers,
                     canRevoke: !!permissions?.manage_waivers,
+                    canManage: !!permissions?.manage_waivers,
                     currentUserId: userId,
                     busy,
                     onApprove: (w) => setDeciding({ waiver: w, decision: "approve" }),
                     onReject: (w) => setDeciding({ waiver: w, decision: "reject" }),
                     onWithdraw: (w) => withdraw.mutate(w.id),
                     onRevoke: (w) => revoke.mutate(w.id),
+                    onEdit: (w) => setEditing(w),
                   }}
                 />
               ))}
@@ -174,6 +178,12 @@ export function ProjectWaivers() {
         waiver={deciding?.waiver ?? null}
         decision={deciding?.decision ?? "approve"}
         onClose={() => setDeciding(null)}
+      />
+
+      <WaiverEditDialog
+        slug={currentSlug}
+        waiver={editing}
+        onClose={() => setEditing(null)}
       />
     </section>
   );
