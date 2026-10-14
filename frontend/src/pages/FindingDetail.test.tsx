@@ -634,7 +634,7 @@ describe("FindingDetail reachability rendering", () => {
 
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
     const latest = latestParagraph();
-    expect(latest.textContent).toContain("— short reason");
+    expect(latest.textContent).toContain(". short reason");
     expect(latest.textContent).not.toContain("…");
   });
 
@@ -765,7 +765,7 @@ describe("FindingDetail suggested action", () => {
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
     const suggestion = screen.getByText(/^Suggested:/);
     expect(suggestion).toHaveTextContent(
-      "Suggested: upgrade lodash@4.17.21 (confidence High) — Fixes CVE-2021-23337",
+      "Suggested: upgrade lodash@4.17.21 (confidence High). Fixes CVE-2021-23337",
     );
     expect(suggestion).toHaveTextContent("lodash@4.17.21");
     expect(suggestion).toHaveTextContent("Fixes CVE-2021-23337");
@@ -794,7 +794,7 @@ describe("FindingDetail suggested action", () => {
     expect(await screen.findByRole("heading", { name: "Test Vulnerability" })).toBeInTheDocument();
     const suggestion = screen.getByText(/^Suggested:/);
     expect(suggestion).toHaveTextContent("Suggested: upgrade lodash@4.17.21 (confidence High)");
-    expect(suggestion).not.toHaveTextContent("—");
+    expect(suggestion.textContent).toMatch(/\(confidence High\)$/);
   });
 });
 
