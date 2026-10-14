@@ -13,6 +13,16 @@ import { DisabledReason } from "@/components/DisabledReason";
 import { ErrorState } from "@/components/ErrorState";
 import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -85,6 +95,9 @@ export function ProjectAccess() {
   const [memberUserId, setMemberUserId] = useState("");
   const [memberRole, setMemberRole] = useState<ProjectRole>("member");
   const [memberInputError, setMemberInputError] = useState<string | null>(null);
+
+  const [memberToRemove, setMemberToRemove] = useState<ProjectMember | null>(null);
+  const [removeOpen, setRemoveOpen] = useState(false);
 
   const [showLinkTeam, setShowLinkTeam] = useState(false);
   const [selectedTeamId, setSelectedTeamId] = useState("");
@@ -241,7 +254,10 @@ export function ProjectAccess() {
                                   variant="outline"
                                   size="sm"
                                   disabled={!canRemove || removeMemberMutation.isPending}
-                                  onClick={() => removeMemberMutation.mutate(member.user_id)}
+                                  onClick={() => {
+                                    setMemberToRemove(member);
+                                    setRemoveOpen(true);
+                                  }}
                                 >
                                   Remove
                                 </Button>
@@ -482,6 +498,36 @@ export function ProjectAccess() {
           </form>
         </DialogContent>
       </Dialog>
+      <AlertDialog
+        open={removeOpen}
+        onOpenChange={setRemoveOpen}
+        onOpenChangeComplete={(open) => {
+          if (!open) setMemberToRemove(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Remove {memberToRemove ? resolveUserLabel(memberToRemove).name : "this member"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              They will lose access to this project.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => {
+                if (memberToRemove) removeMemberMutation.mutate(memberToRemove.user_id);
+                setRemoveOpen(false);
+              }}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
