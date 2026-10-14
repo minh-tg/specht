@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
 import {
   apiToken,
   BASE_SHA,
   CHANGE_SHA,
   chooseOption,
+  FIXTURE_GITLEAKS,
   FIXTURE_HIGH,
   FIXTURE_HIGH_MEDIUM,
   FIXTURE_HIGH_NEW,
@@ -516,6 +518,37 @@ test("a CI link opens the change view with only what the change introduced", asy
   await introduced.getByRole("link", { name: "Open the full finding" }).click();
   await expect(page).toHaveURL(new RegExp(`/${slug}/findings/`));
   await expect(page.getByRole("heading", { name: "Triage" })).toBeVisible();
+});
+
+test("a change view with long fix text keeps titles readable and does not scroll sideways", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("change-long-fix");
+  await seedProject(request, token, slug);
+  // A secret scanner's fix sentence is long; it used to push the title down to one letter per line.
+  const res = await request.post("/api/v1/reports", {
+    headers: { Authorization: `Bearer ${token}` },
+    data: {
+      project: slug,
+      scanner: "gitleaks",
+      commit_sha: CHANGE_SHA,
+      raw_data: JSON.parse(readFileSync(FIXTURE_GITLEAKS, "utf8")),
+    },
+  });
+  expect(res.ok(), await res.text()).toBeTruthy();
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/changes/${CHANGE_SHA.slice(0, 7)}`);
+  await expect(page.getByRole("heading", { level: 1 })).toContainText("block this change");
+  const entry = page.getByRole("region", { name: "Findings introduced by this change" })
+    .getByRole("button").first();
+  await expect(entry).toBeVisible();
+  const name = (await entry.getAttribute("aria-label")) ?? "";
+  const box = await entry.getByText(name, { exact: true }).boundingBox();
+  expect(box?.width ?? 0, "the title keeps room to read").toBeGreaterThan(120);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+    "the page does not scroll sideways",
+  ).toBe(true);
 });
 
 test("the pages load without a Content-Security-Policy violation", async ({ page }) => {

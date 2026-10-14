@@ -96,14 +96,17 @@ function LoadedEntry(
       summary={
         <>
           <SeverityBadge severity={finding.current_severity} plain />
-          <span className="min-w-0 font-semibold [overflow-wrap:anywhere]">
+          <span className="min-w-[10rem] font-semibold [overflow-wrap:anywhere] max-sm:min-w-0">
             {finding.current_title}
           </span>
           {waiverRequested && (
             <span className="font-label text-muted-foreground text-xs">Waiver requested</span>
           )}
           {fix && (
-            <span className="text-muted-foreground ml-auto text-[13px] whitespace-nowrap max-sm:hidden">
+            <span
+              title={fix}
+              className="text-muted-foreground ml-auto min-w-0 max-w-[40%] truncate text-[13px] max-sm:hidden"
+            >
               {fix}
             </span>
           )}
