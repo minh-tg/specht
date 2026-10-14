@@ -133,3 +133,38 @@ func TestAddTeamMemberByEmail_UnknownAddressIsTyped(t *testing.T) {
 	_, err := uc.AddTeamMemberByEmail(teamMemberCtx(), emailTestTeam, "nobody@acme.example", "member")
 	assert.ErrorIs(t, err, ErrMemberUserNotFound)
 }
+
+func TestAddProjectMemberByEmail_NeverAddsTheSystemAccount(t *testing.T) {
+	pr := &mockProjectRepo{}
+	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
+		return memberTestProject(), nil
+	}
+	pr.upsertMemberFn = func(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
+		t.Fatal("the system account must not become a member")
+		return port.ProjectMember{}, nil
+	}
+	ur := &mockUserRepo{getByEmailFn: func(ctx context.Context, email string) (port.User, error) {
+		return port.User{ID: emailTestUser, Email: SystemAccountEmail, Role: auth.RoleMember}, nil
+	}}
+	uc := New(Deps{Stores: &port.Stores{Projects: pr, Users: ur}})
+
+	_, err := uc.AddProjectMemberByEmail(sessionCtx(emailTestCaller, auth.RoleAdmin), "my-app", SystemAccountEmail, auth.RoleMember)
+	assert.ErrorIs(t, err, ErrMemberUserNotFound, "it answers like any address with no account")
+}
+
+func TestAddTeamMemberByEmail_NeverAddsTheSystemAccount(t *testing.T) {
+	uc, _, tr, ur := teamHarness()
+	tr.getByIDFn = func(ctx context.Context, id string) (port.Team, error) {
+		return port.Team{ID: emailTestTeam, Name: "backend"}, nil
+	}
+	tr.isAdminFn = func(ctx context.Context, teamID, userID string) (bool, error) { return true, nil }
+	tr.upsertMemberFn = func(ctx context.Context, teamID, userID, role string) (port.TeamMember, error) {
+		t.Fatal("the system account must not join a team")
+		return port.TeamMember{}, nil
+	}
+	ur.getByEmailFn = func(ctx context.Context, email string) (port.User, error) {
+		return port.User{ID: emailTestUser, Email: SystemAccountEmail}, nil
+	}
+	_, err := uc.AddTeamMemberByEmail(teamMemberCtx(), emailTestTeam, SystemAccountEmail, "member")
+	assert.ErrorIs(t, err, ErrMemberUserNotFound)
+}

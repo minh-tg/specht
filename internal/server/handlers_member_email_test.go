@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/usecase"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -91,4 +93,33 @@ func TestAddTeamMember_ByEmailGoesToTheEmailUsecase(t *testing.T) {
 		`{"email":"nope","role":"member"}`)
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 	assert.Equal(t, "invalid_email", errorCodeOf(t, w))
+}
+
+func TestAddMemberByEmail_AuditNamesAMaskedAddressWhenNobodyWasAdded(t *testing.T) {
+	entries := captureAudit(t)
+	mock := memberErrorMock()
+	mock.addProjectMemberByEmail = func(context.Context, string, string, string) (*usecase.ProjectMemberResponse, error) {
+		return nil, usecase.ErrMemberUserNotFound
+	}
+	router := authRouter(NewHandler(mock))
+	_ = router
+	h := NewHandler(mock)
+	r := chi.NewRouter()
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			ctx := auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "u-mgr", Role: auth.RoleAdmin})
+			next.ServeHTTP(w, req.WithContext(ctx))
+		})
+	})
+	r.With(h.audited("project.member.add", "userID")).Post("/api/v1/projects/{slug}/members", h.AddProjectMember)
+
+	w := postJSON(r, "/api/v1/projects/my-app/members", `{"email":"probe.target@corp.example","role":"member"}`)
+	require.Equal(t, http.StatusNotFound, w.Code)
+
+	got := entries()
+	require.Len(t, got, 1)
+	assert.Equal(t, "failure", got[0]["outcome"])
+	target, _ := got[0]["target"].(string)
+	assert.NotContains(t, target, "probe.target", "the full address is not written to the log")
+	assert.Equal(t, auth.MaskEmail("probe.target@corp.example"), target, "a probe still leaves a trace")
 }

@@ -222,6 +222,9 @@ func (h *Handler) AddProjectMember(w http.ResponseWriter, r *http.Request) {
 	var member *usecase.ProjectMemberResponse
 	var err error
 	if req.Email != "" {
+		// A probe for addresses leaves a trace even when nobody was added: the masked address is the
+		// audit target until a success replaces it with the person's id.
+		setAuditTarget(r, auth.MaskEmail(req.Email))
 		member, err = h.usecase.AddProjectMemberByEmail(r.Context(), slug, req.Email, req.Role)
 	} else {
 		member, err = h.usecase.AddProjectMember(r.Context(), slug, req.UserID, req.Role)

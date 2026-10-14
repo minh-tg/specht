@@ -703,6 +703,7 @@ func (h *Handler) AddTeamMember(w http.ResponseWriter, r *http.Request) {
 	var result *usecase.TeamMemberResponse
 	var err error
 	if req.Email != "" {
+		setAuditTarget(r, auth.MaskEmail(req.Email))
 		result, err = h.usecase.AddTeamMemberByEmail(r.Context(), id, req.Email, req.Role)
 	} else {
 		result, err = h.usecase.AddTeamMember(r.Context(), id, req.UserID, req.Role)
