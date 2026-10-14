@@ -197,6 +197,27 @@ administration needs a global admin.
    works while `REGISTRATION_ENABLED` is `false`, so registration can stay
    closed.
 
+### Recovering access
+
+If the only administrator has forgotten a password, or an account has to be
+promoted while no admin can sign in, run one of these inside the server
+container. They act on the database directly, so access to the host is the
+credential:
+
+```bash
+docker compose -f deploy/docker-compose.yml exec server specht reset-password ada@example.com
+docker compose -f deploy/docker-compose.yml exec server specht grant-admin ada@example.com
+```
+
+`reset-password` prints a generated 24-character password once and ends every
+session of the account. Add `--password-stdin` to set a password you chose
+instead; it is read from standard input and never printed. A deactivated
+account stays deactivated, and the command says so. `grant-admin` makes the
+account a global admin; a session the person already has picks the role up at
+the next sign-in. Neither command touches the seeded `system@specht.local`
+account. Anyone signed in can change their own password with
+`PUT /api/v1/me/password`.
+
 ### Changing or deactivating an account
 
 Global admins manage accounts from the admin area or the API:

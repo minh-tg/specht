@@ -305,6 +305,8 @@ func handleSubcommand(cfg *config.Server) bool {
 		}
 		slog.Info("rollback complete")
 		return true
+	case "reset-password", "grant-admin":
+		os.Exit(runRecoveryCommand(cfg, os.Args[1:]))
 	}
 	return false
 }
