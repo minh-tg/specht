@@ -334,12 +334,23 @@ type Evidence struct {
 
 // ScannerDescriptor is the API representation of a scanner capability.
 type ScannerDescriptor struct {
-	Name                  string   `json:"name"`
-	Version               string   `json:"version"`
-	FindingKinds          []string `json:"finding_kinds"`
-	ScanTypes             []string `json:"scan_types"`
-	ProvidesPackages      bool     `json:"provides_packages"`
-	SupportsAutoDetection bool     `json:"supports_auto_detection"`
+	Name                  string          `json:"name"`
+	DisplayName           string          `json:"display_name"`
+	Version               string          `json:"version"`
+	FindingKinds          []string        `json:"finding_kinds"`
+	ScanTypes             []string        `json:"scan_types"`
+	ProvidesPackages      bool            `json:"provides_packages"`
+	SupportsAutoDetection bool            `json:"supports_auto_detection"`
+	Formats               []ScannerFormat `json:"formats"`
+}
+
+// ScannerFormat describes one file a scanner reads and how to produce it.
+type ScannerFormat struct {
+	Name       string   `json:"name"`
+	Extensions []string `json:"extensions"`
+	Command    string   `json:"command"`
+	TestedWith string   `json:"tested_with"`
+	Note       string   `json:"note,omitempty"`
 }
 
 // CreateAPIKeyRequest is the request body for minting an API key.

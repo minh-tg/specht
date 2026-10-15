@@ -472,8 +472,9 @@ export interface paths {
     };
     /**
      * List the scanner catalog
-     * @description Every registered scanner with its version, the finding kinds it emits,
-     *     the scan types it accepts, and whether it can detect its own format.
+     * @description Every registered scanner with its display name, version, the files it
+     *     reads and how to produce them, the finding kinds it emits, the scan types
+     *     it accepts, and whether it can detect its own format.
      *     Any signed-in user may read it, since the upload form needs it for
      *     every role that can ingest. Project keys are refused.
      */
@@ -2128,14 +2129,42 @@ export interface components {
       description?: string | null;
     };
     Scanner: {
-      /** @example trivy */
+      /**
+       * @description The identifier to send as `scanner`.
+       * @example trivy
+       */
       name: string;
+      /**
+       * @description What people call the tool.
+       * @example Trivy
+       */
+      display_name: string;
       version: string;
+      /** @description The files this scanner reads and how to produce them. */
+      formats: components["schemas"]["ScannerFormat"][];
       finding_kinds:
         ("sca" | "sast" | "iac" | "secret" | "dast" | "image_config" | "license" | "cve_watcher")[];
       scan_types: string[];
       provides_packages: boolean;
       supports_auto_detection: boolean;
+    };
+    ScannerFormat: {
+      /** @example SARIF */
+      name: string;
+      /** @description File extensions the upload page accepts for this format. */
+      extensions: string[];
+      /**
+       * @description How to produce the file.
+       * @example semgrep scan --sarif -o semgrep.sarif
+       */
+      command: string;
+      /**
+       * @description The tool version the parser was checked against.
+       * @example Semgrep 1.172.0
+       */
+      tested_with: string;
+      /** @description Something a person should know */
+      note?: string;
     };
     IngestRequest: {
       /** @description Project slug. */

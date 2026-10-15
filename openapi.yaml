@@ -773,8 +773,9 @@ paths:
       operationId: listScanners
       summary: List the scanner catalog
       description: |
-        Every registered scanner with its version, the finding kinds it emits,
-        the scan types it accepts, and whether it can detect its own format.
+        Every registered scanner with its display name, version, the files it
+        reads and how to produce them, the finding kinds it emits, the scan types
+        it accepts, and whether it can detect its own format.
         Any signed-in user may read it, since the upload form needs it for
         every role that can ingest. Project keys are refused.
       x-auth: session
@@ -3426,10 +3427,15 @@ components:
 
     Scanner:
       type: object
-      required: [name, version, finding_kinds, scan_types, provides_packages, supports_auto_detection]
+      required: [name, display_name, version, finding_kinds, scan_types, provides_packages, supports_auto_detection, formats]
       properties:
-        name: { type: string, example: trivy }
+        name: { type: string, example: trivy, description: The identifier to send as `scanner`. }
+        display_name: { type: string, example: Trivy, description: What people call the tool. }
         version: { type: string }
+        formats:
+          type: array
+          description: The files this scanner reads and how to produce them.
+          items: { $ref: "#/components/schemas/ScannerFormat" }
         finding_kinds:
           type: array
           items: { type: string, enum: [sca, sast, iac, secret, dast, image_config, license, cve_watcher] }
@@ -3438,6 +3444,19 @@ components:
           items: { type: string, example: image }
         provides_packages: { type: boolean }
         supports_auto_detection: { type: boolean }
+
+    ScannerFormat:
+      type: object
+      required: [name, extensions, command, tested_with]
+      properties:
+        name: { type: string, example: SARIF }
+        extensions:
+          type: array
+          items: { type: string, example: .sarif }
+          description: File extensions the upload page accepts for this format.
+        command: { type: string, example: "semgrep scan --sarif -o semgrep.sarif", description: How to produce the file. }
+        tested_with: { type: string, example: Semgrep 1.172.0, description: The tool version the parser was checked against. }
+        note: { type: string, description: Something a person should know, such as a limit of the tool. }
 
     IngestRequest:
       type: object

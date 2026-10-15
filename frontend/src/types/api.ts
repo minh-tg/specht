@@ -6,9 +6,22 @@ import type {
   TechnicalState,
 } from "@/lib/enums";
 
-export interface ScannerDescriptor {
+/** One file a scanner reads and how to produce it. */
+export interface ScannerFormat {
   name: string;
+  extensions: string[];
+  command: string;
+  tested_with: string;
+  note?: string;
+}
+
+export interface ScannerDescriptor {
+  /** The identifier to send as `scanner`. */
+  name: string;
+  /** What people call the tool. */
+  display_name: string;
   version: string;
+  formats: ScannerFormat[];
   finding_kinds: string[];
   scan_types: string[];
   provides_packages: boolean;
