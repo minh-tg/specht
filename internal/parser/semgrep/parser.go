@@ -124,6 +124,19 @@ func (s *Scanner) DetectFormat(data []byte) bool {
 // Recognize grades a document. A SARIF log whose first run names Semgrep is
 // definite. SARIF from another tool belongs to the generic sarif scanner.
 func (s *Scanner) Recognize(data []byte) scanner.Recognition {
+	shape, ok := parseutil.ReadShape(data)
+	if !ok || !shape.IsObject() {
+		return scanner.NotRecognized
+	}
+	if shape.Has("runs") {
+		return recognizeSARIF(data)
+	}
+	return recognizeNative(shape)
+}
+
+// recognizeSARIF is definite for a log whose first run names Semgrep. SARIF
+// from another tool belongs to the generic sarif scanner.
+func recognizeSARIF(data []byte) scanner.Recognition {
 	var probe struct {
 		Runs []struct {
 			Tool struct {
@@ -143,9 +156,32 @@ func (s *Scanner) Recognize(data []byte) scanner.Recognition {
 	return scanner.NotRecognized
 }
 
+// recognizeNative is definite for results that carry a check id and a path,
+// and for a clean report, which Semgrep writes with an empty results list next
+// to its errors and paths blocks. Other tools use the key "results" too, so a
+// bare empty list is not enough.
+func recognizeNative(shape parseutil.Shape) scanner.Recognition {
+	results, present := shape.List("results")
+	if !present {
+		return scanner.NotRecognized
+	}
+	for _, r := range results {
+		if parseutil.ObjectHas(r, "check_id", "path") {
+			return scanner.Definite
+		}
+	}
+	if len(results) == 0 && shape.Has("errors") && shape.Has("paths") {
+		return scanner.Definite
+	}
+	return scanner.NotRecognized
+}
+
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
 	if s.Recognize(data) == scanner.NotRecognized {
 		return nil, scanner.Unrecognized("semgrep")
+	}
+	if shape, ok := parseutil.ReadShape(data); ok && !shape.Has("runs") {
+		return parseNative(data)
 	}
 	var report sarifReport
 	if err := json.Unmarshal(data, &report); err != nil {
@@ -174,23 +210,12 @@ func convert(report sarifReport) *domain.NormalizedReport {
 		rule, hasRule := findRule(run.Tool.Driver.Rules, result.RuleID)
 		file := extractFile(result)
 		line := extractLine(result)
-		location := fmt.Sprintf("%s:%d", file, line)
-		fingerprint := "sast:" + result.RuleID + ":" + file + ":" + strconv.Itoa(line)
 
-		nr.Findings = append(nr.Findings, parseutil.HardenFinding(domain.NormalizedFinding{
-			Fingerprint: fingerprint,
-			FindingKind: "sast",
-			Title:       extractTitle(result, rule),
-			Description: extractDescription(result, rule),
-			Severity:    mapSarifLevel(result.Level, rule),
-			Location:    location,
-			Dimensions: []domain.Dimension{
-				{Key: "rule_id", Value: result.RuleID},
-				{Key: "file", Value: file},
-				{Key: "line", Value: strconv.Itoa(line)},
-			},
-			Extensions: resultMeta(result, rule, hasRule),
-		}))
+		nr.Findings = append(nr.Findings, sastFinding(
+			result.RuleID, file, line,
+			extractTitle(result, rule), extractDescription(result, rule),
+			mapSarifLevel(result.Level, rule), resultMeta(result, rule, hasRule),
+		))
 	}
 
 	return nr
@@ -294,4 +319,107 @@ func mapSarifLevel(level string, rule sarifRule) domain.Severity {
 		}
 		return domain.SeverityUnknown
 	}
+}
+
+// sastFinding builds a finding the same way for both Semgrep output formats.
+// The identity is the rule, the file and the line, so a scan read from SARIF
+// and the same scan read from --json are the same findings.
+func sastFinding(ruleID, file string, line int, title, description string, severity domain.Severity, extensions map[string]any) domain.NormalizedFinding {
+	return parseutil.HardenFinding(domain.NormalizedFinding{
+		Fingerprint: "sast:" + ruleID + ":" + file + ":" + strconv.Itoa(line),
+		FindingKind: "sast",
+		Title:       title,
+		Description: description,
+		Severity:    severity,
+		Location:    fmt.Sprintf("%s:%d", file, line),
+		Dimensions: []domain.Dimension{
+			{Key: "rule_id", Value: ruleID},
+			{Key: "file", Value: file},
+			{Key: "line", Value: strconv.Itoa(line)},
+		},
+		Extensions: extensions,
+	})
+}
+
+type nativeReport struct {
+	Results []nativeResult    `json:"results"`
+	Errors  []json.RawMessage `json:"errors"`
+}
+
+type nativeResult struct {
+	CheckID string `json:"check_id"`
+	Path    string `json:"path"`
+	Start   struct {
+		Line int `json:"line"`
+	} `json:"start"`
+	Extra struct {
+		Message  string         `json:"message"`
+		Severity string         `json:"severity"`
+		Fix      string         `json:"fix"`
+		Metadata map[string]any `json:"metadata"`
+	} `json:"extra"`
+}
+
+// parseNative reads the output of semgrep --json.
+func parseNative(data []byte) (*domain.NormalizedReport, error) {
+	var report nativeReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		return nil, scanner.Malformed("semgrep", err)
+	}
+	nr := &domain.NormalizedReport{
+		ContractVersion:    1,
+		FingerprintVersion: 1,
+		Completeness:       domain.CompletenessUnknown,
+		ScanType:           domain.ScanTypeFilesystem,
+	}
+	if n := len(report.Errors); n > 0 {
+		// Files Semgrep could not scan are missing from the results, so say so.
+		nr.ScanScope = &domain.ScanScope{Ext: map[string]string{"semgrep_errors": strconv.Itoa(n)}}
+	}
+	for _, r := range report.Results {
+		file := parseutil.CleanFilePath(r.Path)
+		if file == "" {
+			file = "unknown"
+		}
+		title := r.Extra.Message
+		if title == "" {
+			title = r.CheckID
+		}
+		nr.Findings = append(nr.Findings, sastFinding(
+			r.CheckID, file, parseutil.SafeLine(r.Start.Line),
+			title, r.Extra.Message, mapNativeSeverity(r.Extra.Severity), nativeMeta(r),
+		))
+	}
+	return nr, nil
+}
+
+func mapNativeSeverity(level string) domain.Severity {
+	switch strings.ToUpper(level) {
+	case "ERROR":
+		return domain.SeverityHigh
+	case "WARNING":
+		return domain.SeverityMedium
+	case "INFO":
+		return domain.SeverityLow
+	default:
+		return domain.SeverityUnknown
+	}
+}
+
+// nativeMeta keeps what the rule says about the finding: the CWE and OWASP
+// classes, the category, and how likely, how bad and how sure it is.
+func nativeMeta(r nativeResult) map[string]any {
+	meta := map[string]any{}
+	for _, key := range []string{"cwe", "owasp", "category", "confidence", "impact", "likelihood"} {
+		if v, ok := r.Extra.Metadata[key]; ok {
+			meta[key] = v
+		}
+	}
+	if r.Extra.Severity != "" {
+		meta["semgrep_severity"] = r.Extra.Severity
+	}
+	if r.Extra.Fix != "" {
+		meta["fix"] = r.Extra.Fix
+	}
+	return meta
 }
