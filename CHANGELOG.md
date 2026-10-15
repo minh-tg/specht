@@ -87,6 +87,10 @@ releases.
   input and line-based `.jsonl`), list, show and delete reports, change an environment's
   exposure and data sensitivity (`environments set`), and list targets, artifacts and the
   scanners Specht reads (`scanners list`).
+- The `specht` command can create, rename and delete projects (`projects create`,
+  `update`, `delete`, which needs `--yes`) and manage `members`, `api-keys`,
+  `users` and `invites`. Account and invite commands need a signed-in session
+  token in `API_KEY`, not a project key.
 - A Semgrep finding keeps its identity when the code above it moves. The line
   is no longer part of it: a finding is the rule, the file and what was
   matched (Semgrep's own match id when the run is logged in, otherwise the
