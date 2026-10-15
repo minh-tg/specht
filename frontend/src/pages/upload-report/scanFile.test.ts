@@ -29,6 +29,14 @@ describe("readScanFile", () => {
     expect(readScanFile("scan.jsonl", text)).toEqual({ ok: true, value: [{ a: 1 }, { a: 2 }] });
   });
 
+  it("reads a .sarif file as one JSON value", () => {
+    expect(readScanFile("results.sarif", "{\"version\":\"2.1.0\",\"runs\":[]}")).toEqual({
+      ok: true,
+      value: { version: "2.1.0", runs: [] },
+    });
+    expect(readScanFile("results.sarif", "not json")).toEqual({ ok: false, error: "Invalid JSON" });
+  });
+
   it("accepts .ndjson as the same format", () => {
     expect(readScanFile("scan.ndjson", "{\"a\":1}")).toEqual({ ok: true, value: [{ a: 1 }] });
   });

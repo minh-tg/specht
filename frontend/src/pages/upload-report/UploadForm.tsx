@@ -3,6 +3,7 @@ import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import type { ScannerDescriptor } from "@/types/api";
 import { type ReactNode } from "react";
+import { ScannerHelp } from "./ScannerHelp";
 import type { ReportUpload } from "./useReportUpload";
 
 interface UploadFormProps extends ReportUpload {
@@ -28,6 +29,8 @@ export function UploadForm({
   handleFileChange,
   handleSubmit,
 }: UploadFormProps) {
+  const chosen = scanners?.find((s) => s.name === selectedScanner);
+  const takes = [...new Set((chosen?.formats ?? []).flatMap((f) => f.extensions))];
   let scannerPicker: ReactNode;
   if (scannersLoading) {
     scannerPicker = <SkeletonLines label="Loading scanners" lines={1} className="mt-1" />;
@@ -52,7 +55,7 @@ export function UploadForm({
         onValueChange={setSelectedScanner}
         options={[
           { value: "", label: "Select a scanner" },
-          ...scanners.map((s) => ({ value: s.name, label: `${s.name} (${s.version})` })),
+          ...scanners.map((s) => ({ value: s.name, label: s.display_name || s.name })),
         ]}
       />
     );
@@ -63,17 +66,24 @@ export function UploadForm({
       <div>
         <label htmlFor="ingest-scanner" className="text-sm font-medium">Scanner</label>
         {scannerPicker}
+        <ScannerHelp scanner={chosen} />
       </div>
 
       <div>
         <label htmlFor="ingest-file" className="text-sm font-medium">
-          Scan File (.json or .jsonl)
+          Scan file
         </label>
+        {takes.length > 0 && (
+          <p id="ingest-file-takes" className="text-muted-foreground text-xs">
+            Takes {takes.join(", ")}
+          </p>
+        )}
         <input
           id="ingest-file"
           ref={fileRef}
           type="file"
-          accept=".json,.jsonl,.ndjson"
+          accept=".json,.jsonl,.ndjson,.sarif"
+          aria-describedby={takes.length > 0 ? "ingest-file-takes" : undefined}
           onChange={handleFileChange}
           className="mt-1 block w-full text-sm"
         />

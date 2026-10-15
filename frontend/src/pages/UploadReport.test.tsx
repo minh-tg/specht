@@ -18,11 +18,42 @@ const PROJECT = {
 const SCANNERS = [
   {
     name: "trivy",
+    display_name: "Trivy",
     version: "2",
     finding_kinds: ["sca", "secret", "iac"],
     scan_types: ["image", "iac", "filesystem"],
     provides_packages: true,
     supports_auto_detection: true,
+    formats: [{
+      name: "JSON",
+      extensions: [".json"],
+      command: "trivy fs --format json -o trivy.json .",
+      tested_with: "Trivy 0.74.0",
+      note: "`trivy image` writes the same format.",
+    }],
+  },
+  {
+    name: "semgrep",
+    display_name: "Semgrep",
+    version: "2.1",
+    finding_kinds: ["sast"],
+    scan_types: ["filesystem"],
+    provides_packages: false,
+    supports_auto_detection: true,
+    formats: [
+      {
+        name: "JSON",
+        extensions: [".json"],
+        command: "semgrep scan --json -o semgrep.json",
+        tested_with: "Semgrep 1.172.0",
+      },
+      {
+        name: "SARIF",
+        extensions: [".json", ".sarif"],
+        command: "semgrep scan --sarif -o semgrep.sarif",
+        tested_with: "Semgrep 1.172.0",
+      },
+    ],
   },
 ];
 
@@ -74,7 +105,7 @@ async function fillValidForm() {
   await waitFor(() => {
     expect(screen.getByRole("combobox", { name: /scanner/i })).toBeInTheDocument();
   });
-  await chooseOption(user, screen.getByRole("combobox", { name: /scanner/i }), "trivy (2)");
+  await chooseOption(user, screen.getByRole("combobox", { name: /scanner/i }), "Trivy");
   await user.upload(screen.getByLabelText(/scan file/i), createJsonFile("{\"vuln\":true}"));
   return user;
 }
@@ -185,7 +216,7 @@ describe("UploadReport", () => {
     await waitFor(() => {
       expect(screen.getByRole("combobox", { name: /scanner/i })).toBeInTheDocument();
     });
-    await chooseOption(user, screen.getByRole("combobox", { name: /scanner/i }), "trivy (2)");
+    await chooseOption(user, screen.getByRole("combobox", { name: /scanner/i }), "Trivy");
     await user.upload(screen.getByLabelText(/scan file/i), createJsonFile("not json"));
 
     expect(await screen.findByText("Invalid JSON")).toBeInTheDocument();
@@ -297,6 +328,78 @@ describe("UploadReport scanner loading and error states", () => {
     renderUpload();
     await waitFor(() => {
       expect(screen.getByText(/no scanners available/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("scanner names and format help", () => {
+    it("names scanners the way people do, without a version number", async () => {
+      installFetch(() => ({ ok: true, json: () => Promise.resolve({}) } as Response));
+      renderUpload();
+      const picker = await screen.findByRole("combobox", { name: /scanner/i });
+      const user = userEvent.setup();
+      await user.click(picker);
+
+      expect(await screen.findByRole("option", { name: "Trivy" })).toBeInTheDocument();
+      expect(screen.getByRole("option", { name: "Semgrep" })).toBeInTheDocument();
+      expect(screen.queryByRole("option", { name: /\(2\)/ })).not.toBeInTheDocument();
+    });
+
+    it("shows nothing about formats until a scanner is chosen", async () => {
+      installFetch(() => ({ ok: true, json: () => Promise.resolve({}) } as Response));
+      renderUpload();
+      await screen.findByRole("combobox", { name: /scanner/i });
+
+      expect(screen.queryByText(/checked with/i)).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/scan file/i)).toBeInTheDocument();
+    });
+
+    it("tells you how to produce the chosen scanner's file", async () => {
+      installFetch(() => ({ ok: true, json: () => Promise.resolve({}) } as Response));
+      renderUpload();
+      const user = userEvent.setup();
+      await chooseOption(
+        user,
+        await screen.findByRole("combobox", { name: /scanner/i }),
+        "Semgrep",
+      );
+
+      const help = await screen.findByRole("region", { name: /semgrep/i });
+      expect(within(help).getByText("semgrep scan --json -o semgrep.json")).toBeInTheDocument();
+      expect(within(help).getByText("semgrep scan --sarif -o semgrep.sarif")).toBeInTheDocument();
+      expect(within(help).getAllByText(/checked with semgrep 1\.172\.0/i)).toHaveLength(2);
+      expect(within(help).getByText(".json, .sarif", { exact: false })).toBeInTheDocument();
+    });
+
+    it("shows the note a scanner carries", async () => {
+      installFetch(() => ({ ok: true, json: () => Promise.resolve({}) } as Response));
+      renderUpload();
+      const user = userEvent.setup();
+      await chooseOption(user, await screen.findByRole("combobox", { name: /scanner/i }), "Trivy");
+
+      expect(await screen.findByText("`trivy image` writes the same format.")).toBeInTheDocument();
+    });
+
+    it("lists the extensions the chosen scanner takes next to the file field", async () => {
+      installFetch(() => ({ ok: true, json: () => Promise.resolve({}) } as Response));
+      renderUpload();
+      const user = userEvent.setup();
+      await chooseOption(
+        user,
+        await screen.findByRole("combobox", { name: /scanner/i }),
+        "Semgrep",
+      );
+
+      expect(await screen.findByText("Takes .json, .sarif")).toBeInTheDocument();
+    });
+
+    it("lets a .sarif file through the file picker", async () => {
+      installFetch(() => ({ ok: true, json: () => Promise.resolve({}) } as Response));
+      renderUpload();
+      await screen.findByRole("combobox", { name: /scanner/i });
+      expect(screen.getByLabelText(/scan file/i)).toHaveAttribute(
+        "accept",
+        expect.stringContaining(".sarif"),
+      );
     });
   });
 });

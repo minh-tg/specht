@@ -22,14 +22,16 @@ function parseLines(text: string): ScanFile {
 }
 
 /**
- * Reads a scan file the way the server takes it. A `.json` file is one JSON value. A `.jsonl` or
+ * Reads a scan file the way the server takes it. A `.json` or `.sarif` file is one JSON value. A `.jsonl` or
  * `.ndjson` file (Nuclei writes one) has one JSON value per line and goes as an array of them,
  * which is the form the API accepts for line-based output.
  */
 export function readScanFile(name: string, text: string): ScanFile {
   const lower = name.toLowerCase();
   if (JSONL_EXTENSIONS.some((ext) => lower.endsWith(ext))) return parseLines(text);
-  if (!lower.endsWith(".json")) return { ok: false, error: "Unsupported file format" };
+  if (!lower.endsWith(".json") && !lower.endsWith(".sarif")) {
+    return { ok: false, error: "Unsupported file format" };
+  }
   try {
     return { ok: true, value: JSON.parse(text) };
   } catch {
