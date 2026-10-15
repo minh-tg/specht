@@ -1,4 +1,6 @@
+import { resetSingleKeyForTests, setSingleKeyEnabled } from "@/lib/singleKeyShortcuts";
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { beforeEach } from "vitest";
 import { DataGrid, type DataGridColumn } from "./data-grid";
 
 interface Row {
@@ -413,5 +415,118 @@ describe("DataGrid — ARIA grid pattern", () => {
     const cell = within(gridRows[0]).getAllByRole("gridcell")[0];
     expect(cell.className).not.toContain("font-mono");
     expect(cell.className).not.toContain("tabular-nums");
+  });
+});
+
+describe("DataGrid: single-key switch, modified keys and a moving list", () => {
+  const gridRowsOf = () =>
+    screen.getAllByRole("row").filter((r) => r.hasAttribute("aria-rowindex"));
+
+  beforeEach(() => {
+    window.localStorage.clear();
+    resetSingleKeyForTests();
+  });
+
+  it("ignores j, k and x while the single-key switch is off, but not the arrows, Home, End, Enter and Space", () => {
+    setSingleKeyEnabled(false);
+    const onSelect = vi.fn();
+    const onActivate = vi.fn();
+    render(
+      <DataGrid
+        label="Findings"
+        rows={rows}
+        columns={columns}
+        rowKey={rowKey}
+        onSelect={onSelect}
+        onActivate={onActivate}
+      />,
+    );
+    const grid = screen.getByRole("grid");
+    const items = gridRowsOf();
+
+    fireEvent.keyDown(grid, { key: "j" });
+    fireEvent.keyDown(grid, { key: "x" });
+    expect(items[0]).toHaveAttribute("tabindex", "0");
+    expect(onSelect).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    expect(items[1]).toHaveFocus();
+    fireEvent.keyDown(grid, { key: "k" });
+    expect(items[1]).toHaveFocus();
+    fireEvent.keyDown(grid, { key: "ArrowUp" });
+    expect(items[0]).toHaveFocus();
+    fireEvent.keyDown(grid, { key: "End" });
+    expect(items[2]).toHaveFocus();
+    fireEvent.keyDown(grid, { key: " " });
+    expect(onSelect).toHaveBeenCalledWith(rows[2]);
+    fireEvent.keyDown(grid, { key: "Enter" });
+    expect(onActivate).toHaveBeenCalledWith(rows[2]);
+  });
+
+  it("does not swallow a modified or composing key, so Ctrl+K reaches the palette", () => {
+    const onSelect = vi.fn();
+    render(
+      <DataGrid
+        label="Findings"
+        rows={rows}
+        columns={columns}
+        rowKey={rowKey}
+        onSelect={onSelect}
+      />,
+    );
+    const grid = screen.getByRole("grid");
+    const items = gridRowsOf();
+    for (const init of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
+      const down = fireEvent.keyDown(grid, { key: "k", ...init });
+      expect(down).toBe(true);
+      fireEvent.keyDown(grid, { key: "j", ...init });
+      fireEvent.keyDown(grid, { key: "x", ...init });
+      fireEvent.keyDown(grid, { key: "ArrowDown", ...init });
+    }
+    fireEvent.keyDown(grid, { key: "j", isComposing: true });
+    fireEvent.keyDown(grid, { key: "j", keyCode: 229 });
+    expect(items[0]).toHaveAttribute("tabindex", "0");
+    expect(onSelect).not.toHaveBeenCalled();
+    // A plain key is still handled and its default prevented.
+    expect(fireEvent.keyDown(grid, { key: "j" })).toBe(false);
+  });
+
+  it("keeps the cursor on the same finding when a refetch inserts rows above it", () => {
+    const onActivate = vi.fn();
+    const props = { label: "Findings", columns, rowKey, onActivate };
+    const { rerender } = render(<DataGrid {...props} rows={rows} />);
+    const grid = screen.getByRole("grid");
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
+    expect(gridRowsOf()[1]).toHaveFocus();
+
+    const fresh: Row = { id: "f0", title: "new one", gate: "block" };
+    rerender(<DataGrid {...props} rows={[fresh, ...rows]} />);
+    const after = gridRowsOf();
+    expect(after[2]).toHaveAttribute("tabindex", "0");
+    expect(after[1]).toHaveAttribute("tabindex", "-1");
+    fireEvent.keyDown(grid, { key: "Enter" });
+    expect(onActivate).toHaveBeenCalledWith(rows[1]);
+  });
+
+  it("keeps the cursor on the same finding when a refetch removes rows above it", () => {
+    const onActivate = vi.fn();
+    const props = { label: "Findings", columns, rowKey, onActivate };
+    const { rerender } = render(<DataGrid {...props} rows={rows} />);
+    fireEvent.keyDown(screen.getByRole("grid"), { key: "End" });
+
+    rerender(<DataGrid {...props} rows={rows.slice(1)} />);
+    fireEvent.keyDown(screen.getByRole("grid"), { key: "Enter" });
+    expect(onActivate).toHaveBeenCalledWith(rows[2]);
+  });
+
+  it("falls back to the nearest index when the cursor's finding disappears", () => {
+    const onActivate = vi.fn();
+    const props = { label: "Findings", columns, rowKey, onActivate };
+    const { rerender } = render(<DataGrid {...props} rows={rows} />);
+    fireEvent.keyDown(screen.getByRole("grid"), { key: "ArrowDown" });
+
+    rerender(<DataGrid {...props} rows={[rows[0]!, rows[2]!]} />);
+    fireEvent.keyDown(screen.getByRole("grid"), { key: "Enter" });
+    expect(onActivate).toHaveBeenCalledWith(rows[2]);
   });
 });

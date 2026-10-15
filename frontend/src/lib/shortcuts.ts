@@ -1,4 +1,5 @@
-import { useSyncExternalStore } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, useSyncExternalStore } from "react";
+import { isSingleKeyEnabled } from "./singleKeyShortcuts";
 
 /** Where a shortcut works. The help sheet groups by this so a scoped key never reads as global. */
 export const SHORTCUT_SCOPES = ["Everywhere", "In a findings list", "In the waivers tabs"] as const;
@@ -35,6 +36,12 @@ export const SHORTCUTS: readonly Shortcut[] = [
     description: "Show keyboard shortcuts",
     combos: [["Mod", "/"]],
     alsoCtrl: true,
+  },
+  {
+    id: "help-key",
+    scope: "Everywhere",
+    description: "Show this sheet",
+    combos: [["?"]],
   },
   {
     id: "notifications",
@@ -87,6 +94,11 @@ export function shortcutsIn(scope: ShortcutScope): Shortcut[] {
   return SHORTCUTS.filter((s) => s.scope === scope);
 }
 
+/** The shortcuts of one scope that do something now: with `singleKeys` off, a one-character-only key is dropped. */
+export function activeShortcutsIn(scope: ShortcutScope, singleKeys: boolean): Shortcut[] {
+  return shortcutsIn(scope).filter((s) => singleKeys || s.combos.some((c) => !isSingleKeyCombo(c)));
+}
+
 export const isMacPlatform = () =>
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform ?? "");
 
@@ -104,13 +116,23 @@ export function comboLabel(combo: readonly string[], mac: boolean = isMacPlatfor
   return combo.map((key) => keyLabel(key, mac)).join(compact ? "" : "+");
 }
 
-/** The combinations to print for a shortcut: the primary ones, plus Ctrl on macOS when it is also accepted. */
+/** Whether a combination is one printable character, the kind WCAG 2.1.4 lets a person switch off. */
+export const isSingleKeyCombo = (combo: readonly string[]): boolean =>
+  combo.length === 1 && /^[A-Za-z?]$/.test(combo[0]!);
+
+/**
+ * The combinations to print for a shortcut: the primary ones, plus Ctrl on macOS when it is also
+ * accepted. With `singleKeys` off the one-character combinations are left out, because they do
+ * nothing then.
+ */
 export function displayCombos(
   item: Shortcut,
   mac: boolean = isMacPlatform(),
+  singleKeys: boolean = true,
 ): readonly (readonly string[])[] {
-  if (!(mac && item.alsoCtrl)) return item.combos;
-  return [...item.combos, ...item.combos.map((c) => c.map((k) => k === "Mod" ? "Ctrl" : k))];
+  const combos = singleKeys ? item.combos : item.combos.filter((c) => !isSingleKeyCombo(c));
+  if (!(mac && item.alsoCtrl)) return combos;
+  return [...combos, ...combos.map((c) => c.map((k) => k === "Mod" ? "Ctrl" : k))];
 }
 
 /**
@@ -129,6 +151,52 @@ export function matchesModShortcut(
   const combo = shortcut(id).combos.find((c) => c[0] === "Mod");
   return combo !== undefined && event.key.toLowerCase() === combo[1]!.toLowerCase();
 }
+
+/** Elements where a typed character belongs to the field, so a bare-key shortcut must not fire. */
+const TEXT_TARGET =
+  "input, textarea, select, [contenteditable]:not([contenteditable=\"false\"]), [role=\"combobox\"], [role=\"textbox\"]";
+/** An open menu or dialog owns the keyboard. */
+const OPEN_LAYER = "[role=\"dialog\"], [role=\"alertdialog\"], [role=\"menu\"]";
+
+/**
+ * Whether a keydown is a bare modifier-free key press that a one-character shortcut may react to:
+ * not mid-composition (keyCode 229 is how some browsers report it), not an auto-repeat, not already
+ * handled, and not with Ctrl, Meta or Alt held. AltGr counts as plain, because it types characters
+ * such as `?` on some layouts; Windows reports it as Ctrl+Alt, so it is told apart by the
+ * `AltGraph` modifier state. Shift is never rejected, since `?` needs it on US and DE layouts.
+ */
+function isPlainKeyPress(event: KeyboardEvent, allowRepeat: boolean): boolean {
+  if (event.isComposing || event.keyCode === 229 || event.defaultPrevented) return false;
+  if (event.repeat && !allowRepeat) return false;
+  if (event.metaKey) return false;
+  if (event.ctrlKey || event.altKey) {
+    const altGraph = typeof event.getModifierState === "function"
+      && event.getModifierState("AltGraph");
+    if (!altGraph) return false;
+  }
+  return true;
+}
+
+/**
+ * Whether a keydown is the bare `?` that opens the shortcut sheet: the switch is on, the key press
+ * is plain, focus is not in a field, and no menu or dialog is open. Compared by `event.key`, never
+ * the physical key, because the keyboard layout decides where `?` is.
+ */
+export function matchesHelpKey(event: KeyboardEvent): boolean {
+  if (event.key !== "?" || !isSingleKeyEnabled()) return false;
+  if (!isPlainKeyPress(event, false)) return false;
+  const target = event.target;
+  if (target instanceof Element && target.closest(TEXT_TARGET)) return false;
+  return document.querySelector(OPEN_LAYER) === null;
+}
+
+/**
+ * Whether a keydown may drive a one-character shortcut inside a component that owns the focus,
+ * such as the findings grid. Keys with a modifier or mid-composition never do, so Ctrl+K still
+ * reaches the command palette. Holding the key repeats, which is wanted for moving a cursor.
+ */
+export const isPlainGridKey = (event: ReactKeyboardEvent): boolean =>
+  isPlainKeyPress(event.nativeEvent, true);
 
 let helpOpen = false;
 let helpReturnTo: HTMLElement | null = null;
