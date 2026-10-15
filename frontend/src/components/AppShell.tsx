@@ -2,6 +2,7 @@ import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { RouteAnnouncer } from "@/components/RouteAnnouncer";
 import { MAIN_CONTENT_ID, SkipLink } from "@/components/SkipLink";
 import { useRouteFocus } from "@/lib/useRouteFocus";
+import { useScrollRestoration } from "@/lib/useScrollRestoration";
 import { type ReactNode, useRef } from "react";
 import { useLocation } from "react-router-dom";
 
@@ -19,6 +20,7 @@ export function AppShell({ header, children }: {
   const { pathname } = useLocation();
   const mainRef = useRef<HTMLElement>(null);
   useRouteFocus(mainRef);
+  useScrollRestoration();
 
   return (
     <>
