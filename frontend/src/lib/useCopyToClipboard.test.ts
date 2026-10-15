@@ -1,5 +1,8 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+const playCue = vi.hoisted(() => vi.fn());
+vi.mock("./sound", () => ({ playCue }));
+
 import { useCopyToClipboard } from "./useCopyToClipboard";
 
 function stubClipboard(writeText: (text: string) => Promise<void>) {
@@ -7,6 +10,7 @@ function stubClipboard(writeText: (text: string) => Promise<void>) {
 }
 
 beforeEach(() => {
+  playCue.mockClear();
   vi.useFakeTimers();
 });
 
@@ -84,4 +88,20 @@ it("clears its timer when it unmounts", async () => {
   unmount();
 
   expect(vi.getTimerCount()).toBe(0);
+});
+
+it("plays the copied cue only when the write succeeds", async () => {
+  stubClipboard(vi.fn().mockResolvedValue(undefined));
+  const { result } = renderHook(() => useCopyToClipboard());
+  await act(async () => {
+    await result.current.copy("x");
+  });
+  expect(playCue).toHaveBeenCalledExactlyOnceWith("copied");
+
+  playCue.mockClear();
+  stubClipboard(vi.fn().mockRejectedValue(new Error("denied")));
+  await act(async () => {
+    await result.current.copy("x");
+  });
+  expect(playCue).not.toHaveBeenCalled();
 });
