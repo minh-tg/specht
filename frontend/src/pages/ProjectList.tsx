@@ -238,8 +238,8 @@ function ProjectTableRow({ row }: { readonly row: ProjectRowData; }) {
       <td className="px-3 py-2">
         <VerdictBadge verdict={verdict} />
       </td>
-      <td className="px-3 py-2">{blocking}</td>
-      <td className="px-3 py-2">{findings}</td>
+      <td className="px-3 py-2 tabular-nums">{blocking}</td>
+      <td className="px-3 py-2 tabular-nums">{findings}</td>
       <td className="text-muted-foreground px-3 py-2">{lastScan}</td>
     </tr>
   );

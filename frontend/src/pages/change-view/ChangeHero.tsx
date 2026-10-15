@@ -105,7 +105,7 @@ export function ChangeHero(
           <p className="max-w-[58ch] text-lg leading-snug">{subline(state, report)}</p>
         </div>
       </div>
-      <p className="text-muted-foreground mt-4 flex flex-wrap items-center gap-x-0 gap-y-1 text-[13px] max-sm:grid max-sm:gap-0.5">
+      <p className="text-muted-foreground mt-4 flex flex-wrap items-center gap-x-0 gap-y-1 text-[13px] tabular-nums max-sm:grid max-sm:gap-0.5">
         {policy && (
           <FactItem>
             Severity floor{" "}

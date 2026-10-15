@@ -159,10 +159,12 @@ export function ReportHistory() {
               </p>
             )}
             <div className="mt-2 flex items-center justify-between">
-              <div className="text-muted-foreground text-xs">
+              <div className="text-muted-foreground text-xs tabular-nums">
                 {formatDateTime(r.created_at)}
                 {r.total_findings != null && (
-                  <span className="ml-3">{pluralize(r.total_findings, "finding")}</span>
+                  <span className="ml-3 tabular-nums">
+                    {pluralize(r.total_findings, "finding")}
+                  </span>
                 )}
               </div>
               {isAdmin && !isReportInProgress(r.status) && (

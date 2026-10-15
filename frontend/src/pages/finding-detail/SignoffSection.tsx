@@ -81,7 +81,7 @@ export function SignoffSection({
         <dd className="text-muted-foreground text-xs">
           <span>by {actorLabel({ user_id: signoff.reviewed_by }, { me, directory })}</span>
           {" · "}
-          <span>{formatDateTime(signoff.updated_at)}</span>
+          <span className="tabular-nums">{formatDateTime(signoff.updated_at)}</span>
         </dd>
       </dl>
     );

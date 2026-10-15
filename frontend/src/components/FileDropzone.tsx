@@ -142,7 +142,9 @@ export function FileDropzone({
               <p className="min-w-0 text-sm break-all">
                 <span className="font-medium">{fileName}</span>
                 {fileSize !== null && (
-                  <span className="text-muted-foreground ml-2 text-xs">{formatSize(fileSize)}</span>
+                  <span className="text-muted-foreground ml-2 text-xs tabular-nums">
+                    {formatSize(fileSize)}
+                  </span>
                 )}
               </p>
               <Button

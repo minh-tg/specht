@@ -3,6 +3,7 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/archivo/wdth.css";
 @import "@fontsource-variable/jetbrains-mono";
+@import "./styles/polish.css";
 
 @custom-variant dark (&:is(.dark *));
 

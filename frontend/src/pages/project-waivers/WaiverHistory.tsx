@@ -33,7 +33,9 @@ export function WaiverHistory({ id, slug, waiverId, who }: {
             <span className="text-muted-foreground">
               by {actorLabel({ user_id: event.actor_id ?? "", user_name: event.actor_name }, who)}
             </span>
-            <span className="text-muted-foreground">{formatDateTime(event.created_at)}</span>
+            <span className="text-muted-foreground tabular-nums">
+              {formatDateTime(event.created_at)}
+            </span>
           </li>
         ))}
       </ol>

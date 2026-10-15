@@ -10,7 +10,9 @@ function Fact({ label, children, mono = false }: {
   return (
     <>
       <dt className="text-muted-foreground">{label}</dt>
-      <dd className={mono ? "font-mono text-xs break-all" : "font-medium"}>{children}</dd>
+      <dd className={mono ? "font-mono text-xs break-all" : "font-medium tabular-nums"}>
+        {children}
+      </dd>
     </>
   );
 }

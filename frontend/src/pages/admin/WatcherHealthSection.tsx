@@ -11,7 +11,7 @@ function Row({ label, children }: { readonly label: string; readonly children: R
   return (
     <div className="border-border grid gap-x-6 gap-y-1 border-b px-0.5 py-3 sm:grid-cols-[12rem_minmax(0,1fr)]">
       <dt className="text-muted-foreground text-[0.8125rem]">{label}</dt>
-      <dd className="m-0 text-[0.9375rem]">{children}</dd>
+      <dd className="m-0 text-[0.9375rem] tabular-nums">{children}</dd>
     </div>
   );
 }

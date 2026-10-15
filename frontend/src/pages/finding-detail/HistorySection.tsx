@@ -48,7 +48,7 @@ export function HistorySection({
             <span className="text-muted-foreground text-xs">
               by {actorLabel(event, { me })}
             </span>
-            <span className="text-muted-foreground text-xs">
+            <span className="text-muted-foreground text-xs tabular-nums">
               {formatDateTime(event.created_at)}
             </span>
             {event.comment && (
