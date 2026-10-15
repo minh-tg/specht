@@ -145,8 +145,13 @@ export function DataGrid<Row>({
   const maxIndex = Math.max(0, rows.length - 1);
   const cursor = Math.min(cursorState, maxIndex);
 
-  // Scroll-follow: without this, keyboard traversal is unusable past one viewport.
+  // Scroll-follow: without this, keyboard traversal is unusable past one viewport. It runs only
+  // after the keyboard moved the cursor. Following the cursor on mount would pull a list that was
+  // restored to an earlier scroll position (Back from a finding) up to its first row.
+  const followCursor = React.useRef(false);
   React.useEffect(() => {
+    if (!followCursor.current) return;
+    followCursor.current = false;
     const node = rowRefs.current[cursor];
     if (!node) return;
     if (typeof node.scrollIntoView === "function") {
@@ -157,6 +162,7 @@ export function DataGrid<Row>({
   const moveCursor = (next: number) => {
     if (rows.length === 0) return;
     const clamped = Math.max(0, Math.min(maxIndex, next));
+    if (clamped !== cursor) followCursor.current = true;
     setCursorState(clamped);
     rowRefs.current[clamped]?.focus();
   };

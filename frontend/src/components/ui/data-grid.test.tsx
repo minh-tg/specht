@@ -93,6 +93,23 @@ describe("DataGrid — ARIA grid pattern", () => {
     expect(scrollIntoView).toHaveBeenCalled();
   });
 
+  it("does not scroll when it mounts, when its rows change or when a row is clicked", () => {
+    // A list restored to an earlier scroll position (Back from a finding) must stay there; the
+    // cursor starts on the first row, which is off screen by then.
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const { rerender } = render(
+      <DataGrid label="Findings" rows={rows} columns={columns} rowKey={rowKey} />,
+    );
+    expect(scrollIntoView).not.toHaveBeenCalled();
+
+    rerender(
+      <DataGrid label="Findings" rows={rows.slice(0, 2)} columns={columns} rowKey={rowKey} />,
+    );
+    fireEvent.click(screen.getAllByRole("row").filter((r) => r.hasAttribute("aria-rowindex"))[1]!);
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
   it("marks selection separately from the cursor", () => {
     render(
       <DataGrid
