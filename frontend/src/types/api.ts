@@ -337,6 +337,8 @@ export interface TriageResponse {
   finding_id: string;
   analysis_state: AnalysisState;
   gate_effect: GateEffect;
+  /** The finding event the decision wrote; the handle an undo names. */
+  event_id?: string;
 }
 
 export interface VerifyResponse {

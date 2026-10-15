@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/sonner";
+import { formatDate } from "@/lib/format";
 import { GLOSSARY } from "@/lib/glossary";
 import { chooseOption, createTestQueryClient, listOptions } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -392,6 +393,19 @@ describe("FindingDetail decision flow", () => {
 
     const decide = screen.getByRole("heading", { level: 2, name: "Decide" }).parentElement!;
     await waitFor(() => expect(decide).toHaveTextContent("Currently: Accepted risk · Blocks gate"));
+  });
+
+  it("shows the recorded reason and expiry under the current standing", async () => {
+    findingFixture = {
+      analysis_state: "accepted_risk",
+      analysis_reason: "covered by the WAF rule",
+      analysis_expires_at: "2031-03-04T05:06:07Z",
+    };
+    renderDetail();
+    await screen.findByRole("heading", { name: "Test Vulnerability" });
+
+    const note = await screen.findByText(/Reason: covered by the WAF rule/);
+    expect(note.textContent).toContain(`Expires ${formatDate("2031-03-04T05:06:07Z")}`);
   });
 
   it("says Not triaged and omits the gate position while the gate is unknown", async () => {

@@ -1,8 +1,7 @@
-import { TRIAGE_REQUIREMENTS } from "@/pages/finding-detail/options";
 import { jsonResponse } from "@/test/utils";
 import type { Waiver } from "@/types/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { REASONLESS_STATES, restoreMemberPlan, revokeUndoPlan, triageUndoPlan } from "./undoPlans";
+import { restoreMemberPlan, revokeUndoPlan, triageUndoPlan } from "./undoPlans";
 
 interface Call {
   method: string;
@@ -11,15 +10,12 @@ interface Call {
 }
 
 let calls: Call[] = [];
-/** The state the server reports for the finding when the plan reads it. */
-let serverState = "exploitable";
 /** The waiver the server reports when a plan reads it. */
 let serverWaiver: Partial<Waiver> = {};
 
 beforeEach(() => {
   calls = [];
   serverWaiver = { id: "w1", status: "approved", enabled: false };
-  serverState = "exploitable";
   globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     calls.push({
@@ -28,17 +24,8 @@ beforeEach(() => {
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
     if (method === "GET" && String(url).includes("/waivers/")) return jsonResponse(serverWaiver);
-    if (method === "GET") return jsonResponse({ id: "f1", analysis_state: serverState });
+    if (method === "GET") return jsonResponse({ id: "f1" });
     return jsonResponse({ finding_id: "f1", analysis_state: "unanalyzed", gate_effect: "block" });
-  });
-});
-
-describe("REASONLESS_STATES", () => {
-  it("lists exactly the states the triage form accepts without a reason or an expiry", () => {
-    const needNothing = Object.entries(TRIAGE_REQUIREMENTS)
-      .filter(([, r]) => !r.requiresReason && !r.requiresExpiry)
-      .map(([state]) => state);
-    expect([...REASONLESS_STATES].sort()).toEqual(needNothing.sort());
   });
 });
 
@@ -46,67 +33,102 @@ describe("triageUndoPlan", () => {
   const refresh = vi.fn();
   beforeEach(() => refresh.mockClear());
 
-  it.each(["unanalyzed", "in_triage", "exploitable"] as const)(
-    "offers an inverse when the finding was %s",
-    (from) => {
-      expect(triageUndoPlan({ findingId: "f1", from, to: "false_positive", refresh }))
-        .toBeDefined();
-    },
-  );
+  it.each(
+    [
+      "unanalyzed",
+      "in_triage",
+      "exploitable",
+      "false_positive",
+      "not_affected",
+      "accepted_risk",
+      "wont_fix",
+    ] as const,
+  )("offers an inverse when the finding was %s, whatever it needed", (from) => {
+    expect(triageUndoPlan({ findingId: "f1", eventId: "e1", from, to: "exploitable", refresh }))
+      .toBeDefined();
+  });
 
-  it.each(["false_positive", "not_affected", "accepted_risk", "wont_fix"] as const)(
-    "offers none when the finding was %s, which needs a reason the API does not return",
-    (from) => {
-      expect(triageUndoPlan({ findingId: "f1", from, to: "exploitable", refresh }))
-        .toBeUndefined();
-    },
-  );
+  it("offers an inverse when the previous state is unknown or unchanged", () => {
+    expect(
+      triageUndoPlan({
+        findingId: "f1",
+        eventId: "e1",
+        from: undefined,
+        to: "exploitable",
+        refresh,
+      }),
+    )
+      .toBeDefined();
+    expect(
+      triageUndoPlan({
+        findingId: "f1",
+        eventId: "e1",
+        from: "exploitable",
+        to: "exploitable",
+        refresh,
+      }),
+    )
+      .toBeDefined();
+  });
 
-  it("offers none when the previous state is unknown or unchanged", () => {
-    expect(triageUndoPlan({ findingId: "f1", from: undefined, to: "exploitable", refresh }))
-      .toBeUndefined();
-    expect(triageUndoPlan({ findingId: "f1", from: "exploitable", to: "exploitable", refresh }))
+  it("offers none without the event the triage wrote", () => {
+    expect(
+      triageUndoPlan({
+        findingId: "f1",
+        eventId: undefined,
+        from: "in_triage",
+        to: "exploitable",
+        refresh,
+      }),
+    )
       .toBeUndefined();
   });
 
-  it("reads the finding, then sends the previous state as a second PATCH", async () => {
-    serverState = "false_positive";
+  it("sends one undo request naming the event, with no read or second write first", async () => {
     const plan = triageUndoPlan({
-      findingId: "f1",
+      findingId: "f/1",
+      eventId: "e1",
       from: "in_triage",
       to: "false_positive",
       refresh,
     })!;
     await plan.run();
-    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
-      "GET /api/v1/findings/f1",
-      "PATCH /api/v1/findings/f1",
+    expect(calls).toEqual([
+      { method: "POST", url: "/api/v1/findings/f%2F1/analysis/undo", body: { event_id: "e1" } },
     ]);
-    expect(calls[1]!.body).toEqual({
-      analysis_state: "in_triage",
-      reason: "",
-      analysis_expires_at: null,
-    });
-    expect(plan.done).toBe("Triage restored to In triage");
   });
 
-  it("refuses, and sends nothing, when someone triaged the finding again meanwhile", async () => {
-    serverState = "wont_fix";
+  it("names the restored state in the confirmation when it is known and changed", () => {
+    const plan = (from?: "in_triage" | "exploitable") =>
+      triageUndoPlan({ findingId: "f1", eventId: "e1", from, to: "exploitable", refresh })!.done;
+    expect(plan("in_triage")).toBe("Triage restored to In triage");
+    expect(plan(undefined)).toBe("Triage change undone");
+    expect(plan("exploitable")).toBe("Triage change undone");
+  });
+
+  it.each([
+    [
+      "analysis_conflict",
+      "This is no longer the latest triage change on the finding, so it cannot be undone.",
+    ],
+    ["undo_unavailable", "This change was recorded without the details needed to undo it."],
+    ["previous_expiry_passed", "The previous decision has expired, so it cannot be restored."],
+  ])("shows the server's own message when it answers %s", async (code, message) => {
+    globalThis.fetch = vi.fn().mockResolvedValue(jsonResponse({ error: { code, message } }, 409));
     const plan = triageUndoPlan({
       findingId: "f1",
+      eventId: "e1",
       from: "in_triage",
-      to: "false_positive",
+      to: "exploitable",
       refresh,
     })!;
-    await expect(plan.run()).rejects.toThrow(
-      "This finding was triaged again in the meantime, so Undo did nothing.",
-    );
-    expect(calls.map((c) => c.method)).toEqual(["GET"]);
+    await expect(plan.run()).rejects.toThrow(message);
   });
 
   it("hands its refresh to the caller", () => {
     const plan = triageUndoPlan({
       findingId: "f1",
+      eventId: "e1",
       from: "in_triage",
       to: "exploitable",
       refresh,

@@ -40,8 +40,16 @@ interface Call {
   body?: unknown;
 }
 
-/** Serves the person, the project with the role the server computed for them, and a triage write. */
-function mockApi(projectRole: "manager" | "member", serverState = "exploitable"): Call[] {
+const UNDO_URL = "/api/v1/findings/f1/analysis/undo";
+
+/**
+ * Serves the person, the project with the role the server computed for them, a triage write that
+ * names its event, and the undo of that event, which the server may refuse.
+ */
+function mockApi(
+  projectRole: "manager" | "member",
+  undoRefusal?: { code: string; message: string; },
+): Call[] {
   const calls: Call[] = [];
   globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
     const u = String(url);
@@ -60,11 +68,22 @@ function mockApi(projectRole: "manager" | "member", serverState = "exploitable")
         permissions: { triage: manager, manage_members: manager },
       });
     }
-    if (u.endsWith("/api/v1/findings/f1") && method === "GET") {
-      return jsonResponse({ id: "f1", analysis_state: serverState });
-    }
     if (u.endsWith("/api/v1/findings/f1") && method === "PATCH") {
-      return jsonResponse({ id: "f1", analysis_state: "unanalyzed" });
+      return jsonResponse({
+        finding_id: "f1",
+        analysis_state: "exploitable",
+        gate_effect: "block",
+        event_id: "e1",
+      });
+    }
+    if (u.endsWith(UNDO_URL) && method === "POST") {
+      if (undoRefusal) return jsonResponse({ error: undoRefusal }, 409);
+      return jsonResponse({
+        finding_id: "f1",
+        analysis_state: "in_triage",
+        gate_effect: "block",
+        event_id: "e2",
+      });
     }
     return jsonResponse({});
   });
@@ -153,45 +172,44 @@ describe("TriageSection undo", () => {
     return user;
   }
 
-  it("puts a reasonless previous state back with a second PATCH, and cues once per success", async () => {
-    const calls = mockApi("manager", "exploitable");
+  it("asks the server to undo the triage event, and cues once per success", async () => {
+    const calls = mockApi("manager");
     renderTriageSection("core-api", "in_triage");
 
     const user = await triageTo("Exploitable");
     await user.click(await screen.findByRole("button", { name: "Undo" }));
 
     expect(await screen.findByText("Triage restored to In triage")).toBeInTheDocument();
-    const patches = calls.filter((c) => c.method === "PATCH");
-    expect(patches.map((c) => (c.body as { analysis_state: string; }).analysis_state)).toEqual([
-      "exploitable",
-      "in_triage",
-    ]);
+    expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(1);
+    const undo = calls.filter((c) => c.url.endsWith(UNDO_URL));
+    expect(undo).toHaveLength(1);
+    expect(undo[0]).toMatchObject({ method: "POST", body: { event_id: "e1" } });
     // One cue for the triage, one for the undo's own confirmation, none for a hidden second toast.
     expect(playCue.mock.calls).toEqual([["accepted"], ["accepted"]]);
   });
 
-  it("offers no Undo when the previous state needed a reason", async () => {
-    mockApi("manager", "exploitable");
-    renderTriageSection("core-api", "accepted_risk");
+  it.each(["unanalyzed", "accepted_risk", "wont_fix", "false_positive"] as const)(
+    "offers Undo when the previous state was %s, reason and expiry included",
+    async (previous) => {
+      mockApi("manager");
+      renderTriageSection("core-api", previous);
 
-    await triageTo("Exploitable");
+      await triageTo("Exploitable");
 
-    expect(await screen.findByText(/Triage saved/)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
-  });
+      expect(await screen.findByRole("button", { name: "Undo" })).toBeInTheDocument();
+    },
+  );
 
-  it("shows an error and changes nothing when the finding moved on", async () => {
-    const calls = mockApi("manager", "wont_fix");
+  it("shows the server's message and cues an error when the undo is refused", async () => {
+    const message =
+      "This is no longer the latest triage change on the finding, so it cannot be undone.";
+    const calls = mockApi("manager", { code: "analysis_conflict", message });
     renderTriageSection("core-api", "in_triage");
 
     const user = await triageTo("Exploitable");
     await user.click(await screen.findByRole("button", { name: "Undo" }));
 
-    expect(
-      await screen.findByText(
-        "This finding was triaged again in the meantime, so Undo did nothing.",
-      ),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(message)).toBeInTheDocument();
     expect(calls.filter((c) => c.method === "PATCH")).toHaveLength(1);
     expect(playCue).toHaveBeenLastCalledWith("error");
   });

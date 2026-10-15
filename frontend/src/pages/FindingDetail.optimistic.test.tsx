@@ -14,7 +14,12 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-let server: { analysis_state: string; gate_effect: string; blocked: boolean; };
+let server: {
+  analysis_state: string;
+  gate_effect: string;
+  blocked: boolean;
+  analysis_reason?: string;
+};
 let patch: ReturnType<typeof deferred<Response>> | null;
 let gateHold: ReturnType<typeof deferred<void>> | null;
 
@@ -31,6 +36,7 @@ function finding() {
     triage_status: "untriaged",
     analysis_state: server.analysis_state,
     gate_effect: server.gate_effect,
+    analysis_reason: server.analysis_reason,
     first_seen_at: "2025-01-01T00:00:00Z",
     last_seen_at: "2025-01-02T00:00:00Z",
     created_at: "2025-01-01T00:00:00Z",
@@ -115,6 +121,25 @@ describe("FindingDetail optimistic triage", () => {
     gateHold.resolve();
     expect(await screen.findByText("Why this does not block")).toBeInTheDocument();
     expect(decide()).toHaveTextContent("Currently: Exploitable · Does not block gate");
+  });
+
+  it("hides the old decision's reason while the chosen state is shown", async () => {
+    server = {
+      analysis_state: "false_positive",
+      gate_effect: "ignore",
+      blocked: false,
+      analysis_reason: "test fixture only",
+    };
+    renderDetail();
+    expect(await screen.findByText(/Reason: test fixture only/)).toBeInTheDocument();
+    await screen.findByText("Why this does not block");
+    const user = userEvent.setup();
+    await chooseOption(user, screen.getAllByRole("combobox")[0]!, "Exploitable");
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    await waitFor(() => expect(patch).not.toBeNull());
+
+    expect(decide()).toHaveTextContent("Currently: Exploitable");
+    expect(screen.queryByText(/Reason: test fixture only/)).not.toBeInTheDocument();
   });
 
   it("goes back to the real state, and the old verdict, with an error toast when the server refuses", async () => {

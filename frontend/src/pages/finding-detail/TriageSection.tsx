@@ -18,7 +18,7 @@ export function TriageSection({
 }: {
   readonly findingId: string;
   readonly projectSlug?: string;
-  /** The finding's state now. It is what Undo puts back after a change. */
+  /** The finding's state now. It names the state Undo restores in its confirmation. */
   readonly currentState?: AnalysisState;
 }) {
   const params = useParams<{ slug: string; }>();
