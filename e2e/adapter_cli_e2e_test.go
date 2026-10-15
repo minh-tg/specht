@@ -61,6 +61,17 @@ func TestE2E_AdapterGateVerdicts(t *testing.T) {
 		require.Empty(t, findings, "an excluded scan must not ingest anything")
 	})
 
+	t.Run("a file from another scanner is refused with the scanner to pick", func(t *testing.T) {
+		slug := newProject(t, "adapter-wrong-tool")
+		key := mintKey(t, slug)
+		_, stderr, exit := runBin(t, adapterBin,
+			[]string{"API_URL=" + baseURL, "API_KEY=" + key},
+			"-project", slug, "-tool", "trivy", "-file", absFixture(t, "grype-report.json"))
+		require.Equal(t, 2, exit, "a refused report is an API error, not a pass; stderr:\n%s", stderr)
+		require.Contains(t, stderr, "choose grype as the scanner")
+		require.Empty(t, listFindings(t, slug))
+	})
+
 	t.Run("missing API key is a configuration error", func(t *testing.T) {
 		_, stderr, exit := runBin(t, adapterBin, nil,
 			"-project", "anything", "-tool", "sarif",
