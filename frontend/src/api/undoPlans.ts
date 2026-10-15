@@ -2,6 +2,7 @@ import { type AnalysisState, analysisStateLabel } from "@/lib/enums";
 import type { ProjectMember, ProjectRole, Waiver } from "@/types/api";
 import { apiFetch } from "./client";
 import type { UndoPlan } from "./undo";
+import { waiverSwitchError } from "./waiverSwitch";
 
 /**
  * The triage states the API accepts without a reason or an expiry. The finding read does not return
@@ -49,9 +50,9 @@ export function triageUndoPlan(
 }
 
 /**
- * The inverse of revoking a waiver. Revoke is a blind toggle, so the plan reads the waiver first
- * and flips it back only while it is still approved and switched off; otherwise someone decided
- * something else meanwhile and flipping again would undo their decision, not this one. There is
+ * The inverse of revoking a waiver: a restore that carries the `updated_at` the revoke returned. The
+ * server applies it only while the waiver is still as the revoke left it, so a later restore or
+ * revoke by someone else is not overridden, and an expired waiver is not brought back. There is
  * none unless the revoke left the waiver approved and off.
  */
 export function revokeUndoPlan(
@@ -60,16 +61,19 @@ export function revokeUndoPlan(
   if (waiver.status !== "approved" || waiver.enabled) return undefined;
   const path = `/api/v1/projects/${encodeURIComponent(slug)}/waivers/${
     encodeURIComponent(waiver.id)
-  }`;
+  }/restore`;
   return {
     done: "Waiver back in force",
     refresh,
     run: async () => {
-      const current = await apiFetch<Waiver>(path);
-      if (current.status !== "approved" || current.enabled) {
-        throw new Error("The waiver changed in the meantime, so Undo did nothing.");
+      try {
+        await apiFetch<Waiver>(path, {
+          method: "POST",
+          body: JSON.stringify({ expected_updated_at: waiver.updated_at }),
+        });
+      } catch (error) {
+        throw waiverSwitchError(error, "undo");
       }
-      await apiFetch<Waiver>(`${path}/toggle`, { method: "POST" });
     },
   };
 }

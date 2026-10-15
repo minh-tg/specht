@@ -33,12 +33,15 @@ export function waiverBucket(waiver: Waiver, now: Date): WaiverBucket {
   return "closed";
 }
 
+/**
+ * Why a waiver is closed. Expiry is tested before the switch: the sweeper switches an expired
+ * waiver off and leaves it approved, so it looks like a revoked one, but it cannot be restored
+ * until its expiry is extended.
+ */
 export function closedReason(waiver: Waiver, now: Date): ClosedReason {
   if (waiver.status === "rejected") return "Rejected";
   if (waiver.status === "withdrawn") return "Withdrawn";
-  if (waiver.status === "approved" && !waiver.enabled) return "Revoked";
-  if (hasExpired(waiver, now)) return "Expired";
-  return "Revoked";
+  return hasExpired(waiver, now) ? "Expired" : "Revoked";
 }
 
 /** A request is named "Waiver request: <title>"; the list already says what it is, so drop the prefix. */
@@ -56,6 +59,8 @@ export function countByBucket(waivers: readonly Waiver[], now: Date): Record<Wai
 const EVENT_LABEL = new Map<string, string>([
   ["created", "Created"],
   ["updated", "Edited"],
+  ["revoked", "Revoked"],
+  ["restored", "Restored"],
   ["enabled", "Switched on"],
   ["disabled", "Switched off"],
   ["auto_disabled", "Switched off automatically"],

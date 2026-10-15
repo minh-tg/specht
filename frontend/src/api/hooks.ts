@@ -39,6 +39,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { APIError, apiFetch, apiFetchWithTotal } from "./client";
 import { restoreMemberPlan, revokeUndoPlan, triageUndoPlan } from "./undoPlans";
+import { waiverSwitchError } from "./waiverSwitch";
 
 /** What the findings list asks the server for. Empty values are left out of the request. */
 export interface FindingsQuery {
@@ -976,6 +977,7 @@ function useWaiverDecided(slug: string) {
   const queryClient = useQueryClient();
   return () => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.waivers() });
+    void queryClient.invalidateQueries({ queryKey: ["waiver-events", slug] });
     void queryClient.invalidateQueries({ queryKey: queryKeys.gate(slug) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.projectStats(slug) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.project(slug) });
@@ -1019,21 +1021,59 @@ export function useWithdrawWaiver(slug: string) {
   });
 }
 
-/** Switches an approved waiver off without deleting it, so its findings block again. */
+/**
+ * Sends a revoke or restore with the version of the waiver the screen showed. The server answers
+ * 409 when the waiver was written since, so two managers cannot undo each other by accident.
+ */
+async function switchWaiver(slug: string, waiver: Waiver, action: "revoke" | "restore") {
+  try {
+    return await apiFetch<Waiver>(
+      `/api/v1/projects/${encodeURIComponent(slug)}/waivers/${
+        encodeURIComponent(waiver.id)
+      }/${action}`,
+      { method: "POST", body: JSON.stringify({ expected_updated_at: waiver.updated_at }) },
+    );
+  } catch (error) {
+    throw waiverSwitchError(error, "button");
+  }
+}
+
+/** A refused switch leaves the list stale, so it is fetched again. */
+function useWaiverSwitchRefused() {
+  const queryClient = useQueryClient();
+  return () => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.waivers() });
+  };
+}
+
+/**
+ * Switches an approved waiver off without deleting it, so its findings block again. The toast
+ * offers Undo, which restores the waiver only while nobody else has changed it.
+ */
 export function useRevokeWaiver(slug: string) {
   const decided = useWaiverDecided(slug);
+  const refused = useWaiverSwitchRefused();
   return useMutation({
     meta: {
       success: () => "Waiver revoked",
       sound: "none",
       undo: (data: Waiver) => revokeUndoPlan({ slug, waiver: data, refresh: decided }),
     },
-    mutationFn: (id: string) =>
-      apiFetch<Waiver>(
-        `/api/v1/projects/${encodeURIComponent(slug)}/waivers/${encodeURIComponent(id)}/toggle`,
-        { method: "POST" },
-      ),
+    mutationFn: (waiver: Waiver) => switchWaiver(slug, waiver, "revoke"),
     onSuccess: decided,
+    onError: refused,
+  });
+}
+
+/** Puts a revoked waiver back in force. It plays the success cue: the findings it covers pass again. */
+export function useRestoreWaiver(slug: string) {
+  const decided = useWaiverDecided(slug);
+  const refused = useWaiverSwitchRefused();
+  return useMutation({
+    meta: { success: () => "Waiver restored" },
+    mutationFn: (waiver: Waiver) => switchWaiver(slug, waiver, "restore"),
+    onSuccess: decided,
+    onError: refused,
   });
 }
 

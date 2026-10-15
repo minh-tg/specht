@@ -42,6 +42,8 @@ let listFails: boolean;
 let eventsMode: "ok" | "empty" | "fail" | "slow";
 let events: WaiverEvent[];
 let updateError: string | null;
+/** When set, every revoke or restore is refused with this 409 code, as if the server had decided so. */
+let switchRefusal: string | null;
 
 function renderPage(userId = "u-ada") {
   const auth: AuthContextValue = {
@@ -108,6 +110,7 @@ describe("ProjectWaivers", () => {
       },
     ];
     updateError = null;
+    switchRefusal = null;
     calls = [];
     permissions = { approve_waivers: true, manage_waivers: true };
     waivers = [
@@ -174,9 +177,24 @@ describe("ProjectWaivers", () => {
         if (method === "GET" && /\/waivers\/[^/]+$/.test(url)) {
           return jsonResponse(waivers.find((w) => url.endsWith(`/waivers/${w.id}`)));
         }
-        if (method === "POST" && /\/waivers\/[^/]+\/toggle$/.test(url)) {
-          const target = waivers.find((w) => url.endsWith(`/waivers/${w.id}/toggle`))!;
-          target.enabled = !target.enabled;
+        const switching = /\/waivers\/([^/]+)\/(revoke|restore)$/.exec(url);
+        if (method === "POST" && switching) {
+          const target = waivers.find((w) => w.id === switching[1])!;
+          const wantOn = switching[2] === "restore";
+          const refuse = (code: string) =>
+            jsonResponse({ error: { code, message: `refused: ${code}` } }, 409);
+          if (switchRefusal) return refuse(switchRefusal);
+          // The real server compares the version the caller saw with the stored one.
+          if (body?.expected_updated_at && body.expected_updated_at !== target.updated_at) {
+            return refuse("waiver_changed");
+          }
+          if (wantOn && target.expires_at && Date.parse(target.expires_at) <= Date.now()) {
+            return refuse("waiver_expired");
+          }
+          if (target.enabled !== wantOn) {
+            target.enabled = wantOn;
+            target.updated_at = new Date(Date.parse(target.updated_at) + 1000).toISOString();
+          }
           return jsonResponse(target);
         }
         if (method === "POST" && /\/waivers\/[^/]+\/(approve|reject|withdraw)$/.test(url)) {
@@ -272,13 +290,17 @@ describe("ProjectWaivers", () => {
     expect(await screen.findByText("Request withdrawn")).toBeInTheDocument();
   });
 
-  it("lets a manager revoke a waiver that is in force", async () => {
+  it("lets a manager revoke a waiver that is in force, sending the version it showed", async () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(await screen.findByRole("tab", { name: "In force 1" }));
     await user.click(screen.getByRole("button", { name: "Revoke zlib: heap overflow" }));
-    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/waivers/w3/toggle"))).toBe(true));
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/waivers/w3/revoke"))).toBe(true));
     expect(await screen.findByText("Waiver revoked")).toBeInTheDocument();
+    const revoke = calls.find((c) => c.url.endsWith("/waivers/w3/revoke"))!;
+    expect(revoke.method).toBe("POST");
+    expect(revoke.body).toEqual({ expected_updated_at: "2026-10-01T00:00:00Z" });
+    expect(calls.some((c) => c.url.endsWith("/toggle"))).toBe(false);
   });
 
   it("puts a revoked waiver back in force from the toast, silent on revoke and one cue on Undo", async () => {
@@ -289,27 +311,153 @@ describe("ProjectWaivers", () => {
     await user.click(await screen.findByRole("button", { name: "Undo" }));
 
     expect(await screen.findByText("Waiver back in force")).toBeInTheDocument();
-    const toggles = calls.filter((c) => c.url.endsWith("/waivers/w3/toggle"));
-    expect(toggles).toHaveLength(2);
+    const restore = calls.filter((c) => c.url.endsWith("/waivers/w3/restore"));
+    expect(restore).toHaveLength(1);
+    // Undo sends the version the revoke returned, not the one the list had before it.
+    expect(restore[0]!.body).toEqual({ expected_updated_at: "2026-10-01T00:00:01.000Z" });
     expect(waivers.find((w) => w.id === "w3")?.enabled).toBe(true);
     // A removal or revocation is silent, so the only cue is the one the successful Undo plays.
     expect(playCue.mock.calls).toEqual([["accepted"]]);
   });
 
-  it("refuses to undo a revoke when the waiver changed meanwhile, and toggles nothing", async () => {
+  it("refuses to undo a revoke when the waiver changed meanwhile, and says so", async () => {
     const user = userEvent.setup();
     renderPage();
     await user.click(await screen.findByRole("tab", { name: "In force 1" }));
     await user.click(screen.getByRole("button", { name: "Revoke zlib: heap overflow" }));
     const undo = await screen.findByRole("button", { name: "Undo" });
-    // Another manager switches it on again before Undo is pressed.
-    waivers.find((w) => w.id === "w3")!.enabled = true;
+    // Another manager restores and revokes it again before Undo is pressed.
+    waivers.find((w) => w.id === "w3")!.updated_at = "2026-10-01T00:05:00.000Z";
     await user.click(undo);
 
     expect(await screen.findByText("The waiver changed in the meantime, so Undo did nothing."))
       .toBeInTheDocument();
-    expect(calls.filter((c) => c.url.endsWith("/waivers/w3/toggle"))).toHaveLength(1);
+    expect(waivers.find((w) => w.id === "w3")?.enabled).toBe(false);
     expect(playCue).toHaveBeenLastCalledWith("error");
+  });
+
+  it("refuses to undo a revoke once the waiver has expired", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("tab", { name: "In force 1" }));
+    await user.click(screen.getByRole("button", { name: "Revoke zlib: heap overflow" }));
+    const undo = await screen.findByRole("button", { name: "Undo" });
+    switchRefusal = "waiver_expired";
+    await user.click(undo);
+
+    expect(await screen.findByText("The waiver has expired. Extend its expiry first."))
+      .toBeInTheDocument();
+    expect(playCue).toHaveBeenLastCalledWith("error");
+  });
+
+  describe("Restore", () => {
+    const revoked = () =>
+      waiver({
+        id: "w5",
+        status: "approved",
+        enabled: false,
+        name: "Waiver request: log4j: remote code execution",
+        updated_at: "2026-10-05T08:00:00.123456Z",
+      });
+    const expired = () =>
+      waiver({
+        id: "w6",
+        status: "approved",
+        enabled: false,
+        name: "Waiver request: openssl: timing leak",
+        expires_at: "2026-09-30T00:00:00Z",
+      });
+
+    it("lets a manager put a revoked waiver back in force, and moves focus to the list", async () => {
+      waivers.push(revoked());
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(await screen.findByRole("tab", { name: "Closed 2" }));
+      await user.click(
+        screen.getByRole("button", { name: "Restore log4j: remote code execution" }),
+      );
+
+      expect(await screen.findByText("Waiver restored")).toBeInTheDocument();
+      const call = calls.find((c) => c.url.endsWith("/waivers/w5/restore"))!;
+      expect(call.method).toBe("POST");
+      expect(call.body).toEqual({ expected_updated_at: "2026-10-05T08:00:00.123456Z" });
+      expect(waivers.find((w) => w.id === "w5")?.enabled).toBe(true);
+      expect(playCue.mock.calls).toEqual([["accepted"]]);
+      await waitFor(() =>
+        expect(screen.getByRole("tab", { name: "In force 2" })).toBeInTheDocument()
+      );
+      await waitFor(() => expect(screen.getByRole("tabpanel")).toHaveFocus());
+      // The restored waiver left the closed list and is not offered Restore again.
+      expect(screen.queryByRole("button", { name: /Restore log4j/ })).not.toBeInTheDocument();
+    });
+
+    it("does not offer Restore to a person who cannot manage waivers", async () => {
+      permissions = { approve_waivers: true, manage_waivers: false };
+      waivers.push(revoked());
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(await screen.findByRole("tab", { name: "Closed 2" }));
+      expect(screen.getByText("Revoked")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Restore/ })).not.toBeInTheDocument();
+    });
+
+    it("does not offer Restore on rejected or withdrawn requests", async () => {
+      waivers.push(waiver({ id: "w7", status: "withdrawn", name: "Waiver request: curl: bug" }));
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(await screen.findByRole("tab", { name: "Closed 2" }));
+      expect(screen.queryByRole("button", { name: /Restore/ })).not.toBeInTheDocument();
+    });
+
+    it("calls a waiver the sweeper switched off Expired and offers Edit expiry, not Restore", async () => {
+      waivers.push(expired());
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(await screen.findByRole("tab", { name: "Closed 2" }));
+
+      expect(screen.getByText(/^Expired/)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /Restore/ })).not.toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Edit expiry of openssl: timing leak" }));
+      expect(await screen.findByRole("heading", { name: "Edit waiver" })).toBeInTheDocument();
+      expect(screen.getByLabelText("Expires")).toBeInTheDocument();
+    });
+
+    it("says the waiver changed, and refreshes the list, when someone else wrote it first", async () => {
+      waivers.push(revoked());
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(await screen.findByRole("tab", { name: "Closed 2" }));
+      // Another manager restored it, and revoked it again, after this list loaded.
+      waivers.find((w) => w.id === "w5")!.updated_at = "2026-10-05T09:00:00.000000Z";
+      await user.click(
+        screen.getByRole("button", { name: "Restore log4j: remote code execution" }),
+      );
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "The waiver changed since this list loaded, so nothing was done. The list is up to date now.",
+      );
+      expect(waivers.find((w) => w.id === "w5")?.enabled).toBe(false);
+      expect(playCue).toHaveBeenLastCalledWith("error");
+      await waitFor(() =>
+        expect(calls.filter((c) => c.method === "GET" && c.url.endsWith("/waivers")).length)
+          .toBeGreaterThan(1)
+      );
+    });
+
+    it("says the waiver has expired when the server refuses a restore for that reason", async () => {
+      waivers.push(revoked());
+      const user = userEvent.setup();
+      renderPage();
+      await user.click(await screen.findByRole("tab", { name: "Closed 2" }));
+      switchRefusal = "waiver_expired";
+      await user.click(
+        screen.getByRole("button", { name: "Restore log4j: remote code execution" }),
+      );
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(
+        "The waiver has expired. Extend its expiry first.",
+      );
+    });
   });
 
   it("says who decided a closed waiver, and why", async () => {

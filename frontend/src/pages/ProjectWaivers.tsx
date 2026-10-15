@@ -1,4 +1,11 @@
-import { useMe, useProject, useRevokeWaiver, useWaivers, useWithdrawWaiver } from "@/api/hooks";
+import {
+  useMe,
+  useProject,
+  useRestoreWaiver,
+  useRevokeWaiver,
+  useWaivers,
+  useWithdrawWaiver,
+} from "@/api/hooks";
 import { useDeleteWaiver } from "@/api/waiverActions";
 import { useAuth } from "@/auth/useAuth";
 import { ErrorState } from "@/components/ErrorState";
@@ -42,6 +49,7 @@ export function ProjectWaivers() {
   const [params, setParams] = useSearchParams();
   const tab = bucketFromParam(params.get(TAB_PARAM));
   const tabRefs = useRef<Partial<Record<WaiverBucket, HTMLButtonElement | null>>>({});
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const { data: waivers, isLoading, isError, refetch, dataUpdatedAt } = useWaivers(currentSlug);
   const { data: project } = useProject(currentSlug);
@@ -49,6 +57,7 @@ export function ProjectWaivers() {
   const { userId } = useAuth();
   const withdraw = useWithdrawWaiver(currentSlug);
   const revoke = useRevokeWaiver(currentSlug);
+  const restore = useRestoreWaiver(currentSlug);
   const remove = useDeleteWaiver(currentSlug);
 
   const [deciding, setDeciding] = useState<{ waiver: Waiver; decision: Decision; } | null>(null);
@@ -85,8 +94,8 @@ export function ProjectWaivers() {
   }
 
   const permissions = project?.permissions;
-  const busy = withdraw.isPending || revoke.isPending || remove.isPending;
-  const failure = latestFailure(withdraw, revoke, remove);
+  const busy = withdraw.isPending || revoke.isPending || restore.isPending || remove.isPending;
+  const failure = latestFailure(withdraw, revoke, restore, remove);
 
   return (
     <section aria-labelledby="waivers-heading" className="grid gap-5">
@@ -130,6 +139,7 @@ export function ProjectWaivers() {
       </div>
 
       <div
+        ref={panelRef}
         role="tabpanel"
         id="waivers-panel"
         aria-labelledby={`waivers-tab-${tab}`}
@@ -160,7 +170,13 @@ export function ProjectWaivers() {
                     onApprove: (w) => setDeciding({ waiver: w, decision: "approve" }),
                     onReject: (w) => setDeciding({ waiver: w, decision: "reject" }),
                     onWithdraw: (w) => withdraw.mutate(w.id),
-                    onRevoke: (w) => revoke.mutate(w.id),
+                    onRevoke: (w) => revoke.mutate(w),
+                    // The restored waiver leaves this list, taking the focused button with it, so
+                    // focus moves to the list's panel instead of falling back to the page.
+                    onRestore: (w) =>
+                      restore.mutate(w, {
+                        onSuccess: () => panelRef.current?.focus({ preventScroll: true }),
+                      }),
                     onEdit: (w) => setEditing(w),
                     onDelete: (w) => setDeleting(w),
                   }}

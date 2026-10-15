@@ -27,6 +27,7 @@ const actions: WaiverRowActions = {
   onReject: () => {},
   onWithdraw: () => {},
   onRevoke: () => {},
+  onRestore: () => {},
   onEdit: () => {},
   onDelete: () => {},
 };
