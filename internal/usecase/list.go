@@ -801,11 +801,13 @@ type ArtifactResponse struct {
 
 func toEnvironment(e port.Environment) EnvironmentResponse {
 	return EnvironmentResponse{
-		ID:        uuidStr(e.ID),
-		ProjectID: uuidStr(e.ProjectID),
-		Name:      e.Name,
-		Tier:      e.Tier,
-		CreatedAt: e.CreatedAt.Format(time.RFC3339),
+		ID:              uuidStr(e.ID),
+		ProjectID:       uuidStr(e.ProjectID),
+		Name:            e.Name,
+		Tier:            e.Tier,
+		InternetFacing:  e.InternetFacing,
+		DataSensitivity: e.DataSensitivity,
+		CreatedAt:       e.CreatedAt.Format(time.RFC3339),
 	}
 }
 
