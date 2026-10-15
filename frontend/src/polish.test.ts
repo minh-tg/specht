@@ -14,7 +14,11 @@ function block(scope: string, selector: string): string {
   return scope.slice(scope.indexOf("{", start) + 1, scope.indexOf("}", start));
 }
 
-const base = polish.slice(polish.indexOf("@layer base"));
+const coarse = polish.slice(polish.indexOf("@media (pointer: coarse)"));
+const base = polish.slice(
+  polish.indexOf("@layer base"),
+  polish.indexOf("@media (pointer: coarse)"),
+);
 
 describe("polish.css", () => {
   it("is imported once from index.css", () => {
@@ -22,9 +26,66 @@ describe("polish.css", () => {
     expect(matches).toHaveLength(1);
   });
 
+  it("defines the 44px touch target as a token", () => {
+    expect(block(polish, ":root")).toContain("--hit-coarse: 44px;");
+  });
+
+  it("raises hit areas only under a coarse pointer", () => {
+    expect(polish.match(/--hit-coarse/g)!.length).toBeGreaterThan(2);
+    const outside = polish.slice(0, polish.indexOf("@media (pointer: coarse)"));
+    expect(outside.replace(/--hit-coarse: 44px;/, "")).not.toContain("var(--hit-coarse)");
+  });
+
+  it.each([
+    "button",
+    "[role=\"tab\"]",
+    "[role^=\"menuitem\"]",
+    "a[class~=\"group/button\"]",
+  ])("gives %s the coarse minimum height", (selector) => {
+    const rule = coarse.slice(0, coarse.indexOf("button:has("));
+    expect(rule).toContain(selector);
+    expect(block(coarse, "button,")).toContain("min-height: var(--hit-coarse);");
+  });
+
+  it("targets roles and elements, never component class names from other slices", () => {
+    expect(polish).not.toMatch(/navLink|\.nav|header\s*\{|AccountMenu|ThemeToggle/);
+  });
+
+  it("extends the tap area of a switch without resizing it", () => {
+    const after = block(coarse, "[role=\"switch\"]::after");
+    expect(after).toContain("min-width: var(--hit-coarse);");
+    expect(after).toContain("min-height: var(--hit-coarse);");
+  });
+
   it("balances headings and prettifies paragraphs once, in the base layer", () => {
     expect(block(base, "h1,")).toContain("text-wrap: balance;");
     expect(block(base, "p,")).toContain("text-wrap: pretty;");
+  });
+
+  it("sets touch-action, a clear tap highlight and contained overscroll", () => {
+    expect(block(base, "a,")).toContain("touch-action: manipulation;");
+    expect(block(base, "html")).toContain("-webkit-tap-highlight-color: transparent;");
+    const overscroll = block(base, "[role=\"dialog\"]");
+    expect(overscroll).toContain("overscroll-behavior: contain;");
+    expect(base).toMatch(/\[role="menu"\]/);
+  });
+
+  it("pads the page for the safe areas without touching the header", () => {
+    expect(block(base, "body")).toContain("env(safe-area-inset-left)");
+    expect(block(base, "body")).toContain("env(safe-area-inset-right)");
+    expect(block(base, "main")).toContain("env(safe-area-inset-bottom)");
+    expect(polish).not.toContain("safe-area-inset-top");
+  });
+});
+
+describe("viewport and fixed elements", () => {
+  it("lets the page extend under the notch", () => {
+    const html = readFileSync(join(SRC, "..", "index.html"), "utf8");
+    expect(html).toMatch(/<meta name="viewport" content="[^"]*viewport-fit=cover[^"]*"/);
+  });
+
+  it("lifts the bulk action bar above the home indicator", () => {
+    expect(read("pages/findings-dashboard/BulkBar.tsx")).toContain("env(safe-area-inset-bottom)");
   });
 });
 

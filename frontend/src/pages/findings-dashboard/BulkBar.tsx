@@ -17,7 +17,7 @@ export function BulkBar({ count, onTriage, onRequestWaiver, onClear }: {
     <div
       role="region"
       aria-label="Bulk actions"
-      className="bg-foreground text-background fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2.5 rounded-lg py-2 pr-2 pl-4 shadow-lg motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-4"
+      className="bg-foreground text-background fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] left-1/2 z-40 flex -translate-x-1/2 items-center gap-2.5 rounded-lg py-2 pr-2 pl-4 shadow-lg motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-4"
     >
       <span aria-live="polite" className="text-sm whitespace-nowrap">
         <b className="tabular-nums">{count}</b> selected
