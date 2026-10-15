@@ -35,6 +35,13 @@ describe("suggestFromDirectory", () => {
     expect(emails("pper")).toEqual([]);
   });
 
+  it("matches text that spans words from the start of a word, like the server", () => {
+    expect(emails("ada lov")).toEqual(["ada@acme.example"]);
+    expect(emails("ada lovelace")).toEqual(["ada@acme.example"]);
+    expect(emails("lov")).toEqual(["ada@acme.example"]);
+    expect(emails("da lov")).toEqual([]);
+  });
+
   it("needs three characters after trimming", () => {
     expect(emails("  ad  ")).toEqual([]);
     expect(emails("  ada  ")).toEqual(["ada@acme.example", "adam@acme.example"]);

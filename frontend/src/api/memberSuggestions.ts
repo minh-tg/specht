@@ -60,7 +60,8 @@ export function useMemberSuggestions(slug: string, query: string, enabled = true
 /**
  * The server's suggestion rules applied to a directory already in memory, for the team roster
  * dialog (only instance admins add people there, and they have the directory loaded). A person
- * matches when their email, or any word of their display name, starts with the query.
+ * matches when their email starts with the query, or the query starts at the beginning of a word of
+ * their display name ("ada lov" finds "Ada Lovelace").
  */
 export function suggestFromDirectory(
   directory: readonly UserProfile[] | undefined,
@@ -74,9 +75,8 @@ export function suggestFromDirectory(
       return false;
     }
     if (user.email.toLowerCase().startsWith(needle)) return true;
-    return (user.display_name ?? "").toLowerCase().split(" ").some((word) =>
-      word.startsWith(needle)
-    );
+    // The server's rule: the needle starts at a word boundary, and may run on into later words.
+    return (" " + (user.display_name ?? "").toLowerCase()).includes(" " + needle);
   });
   return matches
     .toSorted((a, b) => (a.email < b.email ? -1 : a.email > b.email ? 1 : 0))
