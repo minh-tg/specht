@@ -66,6 +66,11 @@ releases.
   admin set.
 - The report upload page takes `.jsonl` and `.ndjson` files, such as Nuclei
   output, and names the line that is not valid JSON.
+- Ingest keeps every CVSS vector a Trivy, Grype, OSV-Scanner, Dependency-Check
+  or CycloneDX report states (all versions, with the scoring source), and the
+  EPSS percentile and the KEV due date and ransomware use are read from the
+  feeds. `INTEL_ENABLED=false` turns the EPSS and KEV feeds off, so an
+  air-gapped install makes no feed calls.
 
 ### Changed
 
