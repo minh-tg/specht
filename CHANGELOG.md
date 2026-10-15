@@ -83,6 +83,12 @@ releases.
   `approve`, `reject`, `withdraw`, `toggle`, `delete`, `events`). The new
   commands honour `--format json`.
 - Bulk triage no longer reports a decode error after the server has applied it.
+- The Add Direct Member dialog suggests people as you type (three characters or more, at most
+  eight, by email or the start of a name word). Only project managers and admins get
+  suggestions, a limit of 30 requests a minute applies per person, and the list stays empty
+  while open sign-up or SSO with unverified emails could let someone register under a
+  colleague's name. Typing a full address still works. The team roster dialog suggests from
+  the account list it already loads.
 - The server compresses its own web app files (gzip), so the main script is about 250 kB on
   the wire instead of 830 kB. API responses are never compressed.
 - A password must not be on a list of about 2,000 commonly used passwords or match the account's
