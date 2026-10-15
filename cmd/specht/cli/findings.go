@@ -9,7 +9,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newFindingsCmd(d Deps, _ *settings) *cobra.Command {
+func newFindingsCmd(d Deps, s *settings) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "findings",
 		Short: "Manage findings",
@@ -19,6 +19,9 @@ func newFindingsCmd(d Deps, _ *settings) *cobra.Command {
 		newFindingsGetCmd(d),
 		newFindingsVerifyCmd(d),
 		newFindingsReachabilityCmd(d),
+		newFindingsTriageCmd(d, s),
+		newFindingsBulkTriageCmd(d, s),
+		newFindingsEventsCmd(d, s),
 	)
 	return cmd
 }
