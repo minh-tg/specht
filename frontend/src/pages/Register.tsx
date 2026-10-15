@@ -6,7 +6,7 @@ import { AuthLayout } from "@/components/AuthLayout";
 import { FormField } from "@/components/FormField";
 import { PasswordField } from "@/components/PasswordField";
 import { Button } from "@/components/ui/button";
-import { isPasswordValid, passwordPolicyMessage } from "@/lib/passwordRules";
+import { isPasswordValid, passwordPolicyMessage, passwordUserInputs } from "@/lib/passwordRules";
 import { type SubmitEvent, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
@@ -82,7 +82,7 @@ export function Register() {
           label="Password"
           id="reg-password"
           rulesId="reg-password-rules"
-          userInputs={[email]}
+          userInputs={passwordUserInputs(email)}
           required
           value={password}
           onChange={(e) => {

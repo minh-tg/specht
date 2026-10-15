@@ -15,6 +15,13 @@ const open = {
   commit: "none",
 };
 
+const { check } = vi.hoisted(() => ({
+  check: vi.fn(() => ({ score: 3, feedback: { warning: null, suggestions: [] } })),
+}));
+vi.mock("@/components/PasswordStrengthEngine", () => ({
+  loadStrengthEngine: () => Promise.resolve({ check }),
+}));
+
 /** Answers the capabilities call, and the registration call with whatever the test gives. */
 function mockServer(
   register: () => Response | Promise<Response> = () => jsonResponse({}, 201),
@@ -62,6 +69,19 @@ function renderRegister(token: string | null = null) {
 describe("Register", () => {
   beforeEach(() => {
     mockServer();
+  });
+
+  it("counts the email and its local part against the password", async () => {
+    renderRegister();
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText("Email"), "ada.lovelace@acme.example");
+    await user.type(screen.getByLabelText("Password"), "ada.lovelace-1815");
+    await screen.findByRole("meter");
+    expect(check).toHaveBeenLastCalledWith("ada.lovelace-1815", [
+      "ada.lovelace@acme.example",
+      "ada.lovelace",
+    ]);
   });
 
   it("requires a valid email and a password that meets the rules", async () => {

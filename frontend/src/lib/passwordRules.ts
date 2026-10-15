@@ -53,3 +53,14 @@ const PASSWORD_POLICY_CODES: ReadonlySet<string> = new Set([
 export function passwordPolicyMessage(err: unknown): string | null {
   return err instanceof APIError && PASSWORD_POLICY_CODES.has(err.code) ? err.message : null;
 }
+
+/**
+ * The words a password meter should count against the password: the email, its part before the at
+ * sign, and each word of the display name. The estimator lowercases each entry but does not split
+ * it, so the parts have to be passed one by one. Empty values are left out.
+ */
+export function passwordUserInputs(email: string, name?: string | null): string[] {
+  const at = email.lastIndexOf("@");
+  const words = (name ?? "").split(/\s+/);
+  return [email, at > 0 ? email.slice(0, at) : "", ...words].filter((input) => input !== "");
+}
