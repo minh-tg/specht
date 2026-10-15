@@ -3,7 +3,6 @@ package grype
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
@@ -109,19 +108,42 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 }
 
 func (s *Scanner) DetectFormat(data []byte) bool {
-	var probe struct {
-		Matches []json.RawMessage `json:"matches"`
+	return s.Recognize(data) == scanner.Definite
+}
+
+// Recognize grades a document. Grype names itself in its descriptor, so even
+// a scan with no matches is definite; a bare matches list is only possible.
+func (s *Scanner) Recognize(data []byte) scanner.Recognition {
+	shape, ok := parseutil.ReadShape(data)
+	if !ok || !shape.IsObject() {
+		return scanner.NotRecognized
 	}
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return false
+	var descriptor struct {
+		Name string `json:"name"`
 	}
-	return len(probe.Matches) > 0
+	if raw, has := shape.Object["descriptor"]; has && json.Unmarshal(raw, &descriptor) == nil && descriptor.Name == "grype" {
+		return scanner.Definite
+	}
+	matches, present := shape.List("matches")
+	if !present {
+		return scanner.NotRecognized
+	}
+	if len(matches) == 0 {
+		return scanner.Possible
+	}
+	if parseutil.ObjectHas(matches[0], "vulnerability") {
+		return scanner.Definite
+	}
+	return scanner.NotRecognized
 }
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	if s.Recognize(data) == scanner.NotRecognized {
+		return nil, scanner.Unrecognized("grype")
+	}
 	var doc grypeDoc
 	if err := json.Unmarshal(data, &doc); err != nil {
-		return nil, fmt.Errorf("grype: parse json: %w", err)
+		return nil, scanner.Malformed("grype", err)
 	}
 
 	return convert(doc), nil
