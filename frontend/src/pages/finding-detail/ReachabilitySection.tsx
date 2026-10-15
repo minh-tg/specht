@@ -3,6 +3,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { InfoTip } from "@/components/InfoTip";
 import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
+import { Input } from "@/components/ui/input";
 import { isReachabilityState, type ReachabilityState, reachabilityStateLabel } from "@/lib/enums";
 import { formatDateTime } from "@/lib/format";
 import { truncateText } from "@/lib/utils";
@@ -93,8 +94,8 @@ export function ReachabilitySection({
             ...REACHABILITY_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label })),
           ]}
         />
-        <input
-          className="border-input bg-background min-w-[200px] rounded-md border px-3 py-1.5 text-sm"
+        <Input
+          className="w-auto min-w-[200px]"
           aria-label="Evidence"
           placeholder="Evidence"
           value={reachEvidence}

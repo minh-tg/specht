@@ -4,6 +4,8 @@ import { queryKeys, useCreateApiKey, useProject, useProjectStats, useVersion } f
 import { CopyButton } from "@/components/CopyButton";
 import { ErrorState } from "@/components/ErrorState";
 import { SelectField } from "@/components/SelectField";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   githubActionsSnippet,
@@ -18,8 +20,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-const BUTTON_CLASS =
-  "bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50";
 const LINK_CLASS = "text-action hover:text-action/80 text-sm underline";
 const PRE_CLASS = "bg-muted rounded-md p-3 text-xs break-words whitespace-pre-wrap";
 
@@ -204,9 +204,9 @@ export function ProjectSetup() {
           )}
           <div className="mt-3">
             <label htmlFor="ci-key-name" className="text-sm font-medium">Key name</label>
-            <input
+            <Input
               id="ci-key-name"
-              className="border-input bg-background mt-1 w-full rounded-md border px-3 py-2 text-sm sm:w-72"
+              className="mt-1 sm:w-72"
               value={keyName}
               onChange={(e) => setKeyName(e.target.value)}
             />
@@ -221,14 +221,14 @@ export function ProjectSetup() {
               options={EXPIRY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
             />
           </div>
-          <button
+          <Button
             type="button"
-            className={`${BUTTON_CLASS} mt-3`}
+            className="mt-3"
             onClick={handleCreateKey}
             disabled={createKey.isPending || !keyName.trim()}
           >
             {createKey.isPending ? "Creating..." : "Create a key for this pipeline"}
-          </button>
+          </Button>
           {keyError && <p role="alert" className="text-destructive mt-2 text-xs">{keyError}</p>}
           {rawKey && (
             <div className="mt-3">

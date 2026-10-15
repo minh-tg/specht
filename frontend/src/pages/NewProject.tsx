@@ -1,6 +1,8 @@
 import { APIError } from "@/api/client";
 import { useCreateProject, useMe } from "@/api/hooks";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 import { isValidSlug, slugify } from "@/lib/slug";
 import { type ChangeEvent, type SubmitEvent, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -10,9 +12,6 @@ interface FieldErrors {
   slug?: string;
   form?: string;
 }
-
-const INPUT_CLASS =
-  "border-input bg-background mt-1 block w-full rounded-md border px-3 py-2 text-sm";
 
 /** A rejected slug is reported under the slug field; everything else is a
  * form-level error. */
@@ -99,9 +98,9 @@ export function NewProject() {
         <div>
           <label htmlFor="new-project-name" className="text-sm font-medium">Name</label>
           <span className="text-muted-foreground ml-1 text-xs">(required)</span>
-          <input
+          <Input
             id="new-project-name"
-            className={INPUT_CLASS}
+            className="mt-1"
             value={name}
             onChange={handleNameChange}
             required
@@ -117,9 +116,9 @@ export function NewProject() {
 
         <div>
           <label htmlFor="new-project-slug" className="text-sm font-medium">Slug</label>
-          <input
+          <Input
             id="new-project-slug"
-            className={INPUT_CLASS}
+            className="mt-1"
             value={slug}
             onChange={handleSlugChange}
             aria-invalid={errors.slug ? true : undefined}
@@ -142,9 +141,9 @@ export function NewProject() {
             Description
           </label>
           <span className="text-muted-foreground ml-1 text-xs">(optional)</span>
-          <textarea
+          <Textarea
             id="new-project-description"
-            className={INPUT_CLASS}
+            className="mt-1"
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             rows={3}
