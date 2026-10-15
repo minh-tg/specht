@@ -101,14 +101,15 @@ func newFindingsEventsCmd(d Deps, s *settings) *cobra.Command {
 		Short: "Show a finding's history",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if limit < 0 {
-				return fmt.Errorf("--limit must not be negative")
+			pageSize, err := limitArg("--limit", limit)
+			if err != nil {
+				return err
 			}
 			cl, err := d.NewClient()
 			if err != nil {
 				return err
 			}
-			events, err := cl.ListFindingEvents(args[0], splitIDs(types), int32(limit), 0)
+			events, err := cl.ListFindingEvents(args[0], splitIDs(types), pageSize, 0)
 			if err != nil {
 				return err
 			}

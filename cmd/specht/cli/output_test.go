@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"io"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -106,5 +107,26 @@ func TestSplitIDs(t *testing.T) {
 	want := []string{"a", "b", "c", "d"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestLimitArg(t *testing.T) {
+	tests := []struct {
+		in      int
+		want    int32
+		wantErr bool
+	}{
+		{0, 0, false},
+		{25, 25, false},
+		{math.MaxInt32, math.MaxInt32, false},
+		{-1, 0, true},
+		{math.MaxInt32 + 1, 0, true},
+		{4294967297, 0, true}, // would wrap to 1 in an int32 conversion
+	}
+	for _, tc := range tests {
+		got, err := limitArg("--limit", tc.in)
+		if (err != nil) != tc.wantErr || got != tc.want {
+			t.Errorf("limitArg(%d) = %d, %v; want %d, error %v", tc.in, got, err, tc.want, tc.wantErr)
+		}
 	}
 }
