@@ -2,10 +2,10 @@ import { queryKeys } from "@/api/hooks";
 import { AuthContext, type AuthContextValue } from "@/auth/context";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Navbar } from "./Navbar";
 
 const signedOut: AuthContextValue = {
@@ -358,5 +358,130 @@ describe("Navbar", () => {
     renderNavbar(signedIn());
     expect(screen.getByRole("button", { name: /^Theme: / })).toBeInTheDocument();
     await waitFor(() => expect(meCalls).toHaveLength(1));
+  });
+
+  describe("sticky header", () => {
+    const header = () => screen.getByRole("banner");
+
+    it("is sticky from sm up only, below dialogs and menus, with a hairline border", () => {
+      renderNavbar(signedOut);
+
+      expect(header()).toHaveClass("sm:sticky", "sm:top-0", "z-30", "border-b", "border-border");
+      // A bare `sticky` or `top-0` would pin the two-row phone header too.
+      expect(header()).not.toHaveClass("sticky", "fixed", "top-0");
+      expect(header()).not.toHaveClass("z-40", "z-50");
+    });
+
+    it("falls back to the solid background where backdrop-filter is missing", () => {
+      renderNavbar(signedOut);
+
+      // The translucent fill and the blur are only applied under @supports; index.css switches
+      // them off again for reduced transparency and forced colours via the `site-header` hook.
+      expect(header()).toHaveClass(
+        "site-header",
+        "bg-background",
+        "supports-[backdrop-filter]:bg-background/80",
+        "supports-[backdrop-filter]:backdrop-blur-md",
+      );
+      expect(header().className).not.toMatch(/(^|\s)backdrop-blur/);
+      expect(header().className).not.toMatch(/(^|\s)bg-background\//);
+    });
+
+    it("clears a notch with the safe-area insets", () => {
+      renderNavbar(signedOut);
+
+      expect(header()).toHaveClass(
+        "pt-[env(safe-area-inset-top)]",
+        "pr-[env(safe-area-inset-right)]",
+        "pl-[env(safe-area-inset-left)]",
+      );
+    });
+
+    describe("with observers", () => {
+      let intersect: (isIntersecting: boolean) => void;
+      let resize: () => void;
+      let intersectionDisconnect: ReturnType<typeof vi.fn>;
+      let resizeDisconnect: ReturnType<typeof vi.fn>;
+      let observed: Element[];
+      let resizeObserved: Element[];
+      let height: number;
+
+      beforeEach(() => {
+        observed = [];
+        resizeObserved = [];
+        height = 49;
+        intersectionDisconnect = vi.fn();
+        resizeDisconnect = vi.fn();
+        vi.stubGlobal(
+          "IntersectionObserver",
+          class {
+            constructor(callback: IntersectionObserverCallback) {
+              intersect = (isIntersecting) =>
+                callback([{ isIntersecting } as IntersectionObserverEntry], this as never);
+            }
+            observe(target: Element) {
+              observed.push(target);
+            }
+            disconnect = intersectionDisconnect;
+          },
+        );
+        vi.stubGlobal(
+          "ResizeObserver",
+          class {
+            constructor(callback: ResizeObserverCallback) {
+              resize = () => callback([], this as never);
+            }
+            observe(target: Element) {
+              resizeObserved.push(target);
+            }
+            disconnect = resizeDisconnect;
+          },
+        );
+        vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(() => height);
+      });
+
+      afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+      });
+
+      it("strengthens the border once the sentinel above the header leaves the viewport", () => {
+        renderNavbar(signedOut);
+        expect(header()).not.toHaveAttribute("data-scrolled");
+        expect(observed).toHaveLength(1);
+        expect(observed[0]).toHaveAttribute("aria-hidden", "true");
+        expect(header()).not.toContainElement(observed[0] as HTMLElement);
+
+        act(() => intersect(false));
+        expect(header()).toHaveAttribute("data-scrolled");
+        expect(header()).toHaveClass("data-scrolled:border-input");
+
+        act(() => intersect(true));
+        expect(header()).not.toHaveAttribute("data-scrolled");
+      });
+
+      it("publishes the measured height for scroll-padding and follows it when the header wraps", () => {
+        const { unmount } = renderNavbar(signedOut);
+        const root = document.documentElement;
+        expect(resizeObserved).toEqual([header()]);
+        expect(root.style.getPropertyValue("--header-h")).toBe("49px");
+
+        height = 81;
+        act(() => resize());
+        expect(root.style.getPropertyValue("--header-h")).toBe("81px");
+
+        unmount();
+        expect(root.style.getPropertyValue("--header-h")).toBe("");
+        expect(intersectionDisconnect).toHaveBeenCalled();
+        expect(resizeDisconnect).toHaveBeenCalled();
+      });
+    });
+
+    it("renders without IntersectionObserver or ResizeObserver", () => {
+      expect("IntersectionObserver" in globalThis).toBe(false);
+      renderNavbar(signedOut);
+
+      expect(header()).not.toHaveAttribute("data-scrolled");
+    });
   });
 });

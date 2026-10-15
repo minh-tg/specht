@@ -418,3 +418,37 @@
     animation: none !important;
   }
 }
+
+/* ============================================================================
+   Shell: the sticky, translucent header (see components/Navbar.tsx).
+   The base is solid. These rules sit outside any @layer on purpose: unlayered styles beat the
+   utilities layer, so they win over the translucent classes without !important.
+   ========================================================================= */
+
+/* People who asked for less transparency get the solid surface, and no blur. */
+@media (prefers-reduced-transparency: reduce) {
+  .site-header {
+    background-color: var(--background);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* Forced colours replace backgrounds with system colours; a blur behind them only smears text. */
+@media (forced-colors: active) {
+  .site-header {
+    background-color: Canvas;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+/* The header is sticky from sm (40rem) up, so focused and anchored elements must stop below it.
+   --header-h is measured by useHeaderChrome. scrollIntoView({ block: "nearest" }), which the data
+   grid uses for j and k, honours scroll-padding on the scrolling root, so those rows stay clear
+   of the header too. Below sm the header scrolls away and needs no offset. */
+@media (min-width: 40rem) {
+  html {
+    scroll-padding-top: calc(var(--header-h, 0px) + 0.5rem);
+  }
+}
