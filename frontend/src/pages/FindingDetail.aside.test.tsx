@@ -78,7 +78,7 @@ describe("the finding page's aside and fix", () => {
 
     const aside = await screen.findByRole("complementary", { name: "About this finding" });
     expect(within(aside).getByText("9.8")).toBeInTheDocument();
-    expect(within(aside).getByText("0.71")).toBeInTheDocument();
+    expect(within(aside).getByText("71.0%")).toBeInTheDocument();
     expect(within(aside).getByText("Known exploited").nextElementSibling).toHaveTextContent("Yes");
   });
 

@@ -1,6 +1,7 @@
 import { analysisStateLabel, technicalStateLabel } from "@/lib/enums";
 import { EMPTY_VALUE, formatDateTime } from "@/lib/format";
 import type { Finding } from "@/types/api";
+import { formatPercent } from "./cveText";
 
 function Fact({ label, children, mono = false }: {
   readonly label: string;
@@ -27,7 +28,8 @@ export function MetadataGrid({ finding }: { readonly finding: Finding; }) {
       {typeof finding.current_score === "number" && (
         <Fact label="CVSS" mono>{finding.current_score.toFixed(1)}</Fact>
       )}
-      {typeof intel?.epss === "number" && <Fact label="EPSS" mono>{intel.epss.toFixed(2)}</Fact>}
+      {typeof intel?.epss === "number" && <Fact label="EPSS" mono>{formatPercent(intel.epss)}
+      </Fact>}
       {intel && (
         <Fact label="Known exploited">
           {intel.kev
