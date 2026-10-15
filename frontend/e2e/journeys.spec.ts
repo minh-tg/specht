@@ -399,7 +399,7 @@ test("the theme choice persists across reloads", async ({ page }) => {
 
   await page.reload();
   await expect(html).toHaveClass(/dark/);
-  await expect(page.getByRole("button", { name: "Theme: dark (click to change)" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Theme: dark. Switch to system" })).toBeVisible();
 
   await page.getByRole("button", { name: /^Theme: dark/ }).click();
   await expect(html).not.toHaveClass(/dark/);

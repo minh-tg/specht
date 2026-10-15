@@ -7,11 +7,14 @@ const ICONS: Record<Theme, typeof Sun> = {
   dark: Moon,
 };
 
-/** One button that cycles system, light and dark; the icon shows the current choice. */
+/**
+ * One button that cycles system, light and dark. The icon shows the current choice and the name
+ * says both the current and the next one in words.
+ */
 export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   const Icon = ICONS[theme];
-  const label = `Theme: ${theme} (click to change)`;
+  const label = `Theme: ${theme}. Switch to ${nextTheme(theme)}`;
 
   return (
     <button

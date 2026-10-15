@@ -5,6 +5,7 @@ import {
   isTheme,
   nextTheme,
   readStoredTheme,
+  resetThemeStore,
   resolveTheme,
   storeTheme,
   THEME_STORAGE_KEY,
@@ -34,6 +35,7 @@ function mockSystemTheme(initialDark: boolean) {
 }
 
 beforeEach(() => {
+  resetThemeStore();
   window.localStorage.clear();
   document.documentElement.classList.remove("dark");
   document.documentElement.style.colorScheme = "";
@@ -156,5 +158,137 @@ describe("useTheme", () => {
     unmount();
 
     expect(system.listeners.size).toBe(0);
+  });
+});
+
+describe("the shared theme store", () => {
+  /** What another tab does: change the stored value, which fires `storage` in this tab only. */
+  function otherTabWrites(key: string | null, value: string | null) {
+    if (key !== null && value !== null) window.localStorage.setItem(key, value);
+    if (key !== null && value === null) window.localStorage.removeItem(key);
+    if (key === null) window.localStorage.clear();
+    window.dispatchEvent(new StorageEvent("storage", { key, newValue: value }));
+  }
+
+  it("keeps every instance in step after a change", () => {
+    mockSystemTheme(false);
+    const toggle = renderHook(() => useTheme());
+    const palette = renderHook(() => useTheme());
+
+    act(() => toggle.result.current.setTheme("dark"));
+
+    expect(toggle.result.current.theme).toBe("dark");
+    expect(palette.result.current.theme).toBe("dark");
+  });
+
+  it("holds exactly one system listener however many components use it", () => {
+    const system = mockSystemTheme(false);
+    const first = renderHook(() => useTheme());
+    renderHook(() => useTheme());
+    renderHook(() => useTheme());
+    expect(system.listeners.size).toBe(1);
+
+    act(() => first.result.current.setTheme("light"));
+    expect(system.listeners.size).toBe(0);
+
+    act(() => first.result.current.setTheme("system"));
+    expect(system.listeners.size).toBe(1);
+  });
+
+  it("keeps a manual choice when the system changes, whichever instance made it", () => {
+    const system = mockSystemTheme(false);
+    renderHook(() => useTheme());
+    const palette = renderHook(() => useTheme());
+
+    act(() => palette.result.current.setTheme("light"));
+    act(() => system.setDark(true));
+
+    expect(document.documentElement).not.toHaveClass("dark");
+    expect(palette.result.current.theme).toBe("light");
+  });
+
+  it("follows a choice made in another tab", () => {
+    mockSystemTheme(false);
+    const { result } = renderHook(() => useTheme());
+
+    act(() => otherTabWrites(THEME_STORAGE_KEY, "dark"));
+
+    expect(result.current.theme).toBe("dark");
+    expect(document.documentElement).toHaveClass("dark");
+  });
+
+  it("returns to system when another tab clears the storage", () => {
+    mockSystemTheme(false);
+    const { result } = renderHook(() => useTheme());
+    act(() => result.current.setTheme("dark"));
+
+    act(() => otherTabWrites(null, null));
+
+    expect(result.current.theme).toBe("system");
+    expect(document.documentElement).not.toHaveClass("dark");
+  });
+
+  it("drops a choice that only lived in memory when the storage is cleared", () => {
+    mockSystemTheme(false);
+    const blocked = vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    const { result } = renderHook(() => useTheme());
+    act(() => result.current.setTheme("dark"));
+    blocked.mockRestore();
+
+    act(() => otherTabWrites(null, null));
+
+    expect(result.current.theme).toBe("system");
+  });
+
+  it("does not touch the page for storage events about other keys", () => {
+    mockSystemTheme(false);
+    const { result } = renderHook(() => useTheme());
+    act(() => result.current.setTheme("dark"));
+    document.documentElement.classList.remove("dark");
+
+    act(() => otherTabWrites("specht.sound", "on"));
+
+    expect(result.current.theme).toBe("dark");
+    expect(document.documentElement).not.toHaveClass("dark");
+  });
+
+  it("stops following other tabs once nothing uses the store", () => {
+    mockSystemTheme(false);
+    const remove = vi.spyOn(window, "removeEventListener");
+    const { unmount } = renderHook(() => useTheme());
+
+    unmount();
+
+    expect(remove).toHaveBeenCalledWith("storage", expect.any(Function));
+  });
+
+  it("holds the choice in memory when storage is blocked", () => {
+    mockSystemTheme(false);
+    vi.spyOn(window.localStorage, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    const toggle = renderHook(() => useTheme());
+    const palette = renderHook(() => useTheme());
+
+    act(() => toggle.result.current.setTheme("dark"));
+
+    expect(palette.result.current.theme).toBe("dark");
+    expect(document.documentElement).toHaveClass("dark");
+  });
+
+  it("forgets the in-memory choice when the store is reset", () => {
+    mockSystemTheme(false);
+    vi.spyOn(window.localStorage, "setItem").mockImplementationOnce(() => {
+      throw new Error("blocked");
+    });
+    const { result } = renderHook(() => useTheme());
+    act(() => result.current.setTheme("dark"));
+    expect(readStoredTheme()).toBe("dark");
+
+    resetThemeStore();
+
+    expect(readStoredTheme()).toBe("system");
   });
 });
