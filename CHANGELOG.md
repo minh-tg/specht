@@ -85,6 +85,13 @@ releases.
 - Bulk triage no longer reports a decode error after the server has applied it.
 - The server compresses its own web app files (gzip), so the main script is about 250 kB on
   the wire instead of 830 kB. API responses are never compressed.
+- A password must not be on a list of about 2,000 commonly used passwords or match the account's
+  email address, the part before the @, or its display name, and it needs a visible character.
+  Setting a password shows a strength bar (loaded only when a password field is used) with one
+  line of advice. The minimum counts characters, the maximum counts bytes (72, the limit of the
+  hash), and the message now says bytes. The new refusals answer `password_too_common` and
+  `password_matches_account`.
+- The Docker image carries `LICENSE` and `THIRD_PARTY_NOTICES` in `/usr/share/doc/specht`.
 - The top bar uses the same button look as the rest of the app: links have a hover and a
   current-page fill, and Profile and Sign out moved into an account menu. The scan file
   field on the upload page is a drop area that also takes a dragged file, and the remaining
