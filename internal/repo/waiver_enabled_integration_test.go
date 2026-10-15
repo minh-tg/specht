@@ -103,6 +103,13 @@ func TestWaiverSetEnabledExpectedUpdatedAtGuardsInterleavedWrites(t *testing.T) 
 	_, err = stores.Waivers.SetEnabled(ctx, id, pid, undo)
 	require.ErrorIs(t, err, port.ErrWaiverChanged)
 
+	// A stale precondition is a conflict even when the waiver already has the
+	// wanted state: the caller is acting on a version that no longer exists.
+	stale := revokeChange("a")
+	stale.ExpectedUpdatedAt = &seenByA
+	_, err = stores.Waivers.SetEnabled(ctx, id, pid, stale)
+	require.ErrorIs(t, err, port.ErrWaiverChanged)
+
 	current, err := repos.Waivers.GetByID(ctx, waiver.ID, project.ID)
 	require.NoError(t, err)
 	assert.False(t, current.Enabled, "the refused Undo must leave B's revoke in force")
