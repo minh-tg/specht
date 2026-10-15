@@ -29,11 +29,11 @@ func (u *Usecases) ResetPasswordByEmail(ctx context.Context, email, password str
 	if email == "" {
 		return nil, badCredentials("an email address is required")
 	}
-	if err := checkPasswordLength(password); err != nil {
-		return nil, err
-	}
 	user, err := u.recoveryTarget(ctx, email)
 	if err != nil {
+		return nil, err
+	}
+	if err := checkPassword(password, user.Email, derefStr(user.DisplayName)); err != nil {
 		return nil, err
 	}
 	hash, err := u.deps.Passwords.Hash(password)

@@ -107,6 +107,7 @@ func TestResetPasswordByEmail_FollowsThePasswordRules(t *testing.T) {
 	assert.True(t, errors.As(err, &input), "%v", err)
 	assert.Empty(t, h.stored)
 
+	h.lookedUp = ""
 	_, err = h.uc.ResetPasswordByEmail(context.Background(), "", "a-recovered-password")
 	assert.Error(t, err, "an empty address is refused before any lookup")
 	assert.Empty(t, h.lookedUp)

@@ -64,8 +64,6 @@ type APIKeyResponse struct {
 	ExpiresAt *string `json:"expires_at,omitempty"`
 }
 
-// validateCredentials checks the email address and password of a new account
-// and returns the address in its normal form.
 // ErrInvalidCredentialInput wraps the reasons a new account's email or password
 // is refused. The message says what to fix.
 var ErrInvalidCredentialInput = errors.New("invalid email or password")
@@ -82,7 +80,22 @@ func (e *credentialInputError) Is(target error) bool { return target == ErrInval
 
 func badCredentials(message string) error { return &credentialInputError{message: message} }
 
-func validateCredentials(email, password string) (string, error) {
+// The two password policy errors below are credential input errors too, so
+// errors.Is(err, ErrInvalidCredentialInput) holds for them. Handlers match
+// them first to give each its own code.
+var (
+	// ErrPasswordTooCommon means the password is on the embedded list of
+	// commonly used passwords.
+	ErrPasswordTooCommon = badCredentials("This password is on a list of commonly used passwords. Choose another.")
+	// ErrPasswordMatchesAccount means the password equals the account's email
+	// address, the part of it before the at sign, or its display name.
+	ErrPasswordMatchesAccount = badCredentials("The password must not be your email address or name.")
+)
+
+// validateCredentials checks the email address and password of a new account
+// and returns the address in its normal form. displayName is the name the
+// account will carry, or empty.
+func validateCredentials(email, password, displayName string) (string, error) {
 	if email == "" || password == "" {
 		return "", badCredentials("email and password are required")
 	}
@@ -90,28 +103,40 @@ func validateCredentials(email, password string) (string, error) {
 	if err != nil || addr.Address != email || !strings.Contains(addr.Address, "@") {
 		return "", badCredentials("invalid email address")
 	}
-	if err := checkPasswordLength(password); err != nil {
+	normalized := auth.NormalizeEmail(addr.Address)
+	if err := checkPassword(password, normalized, displayName); err != nil {
 		return "", err
 	}
-	return auth.NormalizeEmail(addr.Address), nil
+	return normalized, nil
 }
 
-// checkPasswordLength holds the password rules every way of choosing a
-// password shares: registration, setup, invites and a password change. The
-// minimum counts characters, as the forms do; the maximum counts bytes, because
-// 72 bytes is the longest input bcrypt reads.
-func checkPasswordLength(password string) error {
+// checkPassword holds the password rules every way of choosing a password
+// shares: registration, setup, invites, a password change and both resets.
+// The minimum counts characters, as the forms do; the maximum counts bytes,
+// because 72 bytes is the longest input bcrypt reads. A listed password is
+// refused, and so is one equal to the account's email, its local part or its
+// display name; pass empty strings where the account is not known yet.
+func checkPassword(password, email, displayName string) error {
 	if utf8.RuneCountInString(password) < 8 {
 		return badCredentials("password must be at least 8 characters")
 	}
 	if len(password) > 72 {
 		return badCredentials("password must be at most 72 bytes; some characters, such as emoji, take more than one")
 	}
+	if auth.IsCommonPassword(password) {
+		return ErrPasswordTooCommon
+	}
+	if auth.PasswordMatchesAccount(password, email, displayName) {
+		return ErrPasswordMatchesAccount
+	}
 	return nil
 }
 
 func (u *Usecases) Register(ctx context.Context, email, password string) (*AuthResponse, error) {
-	email, err := validateCredentials(email, password)
+	// The password rules run before the duplicate lookup below. Their errors
+	// are specific, which is safe only because they come the same way for an
+	// address that is registered and one that is not.
+	email, err := validateCredentials(email, password, "")
 	if err != nil {
 		return nil, err
 	}
@@ -684,9 +709,6 @@ func (u *Usecases) ChangePassword(ctx context.Context, userID, current, next str
 	if err != nil {
 		return nil, err
 	}
-	if err := checkPasswordLength(next); err != nil {
-		return nil, err
-	}
 	if next == current {
 		return nil, badCredentials("the new password must differ from the current one")
 	}
@@ -694,6 +716,9 @@ func (u *Usecases) ChangePassword(ctx context.Context, userID, current, next str
 	user, err := u.deps.Stores.Users.GetByID(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
+	}
+	if err := checkPassword(next, user.Email, derefStr(user.DisplayName)); err != nil {
+		return nil, err
 	}
 	if user.PasswordHash == "" {
 		return nil, ErrNoLocalPassword

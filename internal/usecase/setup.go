@@ -111,7 +111,8 @@ func (u *Usecases) Setup(ctx context.Context, input SetupInput) (*AuthResponse, 
 		slog.Warn("setup: wrong setup token")
 		return nil, ErrInvalidSetupToken
 	}
-	email, err := validateCredentials(input.Email, input.Password)
+	trimmedName := strings.TrimSpace(input.DisplayName)
+	email, err := validateCredentials(input.Email, input.Password, trimmedName)
 	if err != nil {
 		return nil, err
 	}
@@ -120,8 +121,8 @@ func (u *Usecases) Setup(ctx context.Context, input SetupInput) (*AuthResponse, 
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
 	var name *string
-	if trimmed := strings.TrimSpace(input.DisplayName); trimmed != "" {
-		name = &trimmed
+	if trimmedName != "" {
+		name = &trimmedName
 	}
 	user, err := u.deps.Stores.Users.CreateFirstAdmin(ctx, email, name, hash)
 	if err != nil {

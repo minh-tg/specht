@@ -57,7 +57,7 @@ func TestSetup_ErrorMapping(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			mock := &mockUsecases{setupFn: func(context.Context, usecase.SetupInput) (*usecase.AuthResponse, error) { return nil, tc.err }}
-			w := postSetup(t, mock, `{"token":"x","email":"a@b.co","password":"password1"}`)
+			w := postSetup(t, mock, `{"token":"x","email":"a@b.co","password":"a-long-unlisted-phrase"}`)
 			assert.Equal(t, tc.status, w.Code)
 			assert.Contains(t, w.Body.String(), tc.code)
 			assert.NotContains(t, w.Body.String(), "10.0.0.5")
