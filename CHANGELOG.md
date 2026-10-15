@@ -92,6 +92,11 @@ releases.
   `j`, `k` and `x`. The findings list and the finding page now refresh every
   30 seconds while the tab is visible, show when they were last updated, and
   a Ctrl+K pressed with a list row focused opens the command palette.
+- A "CVE details" section on the finding page: every CVSS version with its
+  score, severity word and each metric in plain language, the vector with a
+  copy button, EPSS as a percentage, KEV dates, CWE links and references. Each
+  value says whether the scan report, the CVE watcher, a provider or a feed
+  supplied it. The section is folded to a one-line summary until opened.
 
 ### Changed
 
