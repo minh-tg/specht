@@ -237,9 +237,9 @@ func handleFindingsList(api API, input findingsListInput) (*mcp.CallToolResult, 
 	if input.Status != "" {
 		states = strings.Split(input.Status, ",")
 	}
-	limit := int32(input.Limit)
-	if limit <= 0 {
-		limit = 50
+	limit, err := pageSize(input.Limit, 50)
+	if err != nil {
+		return nil, nil, err
 	}
 	findings, err := api.ListFindings(input.Project, severities, states, limit, 0)
 	if err != nil {

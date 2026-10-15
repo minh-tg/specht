@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -105,6 +106,19 @@ func registerTriageTools(server *mcp.Server, api API) {
 	})
 }
 
+// pageSize turns a tool's limit into the int32 page size the API takes. A missing or non-positive
+// limit means def. A value that does not fit is refused, because a bare int32 conversion would
+// wrap it to some small number.
+func pageSize(limit int, def int32) (int32, error) {
+	if limit <= 0 {
+		return def, nil
+	}
+	if limit > math.MaxInt32 {
+		return 0, fmt.Errorf("limit must be at most %d", math.MaxInt32)
+	}
+	return int32(limit), nil
+}
+
 func requireProject(project string) error {
 	if project == "" {
 		return fmt.Errorf("project is required")
@@ -197,9 +211,9 @@ func handleReportsList(api API, input reportsListInput) (*mcp.CallToolResult, an
 	if err := requireProject(input.Project); err != nil {
 		return nil, nil, err
 	}
-	limit := int32(input.Limit)
-	if limit <= 0 {
-		limit = 20
+	limit, err := pageSize(input.Limit, 20)
+	if err != nil {
+		return nil, nil, err
 	}
 	reports, err := api.ListReports(input.Project, limit, 0)
 	if err != nil {
@@ -315,9 +329,9 @@ func handleFindingEvents(api API, input findingEventsInput) (*mcp.CallToolResult
 			types = append(types, kind)
 		}
 	}
-	limit := int32(input.Limit)
-	if limit <= 0 {
-		limit = 50
+	limit, err := pageSize(input.Limit, 50)
+	if err != nil {
+		return nil, nil, err
 	}
 	events, err := api.ListFindingEvents(input.FindingID, types, limit, 0)
 	if err != nil {

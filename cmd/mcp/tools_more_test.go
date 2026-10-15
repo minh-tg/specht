@@ -263,3 +263,22 @@ func TestMCPEnvironmentsUpdateRefusesBeforeTheAPI(t *testing.T) {
 		t.Errorf("a refused call must not reach the API: %+v", mc.envSettings)
 	}
 }
+
+// A limit too large for the API's 32-bit page size is refused, not wrapped to a small number.
+func TestMCPRefusesALimitThatWouldWrap(t *testing.T) {
+	mc := &mockClient{}
+	session := connectMCPServer(t, mc)
+	for tool, args := range map[string]map[string]any{
+		"findings_list":  {"project": "payments", "limit": 4294967297},
+		"reports_list":   {"project": "payments", "limit": 4294967297},
+		"finding_events": {"finding_id": "f1", "limit": 4294967297},
+	} {
+		text, failed := callTool(t, session, tool, args)
+		if !failed || !strings.Contains(text, "limit") {
+			t.Errorf("%s: failed=%v text=%q, want a limit error", tool, failed, text)
+		}
+	}
+	if mc.eventLimit != 0 {
+		t.Errorf("the request must not reach the API, limit = %d", mc.eventLimit)
+	}
+}
