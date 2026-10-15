@@ -78,3 +78,24 @@ describe("scroll padding under the sticky header", () => {
     expect(block).toMatch(/html\s*\{[^}]*scroll-padding-top:\s*calc\(var\(--header-h, 0px\)/);
   });
 });
+
+describe("dark mode colour details", () => {
+  it("draws the text selection in ink instead of the browser's blue", () => {
+    const selection = rule("::selection");
+
+    expect(selection).toMatch(
+      /background-color:\s*color-mix\(in oklab, var\(--foreground\) \d+%, transparent\)/,
+    );
+    expect(selection).not.toMatch(/#|rgb|hsl|oklch/);
+  });
+
+  it("repaints autofilled fields in a token colour so the browser's own fill never shows", () => {
+    const autofill = rule(
+      "input:-webkit-autofill,\ntextarea:-webkit-autofill,\nselect:-webkit-autofill",
+    );
+
+    expect(autofill).toContain("box-shadow: 0 0 0 1000px var(--muted) inset");
+    expect(autofill).toContain("-webkit-text-fill-color: var(--foreground)");
+    expect(autofill).not.toMatch(/#|rgb|hsl|oklch/);
+  });
+});
