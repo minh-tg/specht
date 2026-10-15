@@ -215,10 +215,11 @@ func main() {
 		Usecases:    uc,
 		CORSOrigins: cfg.CORSOrigins,
 
-		RegistrationDisabled: cfg.RegistrationDisabled,
-		IngestConcurrency:    cfg.IngestConcurrency,
-		Ready:                pool.Ping,
-		TrustedProxies:       cfg.TrustedProxies,
+		RegistrationDisabled:    cfg.RegistrationDisabled,
+		SSOAllowUnverifiedEmail: cfg.SSO.AllowUnverifiedEmail,
+		IngestConcurrency:       cfg.IngestConcurrency,
+		Ready:                   pool.Ping,
+		TrustedProxies:          cfg.TrustedProxies,
 		RateLimit: server.RateLimitConfig{
 			Enabled:        cfg.RateLimit.Enable,
 			RPS:            cfg.RateLimit.RPS,

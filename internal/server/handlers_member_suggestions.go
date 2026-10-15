@@ -11,15 +11,17 @@ import (
 )
 
 // suggestProjectMembers answers GET /api/v1/projects/{slug}/member-suggestions
-// with people a project manager may add. registrationOpen comes from the same
-// router setting the capabilities endpoint reports, so the two always agree.
+// with people a project manager may add. directoryClosed is computed once when
+// the router is built: it is true while open registration or unverified SSO
+// emails let anyone hold an account under a name they chose. The capabilities
+// endpoint reports the registration half of it.
 //
 // Accepted residual risk: a project manager can walk the user directory by
 // extending prefixes one letter at a time. The 3-character minimum, the cap of
 // 8 results and the per-user rate limit on the route (30 a minute, burst 10)
 // bound that to a slow crawl, and a manager can already add anyone whose exact
 // address they know. Keystrokes are not written to the audit trail.
-func (h *Handler) suggestProjectMembers(registrationOpen bool) http.HandlerFunc {
+func (h *Handler) suggestProjectMembers(directoryClosed bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		slug := chi.URLParam(r, "slug")
 		// The same 404/403 split as every other project route, before the
@@ -28,7 +30,7 @@ func (h *Handler) suggestProjectMembers(registrationOpen bool) http.HandlerFunc 
 			h.respondProjectAccessError(w, r, err)
 			return
 		}
-		suggestions, err := h.usecase.SuggestProjectMembers(r.Context(), slug, r.URL.Query().Get("q"), registrationOpen)
+		suggestions, err := h.usecase.SuggestProjectMembers(r.Context(), slug, r.URL.Query().Get("q"), directoryClosed)
 		switch {
 		case err == nil:
 			respondJSON(w, http.StatusOK, suggestions)

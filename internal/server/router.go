@@ -67,6 +67,10 @@ type RouterConfig struct {
 	// RegistrationDisabled makes POST /api/v1/auth/register answer 403. It is
 	// phrased as a disable flag so the zero value keeps registration open.
 	RegistrationDisabled bool
+	// SSOAllowUnverifiedEmail mirrors SSO_ALLOW_UNVERIFIED_EMAIL. Together with
+	// open registration it closes the member-suggestion directory, because an
+	// identity provider user can then hold an account under an address they chose.
+	SSOAllowUnverifiedEmail bool
 	// IngestConcurrency caps report ingests processed at once; zero or less
 	// means DefaultIngestConcurrency.
 	IngestConcurrency int
@@ -268,7 +272,9 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		// per-user bucket of 30 requests a minute with a burst of 10. It is
 		// built once here and applies even when RATE_LIMIT_ENABLED is off.
 		suggestBucket := NewLoginRateLimiter(30, 10).Middleware(true)
-		r.With(session, suggestBucket).Get("/api/v1/projects/{slug}/member-suggestions", h.suggestProjectMembers(!cfg.RegistrationDisabled))
+		ssoUnverified := cfg.OIDCEnabled && cfg.OIDC != nil && cfg.SSOAllowUnverifiedEmail
+		directoryClosed := !cfg.RegistrationDisabled || ssoUnverified
+		r.With(session, suggestBucket).Get("/api/v1/projects/{slug}/member-suggestions", h.suggestProjectMembers(directoryClosed))
 		r.With(h.audited(audit.EventAddProjectMember, "userID"), adminScope).Post("/api/v1/projects/{slug}/members", h.AddProjectMember)
 		r.With(h.audited(audit.EventRemoveProjectMember, "userID"), adminScope).Delete("/api/v1/projects/{slug}/members/{userID}", h.RemoveProjectMember)
 		r.With(readScope).Get("/api/v1/projects/{slug}/stats", h.GetProjectStats)

@@ -177,7 +177,7 @@ func TestSuggestProjectMembers_PassesWildcardsThroughAsText(t *testing.T) {
 	assert.Equal(t, `a%_\`, ur.prefix)
 }
 
-func TestSuggestProjectMembers_OpenRegistrationReturnsNothing(t *testing.T) {
+func TestSuggestProjectMembers_ClosedDirectoryReturnsNothing(t *testing.T) {
 	uc, ur := suggestFixture(auth.RoleManager, suggestUser(1, "ada@acme.example", "Ada Lovelace"))
 	got, err := uc.SuggestProjectMembers(sessionCtx(suggestCaller, auth.RoleMember), "my-app", "ada", true)
 	require.NoError(t, err)
@@ -186,7 +186,7 @@ func TestSuggestProjectMembers_OpenRegistrationReturnsNothing(t *testing.T) {
 
 	member, _ := suggestFixture(auth.RoleMember)
 	_, err = member.SuggestProjectMembers(sessionCtx(suggestCaller, auth.RoleMember), "my-app", "ada", true)
-	assert.ErrorIs(t, err, ErrProjectAccessDenied, "open registration does not turn a refusal into an empty list")
+	assert.ErrorIs(t, err, ErrProjectAccessDenied, "a closed directory does not turn a refusal into an empty list")
 }
 
 func TestSuggestProjectMembers_LeavesOutDisabledAndSystemAccounts(t *testing.T) {

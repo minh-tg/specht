@@ -44,10 +44,12 @@ type MemberSuggestion struct {
 // signed-in project manager or admin may ask; it is the same check that guards
 // adding a member, so API keys are refused.
 //
-// With open self-registration the answer is always empty: anyone can register
-// an account under an address and a display name of their choosing, so a
-// suggestion would help a stranger who squatted a colleague's name.
-func (u *Usecases) SuggestProjectMembers(ctx context.Context, projectSlug, query string, registrationOpen bool) ([]MemberSuggestion, error) {
+// With directoryClosed the answer is always empty. The router sets it when
+// anyone can obtain an account under an address and a display name of their
+// choosing: open self-registration, or SSO auto-provisioning that accepts
+// emails the identity provider did not verify. A suggestion would then help a
+// stranger who squatted a colleague's name.
+func (u *Usecases) SuggestProjectMembers(ctx context.Context, projectSlug, query string, directoryClosed bool) ([]MemberSuggestion, error) {
 	p, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
@@ -75,7 +77,7 @@ func (u *Usecases) SuggestProjectMembers(ctx context.Context, projectSlug, query
 	}
 	// The query text is a partial address; only its length is logged.
 	slog.DebugContext(ctx, "member suggestions", "user_id", auth.ContextIdentity(ctx).UserID, "query_len", length)
-	if registrationOpen || length < MemberSuggestionMinQuery {
+	if directoryClosed || length < MemberSuggestionMinQuery {
 		return []MemberSuggestion{}, nil
 	}
 
