@@ -83,6 +83,11 @@ releases.
   `approve`, `reject`, `withdraw`, `toggle`, `delete`, `events`). The new
   commands honour `--format json`.
 - Bulk triage no longer reports a decode error after the server has applied it.
+- The top bar uses the same button look as the rest of the app: links have a hover and a
+  current-page fill, and Profile and Sign out moved into an account menu. The scan file
+  field on the upload page is a drop area that also takes a dragged file, and the remaining
+  hand-built buttons, inputs and text links use the shared components. A test now fails
+  when a page declares its own input, textarea, select or button look.
 - `--format json` now applies to `projects`, `findings`, `stats`, `teams`, `project-teams`,
   `policy` and `watcher` as well. They printed their table before. A command with nothing
   to list prints `[]`, not `null`.
