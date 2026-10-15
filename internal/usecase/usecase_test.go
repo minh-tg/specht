@@ -1411,6 +1411,7 @@ func (m *mockTargetRepo) Delete(ctx context.Context, id, projectID string) (port
 type mockEnvironmentRepo struct {
 	port.EnvironmentStore
 	ensureFn  func(context.Context, string, string, string, bool, string) (port.Environment, error)
+	updateFn  func(context.Context, string, string, string, bool, string) (port.Environment, error)
 	listFn    func(context.Context, string) ([]port.Environment, error)
 	getByIDFn func(context.Context, string, string) (port.Environment, error)
 	deleteFn  func(context.Context, string, string) (port.Environment, error)
@@ -1421,6 +1422,13 @@ func (m *mockEnvironmentRepo) Ensure(ctx context.Context, projectID, name, tier 
 		return port.Environment{}, fmt.Errorf("unexpected call to Ensure")
 	}
 	return m.ensureFn(ctx, projectID, name, tier, internetFacing, dataSensitivity)
+}
+
+func (m *mockEnvironmentRepo) Update(ctx context.Context, id, projectID, tier string, internetFacing bool, dataSensitivity string) (port.Environment, error) {
+	if m.updateFn == nil {
+		return port.Environment{}, fmt.Errorf("unexpected call to Update")
+	}
+	return m.updateFn(ctx, id, projectID, tier, internetFacing, dataSensitivity)
 }
 
 func (m *mockEnvironmentRepo) List(ctx context.Context, projectID string) ([]port.Environment, error) {

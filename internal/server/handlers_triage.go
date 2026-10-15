@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/minh-tg/specht/internal/audit"
 	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/usecase"
 )
 
@@ -877,6 +878,46 @@ func (h *Handler) ListEnvironments(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, envs)
+}
+
+// UpdateEnvironment replaces the tier, exposure and data sensitivity of one
+// environment. Every field is required; the body is the whole new setting.
+func (h *Handler) UpdateEnvironment(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	var req struct {
+		Tier            *string `json:"tier"`
+		InternetFacing  *bool   `json:"internet_facing"`
+		DataSensitivity *string `json:"data_sensitivity"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", triageMsgInvalidBody) {
+		return
+	}
+	if req.Tier == nil || req.InternetFacing == nil || req.DataSensitivity == nil {
+		respondError(w, http.StatusBadRequest, "missing_field", "tier, internet_facing and data_sensitivity are required")
+		return
+	}
+	env, err := h.usecase.UpdateEnvironment(r.Context(), usecase.UpdateEnvironmentInput{
+		ProjectSlug:     slug,
+		EnvironmentID:   chi.URLParam(r, "id"),
+		Tier:            *req.Tier,
+		InternetFacing:  *req.InternetFacing,
+		DataSensitivity: *req.DataSensitivity,
+	})
+	switch {
+	case err == nil:
+		respondJSON(w, http.StatusOK, env)
+	case errors.Is(err, usecase.ErrProjectAccessDenied):
+		respondError(w, http.StatusForbidden, "project_access_denied", triageMsgProjectAdminRequired)
+	case errors.Is(err, usecase.ErrInvalidEnvironment):
+		respondError(w, http.StatusBadRequest, "invalid_environment", "tier must be production, staging, development or test, and data_sensitivity public, internal, confidential or restricted")
+	case errors.Is(err, usecase.ErrEnvironmentNotFound):
+		respondError(w, http.StatusNotFound, "environment_not_found", "environment not found")
+	case errors.Is(err, port.ErrNotFound):
+		respondError(w, http.StatusNotFound, "not_found", "project not found")
+	default:
+		slog.Error("update environment", "project", slug, "error", err)
+		respondError(w, http.StatusInternalServerError, "environment_update_failed", "could not update the environment")
+	}
 }
 
 func (h *Handler) ListTargets(w http.ResponseWriter, r *http.Request) {

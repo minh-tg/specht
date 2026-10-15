@@ -64,6 +64,7 @@ const (
 	EventUpdatePolicyTemplate = "policy.template.update"
 	EventDeletePolicyTemplate = "policy.template.delete"
 	EventSetProjectPolicy     = "project.policy.set"
+	EventUpdateEnvironment    = "project.environment.update"
 	EventSetPolicyOverrides   = "project.policy.overrides"
 	EventCreateWaiver         = "waiver.create"
 	EventBulkTriage           = "finding.bulk_triage"

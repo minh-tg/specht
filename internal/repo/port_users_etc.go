@@ -488,6 +488,28 @@ func (r *pgEnvironmentPort) GetByID(ctx context.Context, id, projectID string) (
 	return environmentToPort(row), nil
 }
 
+func (r *pgEnvironmentPort) Update(ctx context.Context, id, projectID, tier string, internetFacing bool, dataSensitivity string) (port.Environment, error) {
+	eid, err := parseID(id)
+	if err != nil {
+		return port.Environment{}, err
+	}
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.Environment{}, err
+	}
+	row, err := r.q.UpdateEnvironment(ctx, sqlc.UpdateEnvironmentParams{
+		ID:              eid,
+		ProjectID:       pid,
+		Tier:            tier,
+		InternetFacing:  internetFacing,
+		DataSensitivity: dataSensitivity,
+	})
+	if err != nil {
+		return port.Environment{}, mappingErr(err)
+	}
+	return environmentToPort(row), nil
+}
+
 func (r *pgEnvironmentPort) Delete(ctx context.Context, id, projectID string) (port.Environment, error) {
 	eid, err := parseID(id)
 	if err != nil {
