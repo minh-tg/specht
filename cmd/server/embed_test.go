@@ -262,3 +262,36 @@ func TestSPAHandler_deepLinkFallsBackToIndex(t *testing.T) {
 		t.Errorf("expected app shell, got %q", rec.Body.String())
 	}
 }
+
+func TestSPAHandler_compressesStaticOnly(t *testing.T) {
+	js := strings.Repeat("console.log('app');\n", 200)
+	assets := fstest.MapFS{
+		"dist/index.html":             &fstest.MapFile{Data: []byte(strings.Repeat("<p>shell</p>\n", 200))},
+		"dist/assets/app-a1b2.js":     &fstest.MapFile{Data: []byte(js)},
+		"dist/assets/font-c3d4.woff2": &fstest.MapFile{Data: []byte(strings.Repeat("wOF2", 500))},
+	}
+	api := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"token":"` + strings.Repeat("x", 2000) + `"}`))
+	})
+	handler := spaHandlerWithFS(api, assets)
+
+	get := func(path string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		req.Header.Set("Accept-Encoding", "gzip")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	for _, path := range []string{"/assets/app-a1b2.js", "/", "/acme/findings"} {
+		if got := get(path).Header().Get("Content-Encoding"); got != "gzip" {
+			t.Errorf("%s: Content-Encoding = %q, want gzip", path, got)
+		}
+	}
+	for _, path := range []string{"/assets/font-c3d4.woff2", "/api/v1/projects", "/health", "/api/v1/health"} {
+		if got := get(path).Header().Get("Content-Encoding"); got != "" {
+			t.Errorf("%s: Content-Encoding = %q, want none", path, got)
+		}
+	}
+}

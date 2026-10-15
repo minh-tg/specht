@@ -108,12 +108,15 @@ func spaHandlerWithFS(apiHandler http.Handler, assets fs.FS) http.Handler {
 
 		http.StripPrefix("/", http.FileServer(http.FS(spaFileSystem{sub}))).ServeHTTP(w, r)
 	})
+	// Only the embedded files are compressed; the /api and /health branch
+	// below never goes through this handler.
+	compressedFiles := server.CompressStatic(fileServer)
 
 	return server.SecurityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/health" {
 			apiHandler.ServeHTTP(w, r)
 			return
 		}
-		fileServer.ServeHTTP(w, r)
+		compressedFiles.ServeHTTP(w, r)
 	}))
 }
