@@ -135,6 +135,27 @@ describe("Register", () => {
     expect(screen.getByRole("button", { name: "Create account" })).toBeEnabled();
   });
 
+  it.each([
+    [
+      "password_too_common",
+      "This password is on a list of commonly used passwords. Choose another.",
+    ],
+    ["password_matches_account", "The password must not be your email address or name."],
+  ])("shows %s on the password field, not above the form", async (code, message) => {
+    mockServer(() => jsonResponse({ error: { code, message } }, 400));
+    renderRegister();
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText("Email"), "new@example.com");
+    await user.type(screen.getByLabelText("Password"), "correct-horse-battery");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+
+    const password = screen.getByLabelText("Password");
+    await waitFor(() => expect(password).toHaveAttribute("aria-invalid", "true"));
+    expect(password).toHaveAccessibleDescription(expect.stringContaining(message));
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  });
+
   it("shows a generic error when the registration service is unavailable", async () => {
     mockServer(() => {
       throw new Error("connection refused");

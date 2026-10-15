@@ -4,9 +4,9 @@ import { useRegister } from "@/api/pageRequests";
 import { useAuth } from "@/auth/useAuth";
 import { AuthLayout } from "@/components/AuthLayout";
 import { FormField } from "@/components/FormField";
-import { PasswordRequirements } from "@/components/PasswordRequirements";
+import { PasswordField } from "@/components/PasswordField";
 import { Button } from "@/components/ui/button";
-import { isPasswordValid } from "@/lib/passwordRules";
+import { isPasswordValid, passwordPolicyMessage } from "@/lib/passwordRules";
 import { type SubmitEvent, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 
@@ -45,7 +45,10 @@ export function Register() {
       await register.mutateAsync({ email, password });
       navigate("/login", { replace: true });
     } catch (err) {
-      if (err instanceof APIError) {
+      const policy = passwordPolicyMessage(err);
+      if (policy) {
+        setPasswordError(policy);
+      } else if (err instanceof APIError) {
         setError(err.message);
       } else {
         setError("Registration failed. Please try again.");
@@ -75,20 +78,16 @@ export function Register() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
-        <FormField
+        <PasswordField
           label="Password"
           id="reg-password"
-          type="password"
-          autoComplete="new-password"
+          rulesId="reg-password-rules"
+          userInputs={[email]}
           required
           value={password}
           onChange={(e) => {
             setPassword(e.target.value);
             setPasswordError(null);
-          }}
-          extra={{
-            id: "reg-password-rules",
-            node: <PasswordRequirements id="reg-password-rules" value={password} />,
           }}
           error={passwordError}
         />

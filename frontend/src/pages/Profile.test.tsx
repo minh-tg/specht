@@ -265,6 +265,27 @@ describe("Profile", () => {
       ).toBeInTheDocument();
     });
 
+    it.each([
+      [
+        "password_too_common",
+        "This password is on a list of commonly used passwords. Choose another.",
+      ],
+      ["password_matches_account", "The password must not be your email address or name."],
+    ])("shows %s on the new password field", async (code, message) => {
+      passwordReply = () => jsonResponse({ error: { code, message } }, 400);
+      const user = userEvent.setup();
+      renderProfile();
+
+      await fillPasswords(user, "old-password-1", "new-password-1", "new-password-1");
+      await user.click(screen.getByRole("button", { name: "Change password" }));
+
+      const next = screen.getByLabelText("New password");
+      await waitFor(() => expect(next).toHaveAttribute("aria-invalid", "true"));
+      expect(next).toHaveAccessibleDescription(expect.stringContaining(message));
+      expect(screen.getByLabelText("Current password")).not.toHaveAttribute("aria-invalid");
+      expect(adopt).not.toHaveBeenCalled();
+    });
+
     it("explains that an SSO account has no password to change", async () => {
       passwordReply = () =>
         jsonResponse({ error: { code: "no_local_password", message: "no password" } }, 409);

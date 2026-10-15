@@ -1,6 +1,6 @@
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -124,6 +124,28 @@ describe("ResetPassword", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "password must be at most 72 bytes; some characters, such as emoji, take more than one",
     );
+    expect(screen.getByRole("button", { name: "Set password" })).toBeEnabled();
+  });
+
+  it.each([
+    [
+      "password_too_common",
+      "This password is on a list of commonly used passwords. Choose another.",
+    ],
+    ["password_matches_account", "The password must not be your email address or name."],
+  ])("shows %s on the new password field", async (code, message) => {
+    reply = () => jsonResponse({ error: { code, message } }, 400);
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.type(screen.getByLabelText("New password", { exact: true }), GOOD);
+    await user.type(screen.getByLabelText("Confirm new password"), GOOD);
+    await user.click(screen.getByRole("button", { name: "Set password" }));
+
+    const password = screen.getByLabelText("New password", { exact: true });
+    await waitFor(() => expect(password).toHaveAttribute("aria-invalid", "true"));
+    expect(password).toHaveAccessibleDescription(expect.stringContaining(message));
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(screen.getByRole("button", { name: "Set password" })).toBeEnabled();
   });
 
