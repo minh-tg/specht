@@ -1,7 +1,9 @@
 import { useMe, useProjects } from "@/api/hooks";
 import { projectGateQuery, projectStatsQuery } from "@/api/pageRequests";
+import { prefetchProject } from "@/api/prefetch";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
+import { PrefetchLink } from "@/components/PrefetchLink";
 import { RelativeTime } from "@/components/RelativeTime";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -117,12 +119,13 @@ export function ProjectList() {
           <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
             Do this
           </p>
-          <Link
+          <PrefetchLink
             to={`/${startWith.slug}/findings`}
+            warm={(queryClient) => prefetchProject(queryClient, startWith.slug)}
             className={buttonVariants()}
           >
             Open {startWith.name}
-          </Link>
+          </PrefetchLink>
         </section>
       )}
       {isAdmin && (
@@ -232,12 +235,13 @@ function ProjectTableRow({ row }: { readonly row: ProjectRowData; }) {
   return (
     <tr className="border-border border-b">
       <td className="px-3 py-2">
-        <Link
+        <PrefetchLink
           to={`/${project.slug}/findings`}
+          warm={(queryClient) => prefetchProject(queryClient, project.slug)}
           className="text-action font-medium hover:underline"
         >
           {project.name}
-        </Link>
+        </PrefetchLink>
         {project.description && (
           <p className="text-muted-foreground text-xs">{project.description}</p>
         )}

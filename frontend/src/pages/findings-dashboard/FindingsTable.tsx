@@ -1,3 +1,5 @@
+import { prefetchFinding } from "@/api/prefetch";
+import { PrefetchLink } from "@/components/PrefetchLink";
 import { DataGrid, type DataGridColumn } from "@/components/ui/data-grid";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { findingKindLabel } from "@/lib/enums";
@@ -6,7 +8,7 @@ import { EMPTY_VALUE, formatAge, formatDate } from "@/lib/format";
 import type { Finding, GateStatus } from "@/types/api";
 import { ChevronRightIcon } from "lucide-react";
 import { type MouseEvent, useEffect, useRef } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { locationText } from "./location";
 import { compactMeta } from "./sort";
 import type { FindingsSort } from "./useFindingsQuery";
@@ -104,13 +106,14 @@ export function FindingsTable(
       wrap: true,
       cell: (f) => (
         <>
-          <Link
+          <PrefetchLink
             to={detailPath(f.id)}
             state={detailState}
+            warm={(queryClient) => prefetchFinding(queryClient, f.id)}
             className="font-medium underline-offset-2 hover:underline"
           >
             {f.current_title}
-          </Link>
+          </PrefetchLink>
           <p className="text-muted-foreground mt-0.5 hidden font-mono text-xs md:block">
             {findingKindLabel(f.finding_kind) ?? EMPTY_VALUE}
           </p>

@@ -1,7 +1,7 @@
 import { formatDateTime } from "@/lib/format";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { vi } from "vitest";
@@ -343,6 +343,28 @@ describe("ProjectList", () => {
 
     await userEvent.setup().click(link);
     expect(await screen.findByText("Findings page")).toBeInTheDocument();
+  });
+
+  it("warms the project and its first findings page when the mouse rests on a project name", async () => {
+    mockApi({
+      projects: [{ id: "p1", slug: "alpha", name: "Alpha", description: null }],
+      me: { role: "member" },
+      gate: () => makeGate([]),
+      stats: () => makeStats(1, 3, recentIso(2)),
+    });
+    renderProjectRoutes();
+
+    fireEvent.pointerEnter(await screen.findByRole("link", { name: "Alpha" }), {
+      pointerType: "mouse",
+    });
+
+    await waitFor(() => {
+      const urls = vi.mocked(globalThis.fetch).mock.calls.map(([input]) => String(input));
+      expect(urls).toContain("/api/v1/projects/alpha");
+      expect(urls).toContain(
+        "/api/v1/projects/alpha/findings?sort=severity&dir=desc&offset=0&limit=20",
+      );
+    });
   });
 
   it("scrolls the table inside its own focusable region on a narrow screen", async () => {
