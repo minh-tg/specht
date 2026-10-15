@@ -72,6 +72,8 @@ func TestE2E_MCPBridgeWithProjectKeyExposesOnlyKeyUsableReadTools(t *testing.T) 
 		"findings_list", "findings_get", "gate_check", "pr_preview",
 		"patch_preview", "notify_preview", "policy_effective",
 		"project_teams", "waivers_list", "waivers_get", "waiver_events",
+		"projects_list", "project_get", "project_stats", "project_aging", "reports_list",
+		"report_get", "environments_list", "targets_list", "artifacts_list", "finding_events",
 	}, names)
 
 	// A read tool really works with this credential, not just on paper.
@@ -80,7 +82,7 @@ func TestE2E_MCPBridgeWithProjectKeyExposesOnlyKeyUsableReadTools(t *testing.T) 
 	require.Contains(t, text, "Found 2 finding(s)")
 
 	// Neither a mutating nor a session-only tool is registered at all.
-	for _, name := range []string{"waivers_create", "reachability_set", "admin_status", "teams_list"} {
+	for _, name := range []string{"waivers_create", "reachability_set", "admin_status", "teams_list", "findings_triage", "waivers_request", "scanners_list"} {
 		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: name})
 		require.Error(t, err, "tool %q must not be advertised to a project key", name)
 	}
@@ -111,7 +113,10 @@ func TestE2E_MCPBridgeOverStdio(t *testing.T) {
 			"admin_retention_preview", "policy_effective", "teams_list",
 			"project_teams", "reachability_set", "watcher_status",
 			"waivers_list", "waivers_get", "waivers_create", "waivers_toggle",
-			"waiver_events",
+			"waiver_events", "projects_list", "project_get", "project_stats", "project_aging",
+			"reports_list", "report_get", "environments_list", "targets_list", "artifacts_list",
+			"finding_events", "scanners_list", "findings_triage", "waivers_request",
+			"waivers_withdraw",
 		}, names)
 	})
 
@@ -186,4 +191,96 @@ func TestE2E_MCPBridgeOverStdio(t *testing.T) {
 		require.Contains(t, text, "Found 2 finding(s)")
 		require.False(t, strings.Contains(text, "panic"))
 	})
+}
+
+// TestE2E_MCPBridgeReadsAProjectAndDecidesAFinding walks an assistant that looks over a project,
+// records a person's decision on a finding, checks the gate and the history, and asks for a
+// waiver on the other finding.
+func TestE2E_MCPBridgeReadsAProjectAndDecidesAFinding(t *testing.T) {
+	slug := newProject(t, "mcp-triage")
+	ingestFixture(t, slug, adminToken, "high-medium.sarif.json")
+	findings := listScanFindings(t, slug)
+	require.Len(t, findings, 2)
+	session := connectMCP(t)
+
+	text, isErr := mcpText(t, session, "projects_list", map[string]any{})
+	require.False(t, isErr, text)
+	require.Contains(t, text, slug)
+
+	text, isErr = mcpText(t, session, "project_stats", map[string]any{"project": slug})
+	require.False(t, isErr, text)
+	require.Contains(t, text, "2 finding(s)")
+
+	reports := request[[]struct {
+		ID string `json:"id"`
+	}](t, http.MethodGet, "/api/v1/projects/"+slug+"/reports", adminToken, nil, http.StatusOK)
+	require.Len(t, reports, 1)
+	text, isErr = mcpText(t, session, "reports_list", map[string]any{"project": slug})
+	require.False(t, isErr, text)
+	require.Contains(t, text, reports[0].ID)
+	text, isErr = mcpText(t, session, "report_get", map[string]any{"report_id": reports[0].ID})
+	require.False(t, isErr, text)
+	require.Contains(t, text, "Report: "+reports[0].ID)
+
+	for _, tool := range []string{"project_get", "project_aging", "environments_list", "targets_list", "artifacts_list"} {
+		text, isErr = mcpText(t, session, tool, map[string]any{"project": slug})
+		require.False(t, isErr, "%s: %s", tool, text)
+	}
+
+	text, isErr = mcpText(t, session, "scanners_list", map[string]any{})
+	require.False(t, isErr, text)
+	require.Contains(t, text, "semgrep")
+
+	// The high finding blocks; a decision without a reason is refused, one with a reason lifts it.
+	high := highFinding(t, slug).ID
+	require.True(t, getGate(t, slug, "").ThresholdBreached)
+	_, isErr = mcpText(t, session, "findings_triage", map[string]any{"finding_id": high, "state": "false_positive"})
+	require.True(t, isErr, "a decision that ignores the gate needs a reason")
+
+	text, isErr = mcpText(t, session, "findings_triage", map[string]any{"finding_id": high, "state": "false_positive", "reason": "test fixture"})
+	require.False(t, isErr, text)
+	require.Contains(t, text, "gate: ignore")
+	require.False(t, getGate(t, slug, "").ThresholdBreached)
+
+	text, isErr = mcpText(t, session, "finding_events", map[string]any{"finding_id": high})
+	require.False(t, isErr, text)
+	require.Contains(t, text, "false_positive")
+	require.Contains(t, text, "test fixture")
+
+	// A request is not an approval: the waiver stays pending, and the assistant can take it back.
+	other := findings[0].ID
+	if other == high {
+		other = findings[1].ID
+	}
+	expires := time.Now().Add(48 * time.Hour).UTC().Format(time.RFC3339)
+	text, isErr = mcpText(t, session, "waivers_request", map[string]any{
+		"project": slug, "finding_ids": []string{other}, "reason": "no fix upstream", "expires_at": expires,
+	})
+	require.False(t, isErr, text)
+	require.Contains(t, text, "waiting for a decision")
+
+	pending := request[[]waiverDetail](t, http.MethodGet, "/api/v1/projects/"+slug+"/waivers", adminToken, nil, http.StatusOK)
+	require.Len(t, pending, 1)
+	text, isErr = mcpText(t, session, "waivers_withdraw", map[string]any{"project": slug, "waiver_id": pending[0].ID})
+	require.False(t, isErr, text)
+	require.Contains(t, text, "withdrawn")
+}
+
+// A project key reads the same project data but cannot decide anything, because the decision
+// tools are not on offer without the opt-in.
+func TestE2E_MCPBridgeProjectKeyReadsButDoesNotDecide(t *testing.T) {
+	slug := newProject(t, "mcp-key-reads")
+	ingestFixture(t, slug, adminToken, "high.sarif.json")
+	session := connectMCPWithKey(t, mintKey(t, slug))
+
+	text, isErr := mcpText(t, session, "project_stats", map[string]any{"project": slug})
+	require.False(t, isErr, text)
+	require.Contains(t, text, "1 finding(s)")
+
+	text, isErr = mcpText(t, session, "reports_list", map[string]any{"project": slug})
+	require.False(t, isErr, text)
+	require.Contains(t, text, "sarif")
+
+	_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "findings_triage", Arguments: map[string]any{"finding_id": "x", "state": "exploitable"}})
+	require.Error(t, err)
 }
