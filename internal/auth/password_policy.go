@@ -11,8 +11,8 @@ import (
 )
 
 // commonPasswordsText is SecLists' 10k-most-common.txt cut to the entries of
-// at least 8 characters, lowercased and deduplicated. THIRD_PARTY_NOTICES in
-// this directory names the source commit and carries its licence.
+// at least 8 characters, lowercased and deduplicated. THIRD_PARTY_NOTICES at
+// the repository root names the source commit and carries its licence.
 //
 //go:embed common_passwords.txt
 var commonPasswordsText string

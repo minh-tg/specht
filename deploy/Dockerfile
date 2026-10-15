@@ -26,6 +26,9 @@ FROM docker.io/library/alpine:3.21@sha256:ce64758a109eb420d874a118f87920e625e12d
 RUN apk add --no-cache ca-certificates tzdata
 COPY --from=builder /bin/server /usr/local/bin/specht
 COPY --from=builder /src/migrations /migrations
+# The password list and the strength estimator in the web app are MIT licensed
+# and ask for their notices to travel with the binary.
+COPY --from=builder /src/LICENSE /src/THIRD_PARTY_NOTICES /usr/share/doc/specht/
 RUN addgroup -S specht && adduser -S -G specht specht
 USER specht
 # The binary probes itself, so the image needs no HTTP client of its own.
