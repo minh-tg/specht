@@ -75,20 +75,29 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 func (s *Scanner) SupportsIncremental() bool { return true }
 
 func (s *Scanner) DetectFormat(data []byte) bool {
-	var probe struct {
-		CheckType string          `json:"check_type"`
-		Results   json.RawMessage `json:"results"`
+	return s.Recognize(data) == scanner.Definite
+}
+
+// Recognize grades a document. A Checkov report names its check type and has
+// a results block, even when nothing failed, so it is definite or nothing.
+func (s *Scanner) Recognize(data []byte) scanner.Recognition {
+	shape, ok := parseutil.ReadShape(data)
+	if !ok || !shape.IsObject() {
+		return scanner.NotRecognized
 	}
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return false
+	if shape.String("check_type") != "" && shape.Has("results") {
+		return scanner.Definite
 	}
-	return probe.CheckType != "" && probe.Results != nil
+	return scanner.NotRecognized
 }
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	if s.Recognize(data) == scanner.NotRecognized {
+		return nil, scanner.Unrecognized("checkov")
+	}
 	var report checkovReport
 	if err := json.Unmarshal(data, &report); err != nil {
-		return nil, fmt.Errorf("checkov: parse json: %w", err)
+		return nil, scanner.Malformed("checkov", err)
 	}
 
 	return convert(report), nil
