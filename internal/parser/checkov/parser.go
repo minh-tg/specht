@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
@@ -82,25 +84,102 @@ func (s *Scanner) DetectFormat(data []byte) bool {
 // a results block, even when nothing failed, so it is definite or nothing.
 func (s *Scanner) Recognize(data []byte) scanner.Recognition {
 	shape, ok := parseutil.ReadShape(data)
-	if !ok || !shape.IsObject() {
+	if !ok {
 		return scanner.NotRecognized
 	}
-	if shape.String("check_type") != "" && shape.Has("results") {
-		return scanner.Definite
+	if shape.IsObject() {
+		if isFrameworkReport(shape) {
+			return scanner.Definite
+		}
+		return scanner.NotRecognized
 	}
-	return scanner.NotRecognized
+	// Checkov writes an array with one report per framework when a directory
+	// holds more than one kind of file. Every element has to be a report.
+	if !shape.IsArray() || len(shape.Array) == 0 {
+		return scanner.NotRecognized
+	}
+	for _, el := range shape.Array {
+		sub, ok := parseutil.ReadShape(el)
+		if !ok || !sub.IsObject() || !isFrameworkReport(sub) {
+			return scanner.NotRecognized
+		}
+	}
+	return scanner.Definite
+}
+
+// isFrameworkReport is true for one framework's report: it names its check
+// type and has a results block, even when nothing failed.
+func isFrameworkReport(shape parseutil.Shape) bool {
+	return shape.String("check_type") != "" && shape.Has("results")
 }
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
 	if s.Recognize(data) == scanner.NotRecognized {
 		return nil, scanner.Unrecognized("checkov")
 	}
-	var report checkovReport
-	if err := json.Unmarshal(data, &report); err != nil {
+	reports, err := decodeReports(data)
+	if err != nil {
 		return nil, scanner.Malformed("checkov", err)
 	}
+	return convertAll(reports), nil
+}
 
-	return convert(report), nil
+// decodeReports reads either one framework's report (an object) or the array
+// Checkov writes for several frameworks.
+func decodeReports(data []byte) ([]checkovReport, error) {
+	if shape, ok := parseutil.ReadShape(data); ok && shape.IsArray() {
+		var reports []checkovReport
+		if err := json.Unmarshal(data, &reports); err != nil {
+			return nil, err
+		}
+		return reports, nil
+	}
+	var report checkovReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		return nil, err
+	}
+	return []checkovReport{report}, nil
+}
+
+// convertAll merges the framework reports of one run into one report. A single
+// framework converts exactly as before. Several share one target kind, "iac",
+// and the frameworks are listed on the scan scope. Files Checkov could not read
+// are counted there too, because they are missing from the results.
+func convertAll(reports []checkovReport) *domain.NormalizedReport {
+	var nr *domain.NormalizedReport
+	if len(reports) == 1 {
+		nr = convert(reports[0])
+	} else {
+		nr = &domain.NormalizedReport{
+			ContractVersion:    1,
+			FingerprintVersion: 1,
+			Completeness:       domain.CompletenessUnknown,
+			ScanType:           domain.ScanTypeIaC,
+			Target:             &domain.TargetInfo{Kind: "iac"},
+		}
+		seen := map[string]bool{}
+		var frameworks []string
+		for _, report := range reports {
+			nr.Findings = append(nr.Findings, convert(report).Findings...)
+			if !seen[report.CheckType] {
+				seen[report.CheckType] = true
+				frameworks = append(frameworks, report.CheckType)
+			}
+		}
+		sort.Strings(frameworks)
+		nr.ScanScope = &domain.ScanScope{Ext: map[string]string{"checkov_frameworks": strings.Join(frameworks, ",")}}
+	}
+	var parsingErrors int
+	for _, report := range reports {
+		parsingErrors += report.Summary.ParsingErrors
+	}
+	if parsingErrors > 0 {
+		if nr.ScanScope == nil {
+			nr.ScanScope = &domain.ScanScope{Ext: map[string]string{}}
+		}
+		nr.ScanScope.Ext["checkov_parsing_errors"] = strconv.Itoa(parsingErrors)
+	}
+	return nr
 }
 
 func convert(report checkovReport) *domain.NormalizedReport {
