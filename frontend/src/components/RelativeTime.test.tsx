@@ -32,6 +32,40 @@ describe("RelativeTime", () => {
     expect(el.getAttribute("title")).toMatch(/2026/);
   });
 
+  it("adds the exact time as visually hidden text next to the phrase", () => {
+    render(<RelativeTime iso={ago(3 * HOUR)} />);
+    const el = screen.getByRole("time");
+    const hidden = el.querySelector(".sr-only");
+    expect(hidden).not.toBeNull();
+    expect(hidden).toHaveTextContent(`(${el.getAttribute("title")})`);
+    expect(el).toHaveTextContent(/^3 h ago \(.*2026.*\)$/);
+  });
+
+  it("positions the hidden text inside the time element so a scrolling table clips it", () => {
+    render(<RelativeTime iso={ago(3 * HOUR)} />);
+
+    // An absolutely positioned span with no positioned parent sits at the far edge of a wide table
+    // and makes the whole page scroll sideways.
+    expect(screen.getByRole("time")).toHaveClass("relative");
+  });
+
+  it("keeps the frozen and fixed-now variants free of the hidden text", () => {
+    render(
+      <>
+        <RelativeTime iso={ago(HOUR)} frozen />
+        <RelativeTime iso={ago(2 * HOUR)} now={NOW} />
+      </>,
+    );
+    for (const el of screen.getAllByRole("time")) {
+      expect(el.querySelector(".sr-only")).toBeNull();
+      expect(el.getAttribute("title")).toMatch(/2026/);
+    }
+    expect(screen.getAllByRole("time").map((el) => el.textContent)).toEqual([
+      "1 h ago",
+      "2 h ago",
+    ]);
+  });
+
   it.each([
     [30 * 1000, "just now"],
     [59 * MIN, "59 min ago"],

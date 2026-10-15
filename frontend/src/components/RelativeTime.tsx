@@ -57,20 +57,39 @@ function getSnapshot() {
   return tickedAt;
 }
 
-function Time({ iso, text }: { readonly iso: string; readonly text: string; }) {
-  return <time dateTime={iso} title={formatDateTime(iso)} className="tabular-nums">{text}</time>;
+function Time({ iso, text, spellOut = false }: {
+  readonly iso: string;
+  readonly text: string;
+  /** Adds the exact time as visually hidden text, for readers that never see the `title`. */
+  readonly spellOut?: boolean;
+}) {
+  const exact = formatDateTime(iso);
+  return (
+    // `relative` makes the hidden text positioned inside this element. Without it the absolutely
+    // positioned span escapes the clipping of a scrolling table and widens the whole page.
+    <time
+      dateTime={iso}
+      title={exact}
+      className={spellOut ? "relative tabular-nums" : "tabular-nums"}
+    >
+      {text}
+      {spellOut && <span className="sr-only">&nbsp;({exact})</span>}
+    </time>
+  );
 }
 
 function LiveTime({ iso }: { readonly iso: string; }) {
   const now = useSyncExternalStore(subscribe, getSnapshot);
-  return <Time iso={iso} text={formatRelativeTime(iso, new Date(now))} />;
+  return <Time iso={iso} text={formatRelativeTime(iso, new Date(now))} spellOut />;
 }
 
 /**
  * A timestamp as a phrase ("3 h ago"), in a `<time>` element whose `title` holds the exact local
- * date and time. It refreshes every minute while the tab is visible. Pass `frozen` (or `now`) to
- * stop that, which is what a live region needs: a text that changes every minute would be announced
- * every minute. Empty or unparsable input renders the shared empty value.
+ * date and time. The refreshing form also carries the exact time as visually hidden text, because
+ * touch, keyboard and screen reader users cannot reach a `title`. It refreshes every minute while
+ * the tab is visible. Pass `frozen` (or `now`) to stop that, which is what a live region needs: a
+ * text that changes every minute would be announced every minute. Those two forms also leave out
+ * the hidden text, so a live region announces no more than the phrase. Empty or unparsable input renders the shared empty value.
  */
 export function RelativeTime({ iso, now, frozen = false }: {
   readonly iso: string | null | undefined;
