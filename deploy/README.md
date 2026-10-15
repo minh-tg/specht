@@ -336,7 +336,14 @@ server logs a warning at startup while it is on.
 
 ## 7. Backup and restore
 
-Postgres holds all state; the server keeps nothing on disk. Dump in custom
+Postgres holds all state; the server keeps nothing on disk. That includes a
+random key the server makes the first time it reads a Gitleaks report. Gitleaks
+findings are identified by a keyed hash of each credential, so the key keeps a
+finding the same finding from one scan to the next without storing the
+credential. It is in the dump, so a restore keeps every finding's identity.
+Restoring only part of the database, or starting from an empty one, makes a new
+key, and the next Gitleaks scan then opens new findings for secrets that are
+still there. Dump in custom
 format (`-Fc`): `pg_restore` can read it selectively and restores faster than
 plain SQL. The `-T` flag turns off the TTY so the redirect gets clean binary:
 
