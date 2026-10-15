@@ -1314,9 +1314,22 @@ paths:
         - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Id"
+        - name: type
+          in: query
+          description: |
+            Keep only events of these types. Repeat the parameter or separate values with
+            commas (`type=analysis_changed,comment`). Omit for every type.
+          style: form
+          explode: true
+          schema: { type: array, items: { type: string } }
+        - name: limit
+          in: query
+          description: Page size. Default 50, maximum 500. A malformed, negative, or oversized value falls back to the default.
+          schema: { type: integer, minimum: 0, maximum: 500, default: 50 }
+        - $ref: "#/components/parameters/Offset"
       responses:
         "200":
-          description: The events, oldest first.
+          description: The events, newest first.
           content:
             application/json:
               schema:
