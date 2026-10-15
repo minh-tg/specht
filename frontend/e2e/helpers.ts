@@ -23,6 +23,16 @@ export const FIXTURE_GOSEC_JSON = path.resolve(
   process.cwd(),
   "../internal/parser/testdata/foreign/gosec.json",
 );
+// Parser fixtures with several CVSS versions per CVE: Trivy scores CVE-2024-4444 in v2.0, v3.0, v3.1
+// and v4.0 and names CWE-79; Grype scores CVE-2024-1111 in v2.0, v3.0, v3.1 and v4.0.
+export const FIXTURE_TRIVY_MULTI_SOURCE = path.resolve(
+  process.cwd(),
+  "../internal/parser/trivy/testdata/multi-source-cvss.json",
+);
+export const FIXTURE_GRYPE_MULTI_CVSS = path.resolve(
+  process.cwd(),
+  "../internal/parser/grype/testdata/grype-multi-cvss.json",
+);
 export const FIXTURE_HIGH_NEW = path.resolve(process.cwd(), "../e2e/testdata/high-new.sarif.json");
 
 // A baseline scan and the pull-request scan that adds one blocking finding on top of it.
