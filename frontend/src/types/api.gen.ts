@@ -1462,6 +1462,28 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/projects/{slug}/member-suggestions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Suggest people to add as direct members
+     * @description Autocomplete for adding a direct project member. Matches active accounts whose email starts with `q`, or whose display name has a word (after a space, or at the start) that starts with `q`, ignoring case. `%`, `_` and `\` in `q` match only themselves. Returns at most 8 people, ordered by email, and leaves out disabled accounts, the system account and people who are already direct members of the project.
+     *     `q` is trimmed. Fewer than 3 characters returns `[]`; more than 64 is `400 invalid_query`. Needs the project manager role or above and a session: a project API key is `403 insufficient_role`. While open self-registration is enabled (`registration.enabled` in `/api/v1/capabilities`) the answer is always `[]`, because anyone could have registered an account under a colleague's address or name.
+     *     Rate limited per user to 30 requests a minute with a burst of 10, on every deployment, whether or not the general rate limit is enabled. Over the limit is `429` with `Retry-After`.
+     */
+    get: operations["suggestProjectMembers"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/projects/{slug}/members/{userID}": {
     parameters: {
       query?: never;
@@ -2909,6 +2931,14 @@ export interface components {
       email?: string;
       /** @description The member's display name */
       display_name?: string;
+    };
+    MemberSuggestion: {
+      /** Format: uuid */
+      user_id: string;
+      /** Format: email */
+      email: string;
+      /** @description The person's self-chosen display name */
+      display_name: string;
     };
     Environment: {
       /** Format: uuid */
@@ -5752,6 +5782,38 @@ export interface operations {
       400: components["responses"]["BadRequest"];
       403: components["responses"]["Forbidden"];
       404: components["responses"]["NotFound"];
+      500: components["responses"]["InternalError"];
+    };
+  };
+  suggestProjectMembers: {
+    parameters: {
+      query: {
+        /** @description Start of an email address or of a display-name word. */
+        q: string;
+      };
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The suggested people, possibly none. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["MemberSuggestion"][];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["ProjectAccessDenied"];
+      404: components["responses"]["NotFound"];
+      429: components["responses"]["RateLimited"];
       500: components["responses"]["InternalError"];
     };
   };

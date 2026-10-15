@@ -264,6 +264,11 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(session).Delete("/api/v1/projects/{slug}/invites/{id}", h.RevokeInvite)
 		r.With(session).Post("/api/v1/invites/{token}/join", h.JoinInvite)
 		r.With(readScope).Get("/api/v1/projects/{slug}/members", h.ListProjectMembers)
+		// Member suggestions are a directory lookup, so they get their own
+		// per-user bucket of 30 requests a minute with a burst of 10. It is
+		// built once here and applies even when RATE_LIMIT_ENABLED is off.
+		suggestBucket := NewLoginRateLimiter(30, 10).Middleware(true)
+		r.With(session, suggestBucket).Get("/api/v1/projects/{slug}/member-suggestions", h.suggestProjectMembers(!cfg.RegistrationDisabled))
 		r.With(h.audited(audit.EventAddProjectMember, "userID"), adminScope).Post("/api/v1/projects/{slug}/members", h.AddProjectMember)
 		r.With(h.audited(audit.EventRemoveProjectMember, "userID"), adminScope).Delete("/api/v1/projects/{slug}/members/{userID}", h.RemoveProjectMember)
 		r.With(readScope).Get("/api/v1/projects/{slug}/stats", h.GetProjectStats)
