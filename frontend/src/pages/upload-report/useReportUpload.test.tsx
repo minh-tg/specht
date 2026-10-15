@@ -57,7 +57,7 @@ describe("useReportUpload", () => {
     expect(result.current.canSubmit).toBe(false);
   });
 
-  it("rejects a file whose name is not .json", async () => {
+  it("rejects a file whose name is neither .json nor .jsonl", async () => {
     const { result } = renderUploadHook();
 
     await act(async () => {
@@ -79,6 +79,47 @@ describe("useReportUpload", () => {
     });
 
     expect(result.current.fileError).toBe("Invalid JSON");
+    expect(result.current.fileName).toBeNull();
+  });
+
+  it("accepts a .jsonl file and sends its lines as an array", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ report_id: "r2", total_findings: 2, replayed: false }),
+    } as Response);
+    const { result } = renderUploadHook();
+
+    await act(async () => {
+      await result.current.handleFileChange(
+        fileChangeEvent(
+          jsonFile("{\"template-id\":\"a\"}\n{\"template-id\":\"b\"}\n", "nuclei.jsonl"),
+        ),
+      );
+    });
+    act(() => result.current.setSelectedScanner("nuclei"));
+    expect(result.current.fileError).toBeNull();
+    expect(result.current.fileName).toBe("nuclei.jsonl");
+
+    await act(async () => {
+      await result.current.handleSubmit(submitEvent);
+    });
+
+    const call = vi.mocked(globalThis.fetch).mock.calls[0];
+    const sent = JSON.parse(String((call[1] as RequestInit).body));
+    expect(sent.scanner).toBe("nuclei");
+    expect(sent.raw_data).toEqual([{ "template-id": "a" }, { "template-id": "b" }]);
+  });
+
+  it("reports the line of a .jsonl file that is not JSON", async () => {
+    const { result } = renderUploadHook();
+
+    await act(async () => {
+      await result.current.handleFileChange(
+        fileChangeEvent(jsonFile("{\"a\":1}\noops", "scan.jsonl")),
+      );
+    });
+
+    expect(result.current.fileError).toBe("Line 2 is not valid JSON");
     expect(result.current.fileName).toBeNull();
   });
 

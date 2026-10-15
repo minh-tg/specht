@@ -4,6 +4,7 @@ import { useUploadReport } from "@/api/pageRequests";
 import type { IngestResponse } from "@/types/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, type RefObject, type SubmitEvent, useRef, useState } from "react";
+import { readScanFile } from "./scanFile";
 
 export const MAX_FILE_SIZE = 10 * 1024 * 1024;
 
@@ -28,7 +29,8 @@ export function useReportUpload(slug: string): ReportUpload {
   const upload = useUploadReport(slug);
 
   const [selectedScanner, setSelectedScanner] = useState("");
-  const [fileContent, setFileContent] = useState<string | null>(null);
+  // The parsed file, wrapped so a file whose value is `null` still counts as chosen.
+  const [scan, setScan] = useState<{ readonly value: unknown; } | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -44,40 +46,30 @@ export function useReportUpload(slug: string): ReportUpload {
     setUploadError(null);
     setResult(null);
 
-    if (!file.name.endsWith(".json")) {
-      setFileError("Unsupported file format");
-      setFileContent(null);
-      setFileName(null);
-      return;
-    }
-
     if (file.size > MAX_FILE_SIZE) {
       setFileError("File too large (max 10MB)");
-      setFileContent(null);
+      setScan(null);
       setFileName(null);
       return;
     }
 
-    const text = await file.text();
-    // The wire carries raw_data as a JSON value, not a string — accept the
-    // file only when it parses, so a malformed upload is a local error
-    // instead of a server-side parse failure.
-    try {
-      JSON.parse(text);
-    } catch {
-      setFileError("Invalid JSON");
+    // The wire carries raw_data as a JSON value, not a string. Accept the file only when it
+    // reads, so a malformed upload is a local error instead of a server-side parse failure.
+    const read = readScanFile(file.name, await file.text());
+    if (!read.ok) {
+      setFileError(read.error);
+      setScan(null);
       setFileName(null);
-      setFileContent(null);
       return;
     }
 
     setFileName(file.name);
-    setFileContent(text);
+    setScan({ value: read.value });
   }
 
   function resetForm() {
     setSelectedScanner("");
-    setFileContent(null);
+    setScan(null);
     setFileName(null);
     setFileError(null);
     setUploadError(null);
@@ -87,7 +79,7 @@ export function useReportUpload(slug: string): ReportUpload {
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
-    if (!slug || !selectedScanner || !fileContent) return;
+    if (!slug || !selectedScanner || !scan) return;
 
     setSubmitting(true);
     setUploadError(null);
@@ -96,11 +88,10 @@ export function useReportUpload(slug: string): ReportUpload {
     try {
       const report = await upload.mutateAsync({
         scanner: selectedScanner,
-        // Validated at file selection: the wire needs a JSON value.
-        raw_data: JSON.parse(fileContent),
+        raw_data: scan.value,
       });
       setResult(report);
-      setFileContent(null);
+      setScan(null);
       setFileName(null);
       setFileError(null);
       if (fileRef.current) fileRef.current.value = "";
@@ -127,7 +118,7 @@ export function useReportUpload(slug: string): ReportUpload {
     fileName,
     fileError,
     submitting,
-    canSubmit: !submitting && !!selectedScanner && !!fileContent,
+    canSubmit: !submitting && !!selectedScanner && !!scan,
     uploadError,
     result,
     fileRef,

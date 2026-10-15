@@ -66,12 +66,14 @@ export function UploadForm({
       </div>
 
       <div>
-        <label htmlFor="ingest-file" className="text-sm font-medium">Scan File (.json)</label>
+        <label htmlFor="ingest-file" className="text-sm font-medium">
+          Scan File (.json or .jsonl)
+        </label>
         <input
           id="ingest-file"
           ref={fileRef}
           type="file"
-          accept=".json"
+          accept=".json,.jsonl,.ndjson"
           onChange={handleFileChange}
           className="mt-1 block w-full text-sm"
         />
