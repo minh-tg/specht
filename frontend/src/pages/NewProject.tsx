@@ -1,5 +1,6 @@
 import { APIError } from "@/api/client";
 import { useCreateProject, useMe } from "@/api/hooks";
+import { INLINE_LINK } from "@/components/inlineLink";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -82,7 +83,7 @@ export function NewProject() {
         <p className="text-muted-foreground text-sm">Only administrators can create projects.</p>
         <Link
           to="/"
-          className="text-action hover:text-action/80 mt-2 inline-block text-sm underline"
+          className={`${INLINE_LINK} mt-2 inline-block text-sm`}
         >
           Back to projects
         </Link>

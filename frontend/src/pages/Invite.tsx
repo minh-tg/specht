@@ -5,6 +5,7 @@ import { useAuth } from "@/auth/useAuth";
 import { AuthLayout } from "@/components/AuthLayout";
 import { ErrorState } from "@/components/ErrorState";
 import { FormField } from "@/components/FormField";
+import { INLINE_LINK } from "@/components/inlineLink";
 import { PasswordRequirements } from "@/components/PasswordRequirements";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { Button } from "@/components/ui/button";
@@ -204,7 +205,7 @@ export function Invite() {
               Not you?{" "}
               <button
                 type="button"
-                className="text-action underline underline-offset-4"
+                className={INLINE_LINK}
                 onClick={auth.logout}
               >
                 Use another account

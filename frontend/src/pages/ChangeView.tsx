@@ -9,6 +9,7 @@ import {
   useScanSignal,
 } from "@/api/hooks";
 import { ErrorState } from "@/components/ErrorState";
+import { INLINE_LINK } from "@/components/inlineLink";
 import { formatRelativeTime } from "@/lib/format";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { blockerCount, isReportInProgress } from "@/lib/verdict";
@@ -22,8 +23,6 @@ import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom"
 
 export { MAX_BLOCKER_ROWS };
 
-const LINK_CLASS = "text-foreground underline underline-offset-3 hover:decoration-2";
-
 function Page({ children }: { children: ReactNode; }) {
   return <div className="mx-auto max-w-5xl px-4 py-8">{children}</div>;
 }
@@ -35,7 +34,7 @@ function ProjectNotFound() {
       <p className="text-muted-foreground mt-2 text-sm">
         There is no project with this address, or you don&apos;t have access to it.
       </p>
-      <Link to="/" className={`${LINK_CLASS} mt-4 inline-block text-sm`}>
+      <Link to="/" className={`${INLINE_LINK} mt-4 inline-block text-sm`}>
         Back to projects
       </Link>
     </Page>
@@ -71,8 +70,8 @@ function NoReport({ slug, commit }: { slug: string; commit: string; }) {
         The pipeline may still be running, or this commit was never scanned.
       </p>
       <div className="mt-4 flex flex-wrap gap-4 text-sm">
-        <Link to={`/${slug}/reports`} className={LINK_CLASS}>Reports</Link>
-        <Link to={`/${slug}/reports/upload`} className={LINK_CLASS}>Upload a report</Link>
+        <Link to={`/${slug}/reports`} className={INLINE_LINK}>Reports</Link>
+        <Link to={`/${slug}/reports/upload`} className={INLINE_LINK}>Upload a report</Link>
       </div>
     </div>
   );
@@ -172,7 +171,7 @@ export function ChangeView() {
           detail={requestError instanceof Error ? requestError.message : undefined}
           onRetry={() => void retryLoad()}
         />
-        <Link to={`/${slug}/findings`} className={`${LINK_CLASS} mt-4 inline-block text-sm`}>
+        <Link to={`/${slug}/findings`} className={`${INLINE_LINK} mt-4 inline-block text-sm`}>
           Back to project
         </Link>
       </Page>

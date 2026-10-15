@@ -24,7 +24,9 @@ export function Switch({ checked, onCheckedChange, disabled, "aria-label": ariaL
         "transition-colors duration-(--dur-quick) ease-entering outline-none",
         "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50",
         "disabled:cursor-not-allowed disabled:opacity-50",
-        checked ? "bg-foreground border-foreground" : "bg-muted",
+        checked
+          ? "bg-foreground border-foreground hover:bg-foreground/85"
+          : "bg-muted hover:bg-border",
         className,
       )}
     >
