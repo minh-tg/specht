@@ -45,6 +45,6 @@ export function useDeleteProject(slug: string) {
       queryClient.removeQueries({ predicate: (query) => query.queryKey[1] === slug });
       void queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
     },
-    meta: { success: "Project deleted" },
+    meta: { success: "Project deleted", sound: "none" },
   });
 }

@@ -12,6 +12,12 @@ declare module "@tanstack/react-query" {
        * from the response, for outcomes that report what the server decided.
        */
       success?: string | ((data: never, variables: never) => string);
+      /**
+       * Set `"none"` for a removal or revocation: the toast stays but the rising cue is skipped. A
+       * function decides from the response and the variables, and returns `undefined` to keep the
+       * default cue.
+       */
+      sound?: "none" | ((data: never, variables: never) => "none" | undefined);
     };
   }
 }
@@ -21,13 +27,17 @@ export function announceMutationSuccess(
   success: string | ((data: never, variables: never) => string) | undefined,
   data: unknown,
   variables: unknown,
+  sound?: "none" | ((data: never, variables: never) => "none" | undefined),
 ): void {
   if (!success) return;
   const message = typeof success === "function"
     ? (success as (data: unknown, variables: unknown) => string)(data, variables)
     : success;
   toast.success(message);
-  playCue("accepted");
+  const choice = typeof sound === "function"
+    ? (sound as (data: unknown, variables: unknown) => "none" | undefined)(data, variables)
+    : sound;
+  if (choice !== "none") playCue("accepted");
 }
 
 /**
@@ -40,7 +50,7 @@ export function createQueryClient(
   return new QueryClient({
     mutationCache: new MutationCache({
       onSuccess: (data, variables, _result, mutation) => {
-        announceMutationSuccess(mutation.meta?.success, data, variables);
+        announceMutationSuccess(mutation.meta?.success, data, variables, mutation.meta?.sound);
       },
       // Only mutations that announce their success are user actions worth a failure cue; a 401
       // is the session ending, which redirects instead.

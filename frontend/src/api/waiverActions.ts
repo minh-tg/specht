@@ -42,7 +42,7 @@ export function useUpdateWaiver(slug: string) {
 export function useDeleteWaiver(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { success: "Waiver deleted" },
+    meta: { success: "Waiver deleted", sound: "none" },
     mutationFn: (id: string) =>
       apiFetch<void>(
         `/api/v1/projects/${encodeURIComponent(slug)}/waivers/${encodeURIComponent(id)}`,
