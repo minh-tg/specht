@@ -179,6 +179,11 @@ type Usecases struct {
 	// account does not exist so that case costs as much as a real check.
 	dummyOnce sync.Once
 	dummyHash string
+
+	// fingerprintKey is the instance key that scanners hash secrets with, loaded
+	// on first use and kept for the life of the process.
+	keyMu          sync.Mutex
+	fingerprintKey []byte
 }
 
 // New builds a Usecases from its dependencies.
