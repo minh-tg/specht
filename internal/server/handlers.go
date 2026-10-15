@@ -474,6 +474,21 @@ func parseInt32Param(r *http.Request, name string, defaultVal int32) int32 {
 	return int32(n)
 }
 
+// queryList reads a list-valued query parameter. It accepts the name repeated
+// (?type=a&type=b) and comma-separated values (?type=a,b), trims each value and
+// drops blanks. It returns nil when nothing is left, which callers treat as no filter.
+func queryList(r *http.Request, name string) []string {
+	var out []string
+	for _, raw := range r.URL.Query()[name] {
+		for _, part := range strings.Split(raw, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				out = append(out, part)
+			}
+		}
+	}
+	return out
+}
+
 var (
 	errProjectNotFound     = errors.New(msgProjectNotFound)
 	errProjectAccessDenied = errors.New("project access denied")

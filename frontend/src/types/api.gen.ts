@@ -4486,7 +4486,17 @@ export interface operations {
   };
   listFindingEvents: {
     parameters: {
-      query?: never;
+      query?: {
+        /**
+         * @description Keep only events of these types. Repeat the parameter or separate values with
+         *     commas (`type=analysis_changed,comment`). Omit for every type.
+         */
+        type?: string[];
+        /** @description Page size. Default 50, maximum 500. A malformed, negative, or oversized value falls back to the default. */
+        limit?: number;
+        /** @description Items to skip. A malformed, negative, or out-of-range value falls back to 0. */
+        offset?: components["parameters"]["Offset"];
+      };
       header?: never;
       path: {
         /** @description Resource identifier. */
@@ -4496,7 +4506,7 @@ export interface operations {
     };
     requestBody?: never;
     responses: {
-      /** @description The events, oldest first. */
+      /** @description The events, newest first. */
       200: {
         headers: {
           [name: string]: unknown;
