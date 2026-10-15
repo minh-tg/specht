@@ -278,3 +278,57 @@ func TestFindingKind(t *testing.T) {
 	s := osvscanner.NewScanner()
 	assert.Equal(t, "sca", string(s.Descriptor().FindingKinds[0]))
 }
+
+func osvReportWithSeverity(severity string) []byte {
+	return []byte(`{"results":[{"source":{"path":"go.mod","type":"lockfile"},"packages":[{"package":{"name":"example.com/app","version":"v1.0.0","ecosystem":"Go","purl":"pkg:golang/example.com/app@v1.0.0"},"vulnerabilities":[{"id":"GHSA-xxxx-yyyy-zzzz","aliases":["CVE-2026-0001"],"summary":"s","severity":` + severity + `}]}]}]}`)
+}
+
+func TestParse_CVSSAllKeepsEveryVersion(t *testing.T) {
+	data := osvReportWithSeverity(`[
+		{"type":"CVSS_V3","score":"CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"},
+		{"type":"CVSS_V4","score":"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"},
+		{"type":"CVSS_V2","score":"AV:N/AC:L/Au:N/C:P/I:P/A:P"}
+	]`)
+	report, err := osvscanner.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.Len(t, report.Findings, 1)
+	f := report.Findings[0]
+
+	require.Len(t, f.CVSSAll, 3)
+	byVersion := map[string]domain.CVSSRecord{}
+	for _, r := range f.CVSSAll {
+		byVersion[r.Version] = r
+	}
+	assert.Equal(t, "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", byVersion["3.0"].Vector, "a CVSS_V3 entry with a 3.0 vector is labelled 3.0, not 3.1")
+	assert.InDelta(t, 9.8, byVersion["3.0"].Score, 0.05)
+	assert.Contains(t, byVersion["4.0"].Vector, "CVSS:4.0/")
+	assert.Equal(t, "CVSS:2.0/AV:N/AC:L/Au:N/C:P/I:P/A:P", byVersion["2.0"].Vector, "a bare v2 vector gains the CVSS:2.0/ prefix")
+	assert.InDelta(t, 7.5, byVersion["2.0"].Score, 0.05)
+	assert.NotContains(t, byVersion, "3.1")
+
+	// The single preferred vector and the occurrence score keep their choice.
+	require.NotNil(t, f.CVSS)
+	assert.Equal(t, "3.0", f.CVSS.Version, "the preferred vector is labelled from its prefix too")
+	assert.Equal(t, "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", f.CVSS.Vector)
+}
+
+func TestParse_CVSSAllSkipsUnusableEntries(t *testing.T) {
+	data := osvReportWithSeverity(`[
+		{"type":"CVSS_V3","score":"not-a-vector"},
+		{"type":"CVSS_V3","score":"7.5"},
+		{"type":"CVSS_V3","score":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"},
+		{"type":"Ubuntu","score":"high"}
+	]`)
+	report, err := osvscanner.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.Len(t, report.Findings, 1)
+	require.Len(t, report.Findings[0].CVSSAll, 1, "a bare score has no vector, so it is not a CVSS record")
+	assert.Equal(t, "3.1", report.Findings[0].CVSSAll[0].Version)
+}
+
+func TestParse_CVSSAllEmptyWithoutSeverity(t *testing.T) {
+	report, err := osvscanner.NewScanner().Parse(context.Background(), osvReportWithSeverity(`[]`))
+	require.NoError(t, err)
+	require.Len(t, report.Findings, 1)
+	assert.Empty(t, report.Findings[0].CVSSAll)
+}
