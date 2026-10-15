@@ -94,11 +94,12 @@ func (p *EPSSProvider) fetchBatch(ctx context.Context, cveIDs []string, out map[
 }
 
 // parsePercentile reads the feed's percentile string. A value that is not a
-// number in [0, 1] is dropped so it never reaches the API as a fake rank.
-func parsePercentile(raw string) *float64 {
+// number in [0, 1] becomes 0, which Record treats as "none", so it never
+// reaches the API as a fake rank.
+func parsePercentile(raw string) float64 {
 	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
 	if err != nil || math.IsNaN(v) || v < 0 || v > 1 {
-		return nil
+		return 0
 	}
-	return &v
+	return v
 }

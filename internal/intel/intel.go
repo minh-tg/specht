@@ -30,12 +30,14 @@ import (
 
 // Record is one CVE's merged intelligence with its provenance.
 type Record struct {
-	CVEID          string   `json:"cve_id"`
-	EPSS           *float64 `json:"epss,omitempty"`
-	EPSSPercentile *float64 `json:"epss_percentile,omitempty"`
-	EPSSDate       string   `json:"epss_date,omitempty"`
-	KEV            bool     `json:"kev"`
-	KEVAdded       string   `json:"kev_added,omitempty"`
+	CVEID string   `json:"cve_id"`
+	EPSS  *float64 `json:"epss,omitempty"`
+	// EPSSPercentile is the score's rank among all CVEs in [0, 1]; zero means
+	// the feed gave none.
+	EPSSPercentile float64 `json:"epss_percentile,omitempty"`
+	EPSSDate       string  `json:"epss_date,omitempty"`
+	KEV            bool    `json:"kev"`
+	KEVAdded       string  `json:"kev_added,omitempty"`
 	// KEVDueDate is the date CISA requires federal agencies to remediate by.
 	KEVDueDate string `json:"kev_due_date,omitempty"`
 	// KEVRansomware is the catalog's knownRansomwareCampaignUse value, for
