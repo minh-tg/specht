@@ -60,6 +60,12 @@ releases.
   and retention changes, including refused attempts.
 - A published-image compose file with a source-build override, backup and
   restore instructions, and a CI check that restores a dump.
+- Project admins can classify an environment (tier, reachable from the
+  internet, data sensitivity) from the Insights page. Scans create an
+  environment with a tier guessed from its name and never overwrite what an
+  admin set.
+- The report upload page takes `.jsonl` and `.ndjson` files, such as Nuclei
+  output, and names the line that is not valid JSON.
 
 ### Changed
 
