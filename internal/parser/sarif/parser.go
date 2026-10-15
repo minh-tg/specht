@@ -63,20 +63,34 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 }
 
 func (s *Scanner) DetectFormat(data []byte) bool {
-	var probe sarifLog
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return false
+	return s.Recognize(data) == scanner.Definite
+}
+
+// Recognize grades a document. A SARIF 2.1 log with runs is definite. A log
+// with no runs, another version, or no version still has SARIF's envelope, so
+// it is possible and Parse explains what is wrong with it.
+func (s *Scanner) Recognize(data []byte) scanner.Recognition {
+	shape, ok := parseutil.ReadShape(data)
+	if !ok || !shape.IsObject() || !shape.Has("runs") {
+		return scanner.NotRecognized
 	}
-	return strings.HasPrefix(probe.Version, "2.1") && len(probe.Runs) > 0
+	runs, _ := shape.List("runs")
+	if strings.HasPrefix(shape.String("version"), "2.1") && len(runs) > 0 {
+		return scanner.Definite
+	}
+	return scanner.Possible
 }
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	if s.Recognize(data) == scanner.NotRecognized {
+		return nil, scanner.Unrecognized("sarif")
+	}
 	var log sarifLog
 	if err := json.Unmarshal(data, &log); err != nil {
-		return nil, fmt.Errorf("sarif: parse json: %w", err)
+		return nil, scanner.Malformed("sarif", err)
 	}
 	if log.Version != "" && !strings.HasPrefix(log.Version, "2.1") {
-		return nil, fmt.Errorf("sarif: unsupported version %q (want 2.1.x)", log.Version)
+		return nil, scanner.Malformed("sarif", fmt.Errorf("unsupported version %q (want 2.1.x)", log.Version))
 	}
 	return convert(log), nil
 }
