@@ -80,6 +80,13 @@ releases.
   in the project's waiver total. History and the audit log record who revoked or restored a
   waiver and when. `POST /waivers/{id}/toggle` still works for approved waivers but is
   deprecated, and it refuses pending, rejected, withdrawn and expired ones.
+- `GET /api/v1/findings/{id}/cve` returns the CVE evaluation details of a
+  finding: every CVSS vector its scan reports carry with score, severity and
+  each metric, EPSS and KEV, CWEs, dates and references, each with its source.
+  When a report lacks a CVSS v3 or v4 vector, or both a CWE and a published
+  date, the server can fetch the rest from NVD, VulnCheck or OSV
+  (`CVE_DETAIL_PROVIDERS`, off by default). Only the CVE identifier is sent;
+  answers are cached in PostgreSQL and the admin status lists each provider.
 
 ### Changed
 
