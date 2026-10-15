@@ -15,7 +15,7 @@ export function UploadResultCard({ result, slug, onReset }: UploadResultCardProp
   return (
     <div role="status" className="bg-card mb-6 rounded-lg border p-4">
       <div className="flex items-center gap-3">
-        <span className="text-sm font-medium">
+        <span className="text-sm font-medium tabular-nums">
           {pluralize(result.total_findings, "finding")} found
         </span>
         <VerdictBadge verdict={result.threshold_breached ? "blocked" : "passing"} />

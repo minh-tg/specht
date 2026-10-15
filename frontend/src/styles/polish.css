@@ -1,0 +1,21 @@
+/* Typography rules that apply across the app. They select by element, so a new heading or
+   paragraph gets them without being listed. Imported once from index.css. */
+
+@layer base {
+  /* Headings break into even lines instead of leaving one word on the last; paragraphs avoid a
+     single trailing word. */
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6,
+  legend {
+    text-wrap: balance;
+  }
+  p,
+  li,
+  dd {
+    text-wrap: pretty;
+  }
+}

@@ -58,7 +58,7 @@ function getSnapshot() {
 }
 
 function Time({ iso, text }: { readonly iso: string; readonly text: string; }) {
-  return <time dateTime={iso} title={formatDateTime(iso)}>{text}</time>;
+  return <time dateTime={iso} title={formatDateTime(iso)} className="tabular-nums">{text}</time>;
 }
 
 function LiveTime({ iso }: { readonly iso: string; }) {

@@ -156,7 +156,7 @@ export function ProjectInsights() {
               >
                 <div className="min-w-0">
                   <p className="font-semibold">{finding.title}</p>
-                  <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 text-[0.8125rem]">
+                  <p className="text-muted-foreground mt-1 flex flex-wrap items-center gap-x-2 text-[0.8125rem] tabular-nums">
                     <SeverityBadge severity={finding.severity} plain />
                     <span>· {pluralize(finding.age_days, "day")} old</span>
                     <span>· fix date was {pluralize(daysOverdue(finding, now), "day")} ago</span>

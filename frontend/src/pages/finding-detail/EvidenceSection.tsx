@@ -137,7 +137,7 @@ export function EvidenceSection({
               <p className="text-muted-foreground mt-1 text-xs">
                 <span>by {actorLabel({ user_id: item.uploaded_by ?? "" }, { me, directory })}</span>
                 {" · "}
-                <span>{formatDateTime(item.created_at)}</span>
+                <span className="tabular-nums">{formatDateTime(item.created_at)}</span>
               </p>
             </div>
             {canTriage && (

@@ -130,8 +130,10 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
 
       <div className="flex flex-wrap items-center gap-2">
         <VerdictBadge verdict={verdict} />
-        <p role="status">{verdictSentence(verdict, blockers)}</p>
-        {waived > 0 && <span className="text-muted-foreground text-sm">· {waived} waived</span>}
+        <p role="status" className="tabular-nums">{verdictSentence(verdict, blockers)}</p>
+        {waived > 0 && (
+          <span className="text-muted-foreground text-sm tabular-nums">· {waived} waived</span>
+        )}
         {isAdmin && (
           <Link
             to={`/${slug}/setup`}
