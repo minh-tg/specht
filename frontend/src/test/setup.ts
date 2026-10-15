@@ -47,3 +47,11 @@ if (typeof globalThis.localStorage?.getItem !== "function") {
   Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
   Object.defineProperty(window, "localStorage", { value: storage, configurable: true });
 }
+
+// jsdom has no pointer capture. Sonner captures the pointer when a toast is pressed, so a test that
+// clicks a toast's button would otherwise throw from inside its handler.
+for (const method of ["setPointerCapture", "releasePointerCapture"] as const) {
+  if (typeof Element.prototype[method] !== "function") {
+    Object.defineProperty(Element.prototype, method, { value: () => {}, configurable: true });
+  }
+}

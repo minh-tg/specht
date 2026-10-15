@@ -37,6 +37,7 @@ import {
 } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { apiFetch, apiFetchWithTotal } from "./client";
+import { triageUndoPlan } from "./undoPlans";
 
 /** What the findings list asks the server for. Empty values are left out of the request. */
 export interface FindingsQuery {
@@ -403,10 +404,28 @@ export function useChangeGate(projectSlug: string, reportId: string | undefined)
 
 export function useTriageFinding() {
   const queryClient = useQueryClient();
+  const refresh = () => {
+    queryClient.invalidateQueries({ queryKey: queryKeys.reachability() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.findings() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.finding() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.findingEvents() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.gate() });
+    queryClient.invalidateQueries({ queryKey: queryKeys.projectStats() });
+  };
   return useMutation({
     meta: {
       success: (data: TriageResponse) =>
         `Triage saved (effect: ${gateEffectLabel(data.gate_effect) ?? "Unknown"})`,
+      undo: (
+        _data: TriageResponse,
+        vars: { findingId: string; analysisState: AnalysisState; previousState?: AnalysisState; },
+      ) =>
+        triageUndoPlan({
+          findingId: vars.findingId,
+          from: vars.previousState,
+          to: vars.analysisState,
+          refresh,
+        }),
     },
     mutationFn: ({
       findingId,
@@ -418,6 +437,8 @@ export function useTriageFinding() {
       analysisState: AnalysisState;
       reason?: string;
       analysisExpiresAt?: string;
+      /** The state before this change, which is what Undo puts back. Left out, there is no Undo. */
+      previousState?: AnalysisState;
     }) =>
       apiFetch<TriageResponse>(`/api/v1/findings/${encodeURIComponent(findingId)}`, {
         method: "PATCH",
@@ -427,14 +448,7 @@ export function useTriageFinding() {
           analysis_expires_at: analysisExpiresAt ?? null,
         }),
       }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.reachability() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.findings() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.finding() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.findingEvents() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.gate() });
-      queryClient.invalidateQueries({ queryKey: queryKeys.projectStats() });
-    },
+    onSuccess: refresh,
   });
 }
 
