@@ -2434,6 +2434,22 @@ export interface components {
         | "wont_fix";
       /** @enum {string} */
       gate_effect: "block" | "ignore";
+      /** @description The reason recorded with the current analysis state. Absent when none was given. */
+      analysis_reason?: string;
+      /**
+       * Format: date-time
+       * @description When the analysis state lapses and the expiry sweep resets it. Absent when it does not expire.
+       */
+      analysis_expires_at?: string;
+      /**
+       * @description Who set the current analysis state.
+       * @enum {string}
+       */
+      analysis_source?: "system" | "manual" | "bulk" | "auto_rule";
+      /** @description A person set the current analysis state. */
+      manual_override?: boolean;
+      /** @description A later scan changed the finding (higher severity or a new fix), so the state should be looked at again. */
+      review_required?: boolean;
       /** Format: date-time */
       first_seen_at: string;
       /** Format: date-time */

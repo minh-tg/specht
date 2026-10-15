@@ -34,21 +34,30 @@ type ProjectResponse struct {
 
 // FindingResponse is the API representation of a finding.
 type FindingResponse struct {
-	ID              string    `json:"id"`
-	ProjectID       string    `json:"project_id"`
-	FindingKind     string    `json:"finding_kind"`
-	Fingerprint     string    `json:"fingerprint"`
-	CurrentTitle    string    `json:"current_title"`
-	CurrentSeverity string    `json:"current_severity"`
-	CurrentScore    *float64  `json:"current_score"`
-	State           string    `json:"state"`
-	TriageStatus    string    `json:"triage_status"`
-	AnalysisState   string    `json:"analysis_state"`
-	GateEffect      string    `json:"gate_effect"`
-	FirstSeenAt     time.Time `json:"first_seen_at"`
-	LastSeenAt      time.Time `json:"last_seen_at"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID              string   `json:"id"`
+	ProjectID       string   `json:"project_id"`
+	FindingKind     string   `json:"finding_kind"`
+	Fingerprint     string   `json:"fingerprint"`
+	CurrentTitle    string   `json:"current_title"`
+	CurrentSeverity string   `json:"current_severity"`
+	CurrentScore    *float64 `json:"current_score"`
+	State           string   `json:"state"`
+	TriageStatus    string   `json:"triage_status"`
+	AnalysisState   string   `json:"analysis_state"`
+	GateEffect      string   `json:"gate_effect"`
+	// AnalysisReason and AnalysisExpiresAt carry the recorded decision's
+	// reason and expiry. AnalysisSource says who set the standing (system,
+	// manual, bulk or auto_rule). ManualOverride marks a person's decision;
+	// ReviewRequired marks a standing a later scan asked to be looked at again.
+	AnalysisReason    *string    `json:"analysis_reason,omitempty"`
+	AnalysisExpiresAt *time.Time `json:"analysis_expires_at,omitempty"`
+	AnalysisSource    string     `json:"analysis_source"`
+	ManualOverride    bool       `json:"manual_override"`
+	ReviewRequired    bool       `json:"review_required"`
+	FirstSeenAt       time.Time  `json:"first_seen_at"`
+	LastSeenAt        time.Time  `json:"last_seen_at"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 	// IntroducedByReportID and IntroducedCommitSha materialize
 	// introduced-by-change attribution: the report that first
 	// observed the finding and the revision it scanned. Both nil means
@@ -227,6 +236,11 @@ func toFinding(f port.Finding) FindingResponse {
 		TriageStatus:         f.TriageStatus,
 		AnalysisState:        f.AnalysisState,
 		GateEffect:           f.GateEffect,
+		AnalysisReason:       strOpt(f.AnalysisReason),
+		AnalysisExpiresAt:    timeOpt(f.AnalysisExpiresAt),
+		AnalysisSource:       f.AnalysisSource,
+		ManualOverride:       f.ManualOverride,
+		ReviewRequired:       f.ReviewRequired,
 		FirstSeenAt:          timePtr(f.FirstSeenAt),
 		LastSeenAt:           timePtr(f.LastSeenAt),
 		CreatedAt:            timePtr(f.CreatedAt),

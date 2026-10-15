@@ -179,6 +179,16 @@ export interface Finding {
   triage_status?: string;
   analysis_state: AnalysisState;
   gate_effect: GateEffect;
+  /** Reason recorded with the current analysis state; absent when none. */
+  analysis_reason?: string;
+  /** When the analysis state lapses; absent when it does not expire. */
+  analysis_expires_at?: string;
+  /** Who set the analysis state. */
+  analysis_source?: "system" | "manual" | "bulk" | "auto_rule";
+  /** A person set the current analysis state. */
+  manual_override?: boolean;
+  /** A later scan asked for the state to be looked at again. */
+  review_required?: boolean;
   first_seen_at: string;
   last_seen_at: string;
   created_at?: string;
