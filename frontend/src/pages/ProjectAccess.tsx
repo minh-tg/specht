@@ -8,10 +8,12 @@ import {
   useTeams,
   useUnlinkProjectTeam,
 } from "@/api/hooks";
+import { useMemberSuggestions } from "@/api/memberSuggestions";
 import { useUserDirectory } from "@/api/users";
 import { DisabledReason } from "@/components/DisabledReason";
 import { ErrorState } from "@/components/ErrorState";
 import { OpenRegistrationNote } from "@/components/OpenRegistrationNote";
+import { PersonCombobox } from "@/components/PersonCombobox";
 import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import {
@@ -33,7 +35,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { looksLikeEmail } from "@/lib/email";
 import type { ProjectMember, ProjectRole } from "@/types/api";
 import { LockIcon, ShieldCheckIcon } from "lucide-react";
@@ -96,6 +97,11 @@ export function ProjectAccess() {
   const [memberEmail, setMemberEmail] = useState("");
   const [memberRole, setMemberRole] = useState<ProjectRole>("member");
   const [memberInputError, setMemberInputError] = useState<string | null>(null);
+  const memberSuggestions = useMemberSuggestions(
+    currentSlug,
+    memberEmail,
+    showAddMember && canManageMembers,
+  );
 
   const [memberToRemove, setMemberToRemove] = useState<ProjectMember | null>(null);
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -385,16 +391,19 @@ export function ProjectAccess() {
               >
                 Email address
               </label>
-              <Input
+              <PersonCombobox
                 id="member-email-input"
-                type="email"
                 required
                 value={memberEmail}
-                onChange={(e) => {
-                  setMemberEmail(e.target.value);
+                onValueChange={(value) => {
+                  setMemberEmail(value);
                   setMemberInputError(null);
                   addMemberMutation.reset();
                 }}
+                suggestions={memberSuggestions.data ?? []}
+                active={memberSuggestions.active}
+                searching={memberSuggestions.isFetching && !memberSuggestions.data}
+                unavailable={memberSuggestions.isError}
                 placeholder="ada@example.com"
               />
               <OpenRegistrationNote />

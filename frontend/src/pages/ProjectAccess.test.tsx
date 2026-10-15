@@ -43,8 +43,11 @@ describe("ProjectAccess", () => {
   let deleteError: { status: number; code: string; message: string; } | null = null;
   let addMemberError: { status: number; code: string; message: string; } | null = null;
   let membersLoadFailing = false;
+  // Sign-up closed, so suggestions are live in every test unless one opens it.
+  let capabilities: object = {};
 
   beforeEach(() => {
+    capabilities = { registration: { enabled: false } };
     fetchCalls = [];
     userRole = "admin";
     deleteError = null;
@@ -72,6 +75,16 @@ describe("ProjectAccess", () => {
       if (/\/api\/v1\/projects\/[^/]+$/.test(u) && method === "GET") {
         const own = mockMembers.find((m) => m.user_id === "u1");
         return jsonResponse({ id: "p1", slug: "my-app", name: "My App", role: own?.role });
+      }
+      if (u.endsWith("/api/v1/capabilities")) {
+        return jsonResponse(capabilities);
+      }
+      if (u.includes("/member-suggestions")) {
+        return jsonResponse([{
+          user_id: "u9",
+          email: "ada@acme.example",
+          display_name: "Ada Lovelace",
+        }]);
       }
       if (u.includes("/members")) {
         if (method === "POST") {
@@ -288,6 +301,42 @@ describe("ProjectAccess", () => {
         role: "admin",
       });
     });
+  });
+
+  it("suggests people while typing and adds the chosen person by email", async () => {
+    capabilities = { registration: { enabled: false } };
+    const user = userEvent.setup();
+    renderProjectAccess();
+
+    await user.click(await screen.findByRole("button", { name: "+ Add Member" }));
+    await user.type(screen.getByLabelText("Email address"), "lov");
+    const option = await screen.findByRole("option", { name: /ada@acme\.example/ });
+    expect(option).toHaveTextContent("Ada Lovelace");
+    expect(fetchCalls.filter((c) => c.url.includes("/member-suggestions")).map((c) => c.url))
+      .toEqual([
+        "/api/v1/projects/core-api/member-suggestions?q=lov",
+      ]);
+
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(screen.getByLabelText("Email address")).toHaveValue("ada@acme.example");
+    await user.click(screen.getByRole("button", { name: "Add Member" }));
+
+    await waitFor(() => {
+      const postCall = fetchCalls.find((c) => c.url.includes("/members") && c.method === "POST");
+      expect(JSON.parse(postCall!.body!)).toEqual({ email: "ada@acme.example", role: "member" });
+    });
+  });
+
+  it("asks for no suggestions while sign-up is open", async () => {
+    capabilities = { registration: { enabled: true } };
+    const user = userEvent.setup();
+    renderProjectAccess();
+
+    await user.click(await screen.findByRole("button", { name: "+ Add Member" }));
+    await user.type(screen.getByLabelText("Email address"), "ada@acme");
+    await new Promise((r) => setTimeout(r, 300));
+    expect(fetchCalls.some((c) => c.url.includes("/member-suggestions"))).toBe(false);
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
   });
 
   it("closes the add-member dialog with Escape and returns focus to the button that opened it", async () => {
