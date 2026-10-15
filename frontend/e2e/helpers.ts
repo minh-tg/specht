@@ -18,6 +18,7 @@ export const FIXTURE_HIGH_MEDIUM = path.resolve(
   "../e2e/testdata/high-medium.sarif.json",
 );
 export const FIXTURE_GITLEAKS = path.resolve(process.cwd(), "../e2e/testdata/gitleaks.json");
+export const FIXTURE_NUCLEI = path.resolve(process.cwd(), "../e2e/testdata/nuclei.jsonl");
 export const FIXTURE_HIGH_NEW = path.resolve(process.cwd(), "../e2e/testdata/high-new.sarif.json");
 
 // A baseline scan and the pull-request scan that adds one blocking finding on top of it.
