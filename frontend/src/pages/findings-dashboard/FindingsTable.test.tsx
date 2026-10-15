@@ -1,5 +1,7 @@
 import { formatDate } from "@/lib/format";
+import { createTestQueryClient } from "@/test/utils";
 import type { Finding, GateStatus } from "@/types/api";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -89,24 +91,26 @@ function renderTable(
 ) {
   const sort: FindingsSort = options.sort ?? { by: "severity", dir: "desc" };
   return render(
-    <MemoryRouter initialEntries={[options.initialPath ?? "/test-project/findings"]}>
-      <Routes>
-        <Route
-          path="/:slug/findings"
-          element={
-            <FindingsTable
-              slug="test-project"
-              findings={FINDINGS}
-              gate={GATE}
-              sort={sort}
-              onToggleSort={vi.fn()}
-              selection={options.selection}
-            />
-          }
-        />
-        <Route path="/:slug/findings/:findingId" element={<DetailState />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={createTestQueryClient()}>
+      <MemoryRouter initialEntries={[options.initialPath ?? "/test-project/findings"]}>
+        <Routes>
+          <Route
+            path="/:slug/findings"
+            element={
+              <FindingsTable
+                slug="test-project"
+                findings={FINDINGS}
+                gate={GATE}
+                sort={sort}
+                onToggleSort={vi.fn()}
+                selection={options.selection}
+              />
+            }
+          />
+          <Route path="/:slug/findings/:findingId" element={<DetailState />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
