@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/scanner"
 )
 
 func TestDescriptor_InventoryOnly(t *testing.T) {
@@ -96,7 +97,7 @@ func TestParse_Errors(t *testing.T) {
 	_, err := s.Parse(context.Background(), []byte(`{invalid`))
 	require.Error(t, err)
 	_, err = s.Parse(context.Background(), []byte(`{"name":"no envelope markers"}`))
-	require.ErrorContains(t, err, "unrecognized document")
+	require.ErrorIs(t, err, scanner.ErrUnrecognizedFormat)
 }
 
 func TestParse_EmptyComponents(t *testing.T) {

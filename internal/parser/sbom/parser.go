@@ -49,32 +49,38 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 }
 
 func (s *Scanner) DetectFormat(data []byte) bool {
-	var probe struct {
-		BOMFormat   string `json:"bomFormat"`
-		SPDXVersion string `json:"spdxVersion"`
+	return s.Recognize(data) == scanner.Definite
+}
+
+// Recognize grades a document. A CycloneDX bom format or an SPDX version is
+// definite: both name themselves, so there is no merely possible grade.
+func (s *Scanner) Recognize(data []byte) scanner.Recognition {
+	shape, ok := parseutil.ReadShape(data)
+	if !ok || !shape.IsObject() {
+		return scanner.NotRecognized
 	}
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return false
+	if shape.String("bomFormat") == "CycloneDX" || strings.HasPrefix(shape.String("spdxVersion"), "SPDX-") {
+		return scanner.Definite
 	}
-	return probe.BOMFormat == "CycloneDX" || strings.HasPrefix(probe.SPDXVersion, "SPDX-")
+	return scanner.NotRecognized
 }
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
-	var probe struct {
-		BOMFormat   string `json:"bomFormat"`
-		SPDXVersion string `json:"spdxVersion"`
+	shape, ok := parseutil.ReadShape(data)
+	if !ok || s.Recognize(data) == scanner.NotRecognized {
+		return nil, scanner.Unrecognized("sbom")
 	}
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return nil, fmt.Errorf("sbom: parse json: %w", err)
+	var nr *domain.NormalizedReport
+	var err error
+	if shape.String("bomFormat") == "CycloneDX" {
+		nr, err = parseCycloneDX(data)
+	} else {
+		nr, err = parseSPDX(data)
 	}
-	switch {
-	case probe.BOMFormat == "CycloneDX":
-		return parseCycloneDX(data)
-	case strings.HasPrefix(probe.SPDXVersion, "SPDX-"):
-		return parseSPDX(data)
-	default:
-		return nil, fmt.Errorf("sbom: unrecognized document (want CycloneDX bomFormat or SPDX spdxVersion)")
+	if err != nil {
+		return nil, scanner.Malformed("sbom", err)
 	}
+	return nr, nil
 }
 
 type cyclonedxDoc struct {
