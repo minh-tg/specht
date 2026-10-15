@@ -1185,3 +1185,52 @@ test("removing a member asks first, and Undo from the notification grants the ro
   const restored = page.getByRole("listitem").filter({ hasText: person.email });
   await expect(restored).toContainText("manager");
 });
+
+test("Back from a finding returns the findings list to where it was scrolled", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("scroll-back");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH_MEDIUM);
+  await uiLogin(page);
+
+  await page.setViewportSize({ width: 1024, height: 600 });
+  await page.goto(`/${slug}/findings`);
+  await expect(page.locator("tbody tr").first()).toBeVisible();
+
+  // The fixture has two findings, so make the page tall enough to scroll well past the first row.
+  // The style survives the in-app navigation and Back, which do not reload the document.
+  await page.addStyleTag({ content: "main { padding-bottom: 3000px; }" });
+  const leftAt = 400;
+  await page.evaluate((y) => window.scrollTo(0, y), leftAt);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(leftAt);
+
+  // Click without letting Playwright scroll the link into view first: the link is above the window
+  // at this offset, and the point is to leave from exactly this position.
+  await page.getByRole("link", { name: HIGH_TITLE }).dispatchEvent("click");
+  await expect(page).toHaveURL(/\/findings\/[0-9a-f-]+$/);
+  await page.goBack();
+
+  await expect(page.getByRole("link", { name: HIGH_TITLE })).toBeAttached();
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThanOrEqual(leftAt - 2);
+  expect(await page.evaluate(() => window.scrollY)).toBeLessThanOrEqual(leftAt + 2);
+});
+
+test("a new visit to the findings list starts at the top", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("scroll-top");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH_MEDIUM);
+  await uiLogin(page);
+
+  await page.setViewportSize({ width: 1024, height: 200 });
+  await page.goto(`/${slug}/findings`);
+  await expect(page.locator("tbody tr").first()).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 80));
+  await page.getByRole("link", { name: HIGH_TITLE }).click();
+  await expect(page).toHaveURL(/\/findings\/[0-9a-f-]+$/);
+
+  // The "Back to findings" link is a new history entry, not the browser's Back.
+  await page.getByRole("link", { name: /Back to findings/ }).click();
+  await expect(page.locator("tbody tr").first()).toBeVisible();
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+});
