@@ -45,8 +45,21 @@ describe("TeamsDirectory", () => {
   let deleteTeamError: { status: number; code: string; message: string; } | null = null;
   let teamsLoadFailing = false;
   let rosterRows: Record<string, unknown>[] = [];
+  // Sign-up closed, so suggestions are live in every test unless one opens it.
+  let capabilities: object = {};
+  let directory: Record<string, unknown>[] = [];
 
   beforeEach(() => {
+    capabilities = { registration: { enabled: false } };
+    directory = [
+      {
+        id: "u1",
+        email: "admin@acme.corp",
+        display_name: "Admin User",
+        role: "admin",
+        created_at: "2026-09-01T00:00:00Z",
+      },
+    ];
     rosterRows = [
       {
         team_id: "t1",
@@ -136,16 +149,11 @@ describe("TeamsDirectory", () => {
             : jsonResponse(null, 204);
         }
       }
+      if (u.endsWith("/api/v1/capabilities")) {
+        return jsonResponse(capabilities);
+      }
       if (u.includes("/api/v1/users")) {
-        return jsonResponse([
-          {
-            id: "u1",
-            email: "admin@acme.corp",
-            display_name: "Admin User",
-            role: "admin",
-            created_at: "2026-09-01T00:00:00Z",
-          },
-        ]);
+        return jsonResponse(directory);
       }
       return jsonResponse({});
     });
@@ -209,7 +217,7 @@ describe("TeamsDirectory", () => {
 
     await user.click((await screen.findAllByRole("button", { name: "Manage Roster" }))[0]);
     await user.type(
-      screen.getByRole("textbox", { name: "Email address" }),
+      screen.getByRole("combobox", { name: "Email address" }),
       "ada@acme.example",
     );
     await chooseOption(user, screen.getByRole("combobox", { name: "Team role" }), "Admin");
@@ -227,6 +235,55 @@ describe("TeamsDirectory", () => {
     });
   });
 
+  it("suggests people from the loaded directory without asking the server per key", async () => {
+    capabilities = { registration: { enabled: false } };
+    const person = (id: string, email: string, extra: object = {}) => ({
+      id,
+      email,
+      role: "member",
+      created_at: "2026-09-01T00:00:00Z",
+      ...extra,
+    });
+    directory = [
+      ...directory,
+      person("u2", "adam@acme.corp"),
+      person("u3", "zed@acme.corp", { display_name: "Adele Admiral" }),
+      person("u4", "adrian@acme.corp", { disabled: true, disabled_at: "2026-09-02T00:00:00Z" }),
+      person("u5", "system@specht.local", { display_name: "Admin System" }),
+    ];
+    const user = userEvent.setup();
+    renderTeamsDirectory();
+
+    await user.click((await screen.findAllByRole("button", { name: "Manage Roster" }))[0]);
+    await user.type(screen.getByRole("combobox", { name: "Email address" }), "adm");
+
+    const options = await screen.findAllByRole("option");
+    // admin@acme.corp is already in the team; the disabled and system accounts are never offered.
+    expect(options.map((o) => o.firstElementChild?.textContent)).toEqual(["zed@acme.corp"]);
+    await user.clear(screen.getByRole("combobox", { name: "Email address" }));
+    await user.type(screen.getByRole("combobox", { name: "Email address" }), "ada");
+    await user.keyboard("{ArrowDown}{Enter}");
+    expect(screen.getByRole("combobox", { name: "Email address" })).toHaveValue("adam@acme.corp");
+    expect(fetchCalls.some((c) => c.url.includes("member-suggestions"))).toBe(false);
+  });
+
+  it("offers no suggestions while sign-up is open", async () => {
+    capabilities = { registration: { enabled: true } };
+    directory = [...directory, {
+      id: "u2",
+      email: "adam@acme.corp",
+      role: "member",
+      created_at: "2026-09-01T00:00:00Z",
+    }];
+    const user = userEvent.setup();
+    renderTeamsDirectory();
+
+    await user.click((await screen.findAllByRole("button", { name: "Manage Roster" }))[0]);
+    await user.type(screen.getByRole("combobox", { name: "Email address" }), "ada");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+  });
+
   it("defaults the roster role to member", async () => {
     const user = userEvent.setup();
     renderTeamsDirectory();
@@ -235,7 +292,7 @@ describe("TeamsDirectory", () => {
     expect(screen.getByRole("combobox", { name: "Team role" })).toHaveTextContent("Member");
 
     await user.type(
-      screen.getByRole("textbox", { name: "Email address" }),
+      screen.getByRole("combobox", { name: "Email address" }),
       "ada@acme.example",
     );
     await user.click(screen.getByRole("button", { name: "Add" }));
@@ -256,7 +313,9 @@ describe("TeamsDirectory", () => {
     renderTeamsDirectory();
 
     await user.click((await screen.findAllByRole("button", { name: "Manage Roster" }))[0]);
-    await user.type(screen.getByRole("textbox", { name: "Email address" }), "alex@acme");
+    await user.type(screen.getByRole("combobox", { name: "Email address" }), "alex@acme");
+    // The partial address matches nobody, so the list is open with its hint; close it first.
+    await user.keyboard("{Escape}");
     await user.click(screen.getByRole("button", { name: "Add" }));
 
     expect(await screen.findByText(/Enter the person's email address/)).toBeInTheDocument();
@@ -272,7 +331,7 @@ describe("TeamsDirectory", () => {
 
     await user.click((await screen.findAllByRole("button", { name: "Manage Roster" }))[0]);
     await user.type(
-      screen.getByRole("textbox", { name: "Email address" }),
+      screen.getByRole("combobox", { name: "Email address" }),
       "ada@acme.example",
     );
     await user.click(screen.getByRole("button", { name: "Add" }));
@@ -313,7 +372,7 @@ describe("TeamsDirectory", () => {
     expect(screen.queryByText(/@/)).not.toBeInTheDocument();
     expect(screen.queryByText("u2")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Email address" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Email address" })).not.toBeInTheDocument();
     expect(fetchCalls.some((c) => c.url.includes("/api/v1/users"))).toBe(false);
   });
 
