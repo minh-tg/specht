@@ -76,6 +76,9 @@ releases.
 - A clean OSV-Scanner run, with no vulnerabilities, can now be ingested.
 - Semgrep reports are read from `semgrep --json` as well as `--sarif`. Both
   formats give the same findings, so switching keeps a project's history.
+- A Checkov run over a directory with several kinds of files (Terraform,
+  Kubernetes, Dockerfile), which Checkov writes as one report per framework,
+  is ingested as one report. It used to be refused.
 - The server validates all of its settings at startup and reports every
   problem in one message.
 - Request logs carry a request ID that matches the `X-Request-Id` response
