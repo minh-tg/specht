@@ -101,6 +101,9 @@ type NormalizedFinding struct {
 	Aliases      []string
 	Reachability *ReachabilityHint
 	CVSS         *CVSSInfo
+	// CVSSAll lists every CVSS vector the report carries, one entry per
+	// version and source. CVSS stays the single preferred vector.
+	CVSSAll      []CVSSRecord
 	Fix          *FixInfo
 	CodeLocation *CodeLocation
 	Dimensions   []Dimension
@@ -118,6 +121,24 @@ type CVSSInfo struct {
 	Version string
 	Vector  string
 	Score   float64
+}
+
+// MaxCVSSRecords bounds NormalizedFinding.CVSSAll so a hostile report cannot
+// grow the occurrence metadata document.
+const MaxCVSSRecords = 6
+
+// MaxCVSSVectorLength bounds a persisted CVSS vector string in bytes.
+const MaxCVSSVectorLength = 256
+
+// CVSSRecord is one CVSS vector a scan report states for a finding. Version
+// comes from the vector prefix (2.0, 3.0, 3.1 or 4.0), and v2 vectors always
+// carry the CVSS:2.0/ prefix. Source names who scored it when the report says
+// so (for example "nvd" or "nvd:primary"), and is empty otherwise.
+type CVSSRecord struct {
+	Version string  `json:"version"`
+	Vector  string  `json:"vector"`
+	Score   float64 `json:"score"`
+	Source  string  `json:"source,omitempty"`
 }
 
 // FixInfo describes the remediation for a finding when known.

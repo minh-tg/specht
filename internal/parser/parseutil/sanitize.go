@@ -206,6 +206,8 @@ func HardenFinding(f domain.NormalizedFinding) domain.NormalizedFinding {
 		f.CVSS.Version = SanitizeText(f.CVSS.Version, 32)
 	}
 
+	f.CVSSAll = hardenCVSSAll(f.CVSSAll)
+
 	for i := range f.Dimensions {
 		f.Dimensions[i].Key = SanitizeText(f.Dimensions[i].Key, 64)
 		f.Dimensions[i].Value = SanitizeText(f.Dimensions[i].Value, MaxDimensionValueLength)

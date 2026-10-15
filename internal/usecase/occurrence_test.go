@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/minh-tg/specht/internal/domain"
@@ -188,4 +189,42 @@ func TestCanonicalDimensionFilter(t *testing.T) {
 	assert.True(t, isCanonicalDimension("cve_id") == false, "cve_id is not a canonical key")
 	assert.True(t, isCanonicalDimension("component.identity") == false)
 	assert.True(t, isCanonicalDimension("severity") == false)
+}
+
+func TestBuildOccurrenceDocument_CVSSAll(t *testing.T) {
+	f := domain.NormalizedFinding{
+		CVSS: &domain.CVSSInfo{Version: "3.1", Vector: "CVSS:3.1/AV:N", Score: 7.5},
+		CVSSAll: []domain.CVSSRecord{
+			{Version: "3.1", Vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N", Score: 7.5, Source: "nvd:primary"},
+			{Version: "2.0", Vector: "CVSS:2.0/AV:N/AC:L/Au:N/C:P/I:P/A:P", Score: 7.5},
+		},
+	}
+	doc := buildOccurrenceDocument(f, "grype")
+	data, err := json.Marshal(doc.Metadata)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"specht":{
+		"cvss":{"Version":"3.1","Vector":"CVSS:3.1/AV:N","Score":7.5},
+		"cvss_all":[
+			{"version":"3.1","vector":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N","score":7.5,"source":"nvd:primary"},
+			{"version":"2.0","vector":"CVSS:2.0/AV:N/AC:L/Au:N/C:P/I:P/A:P","score":7.5}
+		]}}`, string(data), "the legacy cvss key keeps its capitalised fields and cvss_all uses the json tags")
+}
+
+func TestBuildOccurrenceDocument_CVSSAllBounded(t *testing.T) {
+	var recs []domain.CVSSRecord
+	recs = append(recs, domain.CVSSRecord{Version: "3.1", Vector: "CVSS:3.1/" + strings.Repeat("A", domain.MaxCVSSVectorLength)})
+	for i := range domain.MaxCVSSRecords + 4 {
+		recs = append(recs, domain.CVSSRecord{Version: "3.1", Vector: "CVSS:3.1/AV:N/" + strings.Repeat("x", i)})
+	}
+	doc := buildOccurrenceDocument(domain.NormalizedFinding{CVSSAll: recs}, "grype")
+	got := doc.Metadata[spechtNamespace].(map[string]any)["cvss_all"].([]domain.CVSSRecord)
+	assert.Len(t, got, domain.MaxCVSSRecords)
+	for _, r := range got {
+		assert.LessOrEqual(t, len(r.Vector), domain.MaxCVSSVectorLength, "an overlong vector is dropped, not stored")
+	}
+}
+
+func TestBuildOccurrenceDocument_NoCVSSAllKey(t *testing.T) {
+	doc := buildOccurrenceDocument(domain.NormalizedFinding{CVSS: &domain.CVSSInfo{Version: "3.1", Vector: "CVSS:3.1/AV:N"}}, "grype")
+	assert.NotContains(t, doc.Metadata[spechtNamespace], "cvss_all")
 }

@@ -52,6 +52,9 @@ func buildOccurrenceDocument(f domain.NormalizedFinding, source string) occurren
 	if f.CVSS != nil {
 		specht["cvss"] = f.CVSS
 	}
+	if all := boundCVSSAll(f.CVSSAll); len(all) > 0 {
+		specht["cvss_all"] = all
+	}
 	if f.Fix != nil {
 		specht["fix"] = f.Fix
 	}
@@ -75,6 +78,23 @@ func buildOccurrenceDocument(f domain.NormalizedFinding, source string) occurren
 	}
 
 	return occurrenceDocument{Display: display, Metadata: metadata}
+}
+
+// boundCVSSAll caps the persisted CVSS list at domain.MaxCVSSRecords entries
+// and drops any record whose vector exceeds domain.MaxCVSSVectorLength bytes.
+// Parsers already harden findings, so this only guards producers that skip it.
+func boundCVSSAll(in []domain.CVSSRecord) []domain.CVSSRecord {
+	out := make([]domain.CVSSRecord, 0, min(len(in), domain.MaxCVSSRecords))
+	for _, r := range in {
+		if len(out) == domain.MaxCVSSRecords {
+			break
+		}
+		if r.Vector == "" || len(r.Vector) > domain.MaxCVSSVectorLength {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
 }
 
 // isReservedKey reports whether an extension key collides with the core's
