@@ -39,6 +39,9 @@ The page a CI link opens: what a change introduced, where, and what to do about 
   adapter for a release tag, verifies its signature, and runs the gate.
   Pipeline examples for GitHub Actions and GitLab are in
   [`examples/ci/`](examples/ci/).
+- Let an AI assistant read findings and check the gate through `specht-mcp`,
+  an MCP bridge that is read-only unless you opt in. See
+  [`docs/mcp.md`](docs/mcp.md).
 - Check tracked packages against OSV for newly published advisories and send
   notifications to Slack or a webhook.
 - Set up single sign-on, teams, shared organization policies, and waivers with
@@ -222,8 +225,8 @@ SONAR_ADMIN_PASSWORD=admin make sonar  # disposable local SonarQube scan; needs 
   [Developer Certificate of Origin](CONTRIBUTING.md#developer-certificate-of-origin).
 - Pushing a `vMAJOR.MINOR.PATCH` tag runs [release.yml](.github/workflows/release.yml).
   It builds the server and adapter images, signs them with cosign, boots the
-  server image before tagging it, cross-compiles the `specht` and
-  `specht-adapter` binaries, and publishes a GitHub Release with a signed
+  server image before tagging it, cross-compiles the `specht`,
+  `specht-adapter` and `specht-mcp` binaries, and publishes a GitHub Release with a signed
   `SHA256SUMS`. A tag with a suffix (`v1.2.0-rc.1`) is marked as a prerelease.
 
 ## Project status

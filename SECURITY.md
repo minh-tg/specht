@@ -42,7 +42,7 @@ days have passed with no fix, whichever comes first.
 
 ## Scope
 
-In scope: the Specht server, the `specht` and `specht-adapter` commands, report
+In scope: the Specht server, the `specht`, `specht-adapter` and `specht-mcp` commands, report
 parsing, authentication and authorization, the container images and release
 artifacts, the deployment files in `deploy/`, and the CI workflows.
 

@@ -74,6 +74,10 @@ releases.
   recorded as a clean scan with no findings. A report that cannot be read is
   `malformed_report`, and an unknown scanner is `unknown_scanner`.
 - A clean OSV-Scanner run, with no vulnerabilities, can now be ingested.
+- `specht-mcp`, the MCP bridge, is built into every release next to `specht`
+  and `specht-adapter`, reports the release version, answers `-version` and
+  `-help`, and has a setup guide in `docs/mcp.md` that a test keeps in step
+  with the tools it registers.
 - A Semgrep finding keeps its identity when the code above it moves. The line
   is no longer part of it: a finding is the rule, the file and what was
   matched (Semgrep's own match id when the run is logged in, otherwise the
