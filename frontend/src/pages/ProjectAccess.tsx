@@ -400,9 +400,9 @@ export function ProjectAccess() {
                   setMemberInputError(null);
                   addMemberMutation.reset();
                 }}
-                suggestions={memberSuggestions.data ?? []}
+                suggestions={memberSuggestions.suggestions}
                 active={memberSuggestions.active}
-                searching={memberSuggestions.isFetching && !memberSuggestions.data}
+                searching={memberSuggestions.searching}
                 unavailable={memberSuggestions.isError}
                 placeholder="ada@example.com"
               />
