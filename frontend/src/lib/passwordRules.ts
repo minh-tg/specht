@@ -4,7 +4,7 @@ import { APIError } from "@/api/client";
 export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_BYTES = 72;
 /** The byte rule shows once the password is this close to the limit, or over it. */
-export const PASSWORD_BYTES_WARNING_MARGIN = 12;
+const PASSWORD_BYTES_WARNING_MARGIN = 12;
 
 export interface PasswordRule {
   readonly id: string;
@@ -14,7 +14,7 @@ export interface PasswordRule {
   readonly shown: (password: string) => boolean;
 }
 
-export const passwordByteLength = (value: string) => new TextEncoder().encode(value).length;
+const passwordByteLength = (value: string) => new TextEncoder().encode(value).length;
 
 export const passwordRules: readonly PasswordRule[] = [
   {
