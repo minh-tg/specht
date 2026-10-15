@@ -126,6 +126,24 @@ type Artifact struct {
 	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
+type CveDetailCache struct {
+	Provider   string             `json:"provider"`
+	CveID      string             `json:"cve_id"`
+	Status     string             `json:"status"`
+	Record     []byte             `json:"record"`
+	FetchedAt  pgtype.Timestamptz `json:"fetched_at"`
+	ExpiresAt  pgtype.Timestamptz `json:"expires_at"`
+	LeaseUntil pgtype.Timestamptz `json:"lease_until"`
+}
+
+type CveProviderStatus struct {
+	Provider      string             `json:"provider"`
+	LastSuccessAt pgtype.Timestamptz `json:"last_success_at"`
+	LastErrorAt   pgtype.Timestamptz `json:"last_error_at"`
+	LastError     pgtype.Text        `json:"last_error"`
+	BackoffUntil  pgtype.Timestamptz `json:"backoff_until"`
+}
+
 type Environment struct {
 	ID              pgtype.UUID        `json:"id"`
 	ProjectID       pgtype.UUID        `json:"project_id"`
