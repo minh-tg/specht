@@ -470,11 +470,12 @@ export function useTriageFinding() {
       success: (data: TriageResponse) =>
         `Triage saved (effect: ${gateEffectLabel(data.gate_effect) ?? "Unknown"})`,
       undo: (
-        _data: TriageResponse,
+        data: TriageResponse,
         vars: { findingId: string; analysisState: AnalysisState; previousState?: AnalysisState; },
       ) =>
         triageUndoPlan({
           findingId: vars.findingId,
+          eventId: data.event_id,
           from: vars.previousState,
           to: vars.analysisState,
           refresh,
@@ -490,7 +491,7 @@ export function useTriageFinding() {
       analysisState: AnalysisState;
       reason?: string;
       analysisExpiresAt?: string;
-      /** The state before this change, which is what Undo puts back. Left out, there is no Undo. */
+      /** The state before this change. It only names Undo's confirmation; the server restores it. */
       previousState?: AnalysisState;
     }) =>
       apiFetch<TriageResponse>(`/api/v1/findings/${encodeURIComponent(findingId)}`, {

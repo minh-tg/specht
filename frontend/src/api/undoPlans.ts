@@ -5,45 +5,34 @@ import type { UndoPlan } from "./undo";
 import { waiverSwitchError } from "./waiverSwitch";
 
 /**
- * The triage states the API accepts without a reason or an expiry. The finding read does not return
- * the reason or expiry a finding was triaged with, so these are the only states a triage can be put
- * back to; a test keeps the list equal to the triage form's own requirements.
- */
-export const REASONLESS_STATES: readonly AnalysisState[] = [
-  "unanalyzed",
-  "in_triage",
-  "exploitable",
-];
-
-/**
- * The inverse of a single-finding triage: a second, honest PATCH with the previous state, so the
- * finding's history shows both events. There is none when the previous state needs a reason that
- * cannot be recovered. It checks the finding still holds the state this triage set before it
- * writes, so it never overrides a later decision by someone else.
+ * The inverse of a single-finding triage. The server restores the exact analysis the finding had
+ * before the change (state, reason, expiry and the manual and review flags) from the snapshot that
+ * change recorded, and logs the undo as a new event, so the history shows both. It refuses while
+ * the change is not the finding's latest one, so Undo never overrides a later decision; the
+ * server's message says why and is shown as it is. There is no plan without the event id the
+ * triage response carries.
  */
 export function triageUndoPlan(
-  { findingId, from, to, refresh }: {
+  { findingId, eventId, from, to, refresh }: {
     findingId: string;
-    /** The state before the triage, as the finding page had it. */
-    from: AnalysisState | undefined;
-    /** The state the triage set. */
-    to: AnalysisState;
+    /** The event the triage wrote, from its response. */
+    eventId: string | undefined;
+    /** The state before the triage, as the finding page had it. Only names the confirmation. */
+    from?: AnalysisState;
+    /** The state the triage set. Only names the confirmation. */
+    to?: AnalysisState;
     refresh: () => void;
   },
 ): UndoPlan | undefined {
-  if (!from || from === to || !REASONLESS_STATES.includes(from)) return undefined;
-  const path = `/api/v1/findings/${encodeURIComponent(findingId)}`;
+  if (!eventId) return undefined;
+  const restored = from && from !== to ? analysisStateLabel(from) ?? from : undefined;
   return {
-    done: `Triage restored to ${analysisStateLabel(from) ?? from}`,
+    done: restored ? `Triage restored to ${restored}` : "Triage change undone",
     refresh,
     run: async () => {
-      const current = await apiFetch<{ analysis_state: AnalysisState; }>(path);
-      if (current.analysis_state !== to) {
-        throw new Error("This finding was triaged again in the meantime, so Undo did nothing.");
-      }
-      await apiFetch(path, {
-        method: "PATCH",
-        body: JSON.stringify({ analysis_state: from, reason: "", analysis_expires_at: null }),
+      await apiFetch(`/api/v1/findings/${encodeURIComponent(findingId)}/analysis/undo`, {
+        method: "POST",
+        body: JSON.stringify({ event_id: eventId }),
       });
     },
   };

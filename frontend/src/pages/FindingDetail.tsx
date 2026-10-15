@@ -17,6 +17,7 @@ import { blocksGate, blocksGateSentence } from "@/lib/gate";
 import { useState } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { WaiverRequestDialog } from "./change-view/WaiverRequestDialog";
+import { AnalysisNote } from "./finding-detail/AnalysisNote";
 import { ContextGrid } from "./finding-detail/ContextGrid";
 import { EvidenceSection } from "./finding-detail/EvidenceSection";
 import { FindingHeader } from "./finding-detail/FindingHeader";
@@ -152,6 +153,12 @@ export function FindingDetail() {
               Currently: {analysisStateLabel(shown.analysis_state) ?? "Not triaged"}
               {currentGate && <>{" · "}{currentGate}</>}
             </p>
+            {!pendingTriage && (
+              <AnalysisNote
+                reason={finding.analysis_reason}
+                expiresAt={finding.analysis_expires_at}
+              />
+            )}
             <TriageSection
               findingId={finding.id}
               projectSlug={slug}
