@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Locator, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import {
   apiToken,
@@ -7,11 +7,13 @@ import {
   chooseOption,
   FIXTURE_GITLEAKS,
   FIXTURE_GOSEC_JSON,
+  FIXTURE_GRYPE_MULTI_CVSS,
   FIXTURE_HIGH,
   FIXTURE_HIGH_MEDIUM,
   FIXTURE_HIGH_NEW,
   FIXTURE_MEDIUM,
   FIXTURE_NUCLEI,
+  FIXTURE_TRIVY_MULTI_SOURCE,
   ingestFixture,
   registerPerson,
   requestWaiver,
@@ -1391,4 +1393,95 @@ test("a new visit to the findings list starts at the top", async ({ page, reques
   await page.getByRole("link", { name: /Back to findings/ }).click();
   await expect(page.locator("tbody tr").first()).toBeVisible();
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
+});
+
+/** The value beside a term in a description list: what a screen reader reads after the name. */
+function valueBeside(scope: Locator, term: string) {
+  return scope.locator("dt", { hasText: new RegExp(`^${term}$`) }).locator(
+    "xpath=following-sibling::dd[1]",
+  );
+}
+
+test("the finding page lists the CVE evaluation in plain words and says where each part came from", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("cve-details");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_TRIVY_MULTI_SOURCE, { scanner: "trivy" });
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings`);
+  // The list shows the advisory title; the CVE identifier appears on the finding page.
+  await page.getByRole("link", { name: "libexample: cross-site scripting" }).click();
+  await expect(page).toHaveURL(/\/findings\/[0-9a-f-]+$/);
+
+  // Folded to a summary that names the source of the score, behind a disclosure button.
+  const section = page.getByRole("region", { name: "CVE details" });
+  await expect(section.getByText("CVE-2024-4444")).toBeVisible();
+  await expect(section.getByText(/\(v3\.1, scan report\)/)).toBeVisible();
+  const toggle = section.getByRole("button", { name: "Show the full CVE breakdown" });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    section.getByRole("button", { name: "Hide the full CVE breakdown" }),
+  ).toHaveAttribute("aria-expanded", "true");
+
+  // Every version the report carried, each with its band as a word and its metrics as label-value pairs.
+  for (const version of ["2.0", "3.0", "3.1", "4.0"]) {
+    await expect(
+      section.getByRole("article", { name: `CVSS ${version}` }).first(),
+    ).toBeVisible();
+  }
+  const v2 = section.getByRole("article", { name: "CVSS 2.0" });
+  await expect(valueBeside(v2, "Access Complexity")).toHaveText("Medium");
+  await expect(valueBeside(v2, "Authentication")).toHaveText("None");
+  await expect(v2.getByText("Medium", { exact: true }).first()).toBeVisible();
+
+  const v4 = section.getByRole("article", { name: "CVSS 4.0" });
+  await expect(valueBeside(v4, "Attack Requirements")).toHaveText("None");
+  await expect(valueBeside(v4, "User Interaction")).toHaveText("Passive");
+  await expect(v4.getByText("CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N"))
+    .toBeVisible();
+  await expect(v4.getByRole("button", { name: "Copy CVSS 4.0 vector" })).toBeVisible();
+
+  const v30 = section.getByRole("article", { name: "CVSS 3.0" });
+  await expect(valueBeside(v30, "Scope")).toHaveText("Changed");
+  await expect(valueBeside(v30, "Attack Vector")).toHaveText("Network");
+
+  // The scanner said it, and the page says so.
+  await expect(v4.getByText(/^From the scan report \(trivy, /)).toBeVisible();
+
+  // CWE identifiers link to MITRE and open in a new tab.
+  const cwe = section.getByRole("link", { name: /^CWE-79/ });
+  await expect(cwe).toHaveAttribute("href", "https://cwe.mitre.org/data/definitions/79.html");
+  await expect(cwe).toHaveAttribute("target", "_blank");
+  await expect(cwe).toHaveAttribute("rel", "noopener noreferrer");
+
+  // No provider is configured in this run, and the page says what that means.
+  await expect(section.getByText(/No external provider is configured/)).toBeVisible();
+});
+
+test("a finding whose scan report carries several CVSS vectors lists them without scrolling a phone sideways", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("cve-details-phone");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_GRYPE_MULTI_CVSS, { scanner: "grype" });
+  await uiLogin(page);
+
+  await page.setViewportSize({ width: 360, height: 740 });
+  await page.goto(`/${slug}/findings`);
+  await page.getByRole("link", { name: /^CVE-2024-1111 in/ }).first().click();
+  await expect(page).toHaveURL(/\/findings\/[0-9a-f-]+$/);
+
+  const section = page.getByRole("region", { name: "CVE details" });
+  await section.getByRole("button", { name: "Show the full CVE breakdown" }).click();
+  await expect(section.getByRole("article", { name: "CVSS 4.0" })).toBeVisible();
+  await expect(section.getByText(/scored by nvd@nist\.gov:primary/).first()).toBeVisible();
+  await expect(section.getByText(/scored by security-advisories@github\.com:secondary/).first())
+    .toBeVisible();
+
+  const overflow = await page.evaluate(() =>
+    document.documentElement.scrollWidth - document.documentElement.clientWidth
+  );
+  expect(overflow).toBeLessThanOrEqual(0);
 });
