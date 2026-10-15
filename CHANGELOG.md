@@ -74,6 +74,8 @@ releases.
   recorded as a clean scan with no findings. A report that cannot be read is
   `malformed_report`, and an unknown scanner is `unknown_scanner`.
 - A clean OSV-Scanner run, with no vulnerabilities, can now be ingested.
+- Semgrep reports are read from `semgrep --json` as well as `--sarif`. Both
+  formats give the same findings, so switching keeps a project's history.
 - The server validates all of its settings at startup and reports every
   problem in one message.
 - Request logs carry a request ID that matches the `X-Request-Id` response
