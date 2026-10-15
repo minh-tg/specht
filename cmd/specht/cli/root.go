@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"reflect"
 
 	"github.com/minh-tg/specht/internal/client"
 	"github.com/minh-tg/specht/internal/version"
@@ -59,6 +60,10 @@ func requireFlag(value, flag, subcommand string) error {
 
 // writeJSONOut pretty-prints v as JSON for machine-readable output.
 func writeJSONOut(out io.Writer, v any) error {
+	// A nil slice would marshal to null; an empty list reads as [] so a script can loop over it.
+	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Slice && rv.IsNil() {
+		v = reflect.MakeSlice(rv.Type(), 0, 0).Interface()
+	}
 	raw, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
