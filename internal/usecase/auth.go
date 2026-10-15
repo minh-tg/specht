@@ -724,11 +724,11 @@ func (u *Usecases) ChangePassword(ctx context.Context, userID, current, next str
 	if err != nil {
 		return nil, fmt.Errorf("get user: %w", err)
 	}
-	if err := checkPassword(next, user.Email, derefStr(user.DisplayName)); err != nil {
-		return nil, err
-	}
 	if user.PasswordHash == "" {
 		return nil, ErrNoLocalPassword
+	}
+	if err := checkPassword(next, user.Email, derefStr(user.DisplayName)); err != nil {
+		return nil, err
 	}
 	if !u.deps.Passwords.Verify(current, user.PasswordHash) {
 		return nil, ErrWrongPassword

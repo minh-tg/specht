@@ -143,6 +143,16 @@ func TestChangePassword_RefusesAListedOrAccountPassword(t *testing.T) {
 	}
 }
 
+// An SSO-only account has no local password to change, so it learns that
+// before any rule about the new password; a listed one does not hide it.
+func TestChangePassword_NoLocalPasswordComesBeforeThePolicy(t *testing.T) {
+	h := newPasswordHarness(t, "")
+	_, err := h.uc.ChangePassword(context.Background(), passwordTestUserID, "anything", "password1")
+	assert.ErrorIs(t, err, ErrNoLocalPassword)
+	assert.NotErrorIs(t, err, ErrPasswordTooCommon)
+	assert.Empty(t, h.calls)
+}
+
 // The account is compared after it is loaded, so a password equal to the
 // stored display name is refused too.
 func TestChangePassword_ComparesWithTheStoredDisplayName(t *testing.T) {
