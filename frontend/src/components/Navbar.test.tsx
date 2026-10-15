@@ -380,7 +380,7 @@ describe("Navbar", () => {
       expect(header()).toHaveClass(
         "site-header",
         "bg-background",
-        "supports-[backdrop-filter]:bg-background/80",
+        "supports-[backdrop-filter]:bg-background/90",
         "supports-[backdrop-filter]:backdrop-blur-md",
       );
       expect(header().className).not.toMatch(/(^|\s)backdrop-blur/);
