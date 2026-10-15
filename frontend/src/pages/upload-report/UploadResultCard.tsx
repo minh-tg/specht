@@ -1,3 +1,4 @@
+import { INLINE_LINK } from "@/components/inlineLink";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { pluralize } from "@/lib/format";
 import type { IngestResponse } from "@/types/api";
@@ -28,16 +29,16 @@ export function UploadResultCard({ result, slug, onReset }: UploadResultCardProp
         </p>
       )}
       <div className="mt-3 flex items-center gap-4 text-sm">
-        <Link to={`/${slug}/findings`} className="text-action underline hover:no-underline">
+        <Link to={`/${slug}/findings`} className={INLINE_LINK}>
           View findings
         </Link>
-        <Link to={`/${slug}/reports`} className="text-action underline hover:no-underline">
+        <Link to={`/${slug}/reports`} className={INLINE_LINK}>
           Back to reports
         </Link>
         <button
           type="button"
           onClick={onReset}
-          className="text-muted-foreground hover:text-foreground underline hover:no-underline"
+          className={INLINE_LINK}
         >
           Upload another
         </button>

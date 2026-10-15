@@ -1,3 +1,4 @@
+import { INLINE_LINK } from "@/components/inlineLink";
 import { SelectField } from "@/components/SelectField";
 import { Input } from "@/components/ui/input";
 import {
@@ -140,7 +141,7 @@ export function ClearFiltersButton({ onClear }: { onClear: () => void; }) {
   return (
     <button
       type="button"
-      className="text-action text-sm underline hover:no-underline"
+      className={`${INLINE_LINK} text-sm`}
       onClick={onClear}
     >
       Clear filters

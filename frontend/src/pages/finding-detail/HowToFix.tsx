@@ -1,4 +1,5 @@
 import { CopyButton } from "@/components/CopyButton";
+import { INLINE_LINK } from "@/components/inlineLink";
 import type { Finding } from "@/types/api";
 import { confidenceLabel, parseSourceLink } from "./format";
 
@@ -25,7 +26,7 @@ export function HowToFix({ finding }: { readonly finding: Finding; }) {
                   href={finding.remediation.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-action hover:text-action/80 text-sm underline underline-offset-4"
+                  className={`${INLINE_LINK} text-sm`}
                 >
                   Remediation reference
                 </a>

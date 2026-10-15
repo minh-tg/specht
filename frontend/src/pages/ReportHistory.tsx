@@ -3,6 +3,7 @@ import { MAX_PAGE_SIZE, useProjectRole, useReports } from "@/api/hooks";
 import { useDeleteReport } from "@/api/reportActions";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
+import { INLINE_LINK } from "@/components/inlineLink";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -150,7 +151,7 @@ export function ReportHistory() {
                     to={`/${encodeURIComponent(slug ?? "")}/changes/${
                       encodeURIComponent(r.commit_sha)
                     }?report=${encodeURIComponent(r.id)}`}
-                    className="text-action underline underline-offset-2 hover:no-underline"
+                    className={INLINE_LINK}
                   >
                     {r.commit_sha.slice(0, 7)}
                   </Link>

@@ -1,3 +1,4 @@
+import { INLINE_LINK } from "@/components/inlineLink";
 import { EMPTY_VALUE } from "@/lib/format";
 import type { FindingContext } from "@/types/api";
 import { parseSourceLink } from "./format";
@@ -40,7 +41,7 @@ export function ContextGrid({ context }: { readonly context?: FindingContext; })
                 href={context.source_link}
                 target="_blank"
                 rel="noreferrer"
-                className="text-action hover:text-action/80 text-sm underline underline-offset-4"
+                className={`${INLINE_LINK} text-sm`}
               >
                 {parseSourceLink(context.source_link)!.hostname}
                 {parseSourceLink(context.source_link)!.pathname}

@@ -1,3 +1,5 @@
+import { INLINE_LINK } from "@/components/inlineLink";
+
 interface FindingsPagerProps {
   offset: number;
   pageSize: number;
@@ -46,7 +48,7 @@ export function FindingsPager(
       </div>
       {offset > 0 && rowCount === 0 && (
         <button
-          className="text-action text-sm underline hover:no-underline"
+          className={`${INLINE_LINK} text-sm`}
           onClick={onFirst}
         >
           Back to the first page

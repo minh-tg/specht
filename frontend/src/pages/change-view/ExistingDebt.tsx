@@ -1,3 +1,4 @@
+import { INLINE_LINK } from "@/components/inlineLink";
 import { pluralize } from "@/lib/format";
 import { BlockerRow } from "@/pages/change-view/BlockerRow";
 import { type SyntheticEvent, useState } from "react";
@@ -41,7 +42,7 @@ export function ExistingDebt({ slug, ids }: ExistingDebtProps) {
       <div className="border-t px-3 py-2">
         <Link
           to={`/${slug}/findings`}
-          className="text-action text-sm underline underline-offset-2 hover:no-underline"
+          className={`${INLINE_LINK} text-sm`}
         >
           See all in Findings
         </Link>

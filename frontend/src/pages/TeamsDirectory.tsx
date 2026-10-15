@@ -9,6 +9,7 @@ import {
 } from "@/api/hooks";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
+import { INLINE_LINK } from "@/components/inlineLink";
 import { OpenRegistrationNote } from "@/components/OpenRegistrationNote";
 import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
@@ -71,7 +72,7 @@ function TeamCard({
                 <span className="text-destructive">Could not load members</span>
                 <button
                   type="button"
-                  className="text-action underline hover:no-underline"
+                  className={INLINE_LINK}
                   onClick={() => refetchMembers()}
                 >
                   Retry
