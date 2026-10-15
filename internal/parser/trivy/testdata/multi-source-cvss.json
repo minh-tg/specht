@@ -1,0 +1,64 @@
+{
+  "SchemaVersion": 2,
+  "ArtifactName": "example/app:1.0",
+  "ArtifactType": "container_image",
+  "Results": [
+    {
+      "Target": "example/app:1.0 (debian 12.5)",
+      "Class": "os-pkgs",
+      "Type": "debian",
+      "Vulnerabilities": [
+        {
+          "VulnerabilityID": "CVE-2024-4444",
+          "PkgID": "libexample@1.0-1",
+          "PkgName": "libexample",
+          "PkgIdentifier": {"PURL": "pkg:deb/debian/libexample@1.0-1?distro=debian-12.5"},
+          "InstalledVersion": "1.0-1",
+          "Status": "affected",
+          "Severity": "HIGH",
+          "CweIDs": ["CWE-79"],
+          "CVSS": {
+            "ubuntu": {"V3Vector": "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N", "V3Score": 5.5},
+            "ghsa": {"V3Vector": "CVSS:3.0/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "V3Score": 6.1},
+            "redhat": {"V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", "V3Score": 6.1},
+            "nvd": {
+              "V2Vector": "AV:N/AC:M/Au:N/C:P/I:P/A:N",
+              "V2Score": 5.8,
+              "V3Vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N",
+              "V3Score": 6.1,
+              "V4Vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N",
+              "V4Score": 5.1
+            }
+          },
+          "Title": "libexample: cross-site scripting",
+          "Description": "A flaw in libexample."
+        },
+        {
+          "VulnerabilityID": "CVE-2024-5555",
+          "PkgID": "libother@2.0-1",
+          "PkgName": "libother",
+          "PkgIdentifier": {"PURL": "pkg:deb/debian/libother@2.0-1?distro=debian-12.5"},
+          "InstalledVersion": "2.0-1",
+          "Status": "affected",
+          "Severity": "MEDIUM",
+          "CVSS": {
+            "nvd": {"V2Score": 4.3, "V3Score": 5.0}
+          },
+          "Title": "libother: scores without vectors",
+          "Description": "The sources give scores but no vectors."
+        },
+        {
+          "VulnerabilityID": "CVE-2024-6666",
+          "PkgID": "libthird@3.0-1",
+          "PkgName": "libthird",
+          "PkgIdentifier": {"PURL": "pkg:deb/debian/libthird@3.0-1?distro=debian-12.5"},
+          "InstalledVersion": "3.0-1",
+          "Status": "affected",
+          "Severity": "LOW",
+          "Title": "libthird: no CVSS",
+          "Description": "No CVSS object."
+        }
+      ]
+    }
+  ]
+}

@@ -2,8 +2,10 @@ package trivy
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
@@ -358,6 +360,7 @@ func addVulns(nr *domain.NormalizedReport, result trivyResult) {
 			Description: v.Description,
 			Severity:    normalizeSeverity(v.Severity),
 			Score:       maxCVSSScore(v.CVSS),
+			CVSSAll:     cvssRecords(v.CVSS),
 			Location:    domain.SCALocation(v.PkgName, v.InstalledVersion, cleanTarget),
 			Dimensions:  dims,
 			Extensions:  ext,
@@ -384,6 +387,45 @@ func maxCVSSScore(cvss map[string]trivyCVSS) float64 {
 		}
 	}
 	return 0
+}
+
+// cvssRecords lists every vector Trivy reports, source by source: nvd first,
+// then redhat, then the others by name, the same preference maxCVSSScore uses.
+// Inside one source the newest version comes first. A score with no vector is
+// not a record. Trivy does not say which source is primary.
+func cvssRecords(cvss map[string]trivyCVSS) []domain.CVSSRecord {
+	sources := make([]string, 0, len(cvss))
+	for name := range cvss {
+		sources = append(sources, name)
+	}
+	rank := func(name string) int {
+		switch name {
+		case "nvd":
+			return 0
+		case "redhat":
+			return 1
+		default:
+			return 2
+		}
+	}
+	slices.SortFunc(sources, func(a, b string) int {
+		return cmp.Or(cmp.Compare(rank(a), rank(b)), cmp.Compare(a, b))
+	})
+
+	var out []domain.CVSSRecord
+	for _, name := range sources {
+		c := cvss[name]
+		source := strings.ToLower(strings.TrimSpace(name))
+		for _, v := range []struct {
+			vector string
+			score  float64
+		}{{c.V4Vector, c.V4Score}, {c.V3Vector, c.V3Score}, {c.V2Vector, c.V2Score}} {
+			if rec, ok := parseutil.NewCVSSRecord(v.vector, v.score, source); ok {
+				out = parseutil.AddCVSS(out, rec)
+			}
+		}
+	}
+	return out
 }
 
 func bestCVSSScore(c trivyCVSS) float64 {

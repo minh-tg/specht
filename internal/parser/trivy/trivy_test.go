@@ -332,3 +332,53 @@ func TestFindingKind(t *testing.T) {
 	assert.Contains(t, kinds, "secret")
 	assert.Contains(t, kinds, "iac")
 }
+
+func TestParse_CVSSAllKeepsEverySourceInOrder(t *testing.T) {
+	data, err := os.ReadFile("testdata/multi-source-cvss.json")
+	require.NoError(t, err)
+	report, err := trivy.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.Len(t, report.Findings, 3)
+
+	multi := report.Findings[0]
+	// nvd first, then redhat, then the other sources by name; v4, v3, v2
+	// inside one source. The cap keeps the first six.
+	assert.Equal(t, []domain.CVSSRecord{
+		{Version: "4.0", Vector: "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:P/VC:L/VI:L/VA:N/SC:N/SI:N/SA:N", Score: 5.1, Source: "nvd"},
+		{Version: "3.1", Vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", Score: 6.1, Source: "nvd"},
+		{Version: "2.0", Vector: "CVSS:2.0/AV:N/AC:M/Au:N/C:P/I:P/A:N", Score: 5.8, Source: "nvd"},
+		{Version: "3.1", Vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", Score: 6.1, Source: "redhat"},
+		{Version: "3.0", Vector: "CVSS:3.0/AV:N/AC:L/PR:N/UI:R/S:C/C:L/I:L/A:N", Score: 6.1, Source: "ghsa"},
+		{Version: "3.1", Vector: "CVSS:3.1/AV:L/AC:L/PR:N/UI:R/S:U/C:H/I:N/A:N", Score: 5.5, Source: "ubuntu"},
+	}, multi.CVSSAll)
+
+	// The occurrence score keeps its rule and no preferred vector is invented.
+	assert.InDelta(t, 5.1, multi.Score, 0)
+	assert.Nil(t, multi.CVSS)
+}
+
+func TestParse_CVSSAllNeedsAVector(t *testing.T) {
+	data, err := os.ReadFile("testdata/multi-source-cvss.json")
+	require.NoError(t, err)
+	report, err := trivy.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.Len(t, report.Findings, 3)
+
+	assert.Empty(t, report.Findings[1].CVSSAll, "scores without vectors are not CVSS records")
+	assert.InDelta(t, 5.0, report.Findings[1].Score, 0)
+	assert.Empty(t, report.Findings[2].CVSSAll)
+}
+
+func TestParse_CVSSAllFromRealScan(t *testing.T) {
+	data, err := os.ReadFile("testdata/alpine-scan.json")
+	require.NoError(t, err)
+	report, err := trivy.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.NotEmpty(t, report.Findings)
+
+	first := report.Findings[0]
+	require.Len(t, first.CVSSAll, 2)
+	assert.Equal(t, "4.0", first.CVSSAll[0].Version)
+	assert.Equal(t, "3.1", first.CVSSAll[1].Version)
+	assert.Equal(t, "nvd", first.CVSSAll[1].Source)
+}
