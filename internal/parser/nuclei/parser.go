@@ -46,16 +46,46 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 }
 
 func (s *Scanner) DetectFormat(data []byte) bool {
-	line, _, err := splitFirstLine(data)
-	if err != nil {
-		return false
-	}
-	var probe nucleiEvent
-	if err := json.Unmarshal(line, &probe); err != nil {
-		return false
-	}
-	return probe.TemplateID != "" && probe.Host != ""
+	return s.Recognize(data) == scanner.Definite
 }
+
+// Recognize grades a document. Nuclei writes one event per line, or a list of
+// events when they arrive as a JSON array; an event has a template id and a
+// host. An empty list is possible, since a scan with no matches writes nothing.
+func (s *Scanner) Recognize(data []byte) scanner.Recognition {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return scanner.NotRecognized
+	}
+	if trimmed[0] == '[' {
+		var events []json.RawMessage
+		if err := json.Unmarshal(trimmed, &events); err != nil {
+			return scanner.NotRecognized
+		}
+		if len(events) == 0 {
+			return scanner.Possible
+		}
+		for _, ev := range events[:min(len(events), recognizeEvents)] {
+			if parseutil.ObjectHas(ev, "template-id", "host") {
+				return scanner.Definite
+			}
+		}
+		return scanner.NotRecognized
+	}
+	// One event per line. A line that is not an event is skipped when parsing,
+	// so the first few lines decide rather than only the first.
+	lines := bufio.NewScanner(bytes.NewReader(trimmed))
+	lines.Buffer(make([]byte, 1024*1024), 1024*1024)
+	for i := 0; i < recognizeEvents && lines.Scan(); i++ {
+		if parseutil.ObjectHas(bytes.TrimSpace(lines.Bytes()), "template-id", "host") {
+			return scanner.Definite
+		}
+	}
+	return scanner.NotRecognized
+}
+
+// recognizeEvents bounds how many events Recognize inspects.
+const recognizeEvents = 100
 
 // splitNucleiLines normalizes Nuclei input (JSON array or JSONL) into raw
 // event lines.
@@ -105,6 +135,9 @@ func appendNucleiFindings(nr *domain.NormalizedReport, lines [][]byte) int {
 }
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	if s.Recognize(data) == scanner.NotRecognized {
+		return nil, scanner.Unrecognized("nuclei")
+	}
 	// A single JSON object or array is also accepted (convenience); the
 	// canonical form is one event per line.
 	trimmed := bytes.TrimSpace(data)
