@@ -281,6 +281,7 @@ type usecaseInterface interface {
 	StatsUsecases
 	WatcherUsecases
 	ScannerUsecases
+	CVEUsecases
 }
 
 // NewHandler builds the HTTP handlers over a use-case implementation.
