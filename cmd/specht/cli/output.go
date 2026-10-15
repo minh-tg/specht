@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"math"
 	"strings"
 	"time"
 )
@@ -45,4 +46,13 @@ func splitIDs(values []string) []string {
 		}
 	}
 	return out
+}
+
+// limitArg turns a --limit value into the int32 the API takes. A bare int32(n) would wrap a huge
+// value to a small one, so --limit 4294967297 would quietly ask for one row.
+func limitArg(flag string, n int) (int32, error) {
+	if n < 0 || n > math.MaxInt32 {
+		return 0, fmt.Errorf("%s must be between 0 and %d", flag, math.MaxInt32)
+	}
+	return int32(n), nil
 }

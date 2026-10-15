@@ -32,14 +32,15 @@ func newReportsListCmd(d Deps, s *settings) *cobra.Command {
 			if err := requireFlag(project, "--project", "reports list"); err != nil {
 				return err
 			}
-			if limit < 0 {
-				return fmt.Errorf("--limit must not be negative")
+			pageSize, err := limitArg("--limit", limit)
+			if err != nil {
+				return err
 			}
 			cl, err := d.NewClient()
 			if err != nil {
 				return err
 			}
-			reports, err := cl.ListReports(project, int32(limit), 0)
+			reports, err := cl.ListReports(project, pageSize, 0)
 			if err != nil {
 				return err
 			}
@@ -191,7 +192,9 @@ func newReportsUploadCmd(d Deps, s *settings) *cobra.Command {
 func readScanFile(d Deps, path string) (json.RawMessage, error) {
 	var data []byte
 	var err error
+	name := path
 	if path == "-" {
+		name = "standard input"
 		if d.In == nil {
 			return nil, fmt.Errorf("--file - needs standard input")
 		}
@@ -202,6 +205,15 @@ func readScanFile(d Deps, path string) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
+	// PowerShell's > writes UTF-16, which no scanner output parser reads. A UTF-8 byte order
+	// mark, which many Windows editors add, is harmless but makes the file invalid JSON.
+	if bytes.HasPrefix(data, []byte{0xFF, 0xFE}) || bytes.HasPrefix(data, []byte{0xFE, 0xFF}) {
+		return nil, fmt.Errorf("%s is UTF-16 text, which Specht cannot read: save it as UTF-8 and upload it again", name)
+	}
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
+	if len(bytes.TrimSpace(data)) == 0 {
+		return nil, fmt.Errorf("%s is empty", name)
+	}
 	lower := strings.ToLower(path)
 	lines := strings.HasSuffix(lower, ".jsonl") || strings.HasSuffix(lower, ".ndjson")
 	if path == "-" && !json.Valid(data) {
@@ -209,7 +221,7 @@ func readScanFile(d Deps, path string) (json.RawMessage, error) {
 	}
 	if !lines {
 		if !json.Valid(data) {
-			return nil, fmt.Errorf("%s is not valid JSON", path)
+			return nil, fmt.Errorf("%s is not valid JSON", name)
 		}
 		return json.RawMessage(bytes.TrimSpace(data)), nil
 	}
@@ -220,12 +232,9 @@ func readScanFile(d Deps, path string) (json.RawMessage, error) {
 			continue
 		}
 		if !json.Valid([]byte(line)) {
-			return nil, fmt.Errorf("%s: line %d is not valid JSON", path, i+1)
+			return nil, fmt.Errorf("%s: line %d is not valid JSON", name, i+1)
 		}
 		events = append(events, json.RawMessage(line))
-	}
-	if len(events) == 0 {
-		return nil, fmt.Errorf("%s is empty", path)
 	}
 	return json.Marshal(events)
 }

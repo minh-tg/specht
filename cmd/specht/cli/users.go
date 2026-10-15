@@ -45,14 +45,15 @@ func newUsersListCmd(d Deps, s *settings) *cobra.Command {
 		Short: "List accounts",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if limit < 0 {
-				return fmt.Errorf("--limit must not be negative")
+			pageSize, err := limitArg("--limit", limit)
+			if err != nil {
+				return err
 			}
 			cl, err := d.NewClient()
 			if err != nil {
 				return err
 			}
-			users, err := cl.ListUsers(email, int32(limit), 0)
+			users, err := cl.ListUsers(email, pageSize, 0)
 			if err != nil {
 				return err
 			}

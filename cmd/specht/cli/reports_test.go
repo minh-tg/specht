@@ -216,3 +216,54 @@ func TestReportsUploadShowsTheServersAdviceWhenItRefusesTheFile(t *testing.T) {
 		t.Fatalf("want the server's advice, got %v", err)
 	}
 }
+
+func TestReadScanFileHandlesWhatEditorsAndShellsWrite(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string, data []byte) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	utf16 := []byte{0xFF, 0xFE, '{', 0, '}', 0}
+
+	t.Run("a UTF-8 byte order mark is dropped", func(t *testing.T) {
+		raw, err := readScanFile(Deps{}, write("bom.json", append([]byte{0xEF, 0xBB, 0xBF}, `{"runs":[]}`...)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(raw) != `{"runs":[]}` {
+			t.Fatalf("got %q", raw)
+		}
+	})
+	t.Run("a BOM on a line-based file is dropped too", func(t *testing.T) {
+		raw, err := readScanFile(Deps{}, write("bom.jsonl", append([]byte{0xEF, 0xBB, 0xBF}, "{\"a\":1}\n{\"a\":2}\n"...)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if string(raw) != `[{"a":1},{"a":2}]` {
+			t.Fatalf("got %q", raw)
+		}
+	})
+	t.Run("UTF-16 is named, with the way out", func(t *testing.T) {
+		_, err := readScanFile(Deps{}, write("utf16.json", utf16))
+		if err == nil || !strings.Contains(err.Error(), "UTF-16") || !strings.Contains(err.Error(), "UTF-8") {
+			t.Fatalf("want an error naming UTF-16 and UTF-8, got %v", err)
+		}
+	})
+	t.Run("an empty file says so", func(t *testing.T) {
+		for _, content := range []string{"", " \n\t\n"} {
+			_, err := readScanFile(Deps{}, write("empty.json", []byte(content)))
+			if err == nil || !strings.Contains(err.Error(), "empty") {
+				t.Fatalf("content %q: want an empty-file error, got %v", content, err)
+			}
+		}
+	})
+	t.Run("standard input is named as such", func(t *testing.T) {
+		_, err := readScanFile(Deps{In: strings.NewReader("")}, "-")
+		if err == nil || !strings.Contains(err.Error(), "standard input") {
+			t.Fatalf("want an error naming standard input, got %v", err)
+		}
+	})
+}
