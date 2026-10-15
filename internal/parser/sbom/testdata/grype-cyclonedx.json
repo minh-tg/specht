@@ -1,0 +1,217 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.7",
+  "serialNumber": "urn:uuid:00000000-0000-4000-8000-000000000001",
+  "version": 1,
+  "metadata": {
+    "component": {
+      "type": "file",
+      "name": "."
+    }
+  },
+  "components": [
+    {
+      "bom-ref": "pkg:npm/lodash@4.17.15?package-id=9d61b0b91adf9787",
+      "type": "library",
+      "name": "lodash",
+      "version": "4.17.15",
+      "cpe": "cpe:2.3:a:lodash:lodash:4.17.15:*:*:*:*:node.js:*:*",
+      "purl": "pkg:npm/lodash@4.17.15"
+    },
+    {
+      "bom-ref": "pkg:npm/qs@6.5.1?package-id=aa728c08e9441998",
+      "type": "library",
+      "name": "qs",
+      "version": "6.5.1",
+      "cpe": "cpe:2.3:a:qs_project:qs:6.5.1:*:*:*:*:node.js:*:*",
+      "purl": "pkg:npm/qs@6.5.1"
+    },
+    {
+      "bom-ref": "pkg:pypi/django@2.2.0?package-id=d209b6d6ccd960c9",
+      "type": "library",
+      "name": "django",
+      "version": "2.2.0",
+      "cpe": "cpe:2.3:a:python-django:python-django:2.2.0:*:*:*:*:*:*:*",
+      "purl": "pkg:pypi/django@2.2.0"
+    }
+  ],
+  "vulnerabilities": [
+    {
+      "id": "GHSA-hmr4-m2h5-33qx",
+      "source": {
+        "name": "github-language-python",
+        "url": "https://github.com/advisories/GHSA-hmr4-m2h5-33qx"
+      },
+      "references": [
+        {
+          "id": "GHSA-hmr4-m2h5-33qx",
+          "source": {
+            "name": "github-language-python",
+            "url": "https://github.com/advisories/GHSA-hmr4-m2h5-33qx"
+          }
+        }
+      ],
+      "ratings": [
+        {
+          "score": 9.8,
+          "severity": "critical",
+          "method": "CVSSv31",
+          "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
+        },
+        {
+          "score": 9.3,
+          "severity": "critical",
+          "method": "other",
+          "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"
+        },
+        {
+          "source": {
+            "name": "FIRST",
+            "url": "https://www.first.org/epss/"
+          },
+          "score": 0.65575,
+          "method": "other"
+        }
+      ],
+      "description": "SQL injection in Django",
+      "advisories": [
+        {
+          "url": "https://nvd.nist.gov/vuln/detail/CVE-2020-7471"
+        },
+        {
+          "url": "https://github.com/django/django/commit/eb31d845323618d688ad429479c6dda973056136"
+        }
+      ],
+      "affects": [
+        {
+          "ref": "pkg:pypi/django@2.2.0?package-id=d209b6d6ccd960c9",
+          "versions": [
+            {
+              "version": "2.2.0",
+              "status": "affected"
+            },
+            {
+              "range": "vers:pypi/>=2.2.10",
+              "status": "unaffected"
+            }
+          ]
+        }
+      ],
+      "bom-ref": "urn:uuid:00000000-0000-4000-8000-000000000010"
+    },
+    {
+      "id": "GHSA-35jh-r3h4-6jhm",
+      "source": {
+        "name": "github-language-javascript",
+        "url": "https://github.com/advisories/GHSA-35jh-r3h4-6jhm"
+      },
+      "references": [
+        {
+          "id": "GHSA-35jh-r3h4-6jhm",
+          "source": {
+            "name": "github-language-javascript",
+            "url": "https://github.com/advisories/GHSA-35jh-r3h4-6jhm"
+          }
+        }
+      ],
+      "ratings": [
+        {
+          "score": 7.2,
+          "severity": "high",
+          "method": "CVSSv31",
+          "vector": "CVSS:3.1/AV:N/AC:L/PR:H/UI:N/S:U/C:H/I:H/A:H"
+        },
+        {
+          "source": {
+            "name": "FIRST",
+            "url": "https://www.first.org/epss/"
+          },
+          "score": 0.21333,
+          "method": "other"
+        }
+      ],
+      "description": "Command Injection in lodash",
+      "advisories": [
+        {
+          "url": "https://nvd.nist.gov/vuln/detail/CVE-2021-23337"
+        },
+        {
+          "url": "https://github.com/lodash/lodash/commit/3469357cff396a26c363f8c1b5a91dde28ba4b1c"
+        }
+      ],
+      "affects": [
+        {
+          "ref": "pkg:npm/lodash@4.17.15?package-id=9d61b0b91adf9787",
+          "versions": [
+            {
+              "version": "4.17.15",
+              "status": "affected"
+            },
+            {
+              "range": "vers:npm/>=4.17.21",
+              "status": "unaffected"
+            }
+          ]
+        }
+      ],
+      "bom-ref": "urn:uuid:00000000-0000-4000-8000-000000000011"
+    },
+    {
+      "id": "GHSA-hrpp-h998-j3pp",
+      "source": {
+        "name": "github-language-javascript",
+        "url": "https://github.com/advisories/GHSA-hrpp-h998-j3pp"
+      },
+      "references": [
+        {
+          "id": "GHSA-hrpp-h998-j3pp",
+          "source": {
+            "name": "github-language-javascript",
+            "url": "https://github.com/advisories/GHSA-hrpp-h998-j3pp"
+          }
+        }
+      ],
+      "ratings": [
+        {
+          "score": 7.5,
+          "severity": "high",
+          "method": "CVSSv31",
+          "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
+        },
+        {
+          "source": {
+            "name": "FIRST",
+            "url": "https://www.first.org/epss/"
+          },
+          "score": 0.15622,
+          "method": "other"
+        }
+      ],
+      "description": "qs vulnerable to Prototype Pollution",
+      "advisories": [
+        {
+          "url": "https://nvd.nist.gov/vuln/detail/CVE-2022-24999"
+        },
+        {
+          "url": "https://github.com/ljharb/qs/pull/428"
+        }
+      ],
+      "affects": [
+        {
+          "ref": "pkg:npm/qs@6.5.1?package-id=aa728c08e9441998",
+          "versions": [
+            {
+              "version": "6.5.1",
+              "status": "affected"
+            },
+            {
+              "range": "vers:npm/>=6.5.3",
+              "status": "unaffected"
+            }
+          ]
+        }
+      ],
+      "bom-ref": "urn:uuid:00000000-0000-4000-8000-000000000012"
+    }
+  ]
+}

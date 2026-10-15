@@ -101,12 +101,8 @@ type cyclonedxDoc struct {
 			Version string `json:"version"`
 		} `json:"component"`
 	} `json:"metadata"`
-	Components []struct {
-		Type    string `json:"type"`
-		Name    string `json:"name"`
-		Version string `json:"version"`
-		PURL    string `json:"purl"`
-	} `json:"components"`
+	Components      []cdxComponent      `json:"components"`
+	Vulnerabilities *[]cdxVulnerability `json:"vulnerabilities"`
 }
 
 func parseCycloneDX(data []byte) (*domain.NormalizedReport, error) {
@@ -137,7 +133,8 @@ func parseCycloneDX(data []byte) (*domain.NormalizedReport, error) {
 			nr.ScanScope.Ext["sbom_component_type"] = doc.Metadata.Component.Type
 		}
 	}
-	for _, c := range doc.Components {
+	components := flattenComponents(doc.Components)
+	for _, c := range components {
 		if c.Name == "" {
 			continue
 		}
@@ -147,6 +144,17 @@ func parseCycloneDX(data []byte) (*domain.NormalizedReport, error) {
 			Name:      c.Name,
 			Version:   c.Version,
 		}))
+	}
+	if doc.Vulnerabilities != nil {
+		// The file carries a vulnerability analysis (Grype writes one), not only an
+		// inventory. What it left out was never analysed, so its absence proves nothing.
+		nr.Completeness = domain.CompletenessUnknown
+		nr.ScanScope.Ext["sbom_vulnerabilities"] = "included"
+		findings, unresolved := vulnerabilityFindings(*doc.Vulnerabilities, components)
+		nr.Findings = findings
+		if unresolved > 0 {
+			nr.ScanScope.Ext["sbom_unresolved_references"] = itoa(unresolved)
+		}
 	}
 	return nr, nil
 }
