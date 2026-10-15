@@ -1,5 +1,7 @@
+import { playCue } from "@/lib/sound";
 import { MutationCache, QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { APIError } from "./client";
 import { shouldRetryQuery } from "./retry";
 
 declare module "@tanstack/react-query" {
@@ -25,6 +27,7 @@ export function announceMutationSuccess(
     ? (success as (data: unknown, variables: unknown) => string)(data, variables)
     : success;
   toast.success(message);
+  playCue("accepted");
 }
 
 /**
@@ -38,6 +41,13 @@ export function createQueryClient(
     mutationCache: new MutationCache({
       onSuccess: (data, variables, _result, mutation) => {
         announceMutationSuccess(mutation.meta?.success, data, variables);
+      },
+      // Only mutations that announce their success are user actions worth a failure cue; a 401
+      // is the session ending, which redirects instead.
+      onError: (error, _variables, _result, mutation) => {
+        if (!mutation.meta?.success) return;
+        if (error instanceof APIError && error.status === 401) return;
+        playCue("error");
       },
     }),
     defaultOptions: { queries: { retry } },

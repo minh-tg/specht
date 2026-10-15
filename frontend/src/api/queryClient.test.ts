@@ -3,10 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const success = vi.hoisted(() => vi.fn());
 vi.mock("sonner", () => ({ toast: { success } }));
 
+const playCue = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/sound", () => ({ playCue }));
+
+import { APIError } from "./client";
 import { announceMutationSuccess, createQueryClient } from "./queryClient";
 
 beforeEach(() => {
   success.mockClear();
+  playCue.mockClear();
 });
 
 describe("announceMutationSuccess", () => {
@@ -30,6 +35,12 @@ describe("announceMutationSuccess", () => {
   it("stays silent when the mutation declared no message", () => {
     announceMutationSuccess(undefined, {}, {});
     expect(success).not.toHaveBeenCalled();
+    expect(playCue).not.toHaveBeenCalled();
+  });
+
+  it("plays the accepted cue once per toast", () => {
+    announceMutationSuccess("Member added", {}, {});
+    expect(playCue).toHaveBeenCalledExactlyOnceWith("accepted");
   });
 });
 
@@ -62,5 +73,38 @@ describe("createQueryClient", () => {
       .build(client, { mutationFn: async () => 1 })
       .execute(undefined);
     expect(success).not.toHaveBeenCalled();
+  });
+
+  async function fail(error: Error, meta?: { success: string; }) {
+    const client = createQueryClient(false);
+    await client.getMutationCache()
+      .build(client, {
+        mutationFn: async () => {
+          throw error;
+        },
+        meta,
+      })
+      .execute(undefined)
+      .catch(() => undefined);
+  }
+
+  it("plays the error cue for a failed mutation that declares meta.success", async () => {
+    await fail(new Error("nope"), { success: "Team created" });
+    expect(playCue).toHaveBeenCalledExactlyOnceWith("error");
+  });
+
+  it("plays no cue for a failed mutation without meta.success", async () => {
+    await fail(new Error("nope"));
+    expect(playCue).not.toHaveBeenCalled();
+  });
+
+  it("plays no error cue for a 401", async () => {
+    await fail(new APIError(401, "unauthorized", "Session expired"), { success: "Saved" });
+    expect(playCue).not.toHaveBeenCalled();
+  });
+
+  it("still plays the error cue for other API errors", async () => {
+    await fail(new APIError(403, "forbidden", "No"), { success: "Saved" });
+    expect(playCue).toHaveBeenCalledExactlyOnceWith("error");
   });
 });
