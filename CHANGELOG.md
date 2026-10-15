@@ -78,6 +78,11 @@ releases.
   and `specht-adapter`, reports the release version, answers `-version` and
   `-help`, and has a setup guide in `docs/mcp.md` that a test keeps in step
   with the tools it registers.
+- The `specht` command can triage findings (`findings triage`, `bulk-triage`,
+  `events`) and manage waivers (`waivers list`, `get`, `create`, `request`,
+  `approve`, `reject`, `withdraw`, `toggle`, `delete`, `events`). The new
+  commands honour `--format json`.
+- Bulk triage no longer reports a decode error after the server has applied it.
 - A Semgrep finding keeps its identity when the code above it moves. The line
   is no longer part of it: a finding is the rule, the file and what was
   matched (Semgrep's own match id when the run is logged in, otherwise the
