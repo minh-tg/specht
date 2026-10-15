@@ -8,7 +8,7 @@ import { FormField } from "@/components/FormField";
 import { PasswordField } from "@/components/PasswordField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { Button } from "@/components/ui/button";
-import { isPasswordValid, passwordPolicyMessage } from "@/lib/passwordRules";
+import { isPasswordValid, passwordPolicyMessage, passwordUserInputs } from "@/lib/passwordRules";
 import { useQueryClient } from "@tanstack/react-query";
 import { type SubmitEvent, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
@@ -160,7 +160,7 @@ export function Setup() {
           <PasswordField
             label="Password"
             rulesId="setup-password-rules"
-            userInputs={[email, name]}
+            userInputs={passwordUserInputs(email, name)}
             value={password}
             onChange={(e) => {
               setPassword(e.target.value);

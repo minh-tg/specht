@@ -8,6 +8,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Profile } from "./Profile";
 
 const adopt = vi.fn();
+const { check } = vi.hoisted(() => ({
+  check: vi.fn(() => ({ score: 3, feedback: { warning: null, suggestions: [] } })),
+}));
+vi.mock("@/components/PasswordStrengthEngine", () => ({
+  loadStrengthEngine: () => Promise.resolve({ check }),
+}));
 
 function authValue(): AuthContextValue {
   return {
@@ -56,6 +62,7 @@ describe("Profile", () => {
     meFails = false;
     displayName = "Ada";
     adopt.mockReset();
+    check.mockClear();
     passwordReply = () =>
       jsonResponse({
         token: "fresh",
@@ -110,6 +117,22 @@ describe("Profile", () => {
     expect(screen.getByRole("heading", { name: "Your profile" })).toBeInTheDocument();
     expect(screen.getByText("Member")).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: /email/i })).not.toBeInTheDocument();
+  });
+
+  it("counts the email, its local part and each word of the name against the new password", async () => {
+    displayName = "Ada King Lovelace";
+    const user = userEvent.setup();
+    renderProfile();
+
+    await user.type(await screen.findByLabelText("New password"), "ada-1815");
+    await screen.findByRole("meter");
+    expect(check).toHaveBeenLastCalledWith("ada-1815", [
+      "ada@acme.corp",
+      "ada",
+      "Ada",
+      "King",
+      "Lovelace",
+    ]);
   });
 
   it("saves a new display name and nothing else", async () => {

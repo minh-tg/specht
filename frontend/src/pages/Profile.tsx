@@ -6,7 +6,7 @@ import { FormField } from "@/components/FormField";
 import { PasswordField } from "@/components/PasswordField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { Button } from "@/components/ui/button";
-import { isPasswordValid, passwordPolicyMessage } from "@/lib/passwordRules";
+import { isPasswordValid, passwordPolicyMessage, passwordUserInputs } from "@/lib/passwordRules";
 import type { UserProfile } from "@/types/api";
 import { type SubmitEvent, useState } from "react";
 
@@ -33,7 +33,7 @@ export function Profile() {
         ? (
           <>
             <AccountSection profile={me.data} />
-            <PasswordSection />
+            <PasswordSection displayName={me.data.display_name} />
           </>
         )
         : <SkeletonLines label="Loading your profile" lines={4} />}
@@ -87,7 +87,7 @@ function AccountSection({ profile }: { readonly profile: UserProfile; }) {
   );
 }
 
-function PasswordSection() {
+function PasswordSection({ displayName }: { readonly displayName: string | null | undefined; }) {
   const auth = useAuth();
   const change = useChangePassword();
   const [current, setCurrent] = useState("");
@@ -192,7 +192,7 @@ function PasswordSection() {
         <PasswordField
           label="New password"
           rulesId="profile-password-rules"
-          userInputs={auth.email ? [auth.email] : []}
+          userInputs={passwordUserInputs(auth.email ?? "", displayName)}
           value={next}
           onChange={(e) => {
             setNext(e.target.value);

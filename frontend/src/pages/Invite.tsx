@@ -9,7 +9,7 @@ import { INLINE_LINK } from "@/components/inlineLink";
 import { PasswordField } from "@/components/PasswordField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { Button } from "@/components/ui/button";
-import { isPasswordValid, passwordPolicyMessage } from "@/lib/passwordRules";
+import { isPasswordValid, passwordPolicyMessage, passwordUserInputs } from "@/lib/passwordRules";
 import type { InviteLookup, InviteRole } from "@/types/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckIcon } from "lucide-react";
@@ -246,7 +246,7 @@ export function Invite() {
             <PasswordField
               label="Choose a password"
               rulesId="invite-password-rules"
-              userInputs={[bound ? (invite.email ?? "") : email, name]}
+              userInputs={passwordUserInputs(bound ? (invite.email ?? "") : email, name)}
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
