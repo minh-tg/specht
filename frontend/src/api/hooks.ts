@@ -37,7 +37,7 @@ import {
 } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { apiFetch, apiFetchWithTotal } from "./client";
-import { revokeUndoPlan, triageUndoPlan } from "./undoPlans";
+import { restoreMemberPlan, revokeUndoPlan, triageUndoPlan } from "./undoPlans";
 
 /** What the findings list asks the server for. Empty values are left out of the request. */
 export interface FindingsQuery {
@@ -567,16 +567,30 @@ export function useAddProjectMember(slug: string) {
 
 export function useRemoveProjectMember(slug: string) {
   const queryClient = useQueryClient();
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.projectMembers(slug) });
+  };
   return useMutation({
-    meta: { success: "Member removed", sound: "none" },
-    mutationFn: (userId: string) =>
+    meta: {
+      success: "Member removed",
+      sound: "none",
+      undo: (_data: void, vars: { userId: string; role: ProjectRole; restorable: boolean; }) =>
+        vars.restorable
+          ? restoreMemberPlan({ slug, userId: vars.userId, role: vars.role, refresh })
+          : undefined,
+    },
+    mutationFn: ({ userId }: {
+      userId: string;
+      /** The role they held, which Undo grants again. */
+      role: ProjectRole;
+      /** False when the person removed is the one signed in: they could not grant themselves back. */
+      restorable: boolean;
+    }) =>
       apiFetch<void>(
         `/api/v1/projects/${encodeURIComponent(slug)}/members/${encodeURIComponent(userId)}`,
         { method: "DELETE" },
       ),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.projectMembers(slug) });
-    },
+    onSuccess: refresh,
   });
 }
 

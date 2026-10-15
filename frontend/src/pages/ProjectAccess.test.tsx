@@ -8,6 +8,9 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectAccess } from "./ProjectAccess";
 
+const playCue = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/sound", () => ({ playCue }));
+
 const authCtx: AuthContextValue = {
   token: "test-token",
   userId: "u1",
@@ -43,6 +46,8 @@ describe("ProjectAccess", () => {
   let deleteError: { status: number; code: string; message: string; } | null = null;
   let addMemberError: { status: number; code: string; message: string; } | null = null;
   let membersLoadFailing = false;
+  // When set, a member DELETE drops the member from the roster and a member POST adds one.
+  let rosterFollowsWrites = false;
   // Sign-up closed, so suggestions are live in every test unless one opens it.
   let capabilities: object = {};
 
@@ -53,6 +58,8 @@ describe("ProjectAccess", () => {
     deleteError = null;
     addMemberError = null;
     membersLoadFailing = false;
+    rosterFollowsWrites = false;
+    playCue.mockClear();
     mockMembers = [
       { project_id: "p1", user_id: "u1", role: "admin", created_at: "2026-09-12T00:00:00Z" },
       { project_id: "p1", user_id: "u2", role: "manager", created_at: "2026-09-18T00:00:00Z" },
@@ -88,6 +95,15 @@ describe("ProjectAccess", () => {
       }
       if (u.includes("/members")) {
         if (method === "POST") {
+          if (!addMemberError && rosterFollowsWrites) {
+            const grant = JSON.parse(body ?? "{}") as { user_id: string; role: string; };
+            mockMembers.push({
+              project_id: "p1",
+              user_id: grant.user_id,
+              role: grant.role,
+              created_at: "2026-10-15T00:00:00Z",
+            });
+          }
           return addMemberError
             ? jsonResponse(
               { error: { code: addMemberError.code, message: addMemberError.message } },
@@ -102,6 +118,9 @@ describe("ProjectAccess", () => {
           );
         }
         if (method === "DELETE") {
+          if (!deleteError && rosterFollowsWrites) {
+            mockMembers = mockMembers.filter((m) => !u.endsWith(`/members/${m.user_id}`));
+          }
           return deleteError
             ? jsonResponse(
               { error: { code: deleteError.code, message: deleteError.message } },
@@ -501,6 +520,76 @@ describe("ProjectAccess", () => {
     await waitFor(() => {
       expect(memberDeletes()).toHaveLength(1);
     });
+  });
+
+  async function removeAlex(user: ReturnType<typeof userEvent.setup>) {
+    await screen.findByText("Alex Rivera");
+    await user.click(screen.getAllByRole("button", { name: "Remove" })[1]!);
+    await user.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remove" }),
+    );
+  }
+
+  const memberWrites = (method: string) =>
+    vi.mocked(globalThis.fetch).mock.calls.filter(
+      ([url, opts]) => opts?.method === method && String(url).includes("/members"),
+    );
+
+  it("restores a removed member with the role they held when Undo is pressed, with one cue on Undo only", async () => {
+    rosterFollowsWrites = true;
+    const user = userEvent.setup();
+    renderProjectAccess();
+
+    await removeAlex(user);
+    await waitFor(() => expect(screen.queryByText("Alex Rivera")).not.toBeInTheDocument());
+    await user.click(await screen.findByRole("button", { name: "Undo" }));
+
+    expect(await screen.findByText("Member restored")).toBeInTheDocument();
+    expect(memberWrites("POST")).toHaveLength(1);
+    expect(JSON.parse(String(memberWrites("POST")[0]![1]!.body))).toEqual({
+      user_id: "u2",
+      role: "manager",
+    });
+    expect(await screen.findByText("Alex Rivera")).toBeInTheDocument();
+    // A removal or revocation is silent, so the only cue is the one the successful Undo plays.
+    expect(playCue.mock.calls).toEqual([["accepted"]]);
+  });
+
+  it("refuses to restore a member who was added again meanwhile, and grants nothing", async () => {
+    rosterFollowsWrites = true;
+    const user = userEvent.setup();
+    renderProjectAccess();
+
+    await removeAlex(user);
+    const undo = await screen.findByRole("button", { name: "Undo" });
+    mockMembers.push({
+      project_id: "p1",
+      user_id: "u2",
+      role: "member",
+      created_at: "2026-10-15T00:00:00Z",
+    });
+    await user.click(undo);
+
+    expect(await screen.findByText("They are a member again, so Undo did nothing."))
+      .toBeInTheDocument();
+    expect(memberWrites("POST")).toHaveLength(0);
+    expect(playCue).toHaveBeenLastCalledWith("error");
+  });
+
+  it("offers no Undo when the person removed is the one signed in", async () => {
+    rosterFollowsWrites = true;
+    mockMembers[2]!.role = "admin";
+    const user = userEvent.setup();
+    renderProjectAccess();
+
+    await screen.findByText("Sarah Chen");
+    await user.click(screen.getAllByRole("button", { name: "Remove" })[0]!);
+    await user.click(
+      within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Remove" }),
+    );
+
+    expect(await screen.findByText("Member removed")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
   });
 
   it("says why unlinking a team failed", async () => {
