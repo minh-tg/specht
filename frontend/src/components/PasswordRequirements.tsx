@@ -4,7 +4,8 @@ import { CheckIcon, XIcon } from "lucide-react";
 /**
  * The password rules, shown once the person starts typing. Each rule is red with
  * a cross until it holds and green with a check once it does. The state is also
- * written out for screen readers, so colour is never the only signal.
+ * written out for screen readers, so colour is never the only signal. The byte
+ * rule appears only near the limit.
  */
 export function PasswordRequirements({ id, value }: {
   readonly id: string;
@@ -13,7 +14,7 @@ export function PasswordRequirements({ id, value }: {
   if (value === "") return null;
   return (
     <ul id={id} aria-label="Requirements" className="grid gap-1 text-[0.8125rem]">
-      {passwordRules.map((rule) => {
+      {passwordRules.filter((rule) => rule.shown(value)).map((rule) => {
         const met = rule.met(value);
         return (
           <li
@@ -27,7 +28,7 @@ export function PasswordRequirements({ id, value }: {
               ? <CheckIcon aria-hidden="true" className="size-3.5 shrink-0" />
               : <XIcon aria-hidden="true" className="size-3.5 shrink-0" />}
             <span>
-              {rule.label}
+              {rule.label(value)}
               <span className="sr-only">{` (${met ? "met" : "not met"})`}</span>
             </span>
           </li>
