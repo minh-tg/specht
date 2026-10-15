@@ -69,6 +69,11 @@ releases.
 
 ### Changed
 
+- A report that is not the named scanner's output is refused with a 422 that
+  names the scanner it looks like (`unrecognized_format`), instead of being
+  recorded as a clean scan with no findings. A report that cannot be read is
+  `malformed_report`, and an unknown scanner is `unknown_scanner`.
+- A clean OSV-Scanner run, with no vulnerabilities, can now be ingested.
 - The server validates all of its settings at startup and reports every
   problem in one message.
 - Request logs carry a request ID that matches the `X-Request-Id` response
