@@ -111,6 +111,7 @@ These change state and appear only with `MCP_ALLOW_MUTATIONS=true`:
 | `findings_triage` | Record an analysis decision on a finding (project admin). A state such as `false_positive` stops the finding blocking the gate |
 | `waivers_request` | Ask for a waiver on specific findings, with a reason and an expiry; it waits for a decision |
 | `waivers_withdraw` | Withdraw a waiver request that has not been decided |
+| `environments_update` | Change an environment's tier, internet exposure or data sensitivity (project admin). These feed the risk score |
 
 There is no tool to approve or reject a waiver request. That is the second person's
 decision, and the bridge leaves it to a person in the web interface or the `specht` command.

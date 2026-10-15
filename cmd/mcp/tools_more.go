@@ -80,6 +80,14 @@ func registerSessionInventoryTools(server *mcp.Server, api API) {
 	})
 }
 
+type environmentUpdateInput struct {
+	Project         string `json:"project" jsonschema:"project slug"`
+	Environment     string `json:"environment" jsonschema:"environment name or ID"`
+	Tier            string `json:"tier,omitempty" jsonschema:"production, staging, development or test"`
+	InternetFacing  *bool  `json:"internet_facing,omitempty" jsonschema:"whether it can be reached from the internet"`
+	DataSensitivity string `json:"data_sensitivity,omitempty" jsonschema:"public, internal, confidential or restricted"`
+}
+
 // registerTriageTools adds the tools that decide findings and ask for waivers. Approving or
 // rejecting a waiver request is left out on purpose: that is the second person's decision.
 func registerTriageTools(server *mcp.Server, api API) {
@@ -88,6 +96,9 @@ func registerTriageTools(server *mcp.Server, api API) {
 	})
 	mcp.AddTool(server, &mcp.Tool{Name: "waivers_request", Description: "Ask for a waiver on specific findings. It waits for a project manager or admin to approve it."}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverRequestInput) (*mcp.CallToolResult, any, error) {
 		return handleWaiversRequest(api, input)
+	})
+	mcp.AddTool(server, &mcp.Tool{Name: "environments_update", Description: "Change an environment's tier, internet exposure or data sensitivity. These feed the risk score, so only change them on a person's say-so. Needs the project admin role."}, func(_ context.Context, _ *mcp.CallToolRequest, input environmentUpdateInput) (*mcp.CallToolResult, any, error) {
+		return handleEnvironmentsUpdate(api, input)
 	})
 	mcp.AddTool(server, &mcp.Tool{Name: "waivers_withdraw", Description: "Withdraw a waiver request that has not been decided"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverInput) (*mcp.CallToolResult, any, error) {
 		return handleWaiversWithdraw(api, input)
@@ -401,4 +412,48 @@ func handleWaiversWithdraw(api API, input waiverInput) (*mcp.CallToolResult, any
 		return nil, nil, err
 	}
 	return textToolResult(fmt.Sprintf("waiver request %s withdrawn", waiver.ID))
+}
+
+func handleEnvironmentsUpdate(api API, input environmentUpdateInput) (*mcp.CallToolResult, any, error) {
+	switch {
+	case input.Project == "":
+		return nil, nil, fmt.Errorf("project is required")
+	case input.Environment == "":
+		return nil, nil, fmt.Errorf("environment is required")
+	case input.Tier == "" && input.InternetFacing == nil && input.DataSensitivity == "":
+		return nil, nil, fmt.Errorf("nothing to change: give tier, internet_facing or data_sensitivity")
+	}
+	envs, err := api.ListEnvironments(input.Project)
+	if err != nil {
+		return nil, nil, err
+	}
+	var current *client.Environment
+	for i := range envs {
+		if envs[i].ID == input.Environment || envs[i].Name == input.Environment {
+			current = &envs[i]
+			break
+		}
+	}
+	if current == nil {
+		return nil, nil, fmt.Errorf("no environment %q in project %s (environments_list shows them)", input.Environment, input.Project)
+	}
+	settings := client.EnvironmentSettings{Tier: current.Tier, InternetFacing: current.InternetFacing, DataSensitivity: current.DataSensitivity}
+	if input.Tier != "" {
+		settings.Tier = input.Tier
+	}
+	if input.InternetFacing != nil {
+		settings.InternetFacing = *input.InternetFacing
+	}
+	if input.DataSensitivity != "" {
+		settings.DataSensitivity = input.DataSensitivity
+	}
+	updated, err := api.UpdateEnvironment(input.Project, current.ID, settings)
+	if err != nil {
+		return nil, nil, err
+	}
+	exposure := "internal"
+	if updated.InternetFacing {
+		exposure = "internet facing"
+	}
+	return textToolResult(fmt.Sprintf("environment %s: tier %s, %s, data %s", updated.Name, updated.Tier, exposure, updated.DataSensitivity))
 }

@@ -41,6 +41,8 @@ type mockClient struct {
 	triageResp       *client.TriageResponse
 	requestedWaiver  *client.RequestWaiverRequest
 	withdrawn        string
+	envID            string
+	envSettings      *client.EnvironmentSettings
 	err              error
 }
 
@@ -198,4 +200,9 @@ func (m *mockClient) RequestWaiver(projectSlug string, req *client.RequestWaiver
 func (m *mockClient) WithdrawWaiver(projectSlug, waiverID string) (*client.Waiver, error) {
 	m.withdrawn = waiverID
 	return m.waiver, m.err
+}
+
+func (m *mockClient) UpdateEnvironment(projectSlug, environmentID string, settings client.EnvironmentSettings) (*client.Environment, error) {
+	m.envID, m.envSettings = environmentID, &settings
+	return &client.Environment{ID: environmentID, Name: "production", Tier: settings.Tier, InternetFacing: settings.InternetFacing, DataSensitivity: settings.DataSensitivity}, m.err
 }
