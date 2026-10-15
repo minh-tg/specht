@@ -37,7 +37,7 @@ import {
 } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { apiFetch, apiFetchWithTotal } from "./client";
-import { triageUndoPlan } from "./undoPlans";
+import { revokeUndoPlan, triageUndoPlan } from "./undoPlans";
 
 /** What the findings list asks the server for. Empty values are left out of the request. */
 export interface FindingsQuery {
@@ -971,7 +971,11 @@ export function useWithdrawWaiver(slug: string) {
 export function useRevokeWaiver(slug: string) {
   const decided = useWaiverDecided(slug);
   return useMutation({
-    meta: { success: () => "Waiver revoked", sound: "none" },
+    meta: {
+      success: () => "Waiver revoked",
+      sound: "none",
+      undo: (data: Waiver) => revokeUndoPlan({ slug, waiver: data, refresh: decided }),
+    },
     mutationFn: (id: string) =>
       apiFetch<Waiver>(
         `/api/v1/projects/${encodeURIComponent(slug)}/waivers/${encodeURIComponent(id)}/toggle`,

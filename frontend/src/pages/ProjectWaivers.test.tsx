@@ -9,6 +9,9 @@ import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectWaivers } from "./ProjectWaivers";
 
+const playCue = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/sound", () => ({ playCue }));
+
 const SOON = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
 function waiver(extra: Partial<Waiver>): Waiver {
@@ -77,6 +80,7 @@ function renderPage(userId = "u-ada") {
 
 describe("ProjectWaivers", () => {
   beforeEach(() => {
+    playCue.mockClear();
     listFails = false;
     eventsMode = "ok";
     events = [
@@ -167,7 +171,15 @@ describe("ProjectWaivers", () => {
             ? jsonResponse({ error: { code: "invalid", message: updateError } }, 400)
             : jsonResponse(waivers[0]);
         }
-        if (method === "POST" && /\/waivers\/[^/]+\/(approve|reject|withdraw|toggle)$/.test(url)) {
+        if (method === "GET" && /\/waivers\/[^/]+$/.test(url)) {
+          return jsonResponse(waivers.find((w) => url.endsWith(`/waivers/${w.id}`)));
+        }
+        if (method === "POST" && /\/waivers\/[^/]+\/toggle$/.test(url)) {
+          const target = waivers.find((w) => url.endsWith(`/waivers/${w.id}/toggle`))!;
+          target.enabled = !target.enabled;
+          return jsonResponse(target);
+        }
+        if (method === "POST" && /\/waivers\/[^/]+\/(approve|reject|withdraw)$/.test(url)) {
           return jsonResponse(waivers[0]);
         }
         throw new Error(`unexpected request ${method} ${url}`);
@@ -267,6 +279,37 @@ describe("ProjectWaivers", () => {
     await user.click(screen.getByRole("button", { name: "Revoke zlib: heap overflow" }));
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/waivers/w3/toggle"))).toBe(true));
     expect(await screen.findByText("Waiver revoked")).toBeInTheDocument();
+  });
+
+  it("puts a revoked waiver back in force from the toast, silent on revoke and one cue on Undo", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("tab", { name: "In force 1" }));
+    await user.click(screen.getByRole("button", { name: "Revoke zlib: heap overflow" }));
+    await user.click(await screen.findByRole("button", { name: "Undo" }));
+
+    expect(await screen.findByText("Waiver back in force")).toBeInTheDocument();
+    const toggles = calls.filter((c) => c.url.endsWith("/waivers/w3/toggle"));
+    expect(toggles).toHaveLength(2);
+    expect(waivers.find((w) => w.id === "w3")?.enabled).toBe(true);
+    // A removal or revocation is silent, so the only cue is the one the successful Undo plays.
+    expect(playCue.mock.calls).toEqual([["accepted"]]);
+  });
+
+  it("refuses to undo a revoke when the waiver changed meanwhile, and toggles nothing", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(await screen.findByRole("tab", { name: "In force 1" }));
+    await user.click(screen.getByRole("button", { name: "Revoke zlib: heap overflow" }));
+    const undo = await screen.findByRole("button", { name: "Undo" });
+    // Another manager switches it on again before Undo is pressed.
+    waivers.find((w) => w.id === "w3")!.enabled = true;
+    await user.click(undo);
+
+    expect(await screen.findByText("The waiver changed in the meantime, so Undo did nothing."))
+      .toBeInTheDocument();
+    expect(calls.filter((c) => c.url.endsWith("/waivers/w3/toggle"))).toHaveLength(1);
+    expect(playCue).toHaveBeenLastCalledWith("error");
   });
 
   it("says who decided a closed waiver, and why", async () => {
@@ -392,6 +435,8 @@ describe("ProjectWaivers", () => {
     await waitFor(() => expect(calls.some((c) => c.method === "DELETE")).toBe(true));
     expect(calls.find((c) => c.method === "DELETE")!.url).toMatch(/\/waivers\/w1$/);
     expect(await screen.findByText("Waiver deleted")).toBeInTheDocument();
+    // Deleting has no inverse, so it keeps its dialog and its toast has no Undo.
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
   });
 
   it("shows History to people who cannot manage waivers", async () => {
