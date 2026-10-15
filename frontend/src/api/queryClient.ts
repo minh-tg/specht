@@ -3,6 +3,7 @@ import { MutationCache, QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { APIError } from "./client";
 import { shouldRetryQuery } from "./retry";
+import { undoOptions, type UndoPlan } from "./undo";
 
 declare module "@tanstack/react-query" {
   interface Register {
@@ -18,6 +19,12 @@ declare module "@tanstack/react-query" {
        * default cue.
        */
       sound?: "none" | ((data: never, variables: never) => "none" | undefined);
+      /**
+       * The inverse of this mutation, offered as an Undo button on the success toast. Returns
+       * nothing when this outcome has no safe inverse, and the toast then has no button. The plan
+       * runs outside the mutation, so it does not toast or play a cue a second time.
+       */
+      undo?: (data: never, variables: never) => UndoPlan | undefined;
     };
   }
 }
@@ -28,12 +35,19 @@ export function announceMutationSuccess(
   data: unknown,
   variables: unknown,
   sound?: "none" | ((data: never, variables: never) => "none" | undefined),
+  undo?: (data: never, variables: never) => UndoPlan | undefined,
 ): void {
   if (!success) return;
   const message = typeof success === "function"
     ? (success as (data: unknown, variables: unknown) => string)(data, variables)
     : success;
-  toast.success(message);
+  const plan =
+    (undo as ((data: unknown, variables: unknown) => UndoPlan | undefined) | undefined)?.(
+      data,
+      variables,
+    );
+  if (plan) toast.success(message, undoOptions(plan));
+  else toast.success(message);
   const choice = typeof sound === "function"
     ? (sound as (data: unknown, variables: unknown) => "none" | undefined)(data, variables)
     : sound;
@@ -50,7 +64,13 @@ export function createQueryClient(
   return new QueryClient({
     mutationCache: new MutationCache({
       onSuccess: (data, variables, _result, mutation) => {
-        announceMutationSuccess(mutation.meta?.success, data, variables, mutation.meta?.sound);
+        announceMutationSuccess(
+          mutation.meta?.success,
+          data,
+          variables,
+          mutation.meta?.sound,
+          mutation.meta?.undo,
+        );
       },
       // Only mutations that announce their success are user actions worth a failure cue; a 401
       // is the session ending, which redirects instead.
