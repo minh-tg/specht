@@ -206,7 +206,7 @@ func (r *Registry) Detect(data []byte) (Scanner, error) {
 	defer r.mu.RUnlock()
 	var matches []Scanner
 	for _, reg := range r.scanners {
-		if reg.sc.DetectFormat(data) {
+		if Recognize(reg.sc, data) == Definite {
 			matches = append(matches, reg.sc)
 		}
 	}
