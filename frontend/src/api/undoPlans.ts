@@ -1,4 +1,5 @@
 import { type AnalysisState, analysisStateLabel } from "@/lib/enums";
+import type { Waiver } from "@/types/api";
 import { apiFetch } from "./client";
 import type { UndoPlan } from "./undo";
 
@@ -43,6 +44,32 @@ export function triageUndoPlan(
         method: "PATCH",
         body: JSON.stringify({ analysis_state: from, reason: "", analysis_expires_at: null }),
       });
+    },
+  };
+}
+
+/**
+ * The inverse of revoking a waiver. Revoke is a blind toggle, so the plan reads the waiver first
+ * and flips it back only while it is still approved and switched off; otherwise someone decided
+ * something else meanwhile and flipping again would undo their decision, not this one. There is
+ * none unless the revoke left the waiver approved and off.
+ */
+export function revokeUndoPlan(
+  { slug, waiver, refresh }: { slug: string; waiver: Waiver; refresh: () => void; },
+): UndoPlan | undefined {
+  if (waiver.status !== "approved" || waiver.enabled) return undefined;
+  const path = `/api/v1/projects/${encodeURIComponent(slug)}/waivers/${
+    encodeURIComponent(waiver.id)
+  }`;
+  return {
+    done: "Waiver back in force",
+    refresh,
+    run: async () => {
+      const current = await apiFetch<Waiver>(path);
+      if (current.status !== "approved" || current.enabled) {
+        throw new Error("The waiver changed in the meantime, so Undo did nothing.");
+      }
+      await apiFetch<Waiver>(`${path}/toggle`, { method: "POST" });
     },
   };
 }
