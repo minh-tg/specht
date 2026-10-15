@@ -144,7 +144,7 @@ type (
 		ListProjectMembers(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error)
 		AddProjectMember(ctx context.Context, projectSlug, userID, role string) (*usecase.ProjectMemberResponse, error)
 		AddProjectMemberByEmail(ctx context.Context, projectSlug, email, role string) (*usecase.ProjectMemberResponse, error)
-		SuggestProjectMembers(ctx context.Context, projectSlug, query string, registrationOpen bool) ([]usecase.MemberSuggestion, error)
+		SuggestProjectMembers(ctx context.Context, projectSlug, query string, directoryClosed bool) ([]usecase.MemberSuggestion, error)
 		RemoveProjectMember(ctx context.Context, projectSlug, userID string) error
 		IsProjectMember(ctx context.Context, projectID, userID string) (bool, error)
 		ListProjects(ctx context.Context) ([]usecase.ProjectResponse, error)
