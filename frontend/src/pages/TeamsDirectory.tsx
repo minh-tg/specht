@@ -1,5 +1,6 @@
 import {
   useAddTeamMember,
+  useCapabilities,
   useCreateTeam,
   useDeleteTeam,
   useMe,
@@ -7,10 +8,13 @@ import {
   useTeamMembers,
   useTeams,
 } from "@/api/hooks";
+import { suggestFromDirectory } from "@/api/memberSuggestions";
+import { useUserDirectory } from "@/api/users";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { OpenRegistrationNote } from "@/components/OpenRegistrationNote";
+import { PersonCombobox } from "@/components/PersonCombobox";
 import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import {
@@ -145,6 +149,15 @@ export function TeamsDirectory() {
   } = useTeamMembers(activeRosterTeam?.id ?? "");
 
   const addMemberMutation = useAddTeamMember(activeRosterTeam?.id ?? "");
+  // Only instance admins add people here, and they have the directory loaded already, so the
+  // suggestions are filtered in the browser with the server's rules instead of asked for per key.
+  const { data: directory } = useUserDirectory();
+  const registrationOpen = useCapabilities().data?.registration?.enabled !== false;
+  const rosterSuggestions = registrationOpen
+    ? []
+    : suggestFromDirectory(directory, rosterEmail, new Set(activeMembers?.map((m) => m.user_id)));
+  const rosterSuggestionsActive = !registrationOpen && !!directory
+    && [...rosterEmail.trim()].length >= 3;
   const removeMemberMutation = useRemoveTeamMember(activeRosterTeam?.id ?? "");
 
   async function handleCreateTeam(e: React.FormEvent) {
@@ -307,19 +320,22 @@ export function TeamsDirectory() {
           {isGlobalAdmin && (
             <form onSubmit={handleAddRosterMember} className="space-y-2">
               <div className="flex gap-2">
-                <Input
-                  required
-                  type="email"
-                  aria-label="Email address"
-                  value={rosterEmail}
-                  onChange={(e) => {
-                    setRosterEmail(e.target.value);
-                    setRosterInputError(null);
-                    addMemberMutation.reset();
-                  }}
-                  placeholder="Email address"
-                  className="flex-1"
-                />
+                <div className="flex-1">
+                  <PersonCombobox
+                    id="roster-email-input"
+                    required
+                    aria-label="Email address"
+                    value={rosterEmail}
+                    onValueChange={(value) => {
+                      setRosterEmail(value);
+                      setRosterInputError(null);
+                      addMemberMutation.reset();
+                    }}
+                    suggestions={rosterSuggestions}
+                    active={rosterSuggestionsActive}
+                    placeholder="Email address"
+                  />
+                </div>
                 <SelectField
                   aria-label="Team role"
                   value={rosterRole}
