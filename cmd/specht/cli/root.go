@@ -137,6 +137,7 @@ func NewRootCmd(d Deps) *cobra.Command {
 	root.AddCommand(newProjectTeamsCmd(d))
 	root.AddCommand(newTeamsCmd(d, s))
 	root.AddCommand(newWatcherCmd(d, s))
+	root.AddCommand(newWaiversCmd(d, s))
 	return root
 }
 
