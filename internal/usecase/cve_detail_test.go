@@ -210,6 +210,20 @@ func TestGetFindingCVE_InvalidVectorKeepsReportedScore(t *testing.T) {
 	assert.Equal(t, "high", *c.Severity)
 }
 
+func TestGetFindingCVE_DropsVectorsOfUnknownVersion(t *testing.T) {
+	occ := reportOcc("grype", cveObserved, `{"specht": {"cvss_all": [
+		{"version": "", "vector": "garbage", "score": 5},
+		{"version": "5.0", "vector": "CVSS:5.0/AV:N", "score": 5},
+		{"version": "3.1", "vector": "not-a-vector", "score": 5}
+	]}}`)
+	uc := newCVETestUsecases(testCVEID, []cvedetail.Occurrence{occ}, nil, nil)
+	resp, err := uc.GetFindingCVE(memberSessionCtx(), cveTestFindingID)
+	require.NoError(t, err)
+	require.Len(t, resp.CVSS, 1, "only a vector with a known version label is listed")
+	assert.Equal(t, "3.1", resp.CVSS[0].Version)
+	assert.False(t, resp.CVSS[0].Valid)
+}
+
 func TestGetFindingCVE_WatcherOccurrence(t *testing.T) {
 	occ := cvedetail.Occurrence{ToolName: "osv-batch", ObservedAt: cveObserved, Metadata: []byte(`{
 		"cvss_vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",

@@ -378,7 +378,9 @@ func (b *cveBuilder) addOccurrence(occ cvedetail.Occurrence) {
 		seen[vector] = true
 		p := prov
 		p.Detail = firstNonEmpty(v.source, prov.Detail)
-		b.resp.CVSS = append(b.resp.CVSS, buildCVSS(v.version, vector, v.score, p))
+		if c, ok := buildCVSS(v.version, vector, v.score, p); ok {
+			b.resp.CVSS = append(b.resp.CVSS, c)
+		}
 	}
 
 	for _, k := range []string{"cwe_ids", "cwes"} {
@@ -414,7 +416,9 @@ func (b *cveBuilder) addProviderRecord(name string, fetchedAt *time.Time, rec cv
 		}
 		p := prov
 		p.Detail = strings.TrimSpace(c.Source + " " + strings.ToLower(c.Type))
-		b.resp.CVSS = append(b.resp.CVSS, buildCVSS(c.Version, vector, c.Score, p))
+		if entry, ok := buildCVSS(c.Version, vector, c.Score, p); ok {
+			b.resp.CVSS = append(b.resp.CVSS, entry)
+		}
 	}
 	for _, id := range rec.CWEs {
 		b.addCWE(id, prov)
@@ -449,12 +453,18 @@ func (b *cveBuilder) addReference(raw string, prov CVEProvenance) {
 
 // buildCVSS scores a normalized vector. The version comes from the vector
 // prefix; the source's own label is used only when the prefix is unknown,
-// and such a vector is reported as not valid.
-func buildCVSS(label, vector string, reported float64, prov CVEProvenance) CVECVSS {
+// and such a vector is reported as not valid. A vector whose version is
+// unknown either way is dropped.
+func buildCVSS(label, vector string, reported float64, prov CVEProvenance) (CVECVSS, bool) {
 	out := CVECVSS{Vector: vector, Metrics: []cvedetail.Metric{}, Provenance: prov}
 	out.Version = cvedetail.VectorVersion(vector)
 	if out.Version == "" {
-		out.Version = label
+		switch label {
+		case "2.0", "3.0", "3.1", "4.0":
+			out.Version = label
+		default:
+			return CVECVSS{}, false
+		}
 	}
 	if reported > 0 {
 		r := reported
@@ -470,7 +480,7 @@ func buildCVSS(label, vector string, reported float64, prov CVEProvenance) CVECV
 		band := cvedetail.SeverityBand(out.Version, *out.ReportedScore)
 		out.Severity = &band
 	}
-	return out
+	return out, true
 }
 
 var cweNumber = regexp.MustCompile(`^(?:CWE-)?([0-9]{1,6})$`)
