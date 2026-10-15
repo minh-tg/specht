@@ -61,6 +61,9 @@ type cdxRating struct {
 	Severity string  `json:"severity"`
 	Method   string  `json:"method"`
 	Vector   string  `json:"vector"`
+	Source   *struct {
+		Name string `json:"name"`
+	} `json:"source"`
 }
 
 // maxAdvisories bounds how many advisory links ride on one finding.
@@ -106,6 +109,7 @@ func vulnerabilityFinding(v cdxVulnerability, c cdxComponent) domain.NormalizedF
 		purl = "pkg:generic/" + c.Name + "@" + c.Version
 	}
 	severity, cvss := ratingsOf(v.Ratings)
+	cvssAll := cvssRecordsOf(v.Ratings)
 
 	description := v.Description
 	if description == "" {
@@ -164,6 +168,7 @@ func vulnerabilityFinding(v cdxVulnerability, c cdxComponent) domain.NormalizedF
 		Resource:    c.Name + "@" + c.Version,
 		Aliases:     aliasesOf(v),
 		CVSS:        cvss,
+		CVSSAll:     cvssAll,
 		Fix:         fix,
 		Dimensions:  dims,
 		Extensions:  ext,
@@ -189,6 +194,23 @@ func ratingsOf(ratings []cdxRating) (domain.Severity, *domain.CVSSInfo) {
 		return severity, nil
 	}
 	return severity, &domain.CVSSInfo{Version: cvssVersion(best.Vector), Vector: best.Vector, Score: best.Score}
+}
+
+// cvssRecordsOf keeps every rating that carries a CVSS vector, in document
+// order, with the rating's own source name when it gives one. The version
+// comes from the vector prefix.
+func cvssRecordsOf(ratings []cdxRating) []domain.CVSSRecord {
+	var out []domain.CVSSRecord
+	for _, r := range ratings {
+		source := ""
+		if r.Source != nil {
+			source = strings.ToLower(strings.TrimSpace(r.Source.Name))
+		}
+		if rec, ok := parseutil.NewCVSSRecord(r.Vector, r.Score, source); ok {
+			out = parseutil.AddCVSS(out, rec)
+		}
+	}
+	return out
 }
 
 func severityOf(s string) domain.Severity {

@@ -134,3 +134,34 @@ func TestAnUnreadableVulnerabilityListIsMalformed(t *testing.T) {
 	_, err := sbom.NewScanner().Parse(context.Background(), []byte(`{"bomFormat":"CycloneDX","vulnerabilities":"oops"}`))
 	require.ErrorIs(t, err, scanner.ErrMalformedReport)
 }
+
+func TestCVSSAllKeepsEveryRatingWithAVector(t *testing.T) {
+	nr := parseDoc(t, `{"bomFormat":"CycloneDX","components":[{"bom-ref":"c1","name":"lib","version":"1.0","purl":"pkg:npm/lib@1.0"}],
+	"vulnerabilities":[{"id":"CVE-2024-0001","affects":[{"ref":"c1"}],"ratings":[
+		{"source":{"name":"NVD"},"score":9.8,"severity":"critical","method":"CVSSv3","vector":"CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"},
+		{"source":{"name":"NVD"},"score":7.5,"severity":"high","method":"CVSSv2","vector":"AV:N/AC:L/Au:N/C:P/I:P/A:P"},
+		{"source":{"name":"GitHub"},"score":9.1,"severity":"critical","method":"CVSSv4","vector":"CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:H/SC:N/SI:N/SA:N"},
+		{"source":{"name":"FIRST","url":"https://www.first.org/epss/"},"score":0.7,"method":"other"},
+		{"score":5.0,"severity":"medium","method":"CVSSv31","vector":"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L"}]}]}`)
+	require.Len(t, nr.Findings, 1)
+	all := nr.Findings[0].CVSSAll
+
+	require.Len(t, all, 4, "the EPSS rating has no vector, so it is not a CVSS record")
+	assert.Equal(t, domain.CVSSRecord{Version: "3.0", Vector: "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", Score: 9.8, Source: "nvd"}, all[0])
+	assert.Equal(t, domain.CVSSRecord{Version: "2.0", Vector: "CVSS:2.0/AV:N/AC:L/Au:N/C:P/I:P/A:P", Score: 7.5, Source: "nvd"}, all[1], "a bare v2 vector gains its prefix")
+	assert.Equal(t, "4.0", all[2].Version)
+	assert.Equal(t, "github", all[2].Source)
+	assert.Equal(t, domain.CVSSRecord{Version: "3.1", Vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L", Score: 5}, all[3], "a rating that names no source has an empty one")
+
+	// The preferred vector and the occurrence score keep their choice.
+	require.NotNil(t, nr.Findings[0].CVSS)
+	assert.Equal(t, "3.0", nr.Findings[0].CVSS.Version)
+	assert.InDelta(t, 9.8, nr.Findings[0].CVSS.Score, 0.001)
+}
+
+func TestCVSSAllIsEmptyWithoutVectors(t *testing.T) {
+	nr := parseDoc(t, `{"bomFormat":"CycloneDX","components":[{"bom-ref":"c1","name":"lib","version":"1.0","purl":"pkg:npm/lib@1.0"}],
+	"vulnerabilities":[{"id":"CVE-2024-0002","affects":[{"ref":"c1"}],"ratings":[{"severity":"high","score":7.1}]}]}`)
+	require.Len(t, nr.Findings, 1)
+	assert.Empty(t, nr.Findings[0].CVSSAll)
+}
