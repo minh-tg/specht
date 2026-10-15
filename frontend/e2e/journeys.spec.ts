@@ -1171,6 +1171,69 @@ test("a keyboard user undoes a triage change from the notification", async ({ pa
   expect(changes.length).toBeGreaterThanOrEqual(2);
 });
 
+test("Undo puts a triage back to a state that needed a reason, with its reason and expiry", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("undo-reason");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings`);
+  await page.locator("tbody tr").filter({ hasText: HIGH_TITLE }).click();
+  const findingId = new URL(page.url()).pathname.split("/").pop();
+  const auth = { Authorization: `Bearer ${token}` };
+
+  // Accept the risk through the API, so the only notification on the page is the one under test.
+  const expiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const accepted = await request.patch(`/api/v1/findings/${findingId}`, {
+    headers: auth,
+    data: {
+      analysis_state: "accepted_risk",
+      reason: "covered by the WAF rule",
+      analysis_expires_at: expiry,
+    },
+  });
+  expect(accepted.ok(), await accepted.text()).toBeTruthy();
+  await page.reload();
+  const decide = page.getByRole("heading", { level: 2, name: "Decide" }).locator("..");
+  await expect(decide).toContainText("Currently: Accepted risk");
+  await expect(decide).toContainText("Reason: covered by the WAF rule");
+
+  await chooseOption(page, page.getByLabel("Triage action"), "Exploitable");
+  await page.getByRole("button", { name: "Apply" }).click();
+  await expect(decide).toContainText("Currently: Exploitable");
+  await expect(page.getByText(/Triage saved \(effect:/)).toBeVisible();
+  await expect(decide).not.toContainText("Reason:");
+
+  await focusUndoWithKeyboard(page);
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Triage restored to Accepted risk")).toBeVisible();
+  await expect(decide).toContainText("Currently: Accepted risk");
+  await expect(decide).toContainText("Reason: covered by the WAF rule");
+  await expect(decide).toContainText("Expires");
+
+  // The server put the whole decision back, and the history names the event it reversed.
+  const finding = await request.get(`/api/v1/findings/${findingId}`, { headers: auth });
+  const restored = (await finding.json()) as {
+    analysis_state: string;
+    analysis_reason?: string;
+    analysis_expires_at?: string;
+    manual_override: boolean;
+  };
+  expect(restored.analysis_state).toBe("accepted_risk");
+  expect(restored.analysis_reason).toBe("covered by the WAF rule");
+  expect(new Date(restored.analysis_expires_at ?? "").getTime()).toBe(new Date(expiry).getTime());
+  expect(restored.manual_override).toBe(true);
+  const events = await request.get(`/api/v1/findings/${findingId}/events`, { headers: auth });
+  const undone = ((await events.json()) as Array<{ event_type: string; changes?: string; }>)
+    .filter((event) => event.event_type === "analysis_changed" && event.changes)
+    .map((event) =>
+      JSON.parse(Buffer.from(event.changes ?? "", "base64").toString()) as { undo_of?: string; }
+    )
+    .filter((changes) => changes.undo_of);
+  expect(undone).toHaveLength(1);
+});
+
 test("a keyboard user undoes revoking a waiver from the notification", async ({ page, request }) => {
   const token = await apiToken(request);
   const slug = uniq("undo-waiver");
