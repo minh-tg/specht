@@ -38,6 +38,33 @@ func TestEmitWritesJSONWhenAsked(t *testing.T) {
 	}
 }
 
+// A nil slice marshals to null, which breaks a script that loops over the result. An empty list
+// has to read as [].
+func TestJSONOutputWritesAnEmptyListAsAnArray(t *testing.T) {
+	type row struct{ ID string }
+	tests := []struct {
+		name string
+		v    any
+		want string
+	}{
+		{"nil slice", []row(nil), "[]\n"},
+		{"empty slice", []row{}, "[]\n"},
+		{"slice with items", []row{{ID: "a"}}, "[\n  {\n    \"ID\": \"a\"\n  }\n]\n"},
+		{"nil pointer stays null", (*row)(nil), "null\n"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			if err := writeJSONOut(&out, tc.v); err != nil {
+				t.Fatal(err)
+			}
+			if out.String() != tc.want {
+				t.Fatalf("got %q, want %q", out.String(), tc.want)
+			}
+		})
+	}
+}
+
 func TestEmitRefusesAnUnknownFormat(t *testing.T) {
 	err := emit(Deps{Out: io.Discard}, &settings{format: "yaml"}, nil, func(io.Writer) error { return nil })
 	if err == nil || !strings.Contains(err.Error(), "yaml") {
