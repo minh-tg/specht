@@ -53,10 +53,14 @@ export function PersonCombobox({
   "aria-label": ariaLabel,
 }: PersonComboboxProps) {
   const [open, setOpen] = useState(false);
-  // Closed while a first lookup runs, so an empty box does not flash under the field, and closed
-  // when a complete address matches nobody: the empty-list hint has nothing to add then, and an open
-  // list would cover the controls below the field.
-  const visible = active
+  // Closed while a first lookup runs, so an empty box does not flash under the field. Closed when a
+  // complete address matches nobody: the empty-list hint has nothing to add then. Closed when the
+  // only person offered is the address already typed: choosing them changes nothing. In both cases
+  // an open list would only cover the controls below the field, and while it is open the rest of
+  // the dialog is hidden from assistive technology.
+  const typed = value.trim().toLowerCase();
+  const onlyWhatIsTyped = suggestions.length === 1 && suggestions[0]?.email.toLowerCase() === typed;
+  const visible = active && !onlyWhatIsTyped
     && (suggestions.length > 0 || (!searching && !looksLikeEmail(value.trim())));
   return (
     <Autocomplete.Root
