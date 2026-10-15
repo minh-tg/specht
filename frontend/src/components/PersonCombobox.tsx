@@ -80,12 +80,13 @@ export function PersonCombobox({
           />
         }
       />
+      {/* Outside the popup, which is closed during a first lookup and would hide the message. */}
+      <Autocomplete.Status className="sr-only">
+        {statusText(suggestions.length, searching, active)}
+      </Autocomplete.Status>
       <Autocomplete.Portal>
         <Autocomplete.Positioner sideOffset={4} className="isolate z-50">
           <Autocomplete.Popup className="bg-popover text-popover-foreground ring-foreground/10 max-h-(--available-height) w-(--anchor-width) overflow-y-auto rounded-lg p-1 shadow-md ring-1">
-            <Autocomplete.Status className="sr-only">
-              {statusText(suggestions.length, searching, active)}
-            </Autocomplete.Status>
             <Autocomplete.Empty className="text-muted-foreground px-2 py-1.5 text-xs empty:hidden">
               {active && !searching ? (unavailable ? UNAVAILABLE_TEXT : EMPTY_TEXT) : null}
             </Autocomplete.Empty>
