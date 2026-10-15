@@ -573,7 +573,7 @@ type mockFindingRepo struct {
 	listByIDsFn                       func(context.Context, []string) ([]port.Finding, error)
 	hasDimensionFn                    func(context.Context, string, string) (bool, error)
 	updateAnalysisFn                  func(context.Context, port.UpdateAnalysisInput) (port.Finding, error)
-	updateAnalysisWithEventFn         func(context.Context, port.UpdateAnalysisInput, port.FindingEventInput) (port.Finding, error)
+	updateAnalysisWithEventFn         func(context.Context, port.UpdateAnalysisInput, port.FindingEventInput) (port.Finding, port.FindingEvent, error)
 	markFixedWithEventFn              func(context.Context, string, port.FindingEventInput) (port.Finding, error)
 	bulkUpdateAnalysisFn              func(context.Context, port.UpdateAnalysisInput, []string) ([]port.Finding, error)
 	bulkTriageFn                      func(context.Context, port.UpdateAnalysisInput, []string, port.FindingEventInput) ([]port.Finding, error)
@@ -641,18 +641,19 @@ func (m *mockFindingRepo) ListByIDs(ctx context.Context, ids []string) ([]port.F
 	return m.listByIDsFn(ctx, ids)
 }
 
-func (m *mockFindingRepo) UpdateAnalysisWithEvent(ctx context.Context, arg port.UpdateAnalysisInput, event port.FindingEventInput) (port.Finding, error) {
+func (m *mockFindingRepo) UpdateAnalysisWithEvent(ctx context.Context, arg port.UpdateAnalysisInput, event port.FindingEventInput) (port.Finding, port.FindingEvent, error) {
 	if m.updateAnalysisWithEventFn != nil {
 		return m.updateAnalysisWithEventFn(ctx, arg, event)
 	}
 	updated, err := m.UpdateAnalysis(ctx, arg)
 	if err != nil {
-		return port.Finding{}, err
+		return port.Finding{}, port.FindingEvent{}, err
 	}
-	if _, err := m.CreateEvent(ctx, event); err != nil {
-		return port.Finding{}, err
+	created, err := m.CreateEvent(ctx, event)
+	if err != nil {
+		return port.Finding{}, port.FindingEvent{}, err
 	}
-	return updated, nil
+	return updated, created, nil
 }
 
 func (m *mockFindingRepo) BulkUpdateAnalysis(ctx context.Context, arg port.UpdateAnalysisInput, ids []string) ([]port.Finding, error) {

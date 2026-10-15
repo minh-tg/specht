@@ -24,6 +24,7 @@ const (
 	triageMsgSlugRequired         = "project slug is required"
 	triageMsgProjectAdminRequired = "project admin is required"
 	triageMsgPolicyTemplateAbsent = "policy template not found"
+	triageMsgAnalysisChanged      = "The finding was triaged by someone else since you loaded it."
 	triageMsgTeamIDRequired       = "team id is required"
 	triageMsgInvalidTeamID        = "invalid team id format"
 	triageMsgTeamNotFound         = "team not found"
@@ -48,6 +49,7 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 		AnalysisState     string     `json:"analysis_state"`
 		Reason            string     `json:"reason"`
 		AnalysisExpiresAt *time.Time `json:"analysis_expires_at,omitempty"`
+		ExpectedState     string     `json:"expected_state,omitempty"`
 	}
 	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", triageMsgInvalidBody) {
 		return
@@ -70,6 +72,7 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 		Reason:            req.Reason,
 		AnalysisExpiresAt: req.AnalysisExpiresAt,
 		UserID:            userID,
+		ExpectedState:     req.ExpectedState,
 	})
 	if err != nil {
 		switch {
@@ -79,6 +82,8 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 			respondAccessDenied(w, r, "finding")
 		case errors.Is(err, usecase.ErrInvalidFindingID):
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
+		case errors.Is(err, usecase.ErrAnalysisConflict):
+			respondError(w, http.StatusConflict, "analysis_conflict", triageMsgAnalysisChanged)
 		case errors.Is(err, usecase.ErrReasonRequired):
 			respondError(w, http.StatusUnprocessableEntity, "reason_required", "reason is required for this analysis state")
 		case errors.Is(err, usecase.ErrReasonTooLong):

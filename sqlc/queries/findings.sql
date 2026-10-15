@@ -132,18 +132,22 @@ FOR UPDATE;
 SELECT * FROM findings WHERE id = ANY($1::uuid[]);
 
 -- name: UpdateFindingAnalysis :one
+-- expected_state is an optional precondition: when set, the row is updated
+-- only while analysis_state still equals it, so a caller that read the
+-- finding first cannot overwrite a change made in between.
 UPDATE findings SET
-    analysis_state = $2,
-    gate_effect = $3,
-    analysis_expires_at = $4,
-    analysis_reason = $5,
-    analysis_source = $6,
-    manual_override = $7,
-    review_required = $8,
+    analysis_state = sqlc.arg(analysis_state),
+    gate_effect = sqlc.arg(gate_effect),
+    analysis_expires_at = sqlc.arg(analysis_expires_at),
+    analysis_reason = sqlc.arg(analysis_reason),
+    analysis_source = sqlc.arg(analysis_source),
+    manual_override = sqlc.arg(manual_override),
+    review_required = sqlc.arg(review_required),
     analysis_updated_at = NOW(),
-    analysis_updated_by = $9,
+    analysis_updated_by = sqlc.arg(analysis_updated_by),
     updated_at = NOW()
-WHERE id = $1
+WHERE id = sqlc.arg(id)
+  AND (sqlc.narg(expected_state)::text IS NULL OR analysis_state = sqlc.narg(expected_state)::text)
 RETURNING *;
 
 -- name: BulkUpdateFindingAnalysis :many

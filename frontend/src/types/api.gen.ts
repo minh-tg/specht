@@ -782,6 +782,13 @@ export interface paths {
      *     States that ignore the gate (`false_positive`, `not_affected`,
      *     `accepted_risk`, `wont_fix`) require a `reason`; `accepted_risk` and
      *     `wont_fix` also require `analysis_expires_at`.
+     *
+     *     The event this writes keeps a snapshot of the analysis fields it
+     *     replaced, and the response names that event in `event_id` so the
+     *     decision can be undone with `POST /api/v1/findings/{id}/analysis/undo`.
+     *     `expected_state` makes the write conditional on the finding's current
+     *     analysis state; the write is also refused with `analysis_conflict` when
+     *     the finding changed while the request was being handled.
      */
     patch: operations["triageFinding"];
     trace?: never;
@@ -2528,6 +2535,8 @@ export interface components {
        * @description Required for `accepted_risk` and `wont_fix`; the expiry sweep resets those findings.
        */
       analysis_expires_at?: string;
+      /** @description When set, the write applies only while the finding is still in this analysis state; otherwise it fails with 409 `analysis_conflict`. */
+      expected_state?: string;
     };
     TriageResult: {
       /** Format: uuid */
@@ -2535,6 +2544,11 @@ export interface components {
       analysis_state: string;
       /** @enum {string} */
       gate_effect: "block" | "ignore";
+      /**
+       * Format: uuid
+       * @description The finding event this decision wrote. Absent in bulk results.
+       */
+      event_id?: string;
     };
     BulkTriageRequest: {
       finding_ids: string[];
@@ -4786,6 +4800,23 @@ export interface operations {
       401: components["responses"]["Unauthorized"];
       403: components["responses"]["Forbidden"];
       404: components["responses"]["NotFound"];
+      /** @description The finding's analysis state is not the one the request expected. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "error": {
+           *         "code": "analysis_conflict",
+           *         "message": "The finding was triaged by someone else since you loaded it."
+           *       }
+           *     }
+           */
+          "application/json": components["schemas"]["Error"];
+        };
+      };
       422: components["responses"]["Unprocessable"];
     };
   };

@@ -23,6 +23,10 @@ import (
 // Postgres adapter maps pgx.ErrNoRows to it at the boundary.
 var ErrNotFound = errors.New("not found")
 
+// ErrAnalysisConflict is returned when an analysis write is refused because
+// the finding no longer matches the state the caller based it on.
+var ErrAnalysisConflict = errors.New("analysis state changed")
+
 // ErrWaiverNotPending is returned when a waiver decision targets a waiver
 // that already has a final status.
 var ErrWaiverNotPending = errors.New("waiver is not pending")
@@ -678,6 +682,10 @@ type UpdateAnalysisInput struct {
 	ManualOverride    bool
 	ReviewRequired    bool
 	AnalysisUpdatedBy *string
+	// ExpectedState, when set, is a precondition: the write applies only
+	// while the finding's analysis_state still equals it, otherwise the
+	// store returns ErrAnalysisConflict.
+	ExpectedState *string
 }
 
 // UpsertFindingInput carries the fields of one finding upsert.
@@ -727,8 +735,9 @@ type FindingStore interface {
 	// the page window. It backs the list's X-Total-Count header.
 	CountByProject(ctx context.Context, projectID string, params ListFindingsParams) (int64, error)
 	UpdateAnalysis(ctx context.Context, input UpdateAnalysisInput) (Finding, error)
-	// UpdateAnalysisWithEvent atomically updates analysis state and records its audit event.
-	UpdateAnalysisWithEvent(ctx context.Context, input UpdateAnalysisInput, event FindingEventInput) (Finding, error)
+	// UpdateAnalysisWithEvent atomically updates analysis state and records
+	// its audit event, returning the updated finding and the stored event.
+	UpdateAnalysisWithEvent(ctx context.Context, input UpdateAnalysisInput, event FindingEventInput) (Finding, FindingEvent, error)
 	BulkUpdateAnalysis(ctx context.Context, input UpdateAnalysisInput, ids []string) ([]Finding, error)
 	BulkTriage(ctx context.Context, input UpdateAnalysisInput, ids []string, event FindingEventInput) ([]Finding, error)
 	CreateEvent(ctx context.Context, input FindingEventInput) (FindingEvent, error)
