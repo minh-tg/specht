@@ -118,8 +118,29 @@ describe("triageUndoPlan", () => {
 
 describe("revokeUndoPlan", () => {
   const refresh = vi.fn();
-  const revoked = { id: "w1", status: "approved", enabled: false } as Waiver;
+  const revoked = {
+    id: "w1",
+    status: "approved",
+    enabled: false,
+    updated_at: "2026-10-15T09:12:44.123456Z",
+  } as Waiver;
   beforeEach(() => refresh.mockClear());
+
+  /** Answers every restore with this refusal, as the server does when the waiver moved on. */
+  function refuseRestoreWith(code: string) {
+    const base = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/restore")) {
+        calls.push({
+          method: init?.method ?? "GET",
+          url: String(url),
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+        });
+        return jsonResponse({ error: { code, message: `refused: ${code}` } }, 409);
+      }
+      return (base as typeof fetch)(url, init);
+    });
+  }
 
   it.each(
     [
@@ -132,28 +153,39 @@ describe("revokeUndoPlan", () => {
       .toBeUndefined();
   });
 
-  it("reads the waiver, then toggles it back", async () => {
+  it("sends one restore carrying the version the revoke returned, and reads nothing first", async () => {
     const plan = revokeUndoPlan({ slug: "pay", waiver: revoked, refresh })!;
     await plan.run();
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
-      "GET /api/v1/projects/pay/waivers/w1",
-      "POST /api/v1/projects/pay/waivers/w1/toggle",
+      "POST /api/v1/projects/pay/waivers/w1/restore",
     ]);
+    expect(calls[0]!.body).toEqual({ expected_updated_at: "2026-10-15T09:12:44.123456Z" });
     expect(plan.done).toBe("Waiver back in force");
   });
 
-  it.each(
-    [
-      ["someone switched it back on", { status: "approved", enabled: true }],
-      ["it was withdrawn or closed", { status: "rejected", enabled: false }],
-    ] as const,
-  )("refuses, and toggles nothing, when %s", async (_name, over) => {
-    serverWaiver = { id: "w1", ...over };
+  it.each(["waiver_changed", "waiver_not_approved"])(
+    "refuses with a plain sentence when the server answers %s",
+    async (code) => {
+      refuseRestoreWith(code);
+      const plan = revokeUndoPlan({ slug: "pay", waiver: revoked, refresh })!;
+      await expect(plan.run()).rejects.toThrow(
+        "The waiver changed in the meantime, so Undo did nothing.",
+      );
+    },
+  );
+
+  it("says the waiver has expired when the server refuses for that reason", async () => {
+    refuseRestoreWith("waiver_expired");
     const plan = revokeUndoPlan({ slug: "pay", waiver: revoked, refresh })!;
-    await expect(plan.run()).rejects.toThrow(
-      "The waiver changed in the meantime, so Undo did nothing.",
+    await expect(plan.run()).rejects.toThrow("The waiver has expired. Extend its expiry first.");
+  });
+
+  it("lets an error that is not a refusal through unchanged", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      jsonResponse({ error: { code: "internal_error", message: "boom" } }, 500),
     );
-    expect(calls.map((c) => c.method)).toEqual(["GET"]);
+    const plan = revokeUndoPlan({ slug: "pay", waiver: revoked, refresh })!;
+    await expect(plan.run()).rejects.toThrow("boom");
   });
 });
 

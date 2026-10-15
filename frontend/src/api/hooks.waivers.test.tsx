@@ -1,8 +1,17 @@
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
+import type { Waiver } from "@/types/api";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { scanPollInterval, useRequestWaiver, useScanSignal, useWaivers } from "./hooks";
+import {
+  queryKeys,
+  scanPollInterval,
+  useRequestWaiver,
+  useRestoreWaiver,
+  useRevokeWaiver,
+  useScanSignal,
+  useWaivers,
+} from "./hooks";
 
 let calls: Array<{ url: string; method: string; body: string; }>;
 let reportsAnswer: unknown[];
@@ -22,6 +31,9 @@ beforeEach(() => {
         method: (init?.method ?? "GET").toUpperCase(),
         body: String(init?.body ?? ""),
       });
+      if (url.endsWith("/revoke") || url.endsWith("/restore")) {
+        return jsonResponse({ id: "w1", status: "approved", enabled: url.endsWith("/restore") });
+      }
       if (url.includes("/waivers/requests")) {
         return jsonResponse({ id: "w1", status: "pending", targets: [] }, 201);
       }
@@ -85,6 +97,86 @@ describe("useRequestWaiver", () => {
       reason: "not reachable",
       expires_at: "2030-01-01T00:00:00.000Z",
     });
+  });
+});
+
+describe("useRevokeWaiver and useRestoreWaiver", () => {
+  const shown = {
+    id: "w 1",
+    status: "approved",
+    enabled: true,
+    updated_at: "2026-10-15T09:12:44.123456Z",
+  } as Waiver;
+
+  it("revokes by POST to the revoke path with the version the screen showed", async () => {
+    const { result } = renderHook(() => useRevokeWaiver("acme"), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync(shown);
+    });
+    expect(calls[0].url).toBe("/api/v1/projects/acme/waivers/w%201/revoke");
+    expect(calls[0].method).toBe("POST");
+    expect(JSON.parse(calls[0].body)).toEqual({
+      expected_updated_at: "2026-10-15T09:12:44.123456Z",
+    });
+  });
+
+  it("restores by POST to the restore path with the version the screen showed", async () => {
+    const { result } = renderHook(() => useRestoreWaiver("acme"), { wrapper });
+    await act(async () => {
+      await result.current.mutateAsync({ ...shown, enabled: false });
+    });
+    expect(calls[0].url).toBe("/api/v1/projects/acme/waivers/w%201/restore");
+    expect(JSON.parse(calls[0].body)).toEqual({
+      expected_updated_at: "2026-10-15T09:12:44.123456Z",
+    });
+  });
+
+  it("refreshes the waivers, their history, the gate and the project numbers after a restore", async () => {
+    const client = createTestQueryClient();
+    const invalidated: unknown[] = [];
+    const original = client.invalidateQueries.bind(client);
+    client.invalidateQueries = ((filters: { queryKey?: unknown; }) => {
+      invalidated.push(filters.queryKey);
+      return original(filters as never);
+    }) as typeof client.invalidateQueries;
+    const { result } = renderHook(() => useRestoreWaiver("acme"), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    });
+    await act(async () => {
+      await result.current.mutateAsync({ ...shown, enabled: false });
+    });
+    expect(invalidated).toEqual(
+      expect.arrayContaining([
+        queryKeys.waivers(),
+        ["waiver-events", "acme"],
+        queryKeys.gate("acme"),
+        queryKeys.projectStats("acme"),
+        queryKeys.project("acme"),
+      ]),
+    );
+  });
+
+  it("fetches the list again when the server refuses the switch", async () => {
+    globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      calls.push({ url: String(input), method: "POST", body: "" });
+      return jsonResponse({ error: { code: "waiver_changed", message: "changed" } }, 409);
+    });
+    const client = createTestQueryClient();
+    const spy = vi.spyOn(client, "invalidateQueries");
+    const { result } = renderHook(() => useRestoreWaiver("acme"), {
+      wrapper: ({ children }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    });
+    await act(async () => {
+      await result.current.mutateAsync({ ...shown, enabled: false }).catch(() => {});
+    });
+    expect(spy).toHaveBeenCalledWith({ queryKey: queryKeys.waivers() });
+    await waitFor(() =>
+      expect(result.current.error?.message).toContain("The waiver changed since this list loaded")
+    );
   });
 });
 

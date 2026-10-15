@@ -1,6 +1,12 @@
 import type { Waiver } from "@/types/api";
 import { describe, expect, it } from "vitest";
-import { closedReason, countByBucket, waiverBucket, waiverTitle } from "./classify";
+import {
+  closedReason,
+  countByBucket,
+  waiverBucket,
+  waiverEventLabel,
+  waiverTitle,
+} from "./classify";
 
 const now = new Date("2026-10-12T12:00:00Z");
 
@@ -59,6 +65,43 @@ describe("closedReason", () => {
     expect(
       closedReason(waiver({ status: "approved", expires_at: "2026-10-01T00:00:00Z" }), now),
     ).toBe("Expired");
+  });
+});
+
+describe("closedReason for a waiver the sweeper switched off", () => {
+  // The sweeper disables an expired waiver and leaves it approved, so it is also "off". Expiry has
+  // to win, or a waiver that can no longer be restored would be labelled as one that can.
+  it("calls an approved, switched-off waiver past its expiry Expired, not Revoked", () => {
+    expect(
+      closedReason(
+        waiver({ status: "approved", enabled: false, expires_at: "2026-10-12T11:59:59Z" }),
+        now,
+      ),
+    ).toBe("Expired");
+  });
+
+  it("still calls a switched-off waiver with time left Revoked", () => {
+    expect(
+      closedReason(
+        waiver({ status: "approved", enabled: false, expires_at: "2026-10-20T00:00:00Z" }),
+        now,
+      ),
+    ).toBe("Revoked");
+    expect(closedReason(waiver({ status: "approved", enabled: false }), now)).toBe("Revoked");
+  });
+
+  it("keeps Rejected and Withdrawn ahead of an old expiry", () => {
+    expect(closedReason(waiver({ status: "rejected", expires_at: "2026-10-01T00:00:00Z" }), now))
+      .toBe("Rejected");
+    expect(closedReason(waiver({ status: "withdrawn", expires_at: "2026-10-01T00:00:00Z" }), now))
+      .toBe("Withdrawn");
+  });
+});
+
+describe("waiverEventLabel", () => {
+  it("names the revoke and restore events", () => {
+    expect(waiverEventLabel("revoked")).toBe("Revoked");
+    expect(waiverEventLabel("restored")).toBe("Restored");
   });
 });
 

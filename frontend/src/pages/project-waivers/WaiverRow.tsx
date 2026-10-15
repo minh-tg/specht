@@ -28,6 +28,7 @@ export interface WaiverRowActions {
   readonly onReject: (waiver: Waiver) => void;
   readonly onWithdraw: (waiver: Waiver) => void;
   readonly onRevoke: (waiver: Waiver) => void;
+  readonly onRestore: (waiver: Waiver) => void;
   readonly onEdit: (waiver: Waiver) => void;
   readonly onDelete: (waiver: Waiver) => void;
 }
@@ -161,15 +162,26 @@ export function WaiverRow({ slug, waiver, bucket, now, who, actions }: {
             Revoke
           </Button>
         )}
+        {closed === "Revoked" && actions.canRevoke && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={actions.busy}
+            aria-label={`Restore ${title}`}
+            onClick={() => actions.onRestore(waiver)}
+          >
+            Restore
+          </Button>
+        )}
         {actions.canManage && (
           <Button
             size="sm"
             variant="outline"
             disabled={actions.busy}
-            aria-label={`Edit ${title}`}
+            aria-label={closed === "Expired" ? `Edit expiry of ${title}` : `Edit ${title}`}
             onClick={() => actions.onEdit(waiver)}
           >
-            Edit
+            {closed === "Expired" ? "Edit expiry" : "Edit"}
           </Button>
         )}
         {actions.canManage && (
