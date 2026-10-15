@@ -27,3 +27,54 @@ describe("theme cross-fade", () => {
     expect(fade).not.toMatch(/transform|scale|translate/);
   });
 });
+
+/** Everything inside the first `@media (query) { ... }` block, with nested braces kept. */
+function media(query: string): string {
+  const start = css.indexOf(`@media ${query} {`);
+  if (start === -1) throw new Error(`No @media ${query}`);
+  let depth = 0;
+  for (let i = css.indexOf("{", start); i < css.length; i++) {
+    if (css[i] === "{") depth++;
+    if (css[i] === "}" && --depth === 0) return css.slice(css.indexOf("{", start) + 1, i);
+  }
+  throw new Error(`Unclosed @media ${query}`);
+}
+
+describe("sticky header fallbacks", () => {
+  it("goes solid and unblurred when the person asks for reduced transparency", () => {
+    const block = media("(prefers-reduced-transparency: reduce)");
+
+    expect(block).toContain(".site-header");
+    expect(block).toContain("background-color: var(--background)");
+    expect(block).toContain("backdrop-filter: none");
+  });
+
+  it("goes to the system canvas without a blur in forced-colors mode", () => {
+    const block = media("(forced-colors: active)");
+
+    expect(block).toContain(".site-header");
+    expect(block).toContain("background-color: Canvas");
+    expect(block).toContain("backdrop-filter: none");
+  });
+
+  it("keeps the fallback rules outside every @layer so they beat the translucent utilities", () => {
+    // Unlayered rules win over the utilities layer whatever their specificity.
+    const bare = css.replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const query of ["(prefers-reduced-transparency: reduce)", "(forced-colors: active)"]) {
+      const before = bare.slice(0, bare.indexOf(`@media ${query}`));
+      const depth = [...before].reduce(
+        (open, ch) => open + (ch === "{" ? 1 : ch === "}" ? -1 : 0),
+        0,
+      );
+      expect(depth, `@media ${query} is nested in another block`).toBe(0);
+    }
+  });
+});
+
+describe("scroll padding under the sticky header", () => {
+  it("offsets anchors and focus by the measured header height from sm up only", () => {
+    const block = media("(min-width: 40rem)");
+
+    expect(block).toMatch(/html\s*\{[^}]*scroll-padding-top:\s*calc\(var\(--header-h, 0px\)/);
+  });
+});
