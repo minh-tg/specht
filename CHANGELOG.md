@@ -71,6 +71,15 @@ releases.
   EPSS percentile and the KEV due date and ransomware use are read from the
   feeds. `INTEL_ENABLED=false` turns the EPSS and KEV feeds off, so an
   air-gapped install makes no feed calls.
+- Restore a revoked waiver from the Closed list of the waivers page (project managers and
+  admins). `POST /waivers/{id}/revoke` and `/restore` name the wanted state, so a repeat changes
+  nothing, and an optional `expected_updated_at` answers 409 `waiver_changed` when someone else
+  wrote the waiver first. The Undo on the revoke toast uses it, so it no longer overrides a
+  restore and revoke made in between. A waiver past its expiry cannot come back until its expiry
+  is extended (409 `waiver_expired`), shows as Expired instead of Revoked, and no longer counts
+  in the project's waiver total. History and the audit log record who revoked or restored a
+  waiver and when. `POST /waivers/{id}/toggle` still works for approved waivers but is
+  deprecated, and it refuses pending, rejected, withdrawn and expired ones.
 
 ### Changed
 
