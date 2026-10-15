@@ -261,7 +261,8 @@ test("logout and session expiry both return to sign in", async ({ page }) => {
   await uiLogin(page);
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByRole("button", { name: /^Account menu/ }).click();
+  await page.getByRole("menuitem", { name: "Sign out" }).click();
   await expect(page).toHaveURL(/\/login/);
 
   // Session expiry: the stored session vanishes and the guard bounces the
@@ -574,8 +575,14 @@ test("the navigation fits a 360px screen without cutting or wrapping a link", as
   await page.goto("/", { waitUntil: "networkidle" });
 
   const nav = page.getByRole("navigation", { name: "Main" });
-  for (const name of ["Profile", "Teams", "API keys", "Admin", "Sign out"]) {
-    const item = nav.getByText(name, { exact: true });
+  const trigger = nav.getByRole("button", { name: /^Account menu/ });
+  const items = [
+    ["Account menu", trigger],
+    ["Teams", nav.getByRole("link", { name: "Teams", exact: true })],
+    ["API keys", nav.getByRole("link", { name: "API keys", exact: true })],
+    ["Admin", nav.getByRole("link", { name: "Admin", exact: true })],
+  ] as const;
+  for (const [name, item] of items) {
     await expect(item).toBeVisible();
     const box = await item.boundingBox();
     expect(box, name).not.toBeNull();

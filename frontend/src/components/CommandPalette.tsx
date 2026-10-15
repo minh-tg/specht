@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useCommands } from "@/components/useCommands";
 import { type Command, sectionCommands } from "@/lib/commands";
@@ -73,16 +74,20 @@ export function CommandPalette() {
 
   return (
     <>
-      <button
+      <Button
         type="button"
+        variant="outline"
+        size="sm"
         onClick={() => setOpen(true)}
         aria-label="Open command palette"
         title={`Search and jump (${isMac() ? "⌘K" : "Ctrl+K"})`}
-        className="text-muted-foreground hover:text-foreground hover:bg-muted inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md px-1.5 text-xs"
+        className="shrink-0"
       >
-        <SearchIcon aria-hidden="true" size={15} />
-        <kbd className="font-mono max-sm:hidden">{isMac() ? "⌘K" : "Ctrl K"}</kbd>
-      </button>
+        <SearchIcon aria-hidden="true" />
+        <kbd className="bg-muted text-muted-foreground rounded px-1 font-mono text-[0.6875rem] max-sm:hidden">
+          {isMac() ? "⌘K" : "Ctrl K"}
+        </kbd>
+      </Button>
 
       <Dialog open={open} onOpenChange={changeOpen}>
         <DialogContent

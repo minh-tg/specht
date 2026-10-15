@@ -155,35 +155,54 @@ describe("Navbar", () => {
     expect(meCalls).toHaveLength(0);
   });
 
-  it("shows account tools, hides Ingest, and invokes logout when signed in", async () => {
+  it("shows account tools, hides Ingest, and invokes logout from the account menu", async () => {
     const logout = vi.fn();
     renderNavbar({ ...signedIn(), logout });
 
     expect(screen.queryByRole("link", { name: "Ingest" })).not.toBeInTheDocument();
-    expect(screen.getByText("user@example.com")).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByRole("link", { name: "API keys" })).toHaveAttribute("href", "/api-keys");
     });
     expect(capabilitiesCalls).toHaveLength(0);
     expect(await screen.findByRole("link", { name: "Admin" })).toHaveAttribute("href", "/admin");
+    expect(screen.queryByRole("button", { name: "Sign out" })).not.toBeInTheDocument();
 
-    const logoutButton = screen.getByRole("button", { name: "Sign out" });
-    expect(logoutButton).toHaveAttribute("type", "button");
-    await userEvent.setup().click(logoutButton);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Account menu, user@example.com" }));
+    await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
     expect(logout).toHaveBeenCalledOnce();
   });
 
-  it("links to the profile page for every signed-in person, members included", async () => {
+  it("operates the account menu from the keyboard", async () => {
+    const logout = vi.fn();
+    renderNavbar({ ...signedIn(), logout });
+    const user = userEvent.setup();
+
+    screen.getByRole("button", { name: "Account menu, user@example.com" }).focus();
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("menuitem", { name: "Profile" })).toBeInTheDocument();
+    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+    expect(logout).toHaveBeenCalledOnce();
+  });
+
+  it("puts Profile in the account menu for every signed-in person, members included", async () => {
     meRole = "member";
     renderNavbar(signedIn());
 
-    expect(screen.getByRole("link", { name: "Profile" })).toHaveAttribute("href", "/profile");
     await waitFor(() => expect(meSettled).toBe(true));
-    expect(screen.getByRole("link", { name: "Profile" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Profile" })).not.toBeInTheDocument();
+    await userEvent.setup().click(
+      screen.getByRole("button", { name: "Account menu, user@example.com" }),
+    );
+    expect(await screen.findByRole("menuitem", { name: "Profile" })).toHaveAttribute(
+      "href",
+      "/profile",
+    );
   });
 
-  it("does not offer the profile page to a signed-out visitor", () => {
+  it("does not offer the account menu to a signed-out visitor", () => {
     renderNavbar(signedOut);
+    expect(screen.queryByRole("button", { name: /Account menu/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Profile" })).not.toBeInTheDocument();
   });
 
@@ -204,12 +223,28 @@ describe("Navbar", () => {
     expect(screen.getByRole("link", { name: "API keys" })).toHaveAttribute("href", "/api-keys");
   });
 
-  it("truncates and titles the signed-in email", async () => {
+  it("truncates and titles the email, and keeps the trigger named when the text is hidden", () => {
     renderNavbar(signedIn("a-very-long-address@example.com"));
 
+    const trigger = screen.getByRole("button", {
+      name: "Account menu, a-very-long-address@example.com",
+    });
     const email = screen.getByText("a-very-long-address@example.com");
+    expect(trigger).toContainElement(email);
     expect(email).toHaveAttribute("title", "a-very-long-address@example.com");
-    expect(email).toHaveClass("truncate", "max-w-[10rem]", "hidden", "sm:inline");
+    expect(email).toHaveClass("truncate", "max-sm:hidden");
+  });
+
+  it("gives primary links the ghost button look and the current page a fill", async () => {
+    renderNavbar(signedIn(), "/teams");
+
+    const teams = screen.getByRole("link", { name: "Teams" });
+    expect(teams).toHaveAttribute("aria-current", "page");
+    expect(teams).toHaveClass("h-8", "px-2.5", "rounded-lg", "bg-muted", "text-foreground");
+    const keys = screen.getByRole("link", { name: "API keys" });
+    expect(keys).not.toHaveAttribute("aria-current");
+    expect(keys).toHaveClass("hover:bg-muted", "text-muted-foreground");
+    expect(keys).not.toHaveClass("bg-muted");
   });
 
   it("marks the active link with aria-current", async () => {
