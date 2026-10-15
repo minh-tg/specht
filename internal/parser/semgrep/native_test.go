@@ -53,7 +53,8 @@ func TestNativeFindingFields(t *testing.T) {
 	require.Len(t, nr.Findings, 3)
 
 	sql := nr.Findings[0]
-	assert.Equal(t, "sast:python.lang.security.audit.formatted-sql-query.formatted-sql-query:app.py:4", sql.Fingerprint)
+	assert.Regexp(t, `^sast:python\.lang\.security\.audit\.formatted-sql-query\.formatted-sql-query:app\.py:t[0-9a-f]{12}$`, sql.Fingerprint,
+		"rule, file and a digest of the message; the line is not part of it")
 	assert.Equal(t, "sast", sql.FindingKind)
 	assert.Equal(t, "app.py:4", sql.Location)
 	assert.Equal(t, domain.SeverityMedium, sql.Severity, "WARNING is medium")
