@@ -78,6 +78,11 @@ releases.
   is no longer part of it: a finding is the rule, the file and what was
   matched (Semgrep's own match id when the run is logged in, otherwise the
   message), and two alike in one file are told apart by their order.
+- The upload page names scanners the way people know them ("Trivy", "SARIF (any
+  tool)") and, once one is chosen, shows the files it reads, the command that
+  produces each, and the tool version it was checked with. It accepts `.sarif`
+  files. The same information is in `GET /api/v1/scanners` and in the README,
+  where it is generated from the parsers.
 - Semgrep reports are read from `semgrep --json` as well as `--sarif`. Both
   formats give the same findings, so switching keeps a project's history.
 - A Checkov run over a directory with several kinds of files (Terraform,
