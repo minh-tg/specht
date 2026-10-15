@@ -2,7 +2,9 @@ import { resetSoundForTests, SOUND_STORAGE_KEY } from "@/lib/sound";
 import { Menu } from "@base-ui/react/menu";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { AccountMenu } from "./AccountMenu";
 import { SoundSetting } from "./SoundSetting";
 
 const created = vi.hoisted(() => ({ count: 0, oscillators: 0 }));
@@ -82,5 +84,18 @@ describe("SoundSetting", () => {
 
     expect(window.localStorage.getItem(SOUND_STORAGE_KEY)).toBe("off");
     expect(created.oscillators).toBe(0);
+  });
+});
+
+describe("AccountMenu", () => {
+  it("offers the sound setting in the account menu", async () => {
+    render(
+      <MemoryRouter>
+        <AccountMenu email="a@example.corp" onLogout={() => {}} />
+      </MemoryRouter>,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /Account menu/ }));
+    expect(await screen.findByRole("menuitem", { name: "Sign out" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitemcheckbox", { name: "Sound effects" })).toBeInTheDocument();
   });
 });

@@ -1,3 +1,4 @@
+import { SoundSetting } from "@/components/SoundSetting";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { cn } from "@/lib/utils";
 import { Menu } from "@base-ui/react/menu";
@@ -35,6 +36,7 @@ export function AccountMenu({ email, onLogout }: { email: string | null; onLogou
             <Menu.LinkItem render={<Link to="/profile" />} className={ITEM_CLASS}>
               Profile
             </Menu.LinkItem>
+            <SoundSetting />
             <Menu.Item onClick={onLogout} className={ITEM_CLASS}>
               Sign out
             </Menu.Item>
