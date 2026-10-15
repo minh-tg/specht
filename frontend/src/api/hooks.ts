@@ -249,8 +249,21 @@ export function useVersion() {
 /**
  * How long a project, a finding or a findings page counts as fresh. A hover prefetch fills the
  * cache just before the page mounts, and this keeps the page from fetching the same data again.
+ * It is short on purpose: it only de-duplicates a prefetch, so a person who comes back to a page a
+ * few seconds later sees other people's changes. Focus and reconnect refetch stale data by default.
  */
-export const PREFETCH_STALE_MS = 15 * 1000;
+export const PREFETCH_STALE_MS = 5 * 1000;
+
+/** How often an open findings list or finding page asks again. Only a visible tab polls. */
+export const POLL_MS = 30 * 1000;
+
+/**
+ * Polling is chosen by the page, never by the shared query options: the change view and the waiver
+ * rows call `useFinding` once per row, and each of them would poll too.
+ */
+export interface PollOptions {
+  refetchInterval?: number | false;
+}
 
 /** Query options for one project. Shared by `useProject` and the hover prefetch so their keys match. */
 export function projectQueryOptions(slug: string) {
@@ -353,10 +366,12 @@ export function findingsQueryOptions(projectSlug: string, filters: FindingsQuery
   };
 }
 
-export function useFindings(projectSlug: string, filters: FindingsQuery) {
+export function useFindings(projectSlug: string, filters: FindingsQuery, poll?: PollOptions) {
   return useQuery({
     ...findingsQueryOptions(projectSlug, filters),
     placeholderData: keepPreviousData,
+    refetchInterval: poll?.refetchInterval,
+    refetchIntervalInBackground: false,
   });
 }
 
@@ -374,8 +389,12 @@ export function findingQueryOptions(findingId: string) {
   };
 }
 
-export function useFinding(findingId: string) {
-  return useQuery(findingQueryOptions(findingId));
+export function useFinding(findingId: string, poll?: PollOptions) {
+  return useQuery({
+    ...findingQueryOptions(findingId),
+    refetchInterval: poll?.refetchInterval,
+    refetchIntervalInBackground: false,
+  });
 }
 
 /**
@@ -539,7 +558,7 @@ export function useReachability(findingId: string) {
 /** The most rows the server returns for one list request. */
 export const MAX_PAGE_SIZE = 500;
 
-export function useFindingEvents(findingId: string) {
+export function useFindingEvents(findingId: string, poll?: PollOptions) {
   return useQuery({
     queryKey: queryKeys.findingEvents(findingId),
     queryFn: () =>
@@ -547,6 +566,8 @@ export function useFindingEvents(findingId: string) {
         `/api/v1/findings/${encodeURIComponent(findingId)}/events?limit=${MAX_PAGE_SIZE}`,
       ),
     enabled: !!findingId,
+    refetchInterval: poll?.refetchInterval,
+    refetchIntervalInBackground: false,
   });
 }
 

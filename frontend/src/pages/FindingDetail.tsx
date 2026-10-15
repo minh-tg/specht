@@ -1,4 +1,5 @@
 import {
+  POLL_MS,
   useFinding,
   useFindingEvents,
   useGateStatus,
@@ -10,6 +11,7 @@ import { usePendingTriage } from "@/api/pendingTriage";
 import { ErrorState } from "@/components/ErrorState";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { UpdatedHint } from "@/components/UpdatedHint";
 import { analysisStateLabel } from "@/lib/enums";
 import { blocksGate, blocksGateSentence } from "@/lib/gate";
 import { useState } from "react";
@@ -37,7 +39,17 @@ function backToFindingsPath(slug: string, state: unknown): string {
 export function FindingDetail() {
   const { slug, findingId } = useParams<{ slug: string; findingId: string; }>();
   const location = useLocation();
-  const { data: finding, isLoading, isError, error, refetch } = useFinding(findingId ?? "");
+  // The finding and its history ask again every 30 s while the tab is visible.
+  const poll = { refetchInterval: POLL_MS };
+  const {
+    data: finding,
+    dataUpdatedAt: findingUpdatedAt,
+    isFetching: findingFetching,
+    isLoading,
+    isError,
+    error,
+    refetch,
+  } = useFinding(findingId ?? "", poll);
   const { data: gate } = useGateStatus(slug ?? "");
   const { data: project } = useProject(slug ?? "");
   const pendingWaivers = useWaivers(slug ?? "", ["pending"]);
@@ -50,9 +62,14 @@ export function FindingDetail() {
     error: reachabilityError,
     isSuccess: reachabilityLoaded,
   } = useReachability(findingId ?? "");
-  const { data: events, isLoading: eventsLoading, isError: eventsIsError } = useFindingEvents(
-    findingId ?? "",
-  );
+  const {
+    data: events,
+    dataUpdatedAt: eventsUpdatedAt,
+    isFetching: eventsFetching,
+    isLoading: eventsLoading,
+    isError: eventsIsError,
+    refetch: refetchEvents,
+  } = useFindingEvents(findingId ?? "", poll);
 
   if (isLoading) {
     return (
@@ -99,12 +116,23 @@ export function FindingDetail() {
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8">
-      <Link
-        to={backToFindingsPath(slug ?? "", location.state)}
-        className="text-muted-foreground hover:text-foreground mb-6 inline-block text-sm"
-      >
-        &larr; Back to findings
-      </Link>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <Link
+          to={backToFindingsPath(slug ?? "", location.state)}
+          className="text-muted-foreground hover:text-foreground inline-block text-sm"
+        >
+          &larr; Back to findings
+        </Link>
+        <UpdatedHint
+          updatedAt={Math.min(findingUpdatedAt, eventsUpdatedAt || findingUpdatedAt)}
+          watch={[finding, events]}
+          isFetching={findingFetching || eventsFetching}
+          onRefresh={() => {
+            void refetch();
+            void refetchEvents();
+          }}
+        />
+      </div>
 
       <FindingHeader
         finding={finding}
