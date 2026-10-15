@@ -302,9 +302,14 @@ describe("FindingsDashboard", () => {
     await waitFor(() => expect(lastFindingsRequest().searchParams.get("sort")).toBe("first_seen"));
     expect(lastFindingsRequest().searchParams.get("dir")).toBe("asc");
 
+    // The default view was fetched a moment ago, so it comes from the cache without a request.
     await sortBy(/Severity/);
-    await waitFor(() => expect(lastFindingsRequest().searchParams.get("sort")).toBe("severity"));
-    expect(lastFindingsRequest().searchParams.get("dir")).toBe("desc");
+    await waitFor(() =>
+      expect(screen.getByRole("columnheader", { name: /Severity/ })).toHaveAttribute(
+        "aria-sort",
+        "descending",
+      )
+    );
   });
   it("shows the rows in the order the server returns them", async () => {
     // The server orders the whole result. The page must not reorder its own twenty rows.
@@ -467,10 +472,11 @@ describe("FindingsDashboard", () => {
     await user.click(screen.getByRole("button", { name: "Clear filters" }));
 
     expect(await screen.findByText("Test Vuln")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(lastFindingsRequest().searchParams.get("severity")).toBeNull();
-    });
-    expect(lastFindingsRequest().searchParams.get("offset")).toBe("0");
+    // The unfiltered page was fetched a moment ago, so it comes from the cache without a request.
+    expect(screen.getByRole("button", { name: /^Critical/ })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
   it("keeps the filter controls mounted while a filtered refetch is pending", async () => {
     let releaseFiltered: ((response: Response) => void) | undefined;

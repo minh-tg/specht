@@ -245,12 +245,24 @@ export function useVersion() {
   });
 }
 
-export function useProject(slug: string) {
-  return useQuery({
+/**
+ * How long a project, a finding or a findings page counts as fresh. A hover prefetch fills the
+ * cache just before the page mounts, and this keeps the page from fetching the same data again.
+ */
+export const PREFETCH_STALE_MS = 15 * 1000;
+
+/** Query options for one project. Shared by `useProject` and the hover prefetch so their keys match. */
+export function projectQueryOptions(slug: string) {
+  return {
     queryKey: queryKeys.project(slug),
     queryFn: () => apiFetch<Project>(`/api/v1/projects/${encodeURIComponent(slug)}`),
     enabled: !!slug,
-  });
+    staleTime: PREFETCH_STALE_MS,
+  };
+}
+
+export function useProject(slug: string) {
+  return useQuery(projectQueryOptions(slug));
 }
 
 export function useProjectStats(
@@ -311,8 +323,9 @@ export function useCreateApiKey() {
   });
 }
 
-export function useFindings(projectSlug: string, filters: FindingsQuery) {
-  return useQuery({
+/** Query options for one findings page. Shared by `useFindings` and the hover prefetch so their keys match. */
+export function findingsQueryOptions(projectSlug: string, filters: FindingsQuery) {
+  return {
     queryKey: queryKeys.findings(projectSlug, filters),
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -335,6 +348,13 @@ export function useFindings(projectSlug: string, filters: FindingsQuery) {
       return { findings: data, total };
     },
     enabled: !!projectSlug,
+    staleTime: PREFETCH_STALE_MS,
+  };
+}
+
+export function useFindings(projectSlug: string, filters: FindingsQuery) {
+  return useQuery({
+    ...findingsQueryOptions(projectSlug, filters),
     placeholderData: keepPreviousData,
   });
 }
@@ -349,6 +369,7 @@ export function findingQueryOptions(findingId: string) {
     queryKey: queryKeys.finding(findingId),
     queryFn: () => apiFetch<Finding>(`/api/v1/findings/${encodeURIComponent(findingId)}`),
     enabled: !!findingId,
+    staleTime: PREFETCH_STALE_MS,
   };
 }
 
