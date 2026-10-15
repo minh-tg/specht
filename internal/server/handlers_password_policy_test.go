@@ -78,3 +78,42 @@ func TestRegister_PolicyCodesDoNotOpenOtherFailures(t *testing.T) {
 		assert.Equal(t, "registration_failed", errorCodeOf(t, w), name)
 	}
 }
+
+// A password with no visible character is a plain credential input error. The
+// endpoints that already surface those answer it with their generic password
+// code and the usecase's message, so the field shows what to fix.
+func TestPasswordNotVisible_ReachesTheClientWhereGenericPasswordErrorsDo(t *testing.T) {
+	err := usecase.ErrPasswordNotVisible
+	endpoints := map[string]struct {
+		code string
+		call func(mock *mockUsecases) *httptest.ResponseRecorder
+	}{
+		"setup": {"invalid_credentials", func(mock *mockUsecases) *httptest.ResponseRecorder {
+			mock.setupFn = func(context.Context, usecase.SetupInput) (*usecase.AuthResponse, error) { return nil, err }
+			return postSetup(t, mock, `{"token":"x","email":"a@example.com","password":"x"}`)
+		}},
+		"invite join": {"invalid_credentials", func(mock *mockUsecases) *httptest.ResponseRecorder {
+			mock.acceptInviteFn = func(context.Context, string, usecase.AcceptInviteInput) (*usecase.AcceptInviteResponse, error) {
+				return nil, err
+			}
+			return inviteRequest(t, mock, "POST", "/api/v1/invites/tok123/accept", "", `{"email":"a@example.com","password":"x"}`)
+		}},
+		"change password": {"invalid_password", func(mock *mockUsecases) *httptest.ResponseRecorder {
+			mock.changePasswordFn = func(context.Context, string, string, string) (*usecase.AuthResponse, error) { return nil, err }
+			return putPassword(t, mock, `{"current_password":"old-password","new_password":"x"}`, true)
+		}},
+		"reset": {"invalid_password", func(mock *mockUsecases) *httptest.ResponseRecorder {
+			mock.redeemPasswordReset = func(context.Context, string, string) error { return err }
+			return postJSON(testRouter(mock), "/api/v1/auth/reset", `{"token":"tok","password":"x"}`)
+		}},
+	}
+	for name, tc := range endpoints {
+		t.Run(name, func(t *testing.T) {
+			w := tc.call(&mockUsecases{})
+			require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+			code, message := errorBody(t, w)
+			assert.Equal(t, tc.code, code)
+			assert.Equal(t, "The password must contain visible characters.", message)
+		})
+	}
+}
