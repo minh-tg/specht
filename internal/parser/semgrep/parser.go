@@ -2,8 +2,11 @@ package semgrep
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -104,7 +107,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		Name:                  "semgrep",
 		Version:               "2.1",
 		ContractVersion:       1,
-		FingerprintVersion:    1,
+		FingerprintVersion:    fingerprintVersion,
 		FindingKinds:          []scanner.FindingKind{"sast"},
 		ScanTypes:             []domain.ScanType{domain.ScanTypeFilesystem, domain.ScanTypeRepository},
 		ProvidesPackages:      false,
@@ -194,7 +197,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 func convert(report sarifReport) *domain.NormalizedReport {
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
-		FingerprintVersion: 1,
+		FingerprintVersion: fingerprintVersion,
 		Completeness:       domain.CompletenessUnknown,
 		ScanType:           domain.ScanTypeFilesystem,
 		Findings:           nil,
@@ -206,17 +209,24 @@ func convert(report sarifReport) *domain.NormalizedReport {
 
 	run := report.Runs[0]
 
+	var seen []sighting
 	for _, result := range run.Results {
 		rule, hasRule := findRule(run.Tool.Driver.Rules, result.RuleID)
 		file := extractFile(result)
 		line := extractLine(result)
+		message := extractTitle(result, rule)
 
-		nr.Findings = append(nr.Findings, sastFinding(
-			result.RuleID, file, line,
-			extractTitle(result, rule), extractDescription(result, rule),
-			mapSarifLevel(result.Level, rule), resultMeta(result, rule, hasRule),
-		))
+		seen = append(seen, sighting{
+			finding: sastFinding(
+				result.RuleID, file, line, message, extractDescription(result, rule),
+				mapSarifLevel(result.Level, rule), resultMeta(result, rule, hasRule),
+			),
+			rule: result.RuleID, file: file, message: message,
+			line: line, col: extractColumn(result),
+			matchID: matchBasedID(result.Fingerprints["matchBasedId/v1"], result.Fingerprints["matchBasedFingerprint/v1"]),
+		})
 	}
+	nr.Findings = identify(seen)
 
 	return nr
 }
@@ -242,8 +252,8 @@ func resultMeta(result sarifResult, rule sarifRule, hasRule bool) map[string]any
 			}
 		}
 	}
-	if matchFP, ok := result.Fingerprints["matchBasedFingerprint/v1"]; ok {
-		meta["semgrep_fingerprint"] = matchFP
+	if id := matchBasedID(result.Fingerprints["matchBasedId/v1"], result.Fingerprints["matchBasedFingerprint/v1"]); id != "" {
+		meta["semgrep_fingerprint"] = id
 	}
 	if result.Properties != nil {
 		if sv, ok := result.Properties["severity"]; ok {
@@ -321,12 +331,15 @@ func mapSarifLevel(level string, rule sarifRule) domain.Severity {
 	}
 }
 
-// sastFinding builds a finding the same way for both Semgrep output formats.
-// The identity is the rule, the file and the line, so a scan read from SARIF
-// and the same scan read from --json are the same findings.
+// fingerprintVersion is the version of this scanner's identity formula. Version 2
+// leaves the line out, so a finding keeps its identity when code above it moves.
+const fingerprintVersion = 2
+
+// sastFinding builds a finding the same way for both Semgrep output formats. Its
+// identity is assigned afterwards by identify, which needs every finding of the
+// report to tell identical ones apart.
 func sastFinding(ruleID, file string, line int, title, description string, severity domain.Severity, extensions map[string]any) domain.NormalizedFinding {
 	return parseutil.HardenFinding(domain.NormalizedFinding{
-		Fingerprint: "sast:" + ruleID + ":" + file + ":" + strconv.Itoa(line),
 		FindingKind: "sast",
 		Title:       title,
 		Description: description,
@@ -351,12 +364,14 @@ type nativeResult struct {
 	Path    string `json:"path"`
 	Start   struct {
 		Line int `json:"line"`
+		Col  int `json:"col"`
 	} `json:"start"`
 	Extra struct {
-		Message  string         `json:"message"`
-		Severity string         `json:"severity"`
-		Fix      string         `json:"fix"`
-		Metadata map[string]any `json:"metadata"`
+		Message     string         `json:"message"`
+		Severity    string         `json:"severity"`
+		Fix         string         `json:"fix"`
+		Fingerprint string         `json:"fingerprint"`
+		Metadata    map[string]any `json:"metadata"`
 	} `json:"extra"`
 }
 
@@ -368,7 +383,7 @@ func parseNative(data []byte) (*domain.NormalizedReport, error) {
 	}
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
-		FingerprintVersion: 1,
+		FingerprintVersion: fingerprintVersion,
 		Completeness:       domain.CompletenessUnknown,
 		ScanType:           domain.ScanTypeFilesystem,
 	}
@@ -376,6 +391,7 @@ func parseNative(data []byte) (*domain.NormalizedReport, error) {
 		// Files Semgrep could not scan are missing from the results, so say so.
 		nr.ScanScope = &domain.ScanScope{Ext: map[string]string{"semgrep_errors": strconv.Itoa(n)}}
 	}
+	var seen []sighting
 	for _, r := range report.Results {
 		file := parseutil.CleanFilePath(r.Path)
 		if file == "" {
@@ -385,11 +401,18 @@ func parseNative(data []byte) (*domain.NormalizedReport, error) {
 		if title == "" {
 			title = r.CheckID
 		}
-		nr.Findings = append(nr.Findings, sastFinding(
-			r.CheckID, file, parseutil.SafeLine(r.Start.Line),
-			title, r.Extra.Message, mapNativeSeverity(r.Extra.Severity), nativeMeta(r),
-		))
+		line := parseutil.SafeLine(r.Start.Line)
+		seen = append(seen, sighting{
+			finding: sastFinding(
+				r.CheckID, file, line,
+				title, r.Extra.Message, mapNativeSeverity(r.Extra.Severity), nativeMeta(r),
+			),
+			rule: r.CheckID, file: file, message: title,
+			line: line, col: r.Start.Col,
+			matchID: matchBasedID(r.Extra.Fingerprint),
+		})
 	}
+	nr.Findings = identify(seen)
 	return nr, nil
 }
 
@@ -422,4 +445,92 @@ func nativeMeta(r nativeResult) map[string]any {
 		meta["fix"] = r.Extra.Fix
 	}
 	return meta
+}
+
+func extractColumn(result sarifResult) int {
+	if len(result.Locations) == 0 {
+		return 0
+	}
+	return parseutil.SafeLine(result.Locations[0].PhysicalLocation.Region.StartColumn)
+}
+
+// sighting is one Semgrep match before it has an identity.
+type sighting struct {
+	finding             domain.NormalizedFinding
+	rule, file, message string
+	line, col           int
+	matchID             string
+}
+
+// matchBasedID returns the first usable match-based id Semgrep wrote. A run that
+// is not logged in writes the words "requires login" in its place, which says
+// nothing about the match and must not become an identity.
+func matchBasedID(candidates ...string) string {
+	for _, c := range candidates {
+		c = strings.TrimSpace(c)
+		if c != "" && !strings.Contains(strings.ToLower(c), "requires login") {
+			return c
+		}
+	}
+	return ""
+}
+
+// identify gives every finding of a report its fingerprint, in the order they were seen.
+//
+// Moving code must not make a finding a new one, so the line is not part of the
+// identity. A finding is the rule, the file, and what was matched. What was
+// matched is Semgrep's own match-based id when the run has one (a logged-in run),
+// and otherwise the message, which names what the rule found (Semgrep fills the
+// rule's placeholders in). Two matches that are still alike, the same mistake
+// made twice in one file, are told apart by their order in the file, so fixing the
+// later one leaves the first one's identity alone.
+//
+// Both output formats go through here with the same inputs, so a project that
+// switches between --sarif and --json keeps its findings.
+func identify(seen []sighting) []domain.NormalizedFinding {
+	kind := make([]string, len(seen))
+	for i, s := range seen {
+		if s.matchID != "" {
+			kind[i] = "m" + shortHash(s.matchID)
+		} else {
+			kind[i] = "t" + shortHash(strings.Join(strings.Fields(s.message), " "))
+		}
+	}
+
+	order := make([]int, len(seen))
+	for i := range order {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		x, y := seen[order[a]], seen[order[b]]
+		if x.line != y.line {
+			return x.line < y.line
+		}
+		return x.col < y.col
+	})
+
+	ordinal := make(map[string]int, len(seen))
+	fingerprints := make([]string, len(seen))
+	for _, i := range order {
+		s := seen[i]
+		identity := "sast:" + s.rule + ":" + s.file + ":" + kind[i]
+		n := ordinal[identity]
+		ordinal[identity]++
+		if n > 0 {
+			identity += "#" + strconv.Itoa(n)
+		}
+		fingerprints[i] = identity
+	}
+
+	out := make([]domain.NormalizedFinding, len(seen))
+	for i, s := range seen {
+		s.finding.Fingerprint = fingerprints[i]
+		out[i] = s.finding
+	}
+	return out
+}
+
+func shortHash(s string) string {
+	sum := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(sum[:])[:12]
 }

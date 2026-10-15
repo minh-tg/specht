@@ -3,6 +3,7 @@ package semgrep_test
 import (
 	"context"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/minh-tg/specht/internal/domain"
@@ -70,7 +71,7 @@ func TestParse_SemgrepScan(t *testing.T) {
 	}{
 		{
 			name:        "first finding is JWT hardcoded secret",
-			fingerprint: "sast:go.jwt-hardcoded-secret:src/auth/login.go:42",
+			fingerprint: "sast:go.jwt-hardcoded-secret:src/auth/login.go:",
 			severity:    domain.SeverityHigh,
 			findingKind: "sast",
 			location:    "src/auth/login.go:42",
@@ -79,7 +80,7 @@ func TestParse_SemgrepScan(t *testing.T) {
 		},
 		{
 			name:        "second finding is Flask debug enabled",
-			fingerprint: "sast:python.flask.debug-enabled:src/app.py:15",
+			fingerprint: "sast:python.flask.debug-enabled:src/app.py:",
 			severity:    domain.SeverityMedium,
 			findingKind: "sast",
 			location:    "src/app.py:15",
@@ -103,15 +104,17 @@ func TestParse_SemgrepScan(t *testing.T) {
 	}
 }
 
-// findByFingerprint returns the matching finding or fails the test.
-func findByFingerprint(t *testing.T, findings []domain.NormalizedFinding, fingerprint string) domain.NormalizedFinding {
+// findByFingerprint returns the finding whose fingerprint starts with the given
+// rule and file. The rest is a digest of what was matched, with no line in it.
+func findByFingerprint(t *testing.T, findings []domain.NormalizedFinding, prefix string) domain.NormalizedFinding {
 	t.Helper()
 	for _, f := range findings {
-		if f.Fingerprint == fingerprint {
+		if strings.HasPrefix(f.Fingerprint, prefix) {
+			assert.Regexp(t, `^[mt][0-9a-f]{12}(#\d+)?$`, strings.TrimPrefix(f.Fingerprint, prefix))
 			return f
 		}
 	}
-	t.Fatalf("finding with fingerprint %q not found", fingerprint)
+	t.Fatalf("finding with fingerprint starting %q not found", prefix)
 	return domain.NormalizedFinding{}
 }
 
