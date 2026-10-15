@@ -88,6 +88,9 @@ releases.
   to list prints `[]`, not `null`.
 - `specht findings events --type` and the MCP `finding_events` tool now filter by event
   type. The server ignored the filter before.
+- `specht reports upload` drops a UTF-8 byte order mark, says when a file is UTF-16 (what
+  PowerShell's `>` writes) or empty, and `--limit` values too large for the API are refused
+  instead of wrapping to a small number. The MCP tools refuse them the same way.
 - The `specht` command can upload a scanner's file (`reports upload`, which also reads standard
   input and line-based `.jsonl`), list, show and delete reports, change an environment's
   exposure and data sensitivity (`environments set`), and list targets, artifacts and the
