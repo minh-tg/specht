@@ -142,6 +142,10 @@ func NewRootCmd(d Deps) *cobra.Command {
 	root.AddCommand(newWatcherCmd(d, s))
 	root.AddCommand(newWaiversCmd(d, s))
 	root.AddCommand(newReportsCmd(d, s))
+	root.AddCommand(newEnvironmentsCmd(d, s))
+	root.AddCommand(newTargetsCmd(d, s))
+	root.AddCommand(newArtifactsCmd(d, s))
+	root.AddCommand(newScannersCmd(d, s))
 	return root
 }
 
