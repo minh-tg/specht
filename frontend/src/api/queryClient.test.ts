@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const success = vi.hoisted(() => vi.fn());
-vi.mock("sonner", () => ({ toast: { success } }));
+vi.mock("sonner", () => ({ toast: { success, error: vi.fn() } }));
 
 const playCue = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/sound", () => ({ playCue }));
@@ -97,6 +97,38 @@ describe("mutation sound rules", () => {
   });
 });
 
+describe("announceMutationSuccess with an undo plan", () => {
+  const plan = { run: async () => {}, done: "Restored", refresh: () => {} };
+
+  it("adds the Undo button, and still plays the accepted cue once", () => {
+    announceMutationSuccess("Triage saved", { id: "f1" }, { id: "f1" }, undefined, () => plan);
+    expect(success).toHaveBeenCalledExactlyOnceWith(
+      "Triage saved",
+      expect.objectContaining({
+        duration: 10_000,
+        action: expect.objectContaining({ label: "Undo" }),
+      }),
+    );
+    expect(playCue).toHaveBeenCalledExactlyOnceWith("accepted");
+  });
+
+  it("hands the response and the variables to the plan builder", () => {
+    const build = vi.fn(() => plan);
+    announceMutationSuccess("Saved", { a: 1 }, { b: 2 }, undefined, build);
+    expect(build).toHaveBeenCalledExactlyOnceWith({ a: 1 }, { b: 2 });
+  });
+
+  it("shows the plain toast when this outcome has no inverse", () => {
+    announceMutationSuccess("Saved", {}, {}, undefined, () => undefined);
+    expect(success).toHaveBeenCalledExactlyOnceWith("Saved");
+  });
+
+  it("does not raise a toast for a mutation without meta.success, even with an undo", () => {
+    announceMutationSuccess(undefined, {}, {}, undefined, () => plan);
+    expect(success).not.toHaveBeenCalled();
+  });
+});
+
 describe("createQueryClient", () => {
   it("announces a successful mutation that declares meta.success", async () => {
     const client = createQueryClient(false);
@@ -104,6 +136,23 @@ describe("createQueryClient", () => {
       .build(client, { mutationFn: async () => ({ ok: true }), meta: { success: "Team created" } })
       .execute(undefined);
     expect(success).toHaveBeenCalledExactlyOnceWith("Team created");
+  });
+
+  it("passes meta.undo to the success toast", async () => {
+    const client = createQueryClient(false);
+    await client.getMutationCache()
+      .build(client, {
+        mutationFn: async () => ({ ok: true }),
+        meta: {
+          success: "Triage saved",
+          undo: () => ({ run: async () => {}, done: "Restored", refresh: () => {} }),
+        },
+      })
+      .execute(undefined);
+    expect(success).toHaveBeenCalledExactlyOnceWith(
+      "Triage saved",
+      expect.objectContaining({ action: expect.objectContaining({ label: "Undo" }) }),
+    );
   });
 
   it("does not announce a failed mutation", async () => {
