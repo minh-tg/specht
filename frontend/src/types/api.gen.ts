@@ -111,6 +111,8 @@ export interface paths {
      *     Two requests at once create one account. Once an account exists the
      *     route answers 404, the same as a server that offers no setup.
      *     Shares the credential rate limit with login and registration.
+     *
+     *     Password rules: at least 8 characters and at most 72 bytes of UTF-8 (some characters, such as emoji, take more than one), at least one visible character, and not on a list of about 2,000 commonly used passwords (`400 password_too_common`). It must also differ from the account's email address, the part before the @, and its display name (`400 password_matches_account`).
      */
     post: operations["setup"];
     delete?: never;
@@ -134,7 +136,13 @@ export interface paths {
      *     administrator comes from `POST /api/v1/setup`, later ones from the
      *     `ADMIN_EMAILS` bootstrap on the next boot.
      *     A duplicate email is indistinguishable from any other failure, by
-     *     design, so this cannot enumerate accounts.
+     *     design, so this cannot enumerate accounts. The password is judged
+     *     before the address is looked up, so a refused password answers the same
+     *     way for a taken address and a free one.
+     *
+     *     Password rules: at least 8 characters and at most 72 bytes of UTF-8 (some characters, such as emoji, take more than one), at least one visible character, and not on a list of about 2,000 commonly used passwords (`400 password_too_common`). It must also differ from the account's email address, the part before the @, and its display name (`400 password_matches_account`). Any other password
+     *     problem, such as one with no visible character, answers the generic 422
+     *     below.
      */
     post: operations["register"];
     delete?: never;
@@ -158,10 +166,14 @@ export interface paths {
      *     public. A link works once; issuing a new link for the account retires
      *     the older ones, and a link ends after 24 hours. Redeeming ends every
      *     session of the account. A link that is unknown, used, retired or
-     *     expired answers 400 `reset_link_invalid`, all alike. The password
-     *     follows the registration rules (8 to 72 characters) and is checked
-     *     before the link is spent. The route shares the sign-in rate limit per
-     *     client address.
+     *     expired answers 400 `reset_link_invalid`, all alike. The password is
+     *     checked before the link is spent, so a refused password costs nothing.
+     *     The rules are the registration rules (at least 8 characters, at most
+     *     72 bytes, a visible character, not a common password:
+     *     `400 password_too_common`), except
+     *     that the match against the account's email and name is not checked,
+     *     because the account is not known until the link is spent. The route
+     *     shares the sign-in rate limit per client address.
      */
     post: operations["resetPassword"];
     delete?: never;
@@ -347,8 +359,10 @@ export interface paths {
      *     generation, so every other open session ends. The response is a fresh
      *     session for the caller, who stays signed in.
      *
-     *     The new password follows the registration rules (8 to 72 characters)
-     *     and must differ from the current one. A wrong current password answers
+     *     Password rules: at least 8 characters and at most 72 bytes of UTF-8 (some characters, such as emoji, take more than one), at least one visible character, and not on a list of about 2,000 commonly used passwords (`400 password_too_common`). It must also differ from the account's email address, the part before the @, and its display name (`400 password_matches_account`). The new password must also differ from the current one.
+     *     An account that signs in through SSO and has no password is told so
+     *     (409 `no_local_password`) before the new password is judged. A wrong
+     *     current password answers
      *     400 `wrong_password`, never 401, so a client does not read it as an
      *     expired session. An account that signs in through SSO has no password
      *     and answers 409 `no_local_password`. The route shares the sign-in rate
@@ -1544,6 +1558,7 @@ export interface paths {
     /**
      * Create an account through an invite link
      * @description Public, and it works while self-service registration is closed. Creates the account (global role `member`), adds it to the project with the invited role, marks the link used and signs the account in, all in one transaction. A failed attempt leaves the link usable. If the invite is bound to an address, a different one is `403 invite_email_mismatch`. An address that already has an account answers `422 registration_failed`, the same as registration, so the link cannot reveal who is registered. People who already have an account use `/join`.
+     *     Password rules: at least 8 characters and at most 72 bytes of UTF-8 (some characters, such as emoji, take more than one), at least one visible character, and not on a list of about 2,000 commonly used passwords (`400 password_too_common`). It must also differ from the account's email address, the part before the @, and its display name (`400 password_matches_account`). The password is judged before the link is spent.
      */
     post: operations["acceptInvite"];
     delete?: never;
@@ -3352,7 +3367,15 @@ export interface operations {
           "application/json": components["schemas"]["AuthResponse"];
         };
       };
-      400: components["responses"]["BadRequest"];
+      /** @description The request is malformed, or the password is refused (`password_too_common`, `password_matches_account`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
       /** @description The setup token is missing or wrong. */
       403: {
         headers: {
@@ -3397,7 +3420,15 @@ export interface operations {
           "application/json": components["schemas"]["AuthResponse"];
         };
       };
-      400: components["responses"]["BadRequest"];
+      /** @description The request is malformed, or the password is refused (`password_too_common`, `password_matches_account`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
       413: components["responses"]["BodyTooLarge"];
       /** @description Registration failed (generic). */
       422: {
@@ -3438,7 +3469,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description The link is not valid (`reset_link_invalid`) or the password breaks the rules (`invalid_password`). */
+      /** @description The link is not valid (`reset_link_invalid`) or the password breaks the rules (`invalid_password`, `password_too_common`). */
       400: {
         headers: {
           [name: string]: unknown;
@@ -3745,7 +3776,7 @@ export interface operations {
           "application/json": components["schemas"]["AuthResponse"];
         };
       };
-      /** @description The current password is wrong (`wrong_password`), or the new one breaks the rules (`invalid_password`). */
+      /** @description The current password is wrong (`wrong_password`), or the new one breaks the rules (`invalid_password`, `password_too_common`, `password_matches_account`). */
       400: {
         headers: {
           [name: string]: unknown;
@@ -5874,7 +5905,15 @@ export interface operations {
           "application/json": components["schemas"]["AcceptInviteResponse"];
         };
       };
-      400: components["responses"]["BadRequest"];
+      /** @description The request is malformed, or the password is refused (`password_too_common`, `password_matches_account`). */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
       403: components["responses"]["Forbidden"];
       404: components["responses"]["NotFound"];
       413: components["responses"]["BodyTooLarge"];
