@@ -20,6 +20,7 @@ describe("formatPercent", () => {
   });
 
   it("uses one decimal from one percent up", () => {
+    expect(formatPercent(0.005)).toBe("0.50%");
     expect(formatPercent(0.0123)).toBe("1.2%");
     expect(formatPercent(0.85)).toBe("85.0%");
     expect(formatPercent(1)).toBe("100.0%");

@@ -19,6 +19,7 @@ import { Link, useLocation, useParams } from "react-router-dom";
 import { WaiverRequestDialog } from "./change-view/WaiverRequestDialog";
 import { AnalysisNote } from "./finding-detail/AnalysisNote";
 import { ContextGrid } from "./finding-detail/ContextGrid";
+import { CveDetails } from "./finding-detail/CveDetails";
 import { EvidenceSection } from "./finding-detail/EvidenceSection";
 import { FindingHeader } from "./finding-detail/FindingHeader";
 import { HistorySection } from "./finding-detail/HistorySection";
@@ -176,6 +177,8 @@ export function FindingDetail() {
           </div>
 
           <ContextGrid context={finding.context} />
+
+          <CveDetails findingId={finding.id} />
 
           <EvidenceSection findingId={finding.id} projectSlug={slug} />
 
