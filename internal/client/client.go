@@ -366,11 +366,14 @@ func (c *Client) TriageFinding(findingID string, req *TriageRequest) (*TriageRes
 }
 
 func (c *Client) BulkTriage(req *BulkTriageRequest) ([]TriageResponse, error) {
-	var resp []TriageResponse
+	// The endpoint answers with {"results": [...]}, not a bare list.
+	var resp struct {
+		Results []TriageResponse `json:"results"`
+	}
 	if err := c.do(context.Background(), "POST", "/api/v1/findings/bulk-analysis", req, &resp); err != nil {
 		return nil, err
 	}
-	return resp, nil
+	return resp.Results, nil
 }
 
 func (c *Client) ListFindingEvents(findingID string, eventTypes []string, limit, offset int32) ([]FindingEvent, error) {

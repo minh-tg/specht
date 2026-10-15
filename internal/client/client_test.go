@@ -158,7 +158,8 @@ func TestFindings(t *testing.T) {
 				t.Errorf("encode triage response: %v", err)
 			}
 		case "POST /api/v1/findings/bulk-analysis":
-			if err := json.NewEncoder(w).Encode([]TriageResponse{{FindingID: "f1"}}); err != nil {
+			// The server wraps the results in an object, as openapi.yaml says.
+			if err := json.NewEncoder(w).Encode(map[string]any{"results": []TriageResponse{{FindingID: "f1"}}}); err != nil {
 				t.Errorf("encode bulk triage response: %v", err)
 			}
 		case "GET /api/v1/findings/f1/events":

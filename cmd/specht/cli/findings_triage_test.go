@@ -113,7 +113,7 @@ func TestFindingsBulkTriage(t *testing.T) {
 			t.Errorf("method = %s, want POST", r.Method)
 		}
 		_ = json.NewDecoder(r.Body).Decode(&got)
-		_, _ = w.Write([]byte(`[{"finding_id":"a","analysis_state":"not_affected","gate_effect":"ignored"},{"finding_id":"b","analysis_state":"not_affected","gate_effect":"ignored"}]`))
+		_, _ = w.Write([]byte(`{"results":[{"finding_id":"a","analysis_state":"not_affected","gate_effect":"ignored"},{"finding_id":"b","analysis_state":"not_affected","gate_effect":"ignored"}]}`))
 	})
 	d, out, _ := testDeps(t, mux)
 
