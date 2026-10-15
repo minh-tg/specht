@@ -1,0 +1,106 @@
+{
+  "matches": [
+    {
+      "vulnerability": {
+        "id": "CVE-2024-1111",
+        "namespace": "nvd:cpe",
+        "severity": "High",
+        "description": "Scored by two sources in three versions",
+        "cvss": [
+          {
+            "source": "nvd@nist.gov",
+            "type": "Primary",
+            "version": "3.0",
+            "vector": "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+            "metrics": {"baseScore": 9.8, "exploitabilityScore": 3.9, "impactScore": 5.9}
+          },
+          {
+            "source": "nvd@nist.gov",
+            "type": "Primary",
+            "version": "2.0",
+            "vector": "AV:N/AC:L/Au:N/C:P/I:P/A:P",
+            "metrics": {"baseScore": 7.5, "exploitabilityScore": 10, "impactScore": 6.4}
+          },
+          {
+            "source": "security-advisories@github.com",
+            "type": "Secondary",
+            "version": "3.1",
+            "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N",
+            "metrics": {"baseScore": 8.6, "exploitabilityScore": 3.9, "impactScore": 4.7}
+          },
+          {
+            "source": "security-advisories@github.com",
+            "type": "Secondary",
+            "version": "4.0",
+            "vector": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:N/SC:N/SI:N/SA:N",
+            "metrics": {"baseScore": 8.7}
+          }
+        ],
+        "fix": {"versions": ["1.2.4"], "state": "fixed"}
+      },
+      "relatedVulnerabilities": [],
+      "matchDetails": [{"type": "exact-direct-match", "matcher": "go-module-matcher"}],
+      "artifact": {
+        "name": "example.com/lib",
+        "version": "1.2.3",
+        "type": "go-module",
+        "locations": [{"path": "/app/go.mod"}],
+        "language": "go",
+        "purl": "pkg:golang/example.com/lib@1.2.3"
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "GHSA-aaaa-bbbb-cccc",
+        "namespace": "github:language:go",
+        "severity": "High",
+        "description": "Advisory without a score of its own",
+        "cvss": []
+      },
+      "relatedVulnerabilities": [
+        {
+          "id": "CVE-2024-2222",
+          "namespace": "nvd:cpe",
+          "severity": "High",
+          "cvss": [
+            {
+              "source": "nvd@nist.gov",
+              "type": "Primary",
+              "version": "3.1",
+              "vector": "CVSS:3.1/AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N",
+              "metrics": {"baseScore": 6.5}
+            }
+          ]
+        }
+      ],
+      "matchDetails": [{"type": "exact-direct-match", "matcher": "go-module-matcher"}],
+      "artifact": {
+        "name": "example.com/other",
+        "version": "0.9.0",
+        "type": "go-module",
+        "locations": [{"path": "/app/go.mod"}],
+        "language": "go",
+        "purl": "pkg:golang/example.com/other@0.9.0"
+      }
+    },
+    {
+      "vulnerability": {
+        "id": "CVE-2024-3333",
+        "namespace": "nvd:cpe",
+        "severity": "Low",
+        "description": "No CVSS data at all",
+        "cvss": []
+      },
+      "relatedVulnerabilities": [],
+      "matchDetails": [{"type": "exact-direct-match", "matcher": "go-module-matcher"}],
+      "artifact": {
+        "name": "example.com/third",
+        "version": "2.0.0",
+        "type": "go-module",
+        "locations": [{"path": "/app/go.mod"}],
+        "language": "go",
+        "purl": "pkg:golang/example.com/third@2.0.0"
+      }
+    }
+  ]
+}

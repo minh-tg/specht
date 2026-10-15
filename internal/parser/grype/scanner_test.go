@@ -172,3 +172,42 @@ func TestParse_GrypeReport_SCALocation(t *testing.T) {
 	f := grypeFindingByFingerprint(t, report.Findings, "CVE-2023-25165:pkg:golang/helm.sh/helm/v3@v3.11.1")
 	assert.Equal(t, "helm.sh/helm/v3 v3.11.1 in /app/go.mod", f.Location)
 }
+
+func TestParse_CVSSAllKeepsEverySourceAndVersion(t *testing.T) {
+	data, err := os.ReadFile("testdata/grype-multi-cvss.json")
+	require.NoError(t, err)
+	report, err := grype.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.Len(t, report.Findings, 3)
+
+	multi := report.Findings[0]
+	assert.Equal(t, []domain.CVSSRecord{
+		{Version: "3.0", Vector: "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", Score: 9.8, Source: "nvd@nist.gov:primary"},
+		{Version: "2.0", Vector: "CVSS:2.0/AV:N/AC:L/Au:N/C:P/I:P/A:P", Score: 7.5, Source: "nvd@nist.gov:primary"},
+		{Version: "3.1", Vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N", Score: 8.6, Source: "security-advisories@github.com:secondary"},
+		{Version: "4.0", Vector: "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:H/VI:H/VA:N/SC:N/SI:N/SA:N", Score: 8.7, Source: "security-advisories@github.com:secondary"},
+	}, multi.CVSSAll)
+	// The single preferred vector and the occurrence score are unchanged.
+	require.NotNil(t, multi.CVSS)
+	assert.Equal(t, "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H", multi.CVSS.Vector)
+	assert.InDelta(t, 9.8, multi.Score, 0)
+
+	related := report.Findings[1]
+	require.Len(t, related.CVSSAll, 1, "a primary entry with no CVSS falls back to the related vulnerability")
+	assert.Equal(t, "3.1", related.CVSSAll[0].Version)
+	assert.Equal(t, "nvd@nist.gov:primary", related.CVSSAll[0].Source)
+
+	assert.Empty(t, report.Findings[2].CVSSAll)
+}
+
+func TestParse_CVSSAllSourceIsEmptyWhenTheReportNamesNone(t *testing.T) {
+	data, err := os.ReadFile("testdata/grype-report.json")
+	require.NoError(t, err)
+	report, err := grype.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+	require.NotEmpty(t, report.Findings)
+	first := report.Findings[0]
+	require.Len(t, first.CVSSAll, 1)
+	assert.Equal(t, "3.1", first.CVSSAll[0].Version)
+	assert.Empty(t, first.CVSSAll[0].Source)
+}
