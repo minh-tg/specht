@@ -50,18 +50,40 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 func (s *Scanner) SupportsIncremental() bool { return true }
 
 func (s *Scanner) DetectFormat(data []byte) bool {
-	var probe []gitleaksFinding
-	if err := json.Unmarshal(data, &probe); err != nil || len(probe) == 0 {
-		return false
+	return s.Recognize(data) == scanner.Definite
+}
+
+// Recognize grades a document. Gitleaks writes a list of findings, each with a
+// rule id and a file. A report with no leaks is an empty list (or null), which
+// is possible but not certain.
+func (s *Scanner) Recognize(data []byte) scanner.Recognition {
+	shape, ok := parseutil.ReadShape(data)
+	if !ok {
+		return scanner.NotRecognized
 	}
-	return probe[0].RuleID != "" && probe[0].File != ""
+	if shape.IsNull() {
+		return scanner.Possible
+	}
+	if !shape.IsArray() {
+		return scanner.NotRecognized
+	}
+	if len(shape.Array) == 0 {
+		return scanner.Possible
+	}
+	if parseutil.ObjectHas(shape.Array[0], "RuleID", "File") {
+		return scanner.Definite
+	}
+	return scanner.NotRecognized
 }
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	if s.Recognize(data) == scanner.NotRecognized {
+		return nil, scanner.Unrecognized("gitleaks")
+	}
 	var findings []gitleaksFinding
 	dec := json.NewDecoder(bytes.NewReader(data))
 	if err := dec.Decode(&findings); err != nil {
-		return nil, fmt.Errorf("gitleaks: parse json: %w", err)
+		return nil, scanner.Malformed("gitleaks", err)
 	}
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
