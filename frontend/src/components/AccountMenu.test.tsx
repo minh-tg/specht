@@ -38,6 +38,19 @@ describe("AccountMenu appearance", () => {
     ).toEqual(["System", "Light", "Dark"]);
   });
 
+  it("has one group, it is the labelled one, and Sound effects sits outside it", async () => {
+    const user = renderMenu();
+
+    const group = await openMenu(user);
+
+    // A radio group nested inside a labelled outer group would be announced as a second, unnamed one.
+    const groups = screen.getAllByRole("group");
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toHaveAccessibleName("Appearance");
+    expect(within(group).queryByRole("menuitemcheckbox", { name: "Sound effects" })).toBeNull();
+    expect(screen.getByRole("menuitemcheckbox", { name: "Sound effects" })).toBeInTheDocument();
+  });
+
   it("shows the stored choice as checked, with a mark that does not rely on colour", async () => {
     window.localStorage.setItem("specht.theme", "dark");
     const user = renderMenu();

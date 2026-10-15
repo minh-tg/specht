@@ -46,28 +46,31 @@ export function AccountMenu({ email, onLogout }: { email: string | null; onLogou
               Profile
             </Menu.LinkItem>
             <Menu.Separator className="bg-border -mx-1 my-1 h-px" />
-            <Menu.Group>
+            {
+              /* The radio group is the labelled group: it supplies its own group role and takes the
+                label from the GroupLabel inside it, so no outer Menu.Group is needed. */
+            }
+            <Menu.RadioGroup
+              value={theme}
+              onValueChange={(value) => setTheme(value as Theme)}
+            >
               <Menu.GroupLabel className="text-muted-foreground px-2 pt-1 pb-0.5 text-xs">
                 Appearance
               </Menu.GroupLabel>
-              <Menu.RadioGroup
-                value={theme}
-                onValueChange={(value) => setTheme(value as Theme)}
-              >
-                {APPEARANCE.map(({ value, label }) => (
-                  <Menu.RadioItem
-                    key={value}
-                    value={value}
-                    className={cn(ITEM_CLASS, "relative pl-7")}
-                  >
-                    <Menu.RadioItemIndicator className="absolute left-2 inline-flex items-center">
-                      <CheckIcon aria-hidden="true" size={14} />
-                    </Menu.RadioItemIndicator>
-                    {label}
-                  </Menu.RadioItem>
-                ))}
-              </Menu.RadioGroup>
-            </Menu.Group>
+              {APPEARANCE.map(({ value, label }) => (
+                <Menu.RadioItem
+                  key={value}
+                  value={value}
+                  className={cn(ITEM_CLASS, "relative pl-7")}
+                >
+                  <Menu.RadioItemIndicator className="absolute left-2 inline-flex items-center">
+                    <CheckIcon aria-hidden="true" size={14} />
+                  </Menu.RadioItemIndicator>
+                  {label}
+                </Menu.RadioItem>
+              ))}
+            </Menu.RadioGroup>
+            <Menu.Separator className="bg-border -mx-1 my-1 h-px" />
             <SoundSetting />
             <Menu.Separator className="bg-border -mx-1 my-1 h-px" />
             <Menu.Item onClick={onLogout} className={ITEM_CLASS}>
