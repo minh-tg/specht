@@ -1,4 +1,5 @@
 import { shortcutHelp } from "@/lib/shortcuts";
+import { resetSingleKeyForTests, setSingleKeyEnabled } from "@/lib/singleKeyShortcuts";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +7,8 @@ import { KeyboardShortcuts } from "./KeyboardShortcuts";
 
 afterEach(() => {
   shortcutHelp.close();
+  window.localStorage.clear();
+  resetSingleKeyForTests();
   vi.unstubAllGlobals();
 });
 
@@ -68,10 +71,64 @@ describe("KeyboardShortcuts", () => {
     expect(other).toHaveTextContent(/^Show keyboard shortcutsCtrl\+\/$/);
   });
 
-  it("does not react to a bare ? or /", async () => {
+  it("opens with a bare ? and ignores a bare /", async () => {
     const user = setup();
-    await user.keyboard("?/");
+    await user.keyboard("/");
     expect(screen.queryByRole("dialog")).toBeNull();
+    await user.keyboard("?");
+    expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument();
+  });
+
+  it("does not open from a ? typed in a text field", async () => {
+    const user = setup();
+    await user.click(screen.getByRole("textbox", { name: "Name" }));
+    await user.keyboard("why?");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Name" })).toHaveValue("why?");
+  });
+
+  it("does not open from a ? while the switch is off, but Ctrl+/ still does", async () => {
+    setSingleKeyEnabled(false);
+    const user = setup();
+    await user.keyboard("?");
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.keyboard("{Control>}/{/Control}");
+    expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument();
+  });
+
+  it("lists ?, J, K and X while the switch is on", async () => {
+    const user = setup();
+    await user.keyboard("?");
+    const dialog = await screen.findByRole("dialog");
+    for (const name of ["?", "J", "K", "X"]) {
+      expect(within(dialog).getByText(name, { selector: "kbd" })).toBeInTheDocument();
+    }
+    expect(dialog).not.toHaveTextContent("Single-key shortcuts are off");
+  });
+
+  it("hides ?, J, K and X and says how to turn them on while the switch is off", async () => {
+    setSingleKeyEnabled(false);
+    const user = setup();
+    await user.keyboard("{Control>}/{/Control}");
+    const dialog = await screen.findByRole("dialog");
+    for (const name of ["?", "J", "K", "X"]) {
+      expect(within(dialog).queryByText(name, { selector: "kbd" })).toBeNull();
+    }
+    expect(within(dialog).queryByText("Show this sheet")).toBeNull();
+    // The keys that are not characters stay.
+    expect(within(dialog).getByText("↓", { selector: "kbd" })).toBeInTheDocument();
+    expect(within(dialog).getByText("Space", { selector: "kbd" })).toBeInTheDocument();
+    expect(dialog).toHaveTextContent(
+      "Single-key shortcuts are off. Turn them on in the account menu.",
+    );
+  });
+
+  it("does not react to a ? while the sheet is already open", async () => {
+    const user = setup();
+    await user.keyboard("?");
+    await screen.findByRole("dialog");
+    await user.keyboard("?");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 
   it("does not open while a key is held down or an IME is composing", async () => {

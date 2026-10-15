@@ -1,3 +1,5 @@
+import { isPlainGridKey } from "@/lib/shortcuts";
+import { isSingleKeyEnabled } from "@/lib/singleKeyShortcuts";
 import { cn } from "@/lib/utils";
 import * as React from "react";
 
@@ -107,6 +109,9 @@ export interface DataGridProps<Row> {
 type Density = NonNullable<DataGridProps<unknown>["density"]>;
 
 /** Elements that own their activation keys; the grid must not intercept them. */
+/** Keys that are one printable character, so the single-key switch governs them. */
+const SINGLE_CHARACTER_KEYS: ReadonlySet<string> = new Set(["j", "k", "x"]);
+
 const CONTROL_SELECTOR = "a, button, input, select, textarea, label";
 
 // A table row's height is only a minimum (`min-height` is ignored on rows), so
@@ -136,14 +141,24 @@ export function DataGrid<Row>({
   getAnnouncement,
   emptyState,
 }: DataGridProps<Row>) {
-  const [cursorState, setCursorState] = React.useState(0);
+  // The cursor is remembered by row key as well as by index. A background refetch can insert or
+  // remove rows above it, and an index alone would then point at a different row, so Enter would
+  // open something the person never moved to. The index is only the fallback for a removed row.
+  const [cursorState, setCursorState] = React.useState<{ key: string | null; index: number; }>({
+    key: null,
+    index: 0,
+  });
   const rowRefs = React.useRef<(HTMLTableRowElement | null)[]>([]);
+  const placeCursor = (index: number) =>
+    setCursorState({ key: rows[index] ? rowKey(rows[index]) : null, index });
 
-  // Clamp during render rather than in an effect: filtering or a fresh report can
-  // shrink the rows under the cursor, and clamping in an effect would cascade an
-  // extra render for a value we can simply derive.
+  // Derived during render rather than in an effect: filtering or a fresh report can shrink or
+  // reorder the rows under the cursor, and fixing that in an effect would cascade an extra render.
   const maxIndex = Math.max(0, rows.length - 1);
-  const cursor = Math.min(cursorState, maxIndex);
+  const keyedIndex = cursorState.key === null
+    ? -1
+    : rows.findIndex((row) => rowKey(row) === cursorState.key);
+  const cursor = keyedIndex >= 0 ? keyedIndex : Math.min(cursorState.index, maxIndex);
 
   // Scroll-follow: without this, keyboard traversal is unusable past one viewport. It runs only
   // after the keyboard moved the cursor. Following the cursor on mount would pull a list that was
@@ -163,7 +178,7 @@ export function DataGrid<Row>({
     if (rows.length === 0) return;
     const clamped = Math.max(0, Math.min(maxIndex, next));
     if (clamped !== cursor) followCursor.current = true;
-    setCursorState(clamped);
+    placeCursor(clamped);
     rowRefs.current[clamped]?.focus();
   };
 
@@ -173,6 +188,12 @@ export function DataGrid<Row>({
     // activation; the cursor row is not interactive, so row activation still
     // reaches onActivate/onSelect.
     const onControl = (event.target as Element | null)?.closest(CONTROL_SELECTOR) != null;
+    // A key with a modifier, or one that is part of an IME composition, is not the grid's: Ctrl+K
+    // must reach the command palette while a row has focus.
+    if (!isPlainGridKey(event)) return;
+    // j, k and x are single-character shortcuts, so the account menu switch turns them off.
+    // The other keys are not characters and stay.
+    if (SINGLE_CHARACTER_KEYS.has(event.key) && !isSingleKeyEnabled()) return;
     switch (event.key) {
       case "ArrowDown":
       case "j":
@@ -313,7 +334,7 @@ export function DataGrid<Row>({
                       rowRefs.current[index] = node;
                     }}
                     onClick={(event) => {
-                      setCursorState(index);
+                      placeCursor(index);
                       onSelect?.(row);
                       onRowClick?.(row, event);
                     }}
