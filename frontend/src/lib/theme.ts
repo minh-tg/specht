@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { applyThemeColour } from "./themeColour";
 
 export type Theme = "system" | "light" | "dark";
 
@@ -54,12 +55,13 @@ function systemPrefersDark(): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia(DARK_QUERY).matches;
 }
 
-/** Applies the theme to the document: the `dark` class and the native colour scheme. */
+/** Applies the theme to the document: the `dark` class, the native colour scheme and the browser chrome. */
 export function applyTheme(theme: Theme): void {
   const resolved = resolveTheme(theme, systemPrefersDark());
   const root = document.documentElement;
   root.classList.toggle("dark", resolved === "dark");
   root.style.colorScheme = resolved;
+  applyThemeColour(theme);
 }
 
 const listeners = new Set<() => void>();
