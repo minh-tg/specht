@@ -8,7 +8,6 @@ package tfsec
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -44,31 +43,42 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 func (s *Scanner) SupportsIncremental() bool { return true }
 
 func (s *Scanner) DetectFormat(data []byte) bool {
-	var probe struct {
-		Results    []tfsecResult `json:"results"`
-		Statistics *struct{}     `json:"statistics"`
+	return s.Recognize(data) == scanner.Definite
+}
+
+// Recognize grades a document. A tfsec result carries a rule id and a long
+// id. A report with no results is only possible, because other tools write
+// an empty results list too.
+func (s *Scanner) Recognize(data []byte) scanner.Recognition {
+	shape, ok := parseutil.ReadShape(data)
+	if !ok || !shape.IsObject() {
+		return scanner.NotRecognized
 	}
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return false
+	results, present := shape.List("results")
+	if !present {
+		return scanner.NotRecognized
 	}
-	if probe.Results == nil {
-		return false
+	if shape.Has("statistics") {
+		return scanner.Definite
 	}
-	if probe.Statistics != nil {
-		return true
-	}
-	for _, r := range probe.Results {
-		if r.RuleID != "" && r.LongID != "" {
-			return true
+	for _, r := range results {
+		if parseutil.ObjectHas(r, "rule_id", "long_id") {
+			return scanner.Definite
 		}
 	}
-	return false
+	if len(results) == 0 {
+		return scanner.Possible
+	}
+	return scanner.NotRecognized
 }
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	if s.Recognize(data) == scanner.NotRecognized {
+		return nil, scanner.Unrecognized("tfsec")
+	}
 	var report tfsecReport
 	if err := json.Unmarshal(data, &report); err != nil {
-		return nil, fmt.Errorf("tfsec: parse json: %w", err)
+		return nil, scanner.Malformed("tfsec", err)
 	}
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
