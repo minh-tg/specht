@@ -2,24 +2,25 @@ package cli
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 )
 
-func newProjectTeamsCmd(d Deps) *cobra.Command {
+func newProjectTeamsCmd(d Deps, s *settings) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "project-teams",
 		Short: "Manage project team links",
 	}
 	cmd.AddCommand(
-		newProjectTeamsListCmd(d),
-		newProjectTeamsLinkCmd(d),
+		newProjectTeamsListCmd(d, s),
+		newProjectTeamsLinkCmd(d, s),
 		newProjectTeamsUnlinkCmd(d),
 	)
 	return cmd
 }
 
-func newProjectTeamsListCmd(d Deps) *cobra.Command {
+func newProjectTeamsListCmd(d Deps, s *settings) *cobra.Command {
 	var project string
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -37,25 +38,25 @@ func newProjectTeamsListCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if len(links) == 0 {
-				if _, err := fmt.Fprintln(d.Out, "No linked teams."); err != nil {
+			return emit(d, s, links, func(w io.Writer) error {
+				if len(links) == 0 {
+					_, err := fmt.Fprintln(w, "No linked teams.")
 					return err
+				}
+				for _, l := range links {
+					if _, err := fmt.Fprintf(w, "%s\t%s\t%s\n", l.TeamName, l.TeamID, l.Role); err != nil {
+						return err
+					}
 				}
 				return nil
-			}
-			for _, l := range links {
-				if _, err := fmt.Fprintf(d.Out, "%s\t%s\t%s\n", l.TeamName, l.TeamID, l.Role); err != nil {
-					return err
-				}
-			}
-			return nil
+			})
 		},
 	}
 	cmd.Flags().StringVar(&project, "project", "", flagProjectSlugUsage)
 	return cmd
 }
 
-func newProjectTeamsLinkCmd(d Deps) *cobra.Command {
+func newProjectTeamsLinkCmd(d Deps, s *settings) *cobra.Command {
 	var project, teamID, role string
 	cmd := &cobra.Command{
 		Use:   "link",
@@ -73,10 +74,10 @@ func newProjectTeamsLinkCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(d.Out, "linked %s as %s\n", link.TeamName, link.Role); err != nil {
+			return emit(d, s, link, func(w io.Writer) error {
+				_, err := fmt.Fprintf(w, "linked %s as %s\n", link.TeamName, link.Role)
 				return err
-			}
-			return nil
+			})
 		},
 	}
 	cmd.Flags().StringVar(&project, "project", "", flagProjectSlugUsage)

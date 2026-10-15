@@ -3,6 +3,7 @@ package cli
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 )
@@ -13,18 +14,18 @@ func newPolicyCmd(d Deps, s *settings) *cobra.Command {
 		Short: "Manage policy baselines",
 	}
 	cmd.AddCommand(
-		newPolicyTemplatesCmd(d),
-		newPolicyCreateCmd(d),
-		newPolicyUpdateCmd(d),
+		newPolicyTemplatesCmd(d, s),
+		newPolicyCreateCmd(d, s),
+		newPolicyUpdateCmd(d, s),
 		newPolicyDeleteCmd(d),
-		newPolicyApplyCmd(d),
-		newPolicyOverridesCmd(d),
+		newPolicyApplyCmd(d, s),
+		newPolicyOverridesCmd(d, s),
 		newPolicyEffectiveCmd(d, s),
 	)
 	return cmd
 }
 
-func newPolicyTemplatesCmd(d Deps) *cobra.Command {
+func newPolicyTemplatesCmd(d Deps, s *settings) *cobra.Command {
 	return &cobra.Command{
 		Use:   "templates",
 		Short: "List policy baselines",
@@ -38,23 +39,23 @@ func newPolicyTemplatesCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if len(templates) == 0 {
-				if _, err := fmt.Fprintln(d.Out, "No policy templates."); err != nil {
+			return emit(d, s, templates, func(w io.Writer) error {
+				if len(templates) == 0 {
+					_, err := fmt.Fprintln(w, "No policy templates.")
 					return err
+				}
+				for _, t := range templates {
+					if _, err := fmt.Fprintf(w, "%s\t%s\tv%d\n", t.Name, t.ID, t.Version); err != nil {
+						return err
+					}
 				}
 				return nil
-			}
-			for _, t := range templates {
-				if _, err := fmt.Fprintf(d.Out, "%s\t%s\tv%d\n", t.Name, t.ID, t.Version); err != nil {
-					return err
-				}
-			}
-			return nil
+			})
 		},
 	}
 }
 
-func newPolicyCreateCmd(d Deps) *cobra.Command {
+func newPolicyCreateCmd(d Deps, s *settings) *cobra.Command {
 	var name, description, definition string
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -78,10 +79,10 @@ func newPolicyCreateCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(d.Out, "template %s (%s)\n", tmpl.Name, tmpl.ID); err != nil {
+			return emit(d, s, tmpl, func(w io.Writer) error {
+				_, err := fmt.Fprintf(w, "template %s (%s)\n", tmpl.Name, tmpl.ID)
 				return err
-			}
-			return nil
+			})
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "template name")
@@ -90,7 +91,7 @@ func newPolicyCreateCmd(d Deps) *cobra.Command {
 	return cmd
 }
 
-func newPolicyUpdateCmd(d Deps) *cobra.Command {
+func newPolicyUpdateCmd(d Deps, s *settings) *cobra.Command {
 	var templateID, name, description, definition string
 	cmd := &cobra.Command{
 		Use:   "update",
@@ -117,10 +118,10 @@ func newPolicyUpdateCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(d.Out, "template %s v%d\n", tmpl.Name, tmpl.Version); err != nil {
+			return emit(d, s, tmpl, func(w io.Writer) error {
+				_, err := fmt.Fprintf(w, "template %s v%d\n", tmpl.Name, tmpl.Version)
 				return err
-			}
-			return nil
+			})
 		},
 	}
 	cmd.Flags().StringVar(&templateID, "id", "", "template ID")
@@ -157,7 +158,7 @@ func newPolicyDeleteCmd(d Deps) *cobra.Command {
 	return cmd
 }
 
-func newPolicyApplyCmd(d Deps) *cobra.Command {
+func newPolicyApplyCmd(d Deps, s *settings) *cobra.Command {
 	var project, template string
 	cmd := &cobra.Command{
 		Use:   "apply",
@@ -175,10 +176,10 @@ func newPolicyApplyCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(d.Out, "policy: floor=%s (%s) watcher=%s (%s)\n", eff.SeverityFloor, eff.SeveritySource, eff.WatcherGate, eff.WatcherSource); err != nil {
+			return emit(d, s, eff, func(w io.Writer) error {
+				_, err := fmt.Fprintf(w, "policy: floor=%s (%s) watcher=%s (%s)\n", eff.SeverityFloor, eff.SeveritySource, eff.WatcherGate, eff.WatcherSource)
 				return err
-			}
-			return nil
+			})
 		},
 	}
 	cmd.Flags().StringVar(&project, "project", "", flagProjectSlugUsage)
@@ -186,7 +187,7 @@ func newPolicyApplyCmd(d Deps) *cobra.Command {
 	return cmd
 }
 
-func newPolicyOverridesCmd(d Deps) *cobra.Command {
+func newPolicyOverridesCmd(d Deps, s *settings) *cobra.Command {
 	var project, overrides string
 	cmd := &cobra.Command{
 		Use:   "overrides",
@@ -210,10 +211,10 @@ func newPolicyOverridesCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(d.Out, "policy: floor=%s (%s) watcher=%s (%s)\n", eff.SeverityFloor, eff.SeveritySource, eff.WatcherGate, eff.WatcherSource); err != nil {
+			return emit(d, s, eff, func(w io.Writer) error {
+				_, err := fmt.Fprintf(w, "policy: floor=%s (%s) watcher=%s (%s)\n", eff.SeverityFloor, eff.SeveritySource, eff.WatcherGate, eff.WatcherSource)
 				return err
-			}
-			return nil
+			})
 		},
 	}
 	cmd.Flags().StringVar(&project, "project", "", flagProjectSlugUsage)

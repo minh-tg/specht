@@ -15,7 +15,7 @@ func runProjectTeamsCmd(t *testing.T, d Deps, args ...string) error {
 	s := &settings{}
 	root := &cobra.Command{Use: "specht"}
 	root.PersistentFlags().StringVar(&s.format, "format", "", "output format: human or json")
-	root.AddCommand(newProjectTeamsCmd(d))
+	root.AddCommand(newProjectTeamsCmd(d, &settings{}))
 	root.SetArgs(args)
 	root.SetOut(d.Out)
 	root.SetErr(d.ErrW)

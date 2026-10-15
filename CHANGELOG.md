@@ -83,6 +83,11 @@ releases.
   `approve`, `reject`, `withdraw`, `toggle`, `delete`, `events`). The new
   commands honour `--format json`.
 - Bulk triage no longer reports a decode error after the server has applied it.
+- `--format json` now applies to `projects`, `findings`, `stats`, `teams`, `project-teams`,
+  `policy` and `watcher` as well. They printed their table before. A command with nothing
+  to list prints `[]`, not `null`.
+- `specht findings events --type` and the MCP `finding_events` tool now filter by event
+  type. The server ignored the filter before.
 - The `specht` command can upload a scanner's file (`reports upload`, which also reads standard
   input and line-based `.jsonl`), list, show and delete reports, change an environment's
   exposure and data sensitivity (`environments set`), and list targets, artifacts and the

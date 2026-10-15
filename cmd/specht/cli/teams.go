@@ -2,27 +2,28 @@ package cli
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 )
 
-func newTeamsCmd(d Deps, _ *settings) *cobra.Command {
+func newTeamsCmd(d Deps, s *settings) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "teams",
 		Short: "Manage teams",
 	}
 	cmd.AddCommand(
-		newTeamsListCmd(d),
-		newTeamsCreateCmd(d),
+		newTeamsListCmd(d, s),
+		newTeamsCreateCmd(d, s),
 		newTeamsDeleteCmd(d),
-		newTeamsMembersCmd(d),
-		newTeamsAddCmd(d),
+		newTeamsMembersCmd(d, s),
+		newTeamsAddCmd(d, s),
 		newTeamsRemoveCmd(d),
 	)
 	return cmd
 }
 
-func newTeamsListCmd(d Deps) *cobra.Command {
+func newTeamsListCmd(d Deps, s *settings) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List teams",
@@ -36,23 +37,23 @@ func newTeamsListCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if len(teams) == 0 {
-				if _, err := fmt.Fprintln(d.Out, "No teams."); err != nil {
+			return emit(d, s, teams, func(w io.Writer) error {
+				if len(teams) == 0 {
+					_, err := fmt.Fprintln(w, "No teams.")
 					return err
+				}
+				for _, team := range teams {
+					if _, err := fmt.Fprintf(w, "%s\t%s\t%s\n", team.Name, team.ID, team.Description); err != nil {
+						return err
+					}
 				}
 				return nil
-			}
-			for _, team := range teams {
-				if _, err := fmt.Fprintf(d.Out, "%s\t%s\t%s\n", team.Name, team.ID, team.Description); err != nil {
-					return err
-				}
-			}
-			return nil
+			})
 		},
 	}
 }
 
-func newTeamsCreateCmd(d Deps) *cobra.Command {
+func newTeamsCreateCmd(d Deps, s *settings) *cobra.Command {
 	var name, description string
 	cmd := &cobra.Command{
 		Use:   "create",
@@ -70,10 +71,10 @@ func newTeamsCreateCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(d.Out, "team %s (%s)\n", team.Name, team.ID); err != nil {
+			return emit(d, s, team, func(w io.Writer) error {
+				_, err := fmt.Fprintf(w, "team %s (%s)\n", team.Name, team.ID)
 				return err
-			}
-			return nil
+			})
 		},
 	}
 	cmd.Flags().StringVar(&name, "name", "", "team name")
@@ -108,7 +109,7 @@ func newTeamsDeleteCmd(d Deps) *cobra.Command {
 	return cmd
 }
 
-func newTeamsMembersCmd(d Deps) *cobra.Command {
+func newTeamsMembersCmd(d Deps, s *settings) *cobra.Command {
 	var id string
 	cmd := &cobra.Command{
 		Use:   "members",
@@ -126,30 +127,30 @@ func newTeamsMembersCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if len(members) == 0 {
-				if _, err := fmt.Fprintln(d.Out, "No members."); err != nil {
+			return emit(d, s, members, func(w io.Writer) error {
+				if len(members) == 0 {
+					_, err := fmt.Fprintln(w, "No members.")
 					return err
+				}
+				for _, member := range members {
+					// The server withholds addresses from people who do not manage the team.
+					label := member.UserEmail
+					if label == "" {
+						label = member.DisplayName
+					}
+					if _, err := fmt.Fprintf(w, "%s\t%s\t%s\n", label, member.UserID, member.Role); err != nil {
+						return err
+					}
 				}
 				return nil
-			}
-			for _, member := range members {
-				// The server withholds addresses from people who do not manage the team.
-				label := member.UserEmail
-				if label == "" {
-					label = member.DisplayName
-				}
-				if _, err := fmt.Fprintf(d.Out, "%s\t%s\t%s\n", label, member.UserID, member.Role); err != nil {
-					return err
-				}
-			}
-			return nil
+			})
 		},
 	}
 	cmd.Flags().StringVar(&id, "id", "", flagTeamIDUsage)
 	return cmd
 }
 
-func newTeamsAddCmd(d Deps) *cobra.Command {
+func newTeamsAddCmd(d Deps, s *settings) *cobra.Command {
 	var id, user, role string
 	cmd := &cobra.Command{
 		Use:   "add",
@@ -167,10 +168,10 @@ func newTeamsAddCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(d.Out, "member %s (%s)\n", member.UserID, member.Role); err != nil {
+			return emit(d, s, member, func(w io.Writer) error {
+				_, err := fmt.Fprintf(w, "member %s (%s)\n", member.UserID, member.Role)
 				return err
-			}
-			return nil
+			})
 		},
 	}
 	cmd.Flags().StringVar(&id, "id", "", flagTeamIDUsage)
