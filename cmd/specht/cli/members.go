@@ -97,6 +97,11 @@ func newMembersAddCmd(d Deps, s *settings) *cobra.Command {
 				return err
 			}
 			return emit(d, s, m, func(w io.Writer) error {
+				// The server answers with the membership row only, so name the person by
+				// the address that was typed.
+				if m.Email == "" {
+					m.Email = email
+				}
 				_, err := fmt.Fprintf(w, "%s\t%s\t%s\n", memberLabel(*m), m.UserID, m.Role)
 				return err
 			})
