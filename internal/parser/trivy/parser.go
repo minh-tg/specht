@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/minh-tg/specht/internal/domain"
@@ -130,25 +129,58 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 }
 
 func (s *Scanner) DetectFormat(data []byte) bool {
-	probe, err := decode(data)
-	if err != nil {
-		return false
+	return s.Recognize(data) == scanner.Definite
+}
+
+// Recognize grades a document. A scan that names its artifact or has a result
+// with a target is Trivy's for certain. A bare schema version could be a clean
+// scan from another version, so it is only possible. Trivy output is an object
+// (or, in the legacy form, a list of results), never an empty list.
+func (s *Scanner) Recognize(data []byte) scanner.Recognition {
+	shape, ok := parseutil.ReadShape(data)
+	if !ok {
+		return scanner.NotRecognized
 	}
-	if probe.ArtifactName != "" {
-		return true
+	if shape.IsArray() {
+		for _, el := range shape.Array {
+			if hasTarget(el) {
+				return scanner.Definite
+			}
+		}
+		return scanner.NotRecognized
 	}
-	for _, r := range probe.Results {
-		if r.Target != "" {
-			return true
+	if !shape.IsObject() {
+		return scanner.NotRecognized
+	}
+	if shape.String("ArtifactName") != "" {
+		return scanner.Definite
+	}
+	results, _ := shape.List("Results")
+	for _, el := range results {
+		if hasTarget(el) {
+			return scanner.Definite
 		}
 	}
-	return false
+	if shape.Has("SchemaVersion") {
+		return scanner.Possible
+	}
+	return scanner.NotRecognized
+}
+
+func hasTarget(raw json.RawMessage) bool {
+	var r struct {
+		Target string `json:"Target"`
+	}
+	return json.Unmarshal(raw, &r) == nil && r.Target != ""
 }
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	if s.Recognize(data) == scanner.NotRecognized {
+		return nil, scanner.Unrecognized("trivy")
+	}
 	report, err := decode(data)
 	if err != nil {
-		return nil, fmt.Errorf("trivy: parse json: %w", err)
+		return nil, scanner.Malformed("trivy", err)
 	}
 
 	return convert(report), nil
