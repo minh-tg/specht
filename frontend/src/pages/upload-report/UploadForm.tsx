@@ -1,8 +1,11 @@
 import { ErrorState } from "@/components/ErrorState";
+import { FileDropzone } from "@/components/FileDropzone";
 import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
+import { Button } from "@/components/ui/button";
 import type { ScannerDescriptor } from "@/types/api";
 import { type ReactNode } from "react";
+import { SCAN_FILE_EXTENSIONS } from "./scanFile";
 import { ScannerHelp } from "./ScannerHelp";
 import type { ReportUpload } from "./useReportUpload";
 
@@ -22,11 +25,14 @@ export function UploadForm({
   selectedScanner,
   setSelectedScanner,
   fileName,
+  fileSize,
   fileError,
   submitting,
   canSubmit,
   fileRef,
   handleFileChange,
+  handleFile,
+  clearFile,
   handleSubmit,
 }: UploadFormProps) {
   const chosen = scanners?.find((s) => s.name === selectedScanner);
@@ -78,26 +84,24 @@ export function UploadForm({
             Takes {takes.join(", ")}
           </p>
         )}
-        <input
+        <FileDropzone
           id="ingest-file"
-          ref={fileRef}
-          type="file"
-          accept=".json,.jsonl,.ndjson,.sarif"
-          aria-describedby={takes.length > 0 ? "ingest-file-takes" : undefined}
+          inputRef={fileRef}
+          accept={SCAN_FILE_EXTENSIONS}
+          describedBy={takes.length > 0 ? "ingest-file-takes" : undefined}
+          fileName={fileName}
+          fileSize={fileSize}
+          error={fileError}
+          disabled={submitting}
           onChange={handleFileChange}
-          className="mt-1 block w-full text-sm"
+          onFile={(file) => void handleFile(file)}
+          onClear={clearFile}
         />
-        {fileName && <p className="text-muted-foreground mt-1 text-xs">{fileName} loaded</p>}
-        {fileError && <p role="alert" className="text-destructive mt-1 text-xs">{fileError}</p>}
       </div>
 
-      <button
-        type="submit"
-        disabled={!canSubmit}
-        className="bg-primary text-primary-foreground hover:bg-primary/90 w-full rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
-      >
+      <Button type="submit" disabled={!canSubmit} className="w-full">
         {submitting ? "Uploading..." : "Upload"}
-      </button>
+      </Button>
     </form>
   );
 }

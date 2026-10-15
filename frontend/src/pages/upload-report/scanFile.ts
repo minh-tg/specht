@@ -3,6 +3,9 @@ export type ScanFile =
   | { readonly ok: true; readonly value: unknown; }
   | { readonly ok: false; readonly error: string; };
 
+/** What the scan file field accepts; the picker filter and the drop check both read this. */
+export const SCAN_FILE_EXTENSIONS = [".json", ".jsonl", ".ndjson", ".sarif"];
+
 const JSONL_EXTENSIONS = [".jsonl", ".ndjson"];
 
 function parseLines(text: string): ScanFile {
