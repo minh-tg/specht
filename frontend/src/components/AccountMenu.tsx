@@ -1,18 +1,27 @@
 import { SoundSetting } from "@/components/SoundSetting";
 import { buttonVariants } from "@/components/ui/button-variants";
+import { type Theme, useTheme } from "@/lib/theme";
 import { cn } from "@/lib/utils";
 import { Menu } from "@base-ui/react/menu";
-import { ChevronDownIcon, UserIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon, UserIcon } from "lucide-react";
 import { Link } from "react-router-dom";
 
 const ITEM_CLASS =
   "flex min-h-8 w-full cursor-default items-center rounded-md px-2 text-sm outline-none select-none data-highlighted:bg-muted data-highlighted:text-foreground";
 
+const APPEARANCE: readonly { value: Theme; label: string; }[] = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
+
 /**
- * The signed-in person's menu: Profile and Sign out. The trigger shows the email truncated; below
+ * The signed-in person's menu: Profile, the appearance choice and Sign out. The trigger shows the email truncated; below
  * the sm breakpoint only an icon is left, so the accessible name carries the email.
  */
 export function AccountMenu({ email, onLogout }: { email: string | null; onLogout: () => void; }) {
+  const { theme, setTheme } = useTheme();
+
   return (
     <Menu.Root>
       <Menu.Trigger
@@ -36,7 +45,31 @@ export function AccountMenu({ email, onLogout }: { email: string | null; onLogou
             <Menu.LinkItem render={<Link to="/profile" />} className={ITEM_CLASS}>
               Profile
             </Menu.LinkItem>
+            <Menu.Separator className="bg-border -mx-1 my-1 h-px" />
+            <Menu.Group>
+              <Menu.GroupLabel className="text-muted-foreground px-2 pt-1 pb-0.5 text-xs">
+                Appearance
+              </Menu.GroupLabel>
+              <Menu.RadioGroup
+                value={theme}
+                onValueChange={(value) => setTheme(value as Theme)}
+              >
+                {APPEARANCE.map(({ value, label }) => (
+                  <Menu.RadioItem
+                    key={value}
+                    value={value}
+                    className={cn(ITEM_CLASS, "relative pl-7")}
+                  >
+                    <Menu.RadioItemIndicator className="absolute left-2 inline-flex items-center">
+                      <CheckIcon aria-hidden="true" size={14} />
+                    </Menu.RadioItemIndicator>
+                    {label}
+                  </Menu.RadioItem>
+                ))}
+              </Menu.RadioGroup>
+            </Menu.Group>
             <SoundSetting />
+            <Menu.Separator className="bg-border -mx-1 my-1 h-px" />
             <Menu.Item onClick={onLogout} className={ITEM_CLASS}>
               Sign out
             </Menu.Item>

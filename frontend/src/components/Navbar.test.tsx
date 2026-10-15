@@ -181,7 +181,8 @@ describe("Navbar", () => {
     screen.getByRole("button", { name: "Account menu, user@example.com" }).focus();
     await user.keyboard("{Enter}");
     expect(await screen.findByRole("menuitem", { name: "Profile" })).toBeInTheDocument();
-    await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
+    // Sign out is the last item, so End reaches it however many items sit above it.
+    await user.keyboard("{End}{Enter}");
     expect(logout).toHaveBeenCalledOnce();
   });
 
