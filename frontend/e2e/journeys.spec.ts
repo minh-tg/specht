@@ -187,7 +187,7 @@ test("manual ingest uploads a scan file", async ({ page, request }) => {
   await uiLogin(page);
 
   await page.goto(`/${slug}/reports/upload`);
-  await chooseOption(page, page.getByLabel("Scanner"), /^sarif/);
+  await chooseOption(page, page.getByLabel("Scanner"), /^SARIF/);
   await page.setInputFiles("#ingest-file", FIXTURE_HIGH);
   await expect(page.getByText("high.sarif.json loaded")).toBeVisible();
 
@@ -978,7 +978,7 @@ test("manual ingest takes line-based Nuclei output", async ({ page, request }) =
   await uiLogin(page);
 
   await page.goto(`/${slug}/reports/upload`);
-  await chooseOption(page, page.getByLabel("Scanner"), /^nuclei/);
+  await chooseOption(page, page.getByLabel("Scanner"), /^Nuclei/);
   await page.setInputFiles("#ingest-file", FIXTURE_NUCLEI);
   await expect(page.getByText("nuclei.jsonl loaded")).toBeVisible();
 
@@ -1032,7 +1032,7 @@ test("a file uploaded under the wrong scanner is refused with what to do", async
   await uiLogin(page);
 
   await page.goto(`/${slug}/reports/upload`);
-  await chooseOption(page, page.getByLabel("Scanner"), /^trivy/);
+  await chooseOption(page, page.getByLabel("Scanner"), /^Trivy/);
   await page.setInputFiles("#ingest-file", FIXTURE_GOSEC_JSON);
   await page.getByRole("button", { name: "Upload" }).click();
 
@@ -1046,4 +1046,30 @@ test("a file uploaded under the wrong scanner is refused with what to do", async
   await expect(page.getByText("gosec")).toHaveCount(0);
   await page.goto(`/${slug}/findings`);
   await expect(page.locator("tbody tr")).toHaveCount(0);
+});
+
+test("the upload page says how to produce the chosen scanner's file and takes .sarif", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("format-help");
+  await seedProject(request, token, slug);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/reports/upload`);
+  await chooseOption(page, page.getByLabel("Scanner"), /^Semgrep/);
+  const help = page.getByRole("region", { name: /semgrep/i });
+  await expect(help).toContainText("semgrep scan --json");
+  await expect(help).toContainText("semgrep scan --sarif");
+  await expect(help).toContainText("Checked with Semgrep");
+  await expect(page.getByText("Takes .json, .sarif")).toBeVisible();
+
+  // The usual extension for SARIF is .sarif, which the page used to refuse.
+  await chooseOption(page, page.getByLabel("Scanner"), /^SARIF/);
+  await page.setInputFiles("#ingest-file", {
+    name: "results.sarif",
+    mimeType: "application/json",
+    buffer: readFileSync(FIXTURE_HIGH),
+  });
+  await expect(page.getByText("results.sarif loaded")).toBeVisible();
+  await page.getByRole("button", { name: "Upload" }).click();
+  await expect(page.getByRole("link", { name: "View findings" })).toBeVisible();
 });
