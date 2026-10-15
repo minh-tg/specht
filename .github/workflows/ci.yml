@@ -389,6 +389,7 @@ jobs:
           for a in *.tar.gz; do
             case "$a" in
               specht-adapter_*) bin=specht-adapter ;;
+              specht-mcp_*) bin=specht-mcp ;;
               specht_*) bin=specht ;;
               *) echo "::error::unexpected archive $a"; exit 1 ;;
             esac
@@ -402,6 +403,7 @@ jobs:
           for a in *.zip; do
             case "$a" in
               specht-adapter_*) bin=specht-adapter.exe ;;
+              specht-mcp_*) bin=specht-mcp.exe ;;
               specht_*) bin=specht.exe ;;
               *) echo "::error::unexpected archive $a"; exit 1 ;;
             esac
@@ -419,12 +421,14 @@ jobs:
           mkdir -p extracted/linux extracted/darwin extracted/windows
           tar -xzf dist/specht-adapter_0.0.0-dryrun_linux_amd64.tar.gz -C extracted/linux
           tar -xzf dist/specht_0.0.0-dryrun_darwin_arm64.tar.gz -C extracted/darwin
+          tar -xzf dist/specht-mcp_0.0.0-dryrun_linux_amd64.tar.gz -C extracted/linux
           unzip -q dist/specht-adapter_0.0.0-dryrun_windows_amd64.zip -d extracted/windows
           test -x extracted/linux/specht-adapter
           test -x extracted/darwin/specht
           test -f extracted/windows/specht-adapter.exe
           # Linux is the only one of the three this runner can execute.
           ./extracted/linux/specht-adapter -help
+          ./extracted/linux/specht-mcp -version
 
       - name: Upload dry-run release artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

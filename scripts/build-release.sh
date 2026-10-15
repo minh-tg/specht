@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Release archives for the adapter and the CLI.
+# Release archives for the adapter, the CLI and the MCP bridge.
 #
 # Usage: scripts/build-release.sh VERSION OUTDIR
 #
-# Cross-compiles specht-adapter and specht for every supported platform and
+# Cross-compiles specht-adapter, specht and specht-mcp for every supported platform and
 # writes one archive per binary and platform into OUTDIR, plus a SHA256SUMS
 # manifest over all of them. The same script serves the v* tag release
 # (release.yml) and the pull-request dry run (ci.yml), so the release path is
@@ -57,8 +57,8 @@ echo "building ${VERSION} from ${COMMIT} with SOURCE_DATE_EPOCH=${SOURCE_DATE_EP
 PLATFORMS=(linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64)
 # Two parallel arrays instead of an associative one: macOS ships bash 3.2,
 # where a developer may run this outside the dev shell.
-binary_names=(specht-adapter specht)
-binary_packages=(./cmd/adapter ./cmd/specht)
+binary_names=(specht-adapter specht specht-mcp)
+binary_packages=(./cmd/adapter ./cmd/specht ./cmd/mcp)
 
 mkdir -p "$OUTDIR"
 OUTDIR="$(cd "$OUTDIR" && pwd)"

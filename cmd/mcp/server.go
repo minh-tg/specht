@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/minh-tg/specht/internal/client"
+	"github.com/minh-tg/specht/internal/version"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -126,7 +127,7 @@ func loadToolOptions(apiKey string, getenv func(string) string) (toolOptions, er
 }
 
 func newMCPServer(api API, opts toolOptions) *mcp.Server {
-	server := mcp.NewServer(&mcp.Implementation{Name: "specht-mcp", Version: "0.1.0"}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "specht-mcp", Version: version.String()}, nil)
 	registerReadTools(server, api)
 	if opts.SessionCredential {
 		registerSessionTools(server, api)

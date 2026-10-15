@@ -396,8 +396,8 @@ jobs:
         working-directory: dist
         run: |
           archives=$(find . -maxdepth 1 -type f \( -name '*.tar.gz' -o -name '*.zip' \) | wc -l)
-          if [ "$archives" -ne 10 ]; then
-            echo "::error::expected 10 archives, found $archives"
+          if [ "$archives" -ne 15 ]; then
+            echo "::error::expected 15 archives, found $archives"
             exit 1
           fi
           sha256sum -c SHA256SUMS
@@ -418,5 +418,5 @@ jobs:
             --verify-tag \
             "${prerelease[@]}" \
             --title "Specht ${GITHUB_REF_NAME}" \
-            --notes "Adapter and CLI binaries for ${GITHUB_REF_NAME}, plus the adapter image ghcr.io/${GITHUB_REPOSITORY_OWNER}/specht-adapter:${GITHUB_REF_NAME}. Check every download against SHA256SUMS and verify SHA256SUMS with cosign verify-blob and SHA256SUMS.pem." \
+            --notes "Adapter, CLI and MCP bridge binaries for ${GITHUB_REF_NAME}, plus the adapter image ghcr.io/${GITHUB_REPOSITORY_OWNER}/specht-adapter:${GITHUB_REF_NAME}. Check every download against SHA256SUMS and verify SHA256SUMS with cosign verify-blob and SHA256SUMS.pem." \
             ./*.tar.gz ./*.zip SHA256SUMS SHA256SUMS.sig SHA256SUMS.pem
