@@ -36,9 +36,11 @@ curl -fsS http://localhost:8080/api/v1/ready    # readiness: the database answer
 curl -fsS http://localhost:8080/api/v1/version
 ```
 
-The server service pulls `ghcr.io/minh-tg/specht:${SPECHT_VERSION}` (default
-`latest`). Set `SPECHT_VERSION` in `deploy/.env.prod` to a release tag such as
-`v0.1.0` so a restart never moves you to a new build. The GHCR package is
+The server service pulls `ghcr.io/minh-tg/specht:${SPECHT_VERSION}`. Set
+`SPECHT_VERSION` in `deploy/.env.prod` to a release tag such as `v0.1.0` so a
+restart never moves you to a new build. The default, `latest`, follows stable
+releases only and does not exist until the first one, so a release candidate
+(`v0.1.0-rc.1`) must be named in `deploy/.env.prod`. The GHCR package is
 private after its first push: open the package settings on GitHub and change
 its visibility to public once, or hosts cannot pull it without a login.
 
