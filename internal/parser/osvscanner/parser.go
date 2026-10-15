@@ -380,6 +380,7 @@ func (f osvFinding) normalized() domain.NormalizedFinding {
 		Aliases:      v.Aliases,
 		Reachability: reachability,
 		CVSS:         extractCVSSInfo(v),
+		CVSSAll:      extractCVSSAll(v),
 		Fix:          fix,
 		Dimensions:   dims,
 		Extensions:   ext,
@@ -443,6 +444,10 @@ func extractCVSSInfo(v osvVuln) *domain.CVSSInfo {
 		}
 		score, _, ok := parseCVSSScore(s.Score)
 		if ok {
+			// The OSV type CVSS_V3 covers 3.0 and 3.1, so the prefix decides.
+			if rec, found := parseutil.NewCVSSRecord(s.Score, 0, ""); found {
+				version = rec.Version
+			}
 			return &domain.CVSSInfo{
 				Version: version,
 				Vector:  s.Score,
@@ -451,6 +456,31 @@ func extractCVSSInfo(v osvVuln) *domain.CVSSInfo {
 		}
 	}
 	return nil
+}
+
+// extractCVSSAll keeps every severity entry that carries a scorable CVSS
+// vector. The version comes from the vector prefix, because the OSV type
+// CVSS_V3 covers both 3.0 and 3.1 vectors. OSV names no scoring source.
+func extractCVSSAll(v osvVuln) []domain.CVSSRecord {
+	var out []domain.CVSSRecord
+	for _, s := range v.Severity {
+		switch s.Type {
+		case "CVSS_V4", "CVSS_V3", "CVSS_V2":
+		default:
+			continue
+		}
+		rec, ok := parseutil.NewCVSSRecord(s.Score, 0, "")
+		if !ok {
+			continue
+		}
+		score, err := cvss.Calculate(rec.Vector)
+		if err != nil || score <= 0 {
+			continue
+		}
+		rec.Score = score
+		out = parseutil.AddCVSS(out, rec)
+	}
+	return out
 }
 
 func extractSeverity(v osvVuln) domain.Severity {
