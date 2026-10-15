@@ -142,17 +142,39 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 }
 
 func (s *Scanner) DetectFormat(data []byte) bool {
-	var probe osvReport
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return false
+	return s.Recognize(data) == scanner.Definite
+}
+
+// Recognize grades a document. OSV-Scanner output is an object whose results
+// list holds sources with packages; an empty list is possible because other
+// tools also write one, so a named OSV-Scanner upload may still be a clean scan.
+func (s *Scanner) Recognize(data []byte) scanner.Recognition {
+	shape, ok := parseutil.ReadShape(data)
+	if !ok || !shape.IsObject() {
+		return scanner.NotRecognized
 	}
-	return len(probe.Results) > 0
+	results, present := shape.List("results")
+	if !present {
+		return scanner.NotRecognized
+	}
+	for _, r := range results {
+		if parseutil.ObjectHas(r, "source") || parseutil.ObjectHas(r, "packages") {
+			return scanner.Definite
+		}
+	}
+	if len(results) == 0 {
+		return scanner.Possible
+	}
+	return scanner.NotRecognized
 }
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	if s.Recognize(data) == scanner.NotRecognized {
+		return nil, scanner.Unrecognized("osv-scanner")
+	}
 	var report osvReport
 	if err := json.Unmarshal(data, &report); err != nil {
-		return nil, fmt.Errorf("osv-scanner: parse json: %w", err)
+		return nil, scanner.Malformed("osv-scanner", err)
 	}
 
 	return convert(report), nil
