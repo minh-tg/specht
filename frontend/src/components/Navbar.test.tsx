@@ -235,6 +235,26 @@ describe("Navbar", () => {
     expect(email).toHaveClass("truncate", "max-sm:hidden");
   });
 
+  it("ends the row with the account menu, after Teams, API keys and Admin", async () => {
+    renderNavbar(signedIn());
+    await screen.findByRole("link", { name: "Admin" });
+
+    const nav = screen.getByRole("navigation", { name: "Main" });
+    const names = [...nav.querySelectorAll("a, button")].map((el) =>
+      el.getAttribute("aria-label") ?? el.textContent
+    );
+
+    expect(names).toEqual([
+      "Specht",
+      expect.stringMatching(/^Theme/),
+      "Open command palette",
+      "Teams",
+      "API keys",
+      "Admin",
+      "Account menu, user@example.com",
+    ]);
+  });
+
   it("gives primary links the ghost button look and the current page a fill", async () => {
     renderNavbar(signedIn(), "/teams");
 

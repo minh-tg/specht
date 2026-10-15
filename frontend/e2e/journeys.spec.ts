@@ -593,6 +593,12 @@ test("the navigation fits a 360px screen without cutting or wrapping a link", as
     await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     "the page does not scroll sideways",
   ).toBe(true);
+
+  // From sm up the account menu is the last item of the row.
+  await page.setViewportSize({ width: 1024, height: 740 });
+  const adminBox = await items[3][1].boundingBox();
+  const triggerBox = await trigger.boundingBox();
+  expect(triggerBox!.x, "the account menu sits right of Admin").toBeGreaterThan(adminBox!.x);
 });
 
 test("a commit with no scan says so instead of failing", async ({ page, request }) => {
