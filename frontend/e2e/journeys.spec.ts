@@ -10,6 +10,7 @@ import {
   FIXTURE_HIGH_MEDIUM,
   FIXTURE_HIGH_NEW,
   FIXTURE_MEDIUM,
+  FIXTURE_NUCLEI,
   ingestFixture,
   registerPerson,
   requestWaiver,
@@ -967,4 +968,58 @@ test("a person who is not a global admin cannot reach admin tools", async ({ pag
   await expect(page.getByRole("button", { name: "+ Create Team" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Create First Team" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Manage Roster" })).toHaveCount(0);
+});
+
+test("manual ingest takes line-based Nuclei output", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("jsonl-ingest");
+  await seedProject(request, token, slug);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/reports/upload`);
+  await chooseOption(page, page.getByLabel("Scanner"), /^nuclei/);
+  await page.setInputFiles("#ingest-file", FIXTURE_NUCLEI);
+  await expect(page.getByText("nuclei.jsonl loaded")).toBeVisible();
+
+  await page.getByRole("button", { name: "Upload" }).click();
+  await expect(page.getByRole("link", { name: "View findings" })).toBeVisible();
+
+  await page.goto(`/${slug}/findings`);
+  await expect(page.locator("tbody tr").first()).toBeVisible();
+});
+
+test("a project admin classifies an environment and a later scan leaves it alone", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("environment");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH, {
+    environment: "production",
+    commit_sha: BASE_SHA,
+  });
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/insights`);
+  const environments = page.getByRole("list", { name: "Environments" });
+  await expect(environments.getByRole("listitem")).toContainText("production");
+  await expect(environments.getByRole("listitem")).toContainText("Internal");
+
+  await page.getByRole("button", { name: "Edit production" }).click();
+  const dialog = page.getByRole("dialog", { name: "Classify production" });
+  await chooseOption(page, dialog.getByLabel("Tier"), "Staging");
+  await dialog.getByLabel("Reachable from the internet").check();
+  await chooseOption(page, dialog.getByLabel("Data sensitivity"), "Restricted");
+  await dialog.getByRole("button", { name: "Save" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(environments.getByRole("listitem")).toContainText("Internet facing");
+  await expect(environments.getByRole("listitem")).toContainText("restricted");
+
+  // A later scan of the same environment does not undo it.
+  await ingestFixture(request, token, slug, FIXTURE_MEDIUM, {
+    environment: "production",
+    commit_sha: CHANGE_SHA,
+  });
+  await page.reload();
+  await expect(environments.getByRole("listitem")).toContainText("staging");
+  await expect(environments.getByRole("listitem")).toContainText("Internet facing");
+  await expect(environments.getByRole("listitem")).toContainText("restricted");
 });
