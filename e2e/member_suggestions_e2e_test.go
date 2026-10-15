@@ -171,6 +171,15 @@ func TestE2E_MemberSuggestions(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, status, string(raw))
 	})
 
+	t.Run("a NUL byte or control character is a 400, not a server error", func(t *testing.T) {
+		manager := s.manager(t, "target")
+		for _, q := range []string{"ab\x00c", "ab\x07c"} {
+			status, raw := s.suggest(t, manager, "target", q)
+			require.Equal(t, http.StatusBadRequest, status, string(raw))
+			require.Contains(t, string(raw), "invalid_query")
+		}
+	})
+
 	t.Run("an added member is no longer suggested", func(t *testing.T) {
 		manager := s.manager(t, "target")
 		s.grant(t, "target", "ada@acme.example", "member")

@@ -32,7 +32,7 @@ func (h *Handler) suggestProjectMembers(registrationOpen bool) http.HandlerFunc 
 		switch {
 		case err == nil:
 			respondJSON(w, http.StatusOK, suggestions)
-		case errors.Is(err, usecase.ErrSuggestionQueryTooLong):
+		case errors.Is(err, usecase.ErrSuggestionQueryTooLong), errors.Is(err, usecase.ErrSuggestionQueryInvalid):
 			respondError(w, http.StatusBadRequest, "invalid_query", err.Error())
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
 			respondAccessDenied(w, r, "project")

@@ -149,6 +149,25 @@ func TestSuggestProjectMembers_QueryLength(t *testing.T) {
 	assert.Zero(t, ur.calls)
 }
 
+func TestSuggestProjectMembers_RejectsUnusableText(t *testing.T) {
+	ctx := sessionCtx(suggestCaller, auth.RoleMember)
+	for _, tc := range []struct{ name, query string }{
+		{"NUL byte", "ab\x00c"},
+		{"NUL byte only", "\x00\x00\x00"},
+		{"other control character", "ab\x07c"},
+		{"tab inside the text", "ab\tc"},
+		{"invalid UTF-8", "ab\xffc"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			uc, ur := suggestFixture(auth.RoleManager)
+			got, err := uc.SuggestProjectMembers(ctx, "my-app", tc.query, false)
+			assert.ErrorIs(t, err, ErrSuggestionQueryInvalid)
+			assert.Nil(t, got)
+			assert.Zero(t, ur.calls, "the directory is never asked")
+		})
+	}
+}
+
 func TestSuggestProjectMembers_PassesWildcardsThroughAsText(t *testing.T) {
 	// LIKE escaping belongs to the store, which treats the prefix as literal
 	// text; the use case must not strip or rewrite the characters.
