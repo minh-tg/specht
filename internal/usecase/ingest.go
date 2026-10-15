@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"time"
 
@@ -448,12 +449,40 @@ func (u *Usecases) resolveEnvironment(ctx context.Context, project port.Project,
 	if input.Environment == "" {
 		return ""
 	}
-	e, err := u.deps.Stores.Environments.Ensure(ctx, project.ID, input.Environment, "development", false, "internal")
+	e, err := u.deps.Stores.Environments.Ensure(ctx, project.ID, input.Environment, defaultEnvironmentTier(input.Environment), false, "internal")
 	if err != nil {
 		slog.Warn("ensure environment failed", "project", project.ID, "environment", input.Environment, "error", err)
 		return ""
 	}
 	return e.ID
+}
+
+// defaultEnvironmentTier guesses the tier of a new environment from its name,
+// so a scan of "production" does not start out as development. Only whole
+// words count ("productivity" is not production), production wins over the
+// others, and anything unrecognized is development. A person can correct it.
+func defaultEnvironmentTier(name string) string {
+	words := strings.FieldsFunc(strings.ToLower(name), func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
+	})
+	has := func(candidates ...string) bool {
+		for _, w := range words {
+			if slices.Contains(candidates, w) {
+				return true
+			}
+		}
+		return false
+	}
+	switch {
+	case has("prod", "production", "prd", "live"):
+		return "production"
+	case has("staging", "stage", "stg", "preprod", "uat"):
+		return "staging"
+	case has("test", "testing", "qa", "ci"):
+		return "test"
+	default:
+		return "development"
+	}
 }
 
 // createReport persists the report row, returning ErrDuplicateReport on a
