@@ -200,6 +200,32 @@ func (r *pgWaiverPort) ToggleWithEvent(ctx context.Context, id, projectID, actor
 	return waiverRowToPort(row), nil
 }
 
+func (r *pgWaiverPort) SetEnabled(ctx context.Context, id, projectID string, change port.WaiverEnabledChange) (port.Waiver, error) {
+	wid, err := parseID(id)
+	if err != nil {
+		return port.Waiver{}, err
+	}
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.Waiver{}, err
+	}
+	var expected pgtype.Timestamptz
+	if change.ExpectedUpdatedAt != nil {
+		expected = pgtype.Timestamptz{Time: *change.ExpectedUpdatedAt, Valid: true}
+	}
+	row, err := r.inner.SetEnabled(ctx, SetWaiverEnabledParams{
+		ID:        wid,
+		ProjectID: pid,
+		Enabled:   change.Enabled,
+		Expected:  expected,
+		Event:     waiverEventInputToRepo(change.Event),
+	})
+	if err != nil {
+		return port.Waiver{}, mappingErr(err)
+	}
+	return waiverRowToPort(row), nil
+}
+
 func (r *pgWaiverPort) ListActive(ctx context.Context, projectID string) ([]port.Waiver, error) {
 	pid, err := parseID(projectID)
 	if err != nil {

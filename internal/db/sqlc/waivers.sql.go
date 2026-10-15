@@ -689,11 +689,67 @@ func (q *Queries) RefreshWaiverScopeAll(ctx context.Context, id pgtype.UUID) (Wa
 	return i, err
 }
 
+const setWaiverEnabled = `-- name: SetWaiverEnabled :one
+UPDATE waivers SET
+    enabled = $3::boolean,
+    updated_at = NOW()
+WHERE id = $1 AND project_id = $2
+  AND status = 'approved'
+  AND enabled <> $3::boolean
+  AND (NOT $3::boolean OR expires_at IS NULL OR expires_at > NOW())
+  AND ($4::timestamptz IS NULL
+       OR updated_at = $4::timestamptz)
+RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at, status, scope_all, reason, requested_by, requested_at, decided_by, decided_at, decision_note
+`
+
+type SetWaiverEnabledParams struct {
+	ID                pgtype.UUID        `json:"id"`
+	ProjectID         pgtype.UUID        `json:"project_id"`
+	Enabled           bool               `json:"enabled"`
+	ExpectedUpdatedAt pgtype.Timestamptz `json:"expected_updated_at"`
+}
+
+// Idempotent enable or disable of an approved waiver. A row comes back only
+// when the flag actually changes, so a repeated call writes nothing. Enabling
+// needs an unexpired waiver, and a non-null expected_updated_at makes the
+// write conditional on the version the caller saw. No row comes back when any
+// condition fails; the caller reads the waiver to say which one.
+func (q *Queries) SetWaiverEnabled(ctx context.Context, arg SetWaiverEnabledParams) (Waiver, error) {
+	row := q.db.QueryRow(ctx, setWaiverEnabled,
+		arg.ID,
+		arg.ProjectID,
+		arg.Enabled,
+		arg.ExpectedUpdatedAt,
+	)
+	var i Waiver
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Description,
+		&i.Enabled,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExpiresAt,
+		&i.Status,
+		&i.ScopeAll,
+		&i.Reason,
+		&i.RequestedBy,
+		&i.RequestedAt,
+		&i.DecidedBy,
+		&i.DecidedAt,
+		&i.DecisionNote,
+	)
+	return i, err
+}
+
 const toggleWaiver = `-- name: ToggleWaiver :one
 UPDATE waivers SET
     enabled = NOT enabled,
     updated_at = NOW()
 WHERE id = $1 AND project_id = $2
+  AND status = 'approved'
+  AND (enabled OR expires_at IS NULL OR expires_at > NOW())
 RETURNING id, project_id, name, description, enabled, created_at, updated_at, expires_at, status, scope_all, reason, requested_by, requested_at, decided_by, decided_at, decision_note
 `
 
@@ -702,6 +758,9 @@ type ToggleWaiverParams struct {
 	ProjectID pgtype.UUID `json:"project_id"`
 }
 
+// Only an approved waiver flips, and a disabled one comes back on only while
+// its expiry has not passed. No row comes back otherwise; the caller reads the
+// waiver to tell a missing row from a refused flip.
 func (q *Queries) ToggleWaiver(ctx context.Context, arg ToggleWaiverParams) (Waiver, error) {
 	row := q.db.QueryRow(ctx, toggleWaiver, arg.ID, arg.ProjectID)
 	var i Waiver
