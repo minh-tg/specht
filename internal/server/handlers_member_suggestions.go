@@ -18,9 +18,14 @@ import (
 //
 // Accepted residual risk: a project manager can walk the user directory by
 // extending prefixes one letter at a time. The 3-character minimum, the cap of
-// 8 results and the per-user rate limit on the route (30 a minute, burst 10)
-// bound that to a slow crawl, and a manager can already add anyone whose exact
-// address they know. Keystrokes are not written to the audit trail.
+// 8 results and the per-user rate limit on the route bound that to a slow
+// crawl, and a manager can already add anyone whose exact address they know.
+// In numbers: 30 requests a minute is 1,800 an hour, and a sweep of every
+// 3-letter prefix is 26^3 = 17,576 queries, about 10 hours for one account. A
+// manager can mint manager invites, and the accounts that join have their own
+// budget, so the crawl can be spread across them. The buckets are also kept
+// per process, so each replica of the server grants its own 30 a minute.
+// Keystrokes are not written to the audit trail.
 func (h *Handler) suggestProjectMembers(directoryClosed bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		slug := chi.URLParam(r, "slug")
