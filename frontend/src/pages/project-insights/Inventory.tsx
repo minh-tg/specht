@@ -1,10 +1,13 @@
+import { useProjectRole } from "@/api/hooks";
 import { useArtifacts, useEnvironments, useTargets } from "@/api/inventory";
 import { ErrorState } from "@/components/ErrorState";
 import { SkeletonLines } from "@/components/SkeletonLines";
+import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { EMPTY_VALUE } from "@/lib/format";
 import type { Artifact, Environment, Target } from "@/types/api";
 import { type ReactNode, useState } from "react";
+import { EnvironmentEditDialog } from "./EnvironmentEditDialog";
 
 const ROW_CAP = 20;
 
@@ -90,10 +93,27 @@ function Meta({ children }: { readonly children: ReactNode; }) {
   return <p className="text-muted-foreground mt-0.5 text-[0.8125rem]">{children}</p>;
 }
 
-function EnvironmentRow({ environment }: { readonly environment: Environment; }) {
+function EnvironmentRow({ environment, onEdit }: {
+  readonly environment: Environment;
+  /** Present for a project admin, who may change how the environment is classified. */
+  readonly onEdit?: () => void;
+}) {
   return (
     <>
-      <p className="font-semibold">{environment.name}</p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="font-semibold">{environment.name}</p>
+        {onEdit && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            aria-label={`Edit ${environment.name}`}
+            onClick={onEdit}
+          >
+            Edit
+          </Button>
+        )}
+      </div>
       <Meta>
         <span>{environment.tier || EMPTY_VALUE}</span>
         <span>{" · "}</span>
@@ -143,12 +163,15 @@ function ArtifactRow({ artifact }: { readonly artifact: Artifact; }) {
 
 /**
  * What the project's scans described: the environments the code runs in, the subjects scans ran
- * against, and the build artifacts they saw. Read-only; each list loads and fails on its own.
+ * against, and the build artifacts they saw. Each list loads and fails on its own. A project admin
+ * can classify an environment; everything else here is read-only.
  */
 export function Inventory({ slug }: { readonly slug: string; }) {
   const environments = useEnvironments(slug);
   const targets = useTargets(slug);
   const artifacts = useArtifacts(slug);
+  const { isAdmin } = useProjectRole(slug);
+  const [editing, setEditing] = useState<Environment | null>(null);
 
   return (
     <section aria-labelledby="inventory-heading" className="min-w-0">
@@ -163,7 +186,14 @@ export function Inventory({ slug }: { readonly slug: string; }) {
           emptyText="No environments recorded yet. Scans that send context fill this in."
           query={environments}
           rowKey={(item) => item.id}
-          renderRow={(item) => <EnvironmentRow environment={item} />}
+          renderRow={(item) => (
+            <EnvironmentRow
+              environment={item}
+              onEdit={isAdmin
+                ? () => setEditing(item)
+                : undefined}
+            />
+          )}
         />
         <InventoryList
           title="Scan targets"
@@ -184,6 +214,7 @@ export function Inventory({ slug }: { readonly slug: string; }) {
           />
         </div>
       </div>
+      <EnvironmentEditDialog slug={slug} environment={editing} onClose={() => setEditing(null)} />
     </section>
   );
 }
