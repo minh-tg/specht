@@ -109,6 +109,23 @@ describe("PersonCombobox", () => {
     expect(await screen.findByRole("option")).toBeInTheDocument();
   });
 
+  it("stays closed when the only person offered is the address already typed", async () => {
+    const user = userEvent.setup();
+    render(<Harness suggestions={[ADA]} />);
+    await user.type(field(), "ADA@acme.example");
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+  });
+
+  it("still lists a person whose address only starts with the typed text", async () => {
+    const user = userEvent.setup();
+    render(<Harness suggestions={[ADA, LOVE]} />);
+    await user.type(field(), "ada@acme.example");
+
+    expect(await screen.findAllByRole("option")).toHaveLength(2);
+  });
+
   it("says when nobody matches and how to add someone anyway", async () => {
     const user = userEvent.setup();
     render(<Harness suggestions={[]} />);
