@@ -1,6 +1,7 @@
 import { useVerifyFinding } from "@/api/findingActions";
 import { useProjectRole } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
+import { playCue } from "@/lib/sound";
 import { useParams } from "react-router-dom";
 import { OutcomeRegions } from "./OutcomeRegions";
 
@@ -35,7 +36,13 @@ export function VerifyFixSection({
     <div className="mt-4">
       <Button
         variant="outline"
-        onClick={() => verifyMutation.mutate()}
+        onClick={() =>
+          verifyMutation.mutate(undefined, {
+            // Only a confirmed fix is good news worth a sound; the other verdicts stay quiet.
+            onSuccess: (data) => {
+              if (data.outcome === "verified_fixed") playCue("pass");
+            },
+          })}
         disabled={verifyMutation.isPending}
       >
         {verifyMutation.isPending && (
