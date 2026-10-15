@@ -39,8 +39,11 @@ function SignedInLinks({ email, onLogout }: { email: string | null; onLogout: ()
   return (
     <>
       <CommandPalette />
-      <AccountMenu email={email} onLogout={onLogout} />
-      <div className="flex basis-full flex-wrap items-center gap-1 sm:contents">
+      {
+        /* Below sm the links wrap onto their own line under the account menu; from sm up the
+          menu is the last item of the row. */
+      }
+      <div className="flex basis-full flex-wrap items-center gap-1 max-sm:order-last sm:contents">
         <NavLink to="/teams" className={navLinkClass}>
           Teams
         </NavLink>
@@ -53,6 +56,7 @@ function SignedInLinks({ email, onLogout }: { email: string | null; onLogout: ()
           </NavLink>
         )}
       </div>
+      <AccountMenu email={email} onLogout={onLogout} />
     </>
   );
 }
