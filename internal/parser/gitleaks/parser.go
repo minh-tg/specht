@@ -36,7 +36,17 @@ func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Descriptor() scanner.Descriptor {
 	return scanner.Descriptor{
-		Name:                  "gitleaks",
+		Name:        "gitleaks",
+		DisplayName: "Gitleaks",
+		Formats: []scanner.Format{
+			{
+				Name:       "JSON",
+				Extensions: []string{".json"},
+				Command:    `gitleaks detect --report-format json --report-path gitleaks.json`,
+				TestedWith: "Gitleaks 8.30.1",
+				Note:       "Reports written with `--redact` are accepted.",
+			},
+		},
 		Version:               "8",
 		ContractVersion:       1,
 		FingerprintVersion:    fingerprintVersion,

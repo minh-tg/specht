@@ -60,7 +60,17 @@ func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Descriptor() scanner.Descriptor {
 	return scanner.Descriptor{
-		Name:                  "checkov",
+		Name:        "checkov",
+		DisplayName: "Checkov",
+		Formats: []scanner.Format{
+			{
+				Name:       "JSON",
+				Extensions: []string{".json"},
+				Command:    `checkov -d . -o json > checkov.json`,
+				TestedWith: "Checkov 3.3.29",
+				Note:       `A run over several kinds of files, such as Terraform and Kubernetes, writes one report per framework; all of them are read. Checkov's open-source output has no severity, so its findings show as unknown.`,
+			},
+		},
 		Version:               "3",
 		ContractVersion:       1,
 		FingerprintVersion:    1,

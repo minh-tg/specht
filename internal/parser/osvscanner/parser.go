@@ -130,7 +130,16 @@ func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Descriptor() scanner.Descriptor {
 	return scanner.Descriptor{
-		Name:                  "osv-scanner",
+		Name:        "osv-scanner",
+		DisplayName: "OSV-Scanner",
+		Formats: []scanner.Format{
+			{
+				Name:       "JSON",
+				Extensions: []string{".json"},
+				Command:    `osv-scanner scan source --format json --output-file osv.json .`,
+				TestedWith: "OSV-Scanner 2.6.0",
+			},
+		},
 		Version:               "1",
 		ContractVersion:       1,
 		FingerprintVersion:    1,

@@ -60,6 +60,51 @@ type Descriptor struct {
 	// SupportsAutoDetection reports whether DetectFormat can identify this
 	// scanner's output format.
 	SupportsAutoDetection bool
+	// DisplayName is how people know the tool ("OSV-Scanner"). The picker and
+	// the docs show it; the registered Name stays the identifier.
+	DisplayName string
+	// Formats lists the files this scanner reads, so a person can see what to
+	// upload and how to produce it.
+	Formats []Format
+}
+
+// Format describes one file format a scanner reads.
+type Format struct {
+	// Name says what the file is ("JSON", "SARIF", "CycloneDX JSON").
+	Name string
+	// Extensions are the file extensions the upload page accepts for it.
+	Extensions []string
+	// Command produces the file with the tool.
+	Command string
+	// TestedWith names the tool version the parser was checked against.
+	TestedWith string
+	// Note adds what a person should know, such as a limit of the tool.
+	Note string
+}
+
+// ShownName is the name to show people: the display name, or the registered
+// name when a scanner has none.
+func (d Descriptor) ShownName() string {
+	if d.DisplayName != "" {
+		return d.DisplayName
+	}
+	return d.Name
+}
+
+// Extensions lists every file extension any of the formats takes, once, in the
+// order the formats name them.
+func (d Descriptor) Extensions() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, f := range d.Formats {
+		for _, e := range f.Extensions {
+			if !seen[e] {
+				seen[e] = true
+				out = append(out, e)
+			}
+		}
+	}
+	return out
 }
 
 // Scanner adapts a vendor scanner output format to the normalized domain

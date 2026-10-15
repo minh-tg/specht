@@ -34,7 +34,17 @@ func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Descriptor() scanner.Descriptor {
 	return scanner.Descriptor{
-		Name:                  "nuclei",
+		Name:        "nuclei",
+		DisplayName: "Nuclei",
+		Formats: []scanner.Format{
+			{
+				Name:       "JSON Lines",
+				Extensions: []string{".jsonl", ".ndjson"},
+				Command:    `nuclei -u https://example.com -jsonl -o nuclei.jsonl`,
+				TestedWith: "Nuclei 3.11.1",
+				Note:       `One finding per template and URL.`,
+			},
+		},
 		Version:               "3",
 		ContractVersion:       1,
 		FingerprintVersion:    1,

@@ -117,7 +117,17 @@ func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Descriptor() scanner.Descriptor {
 	return scanner.Descriptor{
-		Name:                  "trivy",
+		Name:        "trivy",
+		DisplayName: "Trivy",
+		Formats: []scanner.Format{
+			{
+				Name:       "JSON",
+				Extensions: []string{".json"},
+				Command:    `trivy fs --format json -o trivy.json .`,
+				TestedWith: "Trivy 0.74.0",
+				Note:       "`trivy image` and `trivy config` write the same format.",
+			},
+		},
 		Version:               "2",
 		ContractVersion:       1,
 		FingerprintVersion:    1,

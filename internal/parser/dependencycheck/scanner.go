@@ -54,7 +54,16 @@ func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Descriptor() scanner.Descriptor {
 	return scanner.Descriptor{
-		Name:                  "dependency-check",
+		Name:        "dependency-check",
+		DisplayName: "OWASP Dependency-Check",
+		Formats: []scanner.Format{
+			{
+				Name:       "JSON",
+				Extensions: []string{".json"},
+				Command:    `dependency-check --scan . --format JSON --out .`,
+				TestedWith: "Dependency-Check 12.1.0",
+			},
+		},
 		Version:               "2",
 		ContractVersion:       1,
 		FingerprintVersion:    1,
