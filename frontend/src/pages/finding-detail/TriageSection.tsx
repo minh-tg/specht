@@ -1,5 +1,6 @@
 import { useProjectRole, useTriageFinding } from "@/api/hooks";
 import { SelectField } from "@/components/SelectField";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { type AnalysisState, isAnalysisState } from "@/lib/enums";
 import { GLOSSARY } from "@/lib/glossary";
@@ -90,14 +91,13 @@ export function TriageSection({
             onChange={(e) => setExpiresAt(e.target.value)}
           />
         )}
-        <button
+        <Button
           onClick={handleTriage}
           disabled={!triageReady || triageMutation.isPending}
           title={!canTriage ? "Requires Project Manager role" : undefined}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-1.5 text-sm font-medium disabled:opacity-50"
         >
           {triageMutation.isPending ? "Saving..." : "Apply"}
-        </button>
+        </Button>
       </div>
       {!canTriage && !roleLoading && (
         <p className="text-muted-foreground mt-2 text-xs">

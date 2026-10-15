@@ -1,6 +1,7 @@
 import { APIError } from "@/api/client";
 import { useCreateProject, useMe } from "@/api/hooks";
 import { INLINE_LINK } from "@/components/inlineLink";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
@@ -153,13 +154,12 @@ export function NewProject() {
 
         {errors.form && <p role="alert" className="text-destructive text-sm">{errors.form}</p>}
 
-        <button
+        <Button
           type="submit"
           disabled={createProject.isPending}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
         >
           {createProject.isPending ? "Creating..." : "Create project"}
-        </button>
+        </Button>
       </form>
     </div>
   );

@@ -13,6 +13,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatDateTime, pluralize } from "@/lib/format";
@@ -102,10 +103,7 @@ export function ReportHistory() {
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
-        <Link
-          to={`/${slug}/reports/upload`}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 inline-flex items-center rounded-md px-3 py-1.5 text-sm font-medium"
-        >
+        <Link to={`/${slug}/reports/upload`} className={buttonVariants()}>
           Upload report
         </Link>
       </div>
@@ -186,14 +184,14 @@ export function ReportHistory() {
 
       {reports.length >= limit && limit < MAX_PAGE_SIZE && (
         <div>
-          <button
+          <Button
+            variant="outline"
             type="button"
             disabled={isFetching}
             onClick={() => setLimit((current) => Math.min(current + PAGE_SIZE, MAX_PAGE_SIZE))}
-            className="border-input hover:bg-muted rounded-md border px-3 py-1.5 text-sm font-medium disabled:opacity-50"
           >
             Show more reports
-          </button>
+          </Button>
         </div>
       )}
 
