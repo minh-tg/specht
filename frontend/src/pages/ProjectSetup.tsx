@@ -3,6 +3,7 @@ import { APIError } from "@/api/client";
 import { queryKeys, useCreateApiKey, useProject, useProjectStats, useVersion } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
 import { ErrorState } from "@/components/ErrorState";
+import { INLINE_LINK } from "@/components/inlineLink";
 import { SelectField } from "@/components/SelectField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +21,6 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-const LINK_CLASS = "text-action hover:text-action/80 text-sm underline";
 const PRE_CLASS = "bg-muted rounded-md p-3 text-xs break-words whitespace-pre-wrap";
 
 type FirstReport = "waiting" | "processing" | "failed" | "received";
@@ -139,7 +139,7 @@ export function ProjectSetup() {
           detail="There is no project with this address, or you don't have access to it."
           onRetry={() => void refetchProject()}
         />
-        <Link to="/" className={`${LINK_CLASS} inline-block`}>Back to projects</Link>
+        <Link to="/" className={`${INLINE_LINK} inline-block text-sm`}>Back to projects</Link>
       </div>
     );
   }
@@ -151,7 +151,7 @@ export function ProjectSetup() {
         <p className="text-muted-foreground text-sm">
           Only project managers and administrators can set up CI for this project.
         </p>
-        <Link to="/" className={`${LINK_CLASS} mt-2 inline-block`}>Back to projects</Link>
+        <Link to="/" className={`${INLINE_LINK} mt-2 inline-block text-sm`}>Back to projects</Link>
       </div>
     );
   }
@@ -194,7 +194,7 @@ export function ProjectSetup() {
               {keyCount === 0
                 ? "This project has no keys yet."
                 : `This project has ${pluralize(keyCount, "key")}.`}{" "}
-              <Link to="/api-keys" className={LINK_CLASS}>Manage API keys</Link>
+              <Link to="/api-keys" className={`${INLINE_LINK} text-sm`}>Manage API keys</Link>
             </p>
           )}
           {keysFailed && (
@@ -287,7 +287,9 @@ export function ProjectSetup() {
         <li>
           <h2 className="text-lg font-semibold">Or upload a report by hand</h2>
           <p className="mt-1 text-sm">
-            <Link to={`/${slug}/reports/upload`} className={LINK_CLASS}>Upload a report</Link>
+            <Link to={`/${slug}/reports/upload`} className={`${INLINE_LINK} text-sm`}>
+              Upload a report
+            </Link>
           </p>
         </li>
 
@@ -305,7 +307,7 @@ export function ProjectSetup() {
                 </p>
                 <button
                   type="button"
-                  className={LINK_CLASS}
+                  className={`${INLINE_LINK} text-sm`}
                   onClick={() => stats.refetch()}
                 >
                   Retry
@@ -321,13 +323,17 @@ export function ProjectSetup() {
             )}
           {!statsFailed && firstReport === "failed" && (
             <div className="mt-2">
-              <Link to={`/${project.slug}/reports`} className={LINK_CLASS}>View reports</Link>
+              <Link to={`/${project.slug}/reports`} className={`${INLINE_LINK} text-sm`}>
+                View reports
+              </Link>
             </div>
           )}
           {!statsFailed && firstReport === "received" && (
             <div className="mt-2 flex gap-4">
-              <Link to={`/${project.slug}/findings`} className={LINK_CLASS}>View findings</Link>
-              <Link to="/" className={LINK_CLASS}>Back to projects</Link>
+              <Link to={`/${project.slug}/findings`} className={`${INLINE_LINK} text-sm`}>
+                View findings
+              </Link>
+              <Link to="/" className={`${INLINE_LINK} text-sm`}>Back to projects</Link>
             </div>
           )}
         </li>

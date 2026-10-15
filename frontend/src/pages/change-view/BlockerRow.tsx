@@ -1,4 +1,5 @@
 import { useFinding } from "@/api/hooks";
+import { INLINE_LINK } from "@/components/inlineLink";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { fixAction, locationLine } from "@/pages/change-view/resolve";
@@ -6,7 +7,6 @@ import type { Finding } from "@/types/api";
 import { type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
-const LINK_CLASS = "text-action underline underline-offset-2 hover:no-underline";
 const ROW_CLASS = "border-b px-3 py-3 last:border-b-0";
 
 export interface BlockerRowProps {
@@ -50,7 +50,7 @@ export function BlockerRowView(
           Could not load this finding{" "}
           <span className="text-muted-foreground font-mono text-xs">{findingId}</span>
         </p>
-        <button type="button" className={`${LINK_CLASS} mt-1 text-sm`} onClick={onRetry}>
+        <button type="button" className={`${INLINE_LINK} mt-1 text-sm`} onClick={onRetry}>
           Retry
         </button>
       </Row>
@@ -71,7 +71,7 @@ export function BlockerRowView(
         <Link to={target} className="font-medium hover:underline">
           {finding.current_title}
         </Link>
-        <Link to={target} className={`${LINK_CLASS} ml-auto text-sm`}>
+        <Link to={target} className={`${INLINE_LINK} ml-auto text-sm`}>
           Decide
         </Link>
       </div>

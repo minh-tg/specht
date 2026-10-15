@@ -11,6 +11,7 @@ import { useCiManagedProjects, useCreateApiKey } from "@/api/hooks";
 import { CopyButton } from "@/components/CopyButton";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
+import { INLINE_LINK } from "@/components/inlineLink";
 import { SelectField } from "@/components/SelectField";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -44,7 +45,7 @@ export function ApiKeys() {
         </p>
         <Link
           to="/"
-          className="text-action hover:text-action/80 mt-2 inline-block text-sm underline"
+          className={`${INLINE_LINK} mt-2 inline-block text-sm`}
         >
           Back to projects
         </Link>

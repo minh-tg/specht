@@ -1,3 +1,4 @@
+import { INLINE_LINK } from "@/components/inlineLink";
 import { LedgerEntry, type LedgerTone } from "@/components/Ledger";
 import { Button } from "@/components/ui/button";
 import { SeverityBadge } from "@/components/ui/severity-badge";
@@ -7,8 +8,6 @@ import { useCopyToClipboard } from "@/lib/useCopyToClipboard";
 import { fixSentence, locationLine } from "@/pages/change-view/resolve";
 import type { Finding } from "@/types/api";
 import { Link } from "react-router-dom";
-
-const LINK_CLASS = "text-foreground underline underline-offset-3 hover:decoration-2";
 
 function toneFor(severity: string): LedgerTone {
   const normalized = normalizeSeverity(severity);
@@ -54,7 +53,7 @@ export function BlockerEntry(props: BlockerEntryProps) {
           Could not load this finding{" "}
           <span className="text-muted-foreground font-mono text-xs">{findingId}</span>
         </p>
-        <button type="button" className={`${LINK_CLASS} mt-1 text-sm`} onClick={onRetry}>
+        <button type="button" className={`${INLINE_LINK} mt-1 text-sm`} onClick={onRetry}>
           Retry
         </button>
       </li>
@@ -177,7 +176,7 @@ function LoadedEntry(
           </label>
         </div>
         <p className="text-[13px]">
-          <Link to={target} className={LINK_CLASS}>Open the full finding</Link>
+          <Link to={target} className={INLINE_LINK}>Open the full finding</Link>
         </p>
       </div>
     </LedgerEntry>

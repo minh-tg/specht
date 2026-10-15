@@ -2,6 +2,7 @@ import { useAddEvidence, useDeleteEvidence, useEvidence } from "@/api/findingEvi
 import { useMe, useProjectRole } from "@/api/hooks";
 import { actorLabel, useUserDirectory } from "@/api/users";
 import { ErrorState } from "@/components/ErrorState";
+import { INLINE_LINK } from "@/components/inlineLink";
 import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import {
@@ -125,7 +126,7 @@ export function EvidenceSection({
                   href={item.url}
                   target="_blank"
                   rel="noreferrer noopener"
-                  className="text-primary break-all underline underline-offset-2"
+                  className={`${INLINE_LINK} break-all`}
                 >
                   {item.url}
                 </a>
