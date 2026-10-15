@@ -131,17 +131,23 @@ func decodeAPIResponse(respBody []byte, out any) error {
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
+	_, err := c.doWithHeader(ctx, method, path, body, out)
+	return err
+}
+
+// doWithHeader is do for the few calls that also need a response header.
+func (c *Client) doWithHeader(ctx context.Context, method, path string, body, out any) (http.Header, error) {
 	if c.requestContext != nil {
 		ctx = c.requestContext
 	}
 	req, err := c.newClientRequest(ctx, method, path, body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("http request: %w", err)
+		return nil, fmt.Errorf("http request: %w", err)
 	}
 	// The response body is read below; close errors are cleanup-only.
 	defer func() {
@@ -150,14 +156,14 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 
 	respBody, err := netutil.ReadAllLimited(resp.Body, maxResponseBytes)
 	if err != nil {
-		return fmt.Errorf("read response: %w", err)
+		return nil, fmt.Errorf("read response: %w", err)
 	}
 
 	if resp.StatusCode >= 400 {
-		return apiResponseError(resp.StatusCode, respBody)
+		return nil, apiResponseError(resp.StatusCode, respBody)
 	}
 
-	return decodeAPIResponse(respBody, out)
+	return resp.Header, decodeAPIResponse(respBody, out)
 }
 
 // Error is a non-2xx API response, carrying the server error code when present.
@@ -865,6 +871,30 @@ func (c *Client) ListReachability(findingID string) ([]ReachabilityAssessment, e
 func (c *Client) GetWatcherStatus() (*WatcherStatus, error) {
 	var resp WatcherStatus
 	if err := c.do(context.Background(), "GET", "/api/v1/watcher/status", nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// DeleteReport removes a report and archives the findings only it showed. It
+// returns how many findings were archived, from the server's X-Archived-Findings
+// header (0 when the header is absent).
+func (c *Client) DeleteReport(projectSlug, reportID string) (int, error) {
+	header, err := c.doWithHeader(context.Background(), "DELETE",
+		apiProjectsPrefix+url.PathEscape(projectSlug)+"/reports/"+url.PathEscape(reportID), nil, nil)
+	if err != nil {
+		return 0, err
+	}
+	archived, _ := strconv.Atoi(header.Get("X-Archived-Findings"))
+	return archived, nil
+}
+
+// UpdateEnvironment sets how an environment is classified. The server replaces
+// all three settings, so every one is sent, false included.
+func (c *Client) UpdateEnvironment(projectSlug, environmentID string, settings EnvironmentSettings) (*Environment, error) {
+	var resp Environment
+	path := apiProjectsPrefix + url.PathEscape(projectSlug) + "/environments/" + url.PathEscape(environmentID)
+	if err := c.do(context.Background(), "PUT", path, settings, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

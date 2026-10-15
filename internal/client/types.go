@@ -44,6 +44,9 @@ type IngestResponse struct {
 	FallbackReason    string `json:"fallback_reason,omitempty"`
 	IntroducedCount   int    `json:"introduced_count"`
 	PreExistingCount  int    `json:"pre_existing_count"`
+	// Replayed is true when the same bytes were already ingested for this commit and
+	// the stored report was returned.
+	Replayed bool `json:"replayed"`
 }
 
 // GateStatus is a project's current deployment-gate evaluation.
@@ -371,6 +374,13 @@ type Environment struct {
 }
 
 // Target is a scan target (repo, image, filesystem, etc.) within a project.
+// EnvironmentSettings are the three things an admin sets on an environment.
+type EnvironmentSettings struct {
+	Tier            string `json:"tier"`
+	InternetFacing  bool   `json:"internet_facing"`
+	DataSensitivity string `json:"data_sensitivity"`
+}
+
 type Target struct {
 	ID        string `json:"id"`
 	ProjectID string `json:"project_id"`
