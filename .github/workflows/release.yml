@@ -216,6 +216,7 @@ jobs:
 
   build-binaries:
     name: cross-compile release binaries
+    needs: require-ci
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -251,6 +252,7 @@ jobs:
 
   adapter-image:
     name: build + publish the adapter image
+    needs: require-ci
     runs-on: ubuntu-latest
     permissions:
       contents: read
