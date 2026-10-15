@@ -83,6 +83,10 @@ releases.
   `approve`, `reject`, `withdraw`, `toggle`, `delete`, `events`). The new
   commands honour `--format json`.
 - Bulk triage no longer reports a decode error after the server has applied it.
+- The `specht` command can upload a scanner's file (`reports upload`, which also reads standard
+  input and line-based `.jsonl`), list, show and delete reports, change an environment's
+  exposure and data sensitivity (`environments set`), and list targets, artifacts and the
+  scanners Specht reads (`scanners list`).
 - A Semgrep finding keeps its identity when the code above it moves. The line
   is no longer part of it: a finding is the rule, the file and what was
   matched (Semgrep's own match id when the run is logged in, otherwise the
