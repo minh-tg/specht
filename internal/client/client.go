@@ -899,3 +899,132 @@ func (c *Client) UpdateEnvironment(projectSlug, environmentID string, settings E
 	}
 	return &resp, nil
 }
+
+// UpdateProject changes a project's name or description. A nil argument leaves that
+// field as it is; a pointer to "" clears the description.
+func (c *Client) UpdateProject(slug string, name, description *string) (*Project, error) {
+	body := map[string]any{}
+	if name != nil {
+		body["name"] = *name
+	}
+	if description != nil {
+		body["description"] = *description
+	}
+	var resp Project
+	if err := c.do(context.Background(), "PUT", apiProjectsPrefix+url.PathEscape(slug), body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// DeleteProject deletes a project and everything under it, and returns what was deleted.
+func (c *Client) DeleteProject(slug string) (*Project, error) {
+	var resp Project
+	if err := c.do(context.Background(), "DELETE", apiProjectsPrefix+url.PathEscape(slug), nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// AddProjectMemberByEmail grants access to the account with this address. An address
+// with no account answers like an unknown user id.
+func (c *Client) AddProjectMemberByEmail(projectSlug, email, role string) (*ProjectMember, error) {
+	var resp ProjectMember
+	body := map[string]any{"email": email, "role": role}
+	if err := c.do(context.Background(), "POST", apiProjectsPrefix+url.PathEscape(projectSlug)+membersSegment, body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ListUsers lists accounts, optionally those whose address contains emailPart. Session
+// admins only.
+func (c *Client) ListUsers(emailPart string, limit, offset int32) ([]UserProfile, error) {
+	q := url.Values{}
+	if emailPart != "" {
+		q.Set("email", emailPart)
+	}
+	if limit > 0 {
+		q.Set("limit", strconv.Itoa(int(limit)))
+	}
+	if offset > 0 {
+		q.Set("offset", strconv.Itoa(int(offset)))
+	}
+	path := "/api/v1/users"
+	if len(q) > 0 {
+		path += "?" + q.Encode()
+	}
+	var resp []UserProfile
+	if err := c.do(context.Background(), "GET", path, nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// ChangeUserRole sets an account's role to admin or member. Session admins only.
+func (c *Client) ChangeUserRole(userID, role string) (*UserProfile, error) {
+	var resp UserProfile
+	if err := c.do(context.Background(), "PUT", "/api/v1/users/"+url.PathEscape(userID)+"/role", map[string]string{"role": role}, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// CreatePasswordResetLink makes a one-time link that lets a locked-out person choose a new
+// password. The link is shown once; a new one retires the earlier ones.
+func (c *Client) CreatePasswordResetLink(userID string) (*PasswordResetLink, error) {
+	var resp PasswordResetLink
+	if err := c.do(context.Background(), "POST", "/api/v1/users/"+url.PathEscape(userID)+"/reset-link", nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// DeactivateUser ends an account's access without deleting its history.
+func (c *Client) DeactivateUser(userID string) (*UserProfile, error) {
+	var resp UserProfile
+	if err := c.do(context.Background(), "POST", "/api/v1/users/"+url.PathEscape(userID)+"/deactivate", nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ReactivateUser lets a deactivated account sign in again.
+func (c *Client) ReactivateUser(userID string) (*UserProfile, error) {
+	var resp UserProfile
+	if err := c.do(context.Background(), "POST", "/api/v1/users/"+url.PathEscape(userID)+"/reactivate", nil, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// ListInvites lists a project's open invite links. Their tokens are never shown again.
+func (c *Client) ListInvites(projectSlug string) ([]Invite, error) {
+	var resp []Invite
+	if err := c.do(context.Background(), "GET", apiProjectsPrefix+url.PathEscape(projectSlug)+"/invites", nil, &resp); err != nil {
+		return nil, err
+	}
+	return resp, nil
+}
+
+// CreateInvite makes a link that adds whoever opens it to the project with this role. An
+// empty email lets anyone with the link accept; zero days leaves the server's default.
+func (c *Client) CreateInvite(projectSlug, role, email string, expiresInDays int) (*Invite, error) {
+	body := map[string]any{"role": role}
+	if email != "" {
+		body["email"] = email
+	}
+	if expiresInDays > 0 {
+		body["expires_in_days"] = expiresInDays
+	}
+	var resp Invite
+	if err := c.do(context.Background(), "POST", apiProjectsPrefix+url.PathEscape(projectSlug)+"/invites", body, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// RevokeInvite stops an open invite link from working.
+func (c *Client) RevokeInvite(projectSlug, inviteID string) error {
+	return c.do(context.Background(), "DELETE", apiProjectsPrefix+url.PathEscape(projectSlug)+"/invites/"+url.PathEscape(inviteID), nil, nil)
+}

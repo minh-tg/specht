@@ -179,6 +179,27 @@ type ProjectMember struct {
 	UserID    string `json:"user_id"`
 	Role      string `json:"role"`
 	CreatedAt string `json:"created_at"`
+	// Email and DisplayName are sent to a signed-in person only, never to an API key.
+	Email       string `json:"email,omitempty"`
+	DisplayName string `json:"display_name,omitempty"`
+}
+
+// Invite is a link that adds whoever opens it to a project.
+type Invite struct {
+	ID        string `json:"id"`
+	Role      string `json:"role"`
+	Email     string `json:"email,omitempty"`
+	CreatedBy string `json:"created_by,omitempty"`
+	CreatedAt string `json:"created_at"`
+	ExpiresAt string `json:"expires_at"`
+	// Link is a path on the server, /invite/<token>. It is sent once, when the invite is made.
+	Link string `json:"link,omitempty"`
+}
+
+// PasswordResetLink is a one-time path, /reset/<token>, shown when it is made.
+type PasswordResetLink struct {
+	Link      string `json:"link"`
+	ExpiresAt string `json:"expires_at"`
 }
 
 // Project is a scan project (the top-level tenant of findings and reports).
