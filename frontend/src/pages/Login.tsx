@@ -7,6 +7,7 @@ import { FormField } from "@/components/FormField";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
+import { playCue } from "@/lib/sound";
 import { cn } from "@/lib/utils";
 import { InfoIcon } from "lucide-react";
 import { type SubmitEvent, useState } from "react";
@@ -52,6 +53,7 @@ export function Login() {
       await auth.login(email, password);
       navigate(redirect, { replace: true });
     } catch (err) {
+      playCue("error");
       if (err instanceof APIError && err.status === 401) {
         setError("Invalid email or password");
       } else {

@@ -8,6 +8,9 @@ import userEvent from "@testing-library/user-event";
 
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { vi } from "vitest";
+const playCue = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/sound", () => ({ playCue }));
+
 import { Login } from "./Login";
 import { safeRedirect } from "./safeRedirect";
 
@@ -107,6 +110,7 @@ describe("Login", () => {
   beforeEach(() => {
     authState = { token: null, login: async () => {} };
     globalThis.fetch = vi.fn();
+    playCue.mockClear();
   });
 
   it("renders the login form", () => {
@@ -154,6 +158,7 @@ describe("Login", () => {
     await waitFor(() => {
       expect(screen.getByText("Invalid email or password")).toBeInTheDocument();
     });
+    expect(playCue).toHaveBeenCalledExactlyOnceWith("error");
   });
 
   it("shows generic error on network failure", async () => {
@@ -168,6 +173,7 @@ describe("Login", () => {
     await waitFor(() => {
       expect(screen.getByText("Sign in failed. Please try again.")).toBeInTheDocument();
     });
+    expect(playCue).toHaveBeenCalledExactlyOnceWith("error");
   });
 
   it("navigates to an internal redirect after login", async () => {

@@ -230,8 +230,8 @@ describe("useReportUpload", () => {
     });
   });
 
-  it.each([[false, "pass"], [true, "block"]])(
-    "plays the gate verdict cue (breached: %s -> %s)",
+  it.each([[false, "accepted"], [true, "block"]])(
+    "plays a cue that does not claim a gate (breached: %s -> %s)",
     async (breached, cue) => {
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
@@ -253,7 +253,7 @@ describe("useReportUpload", () => {
     },
   );
 
-  it("plays no cue when the upload fails", async () => {
+  it("plays the error cue when the upload fails", async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: false,
       status: 422,
@@ -264,7 +264,7 @@ describe("useReportUpload", () => {
     await act(async () => {
       await result.current.handleSubmit(submitEvent);
     });
-    expect(playCue).not.toHaveBeenCalled();
+    expect(playCue).toHaveBeenCalledExactlyOnceWith("error");
   });
 
   it("sets the permission error when a 403 comes back", async () => {

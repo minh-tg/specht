@@ -116,13 +116,14 @@ export function useReportUpload(slug: string): ReportUpload {
         raw_data: scan.value,
       });
       setResult(report);
-      playCue(report.threshold_breached ? "block" : "pass");
+      playCue(report.threshold_breached ? "block" : "accepted");
       clearFile();
 
       queryClient.invalidateQueries({ queryKey: queryKeys.reports(slug) });
       queryClient.invalidateQueries({ queryKey: queryKeys.gate(slug) });
       queryClient.invalidateQueries({ queryKey: queryKeys.projectStats(slug) });
     } catch (err) {
+      playCue("error");
       if (err instanceof APIError && err.status === 403) {
         setUploadError("You don't have permission to upload reports to this project.");
       } else if (err instanceof APIError) {
