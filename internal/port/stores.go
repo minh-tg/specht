@@ -1140,29 +1140,30 @@ type WatcherStore interface {
 // Stores is the aggregate persistence handle the core depends on. It is the
 // port counterpart of repo.Repos.
 type Stores struct {
-	Projects      ProjectStore
-	Users         UserStore
-	RefreshTokens RefreshTokenStore
-	APIKeys       APIKeyStore
-	Environments  EnvironmentStore
-	Targets       TargetStore
-	Artifacts     ArtifactStore
-	Waivers       WaiverStore
-	Findings      FindingStore
-	Evidence      EvidenceStore
-	Reachability  ReachabilityStore
-	Signoffs      SignoffStore
-	Reports       ReportStore
-	Inventory     InventoryStore
-	Stats         StatsStore
-	Watcher       WatcherStore
-	Admin         AdminStore
-	Policy        PolicyStore
-	Teams         TeamStore
-	Identities    IdentityStore
-	SSOCodes      SSOCodeStore
-	Invites       InviteStore
-	PasswordReset PasswordResetStore
+	Projects        ProjectStore
+	Users           UserStore
+	RefreshTokens   RefreshTokenStore
+	APIKeys         APIKeyStore
+	Environments    EnvironmentStore
+	Targets         TargetStore
+	Artifacts       ArtifactStore
+	Waivers         WaiverStore
+	Findings        FindingStore
+	Evidence        EvidenceStore
+	Reachability    ReachabilityStore
+	Signoffs        SignoffStore
+	Reports         ReportStore
+	Inventory       InventoryStore
+	Stats           StatsStore
+	Watcher         WatcherStore
+	Admin           AdminStore
+	Policy          PolicyStore
+	Teams           TeamStore
+	Identities      IdentityStore
+	SSOCodes        SSOCodeStore
+	Invites         InviteStore
+	PasswordReset   PasswordResetStore
+	InstanceSecrets InstanceSecretStore
 }
 
 // Team is a named group of users that projects link for access.
@@ -1361,4 +1362,12 @@ type PasswordResetStore interface {
 	// that is unknown, used, retired or expired returns ErrNotFound and changes
 	// nothing.
 	Redeem(ctx context.Context, tokenHash, passwordHash string) (string, error)
+}
+
+// InstanceSecretStore keeps values that belong to one installation, such as the
+// key finding identities for secrets are hashed with.
+type InstanceSecretStore interface {
+	// Ensure stores value under name when the name is new and returns whatever
+	// is stored. Callers racing on first use all receive the same value.
+	Ensure(ctx context.Context, name string, value []byte) ([]byte, error)
 }
