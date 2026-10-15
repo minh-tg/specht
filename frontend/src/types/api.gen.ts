@@ -1269,10 +1269,66 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Enable or disable a waiver
+     * Enable or disable a waiver (deprecated)
+     * @deprecated
      * @description Disables an active waiver, or re-enables a disabled one, without deleting it.
+     *     The flip is blind: two callers can undo each other. Use `revoke` and `restore`,
+     *     which name the wanted state. Only an approved waiver flips (`waiver_not_approved`),
+     *     and a disabled waiver whose expiry has passed stays off (`waiver_expired`).
      */
     post: operations["toggleWaiver"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{slug}/waivers/{id}/revoke": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Revoke an approved waiver
+     * @description Switches an approved waiver off, so it stops counting in the gate. The call names
+     *     the wanted state: revoking a waiver that is already off returns it unchanged and
+     *     adds no history entry. A `revoked` event records who did it and when, and the audit
+     *     log gets `waiver.revoke`. Needs the project manager or admin role.
+     *
+     *     Send `expected_updated_at` with the `updated_at` you last saw to make the call
+     *     conditional. A waiver written since then answers `waiver_changed`.
+     */
+    post: operations["revokeWaiver"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/projects/{slug}/waivers/{id}/restore": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Restore a revoked waiver
+     * @description Switches a revoked waiver back on, so it counts in the gate again. Restoring a
+     *     waiver that is already on returns it unchanged and adds no history entry. A
+     *     `restored` event records who did it and when, and the audit log gets
+     *     `waiver.restore`. Needs the project manager or admin role.
+     *
+     *     A waiver whose expiry has passed cannot be restored (`waiver_expired`); extend its
+     *     expiry first. `expected_updated_at` works as it does for `revoke`.
+     */
+    post: operations["restoreWaiver"];
     delete?: never;
     options?: never;
     head?: never;
@@ -1288,7 +1344,7 @@ export interface paths {
     };
     /**
      * Read a waiver's audit trail
-     * @description `created`, `updated`, `enabled`, `disabled`, and `auto_disabled` events.
+     * @description `created`, `updated`, `revoked`, `restored`, `enabled`, `disabled`, and `auto_disabled` events. `enabled` and `disabled` come from the deprecated toggle.
      */
     get: operations["listWaiverEvents"];
     put?: never;
@@ -2725,8 +2781,19 @@ export interface components {
       targets: components["schemas"]["WaiverFindingTarget"][];
       /** Format: date-time */
       created_at: string;
-      /** Format: date-time */
+      /**
+       * Format: date-time
+       * @description Version of the waiver, with microseconds. Send it back unchanged as `expected_updated_at` on `revoke` or `restore`.
+       * @example 2026-10-15T09:12:44.123456Z
+       */
       updated_at: string;
+    };
+    WaiverSwitchRequest: {
+      /**
+       * Format: date-time
+       * @description The `updated_at` the caller last saw. When set, the call fails with `waiver_changed` if the waiver was written after it.
+       */
+      expected_updated_at?: string;
     };
     WaiverCondition: {
       /** Format: uuid */
@@ -2839,6 +2906,8 @@ export interface components {
       event_type:
         | "created"
         | "updated"
+        | "revoked"
+        | "restored"
         | "enabled"
         | "disabled"
         | "auto_disabled"
@@ -3197,6 +3266,28 @@ export interface components {
          *       "error": {
          *         "code": "waiver_not_pending",
          *         "message": "waiver is not pending"
+         *       }
+         *     }
+         */
+        "application/json": components["schemas"]["Error"];
+      };
+    };
+    /**
+     * @description The waiver cannot be switched as asked: `waiver_changed` (it was written after
+     *     `expected_updated_at`), `waiver_expired` (its expiry has passed, so it cannot be
+     *     switched on) or `waiver_not_approved` (only an approved waiver can be revoked or
+     *     restored).
+     */
+    WaiverSwitchConflict: {
+      headers: {
+        [name: string]: unknown;
+      };
+      content: {
+        /**
+         * @example {
+         *       "error": {
+         *         "code": "waiver_changed",
+         *         "message": "the waiver changed since you loaded it"
          *       }
          *     }
          */
@@ -5437,6 +5528,73 @@ export interface operations {
       };
       403: components["responses"]["Forbidden"];
       404: components["responses"]["NotFound"];
+      409: components["responses"]["WaiverSwitchConflict"];
+    };
+  };
+  revokeWaiver: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+        /** @description Resource identifier. */
+        id: components["parameters"]["Id"];
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["WaiverSwitchRequest"];
+      };
+    };
+    responses: {
+      /** @description The waiver, switched off. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Waiver"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
+      409: components["responses"]["WaiverSwitchConflict"];
+    };
+  };
+  restoreWaiver: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+        /** @description Resource identifier. */
+        id: components["parameters"]["Id"];
+      };
+      cookie?: never;
+    };
+    requestBody?: {
+      content: {
+        "application/json": components["schemas"]["WaiverSwitchRequest"];
+      };
+    };
+    responses: {
+      /** @description The waiver, switched on. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Waiver"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
+      409: components["responses"]["WaiverSwitchConflict"];
     };
   };
   listWaiverEvents: {

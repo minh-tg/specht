@@ -1124,6 +1124,7 @@ type mockWaiverRepo struct {
 	updateWithDetailsFn             func(context.Context, port.Waiver, *port.WaiverExpiry, *[]port.WaiverCondition, *[]port.WaiverContext, *[]port.WaiverFindingTarget, port.WaiverEventInput) (port.Waiver, error)
 	deleteFn                        func(context.Context, string, string) error
 	toggleWithEventFn               func(context.Context, string, string, string) (port.Waiver, error)
+	setEnabledFn                    func(context.Context, string, string, port.WaiverEnabledChange) (port.Waiver, error)
 	listActiveFn                    func(context.Context, string) ([]port.Waiver, error)
 	listConditionsFn                func(context.Context, string) ([]port.WaiverCondition, error)
 	listContextsFn                  func(context.Context, string) ([]port.WaiverContext, error)
@@ -1188,6 +1189,13 @@ func (m *mockWaiverRepo) ToggleWithEvent(ctx context.Context, id, projectID, act
 		return port.Waiver{}, fmt.Errorf("unexpected call to ToggleWithEvent")
 	}
 	return m.toggleWithEventFn(ctx, id, projectID, actorID)
+}
+
+func (m *mockWaiverRepo) SetEnabled(ctx context.Context, id, projectID string, change port.WaiverEnabledChange) (port.Waiver, error) {
+	if m.setEnabledFn == nil {
+		return port.Waiver{}, fmt.Errorf("unexpected call to SetEnabled")
+	}
+	return m.setEnabledFn(ctx, id, projectID, change)
 }
 
 func (m *mockWaiverRepo) ListActive(ctx context.Context, projectID string) ([]port.Waiver, error) {

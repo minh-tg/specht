@@ -36,6 +36,8 @@ const (
 	EventDeleteProject        = "project.delete"
 	EventUpdateWaiver         = "waiver.update"
 	EventToggleWaiver         = "waiver.toggle"
+	EventRevokeWaiver         = "waiver.revoke"
+	EventRestoreWaiver        = "waiver.restore"
 	EventSetupComplete        = "setup.complete"
 	EventChangeUserRole       = "user.role"
 	EventChangePassword       = "user.password"

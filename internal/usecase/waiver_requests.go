@@ -49,6 +49,15 @@ var (
 	// ErrWaiverRequestExists is returned when a pending request already
 	// names one of the findings.
 	ErrWaiverRequestExists = errors.New("a pending waiver request already covers one of these findings")
+	// ErrWaiverNotApproved is returned when a revoke or restore targets a
+	// waiver that was never approved.
+	ErrWaiverNotApproved = port.ErrWaiverNotApproved
+	// ErrWaiverChanged is returned when a conditional revoke or restore finds
+	// the waiver written since the caller loaded it.
+	ErrWaiverChanged = port.ErrWaiverChanged
+	// ErrWaiverLapsed is returned when a restore targets a waiver whose expiry
+	// has passed.
+	ErrWaiverLapsed = port.ErrWaiverLapsed
 )
 
 // waiverRequestError carries a user-facing validation message and matches

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -224,6 +225,9 @@ func (h *Handler) DeleteWaiver(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ToggleWaiver flips an approved waiver. It is deprecated: the flip is blind,
+// so two callers can undo each other. RevokeWaiver and RestoreWaiver name the
+// wanted state instead.
 func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if err := h.enforceProjectAccess(r, slug); err != nil {
@@ -237,20 +241,69 @@ func (h *Handler) ToggleWaiver(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := h.usecase.ToggleWaiver(r.Context(), slug, id, actorID)
 	if err != nil {
-		if errors.Is(err, usecase.ErrProjectAccessDenied) {
-			h.respondProjectAccessError(w, r, errProjectAccessDenied)
+		if h.respondWaiverError(w, r, err) {
 			return
 		}
-		if errors.Is(err, port.ErrNotFound) {
-			respondError(w, http.StatusNotFound, "not_found", waiversMsgNotFound)
-		} else {
-			slog.Error("toggle waiver", "error", err)
-			respondError(w, http.StatusInternalServerError, "internal_error", "could not toggle waiver")
-		}
+		slog.Error("toggle waiver", "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not toggle waiver")
 		return
 	}
 	respondJSON(w, http.StatusOK, result)
 	h.audit.HTTP(r, audit.EventToggleWaiver, audit.OutcomeSuccess, slug, id, nil)
+}
+
+// RevokeWaiver switches an approved waiver off. The body is optional; an
+// expected_updated_at in it makes the call fail with 409 waiver_changed when
+// the waiver was written after that version.
+func (h *Handler) RevokeWaiver(w http.ResponseWriter, r *http.Request) {
+	h.setWaiverEnabled(w, r, audit.EventRevokeWaiver, "revoke waiver", h.usecase.RevokeWaiver)
+}
+
+// RestoreWaiver switches a revoked waiver back on, unless it has expired.
+func (h *Handler) RestoreWaiver(w http.ResponseWriter, r *http.Request) {
+	h.setWaiverEnabled(w, r, audit.EventRestoreWaiver, "restore waiver", h.usecase.RestoreWaiver)
+}
+
+func (h *Handler) setWaiverEnabled(
+	w http.ResponseWriter, r *http.Request, event, action string,
+	apply func(ctx context.Context, projectSlug, waiverID, actorID string, expectedUpdatedAt *time.Time) (*usecase.WaiverResponse, error),
+) {
+	slug := chi.URLParam(r, "slug")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		h.respondProjectAccessError(w, r, err)
+		return
+	}
+	id := chi.URLParam(r, "id")
+	var req struct {
+		ExpectedUpdatedAt string `json:"expected_updated_at"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_body", waiversMsgInvalidBody) {
+		return
+	}
+	var expected *time.Time
+	if req.ExpectedUpdatedAt != "" {
+		parsed, err := time.Parse(time.RFC3339Nano, req.ExpectedUpdatedAt)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "invalid_expected_updated_at", "expected_updated_at must be an RFC3339 timestamp")
+			return
+		}
+		expected = &parsed
+	}
+	var actorID string
+	if ident := auth.ContextIdentity(r.Context()); ident != nil {
+		actorID = ident.UserID
+	}
+	result, err := apply(r.Context(), slug, id, actorID, expected)
+	if err != nil {
+		if h.respondWaiverError(w, r, err) {
+			return
+		}
+		slog.Error(action, "error", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "could not "+action)
+		return
+	}
+	respondJSON(w, http.StatusOK, result)
+	h.audit.HTTP(r, event, audit.OutcomeSuccess, slug, id, nil)
 }
 
 func (h *Handler) ListWaiverEvents(w http.ResponseWriter, r *http.Request) {
@@ -338,8 +391,12 @@ func (h *Handler) respondWaiverError(w http.ResponseWriter, r *http.Request, err
 		respondError(w, http.StatusBadRequest, "waiver_scope_required", err.Error())
 	case errors.Is(err, usecase.ErrWaiverNotPending):
 		respondError(w, http.StatusConflict, "waiver_not_pending", err.Error())
-	case errors.Is(err, usecase.ErrWaiverExpired):
+	case errors.Is(err, usecase.ErrWaiverExpired), errors.Is(err, usecase.ErrWaiverLapsed):
 		respondError(w, http.StatusConflict, "waiver_expired", err.Error())
+	case errors.Is(err, usecase.ErrWaiverChanged):
+		respondError(w, http.StatusConflict, "waiver_changed", err.Error())
+	case errors.Is(err, usecase.ErrWaiverNotApproved):
+		respondError(w, http.StatusConflict, "waiver_not_approved", err.Error())
 	case errors.Is(err, usecase.ErrWaiverRequestExists):
 		respondError(w, http.StatusConflict, "waiver_request_exists", err.Error())
 	case errors.Is(err, usecase.ErrWaiverSelfApproval):

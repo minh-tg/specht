@@ -287,6 +287,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(adminScope).Put(routeProjectWaiver, h.UpdateWaiver)
 		r.With(adminScope).Delete(routeProjectWaiver, h.DeleteWaiver)
 		r.With(adminScope).Post("/api/v1/projects/{slug}/waivers/{id}/toggle", h.ToggleWaiver)
+		r.With(adminScope).Post("/api/v1/projects/{slug}/waivers/{id}/revoke", h.RevokeWaiver)
+		r.With(adminScope).Post("/api/v1/projects/{slug}/waivers/{id}/restore", h.RestoreWaiver)
 		r.With(adminScope).Post("/api/v1/projects/{slug}/waivers/{id}/approve", h.ApproveWaiver)
 		r.With(adminScope).Post("/api/v1/projects/{slug}/waivers/{id}/reject", h.RejectWaiver)
 		r.With(readScope).Post("/api/v1/projects/{slug}/waivers/{id}/withdraw", h.WithdrawWaiver)
