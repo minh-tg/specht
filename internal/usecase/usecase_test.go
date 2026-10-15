@@ -2393,7 +2393,23 @@ func TestRegister_ShortPassword(t *testing.T) {
 func TestRegister_LongPassword(t *testing.T) {
 	uc := New(Deps{})
 	_, err := uc.Register(context.Background(), "test@example.com", strings.Repeat("a", 73))
-	assert.EqualError(t, err, "password must be at most 72 characters")
+	assert.EqualError(t, err, "password must be at most 72 bytes; some characters, such as emoji, take more than one")
+}
+
+// The minimum counts characters, as the sign-up form does: four accented
+// letters are eight bytes but only four characters.
+func TestRegister_MinimumCountsCharactersNotBytes(t *testing.T) {
+	uc := New(Deps{})
+	_, err := uc.Register(context.Background(), "test@example.com", "éàüö")
+	assert.EqualError(t, err, "password must be at least 8 characters")
+}
+
+// The maximum counts bytes, the unit bcrypt reads: 19 four-byte emoji are 19
+// characters but 76 bytes.
+func TestRegister_MaximumCountsBytes(t *testing.T) {
+	uc := New(Deps{})
+	_, err := uc.Register(context.Background(), "test@example.com", strings.Repeat("😀", 19))
+	assert.EqualError(t, err, "password must be at most 72 bytes; some characters, such as emoji, take more than one")
 }
 
 func TestRegister_ExistingEmail(t *testing.T) {

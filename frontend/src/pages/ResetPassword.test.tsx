@@ -108,7 +108,11 @@ describe("ResetPassword", () => {
   it("shows another server refusal in the form and lets the person try again", async () => {
     reply = () =>
       jsonResponse({
-        error: { code: "invalid_password", message: "password must be at most 72 characters" },
+        error: {
+          code: "invalid_password",
+          message:
+            "password must be at most 72 bytes; some characters, such as emoji, take more than one",
+        },
       }, 400);
     const user = userEvent.setup();
     renderPage();
@@ -118,7 +122,7 @@ describe("ResetPassword", () => {
     await user.click(screen.getByRole("button", { name: "Set password" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "password must be at most 72 characters",
+      "password must be at most 72 bytes; some characters, such as emoji, take more than one",
     );
     expect(screen.getByRole("button", { name: "Set password" })).toBeEnabled();
   });
