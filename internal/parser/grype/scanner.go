@@ -34,6 +34,8 @@ type grypeVuln struct {
 }
 
 type grypeCVSS struct {
+	Source  string           `json:"source"`
+	Type    string           `json:"type"`
 	Version string           `json:"version"`
 	Vector  string           `json:"vector"`
 	Metrics grypeCVSSMetrics `json:"metrics"`
@@ -274,6 +276,7 @@ func convertMatch(match grypeMatch) domain.NormalizedFinding {
 		Resource:    artifact.Name + "@" + artifact.Version,
 		Aliases:     aliases,
 		CVSS:        cvss,
+		CVSSAll:     cvssRecords(vuln.CVSS, match.RelatedVulnerabilities),
 		Fix:         fix,
 		Dimensions:  dims,
 		Extensions: map[string]any{
@@ -289,6 +292,37 @@ func convertMatch(match grypeMatch) domain.NormalizedFinding {
 			"language":      artifact.Language,
 		},
 	}
+}
+
+// cvssRecords keeps every scored CVSS entry of the matched vulnerability, or
+// of its related vulnerabilities when the match carries none of its own, the
+// same fallback pickCVSS uses. The source is the one grype prints, with the
+// entry type (primary or secondary) appended when the report gives it.
+func cvssRecords(own []grypeCVSS, related []grypeRelatedVuln) []domain.CVSSRecord {
+	out := appendCVSSRecords(nil, own)
+	if len(out) > 0 {
+		return out
+	}
+	for _, rv := range related {
+		out = appendCVSSRecords(out, rv.CVSS)
+	}
+	return out
+}
+
+func appendCVSSRecords(out []domain.CVSSRecord, list []grypeCVSS) []domain.CVSSRecord {
+	for _, c := range list {
+		if c.Metrics.BaseScore <= 0 {
+			continue
+		}
+		source := strings.ToLower(strings.TrimSpace(c.Source))
+		if kind := strings.ToLower(strings.TrimSpace(c.Type)); source != "" && kind != "" {
+			source += ":" + kind
+		}
+		if rec, ok := parseutil.NewCVSSRecord(c.Vector, c.Metrics.BaseScore, source); ok {
+			out = parseutil.AddCVSS(out, rec)
+		}
+	}
+	return out
 }
 
 func pickCVSS(cvssList []grypeCVSS) (score float64, vector string, version string) {
