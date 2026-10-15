@@ -49,7 +49,7 @@ The page a CI link opens: what a change introduced, where, and what to do about 
 | Report category | Supported tools and formats |
 | --- | --- |
 | **Dependencies & container images** | Trivy · OSV-Scanner · Grype · OWASP Dependency-Check |
-| **Source-code findings** | Semgrep · SARIF 2.1.0 (for example, CodeQL) |
+| **Source-code findings** | Semgrep (`--json` or `--sarif`) · SARIF 2.1.0 (for example, CodeQL) |
 | **Infrastructure checks** | Trivy · Checkov · tfsec |
 | **Secrets** | Trivy · Gitleaks |
 | **Web application checks** | Nuclei |

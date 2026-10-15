@@ -1,0 +1,192 @@
+{
+  "$schema": "https://docs.oasis-open.org/sarif/sarif/v2.1.0/os/schemas/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [
+    {
+      "invocations": [],
+      "results": [
+        {
+          "fingerprints": {
+            "matchBasedId/v1": "requires login"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app.py",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "endColumn": 69,
+                  "endLine": 4,
+                  "snippet": {
+                    "text": "    cur = db.execute(\"SELECT * FROM users WHERE name = '%s'\" % name)"
+                  },
+                  "startColumn": 11,
+                  "startLine": 4
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Detected possible formatted SQL query. Use parameterized queries instead."
+          },
+          "properties": {},
+          "ruleId": "python.lang.security.audit.formatted-sql-query.formatted-sql-query"
+        },
+        {
+          "fingerprints": {
+            "matchBasedId/v1": "requires login"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "app.py",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "endColumn": 43,
+                  "endLine": 7,
+                  "snippet": {
+                    "text": "    return subprocess.call(cmd, shell=True)"
+                  },
+                  "startColumn": 39,
+                  "startLine": 7
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Found 'subprocess' function 'call' with 'shell=True'. This is dangerous because this call will spawn the command using a shell process. Doing so propagates current shell settings and variables, which makes it much easier for a malicious actor to execute commands. Use 'shell=False' instead."
+          },
+          "properties": {},
+          "ruleId": "python.lang.security.audit.subprocess-shell-true.subprocess-shell-true"
+        },
+        {
+          "fingerprints": {
+            "matchBasedId/v1": "requires login"
+          },
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "Dockerfile",
+                  "uriBaseId": "%SRCROOT%"
+                },
+                "region": {
+                  "endColumn": 10,
+                  "endLine": 5,
+                  "snippet": {
+                    "text": "USER root"
+                  },
+                  "startColumn": 1,
+                  "startLine": 5
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "The last user in the container is 'root'. This is a security hazard because if an attacker gains control of the container they will have root access. Switch back to another user after running commands as 'root'."
+          },
+          "properties": {},
+          "ruleId": "dockerfile.security.last-user-is-root.last-user-is-root"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "name": "Semgrep OSS",
+          "semanticVersion": "1.172.0",
+          "rules": [
+            {
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "fullDescription": {
+                "text": "The last user in the container is 'root'. This is a security hazard because if an attacker gains control of the container they will have root access. Switch back to another user after running commands as 'root'."
+              },
+              "help": {
+                "markdown": "The last user in the container is 'root'. This is a security hazard because if an attacker gains control of the container they will have root access. Switch back to another user after running commands as 'root'.\n\n#### \ud83d\udc8e Enable cross-file analysis and Pro rules for free at <a href='https://sg.run/pro'>sg.run/pro</a>\n\n<b>References:</b>\n - [Semgrep Rule](https://semgrep.dev/r/dockerfile.security.last-user-is-root.last-user-is-root)\n - [https://github.com/hadolint/hadolint/wiki/DL3002](https://github.com/hadolint/hadolint/wiki/DL3002)\n",
+                "text": "The last user in the container is 'root'. This is a security hazard because if an attacker gains control of the container they will have root access. Switch back to another user after running commands as 'root'.\n\ud83d\udc8e Enable cross-file analysis and Pro rules for free at sg.run/pro"
+              },
+              "helpUri": "https://semgrep.dev/r/dockerfile.security.last-user-is-root.last-user-is-root",
+              "id": "dockerfile.security.last-user-is-root.last-user-is-root",
+              "name": "dockerfile.security.last-user-is-root.last-user-is-root",
+              "properties": {
+                "precision": "very-high",
+                "tags": [
+                  "CWE-269: Improper Privilege Management",
+                  "MEDIUM CONFIDENCE",
+                  "OWASP-A04:2021 - Insecure Design",
+                  "OWASP-A06:2025 - Insecure Design",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Semgrep Finding: dockerfile.security.last-user-is-root.last-user-is-root"
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "warning"
+              },
+              "fullDescription": {
+                "text": "Detected possible formatted SQL query. Use parameterized queries instead."
+              },
+              "help": {
+                "markdown": "Detected possible formatted SQL query. Use parameterized queries instead.\n\n#### \ud83d\udc8e Enable cross-file analysis and Pro rules for free at <a href='https://sg.run/pro'>sg.run/pro</a>\n\n<b>References:</b>\n - [Semgrep Rule](https://semgrep.dev/r/python.lang.security.audit.formatted-sql-query.formatted-sql-query)\n - [https://stackoverflow.com/questions/775296/mysql-parameterized-queries](https://stackoverflow.com/questions/775296/mysql-parameterized-queries)\n",
+                "text": "Detected possible formatted SQL query. Use parameterized queries instead.\n\ud83d\udc8e Enable cross-file analysis and Pro rules for free at sg.run/pro"
+              },
+              "helpUri": "https://semgrep.dev/r/python.lang.security.audit.formatted-sql-query.formatted-sql-query",
+              "id": "python.lang.security.audit.formatted-sql-query.formatted-sql-query",
+              "name": "python.lang.security.audit.formatted-sql-query.formatted-sql-query",
+              "properties": {
+                "precision": "very-high",
+                "tags": [
+                  "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')",
+                  "LOW CONFIDENCE",
+                  "OWASP-A01:2017 - Injection",
+                  "OWASP-A03:2021 - Injection",
+                  "OWASP-A05:2025 - Injection",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Semgrep Finding: python.lang.security.audit.formatted-sql-query.formatted-sql-query"
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "level": "error"
+              },
+              "fullDescription": {
+                "text": "Found 'subprocess' function '$FUNC' with 'shell=True'. This is dangerous because this call will spawn the command using a shell process. Doing so propagates current shell settings and variables, which makes it much easier for a malicious actor to execute commands. Use 'shell=False' instead."
+              },
+              "help": {
+                "markdown": "Found 'subprocess' function '$FUNC' with 'shell=True'. This is dangerous because this call will spawn the command using a shell process. Doing so propagates current shell settings and variables, which makes it much easier for a malicious actor to execute commands. Use 'shell=False' instead.\n\n#### \ud83d\udc8e Enable cross-file analysis and Pro rules for free at <a href='https://sg.run/pro'>sg.run/pro</a>\n\n<b>References:</b>\n - [Semgrep Rule](https://semgrep.dev/r/python.lang.security.audit.subprocess-shell-true.subprocess-shell-true)\n - [https://stackoverflow.com/questions/3172470/actual-meaning-of-shell-true-in-subprocess](https://stackoverflow.com/questions/3172470/actual-meaning-of-shell-true-in-subprocess)\n - [https://docs.python.org/3/library/subprocess.html](https://docs.python.org/3/library/subprocess.html)\n",
+                "text": "Found 'subprocess' function '$FUNC' with 'shell=True'. This is dangerous because this call will spawn the command using a shell process. Doing so propagates current shell settings and variables, which makes it much easier for a malicious actor to execute commands. Use 'shell=False' instead.\n\ud83d\udc8e Enable cross-file analysis and Pro rules for free at sg.run/pro"
+              },
+              "helpUri": "https://semgrep.dev/r/python.lang.security.audit.subprocess-shell-true.subprocess-shell-true",
+              "id": "python.lang.security.audit.subprocess-shell-true.subprocess-shell-true",
+              "name": "python.lang.security.audit.subprocess-shell-true.subprocess-shell-true",
+              "properties": {
+                "precision": "very-high",
+                "tags": [
+                  "CWE-78: Improper Neutralization of Special Elements used in an OS Command ('OS Command Injection')",
+                  "MEDIUM CONFIDENCE",
+                  "OWASP-A01:2017 - Injection",
+                  "OWASP-A03:2021 - Injection",
+                  "OWASP-A05:2025 - Injection",
+                  "security"
+                ]
+              },
+              "shortDescription": {
+                "text": "Semgrep Finding: python.lang.security.audit.subprocess-shell-true.subprocess-shell-true"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
