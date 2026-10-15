@@ -3855,6 +3855,19 @@ components:
           description: The analyst's standing.
           enum: [unanalyzed, in_triage, exploitable, false_positive, not_affected, accepted_risk, wont_fix]
         gate_effect: { type: string, enum: [block, ignore] }
+        analysis_reason:
+          type: string
+          description: The reason recorded with the current analysis state. Absent when none was given.
+        analysis_expires_at:
+          type: string
+          format: date-time
+          description: When the analysis state lapses and the expiry sweep resets it. Absent when it does not expire.
+        analysis_source:
+          type: string
+          enum: [system, manual, bulk, auto_rule]
+          description: Who set the current analysis state.
+        manual_override: { type: boolean, description: A person set the current analysis state. }
+        review_required: { type: boolean, description: "A later scan changed the finding (higher severity or a new fix), so the state should be looked at again." }
         first_seen_at: { type: string, format: date-time }
         last_seen_at: { type: string, format: date-time }
         created_at: { type: string, format: date-time }
