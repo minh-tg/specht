@@ -214,6 +214,15 @@ jobs:
             exit 1
           fi
 
+      # The compose file defaults to the latest tag, so a stable release moves it. A prerelease
+      # never does: someone who did not choose a release candidate must not get one.
+      - name: Move latest to a stable release
+        if: ${{ !contains(github.ref_name, '-') }}
+        run: |
+          docker buildx imagetools create \
+            --tag "ghcr.io/${{ github.repository }}:latest" \
+            "ghcr.io/${{ github.repository }}@${{ needs['build-image'].outputs.image_digest }}"
+
   build-binaries:
     name: cross-compile release binaries
     needs: require-ci
