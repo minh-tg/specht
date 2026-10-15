@@ -248,6 +248,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(readScope).Get("/api/v1/findings/{id}/notify-preview", h.PreviewNotification)
 		r.With(h.audited(audit.EventBulkTriage), adminScope).Post("/api/v1/findings/bulk-analysis", h.BulkTriage)
 		r.With(readScope).Get("/api/v1/findings/{id}/events", h.ListFindingEvents)
+		r.With(readScope).Get("/api/v1/findings/{id}/cve", h.GetFindingCVE)
 		r.With(h.audited(audit.EventCreateEvidence, "findingID"), adminScope).Post("/api/v1/findings/{findingID}/evidence", h.CreateEvidence)
 		r.With(readScope).Get("/api/v1/findings/{findingID}/evidence", h.ListEvidence)
 		r.With(h.audited(audit.EventDeleteEvidence, "evidenceID"), adminScope).Delete("/api/v1/findings/{findingID}/evidence/{evidenceID}", h.DeleteEvidence)

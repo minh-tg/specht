@@ -25,6 +25,7 @@ import (
 )
 
 type mockUsecases struct {
+	getFindingCVEFn         func(ctx context.Context, findingID string) (*usecase.CVEDetailResponse, error)
 	getProjectWatcherFn     func(ctx context.Context, slug string) (*usecase.ProjectWatcherResponse, error)
 	updateProjectWatcherFn  func(ctx context.Context, slug string, in usecase.WatcherSettingsInput) (*usecase.ProjectWatcherResponse, error)
 	deleteReportFn          func(ctx context.Context, slug, id string) (*usecase.ReportDeleteResponse, error)
