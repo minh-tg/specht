@@ -1,10 +1,17 @@
 import { shortcutHelp } from "@/lib/shortcuts";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { KeyboardShortcuts } from "./KeyboardShortcuts";
 
-afterEach(() => shortcutHelp.close());
+afterEach(() => {
+  shortcutHelp.close();
+  vi.unstubAllGlobals();
+});
+
+function stubPlatform(platform: string) {
+  vi.stubGlobal("navigator", { ...navigator, platform });
+}
 
 function setup() {
   render(
@@ -29,6 +36,36 @@ describe("KeyboardShortcuts", () => {
     const user = setup();
     await user.keyboard("{Meta>}/{/Meta}");
     expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument();
+  });
+
+  it("opens with Ctrl+/ on a macOS platform", async () => {
+    stubPlatform("MacIntel");
+    const user = setup();
+    await user.keyboard("{Control>}/{/Control}");
+    expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument();
+  });
+
+  it("opens with Meta+/ on a non-macOS platform", async () => {
+    stubPlatform("Linux x86_64");
+    const user = setup();
+    await user.keyboard("{Meta>}/{/Meta}");
+    expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument();
+  });
+
+  it("names both combinations on macOS and only Ctrl+/ elsewhere", async () => {
+    stubPlatform("MacIntel");
+    const user = setup();
+    await user.keyboard("{Control>}/{/Control}");
+    let dialog = await screen.findByRole("dialog");
+    const row = within(dialog).getByText("Show keyboard shortcuts").parentElement!;
+    expect(row).toHaveTextContent("⌘/ or Ctrl+/");
+    await user.keyboard("{Escape}");
+
+    stubPlatform("Linux x86_64");
+    await user.keyboard("{Control>}/{/Control}");
+    dialog = await screen.findByRole("dialog");
+    const other = within(dialog).getByText("Show keyboard shortcuts").parentElement!;
+    expect(other).toHaveTextContent(/^Show keyboard shortcutsCtrl\+\/$/);
   });
 
   it("does not react to a bare ? or /", async () => {

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   comboLabel,
+  displayCombos,
   keyLabel,
   matchesModShortcut,
   shortcut,
@@ -52,6 +53,14 @@ describe("shortcut registry", () => {
     expect(matchesModShortcut(key({ ctrlKey: false, metaKey: true }), "help")).toBe(true);
     expect(matchesModShortcut(key({ key: "k" }), "palette")).toBe(true);
     expect(matchesModShortcut(key({ key: "K" }), "palette")).toBe(true);
+  });
+
+  it("names Ctrl as well on macOS for the sheet shortcut only", () => {
+    const labels = (id: string, mac: boolean) =>
+      displayCombos(shortcut(id), mac).map((c) => comboLabel(c, mac));
+    expect(labels("help", true)).toEqual(["⌘/", "Ctrl+/"]);
+    expect(labels("help", false)).toEqual(["Ctrl+/"]);
+    expect(labels("palette", true)).toEqual(["⌘K"]);
   });
 
   it.each([
