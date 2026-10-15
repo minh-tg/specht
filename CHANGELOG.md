@@ -94,7 +94,7 @@ releases.
 - `specht-mcp` also offers projects, stats, aging, reports, environments, targets,
   artifacts and a finding's history, and `scanners_list` for a signed-in session.
   With `MCP_ALLOW_MUTATIONS=true` it can record a triage decision, request a
-  waiver and withdraw a request. It has no tool to approve or reject a waiver
+  waiver, withdraw a request and reclassify an environment. It has no tool to approve or reject a waiver
   request, which stays with a person.
 - A Semgrep finding keeps its identity when the code above it moves. The line
   is no longer part of it: a finding is the rule, the file and what was

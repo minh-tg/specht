@@ -46,6 +46,7 @@ type API interface {
 	TriageFinding(findingID string, req *client.TriageRequest) (*client.TriageResponse, error)
 	RequestWaiver(projectSlug string, req *client.RequestWaiverRequest) (*client.Waiver, error)
 	WithdrawWaiver(projectSlug, waiverID string) (*client.Waiver, error)
+	UpdateEnvironment(projectSlug, environmentID string, settings client.EnvironmentSettings) (*client.Environment, error)
 }
 
 type findingsListInput struct {

@@ -82,7 +82,7 @@ func TestE2E_MCPBridgeWithProjectKeyExposesOnlyKeyUsableReadTools(t *testing.T) 
 	require.Contains(t, text, "Found 2 finding(s)")
 
 	// Neither a mutating nor a session-only tool is registered at all.
-	for _, name := range []string{"waivers_create", "reachability_set", "admin_status", "teams_list", "findings_triage", "waivers_request", "scanners_list"} {
+	for _, name := range []string{"waivers_create", "reachability_set", "admin_status", "teams_list", "findings_triage", "waivers_request", "scanners_list", "environments_update"} {
 		_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: name})
 		require.Error(t, err, "tool %q must not be advertised to a project key", name)
 	}
@@ -116,7 +116,7 @@ func TestE2E_MCPBridgeOverStdio(t *testing.T) {
 			"waiver_events", "projects_list", "project_get", "project_stats", "project_aging",
 			"reports_list", "report_get", "environments_list", "targets_list", "artifacts_list",
 			"finding_events", "scanners_list", "findings_triage", "waivers_request",
-			"waivers_withdraw",
+			"waivers_withdraw", "environments_update",
 		}, names)
 	})
 
@@ -198,7 +198,8 @@ func TestE2E_MCPBridgeOverStdio(t *testing.T) {
 // waiver on the other finding.
 func TestE2E_MCPBridgeReadsAProjectAndDecidesAFinding(t *testing.T) {
 	slug := newProject(t, "mcp-triage")
-	ingestFixture(t, slug, adminToken, "high-medium.sarif.json")
+	request[ingestResponse](t, http.MethodPost, "/api/v1/reports", adminToken,
+		ingestBodyWith(t, slug, "high-medium.sarif.json", map[string]any{"environment": "production"}), http.StatusCreated)
 	findings := listScanFindings(t, slug)
 	require.Len(t, findings, 2)
 	session := connectMCP(t)
@@ -246,6 +247,26 @@ func TestE2E_MCPBridgeReadsAProjectAndDecidesAFinding(t *testing.T) {
 	require.False(t, isErr, text)
 	require.Contains(t, text, "false_positive")
 	require.Contains(t, text, "test fixture")
+
+	// Reclassifying an environment changes only what is given and sticks.
+	envs := request[[]struct {
+		Name            string `json:"name"`
+		InternetFacing  bool   `json:"internet_facing"`
+		DataSensitivity string `json:"data_sensitivity"`
+	}](t, http.MethodGet, "/api/v1/projects/"+slug+"/environments", adminToken, nil, http.StatusOK)
+	require.NotEmpty(t, envs, "a scan creates an environment")
+	text, isErr = mcpText(t, session, "environments_update", map[string]any{
+		"project": slug, "environment": envs[0].Name, "internet_facing": true, "data_sensitivity": "restricted",
+	})
+	require.False(t, isErr, text)
+	require.Contains(t, text, "internet facing")
+	after := request[[]struct {
+		Name            string `json:"name"`
+		InternetFacing  bool   `json:"internet_facing"`
+		DataSensitivity string `json:"data_sensitivity"`
+	}](t, http.MethodGet, "/api/v1/projects/"+slug+"/environments", adminToken, nil, http.StatusOK)
+	require.True(t, after[0].InternetFacing)
+	require.Equal(t, "restricted", after[0].DataSensitivity)
 
 	// A request is not an approval: the waiver stays pending, and the assistant can take it back.
 	other := findings[0].ID

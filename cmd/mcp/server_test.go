@@ -62,7 +62,7 @@ func TestMCPServerTools(t *testing.T) {
 		"projects_list", "project_get", "project_stats", "project_aging", "reports_list",
 		"report_get", "environments_list", "targets_list", "artifacts_list",
 		"finding_events", "scanners_list", "findings_triage", "waivers_request",
-		"waivers_withdraw",
+		"waivers_withdraw", "environments_update",
 	}
 	got := make(map[string]bool, len(result.Tools))
 	for _, tool := range result.Tools {
@@ -259,7 +259,7 @@ var (
 		"artifacts_list", "finding_events",
 	}
 	sessionOnlyTools = []string{"admin_status", "admin_retention_preview", "teams_list", "watcher_status", "scanners_list"}
-	mutatingTools    = []string{"reachability_set", "waivers_create", "waivers_toggle", "findings_triage", "waivers_request", "waivers_withdraw"}
+	mutatingTools    = []string{"reachability_set", "waivers_create", "waivers_toggle", "findings_triage", "waivers_request", "waivers_withdraw", "environments_update"}
 )
 
 func assertTools(t *testing.T, got map[string]bool, present, absent []string) {

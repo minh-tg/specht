@@ -219,3 +219,47 @@ func TestMCPOffersNoWaiverDecision(t *testing.T) {
 		}
 	}
 }
+
+func TestMCPEnvironmentsUpdateChangesOnlyWhatIsGiven(t *testing.T) {
+	mc := &mockClient{environments: []client.Environment{
+		{ID: "e1", Name: "production", Tier: "production", InternetFacing: true, DataSensitivity: "restricted"},
+		{ID: "e2", Name: "staging", Tier: "staging", DataSensitivity: "internal"},
+	}}
+	session := connectMCPServer(t, mc)
+
+	text, failed := callTool(t, session, "environments_update", map[string]any{"project": "payments", "environment": "production", "data_sensitivity": "confidential"})
+	if failed {
+		t.Fatal(text)
+	}
+	mustContain(t, text, "production", "confidential", "internet facing")
+	want := client.EnvironmentSettings{Tier: "production", InternetFacing: true, DataSensitivity: "confidential"}
+	if mc.envID != "e1" || mc.envSettings == nil || *mc.envSettings != want {
+		t.Fatalf("settings = %+v for %q, want %+v for e1", mc.envSettings, mc.envID, want)
+	}
+
+	// An explicit false turns exposure off; naming the environment by ID works too.
+	if text, failed = callTool(t, session, "environments_update", map[string]any{"project": "payments", "environment": "e1", "internet_facing": false}); failed {
+		t.Fatal(text)
+	}
+	if mc.envSettings.InternetFacing {
+		t.Errorf("internet_facing=false was not forwarded: %+v", mc.envSettings)
+	}
+}
+
+func TestMCPEnvironmentsUpdateRefusesBeforeTheAPI(t *testing.T) {
+	mc := &mockClient{environments: []client.Environment{{ID: "e1", Name: "production", Tier: "production"}}}
+	session := connectMCPServer(t, mc)
+	for name, args := range map[string]map[string]any{
+		"no project":     {"environment": "production", "tier": "test"},
+		"no environment": {"project": "payments", "tier": "test"},
+		"nothing to set": {"project": "payments", "environment": "production"},
+		"unknown name":   {"project": "payments", "environment": "nowhere", "tier": "test"},
+	} {
+		if text, failed := callTool(t, session, "environments_update", args); !failed {
+			t.Errorf("%s: expected an error, got %q", name, text)
+		}
+	}
+	if mc.envSettings != nil {
+		t.Errorf("a refused call must not reach the API: %+v", mc.envSettings)
+	}
+}
