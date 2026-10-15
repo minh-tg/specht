@@ -345,6 +345,22 @@ describe("ProjectList", () => {
     expect(await screen.findByText("Findings page")).toBeInTheDocument();
   });
 
+  it("scrolls the table inside its own focusable region on a narrow screen", async () => {
+    mockApi({
+      projects: [{ id: "p1", slug: "alpha", name: "Alpha", description: null }],
+      me: { role: "member" },
+      gate: () => makeGate([]),
+      stats: () => makeStats(1, 3, recentIso(2)),
+    });
+    renderProjectRoutes();
+
+    const region = await screen.findByRole("region", { name: "Projects table" });
+    expect(region).toHaveAttribute("tabindex", "0");
+    expect(region).toHaveClass("overflow-x-auto");
+    expect(within(region).getByRole("table", { name: "Projects" })).toBeInTheDocument();
+    expect(screen.getByText("Swipe the table sideways to see every column.")).toBeInTheDocument();
+  });
+
   it("offers the New project action to admins", async () => {
     const scannedAt = recentIso(2);
     mockApi({
