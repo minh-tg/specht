@@ -1,5 +1,6 @@
 import {
   type FindingSort,
+  POLL_MS,
   useFindings,
   useGateStatus,
   useProject,
@@ -7,6 +8,7 @@ import {
 } from "@/api/hooks";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { Skeleton } from "@/components/ui/skeleton";
+import { UpdatedHint } from "@/components/UpdatedHint";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { WaiverRequestDialog } from "./change-view/WaiverRequestDialog";
@@ -26,9 +28,11 @@ export function FindingsDashboard() {
 
   const { filters, sort, offset, setFilter, setSort, setPage, clearFilters } = useFindingsQuery();
 
-  const { data, isLoading, isFetching, isError, error, refetch } = useFindings(
+  // The list asks again every 30 s while the tab is visible, so other people's changes show up.
+  const { data, dataUpdatedAt, isLoading, isFetching, isError, error, refetch } = useFindings(
     slug ?? "",
     findingsRequest(filters, sort, offset),
+    { refetchInterval: POLL_MS },
   );
   const findings = data?.findings;
   const total = data?.total ?? null;
@@ -96,6 +100,14 @@ export function FindingsDashboard() {
         onFilterChange={setFilter}
         onSortChange={setSort}
         severityCounts={stats?.by_severity}
+      />
+
+      <UpdatedHint
+        className="text-muted-foreground flex items-center justify-end gap-2 text-xs"
+        updatedAt={dataUpdatedAt}
+        watch={[data]}
+        isFetching={isFetching}
+        onRefresh={() => void refetch()}
       />
 
       <div
