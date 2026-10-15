@@ -2,10 +2,11 @@ import { useMe, useProjects } from "@/api/hooks";
 import { projectGateQuery, projectStatsQuery } from "@/api/pageRequests";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
+import { RelativeTime } from "@/components/RelativeTime";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
-import { EMPTY_VALUE, formatDateTime, formatRelativeTime } from "@/lib/format";
+import { EMPTY_VALUE } from "@/lib/format";
 import { blockerCount, degradedMessage, projectVerdict, type Verdict } from "@/lib/verdict";
 import type { GateStatus, Project, ProjectStats } from "@/types/api";
 import { useQueries } from "@tanstack/react-query";
@@ -212,7 +213,7 @@ function ProjectTableRow({ row }: { readonly row: ProjectRowData; }) {
       lastScan = "Never";
     } else {
       const createdAt = stats.latest_report?.created_at;
-      lastScan = <span title={formatDateTime(createdAt)}>{formatRelativeTime(createdAt)}</span>;
+      lastScan = <RelativeTime iso={createdAt} />;
     }
   }
 

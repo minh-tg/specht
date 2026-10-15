@@ -1,7 +1,8 @@
 import { InfoTip } from "@/components/InfoTip";
+import { RelativeTime } from "@/components/RelativeTime";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
-import { formatDateTime, formatRelativeTime, pluralize } from "@/lib/format";
+import { pluralize } from "@/lib/format";
 import { floorSourceLabel, shortCommit } from "@/pages/change-view/resolve";
 import type { PolicyEffective, Report } from "@/types/api";
 import type { ReactNode } from "react";
@@ -124,8 +125,8 @@ export function ChangeHero(
         {waived > 0 && <FactItem>{waived} waived</FactItem>}
         {report && (
           <FactItem>
-            <span title={formatDateTime(report.created_at)}>
-              Scanned {formatRelativeTime(report.created_at)}
+            <span>
+              Scanned <RelativeTime iso={report.created_at} frozen />
             </span>
             {report.tool_name ? ` from a ${report.tool_name} report` : ""}
           </FactItem>

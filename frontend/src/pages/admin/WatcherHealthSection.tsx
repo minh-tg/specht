@@ -1,8 +1,9 @@
 import { useWatcherHealth } from "@/api/admin";
 import { ErrorState } from "@/components/ErrorState";
+import { RelativeTime } from "@/components/RelativeTime";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { StatusPill } from "@/components/StatusPill";
-import { formatDateTime, formatRelativeTime, pluralize } from "@/lib/format";
+import { formatDateTime, pluralize } from "@/lib/format";
 import type { ReactNode } from "react";
 import { watcherHealthState } from "./watcherHealth";
 
@@ -17,8 +18,7 @@ function Row({ label, children }: { readonly label: string; readonly children: R
 
 /** The CVE watcher across the whole server. A project's own page points here when its polls fail. */
 export function WatcherHealthSection() {
-  const { data, isLoading, isError, refetch, dataUpdatedAt } = useWatcherHealth();
-  const now = new Date(dataUpdatedAt);
+  const { data, isLoading, isError, refetch } = useWatcherHealth();
   const state = data ? watcherHealthState(data) : null;
 
   return (
@@ -41,9 +41,12 @@ export function WatcherHealthSection() {
           <dl className="border-foreground m-0 border-t-2">
             <Row label="Last successful poll">
               {data.last_successful_poll_at
-                ? `${formatDateTime(data.last_successful_poll_at)} (${
-                  formatRelativeTime(data.last_successful_poll_at, now)
-                })`
+                ? (
+                  <>
+                    {formatDateTime(data.last_successful_poll_at)}{" "}
+                    (<RelativeTime iso={data.last_successful_poll_at} />)
+                  </>
+                )
                 : "None yet"}
             </Row>
             <Row label="Last attempt">

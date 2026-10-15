@@ -1,8 +1,9 @@
 import { useFinding } from "@/api/hooks";
 import { type ActorContext, actorLabel } from "@/api/users";
+import { RelativeTime } from "@/components/RelativeTime";
 import { Button } from "@/components/ui/button";
 import { SeverityBadge } from "@/components/ui/severity-badge";
-import { formatRelativeTime, pluralize } from "@/lib/format";
+import { pluralize } from "@/lib/format";
 import type { Waiver } from "@/types/api";
 import { useState } from "react";
 import { Link } from "react-router-dom";
@@ -86,7 +87,11 @@ export function WaiverRow({ slug, waiver, bucket, now, who, actions }: {
           {requester && (
             <span>
               asked by {requester}
-              {waiver.requested_at && <>, {formatRelativeTime(waiver.requested_at, now)}</>}
+              {waiver.requested_at && (
+                <>
+                  , <RelativeTime iso={waiver.requested_at} />
+                </>
+              )}
             </span>
           )}
           {!requester && <span>created by a manager</span>}

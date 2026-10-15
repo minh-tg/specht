@@ -2,7 +2,7 @@ import { queryKeys } from "@/api/hooks";
 import { formatDateTime } from "@/lib/format";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -319,7 +319,9 @@ describe("VerdictBand", () => {
     expect(screen.getByText("Floor: medium (default)")).toBeInTheDocument();
     const scan = screen.getByText(/Last scan/);
     expect(scan).toHaveTextContent("trivy");
-    expect(scan).toHaveAttribute("title", formatDateTime("2025-01-01T00:00:00Z"));
+    const when = within(scan).getByRole("time");
+    expect(when).toHaveAttribute("datetime", "2025-01-01T00:00:00Z");
+    expect(when).toHaveAttribute("title", formatDateTime("2025-01-01T00:00:00Z"));
   });
 
   it("reserves height with skeletons while loading", () => {
