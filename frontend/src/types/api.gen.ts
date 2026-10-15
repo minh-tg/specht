@@ -1472,7 +1472,7 @@ export interface paths {
     /**
      * Suggest people to add as direct members
      * @description Autocomplete for adding a direct project member. Matches active accounts whose email starts with `q`, or whose display name has a word (after a space, or at the start) that starts with `q`, ignoring case. `%`, `_` and `\` in `q` match only themselves. Returns at most 8 people, ordered by email, and leaves out disabled accounts, the system account and people who are already direct members of the project.
-     *     `q` is trimmed. Fewer than 3 characters returns `[]`; more than 64 is `400 invalid_query`. Needs the project manager role or above and a session: a project API key is `403 insufficient_role`. While open self-registration is enabled (`registration.enabled` in `/api/v1/capabilities`) the answer is always `[]`, because anyone could have registered an account under a colleague's address or name.
+     *     `q` is trimmed. A missing `q`, or one under 3 characters, returns `200 []`. A `q` over 64 characters, or one that is not valid UTF-8 or contains a control character, is `400 invalid_query`. Needs the project manager role or above and a session: a project API key is `403 insufficient_role` from the session check, and a session below manager is `403 project_access_denied`. A missing project is `404` only for an instance admin; everyone else gets `403 project_access_denied`. The answer is always `[]` while anyone could hold an account under a name they chose: while open self-registration is enabled (`registration.enabled` in `/api/v1/capabilities`), and while SSO is on with `SSO_ALLOW_UNVERIFIED_EMAIL=true`.
      *     Rate limited per user to 30 requests a minute with a burst of 10, on every deployment, whether or not the general rate limit is enabled. Over the limit is `429` with `Retry-After`.
      */
     get: operations["suggestProjectMembers"];
@@ -5787,9 +5787,9 @@ export interface operations {
   };
   suggestProjectMembers: {
     parameters: {
-      query: {
-        /** @description Start of an email address or of a display-name word. */
-        q: string;
+      query?: {
+        /** @description Start of an email address or of a display-name word. Missing is the same as empty. */
+        q?: string;
       };
       header?: never;
       path: {

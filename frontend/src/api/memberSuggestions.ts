@@ -74,6 +74,9 @@ export function useMemberSuggestions(slug: string, query: string, enabled = true
  * dialog (only instance admins add people there, and they have the directory loaded). A person
  * matches when their email starts with the query, or the query starts at the beginning of a word of
  * their display name ("ada lov" finds "Ada Lovelace").
+ *
+ * `useUserDirectory` loads at most 500 accounts, ordered by email, so on a larger instance this
+ * never suggests anyone after the 500th. Typing the full address still works.
  */
 export function suggestFromDirectory(
   directory: readonly UserProfile[] | undefined,
