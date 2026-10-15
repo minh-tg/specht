@@ -150,6 +150,9 @@ type RateLimit struct {
 
 // IntelConfig is the resolved vulnerability-intel configuration.
 type IntelConfig struct {
+	// Enabled is false when INTEL_ENABLED turns the feeds off. Air-gapped
+	// installs set it so the server makes no EPSS or KEV calls.
+	Enabled       bool
 	EPSSBaseURL   string
 	KEVCatalogURL string
 	TTL           time.Duration
@@ -429,14 +432,24 @@ func Load() (*Server, error) {
 	return s, nil
 }
 
-// loadIntel resolves the EPSS/KEV feed endpoints and cache TTL. A malformed
+// loadIntel resolves the EPSS/KEV on/off switch, feed endpoints and cache TTL. A malformed
 // TTL is a hard error: intel config is small and explicit, never silently
 // defaulted after an operator typo.
 func loadIntel(s *Server) error {
 	s.Intel = IntelConfig{
+		Enabled:       true,
 		EPSSBaseURL:   strOr(os.Getenv("INTEL_EPSS_ENDPOINT"), DefaultEPSSEndpoint),
 		KEVCatalogURL: strOr(os.Getenv("INTEL_KEV_ENDPOINT"), DefaultKEVEndpoint),
 		TTL:           DefaultIntelTTL,
+	}
+	if v := os.Getenv("INTEL_ENABLED"); v != "" {
+		// Strict on purpose: a typo must fail at startup, never silently
+		// leave an intended-off outbound feed on.
+		enabled, err := strconv.ParseBool(v)
+		if err != nil {
+			return fmt.Errorf("INTEL_ENABLED is invalid: %q (want true or false)", v)
+		}
+		s.Intel.Enabled = enabled
 	}
 	if v := os.Getenv("INTEL_TTL"); v != "" {
 		d, err := time.ParseDuration(v)
