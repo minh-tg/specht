@@ -246,7 +246,11 @@ describe("Profile", () => {
     it("shows the server's message when it rejects the new password", async () => {
       passwordReply = () =>
         jsonResponse({
-          error: { code: "invalid_password", message: "password must be at most 72 characters" },
+          error: {
+            code: "invalid_password",
+            message:
+              "password must be at most 72 bytes; some characters, such as emoji, take more than one",
+          },
         }, 400);
       const user = userEvent.setup();
       renderProfile();
@@ -254,7 +258,11 @@ describe("Profile", () => {
       await fillPasswords(user, "old-password-1", "new-password-1", "new-password-1");
       await user.click(screen.getByRole("button", { name: "Change password" }));
 
-      expect(await screen.findByText("password must be at most 72 characters")).toBeInTheDocument();
+      expect(
+        await screen.findByText(
+          "password must be at most 72 bytes; some characters, such as emoji, take more than one",
+        ),
+      ).toBeInTheDocument();
     });
 
     it("explains that an SSO account has no password to change", async () => {

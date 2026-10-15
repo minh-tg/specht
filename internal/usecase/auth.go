@@ -13,6 +13,7 @@ import (
 	"net/mail"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 	"github.com/minh-tg/specht/internal/auth"
@@ -96,14 +97,15 @@ func validateCredentials(email, password string) (string, error) {
 }
 
 // checkPasswordLength holds the password rules every way of choosing a
-// password shares: registration, setup, invites and a password change. 72 bytes
-// is the longest input bcrypt reads.
+// password shares: registration, setup, invites and a password change. The
+// minimum counts characters, as the forms do; the maximum counts bytes, because
+// 72 bytes is the longest input bcrypt reads.
 func checkPasswordLength(password string) error {
-	if len(password) < 8 {
+	if utf8.RuneCountInString(password) < 8 {
 		return badCredentials("password must be at least 8 characters")
 	}
 	if len(password) > 72 {
-		return badCredentials("password must be at most 72 characters")
+		return badCredentials("password must be at most 72 bytes; some characters, such as emoji, take more than one")
 	}
 	return nil
 }
