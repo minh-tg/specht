@@ -1,0 +1,353 @@
+[
+  {
+    "check_type": "dockerfile",
+    "results": {
+      "failed_checks": [
+        {
+          "check_id": "CKV_DOCKER_1",
+          "bc_check_id": "BC_DKR_1",
+          "check_name": "Ensure port 22 is not exposed",
+          "check_result": {
+            "result": "FAILED",
+            "results_configuration": [
+              {
+                "instruction": "EXPOSE",
+                "startline": 5,
+                "endline": 5,
+                "content": "EXPOSE 22\n",
+                "value": "22"
+              }
+            ]
+          },
+          "code_block": [
+            [
+              6,
+              "EXPOSE 22\n"
+            ]
+          ],
+          "file_path": "/Dockerfile",
+          "file_abs_path": "/Dockerfile",
+          "repo_file_path": "/Dockerfile",
+          "file_line_range": [
+            6,
+            6
+          ],
+          "resource": "/Dockerfile.EXPOSE",
+          "evaluations": null,
+          "check_class": "checkov.dockerfile.checks.ExposePort22",
+          "fixed_definition": null,
+          "entity_tags": null,
+          "caller_file_path": null,
+          "caller_file_line_range": null,
+          "resource_address": null,
+          "severity": null,
+          "bc_category": null,
+          "benchmarks": null,
+          "description": null,
+          "short_description": null,
+          "vulnerability_details": null,
+          "connected_node": null,
+          "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/docker-policies/docker-policy-index/ensure-port-22-is-not-exposed",
+          "details": [],
+          "check_len": null,
+          "definition_context_file_path": null
+        },
+        {
+          "check_id": "CKV_DOCKER_4",
+          "bc_check_id": "BC_DKR_5",
+          "check_name": "Ensure that COPY is used instead of ADD in Dockerfiles",
+          "check_result": {
+            "result": "FAILED",
+            "results_configuration": [
+              {
+                "instruction": "ADD",
+                "startline": 1,
+                "endline": 1,
+                "content": "ADD . /app\n",
+                "value": ". /app"
+              }
+            ]
+          },
+          "code_block": [
+            [
+              2,
+              "ADD . /app\n"
+            ]
+          ],
+          "file_path": "/Dockerfile",
+          "file_abs_path": "/Dockerfile",
+          "repo_file_path": "/Dockerfile",
+          "file_line_range": [
+            2,
+            2
+          ],
+          "resource": "/Dockerfile.ADD",
+          "evaluations": null,
+          "check_class": "checkov.dockerfile.checks.AddExists",
+          "fixed_definition": null,
+          "entity_tags": null,
+          "caller_file_path": null,
+          "caller_file_line_range": null,
+          "resource_address": null,
+          "severity": null,
+          "bc_category": null,
+          "benchmarks": null,
+          "description": null,
+          "short_description": null,
+          "vulnerability_details": null,
+          "connected_node": null,
+          "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/docker-policies/docker-policy-index/ensure-that-copy-is-used-instead-of-add-in-dockerfiles",
+          "details": [],
+          "check_len": null,
+          "definition_context_file_path": null
+        }
+      ]
+    },
+    "summary": {
+      "passed": 39,
+      "failed": 2,
+      "skipped": 0,
+      "parsing_errors": 0,
+      "resource_count": 1,
+      "checkov_version": "3.3.29"
+    }
+  },
+  {
+    "check_type": "kubernetes",
+    "results": {
+      "failed_checks": [
+        {
+          "check_id": "CKV_K8S_23",
+          "bc_check_id": "BC_K8S_22",
+          "check_name": "Minimize the admission of root containers",
+          "check_result": {
+            "result": "FAILED",
+            "evaluated_keys": []
+          },
+          "code_block": [
+            [
+              1,
+              "apiVersion: v1\n"
+            ],
+            [
+              2,
+              "kind: Pod\n"
+            ],
+            [
+              3,
+              "metadata:\n"
+            ]
+          ],
+          "file_path": "/k8s.yaml",
+          "file_abs_path": "/k8s.yaml",
+          "repo_file_path": "/k8s.yaml",
+          "file_line_range": [
+            1,
+            12
+          ],
+          "resource": "Pod.default.priv",
+          "evaluations": {},
+          "check_class": "checkov.kubernetes.checks.resource.k8s.RootContainers",
+          "fixed_definition": null,
+          "entity_tags": null,
+          "caller_file_path": null,
+          "caller_file_line_range": null,
+          "resource_address": null,
+          "severity": null,
+          "bc_category": null,
+          "benchmarks": null,
+          "description": null,
+          "short_description": null,
+          "vulnerability_details": null,
+          "connected_node": null,
+          "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/kubernetes-policies/kubernetes-policy-index/bc-k8s-22",
+          "details": [],
+          "check_len": null,
+          "definition_context_file_path": null
+        },
+        {
+          "check_id": "CKV_K8S_37",
+          "bc_check_id": "BC_K8S_34",
+          "check_name": "Minimize the admission of containers with capabilities assigned",
+          "check_result": {
+            "result": "FAILED",
+            "evaluated_keys": [
+              "spec/containers/[0]/securityContext/capabilities/drop"
+            ]
+          },
+          "code_block": [
+            [
+              1,
+              "apiVersion: v1\n"
+            ],
+            [
+              2,
+              "kind: Pod\n"
+            ],
+            [
+              3,
+              "metadata:\n"
+            ]
+          ],
+          "file_path": "/k8s.yaml",
+          "file_abs_path": "/k8s.yaml",
+          "repo_file_path": "/k8s.yaml",
+          "file_line_range": [
+            1,
+            12
+          ],
+          "resource": "Pod.default.priv",
+          "evaluations": {},
+          "check_class": "checkov.kubernetes.checks.resource.k8s.MinimizeCapabilities",
+          "fixed_definition": null,
+          "entity_tags": null,
+          "caller_file_path": null,
+          "caller_file_line_range": null,
+          "resource_address": null,
+          "severity": null,
+          "bc_category": null,
+          "benchmarks": null,
+          "description": null,
+          "short_description": null,
+          "vulnerability_details": null,
+          "connected_node": null,
+          "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/kubernetes-policies/kubernetes-policy-index/bc-k8s-34",
+          "details": [],
+          "check_len": null,
+          "definition_context_file_path": null
+        }
+      ]
+    },
+    "summary": {
+      "passed": 68,
+      "failed": 2,
+      "skipped": 0,
+      "parsing_errors": 0,
+      "resource_count": 1,
+      "checkov_version": "3.3.29"
+    }
+  },
+  {
+    "check_type": "terraform",
+    "results": {
+      "failed_checks": [
+        {
+          "check_id": "CKV_AWS_25",
+          "bc_check_id": "BC_AWS_NETWORKING_2",
+          "check_name": "Ensure no security groups allow ingress from 0.0.0.0:0 to port 3389",
+          "check_result": {
+            "result": "FAILED",
+            "evaluated_keys": [
+              "ingress/[0]/from_port",
+              "ingress/[0]/to_port",
+              "ingress/[0]/cidr_blocks",
+              "ingress/[0]/ipv6_cidr_blocks"
+            ]
+          },
+          "code_block": [
+            [
+              5,
+              "resource \"aws_security_group\" \"open\" {\n"
+            ],
+            [
+              6,
+              "  name = \"open\"\n"
+            ],
+            [
+              7,
+              "  ingress {\n"
+            ]
+          ],
+          "file_path": "/main.tf",
+          "file_abs_path": "/main.tf",
+          "repo_file_path": "/main.tf",
+          "file_line_range": [
+            5,
+            13
+          ],
+          "resource": "aws_security_group.open",
+          "evaluations": null,
+          "check_class": "checkov.terraform.checks.resource.aws.SecurityGroupUnrestrictedIngress3389",
+          "fixed_definition": null,
+          "entity_tags": null,
+          "caller_file_path": null,
+          "caller_file_line_range": null,
+          "resource_address": null,
+          "severity": null,
+          "bc_category": null,
+          "benchmarks": null,
+          "description": null,
+          "short_description": null,
+          "vulnerability_details": null,
+          "connected_node": null,
+          "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-networking-policies/networking-2",
+          "details": [],
+          "check_len": null,
+          "definition_context_file_path": "/main.tf"
+        },
+        {
+          "check_id": "CKV_AWS_260",
+          "bc_check_id": "BC_AWS_NETWORKING_67",
+          "check_name": "Ensure no security groups allow ingress from 0.0.0.0:0 to port 80",
+          "check_result": {
+            "result": "FAILED",
+            "evaluated_keys": [
+              "ingress/[0]/from_port",
+              "ingress/[0]/to_port",
+              "ingress/[0]/cidr_blocks",
+              "ingress/[0]/ipv6_cidr_blocks"
+            ]
+          },
+          "code_block": [
+            [
+              5,
+              "resource \"aws_security_group\" \"open\" {\n"
+            ],
+            [
+              6,
+              "  name = \"open\"\n"
+            ],
+            [
+              7,
+              "  ingress {\n"
+            ]
+          ],
+          "file_path": "/main.tf",
+          "file_abs_path": "/main.tf",
+          "repo_file_path": "/main.tf",
+          "file_line_range": [
+            5,
+            13
+          ],
+          "resource": "aws_security_group.open",
+          "evaluations": null,
+          "check_class": "checkov.terraform.checks.resource.aws.SecurityGroupUnrestrictedIngress80",
+          "fixed_definition": null,
+          "entity_tags": null,
+          "caller_file_path": null,
+          "caller_file_line_range": null,
+          "resource_address": null,
+          "severity": null,
+          "bc_category": null,
+          "benchmarks": null,
+          "description": null,
+          "short_description": null,
+          "vulnerability_details": null,
+          "connected_node": null,
+          "guideline": "https://docs.prismacloud.io/en/enterprise-edition/policy-reference/aws-policies/aws-networking-policies/ensure-aws-security-groups-do-not-allow-ingress-from-00000-to-port-80",
+          "details": [],
+          "check_len": null,
+          "definition_context_file_path": "/main.tf"
+        }
+      ]
+    },
+    "summary": {
+      "passed": 10,
+      "failed": 2,
+      "skipped": 0,
+      "parsing_errors": 0,
+      "resource_count": 3,
+      "checkov_version": "3.3.29"
+    }
+  }
+]
