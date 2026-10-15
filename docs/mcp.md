@@ -80,6 +80,16 @@ Every credential can use these:
 | `waivers_list` | List a project's waivers |
 | `waivers_get` | Show one waiver |
 | `waiver_events` | Show a waiver's history |
+| `projects_list` | List the projects the credential can see |
+| `project_get` | Show a project and your role in it |
+| `project_stats` | Count findings by severity and analysis state, with blocking findings and pending waiver requests |
+| `project_aging` | Show how long open findings have been open and which are past their SLA |
+| `reports_list` | List a project's uploaded reports, newest first |
+| `report_get` | Show one report |
+| `environments_list` | List a project's environments with tier, exposure and data sensitivity |
+| `targets_list` | List what a project's scans ran against |
+| `artifacts_list` | List the images, packages and other artifacts the scans found |
+| `finding_events` | Show a finding's history: who decided what, and when |
 
 These need a session token, because their routes refuse API keys:
 
@@ -89,6 +99,7 @@ These need a session token, because their routes refuse API keys:
 | `admin_retention_preview` | Count the settled reports a purge would delete |
 | `teams_list` | List all teams |
 | `watcher_status` | Check the CVE watcher daemon's health |
+| `scanners_list` | List the scanners Specht reads, their file formats and the command that produces each |
 
 These change state and appear only with `MCP_ALLOW_MUTATIONS=true`:
 
@@ -97,6 +108,12 @@ These change state and appear only with `MCP_ALLOW_MUTATIONS=true`:
 | `reachability_set` | Record whether a finding is reachable |
 | `waivers_create` | Create an approved waiver for specific findings (project manager or admin) |
 | `waivers_toggle` | Turn a waiver on or off |
+| `findings_triage` | Record an analysis decision on a finding (project admin). A state such as `false_positive` stops the finding blocking the gate |
+| `waivers_request` | Ask for a waiver on specific findings, with a reason and an expiry; it waits for a decision |
+| `waivers_withdraw` | Withdraw a waiver request that has not been decided |
+
+There is no tool to approve or reject a waiver request. That is the second person's
+decision, and the bridge leaves it to a person in the web interface or the `specht` command.
 
 ## Troubleshooting
 

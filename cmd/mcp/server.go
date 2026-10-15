@@ -32,6 +32,20 @@ type API interface {
 	CreateWaiver(projectSlug string, req *client.CreateWaiverRequest) (*client.Waiver, error)
 	ToggleWaiver(projectSlug, waiverID string) (*client.Waiver, error)
 	ListWaiverEvents(projectSlug, waiverID string) ([]client.WaiverEvent, error)
+	ListProjects() ([]client.Project, error)
+	GetProject(slug string) (*client.Project, error)
+	GetProjectStats(projectSlug string) (*client.ProjectStats, error)
+	GetAging(projectSlug string) (*client.AgingResponse, error)
+	ListReports(projectSlug string, limit, offset int32) ([]client.Report, error)
+	GetReport(reportID string) (*client.Report, error)
+	ListEnvironments(projectSlug string) ([]client.Environment, error)
+	ListTargets(projectSlug string) ([]client.Target, error)
+	ListArtifacts(projectSlug string) ([]client.Artifact, error)
+	ListFindingEvents(findingID string, eventTypes []string, limit, offset int32) ([]client.FindingEvent, error)
+	ListScanners() ([]client.ScannerDescriptor, error)
+	TriageFinding(findingID string, req *client.TriageRequest) (*client.TriageResponse, error)
+	RequestWaiver(projectSlug string, req *client.RequestWaiverRequest) (*client.Waiver, error)
+	WithdrawWaiver(projectSlug, waiverID string) (*client.Waiver, error)
 }
 
 type findingsListInput struct {
@@ -129,11 +143,14 @@ func loadToolOptions(apiKey string, getenv func(string) string) (toolOptions, er
 func newMCPServer(api API, opts toolOptions) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "specht-mcp", Version: version.String()}, nil)
 	registerReadTools(server, api)
+	registerInventoryTools(server, api)
 	if opts.SessionCredential {
 		registerSessionTools(server, api)
+		registerSessionInventoryTools(server, api)
 	}
 	if opts.AllowMutations {
 		registerMutationTools(server, api)
+		registerTriageTools(server, api)
 	}
 	return server
 }

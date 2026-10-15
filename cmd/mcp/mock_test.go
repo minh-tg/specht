@@ -25,6 +25,22 @@ type mockClient struct {
 	teams            []client.Team
 	projectTeams     []client.ProjectTeam
 	introducedReport string
+	projects         []client.Project
+	stats            *client.ProjectStats
+	aging            *client.AgingResponse
+	reports          []client.Report
+	environments     []client.Environment
+	targets          []client.Target
+	artifacts        []client.Artifact
+	findingEvents    []client.FindingEvent
+	eventTypes       []string
+	eventLimit       int32
+	scanners         []client.ScannerDescriptor
+	triageID         string
+	triageReq        *client.TriageRequest
+	triageResp       *client.TriageResponse
+	requestedWaiver  *client.RequestWaiverRequest
+	withdrawn        string
 	err              error
 }
 
@@ -120,4 +136,66 @@ func (m *mockClient) ToggleWaiver(projectSlug, waiverID string) (*client.Waiver,
 
 func (m *mockClient) ListWaiverEvents(projectSlug, waiverID string) ([]client.WaiverEvent, error) {
 	return m.events, m.err
+}
+
+func (m *mockClient) ListProjects() ([]client.Project, error) { return m.projects, m.err }
+
+func (m *mockClient) GetProject(slug string) (*client.Project, error) {
+	if len(m.projects) == 0 {
+		return nil, m.err
+	}
+	return &m.projects[0], m.err
+}
+
+func (m *mockClient) GetProjectStats(projectSlug string) (*client.ProjectStats, error) {
+	return m.stats, m.err
+}
+
+func (m *mockClient) GetAging(projectSlug string) (*client.AgingResponse, error) {
+	return m.aging, m.err
+}
+
+func (m *mockClient) ListReports(projectSlug string, limit, offset int32) ([]client.Report, error) {
+	return m.reports, m.err
+}
+
+func (m *mockClient) GetReport(reportID string) (*client.Report, error) {
+	if len(m.reports) == 0 {
+		return nil, m.err
+	}
+	return &m.reports[0], m.err
+}
+
+func (m *mockClient) ListEnvironments(projectSlug string) ([]client.Environment, error) {
+	return m.environments, m.err
+}
+
+func (m *mockClient) ListTargets(projectSlug string) ([]client.Target, error) {
+	return m.targets, m.err
+}
+
+func (m *mockClient) ListArtifacts(projectSlug string) ([]client.Artifact, error) {
+	return m.artifacts, m.err
+}
+
+func (m *mockClient) ListFindingEvents(findingID string, eventTypes []string, limit, offset int32) ([]client.FindingEvent, error) {
+	m.eventTypes, m.eventLimit = eventTypes, limit
+	return m.findingEvents, m.err
+}
+
+func (m *mockClient) ListScanners() ([]client.ScannerDescriptor, error) { return m.scanners, m.err }
+
+func (m *mockClient) TriageFinding(findingID string, req *client.TriageRequest) (*client.TriageResponse, error) {
+	m.triageID, m.triageReq = findingID, req
+	return m.triageResp, m.err
+}
+
+func (m *mockClient) RequestWaiver(projectSlug string, req *client.RequestWaiverRequest) (*client.Waiver, error) {
+	m.requestedWaiver = req
+	return m.waiver, m.err
+}
+
+func (m *mockClient) WithdrawWaiver(projectSlug, waiverID string) (*client.Waiver, error) {
+	m.withdrawn = waiverID
+	return m.waiver, m.err
 }
