@@ -27,6 +27,23 @@ function pageFiles(dir: string): string[] {
   });
 }
 
+/** The source text of a `className` attribute, or "" when the element has none. */
+function classNameText(attributes: ts.JsxAttributes): string {
+  for (const attribute of attributes.properties) {
+    if (ts.isJsxAttribute(attribute) && attribute.name.getText() === "className") {
+      return attribute.initializer?.getText() ?? "";
+    }
+  }
+  return "";
+}
+
+/** A hand-built primary or outline button: the classes the shared Button already provides. */
+function looksLikeButton(className: string): boolean {
+  return className.includes("bg-primary")
+    || (className.includes("rounded-md")
+      && (className.includes("px-4") || className.includes("border-input")));
+}
+
 /** The literal value of a `type` attribute, or null when it is missing or computed. */
 function typeAttribute(attributes: ts.JsxAttributes): string | null {
   for (const attribute of attributes.properties) {
@@ -65,6 +82,13 @@ export function findViolations(fileName: string, text: string): string[] {
         found.push(`${where(node)}: raw <${tag}>, use ${shared}`);
       }
     }
+    if (
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node))
+      && node.tagName.getText() === "button"
+      && looksLikeButton(classNameText(node.attributes))
+    ) {
+      found.push(`${where(node)}: hand-built <button>, use Button from @/components/ui/button`);
+    }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
       const shared = FORBIDDEN_CONSTANTS[node.name.text];
       if (shared) found.push(`${where(node)}: constant ${node.name.text}, use ${shared}`);
@@ -91,6 +115,9 @@ describe("design system", () => {
       "    />",
       "    <input type=\"checkbox\" />",
       "    <select />",
+      "    <button className=\"bg-primary px-4\">Go</button>",
+      "    <button className={`border-input rounded-md ${x}`}>Go</button>",
+      "    <button className=\"rounded-full px-4\">Chip</button>",
       "    <textarea></textarea>",
       "  </div>",
       ");",
@@ -102,7 +129,9 @@ describe("design system", () => {
       "pages/Sample.tsx:1: constant INPUT_CLASS, use Input or Textarea from @/components/ui",
       "pages/Sample.tsx:4: raw <input>, use Input from @/components/ui/input (or Switch/FileDropzone for those controls)",
       "pages/Sample.tsx:9: raw <select>, use SelectField from @/components/SelectField",
-      "pages/Sample.tsx:10: raw <textarea>, use Textarea from @/components/ui/textarea",
+      "pages/Sample.tsx:10: hand-built <button>, use Button from @/components/ui/button",
+      "pages/Sample.tsx:11: hand-built <button>, use Button from @/components/ui/button",
+      "pages/Sample.tsx:13: raw <textarea>, use Textarea from @/components/ui/textarea",
     ]);
   });
 

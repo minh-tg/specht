@@ -3,6 +3,7 @@ import { ErrorState } from "@/components/ErrorState";
 import { InfoTip } from "@/components/InfoTip";
 import { SelectField } from "@/components/SelectField";
 import { SkeletonLines } from "@/components/SkeletonLines";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { isReachabilityState, type ReachabilityState, reachabilityStateLabel } from "@/lib/enums";
 import { formatDateTime } from "@/lib/format";
@@ -101,7 +102,7 @@ export function ReachabilitySection({
           value={reachEvidence}
           onChange={(e) => setReachEvidence(e.target.value)}
         />
-        <button
+        <Button
           onClick={() => {
             if (!reachState) return;
             mutation.mutate(
@@ -115,10 +116,9 @@ export function ReachabilitySection({
             );
           }}
           disabled={!reachState || mutation.isPending}
-          className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-1.5 text-sm font-medium disabled:opacity-50"
         >
           {mutation.isPending ? "Saving..." : "Assess"}
-        </button>
+        </Button>
       </div>
       <OutcomeRegions
         label="Reachability result"

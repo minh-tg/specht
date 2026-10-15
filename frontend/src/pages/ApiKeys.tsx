@@ -13,6 +13,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { SelectField } from "@/components/SelectField";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Project } from "@/types/api";
@@ -232,13 +233,12 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
                   options={EXPIRY_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
                 />
               </div>
-              <button
+              <Button
                 type="submit"
                 disabled={createKey.isPending}
-                className="bg-primary text-primary-foreground hover:bg-primary/90 rounded-md px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
                 {createKey.isPending ? "Creating..." : "Create"}
-              </button>
+              </Button>
             </form>
             {createError && <p className="text-destructive mt-1 text-xs">{createError}</p>}
           </section>
