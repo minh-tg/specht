@@ -12,6 +12,7 @@ export interface ReportUpload {
   selectedScanner: string;
   setSelectedScanner: (value: string) => void;
   fileName: string | null;
+  fileSize: number | null;
   fileError: string | null;
   submitting: boolean;
   canSubmit: boolean;
@@ -19,6 +20,9 @@ export interface ReportUpload {
   result: IngestResponse | null;
   fileRef: RefObject<HTMLInputElement | null>;
   handleFileChange: (e: ChangeEvent<HTMLInputElement>) => Promise<void>;
+  /** Takes a file from the picker or a drop through the same checks. */
+  handleFile: (file: File) => Promise<void>;
+  clearFile: () => void;
   handleSubmit: (e: SubmitEvent) => Promise<void>;
   resetForm: () => void;
 }
@@ -32,24 +36,37 @@ export function useReportUpload(slug: string): ReportUpload {
   // The parsed file, wrapped so a file whose value is `null` still counts as chosen.
   const [scan, setScan] = useState<{ readonly value: unknown; } | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [fileSize, setFileSize] = useState<number | null>(null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [result, setResult] = useState<IngestResponse | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  function emptyInput() {
+    if (fileRef.current) fileRef.current.value = "";
+  }
 
+  function dropFile() {
+    setScan(null);
+    setFileName(null);
+    setFileSize(null);
+  }
+
+  /** Refused files also empty the input, so choosing the same file again still fires change. */
+  function refuse(message: string) {
+    setFileError(message);
+    dropFile();
+    emptyInput();
+  }
+
+  async function handleFile(file: File) {
     setFileError(null);
     setUploadError(null);
     setResult(null);
 
     if (file.size > MAX_FILE_SIZE) {
-      setFileError("File too large (max 10MB)");
-      setScan(null);
-      setFileName(null);
+      refuse("File too large (max 10MB)");
       return;
     }
 
@@ -57,24 +74,31 @@ export function useReportUpload(slug: string): ReportUpload {
     // reads, so a malformed upload is a local error instead of a server-side parse failure.
     const read = readScanFile(file.name, await file.text());
     if (!read.ok) {
-      setFileError(read.error);
-      setScan(null);
-      setFileName(null);
+      refuse(read.error);
       return;
     }
 
     setFileName(file.name);
+    setFileSize(file.size);
     setScan({ value: read.value });
+  }
+
+  async function handleFileChange(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (file) await handleFile(file);
+  }
+
+  function clearFile() {
+    dropFile();
+    setFileError(null);
+    emptyInput();
   }
 
   function resetForm() {
     setSelectedScanner("");
-    setScan(null);
-    setFileName(null);
-    setFileError(null);
+    clearFile();
     setUploadError(null);
     setResult(null);
-    if (fileRef.current) fileRef.current.value = "";
   }
 
   async function handleSubmit(e: SubmitEvent) {
@@ -91,10 +115,7 @@ export function useReportUpload(slug: string): ReportUpload {
         raw_data: scan.value,
       });
       setResult(report);
-      setScan(null);
-      setFileName(null);
-      setFileError(null);
-      if (fileRef.current) fileRef.current.value = "";
+      clearFile();
 
       queryClient.invalidateQueries({ queryKey: queryKeys.reports(slug) });
       queryClient.invalidateQueries({ queryKey: queryKeys.gate(slug) });
@@ -116,6 +137,7 @@ export function useReportUpload(slug: string): ReportUpload {
     selectedScanner,
     setSelectedScanner,
     fileName,
+    fileSize,
     fileError,
     submitting,
     canSubmit: !submitting && !!selectedScanner && !!scan,
@@ -123,6 +145,8 @@ export function useReportUpload(slug: string): ReportUpload {
     result,
     fileRef,
     handleFileChange,
+    handleFile,
+    clearFile,
     handleSubmit,
     resetForm,
   };

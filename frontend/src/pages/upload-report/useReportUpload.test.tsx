@@ -41,6 +41,67 @@ describe("useReportUpload", () => {
     globalThis.fetch = vi.fn();
   });
 
+  it("handleFile takes a dropped file through the same size, format and JSON checks", async () => {
+    const { result } = renderUploadHook();
+
+    await act(async () => {
+      await result.current.handleFile(
+        new File([new Uint8Array(MAX_FILE_SIZE + 1)], "big.json", { type: "application/json" }),
+      );
+    });
+    expect(result.current.fileError).toBe("File too large (max 10MB)");
+
+    await act(async () => {
+      await result.current.handleFile(new File(["x"], "report.txt", { type: "text/plain" }));
+    });
+    expect(result.current.fileError).toBe("Unsupported file format");
+
+    await act(async () => {
+      await result.current.handleFile(jsonFile("not json"));
+    });
+    expect(result.current.fileError).toBe("Invalid JSON");
+    expect(result.current.fileName).toBeNull();
+
+    await act(async () => {
+      await result.current.handleFile(jsonFile("{\"vuln\":true}"));
+    });
+    expect(result.current.fileError).toBeNull();
+    expect(result.current.fileName).toBe("report.json");
+    expect(result.current.fileSize).toBe(13);
+  });
+
+  it("clearFile drops the file and empties the input so the same file can be chosen again", async () => {
+    const { result } = renderUploadHook();
+    const input = document.createElement("input");
+    input.type = "file";
+    Object.defineProperty(input, "value", { value: "C:\\fakepath\\report.json", writable: true });
+    (result.current.fileRef as { current: HTMLInputElement | null; }).current = input;
+    await chooseScannerAndFile(result);
+    expect(result.current.canSubmit).toBe(true);
+
+    act(() => result.current.clearFile());
+
+    expect(result.current.fileName).toBeNull();
+    expect(result.current.fileSize).toBeNull();
+    expect(result.current.fileError).toBeNull();
+    expect(result.current.canSubmit).toBe(false);
+    expect(input.value).toBe("");
+  });
+
+  it("empties the input when a file is refused, so choosing it again fires change", async () => {
+    const { result } = renderUploadHook();
+    const input = document.createElement("input");
+    input.type = "file";
+    Object.defineProperty(input, "value", { value: "C:\\fakepath\\report.json", writable: true });
+    (result.current.fileRef as { current: HTMLInputElement | null; }).current = input;
+
+    await act(async () => {
+      await result.current.handleFile(jsonFile("not json"));
+    });
+
+    expect(input.value).toBe("");
+  });
+
   it("rejects a file larger than 10 MiB", async () => {
     const { result } = renderUploadHook();
 
