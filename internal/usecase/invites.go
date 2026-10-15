@@ -280,7 +280,8 @@ func (u *Usecases) AcceptInvite(ctx context.Context, token string, in AcceptInvi
 	if err != nil {
 		return nil, err
 	}
-	email, err := validateCredentials(in.Email, in.Password)
+	trimmedName := strings.TrimSpace(in.DisplayName)
+	email, err := validateCredentials(in.Email, in.Password, trimmedName)
 	if err != nil {
 		return nil, err
 	}
@@ -289,8 +290,8 @@ func (u *Usecases) AcceptInvite(ctx context.Context, token string, in AcceptInvi
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
 	var name *string
-	if trimmed := strings.TrimSpace(in.DisplayName); trimmed != "" {
-		name = &trimmed
+	if trimmedName != "" {
+		name = &trimmedName
 	}
 
 	accepted, err := u.deps.Stores.Invites.AcceptWithNewAccount(ctx, hash, port.InviteeAccount{

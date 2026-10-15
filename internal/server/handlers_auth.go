@@ -29,13 +29,24 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.usecase.Register(r.Context(), req.Email, req.Password)
 	if err != nil {
+		h.audit.HTTP(r, audit.EventRegister, audit.OutcomeFailure, "", req.Email, err)
+		// The two password policy refusals get their own codes. Register
+		// checks the password before it looks the address up, so these
+		// answers are the same for a registered address and a new one.
+		switch {
+		case errors.Is(err, usecase.ErrPasswordTooCommon):
+			respondError(w, http.StatusBadRequest, "password_too_common", err.Error())
+			return
+		case errors.Is(err, usecase.ErrPasswordMatchesAccount):
+			respondError(w, http.StatusBadRequest, "password_matches_account", err.Error())
+			return
+		}
 		// M8: never echo the underlying error — a duplicate email must be
 		// indistinguishable from any other registration failure, or this
 		// endpoint becomes an account-enumeration oracle. Detail goes to the
 		// server log only.
 		slog.Error("register failed", "email", auth.MaskEmail(req.Email), "error", err)
 		respondError(w, http.StatusUnprocessableEntity, "registration_failed", "registration failed")
-		h.audit.HTTP(r, audit.EventRegister, audit.OutcomeFailure, "", req.Email, err)
 		return
 	}
 	respondJSON(w, http.StatusCreated, result)
@@ -195,6 +206,10 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, usecase.ErrWrongPassword):
 			respondError(w, http.StatusBadRequest, "wrong_password", "the current password is not correct")
+		case errors.Is(err, usecase.ErrPasswordTooCommon):
+			respondError(w, http.StatusBadRequest, "password_too_common", err.Error())
+		case errors.Is(err, usecase.ErrPasswordMatchesAccount):
+			respondError(w, http.StatusBadRequest, "password_matches_account", err.Error())
 		case errors.Is(err, usecase.ErrInvalidCredentialInput):
 			respondError(w, http.StatusBadRequest, "invalid_password", err.Error())
 		case errors.Is(err, usecase.ErrNoLocalPassword):
@@ -400,6 +415,10 @@ func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, usecase.ErrResetLinkInvalid):
 			respondError(w, http.StatusBadRequest, "reset_link_invalid", "this reset link is not valid or has expired")
+		case errors.Is(err, usecase.ErrPasswordTooCommon):
+			respondError(w, http.StatusBadRequest, "password_too_common", err.Error())
+		case errors.Is(err, usecase.ErrPasswordMatchesAccount):
+			respondError(w, http.StatusBadRequest, "password_matches_account", err.Error())
 		case errors.Is(err, usecase.ErrInvalidCredentialInput):
 			respondError(w, http.StatusBadRequest, "invalid_password", err.Error())
 		default:
@@ -492,6 +511,12 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.Is(err, usecase.ErrInvalidSetupToken):
 		respondError(w, http.StatusForbidden, "invalid_setup_token", "the setup token is wrong")
+		return
+	case errors.Is(err, usecase.ErrPasswordTooCommon):
+		respondError(w, http.StatusBadRequest, "password_too_common", err.Error())
+		return
+	case errors.Is(err, usecase.ErrPasswordMatchesAccount):
+		respondError(w, http.StatusBadRequest, "password_matches_account", err.Error())
 		return
 	case errors.Is(err, usecase.ErrInvalidCredentialInput):
 		respondError(w, http.StatusBadRequest, "invalid_credentials", err.Error())

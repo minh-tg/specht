@@ -31,6 +31,10 @@ func (h *Handler) respondInviteError(w http.ResponseWriter, r *http.Request, op 
 		respondError(w, http.StatusBadRequest, "invalid_id", "invalid invite id format")
 	case errors.Is(err, usecase.ErrTooManyInvites):
 		respondError(w, http.StatusConflict, "too_many_invites", "this project has too many open invites; revoke some first")
+	case errors.Is(err, usecase.ErrPasswordTooCommon):
+		respondError(w, http.StatusBadRequest, "password_too_common", err.Error())
+	case errors.Is(err, usecase.ErrPasswordMatchesAccount):
+		respondError(w, http.StatusBadRequest, "password_matches_account", err.Error())
 	case errors.Is(err, usecase.ErrInvalidCredentialInput):
 		respondError(w, http.StatusBadRequest, "invalid_credentials", err.Error())
 	case errors.Is(err, usecase.ErrRegistrationFailed):

@@ -86,7 +86,9 @@ func (u *Usecases) RedeemPasswordReset(ctx context.Context, token, password stri
 	if token == "" || len(token) > maxInviteTokenLength {
 		return ErrResetLinkInvalid
 	}
-	if err := checkPasswordLength(password); err != nil {
+	// The account behind the link is known only once the store spends it, so
+	// the rule against the account's own email or name cannot apply here.
+	if err := checkPassword(password, "", ""); err != nil {
 		return err
 	}
 	hash, err := u.deps.Passwords.Hash(password)
