@@ -117,7 +117,10 @@ export function ProjectList() {
           <p className="text-muted-foreground text-xs font-semibold tracking-wide uppercase">
             Do this
           </p>
-          <Link to={`/${startWith.slug}/findings`} className={buttonVariants()}>
+          <Link
+            to={`/${startWith.slug}/findings`}
+            className={buttonVariants()}
+          >
             Open {startWith.name}
           </Link>
         </section>
@@ -132,7 +135,16 @@ export function ProjectList() {
           </Link>
         </div>
       )}
-      <div className="overflow-x-auto">
+      <p className="text-muted-foreground text-xs sm:hidden">
+        Swipe the table sideways to see every column.
+      </p>
+      {/* Wider than a phone, so the table scrolls inside this region, which the keyboard can focus. */}
+      <div
+        role="region"
+        aria-label="Projects table"
+        tabIndex={0}
+        className="focus-visible:ring-ring/50 overflow-x-auto outline-none focus-visible:ring-3"
+      >
         <table className="w-full text-sm">
           <caption className="sr-only">Projects</caption>
           <ProjectTableHead />
