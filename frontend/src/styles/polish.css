@@ -1,5 +1,11 @@
-/* Typography rules that apply across the app. They select by element, so a new heading or
-   paragraph gets them without being listed. Imported once from index.css. */
+/* Typography, touch and safe-area rules that apply across the app. Component classes stay
+   untouched: these rules select by element and role, so a new button or menu item gets them without
+   being listed. Imported once from index.css. */
+
+:root {
+  /* The smallest comfortable touch target, applied only when the pointer is coarse. */
+  --hit-coarse: 44px;
+}
 
 @layer base {
   /* Headings break into even lines instead of leaving one word on the last; paragraphs avoid a
@@ -17,5 +23,79 @@
   li,
   dd {
     text-wrap: pretty;
+  }
+
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Interactive elements respond to a tap at once and never zoom on a double tap. */
+  a,
+  button,
+  summary,
+  select,
+  label,
+  [role="button"],
+  [role="tab"],
+  [role="switch"],
+  [role="checkbox"],
+  [role="menuitem"],
+  [role="menuitemcheckbox"],
+  [role="menuitemradio"],
+  [role="option"] {
+    touch-action: manipulation;
+  }
+
+  /* Scrolling to the end of a menu, dialog or list must not scroll the page behind it. */
+  [role="dialog"],
+  [role="alertdialog"],
+  [role="menu"],
+  [role="listbox"] {
+    overscroll-behavior: contain;
+  }
+
+  /* On a notched phone in landscape the page keeps clear of the sensor housing. The header pads
+     its own top edge. */
+  body {
+    padding-inline: env(safe-area-inset-left) env(safe-area-inset-right);
+  }
+  main {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Left unlayered on purpose: these must win over the height classes on each control, and a layered
+   rule would lose to them. Only min-height and min-width are set, so a control that is already
+   larger keeps its size. */
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  a[class~="group/button"],
+  [role="tab"],
+  [role^="menuitem"],
+  [role="option"],
+  label:has(> input[type="checkbox"], > input[type="radio"]) {
+    min-height: var(--hit-coarse);
+  }
+
+  /* An icon-only control is also widened to a square. */
+  button:has(> svg:only-child) {
+    min-width: var(--hit-coarse);
+  }
+
+  /* A switch keeps its drawn size; its tap area grows around it. */
+  [role="switch"],
+  [role="checkbox"] {
+    position: relative;
+  }
+  [role="switch"]::after,
+  [role="checkbox"]::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    min-width: var(--hit-coarse);
+    min-height: var(--hit-coarse);
+    transform: translate(-50%, -50%);
   }
 }
