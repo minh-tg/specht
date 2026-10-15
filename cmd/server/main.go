@@ -195,6 +195,11 @@ func main() {
 
 	setupToken := offerFirstRunSetup(context.Background(), stores)
 
+	// Nil when INTEL_ENABLED is false: no feed is built and no feed is called.
+	intelStore := buildIntelStore(cfg.Intel)
+	cveDetailStore := repo.NewCVEDetailStore(pool)
+	cveDetail, cveResolver := buildCVEDetail(cfg.CVEDetail, cveDetailStore, intelStore)
+
 	uc := usecase.New(usecase.Deps{
 		SetupToken:              setupToken,
 		Stores:                  stores,
@@ -206,7 +211,8 @@ func main() {
 		SSOAllowUnverifiedEmail: cfg.SSO.AllowUnverifiedEmail,
 		Watcher:                 usecase.WatcherSettings{Enabled: cfg.Watcher.Enable, PollInterval: cfg.Watcher.PollInterval},
 		Tracker:                 buildTrackerDispatcher(),
-		Intel:                   buildIntelStore(cfg.Intel),
+		Intel:                   intelStore,
+		CVEDetail:               cveDetail,
 	})
 
 	handler := server.NewRouter(server.RouterConfig{
@@ -254,6 +260,7 @@ func main() {
 
 	analysisExpiryStore, waiverExpiryStore := buildLifecycleStores(pool)
 	startLifecycle(ctx, stores, analysisExpiryStore, waiverExpiryStore, cfg)
+	startCVEDetail(ctx, cveResolver, cveDetailStore, cfg)
 
 	go func() {
 		slog.Info("server starting", "addr", cfg.Addr)
