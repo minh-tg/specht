@@ -72,8 +72,10 @@ func writeJSONOut(out io.Writer, v any) error {
 type Deps struct {
 	NewClient          func() (*client.Client, error)
 	RunWatcherBackfill func(WatcherBackfillOptions) (WatcherBackfillResult, error)
-	Out                io.Writer
-	ErrW               io.Writer
+	// In is standard input, for commands that read a file from "-".
+	In   io.Reader
+	Out  io.Writer
+	ErrW io.Writer
 }
 
 // settings holds flag values shared across the tree.
@@ -97,6 +99,7 @@ func DefaultDeps() Deps {
 			return client.New(apiURL, client.WithToken(token)), nil
 		},
 		RunWatcherBackfill: runWatcherBackfill,
+		In:                 os.Stdin,
 		Out:                os.Stdout,
 		ErrW:               os.Stderr,
 	}
@@ -138,6 +141,7 @@ func NewRootCmd(d Deps) *cobra.Command {
 	root.AddCommand(newTeamsCmd(d, s))
 	root.AddCommand(newWatcherCmd(d, s))
 	root.AddCommand(newWaiversCmd(d, s))
+	root.AddCommand(newReportsCmd(d, s))
 	return root
 }
 
