@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -33,4 +34,27 @@ func TestE2E_SemgrepJSONAndSARIFAreTheSameFindings(t *testing.T) {
 	for _, f := range second {
 		require.True(t, ids[f.ID], "finding %s is the same finding as before", f.ID)
 	}
+}
+
+// TestE2E_ASemgrepFindingThatMovesIsTheSameFinding walks the story behind line-free identity: a
+// developer adds code above a flagged call, the next scan reports it a few lines lower, and the
+// finding keeps its history instead of being fixed and reopened as a new one.
+func TestE2E_ASemgrepFindingThatMovesIsTheSameFinding(t *testing.T) {
+	slug := newProject(t, "semgrep-moves")
+	scan := func(line int) []byte {
+		return []byte(fmt.Sprintf(`{"version":"1.0","paths":{},"errors":[],"results":[
+			{"check_id":"python.lang.shell-true","path":"app.py","start":{"line":%d,"col":5},"end":{"line":%d,"col":40},
+			 "extra":{"message":"Found subprocess call with shell=True","severity":"ERROR","fingerprint":"requires login"}}]}`, line, line))
+	}
+
+	status, got := postReport(t, slug, "semgrep", scan(7))
+	require.Equal(t, http.StatusCreated, status, got.Error.Message)
+	before := listFindings(t, slug)
+	require.Len(t, before, 1)
+
+	status, got = postReport(t, slug, "semgrep", scan(31))
+	require.Equal(t, http.StatusCreated, status, got.Error.Message)
+	after := listFindings(t, slug)
+	require.Len(t, after, 1, "the moved finding is not a second finding")
+	require.Equal(t, before[0].ID, after[0].ID, "and it is the same one")
 }
