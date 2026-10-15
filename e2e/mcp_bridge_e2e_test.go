@@ -302,6 +302,64 @@ func TestE2E_MCPBridgeProjectKeyReadsButDoesNotDecide(t *testing.T) {
 	require.False(t, isErr, text)
 	require.Contains(t, text, "sarif")
 
+	// Every read tool the docs promise to a project key really works with one.
+	finding := listScanFindings(t, slug)[0].ID
+	reports := request[[]struct {
+		ID string `json:"id"`
+	}](t, http.MethodGet, "/api/v1/projects/"+slug+"/reports", adminToken, nil, http.StatusOK)
+	for tool, args := range map[string]map[string]any{
+		"projects_list":     {},
+		"project_get":       {"project": slug},
+		"project_aging":     {"project": slug},
+		"report_get":        {"report_id": reports[0].ID},
+		"environments_list": {"project": slug},
+		"targets_list":      {"project": slug},
+		"artifacts_list":    {"project": slug},
+		"finding_events":    {"finding_id": finding, "types": "analysis_changed"},
+	} {
+		text, isErr = mcpText(t, session, tool, args)
+		require.False(t, isErr, "%s: %s", tool, text)
+	}
+
 	_, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: "findings_triage", Arguments: map[string]any{"finding_id": "x", "state": "exploitable"}})
 	require.Error(t, err)
+}
+
+// A project key is scoped to its project. The new read tools, which take a project slug or a
+// report or finding ID, must not let it see another project, through the bridge or the CLI.
+func TestE2E_ProjectKeyStaysInItsProject(t *testing.T) {
+	mine := newProject(t, "scope-mine")
+	other := newProject(t, "scope-other")
+	ingestFixture(t, other, adminToken, "high.sarif.json")
+	otherFinding := listScanFindings(t, other)[0].ID
+	otherReports := request[[]struct {
+		ID string `json:"id"`
+	}](t, http.MethodGet, "/api/v1/projects/"+other+"/reports", adminToken, nil, http.StatusOK)
+	key := mintKey(t, mine)
+	session := connectMCPWithKey(t, key)
+
+	text, isErr := mcpText(t, session, "projects_list", map[string]any{})
+	require.False(t, isErr, text)
+	require.NotContains(t, text, other, "the key's project list must not name another project")
+
+	for tool, args := range map[string]map[string]any{
+		"project_get":       {"project": other},
+		"project_stats":     {"project": other},
+		"project_aging":     {"project": other},
+		"reports_list":      {"project": other},
+		"environments_list": {"project": other},
+		"targets_list":      {"project": other},
+		"artifacts_list":    {"project": other},
+		"report_get":        {"report_id": otherReports[0].ID},
+		"finding_events":    {"finding_id": otherFinding},
+	} {
+		text, isErr = mcpText(t, session, tool, args)
+		require.True(t, isErr, "%s read another project with a key: %s", tool, text)
+	}
+
+	stdout, stderr, exit := runBin(t, cliBin, []string{"API_URL=" + baseURL, "API_KEY=" + key}, "projects", "list")
+	require.Zero(t, exit, stderr)
+	require.NotContains(t, stdout, other)
+	_, _, exit = runBin(t, cliBin, []string{"API_URL=" + baseURL, "API_KEY=" + key}, "reports", "get", "--id", otherReports[0].ID)
+	require.NotZero(t, exit, "the CLI must not show another project's report to a key")
 }
