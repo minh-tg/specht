@@ -83,6 +83,8 @@ releases.
   `approve`, `reject`, `withdraw`, `toggle`, `delete`, `events`). The new
   commands honour `--format json`.
 - Bulk triage no longer reports a decode error after the server has applied it.
+- The server compresses its own web app files (gzip), so the main script is about 250 kB on
+  the wire instead of 830 kB. API responses are never compressed.
 - The top bar uses the same button look as the rest of the app: links have a hover and a
   current-page fill, and Profile and Sign out moved into an account menu. The scan file
   field on the upload page is a drop area that also takes a dragged file, and the remaining
