@@ -118,21 +118,38 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 func (s *Scanner) SupportsIncremental() bool { return true }
 
 func (s *Scanner) DetectFormat(data []byte) bool {
-	var probe sarifReport
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return false
+	return s.Recognize(data) == scanner.Definite
+}
+
+// Recognize grades a document. A SARIF log whose first run names Semgrep is
+// definite. SARIF from another tool belongs to the generic sarif scanner.
+func (s *Scanner) Recognize(data []byte) scanner.Recognition {
+	var probe struct {
+		Runs []struct {
+			Tool struct {
+				Driver struct {
+					Name string `json:"name"`
+				} `json:"driver"`
+			} `json:"tool"`
+		} `json:"runs"`
 	}
-	if len(probe.Runs) == 0 {
-		return false
+	if err := json.Unmarshal(data, &probe); err != nil || len(probe.Runs) == 0 {
+		return scanner.NotRecognized
 	}
 	name := probe.Runs[0].Tool.Driver.Name
-	return strings.EqualFold(name, "semgrep") || strings.EqualFold(name, "semgrep oss")
+	if strings.EqualFold(name, "semgrep") || strings.EqualFold(name, "semgrep oss") {
+		return scanner.Definite
+	}
+	return scanner.NotRecognized
 }
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	if s.Recognize(data) == scanner.NotRecognized {
+		return nil, scanner.Unrecognized("semgrep")
+	}
 	var report sarifReport
 	if err := json.Unmarshal(data, &report); err != nil {
-		return nil, fmt.Errorf("semgrep: parse json: %w", err)
+		return nil, scanner.Malformed("semgrep", err)
 	}
 
 	return convert(report), nil
