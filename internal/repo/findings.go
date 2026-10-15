@@ -286,6 +286,46 @@ func (r *pgFindingRepo) UpdateAnalysisWithEvent(ctx context.Context, arg UpdateA
 	return updated, created, nil
 }
 
+// UndoAnalysis locks the finding row, loads its newest analysis event and
+// lets decide choose the write, all in one transaction. decide returning an
+// error rolls the transaction back and surfaces that error unchanged.
+func (r *pgFindingRepo) UndoAnalysis(ctx context.Context, id pgtype.UUID, decide func(current sqlc.Finding, newest *sqlc.FindingEvent) (UpdateAnalysisParams, CreateEventParams, error)) (sqlc.Finding, sqlc.FindingEvent, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return sqlc.Finding{}, sqlc.FindingEvent{}, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+
+	current, err := q.LockFindingForUpdate(ctx, id)
+	if err != nil {
+		return sqlc.Finding{}, sqlc.FindingEvent{}, fmt.Errorf("lock finding: %w", err)
+	}
+	var newest *sqlc.FindingEvent
+	ev, err := q.GetNewestAnalysisEvent(ctx, id)
+	switch {
+	case err == nil:
+		newest = &ev
+	case !errors.Is(err, pgx.ErrNoRows):
+		return sqlc.Finding{}, sqlc.FindingEvent{}, fmt.Errorf("load newest analysis event: %w", err)
+	}
+
+	write, event, err := decide(current, newest)
+	if err != nil {
+		return sqlc.Finding{}, sqlc.FindingEvent{}, err
+	}
+	write.ID, event.FindingID = id, id
+	write.ExpectedState = pgtype.Text{}
+	updated, created, err := writeAnalysisWithEvent(ctx, q, write, event)
+	if err != nil {
+		return sqlc.Finding{}, sqlc.FindingEvent{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return sqlc.Finding{}, sqlc.FindingEvent{}, fmt.Errorf("commit tx: %w", err)
+	}
+	return updated, created, nil
+}
+
 // writeAnalysisWithEvent runs the analysis update and the event insert on q.
 // A refused ExpectedState precondition matches no row and comes back as
 // port.ErrAnalysisConflict.

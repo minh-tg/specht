@@ -30,6 +30,7 @@ const (
 	EventGetFinding           = "finding.view"
 	EventListFindings         = "finding.list"
 	EventTriageFinding        = "finding.triage"
+	EventUndoTriage           = "finding.triage_undo"
 	EventVerifyFix            = "finding.verify"
 	EventCreateProject        = "project.create"
 	EventUpdateProject        = "project.update"

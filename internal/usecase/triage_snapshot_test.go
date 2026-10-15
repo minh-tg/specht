@@ -57,7 +57,7 @@ func TestTriageFinding_RecordsBeforeSnapshot(t *testing.T) {
 	current.GateEffect = "ignore"
 	current.AnalysisReason = &reason
 	current.AnalysisExpiresAt = &expiry
-	current.AnalysisSource = "vex"
+	current.AnalysisSource = "auto_rule"
 	current.ManualOverride = false
 	current.ReviewRequired = true
 	fx := newTriageFixture(t, current)
@@ -81,7 +81,7 @@ func TestTriageFinding_RecordsBeforeSnapshot(t *testing.T) {
 	assert.Equal(t, reason, *changes.Before.AnalysisReason)
 	require.NotNil(t, changes.Before.AnalysisExpiresAt)
 	assert.True(t, expiry.Equal(*changes.Before.AnalysisExpiresAt))
-	assert.Equal(t, "vex", changes.Before.AnalysisSource)
+	assert.Equal(t, "auto_rule", changes.Before.AnalysisSource)
 	assert.False(t, changes.Before.ManualOverride)
 	assert.True(t, changes.Before.ReviewRequired)
 }

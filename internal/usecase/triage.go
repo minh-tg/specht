@@ -24,6 +24,14 @@ var (
 	// caller based its write on (a stale expected_state, or an undo of an
 	// event that is not the newest analysis event).
 	ErrAnalysisConflict = port.ErrAnalysisConflict
+	// ErrUndoUnavailable means the event cannot be undone because it holds
+	// no snapshot of the earlier analysis (written before snapshots existed,
+	// or by bulk triage or the review flag).
+	ErrUndoUnavailable = errors.New("this change cannot be undone")
+	// ErrPreviousExpiryPassed means the earlier analysis expired in the
+	// meantime, so restoring it would bring back an expired decision.
+	ErrPreviousExpiryPassed = errors.New("the previous analysis has already expired")
+	ErrInvalidEventID       = errors.New("invalid event id")
 )
 
 const (
@@ -56,6 +64,13 @@ type TriageOutput struct {
 	// EventID is the finding event the write recorded. It is the handle a
 	// later undo names. Empty for bulk triage.
 	EventID string `json:"event_id,omitempty"`
+}
+
+// UndoTriageInput names the analysis event to take back.
+type UndoTriageInput struct {
+	FindingID string
+	EventID   string
+	UserID    string
 }
 
 // BulkTriageInput applies one analysis state to many findings.
@@ -206,6 +221,105 @@ func snapshotOf(f port.Finding) analysisSnapshot {
 		ManualOverride:    f.ManualOverride,
 		ReviewRequired:    f.ReviewRequired,
 	}
+}
+
+// UndoTriage puts a finding's analysis back to what it was before the named
+// event. The event must be the finding's newest analysis event and the
+// finding must still be in the state that event set, so an undo can only
+// take back the latest change and never overwrite someone else's later one.
+// The undo is a new analysis_changed event that names the one it reverses;
+// the original stays in the history.
+func (u *Usecases) UndoTriage(ctx context.Context, input UndoTriageInput) (*TriageOutput, error) {
+	findingID, err := uuid.Parse(input.FindingID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidFindingID, err)
+	}
+	eventID, err := uuid.Parse(input.EventID)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidEventID, err)
+	}
+	userID, err := uuid.Parse(input.UserID)
+	if err != nil {
+		return nil, fmt.Errorf("invalid user id: %w", err)
+	}
+	if _, err := u.findingWithProjectEditor(ctx, findingID); err != nil {
+		return nil, err
+	}
+
+	userIDStr := userID.String()
+	updated, created, err := u.deps.Stores.Findings.UndoAnalysis(ctx, findingID.String(),
+		func(current port.Finding, newest *port.FindingEvent) (port.UpdateAnalysisInput, port.FindingEventInput, error) {
+			return planUndo(current, newest, eventID.String(), userIDStr, time.Now())
+		})
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return nil, ErrFindingNotFound
+		}
+		return nil, fmt.Errorf("undo analysis: %w", err)
+	}
+	return &TriageOutput{
+		FindingID:     updated.ID,
+		AnalysisState: updated.AnalysisState,
+		GateEffect:    updated.GateEffect,
+		EventID:       created.ID,
+	}, nil
+}
+
+// planUndo checks that eventID may be undone against the locked finding and
+// builds the write that restores the event's before snapshot.
+func planUndo(current port.Finding, newest *port.FindingEvent, eventID, userID string, now time.Time) (port.UpdateAnalysisInput, port.FindingEventInput, error) {
+	var none port.UpdateAnalysisInput
+	if newest == nil || newest.ID != eventID {
+		return none, port.FindingEventInput{}, ErrAnalysisConflict
+	}
+	if newest.EventType != "analysis_changed" {
+		return none, port.FindingEventInput{}, ErrUndoUnavailable
+	}
+	var changes struct {
+		To     string            `json:"to"`
+		Before *analysisSnapshot `json:"before"`
+	}
+	if err := json.Unmarshal(newest.Changes, &changes); err != nil || changes.Before == nil || changes.To == "" {
+		return none, port.FindingEventInput{}, ErrUndoUnavailable
+	}
+	before := *changes.Before
+	if !finding.ValidateAnalysisState(before.AnalysisState) {
+		return none, port.FindingEventInput{}, ErrUndoUnavailable
+	}
+	if current.AnalysisState != changes.To {
+		return none, port.FindingEventInput{}, ErrAnalysisConflict
+	}
+	if before.AnalysisExpiresAt != nil && !before.AnalysisExpiresAt.After(now) {
+		return none, port.FindingEventInput{}, ErrPreviousExpiryPassed
+	}
+
+	reason := ""
+	if before.AnalysisReason != nil {
+		reason = *before.AnalysisReason
+	}
+	changesJSON, _ := json.Marshal(map[string]any{
+		"from":    current.AnalysisState,
+		"to":      before.AnalysisState,
+		"reason":  reason,
+		"undo_of": eventID,
+		"before":  snapshotOf(current),
+	})
+	return port.UpdateAnalysisInput{
+			AnalysisState:     before.AnalysisState,
+			GateEffect:        stateToGateEffect(before.AnalysisState),
+			AnalysisExpiresAt: before.AnalysisExpiresAt,
+			AnalysisReason:    before.AnalysisReason,
+			AnalysisSource:    before.AnalysisSource,
+			ManualOverride:    before.ManualOverride,
+			ReviewRequired:    before.ReviewRequired,
+			AnalysisUpdatedBy: &userID,
+		}, port.FindingEventInput{
+			UserID:    &userID,
+			EventType: "analysis_changed",
+			OldValue:  stringPtr(current.AnalysisState),
+			NewValue:  stringPtr(before.AnalysisState),
+			Changes:   changesJSON,
+		}, nil
 }
 
 func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]TriageOutput, error) {

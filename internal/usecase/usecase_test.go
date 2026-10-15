@@ -575,6 +575,7 @@ type mockFindingRepo struct {
 	updateAnalysisFn                  func(context.Context, port.UpdateAnalysisInput) (port.Finding, error)
 	updateAnalysisWithEventFn         func(context.Context, port.UpdateAnalysisInput, port.FindingEventInput) (port.Finding, port.FindingEvent, error)
 	markFixedWithEventFn              func(context.Context, string, port.FindingEventInput) (port.Finding, error)
+	undoAnalysisFn                    func(context.Context, string, port.AnalysisUndoDecider) (port.Finding, port.FindingEvent, error)
 	bulkUpdateAnalysisFn              func(context.Context, port.UpdateAnalysisInput, []string) ([]port.Finding, error)
 	bulkTriageFn                      func(context.Context, port.UpdateAnalysisInput, []string, port.FindingEventInput) ([]port.Finding, error)
 	createEventFn                     func(context.Context, port.FindingEventInput) (port.FindingEvent, error)
@@ -654,6 +655,13 @@ func (m *mockFindingRepo) UpdateAnalysisWithEvent(ctx context.Context, arg port.
 		return port.Finding{}, port.FindingEvent{}, err
 	}
 	return updated, created, nil
+}
+
+func (m *mockFindingRepo) UndoAnalysis(ctx context.Context, findingID string, decide port.AnalysisUndoDecider) (port.Finding, port.FindingEvent, error) {
+	if m.undoAnalysisFn == nil {
+		return port.Finding{}, port.FindingEvent{}, fmt.Errorf("unexpected call to UndoAnalysis")
+	}
+	return m.undoAnalysisFn(ctx, findingID, decide)
 }
 
 func (m *mockFindingRepo) BulkUpdateAnalysis(ctx context.Context, arg port.UpdateAnalysisInput, ids []string) ([]port.Finding, error) {

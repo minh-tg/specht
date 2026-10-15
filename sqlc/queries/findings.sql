@@ -150,6 +150,21 @@ WHERE id = sqlc.arg(id)
   AND (sqlc.narg(expected_state)::text IS NULL OR analysis_state = sqlc.narg(expected_state)::text)
 RETURNING *;
 
+-- name: LockFindingForUpdate :one
+SELECT * FROM findings WHERE id = $1 FOR UPDATE;
+
+-- name: GetNewestAnalysisEvent :one
+-- The finding's newest event of any type that can change or flag its
+-- analysis. Triage undo is only allowed against this event.
+SELECT * FROM finding_events
+WHERE finding_id = $1
+  AND event_type IN (
+      'analysis_changed', 'bulk_triage_applied',
+      'reopened_severity_change', 'reopened_fix_available'
+  )
+ORDER BY created_at DESC, id DESC
+LIMIT 1;
+
 -- name: BulkUpdateFindingAnalysis :many
 UPDATE findings SET
     analysis_state = $2,

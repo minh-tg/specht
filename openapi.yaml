@@ -1306,6 +1306,57 @@ paths:
               example: { error: { code: analysis_conflict, message: The finding was triaged by someone else since you loaded it. } }
         "422": { $ref: "#/components/responses/Unprocessable" }
 
+  /api/v1/findings/{id}/analysis/undo:
+    post:
+      tags: [Findings]
+      operationId: undoTriage
+      summary: Undo the latest analysis decision
+      description: |
+        Puts the finding's analysis back to what it was before the named
+        event: state, reason, expiry, source and the manual and review flags.
+        The undo is recorded as a new `analysis_changed` event that names the
+        one it reverses (`changes.undo_of`); the original event stays in the
+        history.
+
+        Only the finding's newest analysis event can be undone, and only while
+        the finding is still in the state that event set. Anyone who may triage
+        the project may undo, not only the person who made the change.
+
+        Events written by bulk triage, by a scan's review flag or before this
+        endpoint existed carry no snapshot and answer `undo_unavailable`.
+      x-required-scope: admin
+      security:
+        - sessionAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UndoTriageRequest" }
+      responses:
+        "200":
+          description: The analysis was restored. `event_id` names the new undo event.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TriageResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: |
+            The change cannot be undone. `analysis_conflict`: the event is not
+            the finding's newest analysis event, or the finding is no longer in
+            the state it set. `undo_unavailable`: the event has no snapshot of
+            the earlier analysis. `previous_expiry_passed`: the earlier decision
+            has already expired.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: analysis_conflict, message: This is no longer the latest triage change on the finding so it cannot be undone. } }
+
   /api/v1/findings/bulk-analysis:
     post:
       tags: [Findings]
@@ -3987,6 +4038,15 @@ components:
           type: string
           format: uuid
           description: The finding event this decision wrote. Absent in bulk results.
+
+    UndoTriageRequest:
+      type: object
+      required: [event_id]
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: The `event_id` a triage response returned, naming the decision to take back.
 
     BulkTriageRequest:
       type: object
