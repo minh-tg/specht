@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -195,9 +196,12 @@ func TestE2E_MemberSuggestions(t *testing.T) {
 		other := s.manager(t, "target")
 		limited := 0
 		for range 15 {
-			status, _ := s.suggest(t, busy, "target", "ada")
+			status, header, _ := s.do(t, http.MethodGet, "/api/v1/projects/target/member-suggestions?q=ada", busy, nil)
 			if status == http.StatusTooManyRequests {
 				limited++
+				retryAfter, err := strconv.Atoi(header.Get("Retry-After"))
+				require.NoError(t, err, "a 429 says when to retry, in seconds")
+				require.Positive(t, retryAfter)
 			} else {
 				require.Equal(t, http.StatusOK, status)
 			}

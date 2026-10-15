@@ -48,6 +48,8 @@ func TestSuggestMembers(t *testing.T) {
 	newNamedUser(t, repos, "axb@acme.example", "")
 	newNamedUser(t, repos, "pct%x@acme.example", "")
 	newNamedUser(t, repos, "pctyx@acme.example", "")
+	newNamedUser(t, repos, `back\slash@acme.example`, "")
+	newNamedUser(t, repos, "backxslash@acme.example", "")
 	member := newNamedUser(t, repos, "adele@acme.example", "Adele Member")
 	_, err := stores.Projects.UpsertMember(ctx, projectID, member.ID, "member")
 	require.NoError(t, err)
@@ -73,6 +75,11 @@ func TestSuggestMembers(t *testing.T) {
 		assert.Equal(t, []string{"a_b@acme.example"}, suggestedEmails(t, stores.Users, projectID, "a_b", 8))
 		assert.Equal(t, []string{"pct%x@acme.example"}, suggestedEmails(t, stores.Users, projectID, "pct%", 8))
 		assert.Empty(t, suggestedEmails(t, stores.Users, projectID, "%", 8))
+	})
+	t.Run("a backslash matches itself, not an escape", func(t *testing.T) {
+		assert.Equal(t, []string{`back\slash@acme.example`}, suggestedEmails(t, stores.Users, projectID, `back\`, 8))
+		assert.Equal(t, []string{`back\slash@acme.example`}, suggestedEmails(t, stores.Users, projectID, `back\s`, 8))
+		assert.Empty(t, suggestedEmails(t, stores.Users, projectID, `\`, 8))
 	})
 	t.Run("direct members, disabled and system accounts are left out", func(t *testing.T) {
 		assert.Equal(t, []string{"ada@acme.example", "adam@acme.example"}, suggestedEmails(t, stores.Users, projectID, "ad", 8))
