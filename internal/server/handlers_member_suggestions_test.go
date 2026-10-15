@@ -147,6 +147,7 @@ func TestSuggestProjectMembers_ErrorMapping(t *testing.T) {
 	}{
 		{"not a manager", usecase.ErrProjectAccessDenied, http.StatusForbidden, "project_access_denied"},
 		{"query too long", usecase.ErrSuggestionQueryTooLong, http.StatusBadRequest, "invalid_query"},
+		{"query not usable text", usecase.ErrSuggestionQueryInvalid, http.StatusBadRequest, "invalid_query"},
 		{"store failure", errors.New("connection reset"), http.StatusInternalServerError, "internal_error"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/minh-tg/specht/internal/auth"
@@ -25,6 +26,11 @@ const (
 // ErrSuggestionQueryTooLong is returned for a member-suggestion query over
 // MemberSuggestionMaxQuery characters. Handlers map it to 400.
 var ErrSuggestionQueryTooLong = fmt.Errorf("query must be at most %d characters", MemberSuggestionMaxQuery)
+
+// ErrSuggestionQueryInvalid is returned for a member-suggestion query that is
+// not valid UTF-8 or contains a control character such as NUL. Handlers map it
+// to 400.
+var ErrSuggestionQueryInvalid = errors.New("query must be plain text without control characters")
 
 // MemberSuggestion is a person offered when adding a direct project member.
 type MemberSuggestion struct {
@@ -61,6 +67,11 @@ func (u *Usecases) SuggestProjectMembers(ctx context.Context, projectSlug, query
 	length := utf8.RuneCountInString(query)
 	if length > MemberSuggestionMaxQuery {
 		return nil, ErrSuggestionQueryTooLong
+	}
+	// PostgreSQL text cannot hold a NUL byte or invalid UTF-8, so such a query
+	// would fail in the store as a 500.
+	if !utf8.ValidString(query) || strings.ContainsFunc(query, unicode.IsControl) {
+		return nil, ErrSuggestionQueryInvalid
 	}
 	// The query text is a partial address; only its length is logged.
 	slog.DebugContext(ctx, "member suggestions", "user_id", auth.ContextIdentity(ctx).UserID, "query_len", length)
