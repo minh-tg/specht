@@ -1361,6 +1361,104 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  /api/v1/findings/{id}/cve:
+    get:
+      tags: [Findings]
+      operationId: getFindingCve
+      summary: Read the CVE evaluation details of a finding
+      description: |
+        Every CVSS vector the finding's scan reports carry, each scored and split
+        into its metrics; EPSS and CISA KEV from the intel feeds; CWE identifiers,
+        published and modified dates, and https reference links. Every value names
+        its source in `provenance`: the scan report (tool, report, observation
+        time), the CVE watcher, an external provider (name and fetch time), or an
+        intel feed.
+
+        The scan report is the primary source. External providers are asked only
+        when they are configured (`CVE_DETAIL_PROVIDERS`) and the reports are
+        incomplete for this CVE: they carry no valid CVSS v3.0, v3.1 or v4.0
+        vector, or carry neither a CWE nor a published date. Provider values are
+        listed after the report's and never replace them. Only the CVE identifier
+        is sent to a provider.
+
+        The read never waits on a provider. A missing answer is fetched in the
+        background and the response says `pending: true`; read again later to
+        see it. Metric keys and values are sent as the vector spells them, in
+        vector order; clients supply the labels.
+      x-required-scope: read
+      security:
+        - sessionAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Id"
+      responses:
+        "200":
+          description: The CVE details.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CveDetail" }
+              example:
+                cve_id: CVE-2024-3094
+                pending: false
+                cvss:
+                  - version: "3.1"
+                    vector: CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H
+                    base_score: 10.0
+                    reported_score: 10.0
+                    severity: critical
+                    valid: true
+                    metrics:
+                      - { group: base, key: AV, value: N }
+                      - { group: base, key: AC, value: L }
+                      - { group: base, key: PR, value: N }
+                      - { group: base, key: UI, value: N }
+                      - { group: base, key: S, value: C }
+                      - { group: base, key: C, value: H }
+                      - { group: base, key: I, value: H }
+                      - { group: base, key: A, value: H }
+                    provenance:
+                      kind: scan_report
+                      tool: grype
+                      report_id: 5d1c2b3a-0000-4000-8000-000000000001
+                      observed_at: "2026-10-14T08:00:00Z"
+                      detail: nvd
+                epss:
+                  probability: 0.85
+                  percentile: 0.991
+                  date: "2026-10-14"
+                  provenance: { kind: feed, provider: epss, fetched_at: "2026-10-15T07:00:00Z" }
+                kev:
+                  listed: true
+                  date_added: "2024-04-01"
+                  due_date: "2024-04-22"
+                  known_ransomware_use: Unknown
+                  provenance: { kind: feed, provider: kev, fetched_at: "2026-10-15T07:00:00Z" }
+                cwes:
+                  - id: CWE-506
+                    provenance: { kind: scan_report, tool: trivy, report_id: 5d1c2b3a-0000-4000-8000-000000000002, observed_at: "2026-10-14T08:00:00Z" }
+                published_at:
+                  value: "2024-03-29T17:15:21Z"
+                  provenance: { kind: provider, provider: nvd, fetched_at: "2026-10-15T07:00:00Z" }
+                modified_at: null
+                references: []
+                providers:
+                  - { name: nvd, status: found, fetched_at: "2026-10-15T07:00:00Z" }
+                  - { name: vulncheck, status: disabled }
+                  - { name: osv, status: disabled }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: The finding does not exist, or its vulnerability_id is not a CVE identifier.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                notFound:
+                  value: { error: { code: not_found, message: finding not found } }
+                notCve:
+                  value: { error: { code: not_cve, message: "This finding has no CVE identifier, so there are no CVE details to show." } }
+
   /api/v1/findings/{id}/verify:
     post:
       tags: [Findings]
@@ -4552,13 +4650,172 @@ components:
 
     AdminStatus:
       type: object
-      required: [projects, users, open_findings, reports]
+      required: [projects, users, open_findings, reports, cve_providers]
       properties:
         projects: { type: integer, format: int64 }
         users: { type: integer, format: int64 }
         open_findings: { type: integer, format: int64 }
         reports: { type: integer, format: int64 }
         oldest_settled_report_at: { type: [string, "null"], format: date-time }
+        cve_providers:
+          type: array
+          description: Every CVE detail provider the server knows, configured ones first in lookup order.
+          items: { $ref: "#/components/schemas/CveProviderStatus" }
+
+    CveProviderStatus:
+      type: object
+      required: [name, enabled, key_configured, last_success_at, last_error, last_error_at]
+      properties:
+        name: { type: string, enum: [nvd, vulncheck, osv] }
+        enabled: { type: boolean, description: Listed in CVE_DETAIL_PROVIDERS. }
+        key_configured: { type: boolean, description: An API key is set. The key itself is never returned. }
+        last_success_at: { type: [string, "null"], format: date-time }
+        last_error:
+          type: [string, "null"]
+          enum: [timeout, rate_limited, http_4xx, http_5xx, decode, too_large, tls, network, null]
+          description: The category of the last failure, recorded by any replica.
+        last_error_at: { type: [string, "null"], format: date-time }
+
+    CveDetail:
+      type: object
+      required: [cve_id, pending, cvss, epss, kev, cwes, published_at, modified_at, references, providers]
+      properties:
+        cve_id: { type: string, example: CVE-2024-3094 }
+        pending:
+          type: boolean
+          description: A provider fetch is scheduled or running. Read again later for its answer.
+        cvss:
+          type: array
+          description: Report vectors first, newest report first, then provider vectors.
+          items: { $ref: "#/components/schemas/CveCvss" }
+        epss:
+          oneOf:
+            - { $ref: "#/components/schemas/CveEpss" }
+            - { type: "null" }
+        kev:
+          description: Present only when the CVE is listed. Absence is not a negative answer.
+          oneOf:
+            - { $ref: "#/components/schemas/CveKev" }
+            - { type: "null" }
+        cwes:
+          type: array
+          items: { $ref: "#/components/schemas/CveCwe" }
+        published_at:
+          oneOf:
+            - { $ref: "#/components/schemas/CveDate" }
+            - { type: "null" }
+        modified_at:
+          oneOf:
+            - { $ref: "#/components/schemas/CveDate" }
+            - { type: "null" }
+        references:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/CveReference" }
+        providers:
+          type: array
+          description: Every known provider and its part in this answer, configured ones first.
+          items: { $ref: "#/components/schemas/CveProviderLookup" }
+
+    CveProvenance:
+      type: object
+      required: [kind]
+      description: Where one value came from.
+      properties:
+        kind:
+          type: string
+          enum: [scan_report, watcher, provider, feed]
+          description: |
+            `scan_report`: a scanner's report. `watcher`: the CVE watcher's OSV advisory.
+            `provider`: an external CVE detail provider. `feed`: the EPSS or KEV feed.
+        tool: { type: string, description: The scanner, for scan_report and watcher. }
+        report_id: { type: string, format: uuid }
+        observed_at: { type: string, format: date-time }
+        provider: { type: string, description: "The provider or feed: nvd, vulncheck, osv, epss or kev." }
+        fetched_at: { type: string, format: date-time }
+        detail: { type: string, description: "The scoring party the source names, such as \"nvd@nist.gov primary\"." }
+
+    CveCvss:
+      type: object
+      required: [version, vector, base_score, reported_score, severity, valid, metrics, provenance]
+      properties:
+        version: { type: string, enum: ["2.0", "3.0", "3.1", "4.0"], description: Taken from the vector prefix. }
+        vector: { type: string, description: The full vector. Bare v2 vectors get the CVSS:2.0/ prefix. }
+        base_score: { type: [number, "null"], description: Computed from the vector; null when it does not parse. }
+        reported_score: { type: [number, "null"], description: The score the source printed. }
+        severity:
+          type: [string, "null"]
+          enum: [none, low, medium, high, critical, null]
+          description: Band of the base score (or of the reported score when the vector does not parse). v2 stops at high.
+        valid: { type: boolean }
+        metrics:
+          type: array
+          description: Every metric in vector order. Empty when the vector does not parse.
+          items: { $ref: "#/components/schemas/CvssMetric" }
+        provenance: { $ref: "#/components/schemas/CveProvenance" }
+
+    CvssMetric:
+      type: object
+      required: [group, key, value]
+      properties:
+        group: { type: string, enum: [base, temporal, threat, environmental, supplemental] }
+        key: { type: string, example: AV }
+        value: { type: string, example: N }
+
+    CveEpss:
+      type: object
+      required: [probability, percentile, date, provenance]
+      properties:
+        probability: { type: number, minimum: 0, maximum: 1 }
+        percentile: { type: [number, "null"], minimum: 0, maximum: 1 }
+        date: { type: [string, "null"], format: date }
+        provenance: { $ref: "#/components/schemas/CveProvenance" }
+
+    CveKev:
+      type: object
+      required: [listed, date_added, due_date, known_ransomware_use, provenance]
+      properties:
+        listed: { type: boolean }
+        date_added: { type: [string, "null"], format: date }
+        due_date: { type: [string, "null"], format: date }
+        known_ransomware_use: { type: [string, "null"], description: As the KEV catalog spells it, Known or Unknown. }
+        provenance: { $ref: "#/components/schemas/CveProvenance" }
+
+    CveCwe:
+      type: object
+      required: [id, provenance]
+      properties:
+        id: { type: string, pattern: "^CWE-[0-9]+$", example: CWE-79 }
+        provenance: { $ref: "#/components/schemas/CveProvenance" }
+
+    CveDate:
+      type: object
+      required: [value, provenance]
+      properties:
+        value: { type: string, format: date-time }
+        provenance: { $ref: "#/components/schemas/CveProvenance" }
+
+    CveReference:
+      type: object
+      required: [url, provenance]
+      properties:
+        url: { type: string, format: uri, description: Always https. }
+        provenance: { $ref: "#/components/schemas/CveProvenance" }
+
+    CveProviderLookup:
+      type: object
+      required: [name, status]
+      properties:
+        name: { type: string, enum: [nvd, vulncheck, osv] }
+        status:
+          type: string
+          enum: [found, not_found, error, pending, skipped, disabled]
+          description: |
+            `found`: this provider's answer is listed. `not_found`: it has no record.
+            `error`: the last fetch failed and is in backoff. `pending`: a fetch is
+            scheduled or running. `skipped`: not asked, because the report is complete
+            or an earlier provider answered. `disabled`: not configured.
+        fetched_at: { type: string, format: date-time }
 
     RetentionPreview:
       type: object

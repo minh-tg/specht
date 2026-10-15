@@ -829,6 +829,43 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/findings/{id}/cve": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Read the CVE evaluation details of a finding
+     * @description Every CVSS vector the finding's scan reports carry, each scored and split
+     *     into its metrics; EPSS and CISA KEV from the intel feeds; CWE identifiers,
+     *     published and modified dates, and https reference links. Every value names
+     *     its source in `provenance`: the scan report (tool, report, observation
+     *     time), the CVE watcher, an external provider (name and fetch time), or an
+     *     intel feed.
+     *
+     *     The scan report is the primary source. External providers are asked only
+     *     when they are configured (`CVE_DETAIL_PROVIDERS`) and the reports are
+     *     incomplete for this CVE: they carry no valid CVSS v3.0, v3.1 or v4.0
+     *     vector, or carry neither a CWE nor a published date. Provider values are
+     *     listed after the report's and never replace them. Only the CVE identifier
+     *     is sent to a provider.
+     *
+     *     The read never waits on a provider. A missing answer is fetched in the
+     *     background and the response says `pending: true`; read again later to
+     *     see it. Metric keys and values are sent as the vector spells them, in
+     *     vector order; clients supply the labels.
+     */
+    get: operations["getFindingCve"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/findings/{id}/verify": {
     parameters: {
       query?: never;
@@ -3131,6 +3168,151 @@ export interface components {
       reports: number;
       /** Format: date-time */
       oldest_settled_report_at?: string | null;
+      /** @description Every CVE detail provider the server knows, configured ones first in lookup order. */
+      cve_providers: components["schemas"]["CveProviderStatus"][];
+    };
+    CveProviderStatus: {
+      /** @enum {string} */
+      name: "nvd" | "vulncheck" | "osv";
+      /** @description Listed in CVE_DETAIL_PROVIDERS. */
+      enabled: boolean;
+      /** @description An API key is set. The key itself is never returned. */
+      key_configured: boolean;
+      /** Format: date-time */
+      last_success_at: string | null;
+      /**
+       * @description The category of the last failure, recorded by any replica.
+       * @enum {string|null}
+       */
+      last_error:
+        | "timeout"
+        | "rate_limited"
+        | "http_4xx"
+        | "http_5xx"
+        | "decode"
+        | "too_large"
+        | "tls"
+        | "network"
+        | null;
+      /** Format: date-time */
+      last_error_at: string | null;
+    };
+    CveDetail: {
+      /** @example CVE-2024-3094 */
+      cve_id: string;
+      /** @description A provider fetch is scheduled or running. Read again later for its answer. */
+      pending: boolean;
+      /** @description Report vectors first, newest report first, then provider vectors. */
+      cvss: components["schemas"]["CveCvss"][];
+      epss: components["schemas"]["CveEpss"] | null;
+      /** @description Present only when the CVE is listed. Absence is not a negative answer. */
+      kev: components["schemas"]["CveKev"] | null;
+      cwes: components["schemas"]["CveCwe"][];
+      published_at: components["schemas"]["CveDate"] | null;
+      modified_at: components["schemas"]["CveDate"] | null;
+      references: components["schemas"]["CveReference"][];
+      /** @description Every known provider and its part in this answer, configured ones first. */
+      providers: components["schemas"]["CveProviderLookup"][];
+    };
+    /** @description Where one value came from. */
+    CveProvenance: {
+      /**
+       * @description `scan_report`: a scanner's report. `watcher`: the CVE watcher's OSV advisory.
+       *     `provider`: an external CVE detail provider. `feed`: the EPSS or KEV feed.
+       * @enum {string}
+       */
+      kind: "scan_report" | "watcher" | "provider" | "feed";
+      /** @description The scanner */
+      tool?: string;
+      /** Format: uuid */
+      report_id?: string;
+      /** Format: date-time */
+      observed_at?: string;
+      /** @description The provider or feed: nvd, vulncheck, osv, epss or kev. */
+      provider?: string;
+      /** Format: date-time */
+      fetched_at?: string;
+      /** @description The scoring party the source names, such as "nvd@nist.gov primary". */
+      detail?: string;
+    };
+    CveCvss: {
+      /**
+       * @description Taken from the vector prefix.
+       * @enum {string}
+       */
+      version: "2.0" | "3.0" | "3.1" | "4.0";
+      /** @description The full vector. Bare v2 vectors get the CVSS:2.0/ prefix. */
+      vector: string;
+      /** @description Computed from the vector; null when it does not parse. */
+      base_score: number | null;
+      /** @description The score the source printed. */
+      reported_score: number | null;
+      /**
+       * @description Band of the base score (or of the reported score when the vector does not parse). v2 stops at high.
+       * @enum {string|null}
+       */
+      severity: "none" | "low" | "medium" | "high" | "critical" | null;
+      valid: boolean;
+      /** @description Every metric in vector order. Empty when the vector does not parse. */
+      metrics: components["schemas"]["CvssMetric"][];
+      provenance: components["schemas"]["CveProvenance"];
+    };
+    CvssMetric: {
+      /** @enum {string} */
+      group: "base" | "temporal" | "threat" | "environmental" | "supplemental";
+      /** @example AV */
+      key: string;
+      /** @example N */
+      value: string;
+    };
+    CveEpss: {
+      probability: number;
+      percentile: number | null;
+      /** Format: date */
+      date: string | null;
+      provenance: components["schemas"]["CveProvenance"];
+    };
+    CveKev: {
+      listed: boolean;
+      /** Format: date */
+      date_added: string | null;
+      /** Format: date */
+      due_date: string | null;
+      /** @description As the KEV catalog spells it */
+      known_ransomware_use: string | null;
+      provenance: components["schemas"]["CveProvenance"];
+    };
+    CveCwe: {
+      /** @example CWE-79 */
+      id: string;
+      provenance: components["schemas"]["CveProvenance"];
+    };
+    CveDate: {
+      /** Format: date-time */
+      value: string;
+      provenance: components["schemas"]["CveProvenance"];
+    };
+    CveReference: {
+      /**
+       * Format: uri
+       * @description Always https.
+       */
+      url: string;
+      provenance: components["schemas"]["CveProvenance"];
+    };
+    CveProviderLookup: {
+      /** @enum {string} */
+      name: "nvd" | "vulncheck" | "osv";
+      /**
+       * @description `found`: this provider's answer is listed. `not_found`: it has no record.
+       *     `error`: the last fetch failed and is in backoff. `pending`: a fetch is
+       *     scheduled or running. `skipped`: not asked, because the report is complete
+       *     or an earlier provider answered. `disabled`: not configured.
+       * @enum {string}
+       */
+      status: "found" | "not_found" | "error" | "pending" | "skipped" | "disabled";
+      /** Format: date-time */
+      fetched_at?: string;
     };
     RetentionPreview: {
       older_than_days: number;
@@ -4670,6 +4852,163 @@ export interface operations {
       401: components["responses"]["Unauthorized"];
       403: components["responses"]["Forbidden"];
       404: components["responses"]["NotFound"];
+    };
+  };
+  getFindingCve: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Resource identifier. */
+        id: components["parameters"]["Id"];
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description The CVE details. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "cve_id": "CVE-2024-3094",
+           *       "pending": false,
+           *       "cvss": [
+           *         {
+           *           "version": "3.1",
+           *           "vector": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H",
+           *           "base_score": 10,
+           *           "reported_score": 10,
+           *           "severity": "critical",
+           *           "valid": true,
+           *           "metrics": [
+           *             {
+           *               "group": "base",
+           *               "key": "AV",
+           *               "value": "N"
+           *             },
+           *             {
+           *               "group": "base",
+           *               "key": "AC",
+           *               "value": "L"
+           *             },
+           *             {
+           *               "group": "base",
+           *               "key": "PR",
+           *               "value": "N"
+           *             },
+           *             {
+           *               "group": "base",
+           *               "key": "UI",
+           *               "value": "N"
+           *             },
+           *             {
+           *               "group": "base",
+           *               "key": "S",
+           *               "value": "C"
+           *             },
+           *             {
+           *               "group": "base",
+           *               "key": "C",
+           *               "value": "H"
+           *             },
+           *             {
+           *               "group": "base",
+           *               "key": "I",
+           *               "value": "H"
+           *             },
+           *             {
+           *               "group": "base",
+           *               "key": "A",
+           *               "value": "H"
+           *             }
+           *           ],
+           *           "provenance": {
+           *             "kind": "scan_report",
+           *             "tool": "grype",
+           *             "report_id": "5d1c2b3a-0000-4000-8000-000000000001",
+           *             "observed_at": "2026-10-14T08:00:00Z",
+           *             "detail": "nvd"
+           *           }
+           *         }
+           *       ],
+           *       "epss": {
+           *         "probability": 0.85,
+           *         "percentile": 0.991,
+           *         "date": "2026-10-14",
+           *         "provenance": {
+           *           "kind": "feed",
+           *           "provider": "epss",
+           *           "fetched_at": "2026-10-15T07:00:00Z"
+           *         }
+           *       },
+           *       "kev": {
+           *         "listed": true,
+           *         "date_added": "2024-04-01",
+           *         "due_date": "2024-04-22",
+           *         "known_ransomware_use": "Unknown",
+           *         "provenance": {
+           *           "kind": "feed",
+           *           "provider": "kev",
+           *           "fetched_at": "2026-10-15T07:00:00Z"
+           *         }
+           *       },
+           *       "cwes": [
+           *         {
+           *           "id": "CWE-506",
+           *           "provenance": {
+           *             "kind": "scan_report",
+           *             "tool": "trivy",
+           *             "report_id": "5d1c2b3a-0000-4000-8000-000000000002",
+           *             "observed_at": "2026-10-14T08:00:00Z"
+           *           }
+           *         }
+           *       ],
+           *       "published_at": {
+           *         "value": "2024-03-29T17:15:21Z",
+           *         "provenance": {
+           *           "kind": "provider",
+           *           "provider": "nvd",
+           *           "fetched_at": "2026-10-15T07:00:00Z"
+           *         }
+           *       },
+           *       "modified_at": null,
+           *       "references": [],
+           *       "providers": [
+           *         {
+           *           "name": "nvd",
+           *           "status": "found",
+           *           "fetched_at": "2026-10-15T07:00:00Z"
+           *         },
+           *         {
+           *           "name": "vulncheck",
+           *           "status": "disabled"
+           *         },
+           *         {
+           *           "name": "osv",
+           *           "status": "disabled"
+           *         }
+           *       ]
+           *     }
+           */
+          "application/json": components["schemas"]["CveDetail"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["Forbidden"];
+      /** @description The finding does not exist, or its vulnerability_id is not a CVE identifier. */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
     };
   };
   verifyFix: {
