@@ -5,10 +5,10 @@ import { useAuth } from "@/auth/useAuth";
 import { AuthLayout } from "@/components/AuthLayout";
 import { ErrorState } from "@/components/ErrorState";
 import { FormField } from "@/components/FormField";
-import { PasswordRequirements } from "@/components/PasswordRequirements";
+import { PasswordField } from "@/components/PasswordField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { Button } from "@/components/ui/button";
-import { isPasswordValid } from "@/lib/passwordRules";
+import { isPasswordValid, passwordPolicyMessage } from "@/lib/passwordRules";
 import { useQueryClient } from "@tanstack/react-query";
 import { type SubmitEvent, useState } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
@@ -72,7 +72,10 @@ export function Setup() {
       await queryClient.invalidateQueries({ queryKey: queryKeys.capabilities() });
       navigate("/", { replace: true });
     } catch (err) {
-      if (err instanceof APIError && err.code === "invalid_setup_token") {
+      const policy = passwordPolicyMessage(err);
+      if (policy) {
+        setPasswordError(policy);
+      } else if (err instanceof APIError && err.code === "invalid_setup_token") {
         setTokenError(
           "That token does not match the one this server printed. Copy it again from the log.",
         );
@@ -154,20 +157,16 @@ export function Setup() {
             onChange={(e) => setName(e.target.value)}
             autoComplete="name"
           />
-          <FormField
+          <PasswordField
             label="Password"
-            type="password"
+            rulesId="setup-password-rules"
+            userInputs={[email, name]}
             value={password}
             onChange={(e) => {
               setPassword(e.target.value);
               setPasswordError(null);
             }}
-            autoComplete="new-password"
             required
-            extra={{
-              id: "setup-password-rules",
-              node: <PasswordRequirements id="setup-password-rules" value={password} />,
-            }}
             error={passwordError}
           />
         </fieldset>

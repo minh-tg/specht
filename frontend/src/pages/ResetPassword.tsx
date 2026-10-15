@@ -2,9 +2,9 @@ import { APIError } from "@/api/client";
 import { useResetPassword } from "@/api/passwordReset";
 import { AuthLayout } from "@/components/AuthLayout";
 import { FormField } from "@/components/FormField";
-import { PasswordRequirements } from "@/components/PasswordRequirements";
+import { PasswordField } from "@/components/PasswordField";
 import { Button } from "@/components/ui/button";
-import { isPasswordValid } from "@/lib/passwordRules";
+import { isPasswordValid, passwordPolicyMessage } from "@/lib/passwordRules";
 import { type SubmitEvent, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -69,7 +69,10 @@ export function ResetPassword() {
       await reset.mutateAsync({ token, password });
       setDone(true);
     } catch (err) {
-      if (err instanceof APIError && err.code === "reset_link_invalid") {
+      const policy = passwordPolicyMessage(err);
+      if (policy) {
+        setPasswordError(policy);
+      } else if (err instanceof APIError && err.code === "reset_link_invalid") {
         setDead(true);
       } else if (err instanceof APIError && err.status === 400) {
         setFormError(err.message);
@@ -94,20 +97,15 @@ export function ResetPassword() {
             {formError}
           </p>
         )}
-        <FormField
+        <PasswordField
           label="New password"
-          type="password"
+          rulesId="reset-password-rules"
           value={password}
           onChange={(e) => {
             setPassword(e.target.value);
             setPasswordError(null);
           }}
-          autoComplete="new-password"
           required
-          extra={{
-            id: "reset-password-rules",
-            node: <PasswordRequirements id="reset-password-rules" value={password} />,
-          }}
           error={passwordError}
         />
         <FormField

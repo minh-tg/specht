@@ -3,10 +3,10 @@ import { useChangePassword, useMe, useUpdateProfile } from "@/api/hooks";
 import { useAuth } from "@/auth/useAuth";
 import { ErrorState } from "@/components/ErrorState";
 import { FormField } from "@/components/FormField";
-import { PasswordRequirements } from "@/components/PasswordRequirements";
+import { PasswordField } from "@/components/PasswordField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { Button } from "@/components/ui/button";
-import { isPasswordValid } from "@/lib/passwordRules";
+import { isPasswordValid, passwordPolicyMessage } from "@/lib/passwordRules";
 import type { UserProfile } from "@/types/api";
 import { type SubmitEvent, useState } from "react";
 
@@ -132,7 +132,10 @@ function PasswordSection() {
       setConfirm("");
       setNotice("Password changed. Your other sessions were signed out.");
     } catch (err) {
-      if (err instanceof APIError && err.code === "wrong_password") {
+      const policy = passwordPolicyMessage(err);
+      if (policy) {
+        setNextError(policy);
+      } else if (err instanceof APIError && err.code === "wrong_password") {
         setCurrentError("The current password is not correct.");
         setCurrent("");
       } else if (err instanceof APIError && err.code === "invalid_password") {
@@ -186,20 +189,16 @@ function PasswordSection() {
           required
           error={currentError}
         />
-        <FormField
+        <PasswordField
           label="New password"
-          type="password"
+          rulesId="profile-password-rules"
+          userInputs={auth.email ? [auth.email] : []}
           value={next}
           onChange={(e) => {
             setNext(e.target.value);
             setNextError(null);
           }}
-          autoComplete="new-password"
           required
-          extra={{
-            id: "profile-password-rules",
-            node: <PasswordRequirements id="profile-password-rules" value={next} />,
-          }}
           error={nextError}
         />
         <FormField

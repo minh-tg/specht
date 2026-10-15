@@ -6,10 +6,10 @@ import { AuthLayout } from "@/components/AuthLayout";
 import { ErrorState } from "@/components/ErrorState";
 import { FormField } from "@/components/FormField";
 import { INLINE_LINK } from "@/components/inlineLink";
-import { PasswordRequirements } from "@/components/PasswordRequirements";
+import { PasswordField } from "@/components/PasswordField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { Button } from "@/components/ui/button";
-import { isPasswordValid } from "@/lib/passwordRules";
+import { isPasswordValid, passwordPolicyMessage } from "@/lib/passwordRules";
 import type { InviteLookup, InviteRole } from "@/types/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { CheckIcon } from "lucide-react";
@@ -115,7 +115,10 @@ export function Invite() {
   }
 
   function explain(err: unknown) {
-    if (err instanceof APIError && err.status === 404) {
+    const policy = passwordPolicyMessage(err);
+    if (policy) {
+      setPasswordError(policy);
+    } else if (err instanceof APIError && err.status === 404) {
       setDead(true);
     } else if (err instanceof APIError && err.code === "invite_email_mismatch") {
       setFormError(
@@ -240,20 +243,16 @@ export function Invite() {
               onChange={(e) => setName(e.target.value)}
               autoComplete="name"
             />
-            <FormField
+            <PasswordField
               label="Choose a password"
-              type="password"
+              rulesId="invite-password-rules"
+              userInputs={[bound ? (invite.email ?? "") : email, name]}
               value={password}
               onChange={(e) => {
                 setPassword(e.target.value);
                 setPasswordError(null);
               }}
-              autoComplete="new-password"
               required
-              extra={{
-                id: "invite-password-rules",
-                node: <PasswordRequirements id="invite-password-rules" value={password} />,
-              }}
               error={passwordError}
             />
             <Button type="submit" size="lg" disabled={submitting} className="h-10 w-full text-base">

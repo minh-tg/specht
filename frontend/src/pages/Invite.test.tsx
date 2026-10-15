@@ -1,7 +1,7 @@
 import { AuthContext, type AuthContextValue } from "@/auth/context";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -171,6 +171,28 @@ describe("Invite", () => {
     await user.click(screen.getByRole("button", { name: "Create account and join" }));
 
     expect(await screen.findByText(/already has an account/i)).toBeInTheDocument();
+    expect(adopt).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [
+      "password_too_common",
+      "This password is on a list of commonly used passwords. Choose another.",
+    ],
+    ["password_matches_account", "The password must not be your email address or name."],
+  ])("shows %s on the password field and keeps the form", async (code, message) => {
+    routes["/api/v1/invites/tok-abc/accept"] = () =>
+      jsonResponse({ error: { code, message } }, 400);
+    renderInvite();
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Email"), "ada@acme.example");
+    await user.type(screen.getByLabelText("Choose a password"), "correct-horse-battery");
+    await user.click(screen.getByRole("button", { name: "Create account and join" }));
+
+    const password = screen.getByLabelText("Choose a password");
+    await waitFor(() => expect(password).toHaveAttribute("aria-invalid", "true"));
+    expect(password).toHaveAccessibleDescription(expect.stringContaining(message));
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(adopt).not.toHaveBeenCalled();
   });
 
