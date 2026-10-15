@@ -437,6 +437,7 @@ func (r *pgFindingPort) UpdateAnalysis(ctx context.Context, input port.UpdateAna
 		ManualOverride:    input.ManualOverride,
 		ReviewRequired:    input.ReviewRequired,
 		AnalysisUpdatedBy: uuidPtrFromString(input.AnalysisUpdatedBy),
+		ExpectedState:     textPtrFromString(input.ExpectedState),
 	})
 	if err != nil {
 		return port.Finding{}, mappingErr(err)
@@ -444,28 +445,29 @@ func (r *pgFindingPort) UpdateAnalysis(ctx context.Context, input port.UpdateAna
 	return findingRowToPort(row), nil
 }
 
-func (r *pgFindingPort) UpdateAnalysisWithEvent(ctx context.Context, input port.UpdateAnalysisInput, event port.FindingEventInput) (port.Finding, error) {
+func (r *pgFindingPort) UpdateAnalysisWithEvent(ctx context.Context, input port.UpdateAnalysisInput, event port.FindingEventInput) (port.Finding, port.FindingEvent, error) {
 	fid, err := parseID(input.ID)
 	if err != nil {
-		return port.Finding{}, err
+		return port.Finding{}, port.FindingEvent{}, err
 	}
 	eventID, err := parseID(event.FindingID)
 	if err != nil {
-		return port.Finding{}, err
+		return port.Finding{}, port.FindingEvent{}, err
 	}
-	row, err := r.inner.UpdateAnalysisWithEvent(ctx, UpdateAnalysisParams{
+	row, created, err := r.inner.UpdateAnalysisWithEvent(ctx, UpdateAnalysisParams{
 		ID: fid, AnalysisState: input.AnalysisState, GateEffect: input.GateEffect,
 		AnalysisExpiresAt: timestamptzPtrFromTime(input.AnalysisExpiresAt), AnalysisReason: textPtrFromString(input.AnalysisReason),
 		AnalysisSource: input.AnalysisSource, ManualOverride: input.ManualOverride, ReviewRequired: input.ReviewRequired,
 		AnalysisUpdatedBy: uuidPtrFromString(input.AnalysisUpdatedBy),
+		ExpectedState:     textPtrFromString(input.ExpectedState),
 	}, CreateEventParams{
 		FindingID: eventID, UserID: uuidPtrFromString(event.UserID), EventType: event.EventType,
 		OldValue: textPtrFromString(event.OldValue), NewValue: textPtrFromString(event.NewValue), Comment: textPtrFromString(event.Comment), Changes: event.Changes,
 	})
 	if err != nil {
-		return port.Finding{}, mappingErr(err)
+		return port.Finding{}, port.FindingEvent{}, mappingErr(err)
 	}
-	return findingRowToPort(row), nil
+	return findingRowToPort(row), findingEventRowToPort(created), nil
 }
 
 func (r *pgFindingPort) BulkUpdateAnalysis(ctx context.Context, input port.UpdateAnalysisInput, ids []string) ([]port.Finding, error) {

@@ -2037,6 +2037,44 @@ func TestTriageFinding_Success(t *testing.T) {
 	assert.Equal(t, "false_positive", resp.AnalysisState)
 }
 
+func TestTriageFinding_PassesExpectedStateAndReturnsEventID(t *testing.T) {
+	var got usecase.TriageInput
+	mock := &mockUsecases{
+		triageFindingFn: func(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error) {
+			got = input
+			return &usecase.TriageOutput{FindingID: "abc-123", AnalysisState: "in_triage", GateEffect: "block", EventID: "ev-1"}, nil
+		},
+	}
+	router := testRouter(mock)
+	req := authRequest("PATCH", "/api/v1/findings/abc-123", `{"analysis_state":"in_triage","expected_state":"unanalyzed"}`)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "unanalyzed", got.ExpectedState)
+	var resp map[string]any
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "ev-1", resp["event_id"])
+}
+
+func TestTriageFinding_AnalysisConflict(t *testing.T) {
+	mock := &mockUsecases{
+		triageFindingFn: func(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error) {
+			return nil, fmt.Errorf("update: %w", usecase.ErrAnalysisConflict)
+		},
+	}
+	router := testRouter(mock)
+	req := authRequest("PATCH", "/api/v1/findings/abc-123", `{"analysis_state":"in_triage","expected_state":"unanalyzed"}`)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+	var resp apiError
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &resp))
+	assert.Equal(t, "analysis_conflict", resp.Error.Code)
+	assert.NotEmpty(t, resp.Error.Message)
+}
+
 func TestVerifyFinding_Success(t *testing.T) {
 	mock := &mockUsecases{
 		verifyFixFn: func(ctx context.Context, findingID string) (*usecase.VerifyResponse, error) {

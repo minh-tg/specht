@@ -1270,6 +1270,13 @@ paths:
         States that ignore the gate (`false_positive`, `not_affected`,
         `accepted_risk`, `wont_fix`) require a `reason`; `accepted_risk` and
         `wont_fix` also require `analysis_expires_at`.
+
+        The event this writes keeps a snapshot of the analysis fields it
+        replaced, and the response names that event in `event_id` so the
+        decision can be undone with `POST /api/v1/findings/{id}/analysis/undo`.
+        `expected_state` makes the write conditional on the finding's current
+        analysis state; the write is also refused with `analysis_conflict` when
+        the finding changed while the request was being handled.
       x-required-scope: admin
       security:
         - sessionAuth: []
@@ -1291,6 +1298,12 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The finding's analysis state is not the one the request expected.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: analysis_conflict, message: The finding was triaged by someone else since you loaded it. } }
         "422": { $ref: "#/components/responses/Unprocessable" }
 
   /api/v1/findings/bulk-analysis:
@@ -3946,6 +3959,9 @@ components:
           type: string
           format: date-time
           description: Required for `accepted_risk` and `wont_fix`; the expiry sweep resets those findings.
+        expected_state:
+          type: string
+          description: When set, the write applies only while the finding is still in this analysis state; otherwise it fails with 409 `analysis_conflict`.
 
     TriageResult:
       type: object
@@ -3954,6 +3970,10 @@ components:
         finding_id: { type: string, format: uuid }
         analysis_state: { type: string }
         gate_effect: { type: string, enum: [block, ignore] }
+        event_id:
+          type: string
+          format: uuid
+          description: The finding event this decision wrote. Absent in bulk results.
 
     BulkTriageRequest:
       type: object

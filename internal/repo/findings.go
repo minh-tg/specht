@@ -250,6 +250,9 @@ type UpdateAnalysisParams struct {
 	ManualOverride    bool
 	ReviewRequired    bool
 	AnalysisUpdatedBy pgtype.UUID
+	// ExpectedState is the optional analysis_state precondition; invalid
+	// means no precondition.
+	ExpectedState pgtype.Text
 }
 
 func (r *pgFindingRepo) UpdateAnalysis(ctx context.Context, arg UpdateAnalysisParams) (sqlc.Finding, error) {
@@ -263,35 +266,51 @@ func (r *pgFindingRepo) UpdateAnalysis(ctx context.Context, arg UpdateAnalysisPa
 		ManualOverride:    arg.ManualOverride,
 		ReviewRequired:    arg.ReviewRequired,
 		AnalysisUpdatedBy: arg.AnalysisUpdatedBy,
+		ExpectedState:     arg.ExpectedState,
 	})
 }
 
-func (r *pgFindingRepo) UpdateAnalysisWithEvent(ctx context.Context, arg UpdateAnalysisParams, event CreateEventParams) (sqlc.Finding, error) {
+func (r *pgFindingRepo) UpdateAnalysisWithEvent(ctx context.Context, arg UpdateAnalysisParams, event CreateEventParams) (sqlc.Finding, sqlc.FindingEvent, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return sqlc.Finding{}, fmt.Errorf("begin tx: %w", err)
+		return sqlc.Finding{}, sqlc.FindingEvent{}, fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	q := sqlc.New(tx)
+	updated, created, err := writeAnalysisWithEvent(ctx, sqlc.New(tx), arg, event)
+	if err != nil {
+		return sqlc.Finding{}, sqlc.FindingEvent{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return sqlc.Finding{}, sqlc.FindingEvent{}, fmt.Errorf("commit tx: %w", err)
+	}
+	return updated, created, nil
+}
+
+// writeAnalysisWithEvent runs the analysis update and the event insert on q.
+// A refused ExpectedState precondition matches no row and comes back as
+// port.ErrAnalysisConflict.
+func writeAnalysisWithEvent(ctx context.Context, q *sqlc.Queries, arg UpdateAnalysisParams, event CreateEventParams) (sqlc.Finding, sqlc.FindingEvent, error) {
 	updated, err := q.UpdateFindingAnalysis(ctx, sqlc.UpdateFindingAnalysisParams{
 		ID: arg.ID, AnalysisState: arg.AnalysisState, GateEffect: arg.GateEffect,
 		AnalysisExpiresAt: arg.AnalysisExpiresAt, AnalysisReason: arg.AnalysisReason,
 		AnalysisSource: arg.AnalysisSource, ManualOverride: arg.ManualOverride,
 		ReviewRequired: arg.ReviewRequired, AnalysisUpdatedBy: arg.AnalysisUpdatedBy,
+		ExpectedState: arg.ExpectedState,
 	})
 	if err != nil {
-		return sqlc.Finding{}, fmt.Errorf("update analysis: %w", err)
+		if arg.ExpectedState.Valid && errors.Is(err, pgx.ErrNoRows) {
+			return sqlc.Finding{}, sqlc.FindingEvent{}, port.ErrAnalysisConflict
+		}
+		return sqlc.Finding{}, sqlc.FindingEvent{}, fmt.Errorf("update analysis: %w", err)
 	}
-	if _, err := q.CreateFindingEvent(ctx, sqlc.CreateFindingEventParams{
+	created, err := q.CreateFindingEvent(ctx, sqlc.CreateFindingEventParams{
 		FindingID: event.FindingID, UserID: event.UserID, EventType: event.EventType,
 		OldValue: event.OldValue, NewValue: event.NewValue, Comment: event.Comment, Changes: event.Changes,
-	}); err != nil {
-		return sqlc.Finding{}, fmt.Errorf("create event: %w", err)
+	})
+	if err != nil {
+		return sqlc.Finding{}, sqlc.FindingEvent{}, fmt.Errorf("create event: %w", err)
 	}
-	if err := tx.Commit(ctx); err != nil {
-		return sqlc.Finding{}, fmt.Errorf("commit tx: %w", err)
-	}
-	return updated, nil
+	return updated, created, nil
 }
 
 // BulkUpdateAnalysisParams is the input to a bulk analysis-state update.

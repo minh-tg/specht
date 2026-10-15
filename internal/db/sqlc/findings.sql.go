@@ -1752,22 +1752,22 @@ func (q *Queries) SetFindingIntroducedBy(ctx context.Context, arg SetFindingIntr
 
 const updateFindingAnalysis = `-- name: UpdateFindingAnalysis :one
 UPDATE findings SET
-    analysis_state = $2,
-    gate_effect = $3,
-    analysis_expires_at = $4,
-    analysis_reason = $5,
-    analysis_source = $6,
-    manual_override = $7,
-    review_required = $8,
+    analysis_state = $1,
+    gate_effect = $2,
+    analysis_expires_at = $3,
+    analysis_reason = $4,
+    analysis_source = $5,
+    manual_override = $6,
+    review_required = $7,
     analysis_updated_at = NOW(),
-    analysis_updated_by = $9,
+    analysis_updated_by = $8,
     updated_at = NOW()
-WHERE id = $1
+WHERE id = $9
+  AND ($10::text IS NULL OR analysis_state = $10::text)
 RETURNING id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version, introduced_by_report_id, introduced_commit_sha
 `
 
 type UpdateFindingAnalysisParams struct {
-	ID                pgtype.UUID        `json:"id"`
 	AnalysisState     string             `json:"analysis_state"`
 	GateEffect        string             `json:"gate_effect"`
 	AnalysisExpiresAt pgtype.Timestamptz `json:"analysis_expires_at"`
@@ -1776,11 +1776,15 @@ type UpdateFindingAnalysisParams struct {
 	ManualOverride    bool               `json:"manual_override"`
 	ReviewRequired    bool               `json:"review_required"`
 	AnalysisUpdatedBy pgtype.UUID        `json:"analysis_updated_by"`
+	ID                pgtype.UUID        `json:"id"`
+	ExpectedState     pgtype.Text        `json:"expected_state"`
 }
 
+// expected_state is an optional precondition: when set, the row is updated
+// only while analysis_state still equals it, so a caller that read the
+// finding first cannot overwrite a change made in between.
 func (q *Queries) UpdateFindingAnalysis(ctx context.Context, arg UpdateFindingAnalysisParams) (Finding, error) {
 	row := q.db.QueryRow(ctx, updateFindingAnalysis,
-		arg.ID,
 		arg.AnalysisState,
 		arg.GateEffect,
 		arg.AnalysisExpiresAt,
@@ -1789,6 +1793,8 @@ func (q *Queries) UpdateFindingAnalysis(ctx context.Context, arg UpdateFindingAn
 		arg.ManualOverride,
 		arg.ReviewRequired,
 		arg.AnalysisUpdatedBy,
+		arg.ID,
+		arg.ExpectedState,
 	)
 	var i Finding
 	err := row.Scan(

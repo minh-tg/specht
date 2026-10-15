@@ -20,6 +20,10 @@ var (
 	ErrInvalidState    = errors.New("invalid analysis state")
 	ErrTooManyFindings = errors.New("too many findings in one request")
 	ErrReasonTooLong   = errors.New("reason is too long")
+	// ErrAnalysisConflict means the finding no longer matches the state the
+	// caller based its write on (a stale expected_state, or an undo of an
+	// event that is not the newest analysis event).
+	ErrAnalysisConflict = port.ErrAnalysisConflict
 )
 
 const (
@@ -39,6 +43,9 @@ type TriageInput struct {
 	Reason            string
 	AnalysisExpiresAt *time.Time
 	UserID            string
+	// ExpectedState, when set, makes the write conditional on the finding
+	// still being in that analysis state.
+	ExpectedState string
 }
 
 // TriageOutput reports the triage result for one finding.
@@ -46,6 +53,9 @@ type TriageOutput struct {
 	FindingID     string `json:"finding_id"`
 	AnalysisState string `json:"analysis_state"`
 	GateEffect    string `json:"gate_effect"`
+	// EventID is the finding event the write recorded. It is the handle a
+	// later undo names. Empty for bulk triage.
+	EventID string `json:"event_id,omitempty"`
 }
 
 // BulkTriageInput applies one analysis state to many findings.
@@ -134,13 +144,20 @@ func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*Triag
 	gateEffect := stateToGateEffect(input.AnalysisState)
 	userIDStr := userID.String()
 
+	if input.ExpectedState != "" && input.ExpectedState != f.AnalysisState {
+		return nil, ErrAnalysisConflict
+	}
+
 	oldState := f.AnalysisState
 	changes, _ := json.Marshal(map[string]any{
 		"from":   oldState,
 		"to":     input.AnalysisState,
 		"reason": input.Reason,
+		"before": snapshotOf(f),
 	})
-	updated, err := u.deps.Stores.Findings.UpdateAnalysisWithEvent(ctx, port.UpdateAnalysisInput{
+	// The write is conditional on the state just read, so the event's from
+	// and before snapshot describe what the update replaced.
+	updated, created, err := u.deps.Stores.Findings.UpdateAnalysisWithEvent(ctx, port.UpdateAnalysisInput{
 		ID:                findingID.String(),
 		AnalysisState:     input.AnalysisState,
 		GateEffect:        gateEffect,
@@ -150,6 +167,7 @@ func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*Triag
 		ManualOverride:    true,
 		ReviewRequired:    false,
 		AnalysisUpdatedBy: &userIDStr,
+		ExpectedState:     stringPtr(f.AnalysisState),
 	}, port.FindingEventInput{
 		FindingID: findingID.String(), UserID: &userIDStr, EventType: "analysis_changed",
 		OldValue: stringPtr(f.AnalysisState), NewValue: stringPtr(input.AnalysisState), Comment: stringPtr(input.Reason), Changes: changes,
@@ -162,7 +180,32 @@ func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*Triag
 		FindingID:     updated.ID,
 		AnalysisState: updated.AnalysisState,
 		GateEffect:    updated.GateEffect,
+		EventID:       created.ID,
 	}, nil
+}
+
+// analysisSnapshot is the analysis part of a finding as it stood before a
+// triage write. Triage events carry it under changes.before so an undo can
+// put every field back, including the ones a manual write overwrites
+// (source, manual override, review flag).
+type analysisSnapshot struct {
+	AnalysisState     string     `json:"analysis_state"`
+	AnalysisReason    *string    `json:"analysis_reason"`
+	AnalysisExpiresAt *time.Time `json:"analysis_expires_at"`
+	AnalysisSource    string     `json:"analysis_source"`
+	ManualOverride    bool       `json:"manual_override"`
+	ReviewRequired    bool       `json:"review_required"`
+}
+
+func snapshotOf(f port.Finding) analysisSnapshot {
+	return analysisSnapshot{
+		AnalysisState:     f.AnalysisState,
+		AnalysisReason:    f.AnalysisReason,
+		AnalysisExpiresAt: f.AnalysisExpiresAt,
+		AnalysisSource:    f.AnalysisSource,
+		ManualOverride:    f.ManualOverride,
+		ReviewRequired:    f.ReviewRequired,
+	}
 }
 
 func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]TriageOutput, error) {
