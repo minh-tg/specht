@@ -82,6 +82,11 @@ releases.
 - A CycloneDX file that lists vulnerabilities (Grype writes one with
   `-o cyclonedx-json`) is ingested as findings, with the same identity Grype's
   own JSON gives them. It used to be read as a bare inventory with none.
+- Two different secrets of one rule in one file (a `.env` with two keys) are
+  two findings. A finding's identity is the rule, the file and a keyed hash of
+  the credential, so it stays put when its line moves, a rotated credential is
+  a new finding, and the credential itself is never stored. The key is made on
+  first use and kept in the database, so it travels with a backup.
 - The server validates all of its settings at startup and reports every
   problem in one message.
 - Request logs carry a request ID that matches the `X-Request-Id` response
