@@ -3,7 +3,11 @@ import type { UserProfile } from "@/types/api";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { suggestFromDirectory, useMemberSuggestions } from "./memberSuggestions";
+import {
+  type PersonSuggestion,
+  suggestFromDirectory,
+  useMemberSuggestions,
+} from "./memberSuggestions";
 
 function person(id: string, email: string, extra: Partial<UserProfile> = {}): UserProfile {
   return { id, email, role: "member", created_at: "2025-01-01T00:00:00Z", ...extra };
@@ -136,6 +140,90 @@ describe("useMemberSuggestions", () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(result.current.active).toBe(false);
     expect(calls).toHaveLength(0);
+  });
+
+  /** Answers each member-suggestion request only when the test releases it. */
+  function mockDeferredApi() {
+    const pending: Array<
+      {
+        url: string;
+        signal: AbortSignal | null | undefined;
+        resolve: (people: PersonSuggestion[]) => void;
+      }
+    > = [];
+    globalThis.fetch = vi.fn().mockImplementation(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url === "/api/v1/capabilities") {
+          return Promise.resolve(jsonResponse({ registration: { enabled: false } }));
+        }
+        return new Promise((resolve) => {
+          pending.push({
+            url,
+            signal: init?.signal,
+            resolve: (people) => resolve(jsonResponse(people)),
+          });
+        });
+      },
+    );
+    return pending;
+  }
+
+  const ADA_HIT: PersonSuggestion = {
+    user_id: "u-ada",
+    email: "ada@acme.example",
+    display_name: "Ada",
+  };
+  const ZED_HIT: PersonSuggestion = {
+    user_id: "u-zed",
+    email: "zed@acme.example",
+    display_name: "Zed",
+  };
+
+  it("offers nothing selectable for text that no longer matches the answer on screen", async () => {
+    const pending = mockDeferredApi();
+    const { result, rerender } = renderHook(({ q }) => useMemberSuggestions("app", q), {
+      wrapper,
+      initialProps: { q: "ada" },
+    });
+    await waitFor(() => expect(pending).toHaveLength(1));
+    pending[0]?.resolve([ADA_HIT]);
+    await waitFor(() => expect(result.current.suggestions).toEqual([ADA_HIT]));
+    expect(result.current.searching).toBe(false);
+
+    // Typing on: the answer for "ada" is stale at once, during the debounce...
+    rerender({ q: "zed" });
+    expect(result.current.suggestions).toEqual([]);
+    expect(result.current.searching).toBe(true);
+
+    // ...and while the request for "zed" is in flight.
+    await waitFor(() => expect(pending).toHaveLength(2));
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.suggestions).toEqual([]);
+    expect(result.current.searching).toBe(true);
+
+    pending[1]?.resolve([ZED_HIT]);
+    await waitFor(() => expect(result.current.suggestions).toEqual([ZED_HIT]));
+    expect(result.current.searching).toBe(false);
+  });
+
+  it("stops offering people as soon as the text drops below the minimum length", async () => {
+    const pending = mockDeferredApi();
+    const { result, rerender } = renderHook(({ q }) => useMemberSuggestions("app", q), {
+      wrapper,
+      initialProps: { q: "ada" },
+    });
+    await waitFor(() => expect(pending).toHaveLength(1));
+    pending[0]?.resolve([ADA_HIT]);
+    await waitFor(() => expect(result.current.suggestions).toEqual([ADA_HIT]));
+
+    rerender({ q: "ad" });
+    expect(result.current.active).toBe(false);
+    expect(result.current.suggestions).toEqual([]);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(result.current.active).toBe(false);
+    expect(result.current.suggestions).toEqual([]);
+    expect(pending).toHaveLength(1);
   });
 
   it("asks nothing while sign-up is open", async () => {

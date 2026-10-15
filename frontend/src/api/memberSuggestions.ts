@@ -14,6 +14,7 @@ export const MIN_SUGGESTION_QUERY = 3;
 /** The most people offered for one query, here and on the server. */
 export const MAX_SUGGESTIONS = 8;
 const DEBOUNCE_MS = 200;
+const NO_SUGGESTIONS: readonly PersonSuggestion[] = [];
 
 /** Length in characters, not UTF-16 units, to match the server's count. */
 function queryLength(query: string): number {
@@ -30,16 +31,21 @@ function useDebounced<T>(value: T, delayMs: number): T {
 }
 
 /**
- * Server-side suggestions for a project's "Add Direct Member" dialog. Typing is debounced, a
- * superseded request is cancelled through the query signal, and the previous answer stays on screen
- * while the next one loads. Nothing is requested while sign-up is open: the server answers `[]`
- * then, because anyone could have registered under a colleague's address.
+ * Server-side suggestions for a project's "Add Direct Member" dialog. Typing is debounced and a
+ * superseded request is cancelled through the query signal. Nothing is requested while sign-up is
+ * open: the server answers `[]` then, because anyone could have registered under a colleague's
+ * address.
+ *
+ * The previous answer stays in `data` while the next one loads, but it describes older text, so
+ * `suggestions` is empty and `searching` is true from the keystroke until the answer for the
+ * current text arrives (the debounce wait, then the round trip).
  */
 export function useMemberSuggestions(slug: string, query: string, enabled = true) {
-  const trimmed = useDebounced(query.trim(), DEBOUNCE_MS);
+  const typed = query.trim();
+  const trimmed = useDebounced(typed, DEBOUNCE_MS);
   const registrationOpen = useCapabilities().data?.registration?.enabled !== false;
   const active = enabled && !!slug && !registrationOpen
-    && queryLength(trimmed) >= MIN_SUGGESTION_QUERY;
+    && queryLength(typed) >= MIN_SUGGESTION_QUERY && queryLength(trimmed) >= MIN_SUGGESTION_QUERY;
   const result = useQuery({
     queryKey: ["projects", slug, "member-suggestions", trimmed] as const,
     queryFn: ({ signal }) =>
@@ -54,7 +60,13 @@ export function useMemberSuggestions(slug: string, query: string, enabled = true
     placeholderData: keepPreviousData,
     retry: false,
   });
-  return { ...result, active };
+  const stale = typed !== trimmed || result.isPlaceholderData;
+  return {
+    ...result,
+    active,
+    suggestions: stale ? NO_SUGGESTIONS : (result.data ?? NO_SUGGESTIONS),
+    searching: active && (stale || (result.isFetching && !result.data)),
+  };
 }
 
 /**
