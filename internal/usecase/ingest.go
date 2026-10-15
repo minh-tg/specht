@@ -442,15 +442,15 @@ func (u *Usecases) resolveArtifact(ctx context.Context, project port.Project, in
 	return a.ID
 }
 
-// resolveEnvironment upserts the scan environment (best-effort; failures
-// log only).
+// resolveEnvironment makes sure the scan environment exists (best-effort;
+// failures log only). An existing environment keeps its settings.
 func (u *Usecases) resolveEnvironment(ctx context.Context, project port.Project, input IngestReportInput) string {
 	if input.Environment == "" {
 		return ""
 	}
-	e, err := u.deps.Stores.Environments.Upsert(ctx, project.ID, input.Environment, "development", false, "internal")
+	e, err := u.deps.Stores.Environments.Ensure(ctx, project.ID, input.Environment, "development", false, "internal")
 	if err != nil {
-		slog.Warn("upsert environment failed", "project", project.ID, "environment", input.Environment, "error", err)
+		slog.Warn("ensure environment failed", "project", project.ID, "environment", input.Environment, "error", err)
 		return ""
 	}
 	return e.ID

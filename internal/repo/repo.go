@@ -129,7 +129,7 @@ type APIKeyRepo interface {
 
 // EnvironmentRepo persists deployment environments.
 type EnvironmentRepo interface {
-	Upsert(ctx context.Context, arg sqlc.UpsertEnvironmentParams) (sqlc.Environment, error)
+	Ensure(ctx context.Context, arg sqlc.EnsureEnvironmentParams) (sqlc.Environment, error)
 	List(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Environment, error)
 	GetByID(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Environment, error)
 	Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Environment, error)

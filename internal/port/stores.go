@@ -310,7 +310,10 @@ type Environment struct {
 
 // EnvironmentStore persists deployment environments.
 type EnvironmentStore interface {
-	Upsert(ctx context.Context, projectID, name, tier string, internetFacing bool, dataSensitivity string) (Environment, error)
+	// Ensure creates the environment with these defaults, or returns the
+	// stored row unchanged. It never overwrites, so a scan that names an
+	// environment cannot undo an edit.
+	Ensure(ctx context.Context, projectID, name, tier string, internetFacing bool, dataSensitivity string) (Environment, error)
 	List(ctx context.Context, projectID string) ([]Environment, error)
 	GetByID(ctx context.Context, id, projectID string) (Environment, error)
 	Delete(ctx context.Context, id, projectID string) (Environment, error)

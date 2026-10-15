@@ -11,8 +11,8 @@ type pgEnvironmentRepo struct {
 	q *sqlc.Queries
 }
 
-func (r *pgEnvironmentRepo) Upsert(ctx context.Context, arg sqlc.UpsertEnvironmentParams) (sqlc.Environment, error) {
-	return r.q.UpsertEnvironment(ctx, arg)
+func (r *pgEnvironmentRepo) Ensure(ctx context.Context, arg sqlc.EnsureEnvironmentParams) (sqlc.Environment, error) {
+	return r.q.EnsureEnvironment(ctx, arg)
 }
 
 func (r *pgEnvironmentRepo) List(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Environment, error) {

@@ -1410,17 +1410,17 @@ func (m *mockTargetRepo) Delete(ctx context.Context, id, projectID string) (port
 
 type mockEnvironmentRepo struct {
 	port.EnvironmentStore
-	upsertFn  func(context.Context, string, string, string, bool, string) (port.Environment, error)
+	ensureFn  func(context.Context, string, string, string, bool, string) (port.Environment, error)
 	listFn    func(context.Context, string) ([]port.Environment, error)
 	getByIDFn func(context.Context, string, string) (port.Environment, error)
 	deleteFn  func(context.Context, string, string) (port.Environment, error)
 }
 
-func (m *mockEnvironmentRepo) Upsert(ctx context.Context, projectID, name, tier string, internetFacing bool, dataSensitivity string) (port.Environment, error) {
-	if m.upsertFn == nil {
-		return port.Environment{}, fmt.Errorf("unexpected call to Upsert")
+func (m *mockEnvironmentRepo) Ensure(ctx context.Context, projectID, name, tier string, internetFacing bool, dataSensitivity string) (port.Environment, error) {
+	if m.ensureFn == nil {
+		return port.Environment{}, fmt.Errorf("unexpected call to Ensure")
 	}
-	return m.upsertFn(ctx, projectID, name, tier, internetFacing, dataSensitivity)
+	return m.ensureFn(ctx, projectID, name, tier, internetFacing, dataSensitivity)
 }
 
 func (m *mockEnvironmentRepo) List(ctx context.Context, projectID string) ([]port.Environment, error) {

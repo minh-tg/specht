@@ -438,12 +438,12 @@ func apiKeyToPort(k sqlc.ApiKey) port.APIKey {
 // pgEnvironmentPort adapts EnvironmentStore.
 type pgEnvironmentPort struct{ q *sqlc.Queries }
 
-func (r *pgEnvironmentPort) Upsert(ctx context.Context, projectID, name, tier string, internetFacing bool, dataSensitivity string) (port.Environment, error) {
+func (r *pgEnvironmentPort) Ensure(ctx context.Context, projectID, name, tier string, internetFacing bool, dataSensitivity string) (port.Environment, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
 		return port.Environment{}, err
 	}
-	row, err := r.q.UpsertEnvironment(ctx, sqlc.UpsertEnvironmentParams{
+	row, err := r.q.EnsureEnvironment(ctx, sqlc.EnsureEnvironmentParams{
 		ProjectID:       pid,
 		Name:            name,
 		Tier:            tier,
