@@ -37,6 +37,45 @@ func (q *Queries) DeleteEnvironment(ctx context.Context, arg DeleteEnvironmentPa
 	return i, err
 }
 
+const ensureEnvironment = `-- name: EnsureEnvironment :one
+INSERT INTO environments (project_id, name, tier, internet_facing, data_sensitivity)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (project_id, name)
+DO UPDATE SET name = environments.name
+RETURNING id, project_id, name, tier, internet_facing, data_sensitivity, created_at
+`
+
+type EnsureEnvironmentParams struct {
+	ProjectID       pgtype.UUID `json:"project_id"`
+	Name            string      `json:"name"`
+	Tier            string      `json:"tier"`
+	InternetFacing  bool        `json:"internet_facing"`
+	DataSensitivity string      `json:"data_sensitivity"`
+}
+
+// Creates the environment with the given defaults, or returns the existing
+// row untouched, so a later scan never resets what a person has edited.
+func (q *Queries) EnsureEnvironment(ctx context.Context, arg EnsureEnvironmentParams) (Environment, error) {
+	row := q.db.QueryRow(ctx, ensureEnvironment,
+		arg.ProjectID,
+		arg.Name,
+		arg.Tier,
+		arg.InternetFacing,
+		arg.DataSensitivity,
+	)
+	var i Environment
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Tier,
+		&i.InternetFacing,
+		&i.DataSensitivity,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const getEnvironment = `-- name: GetEnvironment :one
 SELECT id, project_id, name, tier, internet_facing, data_sensitivity, created_at FROM environments
 WHERE id = $1 AND project_id = $2
@@ -95,44 +134,4 @@ func (q *Queries) ListEnvironments(ctx context.Context, projectID pgtype.UUID) (
 		return nil, err
 	}
 	return items, nil
-}
-
-const upsertEnvironment = `-- name: UpsertEnvironment :one
-INSERT INTO environments (project_id, name, tier, internet_facing, data_sensitivity)
-VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (project_id, name)
-DO UPDATE SET
-    tier = EXCLUDED.tier,
-    internet_facing = EXCLUDED.internet_facing,
-    data_sensitivity = EXCLUDED.data_sensitivity
-RETURNING id, project_id, name, tier, internet_facing, data_sensitivity, created_at
-`
-
-type UpsertEnvironmentParams struct {
-	ProjectID       pgtype.UUID `json:"project_id"`
-	Name            string      `json:"name"`
-	Tier            string      `json:"tier"`
-	InternetFacing  bool        `json:"internet_facing"`
-	DataSensitivity string      `json:"data_sensitivity"`
-}
-
-func (q *Queries) UpsertEnvironment(ctx context.Context, arg UpsertEnvironmentParams) (Environment, error) {
-	row := q.db.QueryRow(ctx, upsertEnvironment,
-		arg.ProjectID,
-		arg.Name,
-		arg.Tier,
-		arg.InternetFacing,
-		arg.DataSensitivity,
-	)
-	var i Environment
-	err := row.Scan(
-		&i.ID,
-		&i.ProjectID,
-		&i.Name,
-		&i.Tier,
-		&i.InternetFacing,
-		&i.DataSensitivity,
-		&i.CreatedAt,
-	)
-	return i, err
 }

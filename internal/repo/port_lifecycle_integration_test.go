@@ -36,7 +36,7 @@ func TestPortAdapterLifecycle(t *testing.T) {
 	// Exercise the sqlc-backed repositories directly as well as their port
 	// adapters; the repository wrappers are part of the production contract.
 	projectUUID := mustParseID(project.ID)
-	lowLevelEnvironment, err := repos.Environments.Upsert(ctx, sqlc.UpsertEnvironmentParams{
+	lowLevelEnvironment, err := repos.Environments.Ensure(ctx, sqlc.EnsureEnvironmentParams{
 		ProjectID:       projectUUID,
 		Name:            "staging",
 		Tier:            "staging",
@@ -96,8 +96,16 @@ func TestPortAdapterLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, lowLevelTarget.ID, deletedLowLevelTarget.ID)
 
-	environment, err := stores.Environments.Upsert(ctx, project.ID, "production", "production", true, "confidential")
+	environment, err := stores.Environments.Ensure(ctx, project.ID, "production", "production", true, "confidential")
 	require.NoError(t, err)
+	// A second Ensure with other defaults, as a later scan sends, returns the
+	// stored row and changes nothing.
+	again, err := stores.Environments.Ensure(ctx, project.ID, "production", "development", false, "internal")
+	require.NoError(t, err)
+	require.Equal(t, environment.ID, again.ID)
+	require.Equal(t, "production", again.Tier)
+	require.True(t, again.InternetFacing)
+	require.Equal(t, "confidential", again.DataSensitivity)
 	environments, err := stores.Environments.List(ctx, project.ID)
 	require.NoError(t, err)
 	require.Len(t, environments, 1)
