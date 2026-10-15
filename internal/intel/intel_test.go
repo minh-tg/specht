@@ -39,10 +39,8 @@ func TestEPSSProvider_ParsesBatch(t *testing.T) {
 	require.NotNil(t, records["CVE-2024-1111"].EPSS)
 	assert.InDelta(t, 0.00415, *records["CVE-2024-1111"].EPSS, 1e-9)
 	assert.Equal(t, "2026-09-04", records["CVE-2024-1111"].EPSSDate)
-	require.NotNil(t, records["CVE-2024-1111"].EPSSPercentile)
-	assert.InDelta(t, 0.34737, *records["CVE-2024-1111"].EPSSPercentile, 1e-9)
-	require.NotNil(t, records["CVE-2024-9999"].EPSSPercentile)
-	assert.InDelta(t, 0.99876, *records["CVE-2024-9999"].EPSSPercentile, 1e-9)
+	assert.InDelta(t, 0.34737, records["CVE-2024-1111"].EPSSPercentile, 1e-9)
+	assert.InDelta(t, 0.99876, records["CVE-2024-9999"].EPSSPercentile, 1e-9)
 }
 
 func TestEPSSProvider_BadPercentileKeepsTheScore(t *testing.T) {
@@ -60,7 +58,7 @@ func TestEPSSProvider_BadPercentileKeepsTheScore(t *testing.T) {
 	require.Len(t, records, 3)
 	for id, rec := range records {
 		require.NotNil(t, rec.EPSS, id)
-		assert.Nil(t, rec.EPSSPercentile, "%s: an unparseable or out of range percentile is dropped, not zeroed", id)
+		assert.Zero(t, rec.EPSSPercentile, "%s: an unparseable or out of range percentile is dropped, not kept", id)
 	}
 }
 
@@ -269,8 +267,7 @@ func TestStore_PartialRefreshPreservesCachedSignals(t *testing.T) {
 	assert.Equal(t, "2026-01-15", rec.KEVAdded)
 	assert.Equal(t, "2026-02-05", rec.KEVDueDate)
 	assert.Equal(t, "Known", rec.KEVRansomware)
-	require.NotNil(t, rec.EPSSPercentile)
-	assert.InDelta(t, 0.9, *rec.EPSSPercentile, 1e-9)
+	assert.InDelta(t, 0.9, rec.EPSSPercentile, 1e-9)
 
 	// Step 2: the KEV catalog has expired and the download fails, EPSS
 	// succeeds. Cached KEV data must NOT be erased.
@@ -285,7 +282,7 @@ func TestStore_PartialRefreshPreservesCachedSignals(t *testing.T) {
 	assert.Equal(t, "2026-01-15", rec2.KEVAdded)
 	assert.Equal(t, "2026-02-05", rec2.KEVDueDate)
 	assert.Equal(t, "Known", rec2.KEVRansomware)
-	require.NotNil(t, rec2.EPSSPercentile, "the percentile travels with the score")
+	assert.InDelta(t, 0.9, rec2.EPSSPercentile, 1e-9, "the percentile travels with the score")
 	require.NotNil(t, rec2.EPSS)
 	assert.InDelta(t, 0.5, *rec2.EPSS, 1e-9)
 }
@@ -314,8 +311,7 @@ func TestStore_SecondRefreshUpdatesTheWidenedFields(t *testing.T) {
 
 	rec, _, ok := s.Lookup("CVE-2024-1111")
 	require.True(t, ok)
-	require.NotNil(t, rec.EPSSPercentile)
-	assert.InDelta(t, 0.75, *rec.EPSSPercentile, 1e-9)
+	assert.InDelta(t, 0.75, rec.EPSSPercentile, 1e-9)
 	assert.Equal(t, "2026-03-01", rec.KEVDueDate)
 	assert.Equal(t, "Known", rec.KEVRansomware)
 }
