@@ -1,3 +1,4 @@
+import { SingleKeySetting } from "@/components/SingleKeySetting";
 import { SoundSetting } from "@/components/SoundSetting";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { type Theme, useTheme } from "@/lib/theme";
@@ -72,6 +73,7 @@ export function AccountMenu({ email, onLogout }: { email: string | null; onLogou
             </Menu.RadioGroup>
             <Menu.Separator className="bg-border -mx-1 my-1 h-px" />
             <SoundSetting />
+            <SingleKeySetting />
             <Menu.Separator className="bg-border -mx-1 my-1 h-px" />
             <Menu.Item onClick={onLogout} className={ITEM_CLASS}>
               Sign out
