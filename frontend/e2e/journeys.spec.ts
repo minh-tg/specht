@@ -6,6 +6,7 @@ import {
   CHANGE_SHA,
   chooseOption,
   FIXTURE_GITLEAKS,
+  FIXTURE_GOSEC_JSON,
   FIXTURE_HIGH,
   FIXTURE_HIGH_MEDIUM,
   FIXTURE_HIGH_NEW,
@@ -1022,4 +1023,27 @@ test("a project admin classifies an environment and a later scan leaves it alone
   await expect(environments.getByRole("listitem")).toContainText("staging");
   await expect(environments.getByRole("listitem")).toContainText("Internet facing");
   await expect(environments.getByRole("listitem")).toContainText("restricted");
+});
+
+test("a file uploaded under the wrong scanner is refused with what to do", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("wrong-scanner");
+  await seedProject(request, token, slug);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/reports/upload`);
+  await chooseOption(page, page.getByLabel("Scanner"), /^trivy/);
+  await page.setInputFiles("#ingest-file", FIXTURE_GOSEC_JSON);
+  await page.getByRole("button", { name: "Upload" }).click();
+
+  await expect(page.getByRole("alert")).toContainText("The file is not trivy output");
+  await expect(page.getByRole("alert")).toContainText(
+    "Check that you chose the scanner that wrote it",
+  );
+
+  // Nothing was recorded.
+  await page.goto(`/${slug}/reports`);
+  await expect(page.getByText("gosec")).toHaveCount(0);
+  await page.goto(`/${slug}/findings`);
+  await expect(page.locator("tbody tr")).toHaveCount(0);
 });
