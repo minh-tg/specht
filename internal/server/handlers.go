@@ -220,6 +220,8 @@ type (
 		UpdateWaiver(ctx context.Context, input usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error)
 		DeleteWaiver(ctx context.Context, projectSlug, waiverID string) error
 		ToggleWaiver(ctx context.Context, projectSlug, waiverID, actorID string) (*usecase.WaiverResponse, error)
+		RevokeWaiver(ctx context.Context, projectSlug, waiverID, actorID string, expectedUpdatedAt *time.Time) (*usecase.WaiverResponse, error)
+		RestoreWaiver(ctx context.Context, projectSlug, waiverID, actorID string, expectedUpdatedAt *time.Time) (*usecase.WaiverResponse, error)
 		ListWaiverEvents(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
 		CheckWaiverMatch(ctx context.Context, projectSlug, findingID string) (bool, error)
 	}

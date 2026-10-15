@@ -112,6 +112,8 @@ type mockUsecases struct {
 	updateWaiverFn          func(ctx context.Context, input usecase.UpdateWaiverInput) (*usecase.WaiverResponse, error)
 	deleteWaiverFn          func(ctx context.Context, projectSlug, waiverID string) error
 	toggleWaiverFn          func(ctx context.Context, projectSlug, waiverID, actorID string) (*usecase.WaiverResponse, error)
+	revokeWaiverFn          func(ctx context.Context, projectSlug, waiverID, actorID string, expectedUpdatedAt *time.Time) (*usecase.WaiverResponse, error)
+	restoreWaiverFn         func(ctx context.Context, projectSlug, waiverID, actorID string, expectedUpdatedAt *time.Time) (*usecase.WaiverResponse, error)
 	listWaiverEventsFn      func(ctx context.Context, projectSlug, waiverID string) ([]usecase.WaiverEventResp, error)
 	checkWaiverMatchFn      func(ctx context.Context, projectSlug, findingID string) (bool, error)
 	getProjectStatsFn       func(ctx context.Context, projectSlug string) (*usecase.ProjectStats, error)
@@ -609,6 +611,20 @@ func (m *mockUsecases) DeleteWaiver(ctx context.Context, projectSlug, waiverID s
 		return fmt.Errorf("unexpected call to DeleteWaiver")
 	}
 	return m.deleteWaiverFn(ctx, projectSlug, waiverID)
+}
+
+func (m *mockUsecases) RevokeWaiver(ctx context.Context, projectSlug, waiverID, actorID string, expectedUpdatedAt *time.Time) (*usecase.WaiverResponse, error) {
+	if m.revokeWaiverFn == nil {
+		return nil, fmt.Errorf("unexpected call to RevokeWaiver")
+	}
+	return m.revokeWaiverFn(ctx, projectSlug, waiverID, actorID, expectedUpdatedAt)
+}
+
+func (m *mockUsecases) RestoreWaiver(ctx context.Context, projectSlug, waiverID, actorID string, expectedUpdatedAt *time.Time) (*usecase.WaiverResponse, error) {
+	if m.restoreWaiverFn == nil {
+		return nil, fmt.Errorf("unexpected call to RestoreWaiver")
+	}
+	return m.restoreWaiverFn(ctx, projectSlug, waiverID, actorID, expectedUpdatedAt)
 }
 
 func (m *mockUsecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID, actorID string) (*usecase.WaiverResponse, error) {
@@ -3482,6 +3498,8 @@ func authRouter(h *Handler) http.Handler {
 		r.Put("/{id}", h.UpdateWaiver)
 		r.Delete("/{id}", h.DeleteWaiver)
 		r.Post("/{id}/toggle", h.ToggleWaiver)
+		r.Post("/{id}/revoke", h.RevokeWaiver)
+		r.Post("/{id}/restore", h.RestoreWaiver)
 		r.Post("/{id}/approve", h.ApproveWaiver)
 		r.Post("/{id}/reject", h.RejectWaiver)
 		r.Post("/{id}/withdraw", h.WithdrawWaiver)

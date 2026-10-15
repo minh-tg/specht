@@ -2130,8 +2130,13 @@ paths:
     post:
       tags: [Waivers]
       operationId: toggleWaiver
-      summary: Enable or disable a waiver
-      description: Disables an active waiver, or re-enables a disabled one, without deleting it.
+      deprecated: true
+      summary: Enable or disable a waiver (deprecated)
+      description: |
+        Disables an active waiver, or re-enables a disabled one, without deleting it.
+        The flip is blind: two callers can undo each other. Use `revoke` and `restore`,
+        which name the wanted state. Only an approved waiver flips (`waiver_not_approved`),
+        and a disabled waiver whose expiry has passed stays off (`waiver_expired`).
       x-required-scope: admin
       security:
         - sessionAuth: []
@@ -2147,13 +2152,86 @@ paths:
               schema: { $ref: "#/components/schemas/Waiver" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/WaiverSwitchConflict" }
+
+  /api/v1/projects/{slug}/waivers/{id}/revoke:
+    post:
+      tags: [Waivers]
+      operationId: revokeWaiver
+      summary: Revoke an approved waiver
+      description: |
+        Switches an approved waiver off, so it stops counting in the gate. The call names
+        the wanted state: revoking a waiver that is already off returns it unchanged and
+        adds no history entry. A `revoked` event records who did it and when, and the audit
+        log gets `waiver.revoke`. Needs the project manager or admin role.
+
+        Send `expected_updated_at` with the `updated_at` you last saw to make the call
+        conditional. A waiver written since then answers `waiver_changed`.
+      x-required-scope: admin
+      security:
+        - sessionAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WaiverSwitchRequest" }
+      responses:
+        "200":
+          description: The waiver, switched off.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Waiver" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/WaiverSwitchConflict" }
+
+  /api/v1/projects/{slug}/waivers/{id}/restore:
+    post:
+      tags: [Waivers]
+      operationId: restoreWaiver
+      summary: Restore a revoked waiver
+      description: |
+        Switches a revoked waiver back on, so it counts in the gate again. Restoring a
+        waiver that is already on returns it unchanged and adds no history entry. A
+        `restored` event records who did it and when, and the audit log gets
+        `waiver.restore`. Needs the project manager or admin role.
+
+        A waiver whose expiry has passed cannot be restored (`waiver_expired`); extend its
+        expiry first. `expected_updated_at` works as it does for `revoke`.
+      x-required-scope: admin
+      security:
+        - sessionAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/WaiverSwitchRequest" }
+      responses:
+        "200":
+          description: The waiver, switched on.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Waiver" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/WaiverSwitchConflict" }
 
   /api/v1/projects/{slug}/waivers/{id}/events:
     get:
       tags: [Waivers]
       operationId: listWaiverEvents
       summary: Read a waiver's audit trail
-      description: "`created`, `updated`, `enabled`, `disabled`, and `auto_disabled` events."
+      description: "`created`, `updated`, `revoked`, `restored`, `enabled`, `disabled`, and `auto_disabled` events. `enabled` and `disabled` come from the deprecated toggle."
       x-required-scope: read
       security:
         - sessionAuth: []
@@ -3151,6 +3229,16 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
           example: { error: { code: waiver_not_pending, message: waiver is not pending } }
+    WaiverSwitchConflict:
+      description: |
+        The waiver cannot be switched as asked: `waiver_changed` (it was written after
+        `expected_updated_at`), `waiver_expired` (its expiry has passed, so it cannot be
+        switched on) or `waiver_not_approved` (only an approved waiver can be revoked or
+        restored).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          example: { error: { code: waiver_changed, message: the waiver changed since you loaded it } }
     BodyTooLarge:
       description: The request body exceeded the size cap.
       content:
@@ -4076,7 +4164,19 @@ components:
           type: array
           items: { $ref: "#/components/schemas/WaiverFindingTarget" }
         created_at: { type: string, format: date-time }
-        updated_at: { type: string, format: date-time }
+        updated_at:
+          type: string
+          format: date-time
+          description: Version of the waiver, with microseconds. Send it back unchanged as `expected_updated_at` on `revoke` or `restore`.
+          example: "2026-10-15T09:12:44.123456Z"
+
+    WaiverSwitchRequest:
+      type: object
+      properties:
+        expected_updated_at:
+          type: string
+          format: date-time
+          description: The `updated_at` the caller last saw. When set, the call fails with `waiver_changed` if the waiver was written after it.
 
     WaiverCondition:
       type: object
@@ -4212,7 +4312,7 @@ components:
         waiver_id: { type: string, format: uuid }
         event_type:
           type: string
-          enum: [created, updated, enabled, disabled, auto_disabled, requested, approved, rejected, withdrawn, auto_rejected]
+          enum: [created, updated, revoked, restored, enabled, disabled, auto_disabled, requested, approved, rejected, withdrawn, auto_rejected]
         actor_id: { type: string, format: uuid }
         actor_name: { type: string, description: "The actor's display name, or their email when they set none; \"System\" for automated actions. Left out for API keys." }
         metadata:

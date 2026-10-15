@@ -166,7 +166,10 @@ func toWaiver(w port.Waiver) WaiverResponse {
 		Contexts:     make([]WaiverContextResp, 0),
 		Targets:      make([]WaiverFindingTargetResp, 0),
 		CreatedAt:    w.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:    w.UpdatedAt.Format(time.RFC3339),
+		// UpdatedAt keeps its sub-second digits: revoke and restore take it
+		// back as a precondition, and a second-level value would match a
+		// waiver that changed again within the same second.
+		UpdatedAt: w.UpdatedAt.Format(time.RFC3339Nano),
 	}
 }
 
@@ -559,6 +562,54 @@ func (u *Usecases) ToggleWaiver(ctx context.Context, projectSlug, waiverID, acto
 	w, err := u.deps.Stores.Waivers.ToggleWithEvent(ctx, id.String(), project.ID, actorID)
 	if err != nil {
 		return nil, fmt.Errorf("toggle waiver: %w", err)
+	}
+
+	resp := toWaiver(w)
+	return &resp, nil
+}
+
+// RevokeWaiver switches an approved waiver off. Revoking a waiver that is
+// already off succeeds without a new event. A non-nil expectedUpdatedAt makes
+// the call fail with ErrWaiverChanged when the waiver was written since.
+func (u *Usecases) RevokeWaiver(ctx context.Context, projectSlug, waiverID, actorID string, expectedUpdatedAt *time.Time) (*WaiverResponse, error) {
+	return u.setWaiverEnabled(ctx, projectSlug, waiverID, actorID, false, expectedUpdatedAt)
+}
+
+// RestoreWaiver switches a revoked waiver back on. It fails with
+// ErrWaiverLapsed once the waiver's expiry has passed.
+func (u *Usecases) RestoreWaiver(ctx context.Context, projectSlug, waiverID, actorID string, expectedUpdatedAt *time.Time) (*WaiverResponse, error) {
+	return u.setWaiverEnabled(ctx, projectSlug, waiverID, actorID, true, expectedUpdatedAt)
+}
+
+func (u *Usecases) setWaiverEnabled(ctx context.Context, projectSlug, waiverID, actorID string, enabled bool, expectedUpdatedAt *time.Time) (*WaiverResponse, error) {
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
+	if err != nil {
+		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
+	}
+	if err := u.requireProjectAdminForWaiver(ctx, project.ID); err != nil {
+		return nil, err
+	}
+
+	id, err := uuid.Parse(waiverID)
+	if err != nil {
+		return nil, fmt.Errorf(errInvalidWaiverIDFormat, err)
+	}
+
+	eventType, verb := "revoked", "revoke"
+	if enabled {
+		eventType, verb = "restored", "restore"
+	}
+	w, err := u.deps.Stores.Waivers.SetEnabled(ctx, id.String(), project.ID, port.WaiverEnabledChange{
+		Enabled:           enabled,
+		ExpectedUpdatedAt: expectedUpdatedAt,
+		Event: port.WaiverEventInput{
+			EventType: eventType,
+			ActorID:   &actorID,
+			Metadata:  json.RawMessage(`{}`),
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("%s waiver: %w", verb, err)
 	}
 
 	resp := toWaiver(w)
