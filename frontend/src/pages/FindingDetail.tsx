@@ -6,6 +6,7 @@ import {
   useReachability,
   useWaivers,
 } from "@/api/hooks";
+import { usePendingTriage } from "@/api/pendingTriage";
 import { ErrorState } from "@/components/ErrorState";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,6 +41,7 @@ export function FindingDetail() {
   const { data: gate } = useGateStatus(slug ?? "");
   const { data: project } = useProject(slug ?? "");
   const pendingWaivers = useWaivers(slug ?? "", ["pending"]);
+  const pendingTriage = usePendingTriage(findingId ?? "");
   const [waiverOpen, setWaiverOpen] = useState(false);
   const {
     data: reachability,
@@ -81,7 +83,13 @@ export function FindingDetail() {
     );
   }
 
-  const gateResult = blocksGate(finding, gate);
+  // The state the person just chose shows at once. The gate verdict, the waiver button and the
+  // "why" panel are computed by the server from the old state, so until the gate has refetched the
+  // page claims nothing about blocking instead of showing a verdict it knows may be wrong.
+  const shown = pendingTriage
+    ? { ...finding, analysis_state: pendingTriage.analysisState }
+    : finding;
+  const gateResult = blocksGate(finding, pendingTriage ? undefined : gate);
   const currentGate = blocksGateSentence(gateResult);
   const canRequestWaiver = project?.permissions?.request_waiver === true
     && gateResult?.blocks === true;
@@ -113,7 +121,7 @@ export function FindingDetail() {
           <div className="border-border mt-8 border-t pt-5">
             <h2 className="mb-1 text-lg font-semibold">Decide</h2>
             <p className="text-muted-foreground mb-4 text-xs">
-              Currently: {analysisStateLabel(finding.analysis_state) ?? "Not triaged"}
+              Currently: {analysisStateLabel(shown.analysis_state) ?? "Not triaged"}
               {currentGate && <>{" · "}{currentGate}</>}
             </p>
             <TriageSection
@@ -160,7 +168,7 @@ export function FindingDetail() {
                 </Button>
               )
           )}
-          <MetadataGrid finding={finding} />
+          <MetadataGrid finding={shown} />
         </aside>
       </div>
 

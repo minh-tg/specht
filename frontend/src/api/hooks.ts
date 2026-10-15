@@ -36,7 +36,8 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { apiFetch, apiFetchWithTotal } from "./client";
+import { toast } from "sonner";
+import { APIError, apiFetch, apiFetchWithTotal } from "./client";
 import { restoreMemberPlan, revokeUndoPlan, triageUndoPlan } from "./undoPlans";
 
 /** What the findings list asks the server for. Empty values are left out of the request. */
@@ -402,17 +403,28 @@ export function useChangeGate(projectSlug: string, reportId: string | undefined)
   });
 }
 
+/** Identifies a single-finding triage, so a page can see one that is still in flight. */
+export const TRIAGE_MUTATION_KEY = ["triage-finding"] as const;
+
+/**
+ * Changes one finding's triage state. The mutation stays pending until the finding, its gate and
+ * the lists have refetched (`onSuccess` returns the refetch), so a page that renders the new state
+ * while `isPending` also knows when the gate verdict beside it has caught up. Nothing is written to
+ * the query cache before the server answers, so a refusal needs no rollback.
+ */
 export function useTriageFinding() {
   const queryClient = useQueryClient();
-  const refresh = () => {
-    queryClient.invalidateQueries({ queryKey: queryKeys.reachability() });
-    queryClient.invalidateQueries({ queryKey: queryKeys.findings() });
-    queryClient.invalidateQueries({ queryKey: queryKeys.finding() });
-    queryClient.invalidateQueries({ queryKey: queryKeys.findingEvents() });
-    queryClient.invalidateQueries({ queryKey: queryKeys.gate() });
-    queryClient.invalidateQueries({ queryKey: queryKeys.projectStats() });
-  };
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.reachability() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.findings() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.finding() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.findingEvents() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.gate() }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectStats() }),
+    ]).then(() => undefined);
   return useMutation({
+    mutationKey: TRIAGE_MUTATION_KEY,
     meta: {
       success: (data: TriageResponse) =>
         `Triage saved (effect: ${gateEffectLabel(data.gate_effect) ?? "Unknown"})`,
@@ -449,6 +461,11 @@ export function useTriageFinding() {
         }),
       }),
     onSuccess: refresh,
+    onError: (error) => {
+      // A 401 is the session ending, which redirects instead.
+      if (error instanceof APIError && error.status === 401) return;
+      toast.error(error.message || "Could not save the triage.");
+    },
   });
 }
 
