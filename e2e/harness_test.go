@@ -354,6 +354,13 @@ func cleanEnv(overrides ...string) []string {
 		"TRUSTED_PROXIES":     true,
 		"INTEL_EPSS_ENDPOINT": true, "INTEL_KEV_ENDPOINT": true,
 		"INTEL_TTL": true,
+		// CVE detail providers stay off unless a test turns them on, and
+		// only that test chooses which certificates the server trusts.
+		"CVE_DETAIL_PROVIDERS": true, "CVE_DETAIL_NVD_API_KEY": true,
+		"CVE_DETAIL_VULNCHECK_API_KEY": true, "CVE_DETAIL_NVD_BASE_URL": true,
+		"CVE_DETAIL_VULNCHECK_BASE_URL": true, "CVE_DETAIL_OSV_BASE_URL": true,
+		"CVE_DETAIL_ALLOW_PRIVATE_MIRROR": true, "CVE_DETAIL_NVD_RPS": true,
+		"SSL_CERT_FILE": true,
 	}
 	var env []string
 	for _, kv := range os.Environ() {
