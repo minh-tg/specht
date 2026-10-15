@@ -93,6 +93,26 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("cue levels", () => {
+  it.each(["accepted", "pass", "block", "copied", "error"] as const)(
+    "keeps the summed level of simultaneous notes in %s at or below 1",
+    (cue) => {
+      setSoundEnabled(true);
+      unlockAudio();
+      playCue(cue);
+      const ctx = lastContext();
+      expect(ctx.oscillators.length).toBeGreaterThan(0);
+      for (const a of ctx.oscillators) {
+        const sum = ctx.oscillators.reduce((total, b, i) => {
+          // Notes that start together peak together; a later note starts after the earlier decayed.
+          return b.startedAt === a.startedAt ? total + ctx.peaks[i]! : total;
+        }, 0);
+        expect(sum).toBeLessThanOrEqual(1);
+      }
+    },
+  );
+});
+
 describe("preference", () => {
   it("is off by default", () => {
     expect(isSoundEnabled()).toBe(false);

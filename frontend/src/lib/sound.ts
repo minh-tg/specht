@@ -21,8 +21,8 @@ const CUES: Readonly<Record<Cue, readonly Note[]>> = {
     { freq: 783.99, at: 0.07, dur: 0.08, level: 1, wave: "sine" },
   ],
   pass: [
-    { freq: 523.25, at: 0, dur: 0.18, level: 0.6, wave: "sine" },
-    { freq: 659.25, at: 0, dur: 0.18, level: 0.6, wave: "sine" },
+    { freq: 523.25, at: 0, dur: 0.18, level: 0.5, wave: "sine" },
+    { freq: 659.25, at: 0, dur: 0.18, level: 0.5, wave: "sine" },
   ],
   block: [{ freq: 196, at: 0, dur: 0.16, level: 1, wave: "triangle" }],
   copied: [{ freq: 1200, at: 0, dur: 0.03, level: 0.6, wave: "sine" }],
