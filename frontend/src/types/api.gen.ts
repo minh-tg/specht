@@ -1627,6 +1627,29 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/projects/{slug}/environments/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /**
+     * Classify an environment
+     * @description Sets the tier, internet exposure and data sensitivity of an environment
+     *     that a scan created. A scan names an environment and Specht creates it
+     *     with defaults; later scans never overwrite what is set here. Requires a
+     *     project admin or a global admin, and works for a signed-in person only.
+     */
+    put: operations["updateEnvironment"];
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/projects/{slug}/targets": {
     parameters: {
       query?: never;
@@ -2849,11 +2872,20 @@ export interface components {
       /** Format: uuid */
       project_id: string;
       name: string;
-      tier: string;
+      /** @enum {string} */
+      tier: "production" | "staging" | "development" | "test";
       internet_facing: boolean;
-      data_sensitivity: string;
+      /** @enum {string} */
+      data_sensitivity: "public" | "internal" | "confidential" | "restricted";
       /** Format: date-time */
       created_at: string;
+    };
+    EnvironmentUpdateRequest: {
+      /** @enum {string} */
+      tier: "production" | "staging" | "development" | "test";
+      internet_facing: boolean;
+      /** @enum {string} */
+      data_sensitivity: "public" | "internal" | "confidential" | "restricted";
     };
     Target: {
       /** Format: uuid */
@@ -5933,6 +5965,40 @@ export interface operations {
       };
       401: components["responses"]["Unauthorized"];
       403: components["responses"]["Forbidden"];
+      500: components["responses"]["InternalError"];
+    };
+  };
+  updateEnvironment: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+        /** @description Resource identifier. */
+        id: components["parameters"]["Id"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["EnvironmentUpdateRequest"];
+      };
+    };
+    responses: {
+      /** @description The environment as stored. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Environment"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["ProjectAccessDenied"];
+      404: components["responses"]["NotFound"];
       500: components["responses"]["InternalError"];
     };
   };

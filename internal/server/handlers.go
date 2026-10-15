@@ -151,6 +151,7 @@ type (
 		UpdateProject(ctx context.Context, slug string, name, description *string) (*usecase.ProjectResponse, error)
 		DeleteProject(ctx context.Context, slug string) (*usecase.ProjectResponse, error)
 		ListEnvironments(ctx context.Context, projectSlug string) ([]usecase.EnvironmentResponse, error)
+		UpdateEnvironment(ctx context.Context, in usecase.UpdateEnvironmentInput) (*usecase.EnvironmentResponse, error)
 		ListTargets(ctx context.Context, projectSlug string) ([]usecase.TargetResponse, error)
 		ListArtifacts(ctx context.Context, projectSlug string) ([]usecase.ArtifactResponse, error)
 	}

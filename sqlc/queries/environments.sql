@@ -21,3 +21,11 @@ LIMIT 1;
 DELETE FROM environments
 WHERE id = $1 AND project_id = $2
 RETURNING *;
+
+-- name: UpdateEnvironment :one
+UPDATE environments
+SET tier = $3,
+    internet_facing = $4,
+    data_sensitivity = $5
+WHERE id = $1 AND project_id = $2
+RETURNING *;

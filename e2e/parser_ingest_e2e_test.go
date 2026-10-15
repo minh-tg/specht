@@ -55,9 +55,11 @@ type auditEvent struct {
 }
 
 type environmentRow struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Tier string `json:"tier"`
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Tier            string `json:"tier"`
+	InternetFacing  bool   `json:"internet_facing"`
+	DataSensitivity string `json:"data_sensitivity"`
 }
 
 type targetRow struct {

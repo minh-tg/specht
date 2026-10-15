@@ -98,6 +98,7 @@ type mockUsecases struct {
 	changePasswordFn        func(ctx context.Context, userID, current, next string) (*usecase.AuthResponse, error)
 	listUsersFn             func(ctx context.Context, filter string, limit, offset int32) ([]usecase.UserProfile, error)
 	listEnvironmentsFn      func(ctx context.Context, slug string) ([]usecase.EnvironmentResponse, error)
+	updateEnvironmentFn     func(ctx context.Context, in usecase.UpdateEnvironmentInput) (*usecase.EnvironmentResponse, error)
 	listTargetsFn           func(ctx context.Context, slug string) ([]usecase.TargetResponse, error)
 	listArtifactsFn         func(ctx context.Context, slug string) ([]usecase.ArtifactResponse, error)
 	createWaiverFn          func(ctx context.Context, input usecase.CreateWaiverInput) (*usecase.WaiverResponse, error)
@@ -551,6 +552,13 @@ func (m *mockUsecases) ListEnvironments(ctx context.Context, slug string) ([]use
 		return nil, fmt.Errorf("unexpected call to ListEnvironments")
 	}
 	return m.listEnvironmentsFn(ctx, slug)
+}
+
+func (m *mockUsecases) UpdateEnvironment(ctx context.Context, in usecase.UpdateEnvironmentInput) (*usecase.EnvironmentResponse, error) {
+	if m.updateEnvironmentFn == nil {
+		return nil, fmt.Errorf("unexpected call to UpdateEnvironment")
+	}
+	return m.updateEnvironmentFn(ctx, in)
 }
 
 func (m *mockUsecases) ListTargets(ctx context.Context, slug string) ([]usecase.TargetResponse, error) {
@@ -1056,6 +1064,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Post("/api/v1/projects", h.CreateProject)
 	r.Get("/api/v1/projects/{slug}", h.GetProject)
 	r.Put("/api/v1/projects/{slug}", h.UpdateProject)
+	r.Put("/api/v1/projects/{slug}/environments/{id}", h.UpdateEnvironment)
 	r.Delete("/api/v1/projects/{slug}", h.DeleteProject)
 	r.Put("/api/v1/users/{id}/role", h.ChangeUserRole)
 	r.Post("/api/v1/users/{id}/reset-link", h.CreatePasswordResetLink)

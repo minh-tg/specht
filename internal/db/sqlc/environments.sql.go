@@ -135,3 +135,41 @@ func (q *Queries) ListEnvironments(ctx context.Context, projectID pgtype.UUID) (
 	}
 	return items, nil
 }
+
+const updateEnvironment = `-- name: UpdateEnvironment :one
+UPDATE environments
+SET tier = $3,
+    internet_facing = $4,
+    data_sensitivity = $5
+WHERE id = $1 AND project_id = $2
+RETURNING id, project_id, name, tier, internet_facing, data_sensitivity, created_at
+`
+
+type UpdateEnvironmentParams struct {
+	ID              pgtype.UUID `json:"id"`
+	ProjectID       pgtype.UUID `json:"project_id"`
+	Tier            string      `json:"tier"`
+	InternetFacing  bool        `json:"internet_facing"`
+	DataSensitivity string      `json:"data_sensitivity"`
+}
+
+func (q *Queries) UpdateEnvironment(ctx context.Context, arg UpdateEnvironmentParams) (Environment, error) {
+	row := q.db.QueryRow(ctx, updateEnvironment,
+		arg.ID,
+		arg.ProjectID,
+		arg.Tier,
+		arg.InternetFacing,
+		arg.DataSensitivity,
+	)
+	var i Environment
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Name,
+		&i.Tier,
+		&i.InternetFacing,
+		&i.DataSensitivity,
+		&i.CreatedAt,
+	)
+	return i, err
+}

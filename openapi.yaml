@@ -2679,6 +2679,39 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/v1/projects/{slug}/environments/{id}:
+    put:
+      tags: [Context]
+      operationId: updateEnvironment
+      summary: Classify an environment
+      description: |
+        Sets the tier, internet exposure and data sensitivity of an environment
+        that a scan created. A scan names an environment and Specht creates it
+        with defaults; later scans never overwrite what is set here. Requires a
+        project admin or a global admin, and works for a signed-in person only.
+      x-required-scope: admin
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - $ref: "#/components/parameters/Id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnvironmentUpdateRequest" }
+      responses:
+        "200":
+          description: The environment as stored.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Environment" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/ProjectAccessDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/v1/projects/{slug}/targets:
     get:
       tags: [Context]
@@ -4142,10 +4175,18 @@ components:
         id: { type: string, format: uuid }
         project_id: { type: string, format: uuid }
         name: { type: string }
-        tier: { type: string }
+        tier: { type: string, enum: [production, staging, development, test] }
         internet_facing: { type: boolean }
-        data_sensitivity: { type: string }
+        data_sensitivity: { type: string, enum: [public, internal, confidential, restricted] }
         created_at: { type: string, format: date-time }
+
+    EnvironmentUpdateRequest:
+      type: object
+      required: [tier, internet_facing, data_sensitivity]
+      properties:
+        tier: { type: string, enum: [production, staging, development, test] }
+        internet_facing: { type: boolean }
+        data_sensitivity: { type: string, enum: [public, internal, confidential, restricted] }
 
     Target:
       type: object

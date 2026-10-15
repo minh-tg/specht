@@ -254,6 +254,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(readScope).Get("/api/v1/projects/{slug}/gate", h.GetGateStatus)
 		r.With(readScope).Get("/api/v1/projects/{slug}/pr-check", h.PreviewPRCheck)
 		r.With(readScope).Get("/api/v1/projects/{slug}/environments", h.ListEnvironments)
+		r.With(h.audited(audit.EventUpdateEnvironment, "id"), adminScope).Put("/api/v1/projects/{slug}/environments/{id}", h.UpdateEnvironment)
 		r.With(readScope).Get("/api/v1/projects/{slug}/targets", h.ListTargets)
 		r.With(session).Delete("/api/v1/projects/{slug}/reports/{id}", h.DeleteReport)
 		r.With(readScope).Get("/api/v1/projects/{slug}/watcher", h.GetProjectWatcher)

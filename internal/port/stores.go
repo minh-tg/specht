@@ -316,6 +316,9 @@ type EnvironmentStore interface {
 	Ensure(ctx context.Context, projectID, name, tier string, internetFacing bool, dataSensitivity string) (Environment, error)
 	List(ctx context.Context, projectID string) ([]Environment, error)
 	GetByID(ctx context.Context, id, projectID string) (Environment, error)
+	// Update replaces the three settings of one environment. A missing id,
+	// or one that belongs to another project, is ErrNotFound.
+	Update(ctx context.Context, id, projectID, tier string, internetFacing bool, dataSensitivity string) (Environment, error)
 	Delete(ctx context.Context, id, projectID string) (Environment, error)
 }
 
