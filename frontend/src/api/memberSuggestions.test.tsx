@@ -207,6 +207,21 @@ describe("useMemberSuggestions", () => {
     expect(result.current.searching).toBe(false);
   });
 
+  it("aborts the request for older text when the text changes", async () => {
+    const pending = mockDeferredApi();
+    const { rerender } = renderHook(({ q }) => useMemberSuggestions("app", q), {
+      wrapper,
+      initialProps: { q: "ada" },
+    });
+    await waitFor(() => expect(pending).toHaveLength(1));
+    expect(pending[0]?.signal?.aborted).toBe(false);
+
+    rerender({ q: "zed" });
+    await waitFor(() => expect(pending).toHaveLength(2));
+    expect(pending[0]?.signal?.aborted).toBe(true);
+    expect(pending[1]?.signal?.aborted).toBe(false);
+  });
+
   it("stops offering people as soon as the text drops below the minimum length", async () => {
     const pending = mockDeferredApi();
     const { result, rerender } = renderHook(({ q }) => useMemberSuggestions("app", q), {
