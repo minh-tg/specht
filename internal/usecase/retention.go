@@ -3,7 +3,10 @@ package usecase
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
+
+	"github.com/minh-tg/specht/internal/cvedetail"
 )
 
 // maxRetentionDays bounds retention windows: beyond ten years a cutoff is
@@ -41,6 +44,10 @@ type AdminStatus struct {
 	OpenFindings          int64      `json:"open_findings"`
 	Reports               int64      `json:"reports"`
 	OldestSettledReportAt *time.Time `json:"oldest_settled_report_at"`
+	// CVEProviders lists every CVE detail provider, whether it is on,
+	// whether a key is configured, and its last outcome. It never carries a
+	// key.
+	CVEProviders []cvedetail.ProviderStatus `json:"cve_providers"`
 }
 
 // validateRetentionDays rejects non-positive and absurd windows.
@@ -104,5 +111,25 @@ func (u *Usecases) GetAdminStatus(ctx context.Context) (*AdminStatus, error) {
 		OpenFindings:          overview.OpenFindingCount,
 		Reports:               overview.ReportCount,
 		OldestSettledReportAt: overview.OldestSettledReportAt,
+		CVEProviders:          u.cveProviderStatus(ctx),
 	}, nil
+}
+
+// cveProviderStatus lists the CVE detail providers for the admin page. A
+// status table that cannot be read leaves the last outcomes out rather than
+// failing the page.
+func (u *Usecases) cveProviderStatus(ctx context.Context) []cvedetail.ProviderStatus {
+	r := u.deps.CVEDetail.Providers
+	if r == nil {
+		out := make([]cvedetail.ProviderStatus, 0, len(cvedetail.KnownProviders))
+		for _, name := range cvedetail.KnownProviders {
+			out = append(out, cvedetail.ProviderStatus{Name: name})
+		}
+		return out
+	}
+	status, err := r.Status(ctx)
+	if err != nil {
+		slog.Warn("read cve provider status", "error", err)
+	}
+	return status
 }

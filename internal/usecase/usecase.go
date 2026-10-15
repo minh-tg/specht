@@ -161,6 +161,10 @@ type Deps struct {
 	// Watcher is the server-wide CVE watcher configuration that the
 	// per-project settings sit under.
 	Watcher WatcherSettings
+	// CVEDetail wires GET /findings/{id}/cve: the occurrence read, the
+	// provider resolver (nil when no provider is configured) and the intel
+	// lookup.
+	CVEDetail CVEDetailDeps
 }
 
 // Usecases groups the application's use-case methods. It is safe for

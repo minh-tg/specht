@@ -172,6 +172,18 @@ func (r *Resolver) Enabled() bool {
 	return r != nil && len(r.slots) > 0
 }
 
+// Providers returns the configured provider names in lookup order.
+func (r *Resolver) Providers() []string {
+	if !r.Enabled() {
+		return nil
+	}
+	out := make([]string, 0, len(r.slots))
+	for _, s := range r.slots {
+		out = append(out, s.provider.Name())
+	}
+	return out
+}
+
 // Start runs the fetch workers until ctx ends. Each fetch runs on a context
 // detached from the request that scheduled it, so a client that disconnects
 // does not cancel the fetch, but shutdown does.
