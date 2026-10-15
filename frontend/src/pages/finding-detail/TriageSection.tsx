@@ -14,9 +14,12 @@ import { OutcomeRegions } from "./OutcomeRegions";
 export function TriageSection({
   findingId,
   projectSlug,
+  currentState,
 }: {
   readonly findingId: string;
   readonly projectSlug?: string;
+  /** The finding's state now. It is what Undo puts back after a change. */
+  readonly currentState?: AnalysisState;
 }) {
   const params = useParams<{ slug: string; }>();
   const slug = projectSlug ?? params.slug ?? "";
@@ -36,6 +39,7 @@ export function TriageSection({
       await triageMutation.mutateAsync({
         findingId,
         analysisState: selectedState,
+        previousState: currentState,
         reason: selectedOption?.requiresReason ? reason : undefined,
         analysisExpiresAt: selectedOption?.requiresExpiry
           ? toExpiryTimestamp(expiresAt)
