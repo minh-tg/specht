@@ -1087,3 +1087,101 @@ test("the upload page says how to produce the chosen scanner's file and takes .s
   await page.getByRole("button", { name: "Upload" }).click();
   await expect(page.getByRole("link", { name: "View findings" })).toBeVisible();
 });
+
+/**
+ * Presses Alt+T, Sonner's key for the notification list, then Tab to the toast and Tab again to
+ * the button in it: the list takes focus first, then the toast, then its Undo button.
+ */
+async function focusUndoWithKeyboard(page: import("@playwright/test").Page): Promise<void> {
+  await page.keyboard.press("Alt+t");
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("button", { name: "Undo" })).toBeFocused();
+}
+
+test("a keyboard user undoes a triage change from the notification", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("undo-triage");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/findings`);
+  await page.locator("tbody tr").filter({ hasText: HIGH_TITLE }).click();
+  const decide = page.getByRole("heading", { level: 2, name: "Decide" }).locator("..");
+  await expect(decide).toContainText("Currently: Not triaged");
+
+  await chooseOption(page, page.getByLabel("Triage action"), "Exploitable");
+  await page.getByRole("button", { name: "Apply" }).click();
+  // The chosen state shows at once and the page claims nothing about the gate until it refetched.
+  await expect(decide).toContainText("Currently: Exploitable");
+  await expect(page.getByText(/Triage saved \(effect:/)).toBeVisible();
+
+  await focusUndoWithKeyboard(page);
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Triage restored to Not triaged")).toBeVisible();
+  await expect(decide).toContainText("Currently: Not triaged");
+  // Focus went back to a real control, not to the page body.
+  await expect.poll(() => page.evaluate(() => document.activeElement?.tagName)).not.toBe("BODY");
+
+  // The history is honest: the change and its reversal are two events.
+  const findingId = new URL(page.url()).pathname.split("/").pop();
+  const events = await request.get(`/api/v1/findings/${findingId}/events`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  expect(events.ok(), await events.text()).toBeTruthy();
+  const changes = ((await events.json()) as Array<{ event_type: string; }>)
+    .filter((event) => event.event_type === "analysis_changed");
+  expect(changes.length).toBeGreaterThanOrEqual(2);
+});
+
+test("a keyboard user undoes revoking a waiver from the notification", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("undo-waiver");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
+  await requestWaiver(request, token, slug, "Not reachable from the public API.");
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/waivers`);
+  await page.getByRole("button", { name: /^Approve / }).click();
+  await page.getByLabel(/^Note/).fill("Fine until the image bump.");
+  await page.getByRole("button", { name: "Approve", exact: true }).click();
+  await expect(page.getByRole("tab", { name: "In force 1" })).toBeVisible();
+
+  await page.getByRole("tab", { name: "In force 1" }).click();
+  await page.getByRole("button", { name: /^Revoke / }).click();
+  await expect(page.getByRole("tab", { name: "In force 0" })).toBeVisible();
+  await expect(page.getByText("Waiver revoked")).toBeVisible();
+
+  await focusUndoWithKeyboard(page);
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Waiver back in force")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "In force 1" })).toBeVisible();
+});
+
+test("removing a member asks first, and Undo from the notification grants the role again", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("undo-member");
+  await seedProject(request, token, slug);
+  const person = await registerPerson(request, "undo-member");
+  const grant = await request.post(`/api/v1/projects/${slug}/members`, {
+    headers: { Authorization: `Bearer ${token}` },
+    data: { email: person.email, role: "manager" },
+  });
+  expect(grant.ok(), await grant.text()).toBeTruthy();
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/access`);
+  const row = page.getByRole("listitem").filter({ hasText: person.email });
+  await row.getByRole("button", { name: "Remove" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Remove" }).click();
+  await expect(page.getByText("Member removed")).toBeVisible();
+  await expect(row).toHaveCount(0);
+
+  await focusUndoWithKeyboard(page);
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Member restored")).toBeVisible();
+  const restored = page.getByRole("listitem").filter({ hasText: person.email });
+  await expect(restored).toContainText("manager");
+});
