@@ -223,7 +223,7 @@ export function useCreateInvite(slug: string) {
 export function useRevokeInvite(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { success: "Invite revoked" },
+    meta: { success: "Invite revoked", sound: "none" },
     mutationFn: (id: string) =>
       apiFetch<void>(
         `/api/v1/projects/${encodeURIComponent(slug)}/invites/${encodeURIComponent(id)}`,
@@ -554,7 +554,7 @@ export function useAddProjectMember(slug: string) {
 export function useRemoveProjectMember(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { success: "Member removed" },
+    meta: { success: "Member removed", sound: "none" },
     mutationFn: (userId: string) =>
       apiFetch<void>(
         `/api/v1/projects/${encodeURIComponent(slug)}/members/${encodeURIComponent(userId)}`,
@@ -592,7 +592,7 @@ export function useLinkProjectTeam(slug: string) {
 export function useUnlinkProjectTeam(slug: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { success: "Team unlinked" },
+    meta: { success: "Team unlinked", sound: "none" },
     mutationFn: (teamId: string) =>
       apiFetch<void>(
         `/api/v1/projects/${encodeURIComponent(slug)}/teams/${encodeURIComponent(teamId)}`,
@@ -629,7 +629,7 @@ export function useCreateTeam() {
 export function useDeleteTeam() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { success: "Team deleted" },
+    meta: { success: "Team deleted", sound: "none" },
     mutationFn: (teamId: string) =>
       apiFetch<void>(`/api/v1/teams/${encodeURIComponent(teamId)}`, {
         method: "DELETE",
@@ -669,7 +669,7 @@ export function useAddTeamMember(teamId: string) {
 export function useRemoveTeamMember(teamId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { success: "Removed from the team" },
+    meta: { success: "Removed from the team", sound: "none" },
     mutationFn: (userId: string) =>
       apiFetch<void>(
         `/api/v1/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
@@ -943,7 +943,7 @@ export function useDecideWaiver(slug: string) {
 export function useWithdrawWaiver(slug: string) {
   const decided = useWaiverDecided(slug);
   return useMutation({
-    meta: { success: () => "Request withdrawn" },
+    meta: { success: () => "Request withdrawn", sound: "none" },
     mutationFn: (id: string) =>
       apiFetch<Waiver>(
         `/api/v1/projects/${encodeURIComponent(slug)}/waivers/${encodeURIComponent(id)}/withdraw`,
@@ -957,7 +957,7 @@ export function useWithdrawWaiver(slug: string) {
 export function useRevokeWaiver(slug: string) {
   const decided = useWaiverDecided(slug);
   return useMutation({
-    meta: { success: () => "Waiver revoked" },
+    meta: { success: () => "Waiver revoked", sound: "none" },
     mutationFn: (id: string) =>
       apiFetch<Waiver>(
         `/api/v1/projects/${encodeURIComponent(slug)}/waivers/${encodeURIComponent(id)}/toggle`,

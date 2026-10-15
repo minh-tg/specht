@@ -1,3 +1,4 @@
+import { readdirSync, readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const success = vi.hoisted(() => vi.fn());
@@ -41,6 +42,58 @@ describe("announceMutationSuccess", () => {
   it("plays the accepted cue once per toast", () => {
     announceMutationSuccess("Member added", {}, {});
     expect(playCue).toHaveBeenCalledExactlyOnceWith("accepted");
+  });
+
+  it("keeps the toast but plays no cue when the mutation declared sound none", () => {
+    announceMutationSuccess("Team deleted", {}, {}, "none");
+    expect(success).toHaveBeenCalledExactlyOnceWith("Team deleted");
+    expect(playCue).not.toHaveBeenCalled();
+  });
+
+  it("lets sound depend on the response and the variables", () => {
+    const sound =
+      ((_data: unknown, vars: { active: boolean; }) => vars.active ? undefined : "none") as (
+        data: never,
+        variables: never,
+      ) => "none" | undefined;
+    announceMutationSuccess("Account deactivated", {}, { active: false }, sound);
+    expect(playCue).not.toHaveBeenCalled();
+    announceMutationSuccess("Account reactivated", {}, { active: true }, sound);
+    expect(playCue).toHaveBeenCalledExactlyOnceWith("accepted");
+  });
+});
+
+describe("mutation sound rules", () => {
+  async function run(meta: { success: string; sound?: "none"; }) {
+    const client = createQueryClient(false);
+    await client.getMutationCache()
+      .build(client, { mutationFn: async () => ({}), meta })
+      .execute(undefined);
+  }
+
+  it("plays no cue after a deleting mutation", async () => {
+    await run({ success: "Team deleted", sound: "none" });
+    expect(success).toHaveBeenCalledExactlyOnceWith("Team deleted");
+    expect(playCue).not.toHaveBeenCalled();
+  });
+
+  it("plays accepted after a creating mutation", async () => {
+    await run({ success: "Team created" });
+    expect(playCue).toHaveBeenCalledExactlyOnceWith("accepted");
+  });
+
+  it("silences every mutation whose toast reports a removal", () => {
+    const removal = /deleted|removed|revoked|unlinked|withdrawn|deactivated/i;
+    const dir = `${process.cwd()}/src/api/`;
+    const loud: string[] = [];
+    for (const file of readdirSync(dir)) {
+      if (!/\.tsx?$/.test(file) || /\.test\./.test(file)) continue;
+      const source = readFileSync(dir + file, "utf8");
+      for (const block of source.matchAll(/meta: \{[\s\S]*?\n\s*\},?|meta: \{[^\n]*\}/g)) {
+        if (removal.test(block[0]) && !/sound:/.test(block[0])) loud.push(`${file}: ${block[0]}`);
+      }
+    }
+    expect(loud).toEqual([]);
   });
 });
 

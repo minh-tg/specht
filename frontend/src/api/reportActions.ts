@@ -23,6 +23,7 @@ export function useDeleteReport(projectSlug: string) {
   return useMutation({
     meta: {
       success: (data: DeleteReportResult) => archivedFindingsMessage(data),
+      sound: "none",
     },
     mutationFn: async (reportId: string): Promise<DeleteReportResult> => {
       const { response } = await apiFetchResponse<void>(

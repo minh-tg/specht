@@ -67,6 +67,8 @@ export function useSetUserActive() {
     meta: {
       success: (_data: unknown, vars: { id: string; active: boolean; }) =>
         vars.active ? "Account reactivated" : "Account deactivated",
+      sound: (_data: unknown, vars: { id: string; active: boolean; }) =>
+        vars.active ? undefined : "none",
     },
     mutationFn: ({ id, active }: { id: string; active: boolean; }) =>
       apiFetch<UserProfile>(
@@ -92,6 +94,7 @@ export function usePurgeRetention() {
     meta: {
       success: (data: RetentionResult) =>
         `Removed ${data.deleted_reports} ${data.deleted_reports === 1 ? "report" : "reports"}`,
+      sound: "none",
     },
     mutationFn: (days: number) =>
       apiFetch<RetentionResult>("/api/v1/admin/retention/purge", {

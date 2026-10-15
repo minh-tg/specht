@@ -42,7 +42,7 @@ export function useAddEvidence() {
 export function useDeleteEvidence() {
   const queryClient = useQueryClient();
   return useMutation({
-    meta: { success: "Evidence deleted" },
+    meta: { success: "Evidence deleted", sound: "none" },
     mutationFn: ({ findingId, evidenceId }: { findingId: string; evidenceId: string; }) =>
       apiFetch<void>(
         `/api/v1/findings/${encodeURIComponent(findingId)}/evidence/${
