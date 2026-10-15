@@ -191,6 +191,10 @@ type UserStore interface {
 	// UpdateDisplayName changes a user's display name. A nil displayName
 	// clears it.
 	UpdateDisplayName(ctx context.Context, userID string, displayName *string) (User, error)
+	// SuggestMembers returns up to limit active accounts, ordered by email, whose
+	// email or any display-name word starts with prefix (case-insensitive, taken
+	// literally). The system account and direct members of projectID are left out.
+	SuggestMembers(ctx context.Context, projectID, prefix string, limit int32) ([]User, error)
 }
 
 // ---------- External identities ----------
