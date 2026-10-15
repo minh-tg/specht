@@ -1,6 +1,7 @@
 import { APIError } from "@/api/client";
 import { queryKeys } from "@/api/hooks";
 import { useUploadReport } from "@/api/pageRequests";
+import { playCue } from "@/lib/sound";
 import type { IngestResponse } from "@/types/api";
 import { useQueryClient } from "@tanstack/react-query";
 import { type ChangeEvent, type RefObject, type SubmitEvent, useRef, useState } from "react";
@@ -115,6 +116,7 @@ export function useReportUpload(slug: string): ReportUpload {
         raw_data: scan.value,
       });
       setResult(report);
+      playCue(report.threshold_breached ? "block" : "pass");
       clearFile();
 
       queryClient.invalidateQueries({ queryKey: queryKeys.reports(slug) });
