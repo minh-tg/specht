@@ -225,7 +225,7 @@ describe("TeamsDirectory", () => {
       "ada@acme.example",
     );
     await chooseOption(user, screen.getByRole("combobox", { name: "Team role" }), "Admin");
-    await user.click(screen.getByRole("button", { name: "Add" }));
+    await user.click(await screen.findByRole("button", { name: "Add" }));
 
     await waitFor(() => {
       const postCall = fetchCalls.find(
@@ -332,7 +332,7 @@ describe("TeamsDirectory", () => {
       screen.getByRole("combobox", { name: "Email address" }),
       "ada@acme.example",
     );
-    await user.click(screen.getByRole("button", { name: "Add" }));
+    await user.click(await screen.findByRole("button", { name: "Add" }));
 
     await waitFor(() => {
       const postCall = fetchCalls.find(
@@ -371,7 +371,7 @@ describe("TeamsDirectory", () => {
       screen.getByRole("combobox", { name: "Email address" }),
       "ada@acme.example",
     );
-    await user.click(screen.getByRole("button", { name: "Add" }));
+    await user.click(await screen.findByRole("button", { name: "Add" }));
 
     expect(await screen.findByText("user not found")).toBeInTheDocument();
   });

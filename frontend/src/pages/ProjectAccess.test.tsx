@@ -288,7 +288,7 @@ describe("ProjectAccess", () => {
     );
     await chooseOption(user, screen.getByLabelText("Project Role"), /^Admin: full project control/);
 
-    const submitBtn = screen.getByRole("button", { name: "Add Member" });
+    const submitBtn = await screen.findByRole("button", { name: "Add Member" });
     await user.click(submitBtn);
 
     await waitFor(() => {
@@ -364,7 +364,7 @@ describe("ProjectAccess", () => {
       screen.getByLabelText("Email address"),
       "ada@acme.example",
     );
-    await user.click(screen.getByRole("button", { name: "Add Member" }));
+    await user.click(await screen.findByRole("button", { name: "Add Member" }));
 
     expect(await screen.findByText("Member added")).toBeInTheDocument();
   });
@@ -379,7 +379,7 @@ describe("ProjectAccess", () => {
 
     await user.click(screen.getByRole("button", { name: "+ Add Member" }));
     await user.type(screen.getByLabelText("Email address"), "newbie@acme");
-    await user.click(screen.getByRole("button", { name: "Add Member" }));
+    await user.click(await screen.findByRole("button", { name: "Add Member" }));
 
     expect(await screen.findByText(/Enter the person's email address/)).toBeInTheDocument();
     expect(
@@ -401,7 +401,7 @@ describe("ProjectAccess", () => {
       screen.getByLabelText("Email address"),
       "ada@acme.example",
     );
-    await user.click(screen.getByRole("button", { name: "Add Member" }));
+    await user.click(await screen.findByRole("button", { name: "Add Member" }));
 
     expect(await screen.findByText("user not found")).toBeInTheDocument();
   });
