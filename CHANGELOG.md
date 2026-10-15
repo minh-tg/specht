@@ -79,6 +79,9 @@ releases.
 - A Checkov run over a directory with several kinds of files (Terraform,
   Kubernetes, Dockerfile), which Checkov writes as one report per framework,
   is ingested as one report. It used to be refused.
+- A CycloneDX file that lists vulnerabilities (Grype writes one with
+  `-o cyclonedx-json`) is ingested as findings, with the same identity Grype's
+  own JSON gives them. It used to be read as a bare inventory with none.
 - The server validates all of its settings at startup and reports every
   problem in one message.
 - Request logs carry a request ID that matches the `X-Request-Id` response
