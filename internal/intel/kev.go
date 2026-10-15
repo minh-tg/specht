@@ -33,18 +33,27 @@ type KEVProvider struct {
 	Now func() time.Time
 
 	// mu is held across a download, so concurrent callers share one fetch.
-	mu        sync.Mutex
-	dateAdded map[string]string
-	loadedAt  time.Time
+	mu       sync.Mutex
+	entries  map[string]kevEntry
+	loadedAt time.Time
 }
 
 // Name implements Provider.
 func (p *KEVProvider) Name() string { return "kev" }
 
+// kevEntry is what the catalog states about one listed CVE.
+type kevEntry struct {
+	DateAdded  string
+	DueDate    string
+	Ransomware string
+}
+
 type kevCatalog struct {
 	Vulnerabilities []struct {
-		CVEID     string `json:"cveID"`
-		DateAdded string `json:"dateAdded"`
+		CVEID                      string `json:"cveID"`
+		DateAdded                  string `json:"dateAdded"`
+		DueDate                    string `json:"dueDate"`
+		KnownRansomwareCampaignUse string `json:"knownRansomwareCampaignUse"`
 	} `json:"vulnerabilities"`
 }
 
@@ -55,17 +64,17 @@ type kevCatalog struct {
 func (p *KEVProvider) Fetch(ctx context.Context, cveIDs []string) (map[string]Record, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	if p.dateAdded == nil || p.clock().Sub(p.loadedAt) >= p.ttl() {
-		added, err := p.download(ctx)
+	if p.entries == nil || p.clock().Sub(p.loadedAt) >= p.ttl() {
+		entries, err := p.download(ctx)
 		if err != nil {
 			return nil, err
 		}
-		p.dateAdded, p.loadedAt = added, p.clock()
+		p.entries, p.loadedAt = entries, p.clock()
 	}
 	out := make(map[string]Record)
 	for _, id := range cveIDs {
-		if added, ok := p.dateAdded[id]; ok {
-			out[id] = Record{CVEID: id, KEV: true, KEVAdded: added}
+		if e, ok := p.entries[id]; ok {
+			out[id] = Record{CVEID: id, KEV: true, KEVAdded: e.DateAdded, KEVDueDate: e.DueDate, KEVRansomware: e.Ransomware}
 		}
 	}
 	return out, nil
@@ -85,8 +94,8 @@ func (p *KEVProvider) clock() time.Time {
 	return time.Now()
 }
 
-// download fetches the catalog and returns CVE id to the date it was added.
-func (p *KEVProvider) download(ctx context.Context) (map[string]string, error) {
+// download fetches the catalog and returns what it states per CVE id.
+func (p *KEVProvider) download(ctx context.Context) (map[string]kevEntry, error) {
 	catalogURL := p.CatalogURL
 	if catalogURL == "" {
 		catalogURL = "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
@@ -114,9 +123,9 @@ func (p *KEVProvider) download(ctx context.Context) (map[string]string, error) {
 	if err := netutil.DecodeJSONLimited(resp.Body, maxKEVResponseBytes, &catalog); err != nil {
 		return nil, fmt.Errorf("kev decode: %w", err)
 	}
-	added := make(map[string]string, len(catalog.Vulnerabilities))
+	entries := make(map[string]kevEntry, len(catalog.Vulnerabilities))
 	for _, v := range catalog.Vulnerabilities {
-		added[v.CVEID] = v.DateAdded
+		entries[v.CVEID] = kevEntry{DateAdded: v.DateAdded, DueDate: v.DueDate, Ransomware: v.KnownRansomwareCampaignUse}
 	}
-	return added, nil
+	return entries, nil
 }

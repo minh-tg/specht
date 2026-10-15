@@ -5,8 +5,10 @@ package intel
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -86,7 +88,17 @@ func (p *EPSSProvider) fetchBatch(ctx context.Context, cveIDs []string, out map[
 		if _, err := fmt.Sscanf(d.EPSS, "%f", &score); err != nil {
 			continue
 		}
-		out[d.CVE] = Record{CVEID: d.CVE, EPSS: &score, EPSSDate: d.Date}
+		out[d.CVE] = Record{CVEID: d.CVE, EPSS: &score, EPSSPercentile: parsePercentile(d.Percentile), EPSSDate: d.Date}
 	}
 	return nil
+}
+
+// parsePercentile reads the feed's percentile string. A value that is not a
+// number in [0, 1] is dropped so it never reaches the API as a fake rank.
+func parsePercentile(raw string) *float64 {
+	v, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	if err != nil || math.IsNaN(v) || v < 0 || v > 1 {
+		return nil
+	}
+	return &v
 }
