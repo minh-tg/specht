@@ -1,4 +1,5 @@
 import { AuthContext, type AuthContextValue } from "@/auth/context";
+import { resetThemeStore } from "@/lib/theme";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, within } from "@testing-library/react";
@@ -6,6 +7,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CommandPalette } from "./CommandPalette";
+import { ThemeToggle } from "./ThemeToggle";
 
 let role: "admin" | "member";
 let logout: ReturnType<typeof vi.fn>;
@@ -15,7 +17,7 @@ function Where() {
   return <output data-testid="where">{pathname}</output>;
 }
 
-function renderPalette(at = "/") {
+function renderPalette(at = "/", withToggle = false) {
   const auth: AuthContextValue = {
     token: "t",
     userId: "u1",
@@ -29,6 +31,7 @@ function renderPalette(at = "/") {
     <QueryClientProvider client={createTestQueryClient()}>
       <AuthContext.Provider value={auth}>
         <MemoryRouter initialEntries={[at]}>
+          {withToggle && <ThemeToggle />}
           <CommandPalette />
           <Routes>
             <Route path="*" element={<Where />} />
@@ -50,6 +53,7 @@ describe("CommandPalette", () => {
   beforeEach(() => {
     role = "admin";
     logout = vi.fn();
+    resetThemeStore();
     window.localStorage.clear();
     globalThis.fetch = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
@@ -209,6 +213,20 @@ describe("CommandPalette", () => {
     await user.type(input, "logout");
     await user.keyboard("{Enter}");
     expect(logout).toHaveBeenCalledOnce();
+  });
+
+  it("changes the theme the header toggle shows, because both read one store", async () => {
+    const user = userEvent.setup();
+    renderPalette("/", true);
+    expect(screen.getByRole("button", { name: "Theme: system. Switch to light" }))
+      .toBeInTheDocument();
+
+    const input = await openWithShortcut(user);
+    await user.type(input, "dark mode");
+    await user.keyboard("{Enter}");
+
+    expect(screen.getByRole("button", { name: "Theme: light. Switch to dark" }))
+      .toBeInTheDocument();
   });
 
   it("says when nothing matches, and keeps the dialog open", async () => {
