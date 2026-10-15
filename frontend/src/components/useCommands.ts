@@ -1,6 +1,7 @@
 import { useMe, useProjectRole, useProjects } from "@/api/hooks";
 import { useAuth } from "@/auth/useAuth";
 import { type Command, currentProjectSlug } from "@/lib/commands";
+import { comboLabel, shortcut, shortcutHelp } from "@/lib/shortcuts";
 import { nextTheme, useTheme } from "@/lib/theme";
 import { useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -99,6 +100,14 @@ export function useCommands(): Command[] {
       });
     }
 
+    list.push({
+      id: "do:shortcuts",
+      group: "Do",
+      label: "Keyboard shortcuts",
+      keywords: "keys hotkeys help",
+      hint: comboLabel(shortcut("help").combos[0]!),
+      run: (from) => shortcutHelp.open(from),
+    });
     list.push({
       id: "do:theme",
       group: "Do",

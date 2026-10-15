@@ -1,12 +1,11 @@
+import { KeyboardShortcuts } from "@/components/KeyboardShortcuts";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useCommands } from "@/components/useCommands";
 import { type Command, sectionCommands } from "@/lib/commands";
+import { comboLabel, matchesModShortcut, shortcut } from "@/lib/shortcuts";
 import { SearchIcon } from "lucide-react";
 import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react";
-
-const isMac = () =>
-  typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform ?? "");
 
 /**
  * Jump anywhere from the keyboard. Ctrl+K or ⌘K opens it from any page; type to narrow, the arrow
@@ -20,6 +19,12 @@ export function CommandPalette() {
   const [active, setActive] = useState(0);
   const listId = useId();
   const listRef = useRef<HTMLDivElement>(null);
+  const originRef = useRef<HTMLElement | null>(null);
+
+  function openPalette(from: Element | null) {
+    originRef.current = from instanceof HTMLElement ? from : null;
+    setOpen(true);
+  }
 
   const sections = useMemo(() => sectionCommands(commands, query), [commands, query]);
   const flat = useMemo(() => sections.flatMap((s) => s.items), [sections]);
@@ -28,14 +33,15 @@ export function CommandPalette() {
 
   useEffect(() => {
     function onKeyDown(event: globalThis.KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (matchesModShortcut(event, "palette")) {
         event.preventDefault();
-        setOpen((was) => !was);
+        if (open) setOpen(false);
+        else openPalette(document.activeElement);
       }
     }
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [open]);
 
   const activeId = activeCommand ? `${listId}-${activeCommand.id}` : undefined;
   useEffect(() => {
@@ -54,7 +60,7 @@ export function CommandPalette() {
   function run(command: Command | undefined) {
     if (!command) return;
     changeOpen(false);
-    command.run();
+    command.run(originRef.current);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -78,14 +84,14 @@ export function CommandPalette() {
         type="button"
         variant="outline"
         size="sm"
-        onClick={() => setOpen(true)}
+        onClick={(event) => openPalette(event.currentTarget)}
         aria-label="Open command palette"
-        title={`Search and jump (${isMac() ? "⌘K" : "Ctrl+K"})`}
+        title={`Search and jump (${comboLabel(shortcut("palette").combos[0]!)})`}
         className="shrink-0"
       >
         <SearchIcon aria-hidden="true" />
         <kbd className="bg-muted text-muted-foreground rounded px-1 font-mono text-[0.6875rem] max-sm:hidden">
-          {isMac() ? "⌘K" : "Ctrl K"}
+          {comboLabel(shortcut("palette").combos[0]!).replace("+", " ")}
         </kbd>
       </Button>
 
@@ -174,6 +180,7 @@ export function CommandPalette() {
           </p>
         </DialogContent>
       </Dialog>
+      <KeyboardShortcuts />
     </>
   );
 }
