@@ -34,6 +34,7 @@ func TestE2E_EnvironmentSettingsSurviveLaterScans(t *testing.T) {
 	scan(baseSHA)
 
 	env := findEnvironment(t, slug, "production")
+	require.Equal(t, "production", env.Tier, "the tier is guessed from the name")
 	require.False(t, env.InternetFacing, "a scan creates the environment with plain defaults")
 	require.Equal(t, "internal", env.DataSensitivity)
 	path := "/api/v1/projects/" + slug + "/environments/" + env.ID
