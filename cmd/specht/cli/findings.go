@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"math"
 	"strconv"
 	"strings"
@@ -15,10 +16,10 @@ func newFindingsCmd(d Deps, s *settings) *cobra.Command {
 		Short: "Manage findings",
 	}
 	cmd.AddCommand(
-		newFindingsListCmd(d),
-		newFindingsGetCmd(d),
-		newFindingsVerifyCmd(d),
-		newFindingsReachabilityCmd(d),
+		newFindingsListCmd(d, s),
+		newFindingsGetCmd(d, s),
+		newFindingsVerifyCmd(d, s),
+		newFindingsReachabilityCmd(d, s),
 		newFindingsTriageCmd(d, s),
 		newFindingsBulkTriageCmd(d, s),
 		newFindingsEventsCmd(d, s),
@@ -26,7 +27,7 @@ func newFindingsCmd(d Deps, s *settings) *cobra.Command {
 	return cmd
 }
 
-func newFindingsListCmd(d Deps) *cobra.Command {
+func newFindingsListCmd(d Deps, s *settings) *cobra.Command {
 	var project, severity, status string
 	var limitStr string
 	cmd := &cobra.Command{
@@ -51,22 +52,22 @@ func newFindingsListCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if len(findings) == 0 {
-				if _, err := fmt.Fprintln(d.Out, "No findings found."); err != nil {
+			return emit(d, s, findings, func(w io.Writer) error {
+				if len(findings) == 0 {
+					_, err := fmt.Fprintln(w, "No findings found.")
 					return err
+				}
+				for _, f := range findings {
+					score := ""
+					if f.CurrentScore != nil {
+						score = fmt.Sprintf("%.1f", *f.CurrentScore)
+					}
+					if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n", f.ID, f.CurrentSeverity, f.CurrentTitle, f.AnalysisState, f.GateEffect, score); err != nil {
+						return err
+					}
 				}
 				return nil
-			}
-			for _, f := range findings {
-				score := ""
-				if f.CurrentScore != nil {
-					score = fmt.Sprintf("%.1f", *f.CurrentScore)
-				}
-				if _, err := fmt.Fprintf(d.Out, "%s\t%s\t%s\t%s\t%s\t%s\n", f.ID, f.CurrentSeverity, f.CurrentTitle, f.AnalysisState, f.GateEffect, score); err != nil {
-					return err
-				}
-			}
-			return nil
+			})
 		},
 	}
 	cmd.Flags().StringVar(&project, "project", "", "project slug")
@@ -76,7 +77,7 @@ func newFindingsListCmd(d Deps) *cobra.Command {
 	return cmd
 }
 
-func newFindingsGetCmd(d Deps) *cobra.Command {
+func newFindingsGetCmd(d Deps, s *settings) *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <id>",
 		Short: "Show one finding",
@@ -90,28 +91,26 @@ func newFindingsGetCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			score := ""
-			if f.CurrentScore != nil {
-				score = fmt.Sprintf("%.1f", *f.CurrentScore)
-			}
-			if _, err := fmt.Fprintf(d.Out, "ID:           %s\nTitle:        %s\nSeverity:     %s\nScore:        %s\nState:        %s\nAnalysis:     %s\nGate Effect:  %s\nFingerprint:  %s\nKind:         %s\n", f.ID, f.CurrentTitle, f.CurrentSeverity, score, f.State, f.AnalysisState, f.GateEffect, f.Fingerprint, f.FindingKind); err != nil {
+			return emit(d, s, f, func(w io.Writer) error {
+				score := ""
+				if f.CurrentScore != nil {
+					score = fmt.Sprintf("%.1f", *f.CurrentScore)
+				}
+				if _, err := fmt.Fprintf(w, "ID:           %s\nTitle:        %s\nSeverity:     %s\nScore:        %s\nState:        %s\nAnalysis:     %s\nGate Effect:  %s\nFingerprint:  %s\nKind:         %s\n", f.ID, f.CurrentTitle, f.CurrentSeverity, score, f.State, f.AnalysisState, f.GateEffect, f.Fingerprint, f.FindingKind); err != nil {
+					return err
+				}
+				introduced := "unattributed"
+				if f.IntroducedCommitSha != nil && *f.IntroducedCommitSha != "" {
+					introduced = *f.IntroducedCommitSha
+				}
+				_, err := fmt.Fprintf(w, "Introduced:   %s\n", introduced)
 				return err
-			}
-			if f.IntroducedCommitSha != nil && *f.IntroducedCommitSha != "" {
-				if _, err := fmt.Fprintf(d.Out, "Introduced:   %s\n", *f.IntroducedCommitSha); err != nil {
-					return err
-				}
-			} else {
-				if _, err := fmt.Fprintln(d.Out, "Introduced:   unattributed"); err != nil {
-					return err
-				}
-			}
-			return nil
+			})
 		},
 	}
 }
 
-func newFindingsVerifyCmd(d Deps) *cobra.Command {
+func newFindingsVerifyCmd(d Deps, s *settings) *cobra.Command {
 	return &cobra.Command{
 		Use:   "verify <id>",
 		Short: "Verify fix against latest rescan",
@@ -125,23 +124,23 @@ func newFindingsVerifyCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if _, err := fmt.Fprintf(d.Out, "finding %s: %s\n", res.FindingID, res.Outcome); err != nil {
-				return err
-			}
-			if res.ReportID != nil {
-				if _, err := fmt.Fprintf(d.Out, "report: %s\n", *res.ReportID); err != nil {
+			return emit(d, s, res, func(w io.Writer) error {
+				if _, err := fmt.Fprintf(w, "finding %s: %s\n", res.FindingID, res.Outcome); err != nil {
 					return err
 				}
-			}
-			if _, err := fmt.Fprintf(d.Out, "detail: %s\n", res.Detail); err != nil {
+				if res.ReportID != nil {
+					if _, err := fmt.Fprintf(w, "report: %s\n", *res.ReportID); err != nil {
+						return err
+					}
+				}
+				_, err := fmt.Fprintf(w, "detail: %s\n", res.Detail)
 				return err
-			}
-			return nil
+			})
 		},
 	}
 }
 
-func newFindingsReachabilityCmd(d Deps) *cobra.Command {
+func newFindingsReachabilityCmd(d Deps, s *settings) *cobra.Command {
 	var findingID, state, evidence string
 	cmd := &cobra.Command{
 		Use:   "reachability",
@@ -160,27 +159,27 @@ func newFindingsReachabilityCmd(d Deps) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				if _, err := fmt.Fprintf(d.Out, "reachability set: finding=%s state=%s evidence=%q\n", assess.FindingID, assess.State, assess.Evidence); err != nil {
+				return emit(d, s, assess, func(w io.Writer) error {
+					_, err := fmt.Fprintf(w, "reachability set: finding=%s state=%s evidence=%q\n", assess.FindingID, assess.State, assess.Evidence)
 					return err
-				}
-				return nil
+				})
 			}
 			history, err := cl.ListReachability(findingID)
 			if err != nil {
 				return err
 			}
-			if len(history) == 0 {
-				if _, err := fmt.Fprintln(d.Out, "no reachability assessments for finding"); err != nil {
+			return emit(d, s, history, func(w io.Writer) error {
+				if len(history) == 0 {
+					_, err := fmt.Fprintln(w, "no reachability assessments for finding")
 					return err
+				}
+				for _, a := range history {
+					if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", a.CreatedAt, a.State, a.AssessedBy, a.Evidence); err != nil {
+						return err
+					}
 				}
 				return nil
-			}
-			for _, a := range history {
-				if _, err := fmt.Fprintf(d.Out, "%s\t%s\t%s\t%s\n", a.CreatedAt, a.State, a.AssessedBy, a.Evidence); err != nil {
-					return err
-				}
-			}
-			return nil
+			})
 		},
 	}
 	cmd.Flags().StringVar(&findingID, "finding", "", "finding ID")

@@ -12,11 +12,11 @@ func newProjectsCmd(d Deps, s *settings) *cobra.Command {
 		Use:   "projects",
 		Short: "Manage projects",
 	}
-	cmd.AddCommand(newProjectsListCmd(d), newProjectsGetCmd(d), newProjectsCreateCmd(d, s), newProjectsUpdateCmd(d, s), newProjectsDeleteCmd(d))
+	cmd.AddCommand(newProjectsListCmd(d, s), newProjectsGetCmd(d, s), newProjectsCreateCmd(d, s), newProjectsUpdateCmd(d, s), newProjectsDeleteCmd(d))
 	return cmd
 }
 
-func newProjectsListCmd(d Deps) *cobra.Command {
+func newProjectsListCmd(d Deps, s *settings) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
 		Short: "List all projects",
@@ -30,27 +30,23 @@ func newProjectsListCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if len(projects) == 0 {
-				if _, err := fmt.Fprintln(d.Out, "No projects found."); err != nil {
+			return emit(d, s, projects, func(w io.Writer) error {
+				if len(projects) == 0 {
+					_, err := fmt.Fprintln(w, "No projects found.")
 					return err
+				}
+				for _, p := range projects {
+					if _, err := fmt.Fprintf(w, "%s\t%s\t%s\n", p.Slug, p.Name, deref(p.Description)); err != nil {
+						return err
+					}
 				}
 				return nil
-			}
-			for _, p := range projects {
-				desc := ""
-				if p.Description != nil {
-					desc = *p.Description
-				}
-				if _, err := fmt.Fprintf(d.Out, "%s\t%s\t%s\n", p.Slug, p.Name, desc); err != nil {
-					return err
-				}
-			}
-			return nil
+			})
 		},
 	}
 }
 
-func newProjectsGetCmd(d Deps) *cobra.Command {
+func newProjectsGetCmd(d Deps, s *settings) *cobra.Command {
 	return &cobra.Command{
 		Use:   "get <slug>",
 		Short: "Show one project",
@@ -64,14 +60,10 @@ func newProjectsGetCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			desc := ""
-			if p.Description != nil {
-				desc = *p.Description
-			}
-			if _, err := fmt.Fprintf(d.Out, "Slug:       %s\nName:       %s\nDescription: %s\n", p.Slug, p.Name, desc); err != nil {
+			return emit(d, s, p, func(w io.Writer) error {
+				_, err := fmt.Fprintf(w, "Slug:       %s\nName:       %s\nDescription: %s\n", p.Slug, p.Name, deref(p.Description))
 				return err
-			}
-			return nil
+			})
 		},
 	}
 }

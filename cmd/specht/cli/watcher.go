@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"time"
@@ -27,16 +28,16 @@ type WatcherBackfillResult struct {
 	Outcome watcher.PollOutcome
 }
 
-func newWatcherCmd(d Deps, _ *settings) *cobra.Command {
+func newWatcherCmd(d Deps, s *settings) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "watcher",
 		Short: "Inspect and run the CVE watcher",
 	}
-	cmd.AddCommand(newWatcherBackfillCmd(d), newWatcherStatusCmd(d))
+	cmd.AddCommand(newWatcherBackfillCmd(d, s), newWatcherStatusCmd(d, s))
 	return cmd
 }
 
-func newWatcherStatusCmd(d Deps) *cobra.Command {
+func newWatcherStatusCmd(d Deps, s *settings) *cobra.Command {
 	return &cobra.Command{
 		Use:   "status",
 		Short: "Show watcher health",
@@ -50,48 +51,44 @@ func newWatcherStatusCmd(d Deps) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if status.LastSuccessfulPollAt != "" {
-				if _, err := fmt.Fprintf(d.Out, "Last Successful Poll:  %s\n", status.LastSuccessfulPollAt); err != nil {
+			return emit(d, s, status, func(w io.Writer) error {
+				if status.LastSuccessfulPollAt != "" {
+					if _, err := fmt.Fprintf(w, "Last Successful Poll:  %s\n", status.LastSuccessfulPollAt); err != nil {
+						return err
+					}
+				} else {
+					if _, err := fmt.Fprintln(w, "Last Successful Poll:  never (cold start)"); err != nil {
+						return err
+					}
+				}
+				if status.LastPollAttemptAt != "" {
+					if _, err := fmt.Fprintf(w, "Last Poll Attempt:     %s\n", status.LastPollAttemptAt); err != nil {
+						return err
+					}
+				}
+				if status.LastError != "" {
+					if _, err := fmt.Fprintf(w, "Last Error:            %s\n", status.LastError); err != nil {
+						return err
+					}
+				}
+				if _, err := fmt.Fprintf(w, "Consecutive Failures:  %d\n", status.ConsecutiveFailures); err != nil {
 					return err
 				}
-			} else {
-				if _, err := fmt.Fprintln(d.Out, "Last Successful Poll:  never (cold start)"); err != nil {
-					return err
+				switch {
+				case status.Healthy:
+					_, err = fmt.Fprintln(w, "Status:                healthy")
+				case status.Stale:
+					_, err = fmt.Fprintf(w, "Status:                STALE (no successful poll within %s)\n", status.StalenessWindow)
+				default:
+					_, err = fmt.Fprintln(w, "Status:                FAILING")
 				}
-			}
-			if status.LastPollAttemptAt != "" {
-				if _, err := fmt.Fprintf(d.Out, "Last Poll Attempt:     %s\n", status.LastPollAttemptAt); err != nil {
-					return err
-				}
-			}
-			if status.LastError != "" {
-				if _, err := fmt.Fprintf(d.Out, "Last Error:            %s\n", status.LastError); err != nil {
-					return err
-				}
-			}
-			if _, err := fmt.Fprintf(d.Out, "Consecutive Failures:  %d\n", status.ConsecutiveFailures); err != nil {
 				return err
-			}
-			switch {
-			case status.Healthy:
-				if _, err := fmt.Fprintln(d.Out, "Status:                healthy"); err != nil {
-					return err
-				}
-			case status.Stale:
-				if _, err := fmt.Fprintf(d.Out, "Status:                STALE (no successful poll within %s)\n", status.StalenessWindow); err != nil {
-					return err
-				}
-			default:
-				if _, err := fmt.Fprintln(d.Out, "Status:                FAILING"); err != nil {
-					return err
-				}
-			}
-			return nil
+			})
 		},
 	}
 }
 
-func newWatcherBackfillCmd(d Deps) *cobra.Command {
+func newWatcherBackfillCmd(d Deps, s *settings) *cobra.Command {
 	var since string
 	var dryRun bool
 	cmd := &cobra.Command{
@@ -115,15 +112,21 @@ func newWatcherBackfillCmd(d Deps) *cobra.Command {
 				return err
 			}
 			o := result.Outcome
-			if _, err := fmt.Fprintf(d.Out, "watcher backfill: projects=%d queried=%d created=%d skipped=%d unchanged=%d ignored=%d orphan_skips=%d\n", o.Projects, o.Queried, o.Created, o.Skipped, o.Unchanged, o.Ignored, o.OrphanSkips); err != nil {
-				return err
+			summary := map[string]any{
+				"projects": o.Projects, "queried": o.Queried, "created": o.Created, "skipped": o.Skipped,
+				"unchanged": o.Unchanged, "ignored": o.Ignored, "orphan_skips": o.OrphanSkips,
+				"modified_reevaluated": o.ModifiedReevaluated, "dry_run": dryRun,
 			}
-			if dryRun {
-				if _, err := fmt.Fprintln(d.Out, "dry-run: nothing was written"); err != nil {
+			return emit(d, s, summary, func(w io.Writer) error {
+				if _, err := fmt.Fprintf(w, "watcher backfill: projects=%d queried=%d created=%d skipped=%d unchanged=%d ignored=%d orphan_skips=%d\n", o.Projects, o.Queried, o.Created, o.Skipped, o.Unchanged, o.Ignored, o.OrphanSkips); err != nil {
 					return err
 				}
-			}
-			return nil
+				if dryRun {
+					_, err := fmt.Fprintln(w, "dry-run: nothing was written")
+					return err
+				}
+				return nil
+			})
 		},
 	}
 	cmd.Flags().StringVar(&since, "since", "", "only include advisories after this ISO8601 timestamp")
