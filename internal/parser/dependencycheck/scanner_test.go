@@ -181,3 +181,29 @@ func TestParse_DependencyCheckLocationDecodesPackageURLEscapes(t *testing.T) {
 	require.Len(t, report.Findings, 1)
 	assert.Equal(t, "@babel/traverse 7.24.0 in /app/package-lock.json", report.Findings[0].Location)
 }
+
+func TestParse_CVSSAllFromReport(t *testing.T) {
+	data, err := os.ReadFile("testdata/dependency-check-report.json")
+	require.NoError(t, err)
+	report, err := dependencycheck.NewScanner().Parse(context.Background(), data)
+	require.NoError(t, err)
+
+	byID := map[string]domain.NormalizedFinding{}
+	for _, f := range report.Findings {
+		byID[f.Title] = f
+	}
+
+	log4j := byID["CVE-2021-44228"]
+	assert.Equal(t, []domain.CVSSRecord{
+		{Version: "3.1", Vector: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:H", Score: 10},
+	}, log4j.CVSSAll)
+
+	jackson := byID["CVE-2020-25649"]
+	require.Len(t, jackson.CVSSAll, 2, "the v3 and the v2 vector both survive")
+	assert.Equal(t, "3.1", jackson.CVSSAll[0].Version)
+	assert.Equal(t, "2.0", jackson.CVSSAll[1].Version)
+	assert.Equal(t, "CVSS:2.0/AV:N/AC:L/Au:N/C:N/I:N/A:P", jackson.CVSSAll[1].Vector)
+	require.NotNil(t, jackson.CVSS, "the preferred vector is unchanged")
+	assert.Equal(t, "3.1", jackson.CVSS.Version)
+	assert.InDelta(t, 7.5, jackson.Score, 0)
+}

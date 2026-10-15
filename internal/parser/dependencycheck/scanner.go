@@ -30,6 +30,7 @@ type dcPackage struct {
 type dcVulnerability struct {
 	Name        string  `json:"name"`
 	Severity    string  `json:"severity"`
+	Source      string  `json:"source"`
 	CvssV3      *dcCvss `json:"cvssv3"`
 	CvssV2      *dcCvss `json:"cvssv2"`
 	Description string  `json:"description"`
@@ -128,6 +129,24 @@ func dcCVSSInfo(score float64, cvssVec, cvssVer string) *domain.CVSSInfo {
 	return &domain.CVSSInfo{Version: cvssVer, Vector: cvssVec, Score: score}
 }
 
+// dcCVSSAll keeps both the v3 and the v2 vector of a vulnerability. The
+// report's own "source" (for example NVD) is the scoring source when present.
+func dcCVSSAll(v dcVulnerability) []domain.CVSSRecord {
+	source := strings.ToLower(strings.TrimSpace(v.Source))
+	var out []domain.CVSSRecord
+	if v.CvssV3 != nil && v.CvssV3.BaseScore > 0 {
+		if rec, ok := parseutil.NewCVSSRecord(v.CvssV3.VectorString, v.CvssV3.BaseScore, source); ok {
+			out = parseutil.AddCVSS(out, rec)
+		}
+	}
+	if v.CvssV2 != nil && v.CvssV2.Score > 0 {
+		if rec, ok := parseutil.NewCVSSRecord(v.CvssV2.VectorString, v.CvssV2.Score, source); ok {
+			out = parseutil.AddCVSS(out, rec)
+		}
+	}
+	return out
+}
+
 func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) domain.NormalizedFinding {
 	severity := normalizeDCSeverity(v.Severity)
 	score, cvssVec, cvssVer := extractCVSS(v)
@@ -151,6 +170,7 @@ func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) do
 		Score:       score,
 		Location:    location,
 		CVSS:        dcCVSSInfo(score, cvssVec, cvssVer),
+		CVSSAll:     dcCVSSAll(v),
 		Dimensions:  dims,
 		Extensions: map[string]any{
 			"file_name": dep.FileName,
@@ -217,6 +237,10 @@ func extractCVSS(v dcVulnerability) (score float64, vector string, version strin
 		score = v.CvssV3.BaseScore
 		vector = v.CvssV3.VectorString
 		version = "3.1"
+		// The prefix decides: Dependency-Check also prints 3.0 vectors.
+		if rec, ok := parseutil.NewCVSSRecord(vector, score, ""); ok {
+			version = rec.Version
+		}
 		return
 	}
 	if v.CvssV2 != nil && v.CvssV2.Score > 0 {

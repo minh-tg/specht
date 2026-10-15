@@ -6,6 +6,7 @@ import (
 	"github.com/minh-tg/specht/internal/domain"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNormalizeDCSeverity(t *testing.T) {
@@ -67,6 +68,45 @@ func TestExtractCVSS(t *testing.T) {
 		}
 		score, _, _ := extractCVSS(vuln)
 		assert.Equal(t, 0.0, score)
+	})
+}
+
+func TestExtractCVSS_VersionFromVectorPrefix(t *testing.T) {
+	vuln := dcVulnerability{
+		CvssV3: &dcCvss{BaseScore: 9.8, VectorString: "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"},
+	}
+	_, _, ver := extractCVSS(vuln)
+	assert.Equal(t, "3.0", ver, "a 3.0 vector is not relabelled 3.1")
+}
+
+func TestDCCVSSAll(t *testing.T) {
+	v3 := &dcCvss{BaseScore: 9.8, VectorString: "CVSS:3.0/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"}
+	v2 := &dcCvss{Score: 7.5, VectorString: "AV:N/AC:L/Au:N/C:P/I:P/A:P"}
+
+	t.Run("keeps v3 and v2 with prefix-derived versions", func(t *testing.T) {
+		got := dcCVSSAll(dcVulnerability{CvssV3: v3, CvssV2: v2, Source: "NVD"})
+		assert.Equal(t, []domain.CVSSRecord{
+			{Version: "3.0", Vector: v3.VectorString, Score: 9.8, Source: "nvd"},
+			{Version: "2.0", Vector: "CVSS:2.0/AV:N/AC:L/Au:N/C:P/I:P/A:P", Score: 7.5, Source: "nvd"},
+		}, got)
+	})
+
+	t.Run("source stays empty when the report names none", func(t *testing.T) {
+		got := dcCVSSAll(dcVulnerability{CvssV2: v2})
+		require.Len(t, got, 1)
+		assert.Empty(t, got[0].Source)
+	})
+
+	t.Run("skips entries without a score or a usable vector", func(t *testing.T) {
+		got := dcCVSSAll(dcVulnerability{
+			CvssV3: &dcCvss{BaseScore: 0, VectorString: v3.VectorString},
+			CvssV2: &dcCvss{Score: 5, VectorString: ""},
+		})
+		assert.Empty(t, got)
+	})
+
+	t.Run("nothing when no CVSS data", func(t *testing.T) {
+		assert.Empty(t, dcCVSSAll(dcVulnerability{}))
 	})
 }
 
