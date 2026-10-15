@@ -189,7 +189,7 @@ test("manual ingest uploads a scan file", async ({ page, request }) => {
   await page.goto(`/${slug}/reports/upload`);
   await chooseOption(page, page.getByLabel("Scanner"), /^SARIF/);
   await page.setInputFiles("#ingest-file", FIXTURE_HIGH);
-  await expect(page.getByText("high.sarif.json loaded")).toBeVisible();
+  await expect(page.getByTestId("file-dropzone").getByText("high.sarif.json")).toBeVisible();
 
   await page.getByRole("button", { name: "Upload" }).click();
   // Other status regions exist on the page (the route announcer), so pick the card by its content.
@@ -993,7 +993,7 @@ test("manual ingest takes line-based Nuclei output", async ({ page, request }) =
   await page.goto(`/${slug}/reports/upload`);
   await chooseOption(page, page.getByLabel("Scanner"), /^Nuclei/);
   await page.setInputFiles("#ingest-file", FIXTURE_NUCLEI);
-  await expect(page.getByText("nuclei.jsonl loaded")).toBeVisible();
+  await expect(page.getByTestId("file-dropzone").getByText("nuclei.jsonl")).toBeVisible();
 
   await page.getByRole("button", { name: "Upload" }).click();
   await expect(page.getByRole("link", { name: "View findings" })).toBeVisible();
@@ -1082,7 +1082,7 @@ test("the upload page says how to produce the chosen scanner's file and takes .s
     mimeType: "application/json",
     buffer: readFileSync(FIXTURE_HIGH),
   });
-  await expect(page.getByText("results.sarif loaded")).toBeVisible();
+  await expect(page.getByTestId("file-dropzone").getByText("results.sarif")).toBeVisible();
   await page.getByRole("button", { name: "Upload" }).click();
   await expect(page.getByRole("link", { name: "View findings" })).toBeVisible();
 });
