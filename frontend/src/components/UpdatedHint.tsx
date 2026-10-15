@@ -1,7 +1,10 @@
 import { Button } from "@/components/ui/button";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 const TICK_MS = 5 * 1000;
+/** A change that arrives this soon after the person's own save is their own, not news. */
+const OWN_CHANGE_WINDOW_MS = 10 * 1000;
 
 /** "just now", "40 seconds ago", "3 minutes ago". The seconds step is why it ticks every 5 s. */
 function updatedAgo(elapsedMs: number): string {
@@ -16,7 +19,8 @@ function updatedAgo(elapsedMs: number): string {
  * "Updated 40 seconds ago" with a Refresh button, for a page that polls. The text is not a live
  * region: a counter that changes every few seconds would be read out continuously. A separate polite
  * status says "New changes" the first time a refetch brings data that differs from what was shown,
- * and then stays quiet for as long as the page is open. The clock stops while the tab is hidden.
+ * and then stays quiet for as long as the page is open. A change that follows the person's own save
+ * (a triage, a waiver) is not announced. The clock stops while the tab is hidden.
  */
 export function UpdatedHint({ updatedAt, watch, isFetching, onRefresh, className }: {
   /** `dataUpdatedAt` of the query: when data last arrived. 0 means nothing has loaded yet. */
@@ -33,6 +37,23 @@ export function UpdatedHint({ updatedAt, watch, isFetching, onRefresh, className
   const [now, setNow] = useState(() => Date.now());
   const [announced, setAnnounced] = useState(false);
   const [seen, setSeen] = useState(watch);
+  const queryClient = useQueryClient();
+  // True for a while after the person's own save, so the refetch it causes is not announced.
+  const [own, setOwn] = useState(false);
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = queryClient.getMutationCache().subscribe((event) => {
+      if (event.type !== "added" && event.type !== "updated") return;
+      setOwn(true);
+      clearTimeout(timer);
+      timer = setTimeout(() => setOwn(false), OWN_CHANGE_WINDOW_MS);
+    });
+    return () => {
+      unsubscribe();
+      clearTimeout(timer);
+    };
+  }, [queryClient]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setInterval> | undefined;
@@ -67,7 +88,7 @@ export function UpdatedHint({ updatedAt, watch, isFetching, onRefresh, className
       seen[i] !== undefined && value !== undefined && seen[i] !== value
     );
     setSeen(watch);
-    if (changed) setAnnounced(true);
+    if (changed && !own) setAnnounced(true);
   }
 
   if (updatedAt === 0) return null;
