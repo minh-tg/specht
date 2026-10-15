@@ -182,6 +182,51 @@ Actions, and `CI_PROJECT_PATH`, `CI_COMMIT_SHA`, `CI_COMMIT_REF_NAME` and
 `CI_MERGE_REQUEST_TARGET_BRANCH_NAME` on GitLab CI. A pull request from a fork
 has no secrets, so with an empty API key the adapter logs a notice and exits 0.
 
+### CVE details from external providers
+
+The finding page lists the CVE evaluation details: every CVSS vector, EPSS and
+KEV, CWEs, dates and references. The scan report is the primary source. When a
+report is incomplete for a CVE (no valid CVSS v3.0, v3.1 or v4.0 vector, or
+neither a CWE nor a published date), the server can ask external providers for
+the rest. Providers are off by default, so an air-gapped install makes no CVE
+detail calls.
+
+What leaves the server: the CVE identifier in the request (for example
+`CVE-2024-3094`), the server's IP address, the `User-Agent: Specht` header and,
+when configured, the provider's API key in a request header. No package name,
+project, finding or report data is sent. Calls happen in the background when
+someone opens a finding with an incomplete report, never during an ingest, and
+answers are cached in PostgreSQL (`cve_detail_cache`) for `CVE_DETAIL_TTL`
+(`CVE_DETAIL_NEGATIVE_TTL` for "not found"). Rows are deleted 30 days after they
+expire. Requests use https only, follow no redirects, refuse private addresses
+unless `CVE_DETAIL_ALLOW_PRIVATE_MIRROR=true`, and read at most 2 MiB.
+
+Keys are read from the environment only. They are never logged, stored in the
+database, or returned by the API. `GET /api/v1/admin/status` lists each
+provider under `cve_providers` with whether it is on, whether a key is set (a
+boolean), and its last success and last error category.
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `CVE_DETAIL_PROVIDERS` | *(empty, off)* | Providers to ask, in order: `nvd`, `vulncheck`, `osv`, for example `nvd,osv`. The first that has the CVE answers. |
+| `CVE_DETAIL_NVD_API_KEY` | *(empty)* | **Secret.** Optional NVD API key, sent in the `apiKey` header. Raises NVD's limit from 5 to 50 requests per 30 seconds. |
+| `CVE_DETAIL_VULNCHECK_API_KEY` | *(empty)* | **Secret.** VulnCheck API token, sent as a bearer token. Required when `vulncheck` is listed; startup fails without it. |
+| `CVE_DETAIL_NVD_BASE_URL` | `https://services.nvd.nist.gov/rest/json/cves/2.0` | Override for a mirror or tests. Must be https. |
+| `CVE_DETAIL_VULNCHECK_BASE_URL` | `https://api.vulncheck.com/v3/index/nist-nvd2` | Override for a mirror or tests. Must be https. |
+| `CVE_DETAIL_OSV_BASE_URL` | `https://api.osv.dev/v1/vulns` | Override for a mirror or tests. Must be https; the CVE identifier is appended as the last path segment. |
+| `CVE_DETAIL_ALLOW_PRIVATE_MIRROR` | `false` | Let a base URL resolve to a private address, for a mirror inside your network. |
+| `CVE_DETAIL_TTL` | `24h` | How long a found record is reused. |
+| `CVE_DETAIL_NEGATIVE_TTL` | `6h` | How long a "not found" answer is reused. |
+| `CVE_DETAIL_TIMEOUT` | `10s` | Per-request timeout. |
+| `CVE_DETAIL_NVD_RPS` | `0.16` without a key, `1.6` with one | Requests per second to NVD, per server replica. |
+| `CVE_DETAIL_VULNCHECK_RPS` | `1` | Requests per second to VulnCheck, per server replica. |
+| `CVE_DETAIL_OSV_RPS` | `1` | Requests per second to OSV, per server replica. |
+
+The rates apply per replica. Replicas share one fetch per CVE through a lease in
+PostgreSQL and share a provider's backoff after a rate limit, so with several
+replicas divide the rate by their count if you need to stay under a provider's
+published limit.
+
 ### Compose-only
 
 | Variable | Default | Purpose |
