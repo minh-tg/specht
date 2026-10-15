@@ -28,6 +28,7 @@ import type {
   Waiver,
   WaiverStatus,
 } from "@/types/api";
+import type { CveDetail } from "@/types/cve";
 import {
   keepPreviousData,
   useMutation,
@@ -1146,5 +1147,28 @@ export function useUpdateProjectWatcher(slug: string) {
     onSuccess: (watcher) => {
       queryClient.setQueryData(queryKeys.watcher(slug), watcher);
     },
+  });
+}
+
+/** How long a pending CVE answer waits before the one extra read that may carry the provider's reply. */
+const CVE_PENDING_RECHECK_MS = 15 * 1000;
+
+/**
+ * The CVE evaluation details of a finding. The key sits outside `["finding"]`, so triage, which
+ * invalidates that prefix, does not refetch it. The answer stays fresh for ten minutes and is not
+ * polled. When the server says a provider fetch is `pending`, it is read once more about 15 seconds
+ * later and then left alone. A finding without a CVE answers 404 `not_cve`, which is not retried.
+ */
+export function useFindingCve(findingId: string) {
+  return useQuery({
+    queryKey: ["finding-cve", findingId] as const,
+    queryFn: () => apiFetch<CveDetail>(`/api/v1/findings/${encodeURIComponent(findingId)}/cve`),
+    enabled: !!findingId,
+    staleTime: 10 * 60 * 1000,
+    // `dataUpdateCount` is 1 after the first answer and 2 after the recheck.
+    refetchInterval: (query) =>
+      query.state.data?.pending === true && query.state.dataUpdateCount <= 1
+        ? CVE_PENDING_RECHECK_MS
+        : false,
   });
 }
