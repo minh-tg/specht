@@ -102,6 +102,61 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 	h.audit.HTTP(r, audit.EventTriageFinding, audit.OutcomeSuccess, "", id, nil)
 }
 
+// UndoTriage takes back the finding's newest analysis change by restoring the
+// snapshot that change recorded.
+func (h *Handler) UndoTriage(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", triageMsgFindingIDRequired)
+		return
+	}
+	var req struct {
+		EventID string `json:"event_id"`
+	}
+	if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", triageMsgInvalidBody) {
+		return
+	}
+	if req.EventID == "" {
+		respondError(w, http.StatusBadRequest, "missing_field", "event_id is required")
+		return
+	}
+
+	ident := auth.ContextIdentity(r.Context())
+	if ident == nil || ident.UserID == "" {
+		respondError(w, http.StatusUnauthorized, "unauthorized", "user id required")
+		return
+	}
+
+	result, err := h.usecase.UndoTriage(r.Context(), usecase.UndoTriageInput{
+		FindingID: id,
+		EventID:   req.EventID,
+		UserID:    ident.UserID,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, usecase.ErrFindingNotFound):
+			respondError(w, http.StatusNotFound, "not_found", triageMsgFindingNotFound)
+		case errors.Is(err, usecase.ErrProjectAccessDenied):
+			respondAccessDenied(w, r, "finding")
+		case errors.Is(err, usecase.ErrInvalidFindingID):
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid finding id format")
+		case errors.Is(err, usecase.ErrInvalidEventID):
+			respondError(w, http.StatusBadRequest, "invalid_event_id", "invalid event id format")
+		case errors.Is(err, usecase.ErrAnalysisConflict):
+			respondError(w, http.StatusConflict, "analysis_conflict", "This is no longer the latest triage change on the finding, so it cannot be undone.")
+		case errors.Is(err, usecase.ErrUndoUnavailable):
+			respondError(w, http.StatusConflict, "undo_unavailable", "This change was recorded without the details needed to undo it.")
+		case errors.Is(err, usecase.ErrPreviousExpiryPassed):
+			respondError(w, http.StatusConflict, "previous_expiry_passed", "The previous decision has expired, so it cannot be restored.")
+		default:
+			slog.Error("undo triage", "finding_id", id, "error", err)
+			respondError(w, http.StatusInternalServerError, "undo_failed", "could not undo the analysis change")
+		}
+		return
+	}
+	respondJSON(w, http.StatusOK, result)
+}
+
 func (h *Handler) VerifyFinding(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if id == "" {

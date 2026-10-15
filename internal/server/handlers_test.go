@@ -64,6 +64,7 @@ type mockUsecases struct {
 	listAPIKeysFn           func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
 	revokeAPIKeyFn          func(ctx context.Context, projectSlug, keyID string) error
 	triageFindingFn         func(ctx context.Context, input usecase.TriageInput) (*usecase.TriageOutput, error)
+	undoTriageFn            func(ctx context.Context, input usecase.UndoTriageInput) (*usecase.TriageOutput, error)
 	bulkTriageFn            func(ctx context.Context, input usecase.BulkTriageInput) ([]usecase.TriageOutput, error)
 	getGateStatusFn         func(ctx context.Context, slug string, minRank int16) (*usecase.GateStatusOutput, error)
 	getIntroducedGateFn     func(ctx context.Context, slug string, minRank int16, reportID string) (*usecase.GateStatusOutput, error)
@@ -310,6 +311,13 @@ func (m *mockUsecases) TriageFinding(ctx context.Context, input usecase.TriageIn
 		return nil, fmt.Errorf("unexpected call to TriageFinding")
 	}
 	return m.triageFindingFn(ctx, input)
+}
+
+func (m *mockUsecases) UndoTriage(ctx context.Context, input usecase.UndoTriageInput) (*usecase.TriageOutput, error) {
+	if m.undoTriageFn == nil {
+		return nil, fmt.Errorf("unexpected call to UndoTriage")
+	}
+	return m.undoTriageFn(ctx, input)
 }
 
 func (m *mockUsecases) VerifyFix(ctx context.Context, findingID string) (*usecase.VerifyResponse, error) {
@@ -1098,6 +1106,7 @@ func testRouter(mock *mockUsecases) http.Handler {
 	r.Get("/api/v1/auth/apikeys", h.ListAPIKeys)
 	r.Delete("/api/v1/auth/apikeys/{id}", h.RevokeAPIKey)
 	r.Patch("/api/v1/findings/{id}", h.TriageFinding)
+	r.Post("/api/v1/findings/{id}/analysis/undo", h.UndoTriage)
 	r.Post("/api/v1/findings/{id}/verify", h.VerifyFinding)
 	r.Get("/api/v1/findings/{id}/patch-preview", h.PreviewPatch)
 	r.Get("/api/v1/findings/{id}/notify-preview", h.PreviewNotification)

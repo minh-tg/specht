@@ -688,6 +688,12 @@ type UpdateAnalysisInput struct {
 	ExpectedState *string
 }
 
+// AnalysisUndoDecider decides an analysis undo while the finding is locked.
+// current is the finding as it stands now and newest is its newest analysis
+// event (nil when it has none). It returns the analysis write and the event
+// to record, or an error that aborts the undo and rolls everything back.
+type AnalysisUndoDecider func(current Finding, newest *FindingEvent) (UpdateAnalysisInput, FindingEventInput, error)
+
 // UpsertFindingInput carries the fields of one finding upsert.
 type UpsertFindingInput struct {
 	ProjectID    string
@@ -738,6 +744,11 @@ type FindingStore interface {
 	// UpdateAnalysisWithEvent atomically updates analysis state and records
 	// its audit event, returning the updated finding and the stored event.
 	UpdateAnalysisWithEvent(ctx context.Context, input UpdateAnalysisInput, event FindingEventInput) (Finding, FindingEvent, error)
+	// UndoAnalysis runs decide in one transaction that holds the finding's
+	// row lock, then applies the analysis write and event it returns. Nothing
+	// else can change the finding between the decision and the write.
+	// ErrNotFound means the finding does not exist.
+	UndoAnalysis(ctx context.Context, findingID string, decide AnalysisUndoDecider) (Finding, FindingEvent, error)
 	BulkUpdateAnalysis(ctx context.Context, input UpdateAnalysisInput, ids []string) ([]Finding, error)
 	BulkTriage(ctx context.Context, input UpdateAnalysisInput, ids []string, event FindingEventInput) ([]Finding, error)
 	CreateEvent(ctx context.Context, input FindingEventInput) (FindingEvent, error)

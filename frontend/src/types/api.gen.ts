@@ -793,6 +793,37 @@ export interface paths {
     patch: operations["triageFinding"];
     trace?: never;
   };
+  "/api/v1/findings/{id}/analysis/undo": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /**
+     * Undo the latest analysis decision
+     * @description Puts the finding's analysis back to what it was before the named
+     *     event: state, reason, expiry, source and the manual and review flags.
+     *     The undo is recorded as a new `analysis_changed` event that names the
+     *     one it reverses (`changes.undo_of`); the original event stays in the
+     *     history.
+     *
+     *     Only the finding's newest analysis event can be undone, and only while
+     *     the finding is still in the state that event set. Anyone who may triage
+     *     the project may undo, not only the person who made the change.
+     *
+     *     Events written by bulk triage, by a scan's review flag or before this
+     *     endpoint existed carry no snapshot and answer `undo_unavailable`.
+     */
+    post: operations["undoTriage"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/findings/bulk-analysis": {
     parameters: {
       query?: never;
@@ -2565,6 +2596,13 @@ export interface components {
        * @description The finding event this decision wrote. Absent in bulk results.
        */
       event_id?: string;
+    };
+    UndoTriageRequest: {
+      /**
+       * Format: uuid
+       * @description The `event_id` a triage response returned, naming the decision to take back.
+       */
+      event_id: string;
     };
     BulkTriageRequest: {
       finding_ids: string[];
@@ -4834,6 +4872,60 @@ export interface operations {
         };
       };
       422: components["responses"]["Unprocessable"];
+    };
+  };
+  undoTriage: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Resource identifier. */
+        id: components["parameters"]["Id"];
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["UndoTriageRequest"];
+      };
+    };
+    responses: {
+      /** @description The analysis was restored. `event_id` names the new undo event. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TriageResult"];
+        };
+      };
+      400: components["responses"]["BadRequest"];
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
+      /**
+       * @description The change cannot be undone. `analysis_conflict`: the event is not
+       *     the finding's newest analysis event, or the finding is no longer in
+       *     the state it set. `undo_unavailable`: the event has no snapshot of
+       *     the earlier analysis. `previous_expiry_passed`: the earlier decision
+       *     has already expired.
+       */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "error": {
+           *         "code": "analysis_conflict",
+           *         "message": "This is no longer the latest triage change on the finding so it cannot be undone."
+           *       }
+           *     }
+           */
+          "application/json": components["schemas"]["Error"];
+        };
+      };
     };
   };
   bulkTriage: {

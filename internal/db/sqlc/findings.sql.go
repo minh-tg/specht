@@ -755,6 +755,36 @@ func (q *Queries) GetFindingDisplayContext(ctx context.Context, findingID pgtype
 	return i, err
 }
 
+const getNewestAnalysisEvent = `-- name: GetNewestAnalysisEvent :one
+SELECT id, finding_id, user_id, event_type, old_value, new_value, comment, changes, created_at FROM finding_events
+WHERE finding_id = $1
+  AND event_type IN (
+      'analysis_changed', 'bulk_triage_applied',
+      'reopened_severity_change', 'reopened_fix_available'
+  )
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`
+
+// The finding's newest event of any type that can change or flag its
+// analysis. Triage undo is only allowed against this event.
+func (q *Queries) GetNewestAnalysisEvent(ctx context.Context, findingID pgtype.UUID) (FindingEvent, error) {
+	row := q.db.QueryRow(ctx, getNewestAnalysisEvent, findingID)
+	var i FindingEvent
+	err := row.Scan(
+		&i.ID,
+		&i.FindingID,
+		&i.UserID,
+		&i.EventType,
+		&i.OldValue,
+		&i.NewValue,
+		&i.Comment,
+		&i.Changes,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const hasDimension = `-- name: HasDimension :one
 SELECT EXISTS (
     SELECT 1 FROM finding_dimensions
@@ -1492,6 +1522,46 @@ func (q *Queries) ListIntroducedGateCandidates(ctx context.Context, arg ListIntr
 		return nil, err
 	}
 	return items, nil
+}
+
+const lockFindingForUpdate = `-- name: LockFindingForUpdate :one
+SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version, introduced_by_report_id, introduced_commit_sha FROM findings WHERE id = $1 FOR UPDATE
+`
+
+func (q *Queries) LockFindingForUpdate(ctx context.Context, id pgtype.UUID) (Finding, error) {
+	row := q.db.QueryRow(ctx, lockFindingForUpdate, id)
+	var i Finding
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.FindingKind,
+		&i.Fingerprint,
+		&i.CurrentTitle,
+		&i.CurrentSeverity,
+		&i.CurrentSeverityRank,
+		&i.CurrentScore,
+		&i.State,
+		&i.TriageStatus,
+		&i.AssigneeID,
+		&i.FirstSeenAt,
+		&i.LastSeenAt,
+		&i.FixedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AnalysisState,
+		&i.GateEffect,
+		&i.AnalysisExpiresAt,
+		&i.AnalysisReason,
+		&i.AnalysisSource,
+		&i.AnalysisUpdatedAt,
+		&i.AnalysisUpdatedBy,
+		&i.ManualOverride,
+		&i.ReviewRequired,
+		&i.FingerprintVersion,
+		&i.IntroducedByReportID,
+		&i.IntroducedCommitSha,
+	)
+	return i, err
 }
 
 const markAbsentScopedFindingsFixed = `-- name: MarkAbsentScopedFindingsFixed :many

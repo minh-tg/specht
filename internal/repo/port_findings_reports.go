@@ -470,6 +470,37 @@ func (r *pgFindingPort) UpdateAnalysisWithEvent(ctx context.Context, input port.
 	return findingRowToPort(row), findingEventRowToPort(created), nil
 }
 
+func (r *pgFindingPort) UndoAnalysis(ctx context.Context, findingID string, decide port.AnalysisUndoDecider) (port.Finding, port.FindingEvent, error) {
+	fid, err := parseID(findingID)
+	if err != nil {
+		return port.Finding{}, port.FindingEvent{}, err
+	}
+	row, created, err := r.inner.UndoAnalysis(ctx, fid, func(current sqlc.Finding, newest *sqlc.FindingEvent) (UpdateAnalysisParams, CreateEventParams, error) {
+		var newestPort *port.FindingEvent
+		if newest != nil {
+			e := findingEventRowToPort(*newest)
+			newestPort = &e
+		}
+		input, event, err := decide(findingRowToPort(current), newestPort)
+		if err != nil {
+			return UpdateAnalysisParams{}, CreateEventParams{}, err
+		}
+		return UpdateAnalysisParams{
+				AnalysisState: input.AnalysisState, GateEffect: input.GateEffect,
+				AnalysisExpiresAt: timestamptzPtrFromTime(input.AnalysisExpiresAt), AnalysisReason: textPtrFromString(input.AnalysisReason),
+				AnalysisSource: input.AnalysisSource, ManualOverride: input.ManualOverride, ReviewRequired: input.ReviewRequired,
+				AnalysisUpdatedBy: uuidPtrFromString(input.AnalysisUpdatedBy),
+			}, CreateEventParams{
+				UserID: uuidPtrFromString(event.UserID), EventType: event.EventType,
+				OldValue: textPtrFromString(event.OldValue), NewValue: textPtrFromString(event.NewValue), Comment: textPtrFromString(event.Comment), Changes: event.Changes,
+			}, nil
+	})
+	if err != nil {
+		return port.Finding{}, port.FindingEvent{}, mappingErr(err)
+	}
+	return findingRowToPort(row), findingEventRowToPort(created), nil
+}
+
 func (r *pgFindingPort) BulkUpdateAnalysis(ctx context.Context, input port.UpdateAnalysisInput, ids []string) ([]port.Finding, error) {
 	uids := make([]pgtype.UUID, len(ids))
 	for i, id := range ids {
