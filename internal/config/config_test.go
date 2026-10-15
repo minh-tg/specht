@@ -145,6 +145,29 @@ func TestIntelConfig(t *testing.T) {
 	assert.ErrorContains(t, err, "INTEL_TTL")
 }
 
+func TestIntelEnabled(t *testing.T) {
+	t.Setenv("INTEL_ENABLED", "")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.True(t, cfg.Intel.Enabled, "intel stays on unless an operator turns it off")
+
+	for _, v := range []string{"false", "0", "FALSE"} {
+		t.Setenv("INTEL_ENABLED", v)
+		cfg, err = Load()
+		require.NoError(t, err, v)
+		assert.False(t, cfg.Intel.Enabled, v)
+	}
+
+	t.Setenv("INTEL_ENABLED", "true")
+	cfg, err = Load()
+	require.NoError(t, err)
+	assert.True(t, cfg.Intel.Enabled)
+
+	t.Setenv("INTEL_ENABLED", "off-ish")
+	_, err = Load()
+	assert.ErrorContains(t, err, "INTEL_ENABLED", "a typo must fail at startup, not leave outbound calls on")
+}
+
 func TestLoad_SSOAllowedDomains(t *testing.T) {
 	t.Setenv("WATCHER_ENABLE", "")
 	t.Setenv("SSO_ALLOWED_DOMAINS", "Example.COM, example.org ")

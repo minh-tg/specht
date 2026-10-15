@@ -206,9 +206,7 @@ func main() {
 		SSOAllowUnverifiedEmail: cfg.SSO.AllowUnverifiedEmail,
 		Watcher:                 usecase.WatcherSettings{Enabled: cfg.Watcher.Enable, PollInterval: cfg.Watcher.PollInterval},
 		Tracker:                 buildTrackerDispatcher(),
-		Intel: intel.NewStore(cfg.Intel.TTL, nil,
-			&intel.EPSSProvider{BaseURL: cfg.Intel.EPSSBaseURL},
-			&intel.KEVProvider{CatalogURL: cfg.Intel.KEVCatalogURL, TTL: cfg.Intel.TTL}),
+		Intel:                   buildIntelStore(cfg.Intel),
 	})
 
 	handler := server.NewRouter(server.RouterConfig{
@@ -325,6 +323,18 @@ func handleSubcommand(cfg *config.Server) bool {
 		os.Exit(runRecoveryCommand(cfg, os.Args[1:]))
 	}
 	return false
+}
+
+// buildIntelStore wires the EPSS and KEV feeds. It returns a nil interface when
+// INTEL_ENABLED is false, never a nil *intel.Store inside the interface, so the
+// finding read path sees "no intel" and makes no outbound calls.
+func buildIntelStore(cfg config.IntelConfig) usecase.IntelStore {
+	if !cfg.Enabled {
+		return nil
+	}
+	return intel.NewStore(cfg.TTL, nil,
+		&intel.EPSSProvider{BaseURL: cfg.EPSSBaseURL},
+		&intel.KEVProvider{CatalogURL: cfg.KEVCatalogURL, TTL: cfg.TTL})
 }
 
 // buildTrackerDispatcher wires the tracker event dispatcher from env config.

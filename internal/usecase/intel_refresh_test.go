@@ -165,3 +165,13 @@ func TestGetFinding_FailedRefreshIsNotRetriedWithinBackoff(t *testing.T) {
 	uc.intelRefresh.wg.Wait()
 	assert.Equal(t, 2, provider.callCount(), "the feed is retried once the backoff has elapsed")
 }
+
+func TestGetFinding_WithoutAnIntelStoreCarriesNoIntel(t *testing.T) {
+	uc := newIntelTestUsecases(newGatedIntelProvider(nil))
+	uc.deps.Intel = nil
+
+	finding, err := uc.GetFinding(memberSessionCtx(), intelTestFindingID)
+	require.NoError(t, err)
+	assert.Nil(t, finding.Intel)
+	uc.intelRefresh.wg.Wait()
+}
