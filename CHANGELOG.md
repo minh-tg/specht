@@ -95,6 +95,14 @@ releases.
 
 ### Changed
 
+- Undo after a triage change works for every earlier state. The server keeps a snapshot of
+  the analysis it replaced (state, reason, expiry, source, manual and review flags) in the
+  triage event, and `POST /api/v1/findings/{id}/analysis/undo` puts it back as a new event.
+  Only the finding's newest change can be undone; older events and bulk triage answer 409
+  `undo_unavailable`. `PATCH /api/v1/findings/{id}` accepts `expected_state`, answers 409
+  `analysis_conflict` when the finding changed, and returns the new `event_id`. The finding
+  response now carries `analysis_reason`, `analysis_expires_at`, `analysis_source`,
+  `manual_override` and `review_required`.
 - A report that is not the named scanner's output is refused with a 422 that
   names the scanner it looks like (`unrecognized_format`), instead of being
   recorded as a clean scan with no findings. A report that cannot be read is
