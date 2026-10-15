@@ -10,6 +10,7 @@ import {
 } from "@/api/hooks";
 import { useMemberSuggestions } from "@/api/memberSuggestions";
 import { useUserDirectory } from "@/api/users";
+import { useAuth } from "@/auth/useAuth";
 import { DisabledReason } from "@/components/DisabledReason";
 import { ErrorState } from "@/components/ErrorState";
 import { OpenRegistrationNote } from "@/components/OpenRegistrationNote";
@@ -84,6 +85,7 @@ export function ProjectAccess() {
     isError: teamsError,
     refetch: refetchTeams,
   } = useProjectTeams(currentSlug);
+  const { userId } = useAuth();
   const { data: directory } = useUserDirectory();
   const { data: allCompanyTeams } = useTeams();
   const { canManageMembers, isAdmin, role: currentRole } = useProjectRole(currentSlug);
@@ -532,7 +534,14 @@ export function ProjectAccess() {
             <AlertDialogAction
               variant="destructive"
               onClick={() => {
-                if (memberToRemove) removeMemberMutation.mutate(memberToRemove.user_id);
+                // Read now: the dialog clears memberToRemove once it has closed, before the toast.
+                if (memberToRemove) {
+                  removeMemberMutation.mutate({
+                    userId: memberToRemove.user_id,
+                    role: memberToRemove.role,
+                    restorable: memberToRemove.user_id !== userId,
+                  });
+                }
                 setRemoveOpen(false);
               }}
             >

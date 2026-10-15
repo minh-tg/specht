@@ -1,5 +1,5 @@
 import { type AnalysisState, analysisStateLabel } from "@/lib/enums";
-import type { Waiver } from "@/types/api";
+import type { ProjectMember, ProjectRole, Waiver } from "@/types/api";
 import { apiFetch } from "./client";
 import type { UndoPlan } from "./undo";
 
@@ -70,6 +70,36 @@ export function revokeUndoPlan(
         throw new Error("The waiver changed in the meantime, so Undo did nothing.");
       }
       await apiFetch<Waiver>(`${path}/toggle`, { method: "POST" });
+    },
+  };
+}
+
+/**
+ * The inverse of removing a project member: grant the same role again. The grant is an upsert, so
+ * the plan reads the roster first and refuses when the person is a member again, rather than
+ * overwriting a role someone just gave them. The roster shows a new "Added" date afterwards.
+ */
+export function restoreMemberPlan(
+  { slug, userId, role, refresh }: {
+    slug: string;
+    userId: string;
+    role: ProjectRole;
+    refresh: () => void;
+  },
+): UndoPlan {
+  const path = `/api/v1/projects/${encodeURIComponent(slug)}/members`;
+  return {
+    done: "Member restored",
+    refresh,
+    run: async () => {
+      const roster = await apiFetch<ProjectMember[]>(path);
+      if (roster.some((member) => member.user_id === userId)) {
+        throw new Error("They are a member again, so Undo did nothing.");
+      }
+      await apiFetch<void>(path, {
+        method: "POST",
+        body: JSON.stringify({ user_id: userId, role }),
+      });
     },
   };
 }

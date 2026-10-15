@@ -2,7 +2,7 @@ import { TRIAGE_REQUIREMENTS } from "@/pages/finding-detail/options";
 import { jsonResponse } from "@/test/utils";
 import type { Waiver } from "@/types/api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { REASONLESS_STATES, revokeUndoPlan, triageUndoPlan } from "./undoPlans";
+import { REASONLESS_STATES, restoreMemberPlan, revokeUndoPlan, triageUndoPlan } from "./undoPlans";
 
 interface Call {
   method: string;
@@ -153,6 +153,40 @@ describe("revokeUndoPlan", () => {
     await expect(plan.run()).rejects.toThrow(
       "The waiver changed in the meantime, so Undo did nothing.",
     );
+    expect(calls.map((c) => c.method)).toEqual(["GET"]);
+  });
+});
+
+describe("restoreMemberPlan", () => {
+  const refresh = vi.fn();
+  let roster: { user_id: string; }[] = [];
+  beforeEach(() => {
+    refresh.mockClear();
+    roster = [{ user_id: "u1" }];
+    const base = globalThis.fetch;
+    globalThis.fetch = vi.fn().mockImplementation(async (url: string, init?: RequestInit) => {
+      if (String(url).endsWith("/members") && (init?.method ?? "GET") === "GET") {
+        calls.push({ method: "GET", url: String(url) });
+        return jsonResponse(roster);
+      }
+      return (base as typeof fetch)(url, init);
+    });
+  });
+
+  it("reads the roster, then grants the same role again", async () => {
+    const plan = restoreMemberPlan({ slug: "pay", userId: "u2", role: "manager", refresh });
+    await plan.run();
+    expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
+      "GET /api/v1/projects/pay/members",
+      "POST /api/v1/projects/pay/members",
+    ]);
+    expect(calls[1]!.body).toEqual({ user_id: "u2", role: "manager" });
+  });
+
+  it("refuses, and grants nothing, when the person is a member again", async () => {
+    roster = [{ user_id: "u1" }, { user_id: "u2" }];
+    const plan = restoreMemberPlan({ slug: "pay", userId: "u2", role: "manager", refresh });
+    await expect(plan.run()).rejects.toThrow("They are a member again, so Undo did nothing.");
     expect(calls.map((c) => c.method)).toEqual(["GET"]);
   });
 });
