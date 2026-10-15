@@ -100,6 +100,9 @@ type Server struct {
 	// IngestConcurrency caps report ingests processed at once; zero leaves
 	// the server's built-in default.
 	IngestConcurrency int
+	// CVEDetail configures the external CVE detail providers. They are off
+	// unless CVE_DETAIL_PROVIDERS is set.
+	CVEDetail CVEDetailConfig
 }
 
 // SSOConfig configures OIDC single-sign-on login.
@@ -427,6 +430,9 @@ func Load() (*Server, error) {
 		return nil, err
 	}
 	if err := loadIntel(s); err != nil {
+		return nil, err
+	}
+	if err := loadCVEDetail(s); err != nil {
 		return nil, err
 	}
 	return s, nil
