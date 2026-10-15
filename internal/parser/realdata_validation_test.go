@@ -80,7 +80,7 @@ func TestRealDataValidationSweep(t *testing.T) {
 
 			require.NoError(t, err)
 
-			rep, err := s.Parse(context.Background(), data)
+			rep, err := s.Parse(scanner.WithFingerprintKey(context.Background(), []byte("0123456789abcdef0123456789abcdef")), data)
 			require.NoError(t, err)
 			require.NotNil(t, rep)
 			require.GreaterOrEqual(t, len(rep.Findings), tc.min)

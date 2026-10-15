@@ -13,6 +13,9 @@ package gitleaks
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -36,7 +39,7 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 		Name:                  "gitleaks",
 		Version:               "8",
 		ContractVersion:       1,
-		FingerprintVersion:    1,
+		FingerprintVersion:    fingerprintVersion,
 		FindingKinds:          []scanner.FindingKind{"secret"},
 		ScanTypes:             []domain.ScanType{domain.ScanTypeRepository, domain.ScanTypeFilesystem},
 		ProvidesPackages:      false,
@@ -87,15 +90,20 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	}
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
-		FingerprintVersion: 1,
+		FingerprintVersion: fingerprintVersion,
 		Completeness:       domain.CompletenessUnknown,
 		ScanType:           domain.ScanTypeRepository,
 	}
+	key, _ := scanner.FingerprintKey(ctx)
 	for _, g := range findings {
 		if g.RuleID == "" || g.File == "" {
 			continue
 		}
-		nr.Findings = append(nr.Findings, parseutil.HardenFinding(convert(g)))
+		f, err := convert(g, key)
+		if err != nil {
+			return nil, err
+		}
+		nr.Findings = append(nr.Findings, parseutil.HardenFinding(f))
 	}
 	return nr, nil
 }
@@ -126,6 +134,10 @@ func (s *Scanner) RedactRaw(data []byte) []byte {
 }
 
 type gitleaksFinding struct {
+	// Secret is the matched credential. It is read only to be hashed into the
+	// finding's identity and is never copied into the parsed model.
+	Secret      string   `json:"Secret"`
+	Fingerprint string   `json:"Fingerprint"`
 	Description string   `json:"Description"`
 	StartLine   int      `json:"StartLine"`
 	EndLine     int      `json:"EndLine"`
@@ -138,7 +150,7 @@ type gitleaksFinding struct {
 	Tags        []string `json:"Tags"`
 }
 
-func convert(g gitleaksFinding) domain.NormalizedFinding {
+func convert(g gitleaksFinding, key []byte) (domain.NormalizedFinding, error) {
 	file := parseutil.CleanFilePath(g.File)
 	if file == "" {
 		file = "unknown"
@@ -156,7 +168,11 @@ func convert(g gitleaksFinding) domain.NormalizedFinding {
 	if title == "" {
 		title = g.RuleID
 	}
-	meta := map[string]any{}
+	identity, basis, err := identityOf(g, file, key)
+	if err != nil {
+		return domain.NormalizedFinding{}, err
+	}
+	meta := map[string]any{"identity_basis": basis}
 	if g.Commit != "" {
 		meta["commit"] = g.Commit
 	}
@@ -174,7 +190,7 @@ func convert(g gitleaksFinding) domain.NormalizedFinding {
 		meta["tags"] = strings.Join(g.Tags, ",")
 	}
 	return domain.NormalizedFinding{
-		Fingerprint: "secret:" + g.RuleID + ":" + file,
+		Fingerprint: "secret:" + g.RuleID + ":" + file + ":" + identity,
 		FindingKind: "secret",
 		Title:       title,
 		Description: "Rotate the exposed credential, revoke the old value, and purge it from history.",
@@ -190,7 +206,7 @@ func convert(g gitleaksFinding) domain.NormalizedFinding {
 		},
 		Dimensions: dims,
 		Extensions: meta,
-	}
+	}, nil
 }
 
 func itoa(n int) string {
@@ -198,4 +214,46 @@ func itoa(n int) string {
 		return ""
 	}
 	return fmt.Sprintf("%d", n)
+}
+
+// fingerprintVersion is the version of this scanner's identity formula. Version 2
+// tells two secrets of one rule in one file apart; version 1 merged them.
+const fingerprintVersion = 2
+
+// UsesFingerprintKey says this scanner hashes secrets with the instance key.
+func (s *Scanner) UsesFingerprintKey() bool { return true }
+
+// identityOf says which part of a finding makes it that finding, and how it was
+// found. The identity is the rule, the file and a digest of the credential, so
+// two different keys in one file are two findings, the same key stays one
+// finding when its line moves or when many commits contain it, and a rotated key
+// is a new one. The digest is keyed (HMAC-SHA-256 with the instance key), so
+// someone who can read the database cannot test guesses against it, and the
+// credential itself is never stored.
+//
+// A report written with --redact has no credential to hash. Gitleaks' own
+// fingerprint (commit, file, rule, line) then tells findings apart, and failing
+// that the line does. Neither needs the key, and the basis is recorded.
+func identityOf(g gitleaksFinding, file string, key []byte) (digest, basis string, err error) {
+	if secret := strings.TrimSpace(g.Secret); secret != "" && !isRedacted(secret) {
+		if len(key) == 0 {
+			return "", "", scanner.KeyRequired("gitleaks")
+		}
+		mac := hmac.New(sha256.New, key)
+		mac.Write([]byte(g.RuleID + "\x00" + file + "\x00" + secret))
+		return hex.EncodeToString(mac.Sum(nil))[:32], "secret", nil
+	}
+	if fp := strings.TrimSpace(g.Fingerprint); fp != "" {
+		sum := sha256.Sum256([]byte(fp))
+		return hex.EncodeToString(sum[:])[:32], "fingerprint", nil
+	}
+	return "line" + itoa(parseutil.SafeLine(g.StartLine)), "line", nil
+}
+
+// isRedacted is true for a placeholder in place of a credential: Gitleaks writes
+// REDACTED under --redact, and Specht writes [REDACTED] into stored evidence.
+// Hashing a placeholder would give every secret the same identity.
+func isRedacted(secret string) bool {
+	trimmed := strings.Trim(secret, "[]* ")
+	return strings.EqualFold(trimmed, "redacted")
 }

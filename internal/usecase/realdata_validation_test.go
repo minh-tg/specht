@@ -178,6 +178,8 @@ func TestIngestReport_RedactsSecretRaw(t *testing.T) {
 			Environments: &mockEnvironmentRepo{},
 			Inventory:    &mockInventoryRepo{},
 			Waivers:      &mockWaiverRepo{},
+			// Gitleaks hashes each secret with the instance key.
+			InstanceSecrets: &fakeInstanceSecrets{},
 		},
 		Registry: reg,
 	})

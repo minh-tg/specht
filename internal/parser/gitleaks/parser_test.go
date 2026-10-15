@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/scanner"
 )
 
 // secretsInFixture returns every secret-material string in the fixture. The
@@ -33,10 +34,15 @@ func secretsInFixture(t *testing.T) []string {
 	return out
 }
 
+// keyedContext carries the instance key a Gitleaks parse needs to identify secrets.
+func keyedContext() context.Context {
+	return scanner.WithFingerprintKey(context.Background(), []byte("0123456789abcdef0123456789abcdef"))
+}
+
 func TestParseRedactsSecretMaterial(t *testing.T) {
 	data, err := os.ReadFile("testdata/gitleaks.json")
 	require.NoError(t, err)
-	rep, err := NewScanner().Parse(context.Background(), data)
+	rep, err := NewScanner().Parse(keyedContext(), data)
 	require.NoError(t, err)
 	require.Len(t, rep.Findings, 3)
 
@@ -50,11 +56,12 @@ func TestParseRedactsSecretMaterial(t *testing.T) {
 func TestParseShapes(t *testing.T) {
 	data, err := os.ReadFile("testdata/gitleaks.json")
 	require.NoError(t, err)
-	rep, err := NewScanner().Parse(context.Background(), data)
+	rep, err := NewScanner().Parse(keyedContext(), data)
 	require.NoError(t, err)
 
 	aws := rep.Findings[0]
-	assert.Equal(t, "secret:aws-access-key:deploy/creds.env", aws.Fingerprint)
+	assert.Regexp(t, `^secret:aws-access-key:deploy/creds\.env:[0-9a-f]{32}$`, aws.Fingerprint,
+		"rule, file and a keyed digest of the credential")
 	assert.Equal(t, "secret", aws.FindingKind)
 	assert.Equal(t, domain.SeverityHigh, aws.Severity)
 	assert.Equal(t, "deploy/creds.env:12", aws.Location)
@@ -77,10 +84,12 @@ func TestRedactRaw(t *testing.T) {
 	// Provenance survives; redacted output still parses identically.
 	assert.Contains(t, string(redacted), "aws-access-key")
 	assert.Contains(t, string(redacted), "9f2c1ab4e8d34f21a0b6c8d9e0f1a2b3c4d5e6f7")
-	rep, err := NewScanner().Parse(context.Background(), redacted)
+	rep, err := NewScanner().Parse(keyedContext(), redacted)
 	require.NoError(t, err)
 	require.Len(t, rep.Findings, 3)
-	assert.Equal(t, "secret:aws-access-key:deploy/creds.env", rep.Findings[0].Fingerprint)
+	assert.Regexp(t, `^secret:aws-access-key:deploy/creds\.env:[0-9a-f]{32}$`, rep.Findings[0].Fingerprint)
+	assert.NotEqual(t, "secret", rep.Findings[0].Extensions["identity_basis"],
+		"redacted evidence has no credential left to hash, and says so")
 }
 
 func TestRedactRawPassthrough(t *testing.T) {
