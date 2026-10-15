@@ -22,6 +22,7 @@ describe("currentProjectSlug", () => {
     expect(currentProjectSlug("/payments/changes/abc1234")).toBe("payments");
     expect(currentProjectSlug("/payments/reports/upload")).toBe("payments");
     expect(currentProjectSlug("/payments/watcher")).toBe("payments");
+    expect(currentProjectSlug("/payments/settings")).toBe("payments");
   });
 
   it("is null on pages that belong to no project", () => {

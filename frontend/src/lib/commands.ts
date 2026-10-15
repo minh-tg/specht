@@ -28,6 +28,7 @@ const PROJECT_SECTIONS = [
   "watcher",
   "setup",
   "changes",
+  "settings",
 ];
 
 const PROJECT_PATH = new RegExp(`^/([^/]+)/(${PROJECT_SECTIONS.join("|")})(?:/|$)`);
