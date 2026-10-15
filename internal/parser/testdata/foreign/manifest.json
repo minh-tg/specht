@@ -1,0 +1,40 @@
+{
+  "fixtures": [
+    {
+      "file": "bandit.json",
+      "tool": "bandit",
+      "tool_version": "1.9.4",
+      "capture_command": "bandit -r app.py -f json",
+      "transformations": "Keep two results; keep only the totals metric; replace local paths."
+    },
+    {
+      "file": "gosec.json",
+      "tool": "gosec",
+      "tool_version": "2.29.0",
+      "capture_command": "gosec -fmt=json -out gosec.json ./...",
+      "transformations": "Replace local paths."
+    },
+    {
+      "file": "npm-audit.json",
+      "tool": "npm",
+      "tool_version": "11.19.0",
+      "capture_command": "npm audit --json",
+      "transformations": "Keep three vulnerabilities; replace local paths."
+    },
+    {
+      "file": "hadolint.json",
+      "tool": "hadolint",
+      "tool_version": "2.14.0",
+      "capture_command": "hadolint --format json Dockerfile",
+      "transformations": "None."
+    },
+    {
+      "file": "syft.json",
+      "tool": "syft",
+      "tool_version": "1.54.0",
+      "capture_command": "syft dir:. -o json",
+      "transformations": "Keep three artifacts; drop relationships and files; replace the source."
+    }
+  ],
+  "note": "Real output of tools Specht has no parser for. Every parser must refuse these, so a file uploaded under the wrong scanner is never recorded as a clean scan."
+}
