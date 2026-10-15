@@ -1160,6 +1160,65 @@ test("a keyboard user undoes revoking a waiver from the notification", async ({ 
   await expect(page.getByRole("tab", { name: "In force 1" })).toBeVisible();
 });
 
+test("a manager restores a revoked waiver, and an expired one offers Edit expiry instead", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const headers = { Authorization: `Bearer ${token}` };
+  const slug = uniq("restore-waiver");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
+  const requestId = await requestWaiver(request, token, slug, "Not reachable from the public API.");
+  const approved = await request.post(`/api/v1/projects/${slug}/waivers/${requestId}/approve`, {
+    headers,
+    data: { note: "Fine until the image bump." },
+  });
+  expect(approved.ok(), await approved.text()).toBeTruthy();
+
+  // A waiver whose expiry already passed. Whether or not the sweeper has switched it off yet, it
+  // sits in the Closed list as expired and cannot be restored.
+  const list = await request.get(`/api/v1/projects/${slug}/findings`, { headers });
+  const findingId = ((await list.json()) as Array<{ id: string; }>)[0]!.id;
+  const lapsed = await request.post(`/api/v1/projects/${slug}/waivers`, {
+    headers,
+    data: {
+      name: "Old exception",
+      target_ids: [findingId],
+      expires_at: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    },
+  });
+  expect(lapsed.ok(), await lapsed.text()).toBeTruthy();
+  await uiLogin(page);
+
+  await page.goto(`/${slug}/waivers?state=in_force`);
+  await expect(page.getByRole("tab", { name: "In force 1" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await page.getByRole("button", { name: /^Revoke / }).click();
+  await expect(page.getByText("Waiver revoked")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "In force 0" })).toBeVisible();
+
+  await page.getByRole("tab", { name: "Closed 2" }).click();
+  await expect(page.getByText("Expired", { exact: true })).toBeVisible();
+  // Only the revoked waiver can be restored; the expired one can have its expiry edited.
+  await expect(page.getByRole("button", { name: /^Restore / })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Restore Old exception" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Edit expiry of Old exception" })).toBeVisible();
+
+  await page.getByRole("button", { name: /^Restore / }).click();
+  await expect(page.getByText("Waiver restored")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "In force 1" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Closed 1" })).toBeVisible();
+  await expect(page.getByRole("tabpanel")).toBeFocused();
+
+  // The restored waiver counts at the gate again.
+  await page.goto(`/${slug}/findings`);
+  await expect(page.getByText("PASSING", { exact: true })).toBeVisible();
+
+  await page.goto(`/${slug}/waivers?state=closed`);
+  await page.getByRole("button", { name: "Edit expiry of Old exception" }).click();
+  await expect(page.getByRole("dialog", { name: "Edit waiver" })).toBeVisible();
+});
+
 test("removing a member asks first, and Undo from the notification grants the role again", async ({ page, request }) => {
   const token = await apiToken(request);
   const slug = uniq("undo-member");
