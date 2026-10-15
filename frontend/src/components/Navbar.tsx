@@ -5,14 +5,36 @@ import { BrandMark } from "@/components/BrandMark";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { buttonVariants } from "@/components/ui/button-variants";
+import { isProjectsPath } from "@/lib/commands";
 import { cn } from "@/lib/utils";
-import { NavLink } from "react-router-dom";
+import { Link, NavLink, useLocation } from "react-router-dom";
 
 /** Primary links use the ghost button look; the current page keeps the hover fill. */
 function navLinkClass({ isActive }: { isActive: boolean; }): string {
   return cn(
     buttonVariants({ variant: "ghost" }),
     isActive ? "bg-muted text-foreground" : "text-muted-foreground",
+  );
+}
+
+/**
+ * Home, the project list. It is the current page only on the list itself; inside a project, or on
+ * the new-project form, it stays filled as the section you are in but is marked `aria-current`
+ * "true", so a screen reader announces one current page and the brand link, a plain link, none.
+ */
+function ProjectsLink() {
+  const { pathname } = useLocation();
+  const onList = pathname === "/";
+  const inside = !onList && isProjectsPath(pathname);
+
+  return (
+    <Link
+      to="/"
+      aria-current={onList ? "page" : inside ? "true" : undefined}
+      className={navLinkClass({ isActive: onList || inside })}
+    >
+      Projects
+    </Link>
   );
 }
 
@@ -44,6 +66,7 @@ function SignedInLinks({ email, onLogout }: { email: string | null; onLogout: ()
           menu is the last item of the row. */
       }
       <div className="flex basis-full flex-wrap items-center gap-1 max-sm:order-last sm:contents">
+        <ProjectsLink />
         <NavLink to="/teams" className={navLinkClass}>
           Teams
         </NavLink>
@@ -70,10 +93,10 @@ export function Navbar() {
         aria-label="Main"
         className="mx-auto flex min-h-12 max-w-5xl flex-wrap items-center max-sm:items-start justify-between gap-x-2 gap-y-0 px-4 py-1"
       >
-        <NavLink to="/" className="inline-flex items-center gap-2 py-1.5 text-sm font-semibold">
+        <Link to="/" className="inline-flex items-center gap-2 py-1.5 text-sm font-semibold">
           <BrandMark className="text-action h-5 w-5" />
           Specht
-        </NavLink>
+        </Link>
         <div className="flex min-w-0 flex-wrap items-center justify-end gap-x-2 gap-y-1 max-sm:flex-1">
           <ThemeToggle />
           {auth.token

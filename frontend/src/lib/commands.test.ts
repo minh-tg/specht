@@ -3,6 +3,7 @@ import {
   type Command,
   commandScore,
   currentProjectSlug,
+  isProjectsPath,
   searchCommands,
   sectionCommands,
 } from "./commands";
@@ -33,6 +34,20 @@ describe("currentProjectSlug", () => {
 
   it("reads an encoded slug", () => {
     expect(currentProjectSlug("/my%20app/policy")).toBe("my app");
+  });
+});
+
+describe("isProjectsPath", () => {
+  it("is true on the pages of a project and on the new-project page", () => {
+    for (const path of ["/payments/findings", "/payments/settings", "/projects/new"]) {
+      expect(isProjectsPath(path), path).toBe(true);
+    }
+  });
+
+  it("is false on the list itself and on pages that belong to no project", () => {
+    for (const path of ["/", "/teams", "/api-keys", "/admin", "/profile", "/login", "/x/y"]) {
+      expect(isProjectsPath(path), path).toBe(false);
+    }
   });
 });
 

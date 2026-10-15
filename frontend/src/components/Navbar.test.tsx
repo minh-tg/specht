@@ -2,7 +2,7 @@ import { queryKeys } from "@/api/hooks";
 import { AuthContext, type AuthContextValue } from "@/auth/context";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -248,6 +248,7 @@ describe("Navbar", () => {
       "Specht",
       expect.stringMatching(/^Theme/),
       "Open command palette",
+      "Projects",
       "Teams",
       "API keys",
       "Admin",
@@ -265,6 +266,67 @@ describe("Navbar", () => {
     expect(keys).not.toHaveAttribute("aria-current");
     expect(keys).toHaveClass("hover:bg-muted", "text-muted-foreground");
     expect(keys).not.toHaveClass("bg-muted");
+  });
+
+  describe("Projects link", () => {
+    const projects = () => screen.getByRole("link", { name: "Projects" });
+
+    it("comes first among the primary links and points home", () => {
+      renderNavbar(signedIn());
+
+      expect(projects()).toHaveAttribute("href", "/");
+      const links = within(screen.getByRole("navigation", { name: "Main" })).getAllByRole("link");
+      expect(links.map((link) => link.textContent).slice(0, 3)).toEqual([
+        "Specht",
+        "Projects",
+        "Teams",
+      ]);
+    });
+
+    it("is the current page, and the only one, on the project list", () => {
+      renderNavbar(signedIn(), "/");
+
+      expect(projects()).toHaveAttribute("aria-current", "page");
+      expect(projects()).toHaveClass("bg-muted", "text-foreground");
+      const nav = screen.getByRole("navigation", { name: "Main" });
+      expect(nav.querySelectorAll("[aria-current]")).toHaveLength(1);
+    });
+
+    it.each([
+      "/projects/new",
+      "/payments/findings",
+      "/payments/findings/f1",
+      "/payments/settings",
+      "/payments/changes/abc1234",
+    ])("is filled but not the current page on %s", (path) => {
+      renderNavbar(signedIn(), path);
+
+      expect(projects()).toHaveAttribute("aria-current", "true");
+      expect(projects()).toHaveClass("bg-muted", "text-foreground");
+    });
+
+    it.each(["/teams", "/api-keys", "/admin", "/profile", "/no/such/page"])(
+      "is not marked on %s",
+      (path) => {
+        renderNavbar(signedIn(), path);
+
+        expect(projects()).not.toHaveAttribute("aria-current");
+        expect(projects()).not.toHaveClass("bg-muted");
+        expect(projects()).toHaveClass("text-muted-foreground");
+      },
+    );
+
+    it("is left out for a signed-out visitor", () => {
+      renderNavbar(signedOut);
+
+      expect(screen.queryByRole("link", { name: "Projects" })).not.toBeInTheDocument();
+    });
+
+    it("leaves the brand link plain, so it is never the current page", () => {
+      renderNavbar(signedIn(), "/");
+
+      expect(screen.getByRole("link", { name: "Specht" })).not.toHaveAttribute("aria-current");
+    });
   });
 
   it("marks the active link with aria-current", async () => {
