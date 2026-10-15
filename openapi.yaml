@@ -2457,6 +2457,54 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
 
+  /api/v1/projects/{slug}/member-suggestions:
+    get:
+      tags: [Project members]
+      operationId: suggestProjectMembers
+      summary: Suggest people to add as direct members
+      description: >-
+        Autocomplete for adding a direct project member. Matches active
+        accounts whose email starts with `q`, or whose display name has a word
+        (after a space, or at the start) that starts with `q`, ignoring case.
+        `%`, `_` and `\` in `q` match only themselves. Returns at most 8 people,
+        ordered by email, and leaves out disabled accounts, the system account
+        and people who are already direct members of the project.
+
+        `q` is trimmed. Fewer than 3 characters returns `[]`; more than 64 is
+        `400 invalid_query`. Needs the project manager role or above and a
+        session: a project API key is `403 insufficient_role`. While open
+        self-registration is enabled (`registration.enabled` in
+        `/api/v1/capabilities`) the answer is always `[]`, because anyone could
+        have registered an account under a colleague's address or name.
+
+        Rate limited per user to 30 requests a minute with a burst of 10, on
+        every deployment, whether or not the general rate limit is enabled.
+        Over the limit is `429` with `Retry-After`.
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - name: q
+          in: query
+          required: true
+          description: Start of an email address or of a display-name word.
+          schema: { type: string, maxLength: 64 }
+      responses:
+        "200":
+          description: The suggested people, possibly none.
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 8
+                items: { $ref: "#/components/schemas/MemberSuggestion" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/ProjectAccessDenied" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
   /api/v1/projects/{slug}/members/{userID}:
     delete:
       tags: [Project members]
@@ -4244,6 +4292,14 @@ components:
         created_at: { type: string, format: date-time }
         email: { type: string, format: email, description: The member's address. Sent to a signed-in person only, never to an API key. }
         display_name: { type: string, description: The member's display name, when they have one. Sent to a signed-in person only, never to an API key. }
+
+    MemberSuggestion:
+      type: object
+      required: [user_id, email, display_name]
+      properties:
+        user_id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: string, description: The person's self-chosen display name, empty when they have none. Show it as secondary text; the email identifies the person. }
 
     Environment:
       type: object
