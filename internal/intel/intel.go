@@ -30,14 +30,20 @@ import (
 
 // Record is one CVE's merged intelligence with its provenance.
 type Record struct {
-	CVEID     string    `json:"cve_id"`
-	EPSS      *float64  `json:"epss,omitempty"`
-	EPSSDate  string    `json:"epss_date,omitempty"`
-	KEV       bool      `json:"kev"`
-	KEVAdded  string    `json:"kev_added,omitempty"`
-	Sources   []string  `json:"sources"`
-	FetchedAt time.Time `json:"fetched_at"`
-	Stale     bool      `json:"stale,omitempty"`
+	CVEID          string   `json:"cve_id"`
+	EPSS           *float64 `json:"epss,omitempty"`
+	EPSSPercentile *float64 `json:"epss_percentile,omitempty"`
+	EPSSDate       string   `json:"epss_date,omitempty"`
+	KEV            bool     `json:"kev"`
+	KEVAdded       string   `json:"kev_added,omitempty"`
+	// KEVDueDate is the date CISA requires federal agencies to remediate by.
+	KEVDueDate string `json:"kev_due_date,omitempty"`
+	// KEVRansomware is the catalog's knownRansomwareCampaignUse value, for
+	// example "Known" or "Unknown". Empty when the catalog entry has none.
+	KEVRansomware string    `json:"kev_ransomware,omitempty"`
+	Sources       []string  `json:"sources"`
+	FetchedAt     time.Time `json:"fetched_at"`
+	Stale         bool      `json:"stale,omitempty"`
 }
 
 // Provider fetches intel for CVE identifiers from one feed.
@@ -125,10 +131,11 @@ func (s *Store) fetchProviders(ctx context.Context, want []string) (map[string]R
 			m := merged[id]
 			m.CVEID = id
 			if rec.EPSS != nil {
-				m.EPSS, m.EPSSDate = rec.EPSS, rec.EPSSDate
+				m.EPSS, m.EPSSPercentile, m.EPSSDate = rec.EPSS, rec.EPSSPercentile, rec.EPSSDate
 			}
 			if rec.KEV {
 				m.KEV, m.KEVAdded = true, rec.KEVAdded
+				m.KEVDueDate, m.KEVRansomware = rec.KEVDueDate, rec.KEVRansomware
 			}
 			m.Sources = append(m.Sources, p.Name())
 			m.FetchedAt = s.now()
@@ -150,11 +157,14 @@ func (s *Store) mergeCached(merged map[string]Record) {
 		}
 		if rec.EPSS != nil {
 			existing.EPSS = rec.EPSS
+			existing.EPSSPercentile = rec.EPSSPercentile
 			existing.EPSSDate = rec.EPSSDate
 		}
 		if rec.KEV {
 			existing.KEV = true
 			existing.KEVAdded = rec.KEVAdded
+			existing.KEVDueDate = rec.KEVDueDate
+			existing.KEVRansomware = rec.KEVRansomware
 		}
 		existing.Sources = unionStrings(existing.Sources, rec.Sources)
 		existing.FetchedAt = rec.FetchedAt

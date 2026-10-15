@@ -39,6 +39,29 @@ func TestEPSSProvider_ParsesBatch(t *testing.T) {
 	require.NotNil(t, records["CVE-2024-1111"].EPSS)
 	assert.InDelta(t, 0.00415, *records["CVE-2024-1111"].EPSS, 1e-9)
 	assert.Equal(t, "2026-09-04", records["CVE-2024-1111"].EPSSDate)
+	require.NotNil(t, records["CVE-2024-1111"].EPSSPercentile)
+	assert.InDelta(t, 0.34737, *records["CVE-2024-1111"].EPSSPercentile, 1e-9)
+	require.NotNil(t, records["CVE-2024-9999"].EPSSPercentile)
+	assert.InDelta(t, 0.99876, *records["CVE-2024-9999"].EPSSPercentile, 1e-9)
+}
+
+func TestEPSSProvider_BadPercentileKeepsTheScore(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, `{"status":"OK","data":[`+
+			`{"cve":"CVE-2024-1111","epss":"0.1","percentile":"n/a","date":"2026-09-04"},`+
+			`{"cve":"CVE-2024-2222","epss":"0.2","percentile":"7","date":"2026-09-04"},`+
+			`{"cve":"CVE-2024-3333","epss":"0.3","date":"2026-09-04"}]}`)
+	}))
+	defer srv.Close()
+
+	p := &EPSSProvider{BaseURL: srv.URL, Client: srv.Client()}
+	records, err := p.Fetch(context.Background(), []string{"CVE-2024-1111", "CVE-2024-2222", "CVE-2024-3333"})
+	require.NoError(t, err)
+	require.Len(t, records, 3)
+	for id, rec := range records {
+		require.NotNil(t, rec.EPSS, id)
+		assert.Nil(t, rec.EPSSPercentile, "%s: an unparseable or out of range percentile is dropped, not zeroed", id)
+	}
 }
 
 func TestEPSSProvider_StatusError(t *testing.T) {
@@ -55,8 +78,8 @@ func TestEPSSProvider_StatusError(t *testing.T) {
 func TestKEVProvider_MatchesSubset(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(t, w, `{"title":"CISA Catalog","catalogVersion":"2026.09.04","dateReleased":"2026-09-04","count":2,"vulnerabilities":[`+
-			`{"cveID":"CVE-2026-85046","dateAdded":"2026-09-04"},`+
-			`{"cveID":"CVE-2024-1111","dateAdded":"2026-01-15"}]}`)
+			`{"cveID":"CVE-2026-85046","dateAdded":"2026-09-04","dueDate":"2026-09-25","knownRansomwareCampaignUse":"Unknown"},`+
+			`{"cveID":"CVE-2024-1111","dateAdded":"2026-01-15","dueDate":"2026-02-05","knownRansomwareCampaignUse":"Known"}]}`)
 	}))
 	defer srv.Close()
 
@@ -66,6 +89,22 @@ func TestKEVProvider_MatchesSubset(t *testing.T) {
 	require.Len(t, records, 1, "KEV absence is not a record")
 	assert.True(t, records["CVE-2024-1111"].KEV)
 	assert.Equal(t, "2026-01-15", records["CVE-2024-1111"].KEVAdded)
+	assert.Equal(t, "2026-02-05", records["CVE-2024-1111"].KEVDueDate)
+	assert.Equal(t, "Known", records["CVE-2024-1111"].KEVRansomware)
+}
+
+func TestKEVProvider_EntryWithoutDueDateOrRansomwareField(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, `{"vulnerabilities":[{"cveID":"CVE-2024-1111","dateAdded":"2026-01-15"}]}`)
+	}))
+	defer srv.Close()
+
+	p := &KEVProvider{CatalogURL: srv.URL, Client: srv.Client()}
+	records, err := p.Fetch(context.Background(), []string{"CVE-2024-1111"})
+	require.NoError(t, err)
+	assert.True(t, records["CVE-2024-1111"].KEV)
+	assert.Empty(t, records["CVE-2024-1111"].KEVDueDate)
+	assert.Empty(t, records["CVE-2024-1111"].KEVRansomware)
 }
 
 func TestKEVProvider_ReusesCatalogWithinTTL(t *testing.T) {
@@ -210,7 +249,7 @@ func TestStore_PartialRefreshPreservesCachedSignals(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		writeJSON(t, w, `{"title":"t","catalogVersion":"v","dateReleased":"d","count":1,"vulnerabilities":[{"cveID":"CVE-2024-1111","dateAdded":"2026-01-15"}]}`)
+		writeJSON(t, w, `{"title":"t","catalogVersion":"v","dateReleased":"d","count":1,"vulnerabilities":[{"cveID":"CVE-2024-1111","dateAdded":"2026-01-15","dueDate":"2026-02-05","knownRansomwareCampaignUse":"Known"}]}`)
 	}))
 	defer kevSrv.Close()
 
@@ -228,6 +267,10 @@ func TestStore_PartialRefreshPreservesCachedSignals(t *testing.T) {
 	assert.InDelta(t, epssScore, *rec.EPSS, 1e-9)
 	assert.True(t, rec.KEV)
 	assert.Equal(t, "2026-01-15", rec.KEVAdded)
+	assert.Equal(t, "2026-02-05", rec.KEVDueDate)
+	assert.Equal(t, "Known", rec.KEVRansomware)
+	require.NotNil(t, rec.EPSSPercentile)
+	assert.InDelta(t, 0.9, *rec.EPSSPercentile, 1e-9)
 
 	// Step 2: the KEV catalog has expired and the download fails, EPSS
 	// succeeds. Cached KEV data must NOT be erased.
@@ -240,6 +283,39 @@ func TestStore_PartialRefreshPreservesCachedSignals(t *testing.T) {
 	require.True(t, ok2)
 	assert.True(t, rec2.KEV, "KEV membership must be preserved when KEV provider fails")
 	assert.Equal(t, "2026-01-15", rec2.KEVAdded)
+	assert.Equal(t, "2026-02-05", rec2.KEVDueDate)
+	assert.Equal(t, "Known", rec2.KEVRansomware)
+	require.NotNil(t, rec2.EPSSPercentile, "the percentile travels with the score")
 	require.NotNil(t, rec2.EPSS)
 	assert.InDelta(t, 0.5, *rec2.EPSS, 1e-9)
+}
+
+func TestStore_SecondRefreshUpdatesTheWidenedFields(t *testing.T) {
+	percentile, due, ransomware := "0.5", "2026-02-05", "Unknown"
+	epssSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, `{"status":"OK","data":[{"cve":"CVE-2024-1111","epss":"0.5","percentile":"`+percentile+`","date":"2026-09-04"}]}`)
+	}))
+	defer epssSrv.Close()
+	kevSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(t, w, `{"vulnerabilities":[{"cveID":"CVE-2024-1111","dateAdded":"2026-01-15","dueDate":"`+due+`","knownRansomwareCampaignUse":"`+ransomware+`"}]}`)
+	}))
+	defer kevSrv.Close()
+
+	now := time.Now()
+	s := NewStore(time.Hour, func() time.Time { return now },
+		&EPSSProvider{BaseURL: epssSrv.URL, Client: epssSrv.Client()},
+		&KEVProvider{CatalogURL: kevSrv.URL, Client: kevSrv.Client(), Now: func() time.Time { return now }},
+	)
+	require.NoError(t, s.Refresh(context.Background(), []string{"CVE-2024-1111"}))
+
+	now = now.Add(2 * time.Hour)
+	percentile, due, ransomware = "0.75", "2026-03-01", "Known"
+	require.NoError(t, s.Refresh(context.Background(), []string{"CVE-2024-1111"}))
+
+	rec, _, ok := s.Lookup("CVE-2024-1111")
+	require.True(t, ok)
+	require.NotNil(t, rec.EPSSPercentile)
+	assert.InDelta(t, 0.75, *rec.EPSSPercentile, 1e-9)
+	assert.Equal(t, "2026-03-01", rec.KEVDueDate)
+	assert.Equal(t, "Known", rec.KEVRansomware)
 }
