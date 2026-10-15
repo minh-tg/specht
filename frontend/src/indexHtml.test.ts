@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath, URL } from "node:url";
 import { describe, expect, it } from "vitest";
+import { THEME_COLOUR } from "./lib/themeColour";
 
 /**
  * The head is hand-written HTML, so nothing else fails when a link names an
@@ -92,6 +93,12 @@ describe("document head", () => {
     expect(script).toBeLessThan(html.indexOf("</head>"));
   });
 
+  it("declares the theme colours before the script that may overwrite them", () => {
+    const script = html.indexOf("src=\"/theme-init.js\"");
+    expect(html.indexOf("name=\"theme-color\"")).toBeGreaterThan(-1);
+    expect(html.lastIndexOf("name=\"theme-color\"")).toBeLessThan(script);
+  });
+
   it("ships the Apple touch icon at 180x180", () => {
     expect(pngSize(`${publicDir}apple-touch-icon.png`)).toEqual({ width: 180, height: 180 });
   });
@@ -105,8 +112,8 @@ describe("document head", () => {
     );
 
     expect(themes).toEqual({
-      "(prefers-color-scheme: light)": "#fafafa",
-      "(prefers-color-scheme: dark)": "#0a0a0a",
+      "(prefers-color-scheme: light)": THEME_COLOUR.light,
+      "(prefers-color-scheme: dark)": THEME_COLOUR.dark,
     });
   });
 });
@@ -118,8 +125,8 @@ describe("web manifest", () => {
     expect(manifest.description).toBe("Vulnerability triage and deployment gate for your CI.");
     expect(manifest.start_url).toBe("/");
     expect(manifest.display).toBe("standalone");
-    expect(manifest.theme_color).toBe("#0a0a0a");
-    expect(manifest.background_color).toBe("#fafafa");
+    expect(manifest.theme_color).toBe(THEME_COLOUR.light);
+    expect(manifest.background_color).toBe(THEME_COLOUR.light);
   });
 
   it("repeats the description in the document head", () => {

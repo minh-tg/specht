@@ -4,8 +4,8 @@
   "description": "Vulnerability triage and deployment gate for your CI.",
   "start_url": "/",
   "display": "standalone",
-  "theme_color": "#0a0a0a",
-  "background_color": "#fafafa",
+  "theme_color": "#f6f4ef",
+  "background_color": "#f6f4ef",
   "icons": [
     {
       "src": "/icon-192.png",
