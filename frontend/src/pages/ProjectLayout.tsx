@@ -1,5 +1,6 @@
 import { APIError } from "@/api/client";
 import { useProject, useProjectRole } from "@/api/hooks";
+import { INLINE_LINK } from "@/components/inlineLink";
 import { VerdictBand } from "@/components/VerdictBand";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { FindingsDashboard } from "@/pages/FindingsDashboard";
@@ -66,7 +67,7 @@ export function ProjectLayout() {
         </p>
         <Link
           to="/"
-          className="text-action mt-4 inline-block text-sm underline underline-offset-4"
+          className={`${INLINE_LINK} mt-4 inline-block text-sm`}
         >
           Back to projects
         </Link>

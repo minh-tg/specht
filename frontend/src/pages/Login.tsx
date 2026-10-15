@@ -4,6 +4,7 @@ import { markSsoAttempt } from "@/auth/sso";
 import { useAuth } from "@/auth/useAuth";
 import { AuthLayout } from "@/components/AuthLayout";
 import { FormField } from "@/components/FormField";
+import { INLINE_LINK } from "@/components/inlineLink";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { cn } from "@/lib/utils";
@@ -121,7 +122,7 @@ export function Login() {
       {registrationOpen && (
         <p className="text-muted-foreground mt-5 text-[0.8125rem]">
           New here?{" "}
-          <Link to="/register" className="text-action underline underline-offset-4">
+          <Link to="/register" className={INLINE_LINK}>
             Create an account
           </Link>
         </p>

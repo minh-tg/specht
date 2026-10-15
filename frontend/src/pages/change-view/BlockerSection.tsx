@@ -1,4 +1,5 @@
 import { findingQueryOptions, useWaivers } from "@/api/hooks";
+import { INLINE_LINK } from "@/components/inlineLink";
 import { Ledger } from "@/components/Ledger";
 import { BlockerEntry } from "@/pages/change-view/BlockerEntry";
 import { ChangeAside } from "@/pages/change-view/ChangeAside";
@@ -116,7 +117,7 @@ export function BlockerSection(
           {shown.length < ids.length && (
             <button
               type="button"
-              className="text-foreground mt-2 text-sm underline underline-offset-3 hover:decoration-2"
+              className={`${INLINE_LINK} mt-2 text-sm`}
               onClick={() => setShowAll(true)}
             >
               Show all {ids.length}

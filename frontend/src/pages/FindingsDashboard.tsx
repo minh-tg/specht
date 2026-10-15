@@ -5,6 +5,7 @@ import {
   useProject,
   useProjectStats,
 } from "@/api/hooks";
+import { INLINE_LINK } from "@/components/inlineLink";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
@@ -127,7 +128,7 @@ export function FindingsDashboard() {
               {error?.message ?? "Failed to load findings"}
             </p>
             <button
-              className="text-action text-sm underline hover:no-underline"
+              className={`${INLINE_LINK} text-sm`}
               onClick={() => refetch()}
             >
               Retry

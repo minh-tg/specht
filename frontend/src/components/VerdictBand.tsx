@@ -1,5 +1,6 @@
 import { useGateStatus, useMe, useProjectStats } from "@/api/hooks";
 import { InfoTip } from "@/components/InfoTip";
+import { INLINE_LINK } from "@/components/inlineLink";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
@@ -66,7 +67,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
           <p role="alert">{"Couldn't load the verdict."}</p>
           <button
             type="button"
-            className="text-action text-sm underline underline-offset-2 hover:no-underline"
+            className={`${INLINE_LINK} text-sm`}
             onClick={() => {
               if (gateQuery.isError) void gateQuery.refetch();
               if (statsQuery.isError) void statsQuery.refetch();
@@ -163,7 +164,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
           Upload a report or send one from CI.{" "}
           <Link
             to={`/${slug}/reports/upload`}
-            className="text-action underline underline-offset-2 hover:no-underline"
+            className={INLINE_LINK}
           >
             Upload a report
           </Link>
@@ -172,7 +173,7 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
               {" · "}
               <Link
                 to={`/${slug}/setup`}
-                className="text-action underline underline-offset-2 hover:no-underline"
+                className={INLINE_LINK}
               >
                 Set up CI
               </Link>

@@ -1,5 +1,6 @@
 import { Drum } from "@/components/Drum";
 import { HoleTracker } from "@/components/HoleTracker";
+import { INLINE_LINK } from "@/components/inlineLink";
 import { Button } from "@/components/ui/button";
 import { useCopyToClipboard } from "@/lib/useCopyToClipboard";
 
@@ -85,7 +86,7 @@ export function ChangeAside(
             <button
               type="button"
               onClick={onStartWaiting}
-              className="text-foreground mt-3 underline underline-offset-3 hover:decoration-2"
+              className={`${INLINE_LINK} mt-3`}
             >
               I pushed a fix
             </button>
@@ -94,7 +95,7 @@ export function ChangeAside(
           <button
             type="button"
             onClick={onCheckAgain}
-            className="text-foreground mt-2 underline underline-offset-3 hover:decoration-2"
+            className={`${INLINE_LINK} mt-2`}
           >
             Check again
           </button>
