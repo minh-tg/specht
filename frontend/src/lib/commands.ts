@@ -39,6 +39,11 @@ export function currentProjectSlug(pathname: string): string | null {
   return match ? decodeURIComponent(match[1]!) : null;
 }
 
+/** Whether the page is the new-project form or one of a project's own pages. */
+export function isProjectsPath(pathname: string): boolean {
+  return pathname === "/projects/new" || currentProjectSlug(pathname) !== null;
+}
+
 const words = (text: string) => text.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 
 /** Whether the letters of `needle` appear in `haystack` in order, with anything between them. */

@@ -578,6 +578,7 @@ test("the navigation fits a 360px screen without cutting or wrapping a link", as
   const trigger = nav.getByRole("button", { name: /^Account menu/ });
   const items = [
     ["Account menu", trigger],
+    ["Projects", nav.getByRole("link", { name: "Projects", exact: true })],
     ["Teams", nav.getByRole("link", { name: "Teams", exact: true })],
     ["API keys", nav.getByRole("link", { name: "API keys", exact: true })],
     ["Admin", nav.getByRole("link", { name: "Admin", exact: true })],
@@ -596,7 +597,7 @@ test("the navigation fits a 360px screen without cutting or wrapping a link", as
 
   // From sm up the account menu is the last item of the row.
   await page.setViewportSize({ width: 1024, height: 740 });
-  const adminBox = await items[3][1].boundingBox();
+  const adminBox = await items[4][1].boundingBox();
   const triggerBox = await trigger.boundingBox();
   expect(triggerBox!.x, "the account menu sits right of Admin").toBeGreaterThan(adminBox!.x);
 });
