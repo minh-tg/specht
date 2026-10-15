@@ -14,6 +14,7 @@ import { BulkBar } from "./findings-dashboard/BulkBar";
 import { BulkTriageDialog } from "./findings-dashboard/BulkTriageDialog";
 import { ClearFiltersButton, FindingsFilters } from "./findings-dashboard/FindingsFilters";
 import { FindingsPager } from "./findings-dashboard/FindingsPager";
+import { findingsRequest } from "./findings-dashboard/findingsRequest";
 import { FindingsTable } from "./findings-dashboard/FindingsTable";
 import { PAGE_SIZE } from "./findings-dashboard/sort";
 import { defaultSortDir, useFindingsQuery } from "./findings-dashboard/useFindingsQuery";
@@ -27,17 +28,7 @@ export function FindingsDashboard() {
 
   const { data, isLoading, isFetching, isError, error, refetch } = useFindings(
     slug ?? "",
-    {
-      severity: filters.severity || undefined,
-      status: filters.status || undefined,
-      kind: filters.kind || undefined,
-      analysisState: filters.analysisState || undefined,
-      q: filters.q || undefined,
-      sort: sort.by,
-      dir: sort.dir,
-      offset,
-      limit: PAGE_SIZE,
-    },
+    findingsRequest(filters, sort, offset),
   );
   const findings = data?.findings;
   const total = data?.total ?? null;

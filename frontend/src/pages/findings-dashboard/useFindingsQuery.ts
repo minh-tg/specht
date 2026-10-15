@@ -1,5 +1,6 @@
 import type { FindingSort } from "@/api/hooks";
 import { useSearchParams } from "react-router-dom";
+import { DEFAULT_FINDINGS_SORT } from "./findingsRequest";
 
 export interface FindingsFilters {
   severity: string;
@@ -23,7 +24,7 @@ export function defaultSortDir(by: FindingSort): "asc" | "desc" {
   return by === "severity" || by === "last_seen" ? "desc" : "asc";
 }
 
-const DEFAULT_SORT: FindingsSort = { by: "severity", dir: "desc" };
+const DEFAULT_SORT = DEFAULT_FINDINGS_SORT;
 
 const FILTER_KEYS = ["severity", "status", "kind", "analysis_state", "q"] as const;
 
