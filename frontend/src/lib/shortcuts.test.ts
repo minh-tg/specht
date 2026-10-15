@@ -37,8 +37,15 @@ describe("shortcut registry", () => {
     // WCAG 2.1.4: a single-character key must be scoped to a focused component.
     for (const s of SHORTCUTS) {
       if (s.scope !== "Everywhere") continue;
-      for (const combo of s.combos) expect(combo).toContain("Mod");
+      for (const combo of s.combos) {
+        expect(combo.some((k) => k === "Mod" || k === "Alt")).toBe(true);
+      }
     }
+  });
+
+  it("formats Alt per platform", () => {
+    expect(comboLabel(["Alt", "T"], false)).toBe("Alt+T");
+    expect(comboLabel(["Alt", "T"], true)).toBe("⌥T");
   });
 
   it("formats Mod per platform", () => {
