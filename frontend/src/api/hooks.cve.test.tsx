@@ -3,7 +3,7 @@ import type { CveDetail } from "@/types/cve";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { queryKeys, useFindingCve } from "./hooks";
+import { normalizeCveDetail, queryKeys, useFindingCve } from "./hooks";
 
 function detail(pending: boolean): CveDetail {
   return {
@@ -130,5 +130,52 @@ describe("useFindingCve", () => {
     const { result } = renderHook(() => useFindingCve("f1"), { wrapper });
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(cveFetches).toBe(1);
+  });
+});
+
+describe("normalizeCveDetail", () => {
+  it("turns the lists the server encodes as null into empty ones", () => {
+    const wire = {
+      ...detail(false),
+      cvss: null,
+      cwes: null,
+      references: null,
+      providers: null,
+    } as unknown as CveDetail;
+    expect(normalizeCveDetail(wire)).toMatchObject({
+      cvss: [],
+      cwes: [],
+      references: [],
+      providers: [],
+    });
+  });
+
+  it("gives a vector that did not parse an empty metric list", () => {
+    const wire = {
+      ...detail(false),
+      cvss: [{
+        version: "3.1",
+        vector: "CVSS:3.1/x",
+        base_score: null,
+        reported_score: 5,
+        severity: "medium",
+        valid: false,
+        metrics: null,
+        provenance: { kind: "scan_report" },
+      }],
+    } as unknown as CveDetail;
+    expect(normalizeCveDetail(wire).cvss[0].metrics).toEqual([]);
+  });
+
+  it("rejects a body without a CVE identifier", () => {
+    expect(() => normalizeCveDetail({} as CveDetail)).toThrow(/no CVE identifier/);
+  });
+
+  it("shows a malformed body as an error rather than as data", async () => {
+    answers = [jsonResponse({})];
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useFindingCve("f1"), { wrapper });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.data).toBeUndefined();
   });
 });
