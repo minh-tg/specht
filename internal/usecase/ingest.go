@@ -123,6 +123,14 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, err
 	}
 
+	if scanner.UsesFingerprintKey(sc) {
+		key, err := u.instanceFingerprintKey(ctx)
+		if err != nil {
+			return nil, err
+		}
+		ctx = scanner.WithFingerprintKey(ctx, key)
+	}
+
 	nr, err := sc.Parse(ctx, input.RawData)
 	if err != nil {
 		slog.Error("scanner parse failed", "scanner", input.Scanner, "error", err)
