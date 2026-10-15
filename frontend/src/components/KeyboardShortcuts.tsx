@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/dialog";
 import {
   comboLabel,
+  displayCombos,
   helpReturnTarget,
   keyLabel,
   matchesModShortcut,
@@ -15,10 +16,11 @@ import {
   shortcutsIn,
   useShortcutHelpOpen,
 } from "@/lib/shortcuts";
-import { useEffect } from "react";
+import { Fragment, useEffect } from "react";
 
 /**
- * The shortcut sheet. Ctrl+/ (⌘/ on macOS) or the "Keyboard shortcuts" palette entry opens it.
+ * The shortcut sheet. Ctrl+/ or ⌘/ opens it on every platform (Safari on macOS can claim ⌘/ for a
+ * menu item, so Ctrl+/ is the way in there), as does the "Keyboard shortcuts" palette entry.
  * There is deliberately no bare-character key such as "?": a shortcut made of one printable
  * character cannot be switched off, and it would fire under a screen reader's virtual cursor.
  * Closing returns focus to the element that had it.
@@ -65,14 +67,18 @@ export function KeyboardShortcuts() {
                 <div key={shortcut.id} className="flex items-baseline justify-between gap-3">
                   <dt className="text-sm">{shortcut.description}</dt>
                   <dd className="m-0 flex flex-wrap justify-end gap-x-2 gap-y-1">
-                    {shortcut.combos.map((combo) => (
-                      <kbd
-                        key={combo.join("+")}
-                        aria-label={combo.map((key) => keyLabel(key)).join(" ")}
-                        className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-xs"
-                      >
-                        {comboLabel(combo)}
-                      </kbd>
+                    {displayCombos(shortcut).map((combo, index) => (
+                      <Fragment key={combo.join("+")}>
+                        {index > 0 && shortcut.alsoCtrl && (
+                          <span className="text-muted-foreground text-xs">{" or "}</span>
+                        )}
+                        <kbd
+                          aria-label={combo.map((key) => keyLabel(key)).join(" ")}
+                          className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-mono text-xs"
+                        >
+                          {comboLabel(combo)}
+                        </kbd>
+                      </Fragment>
                     ))}
                   </dd>
                 </div>

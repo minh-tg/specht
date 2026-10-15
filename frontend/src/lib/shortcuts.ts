@@ -10,6 +10,11 @@ export interface Shortcut {
   readonly description: string;
   /** Alternative key combinations that do the same thing. `Mod` is Ctrl, or ⌘ on macOS. */
   readonly combos: readonly (readonly string[])[];
+  /**
+   * The key is also accepted with Ctrl on macOS, where the sheet names both. Safari binds ⌘/ to a
+   * menu item that can win over the page, so Ctrl+/ stays a working way in.
+   */
+  readonly alsoCtrl?: boolean;
 }
 
 /**
@@ -29,6 +34,7 @@ export const SHORTCUTS: readonly Shortcut[] = [
     scope: "Everywhere",
     description: "Show keyboard shortcuts",
     combos: [["Mod", "/"]],
+    alsoCtrl: true,
   },
   {
     id: "grid-next",
@@ -85,7 +91,18 @@ export function keyLabel(key: string, mac: boolean = isMacPlatform()): string {
 
 /** A combination as one string, such as "Ctrl+K" or "⌘K". */
 export function comboLabel(combo: readonly string[], mac: boolean = isMacPlatform()): string {
-  return combo.map((key) => keyLabel(key, mac)).join(mac ? "" : "+");
+  // A spelled-out Ctrl always reads "Ctrl+/", even where ⌘ is printed without a separator.
+  const compact = mac && !combo.includes("Ctrl");
+  return combo.map((key) => keyLabel(key, mac)).join(compact ? "" : "+");
+}
+
+/** The combinations to print for a shortcut: the primary ones, plus Ctrl on macOS when it is also accepted. */
+export function displayCombos(
+  item: Shortcut,
+  mac: boolean = isMacPlatform(),
+): readonly (readonly string[])[] {
+  if (!(mac && item.alsoCtrl)) return item.combos;
+  return [...item.combos, ...item.combos.map((c) => c.map((k) => k === "Mod" ? "Ctrl" : k))];
 }
 
 /**
