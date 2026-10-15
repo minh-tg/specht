@@ -1,5 +1,6 @@
 import { useProjectRole, useTriageFinding } from "@/api/hooks";
 import { SelectField } from "@/components/SelectField";
+import { Input } from "@/components/ui/input";
 import { type AnalysisState, isAnalysisState } from "@/lib/enums";
 import { GLOSSARY } from "@/lib/glossary";
 import { useState } from "react";
@@ -70,8 +71,8 @@ export function TriageSection({
           ]}
         />
         {selectedOption?.requiresReason && (
-          <input
-            className="border-input bg-background min-w-[200px] rounded-md border px-3 py-1.5 text-sm disabled:opacity-50"
+          <Input
+            className="w-auto min-w-[200px]"
             aria-label="Reason"
             placeholder="Reason"
             disabled={!canTriage}
@@ -80,11 +81,11 @@ export function TriageSection({
           />
         )}
         {selectedOption?.requiresExpiry && (
-          <input
+          <Input
             aria-label="Expiry date"
             type="date"
             disabled={!canTriage}
-            className="border-input bg-background rounded-md border px-3 py-1.5 text-sm disabled:opacity-50"
+            className="w-auto"
             value={expiresAt}
             onChange={(e) => setExpiresAt(e.target.value)}
           />

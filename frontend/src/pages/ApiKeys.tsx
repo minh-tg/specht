@@ -12,6 +12,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { SelectField } from "@/components/SelectField";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Project } from "@/types/api";
 import { type ReactNode, useState } from "react";
@@ -213,9 +214,9 @@ function ApiKeysManager({ projects }: { projects: Project[]; }) {
           <section className="mb-8">
             <h2 className="mb-3 text-lg font-semibold">Create Key</h2>
             <form onSubmit={handleCreate} className="flex flex-wrap gap-2">
-              <input
+              <Input
                 id="apikeys-name"
-                className="border-input bg-background flex-1 rounded-md border px-3 py-2 text-sm"
+                className="w-auto flex-1"
                 placeholder="Key name"
                 value={newKeyName}
                 onChange={(e) => setNewKeyName(e.target.value)}
