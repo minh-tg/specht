@@ -48,7 +48,7 @@ func TestCapturedReports(t *testing.T) {
 			s := byName[tc.scanner]
 			require.NotNil(t, s)
 			assert.True(t, s.DetectFormat(data), "native output must be recognizable")
-			report, err := s.Parse(context.Background(), data)
+			report, err := s.Parse(scanner.WithFingerprintKey(context.Background(), []byte("0123456789abcdef0123456789abcdef")), data)
 			require.NoError(t, err)
 			require.Len(t, report.Findings, tc.findings)
 			assert.Len(t, report.Packages, tc.packages)
