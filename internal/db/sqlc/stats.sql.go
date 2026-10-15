@@ -270,6 +270,7 @@ const getProjectWaiverCount = `-- name: GetProjectWaiverCount :one
 SELECT COUNT(*)::int AS count
 FROM waivers
 WHERE project_id = $1 AND status = 'approved' AND enabled = true
+  AND (expires_at IS NULL OR expires_at > NOW())
 `
 
 func (q *Queries) GetProjectWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error) {

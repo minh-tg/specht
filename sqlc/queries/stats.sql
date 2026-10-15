@@ -23,7 +23,8 @@ ORDER BY state ASC;
 -- name: GetProjectWaiverCount :one
 SELECT COUNT(*)::int AS count
 FROM waivers
-WHERE project_id = $1 AND status = 'approved' AND enabled = true;
+WHERE project_id = $1 AND status = 'approved' AND enabled = true
+  AND (expires_at IS NULL OR expires_at > NOW());
 
 -- name: GetProjectPendingWaiverCount :one
 SELECT COUNT(*)::int AS count

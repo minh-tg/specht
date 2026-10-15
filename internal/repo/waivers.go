@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -41,9 +42,11 @@ func (r *pgWaiverRepo) Toggle(ctx context.Context, id, projectID pgtype.UUID) (s
 	return r.q.ToggleWaiver(ctx, sqlc.ToggleWaiverParams{ID: id, ProjectID: projectID})
 }
 
-// ToggleWithEvent changes a waiver's enabled state and records the matching
-// audit event in one transaction. A failed event insert leaves the waiver
-// unchanged rather than silently losing its audit history.
+// ToggleWithEvent changes an approved waiver's enabled state and records the
+// matching audit event in one transaction. A failed event insert leaves the
+// waiver unchanged rather than silently losing its audit history. A waiver
+// that is not approved, or a disabled one past its expiry, is refused with
+// port.ErrWaiverNotApproved or port.ErrWaiverLapsed.
 func (r *pgWaiverRepo) ToggleWithEvent(ctx context.Context, id, projectID pgtype.UUID, actorID string) (sqlc.Waiver, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
@@ -56,6 +59,13 @@ func (r *pgWaiverRepo) ToggleWithEvent(ctx context.Context, id, projectID pgtype
 
 	q := sqlc.New(tx)
 	waiver, err := q.ToggleWaiver(ctx, sqlc.ToggleWaiverParams{ID: id, ProjectID: projectID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		current, getErr := q.GetWaiver(ctx, sqlc.GetWaiverParams{ID: id, ProjectID: projectID})
+		if getErr != nil {
+			return sqlc.Waiver{}, getErr
+		}
+		return sqlc.Waiver{}, refuseWaiverChange(current, !current.Enabled, pgtype.Timestamptz{})
+	}
 	if err != nil {
 		return sqlc.Waiver{}, fmt.Errorf("toggle waiver: %w", err)
 	}
@@ -77,6 +87,87 @@ func (r *pgWaiverRepo) ToggleWithEvent(ctx context.Context, id, projectID pgtype
 		return sqlc.Waiver{}, fmt.Errorf("commit tx: %w", err)
 	}
 	return waiver, nil
+}
+
+// SetWaiverEnabledParams carries one revoke or restore. Expected is the
+// updated_at the caller saw, or invalid for an unconditional change.
+type SetWaiverEnabledParams struct {
+	ID        pgtype.UUID
+	ProjectID pgtype.UUID
+	Enabled   bool
+	Expected  pgtype.Timestamptz
+	Event     WaiverEventInput
+}
+
+// SetEnabled switches an approved waiver on or off and appends the event in
+// one transaction. When the waiver already has the wanted state it comes back
+// unchanged with no event. Refusals are port.ErrWaiverNotApproved,
+// port.ErrWaiverChanged and port.ErrWaiverLapsed; a missing waiver is
+// pgx.ErrNoRows.
+func (r *pgWaiverRepo) SetEnabled(ctx context.Context, arg SetWaiverEnabledParams) (sqlc.Waiver, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("begin tx: %w", err)
+	}
+	// Rollback is best-effort; after Commit the transaction is already closed.
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	q := sqlc.New(tx)
+	waiver, err := q.SetWaiverEnabled(ctx, sqlc.SetWaiverEnabledParams{
+		ID:                arg.ID,
+		ProjectID:         arg.ProjectID,
+		Enabled:           arg.Enabled,
+		ExpectedUpdatedAt: arg.Expected,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		current, getErr := q.GetWaiver(ctx, sqlc.GetWaiverParams{ID: arg.ID, ProjectID: arg.ProjectID})
+		if getErr != nil {
+			return sqlc.Waiver{}, getErr
+		}
+		if refuseErr := refuseWaiverChange(current, arg.Enabled, arg.Expected); refuseErr != nil {
+			return sqlc.Waiver{}, refuseErr
+		}
+		return current, nil
+	}
+	if err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("set waiver enabled: %w", err)
+	}
+
+	if _, err := q.CreateWaiverEvent(ctx, sqlc.CreateWaiverEventParams{
+		WaiverID:  waiver.ID,
+		EventType: arg.Event.EventType,
+		ActorID:   arg.Event.ActorID,
+		Metadata:  arg.Event.Metadata,
+	}); err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("create waiver %s event: %w", arg.Event.EventType, err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("commit tx: %w", err)
+	}
+	return waiver, nil
+}
+
+// refuseWaiverChange explains why a conditional UPDATE matched no row for a
+// waiver that exists. It returns nil when the waiver already has the wanted
+// state and the caller's version, so the request is a harmless repeat.
+func refuseWaiverChange(current sqlc.Waiver, want bool, expected pgtype.Timestamptz) error {
+	if current.Status != "approved" {
+		return port.ErrWaiverNotApproved
+	}
+	if expected.Valid && !current.UpdatedAt.Time.Equal(expected.Time) {
+		return port.ErrWaiverChanged
+	}
+	if current.Enabled == want {
+		return nil
+	}
+	if want && current.ExpiresAt.Valid && !current.ExpiresAt.Time.After(time.Now()) {
+		return port.ErrWaiverLapsed
+	}
+	// The row matched every check a moment ago and changed under us.
+	return port.ErrWaiverChanged
 }
 
 func (r *pgWaiverRepo) ListActive(ctx context.Context, projectID pgtype.UUID) ([]sqlc.Waiver, error) {

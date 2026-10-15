@@ -50,10 +50,32 @@ WHERE id = $1 AND project_id = $2
 RETURNING *;
 
 -- name: ToggleWaiver :one
+-- Only an approved waiver flips, and a disabled one comes back on only while
+-- its expiry has not passed. No row comes back otherwise; the caller reads the
+-- waiver to tell a missing row from a refused flip.
 UPDATE waivers SET
     enabled = NOT enabled,
     updated_at = NOW()
 WHERE id = $1 AND project_id = $2
+  AND status = 'approved'
+  AND (enabled OR expires_at IS NULL OR expires_at > NOW())
+RETURNING *;
+
+-- name: SetWaiverEnabled :one
+-- Idempotent enable or disable of an approved waiver. A row comes back only
+-- when the flag actually changes, so a repeated call writes nothing. Enabling
+-- needs an unexpired waiver, and a non-null expected_updated_at makes the
+-- write conditional on the version the caller saw. No row comes back when any
+-- condition fails; the caller reads the waiver to say which one.
+UPDATE waivers SET
+    enabled = sqlc.arg(enabled)::boolean,
+    updated_at = NOW()
+WHERE id = $1 AND project_id = $2
+  AND status = 'approved'
+  AND enabled <> sqlc.arg(enabled)::boolean
+  AND (NOT sqlc.arg(enabled)::boolean OR expires_at IS NULL OR expires_at > NOW())
+  AND (sqlc.narg(expected_updated_at)::timestamptz IS NULL
+       OR updated_at = sqlc.narg(expected_updated_at)::timestamptz)
 RETURNING *;
 
 -- name: ListActiveWaivers :many

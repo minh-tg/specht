@@ -27,6 +27,18 @@ var ErrNotFound = errors.New("not found")
 // that already has a final status.
 var ErrWaiverNotPending = errors.New("waiver is not pending")
 
+// ErrWaiverNotApproved is returned when a revoke, restore or toggle targets a
+// waiver that is not approved, so it has nothing to switch on or off.
+var ErrWaiverNotApproved = errors.New("only an approved waiver can be revoked or restored")
+
+// ErrWaiverChanged is returned when a conditional revoke or restore finds the
+// waiver changed since the caller loaded it.
+var ErrWaiverChanged = errors.New("the waiver changed since you loaded it")
+
+// ErrWaiverLapsed is returned when a waiver would be switched on after its
+// expiry has passed.
+var ErrWaiverLapsed = errors.New("the waiver has expired; extend its expiry first")
+
 // ErrLastAdmin is returned when a membership write would remove or demote the
 // only remaining admin of a project. The Postgres adapter enforces it under a
 // per-project lock so concurrent writes cannot both pass the check.
@@ -477,6 +489,18 @@ type WaiverEventInput struct {
 	Metadata  json.RawMessage
 }
 
+// WaiverEnabledChange asks for a waiver to be switched on or off. Unlike a
+// toggle it names the wanted state, so repeating it changes nothing.
+type WaiverEnabledChange struct {
+	Enabled bool
+	// ExpectedUpdatedAt, when set, makes the change conditional on the
+	// waiver still carrying that updated_at, to the microsecond.
+	ExpectedUpdatedAt *time.Time
+	// Event is appended in the same transaction, only when the state
+	// actually changes.
+	Event WaiverEventInput
+}
+
 // CreateWaiverInput carries a waiver and its children plus the audit event
 // written in the same transaction.
 type CreateWaiverInput struct {
@@ -520,7 +544,15 @@ type WaiverStore interface {
 	GetByID(ctx context.Context, id, projectID string) (Waiver, error)
 	UpdateWithDetails(ctx context.Context, waiver Waiver, expiry *WaiverExpiry, conditions *[]WaiverCondition, contexts *[]WaiverContext, targets *[]WaiverFindingTarget, event WaiverEventInput) (Waiver, error)
 	Delete(ctx context.Context, id, projectID string) error
+	// ToggleWithEvent flips an approved waiver and records the event. It is
+	// deprecated in favour of SetEnabled and returns ErrWaiverNotApproved or
+	// ErrWaiverLapsed when the flip is refused.
 	ToggleWithEvent(ctx context.Context, id, projectID, actorID string) (Waiver, error)
+	// SetEnabled switches an approved waiver on or off. It returns the waiver
+	// unchanged, and writes no event, when it already has the wanted state.
+	// It returns ErrNotFound, ErrWaiverNotApproved, ErrWaiverChanged or
+	// ErrWaiverLapsed when the change is refused.
+	SetEnabled(ctx context.Context, id, projectID string, change WaiverEnabledChange) (Waiver, error)
 	ListActive(ctx context.Context, projectID string) ([]Waiver, error)
 	ListConditions(ctx context.Context, waiverID string) ([]WaiverCondition, error)
 	ListConditionsByWaiverIDs(ctx context.Context, waiverIDs []string) ([]WaiverCondition, error)
