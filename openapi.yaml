@@ -1001,11 +1001,27 @@ paths:
               example: { error: { code: duplicate_report, message: report already exists for this project and data } }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
         "422":
-          description: Ingestion failed (unknown scanner, parse error, bad revision).
+          description: |
+            The report was refused and nothing was stored. `error.code` says why:
+
+            - `unrecognized_format`: the file is not the named scanner's output.
+              The message names the scanner it looks like when one fits.
+            - `malformed_report`: the file is that scanner's format but cannot be read.
+            - `unknown_scanner`: no scanner has that name. `GET /api/v1/scanners` lists them.
+            - `ingest_failed`: any other failure, such as a bad revision.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
-              example: { error: { code: ingest_failed, message: report ingestion failed } }
+              examples:
+                wrongScanner:
+                  summary: A Grype report sent as Trivy
+                  value: { error: { code: unrecognized_format, message: "The file is not trivy output. It looks like grype output; choose grype as the scanner." } }
+                unreadable:
+                  summary: Right format, content that cannot be read
+                  value: { error: { code: malformed_report, message: "The grype report could not be read. Check that the file is complete and came from a current version of the tool." } }
+                other:
+                  summary: Any other failure
+                  value: { error: { code: ingest_failed, message: report ingestion failed } }
 
   /api/v1/projects/{slug}/reports:
     get:

@@ -27,6 +27,10 @@ import (
 // has already been ingested for the project.
 var ErrDuplicateReport = errors.New("duplicate report")
 
+// ErrUnknownScanner is returned when an ingest names a scanner that is not
+// registered. Handlers map it to a 422 that names the scanner.
+var ErrUnknownScanner = errors.New("unknown scanner")
+
 // ErrSlugTaken is returned when a project slug already exists. Handlers map
 // it to an HTTP conflict.
 var ErrSlugTaken = errors.New("slug already taken")
@@ -113,6 +117,8 @@ type IngestReportOutput struct {
 type ScannerRegistry interface {
 	Get(name string) (scanner.Scanner, error)
 	List() []scanner.Descriptor
+	// CheckFormat refuses a document that is not the named scanner's output.
+	CheckFormat(name string, data []byte) error
 }
 
 // ProviderRegistry is the provider capability consumed by PR checks.

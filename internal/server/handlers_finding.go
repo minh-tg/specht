@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -9,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/minh-tg/specht/internal/audit"
+	"github.com/minh-tg/specht/internal/scanner"
 	"github.com/minh-tg/specht/internal/usecase"
 )
 
@@ -35,6 +37,35 @@ func (h *Handler) GetFinding(w http.ResponseWriter, r *http.Request) {
 	}
 	h.audit.HTTP(r, audit.EventGetFinding, audit.OutcomeSuccess, "", id, nil)
 	respondJSON(w, http.StatusOK, finding)
+}
+
+// ingestFailure turns an ingest error into the code and message the caller
+// sees. A file that is not the chosen scanner's output, a report that cannot be
+// read, and an unknown scanner each say what to do next. Anything else stays
+// generic so parser and store internals never reach the response.
+func ingestFailure(scannerName string, err error) (code, message string) {
+	var unrecognized *scanner.UnrecognizedFormatError
+	switch {
+	case errors.As(err, &unrecognized):
+		return "unrecognized_format", unrecognizedMessage(unrecognized)
+	case errors.Is(err, scanner.ErrMalformedReport):
+		return "malformed_report", fmt.Sprintf("The %s report could not be read. Check that the file is complete and came from a current version of the tool.", scannerName)
+	case errors.Is(err, usecase.ErrUnknownScanner):
+		return "unknown_scanner", fmt.Sprintf("The scanner %q is not supported. List the supported scanners with GET /api/v1/scanners.", scannerName)
+	default:
+		return "ingest_failed", "report ingestion failed"
+	}
+}
+
+func unrecognizedMessage(e *scanner.UnrecognizedFormatError) string {
+	switch len(e.LooksLike) {
+	case 0:
+		return fmt.Sprintf("The file is not %s output. Check that you chose the scanner that wrote it.", e.Scanner)
+	case 1:
+		return fmt.Sprintf("The file is not %s output. It looks like %s output; choose %s as the scanner.", e.Scanner, e.LooksLike[0], e.LooksLike[0])
+	default:
+		return fmt.Sprintf("The file is not %s output. It looks like %s output; choose the one that wrote it.", e.Scanner, strings.Join(e.LooksLike, " or "))
+	}
 }
 
 func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +132,8 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 			h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
 			return
 		}
-		respondError(w, http.StatusUnprocessableEntity, "ingest_failed", "report ingestion failed")
+		code, message := ingestFailure(req.Scanner, err)
+		respondError(w, http.StatusUnprocessableEntity, code, message)
 		h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, req.Project, req.Scanner, err)
 		return
 	}

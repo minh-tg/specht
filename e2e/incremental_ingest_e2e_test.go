@@ -3,7 +3,10 @@
 package e2e
 
 import (
+	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -74,13 +77,30 @@ func TestE2E_IncrementalScanFallbacks(t *testing.T) {
 	})
 }
 
+// semgrepLog returns a SARIF fixture as a log that Semgrep wrote: the same
+// results with the tool named Semgrep OSS, which is what the semgrep scanner
+// requires of its input.
+func semgrepLog(t *testing.T, fixture string) json.RawMessage {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("testdata", fixture))
+	require.NoError(t, err)
+	var log map[string]any
+	require.NoError(t, json.Unmarshal(raw, &log))
+	for _, run := range log["runs"].([]any) {
+		run.(map[string]any)["tool"] = map[string]any{"driver": map[string]any{"name": "Semgrep OSS"}}
+	}
+	out, err := json.Marshal(log)
+	require.NoError(t, err)
+	return out
+}
+
 // TestE2E_IncrementalScanWithBaseline pins the incremental happy path for a
 // scanner that opted into incremental analysis: a completed full baseline at
 // the base revision keeps the effective scan mode incremental, the missing
 // baseline degrades with an explicit reason, and change classification runs
 // against the baseline's occurrences. Every request uses scanner "semgrep"
-// (the fixtures are SARIF, which semgrep's parser accepts on explicit
-// selection) because only incremental-capable scanners keep the mode.
+// because only incremental-capable scanners keep the mode, so the SARIF
+// fixtures are sent as Semgrep logs (see semgrepLog).
 func TestE2E_IncrementalScanWithBaseline(t *testing.T) {
 	slug := newProject(t, "incr-baseline")
 	key := mintKey(t, slug)
@@ -88,6 +108,7 @@ func TestE2E_IncrementalScanWithBaseline(t *testing.T) {
 	t.Run("full baseline anchors the revision", func(t *testing.T) {
 		resp := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", key,
 			ingestBodyWith(t, slug, "high.sarif.json", map[string]any{
+				"raw_data":   semgrepLog(t, "high.sarif.json"),
 				"commit_sha": baseSHA,
 				"scanner":    "semgrep",
 			}), http.StatusCreated)
@@ -99,6 +120,7 @@ func TestE2E_IncrementalScanWithBaseline(t *testing.T) {
 	t.Run("incremental without a baseline degrades with an explicit reason", func(t *testing.T) {
 		resp := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", key,
 			ingestBodyWith(t, slug, "medium.sarif.json", map[string]any{
+				"raw_data":      semgrepLog(t, "medium.sarif.json"),
 				"scan_mode":     "incremental",
 				"commit_sha":    "3333333333333333333333333333333333333333",
 				"base_revision": deadSHA,
@@ -111,6 +133,7 @@ func TestE2E_IncrementalScanWithBaseline(t *testing.T) {
 	t.Run("incremental with a resolved baseline classifies against it", func(t *testing.T) {
 		resp := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", key,
 			ingestBodyWith(t, slug, "high-new.sarif.json", map[string]any{
+				"raw_data":      semgrepLog(t, "high-new.sarif.json"),
 				"scan_mode":     "incremental",
 				"commit_sha":    "4444444444444444444444444444444444444444",
 				"base_revision": baseSHA,

@@ -113,7 +113,14 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 
 	sc, err := u.deps.Registry.Get(input.Scanner)
 	if err != nil {
-		return nil, fmt.Errorf("unknown scanner %q", input.Scanner)
+		return nil, fmt.Errorf("%w: %q", ErrUnknownScanner, input.Scanner)
+	}
+
+	// A document that is not the named scanner's output is refused before it
+	// can be recorded as a clean scan with no findings.
+	if err := u.deps.Registry.CheckFormat(input.Scanner, input.RawData); err != nil {
+		slog.Warn("ingest refused: not the named scanner's format", "scanner", input.Scanner, "error", err)
+		return nil, err
 	}
 
 	nr, err := sc.Parse(ctx, input.RawData)

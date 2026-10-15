@@ -4189,20 +4189,20 @@ export interface operations {
         };
       };
       413: components["responses"]["BodyTooLarge"];
-      /** @description Ingestion failed (unknown scanner, parse error, bad revision). */
+      /**
+       * @description The report was refused and nothing was stored. `error.code` says why:
+       *
+       *     - `unrecognized_format`: the file is not the named scanner's output.
+       *       The message names the scanner it looks like when one fits.
+       *     - `malformed_report`: the file is that scanner's format but cannot be read.
+       *     - `unknown_scanner`: no scanner has that name. `GET /api/v1/scanners` lists them.
+       *     - `ingest_failed`: any other failure, such as a bad revision.
+       */
       422: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          /**
-           * @example {
-           *       "error": {
-           *         "code": "ingest_failed",
-           *         "message": "report ingestion failed"
-           *       }
-           *     }
-           */
           "application/json": components["schemas"]["Error"];
         };
       };
