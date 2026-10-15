@@ -243,6 +243,11 @@ func convert(report osvReport) *domain.NormalizedReport {
 		addOsvPackages(nr, result)
 		addOsvVulns(nr, result)
 	}
+	// A clean scan has no results to name its source type, but the report still
+	// needs one to be stored. OSV-Scanner reads lockfiles unless told otherwise.
+	if nr.ScanType == "" {
+		nr.ScanType = domain.ScanTypeLockfile
+	}
 
 	return nr
 }

@@ -1,6 +1,7 @@
 package parser_test
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/minh-tg/specht/internal/domain"
 	"github.com/minh-tg/specht/internal/parser"
 	"github.com/minh-tg/specht/internal/scanner"
 )
@@ -179,6 +181,45 @@ func TestEveryBuiltinGradesItsOwnDocuments(t *testing.T) {
 				assert.Equal(t, scanner.Recognize(s, []byte(doc)) == scanner.Definite, s.DetectFormat([]byte(doc)),
 					"DetectFormat must equal the definite grade for %q", doc)
 			}
+		})
+	}
+}
+
+// cleanReports holds, for each scanner, a report in which the tool found nothing. A clean scan is
+// the most common report a healthy project sends, so every parser must turn it into a report
+// that can be stored.
+var cleanReports = map[string]string{
+	"trivy":            `{"SchemaVersion":2,"ArtifactName":"app","ArtifactType":"filesystem","Results":null}`,
+	"osv-scanner":      `{"results":[]}`,
+	"grype":            `{"matches":[],"source":{},"distro":{},"descriptor":{"name":"grype","version":"0.120.0"}}`,
+	"dependency-check": `{"reportSchema":"1.1","scanInfo":{},"dependencies":[]}`,
+	"semgrep":          `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"Semgrep OSS"}},"results":[]}]}`,
+	"sarif":            `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"codeql"}},"results":[]}]}`,
+	"checkov":          `{"check_type":"terraform","results":{"failed_checks":[]}}`,
+	"tfsec":            `{"results":null}`,
+	"gitleaks":         `[]`,
+	"nuclei":           `[]`,
+	"sbom":             `{"bomFormat":"CycloneDX","specVersion":"1.5"}`,
+}
+
+func TestEveryScannerTurnsACleanReportIntoOneThatCanBeStored(t *testing.T) {
+	storable := map[domain.ScanType]bool{
+		domain.ScanTypeImage: true, domain.ScanTypeFilesystem: true, domain.ScanTypeRepository: true,
+		domain.ScanTypeIaC: true, domain.ScanTypeSBOM: true, domain.ScanTypeLockfile: true, domain.ScanTypeDAST: true,
+	}
+	reg := builtinRegistry(t)
+	for _, d := range reg.List() {
+		t.Run(d.Name, func(t *testing.T) {
+			document, ok := cleanReports[d.Name]
+			require.True(t, ok, "add a clean report for %q to cleanReports", d.Name)
+			require.NoError(t, reg.CheckFormat(d.Name, []byte(document)))
+
+			s, err := reg.Get(d.Name)
+			require.NoError(t, err)
+			nr, err := s.Parse(context.Background(), []byte(document))
+			require.NoError(t, err)
+			assert.Empty(t, nr.Findings)
+			assert.True(t, storable[nr.ScanType], "scan type %q would be rejected by the reports table", nr.ScanType)
 		})
 	}
 }
