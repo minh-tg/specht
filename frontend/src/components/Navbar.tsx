@@ -93,7 +93,7 @@ function SignedInLinks({ email, onLogout }: { email: string | null; onLogout: ()
  */
 const HEADER_CLASS = cn(
   "site-header border-border bg-background z-30 border-b sm:sticky sm:top-0",
-  "supports-[backdrop-filter]:bg-background/80 supports-[backdrop-filter]:backdrop-blur-md",
+  "supports-[backdrop-filter]:bg-background/90 supports-[backdrop-filter]:backdrop-blur-md",
   "data-scrolled:border-input transition-[border-color] duration-(--dur-quick)",
   "pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pl-[env(safe-area-inset-left)]",
 );
