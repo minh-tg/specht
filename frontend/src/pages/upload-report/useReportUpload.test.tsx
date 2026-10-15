@@ -1,3 +1,6 @@
+const playCue = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/sound", () => ({ playCue }));
+
 import { createTestQueryClient } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
@@ -39,6 +42,7 @@ async function chooseScannerAndFile(
 describe("useReportUpload", () => {
   beforeEach(() => {
     globalThis.fetch = vi.fn();
+    playCue.mockClear();
   });
 
   it("handleFile takes a dropped file through the same size, format and JSON checks", async () => {
@@ -224,6 +228,43 @@ describe("useReportUpload", () => {
       scanner: "trivy",
       raw_data: { vuln: true },
     });
+  });
+
+  it.each([[false, "pass"], [true, "block"]])(
+    "plays the gate verdict cue (breached: %s -> %s)",
+    async (breached, cue) => {
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            report_id: "r1",
+            total_findings: 1,
+            threshold_breached: breached,
+            replayed: false,
+          }),
+      } as Response);
+      const { result } = renderUploadHook();
+      await chooseScannerAndFile(result);
+      expect(playCue).not.toHaveBeenCalled();
+      await act(async () => {
+        await result.current.handleSubmit(submitEvent);
+      });
+      expect(playCue).toHaveBeenCalledExactlyOnceWith(cue);
+    },
+  );
+
+  it("plays no cue when the upload fails", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: () => Promise.resolve({ error: { code: "invalid", message: "Bad" } }),
+    } as Response);
+    const { result } = renderUploadHook();
+    await chooseScannerAndFile(result);
+    await act(async () => {
+      await result.current.handleSubmit(submitEvent);
+    });
+    expect(playCue).not.toHaveBeenCalled();
   });
 
   it("sets the permission error when a 403 comes back", async () => {
