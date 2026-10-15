@@ -42,6 +42,18 @@ func TestE2E_CLITriagesAFindingAndReadsItsHistory(t *testing.T) {
 	require.Contains(t, stdout, "false_positive", "the history shows the decision")
 	require.Contains(t, stdout, "test fixture")
 
+	// The type filter reaches the server: a real type keeps its events, an unknown one leaves none.
+	stdout, stderr, exit = cli(t, "--format", "json", "findings", "events", finding)
+	require.Zero(t, exit, stderr)
+	eventType := firstJSONField(t, stdout, "event_type")
+	require.NotEmpty(t, eventType)
+	stdout, stderr, exit = cli(t, "findings", "events", finding, "--type", eventType)
+	require.Zero(t, exit, stderr)
+	require.Contains(t, stdout, eventType)
+	stdout, stderr, exit = cli(t, "findings", "events", finding, "--type", "no_such_event_type")
+	require.Zero(t, exit, stderr)
+	require.Contains(t, stdout, "No events.", "an event type nothing matches yields an empty history")
+
 	stdout, stderr, exit = cli(t, "--format", "json", "findings", "triage", finding, "--state", "exploitable")
 	require.Zero(t, exit, stderr)
 	require.Contains(t, stdout, `"analysis_state": "exploitable"`)
