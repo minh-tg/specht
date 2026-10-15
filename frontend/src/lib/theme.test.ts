@@ -14,13 +14,16 @@ import {
 
 type Listener = () => void;
 
-/** A controllable matchMedia: `setDark` flips the system preference and notifies listeners. */
-function mockSystemTheme(initialDark: boolean) {
+/**
+ * A controllable matchMedia: `setDark` flips the system preference and notifies listeners.
+ * `reducedMotion` answers the reduced-motion query separately from the colour scheme.
+ */
+function mockSystemTheme(initialDark: boolean, reducedMotion = false) {
   let dark = initialDark;
   const listeners = new Set<Listener>();
-  window.matchMedia = vi.fn().mockImplementation(() => ({
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
     get matches() {
-      return dark;
+      return query.includes("reduced-motion") ? reducedMotion : dark;
     },
     addEventListener: (_: string, listener: Listener) => listeners.add(listener),
     removeEventListener: (_: string, listener: Listener) => listeners.delete(listener),
@@ -45,6 +48,8 @@ afterEach(() => {
   vi.restoreAllMocks();
   // @ts-expect-error jsdom has no matchMedia; remove the test double again.
   delete window.matchMedia;
+  // @ts-expect-error jsdom has no startViewTransition; remove the test double again.
+  delete document.startViewTransition;
 });
 
 describe("theme helpers", () => {
@@ -290,5 +295,90 @@ describe("the shared theme store", () => {
     resetThemeStore();
 
     expect(readStoredTheme()).toBe("system");
+  });
+});
+
+describe("the cross-fade on a manual change", () => {
+  /** A startViewTransition that holds the update callback until the test runs it. */
+  function mockViewTransition() {
+    const pending: Array<() => void> = [];
+    const start = vi.fn((update: () => void) => {
+      pending.push(update);
+      return { ready: Promise.resolve() };
+    });
+    document.startViewTransition = start as unknown as Document["startViewTransition"];
+    return { start, flush: () => pending.splice(0).forEach((update) => update()) };
+  }
+
+  it("switches the theme inside the transition callback, not before", () => {
+    mockSystemTheme(false);
+    const transition = mockViewTransition();
+    const { result } = renderHook(() => useTheme());
+
+    act(() => result.current.setTheme("dark"));
+
+    expect(transition.start).toHaveBeenCalledOnce();
+    expect(document.documentElement).not.toHaveClass("dark");
+    expect(result.current.theme).toBe("system");
+
+    act(() => transition.flush());
+
+    expect(document.documentElement).toHaveClass("dark");
+    expect(result.current.theme).toBe("dark");
+  });
+
+  it("still saves the choice before the transition runs", () => {
+    mockSystemTheme(false);
+    mockViewTransition();
+    const { result } = renderHook(() => useTheme());
+
+    act(() => result.current.setTheme("dark"));
+
+    expect(window.localStorage.getItem(THEME_STORAGE_KEY)).toBe("dark");
+  });
+
+  it("is skipped when the person asks for reduced motion", () => {
+    mockSystemTheme(false, true);
+    const transition = mockViewTransition();
+    const { result } = renderHook(() => useTheme());
+
+    act(() => result.current.setTheme("dark"));
+
+    expect(transition.start).not.toHaveBeenCalled();
+    expect(document.documentElement).toHaveClass("dark");
+  });
+
+  it("is not used for the first paint or for a change the system makes", () => {
+    const system = mockSystemTheme(false);
+    const transition = mockViewTransition();
+    window.localStorage.setItem(THEME_STORAGE_KEY, "dark");
+    renderHook(() => useTheme());
+    expect(document.documentElement).toHaveClass("dark");
+
+    window.localStorage.setItem(THEME_STORAGE_KEY, "system");
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: THEME_STORAGE_KEY }));
+    });
+    act(() => system.setDark(true));
+
+    expect(document.documentElement).toHaveClass("dark");
+    expect(transition.start).not.toHaveBeenCalled();
+  });
+
+  it("does not leave a rejected promise behind when the browser skips the transition", async () => {
+    mockSystemTheme(false);
+    const rejected = Promise.reject(new DOMException("Skipped", "AbortError"));
+    document.startViewTransition = (() => ({ ready: rejected })) as unknown as Document[
+      "startViewTransition"
+    ];
+    const { result } = renderHook(() => useTheme());
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+
+    act(() => result.current.setTheme("dark"));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    process.off("unhandledRejection", unhandled);
+
+    expect(unhandled).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,7 @@ export const THEME_STORAGE_KEY = "specht.theme";
 
 const THEMES: readonly Theme[] = ["system", "light", "dark"];
 const DARK_QUERY = "(prefers-color-scheme: dark)";
+const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 
 export function isTheme(value: unknown): value is Theme {
   return typeof value === "string" && (THEMES as readonly string[]).includes(value);
@@ -115,14 +116,35 @@ function subscribe(listener: () => void): () => void {
 }
 
 /**
+ * Runs the visible part of a manual theme change inside a view transition, which cross-fades the
+ * page (index.css sets the length and curve). The class switch has to happen synchronously inside
+ * the callback, because the browser captures the old and the new page around it. Without view
+ * transitions, or when the person asks for reduced motion, the change just happens. The CSS
+ * reduced-motion rule does not reach `::view-transition-*`, so the preference is checked here.
+ */
+function runWithFade(change: () => void): void {
+  const reduced = typeof window.matchMedia === "function"
+    && window.matchMedia(REDUCED_MOTION_QUERY).matches;
+  if (reduced || typeof document.startViewTransition !== "function") {
+    change();
+    return;
+  }
+  // `ready` rejects when the browser skips the transition (hidden tab, a newer transition).
+  // The callback still runs then, so there is nothing to recover.
+  document.startViewTransition(change).ready.catch(() => {});
+}
+
+/**
  * Remembers and applies a choice made by the person. The `storage` event does not fire in the tab
  * that wrote the value, so this tab's subscribers are notified here.
  */
 export function setTheme(next: Theme): void {
   storeTheme(next);
-  applyTheme(next);
-  syncSystemListener();
-  notify();
+  runWithFade(() => {
+    applyTheme(next);
+    syncSystemListener();
+    notify();
+  });
 }
 
 /** Forgets the unsaved choice and every subscription. For tests that share the module. */

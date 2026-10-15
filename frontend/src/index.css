@@ -396,3 +396,25 @@
     }
   }
 }
+
+/* ============================================================================
+   Shell: the cross-fade when the person changes the theme by hand.
+   src/lib/theme.ts wraps the class switch in document.startViewTransition (and skips it for
+   reduced motion, first paint and system-driven changes). The browser default is 250ms, so the
+   length and curve come from the motion tokens. Fade only: the root snapshot is not moved or scaled.
+   ========================================================================= */
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: var(--dur-quick);
+  animation-timing-function: var(--ease-entering);
+}
+
+/* Backup for browsers that run a view transition anyway while reduced motion is requested. */
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation: none !important;
+  }
+}
