@@ -208,6 +208,40 @@ describe("UploadReport", () => {
     expect(postCall()).toBeUndefined();
   });
 
+  it("takes a dropped file through the same checks as a chosen one", async () => {
+    installFetch(() => ({ ok: true, json: () => Promise.resolve({}) } as Response));
+    renderUpload();
+    const zone = screen.getByTestId("file-dropzone");
+
+    const big = new File([new Uint8Array(10 * 1024 * 1024 + 1)], "big.json", {
+      type: "application/json",
+    });
+    fireEvent.drop(zone, { dataTransfer: { files: [big] } });
+    expect(await screen.findByText("File too large (max 10MB)")).toBeInTheDocument();
+
+    fireEvent.drop(zone, { dataTransfer: { files: [createJsonFile("{\"vuln\":true}")] } });
+    expect(await screen.findByText("report.json")).toBeInTheDocument();
+    expect(screen.queryByText("File too large (max 10MB)")).not.toBeInTheDocument();
+  });
+
+  it("removes the chosen file and lets the same file be chosen again", async () => {
+    installFetch(() => ({ ok: true, json: () => Promise.resolve({}) } as Response));
+    renderUpload();
+    const user = userEvent.setup();
+    const input = screen.getByLabelText(/scan file/i) as HTMLInputElement;
+
+    await user.upload(input, createJsonFile("{\"vuln\":true}"));
+    expect(await screen.findByText("report.json")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Remove report.json" }));
+    expect(screen.queryByText("report.json")).not.toBeInTheDocument();
+    expect(input.value).toBe("");
+    expect(screen.getByText("Choose file")).toBeInTheDocument();
+
+    await user.upload(input, createJsonFile("{\"vuln\":true}"));
+    expect(await screen.findByText("report.json")).toBeInTheDocument();
+  });
+
   it("rejects a .json file whose contents are not JSON", async () => {
     installFetch(() => ({ ok: true, json: () => Promise.resolve({}) } as Response));
     renderUpload();
@@ -300,7 +334,7 @@ describe("UploadReport scanner loading and error states", () => {
 
     const retry = await screen.findByRole("button", { name: "Retry" });
     await user.upload(screen.getByLabelText(/scan file/i), createJsonFile("{\"vuln\":true}"));
-    expect(await screen.findByText("report.json loaded")).toBeInTheDocument();
+    expect(await screen.findByText("report.json")).toBeInTheDocument();
 
     await user.click(retry);
 
@@ -309,7 +343,7 @@ describe("UploadReport scanner loading and error states", () => {
     });
     expect(scannerCalls).toBe(2);
     // Choosing a file must survive the retry: refetching does not reset the form.
-    expect(screen.getByText("report.json loaded")).toBeInTheDocument();
+    expect(screen.getByText("report.json")).toBeInTheDocument();
   });
 
   it("shows the empty state when the scanners endpoint returns no rows", async () => {
