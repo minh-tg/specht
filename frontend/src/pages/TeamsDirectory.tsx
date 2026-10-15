@@ -153,11 +153,12 @@ export function TeamsDirectory() {
   // suggestions are filtered in the browser with the server's rules instead of asked for per key.
   const { data: directory } = useUserDirectory();
   const registrationOpen = useCapabilities().data?.registration?.enabled !== false;
-  const rosterSuggestions = registrationOpen
-    ? []
-    : suggestFromDirectory(directory, rosterEmail, new Set(activeMembers?.map((m) => m.user_id)));
-  const rosterSuggestionsActive = !registrationOpen && !!directory
+  // Nothing is offered until the members have loaded, or people already on the team would show up.
+  const rosterSuggestionsActive = !registrationOpen && !!directory && !!activeMembers
     && [...rosterEmail.trim()].length >= 3;
+  const rosterSuggestions = rosterSuggestionsActive
+    ? suggestFromDirectory(directory, rosterEmail, new Set(activeMembers.map((m) => m.user_id)))
+    : [];
   const removeMemberMutation = useRemoveTeamMember(activeRosterTeam?.id ?? "");
 
   async function handleCreateTeam(e: React.FormEvent) {

@@ -45,6 +45,8 @@ describe("TeamsDirectory", () => {
   let deleteTeamError: { status: number; code: string; message: string; } | null = null;
   let teamsLoadFailing = false;
   let rosterRows: Record<string, unknown>[] = [];
+  // When set, the roster request waits for it, so a test can look at the dialog before the members load.
+  let rosterGate: Promise<void> | null = null;
   // Sign-up closed, so suggestions are live in every test unless one opens it.
   let capabilities: object = {};
   let directory: Record<string, unknown>[] = [];
@@ -70,6 +72,7 @@ describe("TeamsDirectory", () => {
       },
     ];
     fetchCalls = [];
+    rosterGate = null;
     userRole = "admin";
     addMemberError = null;
     removeMemberError = null;
@@ -118,6 +121,7 @@ describe("TeamsDirectory", () => {
             )
             : jsonResponse(null, 204);
         }
+        await rosterGate;
         return jsonResponse(rosterRows);
       }
       if (u.endsWith("/api/v1/teams")) {
@@ -265,6 +269,39 @@ describe("TeamsDirectory", () => {
     await user.keyboard("{ArrowDown}{Enter}");
     expect(screen.getByRole("combobox", { name: "Email address" })).toHaveValue("adam@acme.corp");
     expect(fetchCalls.some((c) => c.url.includes("member-suggestions"))).toBe(false);
+  });
+
+  it("offers no one until the team's members have loaded", async () => {
+    const person = (id: string, email: string) => ({
+      id,
+      email,
+      role: "member",
+      created_at: "2026-09-01T00:00:00Z",
+    });
+    directory = [...directory, person("u2", "adam@acme.corp"), person("u3", "adan@acme.corp")];
+    rosterRows = [...rosterRows, {
+      team_id: "t1",
+      user_id: "u2",
+      user_email: "adam@acme.corp",
+      display_name: "",
+      role: "member",
+    }];
+    let release: () => void = () => {};
+    rosterGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const user = userEvent.setup();
+    renderTeamsDirectory();
+
+    await user.click((await screen.findAllByRole("button", { name: "Manage Roster" }))[0]);
+    await user.type(screen.getByRole("combobox", { name: "Email address" }), "ada");
+    await new Promise((r) => setTimeout(r, 100));
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+
+    release();
+    const options = await screen.findAllByRole("option");
+    // adam is already on the team and was never offered, before or after the load.
+    expect(options.map((o) => o.firstElementChild?.textContent)).toEqual(["adan@acme.corp"]);
   });
 
   it("offers no suggestions while sign-up is open", async () => {
