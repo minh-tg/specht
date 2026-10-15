@@ -77,7 +77,7 @@ func TestE2E_IngestEdgeCases(t *testing.T) {
 				"raw_data": map[string]any{},
 			})
 		require.Equal(t, http.StatusUnprocessableEntity, status, string(raw))
-		require.Equal(t, "ingest_failed", errorCode(t, raw))
+		require.Equal(t, "unknown_scanner", errorCode(t, raw))
 	})
 
 	t.Run("a parse failure answers 422 and persists no report row", func(t *testing.T) {
@@ -91,7 +91,16 @@ func TestE2E_IngestEdgeCases(t *testing.T) {
 				"raw_data": map[string]any{"Results": "not-an-array"},
 			})
 		require.Equal(t, http.StatusUnprocessableEntity, status, string(raw))
-		require.Equal(t, "ingest_failed", errorCode(t, raw))
+		require.Equal(t, "unrecognized_format", errorCode(t, raw))
+
+		// The envelope is Trivy's but its content cannot be read.
+		status, raw = doJSON(t, http.MethodPost, "/api/v1/reports", adminToken,
+			map[string]any{
+				"project": slug, "scanner": "trivy",
+				"raw_data": map[string]any{"SchemaVersion": 2, "Results": "not-an-array"},
+			})
+		require.Equal(t, http.StatusUnprocessableEntity, status, string(raw))
+		require.Equal(t, "malformed_report", errorCode(t, raw))
 
 		after := request[[]reportRow](t, http.MethodGet,
 			"/api/v1/projects/"+slug+"/reports?limit=50", adminToken, nil, http.StatusOK)
