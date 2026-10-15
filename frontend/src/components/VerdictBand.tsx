@@ -1,11 +1,12 @@
 import { useGateStatus, useMe, useProjectStats } from "@/api/hooks";
 import { InfoTip } from "@/components/InfoTip";
 import { INLINE_LINK } from "@/components/inlineLink";
+import { RelativeTime } from "@/components/RelativeTime";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { SEVERITIES, severityLabel } from "@/lib/enums";
-import { formatDateTime, formatRelativeTime, pluralize } from "@/lib/format";
+import { pluralize } from "@/lib/format";
 import {
   blockerCount,
   degradedMessage,
@@ -151,8 +152,8 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
           )}
           {policy && showScan && " · "}
           {latest && (
-            <span title={formatDateTime(latest.created_at)}>
-              Last scan {formatRelativeTime(latest.created_at)}
+            <span>
+              Last scan <RelativeTime iso={latest.created_at} />
               {latest.tool_name ? ` · ${latest.tool_name}` : ""}
             </span>
           )}

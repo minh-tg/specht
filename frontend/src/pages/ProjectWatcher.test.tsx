@@ -102,7 +102,7 @@ describe("ProjectWatcher", () => {
       "true",
     );
     expect(screen.getByRole("combobox", { name: "Interval" })).toHaveTextContent("every hour");
-    expect(screen.getByText("12 min ago.")).toBeInTheDocument();
+    expect(screen.getByText("12 min ago")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Reset/ })).not.toBeInTheDocument();
   });

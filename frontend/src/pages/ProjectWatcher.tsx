@@ -1,12 +1,13 @@
 import { useProjectRole, useProjectWatcher, useUpdateProjectWatcher } from "@/api/hooks";
 import { ErrorState } from "@/components/ErrorState";
+import { RelativeTime } from "@/components/RelativeTime";
 import { SelectField } from "@/components/SelectField";
 import { SettingLine } from "@/components/SettingLine";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { StatusPill } from "@/components/StatusPill";
 import { Switch } from "@/components/Switch";
 import { Button } from "@/components/ui/button";
-import { EMPTY_VALUE, formatDateTime, formatRelativeTime } from "@/lib/format";
+import { EMPTY_VALUE, formatDateTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useParams } from "react-router-dom";
 import {
@@ -24,7 +25,7 @@ import {
 export function ProjectWatcher() {
   const { slug } = useParams<{ slug: string; }>();
   const currentSlug = slug ?? "";
-  const { data: watcher, isLoading, isError, refetch, dataUpdatedAt } = useProjectWatcher(
+  const { data: watcher, isLoading, isError, refetch } = useProjectWatcher(
     currentSlug,
   );
   const { isAdmin } = useProjectRole(currentSlug);
@@ -36,7 +37,6 @@ export function ProjectWatcher() {
   }
 
   const status = STATUS[watcher.status];
-  const now = new Date(dataUpdatedAt);
   const atDefault = watcher.interval_seconds === watcher.default_interval_seconds;
 
   return (
@@ -104,7 +104,11 @@ export function ProjectWatcher() {
         <SettingLine
           title="Last poll"
           help={watcher.last_poll_at
-            ? `${formatRelativeTime(watcher.last_poll_at, now)}.`
+            ? (
+              <>
+                <RelativeTime iso={watcher.last_poll_at} />.
+              </>
+            )
             : "No poll has finished yet."}
         >
           <span className="font-mono text-[0.8125rem]">
