@@ -3,7 +3,6 @@ package dependencycheck
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/url"
 	"strings"
 
@@ -67,19 +66,32 @@ func (s *Scanner) Descriptor() scanner.Descriptor {
 }
 
 func (s *Scanner) DetectFormat(data []byte) bool {
-	var probe struct {
-		ReportSchema string `json:"reportSchema"`
+	return s.Recognize(data) == scanner.Definite
+}
+
+// Recognize grades a document. Dependency-Check writes a report schema in
+// every report; scan info with a dependency list is possible without it.
+func (s *Scanner) Recognize(data []byte) scanner.Recognition {
+	shape, ok := parseutil.ReadShape(data)
+	if !ok || !shape.IsObject() {
+		return scanner.NotRecognized
 	}
-	if err := json.Unmarshal(data, &probe); err != nil {
-		return false
+	if shape.String("reportSchema") != "" {
+		return scanner.Definite
 	}
-	return probe.ReportSchema != ""
+	if shape.Has("scanInfo") && shape.Has("dependencies") {
+		return scanner.Possible
+	}
+	return scanner.NotRecognized
 }
 
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	if s.Recognize(data) == scanner.NotRecognized {
+		return nil, scanner.Unrecognized("dependency-check")
+	}
 	var report dcReport
 	if err := json.Unmarshal(data, &report); err != nil {
-		return nil, fmt.Errorf("dependency-check: parse json: %w", err)
+		return nil, scanner.Malformed("dependency-check", err)
 	}
 
 	return convert(report), nil
