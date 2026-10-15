@@ -91,6 +91,11 @@ releases.
   `update`, `delete`, which needs `--yes`) and manage `members`, `api-keys`,
   `users` and `invites`. Account and invite commands need a signed-in session
   token in `API_KEY`, not a project key.
+- `specht-mcp` also offers projects, stats, aging, reports, environments, targets,
+  artifacts and a finding's history, and `scanners_list` for a signed-in session.
+  With `MCP_ALLOW_MUTATIONS=true` it can record a triage decision, request a
+  waiver and withdraw a request. It has no tool to approve or reject a waiver
+  request, which stays with a person.
 - A Semgrep finding keeps its identity when the code above it moves. The line
   is no longer part of it: a finding is the rule, the file and what was
   matched (Semgrep's own match id when the run is logged in, otherwise the
