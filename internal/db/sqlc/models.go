@@ -225,6 +225,12 @@ type FindingOccurrence struct {
 	ObservedAt      pgtype.Timestamptz `json:"observed_at"`
 }
 
+type InstanceSecret struct {
+	Name      string             `json:"name"`
+	Value     []byte             `json:"value"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type Invite struct {
 	ID         pgtype.UUID        `json:"id"`
 	TokenHash  string             `json:"token_hash"`
