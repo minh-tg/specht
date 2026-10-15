@@ -306,6 +306,12 @@ func (r *Resolver) process(ctx context.Context, cve string) {
 			failed = true
 			continue
 		}
+		// Wait for the rate limiter before taking the lease, so a long wait
+		// behind a slow provider cannot outlast the lease.
+		if err := slot.limiter.Wait(ctx); err != nil {
+			return
+		}
+		now = r.cfg.Now()
 		got, err := r.store.AcquireLease(ctx, name, cve, now, now.Add(r.cfg.LeaseTTL))
 		if err != nil {
 			r.cfg.Logger.Warn("cve detail lease failed", "provider", name, "cve", cve, "error", err)
@@ -340,14 +346,9 @@ const (
 	fetchStopped
 )
 
-// fetch performs one rate-limited lookup while holding the lease and records
-// its outcome.
+// fetch performs one lookup while holding the lease and records its outcome.
 func (r *Resolver) fetch(ctx context.Context, slot providerSlot, cve string) fetchOutcome {
 	name := slot.provider.Name()
-	if err := slot.limiter.Wait(ctx); err != nil {
-		r.release(name, cve)
-		return fetchStopped
-	}
 	rec, err := slot.provider.Lookup(ctx, cve)
 	now := r.cfg.Now()
 	// Writes after the lookup use a context that survives shutdown briefly,

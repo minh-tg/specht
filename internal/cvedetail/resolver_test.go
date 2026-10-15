@@ -318,3 +318,15 @@ func statuses(in []ProviderLookup) []string {
 	}
 	return out
 }
+
+func TestResolver_RateLimiterSpacesRequests(t *testing.T) {
+	clock := &testClock{now: time.Now()}
+	a := NewFake("a")
+	r := NewResolver(newMemStore(), Config{Now: clock.Now, Rates: map[string]float64{"a": 10}, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}, a)
+	start := time.Now()
+	for _, cve := range []string{"CVE-2024-0001", "CVE-2024-0002", "CVE-2024-0003"} {
+		r.process(context.Background(), cve)
+	}
+	assert.Len(t, a.Calls(), 3)
+	assert.GreaterOrEqual(t, time.Since(start), 180*time.Millisecond, "10 requests per second allow one burst, then one every 100 ms")
+}
