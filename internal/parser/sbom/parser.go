@@ -37,7 +37,23 @@ func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Descriptor() scanner.Descriptor {
 	return scanner.Descriptor{
-		Name:                  "sbom",
+		Name:        "sbom",
+		DisplayName: "SBOM (CycloneDX or SPDX)",
+		Formats: []scanner.Format{
+			{
+				Name:       "CycloneDX JSON",
+				Extensions: []string{".json"},
+				Command:    `syft dir:. -o cyclonedx-json=sbom.json`,
+				TestedWith: "Syft 1.54.0, Trivy 0.74.0, Grype 0.120.1",
+				Note:       `A CycloneDX file that lists vulnerabilities, such as Grype's, also gives findings.`,
+			},
+			{
+				Name:       "SPDX JSON",
+				Extensions: []string{".json"},
+				Command:    `syft dir:. -o spdx-json=sbom.json`,
+				TestedWith: "Syft 1.54.0",
+			},
+		},
 		Version:               "1",
 		ContractVersion:       1,
 		FingerprintVersion:    1,

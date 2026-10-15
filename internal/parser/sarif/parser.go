@@ -51,7 +51,17 @@ func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Descriptor() scanner.Descriptor {
 	return scanner.Descriptor{
-		Name:                  "sarif",
+		Name:        "sarif",
+		DisplayName: "SARIF (any tool)",
+		Formats: []scanner.Format{
+			{
+				Name:       "SARIF 2.1.0",
+				Extensions: []string{".sarif", ".json"},
+				Command:    `gosec -fmt sarif -out gosec.sarif ./...`,
+				TestedWith: "CodeQL 2.27.0, Gosec 2.29.0, Hadolint 2.14.0, Trivy 0.74.0",
+				Note:       "For tools without a scanner of their own here, such as Gosec, Hadolint (`--format sarif`) and CodeQL. Trivy, Grype and Semgrep also write it, but use their own scanner when there is one.",
+			},
+		},
 		Version:               "2.1.0",
 		ContractVersion:       1,
 		FingerprintVersion:    1,

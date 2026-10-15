@@ -60,6 +60,38 @@ The page a CI link opens: what a change introduced, where, and what to do about 
 > package identity, but does not currently normalize every SBOM field—for
 > example, dependency graphs, licenses, hashes, or signatures.
 
+### Producing each file
+
+Pick the scanner that matches the tool that wrote the file, on the upload page or
+with `-tool` in the adapter. A file from another tool is refused, and the message
+names the scanner it looks like. The table is generated from the parsers, so it
+lists exactly what they read.
+
+<!-- scanners:start -->
+| Scanner | Files it reads | How to produce one | Checked with |
+|---|---|---|---|
+| **Trivy** | JSON (`.json`) | `trivy fs --format json -o trivy.json .` | Trivy 0.74.0 |
+| **OSV-Scanner** | JSON (`.json`) | `osv-scanner scan source --format json --output-file osv.json .` | OSV-Scanner 2.6.0 |
+| **Semgrep** | JSON (`.json`)<br>SARIF (`.json`, `.sarif`) | `semgrep scan --json -o semgrep.json`<br>`semgrep scan --sarif -o semgrep.sarif` | Semgrep 1.172.0 |
+| **Checkov** | JSON (`.json`) | `checkov -d . -o json > checkov.json` | Checkov 3.3.29 |
+| **OWASP Dependency-Check** | JSON (`.json`) | `dependency-check --scan . --format JSON --out .` | Dependency-Check 12.1.0 |
+| **Grype** | JSON (`.json`) | `grype dir:. -o json > grype.json` | Grype 0.120.1 |
+| **SBOM (CycloneDX or SPDX)** | CycloneDX JSON (`.json`)<br>SPDX JSON (`.json`) | `syft dir:. -o cyclonedx-json=sbom.json`<br>`syft dir:. -o spdx-json=sbom.json` | Syft 1.54.0, Trivy 0.74.0, Grype 0.120.1<br>Syft 1.54.0 |
+| **SARIF (any tool)** | SARIF 2.1.0 (`.sarif`, `.json`) | `gosec -fmt sarif -out gosec.sarif ./...` | CodeQL 2.27.0, Gosec 2.29.0, Hadolint 2.14.0, Trivy 0.74.0 |
+| **Gitleaks** | JSON (`.json`) | `gitleaks detect --report-format json --report-path gitleaks.json` | Gitleaks 8.30.1 |
+| **tfsec** | JSON (`.json`) | `tfsec . --format json --out tfsec.json` | tfsec 1.28.14 |
+| **Nuclei** | JSON Lines (`.jsonl`, `.ndjson`) | `nuclei -u https://example.com -jsonl -o nuclei.jsonl` | Nuclei 3.11.1 |
+
+- **Trivy**: `trivy image` and `trivy config` write the same format.
+- **Semgrep**: Both formats give the same findings.
+- **Checkov**: A run over several kinds of files, such as Terraform and Kubernetes, writes one report per framework; all of them are read. Checkov's open-source output has no severity, so its findings show as unknown.
+- **Grype**: Its CycloneDX output (`-o cyclonedx-json`) goes to the SBOM scanner.
+- **SBOM (CycloneDX or SPDX)**: A CycloneDX file that lists vulnerabilities, such as Grype's, also gives findings.
+- **SARIF (any tool)**: For tools without a scanner of their own here, such as Gosec, Hadolint (`--format sarif`) and CodeQL. Trivy, Grype and Semgrep also write it, but use their own scanner when there is one.
+- **Gitleaks**: Reports written with `--redact` are accepted.
+- **Nuclei**: One finding per template and URL.
+<!-- scanners:end -->
+
 Tools that emit compatible SARIF or SBOM JSON can use the shared adapters.
 Other formats need a Go parser with fixtures and tests under
 [`internal/parser/`](internal/parser/).

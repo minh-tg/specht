@@ -104,7 +104,23 @@ func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Descriptor() scanner.Descriptor {
 	return scanner.Descriptor{
-		Name:                  "semgrep",
+		Name:        "semgrep",
+		DisplayName: "Semgrep",
+		Formats: []scanner.Format{
+			{
+				Name:       "JSON",
+				Extensions: []string{".json"},
+				Command:    `semgrep scan --json -o semgrep.json`,
+				TestedWith: "Semgrep 1.172.0",
+			},
+			{
+				Name:       "SARIF",
+				Extensions: []string{".json", ".sarif"},
+				Command:    `semgrep scan --sarif -o semgrep.sarif`,
+				TestedWith: "Semgrep 1.172.0",
+				Note:       `Both formats give the same findings.`,
+			},
+		},
 		Version:               "2.1",
 		ContractVersion:       1,
 		FingerprintVersion:    fingerprintVersion,

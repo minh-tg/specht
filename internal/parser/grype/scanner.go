@@ -96,7 +96,17 @@ func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Descriptor() scanner.Descriptor {
 	return scanner.Descriptor{
-		Name:                  "grype",
+		Name:        "grype",
+		DisplayName: "Grype",
+		Formats: []scanner.Format{
+			{
+				Name:       "JSON",
+				Extensions: []string{".json"},
+				Command:    `grype dir:. -o json > grype.json`,
+				TestedWith: "Grype 0.120.1",
+				Note:       "Its CycloneDX output (`-o cyclonedx-json`) goes to the SBOM scanner.",
+			},
+		},
 		Version:               "0.7",
 		ContractVersion:       1,
 		FingerprintVersion:    1,

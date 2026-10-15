@@ -26,7 +26,16 @@ func NewScanner() *Scanner { return &Scanner{} }
 
 func (s *Scanner) Descriptor() scanner.Descriptor {
 	return scanner.Descriptor{
-		Name:                  "tfsec",
+		Name:        "tfsec",
+		DisplayName: "tfsec",
+		Formats: []scanner.Format{
+			{
+				Name:       "JSON",
+				Extensions: []string{".json"},
+				Command:    `tfsec . --format json --out tfsec.json`,
+				TestedWith: "tfsec 1.28.14",
+			},
+		},
 		Version:               "1",
 		ContractVersion:       1,
 		FingerprintVersion:    1,
