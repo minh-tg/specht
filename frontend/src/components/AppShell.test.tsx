@@ -170,3 +170,49 @@ it("reloads the page from the error fallback", async () => {
 
   expect(reload).toHaveBeenCalledTimes(1);
 });
+
+function renderListAndItem() {
+  return render(
+    <MemoryRouter initialEntries={["/list", "/item/1"]} initialIndex={1}>
+      <AppShell header={null}>
+        <Routes>
+          <Route path="/list" element={<Link to="/item/1">Item one</Link>} />
+          <Route path="/item/1" element={<BackButton />} />
+        </Routes>
+      </AppShell>
+    </MemoryRouter>,
+  );
+}
+
+it("returns focus to the link that opened the page just left when Back lands mid-list", async () => {
+  const user = userEvent.setup();
+  vi.spyOn(window, "scrollY", "get").mockReturnValue(600);
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+    { top: 100, bottom: 130 } as DOMRect,
+  );
+  renderListAndItem();
+
+  await user.click(screen.getByRole("button", { name: "Back" }));
+
+  expect(await screen.findByRole("link", { name: "Item one" })).toHaveFocus();
+});
+
+it("leaves focus on main when Back lands at the top of the list or the link is off screen", async () => {
+  const user = userEvent.setup();
+  const scrollY = vi.spyOn(window, "scrollY", "get").mockReturnValue(0);
+  const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(
+    { top: 100, bottom: 130 } as DOMRect,
+  );
+  const { unmount } = renderListAndItem();
+  await user.click(screen.getByRole("button", { name: "Back" }));
+  expect(await screen.findByRole("link", { name: "Item one" })).not.toHaveFocus();
+  expect(screen.getByRole("main")).toHaveFocus();
+  unmount();
+
+  scrollY.mockReturnValue(600);
+  rect.mockReturnValue({ top: -50, bottom: -20 } as DOMRect);
+  renderListAndItem();
+  await user.click(screen.getByRole("button", { name: "Back" }));
+  expect(await screen.findByRole("link", { name: "Item one" })).not.toHaveFocus();
+  expect(screen.getByRole("main")).toHaveFocus();
+});
