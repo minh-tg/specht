@@ -80,7 +80,7 @@ func (e *credentialInputError) Is(target error) bool { return target == ErrInval
 
 func badCredentials(message string) error { return &credentialInputError{message: message} }
 
-// The two password policy errors below are credential input errors too, so
+// The password policy errors below are credential input errors too, so
 // errors.Is(err, ErrInvalidCredentialInput) holds for them. Handlers match
 // them first to give each its own code.
 var (
@@ -90,6 +90,10 @@ var (
 	// ErrPasswordMatchesAccount means the password equals the account's email
 	// address, the part of it before the at sign, or its display name.
 	ErrPasswordMatchesAccount = badCredentials("The password must not be your email address or name.")
+	// ErrPasswordNotVisible means the password holds only white space,
+	// invisible code points or combining marks. It is a plain credential input
+	// error, so each endpoint answers it with its generic password code.
+	ErrPasswordNotVisible = badCredentials("The password must contain visible characters.")
 )
 
 // validateCredentials checks the email address and password of a new account
@@ -114,7 +118,7 @@ func validateCredentials(email, password, displayName string) (string, error) {
 // shares: registration, setup, invites, a password change and both resets.
 // The minimum counts characters, as the forms do; the maximum counts bytes,
 // because 72 bytes is the longest input bcrypt reads. A listed password is
-// refused, and so is one equal to the account's email, its local part or its
+// refused, a password with no visible character is refused, and so is one equal to the account's email, its local part or its
 // display name; pass empty strings where the account is not known yet.
 func checkPassword(password, email, displayName string) error {
 	if utf8.RuneCountInString(password) < 8 {
@@ -122,6 +126,9 @@ func checkPassword(password, email, displayName string) error {
 	}
 	if len(password) > 72 {
 		return badCredentials("password must be at most 72 bytes; some characters, such as emoji, take more than one")
+	}
+	if !auth.HasVisibleCharacter(password) {
+		return ErrPasswordNotVisible
 	}
 	if auth.IsCommonPassword(password) {
 		return ErrPasswordTooCommon

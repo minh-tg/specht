@@ -100,6 +100,16 @@ func TestE2E_PasswordPolicy(t *testing.T) {
 		member = accepted(t, http.MethodPut, "/api/v1/me/password", member.Token, change("difference-engine-22"), http.StatusOK)
 	})
 
+	t.Run("invisible password", func(t *testing.T) {
+		message := refused(t, http.MethodPut, "/api/v1/me/password", member.Token,
+			map[string]any{"current_password": "difference-engine-22", "new_password": "        "},
+			http.StatusBadRequest, "invalid_password")
+		require.Equal(t, "The password must contain visible characters.", message)
+		refused(t, http.MethodPut, "/api/v1/me/password", member.Token,
+			map[string]any{"current_password": "difference-engine-22", "new_password": "pass\u200bword1"},
+			http.StatusBadRequest, "password_too_common")
+	})
+
 	t.Run("reset link", func(t *testing.T) {
 		link := accepted(t, http.MethodPost, "/api/v1/users/"+member.UserID+"/reset-link", admin.Token, map[string]any{}, http.StatusCreated)
 		token := strings.TrimPrefix(link.Link, "/reset/")

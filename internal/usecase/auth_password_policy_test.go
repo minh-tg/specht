@@ -15,10 +15,12 @@ import (
 // already reports ErrInvalidCredentialInput (the recovery command among them)
 // keeps showing their message.
 func TestPasswordPolicyErrorsAreCredentialInputErrors(t *testing.T) {
-	for _, err := range []error{ErrPasswordTooCommon, ErrPasswordMatchesAccount} {
+	for _, err := range []error{ErrPasswordTooCommon, ErrPasswordMatchesAccount, ErrPasswordNotVisible} {
 		assert.ErrorIs(t, err, ErrInvalidCredentialInput, err.Error())
 	}
 	assert.NotErrorIs(t, ErrPasswordTooCommon, ErrPasswordMatchesAccount)
+	assert.NotErrorIs(t, ErrPasswordNotVisible, ErrPasswordTooCommon)
+	assert.NotErrorIs(t, ErrPasswordNotVisible, ErrPasswordMatchesAccount)
 }
 
 func TestCheckPassword(t *testing.T) {
@@ -31,6 +33,12 @@ func TestCheckPassword(t *testing.T) {
 		{"whole email", "Ada@Acme.Example", "ada@acme.example", "", ErrPasswordMatchesAccount},
 		{"local part", "ada.lovelace", "ada.lovelace@acme.example", "", ErrPasswordMatchesAccount},
 		{"display name", "Ada Lovelace", "x@acme.example", "Ada Lovelace", ErrPasswordMatchesAccount},
+		{"eight spaces", "        ", "ada@acme.example", "", ErrPasswordNotVisible},
+		{"eight zero-width spaces", strings.Repeat("\u200b", 8), "ada@acme.example", "", ErrPasswordNotVisible},
+		{"eight combining marks", strings.Repeat("\u0301", 8), "ada@acme.example", "", ErrPasswordNotVisible},
+		{"listed with a zero-width space", "pass\u200bword1", "ada@acme.example", "", ErrPasswordTooCommon},
+		{"listed with a soft hyphen", "pass\u00adword1", "ada@acme.example", "", ErrPasswordTooCommon},
+		{"email with a zero-width space", "ada\u200b@acme.example", "ada@acme.example", "", ErrPasswordMatchesAccount},
 		{"unlisted", "a-long-unrelated-phrase", "ada@acme.example", "Ada", nil},
 	}
 	for _, tc := range cases {

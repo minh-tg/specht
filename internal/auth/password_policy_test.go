@@ -59,3 +59,49 @@ func TestPasswordMatchesAccount(t *testing.T) {
 		})
 	}
 }
+
+// Default-ignorable code points draw nothing, so a password with one inside
+// is the same password to the eye as the one without it.
+func TestIsCommonPassword_IgnoresInvisibleCodePoints(t *testing.T) {
+	for name, password := range map[string]string{
+		"zero-width space":  "pass\u200bword1",
+		"zero-width joiner": "pass\u200dword1",
+		"soft hyphen":       "pass\u00adword1",
+		"word joiner":       "pass\u2060word1",
+		"byte order mark":   "pass\ufeffword1",
+		"variation select":  "pass\ufe0fword1",
+		"hangul filler":     "pass\u3164word1",
+		"left-to-right":     "pass\u200eword1",
+		"at the ends":       "\u200bpassword1\u2060",
+	} {
+		assert.True(t, IsCommonPassword(password), name)
+	}
+}
+
+func TestPasswordMatchesAccount_IgnoresInvisibleCodePoints(t *testing.T) {
+	assert.True(t, PasswordMatchesAccount("ada.love\u200blace", "ada.lovelace@acme.example", ""))
+	assert.True(t, PasswordMatchesAccount("Ada\u00ad Lovelace", "x@acme.example", "Ada Lovelace"))
+	assert.True(t, PasswordMatchesAccount("ada@acme.example", "ada\u200b@acme.example", ""))
+}
+
+func TestHasVisibleCharacter(t *testing.T) {
+	cases := map[string]bool{
+		"a":                  true,
+		"  a  ":              true,
+		"\u0301a":            true,
+		"e\u0301":            true, // a mark on a letter is part of a visible character
+		"😀":                  true,
+		"        ":           false,
+		"\t\n\u00a0\u3000":   false,
+		"\u200b\u200b\u200b": false,
+		"\u00ad\u2060\ufeff": false,
+		"\u3164\uffa0":       false,
+		"\ufe0f":             false,
+		"\u0301\u0302\u0303": false, // marks with nothing to attach to
+		" \u200b \u0301":     false,
+		"":                   false,
+	}
+	for password, want := range cases {
+		assert.Equal(t, want, HasVisibleCharacter(password), "%q", password)
+	}
+}
