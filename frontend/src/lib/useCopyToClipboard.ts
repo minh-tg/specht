@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { playCue } from "./sound";
 
 export type CopyStatus = "idle" | "copied" | "failed";
 
@@ -27,6 +28,7 @@ export function useCopyToClipboard(): {
     } catch {
       ok = false;
     }
+    if (ok) playCue("copied");
     setStatus(ok ? "copied" : "failed");
     window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setStatus("idle"), ok ? 2000 : 6000);
