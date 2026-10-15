@@ -37,6 +37,12 @@ export const SHORTCUTS: readonly Shortcut[] = [
     alsoCtrl: true,
   },
   {
+    id: "notifications",
+    scope: "Everywhere",
+    description: "Focus notifications",
+    combos: [["Alt", "T"]],
+  },
+  {
     id: "grid-next",
     scope: "In a findings list",
     description: "Next row",
@@ -84,9 +90,11 @@ export function shortcutsIn(scope: ShortcutScope): Shortcut[] {
 export const isMacPlatform = () =>
   typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform ?? "");
 
-/** One key as it is printed: `Mod` becomes ⌘ or Ctrl. */
+/** One key as it is printed: `Mod` becomes ⌘ or Ctrl, and `Alt` becomes ⌥ on macOS. */
 export function keyLabel(key: string, mac: boolean = isMacPlatform()): string {
-  return key === "Mod" ? (mac ? "⌘" : "Ctrl") : key;
+  if (key === "Mod") return mac ? "⌘" : "Ctrl";
+  if (key === "Alt") return mac ? "⌥" : "Alt";
+  return key;
 }
 
 /** A combination as one string, such as "Ctrl+K" or "⌘K". */
