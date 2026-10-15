@@ -137,6 +137,14 @@ describe("PersonCombobox", () => {
     expect(screen.queryByText(/No matching people/)).not.toBeInTheDocument();
   });
 
+  it("announces the search while the list is still closed", async () => {
+    const user = userEvent.setup();
+    render(<Harness suggestions={[]} searching />);
+    await user.type(field(), "ada");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(screen.getByText("Searching for people.")).toHaveAttribute("role", "status");
+  });
+
   it("announces how many people were found", async () => {
     const user = userEvent.setup();
     render(<Harness suggestions={[ADA, LOVE]} />);
