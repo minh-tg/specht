@@ -10,7 +10,11 @@ export interface Command {
   readonly hint?: string;
   /** Extra words that should find it, such as "logout" for "Sign out". */
   readonly keywords?: string;
-  readonly run: () => void;
+  /**
+   * `from` is the element that had focus before the palette opened, for a command that opens
+   * another dialog and should hand focus back there when it closes.
+   */
+  readonly run: (from?: HTMLElement | null) => void;
 }
 
 /** The sections of a project, which are the second part of its address. */

@@ -232,4 +232,19 @@ describe("CommandPalette", () => {
     input = await openWithShortcut(user);
     expect(input).toHaveValue("");
   });
+
+  it("opens the shortcut sheet from the Keyboard shortcuts entry and hands focus back", async () => {
+    renderPalette();
+    const user = userEvent.setup();
+    const opener = screen.getByRole("button", { name: "Open command palette" });
+    opener.focus();
+    await user.keyboard("{Control>}k{/Control}");
+    await user.type(await screen.findByRole("combobox", { name: "Search commands" }), "shortcuts");
+    expect(labels()).toEqual(["Keyboard shortcutsCtrl+/"]);
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(opener).toHaveFocus();
+  });
 });
