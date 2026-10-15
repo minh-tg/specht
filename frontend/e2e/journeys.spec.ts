@@ -433,6 +433,42 @@ test("keyboard users can skip the navigation", async ({ page }) => {
   await expect(page.locator("main#main-content")).toBeFocused();
 });
 
+test("a bare ? opens the shortcut sheet until the single-key switch is turned off", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const slug = uniq("single-key");
+  await seedProject(request, token, slug);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
+  await uiLogin(page);
+  await page.goto(`/${slug}/findings`);
+  await expect(page.getByRole("link", { name: HIGH_TITLE })).toBeVisible();
+
+  await page.keyboard.press("?");
+  const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator("kbd", { hasText: /^J$/ })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+
+  await page.getByRole("button", { name: /^Account menu/ }).click();
+  const item = page.getByRole("menuitemcheckbox", { name: "Single-key shortcuts" });
+  await expect(item).toHaveAttribute("aria-checked", "true");
+  await item.click();
+  await expect(item).toHaveAttribute("aria-checked", "false");
+  await page.keyboard.press("Escape");
+
+  // The choice is kept per browser, so it survives a reload.
+  await page.reload();
+  await expect(page.getByRole("link", { name: HIGH_TITLE })).toBeVisible();
+  await page.keyboard.press("?");
+  await expect(sheet).toBeHidden();
+
+  // Ctrl+/ still works, and the sheet no longer lists the single keys.
+  await page.keyboard.press("Control+/");
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator("kbd", { hasText: /^J$/ })).toHaveCount(0);
+  await expect(sheet).toContainText("Single-key shortcuts are off");
+});
+
 test("triaging the only blocker flips the project verdict to passing", async ({ page, request }) => {
   const token = await apiToken(request);
   const slug = uniq("verdict-flip");

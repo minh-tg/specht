@@ -87,6 +87,11 @@ releases.
   date, the server can fetch the rest from NVD, VulnCheck or OSV
   (`CVE_DETAIL_PROVIDERS`, off by default). Only the CVE identifier is sent;
   answers are cached in PostgreSQL and the admin status lists each provider.
+- A bare `?` opens the keyboard shortcut sheet, and a "Single-key shortcuts"
+  switch in the account menu turns it off together with the findings list keys
+  `j`, `k` and `x`. The findings list and the finding page now refresh every
+  30 seconds while the tab is visible, show when they were last updated, and
+  a Ctrl+K pressed with a list row focused opens the command palette.
 
 ### Changed
 
