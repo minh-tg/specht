@@ -74,6 +74,10 @@ releases.
   recorded as a clean scan with no findings. A report that cannot be read is
   `malformed_report`, and an unknown scanner is `unknown_scanner`.
 - A clean OSV-Scanner run, with no vulnerabilities, can now be ingested.
+- A Semgrep finding keeps its identity when the code above it moves. The line
+  is no longer part of it: a finding is the rule, the file and what was
+  matched (Semgrep's own match id when the run is logged in, otherwise the
+  message), and two alike in one file are told apart by their order.
 - Semgrep reports are read from `semgrep --json` as well as `--sarif`. Both
   formats give the same findings, so switching keeps a project's history.
 - A Checkov run over a directory with several kinds of files (Terraform,
