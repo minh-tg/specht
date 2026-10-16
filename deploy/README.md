@@ -609,6 +609,13 @@ therefore depends on a backup taken before the upgrade, so take one first
    From a source checkout, add the override and `--build` instead of `pull`:
    `docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml --env-file deploy/.env.prod up -d --build`.
 
+Migration 54 (`users_email_proven`) adds a column to `users` and backfills it
+for every account with an SSO identity, and it holds a lock on `users` until the
+backfill ends. With 100,000 linked accounts that stalled reads for about 1.8
+seconds in a test, and the pause grows with the number of SSO users, so operators
+with many SSO accounts should expect a short pause on the first start of this
+version or later.
+
 Every change is checked in CI by letting an earlier build fill a database through
 its own API and starting the current build on it (`scripts/upgrade-smoke.sh`):
 the account, project, scan, triage decision and API key must survive the
