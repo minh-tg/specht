@@ -668,6 +668,15 @@ export interface paths {
      *     request is refused with `400 invalid_field`, and the message names the
      *     field.
      *
+     *     The metadata fields have limits, and a value over one, or one that holds
+     *     a control character (a newline, a tab, an escape), is refused the same
+     *     way: `commit_sha` at most 64 characters from letters, digits, `.`, `_` and
+     *     `-`; `branch` at most 255 bytes; `environment` at most 64; `owner`,
+     *     `digest`, `base_revision` and the `artifact_*` fields at most 255;
+     *     `changed_files` at most 5000 entries of at most 1024 bytes each. A
+     *     refused request writes nothing, and a failed ingest leaves no
+     *     environment, target or artifact row behind.
+     *
      *     Ingests share a memory budget (`INGEST_MEMORY_BUDGET`, 2 GiB by default):
      *     each reserves 64 bytes per byte of `raw_data` while it runs. An ingest
      *     that cannot get its share, or a free slot, within 15 seconds is answered

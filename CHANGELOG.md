@@ -437,3 +437,11 @@ releases.
 - With rate limiting on, requests with an invalid or non-bearer `Authorization` header
   now count against the per-address limit and get `429` once it is used up. Before, any
   such header skipped the per-address limit, so made-up keys could be tried without limit.
+- Report ingest now checks its metadata. `commit_sha` may hold at most 64 letters, digits,
+  `.`, `_` and `-`. `branch` and `base_revision` may be at most 255 bytes, `environment` 64,
+  and `owner`, `digest` and the `artifact_*` fields 255. `changed_files` may list at most
+  5000 files of at most 1024 bytes each. A value over a limit, or one with a control
+  character such as a newline, is refused with `400 invalid_field` that names the field.
+- A failed ingest no longer leaves environment, target or artifact rows behind. Before, a
+  report that failed after those rows were created kept them, and made-up names piled up in
+  the environment list and the waiver pickers.

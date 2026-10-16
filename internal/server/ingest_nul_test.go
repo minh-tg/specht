@@ -54,6 +54,8 @@ func TestIngestReport_RefusesANULInARequestField(t *testing.T) {
 	}
 }
 
-func TestIngestRequest_FieldWithNULIsEmptyForACleanRequest(t *testing.T) {
-	assert.Empty(t, ingestRequest{Project: "p", Scanner: "s", Branch: "main", ChangedFiles: []string{"a.go"}}.fieldWithNUL())
+func TestIngestRequest_InvalidFieldIsEmptyForACleanRequest(t *testing.T) {
+	field, problem := ingestRequest{Project: "p", Scanner: "s", Branch: "main", ChangedFiles: []string{"a.go"}}.invalidField()
+	assert.Empty(t, field)
+	assert.Empty(t, problem)
 }
