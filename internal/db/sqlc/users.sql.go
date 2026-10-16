@@ -424,6 +424,22 @@ func (q *Queries) LockUserForRevoke(ctx context.Context, id pgtype.UUID) (pgtype
 	return id_2, err
 }
 
+const lockUserPasswordHash = `-- name: LockUserPasswordHash :one
+SELECT password_hash FROM users WHERE id = $1 FOR NO KEY UPDATE
+`
+
+// Locks the account row for the rest of the transaction before a password is
+// replaced, and returns the hash it holds now. A login, an SSO link and a
+// deactivation touch the same row, so the change sees their result instead of
+// a read taken earlier, and a login that stored its session under the share
+// lock is revoked by the change that waited for it.
+func (q *Queries) LockUserPasswordHash(ctx context.Context, id pgtype.UUID) (pgtype.Text, error) {
+	row := q.db.QueryRow(ctx, lockUserPasswordHash, id)
+	var password_hash pgtype.Text
+	err := row.Scan(&password_hash)
+	return password_hash, err
+}
+
 const setUserDisabled = `-- name: SetUserDisabled :one
 UPDATE users SET
     disabled_at = CASE WHEN $1::boolean THEN COALESCE(disabled_at, NOW()) ELSE NULL END,
