@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +19,10 @@ import (
 
 // authMsgInvalidBody is the user-facing message for malformed auth payloads.
 const authMsgInvalidBody = "invalid request body"
+
+// errLoginDelayed is the audit reason for a sign-in refused during an
+// account's wait.
+var errLoginDelayed = errors.New("sign-in refused during the account's wait")
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -62,11 +68,31 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// An attempt without an email or password never reaches a password
+	// check, so it spends nothing from the account's allowance.
+	var ticket loginTicket
+	email := auth.NormalizeEmail(req.Email)
+	if h.loginDelay != nil && email != "" && req.Password != "" {
+		var retryAfter time.Duration
+		var ok bool
+		ticket, retryAfter, ok = h.loginDelay.begin(email)
+		if !ok {
+			secs := max(int(math.Ceil(retryAfter.Seconds())), 1)
+			w.Header().Set("Retry-After", strconv.Itoa(secs))
+			respondError(w, http.StatusTooManyRequests, "too_many_attempts", "too many failed sign-in attempts, retry later")
+			h.audit.HTTP(r, audit.EventLogin, audit.OutcomeFailure, "", req.Email, errLoginDelayed)
+			return
+		}
+	}
+
 	result, err := h.usecase.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		respondError(w, http.StatusUnauthorized, "login_failed", "invalid email or password")
 		h.audit.HTTP(r, audit.EventLogin, audit.OutcomeFailure, "", req.Email, err)
 		return
+	}
+	if h.loginDelay != nil && ticket.key != "" {
+		h.loginDelay.succeed(ticket)
 	}
 	respondJSON(w, http.StatusOK, result)
 	h.audit.HTTP(r, audit.EventLogin, audit.OutcomeSuccess, "", req.Email, nil)

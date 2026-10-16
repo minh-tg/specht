@@ -3895,6 +3895,29 @@ export interface operations {
           "application/json": components["schemas"]["Error"];
         };
       };
+      /**
+       * @description Either the client address is over its sign-in budget
+       *     (`rate_limited`), or the account is waiting after repeated failed
+       *     sign-ins (`too_many_attempts`). After three consecutive failures
+       *     for an email, each further failure doubles the wait (1 s, 2 s,
+       *     4 s, up to 60 s). An attempt made during the wait is refused
+       *     without checking the password, so the right password is refused
+       *     too. A successful sign-in resets the count, and it also drops to
+       *     zero after 15 minutes without a failure. There is no lockout.
+       *     Unknown emails are counted the same way, so the response does not
+       *     reveal whether an account exists. `Retry-After` gives the seconds
+       *     to wait.
+       */
+      429: {
+        headers: {
+          /** @description Seconds until the next attempt is evaluated. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
     };
   };
   refreshToken: {

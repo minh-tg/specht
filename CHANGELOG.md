@@ -239,3 +239,10 @@ releases.
   its full address, so rotating through addresses in one network no longer
   gives a fresh login budget each time. IPv4 stays per address, and an
   IPv4-mapped IPv6 address counts as the IPv4 address.
+- Repeated failed password logins for one email now slow that account down,
+  whichever address they come from. After three failures in a row the account
+  waits 1 second, then 2, 4 and so on up to 60 seconds. Sign-in attempts during
+  the wait get `429` with `Retry-After` and are not checked against the
+  password. A successful sign-in resets the count, and it clears on its own
+  after 15 minutes without a failure. There is no lockout, and unknown emails
+  are counted the same way so the wait does not reveal which accounts exist.

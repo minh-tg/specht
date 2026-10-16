@@ -263,6 +263,9 @@ type Handler struct {
 	usecase usecaseInterface
 	audit   *audit.Logger
 	revoker auth.TokenRevoker
+	// loginDelay slows repeated failed password logins per account. Nil
+	// disables it.
+	loginDelay *loginDelay
 }
 
 type usecaseInterface interface {
