@@ -396,3 +396,7 @@ releases.
   loopback host only), or when the client secret is empty. A public identity provider
   client can set `SSO_PUBLIC_CLIENT=true` to allow the empty secret. Before, an empty
   secret was accepted and silently switched PKCE off.
+- The web app no longer accepts a session token from the URL fragment (`#sso_token=...`). The
+  server stopped sending one when single sign-on moved to a one-time exchange code, but the
+  page still installed any token it found there while an SSO sign-in was pending, so a crafted
+  link could sign the visitor into the sender's account. Only the exchange code is read now.

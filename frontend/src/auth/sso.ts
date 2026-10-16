@@ -4,11 +4,10 @@
 // it leaking through Referer headers, logs, or browser history. The SPA consumes
 // the code and exchanges it via POST /api/v1/auth/sso/exchange for session tokens.
 export const SSO_CODE_KEY = "sso_code";
-export const SSO_SESSION_KEY = "sso_token";
 
-// A token in the fragment is only accepted while an SSO login that this browser
+// A code in the fragment is only accepted while an SSO login that this browser
 // started is pending. Without that, anyone could send a link ending in
-// "#sso_token=<their own token>" and sign the recipient into the sender's account.
+// "#sso_code=<their own code>" and sign the recipient into the sender's account.
 // The marker is short-lived (the server's state cookie lasts as long) and lives in
 // localStorage so a login opened in a new tab still completes.
 const SSO_ATTEMPT_KEY = "specht.sso_attempt";
@@ -41,41 +40,6 @@ export function clearSsoAttempt(): void {
   } catch {
     // Nothing to forget.
   }
-}
-
-export interface SsoTokenClaims {
-  sub?: string;
-  email?: string;
-}
-
-function decodePayload(token: string): SsoTokenClaims | null {
-  const dot = token.indexOf(".");
-  if (dot <= 0) return null;
-  const end = token.indexOf(".", dot + 1);
-  if (end <= dot + 1) return null;
-  try {
-    const binary = atob(token.slice(dot + 1, end).replaceAll("-", "+").replaceAll("_", "/"));
-    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-    const json = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-    return JSON.parse(json) as SsoTokenClaims;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Reads an SSO session token from a URL fragment ("#sso_token=<token>") and
- * verifies it carries a subject claim. Returns null when the fragment has no
- * sso_token parameter or the token is not a usable JWT.
- */
-export function ssoTokenFromHash(hash: string): { token: string; claims: SsoTokenClaims; } | null {
-  if (!hash.startsWith("#")) return null;
-  const params = new URLSearchParams(hash.slice(1));
-  const token = params.get(SSO_SESSION_KEY);
-  if (!token) return null;
-  const claims = decodePayload(token);
-  if (!claims || typeof claims.sub !== "string" || claims.sub === "") return null;
-  return { token, claims };
 }
 
 /**
