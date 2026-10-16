@@ -100,6 +100,9 @@ type Server struct {
 	// IngestConcurrency caps report ingests processed at once; zero leaves
 	// the server's built-in default.
 	IngestConcurrency int
+	// IngestMaxFindings caps the findings and packages one report may
+	// produce; zero leaves the built-in default of 100000.
+	IngestMaxFindings int
 	// CVEDetail configures the external CVE detail providers. They are off
 	// unless CVE_DETAIL_PROVIDERS is set.
 	CVEDetail CVEDetailConfig
@@ -421,6 +424,14 @@ func Load() (*Server, error) {
 			return nil, err
 		}
 		s.IngestConcurrency = n
+	}
+
+	if v := os.Getenv("INGEST_MAX_FINDINGS"); v != "" {
+		n, err := parsePositiveInt("INGEST_MAX_FINDINGS", v)
+		if err != nil {
+			return nil, err
+		}
+		s.IngestMaxFindings = n
 	}
 
 	if err := loadRateLimit(s); err != nil {

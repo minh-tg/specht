@@ -105,6 +105,11 @@ releases.
 
 ### Changed
 
+- A report that would produce more than 100,000 findings and packages is refused with a
+  422 `too_many_findings` that names the limit and asks you to split the report. The parser
+  stops at the limit instead of converting the whole file, so one oversized upload can no
+  longer exhaust the server's memory. Set `INGEST_MAX_FINDINGS` to change the limit; see
+  `deploy/README.md` for the memory it costs.
 - Undo after a triage change works for every earlier state. The server keeps a snapshot of
   the analysis it replaced (state, reason, expiry, source, manual and review flags) in the
   triage event, and `POST /api/v1/findings/{id}/analysis/undo` puts it back as a new event.
