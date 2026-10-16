@@ -319,6 +319,10 @@ type APIKey struct {
 	ExpiresAt  *time.Time
 	LastUsedAt *time.Time
 	RevokedAt  *time.Time
+	// CreatorIsMember is filled by ListByProject only: it is false when the
+	// account that created the key is no longer a direct or team member of
+	// the key's project. The key keeps working either way.
+	CreatorIsMember bool
 }
 
 // CreateAPIKeyInput carries create fields (hash is only ever stored).

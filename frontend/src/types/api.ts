@@ -404,6 +404,8 @@ export interface ApiKey {
   last_four?: string | null;
   created_at: string;
   expires_at?: string | null;
+  /** In the key list only. False when the creator left the project; the key still works. */
+  creator_is_member?: boolean;
 }
 
 /** The creation response always carries the secret, so `raw_key` is required here. */

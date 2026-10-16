@@ -111,22 +111,43 @@ func (q *Queries) GetAPIKeyByHash(ctx context.Context, keyHash string) (ApiKey, 
 }
 
 const listAPIKeysByProject = `-- name: ListAPIKeysByProject :many
-SELECT id, name, key_prefix, last_four, scopes, created_at, revoked_at
-FROM api_keys
-WHERE project_id = $1 AND revoked_at IS NULL
-ORDER BY created_at DESC
+SELECT
+    ak.id,
+    ak.name,
+    ak.key_prefix,
+    ak.last_four,
+    ak.scopes,
+    ak.created_at,
+    ak.revoked_at,
+    (
+        EXISTS (
+            SELECT 1 FROM project_members pm
+            WHERE pm.project_id = ak.project_id AND pm.user_id = ak.created_by
+        ) OR EXISTS (
+            SELECT 1 FROM project_teams pt
+            JOIN team_members tm ON tm.team_id = pt.team_id
+            WHERE pt.project_id = ak.project_id AND tm.user_id = ak.created_by
+        )
+    )::boolean AS creator_is_member
+FROM api_keys ak
+WHERE ak.project_id = $1 AND ak.revoked_at IS NULL
+ORDER BY ak.created_at DESC
 `
 
 type ListAPIKeysByProjectRow struct {
-	ID        pgtype.UUID        `json:"id"`
-	Name      string             `json:"name"`
-	KeyPrefix string             `json:"key_prefix"`
-	LastFour  pgtype.Text        `json:"last_four"`
-	Scopes    []byte             `json:"scopes"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
+	ID              pgtype.UUID        `json:"id"`
+	Name            string             `json:"name"`
+	KeyPrefix       string             `json:"key_prefix"`
+	LastFour        pgtype.Text        `json:"last_four"`
+	Scopes          []byte             `json:"scopes"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	RevokedAt       pgtype.Timestamptz `json:"revoked_at"`
+	CreatorIsMember bool               `json:"creator_is_member"`
 }
 
+// creator_is_member is false once the account that created the key no longer
+// holds a direct project_members row or a seat in a linked team. The key is
+// still live: a CI key may outlive the person on purpose.
 func (q *Queries) ListAPIKeysByProject(ctx context.Context, projectID pgtype.UUID) ([]ListAPIKeysByProjectRow, error) {
 	rows, err := q.db.Query(ctx, listAPIKeysByProject, projectID)
 	if err != nil {
@@ -144,6 +165,7 @@ func (q *Queries) ListAPIKeysByProject(ctx context.Context, projectID pgtype.UUI
 			&i.Scopes,
 			&i.CreatedAt,
 			&i.RevokedAt,
+			&i.CreatorIsMember,
 		); err != nil {
 			return nil, err
 		}

@@ -102,6 +102,10 @@ releases.
   Deleting a finding's evidence now requires the evidence to belong to that
   finding, so a mismatched pair, a missing finding and a missing evidence id
   all answer 404.
+- The API key list carries `creator_is_member`, which is `false` for a key
+  whose creator is no longer a direct or team member of the project. Removing
+  a person never revokes their keys, so a CI key can outlive them on purpose;
+  the field lets a manager see which keys to review.
 
 ### Changed
 

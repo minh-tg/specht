@@ -176,3 +176,67 @@ func TestLinkRevokingKeysRefusedLinkRevokesNothing(t *testing.T) {
 	require.ErrorIs(t, err, port.ErrIdentityLinked, "the subject already belongs to another account")
 	assert.False(t, keyRevoked(t, repos, key), "the revocation rolls back with the refused link")
 }
+
+func TestListByProjectReportsWhetherTheCreatorIsStillAMember(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(repos.pool)
+	project := createTestProject(t, repos)
+	other := createTestProject(t, repos)
+	projectID := uuid.UUID(project.ID.Bytes).String()
+
+	direct := newUser(t, repos, "direct@test.com", "member")
+	viaTeam := newUser(t, repos, "via-team@test.com", "member")
+	removed := newUser(t, repos, "removed@test.com", "member")
+	leftTeam := newUser(t, repos, "left-team@test.com", "member")
+	memberElsewhere := newUser(t, repos, "elsewhere@test.com", "member")
+
+	_, err := stores.Projects.UpsertMember(ctx, projectID, direct.ID, "manager")
+	require.NoError(t, err)
+	_, err = stores.Projects.UpsertMember(ctx, projectID, removed.ID, "manager")
+	require.NoError(t, err)
+	_, err = stores.Projects.UpsertMember(ctx, uuid.UUID(other.ID.Bytes).String(), memberElsewhere.ID, "manager")
+	require.NoError(t, err)
+	team, err := stores.Teams.CreateTeam(ctx, "platform", "")
+	require.NoError(t, err)
+	_, err = stores.Teams.LinkProjectTeam(ctx, projectID, team.ID, "member")
+	require.NoError(t, err)
+	_, err = stores.Teams.UpsertTeamMember(ctx, team.ID, viaTeam.ID, "member")
+	require.NoError(t, err)
+	_, err = stores.Teams.UpsertTeamMember(ctx, team.ID, leftTeam.ID, "member")
+	require.NoError(t, err)
+
+	byName := map[string]string{}
+	for _, c := range []struct{ name, creator string }{
+		{"direct", direct.ID},
+		{"via-team", viaTeam.ID},
+		{"removed", removed.ID},
+		{"left-team", leftTeam.ID},
+		{"member-elsewhere", memberElsewhere.ID},
+	} {
+		id, _ := newKeyBy(t, repos, project, c.creator, c.name)
+		byName[c.name] = id
+	}
+
+	// removed leaves the project, leftTeam leaves the only team that gave access.
+	require.NoError(t, stores.Projects.DeleteMember(ctx, projectID, removed.ID))
+	require.NoError(t, stores.Teams.RemoveTeamMember(ctx, team.ID, leftTeam.ID))
+
+	keys, err := stores.APIKeys.ListByProject(ctx, projectID)
+	require.NoError(t, err)
+	got := map[string]bool{}
+	for _, k := range keys {
+		got[k.Name] = k.CreatorIsMember
+	}
+	assert.Equal(t, map[string]bool{
+		"direct":           true,
+		"via-team":         true,
+		"removed":          false,
+		"left-team":        false,
+		"member-elsewhere": false,
+	}, got, "a key stays listed and live; only the flag changes")
+	for name, id := range byName {
+		assert.False(t, keyRevoked(t, repos, id), "%s: removing a member never revokes their keys", name)
+	}
+}
