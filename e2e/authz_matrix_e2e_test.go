@@ -306,8 +306,6 @@ type authzKnownFinding struct {
 // when its fix lands. AUTHZ_MATRIX_STRICT=1 ignores the list.
 var authzKnownFindings = slices.Concat(
 	[]authzKnownFinding{
-		// key-outlives-deactivated-creator: a key keeps working after its creator is deactivated.
-		{"*|*|C14d-key-creator-deactivated|*|Deny401", "key-outlives-deactivated-creator"},
 		// key-outlives-removed-creator: a key keeps working after its creator leaves the project
 		// (owner decision).
 		{"*|*|C14-key-creator-removed|*|Deny401", "key-outlives-removed-creator"},

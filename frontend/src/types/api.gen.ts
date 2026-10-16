@@ -591,7 +591,9 @@ export interface paths {
      * @description Ends the account's access without deleting it. Open sessions stop at
      *     their next request, refresh tokens are revoked, and sign-in is refused
      *     until the account is reactivated; the refusal looks like a wrong
-     *     password. History and memberships stay. An admin cannot deactivate
+     *     password. History and memberships stay. Every API key the account
+     *     created is revoked in the same step, in every project, and stays
+     *     revoked when the account is reactivated. An admin cannot deactivate
      *     themselves, the last active admin cannot be deactivated, and the
      *     seeded system account (`system@specht.local`) cannot be deactivated;
      *     each answers 409.

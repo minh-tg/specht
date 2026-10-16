@@ -79,6 +79,15 @@ SELECT
     ) AS created_by
 FROM api_keys ak
 WHERE ak.key_hash = $1
+  -- A key does not outlive the account that created it. Revocation at
+  -- deactivation covers the normal path; this keeps a key that slipped past it,
+  -- or that predates it, from authenticating while its creator is deactivated.
+  AND NOT EXISTS (
+      SELECT 1
+      FROM users cu
+      WHERE cu.id = ak.created_by
+        AND cu.disabled_at IS NOT NULL
+  )
 `
 
 func (q *Queries) GetAPIKeyByHash(ctx context.Context, keyHash string) (ApiKey, error) {
@@ -174,6 +183,44 @@ func (q *Queries) RevokeAPIKey(ctx context.Context, arg RevokeAPIKeyParams) (Api
 		&i.CreatedBy,
 	)
 	return i, err
+}
+
+const revokeAPIKeysByCreator = `-- name: RevokeAPIKeysByCreator :many
+WITH revoked AS (
+    UPDATE api_keys SET revoked_at = NOW()
+    WHERE created_by = $1 AND revoked_at IS NULL
+    RETURNING id, project_id, name
+)
+SELECT r.id, p.slug AS project_slug, r.name
+FROM revoked r
+JOIN projects p ON p.id = r.project_id
+ORDER BY p.slug, r.name, r.id
+`
+
+type RevokeAPIKeysByCreatorRow struct {
+	ID          pgtype.UUID `json:"id"`
+	ProjectSlug string      `json:"project_slug"`
+	Name        string      `json:"name"`
+}
+
+func (q *Queries) RevokeAPIKeysByCreator(ctx context.Context, createdBy pgtype.UUID) ([]RevokeAPIKeysByCreatorRow, error) {
+	rows, err := q.db.Query(ctx, revokeAPIKeysByCreator, createdBy)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RevokeAPIKeysByCreatorRow
+	for rows.Next() {
+		var i RevokeAPIKeysByCreatorRow
+		if err := rows.Scan(&i.ID, &i.ProjectSlug, &i.Name); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const touchAPIKeyLastUsed = `-- name: TouchAPIKeyLastUsed :exec

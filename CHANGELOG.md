@@ -261,3 +261,7 @@ releases.
   `admin` scope, and a key given one directly in the database used to pass the
   route check and then fail with 500 on most reads. Project management routes
   are for people with a role on the project, and every API key gets 403 there.
+- Deactivating an account revokes every API key it created, in every project,
+  and writes one audit line per key. Reactivating the account does not bring
+  the keys back. A key whose creator is deactivated is also refused at
+  authentication, with the answer an unknown key gets.

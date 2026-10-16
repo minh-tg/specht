@@ -39,7 +39,7 @@ type mockUsecases struct {
 	setupFn                 func(ctx context.Context, input usecase.SetupInput) (*usecase.AuthResponse, error)
 	reportFilter            usecase.ReportFilter
 	changeUserRoleFn        func(ctx context.Context, userID, role string) (*usecase.UserProfile, error)
-	deactivateUserFn        func(ctx context.Context, userID string) (*usecase.UserProfile, error)
+	deactivateUserFn        func(ctx context.Context, userID string) (*usecase.UserProfile, []usecase.RevokedAPIKey, error)
 	reactivateUserFn        func(ctx context.Context, userID string) (*usecase.UserProfile, error)
 	createProjectFn         func(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error)
 	listProjectMembersFn    func(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error)
@@ -762,9 +762,9 @@ func (m *mockUsecases) ChangeUserRole(ctx context.Context, userID, role string) 
 	return m.changeUserRoleFn(ctx, userID, role)
 }
 
-func (m *mockUsecases) DeactivateUser(ctx context.Context, userID string) (*usecase.UserProfile, error) {
+func (m *mockUsecases) DeactivateUser(ctx context.Context, userID string) (*usecase.UserProfile, []usecase.RevokedAPIKey, error) {
 	if m.deactivateUserFn == nil {
-		return nil, fmt.Errorf("unexpected call to DeactivateUser")
+		return nil, nil, fmt.Errorf("unexpected call to DeactivateUser")
 	}
 	return m.deactivateUserFn(ctx, userID)
 }
@@ -4690,8 +4690,8 @@ func TestUserAdminRoutes(t *testing.T) {
 			gotRole = role
 			return profile, nil
 		},
-		deactivateUserFn: func(context.Context, string) (*usecase.UserProfile, error) {
-			return &usecase.UserProfile{ID: "u2", Disabled: true}, nil
+		deactivateUserFn: func(context.Context, string) (*usecase.UserProfile, []usecase.RevokedAPIKey, error) {
+			return &usecase.UserProfile{ID: "u2", Disabled: true}, nil, nil
 		},
 		reactivateUserFn: func(context.Context, string) (*usecase.UserProfile, error) {
 			return &usecase.UserProfile{ID: "u2"}, nil
@@ -4729,7 +4729,9 @@ func TestUserAdminErrorMapping(t *testing.T) {
 		{errors.New("pq: connection refused at 10.0.0.5"), http.StatusInternalServerError, "internal_error"},
 	} {
 		t.Run(tc.code, func(t *testing.T) {
-			mock := &mockUsecases{deactivateUserFn: func(context.Context, string) (*usecase.UserProfile, error) { return nil, tc.err }}
+			mock := &mockUsecases{deactivateUserFn: func(context.Context, string) (*usecase.UserProfile, []usecase.RevokedAPIKey, error) {
+				return nil, nil, tc.err
+			}}
 			req := httptest.NewRequest("POST", "/api/v1/users/u2/deactivate", nil)
 			w := httptest.NewRecorder()
 			testRouter(mock).ServeHTTP(w, req)

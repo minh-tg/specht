@@ -33,8 +33,28 @@ SELECT
          LIMIT 1)
     ) AS created_by
 FROM api_keys ak
-WHERE ak.key_hash = $1;
+WHERE ak.key_hash = $1
+  -- A key does not outlive the account that created it. Revocation at
+  -- deactivation covers the normal path; this keeps a key that slipped past it,
+  -- or that predates it, from authenticating while its creator is deactivated.
+  AND NOT EXISTS (
+      SELECT 1
+      FROM users cu
+      WHERE cu.id = ak.created_by
+        AND cu.disabled_at IS NOT NULL
+  );
 
 -- name: RevokeAPIKey :one
 UPDATE api_keys SET revoked_at = NOW() WHERE id = $1 AND project_id = $2
 RETURNING *;
+
+-- name: RevokeAPIKeysByCreator :many
+WITH revoked AS (
+    UPDATE api_keys SET revoked_at = NOW()
+    WHERE created_by = $1 AND revoked_at IS NULL
+    RETURNING id, project_id, name
+)
+SELECT r.id, p.slug AS project_slug, r.name
+FROM revoked r
+JOIN projects p ON p.id = r.project_id
+ORDER BY p.slug, r.name, r.id;

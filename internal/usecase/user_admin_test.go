@@ -33,7 +33,7 @@ func TestUserAdminNeedsAGlobalAdmin(t *testing.T) {
 	} {
 		_, err := uc.ChangeUserRole(ctx, targetUserID, "admin")
 		assert.ErrorIs(t, err, ErrProjectAccessDenied, name)
-		_, err = uc.DeactivateUser(ctx, targetUserID)
+		_, _, err = uc.DeactivateUser(ctx, targetUserID)
 		assert.ErrorIs(t, err, ErrProjectAccessDenied, name)
 		_, err = uc.ReactivateUser(ctx, targetUserID)
 		assert.ErrorIs(t, err, ErrProjectAccessDenied, name)
@@ -86,39 +86,43 @@ func TestChangeUserRoleSurfacesTheLastAdminGuard(t *testing.T) {
 func TestDeactivateUser(t *testing.T) {
 	disabledAt := time.Now()
 	var revoked string
+	keys := []port.RevokedAPIKey{
+		{ID: "k1", ProjectSlug: "my-app", Name: "ci"},
+		{ID: "k2", ProjectSlug: "other", Name: "deploy"},
+	}
 	users := &mockUserRepo{
 		getByIDFn: func(_ context.Context, id string) (port.User, error) {
 			return port.User{ID: id, Email: "t@example.com", Role: auth.RoleMember}, nil
 		},
-		setDisabledFn: func(_ context.Context, id string, disabled bool) (port.User, error) {
-			require.True(t, disabled)
-			return port.User{ID: id, Email: "t@example.com", Role: auth.RoleMember, DisabledAt: &disabledAt, CreatedAt: time.Now()}, nil
+		deactivateFn: func(_ context.Context, id string) (port.User, []port.RevokedAPIKey, error) {
+			return port.User{ID: id, Email: "t@example.com", Role: auth.RoleMember, DisabledAt: &disabledAt, CreatedAt: time.Now()}, keys, nil
 		},
 	}
 	refresh := &mockRefreshTokenRepo{revokeAllFn: func(_ context.Context, id string) error { revoked = id; return nil }}
 	uc := userAdminUsecase(users, refresh)
 
-	profile, err := uc.DeactivateUser(sessionCtx(adminUserID, auth.RoleAdmin), targetUserID)
+	profile, revokedKeys, err := uc.DeactivateUser(sessionCtx(adminUserID, auth.RoleAdmin), targetUserID)
 
 	require.NoError(t, err)
 	assert.True(t, profile.Disabled)
 	require.NotNil(t, profile.DisabledAt)
 	assert.Equal(t, targetUserID, revoked, "the account's refresh tokens are revoked")
+	assert.Equal(t, keys, revokedKeys, "the caller learns which keys went with the account, to write one audit line each")
 }
 
 func TestDeactivateUserRefusesYourself(t *testing.T) {
 	uc := userAdminUsecase(&mockUserRepo{}, &mockRefreshTokenRepo{})
-	_, err := uc.DeactivateUser(sessionCtx(adminUserID, auth.RoleAdmin), adminUserID)
+	_, _, err := uc.DeactivateUser(sessionCtx(adminUserID, auth.RoleAdmin), adminUserID)
 	require.ErrorIs(t, err, ErrCannotDeactivateSelf)
 }
 
 func TestDeactivateUserSurfacesTheLastAdminGuard(t *testing.T) {
 	users := &mockUserRepo{getByIDFn: func(_ context.Context, id string) (port.User, error) {
 		return port.User{ID: id, Email: "t@example.com", Role: auth.RoleAdmin}, nil
-	}, setDisabledFn: func(context.Context, string, bool) (port.User, error) {
-		return port.User{}, port.ErrLastGlobalAdmin
+	}, deactivateFn: func(context.Context, string) (port.User, []port.RevokedAPIKey, error) {
+		return port.User{}, nil, port.ErrLastGlobalAdmin
 	}}
-	_, err := userAdminUsecase(users, &mockRefreshTokenRepo{}).DeactivateUser(sessionCtx(adminUserID, auth.RoleAdmin), targetUserID)
+	_, _, err := userAdminUsecase(users, &mockRefreshTokenRepo{}).DeactivateUser(sessionCtx(adminUserID, auth.RoleAdmin), targetUserID)
 	require.ErrorIs(t, err, ErrLastGlobalAdmin)
 }
 
@@ -192,9 +196,9 @@ func TestTheSystemAccountCannotBeChanged(t *testing.T) {
 			changed = true
 			return port.User{}, nil
 		},
-		setDisabledFn: func(context.Context, string, bool) (port.User, error) {
+		deactivateFn: func(context.Context, string) (port.User, []port.RevokedAPIKey, error) {
 			changed = true
-			return port.User{}, nil
+			return port.User{}, nil, nil
 		},
 	}
 	uc := userAdminUsecase(users, &mockRefreshTokenRepo{})
@@ -202,7 +206,7 @@ func TestTheSystemAccountCannotBeChanged(t *testing.T) {
 
 	_, err := uc.ChangeUserRole(ctx, targetUserID, auth.RoleAdmin)
 	require.ErrorIs(t, err, ErrSystemAccount)
-	_, err = uc.DeactivateUser(ctx, targetUserID)
+	_, _, err = uc.DeactivateUser(ctx, targetUserID)
 	require.ErrorIs(t, err, ErrSystemAccount)
 	assert.False(t, changed, "nothing is written for the system account")
 }

@@ -1,0 +1,109 @@
+//go:build e2e
+
+package e2e
+
+import (
+	"context"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/stretchr/testify/require"
+)
+
+// openE2EDB opens a connection to the suite database, closed when the test ends.
+func openE2EDB(t *testing.T) *pgx.Conn {
+	t.Helper()
+	conn, err := pgx.Connect(context.Background(), dsn)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close(context.Background()) })
+	return conn
+}
+
+// keyReads reports the status a key gets when it lists a project's findings.
+func keyReads(t *testing.T, key, slug string) int {
+	t.Helper()
+	status, _ := doJSON(t, http.MethodGet, "/api/v1/projects/"+slug+"/findings", key, nil)
+	return status
+}
+
+// liveKeyIDs lists the ids of a project's keys that are not revoked.
+func liveKeyIDs(t *testing.T, slug string) []string {
+	t.Helper()
+	keys := request[[]struct {
+		ID string `json:"id"`
+	}](t, http.MethodGet, "/api/v1/auth/apikeys?project="+slug, adminToken, nil, http.StatusOK)
+	ids := make([]string, len(keys))
+	for i, k := range keys {
+		ids[i] = k.ID
+	}
+	return ids
+}
+
+// TestE2E_DeactivationRevokesTheAccountsKeys: a key does not outlive the
+// account that created it. Deactivating the account revokes every key it
+// created, in every project, and writes one audit line per key. Reactivating
+// the account does not bring them back, and another person's key is untouched.
+func TestE2E_DeactivationRevokesTheAccountsKeys(t *testing.T) {
+	slugA := newProject(t, "leaver-a")
+	slugB := newProject(t, "leaver-b")
+	leaver := azRegister(t, "leaver")
+	azAddMember(t, slugA, leaver.UserID, "manager")
+	azAddMember(t, slugB, leaver.UserID, "manager")
+	keyA := azKeyBy(t, leaver.Token, slugA)
+	keyB := azKeyBy(t, leaver.Token, slugB)
+	kept := request[apiKeyResponse](t, http.MethodPost, "/api/v1/auth/apikeys", adminToken,
+		map[string]string{"project": slugA, "name": "kept"}, http.StatusCreated)
+
+	require.Equal(t, http.StatusOK, keyReads(t, keyA.Token, slugA))
+	require.Equal(t, http.StatusOK, keyReads(t, keyB.Token, slugB))
+
+	azSetActive(t, leaver.UserID, false)
+
+	for _, tc := range []struct{ key, slug string }{{keyA.Token, slugA}, {keyB.Token, slugB}} {
+		require.Equal(t, http.StatusUnauthorized, keyReads(t, tc.key, tc.slug), "the leaver's key is dead")
+		status, _ := doJSON(t, http.MethodPost, "/api/v1/reports", tc.key,
+			ingestBody(t, tc.slug, "high-medium.sarif.json"))
+		require.Equal(t, http.StatusUnauthorized, status, "and cannot upload a report either")
+	}
+	require.Equal(t, http.StatusOK, keyReads(t, kept.RawKey, slugA), "another person's key keeps working")
+	require.NotContains(t, liveKeyIDs(t, slugA), keyA.KeyID)
+	require.Contains(t, liveKeyIDs(t, slugA), kept.ID)
+
+	require.Eventually(t, func() bool {
+		var seenA, seenB bool
+		for _, line := range auditLines(t, "auth.apikey.revoke") {
+			seenA = seenA || strings.Contains(line, "target="+keyA.KeyID) && strings.Contains(line, "project="+slugA)
+			seenB = seenB || strings.Contains(line, "target="+keyB.KeyID) && strings.Contains(line, "project="+slugB)
+		}
+		return seenA && seenB
+	}, 2*time.Second, 50*time.Millisecond, "one audit line per revoked key, naming its project")
+
+	azSetActive(t, leaver.UserID, true)
+	require.Equal(t, http.StatusUnauthorized, keyReads(t, keyA.Token, slugA), "reactivating does not resurrect a key")
+	require.Equal(t, http.StatusUnauthorized, keyReads(t, keyB.Token, slugB))
+}
+
+// TestE2E_KeyOfADeactivatedCreatorIsRefusedEvenIfNotRevoked: a key that
+// survived the deactivation, for instance because the revocation never ran,
+// answers 401 like an unknown key while its creator is deactivated.
+func TestE2E_KeyOfADeactivatedCreatorIsRefusedEvenIfNotRevoked(t *testing.T) {
+	slug := newProject(t, "stale-key")
+	creator := azRegister(t, "stale")
+	azAddMember(t, slug, creator.UserID, "manager")
+	key := azKeyBy(t, creator.Token, slug)
+	require.Equal(t, http.StatusOK, keyReads(t, key.Token, slug))
+
+	db := openE2EDB(t)
+	_, err := db.Exec(context.Background(), "UPDATE users SET disabled_at = now() WHERE id = $1", creator.UserID)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusUnauthorized, keyReads(t, key.Token, slug), "the key itself is not revoked, its creator is off")
+	unknown := keyReads(t, "vuln_"+randomHex(32), slug)
+	require.Equal(t, unknown, keyReads(t, key.Token, slug), "same answer as an unknown key")
+
+	_, err = db.Exec(context.Background(), "UPDATE users SET disabled_at = NULL WHERE id = $1", creator.UserID)
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, keyReads(t, key.Token, slug), "the check follows the account's current state")
+}
