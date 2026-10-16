@@ -105,6 +105,10 @@ releases.
 
 ### Changed
 
+- Stored Gitleaks and Nuclei evidence no longer keeps a secret under a key written in another
+  case (`secret`, `sEcReT`, `Request`, `RESPONSE`) or inside a nested object. Both scanners'
+  redaction now matches key names without regard to case, at any depth. A Nuclei JSON Lines
+  report with a line over 1 MiB is refused as unreadable instead of losing the later events.
 - A report can no longer copy megabytes of scanner text into the database through a target
   name, scan scope value, artifact metadata or a finding's extra data. Target names are cut
   at 1024 bytes and kinds at 64, scope values at 1024 bytes, and one finding's extra data at

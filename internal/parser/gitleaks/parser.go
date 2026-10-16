@@ -130,7 +130,8 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 }
 
 // RedactRaw scrubs secret material from raw Gitleaks evidence, preserving
-// every provenance field. Keys marshal in sorted order, so output is
+// every provenance field. Keys are matched without regard to case and at any
+// depth, because the parser reads them the same way. Keys marshal in sorted order, so output is
 // deterministic. Input that is not a Gitleaks array passes through
 // untouched — redaction only applies where the schema is known.
 func (s *Scanner) RedactRaw(data []byte) []byte {
@@ -139,13 +140,7 @@ func (s *Scanner) RedactRaw(data []byte) []byte {
 		return data
 	}
 	for _, f := range findings {
-		for _, k := range []string{"Secret", "Match"} {
-			if v, ok := f[k]; ok {
-				if str, ok := v.(string); ok && str != "" {
-					f[k] = redacted
-				}
-			}
-		}
+		parseutil.RedactKeys(f, redacted, "Secret", "Match")
 	}
 	out, err := json.Marshal(findings)
 	if err != nil {

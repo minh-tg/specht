@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/scanner"
 )
 
 func TestDescriptor_DAST(t *testing.T) {
@@ -102,4 +103,37 @@ func paramValues(f domain.NormalizedFinding) []string {
 		}
 	}
 	return out
+}
+
+func TestRedactRawIsCaseInsensitiveAndNested(t *testing.T) {
+	doc := `[{"template-id":"t","host":"h","Request":"GET /?token=abc","RESPONSE":"Set-Cookie: session=xyz","Extracted-Results":["leak-1"],"EXTRACTED_RESULTS":["leak-2"],"request":"GET /?k=v",` +
+		`"info":{"name":"n","nested":{"Response":"nested-body","list":[{"REQUEST":"list-body"}]}}}]`
+	redacted := string(NewScanner().RedactRaw([]byte(doc)))
+	for _, leaked := range []string{"token=abc", "session=xyz", "leak-1", "leak-2", "k=v", "nested-body", "list-body"} {
+		assert.NotContains(t, redacted, leaked)
+	}
+	assert.Contains(t, redacted, `"template-id":"t"`, "provenance survives")
+}
+
+func TestRedactRawIsCaseInsensitiveForJSONLines(t *testing.T) {
+	doc := `{"template-id":"t","host":"h","Request":"GET /?token=abc"}` + "\n" +
+		`{"template-id":"u","host":"h","RESPONSE":"body-secret"}` + "\n"
+	redacted := string(NewScanner().RedactRaw([]byte(doc)))
+	assert.NotContains(t, redacted, "token=abc")
+	assert.NotContains(t, redacted, "body-secret")
+	assert.Contains(t, redacted, `"template-id":"u"`)
+}
+
+// A line over the 1 MiB scanner buffer used to end the scan quietly and drop
+// every later event from the stored evidence.
+func TestAnOverlongJSONLineIsAnErrorNotSilentlyDropped(t *testing.T) {
+	long := `{"template-id":"big","host":"h","request":"` + strings.Repeat("x", 2<<20) + `"}`
+	doc := `{"template-id":"first","host":"h"}` + "\n" + long + "\n" + `{"template-id":"last","host":"h"}` + "\n"
+
+	_, err := NewScanner().Parse(context.Background(), []byte(doc))
+	require.Error(t, err)
+	require.ErrorIs(t, err, scanner.ErrMalformedReport)
+
+	got := NewScanner().RedactRaw([]byte(doc))
+	assert.Equal(t, doc, string(got), "an unreadable document is never stored as a shortened one")
 }
