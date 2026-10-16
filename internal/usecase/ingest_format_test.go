@@ -89,3 +89,32 @@ func TestIngestReport_RefusesADocumentWithTooManyObjectsBeforeDecodingIt(t *test
 	require.ErrorAs(t, err, &tooMany)
 	assert.Equal(t, 5, tooMany.Limit, "the configured limit, not the default")
 }
+
+// The document scan in IngestReport runs before the format check. A report that
+// both is not the named scanner's output and holds far too many objects must be
+// refused for its size: the format check decodes the document, which is what
+// the scan exists to prevent. Without the scan the answer would be
+// ErrUnrecognizedFormat, and every parser's own scan would still catch real
+// reports, so only the order shows that ingest calls it.
+func TestIngestReport_ScansTheDocumentBeforeCheckingItsFormat(t *testing.T) {
+	const limit = 5
+	grypeShaped := func(items string) json.RawMessage {
+		return json.RawMessage(`{"matches":[` + items + `],"descriptor":{"name":"grype","version":"0.120.0"}}`)
+	}
+	cases := map[string]json.RawMessage{
+		"too many objects": grypeShaped(strings.TrimSuffix(strings.Repeat("{},", limit*scanner.ObjectsPerFinding+1), ",")),
+		"too many values":  grypeShaped(strings.TrimSuffix(strings.Repeat("0,", limit*scanner.ValuesPerFinding+1), ",")),
+		"padding values":   grypeShaped(strings.TrimSuffix(strings.Repeat("null,", 1000), ",")),
+	}
+	for name, doc := range cases {
+		t.Run(name, func(t *testing.T) {
+			uc := builtinRegistryUsecase(t)
+			uc.deps.IngestMaxFindings = limit
+
+			_, err := uc.IngestReport(context.Background(), IngestReportInput{ProjectSlug: "my-app", Scanner: "trivy", RawData: doc})
+
+			require.ErrorIs(t, err, scanner.ErrTooManyFindings)
+			require.NotErrorIs(t, err, scanner.ErrUnrecognizedFormat, "the format check must not have run")
+		})
+	}
+}
