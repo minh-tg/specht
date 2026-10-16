@@ -21,9 +21,13 @@ type fakeResetStore struct {
 	redeemedHash string
 	redeemErr    error
 	redeemUser   string
+	createErr    error
 }
 
 func (f *fakeResetStore) Create(_ context.Context, in port.NewPasswordReset) error {
+	if f.createErr != nil {
+		return f.createErr
+	}
 	f.created = append(f.created, in)
 	return nil
 }
@@ -102,6 +106,36 @@ func TestCreatePasswordResetLink_RefusesAccountsAResetCannotHelp(t *testing.T) {
 		_, err := uc.CreatePasswordResetLink(adminCtx(), resetTestUser)
 		assert.ErrorIs(t, err, tc.want, name)
 		assert.Empty(t, store.created, name)
+	}
+}
+
+// The account can change between the check and the store: the store locks the
+// row and refuses an account that is no longer eligible. The admin then gets
+// the same answer a refusal before the store gives.
+func TestCreatePasswordResetLink_AccountChangedUnderneath(t *testing.T) {
+	for name, tc := range map[string]struct {
+		after port.User
+		want  error
+	}{
+		"deactivated meanwhile": {
+			port.User{ID: resetTestUser, Email: "gone@acme.example", PasswordHash: "x", DisabledAt: ptrTime(time.Now())},
+			ErrAccountDeactivated,
+		},
+		"linked to sso meanwhile": {port.User{ID: resetTestUser, Email: "sso@acme.example"}, ErrNoLocalPassword},
+	} {
+		reads := 0
+		store := &fakeResetStore{createErr: port.ErrNotFound}
+		users := &mockUserRepo{getByIDFn: func(context.Context, string) (port.User, error) {
+			reads++
+			if reads == 1 {
+				return localUser(), nil
+			}
+			return tc.after, nil
+		}}
+		uc := New(Deps{Stores: &port.Stores{Users: users, PasswordReset: store}})
+
+		_, err := uc.CreatePasswordResetLink(adminCtx(), resetTestUser)
+		assert.ErrorIs(t, err, tc.want, name)
 	}
 }
 

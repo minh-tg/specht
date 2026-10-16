@@ -1446,12 +1446,14 @@ type NewPasswordReset struct {
 // PasswordResetStore persists password reset links.
 type PasswordResetStore interface {
 	// Create stores a link and retires every earlier unused link for the same
-	// account, in one transaction.
+	// account, in one transaction. It locks the account first and returns
+	// ErrNotFound when the account is deactivated or has no local password, so
+	// a link is never stored after the event that should have retired it.
 	Create(ctx context.Context, in NewPasswordReset) error
 	// Redeem marks the link used, ends every session of its account and sets the
 	// new password hash, in one transaction. It returns the account id. A link
-	// that is unknown, used, retired or expired returns ErrNotFound and changes
-	// nothing.
+	// that is unknown, used, retired or expired, or whose account is deactivated
+	// or has no local password, returns ErrNotFound and changes nothing.
 	Redeem(ctx context.Context, tokenHash, passwordHash string) (string, error)
 }
 

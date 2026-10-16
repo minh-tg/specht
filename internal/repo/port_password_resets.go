@@ -25,6 +25,15 @@ func (r *pgPasswordResetPort) Create(ctx context.Context, in port.NewPasswordRes
 		return err
 	}
 	return r.withTx(ctx, func(q *sqlc.Queries) error {
+		// Same lock the redeem and every retiring event take first. A
+		// deactivation or SSO link in flight finishes before the link is
+		// stored, so a link never lands after the event that should have
+		// retired it.
+		if _, err := q.LockResettableUser(ctx, userID); errors.Is(err, pgx.ErrNoRows) {
+			return port.ErrNotFound
+		} else if err != nil {
+			return err
+		}
 		if err := q.RevokePendingPasswordResets(ctx, userID); err != nil {
 			return err
 		}

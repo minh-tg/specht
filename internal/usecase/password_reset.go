@@ -51,13 +51,8 @@ func (u *Usecases) CreatePasswordResetLink(ctx context.Context, userID string) (
 		}
 		return nil, fmt.Errorf("look up account: %w", err)
 	}
-	switch {
-	case isSystemAccount(user.Email):
-		return nil, ErrSystemAccount
-	case user.DisabledAt != nil:
-		return nil, ErrAccountDeactivated
-	case user.PasswordHash == "":
-		return nil, ErrNoLocalPassword
+	if err := resetRefusal(user); err != nil {
+		return nil, err
 	}
 
 	token, err := newInviteToken()
@@ -71,6 +66,17 @@ func (u *Usecases) CreatePasswordResetLink(ctx context.Context, userID string) (
 		CreatedBy: ident.UserID,
 		ExpiresAt: expires,
 	}); err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			// The store locks the account and found it no longer eligible: it
+			// was deactivated or linked to SSO after the check above. Read it
+			// again so the admin gets the reason.
+			if current, rerr := u.deps.Stores.Users.GetByID(ctx, user.ID); rerr == nil {
+				if refusal := resetRefusal(current); refusal != nil {
+					return nil, refusal
+				}
+			}
+			return nil, ErrAccountNotFound
+		}
 		return nil, fmt.Errorf("create reset link: %w", err)
 	}
 	slog.Info("password reset link issued", "user_id", user.ID, "issued_by", ident.UserID)
@@ -78,6 +84,19 @@ func (u *Usecases) CreatePasswordResetLink(ctx context.Context, userID string) (
 		Link:      resetPathPrefix + token,
 		ExpiresAt: expires.Format(time.RFC3339),
 	}, nil
+}
+
+// resetRefusal returns why no reset link may be issued for the account, or nil.
+func resetRefusal(user port.User) error {
+	switch {
+	case isSystemAccount(user.Email):
+		return ErrSystemAccount
+	case user.DisabledAt != nil:
+		return ErrAccountDeactivated
+	case user.PasswordHash == "":
+		return ErrNoLocalPassword
+	}
+	return nil
 }
 
 // RedeemPasswordReset sets a new password through a link, ends every session of the account and
