@@ -20,14 +20,28 @@ var ErrAccountNotFound = errors.New("no account has that email address")
 // the server's own subcommands and must never be reachable from an HTTP
 // handler.
 
+// recoveryEmail normalizes the address a recovery command was given. An address
+// with a rune that lower-cases differently in Go and in the database is refused
+// like any other invalid address, rather than looked up under a guessed form.
+func recoveryEmail(raw string) (string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return "", badCredentials("an email address is required")
+	}
+	email := auth.NormalizeEmail(raw)
+	if email == "" {
+		return "", badCredentials("invalid email address")
+	}
+	return email, nil
+}
+
 // ResetPasswordByEmail sets a new password for the account and ends every
 // session it has. Refresh tokens are revoked before the write, as in
 // ChangePassword, and the write starts a new token generation. A deactivated
 // account stays deactivated; the returned profile says so.
 func (u *Usecases) ResetPasswordByEmail(ctx context.Context, email, password string) (*UserProfile, error) {
-	email = auth.NormalizeEmail(strings.TrimSpace(email))
-	if email == "" {
-		return nil, badCredentials("an email address is required")
+	email, err := recoveryEmail(email)
+	if err != nil {
+		return nil, err
 	}
 	user, err := u.recoveryTarget(ctx, email)
 	if err != nil {
@@ -54,9 +68,9 @@ func (u *Usecases) ResetPasswordByEmail(ctx context.Context, email, password str
 // a new token generation, so a session the person already has picks it up at
 // the next sign-in. An admin is left as is.
 func (u *Usecases) GrantAdminByEmail(ctx context.Context, email string) (*UserProfile, error) {
-	email = auth.NormalizeEmail(strings.TrimSpace(email))
-	if email == "" {
-		return nil, badCredentials("an email address is required")
+	email, err := recoveryEmail(email)
+	if err != nil {
+		return nil, err
 	}
 	user, err := u.recoveryTarget(ctx, email)
 	if err != nil {

@@ -135,3 +135,26 @@ func TestBootstrapAdmins_EmptyNoop(t *testing.T) {
 	t.Setenv("ADMIN_EMAILS", "")
 	bootstrapAdmins(context.Background(), stores)
 }
+
+func TestBootstrapAdmins_AnAddressWithAnAmbiguousCaseIsSkippedWithAWarning(t *testing.T) {
+	logs := captureBootstrapLogs(t)
+	store := &fakeUserStore{users: map[string]port.User{
+		"kate@corp.example": {ID: "u-kate", Email: "kate@corp.example", Role: "member", EmailProven: true},
+	}}
+	stores := &port.Stores{Users: store}
+	// U+212A (Kelvin sign) lower-cases to "k" in Go and in some databases.
+	t.Setenv("ADMIN_EMAILS", "Kate@corp.example")
+
+	bootstrapAdmins(context.Background(), stores)
+
+	if got := store.users["kate@corp.example"].Role; got != "member" {
+		t.Fatalf("a Kelvin-sign spelling must not promote the ASCII account, role = %q", got)
+	}
+	out := logs.String()
+	if n := strings.Count(out, "level=WARN"); n != 1 || !strings.Contains(out, "lower case") {
+		t.Fatalf("want one warning that names the cause, got:\n%s", out)
+	}
+	if strings.Contains(out, "corp.example") {
+		t.Fatalf("the address must not be logged, got:\n%s", out)
+	}
+}

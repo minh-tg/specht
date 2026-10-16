@@ -112,6 +112,10 @@ func validateCredentials(email, password, displayName string) (string, error) {
 		return "", badCredentials("invalid email address")
 	}
 	normalized := auth.NormalizeEmail(addr.Address)
+	if normalized == "" {
+		// A rune that lower-cases differently in Go and in the database.
+		return "", badCredentials("invalid email address")
+	}
 	if err := checkPassword(password, normalized, displayName); err != nil {
 		return "", err
 	}
