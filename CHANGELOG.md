@@ -427,3 +427,7 @@ releases.
 - Creating or updating a waiver checks that every finding, environment, target and artifact
   it names belongs to the project. An id from another project used to be accepted and a
   missing id answered 500. Both now answer the same 404, and a malformed id answers 400.
+- The pull-request check answered 500 for a `report_id` that does not exist but 403 for one
+  that belongs to another project, which let a caller probe for report ids. Both now answer
+  403 `project_access_denied`. A malformed `report_id` on the pull-request check and on the
+  introduced-only gate answers 400 `invalid_id` instead of 500.

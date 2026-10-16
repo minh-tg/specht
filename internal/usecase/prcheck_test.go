@@ -200,7 +200,17 @@ func TestPreviewPRCheck_MissingReport(t *testing.T) {
 		ProjectSlug: "my-app", CommitSha: prcheckCommit,
 		ReportID: "33333333-3333-3333-3333-333333333333",
 	})
-	require.Error(t, err, "a bogus report must fail, not plan a vacuous success")
+	require.ErrorIs(t, err, ErrProjectAccessDenied,
+		"a missing report answers like a foreign one, so report ids cannot be probed")
+}
+
+func TestPreviewPRCheck_MalformedReportID(t *testing.T) {
+	uc, _ := prcheckHarness(t)
+
+	_, err := uc.PreviewPRCheck(findingScopeCtx(makeProject(true).ID), PRCheckPreviewInput{
+		ProjectSlug: "my-app", CommitSha: prcheckCommit, ReportID: "not-a-uuid",
+	})
+	require.ErrorIs(t, err, ErrInvalidReportID)
 }
 
 func TestPreviewPRCheck_ForeignReportDenied(t *testing.T) {

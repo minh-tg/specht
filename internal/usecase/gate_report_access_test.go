@@ -105,3 +105,22 @@ func TestGetIntroducedGateStatus_OwnReportEvaluates(t *testing.T) {
 	assert.Equal(t, gateOwnReportID, gotReport)
 	assert.True(t, out.ThresholdBreached)
 }
+
+// A report id that is not a UUID is a malformed request, not a lookup that
+// failed: it must not reach the store and come back as a server error.
+func TestGetIntroducedGateStatus_MalformedReportID(t *testing.T) {
+	pr, rr, fr := makeTestRepos()
+	pr.getBySlugFn = func(context.Context, string) (port.Project, error) {
+		return makeProject(true), nil
+	}
+	rr.getByIDFn = func(context.Context, string) (port.Report, error) {
+		t.Fatal("a malformed report id must not reach the store")
+		return port.Report{}, nil
+	}
+	uc := New(Deps{Stores: &port.Stores{
+		Projects: pr, Reports: rr, Findings: fr, Waivers: &mockWaiverRepo{},
+	}})
+
+	_, err := uc.GetIntroducedGateStatus(adminCtx(), "my-app", 0, "not-a-uuid")
+	require.ErrorIs(t, err, ErrInvalidReportID)
+}
