@@ -174,9 +174,14 @@ func cutLast(s, sep string) (before, after string, found bool) {
 // ssoCookie builds a state cookie with the attributes every one of them
 // shares; maxAge is in seconds and negative deletes it.
 func ssoCookie(name, value string, maxAge int, secure bool) *http.Cookie {
-	// Secure is set from the proxy-aware transport verdict (SecureTransport),
-	// which is true on every HTTPS deployment and false only for plain-HTTP
-	// local development.
+	// Secure is the caller's SecureTransport verdict. It is true when TLS ends
+	// in this process, or when the direct peer is listed in TRUSTED_PROXIES and
+	// sent X-Forwarded-Proto: https. It is false for plain HTTP, and also for
+	// HTTPS behind a proxy that is not in TRUSTED_PROXIES (the default is
+	// empty): forwarding headers from any other peer are ignored on purpose, so
+	// a client cannot set the flag. An operator who terminates TLS at a proxy
+	// must list it in TRUSTED_PROXIES to get Secure cookies (deploy/README.md,
+	// "Reverse proxy").
 	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
 	return &http.Cookie{
 		Name:     name,
