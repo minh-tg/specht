@@ -19,6 +19,8 @@ type recoveryHarness struct {
 	tokens   *mockRefreshTokenRepo
 	lookedUp string
 	stored   string
+	revoked  []string
+	verified []string
 	promoted []string
 }
 
@@ -31,8 +33,10 @@ func newRecoveryHarness(user port.User) *recoveryHarness {
 		}
 		return user, nil
 	}
-	h.users.setPasswordFn = func(ctx context.Context, userID, hash string) error {
+	h.users.changePasswordFn = func(ctx context.Context, userID, hash, verifiedHash string) error {
 		h.stored = hash
+		h.revoked = append(h.revoked, userID)
+		h.verified = append(h.verified, verifiedHash)
 		return nil
 	}
 	h.users.changeRoleFn = func(ctx context.Context, userID, role string) (port.User, error) {
@@ -62,6 +66,8 @@ func TestResetPasswordByEmail_SetsAHashAndEndsEverySession(t *testing.T) {
 
 	assert.Equal(t, "ada@acme.example", h.lookedUp, "the address is matched the way sign-in matches it")
 	assert.True(t, auth.NewPasswordHasher().Verify("a-recovered-password", h.stored))
+	assert.Equal(t, []string{"00000000-0000-0000-0000-000000000051"}, h.revoked)
+	assert.Equal(t, []string{""}, h.verified, "recovery has no password to verify, so the store skips the compare")
 	assert.Equal(t, "ada@acme.example", profile.Email)
 }
 
@@ -106,13 +112,13 @@ func TestResetPasswordByEmail_FollowsThePasswordRules(t *testing.T) {
 	assert.Empty(t, h.lookedUp)
 }
 
-func TestResetPasswordByEmail_ReportsAFailedWrite(t *testing.T) {
+func TestResetPasswordByEmail_FailsClosedWhenTheChangeCannotCommit(t *testing.T) {
 	h := newRecoveryHarness(recoveryUser("ada@acme.example", "member"))
-	h.users.setPasswordFn = func(ctx context.Context, userID, hash string) error { return errors.New("db down") }
+	h.users.changePasswordFn = func(ctx context.Context, userID, hash, verifiedHash string) error { return errors.New("db down") }
 
 	_, err := h.uc.ResetPasswordByEmail(context.Background(), "ada@acme.example", "a-recovered-password")
 	require.Error(t, err)
-	assert.Empty(t, h.stored)
+	assert.Empty(t, h.stored, "the password and the session revoke commit together or not at all")
 }
 
 func TestGrantAdminByEmail_PromotesAMember(t *testing.T) {
