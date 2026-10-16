@@ -150,3 +150,16 @@ func (m *ingestMemory) acquire(ctx context.Context, rawBytes int) (func(), error
 	var once sync.Once
 	return func() { once.Do(func() { m.sem.Release(n) }) }, nil
 }
+
+// detachedContext returns a context that keeps ctx's values and its deadline
+// but not its cancellation. The ingest write phase runs on it: a client that
+// hangs up cancels the request context, and a write phase cut in half leaves a
+// report in processing and findings with no occurrence. The deadline stays, so
+// the server still bounds how long a hung-up client's ingest may run.
+func detachedContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	detached := context.WithoutCancel(ctx)
+	if deadline, ok := ctx.Deadline(); ok {
+		return context.WithDeadline(detached, deadline)
+	}
+	return detached, func() {}
+}

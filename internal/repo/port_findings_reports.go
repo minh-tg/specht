@@ -245,6 +245,18 @@ func (r *pgReportPort) FailStale(ctx context.Context, cutoff time.Time, reason s
 	return r.inner.FailStaleReports(ctx, cutoff, reason)
 }
 
+func (r *pgReportPort) SettleFailedReport(ctx context.Context, reportID, projectID string) error {
+	id, err := parseID(reportID)
+	if err != nil {
+		return err
+	}
+	pid, err := parseID(projectID)
+	if err != nil {
+		return err
+	}
+	return mappingErr(r.inner.SettleFailedReport(ctx, id, pid))
+}
+
 func (r *pgReportPort) CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error) {
 	return r.inner.CountStaleReports(ctx, cutoff)
 }

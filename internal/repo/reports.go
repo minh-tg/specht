@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"time"
 
@@ -143,13 +144,53 @@ func (r *pgReportRepo) CountStaleReports(ctx context.Context, cutoff time.Time) 
 	return r.q.CountStaleReports(ctx, uuidFromTime(cutoff))
 }
 
-// FailStaleReports settles the reports still processing since before the cutoff as failed and
-// returns how many it changed.
+// FailStaleReports settles the reports still processing since before the cutoff as failed,
+// settles the half-written findings each one left, and returns how many reports it changed.
 func (r *pgReportRepo) FailStaleReports(ctx context.Context, cutoff time.Time, reason string) (int64, error) {
-	return r.q.FailStaleReports(ctx, sqlc.FailStaleReportsParams{
+	stale, err := r.q.FailStaleReports(ctx, sqlc.FailStaleReportsParams{
 		CreatedAt:    uuidFromTime(cutoff),
 		ErrorMessage: pgtype.Text{String: reason, Valid: true},
 	})
+	if err != nil {
+		return 0, err
+	}
+	var settleErr error
+	for _, report := range stale {
+		if err := r.SettleFailedReport(ctx, report.ID, report.ProjectID); err != nil {
+			settleErr = errors.Join(settleErr, fmt.Errorf("settle findings of report %s: %w", toUUID(report.ID), err))
+		}
+	}
+	return int64(len(stale)), settleErr
+}
+
+// SettleFailedReport cleans up after an ingest that stopped midway: findings the failed report
+// created that no occurrence supports are deleted, and the ones it only brought back or that
+// were already triaged are archived. Both statements share one transaction, and running it again
+// finds nothing. A report that is not failed is left alone.
+func (r *pgReportRepo) SettleFailedReport(ctx context.Context, id, projectID pgtype.UUID) error {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+
+	deleted, err := q.DeleteFindingsOfFailedReport(ctx, sqlc.DeleteFindingsOfFailedReportParams{ReportID: id, ProjectID: projectID})
+	if err != nil {
+		return fmt.Errorf("delete half-written findings: %w", err)
+	}
+	archived, err := q.ArchiveFindingsOfFailedReport(ctx, sqlc.ArchiveFindingsOfFailedReportParams{ReportID: id, ProjectID: projectID})
+	if err != nil {
+		return fmt.Errorf("archive half-written findings: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	if len(deleted)+len(archived) > 0 {
+		slog.Warn("findings left by a failed report were settled",
+			"report_id", toUUID(id), "deleted", len(deleted), "archived", len(archived))
+	}
+	return nil
 }
 
 // DeleteStaleReports removes the settled reports older than the cutoff, one

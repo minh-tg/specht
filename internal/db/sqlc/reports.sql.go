@@ -11,6 +11,63 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const archiveFindingsOfFailedReport = `-- name: ArchiveFindingsOfFailedReport :many
+WITH orphaned AS (
+    SELECT f.id, f.state
+    FROM findings f
+    JOIN reports r ON r.id = f.introduced_by_report_id
+    WHERE r.id = $1 AND r.project_id = $2
+      AND r.status = 'failed'
+      AND f.project_id = r.project_id
+      AND f.state IN ('open', 'reopened')
+      AND NOT EXISTS (SELECT 1 FROM finding_occurrences fo WHERE fo.finding_id = f.id)
+    FOR UPDATE OF f
+), archived AS (
+    UPDATE findings f
+    SET state = 'archived', updated_at = NOW()
+    FROM orphaned o
+    WHERE f.id = o.id
+    RETURNING f.id
+), logged AS (
+    INSERT INTO finding_events (finding_id, event_type, old_value, new_value, changes)
+    SELECT o.id, 'state_changed', o.state, 'archived',
+           jsonb_build_object('report_id', $1::text, 'reason', 'report_failed')
+    FROM orphaned o
+    JOIN archived a ON a.id = o.id
+    RETURNING finding_id
+)
+SELECT finding_id FROM logged
+`
+
+type ArchiveFindingsOfFailedReportParams struct {
+	ReportID  pgtype.UUID `json:"report_id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+// The other half of the cleanup: findings the failed report attributed to
+// itself and that have no occurrence, but that it did not create (it brought
+// an archived one back) or that someone already triaged. They are archived
+// like findings that lost their report, with an event naming the report.
+func (q *Queries) ArchiveFindingsOfFailedReport(ctx context.Context, arg ArchiveFindingsOfFailedReportParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, archiveFindingsOfFailedReport, arg.ReportID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var finding_id pgtype.UUID
+		if err := rows.Scan(&finding_id); err != nil {
+			return nil, err
+		}
+		items = append(items, finding_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const archiveOrphanedFindings = `-- name: ArchiveOrphanedFindings :many
 WITH orphaned AS (
     SELECT f.id, f.state
@@ -192,6 +249,49 @@ func (q *Queries) CreateReport(ctx context.Context, arg CreateReportParams) (Rep
 	return i, err
 }
 
+const deleteFindingsOfFailedReport = `-- name: DeleteFindingsOfFailedReport :many
+DELETE FROM findings f
+USING reports r
+WHERE r.id = $1 AND r.project_id = $2
+  AND r.status = 'failed'
+  AND f.project_id = r.project_id
+  AND f.introduced_by_report_id = r.id
+  AND f.created_at >= r.created_at
+  AND f.triage_status = 'untriaged'
+  AND NOT EXISTS (SELECT 1 FROM finding_occurrences fo WHERE fo.finding_id = f.id)
+RETURNING f.id
+`
+
+type DeleteFindingsOfFailedReportParams struct {
+	ReportID  pgtype.UUID `json:"report_id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+// An ingest upserts a finding row and attributes it to its report before it
+// writes the occurrences, so one that stops midway leaves findings no
+// occurrence supports. This removes the ones the failed report created itself
+// (born after the report, never triaged) and still has no occurrence. A
+// finding any other report has an occurrence for is not touched.
+func (q *Queries) DeleteFindingsOfFailedReport(ctx context.Context, arg DeleteFindingsOfFailedReportParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, deleteFindingsOfFailedReport, arg.ReportID, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const deleteReport = `-- name: DeleteReport :exec
 DELETE FROM reports WHERE id = $1 AND project_id = $2
 `
@@ -209,13 +309,14 @@ func (q *Queries) DeleteReport(ctx context.Context, arg DeleteReportParams) erro
 	return err
 }
 
-const failStaleReports = `-- name: FailStaleReports :execrows
+const failStaleReports = `-- name: FailStaleReports :many
 UPDATE reports SET
     status = 'failed',
     completed_at = NOW(),
     error_message = $2
 WHERE status = 'processing'
   AND created_at < $1
+RETURNING id, project_id
 `
 
 type FailStaleReportsParams struct {
@@ -223,15 +324,33 @@ type FailStaleReportsParams struct {
 	ErrorMessage pgtype.Text        `json:"error_message"`
 }
 
+type FailStaleReportsRow struct {
+	ID        pgtype.UUID `json:"id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
 // A report stays in processing only while its ingest request runs. One that
 // is still there well after the ingest window means the server stopped under
-// it, so it is settled as failed and a retry can ingest the same content.
-func (q *Queries) FailStaleReports(ctx context.Context, arg FailStaleReportsParams) (int64, error) {
-	result, err := q.db.Exec(ctx, failStaleReports, arg.CreatedAt, arg.ErrorMessage)
+// it, so it is settled as failed and a retry can ingest the same content. The
+// ids come back so the findings it left half written can be settled too.
+func (q *Queries) FailStaleReports(ctx context.Context, arg FailStaleReportsParams) ([]FailStaleReportsRow, error) {
+	rows, err := q.db.Query(ctx, failStaleReports, arg.CreatedAt, arg.ErrorMessage)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	return result.RowsAffected(), nil
+	defer rows.Close()
+	var items []FailStaleReportsRow
+	for rows.Next() {
+		var i FailStaleReportsRow
+		if err := rows.Scan(&i.ID, &i.ProjectID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const findCompletedByReplayKey = `-- name: FindCompletedByReplayKey :one
