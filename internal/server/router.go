@@ -31,7 +31,7 @@ const (
 // OIDCAuthenticator is the SSO capability consumed by the router.
 type OIDCAuthenticator interface {
 	CallbackHandler(func(context.Context, auth.SSOClaims) (string, error)) http.HandlerFunc
-	LoginURL(state string) string
+	StartLogin(w http.ResponseWriter, r *http.Request, returnPath string) (string, error)
 }
 
 // TokenIssuer signs tokens for the SSO callback.
@@ -503,42 +503,17 @@ func capabilitiesHandler(registrationDisabled, ssoEnabled bool, setupRequired fu
 }
 
 // ssoLoginHandler redirects unauthenticated users to the OIDC provider's
-// authorization endpoint. The state parameter is a CSRF token bound to an
-// httpOnly cookie; a second state-bound cookie carries a validated SPA return
-// path without exposing it to the identity provider.
+// authorization endpoint. StartLogin binds the login to this browser with a
+// signed, httpOnly cookie that also carries the validated SPA return path, so
+// neither is exposed to the identity provider.
 func ssoLoginHandler(oidc OIDCAuthenticator) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		state, err := auth.GenerateStateToken()
+		loginURL, err := oidc.StartLogin(w, r, r.URL.Query().Get("redirect"))
 		if err != nil {
-			http.Error(w, "failed to generate state", http.StatusInternalServerError)
+			http.Error(w, "failed to start sign-in", http.StatusInternalServerError)
 			return
 		}
-		// realIPMiddleware (registered before the routes) has already decided
-		// whether this connection is secure, consulting the configured trusted
-		// proxies. SecureTransport honors that verdict and never trusts a
-		// client-supplied X-Forwarded-Proto on its own.
-		// Secure comes from the proxy-aware transport verdict below.
-		// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
-		secure := auth.SecureTransport(r)
-		http.SetCookie(w, &http.Cookie{
-			Name:     "sso_state",
-			Value:    state,
-			Path:     "/",
-			MaxAge:   600, // 10 minutes, matching a typical auth-code flow
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			Secure:   secure,
-		})
-		http.SetCookie(w, &http.Cookie{
-			Name:     auth.SSOReturnCookieName,
-			Value:    auth.EncodeSSOReturnCookieValue(state, r.URL.Query().Get("redirect")),
-			Path:     "/",
-			MaxAge:   600,
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-			Secure:   secure,
-		})
-		http.Redirect(w, r, oidc.LoginURL(state), http.StatusFound)
+		http.Redirect(w, r, loginURL, http.StatusFound)
 	}
 }
 

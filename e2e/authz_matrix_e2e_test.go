@@ -385,7 +385,9 @@ func (stubOIDC) CallbackHandler(func(context.Context, auth.SSOClaims) (string, e
 	return func(http.ResponseWriter, *http.Request) {}
 }
 
-func (stubOIDC) LoginURL(string) string { return "/" }
+func (stubOIDC) StartLogin(http.ResponseWriter, *http.Request, string) (string, error) {
+	return "/", nil
+}
 
 // checkAuthzTable returns every way the table and the router disagree: a
 // route with no row, a row whose route is gone, a cell still marked Todo, a

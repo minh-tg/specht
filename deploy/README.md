@@ -203,7 +203,7 @@ carry a fragment.
 | `SSO_ENABLE` | `false` | Mounts the SSO login and callback routes. |
 | `SSO_CLIENT_ID` | *(empty)* | OAuth client id. |
 | `SSO_CLIENT_SECRET` | *(empty)* | **Secret.** OAuth client secret. Required unless `SSO_PUBLIC_CLIENT=true`. |
-| `SSO_PUBLIC_CLIENT` | `false` | Allows an empty `SSO_CLIENT_SECRET`, for an identity provider client registered as public. Leave it off for a confidential client: an empty secret then stops the server from starting instead of silently weakening the login. |
+| `SSO_PUBLIC_CLIENT` | `false` | Allows an empty `SSO_CLIENT_SECRET`, for an identity provider client registered as public. PKCE protects the code exchange in that case. Leave it off for a confidential client: an empty secret then stops the server from starting instead of silently weakening the login. |
 | `SSO_ISSUER_URL` | *(empty)* | Must be `https`; plain `http` is accepted only for a loopback host, for a local IdP. |
 | `SSO_REDIRECT_URI` | *(empty)* | Must match the IdP's registered redirect URI. |
 | `SSO_GROUPS_CLAIM` | `groups` | Claim carrying IdP group membership. |
@@ -481,14 +481,26 @@ This option never bypasses validation when an ID token is present.
 
 ## SSO login protections
 
-Each SSO login sends the provider a state, an OIDC `nonce`, and (when
-`SSO_CLIENT_SECRET` is set) a PKCE `code_challenge` (S256). The callback
-rejects a state that carries no nonce and an ID token whose nonce does not
-match, and the token request proves possession of the PKCE verifier. The
-verifier is derived from the state and the client secret, so nothing extra is
-stored and any replica can complete a login another one started. Providers
-that do not support PKCE ignore the extra parameters. Logins that were
-already in flight when you upgrade fail once and succeed on retry.
+Each SSO login sends the provider a random state, an OIDC `nonce` and a PKCE
+`code_challenge` (S256). PKCE is always on, including for a public client
+(`SSO_PUBLIC_CLIENT=true`), and the token request proves possession of the
+verifier. The state is public: it comes back in the callback URL next to the
+code. The login is therefore bound to the browser that started it by a
+signed, `HttpOnly`, `SameSite=Lax` cookie named `sso_state_<id>`, which holds
+a random per-login secret and the return path. The verifier and the nonce are
+derived from that secret, and the callback refuses a request whose cookie is
+missing, expired, altered or issued for another state, before the code is sent
+anywhere. Someone who obtains a callback URL (from a log, a browser extension
+or a shared device) cannot finish the login without that browser's cookie.
+
+The cookie is signed with a key derived from `JWT_SECRET`, so every replica
+that shares the secret can finish a login another one started. Changing
+`JWT_SECRET` fails the logins in flight. Each login has its own cookie, so
+several tabs can sign in at once. A browser keeps at most four pending logins;
+starting a fifth drops the oldest, and that tab answers "start sign-in again".
+A login cookie lives 10 minutes. The return path is limited to 1024 bytes.
+Logins that were already in flight when you upgrade fail once and succeed on
+retry. Providers that do not support PKCE ignore the extra parameters.
 
 After a successful login the SPA receives a single-use code in the URL
 fragment, valid for 60 seconds, and trades it for an access and a refresh token

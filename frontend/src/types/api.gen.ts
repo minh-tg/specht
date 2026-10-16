@@ -256,13 +256,17 @@ export interface paths {
     /**
      * Start the SSO authorization-code flow
      * @description Redirects to the identity provider's authorization endpoint and sets an
-     *     `HttpOnly` `sso_state` cookie binding the CSRF state (and the OIDC
-     *     nonce) to this browser. An optional, validated same-origin `redirect`
-     *     path is held in a second cookie bound to that state, not sent to the
-     *     identity provider. `Secure` is set only when the transport is verified
-     *     secure — TLS in-process, or `X-Forwarded-Proto: https` from a configured
-     *     trusted proxy. Available only when `SSO_ENABLE` is on; the route is
-     *     absent otherwise.
+     *     `HttpOnly` `sso_state_<id>` cookie that binds this login to this
+     *     browser. The cookie is signed by the server and carries a random
+     *     per-login secret, from which the PKCE verifier and the OIDC nonce are
+     *     derived, and the validated return path; none of these is sent to the
+     *     identity provider. Each login has its own cookie, so several tabs can
+     *     sign in at once, and a browser keeps at most four pending logins (the
+     *     oldest is dropped). An optional, validated same-origin `redirect` path
+     *     is held in that cookie. `Secure` is set only when the transport is
+     *     verified secure: TLS in-process, or `X-Forwarded-Proto: https` from a
+     *     configured trusted proxy. Available only when `SSO_ENABLE` is on; the
+     *     route is absent otherwise.
      */
     get: operations["ssoLogin"];
     put?: never;
@@ -283,7 +287,7 @@ export interface paths {
     /**
      * Complete the SSO flow
      * @description Exchanges the authorization code, validates the ID token (signature,
-     *     issuer, audience, expiry, nonce) against the state cookie, resolves the
+     *     issuer, audience, expiry, nonce) against the login's state cookie, resolves the
      *     IdP subject to a local account, and redirects to the validated SPA path
      *     with a short-lived single-use code in the URL **fragment** so it never
      *     reaches a server log or `Referer` header. The SPA trades the code for
@@ -4034,7 +4038,7 @@ export interface operations {
   ssoLogin: {
     parameters: {
       query?: {
-        /** @description Optional same-origin SPA path and query to return to after sign-in; invalid values fall back to `/`. */
+        /** @description Optional same-origin SPA path and query to return to after sign-in; invalid or longer than 1024 bytes falls back to `/`. */
         redirect?: string;
       };
       header?: never;
@@ -4046,7 +4050,7 @@ export interface operations {
       /** @description Redirect to the identity provider. */
       302: {
         headers: {
-          /** @description Sets `sso_state` and `sso_return`; HttpOnly, SameSite=Lax, 10-minute lifetime. */
+          /** @description Sets `sso_state_<id>`; HttpOnly, SameSite=Lax, 10-minute lifetime. */
           "Set-Cookie"?: string;
           [name: string]: unknown;
         };

@@ -37,15 +37,13 @@ func TestClaimIsTrue(t *testing.T) {
 func ssoCallbackFixture(t *testing.T, userinfoVerified any, idTokenExtra ...jwt.MapClaims) (*fakeOIDCProvider, SSOClaims) {
 	t.Helper()
 	key := newOIDCTestKey(t)
-	state, err := GenerateStateToken()
-	require.NoError(t, err)
-	_, nonce := splitStateNonce(state)
-
 	prov := newFakeOIDCProvider(t, key)
 	prov.userEmailVerified = userinfoVerified
-	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", nonce, idTokenExtra...)
+	a := mustOIDC(t, prov.srv.URL)
+	login := startTestLogin(t, a, "")
+	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", login.nonce, idTokenExtra...)
 
-	w, claims := callbackClaims(t, mustOIDC(t, prov.srv.URL), state)
+	w, claims := callbackClaims(t, a, login)
 	require.Equal(t, http.StatusFound, w.Code)
 	return prov, claims
 }

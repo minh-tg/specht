@@ -83,7 +83,7 @@ func resolveOIDCAuth(cfg *config.Server) *auth.OIDCAuthenticator {
 	if !cfg.SSO.Enabled {
 		return nil
 	}
-	oidcAuth, err := auth.NewOIDCAuthenticator(auth.OIDCConfig{ClientID: cfg.SSO.ClientID, ClientSecret: cfg.SSO.ClientSecret, IssuerURL: cfg.SSO.IssuerURL, RedirectURI: cfg.SSO.RedirectURI, GroupsClaim: cfg.SSO.GroupsClaim, AllowUserInfoOnly: cfg.SSO.AllowUserInfoOnly}, nil)
+	oidcAuth, err := auth.NewOIDCAuthenticator(auth.OIDCConfig{ClientID: cfg.SSO.ClientID, ClientSecret: cfg.SSO.ClientSecret, IssuerURL: cfg.SSO.IssuerURL, RedirectURI: cfg.SSO.RedirectURI, GroupsClaim: cfg.SSO.GroupsClaim, AllowUserInfoOnly: cfg.SSO.AllowUserInfoOnly, StateKey: auth.DeriveSSOStateKey(cfg.JWTSecret)}, nil)
 	exitOnError("auth setup", err)
 	return oidcAuth
 }

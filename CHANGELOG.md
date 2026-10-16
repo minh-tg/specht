@@ -400,3 +400,14 @@ releases.
   server stopped sending one when single sign-on moved to a one-time exchange code, but the
   page still installed any token it found there while an SSO sign-in was pending, so a crafted
   link could sign the visitor into the sender's account. Only the exchange code is read now.
+- A single sign-in is now bound to the browser that started it. Before, the PKCE verifier
+  and the OIDC nonce were computed from the `state` value that also appears in the callback
+  URL, so anyone who obtained an unused callback URL (from a log, a browser extension or a
+  shared device) could set a cookie of their own and finish the victim's login. Each login
+  now gets a signed `sso_state_<id>` cookie with a random secret, the verifier and nonce are
+  derived from that secret, and a callback without the matching cookie is refused before the
+  code is sent to the identity provider. Several tabs can sign in at once, a browser keeps at
+  most four pending logins, and a login cookie expires after 10 minutes. PKCE is now also sent
+  when no client secret is configured, and the `redirect` return path is limited to 1024 bytes.
+  The cookie is signed with a key derived from `JWT_SECRET`. Sign-ins in flight during the
+  upgrade fail once and succeed on retry.

@@ -35,20 +35,6 @@ func TestSafeSSOReturnPath(t *testing.T) {
 	}
 }
 
-func TestDecodeSSOReturnCookieValueBindsState(t *testing.T) {
-	const state = "csrf.nonce"
-	value := EncodeSSOReturnCookieValue(state, "/projects/demo?tab=members")
-	if got := decodeSSOReturnCookieValue(value, state); got != "/projects/demo?tab=members" {
-		t.Fatalf("decode with matching state = %q", got)
-	}
-	if got := decodeSSOReturnCookieValue(value, "other-state"); got != "/" {
-		t.Fatalf("decode with mismatched state = %q, want root", got)
-	}
-	if got := decodeSSOReturnCookieValue(state+"~!", state); got != "/" {
-		t.Fatalf("decode malformed return cookie = %q, want root", got)
-	}
-}
-
 func TestSafeSSOReturnPathIsIdempotent(t *testing.T) {
 	for _, in := range []string{
 		"", "/", "/%2Fevil.example/ ", "/%2F%2Fevil.example", "/a%2F%2Fb", "/projects/demo?tab=members",

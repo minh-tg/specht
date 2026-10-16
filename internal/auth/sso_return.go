@@ -1,35 +1,14 @@
 package auth
 
 import (
-	"encoding/base64"
 	"net/url"
 	"strings"
 )
 
-const maxSSOReturnPathBytes = 2048
-
-// SSOReturnCookieName names the cookie that binds a safe SPA return path to
-// the corresponding OAuth state cookie.
-const SSOReturnCookieName = "sso_return"
-
-// EncodeSSOReturnCookieValue binds a validated same-origin return path to one
-// OAuth state value. The callback accepts the path only with the matching state.
-func EncodeSSOReturnCookieValue(state, returnPath string) string {
-	encodedPath := base64.RawURLEncoding.EncodeToString([]byte(safeSSOReturnPath(returnPath)))
-	return state + "~" + encodedPath
-}
-
-func decodeSSOReturnCookieValue(value, state string) string {
-	boundState, encodedPath, ok := strings.Cut(value, "~")
-	if !ok || !secureCompare(boundState, state) {
-		return "/"
-	}
-	path, err := base64.RawURLEncoding.DecodeString(encodedPath)
-	if err != nil {
-		return "/"
-	}
-	return safeSSOReturnPath(string(path))
-}
+// maxSSOReturnPathBytes bounds the return path. It is stored in the login
+// cookie, and a browser keeps several of those, so the limit keeps their
+// total under the header size limits of common proxies.
+const maxSSOReturnPathBytes = 1024
 
 // safeSSOReturnPath returns raw when it is a same-origin path, or "/" when it
 // is anything else. The result is checked after url.Parse has cleaned it, not
