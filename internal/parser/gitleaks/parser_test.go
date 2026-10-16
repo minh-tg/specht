@@ -76,7 +76,7 @@ func TestParseShapes(t *testing.T) {
 func TestRedactRaw(t *testing.T) {
 	data, err := os.ReadFile("testdata/gitleaks.json")
 	require.NoError(t, err)
-	redacted := NewScanner().RedactRaw(data)
+	redacted := redact(t, data)
 	for _, secret := range secretsInFixture(t) {
 		assert.NotContains(t, string(redacted), secret)
 	}
@@ -92,10 +92,61 @@ func TestRedactRaw(t *testing.T) {
 		"redacted evidence has no credential left to hash, and says so")
 }
 
-func TestRedactRawPassthrough(t *testing.T) {
-	s := NewScanner()
-	assert.Equal(t, []byte(`not json`), []byte(s.RedactRaw([]byte(`not json`))))
-	assert.True(t, strings.HasPrefix(string(s.RedactRaw([]byte(`[]`))), "["))
+func TestRedactRawOfAnEmptyArray(t *testing.T) {
+	assert.Equal(t, `[]`, string(redact(t, []byte(`[]`))))
+}
+
+// A document the redactor cannot read is an error and never comes back as it
+// went in: it may still hold the Secret.
+func TestRedactRawNeverReturnsWhatItCouldNotRedact(t *testing.T) {
+	const secret = "AKIAFAILCLOSEDSECRET01"
+	nested := strings.Repeat("[", 20000) + strings.Repeat("]", 20000)
+	entry := func(extra string) string {
+		return `{"RuleID":"aws","File":"a.env","StartLine":1,"Secret":"` + secret + `","Match":"key=` + secret + `"` + extra + `}`
+	}
+	cases := map[string]string{
+		"not json":               `not json`,
+		"trailing garbage":       `[` + entry("") + `]garbage`,
+		"a second value":         `[` + entry("") + `][]`,
+		"nesting past the limit": `[` + entry(`,"x":`+nested) + `]`,
+		"not an array":           entry(""),
+		"an array of strings":    `["` + secret + `"]`,
+		"an unterminated array":  `[` + entry(""),
+	}
+	for name, doc := range cases {
+		t.Run(name, func(t *testing.T) {
+			out, err := NewScanner().RedactRaw([]byte(doc))
+
+			require.ErrorIs(t, err, scanner.ErrRedactionFailed)
+			assert.Empty(t, out, "nothing derived from the input is returned")
+		})
+	}
+}
+
+// A number that does not fit a float64 in a field the parser ignores used to
+// make the redactor fail and hand back the input with the Secret in it. The
+// document parses, so it has to be redacted.
+func TestRedactRawToleratesNumbersThatOverflowAFloat(t *testing.T) {
+	const secret = "AKIAOVERFLOWSECRET0001"
+	for _, number := range []string{"1e400", "-1e999", "123456789012345678901234567890", "1E+500", "0.000000000000000000000000000000001"} {
+		doc := `[{"RuleID":"aws","File":"a.env","StartLine":1,"Secret":"` + secret + `","Match":"key=` + secret + `","x":` + number + `,"nested":{"y":[` + number + `],"secret":"` + secret + `"}}]`
+		_, err := NewScanner().Parse(keyedContext(), []byte(doc))
+		require.NoError(t, err, "the typed parser ignores the field, so the report is ingested")
+
+		out := redact(t, []byte(doc))
+
+		assert.NotContains(t, string(out), secret, number)
+		assert.True(t, json.Valid(out), "the stored evidence is valid JSON: %s", out)
+		assert.Contains(t, string(out), "[REDACTED]")
+		assert.Contains(t, string(out), number, "the number itself survives as written")
+	}
+}
+
+func redact(t *testing.T, data []byte) []byte {
+	t.Helper()
+	out, err := NewScanner().RedactRaw(data)
+	require.NoError(t, err)
+	return out
 }
 
 func TestDetectFormat(t *testing.T) {
@@ -112,7 +163,7 @@ func TestRedactRawIsCaseInsensitive(t *testing.T) {
 	for _, key := range []string{"Secret", "secret", "sEcReT", "SECRET"} {
 		for _, matchKey := range []string{"Match", "match", "MATCH"} {
 			doc := `[{"RuleID":"generic","File":"a.env","` + key + `":"` + secret + `","` + matchKey + `":"token=` + secret + `","StartLine":1}]`
-			redacted := string(NewScanner().RedactRaw([]byte(doc)))
+			redacted := string(redact(t, []byte(doc)))
 			assert.NotContains(t, redacted, secret, "keys %s and %s", key, matchKey)
 			assert.Contains(t, redacted, "generic", "provenance survives")
 		}
@@ -121,14 +172,14 @@ func TestRedactRawIsCaseInsensitive(t *testing.T) {
 
 func TestRedactRawCoversEveryCaseVariantOfTheSameKey(t *testing.T) {
 	doc := `[{"RuleID":"r","File":"f","Secret":"first-secret","secret":"second-secret"}]`
-	redacted := string(NewScanner().RedactRaw([]byte(doc)))
+	redacted := string(redact(t, []byte(doc)))
 	assert.NotContains(t, redacted, "first-secret")
 	assert.NotContains(t, redacted, "second-secret")
 }
 
 func TestRedactRawCoversNestedObjectsAndLists(t *testing.T) {
 	doc := `[{"RuleID":"r","File":"f","Secret":"top","extra":{"secret":"nested-secret","deeper":[{"MATCH":"list-secret"}]}}]`
-	redacted := string(NewScanner().RedactRaw([]byte(doc)))
+	redacted := string(redact(t, []byte(doc)))
 	for _, leaked := range []string{"nested-secret", "list-secret"} {
 		assert.NotContains(t, redacted, leaked)
 	}
@@ -136,7 +187,7 @@ func TestRedactRawCoversNestedObjectsAndLists(t *testing.T) {
 
 func TestRedactRawKeepsTheIdentityBasisOfACaseVariantReport(t *testing.T) {
 	doc := []byte(`[{"RuleID":"generic","File":"a.env","secret":"hunter2-super-secret","StartLine":1}]`)
-	redacted := NewScanner().RedactRaw(doc)
+	redacted := redact(t, doc)
 	rep, err := NewScanner().Parse(keyedContext(), redacted)
 	require.NoError(t, err)
 	require.Len(t, rep.Findings, 1)

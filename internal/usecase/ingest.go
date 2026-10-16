@@ -53,14 +53,40 @@ type reportContext struct {
 	targetIdentifier string
 }
 
-// redactRaw lets a scanner scrub sensitive material from raw evidence
-// before it is hashed and stored. Scanners opt in by implementing
-// RedactRaw; all other scanners store bytes verbatim.
-func redactRaw(sc scanner.Scanner, raw []byte) []byte {
-	if r, ok := sc.(interface{ RedactRaw([]byte) []byte }); ok {
-		return r.RedactRaw(raw)
+// redactRaw lets a scanner scrub sensitive material from raw evidence before it
+// is hashed and stored. Scanners opt in by implementing scanner.Redactor; all
+// other scanners store bytes verbatim.
+//
+// A redactor that fails (an error, empty output, or a panic) never lets the
+// input through: the evidence becomes scanner.RedactionFailedEvidence, which
+// holds nothing of the report, and failed is true. A document the hook cannot
+// read may still hold a credential, so storing it as it came would make
+// redaction depend on the document being well formed.
+func redactRaw(sc scanner.Scanner, raw []byte) (stored []byte, failed bool) {
+	r, ok := sc.(scanner.Redactor)
+	if !ok {
+		return raw, false
 	}
-	return raw
+	out, err := runRedactor(r, raw)
+	if err == nil && len(out) == 0 {
+		err = scanner.ErrRedactionFailed
+	}
+	if err != nil {
+		slog.Warn("raw evidence not stored: redaction failed",
+			"scanner", sc.Descriptor().Name, "bytes", len(raw), "error", err)
+		return []byte(scanner.RedactionFailedEvidence), true
+	}
+	return out, false
+}
+
+// runRedactor calls the hook and turns a panic into an error.
+func runRedactor(r scanner.Redactor, raw []byte) (out []byte, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			out, err = nil, fmt.Errorf("%w: panic in redactor", scanner.ErrRedactionFailed)
+		}
+	}()
+	return r.RedactRaw(raw)
 }
 
 // validateIngestInput checks required fields, canonicalizes the scan mode
@@ -147,7 +173,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		slog.Error("scanner parse failed", "scanner", input.Scanner, "error", err)
 		return nil, fmt.Errorf("scanner %s: parse output: %w", input.Scanner, err)
 	}
-	input.RawData = redactRaw(sc, input.RawData)
+	var redactionFailed bool
+	input.RawData, redactionFailed = redactRaw(sc, input.RawData)
 
 	// The scan-scope hash is computed before the replay lookup and before any
 	// write: the replay key is (project, raw hash, commit, scope), so the
@@ -161,7 +188,7 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	// writing a second one. The hash covers the redacted bytes (the stored
 	// form). A different commit or scope with the same bytes ingests
 	// normally: scanner output is often byte-identical when nothing changed.
-	rawHash := reportHash(sc, input.RawData, nr)
+	rawHash := reportHash(sc, input.RawData, nr, redactionFailed)
 	replayID, err := u.findReplayReport(ctx, project.ID, rawHash, input.CommitSha, scopeHash)
 	if err != nil {
 		return nil, err
@@ -1295,12 +1322,14 @@ var severityLabelRank = map[string]int16{
 // only in a secret would hash alike and the second would be dropped as a replay. For
 // a scanner that identifies findings by a keyed hash of the secret, the finding
 // identities are folded in, which keeps those reports apart. The identities are keyed
-// digests, so they reveal nothing about the secrets. Every other scanner keeps the
-// plain hash its reports were stored with.
-func reportHash(sc scanner.Scanner, raw []byte, nr *domain.NormalizedReport) string {
+// digests, so they reveal nothing about the secrets. The same holds when redaction
+// failed: every such report is stored as the same placeholder, so the finding
+// identities keep different reports apart. Every other scanner keeps the plain hash
+// its reports were stored with.
+func reportHash(sc scanner.Scanner, raw []byte, nr *domain.NormalizedReport, redactionFailed bool) string {
 	h := sha256.New()
 	h.Write(raw)
-	if scanner.UsesFingerprintKey(sc) {
+	if scanner.UsesFingerprintKey(sc) || redactionFailed {
 		fingerprints := make([]string, 0, len(nr.Findings))
 		for _, f := range nr.Findings {
 			fingerprints = append(fingerprints, f.Fingerprint)

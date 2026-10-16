@@ -2,6 +2,7 @@ package gitleaks_test
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/minh-tg/specht/internal/parser/gitleaks"
@@ -26,12 +27,21 @@ func FuzzParse(f *testing.F) {
 	})
 }
 
-// FuzzRedactRaw checks RedactRaw never panics and never returns invalid
-// output for input it claims to have redacted.
+// FuzzRedactRaw checks RedactRaw never panics, returns no output with an
+// error, and returns valid JSON otherwise.
 func FuzzRedactRaw(f *testing.F) {
 	parsertest.Seeds(f, "testdata")
 	s := gitleaks.NewScanner()
 	f.Fuzz(func(t *testing.T, data []byte) {
-		_ = s.RedactRaw(data)
+		out, err := s.RedactRaw(data)
+		if err != nil {
+			if out != nil {
+				t.Fatalf("an error must come with no output, got %q", out)
+			}
+			return
+		}
+		if !json.Valid(out) {
+			t.Fatalf("redacted evidence is not valid JSON: %q", out)
+		}
 	})
 }
