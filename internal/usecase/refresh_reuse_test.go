@@ -23,6 +23,10 @@ type memRefreshStore struct {
 	now   func() time.Time
 	rows  []*port.RefreshToken
 	guard func(userID string, tokenVersion int32) error
+	// beforeRevoke, when set, runs at the start of Revoke, before it matches
+	// a row: a test uses it to land another request between the caller's read
+	// and its revoke.
+	beforeRevoke func()
 }
 
 func (m *memRefreshStore) Create(_ context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
@@ -78,6 +82,9 @@ func (m *memRefreshStore) GetByHash(_ context.Context, hash string) (port.Refres
 }
 
 func (m *memRefreshStore) Revoke(_ context.Context, id string) (port.RefreshToken, error) {
+	if m.beforeRevoke != nil {
+		m.beforeRevoke()
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	for _, r := range m.rows {
@@ -254,6 +261,29 @@ func TestLogout_StaleTokenRunsTheReusePath(t *testing.T) {
 	require.NoError(t, h.uc.Logout(context.Background(), laptop))
 
 	assert.False(t, h.store.live(rotated.RefreshToken), "the successor of the stale token is revoked")
+	assert.True(t, h.store.live(phone), "another sign-in survives")
+}
+
+// Logout reads the token as live, then a refresh spends it before Logout's own
+// revoke runs. The revoke matches no row, which is a replay: the chain is
+// revoked, the refresh's successor included, and the caller still gets its
+// logout.
+func TestLogout_LosingTheRevokeToARefreshRunsTheReusePath(t *testing.T) {
+	h := newReuseHarness(t)
+	laptop := h.signIn(t)
+	phone := h.signIn(t)
+	var successor string
+	h.store.beforeRevoke = func() {
+		h.store.beforeRevoke = nil
+		resp, err := h.refresh(laptop)
+		require.NoError(t, err)
+		successor = resp.RefreshToken
+	}
+
+	require.NoError(t, h.uc.Logout(context.Background(), laptop))
+
+	require.NotEmpty(t, successor, "the refresh ran between Logout's read and its revoke")
+	assert.False(t, h.store.live(successor), "the successor of the token Logout lost is revoked")
 	assert.True(t, h.store.live(phone), "another sign-in survives")
 }
 
