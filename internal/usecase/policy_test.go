@@ -193,12 +193,13 @@ func TestGetIntroducedGateStatus_AppliesPolicyFloor(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			pr, _, fr := makeTestRepos()
+			pr, rr, fr := makeTestRepos()
 			project := makeProject(true)
 			pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 				return project, nil
 			}
-			fr.listIntroducedGateCandidatesFn = func(ctx context.Context, reportID string, minRank int16) ([]port.GateCandidate, error) {
+			stubReportOwnedBy(rr, project.ID)
+			fr.listIntroducedGateCandidatesFn = func(ctx context.Context, projectID, reportID string, minRank int16) ([]port.GateCandidate, error) {
 				assert.Equal(t, int16(3), minRank, "default policy floor must reach the introduced-only gate")
 				if tc.rank < minRank {
 					return nil, nil
@@ -212,7 +213,7 @@ func TestGetIntroducedGateStatus_AppliesPolicyFloor(t *testing.T) {
 				}}, nil
 			}
 			uc := New(Deps{Stores: &port.Stores{
-				Projects: pr, Findings: fr, Waivers: &mockWaiverRepo{},
+				Projects: pr, Reports: rr, Findings: fr, Waivers: &mockWaiverRepo{},
 			}})
 
 			out, err := uc.GetIntroducedGateStatus(adminCtx(), "my-app", 0, "00000000-0000-0000-0000-000000000098")
@@ -284,18 +285,19 @@ func TestGetGateStatus_RequestedFloorOnlyTightens(t *testing.T) {
 func TestGetIntroducedGateStatus_RequestedFloorOnlyTightens(t *testing.T) {
 	for _, tc := range floorRequestCases {
 		t.Run(tc.name, func(t *testing.T) {
-			pr, _, fr := makeTestRepos()
+			pr, rr, fr := makeTestRepos()
 			project := projectWithSettings(tc.settings)
 			pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 				return project, nil
 			}
+			stubReportOwnedBy(rr, project.ID)
 			var got int16
-			fr.listIntroducedGateCandidatesFn = func(ctx context.Context, reportID string, minRank int16) ([]port.GateCandidate, error) {
+			fr.listIntroducedGateCandidatesFn = func(ctx context.Context, projectID, reportID string, minRank int16) ([]port.GateCandidate, error) {
 				got = minRank
 				return nil, nil
 			}
 			uc := New(Deps{Stores: &port.Stores{
-				Projects: pr, Findings: fr, Waivers: &mockWaiverRepo{},
+				Projects: pr, Reports: rr, Findings: fr, Waivers: &mockWaiverRepo{},
 			}})
 
 			_, err := uc.GetIntroducedGateStatus(adminCtx(), "my-app", tc.requested, "00000000-0000-0000-0000-000000000098")

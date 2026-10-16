@@ -1463,6 +1463,7 @@ LEFT JOIN LATERAL (
 ) ra ON true
 WHERE rif.report_id = $1
   AND f.current_severity_rank >= $2
+  AND f.project_id = $3
   AND f.gate_effect = 'block'
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 `
@@ -1470,6 +1471,7 @@ ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 type ListIntroducedGateCandidatesParams struct {
 	ReportID            pgtype.UUID `json:"report_id"`
 	CurrentSeverityRank int16       `json:"current_severity_rank"`
+	ProjectID           pgtype.UUID `json:"project_id"`
 }
 
 type ListIntroducedGateCandidatesRow struct {
@@ -1490,7 +1492,7 @@ type ListIntroducedGateCandidatesRow struct {
 }
 
 func (q *Queries) ListIntroducedGateCandidates(ctx context.Context, arg ListIntroducedGateCandidatesParams) ([]ListIntroducedGateCandidatesRow, error) {
-	rows, err := q.db.Query(ctx, listIntroducedGateCandidates, arg.ReportID, arg.CurrentSeverityRank)
+	rows, err := q.db.Query(ctx, listIntroducedGateCandidates, arg.ReportID, arg.CurrentSeverityRank, arg.ProjectID)
 	if err != nil {
 		return nil, err
 	}

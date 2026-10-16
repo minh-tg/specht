@@ -528,6 +528,7 @@ LEFT JOIN LATERAL (
 ) ra ON true
 WHERE rif.report_id = $1
   AND f.current_severity_rank >= $2
+  AND f.project_id = $3
   AND f.gate_effect = 'block'
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC;
 

@@ -937,7 +937,7 @@ func TestIngestReport_RegressionFailsIntroducedGate(t *testing.T) {
 	fr.upsertDimensionFn = func(ctx context.Context, arg port.DimensionInput) error {
 		return nil
 	}
-	fr.listIntroducedGateCandidatesFn = func(ctx context.Context, repID string, minRank int16) ([]port.GateCandidate, error) {
+	fr.listIntroducedGateCandidatesFn = func(ctx context.Context, projectID, repID string, minRank int16) ([]port.GateCandidate, error) {
 		assert.Equal(t, reportID, repID)
 		return []port.GateCandidate{{
 			Finding: port.Finding{

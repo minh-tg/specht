@@ -231,7 +231,7 @@ type FindingRepo interface {
 	// ListGateCandidates loads every gate candidate with its context and
 	// latest reachability in one batch (the port batch method).
 	ListGateCandidates(ctx context.Context, projectID pgtype.UUID, minSeverityRank int16) ([]sqlc.ListGateCandidatesRow, error)
-	ListIntroducedGateCandidates(ctx context.Context, reportID pgtype.UUID, minSeverityRank int16) ([]sqlc.ListIntroducedGateCandidatesRow, error)
+	ListIntroducedGateCandidates(ctx context.Context, projectID, reportID pgtype.UUID, minSeverityRank int16) ([]sqlc.ListIntroducedGateCandidatesRow, error)
 	ListFindingsByFingerprints(ctx context.Context, projectID pgtype.UUID, findingKind string, fingerprints []string) ([]sqlc.Finding, error)
 	ListFindingIDsPresentInReport(ctx context.Context, reportID pgtype.UUID, findingIDs []pgtype.UUID) ([]pgtype.UUID, error)
 	RecordReportIntroducedFindings(ctx context.Context, reportID pgtype.UUID, baselineReportID pgtype.UUID, findingIDs []pgtype.UUID, changeTypes []string) error

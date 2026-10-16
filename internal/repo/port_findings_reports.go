@@ -1075,12 +1075,16 @@ func (r *pgFindingPort) ListGateCandidates(ctx context.Context, projectID string
 	return out, nil
 }
 
-func (r *pgFindingPort) ListIntroducedGateCandidates(ctx context.Context, reportID string, minSeverityRank int16) ([]port.GateCandidate, error) {
+func (r *pgFindingPort) ListIntroducedGateCandidates(ctx context.Context, projectID, reportID string, minSeverityRank int16) ([]port.GateCandidate, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return nil, err
+	}
 	rid, err := parseID(reportID)
 	if err != nil {
 		return nil, err
 	}
-	rows, err := r.inner.ListIntroducedGateCandidates(ctx, rid, minSeverityRank)
+	rows, err := r.inner.ListIntroducedGateCandidates(ctx, pid, rid, minSeverityRank)
 	if err != nil {
 		return nil, err
 	}
