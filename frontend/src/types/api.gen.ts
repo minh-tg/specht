@@ -1613,7 +1613,7 @@ export interface paths {
     put?: never;
     /**
      * Link a team to a project
-     * @description Confers the team's membership as project access for as long as the link lasts.
+     * @description Confers the team's membership as project access for as long as the link lasts. Linking at manager or admin needs a direct project role at or above the linked role; a caller whose rank comes only from a team link may link at member level.
      */
     post: operations["linkProjectTeam"];
     delete?: never;
@@ -1651,7 +1651,7 @@ export interface paths {
     put?: never;
     /**
      * Grant a user access
-     * @description Re-granting an existing member updates their role. A malformed `user_id` is `400 invalid_id`, a role outside the project vocabulary is `400 invalid_role`, demoting the only project admin is `400 last_admin`, and a user that does not exist is `404 user_not_found`.
+     * @description Re-granting an existing member updates their role. A malformed `user_id` is `400 invalid_id`, a role outside the project vocabulary is `400 invalid_role`, demoting the only project admin is `400 last_admin`, and a user that does not exist is `404 user_not_found`. Granting manager or admin needs a direct project role at or above the role granted: a rank that comes only from a team link is `403` for those roles, because the grant would outlive the link. Granting member follows the caller's effective role.
      */
     post: operations["addProjectMember"];
     delete?: never;
@@ -1717,7 +1717,7 @@ export interface paths {
     put?: never;
     /**
      * Create an invite link
-     * @description Returns the link once, with `Cache-Control: no-store`. Only a hash of the token is stored. The invited role is `member` or `manager` and cannot exceed the caller's own project role, the same ceiling as adding a member directly. `expires_in_days` is 1 to 30 and defaults to 7. With `email` set, only that address can accept. A project holds at most 100 open links (`409 too_many_invites`). Needs the project manager role or above. No email is sent: pass the link on yourself.
+     * @description Returns the link once, with `Cache-Control: no-store`. Only a hash of the token is stored. The invited role is `member` or `manager` and cannot exceed the caller's own project role, the same ceiling as adding a member directly. A `manager` invite needs a direct project role of manager or above; a caller whose rank comes only from a team link may invite at member level. `expires_in_days` is 1 to 30 and defaults to 7. With `email` set, only that address can accept. A project holds at most 100 open links (`409 too_many_invites`). Needs the project manager role or above. No email is sent: pass the link on yourself.
      */
     post: operations["createInvite"];
     delete?: never;

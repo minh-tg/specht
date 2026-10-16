@@ -32,6 +32,16 @@ func TestLinkProjectTeam_DelegationCeilingAndPeerProtection(t *testing.T) {
 		return "", port.ErrNotFound
 	}
 
+	pr.getMemberFn = func(ctx context.Context, projectID, userID string) (port.ProjectMember, error) {
+		switch userID {
+		case "mgr-1":
+			return port.ProjectMember{ProjectID: projectID, UserID: userID, Role: auth.RoleManager}, nil
+		case "admin-1":
+			return port.ProjectMember{ProjectID: projectID, UserID: userID, Role: auth.RoleAdmin}, nil
+		}
+		return port.ProjectMember{}, port.ErrNotFound
+	}
+
 	tr.linkFn = func(ctx context.Context, projectID, teamID, role string) (port.ProjectTeam, error) {
 		return port.ProjectTeam{ProjectID: projectID, TeamID: teamID, Role: role}, nil
 	}
@@ -116,6 +126,9 @@ func TestLinkProjectTeam_ExistingLinkPeerProtection(t *testing.T) {
 			pr.effectiveRoleFn = func(ctx context.Context, projectID, userID string) (string, error) {
 				return tc.caller, nil
 			}
+			pr.getMemberFn = func(ctx context.Context, projectID, userID string) (port.ProjectMember, error) {
+				return port.ProjectMember{ProjectID: projectID, UserID: userID, Role: tc.caller}, nil
+			}
 			tr.getByIDFn = func(ctx context.Context, id string) (port.Team, error) {
 				return port.Team{ID: id, Name: "team-" + id}, nil
 			}
@@ -142,4 +155,29 @@ func TestLinkProjectTeam_ExistingLinkPeerProtection(t *testing.T) {
 			assert.True(t, written)
 		})
 	}
+}
+
+// A team link cannot vouch for a link written on its strength: a caller with no
+// direct row may link a team at member level only.
+func TestLinkProjectTeam_TeamOnlyCallerIsCappedAtMember(t *testing.T) {
+	uc, pr, tr, _ := teamHarness()
+	pr.getBySlugFn = func(context.Context, string) (port.Project, error) { return rbacTestProject(), nil }
+	pr.effectiveRoleFn = func(context.Context, string, string) (string, error) { return auth.RoleAdmin, nil }
+	tr.getByIDFn = func(_ context.Context, id string) (port.Team, error) { return port.Team{ID: id, Name: "t"}, nil }
+	tr.listLinksFn = func(context.Context, string) ([]port.ProjectTeam, error) { return nil, nil }
+	written := 0
+	tr.linkFn = func(_ context.Context, projectID, teamID, role string) (port.ProjectTeam, error) {
+		written++
+		return port.ProjectTeam{ProjectID: projectID, TeamID: teamID, Role: role}, nil
+	}
+	ctx := projectRoleCtx("caller-1", auth.RoleViewer)
+	const team = "11111111-1111-1111-1111-111111111111"
+
+	for _, role := range []string{auth.RoleAdmin, auth.RoleManager} {
+		_, err := uc.LinkProjectTeam(ctx, "rbac-test", team, role)
+		assert.ErrorIs(t, err, ErrProjectAccessDenied, role)
+	}
+	assert.Zero(t, written)
+	_, err := uc.LinkProjectTeam(ctx, "rbac-test", team, auth.RoleMember)
+	require.NoError(t, err)
 }

@@ -244,6 +244,9 @@ func (u *Usecases) addProjectMember(ctx context.Context, projectSlug, role strin
 	if auth.RoleRank(callerRole) < auth.RoleRank(auth.RoleManager) || auth.RoleRank(role) > auth.RoleRank(callerRole) {
 		return nil, ErrProjectAccessDenied
 	}
+	if err := u.requireDirectGrantCeiling(ctx, p.ID, role); err != nil {
+		return nil, err
+	}
 
 	userID, err := resolveUser(ctx)
 	if err != nil {

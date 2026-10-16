@@ -319,6 +319,9 @@ func (u *Usecases) LinkProjectTeam(ctx context.Context, projectSlug, teamID, rol
 	if auth.RoleRank(role) > auth.RoleRank(callerRole) {
 		return nil, ErrProjectAccessDenied
 	}
+	if err := u.requireDirectGrantCeiling(ctx, project.ID, role); err != nil {
+		return nil, err
+	}
 	if err := u.checkExistingLinkPermission(ctx, project.ID, teamID, callerRole); err != nil {
 		return nil, err
 	}

@@ -139,3 +139,102 @@ func TestMembershipIntegrity_DeactivatedAdminDoesNotCount(t *testing.T) {
 	status, raw = doJSON(t, http.MethodPost, "/api/v1/users/"+a.ID+"/deactivate", adminToken, map[string]bool{"force": true})
 	require.Equalf(t, http.StatusOK, status, "%s", raw)
 }
+
+// A caller whose rank on a project comes only from a team link cannot write
+// direct rows at manager level or above, so a team admin cannot turn a link
+// into a lasting grant or reach past the delegation ceiling on the team roster.
+func TestMembershipIntegrity_TeamOnlyCallerCannotWriteElevatedRows(t *testing.T) {
+	x := newProject(t, "mi-byp")
+	ta := miNewPerson(t, "byp-ta")
+	outsider := miNewPerson(t, "byp-out")
+	other := miNewPerson(t, "byp-other")
+	tm := miTeam(t, "byp")
+	otherTeam := miTeam(t, "byp-other")
+	require.Equal(t, http.StatusCreated, miTeamAdd(t, adminToken, tm, ta.ID, "admin"))
+	require.Equal(t, http.StatusCreated, miLink(t, adminToken, x, tm, "admin"))
+	require.Equal(t, "admin", miRole(t, x, ta.Token))
+	require.Equal(t, "", miDirectRole(t, x, ta.ID))
+	require.Equal(t, http.StatusForbidden, miTeamAdd(t, ta.Token, tm, outsider.ID, "member"), "the team roster ceiling holds")
+
+	// The two-request bypass: writing a direct admin or manager row for self.
+	for _, role := range []string{"admin", "manager"} {
+		status, code := miAddMember(t, ta.Token, x, ta.ID, role)
+		require.Equalf(t, http.StatusForbidden, status, "self as %s (code %s)", role, code)
+		status, code = miAddMember(t, ta.Token, x, other.ID, role)
+		require.Equalf(t, http.StatusForbidden, status, "another person as %s (code %s)", role, code)
+	}
+	require.Equal(t, "", miDirectRole(t, x, ta.ID))
+	require.Equal(t, http.StatusForbidden, miTeamAdd(t, ta.Token, tm, outsider.ID, "member"), "still refused")
+	require.Equal(t, "", miRole(t, x, outsider.Token))
+
+	// Linking another team at manager or above is the same write by other means.
+	require.Equal(t, http.StatusForbidden, miLink(t, ta.Token, x, otherTeam, "manager"))
+	require.Equal(t, http.StatusForbidden, miLink(t, ta.Token, x, otherTeam, "admin"))
+	// So is an invite at manager.
+	status, _ := doJSON(t, http.MethodPost, "/api/v1/projects/"+x+"/invites", ta.Token, map[string]any{"role": "manager"})
+	require.Equal(t, http.StatusForbidden, status)
+
+	// Member-level writes stay open to the effective role.
+	status, code := miAddMember(t, ta.Token, x, other.ID, "member")
+	require.Equalf(t, http.StatusCreated, status, "code %s", code)
+	require.Equal(t, http.StatusCreated, miLink(t, ta.Token, x, otherTeam, "member"))
+	status, _ = doJSON(t, http.MethodPost, "/api/v1/projects/"+x+"/invites", ta.Token, map[string]any{"role": "member"})
+	require.Equal(t, http.StatusCreated, status)
+}
+
+// A direct manager or admin keeps the rules they had: the direct row is the
+// ceiling, whatever the team links add on top.
+func TestMembershipIntegrity_DirectRoleStillDelegates(t *testing.T) {
+	x := newProject(t, "mi-direct")
+	mgr := miNewPerson(t, "direct-mgr")
+	adm := miNewPerson(t, "direct-adm")
+	a := miNewPerson(t, "direct-a")
+	b := miNewPerson(t, "direct-b")
+	for _, g := range []struct{ id, role string }{{mgr.ID, "manager"}, {adm.ID, "admin"}} {
+		status, _ := miAddMember(t, adminToken, x, g.id, g.role)
+		require.Equal(t, http.StatusCreated, status)
+	}
+	// A team link at admin lifts the manager's effective role, not the ceiling.
+	tm := miTeam(t, "direct")
+	require.Equal(t, http.StatusCreated, miTeamAdd(t, adminToken, tm, mgr.ID, "member"))
+	require.Equal(t, http.StatusCreated, miLink(t, adminToken, x, tm, "admin"))
+	require.Equal(t, "admin", miRole(t, x, mgr.Token))
+
+	status, _ := miAddMember(t, mgr.Token, x, a.ID, "manager")
+	require.Equal(t, http.StatusCreated, status, "a direct manager adds a manager")
+	status, _ = miAddMember(t, mgr.Token, x, b.ID, "admin")
+	require.Equal(t, http.StatusForbidden, status, "the link does not lift a direct manager to admin writes")
+
+	status, _ = miAddMember(t, adm.Token, x, b.ID, "admin")
+	require.Equal(t, http.StatusCreated, status, "a direct admin adds an admin")
+	status, _ = doJSON(t, http.MethodPost, "/api/v1/projects/"+x+"/invites", adm.Token, map[string]any{"role": "manager"})
+	require.Equal(t, http.StatusCreated, status)
+	other := miTeam(t, "direct-other")
+	require.Equal(t, http.StatusCreated, miLink(t, adm.Token, x, other, "manager"))
+}
+
+// Unlinking a team or removing a person from it ends the access it conferred,
+// and nothing along the way leaves a direct row behind.
+func TestMembershipIntegrity_UnlinkEndsTeamAccessWithoutALeftover(t *testing.T) {
+	x := newProject(t, "mi-unlink")
+	ta := miNewPerson(t, "unlink-ta")
+	tm := miTeam(t, "unlink")
+	require.Equal(t, http.StatusCreated, miTeamAdd(t, adminToken, tm, ta.ID, "admin"))
+	require.Equal(t, http.StatusCreated, miLink(t, adminToken, x, tm, "admin"))
+
+	status, _ := miAddMember(t, ta.Token, x, ta.ID, "admin")
+	require.Equal(t, http.StatusForbidden, status)
+	require.Equal(t, "", miDirectRole(t, x, ta.ID))
+
+	status, _ = doJSON(t, http.MethodDelete, "/api/v1/projects/"+x+"/teams/"+tm, adminToken, nil)
+	require.Equal(t, http.StatusNoContent, status)
+	require.Equal(t, "", miRole(t, x, ta.Token), "unlinking ends access")
+	require.Equal(t, "", miDirectRole(t, x, ta.ID))
+
+	require.Equal(t, http.StatusCreated, miLink(t, adminToken, x, tm, "manager"))
+	require.Equal(t, "manager", miRole(t, x, ta.Token))
+	status, _ = doJSON(t, http.MethodDelete, "/api/v1/teams/"+tm+"/members/"+ta.ID, adminToken, nil)
+	require.Equal(t, http.StatusNoContent, status)
+	require.Equal(t, "", miRole(t, x, ta.Token), "leaving the team ends access")
+	require.Equal(t, "", miDirectRole(t, x, ta.ID))
+}
