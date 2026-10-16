@@ -560,7 +560,16 @@ func (u *Usecases) RevokeAPIKey(ctx context.Context, projectSlug, keyID string) 
 	return nil
 }
 
+// ErrRefreshReused is returned when a refresh token that was rotated less than
+// refreshReuseGrace ago is presented again. It is the signature of two requests
+// racing with one token, so the session is left alone. Handlers map it to a
+// 401 with its own code.
+var ErrRefreshReused = errors.New("refresh token was just rotated")
+
 const (
+	// refreshReuseGrace is how long after rotation a replay of the old token
+	// counts as a benign race. A replay after it is treated as theft.
+	refreshReuseGrace = 10 * time.Second
 	// refreshTokenTTL is how long one refresh token stays valid. Rotation
 	// renews it, up to the session's absolute lifetime.
 	refreshTokenTTL = 7 * 24 * time.Hour
@@ -636,17 +645,17 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 		return nil, fmt.Errorf("invalid refresh token")
 	}
 
+	now := u.clock()
 	if stored.RevokedAt != nil {
-		// M3: presenting an already-revoked token is reuse of a rotated
-		// token. The family of tokens issued to this user may have been
-		// stolen, so revoke the whole family before failing.
-		if err := u.deps.Stores.RefreshTokens.RevokeAllForUser(ctx, stored.UserID); err != nil {
-			slog.Error("refresh: revoke family after reuse", "user_id", stored.UserID, "error", err)
+		// A token revoked a moment ago is the loser of a race, such as two
+		// tabs refreshing together: the winner already holds the new token,
+		// so answer without punishing the session.
+		if now.Sub(*stored.RevokedAt) < refreshReuseGrace {
+			return nil, ErrRefreshReused
 		}
-		return nil, fmt.Errorf("refresh token has been revoked")
+		return nil, u.revokeFamilyAfterReuse(ctx, stored)
 	}
 
-	now := u.clock()
 	if stored.ExpiresAt.Before(now) {
 		return nil, fmt.Errorf("refresh token has expired")
 	}
@@ -664,12 +673,9 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 	if _, err := u.deps.Stores.RefreshTokens.Revoke(ctx, stored.ID); err != nil {
 		if errors.Is(err, port.ErrNotFound) {
 			// M3: another request rotated this token between our read and
-			// our revoke. Reuse of a rotated token means the family may be
-			// compromised: revoke every token issued to this user.
-			if err := u.deps.Stores.RefreshTokens.RevokeAllForUser(ctx, stored.UserID); err != nil {
-				slog.Error("refresh: revoke family after concurrent reuse", "user_id", stored.UserID, "error", err)
-			}
-			return nil, fmt.Errorf("refresh token has been revoked")
+			// our revoke. That happened moments ago, so it is the benign
+			// race, not theft.
+			return nil, ErrRefreshReused
 		}
 		return nil, fmt.Errorf("revoke old token: %w", err)
 	}
@@ -694,6 +700,16 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 	}
 	resp.Token = token
 	return resp, nil
+}
+
+// revokeFamilyAfterReuse handles a rotated token presented after the grace
+// window. Whoever holds it may have stolen it, so the sign-in chain it belongs
+// to is revoked. The user's other sign-ins are separate chains and stay.
+func (u *Usecases) revokeFamilyAfterReuse(ctx context.Context, stored port.RefreshToken) error {
+	if err := u.deps.Stores.RefreshTokens.RevokeFamily(ctx, stored.FamilyID); err != nil {
+		slog.Error("refresh: revoke family after reuse", "user_id", stored.UserID, "family_id", stored.FamilyID, "error", err)
+	}
+	return fmt.Errorf("refresh token has been revoked")
 }
 
 func (u *Usecases) Logout(ctx context.Context, refreshToken string) error {

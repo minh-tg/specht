@@ -176,3 +176,41 @@ func TestRefreshTokenStore_FamilyColumnsRoundTrip(t *testing.T) {
 	assert.Equal(t, familyID, got.FamilyID)
 	assert.True(t, started.Equal(got.FamilyStartedAt), "want %s, got %s", started, got.FamilyStartedAt)
 }
+
+// TestRefreshTokenStore_RevokeFamilyLeavesOtherSignInsAlone pins the SQL scope
+// of reuse handling: only the rows of one family are revoked, not the user's
+// other sign-ins and not another user's.
+func TestRefreshTokenStore_RevokeFamilyLeavesOtherSignInsAlone(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(pool)
+
+	name, hash := "Ada", "hash"
+	user, err := stores.Users.Create(ctx, "revoke-family@example.test", &name, &hash)
+	require.NoError(t, err)
+
+	laptop, phone := uuid.NewString(), uuid.NewString()
+	create := func(tokenHash, family string) port.RefreshToken {
+		row, err := stores.RefreshTokens.Create(ctx, port.NewRefreshToken{
+			UserID: user.ID, TokenHash: tokenHash, ExpiresAt: time.Now().Add(time.Hour),
+			FamilyID: family, FamilyStartedAt: time.Now(),
+		})
+		require.NoError(t, err)
+		return row
+	}
+	laptopOld, laptopNew, phoneRow := create("laptop-old", laptop), create("laptop-new", laptop), create("phone", phone)
+	_, err = stores.RefreshTokens.Revoke(ctx, laptopOld.ID)
+	require.NoError(t, err)
+
+	require.NoError(t, stores.RefreshTokens.RevokeFamily(ctx, laptop))
+
+	revoked := func(hash string) bool {
+		row, err := stores.RefreshTokens.GetByHash(ctx, hash)
+		require.NoError(t, err)
+		return row.RevokedAt != nil
+	}
+	assert.True(t, revoked(laptopNew.TokenHash), "the live token of the family is revoked")
+	assert.True(t, revoked(laptopOld.TokenHash))
+	assert.False(t, revoked(phoneRow.TokenHash), "another sign-in of the same user is untouched")
+}

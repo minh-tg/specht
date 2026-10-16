@@ -2949,6 +2949,22 @@ func TestRefresh_Error(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
+func TestRefresh_ReusedTokenHasItsOwnCode(t *testing.T) {
+	mock := &mockUsecases{
+		refreshFn: func(ctx context.Context, refreshToken string) (*usecase.AuthResponse, error) {
+			return nil, fmt.Errorf("lost the race: %w", usecase.ErrRefreshReused)
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("POST", "/api/v1/auth/refresh", strings.NewReader(`{"refresh_token":"old"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Contains(t, w.Body.String(), `"refresh_reused"`)
+}
+
 // ----- SSO Exchange Handler Tests -----
 
 func TestSSOExchange_Success(t *testing.T) {

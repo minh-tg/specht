@@ -3980,20 +3980,20 @@ export interface operations {
         };
       };
       400: components["responses"]["BadRequest"];
-      /** @description Invalid, expired, revoked, or replayed refresh token. */
+      /**
+       * @description Invalid, expired, or revoked refresh token, or one past the
+       *     session's absolute lifetime (`refresh_failed`). A token that was
+       *     rotated less than 10 seconds ago answers `refresh_reused` and
+       *     leaves the session alive: another request already holds the new
+       *     token. Presenting a rotated token after that window revokes the
+       *     sign-in it belongs to (not the user's other devices) and answers
+       *     `refresh_failed`.
+       */
       401: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          /**
-           * @example {
-           *       "error": {
-           *         "code": "refresh_failed",
-           *         "message": "invalid refresh token"
-           *       }
-           *     }
-           */
           "application/json": components["schemas"]["Error"];
         };
       };

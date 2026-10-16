@@ -6,7 +6,9 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,5 +63,84 @@ func TestE2E_RefreshStopsAtTheAbsoluteSessionLifetime(t *testing.T) {
 		status, raw := doJSON(t, http.MethodPost, "/api/v1/auth/refresh", "", map[string]string{"refresh_token": s.RefreshToken})
 		require.Equal(t, http.StatusUnauthorized, status, string(raw))
 		require.Equal(t, "refresh_failed", errorCode(t, raw))
+	})
+}
+
+// TestE2E_RefreshReuse covers theft detection against the real server: a
+// concurrent double refresh keeps the winner's session, and a replay after the
+// grace window revokes that sign-in only.
+func TestE2E_RefreshReuse(t *testing.T) {
+	conn := refreshConn(t)
+	ctx := context.Background()
+	refresh := func(raw string) (int, []byte) {
+		return doJSON(t, http.MethodPost, "/api/v1/auth/refresh", "", map[string]string{"refresh_token": raw})
+	}
+
+	// The anonymous auth routes share a per-address bucket of 10 requests a
+	// second (burst 20) whatever RATE_LIMIT_* says, so let it fill first.
+	time.Sleep(2500 * time.Millisecond)
+
+	t.Run("a concurrent double refresh keeps the winner's session", func(t *testing.T) {
+		s := registerPerson(t, "reuse-race")
+		const n = 4
+		var mu sync.Mutex
+		var winner string
+		var wg sync.WaitGroup
+		codes := make([]int, n)
+		for i := 0; i < n; i++ {
+			wg.Add(1)
+			go func(i int) {
+				defer wg.Done()
+				status, raw := refresh(s.RefreshToken)
+				codes[i] = status
+				if status == http.StatusOK {
+					var out authResponse
+					require.NoError(t, json.Unmarshal(raw, &out))
+					mu.Lock()
+					winner = out.RefreshToken
+					mu.Unlock()
+				} else {
+					require.Equal(t, "refresh_reused", errorCode(t, raw), "a loser must not look like a revoked token")
+				}
+			}(i)
+		}
+		wg.Wait()
+		wins := 0
+		for _, c := range codes {
+			if c == http.StatusOK {
+				wins++
+			}
+		}
+		require.Equal(t, 1, wins, "exactly one refresh wins: %v", codes)
+
+		status, raw := refresh(winner)
+		require.Equal(t, http.StatusOK, status, "the winner keeps its session: %s", raw)
+	})
+
+	t.Run("a replay after the grace window revokes that sign-in only", func(t *testing.T) {
+		time.Sleep(time.Second)
+		email := "reuse-family-" + randomHex(4) + "@example.com"
+		request[authResponse](t, http.MethodPost, "/api/v1/auth/register", "",
+			map[string]string{"email": email, "password": adminPass}, http.StatusCreated)
+		signIn := func() authResponse {
+			return request[authResponse](t, http.MethodPost, "/api/v1/auth/login", "",
+				map[string]string{"email": email, "password": adminPass}, http.StatusOK)
+		}
+		laptop, phone := signIn(), signIn()
+		rotated := request[authResponse](t, http.MethodPost, "/api/v1/auth/refresh", "",
+			map[string]string{"refresh_token": laptop.RefreshToken}, http.StatusOK)
+
+		_, err := conn.Exec(ctx, "UPDATE refresh_tokens SET revoked_at = now() - interval '1 minute' WHERE token_hash = $1",
+			tokenHashOf(laptop.RefreshToken))
+		require.NoError(t, err)
+
+		status, raw := refresh(laptop.RefreshToken)
+		require.Equal(t, http.StatusUnauthorized, status)
+		require.Equal(t, "refresh_failed", errorCode(t, raw))
+
+		status, _ = refresh(rotated.RefreshToken)
+		require.Equal(t, http.StatusUnauthorized, status, "the laptop's chain is revoked")
+		status, raw = refresh(phone.RefreshToken)
+		require.Equal(t, http.StatusOK, status, "the phone's sign-in is a separate family and survives: %s", raw)
 	})
 }

@@ -115,6 +115,12 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		// The refresh-token failure mode (invalid, revoked, expired, or an
 		// internal store error) is deliberately indistinguishable to clients:
 		// the only actionable response is to re-authenticate. Detail is logged.
+		if errors.Is(err, usecase.ErrRefreshReused) {
+			// The token was rotated moments ago by another request. The
+			// session is intact; the client should use the newer token.
+			respondError(w, http.StatusUnauthorized, "refresh_reused", "refresh token was already used")
+			return
+		}
 		slog.Error("refresh", "error", err)
 		respondError(w, http.StatusUnauthorized, "refresh_failed", "invalid or expired refresh token")
 		return

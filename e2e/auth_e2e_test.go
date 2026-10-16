@@ -68,11 +68,14 @@ func TestE2E_AuthBootstrapAndSessionLifecycle(t *testing.T) {
 		require.NotEmpty(t, rotated.Token)
 		require.NotEqual(t, first.RefreshToken, rotated.RefreshToken, "refresh must rotate")
 
-		// Replaying the consumed token revokes the whole family (M3).
+		// Replaying the consumed token at once is a race between two
+		// requests, not theft: refused, but the new session stays alive.
 		status, raw := doJSON(t, http.MethodPost, "/api/v1/auth/refresh", "",
 			map[string]string{"refresh_token": first.RefreshToken})
 		require.Equal(t, http.StatusUnauthorized, status)
-		require.Contains(t, string(raw), "refresh_failed")
+		require.Contains(t, string(raw), "refresh_reused")
+		request[authResponse](t, http.MethodPost, "/api/v1/auth/refresh", "",
+			map[string]string{"refresh_token": rotated.RefreshToken}, http.StatusOK)
 
 		fresh := request[authResponse](t, http.MethodPost, "/api/v1/auth/login", "",
 			map[string]string{"email": adminEmail, "password": adminPass}, http.StatusOK)
@@ -83,6 +86,9 @@ func TestE2E_AuthBootstrapAndSessionLifecycle(t *testing.T) {
 		status, raw = doJSON(t, http.MethodPost, "/api/v1/auth/refresh", "",
 			map[string]string{"refresh_token": fresh.RefreshToken})
 		require.Equal(t, http.StatusUnauthorized, status)
-		require.Contains(t, string(raw), "refresh_failed")
+		// Logout revokes the row just now, which the server cannot tell
+		// from a rotation, so inside the grace window it answers
+		// refresh_reused. Either way the token is dead.
+		require.Contains(t, string(raw), "refresh_")
 	})
 }

@@ -384,6 +384,14 @@ func (r *pgRefreshTokenPort) RevokeAllForUser(ctx context.Context, userID string
 	return r.q.RevokeUserRefreshTokens(ctx, uid)
 }
 
+func (r *pgRefreshTokenPort) RevokeFamily(ctx context.Context, familyID string) error {
+	fid, err := parseID(familyID)
+	if err != nil {
+		return err
+	}
+	return r.q.RevokeRefreshTokenFamily(ctx, fid)
+}
+
 func refreshTokenToPort(t sqlc.RefreshToken) port.RefreshToken {
 	return port.RefreshToken{
 		ID:        toUUID(t.ID),
