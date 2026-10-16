@@ -33,11 +33,11 @@ func newRecoveryHarness(user port.User) *recoveryHarness {
 		}
 		return user, nil
 	}
-	h.users.changePasswordFn = func(ctx context.Context, userID, hash, verifiedHash string) error {
+	h.users.changePasswordFn = func(ctx context.Context, userID, hash, verifiedHash string) (int32, error) {
 		h.stored = hash
 		h.revoked = append(h.revoked, userID)
 		h.verified = append(h.verified, verifiedHash)
-		return nil
+		return 1, nil
 	}
 	h.users.changeRoleFn = func(ctx context.Context, userID, role string) (port.User, error) {
 		h.promoted = append(h.promoted, userID+":"+role)
@@ -114,7 +114,9 @@ func TestResetPasswordByEmail_FollowsThePasswordRules(t *testing.T) {
 
 func TestResetPasswordByEmail_FailsClosedWhenTheChangeCannotCommit(t *testing.T) {
 	h := newRecoveryHarness(recoveryUser("ada@acme.example", "member"))
-	h.users.changePasswordFn = func(ctx context.Context, userID, hash, verifiedHash string) error { return errors.New("db down") }
+	h.users.changePasswordFn = func(ctx context.Context, userID, hash, verifiedHash string) (int32, error) {
+		return 0, errors.New("db down")
+	}
 
 	_, err := h.uc.ResetPasswordByEmail(context.Background(), "ada@acme.example", "a-recovered-password")
 	require.Error(t, err)

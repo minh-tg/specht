@@ -295,12 +295,13 @@ func (r *pgUserPort) SetPassword(ctx context.Context, userID, passwordHash strin
 	})
 }
 
-func (r *pgUserPort) ChangePasswordAndRevoke(ctx context.Context, userID, passwordHash, verifiedHash string) error {
+func (r *pgUserPort) ChangePasswordAndRevoke(ctx context.Context, userID, passwordHash, verifiedHash string) (int32, error) {
 	uid, err := parseID(userID)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return r.withTx(ctx, func(q *sqlc.Queries) error {
+	var version int32
+	err = r.withTx(ctx, func(q *sqlc.Queries) error {
 		// The row lock comes first, the order the SSO link and the reset
 		// redeem use. It conflicts with the share lock a password login holds
 		// until its session commits, so the revoke below sees that session. The
@@ -322,11 +323,19 @@ func (r *pgUserPort) ChangePasswordAndRevoke(ctx context.Context, userID, passwo
 		if err := q.RevokePendingPasswordResets(ctx, uid); err != nil {
 			return err
 		}
-		return q.SetUserPassword(ctx, sqlc.SetUserPasswordParams{
+		if err := q.SetUserPassword(ctx, sqlc.SetUserPasswordParams{
 			ID:           uid,
 			PasswordHash: pgtype.Text{String: passwordHash, Valid: true},
-		})
+		}); err != nil {
+			return err
+		}
+		version, err = q.GetUserTokenVersion(ctx, uid)
+		return err
 	})
+	if err != nil {
+		return 0, err
+	}
+	return version, nil
 }
 
 func (r *pgUserPort) TokenVersion(ctx context.Context, userID string) (int32, error) {

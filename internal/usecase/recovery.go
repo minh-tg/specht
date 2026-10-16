@@ -54,7 +54,7 @@ func (u *Usecases) ResetPasswordByEmail(ctx context.Context, email, password str
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
-	if err := u.deps.Stores.Users.ChangePasswordAndRevoke(ctx, user.ID, hash, ""); err != nil {
+	if _, err := u.deps.Stores.Users.ChangePasswordAndRevoke(ctx, user.ID, hash, ""); err != nil {
 		return nil, fmt.Errorf("change password: %w", err)
 	}
 	profile := toUserProfile(user)

@@ -530,3 +530,8 @@ releases.
   two kept a refresh token that the new password never ended. A password change also
   refuses to write if the account was linked to SSO (which clears its password) after the
   current password was checked, instead of giving the account a password again.
+- A password change now stores the caller's own new session against the hash and token
+  generation the change wrote, the way a password sign-in stores its session. An SSO link
+  that committed right after the change used to leave that session alive under a
+  generation the link never expected. The change now answers 409 `account_changed`, issues
+  no session, and the caller signs in again.
