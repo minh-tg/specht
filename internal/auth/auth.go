@@ -127,6 +127,11 @@ type Identity struct {
 	// principals only. It names one key without exposing it, so per-key
 	// limits can tell two keys of the same creator apart.
 	KeyHash string
+	// TokenVersion is the token generation the access token carried (the tv
+	// claim). It is nil for API-key principals and for tokens without the
+	// claim. A write that must not outlive a credential reset compares it with
+	// the account's current generation under a row lock.
+	TokenVersion *int32
 	// Groups carries IdP group membership for SSO principals:
 	// enterprise role mapping consumes it at provisioning time. Empty
 	// for password and API-key principals.

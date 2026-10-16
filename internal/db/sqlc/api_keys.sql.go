@@ -178,7 +178,7 @@ func (q *Queries) ListAPIKeysByProject(ctx context.Context, projectID pgtype.UUI
 }
 
 const lockKeyCreator = `-- name: LockKeyCreator :one
-SELECT id FROM users WHERE id = $1 AND disabled_at IS NULL FOR SHARE
+SELECT token_version FROM users WHERE id = $1 AND disabled_at IS NULL FOR SHARE
 `
 
 // Takes a share lock on an active account for the rest of the transaction. A
@@ -187,12 +187,15 @@ SELECT id FROM users WHERE id = $1 AND disabled_at IS NULL FOR SHARE
 // either refused (the account is already deactivated) or in place before the
 // deactivation revokes the account's keys. A foreign key check alone does not
 // conflict with that update, so it cannot do this. No row means the account is
-// deactivated or does not exist.
-func (q *Queries) LockKeyCreator(ctx context.Context, id pgtype.UUID) (pgtype.UUID, error) {
+// deactivated or does not exist. The row carries the account's token generation.
+// An SSO link and a deactivation both start a new one, so a request that
+// authenticated before either committed compares it with the generation it
+// authenticated with.
+func (q *Queries) LockKeyCreator(ctx context.Context, id pgtype.UUID) (int32, error) {
 	row := q.db.QueryRow(ctx, lockKeyCreator, id)
-	var id_2 pgtype.UUID
-	err := row.Scan(&id_2)
-	return id_2, err
+	var token_version int32
+	err := row.Scan(&token_version)
+	return token_version, err
 }
 
 const revokeAPIKey = `-- name: RevokeAPIKey :one

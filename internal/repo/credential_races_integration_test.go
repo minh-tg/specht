@@ -250,3 +250,64 @@ func TestLoginAfterAGenerationBumpGetsNoSession(t *testing.T) {
 	require.ErrorIs(t, err, port.ErrLoginStale)
 	assert.Zero(t, liveRefreshTokens(t, repos, user.ID))
 }
+
+// A key insert that passed authentication before the SSO link committed. The
+// creator stays active, so LockKeyCreator lets it through after the link.
+func TestKeyInsertDuringAnOpenSSOLinkLeavesNoLiveKey(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(repos.pool)
+	newUser(t, repos, "race-admin@test.com", "admin")
+	squat := newUser(t, repos, "race-key-link@test.com", "member")
+	project := createTestProject(t, repos)
+	tx := openSSOLinkTx(t, repos, squat.ID)
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	done := make(chan error, 1)
+	go func() {
+		// The request authenticated with the generation from before the link.
+		in := newKeyInput(toUUID(project.ID), squat.ID, "race-hash-link")
+		in.CreatorTokenVersion = &squat.TokenVersion
+		_, err := stores.APIKeys.Create(ctx, in)
+		done <- err
+	}()
+	mustBlock(t, done, "the key insert")
+	require.NoError(t, tx.Commit(ctx))
+	require.ErrorIs(t, <-done, port.ErrCreatorInactive)
+
+	var live int
+	require.NoError(t, repos.pool.QueryRow(ctx,
+		"SELECT count(*) FROM api_keys WHERE created_by = $1 AND revoked_at IS NULL", squat.ID).Scan(&live))
+	assert.Zero(t, live, "a key the squatter requested before the link is live on the linked account")
+}
+
+// The key insert compares the creator's generation with the one the request
+// authenticated with: a different generation is refused, a matching one or none
+// is stored.
+func TestKeyInsertComparesTheCreatorGeneration(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(repos.pool)
+	newUser(t, repos, "race-key-gen-admin@test.com", "admin")
+	creator := newUser(t, repos, "race-key-gen@test.com", "member")
+	project := createTestProject(t, repos)
+	require.NoError(t, stores.Users.BumpTokenVersion(ctx, creator.ID))
+
+	stale := creator.TokenVersion
+	in := newKeyInput(toUUID(project.ID), creator.ID, "race-hash-stale")
+	in.CreatorTokenVersion = &stale
+	_, err := stores.APIKeys.Create(ctx, in)
+	require.ErrorIs(t, err, port.ErrCreatorInactive)
+	assert.Zero(t, keyCount(t, repos, "race-hash-stale"))
+
+	current := creator.TokenVersion + 1
+	in = newKeyInput(toUUID(project.ID), creator.ID, "race-hash-current")
+	in.CreatorTokenVersion = &current
+	_, err = stores.APIKeys.Create(ctx, in)
+	require.NoError(t, err)
+
+	_, err = stores.APIKeys.Create(ctx, newKeyInput(toUUID(project.ID), creator.ID, "race-hash-none"))
+	require.NoError(t, err)
+}

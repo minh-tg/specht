@@ -462,7 +462,9 @@ type pgAPIKeyPort struct {
 // until the insert commits, so a deactivation of the creator either finishes
 // before (the key is refused) or waits and then revokes this key with the rest.
 // Without the lock a key could commit after the deactivation's revocation and
-// come back to life when the account is reactivated.
+// come back to life when the account is reactivated. An SSO link revokes the
+// account's keys without deactivating it, so the lock also compares the
+// creator's token generation with the one the request authenticated with.
 func (r *pgAPIKeyPort) Create(ctx context.Context, input port.CreateAPIKeyInput) (port.APIKey, error) {
 	pid, err := parseID(input.ProjectID)
 	if err != nil {
@@ -481,10 +483,14 @@ func (r *pgAPIKeyPort) Create(ctx context.Context, input port.CreateAPIKeyInput)
 	var row sqlc.ApiKey
 	err = r.withTx(ctx, func(q *sqlc.Queries) error {
 		if params.CreatedBy.Valid {
-			if _, err := q.LockKeyCreator(ctx, params.CreatedBy); errors.Is(err, pgx.ErrNoRows) {
+			version, err := q.LockKeyCreator(ctx, params.CreatedBy)
+			if errors.Is(err, pgx.ErrNoRows) {
 				return port.ErrCreatorInactive
 			} else if err != nil {
 				return err
+			}
+			if input.CreatorTokenVersion != nil && *input.CreatorTokenVersion != version {
+				return port.ErrCreatorInactive
 			}
 		}
 		var err error

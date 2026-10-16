@@ -178,5 +178,10 @@ func (a *JWTAuthenticator) Authenticate(ctx context.Context, token string) (*Ide
 	}
 	email, _ := claims["email"].(string)
 	role, _ := claims["role"].(string)
-	return &Identity{UserID: sub, Email: email, Role: role}, nil
+	ident := &Identity{UserID: sub, Email: email, Role: role}
+	if tv, ok := claims["tv"].(float64); ok {
+		version := int32(tv)
+		ident.TokenVersion = &version
+	}
+	return ident, nil
 }
