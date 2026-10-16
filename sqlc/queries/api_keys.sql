@@ -5,8 +5,11 @@
 -- either refused (the account is already deactivated) or in place before the
 -- deactivation revokes the account's keys. A foreign key check alone does not
 -- conflict with that update, so it cannot do this. No row means the account is
--- deactivated or does not exist.
-SELECT id FROM users WHERE id = $1 AND disabled_at IS NULL FOR SHARE;
+-- deactivated or does not exist. The row carries the account's token generation.
+-- An SSO link and a deactivation both start a new one, so a request that
+-- authenticated before either committed compares it with the generation it
+-- authenticated with.
+SELECT token_version FROM users WHERE id = $1 AND disabled_at IS NULL FOR SHARE;
 
 -- name: CreateAPIKey :one
 INSERT INTO api_keys (project_id, name, key_prefix, key_hash, last_four, scopes, created_by, expires_at)

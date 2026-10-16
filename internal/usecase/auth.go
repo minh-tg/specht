@@ -489,12 +489,17 @@ func (u *Usecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdB
 		Scopes:    json.RawMessage(`["ingest","read"]`),
 		CreatedBy: creatorID.String(),
 		ExpiresAt: expiresAt,
+		// The session's token generation, so a key request that
+		// authenticated before an SSO link or a deactivation committed
+		// is refused after it.
+		CreatorTokenVersion: sessionTokenVersion(ctx, creatorID.String()),
 	})
 	if err != nil {
 		if errors.Is(err, port.ErrCreatorInactive) {
-			// The creator was deactivated after authentication. The store
-			// refuses under a row lock that a deactivation also takes, so no
-			// key outlives the account.
+			// The creator was deactivated, or started a new token generation
+			// (an SSO link does), after authentication. The store refuses
+			// under a row lock that both also take, so no key outlives the
+			// credentials it was requested with.
 			return nil, ErrProjectAccessDenied
 		}
 		return nil, fmt.Errorf("store key: %w", err)
@@ -513,6 +518,17 @@ func (u *Usecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdB
 		resp.ExpiresAt = &exp
 	}
 	return resp, nil
+}
+
+// sessionTokenVersion returns the token generation the request's session
+// authenticated with, or nil when the request is not a versioned session of
+// userID.
+func sessionTokenVersion(ctx context.Context, userID string) *int32 {
+	ident := auth.ContextIdentity(ctx)
+	if ident == nil || ident.IsAPIKey || ident.UserID != userID {
+		return nil
+	}
+	return ident.TokenVersion
 }
 
 func (u *Usecases) ListAPIKeys(ctx context.Context, projectSlug string) ([]APIKeyResponse, error) {

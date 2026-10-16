@@ -154,6 +154,21 @@ func TestJWT_Authenticate_RejectsStaleTokenVersion(t *testing.T) {
 	assert.Equal(t, "user-1", ident.UserID)
 }
 
+// The identity carries the generation the token was issued for, so a write can
+// compare it with the account's generation under a lock.
+func TestJWT_Authenticate_IdentityCarriesTheTokenGeneration(t *testing.T) {
+	a, err := NewJWTAuthenticator(jwtBindingTestSecret)
+	require.NoError(t, err)
+	a.WithTokenVersions(stubTokenVersions{version: 7})
+
+	raw, err := a.CreateToken("user-1", "user@example.com", RoleEditor, 7)
+	require.NoError(t, err)
+	ident, err := a.Authenticate(context.Background(), raw)
+	require.NoError(t, err)
+	require.NotNil(t, ident.TokenVersion)
+	assert.Equal(t, int32(7), *ident.TokenVersion)
+}
+
 func TestJWT_Authenticate_FailsClosedWhenTokenVersionLookupFails(t *testing.T) {
 	a, err := NewJWTAuthenticator(jwtBindingTestSecret)
 	require.NoError(t, err)

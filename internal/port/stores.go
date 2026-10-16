@@ -388,14 +388,21 @@ type CreateAPIKeyInput struct {
 	Scopes    json.RawMessage
 	CreatedBy string
 	ExpiresAt *time.Time
+	// CreatorTokenVersion is the token generation the creating session
+	// authenticated with. When set, the store refuses the key if the creator's
+	// current generation differs, which an SSO link, a password change or a
+	// deactivation that committed after authentication causes. Nil skips the
+	// check.
+	CreatorTokenVersion *int32
 }
 
 // APIKeyStore persists project API keys.
 type APIKeyStore interface {
 	// Create stores a key under a lock on its creator's account row, which a
 	// deactivation also takes. It returns ErrCreatorInactive when the creator
-	// is deactivated or missing, so no key is stored after the deactivation
-	// revoked the account's keys.
+	// is deactivated or missing, or when input.CreatorTokenVersion no longer
+	// matches the creator's generation, so no key is stored after a
+	// deactivation or an SSO link revoked the account's keys.
 	Create(ctx context.Context, input CreateAPIKeyInput) (APIKey, error)
 	ListByProject(ctx context.Context, projectID string) ([]APIKey, error)
 	GetByHash(ctx context.Context, keyHash string) (APIKey, error)

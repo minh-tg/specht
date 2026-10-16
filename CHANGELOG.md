@@ -472,3 +472,8 @@ releases.
   under a row lock that the account is active, has the same password hash and the same
   token generation, and otherwise answers the same "invalid email or password" as a wrong
   password.
+- Creating an API key now also checks the creator's token generation under the row lock.
+  A key request that had passed sign-in just before the creator's first SSO sign-in
+  used to commit after the link revoked the account's keys, and the key stayed live on
+  the account the owner now holds. The request now gets `403`, the same answer as for a
+  deactivated creator.
