@@ -100,14 +100,58 @@ its creator typed, so keep `REGISTRATION_ENABLED` closed unless you accept that.
 | `RATE_LIMIT_BURST` | `20` | Burst for the unauthenticated bucket. |
 | `RATE_LIMIT_AUTH_RPS` | `1000` | Per-caller rate behind authentication. |
 | `RATE_LIMIT_AUTH_BURST` | `2000` | Burst for the authenticated bucket. |
-| `RATE_LIMIT_LOGIN_PER_MINUTE` | `5` | Per-IP refill rate for login and register, the endpoints that accept guessable credentials. |
+| `RATE_LIMIT_LOGIN_PER_MINUTE` | `5` | Per-client refill rate for login and register, the endpoints that accept guessable credentials. |
 | `RATE_LIMIT_LOGIN_BURST` | `5` | Burst for that bucket: attempts allowed before the per-minute refill applies. |
 
-The login and register bucket applies even when `RATE_LIMIT_ENABLED` is
-`false`, and a request cannot opt out of it by sending an `Authorization`
-header. Token refresh and logout are not charged to it. Behind a reverse proxy,
-set `TRUSTED_PROXIES` so each client is counted by its own address instead of
-the proxy's; otherwise every user shares one bucket.
+Several limiters stack. All of them count in memory, per server process, and
+start empty after a restart.
+
+| Tier | Routes | Counted per | Size | Active |
+|------|--------|-------------|------|--------|
+| Global | Every route except `/api/v1/health` and `/api/v1/version`. A request carrying an `Authorization` header skips it and is judged by the authenticated tier. | Client address | `RATE_LIMIT_RPS`, `RATE_LIMIT_BURST` | Only with `RATE_LIMIT_ENABLED=true`. |
+| Anonymous auth routes | Token refresh, logout, the SSO exchange, and every route in the login tier below. Sending an `Authorization` header does not skip it. | Client address | `RATE_LIMIT_RPS`, `RATE_LIMIT_BURST` (10 per second, burst 20 when unset) | Always, also with `RATE_LIMIT_ENABLED=false`. |
+| Login | Login, register, first-run setup, password reset, invite lookup and invite accept share one bucket. `PUT /api/v1/me/password` has a bucket of its own. | Client address | `RATE_LIMIT_LOGIN_PER_MINUTE`, `RATE_LIMIT_LOGIN_BURST` | Always. |
+| Authenticated | Routes behind a session or API key. | Caller (user or key identity) | `RATE_LIMIT_AUTH_RPS`, `RATE_LIMIT_AUTH_BURST` | Only with `RATE_LIMIT_ENABLED=true`. |
+| Account delay | `POST /api/v1/auth/login` only. | Normalized email (trimmed, lower-cased) | Fixed, see below | Always. |
+
+Member suggestions have one more fixed bucket of 30 requests a minute (burst
+10) per caller, also always on.
+
+With the global limiter enabled, the anonymous auth routes spend a token from
+both buckets, which have the same size, so the limit you configure is the
+limit you get. The anonymous auth bucket follows `RATE_LIMIT_RPS` and
+`RATE_LIMIT_BURST`: raising them for a load test raises it too. A login request
+also spends from the login bucket, so the login tier stays the tighter limit
+for credentials.
+
+A request over any bucket gets `429` with code `rate_limited` and a
+`Retry-After` header in seconds.
+
+**Client address.** An IPv6 client is counted by its /64 prefix, so rotating
+through addresses in one network shares one budget. An IPv4 client is counted
+per address, and an IPv4-mapped IPv6 address such as `::ffff:192.0.2.7`
+counts as the IPv4 address. Behind a reverse proxy, set `TRUSTED_PROXIES` so
+each client is counted by its own address instead of the proxy's; otherwise
+every user shares one bucket.
+
+**Account delay.** Failed password logins are counted per email, whichever
+address they come from. Emails that do not exist are counted exactly like
+registered ones, so the delay does not show which accounts exist. After three
+failures in a row the account waits 1 second, then 2, 4, 8 and so on up to 60
+seconds. A login attempt during the wait gets `429` with code
+`too_many_attempts` and a `Retry-After` header, and it is not checked against
+the password, so even the right password is refused until the wait ends. A
+successful login resets the count, and the count drops to zero after 15
+minutes without a failed login. There is no lockout: the wait never exceeds 60
+seconds. Someone who keeps failing against an email can keep that account
+waiting. Refused attempts are written to the audit log as failed logins.
+
+**Bucket cap.** Each limiter holds at most 100,000 buckets (the account delay
+holds at most 100,000 accounts). When it is full, expired entries are dropped
+first. If it is still full, clients (or emails) without an entry yet share one
+overflow entry, which is limited as a group, and entries that already exist are
+never evicted. During such a flood, new clients can be throttled until the
+flood ends.
 
 ### SSO / OIDC
 
@@ -478,7 +522,8 @@ rollback restores the pre-upgrade dump:
 
 - `RATE_LIMIT_ENABLED=true` (compose default) — strict per-IP buckets on
   unauthenticated routes, generous per-caller budgets behind auth. Login and
-  register always get their own 5-per-minute per-IP bucket.
+  register always get their own 5-per-minute per-client bucket, and repeated
+  failed logins for one email slow that account down (see Rate limiting).
 - Request bodies are size-capped; ingest rejects oversized scans with 413.
 - `GET /api/v1/ready` answers 200 while the database is reachable and 503
   when it is not, with no detail in the body. The image's HEALTHCHECK uses it,
