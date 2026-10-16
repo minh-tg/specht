@@ -72,6 +72,12 @@ var ErrLastGlobalAdmin = errors.New("last global admin")
 // link does). The login gets no session.
 var ErrLoginStale = errors.New("account changed during login")
 
+// ErrSessionStale is returned when an account changed between the moment a
+// refresh read it and the moment the rotated token would be stored: it was
+// deactivated or started a new token generation (a password change, a reset and
+// an SSO link all do). The refresh stores nothing.
+var ErrSessionStale = errors.New("account changed during refresh")
+
 // ErrAccountDeactivated is returned when an SSO link finds the account
 // deactivated under its row lock, so it neither links nor proves the address.
 var ErrAccountDeactivated = errors.New("account is deactivated")
@@ -255,8 +261,10 @@ type UserStore interface {
 	// ListByIDs returns the accounts with the given ids in one query. Ids that
 	// are malformed or unknown are skipped.
 	ListByIDs(ctx context.Context, ids []string) ([]User, error)
-	// SetPassword replaces the account's password hash and starts a new token
-	// generation in one statement, so every open access token stops working.
+	// SetPassword replaces the account's password hash, starts a new token
+	// generation and revokes every refresh token of the account in one
+	// transaction, so every open access token and every session stops working
+	// and no refresh that started earlier can store a successor.
 	SetPassword(ctx context.Context, userID, passwordHash string) error
 	// TokenVersion returns the account's current access-token generation.
 	TokenVersion(ctx context.Context, userID string) (int32, error)
@@ -373,6 +381,16 @@ type RefreshTokenStore interface {
 	// It returns the token generation read under the lock, which the login
 	// issues its access token for.
 	CreateForLogin(ctx context.Context, in NewRefreshToken, guard LoginGuard) (int32, error)
+	// Rotate spends the refresh token oldID and stores its successor in one
+	// transaction, under a share lock on the account row. It returns
+	// ErrSessionStale, changing nothing, when the account is deactivated or its
+	// token generation is no longer tokenVersion, the generation the refresh
+	// read before it started. It returns ErrNotFound when another request
+	// spent oldID first. A password change, a reset and an SSO link bump the
+	// generation and revoke the account's refresh tokens in one transaction, so
+	// each lands either before this call (the refresh is refused) or after it
+	// (the change revokes the successor with the rest).
+	Rotate(ctx context.Context, oldID string, in NewRefreshToken, tokenVersion int32) error
 	GetByHash(ctx context.Context, tokenHash string) (RefreshToken, error)
 	Revoke(ctx context.Context, id string) (RefreshToken, error)
 	RevokeAllForUser(ctx context.Context, userID string) error

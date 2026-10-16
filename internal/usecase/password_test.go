@@ -16,12 +16,11 @@ import (
 const passwordTestUserID = "00000000-0000-0000-0000-000000000040"
 
 type passwordHarness struct {
-	uc      *Usecases
-	users   *mockUserRepo
-	tokens  *mockRefreshTokenRepo
-	stored  string
-	revoked []string
-	calls   []string
+	uc     *Usecases
+	users  *mockUserRepo
+	tokens *mockRefreshTokenRepo
+	stored string
+	calls  []string
 }
 
 func newPasswordHarness(t *testing.T, currentPassword string) *passwordHarness {
@@ -41,11 +40,6 @@ func newPasswordHarness(t *testing.T, currentPassword string) *passwordHarness {
 	h.users.setPasswordFn = func(ctx context.Context, userID, passwordHash string) error {
 		h.calls = append(h.calls, "set-password")
 		h.stored = passwordHash
-		return nil
-	}
-	h.tokens.revokeAllFn = func(ctx context.Context, userID string) error {
-		h.calls = append(h.calls, "revoke-all")
-		h.revoked = append(h.revoked, userID)
 		return nil
 	}
 	h.tokens.createFn = func(ctx context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
@@ -69,9 +63,8 @@ func TestChangePassword_ReplacesTheHashAndEndsOtherSessions(t *testing.T) {
 	require.NotEmpty(t, h.stored, "the new hash is stored")
 	assert.True(t, auth.NewPasswordHasher().Verify("a-new-password", h.stored))
 	assert.False(t, auth.NewPasswordHasher().Verify("correct-password", h.stored))
-	assert.Equal(t, []string{passwordTestUserID}, h.revoked)
-	assert.Equal(t, []string{"revoke-all", "set-password", "create-session"}, h.calls,
-		"refresh tokens go first so a failed write never leaves an old session alive, and the caller's new session is last")
+	assert.Equal(t, []string{"set-password", "create-session"}, h.calls,
+		"the write ends the old sessions in its own transaction, so the caller's new session comes after it")
 
 	require.NotNil(t, resp)
 	assert.NotEmpty(t, resp.Token, "the caller stays signed in with a fresh session")
@@ -114,16 +107,16 @@ func TestChangePassword_NewPasswordFollowsTheRegistrationRules(t *testing.T) {
 	}
 }
 
-func TestChangePassword_FailsClosedWhenSessionsCannotBeRevoked(t *testing.T) {
+func TestChangePassword_FailsClosedWhenThePasswordCannotBeStored(t *testing.T) {
 	h := newPasswordHarness(t, "correct-password")
-	h.tokens.revokeAllFn = func(ctx context.Context, userID string) error {
-		h.calls = append(h.calls, "revoke-all")
+	h.users.setPasswordFn = func(ctx context.Context, userID, passwordHash string) error {
+		h.calls = append(h.calls, "set-password")
 		return errors.New("db down")
 	}
 
 	_, err := h.uc.ChangePassword(context.Background(), passwordTestUserID, "correct-password", "a-new-password")
 	require.Error(t, err)
-	assert.Empty(t, h.stored, "the password is untouched when old sessions cannot be ended")
+	assert.Equal(t, []string{"set-password"}, h.calls, "no session is issued for a password that was not stored")
 }
 
 func TestChangePassword_RejectsAnInvalidUserID(t *testing.T) {

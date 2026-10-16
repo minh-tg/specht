@@ -1168,6 +1168,16 @@ func (m *mockRefreshTokenRepo) CreateForLogin(ctx context.Context, in port.NewRe
 	return guard.TokenVersion, nil
 }
 
+// Rotate spends the old token through revokeFn and stores the successor
+// through createFn, which is what the real store does in one transaction.
+func (m *mockRefreshTokenRepo) Rotate(ctx context.Context, oldID string, in port.NewRefreshToken, _ int32) error {
+	if _, err := m.Revoke(ctx, oldID); err != nil {
+		return err
+	}
+	_, err := m.Create(ctx, in)
+	return err
+}
+
 func (m *mockRefreshTokenRepo) GetByHash(ctx context.Context, tokenHash string) (port.RefreshToken, error) {
 	if m.getByHashFn == nil {
 		return port.RefreshToken{}, fmt.Errorf("unexpected call to GetByHash")

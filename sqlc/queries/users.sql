@@ -99,6 +99,14 @@ RETURNING *;
 -- or waits until the session is stored and then ends it with the rest.
 SELECT password_hash, disabled_at, token_version FROM users WHERE id = $1 FOR SHARE;
 
+-- name: LockUserForRefresh :one
+-- Takes a share lock on the account for the rest of the transaction and returns
+-- what a refresh has to confirm before it stores the rotated token. A password
+-- change, a reset, an SSO link and a deactivation all update this row, so each
+-- one either committed before this read (the refresh sees it and is refused) or
+-- waits until the successor is stored and then revokes it with the rest.
+SELECT disabled_at, token_version FROM users WHERE id = $1 FOR SHARE;
+
 -- name: LockUserForLink :one
 -- Locks the account row for the rest of the transaction before an SSO link
 -- changes it, and returns whether the account is deactivated. A deactivation
