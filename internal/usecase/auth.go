@@ -928,11 +928,12 @@ var ErrWrongPassword = errors.New("current password is incorrect")
 var ErrNoLocalPassword = errors.New("this account has no local password")
 
 // ChangePassword replaces the caller's password after checking the current one.
-// The write replaces the hash, starts a new token generation that ends every
-// open access token and revokes every refresh token in one transaction, so a
-// failure never leaves an old session alive beside a new password and a refresh
-// in flight cannot store a successor. The caller gets a fresh session back and
-// stays signed in.
+// The store writes the hash, starts a new token generation (which ends every
+// open access token) and revokes every refresh token in one transaction under
+// the account row lock, so a failure never leaves an old session alive beside a
+// new password and a login in flight cannot keep a session. If the hash changed
+// since the check, nothing is written and the current password counts as wrong.
+// The caller gets a fresh session back and stays signed in.
 func (u *Usecases) ChangePassword(ctx context.Context, userID, current, next string) (*AuthResponse, error) {
 	id, err := validID(userID)
 	if err != nil {
@@ -960,8 +961,11 @@ func (u *Usecases) ChangePassword(ctx context.Context, userID, current, next str
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
-	if err := u.deps.Stores.Users.SetPassword(ctx, id, hash); err != nil {
-		return nil, fmt.Errorf("set password: %w", err)
+	if err := u.deps.Stores.Users.ChangePasswordAndRevoke(ctx, id, hash, user.PasswordHash); err != nil {
+		if errors.Is(err, port.ErrPasswordStale) {
+			return nil, ErrWrongPassword
+		}
+		return nil, fmt.Errorf("change password: %w", err)
 	}
 
 	token, err := u.issueAccessToken(ctx, id, user.Email, auth.TokenRole(user.Role))

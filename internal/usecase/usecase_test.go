@@ -1013,6 +1013,7 @@ type mockUserRepo struct {
 	deactivateFn        func(context.Context, string) (port.User, []port.RevokedAPIKey, error)
 	clearPasswordFn     func(context.Context, string) error
 	setPasswordFn       func(context.Context, string, string) error
+	changePasswordFn    func(ctx context.Context, userID, passwordHash, verifiedHash string) error
 	listByIDsFn         func(context.Context, []string) ([]port.User, error)
 	tokenVersionFn      func(context.Context, string) (int32, error)
 	bumpTokenVersionFn  func(context.Context, string) error
@@ -1131,6 +1132,13 @@ func (m *mockUserRepo) SetPassword(ctx context.Context, userID, passwordHash str
 		return fmt.Errorf("unexpected call to SetPassword")
 	}
 	return m.setPasswordFn(ctx, userID, passwordHash)
+}
+
+func (m *mockUserRepo) ChangePasswordAndRevoke(ctx context.Context, userID, passwordHash, verifiedHash string) error {
+	if m.changePasswordFn == nil {
+		return fmt.Errorf("unexpected call to ChangePasswordAndRevoke")
+	}
+	return m.changePasswordFn(ctx, userID, passwordHash, verifiedHash)
 }
 
 func (m *mockUserRepo) ListByIDs(ctx context.Context, ids []string) ([]port.User, error) {
