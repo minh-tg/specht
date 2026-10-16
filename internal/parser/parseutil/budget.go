@@ -18,9 +18,12 @@ type Budget struct {
 // NewBudget makes a budget from the limit in ctx. It first refuses a document
 // with far more objects than the limit allows, before the parser decodes it:
 // decoding turns every object into a struct, so that is where the memory goes.
-func NewBudget(ctx context.Context, data []byte) (*Budget, error) {
+// arrayKeys name the arrays that carry the parser's findings and packages (see
+// scanner.CheckDocument), so a document whose finding arrays are too long is
+// refused without decoding them.
+func NewBudget(ctx context.Context, data []byte, arrayKeys ...string) (*Budget, error) {
 	limit := scanner.MaxFindings(ctx)
-	if err := scanner.CheckDocument(data, limit); err != nil {
+	if err := scanner.CheckDocument(data, limit, arrayKeys...); err != nil {
 		return nil, err
 	}
 	return &Budget{limit: limit}, nil

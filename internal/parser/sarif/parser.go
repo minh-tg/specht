@@ -91,7 +91,15 @@ func (s *Scanner) Recognize(data []byte) scanner.Recognition {
 	return scanner.Possible
 }
 
+// findingArrays names the arrays of a document that carry findings and
+// packages (see scanner.CheckDocument).
+var findingArrays = []string{"results", "runs", "rules"}
+
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	budget, err := parseutil.NewBudget(ctx, data, findingArrays...)
+	if err != nil {
+		return nil, err
+	}
 	if s.Recognize(data) == scanner.NotRecognized {
 		return nil, scanner.Unrecognized("sarif")
 	}
@@ -102,7 +110,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	if log.Version != "" && !strings.HasPrefix(log.Version, "2.1") {
 		return nil, scanner.Malformed("sarif", fmt.Errorf("unsupported version %q (want 2.1.x)", log.Version))
 	}
-	return convert(log), nil
+	return convert(budget, log)
 }
 
 type sarifLog struct {
@@ -186,7 +194,7 @@ type sarifLocation struct {
 	} `json:"physicalLocation"`
 }
 
-func convert(log sarifLog) *domain.NormalizedReport {
+func convert(budget *parseutil.Budget, log sarifLog) (*domain.NormalizedReport, error) {
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
 		FingerprintVersion: 1,
@@ -211,6 +219,9 @@ func convert(log sarifLog) *domain.NormalizedReport {
 				skipped++
 				continue
 			}
+			if err := budget.Add(1); err != nil {
+				return nil, err
+			}
 			nr.Findings = append(nr.Findings, parseutil.HardenFinding(convertResult(result, rule, ruleID, ns)))
 		}
 	}
@@ -220,7 +231,7 @@ func convert(log sarifLog) *domain.NormalizedReport {
 	if len(nr.ScanScope.Ext) == 0 {
 		nr.ScanScope.Ext = nil
 	}
-	return nr
+	return nr, nil
 }
 
 // indexRules indexes rules by ID, keeping the first occurrence.

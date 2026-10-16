@@ -89,7 +89,15 @@ func (s *Scanner) Recognize(data []byte) scanner.Recognition {
 	return scanner.NotRecognized
 }
 
+// findingArrays names the arrays of a document that carry findings and
+// packages (see scanner.CheckDocument).
+var findingArrays = []string{""}
+
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	budget, err := parseutil.NewBudget(ctx, data, findingArrays...)
+	if err != nil {
+		return nil, err
+	}
 	if s.Recognize(data) == scanner.NotRecognized {
 		return nil, scanner.Unrecognized("gitleaks")
 	}
@@ -108,6 +116,9 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	for _, g := range findings {
 		if g.RuleID == "" || g.File == "" {
 			continue
+		}
+		if err := budget.Add(1); err != nil {
+			return nil, err
 		}
 		f, err := convert(g, key)
 		if err != nil {

@@ -74,7 +74,7 @@ const maxAdvisories = 10
 // the vulnerability id and the package URL, the same as every other SCA
 // scanner, so the same flaw reported by Grype or Trivy is the same finding.
 // It returns how many affected references named no known component.
-func vulnerabilityFindings(vulns []cdxVulnerability, components []cdxComponent) (findings []domain.NormalizedFinding, unresolved int) {
+func vulnerabilityFindings(budget *parseutil.Budget, vulns []cdxVulnerability, components []cdxComponent) (findings []domain.NormalizedFinding, unresolved int, err error) {
 	byRef := map[string]cdxComponent{}
 	for _, c := range components {
 		if c.BOMRef != "" {
@@ -95,10 +95,13 @@ func vulnerabilityFindings(vulns []cdxVulnerability, components []cdxComponent) 
 				unresolved++
 				continue
 			}
+			if err := budget.Add(1); err != nil {
+				return nil, 0, err
+			}
 			findings = append(findings, parseutil.HardenFinding(vulnerabilityFinding(v, c)))
 		}
 	}
-	return findings, unresolved
+	return findings, unresolved, nil
 }
 
 func vulnerabilityFinding(v cdxVulnerability, c cdxComponent) domain.NormalizedFinding {

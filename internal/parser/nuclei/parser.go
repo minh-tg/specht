@@ -127,7 +127,7 @@ func splitNucleiLines(trimmed []byte) ([][]byte, error) {
 
 // appendNucleiFindings decodes event lines into findings, returning the
 // skipped-line count.
-func appendNucleiFindings(nr *domain.NormalizedReport, lines [][]byte) int {
+func appendNucleiFindings(budget *parseutil.Budget, nr *domain.NormalizedReport, lines [][]byte) (int, error) {
 	skipped := 0
 	for _, line := range lines {
 		var ev nucleiEvent
@@ -139,12 +139,23 @@ func appendNucleiFindings(nr *domain.NormalizedReport, lines [][]byte) int {
 			skipped++
 			continue
 		}
+		if err := budget.Add(1); err != nil {
+			return 0, err
+		}
 		nr.Findings = append(nr.Findings, convert(ev))
 	}
-	return skipped
+	return skipped, nil
 }
 
+// findingArrays names the arrays of a document that carry findings and
+// packages (see scanner.CheckDocument).
+var findingArrays = []string{""}
+
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	budget, err := parseutil.NewBudget(ctx, data, findingArrays...)
+	if err != nil {
+		return nil, err
+	}
 	if s.Recognize(data) == scanner.NotRecognized {
 		return nil, scanner.Unrecognized("nuclei")
 	}
@@ -165,7 +176,10 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		ScanType:           domain.ScanTypeDAST,
 		ScanScope:          &domain.ScanScope{Ext: map[string]string{}},
 	}
-	skipped := appendNucleiFindings(nr, lines)
+	skipped, err := appendNucleiFindings(budget, nr, lines)
+	if err != nil {
+		return nil, err
+	}
 	if skipped > 0 {
 		nr.ScanScope.Ext["skipped_lines"] = itoa(skipped)
 	}

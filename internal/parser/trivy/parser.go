@@ -186,7 +186,15 @@ func hasTarget(raw json.RawMessage) bool {
 	return json.Unmarshal(raw, &r) == nil && r.Target != ""
 }
 
+// findingArrays names the arrays of a document that carry findings and
+// packages (see scanner.CheckDocument).
+var findingArrays = []string{"", "Results", "Packages", "Vulnerabilities", "Secrets", "Misconfigurations"}
+
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	budget, err := parseutil.NewBudget(ctx, data, findingArrays...)
+	if err != nil {
+		return nil, err
+	}
 	if s.Recognize(data) == scanner.NotRecognized {
 		return nil, scanner.Unrecognized("trivy")
 	}
@@ -195,7 +203,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		return nil, scanner.Malformed("trivy", err)
 	}
 
-	return convert(report), nil
+	return convert(budget, report)
 }
 
 func decode(data []byte) (trivyReport, error) {
@@ -215,7 +223,7 @@ func decode(data []byte) (trivyReport, error) {
 	return trivyReport{Results: legacy}, nil
 }
 
-func convert(report trivyReport) *domain.NormalizedReport {
+func convert(budget *parseutil.Budget, report trivyReport) (*domain.NormalizedReport, error) {
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
 		FingerprintVersion: 1,
@@ -232,13 +240,14 @@ func convert(report trivyReport) *domain.NormalizedReport {
 
 	for _, result := range report.Results {
 		// full package inventory, vulnerable or not
-		addPackages(nr, result)
-		addVulns(nr, result)
-		addSecrets(nr, result)
-		addMisconfigs(nr, result)
+		for _, add := range []func(*parseutil.Budget, *domain.NormalizedReport, trivyResult) error{addPackages, addVulns, addSecrets, addMisconfigs} {
+			if err := add(budget, nr, result); err != nil {
+				return nil, err
+			}
+		}
 	}
 
-	return nr
+	return nr, nil
 }
 
 // reportTarget names what the scan ran against. ArtifactName is the stable
@@ -290,7 +299,7 @@ func resultTarget(first trivyResult) *domain.TargetInfo {
 	return target
 }
 
-func addPackages(nr *domain.NormalizedReport, result trivyResult) {
+func addPackages(budget *parseutil.Budget, nr *domain.NormalizedReport, result trivyResult) error {
 	cleanTarget := parseutil.CleanFilePath(result.Target)
 	for _, p := range result.Packages {
 		purl := p.Identifier.PURL
@@ -300,6 +309,9 @@ func addPackages(nr *domain.NormalizedReport, result trivyResult) {
 		if purl == "" {
 			continue
 		}
+		if err := budget.Add(1); err != nil {
+			return err
+		}
 		nr.Packages = append(nr.Packages, parseutil.HardenPackage(domain.PackageRef{
 			PURL:         domain.NormalizePURL(purl),
 			Ecosystem:    result.Type,
@@ -308,11 +320,15 @@ func addPackages(nr *domain.NormalizedReport, result trivyResult) {
 			ManifestPath: cleanTarget,
 		}))
 	}
+	return nil
 }
 
-func addVulns(nr *domain.NormalizedReport, result trivyResult) {
+func addVulns(budget *parseutil.Budget, nr *domain.NormalizedReport, result trivyResult) error {
 	cleanTarget := parseutil.CleanFilePath(result.Target)
 	for _, v := range result.Vulnerabilities {
+		if err := budget.Add(1); err != nil {
+			return err
+		}
 		purl := v.PkgIdentifier.PURL
 		if purl == "" {
 			purl = v.PkgID
@@ -366,6 +382,7 @@ func addVulns(nr *domain.NormalizedReport, result trivyResult) {
 			Extensions:  ext,
 		}))
 	}
+	return nil
 }
 
 // maxCVSSScore returns the highest available CVSS score for a vulnerability,
@@ -441,12 +458,15 @@ func bestCVSSScore(c trivyCVSS) float64 {
 	}
 }
 
-func addSecrets(nr *domain.NormalizedReport, result trivyResult) {
+func addSecrets(budget *parseutil.Budget, nr *domain.NormalizedReport, result trivyResult) error {
 	cleanTarget := parseutil.CleanFilePath(result.Target)
 	if cleanTarget == "" {
 		cleanTarget = "unknown"
 	}
 	for _, s := range result.Secrets {
+		if err := budget.Add(1); err != nil {
+			return err
+		}
 		fp := "secret:" + s.RuleID + ":" + result.Target
 		nr.Findings = append(nr.Findings, parseutil.HardenFinding(domain.NormalizedFinding{
 			Fingerprint: fp,
@@ -462,14 +482,18 @@ func addSecrets(nr *domain.NormalizedReport, result trivyResult) {
 			},
 		}))
 	}
+	return nil
 }
 
-func addMisconfigs(nr *domain.NormalizedReport, result trivyResult) {
+func addMisconfigs(budget *parseutil.Budget, nr *domain.NormalizedReport, result trivyResult) error {
 	cleanTarget := parseutil.CleanFilePath(result.Target)
 	if cleanTarget == "" {
 		cleanTarget = "unknown"
 	}
 	for _, m := range result.Misconfigs {
+		if err := budget.Add(1); err != nil {
+			return err
+		}
 		ruleID := m.RuleID
 		if ruleID == "" {
 			ruleID = m.ID
@@ -490,6 +514,7 @@ func addMisconfigs(nr *domain.NormalizedReport, result trivyResult) {
 			},
 		}))
 	}
+	return nil
 }
 
 func normalizeSeverity(s string) domain.Severity {

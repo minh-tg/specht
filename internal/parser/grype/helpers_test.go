@@ -1,12 +1,25 @@
 package grype
 
 import (
+	"context"
 	"testing"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+// mustConvert converts a decoded report with the default finding limit.
+func mustConvert(t *testing.T, report grypeDoc) *domain.NormalizedReport {
+	t.Helper()
+	budget, err := parseutil.NewBudget(context.Background(), nil)
+	require.NoError(t, err)
+	nr, err := convert(budget, report)
+	require.NoError(t, err)
+	return nr
+}
 
 func TestNormalizeGrypeSeverity(t *testing.T) {
 	tests := []struct {
@@ -79,7 +92,7 @@ func TestExtractAliases(t *testing.T) {
 
 func TestConvertEdgeCases(t *testing.T) {
 	t.Run("empty document", func(t *testing.T) {
-		nr := convert(grypeDoc{})
+		nr := mustConvert(t, grypeDoc{})
 		require := assert.New(t)
 		require.NotNil(nr)
 		require.Empty(nr.Findings)
@@ -102,7 +115,7 @@ func TestConvertEdgeCases(t *testing.T) {
 				},
 			},
 		}
-		nr := convert(doc)
+		nr := mustConvert(t, doc)
 		require := assert.New(t)
 		require.Len(nr.Findings, 1)
 		assert.Equal(t, "CVE-2024-0001:", nr.Findings[0].Fingerprint)
@@ -123,7 +136,7 @@ func TestConvertEdgeCases(t *testing.T) {
 				},
 			},
 		}
-		nr := convert(doc)
+		nr := mustConvert(t, doc)
 		require := assert.New(t)
 		require.Len(nr.Findings, 1)
 		assert.Nil(t, nr.Findings[0].CVSS)

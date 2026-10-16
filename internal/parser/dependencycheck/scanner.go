@@ -95,7 +95,15 @@ func (s *Scanner) Recognize(data []byte) scanner.Recognition {
 	return scanner.NotRecognized
 }
 
+// findingArrays names the arrays of a document that carry findings and
+// packages (see scanner.CheckDocument).
+var findingArrays = []string{"dependencies", "packages", "vulnerabilities"}
+
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	budget, err := parseutil.NewBudget(ctx, data, findingArrays...)
+	if err != nil {
+		return nil, err
+	}
 	if s.Recognize(data) == scanner.NotRecognized {
 		return nil, scanner.Unrecognized("dependency-check")
 	}
@@ -104,7 +112,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		return nil, scanner.Malformed("dependency-check", err)
 	}
 
-	return convert(report), nil
+	return convert(budget, report)
 }
 
 // dcComponentDims builds the component identity dimensions for one
@@ -182,12 +190,15 @@ func convertDCVulnerability(dep dcDependency, v dcVulnerability, purl string) do
 }
 
 // appendDCPackages records the full package inventory of one dependency.
-func appendDCPackages(nr *domain.NormalizedReport, dep dcDependency) {
+func appendDCPackages(budget *parseutil.Budget, nr *domain.NormalizedReport, dep dcDependency) error {
 	filePath := parseutil.CleanFilePath(dep.FilePath)
 	for _, p := range dep.Packages {
 		purl := domain.NormalizePURL(p.ID)
 		if purl == "" {
 			continue
+		}
+		if err := budget.Add(1); err != nil {
+			return err
 		}
 		pkgType, name, version := domain.SplitPURL(purl)
 		nr.Packages = append(nr.Packages, parseutil.HardenPackage(domain.PackageRef{
@@ -198,9 +209,10 @@ func appendDCPackages(nr *domain.NormalizedReport, dep dcDependency) {
 			ManifestPath: filePath,
 		}))
 	}
+	return nil
 }
 
-func convert(report dcReport) *domain.NormalizedReport {
+func convert(budget *parseutil.Budget, report dcReport) (*domain.NormalizedReport, error) {
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
 		FingerprintVersion: 1,
@@ -217,7 +229,9 @@ func convert(report dcReport) *domain.NormalizedReport {
 	}
 
 	for _, dep := range report.Dependencies {
-		appendDCPackages(nr, dep)
+		if err := appendDCPackages(budget, nr, dep); err != nil {
+			return nil, err
+		}
 
 		purl := ""
 		if len(dep.Packages) > 0 {
@@ -225,11 +239,14 @@ func convert(report dcReport) *domain.NormalizedReport {
 		}
 
 		for _, v := range dep.Vulnerabilities {
+			if err := budget.Add(1); err != nil {
+				return nil, err
+			}
 			nr.Findings = append(nr.Findings, parseutil.HardenFinding(convertDCVulnerability(dep, v, purl)))
 		}
 	}
 
-	return nr
+	return nr, nil
 }
 
 func extractCVSS(v dcVulnerability) (score float64, vector string, version string) {

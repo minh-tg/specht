@@ -123,7 +123,15 @@ func isFrameworkReport(shape parseutil.Shape) bool {
 	return shape.String("check_type") != "" && shape.Has("results")
 }
 
+// findingArrays names the arrays of a document that carry findings and
+// packages (see scanner.CheckDocument).
+var findingArrays = []string{"", "failed_checks"}
+
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	budget, err := parseutil.NewBudget(ctx, data, findingArrays...)
+	if err != nil {
+		return nil, err
+	}
 	if s.Recognize(data) == scanner.NotRecognized {
 		return nil, scanner.Unrecognized("checkov")
 	}
@@ -131,7 +139,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	if err != nil {
 		return nil, scanner.Malformed("checkov", err)
 	}
-	return convertAll(reports), nil
+	return convertAll(budget, reports)
 }
 
 // decodeReports reads either one framework's report (an object) or the array
@@ -155,10 +163,13 @@ func decodeReports(data []byte) ([]checkovReport, error) {
 // framework converts exactly as before. Several share one target kind, "iac",
 // and the frameworks are listed on the scan scope. Files Checkov could not read
 // are counted there too, because they are missing from the results.
-func convertAll(reports []checkovReport) *domain.NormalizedReport {
+func convertAll(budget *parseutil.Budget, reports []checkovReport) (*domain.NormalizedReport, error) {
 	var nr *domain.NormalizedReport
 	if len(reports) == 1 {
-		nr = convert(reports[0])
+		var err error
+		if nr, err = convert(budget, reports[0]); err != nil {
+			return nil, err
+		}
 	} else {
 		nr = &domain.NormalizedReport{
 			ContractVersion:    1,
@@ -170,7 +181,11 @@ func convertAll(reports []checkovReport) *domain.NormalizedReport {
 		seen := map[string]bool{}
 		var frameworks []string
 		for _, report := range reports {
-			nr.Findings = append(nr.Findings, convert(report).Findings...)
+			converted, err := convert(budget, report)
+			if err != nil {
+				return nil, err
+			}
+			nr.Findings = append(nr.Findings, converted.Findings...)
 			if !seen[report.CheckType] {
 				seen[report.CheckType] = true
 				frameworks = append(frameworks, report.CheckType)
@@ -189,10 +204,10 @@ func convertAll(reports []checkovReport) *domain.NormalizedReport {
 		}
 		nr.ScanScope.Ext["checkov_parsing_errors"] = strconv.Itoa(parsingErrors)
 	}
-	return nr
+	return nr, nil
 }
 
-func convert(report checkovReport) *domain.NormalizedReport {
+func convert(budget *parseutil.Budget, report checkovReport) (*domain.NormalizedReport, error) {
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
 		FingerprintVersion: 1,
@@ -206,14 +221,17 @@ func convert(report checkovReport) *domain.NormalizedReport {
 	}
 
 	if report.Results == nil {
-		return nr
+		return nr, nil
 	}
 
 	for _, f := range report.Results.FailedChecks {
+		if err := budget.Add(1); err != nil {
+			return nil, err
+		}
 		nr.Findings = append(nr.Findings, parseutil.HardenFinding(convertCheck(f, report.CheckType)))
 	}
 
-	return nr
+	return nr, nil
 }
 
 // convertCheck maps one failed checkov check to a normalized IaC finding.
