@@ -16,6 +16,11 @@ UPDATE refresh_tokens
 SET family_id = user_id,
     family_started_at = created_at;
 
+-- The defaults keep the previous release working against this schema (it
+-- inserts refresh tokens without these columns, and a rolling upgrade runs both
+-- versions at once): each such token becomes a family of its own, started now.
+ALTER TABLE refresh_tokens ALTER COLUMN family_id SET DEFAULT gen_random_uuid();
+ALTER TABLE refresh_tokens ALTER COLUMN family_started_at SET DEFAULT now();
 ALTER TABLE refresh_tokens ALTER COLUMN family_id SET NOT NULL;
 ALTER TABLE refresh_tokens ALTER COLUMN family_started_at SET NOT NULL;
 
