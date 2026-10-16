@@ -104,15 +104,30 @@ func (u *Usecases) ListEvidence(ctx context.Context, findingID string) ([]Eviden
 	return result, nil
 }
 
-func (u *Usecases) DeleteEvidence(ctx context.Context, evidenceID string) error {
+// DeleteEvidence removes one evidence artifact addressed through its own
+// finding. The finding in the path is the authorization anchor and must exist,
+// and the evidence must belong to it. A missing finding, a missing evidence id
+// and a mismatched pair all answer ErrEvidenceNotFound (404 not_found) so
+// neither kind of id can be probed, and the pair check runs after the access
+// check so a caller without write access is refused with 403, not 404.
+func (u *Usecases) DeleteEvidence(ctx context.Context, findingID, evidenceID string) error {
+	fid, err := uuid.Parse(findingID)
+	if err != nil {
+		return ErrInvalidID
+	}
 	eid, err := uuid.Parse(evidenceID)
 	if err != nil {
 		return ErrInvalidID
 	}
-	// Resolve the evidence to its finding and enforce the caller's project
-	// scope for every authenticated identity, not just API keys: the access
-	// checks fail closed, so an identity without a matching project scope is
-	// denied before the delete.
+
+	// Resolve the finding in the path and enforce the caller's project scope
+	// for every authenticated identity, not just API keys: the access checks
+	// fail closed, so an identity without a matching project scope is denied
+	// before the evidence is read or deleted.
+	if err := u.checkFindingProjectEditor(ctx, fid); err != nil {
+		return err
+	}
+
 	evidence, err := u.deps.Stores.Evidence.GetByID(ctx, eid.String())
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
@@ -120,12 +135,8 @@ func (u *Usecases) DeleteEvidence(ctx context.Context, evidenceID string) error 
 		}
 		return fmt.Errorf("get evidence: %w", err)
 	}
-	fid, err := uuid.Parse(evidence.FindingID)
-	if err != nil {
-		return fmt.Errorf("evidence finding id is invalid")
-	}
-	if err := u.checkFindingProjectEditor(ctx, fid); err != nil {
-		return err
+	if evidence.FindingID != fid.String() {
+		return ErrEvidenceNotFound
 	}
 	return u.deps.Stores.Evidence.Delete(ctx, eid.String())
 }

@@ -230,7 +230,7 @@ type (
 	EvidenceUsecases interface {
 		CreateEvidence(ctx context.Context, findingID, userID, typ, url, description string) (usecase.EvidenceResponse, error)
 		ListEvidence(ctx context.Context, findingID string) ([]usecase.EvidenceResponse, error)
-		DeleteEvidence(ctx context.Context, evidenceID string) error
+		DeleteEvidence(ctx context.Context, findingID, evidenceID string) error
 	}
 
 	ReachabilityUsecases interface {

@@ -1361,6 +1361,7 @@ type mockEvidenceRepo struct {
 	port.EvidenceStore
 	getByIDFn       func(context.Context, string) (port.Evidence, error)
 	listByFindingFn func(context.Context, string) ([]port.Evidence, error)
+	deleteFn        func(context.Context, string) error
 }
 
 func (m *mockEvidenceRepo) GetByID(ctx context.Context, id string) (port.Evidence, error) {
@@ -1368,6 +1369,13 @@ func (m *mockEvidenceRepo) GetByID(ctx context.Context, id string) (port.Evidenc
 		return port.Evidence{}, fmt.Errorf("unexpected call to GetByID")
 	}
 	return m.getByIDFn(ctx, id)
+}
+
+func (m *mockEvidenceRepo) Delete(ctx context.Context, id string) error {
+	if m.deleteFn == nil {
+		return fmt.Errorf("unexpected call to Delete")
+	}
+	return m.deleteFn(ctx, id)
 }
 
 func (m *mockEvidenceRepo) ListByFinding(ctx context.Context, findingID string) ([]port.Evidence, error) {
@@ -3966,7 +3974,7 @@ func TestFindingWrites_APIKeyCannotCrossProject(t *testing.T) {
 	_, err = uc.UpsertSignoff(ctx, findingID, userID, "approved", "reviewed")
 	require.ErrorIs(t, err, ErrProjectAccessDenied)
 
-	err = uc.DeleteEvidence(ctx, "00000000-0000-0000-0000-000000000031")
+	err = uc.DeleteEvidence(ctx, findingID, "00000000-0000-0000-0000-000000000031")
 	require.ErrorIs(t, err, ErrProjectAccessDenied)
 
 	_, err = uc.BulkTriage(ctx, BulkTriageInput{
