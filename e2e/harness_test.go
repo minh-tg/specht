@@ -93,34 +93,26 @@ func runE2E(m *testing.M) int {
 	adminEmail = "e2e-admin@example.com"
 	adminPass = randomHex(24)
 
-	// Phase 1: boot without ADMIN_EMAILS, create the accounts.
-	if err := startServer(""); err != nil {
-		fmt.Fprintf(os.Stderr, "server phase 1: %v\n%s\n", err, serverLogTail())
+	// The admin comes from first-run setup, the documented way to create the
+	// first administrator. A password-registered account is never promoted by
+	// ADMIN_EMAILS, so registering and restarting would leave a normal user.
+	if err := startServer(); err != nil {
+		fmt.Fprintf(os.Stderr, "server: %v\n%s\n", err, serverLogTail())
 		return 1
 	}
-	if status, _, err := postJSON(baseURL+"/api/v1/auth/register", "", map[string]string{
-		"email": adminEmail, "password": adminPass,
+	defer stopServer()
+	if status, body, err := postJSON(baseURL+"/api/v1/setup", "", map[string]string{
+		"token": e2eSetupToken, "email": adminEmail, "password": adminPass,
 	}); err != nil || status != http.StatusCreated {
-		fmt.Fprintf(os.Stderr, "register admin: status=%d err=%v\n%s\n", status, err, serverLogTail())
-		stopServer()
+		fmt.Fprintf(os.Stderr, "setup admin: status=%d err=%v body=%s\n%s\n", status, err, body, serverLogTail())
 		return 1
 	}
 	if status, _, err := postJSON(baseURL+"/api/v1/auth/register", "", map[string]string{
 		"email": "e2e-viewer@example.com", "password": adminPass,
 	}); err != nil || status != http.StatusCreated {
 		fmt.Fprintf(os.Stderr, "register viewer: status=%d err=%v\n", status, err)
-		stopServer()
 		return 1
 	}
-	stopServer()
-
-	// Phase 2: restart with ADMIN_EMAILS so bootstrapAdmins promotes the
-	// first account — the documented production promotion path.
-	if err := startServer(adminEmail); err != nil {
-		fmt.Fprintf(os.Stderr, "server phase 2: %v\n%s\n", err, serverLogTail())
-		return 1
-	}
-	defer stopServer()
 
 	status, body, err := postJSON(baseURL+"/api/v1/auth/login", "", map[string]string{
 		"email": adminEmail, "password": adminPass,
@@ -212,10 +204,13 @@ func buildBinaries() error {
 	return nil
 }
 
+// e2eSetupToken is the first-run setup token of the shared server.
+const e2eSetupToken = "e2e-shared-setup-token-0001"
+
 // startServer boots the real server binary with a swept-up environment:
 // caller-provided variables override anything inherited, so CI env (or a
 // developer's .env exports) can never leak into the experiment.
-func startServer(adminEmails string) error {
+func startServer() error {
 	var lastErr error
 	for attempt := 0; attempt < 3; attempt++ {
 		port, err := freePort()
@@ -232,6 +227,7 @@ func startServer(adminEmails string) error {
 			// This shared API suite exercises self-service registration;
 			// default-closed onboarding is covered by the fresh-server tests.
 			"REGISTRATION_ENABLED=true",
+			"SETUP_TOKEN="+e2eSetupToken,
 			// Sweep every second so expiry business processes are
 			// observable in tests instead of waiting out 5 minutes.
 			"LIFECYCLE_SWEEP_INTERVAL=1s",
@@ -245,9 +241,6 @@ func startServer(adminEmails string) error {
 		// the managed keys — the fakes are the authority for every wired
 		// endpoint.
 		env = append(env, fakeServerEnv(addr)...)
-		if adminEmails != "" {
-			env = append(env, "ADMIN_EMAILS="+adminEmails)
-		}
 
 		cmd := exec.Command(serverBin)
 		cmd.Dir = repoRoot // migrations live at repoRoot/migrations

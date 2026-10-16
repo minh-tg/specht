@@ -10,14 +10,12 @@ import (
 )
 
 // TestE2E_AuthBootstrapAndSessionLifecycle walks the real account lifecycle:
-// register → ADMIN_EMAILS promotion across a restart → login → profile →
-// refresh-token rotation → logout. It also pins the platform-authority
-// boundaries: viewer sessions and project-scoped API keys can never create
-// projects.
+// first-run setup → login → profile → refresh-token rotation → logout. It
+// also pins the platform-authority boundaries: viewer sessions and
+// project-scoped API keys can never create projects.
 func TestE2E_AuthBootstrapAndSessionLifecycle(t *testing.T) {
-	t.Run("admin bootstrap promotion is visible in profile", func(t *testing.T) {
-		// TestMain registered the account before restarting with
-		// ADMIN_EMAILS, so the restart must have promoted it.
+	t.Run("the account made by first-run setup is an admin", func(t *testing.T) {
+		// TestMain created the account through the setup flow.
 		me := request[userProfile](t, http.MethodGet, "/api/v1/me", adminToken, nil, http.StatusOK)
 		require.Equal(t, adminEmail, me.Email)
 		require.Equal(t, "admin", me.Role)
