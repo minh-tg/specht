@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/google/uuid"
 	"github.com/minh-tg/specht/internal/gate"
 	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/provider"
@@ -19,6 +20,30 @@ var ErrUnknownProvider = errors.New("unknown provider")
 // completed scan of the commit. A check must not pass on no evidence, so
 // callers map it to a not-found error (404).
 var ErrNoReportForCommit = errors.New("no completed report for commit")
+
+// ErrInvalidReportID is returned when a report id is not a UUID.
+var ErrInvalidReportID = errors.New("invalid report id")
+
+// requireReportInProject loads the report a gate or pull-request check is
+// scoped to. A report that does not exist and a report of another project give
+// the same ErrProjectAccessDenied, so a caller cannot tell "not yours" from
+// "does not exist". A malformed id is ErrInvalidReportID.
+func (u *Usecases) requireReportInProject(ctx context.Context, projectID, reportID string) (port.Report, error) {
+	if _, err := uuid.Parse(reportID); err != nil {
+		return port.Report{}, ErrInvalidReportID
+	}
+	report, err := u.deps.Stores.Reports.GetByID(ctx, reportID)
+	if errors.Is(err, port.ErrNotFound) {
+		return port.Report{}, ErrProjectAccessDenied
+	}
+	if err != nil {
+		return port.Report{}, fmt.Errorf("lookup report %q: %w", reportID, err)
+	}
+	if report.ProjectID != projectID {
+		return port.Report{}, ErrProjectAccessDenied
+	}
+	return report, nil
+}
 
 // defaultProvider is the adapter used when callers name none.
 const defaultProvider = "github"
@@ -183,12 +208,9 @@ func (u *Usecases) resolveReportScope(
 	policies []gate.GatePolicy,
 ) (previewScope, error) {
 	var scope previewScope
-	report, err := u.deps.Stores.Reports.GetByID(ctx, input.ReportID)
+	report, err := u.requireReportInProject(ctx, project.ID, input.ReportID)
 	if err != nil {
-		return scope, fmt.Errorf("lookup report %q: %w", input.ReportID, err)
-	}
-	if report.ProjectID != project.ID {
-		return scope, ErrProjectAccessDenied
+		return scope, err
 	}
 	if report.CommitSha != nil && normalizeRevision(*report.CommitSha) != "" &&
 		normalizeRevision(*report.CommitSha) != input.CommitSha {

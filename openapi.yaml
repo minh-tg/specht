@@ -1881,7 +1881,9 @@ paths:
         With no `severity` parameter the project's effective policy supplies the
         floor. With `introduced_only` the verdict covers only the findings
         `report_id` introduced, so pre-existing debt on the long-lived branch
-        never fails a pull request.
+        never fails a pull request. A `report_id` that is missing and one that
+        belongs to another project both answer 403 `project_access_denied`, so
+        report ids cannot be probed. A malformed one answers 400 `invalid_id`.
       x-required-scope: read
       security:
         - sessionAuth: []
@@ -1920,7 +1922,9 @@ paths:
         Returns the conclusion and annotations a provider check would publish,
         with no side effects — nothing is created, updated, or posted.
         A commit that no completed scan carries is refused with 404 rather than
-        planned as a passing check.
+        planned as a passing check. A `report_id` that is missing and one that
+        belongs to another project both answer 403 `project_access_denied`, so
+        report ids cannot be probed. A malformed one answers 400 `invalid_id`.
       x-required-scope: read
       security:
         - sessionAuth: []

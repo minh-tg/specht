@@ -237,3 +237,42 @@ func mergeAnyMap(dst, src map[string]any) map[string]any {
 	}
 	return dst
 }
+
+// TestE2E_ReportScopedChecksAnswerAlikeForMissingAndForeignReports: the
+// pull-request check and the introduced-only gate answer 403
+// project_access_denied for a report id that does not exist and for one that
+// belongs to another project, and 400 invalid_id for a malformed id.
+func TestE2E_ReportScopedChecksAnswerAlikeForMissingAndForeignReports(t *testing.T) {
+	slug := newProject(t, "report-scope")
+	other := newProject(t, "report-scope-other")
+	const sha = "dddddddddddddddddddddddddddddddddddddddd"
+	own := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", mintKey(t, slug),
+		ingestBodyWith(t, slug, "high.sarif.json", map[string]any{"commit_sha": sha}), http.StatusCreated)
+	foreign := request[ingestResponse](t, http.MethodPost, "/api/v1/reports", mintKey(t, other),
+		ingestBodyWith(t, other, "high.sarif.json", map[string]any{"commit_sha": sha}), http.StatusCreated)
+	const missing = "00000000-0000-4000-8000-00000000dead"
+
+	prCheck := func(reportID string) (int, []byte) {
+		return doJSON(t, http.MethodGet, "/api/v1/projects/"+slug+"/pr-check?provider=github&commit="+sha+"&report_id="+reportID, adminToken, nil)
+	}
+	gate := func(reportID string) (int, []byte) {
+		return doJSON(t, http.MethodGet, "/api/v1/projects/"+slug+"/gate?introduced_only=1&report_id="+reportID, adminToken, nil)
+	}
+	for name, call := range map[string]func(string) (int, []byte){"pr-check": prCheck, "gate": gate} {
+		t.Run(name, func(t *testing.T) {
+			foreignStatus, foreignBody := call(foreign.ReportID)
+			missingStatus, missingBody := call(missing)
+			require.Equal(t, http.StatusForbidden, foreignStatus, "%s", foreignBody)
+			require.Equal(t, http.StatusForbidden, missingStatus, "%s", missingBody)
+			require.JSONEq(t, string(foreignBody), string(missingBody), "the answers are indistinguishable")
+			require.Contains(t, string(missingBody), "project_access_denied")
+
+			status, body := call("not-a-uuid")
+			require.Equalf(t, http.StatusBadRequest, status, "%s", body)
+			require.Contains(t, string(body), "invalid_id")
+
+			status, body = call(own.ReportID)
+			require.Equalf(t, http.StatusOK, status, "the project's own report still works: %s", body)
+		})
+	}
+}

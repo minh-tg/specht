@@ -499,15 +499,8 @@ func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug stri
 		// one (ErrProjectAccessDenied, which the handler maps to 403
 		// project_access_denied, the same answer pr-check gives) so a caller
 		// cannot tell "not yours" from "does not exist".
-		report, err := u.deps.Stores.Reports.GetByID(ctx, reportID)
-		if err != nil {
-			if errors.Is(err, port.ErrNotFound) {
-				return nil, ErrProjectAccessDenied
-			}
-			return nil, fmt.Errorf("lookup report %q: %w", reportID, err)
-		}
-		if report.ProjectID != project.ID {
-			return nil, ErrProjectAccessDenied
+		if _, err := u.requireReportInProject(ctx, project.ID, reportID); err != nil {
+			return nil, err
 		}
 	}
 
