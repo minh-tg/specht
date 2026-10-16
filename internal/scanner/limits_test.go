@@ -56,3 +56,41 @@ func TestCheckDocumentLeavesBrokenInputToTheDecoder(t *testing.T) {
 		assert.NoError(t, scanner.CheckDocument([]byte(doc), 1), "%.20q", doc)
 	}
 }
+
+func objects(n int) string {
+	return strings.TrimSuffix(strings.Repeat("{},", n), ",")
+}
+
+func TestCheckDocumentCountsElementsOfTheNamedArrays(t *testing.T) {
+	ceiling := 2 * scanner.ElementsPerFinding
+	doc := func(n int) []byte { return []byte(`{"Results":[{"Vulnerabilities":[` + objects(n) + `]}]}`) }
+
+	require.NoError(t, scanner.CheckDocument(doc(ceiling), 2, "Vulnerabilities"))
+	require.ErrorIs(t, scanner.CheckDocument(doc(ceiling+1), 2, "Vulnerabilities"), scanner.ErrTooManyFindings)
+	require.NoError(t, scanner.CheckDocument(doc(ceiling+1), 2, "Secrets"), "an array under another key is not counted")
+	require.NoError(t, scanner.CheckDocument(doc(ceiling+1), 2), "no keys means only the object count applies")
+}
+
+func TestCheckDocumentSumsElementsAcrossArraysWithTheSameKey(t *testing.T) {
+	doc := `{"Results":[` + strings.TrimSuffix(strings.Repeat(`{"Vulnerabilities":[{},{},{}]},`, 3), ",") + `]}`
+	require.NoError(t, scanner.CheckDocument([]byte(doc), 5, "Vulnerabilities"), "9 elements, ceiling 10")
+	require.ErrorIs(t, scanner.CheckDocument([]byte(doc), 4, "Vulnerabilities"), scanner.ErrTooManyFindings, "9 elements, ceiling 8")
+}
+
+func TestCheckDocumentCountsTheRootArrayAndJSONLinesUnderTheEmptyKey(t *testing.T) {
+	require.ErrorIs(t, scanner.CheckDocument([]byte("["+objects(3)+"]"), 1, ""), scanner.ErrTooManyFindings)
+	require.ErrorIs(t, scanner.CheckDocument([]byte(strings.Repeat("{}\n", 3)), 1, ""), scanner.ErrTooManyFindings)
+	require.NoError(t, scanner.CheckDocument([]byte("["+objects(3)+"]"), 1, "results"), "the root array is not named results")
+}
+
+func TestCheckDocumentFollowsNestedArraysOfTheSameKey(t *testing.T) {
+	// CycloneDX nests components inside components.
+	doc := `{"components":[{"components":[{},{}]},{"components":[{}]}]}`
+	require.ErrorIs(t, scanner.CheckDocument([]byte(doc), 1, "components"), scanner.ErrTooManyFindings,
+		"2 outer elements and 3 inner ones, ceiling 2")
+}
+
+func TestCheckDocumentIgnoresKeysThatLookLikeValuesAndTheReverse(t *testing.T) {
+	doc := `{"note":"Vulnerabilities","x":{"Vulnerabilities":"` + strings.Repeat(`{`, 50) + `"},"Results":[` + objects(2) + `]}`
+	require.NoError(t, scanner.CheckDocument([]byte(doc), 5, "Vulnerabilities"))
+}

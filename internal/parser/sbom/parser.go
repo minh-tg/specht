@@ -21,6 +21,7 @@ package sbom
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -81,17 +82,27 @@ func (s *Scanner) Recognize(data []byte) scanner.Recognition {
 	return scanner.NotRecognized
 }
 
+// findingArrays names the arrays of a document that carry findings and
+// packages (see scanner.CheckDocument).
+var findingArrays = []string{"components", "vulnerabilities", "affects", "packages"}
+
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	budget, err := parseutil.NewBudget(ctx, data, findingArrays...)
+	if err != nil {
+		return nil, err
+	}
 	shape, ok := parseutil.ReadShape(data)
 	if !ok || s.Recognize(data) == scanner.NotRecognized {
 		return nil, scanner.Unrecognized("sbom")
 	}
 	var nr *domain.NormalizedReport
-	var err error
 	if shape.String("bomFormat") == "CycloneDX" {
-		nr, err = parseCycloneDX(data)
+		nr, err = parseCycloneDX(budget, data)
 	} else {
-		nr, err = parseSPDX(data)
+		nr, err = parseSPDX(budget, data)
+	}
+	if errors.Is(err, scanner.ErrTooManyFindings) {
+		return nil, err
 	}
 	if err != nil {
 		return nil, scanner.Malformed("sbom", err)
@@ -121,7 +132,7 @@ type cyclonedxDoc struct {
 	Vulnerabilities *[]cdxVulnerability `json:"vulnerabilities"`
 }
 
-func parseCycloneDX(data []byte) (*domain.NormalizedReport, error) {
+func parseCycloneDX(budget *parseutil.Budget, data []byte) (*domain.NormalizedReport, error) {
 	var doc cyclonedxDoc
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("sbom: parse cyclonedx: %w", err)
@@ -154,6 +165,9 @@ func parseCycloneDX(data []byte) (*domain.NormalizedReport, error) {
 		if c.Name == "" {
 			continue
 		}
+		if err := budget.Add(1); err != nil {
+			return nil, err
+		}
 		nr.Packages = append(nr.Packages, parseutil.HardenPackage(domain.PackageRef{
 			PURL:      c.PURL,
 			Ecosystem: ecosystemFromPURL(c.PURL),
@@ -166,7 +180,10 @@ func parseCycloneDX(data []byte) (*domain.NormalizedReport, error) {
 		// inventory. What it left out was never analysed, so its absence proves nothing.
 		nr.Completeness = domain.CompletenessUnknown
 		nr.ScanScope.Ext["sbom_vulnerabilities"] = "included"
-		findings, unresolved := vulnerabilityFindings(*doc.Vulnerabilities, components)
+		findings, unresolved, err := vulnerabilityFindings(budget, *doc.Vulnerabilities, components)
+		if err != nil {
+			return nil, err
+		}
 		nr.Findings = findings
 		if unresolved > 0 {
 			nr.ScanScope.Ext["sbom_unresolved_references"] = itoa(unresolved)
@@ -190,7 +207,7 @@ type spdxDoc struct {
 	} `json:"packages"`
 }
 
-func parseSPDX(data []byte) (*domain.NormalizedReport, error) {
+func parseSPDX(budget *parseutil.Budget, data []byte) (*domain.NormalizedReport, error) {
 	var doc spdxDoc
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("sbom: parse spdx: %w", err)
@@ -225,6 +242,9 @@ func parseSPDX(data []byte) (*domain.NormalizedReport, error) {
 		}
 		if p.VersionInfo == "" && purl == "" {
 			continue
+		}
+		if err := budget.Add(1); err != nil {
+			return nil, err
 		}
 		nr.Packages = append(nr.Packages, parseutil.HardenPackage(domain.PackageRef{
 			PURL:      purl,

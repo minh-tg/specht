@@ -1,13 +1,25 @@
 package trivy
 
 import (
+	"context"
 	"testing"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser/parseutil"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// mustConvert converts a decoded report with the default finding limit.
+func mustConvert(t *testing.T, report trivyReport) *domain.NormalizedReport {
+	t.Helper()
+	budget, err := parseutil.NewBudget(context.Background(), nil)
+	require.NoError(t, err)
+	nr, err := convert(budget, report)
+	require.NoError(t, err)
+	return nr
+}
 
 func TestNormalizeSeverity(t *testing.T) {
 	tests := []struct {
@@ -53,7 +65,7 @@ func TestDetectEdgeCases(t *testing.T) {
 
 func TestConvertEdgeCases(t *testing.T) {
 	t.Run("empty report returns empty findings", func(t *testing.T) {
-		nr := convert(trivyReport{})
+		nr := mustConvert(t, trivyReport{})
 		require.NotNil(t, nr)
 		assert.Empty(t, nr.Findings)
 		assert.Equal(t, domain.ScanTypeImage, nr.ScanType)
@@ -64,7 +76,7 @@ func TestConvertEdgeCases(t *testing.T) {
 			Target: "test:latest",
 			Class:  "os-pkgs",
 		}
-		nr := convert(trivyReport{Results: []trivyResult{result}})
+		nr := mustConvert(t, trivyReport{Results: []trivyResult{result}})
 		assert.Empty(t, nr.Findings)
 	})
 
@@ -73,7 +85,7 @@ func TestConvertEdgeCases(t *testing.T) {
 			Target: "some-target",
 			Class:  "custom-class",
 		}
-		nr := convert(trivyReport{Results: []trivyResult{result}})
+		nr := mustConvert(t, trivyReport{Results: []trivyResult{result}})
 		assert.Equal(t, "filesystem", nr.Target.Kind)
 	})
 }
@@ -96,7 +108,7 @@ func TestConvertScoreSelection(t *testing.T) {
 				},
 			},
 		}
-		nr := convert(trivyReport{Results: []trivyResult{result}})
+		nr := mustConvert(t, trivyReport{Results: []trivyResult{result}})
 		require.Len(t, nr.Findings, 1)
 		assert.Equal(t, 8.5, nr.Findings[0].Score)
 	})
@@ -118,7 +130,7 @@ func TestConvertScoreSelection(t *testing.T) {
 				},
 			},
 		}
-		nr := convert(trivyReport{Results: []trivyResult{result}})
+		nr := mustConvert(t, trivyReport{Results: []trivyResult{result}})
 		assert.Equal(t, 6.5, nr.Findings[0].Score)
 	})
 
@@ -139,7 +151,7 @@ func TestConvertScoreSelection(t *testing.T) {
 				},
 			},
 		}
-		nr := convert(trivyReport{Results: []trivyResult{result}})
+		nr := mustConvert(t, trivyReport{Results: []trivyResult{result}})
 		assert.Equal(t, 4.0, nr.Findings[0].Score)
 	})
 
@@ -157,7 +169,7 @@ func TestConvertScoreSelection(t *testing.T) {
 				},
 			},
 		}
-		nr := convert(trivyReport{Results: []trivyResult{result}})
+		nr := mustConvert(t, trivyReport{Results: []trivyResult{result}})
 		assert.Equal(t, 0.0, nr.Findings[0].Score)
 	})
 
@@ -178,7 +190,7 @@ func TestConvertScoreSelection(t *testing.T) {
 				},
 			},
 		}
-		nr := convert(trivyReport{Results: []trivyResult{result}})
+		nr := mustConvert(t, trivyReport{Results: []trivyResult{result}})
 		require.Len(t, nr.Findings, 1)
 		fp := string(domain.SCAFingerprint("CVE-2024-0005", "pkg:apk/test-pkg@1.0"))
 		assert.Equal(t, fp, nr.Findings[0].Fingerprint)

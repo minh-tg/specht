@@ -177,7 +177,15 @@ func (s *Scanner) Recognize(data []byte) scanner.Recognition {
 	return scanner.NotRecognized
 }
 
+// findingArrays names the arrays of a document that carry findings and
+// packages (see scanner.CheckDocument).
+var findingArrays = []string{"results", "packages", "vulnerabilities"}
+
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	budget, err := parseutil.NewBudget(ctx, data, findingArrays...)
+	if err != nil {
+		return nil, err
+	}
 	if s.Recognize(data) == scanner.NotRecognized {
 		return nil, scanner.Unrecognized("osv-scanner")
 	}
@@ -186,7 +194,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		return nil, scanner.Malformed("osv-scanner", err)
 	}
 
-	return convert(report), nil
+	return convert(budget, report)
 }
 
 func targetKindForSource(sourceType string) string {
@@ -228,7 +236,7 @@ func convertToScanType(s string) domain.ScanType {
 	}
 }
 
-func convert(report osvReport) *domain.NormalizedReport {
+func convert(budget *parseutil.Budget, report osvReport) (*domain.NormalizedReport, error) {
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
 		FingerprintVersion: 1,
@@ -249,8 +257,12 @@ func convert(report osvReport) *domain.NormalizedReport {
 		nr.ScanScope.Ext["osv_source_path"] = result.Source.Path
 
 		// full package inventory, vulnerable or not
-		addOsvPackages(nr, result)
-		addOsvVulns(nr, result)
+		if err := addOsvPackages(budget, nr, result); err != nil {
+			return nil, err
+		}
+		if err := addOsvVulns(budget, nr, result); err != nil {
+			return nil, err
+		}
 	}
 	// A clean scan has no results to name its source type, but the report still
 	// needs one to be stored. OSV-Scanner reads lockfiles unless told otherwise.
@@ -258,12 +270,15 @@ func convert(report osvReport) *domain.NormalizedReport {
 		nr.ScanType = domain.ScanTypeLockfile
 	}
 
-	return nr
+	return nr, nil
 }
 
-func addOsvPackages(nr *domain.NormalizedReport, result osvResult) {
+func addOsvPackages(budget *parseutil.Budget, nr *domain.NormalizedReport, result osvResult) error {
 	manifestPath := parseutil.CleanFilePath(result.Source.Path)
 	for _, pkg := range result.Packages {
+		if err := budget.Add(1); err != nil {
+			return err
+		}
 		purl := pkg.Package.PURL
 		if purl == "" {
 			purl = "pkg:" + strings.ToLower(pkg.Package.Ecosystem) + "/" + pkg.Package.Name
@@ -276,9 +291,10 @@ func addOsvPackages(nr *domain.NormalizedReport, result osvResult) {
 			ManifestPath: manifestPath,
 		}))
 	}
+	return nil
 }
 
-func addOsvVulns(nr *domain.NormalizedReport, result osvResult) {
+func addOsvVulns(budget *parseutil.Budget, nr *domain.NormalizedReport, result osvResult) error {
 	for _, pkg := range result.Packages {
 		groupAnalysis := make(map[string]osvCallAnalysis, len(pkg.Groups))
 		for _, g := range pkg.Groups {
@@ -288,6 +304,9 @@ func addOsvVulns(nr *domain.NormalizedReport, result osvResult) {
 		}
 
 		for _, v := range pkg.Vulnerabilities {
+			if err := budget.Add(1); err != nil {
+				return err
+			}
 			f := osvFinding{
 				vuln:     v,
 				pkg:      pkg.Package,
@@ -298,6 +317,7 @@ func addOsvVulns(nr *domain.NormalizedReport, result osvResult) {
 			nr.Findings = append(nr.Findings, parseutil.HardenFinding(f.normalized()))
 		}
 	}
+	return nil
 }
 
 // osvFinding is the per-vulnerability conversion context for one OSV

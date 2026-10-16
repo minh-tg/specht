@@ -195,22 +195,30 @@ func recognizeNative(shape parseutil.Shape) scanner.Recognition {
 	return scanner.NotRecognized
 }
 
+// findingArrays names the arrays of a document that carry findings and
+// packages (see scanner.CheckDocument).
+var findingArrays = []string{"results", "runs", "rules"}
+
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	budget, err := parseutil.NewBudget(ctx, data, findingArrays...)
+	if err != nil {
+		return nil, err
+	}
 	if s.Recognize(data) == scanner.NotRecognized {
 		return nil, scanner.Unrecognized("semgrep")
 	}
 	if shape, ok := parseutil.ReadShape(data); ok && !shape.Has("runs") {
-		return parseNative(data)
+		return parseNative(budget, data)
 	}
 	var report sarifReport
 	if err := json.Unmarshal(data, &report); err != nil {
 		return nil, scanner.Malformed("semgrep", err)
 	}
 
-	return convert(report), nil
+	return convert(budget, report)
 }
 
-func convert(report sarifReport) *domain.NormalizedReport {
+func convert(budget *parseutil.Budget, report sarifReport) (*domain.NormalizedReport, error) {
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
 		FingerprintVersion: fingerprintVersion,
@@ -220,13 +228,16 @@ func convert(report sarifReport) *domain.NormalizedReport {
 	}
 
 	if len(report.Runs) == 0 {
-		return nr
+		return nr, nil
 	}
 
 	run := report.Runs[0]
 
 	var seen []sighting
 	for _, result := range run.Results {
+		if err := budget.Add(1); err != nil {
+			return nil, err
+		}
 		rule, hasRule := findRule(run.Tool.Driver.Rules, result.RuleID)
 		file := extractFile(result)
 		line := extractLine(result)
@@ -244,7 +255,7 @@ func convert(report sarifReport) *domain.NormalizedReport {
 	}
 	nr.Findings = identify(seen)
 
-	return nr
+	return nr, nil
 }
 
 // findRule looks up a rule by ID, reporting whether it was present.
@@ -392,7 +403,7 @@ type nativeResult struct {
 }
 
 // parseNative reads the output of semgrep --json.
-func parseNative(data []byte) (*domain.NormalizedReport, error) {
+func parseNative(budget *parseutil.Budget, data []byte) (*domain.NormalizedReport, error) {
 	var report nativeReport
 	if err := json.Unmarshal(data, &report); err != nil {
 		return nil, scanner.Malformed("semgrep", err)
@@ -409,6 +420,9 @@ func parseNative(data []byte) (*domain.NormalizedReport, error) {
 	}
 	var seen []sighting
 	for _, r := range report.Results {
+		if err := budget.Add(1); err != nil {
+			return nil, err
+		}
 		file := parseutil.CleanFilePath(r.Path)
 		if file == "" {
 			file = "unknown"

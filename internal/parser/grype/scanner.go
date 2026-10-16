@@ -149,7 +149,15 @@ func (s *Scanner) Recognize(data []byte) scanner.Recognition {
 	return scanner.NotRecognized
 }
 
+// findingArrays names the arrays of a document that carry findings and
+// packages (see scanner.CheckDocument).
+var findingArrays = []string{"matches"}
+
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	budget, err := parseutil.NewBudget(ctx, data, findingArrays...)
+	if err != nil {
+		return nil, err
+	}
 	if s.Recognize(data) == scanner.NotRecognized {
 		return nil, scanner.Unrecognized("grype")
 	}
@@ -158,10 +166,10 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		return nil, scanner.Malformed("grype", err)
 	}
 
-	return convert(doc), nil
+	return convert(budget, doc)
 }
 
-func convert(doc grypeDoc) *domain.NormalizedReport {
+func convert(budget *parseutil.Budget, doc grypeDoc) (*domain.NormalizedReport, error) {
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
 		FingerprintVersion: 1,
@@ -182,16 +190,23 @@ func convert(doc grypeDoc) *domain.NormalizedReport {
 	// packages that carry at least one vulnerability. The package inventory is
 	// therefore limited to those artifacts; projects that need a complete
 	// dependency tree should pair grype with a syft SBOM scan.
-	nr.Packages = collectPackages(doc.Matches)
+	packages, err := collectPackages(budget, doc.Matches)
+	if err != nil {
+		return nil, err
+	}
+	nr.Packages = packages
 	for _, match := range doc.Matches {
+		if err := budget.Add(1); err != nil {
+			return nil, err
+		}
 		nr.Findings = append(nr.Findings, parseutil.HardenFinding(convertMatch(match)))
 	}
 
-	return nr
+	return nr, nil
 }
 
 // collectPackages deduplicates matched artifacts into package refs by PURL.
-func collectPackages(matches []grypeMatch) []domain.PackageRef {
+func collectPackages(budget *parseutil.Budget, matches []grypeMatch) ([]domain.PackageRef, error) {
 	seen := make(map[string]struct{})
 	var packages []domain.PackageRef
 	for _, match := range matches {
@@ -204,6 +219,9 @@ func collectPackages(matches []grypeMatch) []domain.PackageRef {
 			continue
 		}
 		seen[purl] = struct{}{}
+		if err := budget.Add(1); err != nil {
+			return nil, err
+		}
 
 		manifestPath := ""
 		if len(artifact.Locations) > 0 {
@@ -219,7 +237,7 @@ func collectPackages(matches []grypeMatch) []domain.PackageRef {
 			ManifestPath: manifestPath,
 		}))
 	}
-	return packages
+	return packages, nil
 }
 
 // convertMatch maps a single grype match to a normalized SCA finding.

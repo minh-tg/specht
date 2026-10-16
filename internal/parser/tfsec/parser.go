@@ -81,7 +81,15 @@ func (s *Scanner) Recognize(data []byte) scanner.Recognition {
 	return scanner.NotRecognized
 }
 
+// findingArrays names the arrays of a document that carry findings and
+// packages (see scanner.CheckDocument).
+var findingArrays = []string{"results"}
+
 func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedReport, error) {
+	budget, err := parseutil.NewBudget(ctx, data, findingArrays...)
+	if err != nil {
+		return nil, err
+	}
 	if s.Recognize(data) == scanner.NotRecognized {
 		return nil, scanner.Unrecognized("tfsec")
 	}
@@ -99,6 +107,9 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	for _, r := range report.Results {
 		if r.Status == nil || *r.Status != 0 || r.RuleID == "" {
 			continue
+		}
+		if err := budget.Add(1); err != nil {
+			return nil, err
 		}
 		nr.Findings = append(nr.Findings, parseutil.HardenFinding(convert(r)))
 	}
