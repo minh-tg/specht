@@ -563,3 +563,40 @@ func TestLoad_DBPoolAndShutdownSettings(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_IngestMemoryBudget(t *testing.T) {
+	t.Run("unset leaves the server default", func(t *testing.T) {
+		t.Setenv("INGEST_MEMORY_BUDGET", "")
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Zero(t, cfg.IngestMemoryBudget)
+	})
+	for in, want := range map[string]int64{
+		"2147483648": 2 << 30,
+		"2GiB":       2 << 30,
+		"512MiB":     512 << 20,
+		"1.5GiB":     3 << 29,
+		"64KiB":      64 << 10,
+		"1TiB":       1 << 40,
+		"3GB":        3_000_000_000,
+		"250MB":      250_000_000,
+		"2gib":       2 << 30,
+		" 2 GiB ":    2 << 30,
+		"4096B":      4096,
+	} {
+		t.Run("parses "+in, func(t *testing.T) {
+			t.Setenv("INGEST_MEMORY_BUDGET", in)
+			cfg, err := Load()
+			require.NoError(t, err)
+			assert.Equal(t, want, cfg.IngestMemoryBudget)
+		})
+	}
+	for _, bad := range []string{"0", "-1", "-2GiB", "0GiB", "lots", "GiB", "2GiBs", "2 parsecs", "1e3", "99999999999TiB", "0.0001B", "1.5"} {
+		t.Run("rejects "+bad, func(t *testing.T) {
+			t.Setenv("INGEST_MEMORY_BUDGET", bad)
+			_, err := Load()
+			require.Error(t, err, "a typo must fail at startup, not silently remove the limit")
+			assert.Contains(t, err.Error(), "INGEST_MEMORY_BUDGET")
+		})
+	}
+}

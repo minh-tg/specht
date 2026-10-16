@@ -95,6 +95,18 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The report is in memory but not decoded yet. Charge the memory the decode
+	// will need before the use case starts, so a few large reports cannot
+	// decode side by side.
+	release, err := h.ingestMemory.acquire(r.Context(), len(req.RawData))
+	if err != nil {
+		if errors.Is(err, errIngestBusy) {
+			respondIngestBusy(w, h.ingestMemory.queueWait)
+		}
+		return
+	}
+	defer release()
+
 	var gateSeverity, gateStatus []string
 	if req.GateSeverity != "" {
 		gateSeverity = strings.Split(req.GateSeverity, ",")

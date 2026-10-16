@@ -5,6 +5,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"net"
 	"net/http"
@@ -74,6 +75,13 @@ type RouterConfig struct {
 	// IngestConcurrency caps report ingests processed at once; zero or less
 	// means DefaultIngestConcurrency.
 	IngestConcurrency int
+	// IngestMemoryBudget is the memory, in bytes, that ingests in flight may
+	// charge together (64 bytes per byte of report); zero or less means
+	// DefaultIngestMemoryBudget.
+	IngestMemoryBudget int64
+	// IngestQueueWait is how long an ingest waits for a slot or for memory
+	// before it gets 503 ingest_busy; zero or less means 15 seconds.
+	IngestQueueWait time.Duration
 	// Ready reports whether the instance can serve requests, normally by
 	// pinging the database. Nil means always ready, which suits tests and a
 	// router without a database.
@@ -121,6 +129,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	h := NewHandler(cfg.Usecases, revoker)
 	h.loginDelay = newLoginDelay()
+	ingestQueueWait := cmp.Or(max(cfg.IngestQueueWait, 0), defaultIngestQueueWait)
+	h.ingestMemory = newIngestMemory(cfg.IngestMemoryBudget, ingestQueueWait)
 
 	r.Get("/api/v1/health", healthHandler)
 	ready := cfg.Ready

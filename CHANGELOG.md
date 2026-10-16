@@ -135,6 +135,12 @@ releases.
   spelled in another case or with a JSON escape (`"RESULTS"`), or whose fields hold millions
   of scalar entries is refused with `422 too_many_findings` before it is decoded. Such a
   20 MB upload used to be accepted and cost the server about 1.5 GiB of memory.
+- Report ingests share a memory budget. Before it decodes a report, an ingest reserves 64
+  bytes per byte of the report out of `INGEST_MEMORY_BUDGET` (default 2 GiB, for example
+  `512MiB`). A report that does not fit waits up to 15 seconds and then gets
+  `503 ingest_busy`, so a few large uploads can no longer decode side by side and exhaust
+  the server's memory. `deploy/README.md` now gives the real arithmetic instead of the earlier
+  1.1 GB estimate.
 - Undo after a triage change works for every earlier state. The server keeps a snapshot of
   the analysis it replaced (state, reason, expiry, source, manual and review flags) in the
   triage event, and `POST /api/v1/findings/{id}/analysis/undo` puts it back as a new event.

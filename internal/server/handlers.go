@@ -266,6 +266,9 @@ type Handler struct {
 	// loginDelay slows repeated failed password logins per account. Nil
 	// disables it.
 	loginDelay *loginDelay
+	// ingestMemory is the memory admission control for report ingests. Nil
+	// admits everything, which suits tests that build a Handler directly.
+	ingestMemory *ingestMemory
 }
 
 type usecaseInterface interface {

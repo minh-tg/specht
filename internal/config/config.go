@@ -8,6 +8,7 @@ package config
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net/netip"
 	"os"
 	"strconv"
@@ -110,6 +111,10 @@ type Server struct {
 	// IngestMaxFindings caps the findings and packages one report may
 	// produce; zero leaves the built-in default of 100000.
 	IngestMaxFindings int
+	// IngestMemoryBudget is the memory, in bytes, that all ingests in flight
+	// may charge together; each charges 64 bytes per byte of its report. Zero
+	// leaves the server's built-in default of 2 GiB.
+	IngestMemoryBudget int64
 	// CVEDetail configures the external CVE detail providers. They are off
 	// unless CVE_DETAIL_PROVIDERS is set.
 	CVEDetail CVEDetailConfig
@@ -254,6 +259,47 @@ func parsePositiveInt(label, v string) (int, error) {
 		return 0, fmt.Errorf("%s is invalid: %q", label, v)
 	}
 	return n, nil
+}
+
+// byteUnits maps the size suffixes parseByteSize accepts, lower-cased, to their
+// number of bytes. KiB, MiB, GiB and TiB are powers of 1024; KB, MB, GB and TB
+// are powers of 1000.
+var byteUnits = map[string]float64{
+	"b":   1,
+	"kib": 1 << 10, "mib": 1 << 20, "gib": 1 << 30, "tib": 1 << 40,
+	"kb": 1e3, "mb": 1e6, "gb": 1e9, "tb": 1e12,
+}
+
+// parseByteSize parses a positive size in bytes: a whole number of bytes ("2147483648")
+// or a number with a unit ("2GiB", "512MiB", "1.5GiB", "250MB"), reporting the given
+// label on failure.
+func parseByteSize(label, v string) (int64, error) {
+	invalid := fmt.Errorf("%s is invalid: %q (want bytes or a size such as 2GiB or 512MiB)", label, v)
+	text := strings.ToLower(strings.TrimSpace(v))
+	digits := strings.TrimRight(text, "abcdefghijklmnopqrstuvwxyz ")
+	unit := strings.TrimSpace(text[len(digits):])
+	digits = strings.TrimSpace(digits)
+	if digits == "" || strings.Trim(digits, "0123456789.") != "" || strings.Count(digits, ".") > 1 {
+		return 0, invalid
+	}
+	scale := 1.0
+	if unit != "" {
+		var ok bool
+		if scale, ok = byteUnits[unit]; !ok {
+			return 0, invalid
+		}
+	} else if strings.Contains(digits, ".") {
+		return 0, invalid
+	}
+	n, err := strconv.ParseFloat(digits, 64)
+	if err != nil {
+		return 0, invalid
+	}
+	size := n * scale
+	if size < 1 || size >= math.MaxInt64 {
+		return 0, invalid
+	}
+	return int64(size), nil
 }
 
 // loadRateLimit reads limiter settings. Values are validated only when
@@ -448,6 +494,14 @@ func Load() (*Server, error) {
 			return nil, err
 		}
 		s.IngestMaxFindings = n
+	}
+
+	if v := os.Getenv("INGEST_MEMORY_BUDGET"); v != "" {
+		n, err := parseByteSize("INGEST_MEMORY_BUDGET", v)
+		if err != nil {
+			return nil, err
+		}
+		s.IngestMemoryBudget = n
 	}
 
 	if err := loadRateLimit(s); err != nil {
