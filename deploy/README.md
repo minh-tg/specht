@@ -415,7 +415,10 @@ Global admins manage accounts from the admin area or the API:
 
 The last active admin, the signed-in admin themselves (for deactivation) and
 the seeded `system@specht.local` account cannot be demoted or deactivated;
-those requests answer 409. Specht has no endpoint that deletes an account.
+those requests answer 409. A deactivated account does not count as a project
+admin. Deactivating the only admin who can sign in on a project answers 409
+`sole_project_admin` and lists the project slugs; send `{"force": true}` (or
+`specht users deactivate --force`) to do it anyway. Specht has no endpoint that deletes an account.
 Removing someone from a project or a team takes effect on their next request.
 
 ### Who sees which teams
