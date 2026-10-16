@@ -85,3 +85,39 @@ func TestWaiverDeleteOfMissingWaiverWritesNoRecord(t *testing.T) {
 	require.NoError(t, repos.pool.QueryRow(ctx, `SELECT count(*) FROM waiver_deletions`).Scan(&n))
 	require.Zero(t, n)
 }
+
+// A context column left NULL reads back as "", never as the all-zero UUID, so
+// the gate sees it as a wildcard and not as an environment that matches nothing.
+func TestWaiverContextReadsNullColumnsAsEmpty(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	project := createTestProject(t, repos)
+	projectID := toUUID(project.ID)
+	stores := NewPortStores(repos.pool)
+
+	target, err := stores.Targets.Upsert(ctx, projectID, "app", "repo", "https://github.com/example/app", "")
+	require.NoError(t, err)
+	waiver, err := stores.Waivers.CreateWithDetails(ctx, port.CreateWaiverInput{
+		ProjectID: projectID,
+		Name:      "target only",
+		Enabled:   true,
+		Status:    "approved",
+		Contexts:  []port.WaiverContext{{TargetID: target.ID}},
+		Event:     port.WaiverEventInput{EventType: "created", Metadata: []byte(`{}`)},
+	})
+	require.NoError(t, err)
+
+	contexts, err := stores.Waivers.ListContexts(ctx, waiver.ID)
+	require.NoError(t, err)
+	require.Len(t, contexts, 1)
+	assert.Equal(t, "", contexts[0].EnvironmentID)
+	assert.Equal(t, target.ID, contexts[0].TargetID)
+	assert.Equal(t, "", contexts[0].ArtifactID)
+
+	byWaiver, err := stores.Waivers.ListContextsByWaiverIDs(ctx, []string{waiver.ID})
+	require.NoError(t, err)
+	require.Len(t, byWaiver, 1)
+	assert.Equal(t, "", byWaiver[0].EnvironmentID)
+	assert.Equal(t, "", byWaiver[0].ArtifactID)
+}

@@ -63,3 +63,44 @@ func TestE2E_WaiverUpdateAndDeleteAreAuditedAndKeepAnArchive(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, status)
 	require.True(t, getGate(t, slug, "").ThresholdBreached, "a deleted waiver no longer silences the gate")
 }
+
+type waiverScopeDetail struct {
+	ID       string `json:"id"`
+	Contexts []struct {
+		EnvironmentID string `json:"environment_id"`
+		TargetID      string `json:"target_id"`
+		ArtifactID    string `json:"artifact_id"`
+	} `json:"contexts"`
+}
+
+// TestE2E_WaiverContextReadsTheDocumentedKeys: a context written with the
+// documented environment_id key keeps that environment. A context that names
+// nothing it understands is refused, because it would cover every finding.
+func TestE2E_WaiverContextReadsTheDocumentedKeys(t *testing.T) {
+	slug := newProject(t, "waiver-ctx")
+	key := mintKey(t, slug)
+	ingestFixture(t, slug, key, "high.sarif.json")
+	request[ingestResponse](t, http.MethodPost, "/api/v1/reports", key,
+		ingestBodyWith(t, slug, "medium.sarif.json", map[string]any{"environment": "dev"}), http.StatusCreated)
+	dev := findEnvironment(t, slug, "dev")
+
+	created := request[waiverScopeDetail](t, http.MethodPost, "/api/v1/projects/"+slug+"/waivers", adminToken,
+		map[string]any{
+			"name":     "dev only",
+			"contexts": []map[string]string{{"environment_id": dev.ID}},
+		}, http.StatusCreated)
+	detail := request[waiverScopeDetail](t, http.MethodGet,
+		"/api/v1/projects/"+slug+"/waivers/"+created.ID, adminToken, nil, http.StatusOK)
+	require.Len(t, detail.Contexts, 1)
+	require.Equal(t, dev.ID, detail.Contexts[0].EnvironmentID, "the context keeps the environment it was given")
+	require.True(t, getGate(t, slug, "").ThresholdBreached, "a dev waiver leaves a finding that has no environment blocking")
+
+	for name, ctxs := range map[string][]map[string]string{
+		"misspelled key": {{"env_id": dev.ID}},
+		"empty context":  {{}},
+	} {
+		status, body := doJSON(t, http.MethodPost, "/api/v1/projects/"+slug+"/waivers", adminToken,
+			map[string]any{"name": name, "contexts": ctxs})
+		require.Equalf(t, http.StatusBadRequest, status, "%s: %s", name, body)
+	}
+}

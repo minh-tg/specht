@@ -950,9 +950,9 @@ func (r *pgFindingPort) GetFindingContext(ctx context.Context, findingID string)
 		return port.FindingContext{}, mappingErr(err)
 	}
 	return port.FindingContext{
-		EnvironmentID: toUUID(row.EnvironmentID),
-		TargetID:      toUUID(row.TargetID),
-		ArtifactID:    toUUID(row.ArtifactID),
+		EnvironmentID: optionalUUID(row.EnvironmentID),
+		TargetID:      optionalUUID(row.TargetID),
+		ArtifactID:    optionalUUID(row.ArtifactID),
 	}, nil
 }
 
@@ -1065,9 +1065,9 @@ func (r *pgFindingPort) ListGateCandidates(ctx context.Context, projectID string
 				IntroducedCommitSha:  stringFromTextPtr(row.IntroducedCommitSha),
 			},
 			Context: port.FindingContext{
-				EnvironmentID: toUUID(row.EnvironmentID),
-				TargetID:      toUUID(row.TargetID),
-				ArtifactID:    toUUID(row.ArtifactID),
+				EnvironmentID: optionalUUID(row.EnvironmentID),
+				TargetID:      optionalUUID(row.TargetID),
+				ArtifactID:    optionalUUID(row.ArtifactID),
 			},
 			Reachability: string(row.ReachabilityState),
 		}
@@ -1103,9 +1103,9 @@ func (r *pgFindingPort) ListIntroducedGateCandidates(ctx context.Context, projec
 				IntroducedCommitSha:  stringFromTextPtr(row.IntroducedCommitSha),
 			},
 			Context: port.FindingContext{
-				EnvironmentID: toUUID(row.EnvironmentID),
-				TargetID:      toUUID(row.TargetID),
-				ArtifactID:    toUUID(row.ArtifactID),
+				EnvironmentID: optionalUUID(row.EnvironmentID),
+				TargetID:      optionalUUID(row.TargetID),
+				ArtifactID:    optionalUUID(row.ArtifactID),
 			},
 			Reachability: string(row.ReachabilityState),
 		}

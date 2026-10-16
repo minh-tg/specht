@@ -414,3 +414,9 @@ releases.
 - Updating or deleting a waiver now writes an audit line with the person, the project and
   the waiver. Deleting a waiver keeps a copy of the waiver, its scope and its event history
   in an append-only record, so a change that lets findings through the gate cannot be erased.
+- A waiver context written with the documented `environment_id`, `target_id` and
+  `artifact_id` keys now keeps those ids. The server used to ignore them and store a context
+  that named nothing, so the waiver covered only findings without an environment. A context
+  that names no environment, target or artifact is now refused, and an old one stops matching
+  instead of applying to every finding. A waiver with no environment in its contexts applies
+  in every environment.

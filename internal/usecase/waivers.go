@@ -108,9 +108,9 @@ type CreateWaiverConditionInput struct {
 
 // CreateWaiverContextInput is a context scope input for waiver create/update.
 type CreateWaiverContextInput struct {
-	EnvironmentID string
-	TargetID      string
-	ArtifactID    string
+	EnvironmentID string `json:"environment_id"`
+	TargetID      string `json:"target_id"`
+	ArtifactID    string `json:"artifact_id"`
 }
 
 // UpdateWaiverInput is a request to update a waiver. Name and Description
@@ -488,10 +488,15 @@ func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*
 }
 
 // waiverContextInputs validates create/update waiver context inputs and
-// keeps them as port context DTOs (empty ids are wildcards).
+// keeps them as port context DTOs (an empty id is a wildcard for that field).
+// A context that names none of the three would cover nothing, or by mistake
+// everything, so it is refused.
 func waiverContextInputs(inputs []CreateWaiverContextInput) ([]port.WaiverContext, error) {
 	out := make([]port.WaiverContext, len(inputs))
 	for i, c := range inputs {
+		if c.EnvironmentID == "" && c.TargetID == "" && c.ArtifactID == "" {
+			return nil, invalidWaiverRequest("a context needs an environment_id, target_id or artifact_id")
+		}
 		envID, err := parseOptionalUUID(c.EnvironmentID, "environment_id")
 		if err != nil {
 			return nil, err
