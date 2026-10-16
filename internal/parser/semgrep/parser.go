@@ -233,12 +233,13 @@ func convert(budget *parseutil.Budget, report sarifReport) (*domain.NormalizedRe
 
 	run := report.Runs[0]
 
+	rules := indexRules(run.Tool.Driver.Rules)
 	var seen []sighting
 	for _, result := range run.Results {
 		if err := budget.Add(1); err != nil {
 			return nil, err
 		}
-		rule, hasRule := findRule(run.Tool.Driver.Rules, result.RuleID)
+		rule, hasRule := rules[result.RuleID]
 		file := extractFile(result)
 		line := extractLine(result)
 		message := extractTitle(result, rule)
@@ -258,14 +259,17 @@ func convert(budget *parseutil.Budget, report sarifReport) (*domain.NormalizedRe
 	return nr, nil
 }
 
-// findRule looks up a rule by ID, reporting whether it was present.
-func findRule(rules []sarifRule, ruleID string) (sarifRule, bool) {
+// indexRules maps each rule id to its rule once per run, so looking up the
+// rule of a result costs one map read instead of a scan of every rule. When an
+// id repeats the first rule wins.
+func indexRules(rules []sarifRule) map[string]sarifRule {
+	byID := make(map[string]sarifRule, len(rules))
 	for _, r := range rules {
-		if r.ID == ruleID {
-			return r, true
+		if _, ok := byID[r.ID]; !ok {
+			byID[r.ID] = r
 		}
 	}
-	return sarifRule{}, false
+	return byID
 }
 
 // resultMeta collects scanner-specific extension keys from the rule and the

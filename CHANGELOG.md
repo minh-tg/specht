@@ -105,6 +105,9 @@ releases.
 
 ### Changed
 
+- Semgrep SARIF reports parse in linear time. Looking up the rule of each result scanned every
+  rule, so a report with 40,000 rules and 40,000 results took several seconds and a larger one
+  held an ingest slot for minutes.
 - A report that would produce more than 100,000 findings and packages is refused with a
   422 `too_many_findings` that names the limit and asks you to split the report. The parser
   stops at the limit instead of converting the whole file, so one oversized upload can no
