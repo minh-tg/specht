@@ -295,3 +295,8 @@ releases.
   that has no local password because it signs in through SSO. The link answers
   the same "not valid" error an expired one gives. Before, such a link could
   still set a password on the account.
+- Deactivating an account, setting its password again and clearing its password
+  now end every password reset link the account had pending, in the same
+  transaction. Before, a link issued earlier still worked after any of these,
+  and reactivating a deactivated account brought it back. Issuing a link also
+  waits for a deactivation in flight and then refuses the account.

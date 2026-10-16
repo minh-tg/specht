@@ -92,3 +92,49 @@ func TestE2E_PasswordResetLink(t *testing.T) {
 		login(t, email, next)
 	})
 }
+
+// TestE2E_ResetLinkDiesWithTheStateItWasIssuedIn pins the events that end a link: a link issued
+// before the account was deactivated, or before its password changed, no longer redeems, and
+// reactivating the account does not bring it back.
+func TestE2E_ResetLinkDiesWithTheStateItWasIssuedIn(t *testing.T) {
+	redeemRefused := func(t *testing.T, link resetLinkResponse, why string) {
+		t.Helper()
+		status, raw := doJSON(t, http.MethodPost, "/api/v1/auth/reset", "",
+			map[string]string{"token": resetToken(t, link.Link), "password": "chosen-by-link-holder-" + randomHex(4)})
+		require.Equal(t, http.StatusBadRequest, status, why+": "+string(raw))
+		require.Equal(t, "reset_link_invalid", errorCode(t, raw), why)
+	}
+
+	t.Run("deactivation", func(t *testing.T) {
+		email := "reset-deact-" + randomHex(4) + "@example.com"
+		pass := "an-old-password-" + randomHex(4)
+		u := request[authResponse](t, http.MethodPost, "/api/v1/auth/register", "",
+			map[string]string{"email": email, "password": pass}, http.StatusCreated)
+		link := request[resetLinkResponse](t, http.MethodPost, "/api/v1/users/"+u.UserID+"/reset-link",
+			adminToken, map[string]string{}, http.StatusCreated)
+		status, raw := doJSON(t, http.MethodPost, "/api/v1/users/"+u.UserID+"/deactivate", adminToken, nil)
+		require.Equal(t, http.StatusOK, status, string(raw))
+
+		redeemRefused(t, link, "deactivated")
+		status, raw = doJSON(t, http.MethodPost, "/api/v1/users/"+u.UserID+"/reactivate", adminToken, nil)
+		require.Equal(t, http.StatusOK, status, string(raw))
+		redeemRefused(t, link, "after reactivation")
+		login(t, email, pass)
+	})
+
+	t.Run("password change", func(t *testing.T) {
+		email := "reset-change-" + randomHex(4) + "@example.com"
+		pass := "an-old-password-" + randomHex(4)
+		next := "a-newer-password-" + randomHex(4)
+		u := request[authResponse](t, http.MethodPost, "/api/v1/auth/register", "",
+			map[string]string{"email": email, "password": pass}, http.StatusCreated)
+		link := request[resetLinkResponse](t, http.MethodPost, "/api/v1/users/"+u.UserID+"/reset-link",
+			adminToken, map[string]string{}, http.StatusCreated)
+		status, raw := doJSON(t, http.MethodPut, "/api/v1/me/password", u.Token,
+			map[string]string{"current_password": pass, "new_password": next})
+		require.Equal(t, http.StatusOK, status, string(raw))
+
+		redeemRefused(t, link, "after the owner changed the password")
+		login(t, email, next)
+	})
+}

@@ -201,6 +201,11 @@ func (r *pgUserPort) setDisabled(ctx context.Context, userID string, disabled bo
 		if !disabled {
 			return nil
 		}
+		// A reset link is a way to set a password on the account, so it ends
+		// with the account's access. Reactivating must not bring it back.
+		if err := q.RevokePendingPasswordResets(ctx, uid); err != nil {
+			return err
+		}
 		keys, err := q.RevokeAPIKeysByCreator(ctx, uid)
 		if err != nil {
 			return err
@@ -234,7 +239,13 @@ func (r *pgUserPort) ClearPassword(ctx context.Context, userID string) error {
 	if err != nil {
 		return err
 	}
-	return r.q.ClearUserPassword(ctx, uid)
+	return r.withTx(ctx, func(q *sqlc.Queries) error {
+		if err := q.ClearUserPassword(ctx, uid); err != nil {
+			return err
+		}
+		// An account without a password is not one a reset link may serve.
+		return q.RevokePendingPasswordResets(ctx, uid)
+	})
 }
 
 func (r *pgUserPort) ListByIDs(ctx context.Context, ids []string) ([]port.User, error) {
@@ -265,9 +276,15 @@ func (r *pgUserPort) SetPassword(ctx context.Context, userID, passwordHash strin
 	if err != nil {
 		return err
 	}
-	return r.q.SetUserPassword(ctx, sqlc.SetUserPasswordParams{
-		ID:           uid,
-		PasswordHash: pgtype.Text{String: passwordHash, Valid: true},
+	return r.withTx(ctx, func(q *sqlc.Queries) error {
+		if err := q.SetUserPassword(ctx, sqlc.SetUserPasswordParams{
+			ID:           uid,
+			PasswordHash: pgtype.Text{String: passwordHash, Valid: true},
+		}); err != nil {
+			return err
+		}
+		// A link issued before this password was set would overwrite it.
+		return q.RevokePendingPasswordResets(ctx, uid)
 	})
 }
 

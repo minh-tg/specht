@@ -15,7 +15,7 @@ func TestUsers_BumpTokenVersionAdvancesTheGeneration(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
-	users := &pgUserPort{q: sqlc.New(repos.pool)}
+	users := &pgUserPort{q: sqlc.New(repos.pool), withTx: repos.WithTx}
 
 	created, err := users.Create(ctx, "carol@example.com", nil, nil)
 	require.NoError(t, err)
@@ -42,7 +42,7 @@ func TestUsers_SetPasswordReplacesTheHashAndStartsANewGeneration(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
-	users := &pgUserPort{q: sqlc.New(repos.pool)}
+	users := &pgUserPort{q: sqlc.New(repos.pool), withTx: repos.WithTx}
 
 	oldHash := "old-hash"
 	name := "Eve"
@@ -76,7 +76,7 @@ func TestUsers_ClearPasswordRemovesOnlyThePassword(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
-	users := &pgUserPort{q: sqlc.New(repos.pool)}
+	users := &pgUserPort{q: sqlc.New(repos.pool), withTx: repos.WithTx}
 
 	hash := "stored-hash"
 	name := "Ada"
@@ -107,7 +107,7 @@ func TestUsers_ListByIDsReturnsTheKnownAccountsInOneQuery(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
 	defer cleanup()
 	ctx := context.Background()
-	users := &pgUserPort{q: sqlc.New(repos.pool)}
+	users := &pgUserPort{q: sqlc.New(repos.pool), withTx: repos.WithTx}
 
 	name := "Ada Okafor"
 	ada, err := users.Create(ctx, "ada@example.com", &name, nil)
