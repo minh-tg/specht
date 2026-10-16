@@ -560,7 +560,40 @@ func (u *Usecases) RevokeAPIKey(ctx context.Context, projectSlug, keyID string) 
 	return nil
 }
 
+const (
+	// refreshTokenTTL is how long one refresh token stays valid. Rotation
+	// renews it, up to the session's absolute lifetime.
+	refreshTokenTTL = 7 * 24 * time.Hour
+	// DefaultSessionMaxAge is the absolute session lifetime when none is
+	// configured.
+	DefaultSessionMaxAge = 30 * 24 * time.Hour
+)
+
+// clock returns the current time, from the injected clock when there is one.
+func (u *Usecases) clock() time.Time {
+	if u.deps.Now != nil {
+		return u.deps.Now()
+	}
+	return time.Now()
+}
+
+func (u *Usecases) sessionMaxAge() time.Duration {
+	if u.deps.SessionMaxAge > 0 {
+		return u.deps.SessionMaxAge
+	}
+	return DefaultSessionMaxAge
+}
+
+// createSession starts a new sign-in: a refresh token that heads a new family
+// whose start time is now.
 func (u *Usecases) createSession(ctx context.Context, userID, email string) (*AuthResponse, error) {
+	return u.storeSession(ctx, userID, email, uuid.NewString(), u.clock())
+}
+
+// storeSession issues a refresh token in the given family. The token lasts
+// one refresh period but never past the end of the session, so a family that
+// is close to its absolute lifetime cannot hold a token beyond it.
+func (u *Usecases) storeSession(ctx context.Context, userID, email, familyID string, familyStartedAt time.Time) (*AuthResponse, error) {
 	rawRefresh, err := u.deps.Tokens.CreateRefreshToken(userID)
 	if err != nil {
 		return nil, fmt.Errorf("create refresh token: %w", err)
@@ -569,7 +602,17 @@ func (u *Usecases) createSession(ctx context.Context, userID, email string) (*Au
 	hash := sha256.Sum256([]byte(rawRefresh))
 	hashStr := hex.EncodeToString(hash[:])
 
-	if _, err := u.deps.Stores.RefreshTokens.Create(ctx, userID, hashStr, time.Now().Add(7*24*time.Hour)); err != nil {
+	expiresAt := u.clock().Add(refreshTokenTTL)
+	if end := familyStartedAt.Add(u.sessionMaxAge()); end.Before(expiresAt) {
+		expiresAt = end
+	}
+	if _, err := u.deps.Stores.RefreshTokens.Create(ctx, port.NewRefreshToken{
+		UserID:          userID,
+		TokenHash:       hashStr,
+		ExpiresAt:       expiresAt,
+		FamilyID:        familyID,
+		FamilyStartedAt: familyStartedAt,
+	}); err != nil {
 		return nil, fmt.Errorf("store refresh token: %w", err)
 	}
 
@@ -603,7 +646,14 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 		return nil, fmt.Errorf("refresh token has been revoked")
 	}
 
-	if stored.ExpiresAt.Before(time.Now()) {
+	now := u.clock()
+	if stored.ExpiresAt.Before(now) {
+		return nil, fmt.Errorf("refresh token has expired")
+	}
+	// A chain of rotations renews a week at a time. The absolute lifetime
+	// ends it anyway, so a deprovisioned or stolen session cannot be kept
+	// alive by refreshing. The caller sees the same error as an expired token.
+	if !now.Before(stored.FamilyStartedAt.Add(u.sessionMaxAge())) {
 		return nil, fmt.Errorf("refresh token has expired")
 	}
 
@@ -638,7 +688,7 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 		return nil, fmt.Errorf("create token: %w", err)
 	}
 
-	resp, err := u.createSession(ctx, userID, user.Email)
+	resp, err := u.storeSession(ctx, userID, user.Email, stored.FamilyID, stored.FamilyStartedAt)
 	if err != nil {
 		return nil, err
 	}

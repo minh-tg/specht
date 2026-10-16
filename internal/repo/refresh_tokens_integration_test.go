@@ -149,3 +149,30 @@ func TestRefreshTokenRepo_RevokeExpiredTokenStillWins(t *testing.T) {
 	_, err = repos.RefreshTokens.Revoke(ctx, expiredToken.ID)
 	assert.ErrorIs(t, err, port.ErrNotFound)
 }
+
+// TestRefreshTokenStore_FamilyColumnsRoundTrip pins that the family id and the
+// original sign-in time are stored and read back unchanged, which is what lets
+// rotation carry the absolute session lifetime forward.
+func TestRefreshTokenStore_FamilyColumnsRoundTrip(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(pool)
+
+	name, hash := "Ada", "hash"
+	user, err := stores.Users.Create(ctx, "family@example.test", &name, &hash)
+	require.NoError(t, err)
+
+	familyID := uuid.NewString()
+	started := time.Now().Add(-10 * 24 * time.Hour).UTC().Truncate(time.Microsecond)
+	_, err = stores.RefreshTokens.Create(ctx, port.NewRefreshToken{
+		UserID: user.ID, TokenHash: "family-hash", ExpiresAt: time.Now().Add(time.Hour),
+		FamilyID: familyID, FamilyStartedAt: started,
+	})
+	require.NoError(t, err)
+
+	got, err := stores.RefreshTokens.GetByHash(ctx, "family-hash")
+	require.NoError(t, err)
+	assert.Equal(t, familyID, got.FamilyID)
+	assert.True(t, started.Equal(got.FamilyStartedAt), "want %s, got %s", started, got.FamilyStartedAt)
+}

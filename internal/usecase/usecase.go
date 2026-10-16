@@ -148,8 +148,15 @@ type Deps struct {
 	Tokens       auth.TokenIssuer
 	Passwords    auth.PasswordHasher
 	InventoryTTL time.Duration
-	Tracker      TrackerDispatcher
-	Intel        IntelStore
+	// SessionMaxAge is the absolute lifetime of a sign-in: a refresh token
+	// chain stops rotating this long after the original login, however
+	// recently it was used. Zero or less means DefaultSessionMaxAge.
+	SessionMaxAge time.Duration
+	// Now reports the current time for session lifetimes. Nil means
+	// time.Now; tests inject a fake clock.
+	Now     func() time.Time
+	Tracker TrackerDispatcher
+	Intel   IntelStore
 	// SSOAllowUnverifiedEmail lets a first-time SSO login link or provision by
 	// an email the provider did not mark verified. It exists for providers that
 	// never send email_verified (for example a single-tenant directory whose

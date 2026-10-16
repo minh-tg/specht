@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -49,7 +48,7 @@ func newPasswordHarness(t *testing.T, currentPassword string) *passwordHarness {
 		h.revoked = append(h.revoked, userID)
 		return nil
 	}
-	h.tokens.createFn = func(ctx context.Context, userID, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
+	h.tokens.createFn = func(ctx context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
 		h.calls = append(h.calls, "create-session")
 		return makeRefreshToken(false), nil
 	}

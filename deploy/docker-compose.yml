@@ -83,6 +83,8 @@ services:
       # CVE Feed Watcher (opt-in; off by default)
       WATCHER_ENABLE: ${WATCHER_ENABLE:-false}
       INVENTORY_TTL: ${INVENTORY_TTL:-2160h}
+      # Absolute sign-in lifetime; refresh stops this long after login.
+      SESSION_MAX_AGE: ${SESSION_MAX_AGE:-720h}
       # Analysis/waiver expiry sweeper period.
       LIFECYCLE_SWEEP_INTERVAL: ${LIFECYCLE_SWEEP_INTERVAL:-5m}
       WATCHER_POLL_INTERVAL: ${WATCHER_POLL_INTERVAL:-6h}

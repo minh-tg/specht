@@ -62,7 +62,7 @@ func TestSSOExchangeCode_Flow(t *testing.T) {
 		},
 	}
 	refreshStore := &mockRefreshTokenRepo{
-		createFn: func(ctx context.Context, userID, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
+		createFn: func(ctx context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
 			return makeRefreshToken(false), nil
 		},
 	}

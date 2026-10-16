@@ -29,6 +29,7 @@ func TestDefaults(t *testing.T) {
 	assert.True(t, cfg.DBMigrate, "DB_MIGRATE defaults to true")
 	assert.Equal(t, DefaultInventoryTTL, cfg.InventoryTTL)
 	assert.Equal(t, DefaultSweepInterval, cfg.SweepInterval)
+	assert.Equal(t, 30*24*time.Hour, cfg.SessionMaxAge, "sessions end 30 days after sign-in by default")
 	assert.False(t, cfg.Watcher.Enable)
 	assert.Equal(t, DefaultWatcherPoll, cfg.Watcher.PollInterval)
 	assert.Equal(t, DefaultOSVEndpoint, cfg.Watcher.OSVEndpoint)
@@ -98,6 +99,25 @@ func TestLoad_MalformedSweepIntervalFails(t *testing.T) {
 			t.Setenv("LIFECYCLE_SWEEP_INTERVAL", bad)
 			_, err := Load()
 			assert.ErrorContains(t, err, "LIFECYCLE_SWEEP_INTERVAL")
+		})
+	}
+}
+
+func TestLoad_SessionMaxAgeOverride(t *testing.T) {
+	t.Setenv("WATCHER_ENABLE", "")
+	t.Setenv("SESSION_MAX_AGE", "168h")
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.Equal(t, 168*time.Hour, cfg.SessionMaxAge)
+}
+
+func TestLoad_MalformedSessionMaxAgeFails(t *testing.T) {
+	for _, bad := range []string{"not-a-duration", "0s", "-24h", "30"} {
+		t.Run(bad, func(t *testing.T) {
+			t.Setenv("WATCHER_ENABLE", "")
+			t.Setenv("SESSION_MAX_AGE", bad)
+			_, err := Load()
+			assert.ErrorContains(t, err, "SESSION_MAX_AGE")
 		})
 	}
 }
@@ -447,6 +467,7 @@ func validServer() *Server {
 		LogLevel:        "info",
 		InventoryTTL:    time.Hour,
 		SweepInterval:   time.Minute,
+		SessionMaxAge:   time.Hour,
 		Intel:           IntelConfig{TTL: time.Hour},
 		DBMaxConns:      20,
 		DBMinConns:      2,
@@ -470,6 +491,7 @@ func TestServerValidate_NamesEachProblemByItsVariable(t *testing.T) {
 		"no connections":       {func(s *Server) { s.DBMaxConns = 0 }, "DB_MAX_CONNS"},
 		"negative min":         {func(s *Server) { s.DBMinConns = -1 }, "DB_MIN_CONNS"},
 		"min above max":        {func(s *Server) { s.DBMinConns, s.DBMaxConns = 30, 20 }, "DB_MIN_CONNS"},
+		"zero session age":     {func(s *Server) { s.SessionMaxAge = 0 }, "SESSION_MAX_AGE"},
 		"zero shutdown window": {func(s *Server) { s.ShutdownTimeout = 0 }, "SHUTDOWN_TIMEOUT"},
 	}
 	for name, tc := range cases {
