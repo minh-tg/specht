@@ -24,6 +24,10 @@ const authMsgInvalidBody = "invalid request body"
 // account's wait.
 var errLoginDelayed = errors.New("sign-in refused during the account's wait")
 
+// errPasswordChangeDelayed is the audit reason for a password change refused
+// during the account's wait.
+var errPasswordChangeDelayed = errors.New("password change refused during the account's wait")
+
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Email    string `json:"email"`
@@ -226,8 +230,35 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// The current password is a guessable secret, so a stolen access token
+	// gets the same per-account allowance as the sign-in form, and both paths
+	// draw on one count. The attempt is charged before the check and given
+	// back when it succeeds or never reached a password comparison.
+	var ticket loginTicket
+	if h.loginDelay != nil && req.CurrentPassword != "" {
+		key := auth.NormalizeEmail(ident.Email)
+		if key == "" {
+			key = "user:" + ident.UserID
+		}
+		var retryAfter time.Duration
+		var ok bool
+		ticket, retryAfter, ok = h.loginDelay.begin(key)
+		if !ok {
+			secs := max(int(math.Ceil(retryAfter.Seconds())), 1)
+			w.Header().Set("Retry-After", strconv.Itoa(secs))
+			respondError(w, http.StatusTooManyRequests, "too_many_attempts", "too many failed password attempts, retry later")
+			h.audit.HTTP(r, audit.EventChangePassword, audit.OutcomeFailure, "", ident.UserID, errPasswordChangeDelayed)
+			return
+		}
+	}
+
 	result, err := h.usecase.ChangePassword(r.Context(), ident.UserID, req.CurrentPassword, req.NewPassword)
 	if err != nil {
+		if h.loginDelay != nil && !errors.Is(err, usecase.ErrWrongPassword) {
+			// Only a wrong current password is a failed guess. Every other
+			// error was raised before the comparison, or after it passed.
+			h.loginDelay.refund(ticket)
+		}
 		h.audit.HTTP(r, audit.EventChangePassword, audit.OutcomeFailure, "", ident.UserID, err)
 		switch {
 		case errors.Is(err, usecase.ErrWrongPassword):
@@ -247,6 +278,9 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not change the password")
 		}
 		return
+	}
+	if h.loginDelay != nil {
+		h.loginDelay.succeed(ticket)
 	}
 	respondJSON(w, http.StatusOK, result)
 	h.audit.HTTP(r, audit.EventChangePassword, audit.OutcomeSuccess, "", ident.UserID, nil)

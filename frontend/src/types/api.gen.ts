@@ -369,7 +369,12 @@ export interface paths {
      *     400 `wrong_password`, never 401, so a client does not read it as an
      *     expired session. An account that signs in through SSO has no password
      *     and answers 409 `no_local_password`. The route shares the sign-in rate
-     *     limit per client address.
+     *     limit per client address. Wrong current passwords also count per
+     *     account, together with failed sign-ins for the same email, whichever
+     *     address they come from: after three failures in a row each further
+     *     failure doubles the wait (1 s, 2 s, 4 s, up to 60 s), and an attempt
+     *     during the wait answers 429 `too_many_attempts` without checking the
+     *     password. A correct current password resets the count.
      */
     put: operations["changePassword"];
     post?: never;
@@ -4222,7 +4227,23 @@ export interface operations {
           "application/json": components["schemas"]["Error"];
         };
       };
-      429: components["responses"]["RateLimited"];
+      /**
+       * @description Either the client address is over its budget (`rate_limited`), or
+       *     the account is waiting after repeated wrong current passwords or
+       *     failed sign-ins (`too_many_attempts`). The password is not checked
+       *     during the wait, so the right one is refused too. `Retry-After`
+       *     gives the seconds to wait.
+       */
+      429: {
+        headers: {
+          /** @description Seconds until the next attempt is evaluated. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
     };
   };
   listApiKeys: {

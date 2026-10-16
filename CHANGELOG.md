@@ -262,6 +262,12 @@ releases.
   limit bucket was keyed on. The client is now the rightmost entry that is not
   a trusted proxy, and `X-Real-IP` is used only when `X-Forwarded-For` gives no
   usable address.
+- `PUT /api/v1/me/password` now slows wrong current passwords per account, the
+  same way sign-in does, and both count together. Before, a stolen access token
+  could guess the current password from many addresses. After three failures
+  in a row the answer is `429` `too_many_attempts` with `Retry-After`, and the
+  password is not checked during the wait. A correct current password resets
+  the count.
 - First-run setup stays available until a global admin exists. A stranger who
   registers before you no longer closes it. If the address you enter at setup
   already belongs to an account, setup answers 409 and you pick another one.
