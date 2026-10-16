@@ -20,6 +20,7 @@ var blockedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("100.64.0.0/10"),   // carrier-grade NAT
 	netip.MustParsePrefix("192.0.0.0/24"),    // IETF protocol assignments
 	netip.MustParsePrefix("192.0.2.0/24"),    // documentation
+	netip.MustParsePrefix("192.88.99.0/24"),  // 6to4 relay anycast (deprecated)
 	netip.MustParsePrefix("198.18.0.0/15"),   // benchmarking
 	netip.MustParsePrefix("198.51.100.0/24"), // documentation
 	netip.MustParsePrefix("203.0.113.0/24"),  // documentation
@@ -27,20 +28,24 @@ var blockedPrefixes = []netip.Prefix{
 	// IPv6. Several of these carry an IPv4 address inside, so a hostname that
 	// resolves into them can reach an internal IPv4 host through a relay, a
 	// Teredo server or a DNS64 gateway.
-	netip.MustParsePrefix("::/96"),         // IPv4-compatible (deprecated)
-	netip.MustParsePrefix("64:ff9b::/32"),  // NAT64, also covers 64:ff9b:1::/48
-	netip.MustParsePrefix("100::/64"),      // discard-only
-	netip.MustParsePrefix("2001::/32"),     // Teredo
-	netip.MustParsePrefix("2001:10::/28"),  // ORCHID (deprecated)
-	netip.MustParsePrefix("2001:20::/28"),  // ORCHIDv2
-	netip.MustParsePrefix("2001:db8::/32"), // documentation
-	netip.MustParsePrefix("2002::/16"),     // 6to4
-	netip.MustParsePrefix("fec0::/10"),     // site-local (deprecated)
+	netip.MustParsePrefix("::/96"),           // IPv4-compatible (deprecated)
+	netip.MustParsePrefix("64:ff9b::/32"),    // NAT64, also covers 64:ff9b:1::/48
+	netip.MustParsePrefix("::ffff:0:0:0/96"), // SIIT IPv4-translated (RFC 2765), not the IPv4-mapped ::ffff:0:0/96
+	netip.MustParsePrefix("100::/64"),        // discard-only
+	netip.MustParsePrefix("2001::/32"),       // Teredo
+	netip.MustParsePrefix("2001:2::/48"),     // benchmarking
+	netip.MustParsePrefix("2001:10::/28"),    // ORCHID (deprecated)
+	netip.MustParsePrefix("2001:20::/28"),    // ORCHIDv2
+	netip.MustParsePrefix("2001:db8::/32"),   // documentation
+	netip.MustParsePrefix("2002::/16"),       // 6to4
+	netip.MustParsePrefix("3fff::/20"),       // documentation (RFC 9637)
+	netip.MustParsePrefix("5f00::/16"),       // SRv6 SIDs
+	netip.MustParsePrefix("fec0::/10"),       // site-local (deprecated)
 }
 
 // IsBlockedIP reports whether ip is a non-public address range (loopback, private,
 // link-local, site-local, carrier-grade NAT, documentation, benchmarking,
-// multicast, NAT64, 6to4, Teredo, ORCHID, or an IPv4-compatible address).
+// multicast, NAT64, SIIT, 6to4, Teredo, ORCHID, or an IPv4-compatible address).
 func IsBlockedIP(ip net.IP) bool {
 	if ip == nil || ip.IsUnspecified() || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() {
 		return true
