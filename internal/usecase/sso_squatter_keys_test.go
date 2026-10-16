@@ -27,7 +27,7 @@ func TestSSOLink_RevokesTheKeysTheSquatterCreated(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, squatterKeys, s.ids.revokedAtLink, "every key the account created is revoked by the link")
 	assert.Empty(t, s.ids.keysByUser["user-1"])
-	assert.Equal(t, []string{"clear:user-1", "revoke:user-1", "link:user-1"}, s.calls,
+	assert.Equal(t, []string{"link:user-1"}, s.calls,
 		"the keys go with the link itself, not in a step that could be skipped")
 }
 

@@ -293,27 +293,12 @@ func (u *Usecases) linkExistingSSOUser(ctx context.Context, user port.User, issu
 	case !errors.Is(err, port.ErrNotFound):
 		return "", "", false, fmt.Errorf("lookup user identity: %w", err)
 	}
-	// Whoever registered this address first may not be its owner. Drop the
-	// password so it cannot be used again, and end every session minted
-	// with it, before the provider identity takes the account over. The
-	// steps are idempotent, so a failure part-way is retried on the next
-	// login instead of leaving a linked account with a live backdoor.
-	if user.PasswordHash != "" {
-		if err := u.deps.Stores.Users.ClearPassword(ctx, user.ID); err != nil {
-			return "", "", false, fmt.Errorf("disable password for sso link: %w", err)
-		}
-	}
-	if err := u.deps.Stores.RefreshTokens.RevokeAllForUser(ctx, user.ID); err != nil {
-		return "", "", false, fmt.Errorf("revoke sessions for sso link: %w", err)
-	}
-	// Bump the account's token generation so access tokens minted for the
-	// previous owner stop working now, not when they expire.
-	if err := u.deps.Stores.Users.BumpTokenVersion(ctx, user.ID); err != nil {
-		return "", "", false, fmt.Errorf("revoke access tokens for sso link: %w", err)
-	}
-	// The keys the previous owner minted go with the link, in the same
-	// transaction: an account that changes hands must not leave a credential
-	// behind that the new owner never saw.
+	// Whoever registered this address first may not be its owner. The store
+	// binds the identity and, in the same transaction, drops the password,
+	// starts a new token generation, ends the refresh tokens and reset links
+	// and revokes the API keys that holder created. A failure rolls all of it
+	// back, so the next login retries from the start instead of finding a
+	// linked account that still has the old holder's credentials.
 	revoked, err := u.linkSSOIdentityRevokingKeys(ctx, user.ID, issuer, sub, emailVerified)
 	if err != nil {
 		return "", "", false, err
@@ -385,9 +370,10 @@ func (u *Usecases) linkSSOIdentity(ctx context.Context, userID, issuer, sub stri
 	return nil
 }
 
-// linkSSOIdentityRevokingKeys links like linkSSOIdentity and also revokes the
-// API keys the account created before the link. emailVerified is passed on to
-// the store, which marks the address as proven in the same write.
+// linkSSOIdentityRevokingKeys links like linkSSOIdentity and also ends every
+// credential the account held before the link: password, sessions, reset links
+// and the API keys it created. emailVerified is passed on to the store, which
+// marks the address as proven in the same write.
 func (u *Usecases) linkSSOIdentityRevokingKeys(ctx context.Context, userID, issuer, sub string, emailVerified bool) ([]port.RevokedAPIKey, error) {
 	_, revoked, err := u.deps.Stores.Identities.LinkRevokingKeys(ctx, userID, issuer, sub, emailVerified)
 	if err != nil {

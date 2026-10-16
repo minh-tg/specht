@@ -300,3 +300,9 @@ releases.
   transaction. Before, a link issued earlier still worked after any of these,
   and reactivating a deactivated account brought it back. Issuing a link also
   waits for a deactivation in flight and then refuses the account.
+- Linking an existing account to a first SSO sign-in now clears its password,
+  ends its sessions and refresh tokens, retires its pending password reset
+  links and revokes the API keys it created, all in one transaction with the
+  link. Before, a failure between those steps could leave a linked account that
+  still had the previous holder's password and refresh tokens, and an old reset
+  link could give that holder a password again.
