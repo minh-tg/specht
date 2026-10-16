@@ -174,6 +174,10 @@ func cutLast(s, sep string) (before, after string, found bool) {
 // ssoCookie builds a state cookie with the attributes every one of them
 // shares; maxAge is in seconds and negative deletes it.
 func ssoCookie(name, value string, maxAge int, secure bool) *http.Cookie {
+	// Secure is set from the proxy-aware transport verdict (SecureTransport),
+	// which is true on every HTTPS deployment and false only for plain-HTTP
+	// local development.
+	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
 	return &http.Cookie{
 		Name:     name,
 		Value:    value,

@@ -513,6 +513,10 @@ func ssoLoginHandler(oidc OIDCAuthenticator) http.HandlerFunc {
 			http.Error(w, "failed to start sign-in", http.StatusInternalServerError)
 			return
 		}
+		// loginURL is the configured identity provider's authorization endpoint.
+		// The only caller-supplied value, the return path, is validated into a
+		// same-origin path and kept in the signed cookie, never in this URL.
+		// nosemgrep: go.lang.security.injection.open-redirect.open-redirect
 		http.Redirect(w, r, loginURL, http.StatusFound)
 	}
 }
