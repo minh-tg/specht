@@ -130,6 +130,11 @@ releases.
   stops at the limit instead of converting the whole file, so one oversized upload can no
   longer exhaust the server's memory. Set `INGEST_MAX_FINDINGS` to change the limit; see
   `deploy/README.md` for the memory it costs.
+- The finding limit can no longer be bypassed with padding. A report whose finding arrays
+  hold `null`, strings, numbers or empty arrays instead of objects, whose array names are
+  spelled in another case or with a JSON escape (`"RESULTS"`), or whose fields hold millions
+  of scalar entries is refused with `422 too_many_findings` before it is decoded. Such a
+  20 MB upload used to be accepted and cost the server about 1.5 GiB of memory.
 - Undo after a triage change works for every earlier state. The server keeps a snapshot of
   the analysis it replaced (state, reason, expiry, source, manual and review flags) in the
   triage event, and `POST /api/v1/findings/{id}/analysis/undo` puts it back as a new event.
