@@ -700,8 +700,10 @@ export interface paths {
      *     `408 request_timeout`. Ingests share a memory budget
      *     (`INGEST_MEMORY_BUDGET`, 2 GiB by default): each reserves 64 bytes per
      *     byte of `raw_data` while it runs. One caller (a user, or an API key) may
-     *     have at most half of `INGEST_MAX_CONCURRENCY` ingests, and half of the
-     *     budget, at once; so may one project, however many callers it has. An
+     *     have at most half of `INGEST_MAX_CONCURRENCY` ingests at once, and so
+     *     may one project, however many callers it has. Each also has an
+     *     allowance of half the budget that its ingests share, but one large report
+     *     can still reserve more than half of the whole budget while it runs. An
      *     ingest that cannot get its place, a free slot or its share of the memory
      *     within 15 seconds is answered `503 ingest_busy` with `Retry-After`; a
      *     caller or project that is over its own limit never delays another.
