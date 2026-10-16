@@ -48,6 +48,7 @@ func (a *APIKeyAuthenticator) Authenticate(ctx context.Context, token string) (*
 		ProjectID: projectID,
 		Scopes:    scopes,
 		IsAPIKey:  true,
+		KeyHash:   keyHash,
 	}, nil
 }
 

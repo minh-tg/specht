@@ -27,11 +27,21 @@ import (
 
 // AuthMiddleware authenticates requests, trying each authenticator in order and storing the identity on the context.
 func AuthMiddleware(authenticators ...auth.Authenticator) func(http.Handler) http.Handler {
+	return AuthMiddlewareLimited(nil, authenticators...)
+}
+
+// AuthMiddlewareLimited is AuthMiddleware plus a per-IP budget for requests
+// that present credentials and fail: a request with an Authorization header
+// skips the pre-auth limiter (a valid one is judged by the per-caller limiter
+// after this middleware), so the budget has to be spent here, once the header
+// is known to be bad. When the budget is gone the caller gets 429 instead of
+// 401. A nil failures limiter makes it AuthMiddleware.
+func AuthMiddlewareLimited(failures *RateLimiter, authenticators ...auth.Authenticator) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			header := r.Header.Get("Authorization")
 			if len(header) < 7 || !strings.EqualFold(header[:7], "Bearer ") {
-				respondError(w, http.StatusUnauthorized, "missing_token", "authorization header required")
+				rejectCredentials(w, r, failures, "missing_token", "authorization header required")
 				return
 			}
 			token := strings.TrimSpace(header[7:])
@@ -48,13 +58,26 @@ func AuthMiddleware(authenticators ...auth.Authenticator) func(http.Handler) htt
 					continue
 				}
 
-				respondError(w, http.StatusUnauthorized, "invalid_token", "invalid or expired token")
+				rejectCredentials(w, r, failures, "invalid_token", "invalid or expired token")
 				return
 			}
 
-			respondError(w, http.StatusUnauthorized, "invalid_token", "invalid or expired token")
+			rejectCredentials(w, r, failures, "invalid_token", "invalid or expired token")
 		})
 	}
+}
+
+// rejectCredentials answers 401, or 429 when the caller's address has used up
+// its budget for rejected credentials. A request without an Authorization
+// header was already counted by the pre-auth limiter and is not counted twice.
+func rejectCredentials(w http.ResponseWriter, r *http.Request, failures *RateLimiter, code, message string) {
+	if failures != nil && r.Header.Get("Authorization") != "" {
+		if limiter := failures.limiterFor("ip:"+clientHost(r), failures.now()); !limiter.Allow() {
+			writeRateLimited(w, limiter)
+			return
+		}
+	}
+	respondError(w, http.StatusUnauthorized, code, message)
 }
 
 // LoggerMiddleware writes one line per request, when it finishes: request id,
