@@ -291,3 +291,7 @@ releases.
   existed revokes every API key that account created before the link, in the
   same transaction as the link. Someone who registered the address first can
   no longer keep a key to the account the owner then takes over.
+- A password reset link no longer works for an account that is deactivated or
+  that has no local password because it signs in through SSO. The link answers
+  the same "not valid" error an expired one gives. Before, such a link could
+  still set a password on the account.

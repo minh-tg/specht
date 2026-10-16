@@ -41,6 +41,22 @@ func (r *pgPasswordResetPort) Create(ctx context.Context, in port.NewPasswordRes
 func (r *pgPasswordResetPort) Redeem(ctx context.Context, tokenHash, passwordHash string) (string, error) {
 	var userID string
 	err := r.withTx(ctx, func(q *sqlc.Queries) error {
+		// The account row is locked before the link row, the order every
+		// event that retires links uses too. A deactivation, a password change
+		// or an SSO link in flight therefore finishes first and this redeem
+		// sees its result; claiming the link first would deadlock against it.
+		owner, err := q.GetPasswordResetUserID(ctx, tokenHash)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return port.ErrNotFound
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := q.LockResettableUser(ctx, owner); errors.Is(err, pgx.ErrNoRows) {
+			return port.ErrNotFound
+		} else if err != nil {
+			return err
+		}
 		reset, err := q.ClaimPasswordReset(ctx, tokenHash)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return port.ErrNotFound
