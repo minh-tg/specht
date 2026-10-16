@@ -388,7 +388,9 @@ export interface paths {
     };
     /**
      * List API keys
-     * @description Lists a project's keys with the secret masked. Needs the manager or admin role on the project.
+     * @description Lists a project's keys with the secret masked. Each key carries
+     *     `creator_is_member`, which is `false` for a key made by someone who has
+     *     since left the project. Needs the manager or admin role on the project.
      */
     get: operations["listApiKeys"];
     put?: never;
@@ -2235,6 +2237,15 @@ export interface components {
       created_at: string;
       /** Format: date-time */
       expires_at?: string | null;
+      /**
+       * @description Present in the key list only. `false` when the person who created
+       *     the key is no longer a direct or team member of the project. The
+       *     key keeps working: removing a person never revokes their keys, so a
+       *     CI key can outlive them on purpose. A global admin who created a
+       *     key without being a member also reads `false`. Revoke the key with
+       *     `DELETE /api/v1/auth/apikeys/{id}` when it should go too.
+       */
+      creator_is_member?: boolean;
     };
     CreateApiKeyRequest: {
       /** @description Slug of the project the key is bound to. */

@@ -62,6 +62,10 @@ type APIKeyResponse struct {
 	LastFour  *string `json:"last_four"`
 	CreatedAt string  `json:"created_at"`
 	ExpiresAt *string `json:"expires_at,omitempty"`
+	// CreatorIsMember is set on list responses only. It is false when the
+	// person who created the key is no longer a direct or team member of the
+	// project; the key still works.
+	CreatorIsMember *bool `json:"creator_is_member,omitempty"`
 }
 
 // ErrInvalidCredentialInput wraps the reasons a new account's email or password
@@ -523,12 +527,14 @@ func (u *Usecases) ListAPIKeys(ctx context.Context, projectSlug string) ([]APIKe
 		if k.LastFour != nil {
 			lf = *k.LastFour
 		}
+		creatorIsMember := k.CreatorIsMember
 		resp[i] = APIKeyResponse{
-			ID:        k.ID,
-			Name:      k.Name,
-			KeyPrefix: k.KeyPrefix,
-			LastFour:  strPtr(lf),
-			CreatedAt: k.CreatedAt.Format(time.RFC3339),
+			ID:              k.ID,
+			Name:            k.Name,
+			KeyPrefix:       k.KeyPrefix,
+			LastFour:        strPtr(lf),
+			CreatedAt:       k.CreatedAt.Format(time.RFC3339),
+			CreatorIsMember: &creatorIsMember,
 		}
 	}
 	return resp, nil

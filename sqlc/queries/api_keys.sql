@@ -7,10 +7,30 @@ RETURNING *;
 UPDATE api_keys SET last_used_at = NOW() WHERE id = $1 AND revoked_at IS NULL;
 
 -- name: ListAPIKeysByProject :many
-SELECT id, name, key_prefix, last_four, scopes, created_at, revoked_at
-FROM api_keys
-WHERE project_id = $1 AND revoked_at IS NULL
-ORDER BY created_at DESC;
+-- creator_is_member is false once the account that created the key no longer
+-- holds a direct project_members row or a seat in a linked team. The key is
+-- still live: a CI key may outlive the person on purpose.
+SELECT
+    ak.id,
+    ak.name,
+    ak.key_prefix,
+    ak.last_four,
+    ak.scopes,
+    ak.created_at,
+    ak.revoked_at,
+    (
+        EXISTS (
+            SELECT 1 FROM project_members pm
+            WHERE pm.project_id = ak.project_id AND pm.user_id = ak.created_by
+        ) OR EXISTS (
+            SELECT 1 FROM project_teams pt
+            JOIN team_members tm ON tm.team_id = pt.team_id
+            WHERE pt.project_id = ak.project_id AND tm.user_id = ak.created_by
+        )
+    )::boolean AS creator_is_member
+FROM api_keys ak
+WHERE ak.project_id = $1 AND ak.revoked_at IS NULL
+ORDER BY ak.created_at DESC;
 
 -- name: GetAPIKeyByHash :one
 SELECT

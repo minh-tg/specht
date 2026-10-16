@@ -133,3 +133,58 @@ func TestE2E_SSOLinkRevokesTheKeysOfTheSquattedAccount(t *testing.T) {
 	require.Equal(t, http.StatusOK, keyReads(t, bystander.RawKey, slug), "another person's key is untouched")
 	require.NotContains(t, liveKeyIDs(t, slug), key.KeyID)
 }
+
+// TestE2E_KeyListSaysWhenTheCreatorLeftTheProject: a CI key outlives the
+// person who made it on purpose, so removing a member revokes nothing. The key
+// list carries creator_is_member so a manager can see which keys belong to
+// someone who is gone. Access through a team counts as membership.
+func TestE2E_KeyListSaysWhenTheCreatorLeftTheProject(t *testing.T) {
+	slug := newProject(t, "former-member")
+	direct := azRegister(t, "direct")
+	azAddMember(t, slug, direct.UserID, "manager")
+	viaTeam := azRegister(t, "via-team")
+	team := request[struct {
+		ID string `json:"id"`
+	}](t, http.MethodPost, "/api/v1/teams", adminToken, map[string]string{"name": "former-" + randomHex(4)}, http.StatusCreated)
+	request[map[string]any](t, http.MethodPost, "/api/v1/projects/"+slug+"/teams", adminToken,
+		map[string]string{"team_id": team.ID, "role": "manager"}, http.StatusCreated)
+	azAddTeamMember(t, team.ID, viaTeam.UserID, "member")
+
+	directKey := azKeyBy(t, direct.Token, slug)
+	teamKey := azKeyBy(t, viaTeam.Token, slug)
+
+	flags := func() map[string]*bool {
+		keys := request[[]struct {
+			ID              string `json:"id"`
+			CreatorIsMember *bool  `json:"creator_is_member"`
+		}](t, http.MethodGet, "/api/v1/auth/apikeys?project="+slug, adminToken, nil, http.StatusOK)
+		out := map[string]*bool{}
+		for _, k := range keys {
+			out[k.ID] = k.CreatorIsMember
+		}
+		return out
+	}
+	isMember := func(id string) bool {
+		t.Helper()
+		flag, listed := flags()[id]
+		require.True(t, listed, "key %s is listed", id)
+		require.NotNil(t, flag, "the list always carries the flag")
+		return *flag
+	}
+
+	require.True(t, isMember(directKey.KeyID))
+	require.True(t, isMember(teamKey.KeyID))
+
+	status, raw := doJSON(t, http.MethodDelete, "/api/v1/projects/"+slug+"/members/"+direct.UserID, adminToken, nil)
+	require.Equal(t, http.StatusNoContent, status, string(raw))
+	status, raw = doJSON(t, http.MethodDelete, "/api/v1/teams/"+team.ID+"/members/"+viaTeam.UserID, adminToken, nil)
+	require.Equal(t, http.StatusNoContent, status, string(raw))
+
+	require.False(t, isMember(directKey.KeyID), "the creator was removed from the project")
+	require.False(t, isMember(teamKey.KeyID), "the creator left the team that gave access")
+	require.Equal(t, http.StatusOK, keyReads(t, directKey.Token, slug), "removing a person does not revoke their key")
+	require.Equal(t, http.StatusOK, keyReads(t, teamKey.Token, slug))
+
+	azAddMember(t, slug, direct.UserID, "member")
+	require.True(t, isMember(directKey.KeyID), "the flag follows current membership")
+}

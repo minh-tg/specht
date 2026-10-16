@@ -306,8 +306,11 @@ type authzKnownFinding struct {
 // when its fix lands. AUTHZ_MATRIX_STRICT=1 ignores the list.
 var authzKnownFindings = slices.Concat(
 	[]authzKnownFinding{
-		// key-outlives-removed-creator: a key keeps working after its creator leaves the project
-		// (owner decision).
+		// key-outlives-removed-creator: a key keeps working after its creator leaves the project.
+		// This is intended: a CI key outliving the person who made it is deliberate, so the
+		// cell stays registered. The cue is creator_is_member on the key list, which is false
+		// for such a key (TestE2E_KeyListSaysWhenTheCreatorLeftTheProject), and a manager can
+		// revoke the key with one call.
 		{"*|*|C14-key-creator-removed|*|Deny401", "key-outlives-removed-creator"},
 		// waiver-update-delete-unaudited: waiver update and delete write no audit line.
 		{"PUT /api/v1/projects/{slug}/waivers/{id}||*|*|Allow", "waiver-update-delete-unaudited"},

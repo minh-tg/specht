@@ -422,6 +422,8 @@ func (r *pgAPIKeyPort) ListByProject(ctx context.Context, projectID string) ([]p
 			LastFour:  stringFromTextPtr(row.LastFour),
 			CreatedAt: row.CreatedAt.Time,
 			RevokedAt: timePtrFromTimestamptz(row.RevokedAt),
+
+			CreatorIsMember: row.CreatorIsMember,
 		}
 	}
 	return out, nil
