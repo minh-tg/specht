@@ -600,3 +600,104 @@ func TestLoad_IngestMemoryBudget(t *testing.T) {
 		})
 	}
 }
+
+func validSSO() SSOConfig {
+	return SSOConfig{
+		Enabled:      true,
+		ClientID:     "specht",
+		ClientSecret: "s3cret",
+		IssuerURL:    "https://idp.example.com",
+		RedirectURI:  "https://specht.example.com/api/v1/auth/sso/callback",
+	}
+}
+
+func TestServerValidate_SSODisabledNeedsNothing(t *testing.T) {
+	s := validServer()
+	s.SSO = SSOConfig{ClientSecret: "", IssuerURL: "not a url"}
+	assert.NoError(t, s.Validate(), "SSO settings are only checked when SSO is enabled")
+}
+
+func TestServerValidate_AcceptsAWorkingSSOConfiguration(t *testing.T) {
+	for name, mutate := range map[string]func(*SSOConfig){
+		"https everywhere":              func(*SSOConfig) {},
+		"loopback http issuer":          func(c *SSOConfig) { c.IssuerURL = "http://127.0.0.1:9000" },
+		"localhost redirect":            func(c *SSOConfig) { c.RedirectURI = "http://localhost:8080/api/v1/auth/sso/callback" },
+		"ipv6 loopback":                 func(c *SSOConfig) { c.RedirectURI = "http://[::1]:8080/cb" },
+		"issuer with a path":            func(c *SSOConfig) { c.IssuerURL = "https://idp.example.com/realms/corp" },
+		"public client opt-in":          func(c *SSOConfig) { c.ClientSecret, c.PublicClient = "", true },
+		"public flag with a secret set": func(c *SSOConfig) { c.PublicClient = true },
+	} {
+		t.Run(name, func(t *testing.T) {
+			s := validServer()
+			s.SSO = validSSO()
+			mutate(&s.SSO)
+			assert.NoError(t, s.Validate())
+		})
+	}
+}
+
+func TestServerValidate_NamesEachSSOProblemByItsVariable(t *testing.T) {
+	cases := map[string]struct {
+		mutate func(*SSOConfig)
+		want   string
+	}{
+		"no issuer":                  {func(c *SSOConfig) { c.IssuerURL = "" }, "SSO_ISSUER_URL"},
+		"issuer without a scheme":    {func(c *SSOConfig) { c.IssuerURL = "idp.example.com" }, "SSO_ISSUER_URL"},
+		"plain http issuer":          {func(c *SSOConfig) { c.IssuerURL = "http://idp.example.com" }, "SSO_ISSUER_URL"},
+		"issuer without a host":      {func(c *SSOConfig) { c.IssuerURL = "https://" }, "SSO_ISSUER_URL"},
+		"no client id":               {func(c *SSOConfig) { c.ClientID = "" }, "SSO_CLIENT_ID"},
+		"blank client id":            {func(c *SSOConfig) { c.ClientID = "  " }, "SSO_CLIENT_ID"},
+		"no redirect":                {func(c *SSOConfig) { c.RedirectURI = "" }, "SSO_REDIRECT_URI"},
+		"relative redirect":          {func(c *SSOConfig) { c.RedirectURI = "/api/v1/auth/sso/callback" }, "SSO_REDIRECT_URI"},
+		"redirect without a host":    {func(c *SSOConfig) { c.RedirectURI = "https:///cb" }, "SSO_REDIRECT_URI"},
+		"plain http redirect":        {func(c *SSOConfig) { c.RedirectURI = "http://specht.example.com/cb" }, "SSO_REDIRECT_URI"},
+		"redirect with other scheme": {func(c *SSOConfig) { c.RedirectURI = "ftp://specht.example.com/cb" }, "SSO_REDIRECT_URI"},
+		"redirect with a fragment":   {func(c *SSOConfig) { c.RedirectURI = "https://specht.example.com/cb#x" }, "SSO_REDIRECT_URI"},
+		"empty secret":               {func(c *SSOConfig) { c.ClientSecret = "" }, "SSO_CLIENT_SECRET"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			s := validServer()
+			s.SSO = validSSO()
+			tc.mutate(&s.SSO)
+			err := s.Validate()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+func TestServerValidate_EmptySecretMessagePointsAtThePublicClientSwitch(t *testing.T) {
+	s := validServer()
+	s.SSO = validSSO()
+	s.SSO.ClientSecret = ""
+
+	err := s.Validate()
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "SSO_PUBLIC_CLIENT")
+}
+
+func TestServerValidate_ReportsEverySSOProblemAtOnce(t *testing.T) {
+	s := validServer()
+	s.SSO = SSOConfig{Enabled: true}
+
+	err := s.Validate()
+
+	require.Error(t, err)
+	for _, want := range []string{"SSO_ISSUER_URL", "SSO_CLIENT_ID", "SSO_REDIRECT_URI", "SSO_CLIENT_SECRET"} {
+		assert.Contains(t, err.Error(), want)
+	}
+}
+
+func TestLoad_SSOPublicClient(t *testing.T) {
+	t.Setenv("SSO_PUBLIC_CLIENT", "")
+	cfg, err := Load()
+	require.NoError(t, err)
+	assert.False(t, cfg.SSO.PublicClient, "a client secret is required unless the operator opts out")
+
+	t.Setenv("SSO_PUBLIC_CLIENT", "true")
+	cfg, err = Load()
+	require.NoError(t, err)
+	assert.True(t, cfg.SSO.PublicClient)
+}

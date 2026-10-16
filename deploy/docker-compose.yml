@@ -113,11 +113,13 @@ services:
         ${INTEL_EPSS_ENDPOINT:-https://api.first.org/data/v1/epss}
       INTEL_KEV_ENDPOINT: >-
         ${INTEL_KEV_ENDPOINT:-https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json}
-      # SSO / OIDC (off by default; SSO_ENABLE=true requires the client
-      # credentials, issuer, and redirect URI, or startup fails).
+      # SSO / OIDC (off by default; SSO_ENABLE=true requires the client id,
+      # client secret, issuer, and redirect URI, or startup fails).
       SSO_ENABLE: ${SSO_ENABLE:-false}
       SSO_CLIENT_ID: ${SSO_CLIENT_ID:-}
       SSO_CLIENT_SECRET: ${SSO_CLIENT_SECRET:-}
+      # Only for an IdP client registered as public: allows an empty secret.
+      SSO_PUBLIC_CLIENT: ${SSO_PUBLIC_CLIENT:-false}
       SSO_ISSUER_URL: ${SSO_ISSUER_URL:-}
       SSO_REDIRECT_URI: ${SSO_REDIRECT_URI:-}
       SSO_GROUPS_CLAIM: ${SSO_GROUPS_CLAIM:-}

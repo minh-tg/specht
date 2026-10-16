@@ -190,14 +190,20 @@ accounts' small failure counts, but never a wait that has started.
 
 ### SSO / OIDC
 
-Off unless `SSO_ENABLE=true`, which then requires the client credentials,
-issuer, and redirect URI.
+Off unless `SSO_ENABLE=true`, which then requires the client id, issuer, and
+redirect URI, and a client secret unless `SSO_PUBLIC_CLIENT=true`. The server
+checks these at startup and refuses to start when one is missing or malformed,
+naming every problem at once. Issuer and redirect URI must be absolute URLs
+that use `https`; `http` is accepted only for a loopback host (`localhost`,
+`127.0.0.1`, `::1`), for a local identity provider. The redirect URI must not
+carry a fragment.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `SSO_ENABLE` | `false` | Mounts the SSO login and callback routes. |
 | `SSO_CLIENT_ID` | *(empty)* | OAuth client id. |
-| `SSO_CLIENT_SECRET` | *(empty)* | **Secret.** OAuth client secret. |
+| `SSO_CLIENT_SECRET` | *(empty)* | **Secret.** OAuth client secret. Required unless `SSO_PUBLIC_CLIENT=true`. |
+| `SSO_PUBLIC_CLIENT` | `false` | Allows an empty `SSO_CLIENT_SECRET`, for an identity provider client registered as public. Leave it off for a confidential client: an empty secret then stops the server from starting instead of silently weakening the login. |
 | `SSO_ISSUER_URL` | *(empty)* | Must be `https`; plain `http` is accepted only for a loopback host, for a local IdP. |
 | `SSO_REDIRECT_URI` | *(empty)* | Must match the IdP's registered redirect URI. |
 | `SSO_GROUPS_CLAIM` | `groups` | Claim carrying IdP group membership. |
