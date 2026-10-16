@@ -211,3 +211,34 @@ func TestSetupToken(t *testing.T) {
 		assert.Error(t, err)
 	})
 }
+
+// A request that read "setup required" just before another request finished
+// setup must answer closed, not "wrong token": the winner clears the token, so
+// the loser's valid token no longer verifies.
+func TestSetup_ALoserOfTheRaceAnswersClosedNotWrongToken(t *testing.T) {
+	f := newSetupFixture(t, 0)
+	calls := 0
+	f.users.countAdminsFn = func(context.Context) (int64, error) {
+		calls++
+		if calls == 1 {
+			f.token.Clear()
+			return 0, nil
+		}
+		return 1, nil
+	}
+
+	_, err := f.uc.Setup(context.Background(), validSetup())
+
+	assert.ErrorIs(t, err, ErrSetupClosed)
+	assert.Empty(t, f.created)
+}
+
+func TestSetup_AWrongTokenWhileSetupIsOpenIsStillRefused(t *testing.T) {
+	f := newSetupFixture(t, 0)
+	in := validSetup()
+	in.Token = "not-the-token-0000000000"
+
+	_, err := f.uc.Setup(context.Background(), in)
+
+	assert.ErrorIs(t, err, ErrInvalidSetupToken)
+}

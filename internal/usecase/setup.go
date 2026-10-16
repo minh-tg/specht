@@ -112,6 +112,13 @@ func (u *Usecases) Setup(ctx context.Context, input SetupInput) (*AuthResponse, 
 		return nil, ErrSetupClosed
 	}
 	if !u.deps.SetupToken.Verify(input.Token) {
+		// Another request may have finished setup after the check above: it
+		// clears the token, so this caller's valid token stops verifying.
+		// That caller lost a race and gets the closed answer, not a
+		// wrong-token one.
+		if stillRequired, err := u.SetupRequired(ctx); err == nil && !stillRequired {
+			return nil, ErrSetupClosed
+		}
 		slog.Warn("setup: wrong setup token")
 		return nil, ErrInvalidSetupToken
 	}
