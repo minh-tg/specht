@@ -111,18 +111,18 @@ func TestOIDC_JWKSResponseLimit(t *testing.T) {
 	assert.ErrorContains(t, err, "exceeds")
 }
 
-func TestOIDC_LoginURL(t *testing.T) {
+func TestOIDC_StartLogin_BuildsTheAuthorizationURL(t *testing.T) {
 	a := mustOIDC(t, "https://example.com")
 
-	u := a.LoginURL("csrf-state")
-	assert.Contains(t, u, "https://example.com/oauth/authorize")
-	assert.Contains(t, u, "client_id=test-client")
-	assert.Contains(t, u, "redirect_uri=http")
-	assert.Contains(t, u, "response_type=code")
-	assert.Contains(t, u, "scope=openid+email+profile")
-	assert.Contains(t, u, "state=csrf-state")
-	// A legacy/hand-rolled state without a nonce half must not gain one.
-	assert.NotContains(t, u, "nonce=")
+	login := startTestLogin(t, a, "")
+
+	assert.Contains(t, login.url, "https://example.com/oauth/authorize")
+	assert.Contains(t, login.url, "client_id=test-client")
+	assert.Contains(t, login.url, "redirect_uri=http")
+	assert.Contains(t, login.url, "response_type=code")
+	assert.Contains(t, login.url, "scope=openid+email+profile")
+	assert.Contains(t, login.url, "state="+url.QueryEscape(login.state))
+	assert.NotEmpty(t, login.nonce)
 }
 
 func TestOIDC_CallbackHandler_MissingCode(t *testing.T) {
@@ -158,12 +158,15 @@ func TestOIDC_CallbackHandler_StateMismatch(t *testing.T) {
 	h := a.CallbackHandler(func(ctx context.Context, _ SSOClaims) (string, error) {
 		return "token", nil
 	})
+	real := startTestLogin(t, a, "")
 	req := httptest.NewRequest("GET", "/callback?code=test-code&state=attacker-state", nil)
-	req.AddCookie(&http.Cookie{Name: "sso_state", Value: "real-state"})
+	for _, c := range real.cookies {
+		req.AddCookie(c)
+	}
 	w := httptest.NewRecorder()
 	h(w, req)
 
-	// A state that does not match the cookie must be refused.
+	// A state with no cookie of its own must be refused.
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }
 
@@ -274,57 +277,40 @@ func newFakeOIDCProvider(t *testing.T, key *rsa.PrivateKey) *fakeOIDCProvider {
 	return p
 }
 
-// callbackClaims drives the SSO callback with state echoed both in the query
-// and the cookie (as the router does) and returns the recorder plus the claims
-// the token issuer saw.
-func callbackClaims(t *testing.T, a *OIDCAuthenticator, state string, returnPath ...string) (*httptest.ResponseRecorder, SSOClaims) {
+// callbackClaims drives the SSO callback for a login started with
+// startTestLogin, with its cookies as the browser would send them, and returns
+// the recorder plus the claims the token issuer saw.
+func callbackClaims(t *testing.T, a *OIDCAuthenticator, login testLogin) (*httptest.ResponseRecorder, SSOClaims) {
 	t.Helper()
 	var got SSOClaims
 	h := a.CallbackHandler(func(ctx context.Context, claims SSOClaims) (string, error) {
 		got = claims
 		return "test-session-token", nil
 	})
-	req := httptest.NewRequest("GET", "/callback?code=test-code&state="+url.QueryEscape(state), nil)
-	req.AddCookie(&http.Cookie{Name: "sso_state", Value: state})
-	if len(returnPath) > 0 {
-		req.AddCookie(&http.Cookie{
-			Name:  SSOReturnCookieName,
-			Value: EncodeSSOReturnCookieValue(state, returnPath[0]),
-		})
-	}
 	w := httptest.NewRecorder()
-	h(w, req)
+	h(w, login.callbackRequest("test-code"))
 	return w, got
 }
 
 // callbackResponse is callbackClaims reduced to the subject and email.
-func callbackResponse(t *testing.T, a *OIDCAuthenticator, state string, returnPath ...string) (*httptest.ResponseRecorder, string, string) {
+func callbackResponse(t *testing.T, a *OIDCAuthenticator, login testLogin) (*httptest.ResponseRecorder, string, string) {
 	t.Helper()
-	w, claims := callbackClaims(t, a, state, returnPath...)
+	w, claims := callbackClaims(t, a, login)
 	return w, claims.Subject, claims.Email
 }
 
 func TestOIDC_Callback_NonceRoundTrip(t *testing.T) {
-	// End-to-end: the login flow mints a compound state, LoginURL forwards its
-	// nonce half to the provider, the provider signs an id_token carrying that
-	// nonce, and the callback accepts it and derives the same identity.
+	// End-to-end: the login sends the provider a nonce, the provider signs an
+	// id_token carrying it, and the callback accepts it and derives the same
+	// identity.
 	key := newOIDCTestKey(t)
-	state, err := GenerateStateToken()
-	require.NoError(t, err)
-	_, nonce := splitStateNonce(state)
-	require.NotEmpty(t, nonce, "generated state must carry a nonce half")
-
-	a := mustOIDC(t, "https://example.com")
-	login := a.LoginURL(state)
-	assert.Contains(t, login, "state="+url.QueryEscape(state))
-	assert.Contains(t, login, "nonce="+url.QueryEscape(nonce), "LoginURL must forward the state-bound nonce")
-
-	// Now run the callback against a provider that echoes that nonce.
 	prov := newFakeOIDCProvider(t, key)
-	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", nonce)
 	auth := mustOIDC(t, prov.srv.URL)
+	login := startTestLogin(t, auth, "")
+	require.NotEmpty(t, login.nonce, "the authorization request must carry a nonce")
+	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", login.nonce)
 
-	w, gotUserID, gotEmail := callbackResponse(t, auth, state)
+	w, gotUserID, gotEmail := callbackResponse(t, auth, login)
 	assert.Equal(t, http.StatusFound, w.Code)
 	assert.Equal(t, "oidc-user-1", gotUserID)
 	assert.Equal(t, "oidc@example.com", gotEmail)
@@ -334,15 +320,12 @@ func TestOIDC_Callback_RejectsNonceMismatch(t *testing.T) {
 	// The provider (or an attacker in the redirect) returns an id_token whose
 	// nonce does not match the one bound to the state cookie: rejected.
 	key := newOIDCTestKey(t)
-	state, err := GenerateStateToken()
-	require.NoError(t, err)
-
 	prov := newFakeOIDCProvider(t, key)
 	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", "attacker-nonce")
 	auth := mustOIDC(t, prov.srv.URL)
 	auth.cfg.AllowUserInfoOnly = true
 
-	w, _, _ := callbackResponse(t, auth, state)
+	w, _, _ := callbackResponse(t, auth, startTestLogin(t, auth, ""))
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, w.Body.String(), "identity extraction failed")
 }
@@ -351,17 +334,14 @@ func TestOIDC_Callback_RejectsUserInfoSubMismatch(t *testing.T) {
 	// A userinfo endpoint answering with a different subject than the verified
 	// id_token must not be trusted: the identity must be refused.
 	key := newOIDCTestKey(t)
-	state, err := GenerateStateToken()
-	require.NoError(t, err)
-	_, nonce := splitStateNonce(state)
-
 	prov := newFakeOIDCProvider(t, key)
-	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", nonce)
 	prov.userSub = "someone-else"
 	auth := mustOIDC(t, prov.srv.URL)
 	auth.cfg.AllowUserInfoOnly = true
+	login := startTestLogin(t, auth, "")
+	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", login.nonce)
 
-	w, _, _ := callbackResponse(t, auth, state)
+	w, _, _ := callbackResponse(t, auth, login)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Contains(t, w.Body.String(), "identity extraction failed")
 }
@@ -372,7 +352,7 @@ func TestOIDC_Callback_RejectsAbsentIDTokenByDefault(t *testing.T) {
 	prov.omitIDToken = true
 	auth := mustOIDC(t, prov.srv.URL)
 
-	w, gotUserID, _ := callbackResponse(t, auth, "csrf-state.test-nonce")
+	w, gotUserID, _ := callbackResponse(t, auth, startTestLogin(t, auth, ""))
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Empty(t, gotUserID, "userinfo-only response must not issue a session by default")
 }
@@ -384,7 +364,7 @@ func TestOIDC_Callback_AllowsAbsentIDTokenWhenExplicitlyEnabled(t *testing.T) {
 	auth := mustOIDC(t, prov.srv.URL)
 	auth.cfg.AllowUserInfoOnly = true
 
-	w, gotUserID, gotEmail := callbackResponse(t, auth, "csrf-state.test-nonce")
+	w, gotUserID, gotEmail := callbackResponse(t, auth, startTestLogin(t, auth, ""))
 	assert.Equal(t, "oidc-user-1", gotUserID)
 	assert.Equal(t, "oidc@example.com", gotEmail)
 	assert.Equal(t, http.StatusFound, w.Code)
@@ -398,7 +378,7 @@ func TestOIDC_Callback_RejectsMalformedIDTokenWhenUserInfoOnlyEnabled(t *testing
 	auth := mustOIDC(t, prov.srv.URL)
 	auth.cfg.AllowUserInfoOnly = true
 
-	w, gotUserID, _ := callbackResponse(t, auth, "csrf-state.test-nonce")
+	w, gotUserID, _ := callbackResponse(t, auth, startTestLogin(t, auth, ""))
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Empty(t, gotUserID, "opt-in applies only when the token is absent")
 }
@@ -408,13 +388,11 @@ func TestOIDC_Callback_DeliversTokenInFragment(t *testing.T) {
 	// is never sent to the server or leaked via Referer), not as an httpOnly
 	// cookie that nothing in the stack ever reads.
 	key := newOIDCTestKey(t)
-	state, err := GenerateStateToken()
-	require.NoError(t, err)
-	_, nonce := splitStateNonce(state)
 	prov := newFakeOIDCProvider(t, key)
-	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", nonce)
 	auth := mustOIDC(t, prov.srv.URL)
-	w, gotUserID, gotEmail := callbackResponse(t, auth, state)
+	login := startTestLogin(t, auth, "")
+	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", login.nonce)
+	w, gotUserID, gotEmail := callbackResponse(t, auth, login)
 	assert.Equal(t, "oidc-user-1", gotUserID)
 	assert.Equal(t, "oidc@example.com", gotEmail)
 
@@ -427,34 +405,44 @@ func TestOIDC_Callback_DeliversTokenInFragment(t *testing.T) {
 
 func TestOIDC_Callback_PreservesValidatedReturnPath(t *testing.T) {
 	key := newOIDCTestKey(t)
-	state, err := GenerateStateToken()
-	require.NoError(t, err)
-	_, nonce := splitStateNonce(state)
-
 	prov := newFakeOIDCProvider(t, key)
-	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", nonce)
 	a := mustOIDC(t, prov.srv.URL)
+	login := startTestLogin(t, a, "/projects/demo?tab=members")
+	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", login.nonce)
 
-	w, _, _ := callbackResponse(t, a, state, "/projects/demo?tab=members")
+	w, _, _ := callbackResponse(t, a, login)
 	assert.Equal(t, http.StatusFound, w.Code)
 	assert.Equal(t, "/projects/demo?tab=members#sso_code=test-session-token", w.Header().Get("Location"))
+	var cleared bool
 	for _, cookie := range w.Result().Cookies() {
-		if cookie.Name == SSOReturnCookieName {
-			assert.Less(t, cookie.MaxAge, 0, "return path state is single-use")
+		if cookie.Name == ssoStateCookieName(login.state) {
+			cleared = cookie.MaxAge < 0
 		}
 	}
+	assert.True(t, cleared, "the login cookie, which holds the return path, is single-use")
 }
 
-func TestOIDC_GenerateStateToken_CompoundShape(t *testing.T) {
-	state, err := GenerateStateToken()
+func TestOIDC_Callback_RefusesAnUnsafeReturnPath(t *testing.T) {
+	key := newOIDCTestKey(t)
+	prov := newFakeOIDCProvider(t, key)
+	a := mustOIDC(t, prov.srv.URL)
+	login := startTestLogin(t, a, "//evil.example/steal")
+	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "oidc-user-1", "oidc@example.com", login.nonce)
+
+	w, _, _ := callbackResponse(t, a, login)
+
+	assert.Equal(t, "/#sso_code=test-session-token", w.Header().Get("Location"))
+}
+
+func TestOIDC_GenerateStateToken_IsRandomAndPublic(t *testing.T) {
+	first, err := GenerateStateToken()
+	require.NoError(t, err)
+	second, err := GenerateStateToken()
 	require.NoError(t, err)
 
-	csrf, nonce := splitStateNonce(state)
-	assert.NotEmpty(t, csrf, "csrf half must be non-empty")
-	assert.NotEmpty(t, nonce, "nonce half must be non-empty")
-	assert.NotEqual(t, csrf, nonce, "halves must be independent random values")
-	assert.NotContains(t, csrf, ".", "csrf half must not contain the separator")
-	assert.NotContains(t, nonce, ".", "nonce half must not contain the separator")
+	assert.NotEqual(t, first, second)
+	assert.GreaterOrEqual(t, len(first), 43, "256 bits, base64url")
+	assert.NotContains(t, first, ".", "the state carries no second half: nothing is derived from it alone")
 }
 
 func TestOIDC_Callback_JWKSRefreshSingleflight(t *testing.T) {
@@ -496,14 +484,11 @@ func TestOIDC_Callback_NotProvisionedIsForbidden(t *testing.T) {
 	// The issuer gate rejects unknown IdP subjects: the callback must
 	// answer 403 with a generic message, never leaking account existence.
 	key := newOIDCTestKey(t)
-	state, err := GenerateStateToken()
-	require.NoError(t, err)
-	_, nonce := splitStateNonce(state)
-
 	prov := newFakeOIDCProvider(t, key)
-	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "unknown-sub", "stranger@evil.example", nonce)
 	prov.userSub = "unknown-sub"
 	a := mustOIDC(t, prov.srv.URL)
+	login := startTestLogin(t, a, "")
+	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "unknown-sub", "stranger@evil.example", login.nonce)
 
 	h := a.CallbackHandler(func(ctx context.Context, claims SSOClaims) (string, error) {
 		assert.Equal(t, "unknown-sub", claims.Subject)
@@ -511,10 +496,8 @@ func TestOIDC_Callback_NotProvisionedIsForbidden(t *testing.T) {
 		// is what this test pins, not the address value.
 		return "", ErrSSONotProvisioned
 	})
-	req := httptest.NewRequest("GET", "/callback?code=test-code&state="+url.QueryEscape(state), nil)
-	req.AddCookie(&http.Cookie{Name: "sso_state", Value: state})
 	w := httptest.NewRecorder()
-	h(w, req)
+	h(w, login.callbackRequest("test-code"))
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
 	assert.Contains(t, w.Body.String(), "sso account not provisioned")

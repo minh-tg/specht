@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -61,9 +62,15 @@ func TestNewRouter_SSOWithNonJWTAuth_NoPanic(t *testing.T) {
 	// Drive the callback through a real code exchange so the token-issuer
 	// closure runs. The misconfigured JWTAuth must surface as the callback's
 	// clean 500 ("token issuance failed") rather than a recovered panic.
-	state := "test-state.test-nonce"
-	req := httptest.NewRequest("GET", "/api/v1/auth/sso/callback?code=test-code&state="+state, nil)
-	req.AddCookie(&http.Cookie{Name: "sso_state", Value: state})
+	loginRec := httptest.NewRecorder()
+	router.ServeHTTP(loginRec, httptest.NewRequest("GET", "/api/v1/auth/sso/login", nil))
+	require.Equal(t, http.StatusFound, loginRec.Code)
+	authorize, err := url.Parse(loginRec.Header().Get("Location"))
+	require.NoError(t, err)
+	req := httptest.NewRequest("GET", "/api/v1/auth/sso/callback?code=test-code&state="+url.QueryEscape(authorize.Query().Get("state")), nil)
+	for _, c := range loginRec.Result().Cookies() {
+		req.AddCookie(c)
+	}
 	w := httptest.NewRecorder()
 
 	router.ServeHTTP(w, req)

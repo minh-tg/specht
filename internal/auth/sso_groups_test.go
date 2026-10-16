@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -94,23 +93,18 @@ func signOIDCIDTokenWithGroups(t *testing.T, key *rsa.PrivateKey, issuer, aud st
 
 func TestOIDC_Callback_ForwardsGroups(t *testing.T) {
 	key := newOIDCTestKey(t)
-	state, err := GenerateStateToken()
-	require.NoError(t, err)
-	_, nonce := splitStateNonce(state)
-
 	prov := newFakeOIDCProvider(t, key)
 	auth := mustOIDC(t, prov.srv.URL)
-	prov.idToken = signOIDCIDTokenWithGroups(t, key, prov.srv.URL, "test-client", oidcGroupClaims{sub: "oidc-user-1", email: "oidc@example.com", nonce: nonce, groups: []string{"idp-admins"}})
+	login := startTestLogin(t, auth, "")
+	prov.idToken = signOIDCIDTokenWithGroups(t, key, prov.srv.URL, "test-client", oidcGroupClaims{sub: "oidc-user-1", email: "oidc@example.com", nonce: login.nonce, groups: []string{"idp-admins"}})
 
 	var gotGroups []string
 	h := auth.CallbackHandler(func(ctx context.Context, claims SSOClaims) (string, error) {
 		gotGroups = claims.Groups
 		return "test-session-token", nil
 	})
-	req := httptest.NewRequest("GET", "/callback?code=test-code&state="+url.QueryEscape(state), nil)
-	req.AddCookie(&http.Cookie{Name: "sso_state", Value: state})
 	w := httptest.NewRecorder()
-	h(w, req)
+	h(w, login.callbackRequest("test-code"))
 
 	require.Equal(t, http.StatusFound, w.Code)
 	assert.Equal(t, []string{"idp-admins"}, gotGroups)
@@ -118,24 +112,19 @@ func TestOIDC_Callback_ForwardsGroups(t *testing.T) {
 
 func TestOIDC_Callback_MergesUserinfoGroups(t *testing.T) {
 	key := newOIDCTestKey(t)
-	state, err := GenerateStateToken()
-	require.NoError(t, err)
-	_, nonce := splitStateNonce(state)
-
 	prov := newFakeOIDCProvider(t, key)
 	prov.userGroups = `["idp-viewers"]`
 	auth := mustOIDC(t, prov.srv.URL)
-	prov.idToken = signOIDCIDTokenWithGroups(t, key, prov.srv.URL, "test-client", oidcGroupClaims{sub: "oidc-user-1", email: "oidc@example.com", nonce: nonce, groups: []string{"idp-admins"}})
+	login := startTestLogin(t, auth, "")
+	prov.idToken = signOIDCIDTokenWithGroups(t, key, prov.srv.URL, "test-client", oidcGroupClaims{sub: "oidc-user-1", email: "oidc@example.com", nonce: login.nonce, groups: []string{"idp-admins"}})
 
 	var gotGroups []string
 	h := auth.CallbackHandler(func(ctx context.Context, claims SSOClaims) (string, error) {
 		gotGroups = claims.Groups
 		return "test-session-token", nil
 	})
-	req := httptest.NewRequest("GET", "/callback?code=test-code&state="+url.QueryEscape(state), nil)
-	req.AddCookie(&http.Cookie{Name: "sso_state", Value: state})
 	w := httptest.NewRecorder()
-	h(w, req)
+	h(w, login.callbackRequest("test-code"))
 
 	require.Equal(t, http.StatusFound, w.Code)
 	assert.ElementsMatch(t, []string{"idp-admins", "idp-viewers"}, gotGroups)

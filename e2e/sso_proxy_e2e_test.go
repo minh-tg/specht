@@ -46,6 +46,17 @@ func ssoLoginLeg(t *testing.T, forwardedProto string, returnPath ...string) (str
 	return resp.Header.Get("Location"), resp.Cookies(), resp.Header
 }
 
+// ssoStateCookie picks the per-login state cookie (sso_state_<hash of state>)
+// out of a response's cookies.
+func ssoStateCookie(cookies []*http.Cookie) *http.Cookie {
+	for _, c := range cookies {
+		if strings.HasPrefix(c.Name, "sso_state_") {
+			return c
+		}
+	}
+	return nil
+}
+
 // ssoExchange drives login → IdP authorize → callback without a cookie jar:
 // the state cookies travel as explicit headers (a jar would refuse a Secure
 // cookie over plain http, exactly as a browser behind TLS termination would
@@ -54,13 +65,7 @@ func ssoExchange(t *testing.T, forwardedProto string, returnPath ...string) (int
 	t.Helper()
 	authorize, cookies, _ := ssoLoginLeg(t, forwardedProto, returnPath...)
 
-	var stateCookie *http.Cookie
-	for _, c := range cookies {
-		if c.Name == "sso_state" {
-			stateCookie = c
-		}
-	}
-	require.NotNil(t, stateCookie, "the flow binds state to a cookie")
+	require.NotNil(t, ssoStateCookie(cookies), "the flow binds state to a cookie")
 
 	// The IdP redirects back to the registered callback with code+state.
 	req, err := http.NewRequest(http.MethodGet, authorize, nil)
@@ -245,12 +250,7 @@ func TestE2E_SSOLoginAndProvisioning(t *testing.T) {
 func TestE2E_TrustedProxySecureTransport(t *testing.T) {
 	t.Run("plain http is never marked secure", func(t *testing.T) {
 		_, cookies, headers := ssoLoginLeg(t, "")
-		var state *http.Cookie
-		for _, c := range cookies {
-			if c.Name == "sso_state" {
-				state = c
-			}
-		}
+		state := ssoStateCookie(cookies)
 		require.NotNil(t, state)
 		require.False(t, state.Secure, "no TLS and no trusted verdict → plain cookie")
 		require.Empty(t, headers.Get("Strict-Transport-Security"),
@@ -259,12 +259,7 @@ func TestE2E_TrustedProxySecureTransport(t *testing.T) {
 
 	t.Run("a trusted proxy's https verdict marks cookies secure", func(t *testing.T) {
 		_, cookies, headers := ssoLoginLeg(t, "https")
-		var state *http.Cookie
-		for _, c := range cookies {
-			if c.Name == "sso_state" {
-				state = c
-			}
-		}
+		state := ssoStateCookie(cookies)
 		require.NotNil(t, state)
 		require.True(t, state.Secure,
 			"X-Forwarded-Proto: https from the trusted hop marks the cookie")

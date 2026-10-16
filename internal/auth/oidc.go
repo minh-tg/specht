@@ -2,11 +2,7 @@ package auth
 
 import (
 	"context"
-	"crypto/hmac"
 	"crypto/rand"
-	"crypto/sha256"
-	"crypto/subtle"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,6 +31,11 @@ type OIDCConfig struct {
 	// AllowUserInfoOnly permits userinfo-based identity only when the token
 	// response omits id_token. This is an insecure compatibility downgrade.
 	AllowUserInfoOnly bool
+	// StateKey signs the per-login state cookie (see StartLogin). Replicas of
+	// one deployment must share it, so main derives it from the JWT secret.
+	// Empty means a random key for this process, which suits a single
+	// instance and tests; it must be at least 16 bytes otherwise.
+	StateKey []byte
 }
 
 // jwksCacheTTL bounds how long a fetched JWKS key set is reused before a
@@ -53,6 +54,11 @@ const (
 type OIDCAuthenticator struct {
 	cfg    OIDCConfig
 	logger func(msg string, args ...any)
+
+	// stateKey signs the login cookie and seeds the PKCE verifier and nonce.
+	stateKey []byte
+	// now is the clock for the login cookie's expiry; tests replace it.
+	now func() time.Time
 
 	jwksURL    string
 	httpClient *http.Client
@@ -107,15 +113,26 @@ func NewOIDCAuthenticator(cfg OIDCConfig, logger func(msg string, args ...any)) 
 	if err := ValidateIssuerURL(cfg.IssuerURL); err != nil {
 		return nil, err
 	}
+	stateKey := cfg.StateKey
+	if len(stateKey) == 0 {
+		stateKey = make([]byte, 32)
+		if _, err := rand.Read(stateKey); err != nil {
+			return nil, fmt.Errorf("generate sso state key: %w", err)
+		}
+	} else if len(stateKey) < ssoStateKeyMinBytes {
+		return nil, fmt.Errorf("sso state key must be at least %d bytes", ssoStateKeyMinBytes)
+	}
 	issuer, _ := url.Parse(cfg.IssuerURL)
 	allowLoopback := issuer.Scheme == "http" && isLoopbackHost(issuer.Hostname())
 	transport := &http.Transport{
 		DialContext: safeDialContext(&net.Dialer{Timeout: 10 * time.Second}, allowLoopback),
 	}
 	return &OIDCAuthenticator{
-		cfg:     cfg,
-		logger:  logger,
-		jwksURL: strings.TrimSuffix(cfg.IssuerURL, "/") + "/.well-known/jwks.json",
+		cfg:      cfg,
+		logger:   logger,
+		stateKey: stateKey,
+		now:      time.Now,
+		jwksURL:  strings.TrimSuffix(cfg.IssuerURL, "/") + "/.well-known/jwks.json",
 		httpClient: &http.Client{
 			Timeout:   15 * time.Second,
 			Transport: transport,
@@ -148,7 +165,10 @@ func (a *OIDCAuthenticator) exchangeCode(ctx context.Context, code, codeVerifier
 	data.Set("grant_type", "authorization_code")
 	data.Set("code", code)
 	data.Set("client_id", a.cfg.ClientID)
-	data.Set("client_secret", a.cfg.ClientSecret)
+	if a.cfg.ClientSecret != "" {
+		// A public client (SSO_PUBLIC_CLIENT) has none; PKCE proves the exchange.
+		data.Set("client_secret", a.cfg.ClientSecret)
+	}
 	data.Set("redirect_uri", a.cfg.RedirectURI)
 	if codeVerifier != "" {
 		data.Set("code_verifier", codeVerifier)
@@ -495,60 +515,41 @@ func idTokenSubject(idToken string) (string, error) {
 	return sub, nil
 }
 
-// CallbackHandler returns an http.HandlerFunc that the OAuth2 provider redirects to
-// after the user consents. It exchanges the code, extracts identity, and redirects
-// back with a session token delivered as a URL fragment.
-// The issuer callback mints the session token for the validated identity.
-// It receives the request context so it can resolve or provision the local
-// account, plus the IdP group membership for enterprise role mapping. If it
-// returns ErrSSONotProvisioned the callback answers 403 without disclosing
-// whether the account exists.
-// verifySSOCallbackState validates the OAuth2 state parameter against the
-// single-use state cookie and clears the cookie. It returns the server-issued
-// nonce bound into the state value.
-func verifySSOCallbackState(w http.ResponseWriter, r *http.Request, cookieName string) (state, wantNonce, returnTo string, ok bool) {
-	state = r.URL.Query().Get("state")
+// verifySSOCallbackState checks the callback against the state cookie of the
+// login it belongs to and clears that cookie. The cookie is named after the
+// state and signed for it, so a callback URL replayed from another browser
+// finds no cookie, or one that does not verify, and is refused before the code
+// goes anywhere. It returns the PKCE verifier and the nonce derived from the
+// cookie's secret, and the validated return path.
+func (a *OIDCAuthenticator) verifySSOCallbackState(w http.ResponseWriter, r *http.Request) (verifier, wantNonce, returnTo string, ok bool) {
+	state := r.URL.Query().Get("state")
 	if state == "" {
 		http.Error(w, "missing state", http.StatusBadRequest)
 		return "", "", "", false
 	}
-	stateCookie, err := r.Cookie(cookieName)
-	if err != nil || !secureCompare(state, stateCookie.Value) {
-		http.Error(w, "state mismatch", http.StatusBadRequest)
+	name := ssoStateCookieName(state)
+	cookie, err := r.Cookie(name)
+	if err != nil {
+		http.Error(w, "state mismatch: sso login not found or expired, start sign-in again", http.StatusBadRequest)
 		return "", "", "", false
 	}
-	// Every login this server starts carries a nonce (GenerateStateToken); a
-	// state without one did not come from here.
-	if _, nonce := splitStateNonce(stateCookie.Value); nonce == "" {
-		http.Error(w, "invalid state", http.StatusBadRequest)
+	login, err := a.openLogin(state, cookie.Value)
+	if err != nil {
+		msg := "state mismatch"
+		if errors.Is(err, errSSOLoginExpired) {
+			msg = "state mismatch: sso login expired, start sign-in again"
+		}
+		http.Error(w, msg, http.StatusBadRequest)
 		return "", "", "", false
 	}
 
-	returnTo = "/"
-	if returnCookie, err := r.Cookie(SSOReturnCookieName); err == nil {
-		returnTo = decodeSSOReturnCookieValue(returnCookie.Value, state)
-	}
-
-	// The state and return-path cookies are single-use: clear them before any
-	// further work so a replayed callback cannot pass this check again.
-	// secureCookie sets Secure from the proxy-aware transport verdict.
+	// The cookie is single-use: clear it before any further work so a
+	// replayed callback cannot pass this check again.
+	// Secure comes from the proxy-aware transport verdict.
 	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
-	for _, name := range []string{cookieName, SSOReturnCookieName} {
-		http.SetCookie(w, secureCookie(r, &http.Cookie{
-			Name:     name,
-			Value:    "",
-			Path:     "/",
-			MaxAge:   -1,
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-		}))
-	}
+	http.SetCookie(w, ssoCookie(name, "", -1, SecureTransport(r)))
 
-	// The server-issued nonce rides inside the state cookie (see
-	// GenerateStateToken), so an id_token is only accepted when its nonce
-	// claim matches what this login flow actually sent to the provider.
-	_, wantNonce = splitStateNonce(stateCookie.Value)
-	return state, wantNonce, returnTo, true
+	return a.pkceVerifier(state, login.secret), a.nonce(state, login.secret), login.returnPath, true
 }
 
 // extractCallbackIdentity resolves the callback identity from the token
@@ -609,11 +610,17 @@ func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ct
 	http.Redirect(w, r, safeSSOReturnPath(returnTo)+"#sso_code="+url.PathEscape(tok), http.StatusFound)
 }
 
+// CallbackHandler returns an http.HandlerFunc that the OAuth2 provider redirects to
+// after the user consents. It exchanges the code, extracts identity, and redirects
+// back with a single-use exchange code delivered as a URL fragment.
+// The issuer callback mints the session token for the validated identity.
+// It receives the request context so it can resolve or provision the local
+// account, plus the IdP group membership for enterprise role mapping. If it
+// returns ErrSSONotProvisioned the callback answers 403 without disclosing
+// whether the account exists.
 func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, claims SSOClaims) (token string, err error)) http.HandlerFunc {
-	const stateCookieName = "sso_state"
-
 	return func(w http.ResponseWriter, r *http.Request) {
-		state, wantNonce, returnTo, ok := verifySSOCallbackState(w, r, stateCookieName)
+		verifier, wantNonce, returnTo, ok := a.verifySSOCallbackState(w, r)
 		if !ok {
 			return
 		}
@@ -624,7 +631,7 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, cla
 			return
 		}
 
-		tokenResp, err := a.exchangeCode(r.Context(), code, a.pkceVerifier(state))
+		tokenResp, err := a.exchangeCode(r.Context(), code, verifier)
 		if err != nil {
 			if a.logger != nil {
 				a.logger("oidc token exchange failed", "error", err)
@@ -641,92 +648,6 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, cla
 
 		issueCallbackSession(w, r, issuer, strings.TrimSuffix(a.cfg.IssuerURL, "/"), ident, returnTo)
 	}
-}
-
-// LoginURL returns the authorization URL the user must visit to start SSO.
-// state must come from GenerateStateToken: its nonce half is forwarded as the
-// OIDC nonce parameter so the provider echoes it back inside the id_token,
-// where the callback binds it to the state cookie.
-func (a *OIDCAuthenticator) LoginURL(state string) string {
-	_, nonce := splitStateNonce(state)
-	params := url.Values{}
-	params.Set("client_id", a.cfg.ClientID)
-	params.Set("redirect_uri", a.cfg.RedirectURI)
-	params.Set("response_type", "code")
-	params.Set("scope", "openid email profile")
-	params.Set("state", state)
-	if nonce != "" {
-		params.Set("nonce", nonce)
-	}
-	if verifier := a.pkceVerifier(state); verifier != "" {
-		params.Set("code_challenge", pkceChallenge(verifier))
-		params.Set("code_challenge_method", "S256")
-	}
-	return strings.TrimSuffix(a.cfg.IssuerURL, "/") + "/oauth/authorize?" + params.Encode()
-}
-
-// pkceVerifier derives the RFC 7636 code verifier for one login flow. It is
-// an HMAC of the state keyed with the client secret, so it is unique per flow,
-// stable across replicas (nothing to store), and cannot be computed by someone
-// who has only seen the redirect URL, which carries the state and code but
-// never the secret. With no client secret configured the key would be public,
-// so PKCE is skipped instead of offering a guessable verifier.
-func (a *OIDCAuthenticator) pkceVerifier(state string) string {
-	if a.cfg.ClientSecret == "" {
-		return ""
-	}
-	mac := hmac.New(sha256.New, []byte(a.cfg.ClientSecret))
-	mac.Write([]byte("specht-oidc-pkce\x00" + state))
-	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
-}
-
-// pkceChallenge is the S256 transform of a verifier.
-func pkceChallenge(verifier string) string {
-	sum := sha256.Sum256([]byte(verifier))
-	return base64.RawURLEncoding.EncodeToString(sum[:])
-}
-
-// GenerateStateToken returns a cryptographically random state value for OAuth2
-// CSRF protection. The returned value is "<csrf>.<nonce>": both halves are
-// random, the csrf half is echoed back in the provider's state parameter (and
-// bound to the sso_state cookie by the router), and the nonce half is sent as
-// the OIDC nonce parameter (see LoginURL) and later checked against the
-// id_token's nonce claim in the callback. Keeping both in one cookie value
-// means the callback can recover the nonce from the very cookie it already
-// validated for CSRF, with no extra server-side session state.
-func GenerateStateToken() (string, error) {
-	csrf, err := randomToken()
-	if err != nil {
-		return "", fmt.Errorf("generate state token: %w", err)
-	}
-	nonce, err := randomToken()
-	if err != nil {
-		return "", fmt.Errorf("generate nonce: %w", err)
-	}
-	return csrf + "." + nonce, nil
-}
-
-func randomToken() (string, error) {
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
-}
-
-// splitStateNonce splits a GenerateStateToken value into its csrf and nonce
-// halves. A value without a separator yields an empty nonce, which the
-// callback rejects: it did not come from GenerateStateToken.
-func splitStateNonce(state string) (csrf, nonce string) {
-	if i := strings.IndexByte(state, '.'); i >= 0 {
-		return state[:i], state[i+1:]
-	}
-	return state, ""
-}
-
-// secureCompare reports whether a and b are equal in constant time.
-func secureCompare(a, b string) bool {
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
 // jwksKey is one JSON Web Key in the issuer's key set.

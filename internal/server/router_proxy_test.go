@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -27,11 +28,12 @@ func testOIDC(t *testing.T) *auth.OIDCAuthenticator {
 	return oidc
 }
 
-// ssoStateCookie extracts the sso_state cookie from a recorder's response.
+// ssoStateCookie extracts the login state cookie (sso_state_<hash of state>)
+// from a recorder's response.
 func ssoStateCookie(t *testing.T, w *httptest.ResponseRecorder) *http.Cookie {
 	t.Helper()
 	for _, c := range w.Result().Cookies() {
-		if c.Name == "sso_state" {
+		if strings.HasPrefix(c.Name, "sso_state_") {
 			return c
 		}
 	}
@@ -124,26 +126,24 @@ func TestRealIP_TrustedProxyHeadersHonored(t *testing.T) {
 	})
 }
 
-func TestSSOLogin_BindsReturnPathCookieToState(t *testing.T) {
-	const returnPath = "/projects/demo?tab=members"
+func TestSSOLogin_KeepsTheReturnPathInTheLoginCookie(t *testing.T) {
 	h := ssoLoginHandler(testOIDC(t))
 	req := httptest.NewRequest("GET", "/api/v1/auth/sso/login?redirect=%2Fprojects%2Fdemo%3Ftab%3Dmembers", nil)
 	w := httptest.NewRecorder()
 
 	h(w, req)
 
+	require.Equal(t, http.StatusFound, w.Code)
 	stateCookie := ssoStateCookie(t, w)
-	var returnCookie *http.Cookie
-	for _, cookie := range w.Result().Cookies() {
-		if cookie.Name == auth.SSOReturnCookieName {
-			returnCookie = cookie
-			break
-		}
-	}
-	require.NotNil(t, returnCookie, "login must set the state-bound return cookie")
-	assert.Equal(t, auth.EncodeSSOReturnCookieValue(stateCookie.Value, returnPath), returnCookie.Value)
-	assert.True(t, returnCookie.HttpOnly)
-	assert.Equal(t, http.SameSiteLaxMode, returnCookie.SameSite)
+	assert.True(t, stateCookie.HttpOnly)
+	assert.Equal(t, http.SameSiteLaxMode, stateCookie.SameSite)
+	assert.Len(t, w.Result().Cookies(), 1, "one cookie carries the secret and the return path")
+	location, err := url.Parse(w.Header().Get("Location"))
+	require.NoError(t, err)
+	assert.NotContains(t, location.String(), "projects", "the return path is not sent to the identity provider")
+	assert.NotEmpty(t, location.Query().Get("state"))
+	assert.NotEmpty(t, location.Query().Get("nonce"))
+	assert.NotEmpty(t, location.Query().Get("code_challenge"))
 }
 
 func TestSSOLogin_SecureCookieRequiresTrustedProxy(t *testing.T) {
