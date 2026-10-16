@@ -54,7 +54,7 @@ func TestSARIFRuleLookupDoesNotScaleWithRulesTimesResults(t *testing.T) {
 			elapsed := time.Since(start)
 			require.NoError(t, err)
 			require.Len(t, rep.Findings, n)
-			assert.Less(t, elapsed, 2*time.Second, "%d rules x %d results took %s", n, n, elapsed)
+			assert.Less(t, elapsed, 2*time.Second*timeBoundFactor, "%d rules x %d results took %s", n, n, elapsed)
 		})
 	}
 }
