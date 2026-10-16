@@ -12,19 +12,27 @@ import (
 )
 
 const createRefreshToken = `-- name: CreateRefreshToken :one
-INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
-VALUES ($1, $2, $3)
-RETURNING id, user_id, token_hash, expires_at, revoked_at, created_at
+INSERT INTO refresh_tokens (user_id, token_hash, expires_at, family_id, family_started_at)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, user_id, token_hash, expires_at, revoked_at, created_at, family_id, family_started_at
 `
 
 type CreateRefreshTokenParams struct {
-	UserID    pgtype.UUID        `json:"user_id"`
-	TokenHash string             `json:"token_hash"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	UserID          pgtype.UUID        `json:"user_id"`
+	TokenHash       string             `json:"token_hash"`
+	ExpiresAt       pgtype.Timestamptz `json:"expires_at"`
+	FamilyID        pgtype.UUID        `json:"family_id"`
+	FamilyStartedAt pgtype.Timestamptz `json:"family_started_at"`
 }
 
 func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshTokenParams) (RefreshToken, error) {
-	row := q.db.QueryRow(ctx, createRefreshToken, arg.UserID, arg.TokenHash, arg.ExpiresAt)
+	row := q.db.QueryRow(ctx, createRefreshToken,
+		arg.UserID,
+		arg.TokenHash,
+		arg.ExpiresAt,
+		arg.FamilyID,
+		arg.FamilyStartedAt,
+	)
 	var i RefreshToken
 	err := row.Scan(
 		&i.ID,
@@ -33,12 +41,14 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.CreatedAt,
+		&i.FamilyID,
+		&i.FamilyStartedAt,
 	)
 	return i, err
 }
 
 const getRefreshTokenByHash = `-- name: GetRefreshTokenByHash :one
-SELECT id, user_id, token_hash, expires_at, revoked_at, created_at FROM refresh_tokens WHERE token_hash = $1
+SELECT id, user_id, token_hash, expires_at, revoked_at, created_at, family_id, family_started_at FROM refresh_tokens WHERE token_hash = $1
 `
 
 func (q *Queries) GetRefreshTokenByHash(ctx context.Context, tokenHash string) (RefreshToken, error) {
@@ -51,12 +61,14 @@ func (q *Queries) GetRefreshTokenByHash(ctx context.Context, tokenHash string) (
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.CreatedAt,
+		&i.FamilyID,
+		&i.FamilyStartedAt,
 	)
 	return i, err
 }
 
 const revokeRefreshToken = `-- name: RevokeRefreshToken :one
-UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL RETURNING id, user_id, token_hash, expires_at, revoked_at, created_at
+UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL RETURNING id, user_id, token_hash, expires_at, revoked_at, created_at, family_id, family_started_at
 `
 
 func (q *Queries) RevokeRefreshToken(ctx context.Context, id pgtype.UUID) (RefreshToken, error) {
@@ -69,6 +81,8 @@ func (q *Queries) RevokeRefreshToken(ctx context.Context, id pgtype.UUID) (Refre
 		&i.ExpiresAt,
 		&i.RevokedAt,
 		&i.CreatedAt,
+		&i.FamilyID,
+		&i.FamilyStartedAt,
 	)
 	return i, err
 }

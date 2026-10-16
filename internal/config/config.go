@@ -46,6 +46,10 @@ const (
 	// sweepers look for expired rows. Tests shorten it via
 	// LIFECYCLE_SWEEP_INTERVAL to observe sweeps in seconds.
 	DefaultSweepInterval = 5 * time.Minute
+	// DefaultSessionMaxAge is the absolute lifetime of a sign-in. Refresh
+	// tokens rotate for this long after the original login, then the user
+	// signs in again.
+	DefaultSessionMaxAge = 30 * 24 * time.Hour
 	DefaultStalenessMult = 2
 	// Rate limiting defaults (token bucket per key): strict for
 	// unauthenticated entry points, generous for authenticated callers, and
@@ -78,6 +82,9 @@ type Server struct {
 	// SweepInterval is the period of the analysis-expiry and waiver-expiry
 	// background sweepers. Must be positive.
 	SweepInterval time.Duration
+	// SessionMaxAge is the absolute session lifetime (SESSION_MAX_AGE).
+	// Must be positive.
+	SessionMaxAge time.Duration
 	SSO           SSOConfig
 	// TrustedProxies lists only reverse-proxy hop CIDRs. The nearest trusted
 	// proxy must append its observed peer to X-Forwarded-For and overwrite
@@ -350,6 +357,7 @@ func Load() (*Server, error) {
 		LogLevel:             strOr(os.Getenv("LOG_LEVEL"), "info"),
 		InventoryTTL:         DefaultInventoryTTL,
 		SweepInterval:        DefaultSweepInterval,
+		SessionMaxAge:        DefaultSessionMaxAge,
 		SSO:                  loadSSO(),
 		RegistrationDisabled: true,
 	}
@@ -376,6 +384,14 @@ func Load() (*Server, error) {
 			return nil, fmt.Errorf("LIFECYCLE_SWEEP_INTERVAL must be a positive duration, got %q", v)
 		}
 		s.SweepInterval = d
+	}
+
+	if v := os.Getenv("SESSION_MAX_AGE"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil || d <= 0 {
+			return nil, fmt.Errorf("SESSION_MAX_AGE must be a positive duration such as 720h, got %q", v)
+		}
+		s.SessionMaxAge = d
 	}
 
 	if v := os.Getenv("DB_CONNECT_TIMEOUT"); v != "" {
@@ -494,6 +510,9 @@ func (s *Server) Validate() error {
 	}
 	if s.InventoryTTL <= 0 {
 		problems = append(problems, errors.New("INVENTORY_TTL must be a positive duration"))
+	}
+	if s.SessionMaxAge <= 0 {
+		problems = append(problems, errors.New("SESSION_MAX_AGE must be a positive duration"))
 	}
 	if s.Intel.TTL <= 0 {
 		problems = append(problems, errors.New("INTEL_TTL must be a positive duration"))

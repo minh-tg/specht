@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/minh-tg/specht/internal/db/sqlc"
@@ -24,10 +25,13 @@ type pgRefreshTokenRepo struct {
 }
 
 func (r *pgRefreshTokenRepo) Create(ctx context.Context, userID pgtype.UUID, tokenHash string, expiresAt time.Time) (sqlc.RefreshToken, error) {
+	// A token created here starts its own family now.
 	return r.q.CreateRefreshToken(ctx, sqlc.CreateRefreshTokenParams{
-		UserID:    userID,
-		TokenHash: tokenHash,
-		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
+		UserID:          userID,
+		TokenHash:       tokenHash,
+		ExpiresAt:       pgtype.Timestamptz{Time: expiresAt, Valid: true},
+		FamilyID:        pgtype.UUID{Bytes: uuid.New(), Valid: true},
+		FamilyStartedAt: pgtype.Timestamptz{Time: time.Now(), Valid: true},
 	})
 }
 

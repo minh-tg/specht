@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -335,15 +334,21 @@ func userToPort(u sqlc.User) port.User {
 // pgRefreshTokenPort adapts RefreshTokenStore.
 type pgRefreshTokenPort struct{ q *sqlc.Queries }
 
-func (r *pgRefreshTokenPort) Create(ctx context.Context, userID, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
-	uid, err := parseID(userID)
+func (r *pgRefreshTokenPort) Create(ctx context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
+	uid, err := parseID(in.UserID)
+	if err != nil {
+		return port.RefreshToken{}, err
+	}
+	fid, err := parseID(in.FamilyID)
 	if err != nil {
 		return port.RefreshToken{}, err
 	}
 	row, err := r.q.CreateRefreshToken(ctx, sqlc.CreateRefreshTokenParams{
-		UserID:    uid,
-		TokenHash: tokenHash,
-		ExpiresAt: uuidFromTime(expiresAt),
+		UserID:          uid,
+		TokenHash:       in.TokenHash,
+		ExpiresAt:       uuidFromTime(in.ExpiresAt),
+		FamilyID:        fid,
+		FamilyStartedAt: uuidFromTime(in.FamilyStartedAt),
 	})
 	if err != nil {
 		return port.RefreshToken{}, err
@@ -386,6 +391,9 @@ func refreshTokenToPort(t sqlc.RefreshToken) port.RefreshToken {
 		TokenHash: t.TokenHash,
 		ExpiresAt: t.ExpiresAt.Time,
 		RevokedAt: timePtrFromTimestamptz(t.RevokedAt),
+
+		FamilyID:        toUUID(t.FamilyID),
+		FamilyStartedAt: t.FamilyStartedAt.Time,
 	}
 }
 

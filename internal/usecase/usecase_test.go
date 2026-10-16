@@ -1070,17 +1070,17 @@ func (m *mockUserRepo) ListByIDs(ctx context.Context, ids []string) ([]port.User
 
 type mockRefreshTokenRepo struct {
 	port.RefreshTokenStore
-	createFn    func(context.Context, string, string, time.Time) (port.RefreshToken, error)
+	createFn    func(context.Context, port.NewRefreshToken) (port.RefreshToken, error)
 	getByHashFn func(context.Context, string) (port.RefreshToken, error)
 	revokeFn    func(context.Context, string) (port.RefreshToken, error)
 	revokeAllFn func(context.Context, string) error
 }
 
-func (m *mockRefreshTokenRepo) Create(ctx context.Context, userID, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
+func (m *mockRefreshTokenRepo) Create(ctx context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
 	if m.createFn == nil {
 		return port.RefreshToken{}, fmt.Errorf("unexpected call to Create")
 	}
-	return m.createFn(ctx, userID, tokenHash, expiresAt)
+	return m.createFn(ctx, in)
 }
 
 func (m *mockRefreshTokenRepo) GetByHash(ctx context.Context, tokenHash string) (port.RefreshToken, error) {
@@ -1621,6 +1621,8 @@ func makeRefreshToken(revoked bool) port.RefreshToken {
 		ID:        "00000000-0000-0000-0000-000000000030",
 		UserID:    "00000000-0000-0000-0000-000000000040",
 		TokenHash: "somehash", ExpiresAt: time.Now().Add(7 * 24 * time.Hour), RevokedAt: revokedAt,
+		FamilyID:        "00000000-0000-0000-0000-000000000050",
+		FamilyStartedAt: time.Now(),
 	}
 }
 
@@ -2357,7 +2359,7 @@ func TestRegister_Success(t *testing.T) {
 		}
 		return u, nil
 	}
-	rr.createFn = func(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
+	rr.createFn = func(ctx context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
 		return makeRefreshToken(false), nil
 	}
 
@@ -2403,7 +2405,7 @@ func TestRegister_EmailNormalized(t *testing.T) {
 		return u, nil
 	}
 	rr := &mockRefreshTokenRepo{
-		createFn: func(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
+		createFn: func(ctx context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
 			return makeRefreshToken(false), nil
 		},
 	}
@@ -2487,7 +2489,7 @@ func TestLogin_Success(t *testing.T) {
 		u.PasswordHash = hash
 		return u, nil
 	}
-	rr.createFn = func(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
+	rr.createFn = func(ctx context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
 		return makeRefreshToken(false), nil
 	}
 
@@ -2539,7 +2541,7 @@ func TestLogin_DBMemberRoleMapsToViewerClaim(t *testing.T) {
 		u.PasswordHash = hash
 		return u, nil
 	}
-	rr.createFn = func(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
+	rr.createFn = func(ctx context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
 		return makeRefreshToken(false), nil
 	}
 
@@ -2627,7 +2629,7 @@ func TestRefresh_Success(t *testing.T) {
 	rr.revokeFn = func(ctx context.Context, id string) (port.RefreshToken, error) {
 		return makeRefreshToken(true), nil
 	}
-	rr.createFn = func(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
+	rr.createFn = func(ctx context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
 		return makeRefreshToken(false), nil
 	}
 	ur.getByIDFn = func(ctx context.Context, id string) (port.User, error) {
@@ -2731,7 +2733,7 @@ func simulateAtomicRevoke(rr *mockRefreshTokenRepo, userID string) *bool {
 		*reuse = true
 		return nil
 	}
-	rr.createFn = func(ctx context.Context, userID string, tokenHash string, expiresAt time.Time) (port.RefreshToken, error) {
+	rr.createFn = func(ctx context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
 		return makeRefreshToken(false), nil
 	}
 	return reuse

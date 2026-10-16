@@ -301,11 +301,27 @@ type RefreshToken struct {
 	TokenHash string
 	ExpiresAt time.Time
 	RevokedAt *time.Time
+	// FamilyID names the sign-in this token descends from; rotation keeps it.
+	// FamilyStartedAt is the time of that original sign-in, also kept by
+	// rotation, and bounds the session's absolute lifetime.
+	FamilyID        string
+	FamilyStartedAt time.Time
+}
+
+// NewRefreshToken is a refresh token to persist. A new sign-in starts a family
+// (fresh FamilyID, FamilyStartedAt now); a rotation copies both from the token
+// it replaces.
+type NewRefreshToken struct {
+	UserID          string
+	TokenHash       string
+	ExpiresAt       time.Time
+	FamilyID        string
+	FamilyStartedAt time.Time
 }
 
 // RefreshTokenStore persists refresh tokens.
 type RefreshTokenStore interface {
-	Create(ctx context.Context, userID, tokenHash string, expiresAt time.Time) (RefreshToken, error)
+	Create(ctx context.Context, in NewRefreshToken) (RefreshToken, error)
 	GetByHash(ctx context.Context, tokenHash string) (RefreshToken, error)
 	Revoke(ctx context.Context, id string) (RefreshToken, error)
 	RevokeAllForUser(ctx context.Context, userID string) error

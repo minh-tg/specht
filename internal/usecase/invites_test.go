@@ -134,7 +134,7 @@ func newInviteTestFixture(t *testing.T, role string) *inviteFixture {
 		},
 		effectiveRoleFn: func(context.Context, string, string) (string, error) { return f.role, nil },
 	}
-	refresh := &mockRefreshTokenRepo{createFn: func(context.Context, string, string, time.Time) (port.RefreshToken, error) {
+	refresh := &mockRefreshTokenRepo{createFn: func(context.Context, port.NewRefreshToken) (port.RefreshToken, error) {
 		return makeRefreshToken(false), nil
 	}}
 	f.uc = New(Deps{

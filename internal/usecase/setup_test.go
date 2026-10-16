@@ -3,7 +3,6 @@ package usecase
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,7 +38,7 @@ func newSetupFixture(t *testing.T, existingAdmins int64) *setupFixture {
 		f.created = append(f.created, u)
 		return u, nil
 	}
-	refresh := &mockRefreshTokenRepo{createFn: func(context.Context, string, string, time.Time) (port.RefreshToken, error) {
+	refresh := &mockRefreshTokenRepo{createFn: func(context.Context, port.NewRefreshToken) (port.RefreshToken, error) {
 		return makeRefreshToken(false), nil
 	}}
 	f.uc = New(Deps{

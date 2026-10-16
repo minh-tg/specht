@@ -335,3 +335,9 @@ releases.
   non-ASCII letter with a lower-case form (for example an upper-case accented letter or the
   Kelvin sign) is refused at registration and sign-in, because it could match a different
   account than the one shown. Type such an address in lower case.
+- A sign-in now ends after an absolute lifetime, 30 days by default
+  (`SESSION_MAX_AGE`, for example `720h`). Before, a client that kept
+  refreshing renewed its session a week at a time forever, so a deactivated or
+  stolen session never expired. A refresh after the limit answers `401`
+  `refresh_failed`, like an expired token, and the user signs in again.
+  Sessions that already exist get 30 days counted from their latest token.
