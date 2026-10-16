@@ -335,6 +335,21 @@ func (q *Queries) LockActiveAdmins(ctx context.Context) ([]pgtype.UUID, error) {
 	return items, nil
 }
 
+const lockFamilyOwner = `-- name: LockFamilyOwner :one
+SELECT id FROM users
+WHERE id = (SELECT user_id FROM refresh_tokens WHERE family_id = $1 LIMIT 1)
+FOR NO KEY UPDATE
+`
+
+// LockUserForRevoke for the owner of one sign-in chain. Returns no row when the
+// chain has no tokens.
+func (q *Queries) LockFamilyOwner(ctx context.Context, familyID pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, lockFamilyOwner, familyID)
+	var id pgtype.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const lockUserForLink = `-- name: LockUserForLink :one
 SELECT disabled_at FROM users WHERE id = $1 FOR NO KEY UPDATE
 `
@@ -391,6 +406,22 @@ func (q *Queries) LockUserForRefresh(ctx context.Context, id pgtype.UUID) (LockU
 	var i LockUserForRefreshRow
 	err := row.Scan(&i.DisabledAt, &i.TokenVersion)
 	return i, err
+}
+
+const lockUserForRevoke = `-- name: LockUserForRevoke :one
+SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE
+`
+
+// Takes a lock on the account for the rest of the transaction that conflicts
+// with the share lock a refresh holds from its read until its successor is
+// stored. A revoke that starts while a refresh is in flight waits for it to
+// commit and then sees the successor; without the lock the revoke could finish
+// first and leave the successor alive.
+func (q *Queries) LockUserForRevoke(ctx context.Context, id pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, lockUserForRevoke, id)
+	var id_2 pgtype.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
 }
 
 const setUserDisabled = `-- name: SetUserDisabled :one
