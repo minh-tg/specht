@@ -336,6 +336,38 @@ describe("Profile", () => {
         .toBeInTheDocument();
     });
 
+    it("tells the person to sign in again when the account changed during the update", async () => {
+      passwordReply = () =>
+        jsonResponse({ error: { code: "account_changed", message: "account changed" } }, 409);
+      const user = userEvent.setup();
+      renderProfile();
+
+      await fillPasswords(user, "old-password-1", "new-password-1", "new-password-1");
+      await user.click(screen.getByRole("button", { name: "Change password" }));
+
+      expect(
+        await screen.findByText(
+          "Your account changed while the password was being updated. Sign in again with your new password.",
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText("Could not change the password. Please try again."))
+        .not.toBeInTheDocument();
+      expect(adopt).not.toHaveBeenCalled();
+    });
+
+    it("keeps the generic message for an unexpected server error", async () => {
+      passwordReply = () => jsonResponse({ error: { code: "internal", message: "boom" } }, 500);
+      const user = userEvent.setup();
+      renderProfile();
+
+      await fillPasswords(user, "old-password-1", "new-password-1", "new-password-1");
+      await user.click(screen.getByRole("button", { name: "Change password" }));
+
+      expect(await screen.findByText("Could not change the password. Please try again."))
+        .toBeInTheDocument();
+      expect(screen.queryByText(/account changed/)).not.toBeInTheDocument();
+    });
+
     it("shows the rules once the person starts typing a new password", async () => {
       const user = userEvent.setup();
       renderProfile();
