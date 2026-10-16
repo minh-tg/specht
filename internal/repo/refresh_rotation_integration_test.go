@@ -194,3 +194,35 @@ func TestSetPasswordRevokesTheRefreshTokens(t *testing.T) {
 
 	assert.Zero(t, liveRefreshTokens(t, repos, user.ID))
 }
+
+// A thief refreshes first and the owner second with the same token. The second
+// use revokes the thief's successor, and signing out with the stale token does
+// the same, through the real stores.
+func TestSecondUseOfARefreshTokenRevokesTheSuccessor(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	uc := raceUsecases(t, repos)
+
+	for name, secondUse := range map[string]func(token string) error{
+		"refresh": func(token string) error { _, err := uc.Refresh(ctx, token); return err },
+		"logout":  func(token string) error { return uc.Logout(ctx, token) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			user := newPasswordUser(t, repos, raceOldPassword)
+			laptop, err := uc.Login(ctx, user.Email, raceOldPassword)
+			require.NoError(t, err)
+			phone, err := uc.Login(ctx, user.Email, raceOldPassword)
+			require.NoError(t, err)
+			thief, err := uc.Refresh(ctx, laptop.RefreshToken)
+			require.NoError(t, err)
+
+			_ = secondUse(laptop.RefreshToken)
+
+			_, err = uc.Refresh(ctx, thief.RefreshToken)
+			require.Error(t, err, "the thief's successor must not survive the second use")
+			_, err = uc.Refresh(ctx, phone.RefreshToken)
+			assert.NoError(t, err, "the phone's sign-in is another family")
+		})
+	}
+}

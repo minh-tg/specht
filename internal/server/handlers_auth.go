@@ -117,8 +117,8 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		// internal store error) is deliberately indistinguishable to clients:
 		// the only actionable response is to re-authenticate. Detail is logged.
 		if errors.Is(err, usecase.ErrRefreshReused) {
-			// The token was rotated moments ago by another request. The
-			// session is intact; the client should use the newer token.
+			// The token was already spent, so the server revoked the sign-in it
+			// belongs to. The client must sign the user out and say why.
 			respondError(w, http.StatusUnauthorized, "refresh_reused", "refresh token was already used")
 			return
 		}

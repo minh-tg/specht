@@ -214,8 +214,10 @@ export interface paths {
     /**
      * Rotate a refresh token
      * @description Returns a new access token and a new refresh token. The presented
-     *     refresh token is invalidated; presenting it again revokes the whole
-     *     token family, so a stolen token cannot be replayed silently.
+     *     refresh token is invalidated and is single-use. Presenting it again,
+     *     however soon, revokes the sign-in it belongs to (its whole token
+     *     family), so a stolen token cannot be replayed silently. A client must
+     *     keep one refresh in flight at a time and use the token it gets back.
      */
     post: operations["refreshToken"];
     delete?: never;
@@ -235,9 +237,12 @@ export interface paths {
     put?: never;
     /**
      * Revoke a session
-     * @description Revokes the refresh token family. When a bearer access token is also
-     *     supplied, that token is retired immediately instead of waiting for its
-     *     normal expiry. Works with only a refresh token in the body.
+     * @description Revokes the refresh token family. A refresh token that was already
+     *     rotated is treated as a replay, as it is by refresh: the sign-in it
+     *     belongs to is revoked and the call still answers 204. When a bearer
+     *     access token is also supplied, that token is retired immediately
+     *     instead of waiting for its normal expiry. Works with only a refresh
+     *     token in the body.
      */
     post: operations["logout"];
     delete?: never;
@@ -4052,11 +4057,9 @@ export interface operations {
       /**
        * @description Invalid, expired, or revoked refresh token, or one past the
        *     session's absolute lifetime (`refresh_failed`). A token that was
-       *     rotated less than 10 seconds ago answers `refresh_reused` and
-       *     leaves the session alive: another request already holds the new
-       *     token. Presenting a rotated token after that window revokes the
-       *     sign-in it belongs to (not the user's other devices) and answers
-       *     `refresh_failed`.
+       *     already used answers `refresh_reused` and revokes the sign-in it
+       *     belongs to, successor included, but not the user's other devices.
+       *     The client should sign the user out and say the session ended.
        */
       401: {
         headers: {

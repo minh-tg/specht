@@ -66,22 +66,33 @@ func TestE2E_RefreshStopsAtTheAbsoluteSessionLifetime(t *testing.T) {
 	})
 }
 
-// TestE2E_RefreshReuse covers theft detection against the real server: a
-// concurrent double refresh keeps the winner's session, and a replay after the
-// grace window revokes that sign-in only.
+// TestE2E_RefreshReuse covers theft detection against the real server. A token
+// is single-use: any second use, however soon after the first, revokes that
+// sign-in and leaves the user's other sign-ins alone.
 func TestE2E_RefreshReuse(t *testing.T) {
-	conn := refreshConn(t)
-	ctx := context.Background()
 	refresh := func(raw string) (int, []byte) {
 		return doJSON(t, http.MethodPost, "/api/v1/auth/refresh", "", map[string]string{"refresh_token": raw})
+	}
+	signInTwice := func(label string) (laptop, phone authResponse) {
+		time.Sleep(time.Second) // keep each subtest inside the anonymous bucket
+		email := label + "-" + randomHex(4) + "@example.com"
+		request[authResponse](t, http.MethodPost, "/api/v1/auth/register", "",
+			map[string]string{"email": email, "password": adminPass}, http.StatusCreated)
+		signIn := func() authResponse {
+			return request[authResponse](t, http.MethodPost, "/api/v1/auth/login", "",
+				map[string]string{"email": email, "password": adminPass}, http.StatusOK)
+		}
+		return signIn(), signIn()
 	}
 
 	// The anonymous auth routes share a per-address bucket of 10 requests a
 	// second (burst 20) whatever RATE_LIMIT_* says, so let it fill first.
 	time.Sleep(2500 * time.Millisecond)
+	// The next test registers people straight away; leave it a full bucket.
+	t.Cleanup(func() { time.Sleep(2500 * time.Millisecond) })
 
-	t.Run("a concurrent double refresh keeps the winner's session", func(t *testing.T) {
-		s := registerPerson(t, "reuse-race")
+	t.Run("a concurrent double refresh revokes that sign-in", func(t *testing.T) {
+		laptop, phone := signInTwice("reuse-race")
 		const n = 4
 		var mu sync.Mutex
 		var winner string
@@ -91,7 +102,7 @@ func TestE2E_RefreshReuse(t *testing.T) {
 			wg.Add(1)
 			go func(i int) {
 				defer wg.Done()
-				status, raw := refresh(s.RefreshToken)
+				status, raw := refresh(laptop.RefreshToken)
 				codes[i] = status
 				if status == http.StatusOK {
 					var out authResponse
@@ -100,7 +111,7 @@ func TestE2E_RefreshReuse(t *testing.T) {
 					winner = out.RefreshToken
 					mu.Unlock()
 				} else {
-					require.Equal(t, "refresh_reused", errorCode(t, raw), "a loser must not look like a revoked token")
+					require.Equal(t, "refresh_reused", errorCode(t, raw))
 				}
 			}(i)
 		}
@@ -114,34 +125,38 @@ func TestE2E_RefreshReuse(t *testing.T) {
 		require.Equal(t, 1, wins, "exactly one refresh wins: %v", codes)
 
 		status, raw := refresh(winner)
-		require.Equal(t, http.StatusOK, status, "the winner keeps its session: %s", raw)
+		require.Equal(t, http.StatusUnauthorized, status, "the winner's successor is revoked with the chain: %s", raw)
+		status, raw = refresh(phone.RefreshToken)
+		require.Equal(t, http.StatusOK, status, "the phone's sign-in is a separate family and survives: %s", raw)
 	})
 
-	t.Run("a replay after the grace window revokes that sign-in only", func(t *testing.T) {
-		time.Sleep(time.Second)
-		email := "reuse-family-" + randomHex(4) + "@example.com"
-		request[authResponse](t, http.MethodPost, "/api/v1/auth/register", "",
-			map[string]string{"email": email, "password": adminPass}, http.StatusCreated)
-		signIn := func() authResponse {
-			return request[authResponse](t, http.MethodPost, "/api/v1/auth/login", "",
-				map[string]string{"email": email, "password": adminPass}, http.StatusOK)
-		}
-		laptop, phone := signIn(), signIn()
+	t.Run("a replay right after the rotation revokes that sign-in only", func(t *testing.T) {
+		laptop, phone := signInTwice("reuse-family")
 		rotated := request[authResponse](t, http.MethodPost, "/api/v1/auth/refresh", "",
 			map[string]string{"refresh_token": laptop.RefreshToken}, http.StatusOK)
 
-		_, err := conn.Exec(ctx, "UPDATE refresh_tokens SET revoked_at = now() - interval '1 minute' WHERE token_hash = $1",
-			tokenHashOf(laptop.RefreshToken))
-		require.NoError(t, err)
-
 		status, raw := refresh(laptop.RefreshToken)
 		require.Equal(t, http.StatusUnauthorized, status)
-		require.Equal(t, "refresh_failed", errorCode(t, raw))
+		require.Equal(t, "refresh_reused", errorCode(t, raw))
 
 		status, _ = refresh(rotated.RefreshToken)
 		require.Equal(t, http.StatusUnauthorized, status, "the laptop's chain is revoked")
 		status, raw = refresh(phone.RefreshToken)
 		require.Equal(t, http.StatusOK, status, "the phone's sign-in is a separate family and survives: %s", raw)
+	})
+
+	t.Run("signing out with a rotated token revokes that sign-in only", func(t *testing.T) {
+		laptop, phone := signInTwice("reuse-logout")
+		rotated := request[authResponse](t, http.MethodPost, "/api/v1/auth/refresh", "",
+			map[string]string{"refresh_token": laptop.RefreshToken}, http.StatusOK)
+
+		status, raw := doJSON(t, http.MethodPost, "/api/v1/auth/logout", "", map[string]string{"refresh_token": laptop.RefreshToken})
+		require.Equal(t, http.StatusNoContent, status, string(raw))
+
+		status, _ = refresh(rotated.RefreshToken)
+		require.Equal(t, http.StatusUnauthorized, status, "the stale logout ran the reuse path and revoked the successor")
+		status, raw = refresh(phone.RefreshToken)
+		require.Equal(t, http.StatusOK, status, "the phone's sign-in survives: %s", raw)
 	})
 }
 

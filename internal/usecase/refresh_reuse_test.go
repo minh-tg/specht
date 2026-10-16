@@ -19,12 +19,10 @@ import (
 // unrevoked row, and revocation stamps the injected clock.
 type memRefreshStore struct {
 	port.RefreshTokenStore
-	mu   sync.Mutex
-	now  func() time.Time
-	rows []*port.RefreshToken
-	// rotateMu makes Rotate atomic against another Rotate.
-	rotateMu sync.Mutex
-	guard    func(userID string, tokenVersion int32) error
+	mu    sync.Mutex
+	now   func() time.Time
+	rows  []*port.RefreshToken
+	guard func(userID string, tokenVersion int32) error
 }
 
 func (m *memRefreshStore) Create(_ context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
@@ -38,22 +36,34 @@ func (m *memRefreshStore) Create(_ context.Context, in port.NewRefreshToken) (po
 	return *row, nil
 }
 
-// Rotate is Revoke and Create under one lock, as the store does in one
-// transaction. guard, when set, stands in for the account checks the store makes
-// under the row lock.
-func (m *memRefreshStore) Rotate(ctx context.Context, oldID string, in port.NewRefreshToken, tokenVersion int32) error {
+// Rotate spends the old row and appends the successor under one lock, as the
+// store does in one transaction, so a reader never sees the old token spent
+// without its successor. guard, when set, stands in for the account checks the
+// store makes under the row lock.
+func (m *memRefreshStore) Rotate(_ context.Context, oldID string, in port.NewRefreshToken, tokenVersion int32) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.guard != nil {
 		if err := m.guard(in.UserID, tokenVersion); err != nil {
 			return err
 		}
 	}
-	m.rotateMu.Lock()
-	defer m.rotateMu.Unlock()
-	if _, err := m.Revoke(ctx, oldID); err != nil {
-		return err
+	var old *port.RefreshToken
+	for _, r := range m.rows {
+		if r.ID == oldID && r.RevokedAt == nil {
+			old = r
+		}
 	}
-	_, err := m.Create(ctx, in)
-	return err
+	if old == nil {
+		return port.ErrNotFound
+	}
+	at := m.now()
+	old.RevokedAt = &at
+	m.rows = append(m.rows, &port.RefreshToken{
+		ID: "row-" + in.TokenHash[:8], UserID: in.UserID, TokenHash: in.TokenHash, ExpiresAt: in.ExpiresAt,
+		FamilyID: in.FamilyID, FamilyStartedAt: in.FamilyStartedAt,
+	})
+	return nil
 }
 
 func (m *memRefreshStore) GetByHash(_ context.Context, hash string) (port.RefreshToken, error) {
@@ -147,11 +157,13 @@ func (h *reuseHarness) refresh(raw string) (*AuthResponse, error) {
 	return h.uc.Refresh(context.Background(), raw)
 }
 
-// Two tabs that refresh with the same token at the same moment: one wins, the
-// other is told the token was just rotated, and the winner keeps its session.
-func TestRefreshReuse_ConcurrentDoubleRefreshKeepsTheWinnersSession(t *testing.T) {
+// Two refreshes with the same token at the same moment: one wins, the others
+// are told the token was already used. A second use cannot be told from theft,
+// so the chain is revoked, the winner's successor with it.
+func TestRefreshReuse_ConcurrentDoubleRefreshRevokesTheChain(t *testing.T) {
 	h := newReuseHarness(t)
 	first := h.signIn(t)
+	other := h.signIn(t)
 
 	const n = 8
 	var wg sync.WaitGroup
@@ -173,32 +185,42 @@ func TestRefreshReuse_ConcurrentDoubleRefreshKeepsTheWinnersSession(t *testing.T
 			winner = resps[i]
 			continue
 		}
-		assert.ErrorIs(t, errs[i], ErrRefreshReused, "a loser is a benign race, not a revoked token")
+		assert.ErrorIs(t, errs[i], ErrRefreshReused)
 	}
 	require.NotNil(t, winner, "one refresh must win")
 
-	assert.True(t, h.store.live(winner.RefreshToken), "the losers must not revoke the winner's new token")
-	_, err := h.refresh(winner.RefreshToken)
-	assert.NoError(t, err, "the winner keeps a working session")
+	assert.False(t, h.store.live(winner.RefreshToken), "the chain is revoked, the winner's successor included")
+	assert.True(t, h.store.live(other), "another sign-in is a separate chain and survives")
 }
 
-func TestRefreshReuse_ReplayInsideTheGraceWindowIsABenignRace(t *testing.T) {
+// A thief who refreshes first gets a successor. The owner's refresh with the
+// same token is the second use, and it takes the thief's successor with it
+// instead of being served as a retry.
+func TestRefreshReuse_TheSecondUseRevokesTheFirstUsersSuccessor(t *testing.T) {
 	h := newReuseHarness(t)
-	first := h.signIn(t)
-	rotated, err := h.refresh(first)
+	stolen := h.signIn(t)
+	thief, err := h.refresh(stolen)
 	require.NoError(t, err)
 
-	h.now = h.now.Add(refreshReuseGrace - time.Second)
-	_, err = h.refresh(first)
+	h.now = h.now.Add(time.Second)
+	_, err = h.refresh(stolen) // the owner, a second later
 
 	require.ErrorIs(t, err, ErrRefreshReused)
-	assert.True(t, h.store.live(rotated.RefreshToken), "a replay inside the window revokes nothing")
+	assert.False(t, h.store.live(thief.RefreshToken), "the thief does not keep the session")
 }
 
-func TestRefreshReuse_ReplayAfterTheWindowRevokesOnlyThatFamily(t *testing.T) {
+// The grace window is zero: a replay is theft at any delay. The 11 second case
+// sits just past the old 10 second window and the hour case catches a window
+// raised to an hour, so a longer window fails this test.
+func TestRefreshReuse_ReplayRevokesOnlyThatFamilyAtAnyDelay(t *testing.T) {
+	assert.Zero(t, refreshReuseGrace, "a grace window lets a thief win the race against the owner")
+
 	for name, wait := range map[string]time.Duration{
-		"exactly at the window": refreshReuseGrace,
-		"well after":            time.Hour,
+		"at once":         0,
+		"a second later":  time.Second,
+		"eleven seconds":  11 * time.Second,
+		"an hour later":   time.Hour,
+		"well after that": 6 * 24 * time.Hour,
 	} {
 		t.Run(name, func(t *testing.T) {
 			h := newReuseHarness(t)
@@ -210,14 +232,41 @@ func TestRefreshReuse_ReplayAfterTheWindowRevokesOnlyThatFamily(t *testing.T) {
 			h.now = h.now.Add(wait)
 			_, err = h.refresh(laptop) // the old laptop token comes back: theft signal
 
-			require.EqualError(t, err, "refresh token has been revoked")
-			require.NotErrorIs(t, err, ErrRefreshReused)
+			require.ErrorIs(t, err, ErrRefreshReused)
 			assert.False(t, h.store.live(rotated.RefreshToken), "the laptop's sign-in chain is revoked")
 			assert.True(t, h.store.live(phone), "another device's sign-in survives")
 			_, err = h.refresh(phone)
 			assert.NoError(t, err, "the phone keeps refreshing")
 		})
 	}
+}
+
+// Signing out with a token a refresh already spent is a replay like any other:
+// it revokes the chain, so a thief's copy cannot be used to probe the session
+// without consequence, and the caller still gets its logout.
+func TestLogout_StaleTokenRunsTheReusePath(t *testing.T) {
+	h := newReuseHarness(t)
+	laptop := h.signIn(t)
+	phone := h.signIn(t)
+	rotated, err := h.refresh(laptop)
+	require.NoError(t, err)
+
+	require.NoError(t, h.uc.Logout(context.Background(), laptop))
+
+	assert.False(t, h.store.live(rotated.RefreshToken), "the successor of the stale token is revoked")
+	assert.True(t, h.store.live(phone), "another sign-in survives")
+}
+
+func TestLogout_CurrentTokenEndsOnlyItsOwnSession(t *testing.T) {
+	h := newReuseHarness(t)
+	laptop := h.signIn(t)
+	phone := h.signIn(t)
+
+	require.NoError(t, h.uc.Logout(context.Background(), laptop))
+
+	assert.False(t, h.store.live(laptop))
+	assert.True(t, h.store.live(phone))
+	assert.NoError(t, h.uc.Logout(context.Background(), "unknown-token"), "an unknown token is not an error")
 }
 
 // A refresh rotates under the token generation it read before it spent the old

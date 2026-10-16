@@ -593,16 +593,20 @@ func (u *Usecases) RevokeAPIKey(ctx context.Context, projectSlug, keyID string) 
 	return nil
 }
 
-// ErrRefreshReused is returned when a refresh token that was rotated less than
-// refreshReuseGrace ago is presented again. It is the signature of two requests
-// racing with one token, so the session is left alone. Handlers map it to a
-// 401 with its own code.
-var ErrRefreshReused = errors.New("refresh token was just rotated")
+// ErrRefreshReused is returned when a refresh token that was already spent is
+// presented again. Either a client refreshed twice with one token or someone
+// else holds a copy, and the two cannot be told apart, so the sign-in chain the
+// token belongs to is revoked. Handlers map it to a 401 with its own code so
+// the client can tell the user the session ended.
+var ErrRefreshReused = errors.New("refresh token was already used")
 
 const (
 	// refreshReuseGrace is how long after rotation a replay of the old token
-	// counts as a benign race. A replay after it is treated as theft.
-	refreshReuseGrace = 10 * time.Second
+	// is still answered as a benign race and leaves the session alone. It is
+	// zero: a thief who refreshes inside any window gets the successor, and
+	// the owner's own refresh then looks like the retry. The web client keeps
+	// one refresh in flight at a time, so a valid client never replays.
+	refreshReuseGrace time.Duration = 0
 	// refreshTokenTTL is how long one refresh token stays valid. Rotation
 	// renews it, up to the session's absolute lifetime.
 	refreshTokenTTL = 7 * 24 * time.Hour
@@ -708,13 +712,7 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 
 	now := u.clock()
 	if stored.RevokedAt != nil {
-		// A token revoked a moment ago is the loser of a race, such as two
-		// tabs refreshing together: the winner already holds the new token,
-		// so answer without punishing the session.
-		if now.Sub(*stored.RevokedAt) < refreshReuseGrace {
-			return nil, ErrRefreshReused
-		}
-		return nil, u.revokeFamilyAfterReuse(ctx, stored)
+		return nil, u.refuseReuse(ctx, stored, *stored.RevokedAt)
 	}
 
 	if stored.ExpiresAt.Before(now) {
@@ -750,9 +748,8 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 	})
 	if errors.Is(err, port.ErrNotFound) {
 		// Another request rotated this token between our read and our
-		// rotation. That happened moments ago, so it is the benign race, not
-		// theft.
-		return nil, ErrRefreshReused
+		// rotation, so this is a second use of it.
+		return nil, u.refuseReuse(ctx, stored, now)
 	}
 	if errors.Is(err, port.ErrSessionStale) {
 		slog.Warn("refresh: account changed during the refresh", "user_id", userID)
@@ -770,14 +767,20 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 	return resp, nil
 }
 
-// revokeFamilyAfterReuse handles a rotated token presented after the grace
-// window. Whoever holds it may have stolen it, so the sign-in chain it belongs
-// to is revoked. The user's other sign-ins are separate chains and stay.
-func (u *Usecases) revokeFamilyAfterReuse(ctx context.Context, stored port.RefreshToken) error {
+// refuseReuse handles a refresh token that was spent at rotatedAt and is
+// presented again. Whoever holds it may have stolen it, so the sign-in chain it
+// belongs to is revoked, successor included; the user's other sign-ins are
+// separate chains and stay. A replay inside refreshReuseGrace is left alone.
+// Refresh and Logout both come through here, so a stale token cannot be used
+// to sign out without tripping the same detection.
+func (u *Usecases) refuseReuse(ctx context.Context, stored port.RefreshToken, rotatedAt time.Time) error {
+	if refreshReuseGrace > 0 && u.clock().Sub(rotatedAt) < refreshReuseGrace {
+		return ErrRefreshReused
+	}
 	if err := u.deps.Stores.RefreshTokens.RevokeFamily(ctx, stored.FamilyID); err != nil {
 		slog.Error("refresh: revoke family after reuse", "user_id", stored.UserID, "family_id", stored.FamilyID, "error", err)
 	}
-	return fmt.Errorf("refresh token has been revoked")
+	return ErrRefreshReused
 }
 
 func (u *Usecases) Logout(ctx context.Context, refreshToken string) error {
@@ -793,11 +796,20 @@ func (u *Usecases) Logout(ctx context.Context, refreshToken string) error {
 		return nil
 	}
 
-	// Revoke is a guarded compare-and-swap: revoking an already-revoked
-	// token matches zero rows and reports ErrNotFound, which is the desired
-	// outcome for logout (the token is already unusable).
+	// A token that was already spent is a replay, whether it comes to
+	// refresh or to sign out. Revoke the chain the way a refresh would; the
+	// caller still gets the logout it asked for.
+	if stored.RevokedAt != nil {
+		_ = u.refuseReuse(ctx, stored, *stored.RevokedAt)
+		return nil
+	}
+
+	// Revoke is a guarded compare-and-swap: when a refresh spends the token
+	// between the read above and this call it matches zero rows and reports
+	// ErrNotFound. That is a replay too.
 	_, err = u.deps.Stores.RefreshTokens.Revoke(ctx, stored.ID)
 	if errors.Is(err, port.ErrNotFound) {
+		_ = u.refuseReuse(ctx, stored, u.clock())
 		return nil
 	}
 	return err
