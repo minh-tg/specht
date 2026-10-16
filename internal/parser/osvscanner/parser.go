@@ -194,7 +194,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		return nil, scanner.Malformed("osv-scanner", err)
 	}
 
-	return convert(budget, report)
+	return parseutil.Hardened(convert(budget, report))
 }
 
 func targetKindForSource(sourceType string) string {

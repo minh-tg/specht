@@ -107,7 +107,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	if err != nil {
 		return nil, scanner.Malformed("sbom", err)
 	}
-	return nr, nil
+	return parseutil.HardenReport(nr), nil
 }
 
 type cyclonedxDoc struct {

@@ -139,7 +139,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	if err != nil {
 		return nil, scanner.Malformed("checkov", err)
 	}
-	return convertAll(budget, reports)
+	return parseutil.Hardened(convertAll(budget, reports))
 }
 
 // decodeReports reads either one framework's report (an object) or the array

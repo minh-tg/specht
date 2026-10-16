@@ -180,6 +180,7 @@ func BoundFingerprint(fp string) string {
 //   - Protects Fingerprint against PostgreSQL index row-size overflow
 //   - Validates CodeLocation lines (non-negative)
 //   - Validates float scores
+//   - Strips NUL bytes from Extensions and caps their serialized size
 func HardenFinding(f domain.NormalizedFinding) domain.NormalizedFinding {
 	f.Fingerprint = BoundFingerprint(f.Fingerprint)
 	f.Title = SanitizeText(f.Title, MaxTitleLength)
@@ -216,6 +217,8 @@ func HardenFinding(f domain.NormalizedFinding) domain.NormalizedFinding {
 	for i := range f.Aliases {
 		f.Aliases[i] = SanitizeText(f.Aliases[i], 256)
 	}
+
+	f.Extensions = HardenExtensions(f.Extensions)
 
 	if f.Fix != nil {
 		f.Fix.Summary = SanitizeText(f.Fix.Summary, MaxTitleLength)

@@ -186,7 +186,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	if len(nr.ScanScope.Ext) == 0 {
 		nr.ScanScope.Ext = nil
 	}
-	return nr, nil
+	return parseutil.HardenReport(nr), nil
 }
 
 // redactNucleiFields replaces sensitive embedded payloads in one decoded

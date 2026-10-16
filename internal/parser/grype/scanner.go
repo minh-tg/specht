@@ -166,7 +166,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		return nil, scanner.Malformed("grype", err)
 	}
 
-	return convert(budget, doc)
+	return parseutil.Hardened(convert(budget, doc))
 }
 
 func convert(budget *parseutil.Budget, doc grypeDoc) (*domain.NormalizedReport, error) {

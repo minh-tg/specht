@@ -208,14 +208,14 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		return nil, scanner.Unrecognized("semgrep")
 	}
 	if shape, ok := parseutil.ReadShape(data); ok && !shape.Has("runs") {
-		return parseNative(budget, data)
+		return parseutil.Hardened(parseNative(budget, data))
 	}
 	var report sarifReport
 	if err := json.Unmarshal(data, &report); err != nil {
 		return nil, scanner.Malformed("semgrep", err)
 	}
 
-	return convert(budget, report)
+	return parseutil.Hardened(convert(budget, report))
 }
 
 func convert(budget *parseutil.Budget, report sarifReport) (*domain.NormalizedReport, error) {
