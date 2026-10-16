@@ -165,13 +165,24 @@ func (r *pgUserPort) ChangeRole(ctx context.Context, userID, role string) (port.
 }
 
 // SetDisabled deactivates or reactivates an account, refusing to deactivate
-// the last active admin.
+// the last active admin. Deactivating also revokes the account's API keys.
 func (r *pgUserPort) SetDisabled(ctx context.Context, userID string, disabled bool) (port.User, error) {
+	user, _, err := r.setDisabled(ctx, userID, disabled)
+	return user, err
+}
+
+// Deactivate is SetDisabled(true) that returns the keys it revoked.
+func (r *pgUserPort) Deactivate(ctx context.Context, userID string) (port.User, []port.RevokedAPIKey, error) {
+	return r.setDisabled(ctx, userID, true)
+}
+
+func (r *pgUserPort) setDisabled(ctx context.Context, userID string, disabled bool) (port.User, []port.RevokedAPIKey, error) {
 	uid, err := parseID(userID)
 	if err != nil {
-		return port.User{}, err
+		return port.User{}, nil, err
 	}
 	var out port.User
+	var revoked []port.RevokedAPIKey
 	err = r.withTx(ctx, func(q *sqlc.Queries) error {
 		target, err := q.GetUserByID(ctx, uid)
 		if err != nil {
@@ -187,12 +198,22 @@ func (r *pgUserPort) SetDisabled(ctx context.Context, userID string, disabled bo
 			return err
 		}
 		out = userToPort(row)
+		if !disabled {
+			return nil
+		}
+		keys, err := q.RevokeAPIKeysByCreator(ctx, uid)
+		if err != nil {
+			return err
+		}
+		for _, k := range keys {
+			revoked = append(revoked, port.RevokedAPIKey{ID: toUUID(k.ID), ProjectSlug: k.ProjectSlug, Name: k.Name})
+		}
 		return nil
 	})
 	if err != nil {
-		return port.User{}, mappingErr(err)
+		return port.User{}, nil, mappingErr(err)
 	}
-	return out, nil
+	return out, revoked, nil
 }
 
 // guardLastAdmin locks the active admins and returns ErrLastGlobalAdmin when

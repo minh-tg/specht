@@ -171,6 +171,14 @@ type User struct {
 	CreatedAt   time.Time
 }
 
+// RevokedAPIKey names an API key that was revoked as a side effect of another
+// change, such as its creator's account being deactivated.
+type RevokedAPIKey struct {
+	ID          string
+	ProjectSlug string
+	Name        string
+}
+
 // UserStore persists user accounts.
 type UserStore interface {
 	Create(ctx context.Context, email string, displayName, passwordHash *string) (User, error)
@@ -199,6 +207,11 @@ type UserStore interface {
 	// new token generation and refuses to remove the last active admin with
 	// ErrLastGlobalAdmin.
 	SetDisabled(ctx context.Context, userID string, disabled bool) (User, error)
+	// Deactivate is SetDisabled(true) that also reports the API keys it
+	// revoked. Deactivating revokes every key the account created, in the
+	// same transaction, so a refused deactivation (the last active admin)
+	// revokes nothing. Reactivating does not bring the keys back.
+	Deactivate(ctx context.Context, userID string) (User, []RevokedAPIKey, error)
 	// ClearPassword removes the account's password hash so it can no longer
 	// sign in with a password. It is idempotent.
 	ClearPassword(ctx context.Context, userID string) error

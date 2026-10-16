@@ -492,15 +492,16 @@ func (h *Handler) ReactivateUser(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) setUserActive(w http.ResponseWriter, r *http.Request, active bool) {
 	id := chi.URLParam(r, "id")
 	var (
-		profile *usecase.UserProfile
-		err     error
-		event   = audit.EventReactivateUser
+		profile     *usecase.UserProfile
+		revokedKeys []usecase.RevokedAPIKey
+		err         error
+		event       = audit.EventReactivateUser
 	)
 	if active {
 		profile, err = h.usecase.ReactivateUser(r.Context(), id)
 	} else {
 		event = audit.EventDeactivateUser
-		profile, err = h.usecase.DeactivateUser(r.Context(), id)
+		profile, revokedKeys, err = h.usecase.DeactivateUser(r.Context(), id)
 	}
 	if err != nil {
 		if respondUserAdminError(w, err) {
@@ -512,6 +513,10 @@ func (h *Handler) setUserActive(w http.ResponseWriter, r *http.Request, active b
 	}
 	respondJSON(w, http.StatusOK, profile)
 	h.audit.HTTP(r, event, audit.OutcomeSuccess, "", id, nil)
+	// Keys that went with the account get the line a manual revoke would.
+	for _, key := range revokedKeys {
+		h.audit.HTTP(r, audit.EventRevokeAPIKey, audit.OutcomeSuccess, key.ProjectSlug, key.ID, nil)
+	}
 }
 
 // Setup creates the first admin on a fresh server. It is public, so it works

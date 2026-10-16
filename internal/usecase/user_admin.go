@@ -74,33 +74,38 @@ func (u *Usecases) ChangeUserRole(ctx context.Context, userID, role string) (*Us
 	return &profile, nil
 }
 
+// RevokedAPIKey names an API key revoked together with its creator's account.
+type RevokedAPIKey = port.RevokedAPIKey
+
 // DeactivateUser ends an account's access: open sessions stop at their next
 // request, refresh tokens are revoked, and the account cannot sign in again
-// until it is reactivated. History and memberships stay. An admin cannot
-// deactivate themselves, the last active admin cannot be deactivated, and the
-// seeded system account cannot be deactivated at all.
-func (u *Usecases) DeactivateUser(ctx context.Context, userID string) (*UserProfile, error) {
+// until it is reactivated. History and memberships stay. The API keys the
+// account created are revoked in the same transaction and returned so the
+// caller can record each one; reactivating the account does not bring them
+// back. An admin cannot deactivate themselves, the last active admin cannot
+// be deactivated, and the seeded system account cannot be deactivated at all.
+func (u *Usecases) DeactivateUser(ctx context.Context, userID string) (*UserProfile, []RevokedAPIKey, error) {
 	ident, err := requireInstanceAdmin(ctx)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	id, err := validID(userID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if strings.EqualFold(id, ident.UserID) {
-		return nil, ErrCannotDeactivateSelf
+		return nil, nil, ErrCannotDeactivateSelf
 	}
 	target, err := u.deps.Stores.Users.GetByID(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("get user: %w", err)
+		return nil, nil, fmt.Errorf("get user: %w", err)
 	}
 	if isSystemAccount(target.Email) {
-		return nil, ErrSystemAccount
+		return nil, nil, ErrSystemAccount
 	}
-	user, err := u.deps.Stores.Users.SetDisabled(ctx, id, true)
+	user, revokedKeys, err := u.deps.Stores.Users.Deactivate(ctx, id)
 	if err != nil {
-		return nil, fmt.Errorf("deactivate user: %w", err)
+		return nil, nil, fmt.Errorf("deactivate user: %w", err)
 	}
 	if err := u.deps.Stores.RefreshTokens.RevokeAllForUser(ctx, id); err != nil {
 		// The new token generation and the sign-in checks already stop the
@@ -108,7 +113,7 @@ func (u *Usecases) DeactivateUser(ctx context.Context, userID string) (*UserProf
 		slog.Error("deactivate user: revoke refresh tokens", "user_id", id, "error", err)
 	}
 	profile := toUserProfile(user)
-	return &profile, nil
+	return &profile, revokedKeys, nil
 }
 
 // ReactivateUser lets a deactivated account sign in again.

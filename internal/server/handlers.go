@@ -129,7 +129,7 @@ type (
 		GetProjectWatcher(ctx context.Context, projectSlug string) (*usecase.ProjectWatcherResponse, error)
 		UpdateProjectWatcher(ctx context.Context, projectSlug string, in usecase.WatcherSettingsInput) (*usecase.ProjectWatcherResponse, error)
 		ChangeUserRole(ctx context.Context, userID, role string) (*usecase.UserProfile, error)
-		DeactivateUser(ctx context.Context, userID string) (*usecase.UserProfile, error)
+		DeactivateUser(ctx context.Context, userID string) (*usecase.UserProfile, []usecase.RevokedAPIKey, error)
 		ReactivateUser(ctx context.Context, userID string) (*usecase.UserProfile, error)
 	}
 
