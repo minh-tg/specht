@@ -402,6 +402,11 @@ releases.
   (2001::/32), site-local (fec0::/10), 100::/64 and the ORCHID ranges. A hostname that
   resolved into one of them could reach an internal IPv4 host through a relay or a DNS64
   gateway.
+- Outbound requests also refuse the SIIT IPv4-translated range (`::ffff:0:0:0/96`),
+  6to4 relay anycast (192.88.99.0/24), 2001:2::/48, 3fff::/20 and 5f00::/16. A hostname that
+  resolved into the SIIT range could reach an internal IPv4 host through a translator. The
+  deploy guide now also says that behind a TLS proxy missing from `TRUSTED_PROXIES` the SSO
+  sign-in cookie is sent without `Secure` and no HSTS header is set.
 - With `SSO_ENABLE=true` the server now checks the SSO settings at startup and refuses to
   start, naming every problem, when the issuer, client id or redirect URI is missing, when
   the issuer or redirect URI is not an absolute `https` URL (`http` is accepted for a
