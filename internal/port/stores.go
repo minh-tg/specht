@@ -164,7 +164,11 @@ type User struct {
 	// DisabledAt is set while the account is deactivated: it keeps its
 	// history and memberships but cannot sign in.
 	DisabledAt *time.Time
-	CreatedAt  time.Time
+	// EmailProven is true when the account proved it owns its address: it
+	// was created by first-run setup, or it signed in through SSO while the
+	// provider vouched for the email. A password registration proves nothing.
+	EmailProven bool
+	CreatedAt   time.Time
 }
 
 // UserStore persists user accounts.
@@ -243,7 +247,9 @@ type IdentityStore interface {
 	GetForUser(ctx context.Context, userID, issuer string) (UserIdentity, error)
 	// Link attaches a provider identity to an account. It fails with
 	// ErrIdentityLinked when either side is already linked at that provider.
-	Link(ctx context.Context, userID, issuer, subject string) (UserIdentity, error)
+	// When emailVerified is true the provider vouched for the account's email,
+	// and the same write marks the account's email as proven.
+	Link(ctx context.Context, userID, issuer, subject string, emailVerified bool) (UserIdentity, error)
 }
 
 // ---------- SSO exchange codes ----------

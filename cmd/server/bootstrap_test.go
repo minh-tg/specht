@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/minh-tg/specht/internal/port"
 )
@@ -34,46 +35,6 @@ func (f *fakeUserStore) SetRole(ctx context.Context, userID, role string) (port.
 	return port.User{}, port.ErrNotFound
 }
 
-func TestBootstrapAdmins_PromotesKnownSkipsUnknown(t *testing.T) {
-	store := &fakeUserStore{users: map[string]port.User{
-		"ops@example.com":   {ID: "u-ops", Email: "ops@example.com", Role: "member"},
-		"admin@example.com": {ID: "u-admin", Email: "admin@example.com", Role: "admin"},
-	}}
-	stores := &port.Stores{Users: store}
-	t.Setenv("ADMIN_EMAILS", "ops@example.com, ghost@example.com, admin@example.com")
-
-	bootstrapAdmins(context.Background(), stores, false)
-
-	if store.users["ops@example.com"].Role != "admin" {
-		t.Fatalf("ops@example.com role = %q, want admin", store.users["ops@example.com"].Role)
-	}
-	if store.users["admin@example.com"].Role != "admin" {
-		t.Fatalf("existing admin must stay admin")
-	}
-}
-
-func TestBootstrapAdmins_MatchesEmailsCaseInsensitively(t *testing.T) {
-	store := &fakeUserStore{users: map[string]port.User{
-		"ops@example.com": {ID: "u-ops", Email: "ops@example.com", Role: "member"},
-	}}
-	stores := &port.Stores{Users: store}
-	t.Setenv("ADMIN_EMAILS", " Ops@Example.COM ")
-
-	bootstrapAdmins(context.Background(), stores, false)
-
-	if store.users["ops@example.com"].Role != "admin" {
-		t.Fatalf("a mixed-case ADMIN_EMAILS entry must still promote the lowercase account, role = %q",
-			store.users["ops@example.com"].Role)
-	}
-}
-
-func TestBootstrapAdmins_EmptyNoop(t *testing.T) {
-	store := &fakeUserStore{users: map[string]port.User{}}
-	stores := &port.Stores{Users: store}
-	t.Setenv("ADMIN_EMAILS", "")
-	bootstrapAdmins(context.Background(), stores, false)
-}
-
 func captureBootstrapLogs(t *testing.T) *bytes.Buffer {
 	t.Helper()
 	var buf bytes.Buffer
@@ -83,34 +44,94 @@ func captureBootstrapLogs(t *testing.T) *bytes.Buffer {
 	return &buf
 }
 
-func TestBootstrapAdmins_UnregisteredAddressWithOpenSignupIsFlagged(t *testing.T) {
+func TestBootstrapAdmins_PromotesProvenAccountsAndSkipsUnknown(t *testing.T) {
 	logs := captureBootstrapLogs(t)
-	stores := &port.Stores{Users: &fakeUserStore{users: map[string]port.User{}}}
-	t.Setenv("ADMIN_EMAILS", "ops@example.com")
+	store := &fakeUserStore{users: map[string]port.User{
+		"ops@example.com":   {ID: "u-ops", Email: "ops@example.com", Role: "member", EmailProven: true},
+		"admin@example.com": {ID: "u-admin", Email: "admin@example.com", Role: "admin"},
+	}}
+	stores := &port.Stores{Users: store}
+	t.Setenv("ADMIN_EMAILS", "ops@example.com, ghost@example.com, admin@example.com")
 
-	bootstrapAdmins(context.Background(), stores, true)
+	bootstrapAdmins(context.Background(), stores)
 
-	out := logs.String()
-	if !strings.Contains(out, "level=ERROR") || !strings.Contains(out, "anyone can register") {
-		t.Fatalf("an unclaimed admin address with open signup must be reported as claimable, got:\n%s", out)
+	if store.users["ops@example.com"].Role != "admin" {
+		t.Fatalf("ops@example.com role = %q, want admin", store.users["ops@example.com"].Role)
 	}
-	if strings.Contains(out, "ops@example.com") {
+	if store.users["admin@example.com"].Role != "admin" {
+		t.Fatalf("existing admin must stay admin")
+	}
+	out := logs.String()
+	if strings.Contains(out, "level=WARN") || strings.Contains(out, "level=ERROR") {
+		t.Fatalf("a proven account and an address with no account (it may sign up later through SSO) must not warn, got:\n%s", out)
+	}
+}
+
+func TestBootstrapAdmins_MatchesEmailsCaseInsensitively(t *testing.T) {
+	store := &fakeUserStore{users: map[string]port.User{
+		"ops@example.com": {ID: "u-ops", Email: "ops@example.com", Role: "member", EmailProven: true},
+	}}
+	stores := &port.Stores{Users: store}
+	t.Setenv("ADMIN_EMAILS", " Ops@Example.COM ")
+
+	bootstrapAdmins(context.Background(), stores)
+
+	if store.users["ops@example.com"].Role != "admin" {
+		t.Fatalf("a mixed-case ADMIN_EMAILS entry must still promote the lowercase account, role = %q",
+			store.users["ops@example.com"].Role)
+	}
+}
+
+func TestBootstrapAdmins_DoesNotPromoteAnAccountThatNeverProvedTheAddress(t *testing.T) {
+	logs := captureBootstrapLogs(t)
+	store := &fakeUserStore{users: map[string]port.User{
+		"ceo@example.com": {ID: "u-ceo", Email: "ceo@example.com", Role: "member"},
+	}}
+	stores := &port.Stores{Users: store}
+	t.Setenv("ADMIN_EMAILS", "CEO@example.com, ceo@example.com")
+
+	bootstrapAdmins(context.Background(), stores)
+
+	if got := store.users["ceo@example.com"].Role; got != "member" {
+		t.Fatalf("a password-registered account must stay a member, role = %q", got)
+	}
+	out := logs.String()
+	if n := strings.Count(out, "level=WARN"); n != 1 {
+		t.Fatalf("want exactly one warning per address, got %d:\n%s", n, out)
+	}
+	for _, want := range []string{"not promoted", "SSO", "first-run setup", "c***@example.com"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("the warning must contain %q, got:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "ceo@example.com") {
 		t.Fatalf("the full address must not be logged, got:\n%s", out)
 	}
 }
 
-func TestBootstrapAdmins_UnregisteredAddressWithClosedSignupIsOnlyAWarning(t *testing.T) {
+func TestBootstrapAdmins_NeverPromotesADeactivatedAccount(t *testing.T) {
 	logs := captureBootstrapLogs(t)
-	stores := &port.Stores{Users: &fakeUserStore{users: map[string]port.User{}}}
-	t.Setenv("ADMIN_EMAILS", "ops@example.com")
+	disabled := time.Now()
+	store := &fakeUserStore{users: map[string]port.User{
+		"gone@example.com": {ID: "u-gone", Email: "gone@example.com", Role: "member", EmailProven: true, DisabledAt: &disabled},
+	}}
+	stores := &port.Stores{Users: store}
+	t.Setenv("ADMIN_EMAILS", "gone@example.com")
 
-	bootstrapAdmins(context.Background(), stores, false)
+	bootstrapAdmins(context.Background(), stores)
 
+	if got := store.users["gone@example.com"].Role; got != "member" {
+		t.Fatalf("a deactivated account must not be promoted, role = %q", got)
+	}
 	out := logs.String()
-	if strings.Contains(out, "level=ERROR") || strings.Contains(out, "anyone can register") {
-		t.Fatalf("closed signup cannot be raced, so no claimable-address alarm expected, got:\n%s", out)
+	if !strings.Contains(out, "level=WARN") || !strings.Contains(out, "deactivated") {
+		t.Fatalf("the skip must be reported, got:\n%s", out)
 	}
-	if !strings.Contains(out, "unknown account") {
-		t.Fatalf("the skip must still be logged, got:\n%s", out)
-	}
+}
+
+func TestBootstrapAdmins_EmptyNoop(t *testing.T) {
+	store := &fakeUserStore{users: map[string]port.User{}}
+	stores := &port.Stores{Users: store}
+	t.Setenv("ADMIN_EMAILS", "")
+	bootstrapAdmins(context.Background(), stores)
 }

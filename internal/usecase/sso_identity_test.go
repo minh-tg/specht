@@ -26,7 +26,9 @@ type mockIdentityRepo struct {
 	byUser    map[string]port.UserIdentity
 	linkErr   error
 	links     []port.UserIdentity
-	onLink    func(userID string)
+	// verified records, per link, whether the provider vouched for the email.
+	verified []bool
+	onLink   func(userID string)
 }
 
 func newMockIdentityRepo() *mockIdentityRepo {
@@ -57,12 +59,13 @@ func (m *mockIdentityRepo) GetForUser(ctx context.Context, userID, issuer string
 	return port.UserIdentity{}, port.ErrNotFound
 }
 
-func (m *mockIdentityRepo) Link(ctx context.Context, userID, issuer, subject string) (port.UserIdentity, error) {
+func (m *mockIdentityRepo) Link(ctx context.Context, userID, issuer, subject string, emailVerified bool) (port.UserIdentity, error) {
 	if m.linkErr != nil {
 		return port.UserIdentity{}, m.linkErr
 	}
 	id := port.UserIdentity{UserID: userID, Issuer: issuer, Subject: subject}
 	m.links = append(m.links, id)
+	m.verified = append(m.verified, emailVerified)
 	m.seed(userID, issuer, subject)
 	if m.onLink != nil {
 		m.onLink(userID)
@@ -256,5 +259,53 @@ func TestFindOrProvisionSSOUser_DeactivatedAccountIsRefused(t *testing.T) {
 
 		assert.ErrorIs(t, err, auth.ErrSSONotProvisioned)
 		assert.Empty(t, ids.links, "a deactivated account is not linked to a new identity")
+	})
+}
+
+func TestFindOrProvisionSSOUser_RecordsWhetherTheProviderVouchedForTheEmail(t *testing.T) {
+	unverified := auth.SSOClaims{Issuer: ssoTestIssuer, Subject: "sub-1", Email: "ada@example.com", EmailVerified: false}
+
+	t.Run("a provisioned account with a verified email", func(t *testing.T) {
+		ids := newMockIdentityRepo()
+		ur := &mockUserRepo{
+			getByEmailFn: func(context.Context, string) (port.User, error) { return port.User{}, port.ErrNotFound },
+			createFn: func(_ context.Context, email string, _, _ *string) (port.User, error) {
+				u := makeUser("user-9")
+				u.Email = email
+				return u, nil
+			},
+		}
+
+		_, _, _, err := New(ssoDepsWith(ur, ids)).FindOrProvisionSSOUser(
+			context.Background(), verifiedClaims("sub-9", "new@example.com"), []string{"example.com"}, nil)
+
+		require.NoError(t, err)
+		assert.Equal(t, []bool{true}, ids.verified, "the link marks the address as proven")
+	})
+
+	t.Run("a linked existing account with a verified email", func(t *testing.T) {
+		ids := newMockIdentityRepo()
+		ur := &mockUserRepo{
+			getByEmailFn:    existingUser("user-1", "member"),
+			clearPasswordFn: func(context.Context, string) error { return nil },
+		}
+
+		_, _, _, err := New(ssoDepsWith(ur, ids)).FindOrProvisionSSOUser(
+			context.Background(), verifiedClaims("sub-1", "ada@example.com"), nil, nil)
+
+		require.NoError(t, err)
+		assert.Equal(t, []bool{true}, ids.verified)
+	})
+
+	t.Run("a link under the unverified-email opt-in does not prove the address", func(t *testing.T) {
+		ids := newMockIdentityRepo()
+		ur := &mockUserRepo{getByEmailFn: existingUser("user-1", "member")}
+		deps := ssoDepsWith(ur, ids)
+		deps.SSOAllowUnverifiedEmail = true
+
+		_, _, _, err := New(deps).FindOrProvisionSSOUser(context.Background(), unverified, nil, nil)
+
+		require.NoError(t, err)
+		assert.Equal(t, []bool{false}, ids.verified)
 	})
 }

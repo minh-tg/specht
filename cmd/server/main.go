@@ -186,7 +186,7 @@ func main() {
 	// existing accounts to the global admin role at startup so tenant
 	// membership can be administered. Unknown addresses are skipped with a
 	// warning; the flag is otherwise a no-op.
-	bootstrapAdmins(context.Background(), stores, !cfg.RegistrationDisabled)
+	bootstrapAdmins(context.Background(), stores)
 
 	if cfg.SSO.Enabled && cfg.SSO.AllowUnverifiedEmail {
 		slog.Warn("SSO_ALLOW_UNVERIFIED_EMAIL is on: a first SSO login may link to an existing account by an email " +
@@ -381,31 +381,45 @@ func buildTrackerDispatcher() *tracker.Dispatcher {
 // caller can abort from the main goroutine instead of inside a watcher
 // goroutine.
 // bootstrapAdmins promotes ADMIN_EMAILS accounts to global admin.
-// It is idempotent and never creates accounts. Registration does not prove
-// ownership of an address, so with signup open an address that is not yet
-// registered can be claimed by anyone, and the next start would promote
-// them; that case is reported as an error rather than a routine skip.
-func bootstrapAdmins(ctx context.Context, stores *port.Stores, signupOpen bool) {
+// It is idempotent and never creates accounts. Only an account that proved it
+// owns the address is promoted: the one first-run setup created, or one that
+// signed in through SSO while the provider vouched for the email. Anyone can
+// register an address with a password, so a registered account is never
+// promoted, and neither is a deactivated one. An address that belongs to such
+// an account is reported once; an address with no account stays silent, since
+// its owner may still sign up through SSO.
+func bootstrapAdmins(ctx context.Context, stores *port.Stores) {
 	raw := os.Getenv("ADMIN_EMAILS")
 	if raw == "" {
 		return
 	}
+	seen := map[string]bool{}
 	for _, email := range strings.FieldsFunc(raw, func(c rune) bool { return c == ',' || c == ' ' }) {
 		email = auth.NormalizeEmail(email)
-		if email == "" {
+		if email == "" || seen[email] {
 			continue
 		}
+		seen[email] = true
 		user, err := stores.Users.GetByEmail(ctx, email)
+		if errors.Is(err, port.ErrNotFound) {
+			continue
+		}
 		if err != nil {
-			if signupOpen {
-				slog.Error("admin bootstrap: unknown account and anyone can register it; register it now or set REGISTRATION_ENABLED=false before the next start",
-					"email", auth.MaskEmail(email))
-			} else {
-				slog.Warn("admin bootstrap: unknown account, skipping", "email", auth.MaskEmail(email))
-			}
+			slog.Error("admin bootstrap: account lookup failed", "email", auth.MaskEmail(email), "error", err)
 			continue
 		}
 		if user.Role == auth.RoleAdmin {
+			continue
+		}
+		if user.DisabledAt != nil {
+			slog.Warn("admin bootstrap: account is deactivated, not promoted; reactivate it first",
+				"email", auth.MaskEmail(email))
+			continue
+		}
+		if !user.EmailProven {
+			slog.Warn("admin bootstrap: account exists but never proved this address, not promoted; "+
+				"sign in with SSO (the identity provider must verify the email) or create the admin with first-run setup",
+				"email", auth.MaskEmail(email))
 			continue
 		}
 		if _, err := stores.Users.SetRole(ctx, user.ID, auth.RoleAdmin); err != nil {

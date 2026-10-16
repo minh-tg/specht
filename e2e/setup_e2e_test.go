@@ -292,6 +292,72 @@ func TestE2E_SetupSurvivesAStrangerRegisteringFirst(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, status)
 }
 
+// TestE2E_AdminEmailsPromotesOnlyAccountsThatProvedTheAddress restarts one
+// server with ADMIN_EMAILS naming a registered account and the account
+// first-run setup created. Registration proves nothing, so the registered
+// account stays a normal user and the log says why; the setup account was
+// vouched for by the setup token, so it is promoted back after a demotion.
+func TestE2E_AdminEmailsPromotesOnlyAccountsThatProvedTheAddress(t *testing.T) {
+	const token = "admin-emails-token-00001"
+	srv := startFreshServer(t, "specht_admin_emails", "SETUP_TOKEN="+token, "REGISTRATION_ENABLED=true")
+
+	// A stranger registers the address the operator is about to list.
+	status, _, raw := srv.do(t, http.MethodPost, "/api/v1/auth/register", "", map[string]any{
+		"email": "ceo@example.com", "password": "correct-horse-battery",
+	})
+	require.Equal(t, http.StatusCreated, status, string(raw))
+
+	// The operator sets up the server, makes a second admin, and is then
+	// demoted, as when an operator hands over and wants the role back later.
+	status, _, raw = srv.do(t, http.MethodPost, "/api/v1/setup", "", map[string]any{
+		"token": token, "email": "ops@example.com", "password": "correct-horse-battery",
+	})
+	require.Equal(t, http.StatusCreated, status, string(raw))
+	var ops authResponse
+	require.NoError(t, json.Unmarshal(raw, &ops))
+	status, _, raw = srv.do(t, http.MethodPost, "/api/v1/auth/register", "", map[string]any{
+		"email": "deputy@example.com", "password": "correct-horse-battery",
+	})
+	require.Equal(t, http.StatusCreated, status, string(raw))
+	var deputy authResponse
+	require.NoError(t, json.Unmarshal(raw, &deputy))
+	status, _, raw = srv.do(t, http.MethodPut, "/api/v1/users/"+deputy.UserID+"/role", ops.Token, map[string]string{"role": "admin"})
+	require.Equal(t, http.StatusOK, status, string(raw))
+	status, _, raw = srv.do(t, http.MethodPut, "/api/v1/users/"+ops.UserID+"/role", ops.Token, map[string]string{"role": "member"})
+	require.Equal(t, http.StatusOK, status, string(raw))
+
+	srv.restart(t, "REGISTRATION_ENABLED=true", "ADMIN_EMAILS=CEO@Example.com, ops@example.com, nobody@example.com")
+
+	roleOf := func(email string) string {
+		t.Helper()
+		status, _, raw := srv.do(t, http.MethodPost, "/api/v1/auth/login", "", map[string]any{
+			"email": email, "password": "correct-horse-battery",
+		})
+		require.Equal(t, http.StatusOK, status, string(raw))
+		var session authResponse
+		require.NoError(t, json.Unmarshal(raw, &session))
+		status, _, raw = srv.do(t, http.MethodGet, "/api/v1/me", session.Token, nil)
+		require.Equal(t, http.StatusOK, status, string(raw))
+		var me struct {
+			Role string `json:"role"`
+		}
+		require.NoError(t, json.Unmarshal(raw, &me))
+		return me.Role
+	}
+	require.Equal(t, "member", roleOf("ceo@example.com"), "a registered account is never promoted by ADMIN_EMAILS")
+	require.Equal(t, "admin", roleOf("ops@example.com"), "the account first-run setup created is promoted")
+
+	log := srv.readLog()
+	require.Contains(t, log, "not promoted")
+	require.Contains(t, log, "c***@example.com", "the warning names the address, masked")
+	for _, line := range strings.Split(log, "\n") {
+		if strings.Contains(line, "admin bootstrap") {
+			require.NotContains(t, line, "ceo@example.com", "the bootstrap lines mask the address")
+		}
+	}
+	require.Equal(t, 1, strings.Count(log, "never proved this address"), "one warning, only for the registered account")
+}
+
 // TestE2E_SetupIsClosedOnAnEstablishedServer checks the shared server, which
 // already has accounts: no setup route, no setup screen.
 func TestE2E_SetupIsClosedOnAnEstablishedServer(t *testing.T) {

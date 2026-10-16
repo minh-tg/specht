@@ -3,12 +3,14 @@
 package e2e
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
 	"testing"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/stretchr/testify/require"
 )
 
@@ -203,6 +205,37 @@ func TestE2E_SSOLoginAndProvisioning(t *testing.T) {
 			map[string]string{"email": email, "password": adminPass})
 		require.Equal(t, http.StatusUnauthorized, status,
 			"linking through the provider retires the password that may have been set by someone else")
+	})
+
+	t.Run("only a verified sso login proves the address for ADMIN_EMAILS", func(t *testing.T) {
+		defer fakes.idp.setEmail(e2eSSOEmail)
+		proven := func(email string) bool {
+			t.Helper()
+			ctx := context.Background()
+			conn, err := pgx.Connect(ctx, dsn)
+			require.NoError(t, err)
+			defer conn.Close(ctx)
+			var out bool
+			require.NoError(t, conn.QueryRow(ctx, "SELECT email_proven FROM users WHERE email = $1", email).Scan(&out))
+			return out
+		}
+
+		registered := "e2e-sso-proof-registered@example.com"
+		status, _ := doJSON(t, http.MethodPost, "/api/v1/auth/register", "",
+			map[string]string{"email": registered, "password": adminPass})
+		require.Equal(t, http.StatusCreated, status)
+		require.False(t, proven(registered), "registering with a password proves nothing")
+
+		fakes.idp.setEmail(registered)
+		status, location, _ := ssoExchange(t, "")
+		ssoToken(t, status, location)
+		require.True(t, proven(registered), "the provider vouched for the address when the account was linked")
+
+		provisioned := "e2e-sso-proof-new@example.com"
+		fakes.idp.setEmail(provisioned)
+		status, location, _ = ssoExchange(t, "")
+		ssoToken(t, status, location)
+		require.True(t, proven(provisioned), "a provisioned account arrives with a vouched address")
 	})
 }
 

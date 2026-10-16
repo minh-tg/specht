@@ -244,8 +244,10 @@ paths:
       summary: Create an account
       description: |
         Public signup. This endpoint never creates an admin: the first
-        administrator comes from `POST /api/v1/setup`, later ones from the
-        `ADMIN_EMAILS` bootstrap on the next boot.
+        administrator comes from `POST /api/v1/setup`, later ones from a role
+        change by an admin, or from the `ADMIN_EMAILS` bootstrap for an
+        account that proved its address through setup or SSO. A registered
+        account is never promoted by `ADMIN_EMAILS`.
         A duplicate email is indistinguishable from any other failure, by
         design, so this cannot enumerate accounts. The password is judged
         before the address is looked up, so a refused password answers the same

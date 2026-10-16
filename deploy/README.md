@@ -79,7 +79,7 @@ compose defaults differ, which is noted.
 | `SHUTDOWN_TIMEOUT` | `150s` | How long a stop (SIGTERM) waits for in-flight requests before closing. Longer than the two minutes an ingest may run. If you run the container yourself, give it a stop grace period above this value; the Compose file sets 165s. |
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`. |
 | `CORS_ORIGINS` | *(empty)* | Comma/space-separated origins allowed to call the API from a browser. Empty allows none: the bundled UI is same-origin and needs no entry. Set it only when the UI is hosted elsewhere (use exact `https://` origins). |
-| `ADMIN_EMAILS` | *(empty)* | Comma-separated emails promoted to global admin at startup. Idempotent; unknown addresses are skipped with a warning. Matching ignores case. While `REGISTRATION_ENABLED` is on, an address not yet registered can be claimed by anyone before promotion; keep signup closed during admin bootstrapping or create accounts only after restricting registration. |
+| `ADMIN_EMAILS` | *(empty)* | Comma-separated emails promoted to global admin at startup. Idempotent; matching ignores case. Only an account that proved it owns the address is promoted: the one first-run setup created, or one that signed in through SSO while the identity provider reported the email as verified (an account linked under `SSO_ALLOW_UNVERIFIED_EMAIL` does not count). A password-registered account is never promoted, and neither is a deactivated one; the server logs one warning per such address. An address with no account is skipped silently, since its owner may still sign in through SSO. |
 | `SETUP_TOKEN` | *(random)* | Proof of access for first-run setup. While the database has no global admin the server logs a random token at startup (`setup_token=...`); set this variable to choose it instead (at least 16 characters, never logged). Ignored once a global admin exists. |
 | `REGISTRATION_ENABLED` | `false` | Allow self-service `POST /api/v1/auth/register`. Unset or empty is closed; set `true` only when open signup is intended. The endpoint answers `403 registration_disabled` while closed. First-run setup and invite links keep working, and invalid values fail startup. |
 | `TRUSTED_PROXIES` | *(empty)* | Comma/space-separated CIDRs of proxy hops allowed to set `X-Forwarded-For` / `X-Real-IP` / `X-Forwarded-Proto`. Empty trusts nobody. |
@@ -315,8 +315,14 @@ administration needs a global admin.
    an account, setup answers `409 email_in_use`; use another address. An
    existing server that has accounts but no admin offers a new token in the
    log at the next start.
-2. To promote more accounts, add their emails to `ADMIN_EMAILS` in
-   `deploy/.env.prod` and restart (`up -d` again — promotion is idempotent).
+2. To make more admins, change an account's role in the Admin area, or
+   add the email to `ADMIN_EMAILS` in `deploy/.env.prod` and restart (`up -d`
+   again; promotion is idempotent). `ADMIN_EMAILS` promotes only an account
+   that proved the address: the setup account, or one that signed in through
+   SSO with a verified email. A password-registered account stays a normal
+   user and the server logs a warning naming the masked address. If you relied
+   on registering a listed address and restarting, create the admin with
+   first-run setup or sign in with SSO instead, or run `specht grant-admin`.
 3. Create projects in the UI, then add members from the project's Access page
    (or `POST /projects/:slug/members`).
 4. Bring teammates in with invite links (Access page, or

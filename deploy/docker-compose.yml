@@ -61,7 +61,8 @@ services:
       INGEST_MAX_CONCURRENCY: ${INGEST_MAX_CONCURRENCY:-8}
       INGEST_MAX_FINDINGS: ${INGEST_MAX_FINDINGS:-100000}
       # Admin elevation (comma-separated emails) and trusted proxy CIDRs.
-      # Empty ADMIN_EMAILS promotes nobody; empty TRUSTED_PROXIES trusts
+      # Empty ADMIN_EMAILS promotes nobody (and it only ever promotes an
+      # account that proved its address); empty TRUSTED_PROXIES trusts
       # forwarding headers from nobody (deploy directly or set the hops).
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # First-run setup token; empty makes the server log a random one.

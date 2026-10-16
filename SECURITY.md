@@ -56,8 +56,10 @@ to stay safe.
   that a person controls the address they sign up with. On an instance where
   anyone can register, someone can create an account with an address they do
   not own. Registration is closed by default; keep it closed and bring people in
-  with invite links, or sign in through your identity provider. Admins are listed
-  by address in `ADMIN_EMAILS`, so register an address before listing it. Adding
+  with invite links, or sign in through your identity provider. `ADMIN_EMAILS`
+  promotes only an account that proved its address (the one first-run setup
+  created, or one that signed in through SSO with a verified email), so a
+  stranger who registers a listed address stays a normal user. Adding
   a person to a project or team by email address trusts the same thing: while
   registration is open, the account behind an address may belong to someone who
   registered it first, and the forms say so. A manager can also learn whether an

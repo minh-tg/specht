@@ -289,6 +289,7 @@ func userToPort(u sqlc.User) port.User {
 		PasswordHash: strVal(u.PasswordHash),
 		Role:         u.Role,
 		DisabledAt:   timePtrFromTimestamptz(u.DisabledAt),
+		EmailProven:  u.EmailProven,
 		CreatedAt:    u.CreatedAt.Time,
 	}
 }

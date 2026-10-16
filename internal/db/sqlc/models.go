@@ -474,6 +474,7 @@ type User struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 	TokenVersion int32              `json:"token_version"`
 	DisabledAt   pgtype.Timestamptz `json:"disabled_at"`
+	EmailProven  bool               `json:"email_proven"`
 }
 
 type UserIdentity struct {
