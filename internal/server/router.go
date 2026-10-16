@@ -120,6 +120,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		revoker, _ = cfg.JWTAuth.(auth.TokenRevoker)
 	}
 	h := NewHandler(cfg.Usecases, revoker)
+	h.loginDelay = newLoginDelay()
 
 	r.Get("/api/v1/health", healthHandler)
 	ready := cfg.Ready

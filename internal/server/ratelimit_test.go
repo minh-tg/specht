@@ -192,8 +192,13 @@ func TestRouter_CredentialEndpointsLimitedDespiteAuthorizationHeader(t *testing.
 
 func TestRouter_LoginTierDefaults(t *testing.T) {
 	router := NewRouter(RouterConfig{Usecases: &mockUsecases{}, JWTAuth: testJWTAuth})
+	sent := 0
 	post := func(path, ip string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest("POST", path, strings.NewReader(`{"email":"a@b.com","password":"pw"}`))
+		// A new email per request keeps the per-account delay out of a test
+		// about the per-IP budget.
+		sent++
+		body := fmt.Sprintf(`{"email":"user%d@b.com","password":"pw"}`, sent)
+		req := httptest.NewRequest("POST", path, strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		req.RemoteAddr = ip + ":1234"
 		w := httptest.NewRecorder()

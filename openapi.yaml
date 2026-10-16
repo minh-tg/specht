@@ -332,6 +332,31 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
               example: { error: { code: login_failed, message: invalid email or password } }
+        "429":
+          description: |
+            Either the client address is over its sign-in budget
+            (`rate_limited`), or the account is waiting after repeated failed
+            sign-ins (`too_many_attempts`). After three consecutive failures
+            for an email, each further failure doubles the wait (1 s, 2 s,
+            4 s, up to 60 s). An attempt made during the wait is refused
+            without checking the password, so the right password is refused
+            too. A successful sign-in resets the count, and it also drops to
+            zero after 15 minutes without a failure. There is no lockout.
+            Unknown emails are counted the same way, so the response does not
+            reveal whether an account exists. `Retry-After` gives the seconds
+            to wait.
+          headers:
+            Retry-After:
+              description: Seconds until the next attempt is evaluated.
+              schema: { type: integer, minimum: 1 }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              examples:
+                accountWaiting:
+                  value: { error: { code: too_many_attempts, message: "too many failed sign-in attempts, retry later" } }
+                addressLimited:
+                  value: { error: { code: rate_limited, message: "rate limit exceeded, retry later" } }
 
   /api/v1/auth/refresh:
     post:
