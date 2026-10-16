@@ -482,3 +482,9 @@ releases.
   the link used to leave a deactivated account with a proven email, and its SSO sign-in
   then received tokens. The link now answers the same "not provisioned" refusal as any
   other deactivated account and changes nothing.
+- A deactivated account no longer counts as a project admin. The last admin who
+  can sign in cannot leave or step down just because a deactivated admin still
+  holds a row, and a deactivated admin can be removed from the roster.
+  Deactivating an account that is the only active admin of a project now
+  answers 409 `sole_project_admin` and lists the projects; send `{"force":
+  true}` (or `specht users deactivate --force`) to go ahead.

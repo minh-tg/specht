@@ -11,11 +11,33 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const countProjectAdmins = `-- name: CountProjectAdmins :one
-SELECT COUNT(*) FROM project_members
-WHERE project_id = $1 AND role = 'admin'
+const countOtherProjectAdmins = `-- name: CountOtherProjectAdmins :one
+SELECT COUNT(*) FROM project_members pm
+JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL
+WHERE pm.project_id = $1 AND pm.role = 'admin' AND pm.user_id <> $2
 `
 
+type CountOtherProjectAdminsParams struct {
+	ProjectID pgtype.UUID `json:"project_id"`
+	UserID    pgtype.UUID `json:"user_id"`
+}
+
+// Active admins besides one user, the number the last-admin guard needs when
+// that user is about to be removed or demoted.
+func (q *Queries) CountOtherProjectAdmins(ctx context.Context, arg CountOtherProjectAdminsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countOtherProjectAdmins, arg.ProjectID, arg.UserID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countProjectAdmins = `-- name: CountProjectAdmins :one
+SELECT COUNT(*) FROM project_members pm
+JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL
+WHERE pm.project_id = $1 AND pm.role = 'admin'
+`
+
+// Admins who can sign in: a deactivated account holds a row but governs nothing.
 func (q *Queries) CountProjectAdmins(ctx context.Context, projectID pgtype.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countProjectAdmins, projectID)
 	var count int64
@@ -362,6 +384,39 @@ func (q *Queries) ListProjectsByIDs(ctx context.Context, dollar_1 []pgtype.UUID)
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listProjectsSoleAdminedBy = `-- name: ListProjectsSoleAdminedBy :many
+SELECT p.slug FROM projects p
+JOIN project_members me ON me.project_id = p.id AND me.user_id = $1 AND me.role = 'admin'
+JOIN users mu ON mu.id = me.user_id AND mu.disabled_at IS NULL
+WHERE NOT EXISTS (
+    SELECT 1 FROM project_members pm
+    JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL
+    WHERE pm.project_id = p.id AND pm.role = 'admin' AND pm.user_id <> $1
+)
+ORDER BY p.slug
+`
+
+// Slugs of the projects where one active user is the only active admin.
+func (q *Queries) ListProjectsSoleAdminedBy(ctx context.Context, userID pgtype.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listProjectsSoleAdminedBy, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var slug string
+		if err := rows.Scan(&slug); err != nil {
+			return nil, err
+		}
+		items = append(items, slug)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

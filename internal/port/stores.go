@@ -148,7 +148,15 @@ type ProjectStore interface {
 	UpsertMember(ctx context.Context, projectID, userID, role string) (ProjectMember, error)
 	GetMember(ctx context.Context, projectID, userID string) (ProjectMember, error)
 	DeleteMember(ctx context.Context, projectID, userID string) error
+	// CountAdmins returns the number of admins who can sign in. A deactivated
+	// account keeps its row but does not count.
 	CountAdmins(ctx context.Context, projectID string) (int, error)
+	// CountOtherAdmins returns the admins who can sign in, besides one user.
+	// Removing or demoting an admin is allowed only when it is above zero.
+	CountOtherAdmins(ctx context.Context, projectID, userID string) (int, error)
+	// ListSoleAdminProjects returns the slugs of the projects where the user
+	// is the only admin who can sign in.
+	ListSoleAdminProjects(ctx context.Context, userID string) ([]string, error)
 	ListMembers(ctx context.Context, projectID string) ([]ProjectMember, error)
 	IsMember(ctx context.Context, projectID, userID string) (bool, error)
 	// ListMemberProjectIDs returns the IDs of all projects a user belongs

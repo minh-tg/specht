@@ -19,7 +19,7 @@ const (
 )
 
 func userAdminUsecase(users *mockUserRepo, refresh *mockRefreshTokenRepo) *Usecases {
-	return New(Deps{Stores: &port.Stores{Users: users, RefreshTokens: refresh}})
+	return New(Deps{Stores: &port.Stores{Users: users, RefreshTokens: refresh, Projects: &mockProjectRepo{}}})
 }
 
 func TestUserAdminNeedsAGlobalAdmin(t *testing.T) {
@@ -33,7 +33,7 @@ func TestUserAdminNeedsAGlobalAdmin(t *testing.T) {
 	} {
 		_, err := uc.ChangeUserRole(ctx, targetUserID, "admin")
 		assert.ErrorIs(t, err, ErrProjectAccessDenied, name)
-		_, _, err = uc.DeactivateUser(ctx, targetUserID)
+		_, _, err = uc.DeactivateUser(ctx, targetUserID, false)
 		assert.ErrorIs(t, err, ErrProjectAccessDenied, name)
 		_, err = uc.ReactivateUser(ctx, targetUserID)
 		assert.ErrorIs(t, err, ErrProjectAccessDenied, name)
@@ -101,7 +101,7 @@ func TestDeactivateUser(t *testing.T) {
 	refresh := &mockRefreshTokenRepo{revokeAllFn: func(_ context.Context, id string) error { revoked = id; return nil }}
 	uc := userAdminUsecase(users, refresh)
 
-	profile, revokedKeys, err := uc.DeactivateUser(sessionCtx(adminUserID, auth.RoleAdmin), targetUserID)
+	profile, revokedKeys, err := uc.DeactivateUser(sessionCtx(adminUserID, auth.RoleAdmin), targetUserID, false)
 
 	require.NoError(t, err)
 	assert.True(t, profile.Disabled)
@@ -112,7 +112,7 @@ func TestDeactivateUser(t *testing.T) {
 
 func TestDeactivateUserRefusesYourself(t *testing.T) {
 	uc := userAdminUsecase(&mockUserRepo{}, &mockRefreshTokenRepo{})
-	_, _, err := uc.DeactivateUser(sessionCtx(adminUserID, auth.RoleAdmin), adminUserID)
+	_, _, err := uc.DeactivateUser(sessionCtx(adminUserID, auth.RoleAdmin), adminUserID, false)
 	require.ErrorIs(t, err, ErrCannotDeactivateSelf)
 }
 
@@ -122,7 +122,7 @@ func TestDeactivateUserSurfacesTheLastAdminGuard(t *testing.T) {
 	}, deactivateFn: func(context.Context, string) (port.User, []port.RevokedAPIKey, error) {
 		return port.User{}, nil, port.ErrLastGlobalAdmin
 	}}
-	_, _, err := userAdminUsecase(users, &mockRefreshTokenRepo{}).DeactivateUser(sessionCtx(adminUserID, auth.RoleAdmin), targetUserID)
+	_, _, err := userAdminUsecase(users, &mockRefreshTokenRepo{}).DeactivateUser(sessionCtx(adminUserID, auth.RoleAdmin), targetUserID, false)
 	require.ErrorIs(t, err, ErrLastGlobalAdmin)
 }
 
@@ -206,7 +206,35 @@ func TestTheSystemAccountCannotBeChanged(t *testing.T) {
 
 	_, err := uc.ChangeUserRole(ctx, targetUserID, auth.RoleAdmin)
 	require.ErrorIs(t, err, ErrSystemAccount)
-	_, _, err = uc.DeactivateUser(ctx, targetUserID)
+	_, _, err = uc.DeactivateUser(ctx, targetUserID, false)
 	require.ErrorIs(t, err, ErrSystemAccount)
 	assert.False(t, changed, "nothing is written for the system account")
+}
+
+func TestDeactivateUserRefusesTheOnlyActiveAdminOfAProjectUnlessForced(t *testing.T) {
+	deactivated := 0
+	users := &mockUserRepo{getByIDFn: func(_ context.Context, id string) (port.User, error) {
+		return port.User{ID: id, Email: "t@example.com", Role: auth.RoleMember}, nil
+	}, deactivateFn: func(_ context.Context, id string) (port.User, []port.RevokedAPIKey, error) {
+		deactivated++
+		now := time.Now()
+		return port.User{ID: id, Role: auth.RoleMember, DisabledAt: &now, CreatedAt: now}, nil, nil
+	}}
+	projects := &mockProjectRepo{soleAdminProjectsFn: func(_ context.Context, id string) ([]string, error) {
+		require.Equal(t, targetUserID, id)
+		return []string{"alpha", "beta"}, nil
+	}}
+	uc := New(Deps{Stores: &port.Stores{Users: users, RefreshTokens: &mockRefreshTokenRepo{}, Projects: projects}})
+	ctx := sessionCtx(adminUserID, auth.RoleAdmin)
+
+	_, _, err := uc.DeactivateUser(ctx, targetUserID, false)
+	var sole *SoleProjectAdminError
+	require.ErrorAs(t, err, &sole)
+	assert.Equal(t, []string{"alpha", "beta"}, sole.Projects)
+	assert.Zero(t, deactivated, "a refused deactivation changes nothing")
+
+	profile, _, err := uc.DeactivateUser(ctx, targetUserID, true)
+	require.NoError(t, err)
+	assert.True(t, profile.Disabled)
+	assert.Equal(t, 1, deactivated)
 }

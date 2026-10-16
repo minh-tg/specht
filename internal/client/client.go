@@ -981,9 +981,15 @@ func (c *Client) CreatePasswordResetLink(userID string) (*PasswordResetLink, err
 }
 
 // DeactivateUser ends an account's access without deleting its history.
-func (c *Client) DeactivateUser(userID string) (*UserProfile, error) {
+// With force it also goes through when the account is the only active admin
+// of a project; without it the server refuses and names those projects.
+func (c *Client) DeactivateUser(userID string, force bool) (*UserProfile, error) {
+	var body any
+	if force {
+		body = map[string]bool{"force": true}
+	}
 	var resp UserProfile
-	if err := c.do(context.Background(), "POST", "/api/v1/users/"+url.PathEscape(userID)+"/deactivate", nil, &resp); err != nil {
+	if err := c.do(context.Background(), "POST", "/api/v1/users/"+url.PathEscape(userID)+"/deactivate", body, &resp); err != nil {
 		return nil, err
 	}
 	return &resp, nil

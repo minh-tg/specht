@@ -74,5 +74,26 @@ WHERE id = $1
 FOR NO KEY UPDATE;
 
 -- name: CountProjectAdmins :one
-SELECT COUNT(*) FROM project_members
-WHERE project_id = $1 AND role = 'admin';
+-- Admins who can sign in: a deactivated account holds a row but governs nothing.
+SELECT COUNT(*) FROM project_members pm
+JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL
+WHERE pm.project_id = $1 AND pm.role = 'admin';
+
+-- name: CountOtherProjectAdmins :one
+-- Active admins besides one user, the number the last-admin guard needs when
+-- that user is about to be removed or demoted.
+SELECT COUNT(*) FROM project_members pm
+JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL
+WHERE pm.project_id = $1 AND pm.role = 'admin' AND pm.user_id <> $2;
+
+-- name: ListProjectsSoleAdminedBy :many
+-- Slugs of the projects where one active user is the only active admin.
+SELECT p.slug FROM projects p
+JOIN project_members me ON me.project_id = p.id AND me.user_id = $1 AND me.role = 'admin'
+JOIN users mu ON mu.id = me.user_id AND mu.disabled_at IS NULL
+WHERE NOT EXISTS (
+    SELECT 1 FROM project_members pm
+    JOIN users u ON u.id = pm.user_id AND u.disabled_at IS NULL
+    WHERE pm.project_id = p.id AND pm.role = 'admin' AND pm.user_id <> $1
+)
+ORDER BY p.slug;

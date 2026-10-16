@@ -608,6 +608,12 @@ export interface paths {
      *     themselves, the last active admin cannot be deactivated, and the
      *     seeded system account (`system@specht.local`) cannot be deactivated;
      *     each answers 409.
+     *
+     *     A deactivated account does not count as a project admin. When the
+     *     account is the only admin who can sign in on one or more projects,
+     *     the call answers 409 `sole_project_admin` and the message lists
+     *     their slugs; nothing changes. Send `{"force": true}` to deactivate
+     *     anyway. The body is optional.
      */
     post: operations["deactivateUser"];
     delete?: never;
@@ -4643,7 +4649,17 @@ export interface operations {
       };
       cookie?: never;
     };
-    requestBody?: never;
+    requestBody?: {
+      content: {
+        "application/json": {
+          /**
+           * @description Deactivate even if the account is the only active admin of a project.
+           * @default false
+           */
+          force?: boolean;
+        };
+      };
+    };
     responses: {
       /** @description The deactivated account. */
       200: {

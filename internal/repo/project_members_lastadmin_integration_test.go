@@ -163,3 +163,52 @@ func TestProjectMembers_WritesWaitForTheProjectLock(t *testing.T) {
 		t.Fatal("DeleteMember did not resume after the lock was released")
 	}
 }
+
+// A deactivated account keeps its membership row but cannot sign in, so it is
+// not an admin who can take over: it does not count as the other admin, and it
+// can itself be removed while an active admin remains.
+func TestProjectMembers_DeactivatedAdminDoesNotCount(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	ports := &pgProjectPort{q: sqlc.New(repos.pool), withTx: repos.WithTx}
+	users := &pgUserPort{q: sqlc.New(repos.pool), withTx: repos.WithTx}
+
+	projectID, admins := projectWithAdmins(t, repos, ports, 2)
+	active, dormant := admins[0], admins[1]
+	_, err := users.SetDisabled(ctx, dormant, true)
+	require.NoError(t, err)
+
+	count, err := ports.CountAdmins(ctx, projectID)
+	require.NoError(t, err)
+	assert.Equal(t, 1, count, "only the admin who can sign in counts")
+	others, err := ports.CountOtherAdmins(ctx, projectID, dormant)
+	require.NoError(t, err)
+	assert.Equal(t, 1, others)
+	others, err = ports.CountOtherAdmins(ctx, projectID, active)
+	require.NoError(t, err)
+	assert.Equal(t, 0, others, "the deactivated admin is not the other one")
+
+	assert.ErrorIs(t, ports.DeleteMember(ctx, projectID, active), port.ErrLastAdmin)
+	_, err = ports.UpsertMember(ctx, projectID, active, "manager")
+	assert.ErrorIs(t, err, port.ErrLastAdmin)
+
+	sole, err := ports.ListSoleAdminProjects(ctx, active)
+	require.NoError(t, err)
+	slug, err := ports.GetByID(ctx, projectID)
+	require.NoError(t, err)
+	assert.Equal(t, []string{slug.Slug}, sole)
+	sole, err = ports.ListSoleAdminProjects(ctx, dormant)
+	require.NoError(t, err)
+	assert.Empty(t, sole, "a deactivated account is not an admin who can take over")
+
+	require.NoError(t, ports.DeleteMember(ctx, projectID, dormant), "a deactivated admin can be cleaned up")
+
+	// With a second active admin the first is no longer the only one.
+	third := newTestUserID(t, repos)
+	_, err = ports.UpsertMember(ctx, projectID, third, "admin")
+	require.NoError(t, err)
+	sole, err = ports.ListSoleAdminProjects(ctx, active)
+	require.NoError(t, err)
+	assert.Empty(t, sole)
+}

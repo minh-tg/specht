@@ -18,10 +18,10 @@ func newUsersCmd(d Deps, s *settings) *cobra.Command {
 		newUsersListCmd(d, s),
 		newUsersRoleCmd(d, s),
 		newUsersResetLinkCmd(d, s),
-		newUserSwitchCmd(d, s, "deactivate", "Stop an account from signing in, keeping its history", func(cl *client.Client, id string) (*client.UserProfile, error) {
-			return cl.DeactivateUser(id)
+		newUserSwitchCmd(d, s, "deactivate", "Stop an account from signing in, keeping its history", func(cl *client.Client, id string, force bool) (*client.UserProfile, error) {
+			return cl.DeactivateUser(id, force)
 		}),
-		newUserSwitchCmd(d, s, "reactivate", "Let a deactivated account sign in again", func(cl *client.Client, id string) (*client.UserProfile, error) {
+		newUserSwitchCmd(d, s, "reactivate", "Let a deactivated account sign in again", func(cl *client.Client, id string, _ bool) (*client.UserProfile, error) {
 			return cl.ReactivateUser(id)
 		}),
 	)
@@ -137,8 +137,9 @@ func newUsersResetLinkCmd(d Deps, s *settings) *cobra.Command {
 	return cmd
 }
 
-func newUserSwitchCmd(d Deps, s *settings, use, short string, act func(cl *client.Client, id string) (*client.UserProfile, error)) *cobra.Command {
+func newUserSwitchCmd(d Deps, s *settings, use, short string, act func(cl *client.Client, id string, force bool) (*client.UserProfile, error)) *cobra.Command {
 	var id string
+	var force bool
 	cmd := &cobra.Command{
 		Use:   use,
 		Short: short,
@@ -151,7 +152,7 @@ func newUserSwitchCmd(d Deps, s *settings, use, short string, act func(cl *clien
 			if err != nil {
 				return err
 			}
-			u, err := act(cl, id)
+			u, err := act(cl, id, force)
 			if err != nil {
 				return err
 			}
@@ -159,5 +160,8 @@ func newUserSwitchCmd(d Deps, s *settings, use, short string, act func(cl *clien
 		},
 	}
 	cmd.Flags().StringVar(&id, "id", "", "account ID")
+	if use == "deactivate" {
+		cmd.Flags().BoolVar(&force, "force", false, "deactivate even if the account is the only active admin of a project")
+	}
 	return cmd
 }
