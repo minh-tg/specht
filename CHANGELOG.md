@@ -493,3 +493,7 @@ releases.
   or an invite. Before, they could write a direct admin row for themselves and
   keep admin after the team was unlinked. Granting member level is unchanged,
   and a direct manager or admin keeps their own role as the limit.
+- A project manager can no longer undo an admin's promotion by changing or
+  removing the same person at the same moment. The rule that a manager may not
+  touch an admin is now checked on the person's role as it is when the change
+  is saved, not on an earlier read.

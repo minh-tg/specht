@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -21,26 +22,27 @@ import (
 
 type mockProjectRepo struct {
 	port.ProjectStore
-	createFn            func(context.Context, port.CreateProjectInput) (port.Project, error)
-	listFn              func(context.Context) ([]port.Project, error)
-	listByIDsFn         func(context.Context, []string) ([]port.Project, error)
-	getBySlugFn         func(context.Context, string) (port.Project, error)
-	getByIDFn           func(context.Context, string) (port.Project, error)
-	updateFn            func(context.Context, string, string, *string) (port.Project, error)
-	updateSettingsFn    func(context.Context, string, json.RawMessage) (port.Project, error)
-	deleteFn            func(context.Context, string) (port.Project, error)
-	upsertMemberFn      func(context.Context, string, string, string) (port.ProjectMember, error)
-	getMemberFn         func(context.Context, string, string) (port.ProjectMember, error)
-	deleteMemberFn      func(context.Context, string, string) error
-	countAdminsFn       func(context.Context, string) (int, error)
-	countOtherAdminsFn  func(context.Context, string, string) (int, error)
-	soleAdminProjectsFn func(context.Context, string) ([]string, error)
-	listMembersFn       func(context.Context, string) ([]port.ProjectMember, error)
-	isMemberFn          func(context.Context, string, string) (bool, error)
-	listMemberIDsFn     func(context.Context, string) ([]string, error)
-	isMemberEffectiveFn func(context.Context, string, string) (bool, error)
-	listAccessibleIDsFn func(context.Context, string) ([]string, error)
-	effectiveRoleFn     func(context.Context, string, string) (string, error)
+	createFn              func(context.Context, port.CreateProjectInput) (port.Project, error)
+	listFn                func(context.Context) ([]port.Project, error)
+	listByIDsFn           func(context.Context, []string) ([]port.Project, error)
+	getBySlugFn           func(context.Context, string) (port.Project, error)
+	getByIDFn             func(context.Context, string) (port.Project, error)
+	updateFn              func(context.Context, string, string, *string) (port.Project, error)
+	updateSettingsFn      func(context.Context, string, json.RawMessage) (port.Project, error)
+	deleteFn              func(context.Context, string) (port.Project, error)
+	upsertMemberFn        func(context.Context, string, string, string) (port.ProjectMember, error)
+	getMemberFn           func(context.Context, string, string) (port.ProjectMember, error)
+	deleteMemberFn        func(context.Context, string, string) error
+	countAdminsFn         func(context.Context, string) (int, error)
+	upsertMemberCheckedFn func(context.Context, string, string, string, port.MemberCheck) (port.ProjectMember, error)
+	deleteMemberCheckedFn func(context.Context, string, string, port.MemberCheck) error
+	soleAdminProjectsFn   func(context.Context, string) ([]string, error)
+	listMembersFn         func(context.Context, string) ([]port.ProjectMember, error)
+	isMemberFn            func(context.Context, string, string) (bool, error)
+	listMemberIDsFn       func(context.Context, string) ([]string, error)
+	isMemberEffectiveFn   func(context.Context, string, string) (bool, error)
+	listAccessibleIDsFn   func(context.Context, string) ([]string, error)
+	effectiveRoleFn       func(context.Context, string, string) (string, error)
 }
 
 func (m *mockProjectRepo) GetByID(ctx context.Context, id string) (port.Project, error) {
@@ -127,24 +129,40 @@ func (m *mockProjectRepo) CountAdmins(ctx context.Context, projectID string) (in
 	return 1, nil
 }
 
-func (m *mockProjectRepo) CountOtherAdmins(ctx context.Context, projectID, userID string) (int, error) {
-	if m.countOtherAdminsFn != nil {
-		return m.countOtherAdminsFn(ctx, projectID, userID)
+// UpsertMemberChecked runs the check on the row GetMember returns, then upserts,
+// the way the store does under its membership lock.
+func (m *mockProjectRepo) UpsertMemberChecked(ctx context.Context, projectID, userID, role string, check port.MemberCheck) (port.ProjectMember, error) {
+	if m.upsertMemberCheckedFn != nil {
+		return m.upsertMemberCheckedFn(ctx, projectID, userID, role, check)
 	}
-	if m.listMembersFn != nil {
-		members, err := m.listMembersFn(ctx, projectID)
-		if err != nil {
-			return 0, err
-		}
-		count := 0
-		for _, member := range members {
-			if member.Role == auth.RoleAdmin && member.UserID != userID {
-				count++
-			}
-		}
-		return count, nil
+	if err := m.runCheck(ctx, projectID, userID, check); err != nil {
+		return port.ProjectMember{}, err
 	}
-	return 0, nil
+	return m.UpsertMember(ctx, projectID, userID, role)
+}
+
+func (m *mockProjectRepo) DeleteMemberChecked(ctx context.Context, projectID, userID string, check port.MemberCheck) error {
+	if m.deleteMemberCheckedFn != nil {
+		return m.deleteMemberCheckedFn(ctx, projectID, userID, check)
+	}
+	if err := m.runCheck(ctx, projectID, userID, check); err != nil {
+		return err
+	}
+	return m.DeleteMember(ctx, projectID, userID)
+}
+
+func (m *mockProjectRepo) runCheck(ctx context.Context, projectID, userID string, check port.MemberCheck) error {
+	if check == nil {
+		return nil
+	}
+	existing, err := m.GetMember(ctx, projectID, userID)
+	switch {
+	case err == nil:
+		return check(&existing)
+	case errors.Is(err, port.ErrNotFound):
+		return check(nil)
+	}
+	return err
 }
 
 func (m *mockProjectRepo) ListSoleAdminProjects(ctx context.Context, userID string) ([]string, error) {

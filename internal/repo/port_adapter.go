@@ -267,6 +267,13 @@ func requireOtherAdmin(ctx context.Context, q *sqlc.Queries, pid, uid pgtype.UUI
 // UpsertMember sets a member's role. Demoting the project's only admin fails
 // with port.ErrLastAdmin.
 func (r *pgProjectPort) UpsertMember(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
+	return r.UpsertMemberChecked(ctx, projectID, userID, role, nil)
+}
+
+// UpsertMemberChecked sets a member's role after check approves the row it
+// replaces. The check and the last-admin rule both run under the project's
+// membership lock, on the row read once the lock is held.
+func (r *pgProjectPort) UpsertMemberChecked(ctx context.Context, projectID, userID, role string, check port.MemberCheck) (port.ProjectMember, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
 		return port.ProjectMember{}, err
@@ -280,12 +287,19 @@ func (r *pgProjectPort) UpsertMember(ctx context.Context, projectID, userID, rol
 		existing, err := q.GetProjectMember(ctx, sqlc.GetProjectMemberParams{ProjectID: pid, UserID: uid})
 		switch {
 		case err == nil:
+			if err := runMemberCheck(check, &existing); err != nil {
+				return err
+			}
 			if existing.Role == "admin" && role != "admin" {
 				if err := requireOtherAdmin(ctx, q, pid, uid); err != nil {
 					return err
 				}
 			}
-		case !errors.Is(err, pgx.ErrNoRows):
+		case errors.Is(err, pgx.ErrNoRows):
+			if err := runMemberCheck(check, nil); err != nil {
+				return err
+			}
+		default:
 			return err
 		}
 		row, err = q.UpsertProjectMember(ctx, sqlc.UpsertProjectMemberParams{
@@ -304,6 +318,18 @@ func (r *pgProjectPort) UpsertMember(ctx context.Context, projectID, userID, rol
 		return port.ProjectMember{}, err
 	}
 	return memberToPort(row), nil
+}
+
+// runMemberCheck calls check, if there is one, with the row it is to judge.
+func runMemberCheck(check port.MemberCheck, existing *sqlc.ProjectMember) error {
+	if check == nil {
+		return nil
+	}
+	if existing == nil {
+		return check(nil)
+	}
+	m := memberToPort(*existing)
+	return check(&m)
 }
 
 func (r *pgProjectPort) GetMember(ctx context.Context, projectID, userID string) (port.ProjectMember, error) {
@@ -331,6 +357,12 @@ func (r *pgProjectPort) GetMember(ctx context.Context, projectID, userID string)
 // DeleteMember removes a member. Removing the project's only admin fails with
 // port.ErrLastAdmin.
 func (r *pgProjectPort) DeleteMember(ctx context.Context, projectID, userID string) error {
+	return r.DeleteMemberChecked(ctx, projectID, userID, nil)
+}
+
+// DeleteMemberChecked removes a member after check approves their row, with
+// the check and the last-admin rule run under the project's membership lock.
+func (r *pgProjectPort) DeleteMemberChecked(ctx context.Context, projectID, userID string, check port.MemberCheck) error {
 	pid, err := parseID(projectID)
 	if err != nil {
 		return err
@@ -343,12 +375,19 @@ func (r *pgProjectPort) DeleteMember(ctx context.Context, projectID, userID stri
 		existing, err := q.GetProjectMember(ctx, sqlc.GetProjectMemberParams{ProjectID: pid, UserID: uid})
 		switch {
 		case err == nil:
+			if err := runMemberCheck(check, &existing); err != nil {
+				return err
+			}
 			if existing.Role == "admin" {
 				if err := requireOtherAdmin(ctx, q, pid, uid); err != nil {
 					return err
 				}
 			}
-		case !errors.Is(err, pgx.ErrNoRows):
+		case errors.Is(err, pgx.ErrNoRows):
+			if err := runMemberCheck(check, nil); err != nil {
+				return err
+			}
+		default:
 			return err
 		}
 		return q.DeleteProjectMember(ctx, sqlc.DeleteProjectMemberParams{
@@ -364,22 +403,6 @@ func (r *pgProjectPort) CountAdmins(ctx context.Context, projectID string) (int,
 		return 0, err
 	}
 	count, err := r.q.CountProjectAdmins(ctx, pid)
-	if err != nil {
-		return 0, err
-	}
-	return int(count), nil
-}
-
-func (r *pgProjectPort) CountOtherAdmins(ctx context.Context, projectID, userID string) (int, error) {
-	pid, err := parseID(projectID)
-	if err != nil {
-		return 0, err
-	}
-	uid, err := parseID(userID)
-	if err != nil {
-		return 0, err
-	}
-	count, err := r.q.CountOtherProjectAdmins(ctx, sqlc.CountOtherProjectAdminsParams{ProjectID: pid, UserID: uid})
 	if err != nil {
 		return 0, err
 	}

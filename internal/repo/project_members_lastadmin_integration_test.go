@@ -182,13 +182,6 @@ func TestProjectMembers_DeactivatedAdminDoesNotCount(t *testing.T) {
 	count, err := ports.CountAdmins(ctx, projectID)
 	require.NoError(t, err)
 	assert.Equal(t, 1, count, "only the admin who can sign in counts")
-	others, err := ports.CountOtherAdmins(ctx, projectID, dormant)
-	require.NoError(t, err)
-	assert.Equal(t, 1, others)
-	others, err = ports.CountOtherAdmins(ctx, projectID, active)
-	require.NoError(t, err)
-	assert.Equal(t, 0, others, "the deactivated admin is not the other one")
-
 	assert.ErrorIs(t, ports.DeleteMember(ctx, projectID, active), port.ErrLastAdmin)
 	_, err = ports.UpsertMember(ctx, projectID, active, "manager")
 	assert.ErrorIs(t, err, port.ErrLastAdmin)

@@ -134,6 +134,12 @@ type ProjectMember struct {
 	DisplayName string
 }
 
+// MemberCheck decides whether a membership write may go ahead, from the user's
+// direct row as read under the store's membership lock (nil for no row). It
+// lets a rule that depends on another person's current role, such as a manager
+// not touching an admin, be judged on the row the write will replace.
+type MemberCheck func(existing *ProjectMember) error
+
 type ProjectStore interface {
 	Create(ctx context.Context, input CreateProjectInput) (Project, error)
 	List(ctx context.Context) ([]Project, error)
@@ -146,14 +152,20 @@ type ProjectStore interface {
 	// document (policy overrides live under "policy").
 	UpdateSettings(ctx context.Context, projectID string, settings json.RawMessage) (Project, error)
 	UpsertMember(ctx context.Context, projectID, userID, role string) (ProjectMember, error)
+	// UpsertMemberChecked is UpsertMember with a check that runs inside the
+	// store's membership lock, on the row as it is once the lock is held. The
+	// check gets the user's current direct row, or nil when they have none; an
+	// error it returns aborts the write and comes back unchanged.
+	UpsertMemberChecked(ctx context.Context, projectID, userID, role string, check MemberCheck) (ProjectMember, error)
 	GetMember(ctx context.Context, projectID, userID string) (ProjectMember, error)
 	DeleteMember(ctx context.Context, projectID, userID string) error
+	// DeleteMemberChecked is DeleteMember with a check under the membership
+	// lock, as for UpsertMemberChecked. The check runs when the user has no
+	// row too (with nil), so the caller can answer that case itself.
+	DeleteMemberChecked(ctx context.Context, projectID, userID string, check MemberCheck) error
 	// CountAdmins returns the number of admins who can sign in. A deactivated
 	// account keeps its row but does not count.
 	CountAdmins(ctx context.Context, projectID string) (int, error)
-	// CountOtherAdmins returns the admins who can sign in, besides one user.
-	// Removing or demoting an admin is allowed only when it is above zero.
-	CountOtherAdmins(ctx context.Context, projectID, userID string) (int, error)
 	// ListSoleAdminProjects returns the slugs of the projects where the user
 	// is the only admin who can sign in.
 	ListSoleAdminProjects(ctx context.Context, userID string) ([]string, error)
