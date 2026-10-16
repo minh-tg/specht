@@ -59,6 +59,7 @@ services:
       SHUTDOWN_TIMEOUT: ${SHUTDOWN_TIMEOUT:-150s}
       CORS_ORIGINS: ${CORS_ORIGINS:-}
       INGEST_MAX_CONCURRENCY: ${INGEST_MAX_CONCURRENCY:-8}
+      INGEST_MAX_FINDINGS: ${INGEST_MAX_FINDINGS:-100000}
       # Admin elevation (comma-separated emails) and trusted proxy CIDRs.
       # Empty ADMIN_EMAILS promotes nobody; empty TRUSTED_PROXIES trusts
       # forwarding headers from nobody (deploy directly or set the hops).

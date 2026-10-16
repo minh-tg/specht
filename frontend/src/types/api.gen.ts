@@ -4627,6 +4627,9 @@ export interface operations {
        *       The message names the scanner it looks like when one fits.
        *     - `malformed_report`: the file is that scanner's format but cannot be read.
        *     - `unknown_scanner`: no scanner has that name. `GET /api/v1/scanners` lists them.
+       *     - `too_many_findings`: the report holds more findings and packages than
+       *       one report may (the server's `INGEST_MAX_FINDINGS`, 100000 by default).
+       *       The message names the limit. Split the report and ingest each part.
        *     - `ingest_failed`: any other failure, such as a bad revision.
        */
       422: {

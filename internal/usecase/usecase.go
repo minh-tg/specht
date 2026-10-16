@@ -161,6 +161,9 @@ type Deps struct {
 	// Watcher is the server-wide CVE watcher configuration that the
 	// per-project settings sit under.
 	Watcher WatcherSettings
+	// IngestMaxFindings caps the findings and packages one report may
+	// produce. Zero or less means scanner.DefaultMaxFindings.
+	IngestMaxFindings int
 	// CVEDetail wires GET /findings/{id}/cve: the occurrence read, the
 	// provider resolver (nil when no provider is configured) and the intel
 	// lookup.

@@ -1031,6 +1031,9 @@ paths:
               The message names the scanner it looks like when one fits.
             - `malformed_report`: the file is that scanner's format but cannot be read.
             - `unknown_scanner`: no scanner has that name. `GET /api/v1/scanners` lists them.
+            - `too_many_findings`: the report holds more findings and packages than
+              one report may (the server's `INGEST_MAX_FINDINGS`, 100000 by default).
+              The message names the limit. Split the report and ingest each part.
             - `ingest_failed`: any other failure, such as a bad revision.
           content:
             application/json:
@@ -1042,6 +1045,9 @@ paths:
                 unreadable:
                   summary: Right format, content that cannot be read
                   value: { error: { code: malformed_report, message: "The grype report could not be read. Check that the file is complete and came from a current version of the tool." } }
+                tooMany:
+                  summary: A report past the finding limit
+                  value: { error: { code: too_many_findings, message: "The trivy report has more than 100000 findings, the most one report may hold. Split it into smaller reports (for example one per module or directory) and ingest each." } }
                 other:
                   summary: Any other failure
                   value: { error: { code: ingest_failed, message: report ingestion failed } }

@@ -418,6 +418,29 @@ func TestLoad_IngestConcurrency(t *testing.T) {
 	}
 }
 
+func TestLoad_IngestMaxFindings(t *testing.T) {
+	t.Run("unset leaves the built-in default", func(t *testing.T) {
+		t.Setenv("INGEST_MAX_FINDINGS", "")
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Zero(t, cfg.IngestMaxFindings)
+	})
+	t.Run("a positive number is used", func(t *testing.T) {
+		t.Setenv("INGEST_MAX_FINDINGS", "5000")
+		cfg, err := Load()
+		require.NoError(t, err)
+		assert.Equal(t, 5000, cfg.IngestMaxFindings)
+	})
+	for _, bad := range []string{"0", "-1", "lots", "1.5"} {
+		t.Run("rejects "+bad, func(t *testing.T) {
+			t.Setenv("INGEST_MAX_FINDINGS", bad)
+			_, err := Load()
+			require.Error(t, err, "a typo must fail at startup, not silently remove the limit")
+			assert.Contains(t, err.Error(), "INGEST_MAX_FINDINGS")
+		})
+	}
+}
+
 func validServer() *Server {
 	return &Server{
 		DBURL:           "postgres://specht:pw@db:5432/specht",

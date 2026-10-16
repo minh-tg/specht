@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -70,4 +71,21 @@ func TestIngestReport_UnknownScannerIsTyped(t *testing.T) {
 
 	require.ErrorIs(t, err, ErrUnknownScanner)
 	assert.Contains(t, err.Error(), "no-such-tool")
+}
+
+func TestIngestReport_RefusesADocumentWithTooManyObjectsBeforeDecodingIt(t *testing.T) {
+	uc := builtinRegistryUsecase(t)
+	uc.deps.IngestMaxFindings = 5
+	doc := `{"Results":[{"Target":"t","Vulnerabilities":[` + strings.TrimSuffix(strings.Repeat("{},", 5*scanner.ObjectsPerFinding+1), ",") + `]}]}`
+
+	_, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app",
+		Scanner:     "trivy",
+		RawData:     json.RawMessage(doc),
+	})
+
+	require.ErrorIs(t, err, scanner.ErrTooManyFindings)
+	var tooMany *scanner.TooManyFindingsError
+	require.ErrorAs(t, err, &tooMany)
+	assert.Equal(t, 5, tooMany.Limit, "the configured limit, not the default")
 }

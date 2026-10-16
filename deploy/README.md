@@ -85,6 +85,7 @@ compose defaults differ, which is noted.
 | `TRUSTED_PROXIES` | *(empty)* | Comma/space-separated CIDRs of proxy hops allowed to set `X-Forwarded-For` / `X-Real-IP` / `X-Forwarded-Proto`. Empty trusts nobody. |
 | `INVENTORY_TTL` | `2160h` | How long a scanned package stays in the watcher's active inventory. |
 | `INGEST_MAX_CONCURRENCY` | `8` | Report ingests processed at once. Each parse holds several times the request body in memory (bodies are capped at 25 MiB), so this bounds the worst case. Further ingests wait up to 15 s for a slot and then get `503 ingest_busy` with `Retry-After`. An ingest may take up to two minutes, upload included. Must be a positive integer. |
+| `INGEST_MAX_FINDINGS` | `100000` | Findings and packages one report may produce. A report past it is refused with `422 too_many_findings`, and the parser stops at the limit instead of converting the whole file. A parsed finding holds about 1.4 KB in memory, so one ingest can hold up to limit x 1.4 KB (about 140 MB at the default) and `INGEST_MAX_CONCURRENCY` ingests can run at once (8 x 140 MB, about 1.1 GB, at the defaults), on top of the request bodies. Lower it on small hosts; raise it only with the memory to match. A document that holds more than ten JSON objects per allowed finding is refused before it is decoded. Must be a positive integer. |
 | `LIFECYCLE_SWEEP_INTERVAL` | `5m` | Period of the analysis-expiry and waiver-expiry sweeps; must be a positive duration. |
 
 Registration does not verify email addresses: an account holds whatever address

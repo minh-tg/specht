@@ -83,3 +83,14 @@ func TestIngestReport_OtherFailuresStayGeneric(t *testing.T) {
 	assert.Equal(t, "ingest_failed", got.Code)
 	assert.NotContains(t, got.Message, "10.0.0.5")
 }
+
+func TestIngestReport_TooManyFindingsNamesTheLimit(t *testing.T) {
+	err := fmt.Errorf("scanner trivy: parse output: %w", scanner.TooManyFindings(100000))
+
+	status, got := ingestWithError(t, "trivy", err)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, status)
+	assert.Equal(t, "too_many_findings", got.Code)
+	assert.Contains(t, got.Message, "100000", "the message names the limit")
+	assert.Contains(t, got.Message, "Split", "and tells the user what to do")
+}

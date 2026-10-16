@@ -213,6 +213,7 @@ func main() {
 		Tracker:                 buildTrackerDispatcher(),
 		Intel:                   intelStore,
 		CVEDetail:               cveDetail,
+		IngestMaxFindings:       cfg.IngestMaxFindings,
 	})
 
 	handler := server.NewRouter(server.RouterConfig{
