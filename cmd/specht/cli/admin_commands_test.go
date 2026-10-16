@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -236,7 +237,10 @@ func TestUsers(t *testing.T) {
 	mux.HandleFunc("/api/v1/users/u1/reset-link", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"link":"/reset/abc123","expires_at":"2026-10-16T10:00:00Z"}`))
 	})
+	var deactivateBody string
 	mux.HandleFunc("/api/v1/users/u2/deactivate", func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		deactivateBody = string(raw)
 		_, _ = w.Write([]byte(`{"id":"u2","email":"bob@example.com","role":"member","disabled":true}`))
 	})
 	mux.HandleFunc("/api/v1/users/u2/reactivate", func(w http.ResponseWriter, r *http.Request) {
@@ -275,6 +279,16 @@ func TestUsers(t *testing.T) {
 	}
 	if out.String() != "u2\tbob@example.com\tmember\tdeactivated\n" {
 		t.Fatalf("deactivate output = %q", out.String())
+	}
+	if deactivateBody != "" {
+		t.Fatalf("deactivate without --force sent a body: %q", deactivateBody)
+	}
+	out.Reset()
+	if err := runCmd(t, d, "users", "deactivate", "--id", "u2", "--force"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(deactivateBody, `"force":true`) {
+		t.Fatalf("deactivate --force body = %q", deactivateBody)
 	}
 	out.Reset()
 	if err := runCmd(t, d, "users", "reactivate", "--id", "u2"); err != nil {
