@@ -477,3 +477,8 @@ releases.
   used to commit after the link revoked the account's keys, and the key stayed live on
   the account the owner now holds. The request now gets `403`, the same answer as for a
   deactivated creator.
+- Linking an existing account to a first SSO sign-in now locks the account row and checks
+  again that it is not deactivated. A deactivation that committed between the check and
+  the link used to leave a deactivated account with a proven email, and its SSO sign-in
+  then received tokens. The link now answers the same "not provisioned" refusal as any
+  other deactivated account and changes nothing.

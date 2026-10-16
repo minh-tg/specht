@@ -229,6 +229,20 @@ func TestFindOrProvisionSSOUser_LosingALinkRaceIsRefused(t *testing.T) {
 	assert.ErrorIs(t, err, auth.ErrSSONotProvisioned)
 }
 
+// The account was deactivated after the read that said it was active: the store
+// refuses the link and the login gets the not-provisioned answer.
+func TestFindOrProvisionSSOUser_DeactivatedBetweenTheReadAndTheLinkIsRefused(t *testing.T) {
+	ids := newMockIdentityRepo()
+	ids.linkErr = port.ErrAccountDeactivated
+	ur := &mockUserRepo{getByEmailFn: existingUser("user-1", "member")}
+
+	_, _, _, err := New(ssoDepsWith(ur, ids)).FindOrProvisionSSOUser(
+		context.Background(), verifiedClaims("sub-1", "ada@example.com"), nil, nil)
+
+	assert.ErrorIs(t, err, auth.ErrSSONotProvisioned)
+	assert.Empty(t, ids.links)
+}
+
 func TestFindOrProvisionSSOUser_UnverifiedEmailAllowedByOperatorOptIn(t *testing.T) {
 	ids := newMockIdentityRepo()
 	ur := &mockUserRepo{getByEmailFn: existingUser("user-1", "member")}

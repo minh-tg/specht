@@ -72,6 +72,10 @@ var ErrLastGlobalAdmin = errors.New("last global admin")
 // link does). The login gets no session.
 var ErrLoginStale = errors.New("account changed during login")
 
+// ErrAccountDeactivated is returned when an SSO link finds the account
+// deactivated under its row lock, so it neither links nor proves the address.
+var ErrAccountDeactivated = errors.New("account is deactivated")
+
 // ErrCreatorInactive is returned when an API key would be created by an account
 // that is deactivated or does not exist.
 var ErrCreatorInactive = errors.New("key creator is not an active account")
@@ -280,8 +284,10 @@ type IdentityStore interface {
 	// signed in through the provider. In the same transaction it clears the
 	// password hash, starts a new token generation, revokes the refresh tokens
 	// and pending reset links, and revokes every API key the account created
-	// before the link, returning the keys. A refused or failed link changes
-	// nothing.
+	// before the link, returning the keys. It locks the account row first and
+	// returns ErrAccountDeactivated when the account is deactivated, so a
+	// deactivation that committed after the caller's read is not overwritten
+	// by a proven address. A refused or failed link changes nothing.
 	LinkRevokingKeys(ctx context.Context, userID, issuer, subject string, emailVerified bool) (UserIdentity, []RevokedAPIKey, error)
 }
 

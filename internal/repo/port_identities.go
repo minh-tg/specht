@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/minh-tg/specht/internal/db/sqlc"
 	"github.com/minh-tg/specht/internal/port"
@@ -58,6 +59,19 @@ func (r *pgIdentityPort) LinkRevokingKeys(ctx context.Context, userID, issuer, s
 	var linked port.UserIdentity
 	var revoked []port.RevokedAPIKey
 	err = r.withTx(ctx, func(q *sqlc.Queries) error {
+		// Lock the account first and look at it again: the caller checked
+		// DisabledAt on a read from before this transaction, and a
+		// deactivation that committed since must not be overwritten by a
+		// proven address.
+		disabledAt, err := q.LockUserForLink(ctx, uid)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return port.ErrNotFound
+		} else if err != nil {
+			return err
+		}
+		if disabledAt.Valid {
+			return port.ErrAccountDeactivated
+		}
 		// Everything the previous holder of the address could still use ends
 		// in this transaction. The account row is written first, the lock
 		// order every retiring event and every redeem uses, so none of them

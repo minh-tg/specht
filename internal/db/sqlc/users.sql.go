@@ -335,6 +335,21 @@ func (q *Queries) LockActiveAdmins(ctx context.Context) ([]pgtype.UUID, error) {
 	return items, nil
 }
 
+const lockUserForLink = `-- name: LockUserForLink :one
+SELECT disabled_at FROM users WHERE id = $1 FOR NO KEY UPDATE
+`
+
+// Locks the account row for the rest of the transaction before an SSO link
+// changes it, and returns whether the account is deactivated. A deactivation
+// updates the same row, so the link sees its result instead of a read taken
+// earlier.
+func (q *Queries) LockUserForLink(ctx context.Context, id pgtype.UUID) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, lockUserForLink, id)
+	var disabled_at pgtype.Timestamptz
+	err := row.Scan(&disabled_at)
+	return disabled_at, err
+}
+
 const lockUserForLogin = `-- name: LockUserForLogin :one
 SELECT password_hash, disabled_at, token_version FROM users WHERE id = $1 FOR SHARE
 `
