@@ -131,22 +131,25 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 
 // RedactRaw scrubs secret material from raw Gitleaks evidence, preserving
 // every provenance field. Keys are matched without regard to case and at any
-// depth, because the parser reads them the same way. Keys marshal in sorted order, so output is
-// deterministic. Input that is not a Gitleaks array passes through
-// untouched — redaction only applies where the schema is known.
-func (s *Scanner) RedactRaw(data []byte) []byte {
+// depth, because the parser reads them the same way. Keys marshal in sorted
+// order, so output is deterministic.
+//
+// Input that cannot be decoded as one Gitleaks array, whatever the reason (an
+// out-of-range number, data after the array, nesting past the decoder's limit),
+// is an error and never comes back unchanged: it may still hold a Secret.
+func (s *Scanner) RedactRaw(data []byte) ([]byte, error) {
 	var findings []map[string]any
-	if err := json.Unmarshal(data, &findings); err != nil {
-		return data
+	if err := parseutil.DecodeJSON(data, &findings); err != nil {
+		return nil, fmt.Errorf("%w: gitleaks evidence: %w", scanner.ErrRedactionFailed, err)
 	}
 	for _, f := range findings {
 		parseutil.RedactKeys(f, redacted, "Secret", "Match")
 	}
 	out, err := json.Marshal(findings)
 	if err != nil {
-		return data
+		return nil, fmt.Errorf("%w: gitleaks evidence: %w", scanner.ErrRedactionFailed, err)
 	}
-	return out
+	return out, nil
 }
 
 type gitleaksFinding struct {

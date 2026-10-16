@@ -200,28 +200,22 @@ func redactNucleiFields(m map[string]any) {
 	parseutil.RedactKeys(m, "[REDACTED]", redactedFields...)
 }
 
-// redactNucleiArray redacts a JSON-array Nuclei payload, reporting whether
-// the input had array form.
-func redactNucleiArray(trimmed []byte) ([]byte, bool, bool) {
-	if len(trimmed) == 0 || trimmed[0] != '[' {
-		return nil, false, false
-	}
+// redactNucleiArray redacts a JSON-array Nuclei payload.
+func redactNucleiArray(trimmed []byte) ([]byte, error) {
 	var arr []map[string]any
-	if err := json.Unmarshal(trimmed, &arr); err != nil {
-		return nil, true, false
+	if err := parseutil.DecodeJSON(trimmed, &arr); err != nil {
+		return nil, err
 	}
 	for _, m := range arr {
 		redactNucleiFields(m)
 	}
-	out, err := json.Marshal(arr)
-	if err != nil {
-		return nil, true, false
-	}
-	return out, true, true
+	return json.Marshal(arr)
 }
 
-// redactNucleiLines redacts JSONL Nuclei payloads into a storable array.
-func redactNucleiLines(trimmed []byte) ([]byte, bool) {
+// redactNucleiLines redacts JSONL Nuclei payloads into a storable array. A line
+// that is not a JSON object is left out of the stored evidence, as the parser
+// skips it too.
+func redactNucleiLines(trimmed []byte) ([]byte, error) {
 	var arr []json.RawMessage
 	sc := bufio.NewScanner(bytes.NewReader(trimmed))
 	sc.Buffer(make([]byte, 1024*1024), 1024*1024)
@@ -231,48 +225,47 @@ func redactNucleiLines(trimmed []byte) ([]byte, bool) {
 			continue
 		}
 		var m map[string]any
-		if err := json.Unmarshal(line, &m); err != nil {
+		if err := parseutil.DecodeJSON(line, &m); err != nil {
 			continue
 		}
 		redactNucleiFields(m)
 		out, err := json.Marshal(m)
 		if err != nil {
-			continue
+			return nil, err
 		}
 		arr = append(arr, out)
 	}
 	if err := sc.Err(); err != nil {
 		// A line over the scanner buffer ended the scan; storing what was read
 		// would drop the rest of the evidence without a word.
-		return nil, false
+		return nil, err
 	}
-	out, err := json.Marshal(arr)
-	if err != nil {
-		return nil, false
-	}
-	return out, true
+	return json.Marshal(arr)
 }
 
 // RedactRaw strips request/response bodies and extracted results from
 // Nuclei evidence and returns storable JSON: JSONL input becomes one JSON
 // array (raw evidence columns require valid JSON). Provenance fields
-// survive; unparseable input passes through untouched.
-func (s *Scanner) RedactRaw(data []byte) []byte {
+// survive.
+//
+// Input it cannot redact, whatever the reason (an out-of-range number, data
+// after an array, a line over the scanner buffer, nesting past the decoder's
+// limit), is an error and never comes back unchanged: it may still hold a
+// request or response body.
+func (s *Scanner) RedactRaw(data []byte) ([]byte, error) {
 	trimmed := bytes.TrimSpace(data)
 	if len(trimmed) == 0 {
-		return data
+		return nil, fmt.Errorf("%w: nuclei evidence is empty", scanner.ErrRedactionFailed)
 	}
-	if out, isArray, ok := redactNucleiArray(trimmed); isArray {
-		if !ok {
-			return data
-		}
-		return out
+	redact := redactNucleiLines
+	if trimmed[0] == '[' {
+		redact = redactNucleiArray
 	}
-	out, ok := redactNucleiLines(trimmed)
-	if !ok {
-		return data
+	out, err := redact(trimmed)
+	if err != nil {
+		return nil, fmt.Errorf("%w: nuclei evidence: %w", scanner.ErrRedactionFailed, err)
 	}
-	return out
+	return out, nil
 }
 
 type nucleiEvent struct {

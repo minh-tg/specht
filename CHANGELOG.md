@@ -141,6 +141,12 @@ releases.
   `503 ingest_busy`, so a few large uploads can no longer decode side by side and exhaust
   the server's memory. `deploy/README.md` now gives the real arithmetic instead of the earlier
   1.1 GB estimate.
+- Secrets are no longer stored when redaction cannot read a report. A Gitleaks or Nuclei
+  report with a number that does not fit a double (`1e400`) in an ignored field made the
+  redaction step give up and store the report as it came, with the secret or the request
+  and response in `reports.raw_data`. Redaction now reads any valid JSON. When it still
+  cannot read a report, the stored evidence is `{"redaction":"failed"}` and the server logs
+  a warning with the scanner and size. The report's findings are still ingested.
 - Undo after a triage change works for every earlier state. The server keeps a snapshot of
   the analysis it replaced (state, reason, expiry, source, manual and review flags) in the
   triage event, and `POST /api/v1/findings/{id}/analysis/undo` puts it back as a new event.
