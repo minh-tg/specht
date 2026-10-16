@@ -82,13 +82,14 @@ func TestIngestReport_SlowUploadSurvivesTheServerTimeouts(t *testing.T) {
 	assert.Contains(t, body, "rep-1", "the whole upload arrived and the response was written")
 }
 
-// The body window is a promise to operators and to CI links: long enough for
-// the 25 MiB cap over a slow link (about 0.85 MiB/s needs 30 s), short enough
-// that a caller who trickles a body gives its place back soon. These bounds
-// fail a change to either side, which the window's own behavior tests do not.
-func TestIngestBodyWindow_StaysWithinTheDocumentedRange(t *testing.T) {
-	assert.GreaterOrEqual(t, ingestBodyWindow, 15*time.Second, "a window this short cuts honest uploads over slow links")
-	assert.LessOrEqual(t, ingestBodyWindow, time.Minute, "a longer window lets a slow caller hold its place for minutes")
+// The body window is a promise to operators and to CI links: deploy/README.md
+// says the body has 30 s. That is long enough for the 25 MiB cap over a slow
+// link (about 0.85 MiB/s) and short enough that a caller who trickles a body
+// gives its place back soon. The other tests measure against the constant, so
+// this one fails any change to it, and it runs under -short, which CI uses.
+// Change the documentation together with the constant.
+func TestIngestBodyWindow_IsThirtySeconds(t *testing.T) {
+	assert.Equal(t, 30*time.Second, ingestBodyWindow)
 }
 
 // The handler must arm the connection with that window and not another value:
