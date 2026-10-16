@@ -11,6 +11,42 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const archiveWaiverDeletion = `-- name: ArchiveWaiverDeletion :exec
+INSERT INTO waiver_deletions (waiver_id, project_id, deleted_by, snapshot)
+SELECT
+    w.id,
+    w.project_id,
+    $3::text,
+    jsonb_build_object(
+        'waiver', to_jsonb(w),
+        'conditions', COALESCE((SELECT jsonb_agg(to_jsonb(c) ORDER BY c.created_at, c.id)
+            FROM waiver_conditions c WHERE c.waiver_id = w.id), '[]'::jsonb),
+        'contexts', COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.created_at, x.id)
+            FROM waiver_contexts x WHERE x.waiver_id = w.id), '[]'::jsonb),
+        'targets', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.created_at, t.id)
+            FROM waiver_finding_targets t WHERE t.waiver_id = w.id), '[]'::jsonb),
+        'events', COALESCE((SELECT jsonb_agg(to_jsonb(e) ORDER BY e.created_at, e.id)
+            FROM waiver_events e WHERE e.waiver_id = w.id), '[]'::jsonb)
+    )
+FROM waivers w
+WHERE w.id = $1 AND w.project_id = $2
+FOR UPDATE OF w
+`
+
+type ArchiveWaiverDeletionParams struct {
+	ID        pgtype.UUID `json:"id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+	DeletedBy pgtype.Text `json:"deleted_by"`
+}
+
+// Copies a waiver, its scope rows and its events into waiver_deletions. Run it
+// in the same transaction as the delete, before the cascade removes the rows.
+// The row lock keeps a concurrent event insert out until the delete lands.
+func (q *Queries) ArchiveWaiverDeletion(ctx context.Context, arg ArchiveWaiverDeletionParams) error {
+	_, err := q.db.Exec(ctx, archiveWaiverDeletion, arg.ID, arg.ProjectID, arg.DeletedBy)
+	return err
+}
+
 const createWaiver = `-- name: CreateWaiver :one
 INSERT INTO waivers (project_id, name, description, enabled, expires_at, status, reason, requested_by, requested_at)
 VALUES (
@@ -504,6 +540,39 @@ func (q *Queries) ListWaiverContextsByWaiverIDs(ctx context.Context, dollar_1 []
 			&i.TargetID,
 			&i.ArtifactID,
 			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWaiverDeletions = `-- name: ListWaiverDeletions :many
+SELECT id, waiver_id, project_id, deleted_by, deleted_at, snapshot FROM waiver_deletions
+WHERE project_id = $1
+ORDER BY deleted_at DESC, id DESC
+`
+
+func (q *Queries) ListWaiverDeletions(ctx context.Context, projectID pgtype.UUID) ([]WaiverDeletion, error) {
+	rows, err := q.db.Query(ctx, listWaiverDeletions, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []WaiverDeletion
+	for rows.Next() {
+		var i WaiverDeletion
+		if err := rows.Scan(
+			&i.ID,
+			&i.WaiverID,
+			&i.ProjectID,
+			&i.DeletedBy,
+			&i.DeletedAt,
+			&i.Snapshot,
 		); err != nil {
 			return nil, err
 		}

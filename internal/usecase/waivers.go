@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/gate"
 	"github.com/minh-tg/specht/internal/port"
 )
@@ -539,7 +540,11 @@ func (u *Usecases) DeleteWaiver(ctx context.Context, projectSlug, waiverID strin
 		return fmt.Errorf(errInvalidWaiverIDFormat, err)
 	}
 
-	if err := u.deps.Stores.Waivers.Delete(ctx, id.String(), project.ID); err != nil {
+	var actorID string
+	if ident := auth.ContextIdentity(ctx); ident != nil {
+		actorID = ident.UserID
+	}
+	if err := u.deps.Stores.Waivers.Delete(ctx, id.String(), project.ID, actorID); err != nil {
 		return fmt.Errorf("delete waiver: %w", err)
 	}
 	return nil

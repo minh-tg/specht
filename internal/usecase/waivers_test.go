@@ -549,9 +549,10 @@ func TestDeleteWaiverIsScopedToProject(t *testing.T) {
 	project := makeProject(true)
 	waiverID := "00000000-0000-0000-0000-0000000000b1"
 	wr := &mockWaiverRepo{
-		deleteFn: func(_ context.Context, id, projectID string) error {
+		deleteFn: func(_ context.Context, id, projectID, actorID string) error {
 			assert.Equal(t, waiverID, id)
 			assert.Equal(t, project.ID, projectID)
+			assert.Equal(t, "admin", actorID, "the deleter is recorded with the removed waiver")
 			return nil
 		},
 	}

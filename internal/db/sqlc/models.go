@@ -524,6 +524,15 @@ type WaiverContext struct {
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 }
 
+type WaiverDeletion struct {
+	ID        pgtype.UUID        `json:"id"`
+	WaiverID  pgtype.UUID        `json:"waiver_id"`
+	ProjectID pgtype.UUID        `json:"project_id"`
+	DeletedBy pgtype.Text        `json:"deleted_by"`
+	DeletedAt pgtype.Timestamptz `json:"deleted_at"`
+	Snapshot  []byte             `json:"snapshot"`
+}
+
 type WaiverEvent struct {
 	ID        pgtype.UUID        `json:"id"`
 	WaiverID  pgtype.UUID        `json:"waiver_id"`

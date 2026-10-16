@@ -40,6 +40,7 @@ const (
 	EventUpdateProject        = "project.update"
 	EventDeleteProject        = "project.delete"
 	EventUpdateWaiver         = "waiver.update"
+	EventDeleteWaiver         = "waiver.delete"
 	EventToggleWaiver         = "waiver.toggle"
 	EventRevokeWaiver         = "waiver.revoke"
 	EventRestoreWaiver        = "waiver.restore"

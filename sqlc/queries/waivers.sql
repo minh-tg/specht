@@ -160,3 +160,32 @@ ORDER BY created_at;
 SELECT * FROM waiver_finding_targets
 WHERE waiver_id = ANY($1::uuid[])
 ORDER BY created_at;
+
+-- name: ArchiveWaiverDeletion :exec
+-- Copies a waiver, its scope rows and its events into waiver_deletions. Run it
+-- in the same transaction as the delete, before the cascade removes the rows.
+-- The row lock keeps a concurrent event insert out until the delete lands.
+INSERT INTO waiver_deletions (waiver_id, project_id, deleted_by, snapshot)
+SELECT
+    w.id,
+    w.project_id,
+    sqlc.narg(deleted_by)::text,
+    jsonb_build_object(
+        'waiver', to_jsonb(w),
+        'conditions', COALESCE((SELECT jsonb_agg(to_jsonb(c) ORDER BY c.created_at, c.id)
+            FROM waiver_conditions c WHERE c.waiver_id = w.id), '[]'::jsonb),
+        'contexts', COALESCE((SELECT jsonb_agg(to_jsonb(x) ORDER BY x.created_at, x.id)
+            FROM waiver_contexts x WHERE x.waiver_id = w.id), '[]'::jsonb),
+        'targets', COALESCE((SELECT jsonb_agg(to_jsonb(t) ORDER BY t.created_at, t.id)
+            FROM waiver_finding_targets t WHERE t.waiver_id = w.id), '[]'::jsonb),
+        'events', COALESCE((SELECT jsonb_agg(to_jsonb(e) ORDER BY e.created_at, e.id)
+            FROM waiver_events e WHERE e.waiver_id = w.id), '[]'::jsonb)
+    )
+FROM waivers w
+WHERE w.id = $1 AND w.project_id = $2
+FOR UPDATE OF w;
+
+-- name: ListWaiverDeletions :many
+SELECT * FROM waiver_deletions
+WHERE project_id = $1
+ORDER BY deleted_at DESC, id DESC;
