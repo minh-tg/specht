@@ -1,4 +1,4 @@
-import { APIError } from "@/api/client";
+import { APIError, SESSION_REUSED_REASON } from "@/api/client";
 import { useCapabilities } from "@/api/hooks";
 import { markSsoAttempt } from "@/auth/sso";
 import { useAuth } from "@/auth/useAuth";
@@ -20,6 +20,7 @@ export function Login() {
   const [searchParams] = useSearchParams();
   const capabilities = useCapabilities();
   const redirect = safeRedirect(searchParams.get("redirect"));
+  const sessionRevoked = searchParams.get("reason") === SESSION_REUSED_REASON;
   const ssoHref = redirect === "/"
     ? "/api/v1/auth/sso/login"
     : `/api/v1/auth/sso/login?redirect=${encodeURIComponent(redirect)}`;
@@ -71,6 +72,15 @@ export function Login() {
       subtitle="Use the account you were given for this server."
     >
       <form onSubmit={handleSubmit} className="grid gap-4">
+        {sessionRevoked && !error && (
+          <p
+            role="status"
+            className="bg-muted text-foreground rounded-md px-3 py-2 text-sm"
+          >
+            You were signed out because this session's sign-in token was used twice. If that was not
+            you, change your password after you sign in again.
+          </p>
+        )}
         {error && (
           <p
             role="alert"

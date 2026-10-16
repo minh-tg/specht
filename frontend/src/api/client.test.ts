@@ -292,3 +292,90 @@ describe("concurrent 401 handling", () => {
     expect(state.resourceAuth.at(-1)).toBe("Bearer access-3");
   });
 });
+
+describe("a reused refresh token", () => {
+  function reusedServer() {
+    const refreshBodies: string[] = [];
+    const fetchMock = vi.fn().mockImplementation((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url === "/api/v1/auth/refresh") {
+        refreshBodies.push(JSON.parse(String(init?.body)).refresh_token as string);
+        return Promise.resolve(
+          responseWithHeaders(
+            { error: { code: "refresh_reused", message: "refresh token was already used" } },
+            {},
+            401,
+          ),
+        );
+      }
+      return Promise.resolve(
+        responseWithHeaders({ error: { code: "unauthorized", message: "expired" } }, {}, 401),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return { fetchMock, refreshBodies };
+  }
+
+  function stubLocation() {
+    const location = { pathname: "/projects/p1", search: "?tab=findings", href: "" };
+    vi.stubGlobal("location", location);
+    return location;
+  }
+
+  it("signs the user out with the reason and does not retry", async () => {
+    const { fetchMock, refreshBodies } = reusedServer();
+    const location = stubLocation();
+    const unauthorized = vi.fn();
+    setUnauthorizedHandler(unauthorized);
+    setStoredSession("access-1", "refresh-1", { userId: "u1", email: "a@b.c" });
+
+    await expect(apiFetch("/api/v1/projects")).rejects.toMatchObject({ code: "refresh_reused" });
+
+    expect(refreshBodies).toEqual(["refresh-1"]);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/projects",
+      "/api/v1/auth/refresh",
+    ]);
+    expect(getStoredSession()).toBeNull();
+    expect(unauthorized).toHaveBeenCalledTimes(1);
+    expect(location.href).toBe(
+      `/login?redirect=${encodeURIComponent("/projects/p1?tab=findings")}&reason=session_reused`,
+    );
+  });
+
+  it("ends the session once for requests that were waiting on the same refresh", async () => {
+    const { refreshBodies } = reusedServer();
+    stubLocation();
+    const refreshFailed = vi.fn();
+    setRefreshFailedHandler(refreshFailed);
+    setStoredSession("access-1", "refresh-1", { userId: "u1", email: "a@b.c" });
+
+    const results = await Promise.allSettled([
+      apiFetch("/api/v1/projects"),
+      apiFetch("/api/v1/teams"),
+    ]);
+
+    expect(results.every((r) => r.status === "rejected")).toBe(true);
+    expect(refreshBodies).toEqual(["refresh-1"]);
+    expect(refreshFailed).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the plain redirect for any other refresh failure", async () => {
+    stubLocation();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() =>
+        Promise.resolve(
+          responseWithHeaders({ error: { code: "refresh_failed", message: "invalid" } }, {}, 401),
+        )
+      ),
+    );
+    setStoredSession("access-1", "refresh-1", { userId: "u1", email: "a@b.c" });
+
+    await expect(apiFetch("/api/v1/projects")).rejects.toMatchObject({ code: "refresh_failed" });
+
+    expect(window.location.href).toBe(
+      `/login?redirect=${encodeURIComponent("/projects/p1?tab=findings")}`,
+    );
+  });
+});
