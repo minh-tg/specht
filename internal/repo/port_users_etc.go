@@ -328,14 +328,22 @@ func userToPort(u sqlc.User) port.User {
 		Role:         u.Role,
 		DisabledAt:   timePtrFromTimestamptz(u.DisabledAt),
 		EmailProven:  u.EmailProven,
+		TokenVersion: u.TokenVersion,
 		CreatedAt:    u.CreatedAt.Time,
 	}
 }
 
 // pgRefreshTokenPort adapts RefreshTokenStore.
-type pgRefreshTokenPort struct{ q *sqlc.Queries }
+type pgRefreshTokenPort struct {
+	q      *sqlc.Queries
+	withTx func(ctx context.Context, fn func(q *sqlc.Queries) error) error
+}
 
 func (r *pgRefreshTokenPort) Create(ctx context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
+	return insertRefreshToken(ctx, r.q, in)
+}
+
+func insertRefreshToken(ctx context.Context, q *sqlc.Queries, in port.NewRefreshToken) (port.RefreshToken, error) {
 	uid, err := parseID(in.UserID)
 	if err != nil {
 		return port.RefreshToken{}, err
@@ -344,7 +352,7 @@ func (r *pgRefreshTokenPort) Create(ctx context.Context, in port.NewRefreshToken
 	if err != nil {
 		return port.RefreshToken{}, err
 	}
-	row, err := r.q.CreateRefreshToken(ctx, sqlc.CreateRefreshTokenParams{
+	row, err := q.CreateRefreshToken(ctx, sqlc.CreateRefreshTokenParams{
 		UserID:          uid,
 		TokenHash:       in.TokenHash,
 		ExpiresAt:       uuidFromTime(in.ExpiresAt),
@@ -355,6 +363,36 @@ func (r *pgRefreshTokenPort) Create(ctx context.Context, in port.NewRefreshToken
 		return port.RefreshToken{}, err
 	}
 	return refreshTokenToPort(row), nil
+}
+
+// CreateForLogin takes the account row share lock, compares the row with what
+// the login saw before its password check, and stores the token in the same
+// transaction. The lock is held until the token commits, so an SSO link, which
+// clears the password and revokes the refresh tokens, cannot run in between.
+func (r *pgRefreshTokenPort) CreateForLogin(ctx context.Context, in port.NewRefreshToken, guard port.LoginGuard) (int32, error) {
+	uid, err := parseID(in.UserID)
+	if err != nil {
+		return 0, err
+	}
+	var version int32
+	err = r.withTx(ctx, func(q *sqlc.Queries) error {
+		row, err := q.LockUserForLogin(ctx, uid)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return port.ErrLoginStale
+		} else if err != nil {
+			return err
+		}
+		if row.DisabledAt.Valid || !row.PasswordHash.Valid || row.PasswordHash.String != guard.PasswordHash || row.TokenVersion != guard.TokenVersion {
+			return port.ErrLoginStale
+		}
+		version = row.TokenVersion
+		_, err = insertRefreshToken(ctx, q, in)
+		return err
+	})
+	if err != nil {
+		return 0, err
+	}
+	return version, nil
 }
 
 func (r *pgRefreshTokenPort) GetByHash(ctx context.Context, tokenHash string) (port.RefreshToken, error) {

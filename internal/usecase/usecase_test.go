@@ -1077,10 +1077,13 @@ func (m *mockUserRepo) ListByIDs(ctx context.Context, ids []string) ([]port.User
 
 type mockRefreshTokenRepo struct {
 	port.RefreshTokenStore
-	createFn    func(context.Context, port.NewRefreshToken) (port.RefreshToken, error)
-	getByHashFn func(context.Context, string) (port.RefreshToken, error)
-	revokeFn    func(context.Context, string) (port.RefreshToken, error)
-	revokeAllFn func(context.Context, string) error
+	createFn func(context.Context, port.NewRefreshToken) (port.RefreshToken, error)
+	// createForLoginFn replaces CreateForLogin; by default a login stores its
+	// token through createFn and keeps the generation it read.
+	createForLoginFn func(context.Context, port.NewRefreshToken, port.LoginGuard) (int32, error)
+	getByHashFn      func(context.Context, string) (port.RefreshToken, error)
+	revokeFn         func(context.Context, string) (port.RefreshToken, error)
+	revokeAllFn      func(context.Context, string) error
 }
 
 func (m *mockRefreshTokenRepo) Create(ctx context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
@@ -1088,6 +1091,16 @@ func (m *mockRefreshTokenRepo) Create(ctx context.Context, in port.NewRefreshTok
 		return port.RefreshToken{}, fmt.Errorf("unexpected call to Create")
 	}
 	return m.createFn(ctx, in)
+}
+
+func (m *mockRefreshTokenRepo) CreateForLogin(ctx context.Context, in port.NewRefreshToken, guard port.LoginGuard) (int32, error) {
+	if m.createForLoginFn != nil {
+		return m.createForLoginFn(ctx, in, guard)
+	}
+	if _, err := m.Create(ctx, in); err != nil {
+		return 0, err
+	}
+	return guard.TokenVersion, nil
 }
 
 func (m *mockRefreshTokenRepo) GetByHash(ctx context.Context, tokenHash string) (port.RefreshToken, error) {

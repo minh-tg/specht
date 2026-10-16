@@ -433,15 +433,21 @@ func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResp
 		return nil, errors.New(authMsgInvalidCredentials)
 	}
 
-	userID := user.ID
-	token, err := u.issueAccessToken(ctx, userID, user.Email, auth.TokenRole(user.Role))
-	if err != nil {
-		return nil, fmt.Errorf("create token: %w", err)
+	// The checks above ran on a read taken before the password verify, which
+	// takes tens of milliseconds. An SSO link, a password change or a
+	// deactivation can commit inside that window, so the store confirms the
+	// account is unchanged under a row lock when it stores the session.
+	resp, version, err := u.createLoginSession(ctx, user)
+	if errors.Is(err, port.ErrLoginStale) {
+		slog.Warn("login: account changed during the password check", "user_id", user.ID)
+		return nil, errors.New(authMsgInvalidCredentials)
 	}
-
-	resp, err := u.createSession(ctx, userID, user.Email)
 	if err != nil {
 		return nil, err
+	}
+	token, err := u.deps.Tokens.CreateToken(user.ID, user.Email, auth.TokenRole(user.Role), version)
+	if err != nil {
+		return nil, fmt.Errorf("create token: %w", err)
 	}
 	resp.Token = token
 	return resp, nil
@@ -605,10 +611,38 @@ func (u *Usecases) createSession(ctx context.Context, userID, email string) (*Au
 	return u.storeSession(ctx, userID, email, uuid.NewString(), u.clock())
 }
 
+// createLoginSession starts the sign-in of a password login. The store checks
+// the account against the row the login read before its password check and
+// refuses with port.ErrLoginStale when it changed. It returns the token
+// generation read under the lock, which the access token must carry.
+func (u *Usecases) createLoginSession(ctx context.Context, user port.User) (*AuthResponse, int32, error) {
+	var version int32
+	resp, err := u.newSession(user.ID, user.Email, uuid.NewString(), u.clock(), func(in port.NewRefreshToken) error {
+		var err error
+		version, err = u.deps.Stores.RefreshTokens.CreateForLogin(ctx, in, port.LoginGuard{
+			PasswordHash: user.PasswordHash,
+			TokenVersion: user.TokenVersion,
+		})
+		return err
+	})
+	if err != nil {
+		return nil, 0, err
+	}
+	return resp, version, nil
+}
+
 // storeSession issues a refresh token in the given family. The token lasts
 // one refresh period but never past the end of the session, so a family that
 // is close to its absolute lifetime cannot hold a token beyond it.
 func (u *Usecases) storeSession(ctx context.Context, userID, email, familyID string, familyStartedAt time.Time) (*AuthResponse, error) {
+	return u.newSession(userID, email, familyID, familyStartedAt, func(in port.NewRefreshToken) error {
+		_, err := u.deps.Stores.RefreshTokens.Create(ctx, in)
+		return err
+	})
+}
+
+// newSession mints a refresh token and hands its row to store.
+func (u *Usecases) newSession(userID, email, familyID string, familyStartedAt time.Time, store func(port.NewRefreshToken) error) (*AuthResponse, error) {
 	rawRefresh, err := u.deps.Tokens.CreateRefreshToken(userID)
 	if err != nil {
 		return nil, fmt.Errorf("create refresh token: %w", err)
@@ -621,7 +655,7 @@ func (u *Usecases) storeSession(ctx context.Context, userID, email, familyID str
 	if end := familyStartedAt.Add(u.sessionMaxAge()); end.Before(expiresAt) {
 		expiresAt = end
 	}
-	if _, err := u.deps.Stores.RefreshTokens.Create(ctx, port.NewRefreshToken{
+	if err := store(port.NewRefreshToken{
 		UserID:          userID,
 		TokenHash:       hashStr,
 		ExpiresAt:       expiresAt,

@@ -66,6 +66,12 @@ var ErrEmailTaken = errors.New("email already registered")
 // leave the instance without an active global admin.
 var ErrLastGlobalAdmin = errors.New("last global admin")
 
+// ErrLoginStale is returned when the account changed between the password check
+// of a login and the moment its session would be stored: it was deactivated, its
+// password was replaced or removed, or it started a new token generation (an SSO
+// link does). The login gets no session.
+var ErrLoginStale = errors.New("account changed during login")
+
 // ErrCreatorInactive is returned when an API key would be created by an account
 // that is deactivated or does not exist.
 var ErrCreatorInactive = errors.New("key creator is not an active account")
@@ -172,7 +178,10 @@ type User struct {
 	// was created by first-run setup, or it signed in through SSO while the
 	// provider vouched for the email. A password registration proves nothing.
 	EmailProven bool
-	CreatedAt   time.Time
+	// TokenVersion is the account's access-token generation when the row was
+	// read.
+	TokenVersion int32
+	CreatedAt    time.Time
 }
 
 // RevokedAPIKey names an API key that was revoked as a side effect of another
@@ -319,9 +328,25 @@ type NewRefreshToken struct {
 	FamilyStartedAt time.Time
 }
 
+// LoginGuard is what a password login saw on the account before it ran the slow
+// password check: the hash it verified against and the token generation it read.
+type LoginGuard struct {
+	PasswordHash string
+	TokenVersion int32
+}
+
 // RefreshTokenStore persists refresh tokens.
 type RefreshTokenStore interface {
 	Create(ctx context.Context, in NewRefreshToken) (RefreshToken, error)
+	// CreateForLogin stores the refresh token of a password login. It locks the
+	// account row first and returns ErrLoginStale, storing nothing, unless the
+	// account is still active, still holds the verified password hash and still
+	// has the token generation the login read. An SSO link, a password change
+	// and a deactivation update the same row, so each one lands either before
+	// this call (the login is refused) or after it (the change ends the token).
+	// It returns the token generation read under the lock, which the login
+	// issues its access token for.
+	CreateForLogin(ctx context.Context, in NewRefreshToken, guard LoginGuard) (int32, error)
 	GetByHash(ctx context.Context, tokenHash string) (RefreshToken, error)
 	Revoke(ctx context.Context, id string) (RefreshToken, error)
 	RevokeAllForUser(ctx context.Context, userID string) error

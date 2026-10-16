@@ -90,3 +90,11 @@ UPDATE users SET token_version = token_version + 1, updated_at = NOW() WHERE id 
 -- name: UpdateUserDisplayName :one
 UPDATE users SET display_name = $2, updated_at = NOW() WHERE id = $1
 RETURNING *;
+
+-- name: LockUserForLogin :one
+-- Takes a share lock on the account for the rest of the transaction and returns
+-- what a password login has to confirm before it hands out a session. An SSO
+-- link, a password change and a deactivation all update this row, so each one
+-- either committed before this read (the login sees the change and is refused)
+-- or waits until the session is stored and then ends it with the rest.
+SELECT password_hash, disabled_at, token_version FROM users WHERE id = $1 FOR SHARE;
