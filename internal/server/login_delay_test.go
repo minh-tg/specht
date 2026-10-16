@@ -27,12 +27,19 @@ type loginDelayFixture struct {
 	now     time.Time
 	calls   atomic.Int64
 	success atomic.Bool // when set the use case accepts the password
+	// hold, when set, makes the use case wait for it to close before it
+	// answers, like a slow password hash does. It keeps every admitted
+	// attempt open while later attempts arrive.
+	hold chan struct{}
 }
 
 func newLoginDelayFixture(t *testing.T) *loginDelayFixture {
 	f := &loginDelayFixture{t: t, now: time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)}
 	mock := &mockUsecases{loginFn: func(context.Context, string, string) (*usecase.AuthResponse, error) {
 		f.calls.Add(1)
+		if f.hold != nil {
+			<-f.hold
+		}
 		if f.success.Load() {
 			return &usecase.AuthResponse{Token: "tok"}, nil
 		}
@@ -144,6 +151,29 @@ func TestLoginDelay_CounterDecaysAfterFifteenQuietMinutes(t *testing.T) {
 	assert.Equal(t, http.StatusTooManyRequests, f.login("victim@example.com").Code)
 }
 
+func TestLoginDelay_DecayBoundaryIsExactlyFifteenMinutes(t *testing.T) {
+	t.Run("at fifteen minutes the failures still count", func(t *testing.T) {
+		f := newLoginDelayFixture(t)
+		for range 3 {
+			f.login("victim@example.com")
+		}
+		f.advance(loginDelayDecay)
+		assert.Equal(t, http.StatusUnauthorized, f.login("victim@example.com").Code, "the wait has ended, so the attempt is evaluated")
+		assert.Equal(t, http.StatusTooManyRequests, f.login("victim@example.com").Code,
+			"the fourth failure still sits on top of the old three: its wait is 2s, not zero")
+	})
+	t.Run("past fifteen minutes the count starts over", func(t *testing.T) {
+		f := newLoginDelayFixture(t)
+		for range 3 {
+			f.login("victim@example.com")
+		}
+		f.advance(loginDelayDecay + time.Nanosecond)
+		f.login("victim@example.com")
+		f.login("victim@example.com")
+		assert.Equal(t, http.StatusUnauthorized, f.login("victim@example.com").Code, "only two failures before this one")
+	})
+}
+
 func TestLoginDelay_MissingEmailOrPasswordIsNotCounted(t *testing.T) {
 	f := newLoginDelayFixture(t)
 	for range 10 {
@@ -158,6 +188,7 @@ func TestLoginDelay_MissingEmailOrPasswordIsNotCounted(t *testing.T) {
 
 func TestLoginDelay_ParallelGuessesAreCountedBeforeTheyAreEvaluated(t *testing.T) {
 	f := newLoginDelayFixture(t)
+	f.hold = make(chan struct{})
 	var wg sync.WaitGroup
 	var blocked atomic.Int64
 	for range 200 {
@@ -167,9 +198,15 @@ func TestLoginDelay_ParallelGuessesAreCountedBeforeTheyAreEvaluated(t *testing.T
 			}
 		})
 	}
-	wg.Wait()
+	// Every attempt either sits inside the held password check or has been
+	// refused. If the failure were counted after the check, no attempt would
+	// be refused while the others wait, and all 200 would be inside it.
+	require.Eventually(t, func() bool { return f.calls.Load()+blocked.Load() == 200 },
+		5*time.Second, time.Millisecond)
 	assert.EqualValues(t, 3, f.calls.Load(), "a burst of parallel guesses gets exactly the free attempts")
 	assert.EqualValues(t, 197, blocked.Load())
+	close(f.hold)
+	wg.Wait()
 }
 
 func TestLoginDelay_ManyAccountsInParallel(t *testing.T) {
@@ -329,4 +366,20 @@ func TestRouter_LoginDelayAppliesAcrossAddressesAndPrefixes(t *testing.T) {
 	assert.Contains(t, w.Body.String(), "too_many_attempts")
 	assert.NotEmpty(t, w.Header().Get("Retry-After"))
 	assert.EqualValues(t, 3, calls.Load())
+}
+
+func TestLoginWait_NeverExceedsTheCap(t *testing.T) {
+	assert.Equal(t, 60*time.Second, loginDelayMax, "the cap is part of the documented behavior")
+	for failures, want := range map[int]time.Duration{
+		0: 0, 1: 0, 2: 0,
+		3: time.Second, 4: 2 * time.Second, 5: 4 * time.Second, 6: 8 * time.Second,
+		7: 16 * time.Second, 8: 32 * time.Second,
+		9: loginDelayMax, 10: loginDelayMax, 100: loginDelayMax, 1 << 30: loginDelayMax,
+	} {
+		assert.Equal(t, want, loginWait(failures), "after %d failures", failures)
+	}
+	for failures := range 5000 {
+		require.LessOrEqual(t, loginWait(failures), loginDelayMax, "after %d failures", failures)
+		require.GreaterOrEqual(t, loginWait(failures), time.Duration(0), "after %d failures", failures)
+	}
 }
