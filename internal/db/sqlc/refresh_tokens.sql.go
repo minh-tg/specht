@@ -87,6 +87,15 @@ func (q *Queries) RevokeRefreshToken(ctx context.Context, id pgtype.UUID) (Refre
 	return i, err
 }
 
+const revokeRefreshTokenFamily = `-- name: RevokeRefreshTokenFamily :exec
+UPDATE refresh_tokens SET revoked_at = NOW() WHERE family_id = $1 AND revoked_at IS NULL
+`
+
+func (q *Queries) RevokeRefreshTokenFamily(ctx context.Context, familyID pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, revokeRefreshTokenFamily, familyID)
+	return err
+}
+
 const revokeUserRefreshTokens = `-- name: RevokeUserRefreshTokens :exec
 UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL
 `

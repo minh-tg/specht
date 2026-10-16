@@ -341,3 +341,9 @@ releases.
   stolen session never expired. A refresh after the limit answers `401`
   `refresh_failed`, like an expired token, and the user signs in again.
   Sessions that already exist get 30 days counted from their latest token.
+- A replayed refresh token no longer signs the user out of every device. A
+  token rotated less than 10 seconds ago answers `401` `refresh_reused` and
+  leaves the session alone, so two tabs refreshing together keep working (the
+  loser gets the new token from the winner). Replaying a rotated token after
+  that revokes only the sign-in it belongs to; the user's other devices stay
+  signed in.

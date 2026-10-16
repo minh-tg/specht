@@ -325,6 +325,9 @@ type RefreshTokenStore interface {
 	GetByHash(ctx context.Context, tokenHash string) (RefreshToken, error)
 	Revoke(ctx context.Context, id string) (RefreshToken, error)
 	RevokeAllForUser(ctx context.Context, userID string) error
+	// RevokeFamily revokes every unrevoked token of one sign-in chain and
+	// leaves the user's other sign-ins alone.
+	RevokeFamily(ctx context.Context, familyID string) error
 }
 
 // ---------- API keys ----------
