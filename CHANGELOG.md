@@ -249,3 +249,10 @@ releases.
 - First-run setup stays available until a global admin exists. A stranger who
   registers before you no longer closes it. If the address you enter at setup
   already belongs to an account, setup answers 409 and you pick another one.
+- `ADMIN_EMAILS` promotes only accounts that proved the address: the account
+  first-run setup created, or one that signed in through SSO while the identity
+  provider reported the email as verified. A password-registered account is
+  never promoted, and neither is a deactivated one. If you relied on
+  registering a listed address and restarting, create the admin with first-run
+  setup, sign in with SSO, or run `specht grant-admin`. At startup the server
+  logs one warning for each listed address whose account is not promoted.

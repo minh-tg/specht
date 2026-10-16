@@ -12,19 +12,32 @@ import (
 )
 
 const createUserIdentity = `-- name: CreateUserIdentity :one
+WITH proven AS (
+    UPDATE users SET email_proven = TRUE, updated_at = NOW()
+    WHERE id = $1 AND $4::boolean
+)
 INSERT INTO user_identities (user_id, issuer, subject)
 VALUES ($1, $2, $3)
 RETURNING id, user_id, issuer, subject, created_at
 `
 
 type CreateUserIdentityParams struct {
-	UserID  pgtype.UUID `json:"user_id"`
-	Issuer  string      `json:"issuer"`
-	Subject string      `json:"subject"`
+	UserID        pgtype.UUID `json:"user_id"`
+	Issuer        string      `json:"issuer"`
+	Subject       string      `json:"subject"`
+	EmailVerified bool        `json:"email_verified"`
 }
 
+// Links the identity and, in the same statement, marks the account's email as
+// proven when the provider vouched for it. A refused link (unique violation)
+// rolls the mark back with it.
 func (q *Queries) CreateUserIdentity(ctx context.Context, arg CreateUserIdentityParams) (UserIdentity, error) {
-	row := q.db.QueryRow(ctx, createUserIdentity, arg.UserID, arg.Issuer, arg.Subject)
+	row := q.db.QueryRow(ctx, createUserIdentity,
+		arg.UserID,
+		arg.Issuer,
+		arg.Subject,
+		arg.EmailVerified,
+	)
 	var i UserIdentity
 	err := row.Scan(
 		&i.ID,

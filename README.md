@@ -130,8 +130,10 @@ curl --fail http://localhost:8080/api/v1/health
 
 The setup screen is available until the first global admin exists. Accounts
 that registered earlier do not close it. After that `POST /api/v1/setup`
-answers 404. To promote further accounts to global admin,
-restart the server with their emails in `ADMIN_EMAILS`.
+answers 404. To make further admins, change an account's role in the Admin
+area, or list the email of an account that signed in through SSO with a
+verified address in `ADMIN_EMAILS` and restart. A password-registered account
+is never promoted that way.
 
 Create a project in the UI, then follow its CI setup page to create an API key and connect a scanner. Pipeline
 examples are also available in [`examples/ci/`](examples/ci/).

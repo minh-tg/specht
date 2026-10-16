@@ -28,6 +28,7 @@ func TestCreateFirstAdmin_OnlyWhileNoAccountExists(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "admin", admin.Role)
 	assert.Equal(t, "root@example.com", admin.Email)
+	assert.True(t, admin.EmailProven, "the setup flow proves the address, which ADMIN_EMAILS relies on")
 
 	_, err = users.CreateFirstAdmin(ctx, "second@example.com", nil, "$2a$10$hash")
 	assert.ErrorIs(t, err, port.ErrSetupClosed)

@@ -12,7 +12,7 @@ import (
 )
 
 const suggestMembers = `-- name: SuggestMembers :many
-SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at FROM users
+SELECT id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at, email_proven FROM users
 WHERE disabled_at IS NULL
   AND email <> 'system@specht.local'
   AND (
@@ -60,6 +60,7 @@ func (q *Queries) SuggestMembers(ctx context.Context, arg SuggestMembersParams) 
 			&i.UpdatedAt,
 			&i.TokenVersion,
 			&i.DisabledAt,
+			&i.EmailProven,
 		); err != nil {
 			return nil, err
 		}

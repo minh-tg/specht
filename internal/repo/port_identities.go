@@ -32,12 +32,12 @@ func (r *pgIdentityPort) GetForUser(ctx context.Context, userID, issuer string) 
 	return identityToPort(row), nil
 }
 
-func (r *pgIdentityPort) Link(ctx context.Context, userID, issuer, subject string) (port.UserIdentity, error) {
+func (r *pgIdentityPort) Link(ctx context.Context, userID, issuer, subject string, emailVerified bool) (port.UserIdentity, error) {
 	uid, err := parseID(userID)
 	if err != nil {
 		return port.UserIdentity{}, err
 	}
-	row, err := r.q.CreateUserIdentity(ctx, sqlc.CreateUserIdentityParams{UserID: uid, Issuer: issuer, Subject: subject})
+	row, err := r.q.CreateUserIdentity(ctx, sqlc.CreateUserIdentityParams{UserID: uid, Issuer: issuer, Subject: subject, EmailVerified: emailVerified})
 	if err != nil {
 		if isUniqueViolation(err) {
 			return port.UserIdentity{}, port.ErrIdentityLinked

@@ -59,12 +59,13 @@ SELECT COUNT(*) FROM users
 WHERE role = 'admin' AND disabled_at IS NULL AND email <> 'system@specht.local';
 
 -- name: CreateFirstAdmin :one
--- Creates the first admin, and only while no active global admin exists (the
+-- Creates the first admin, with its email marked as proven because the setup
+-- token vouches for the operator, and only while no active global admin exists (the
 -- seeded system account does not count). Members who registered earlier do not
 -- close it. No row comes back when an admin exists, so two racing setups cannot
 -- both win; the caller serialises them with an advisory lock.
-INSERT INTO users (email, display_name, password_hash, role)
-SELECT lower(sqlc.arg(email)::text), sqlc.narg(display_name), sqlc.arg(password_hash)::text, 'admin'
+INSERT INTO users (email, display_name, password_hash, role, email_proven)
+SELECT lower(sqlc.arg(email)::text), sqlc.narg(display_name), sqlc.arg(password_hash)::text, 'admin', TRUE
 WHERE NOT EXISTS (
     SELECT 1 FROM users
     WHERE role = 'admin' AND disabled_at IS NULL AND email <> 'system@specht.local'

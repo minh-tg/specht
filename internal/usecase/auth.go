@@ -225,7 +225,8 @@ func (u *Usecases) burnHash(password string) {
 // provider vouches for it (or the operator opted in with
 // SSOAllowUnverifiedEmail). A verified email that matches an existing account
 // links that account, unless it is already bound to a different subject at the
-// same provider. Otherwise the account is provisioned when the email domain is
+// same provider. A link made while the provider vouched for the email also
+// marks the account's address as proven, which ADMIN_EMAILS requires. Otherwise the account is provisioned when the email domain is
 // allowlisted; anything else yields auth.ErrSSONotProvisioned (the caller maps
 // it to a generic 403). Existing accounts keep their local role. Provisioned
 // accounts have no password, so password login stays impossible for them, and
@@ -267,7 +268,7 @@ func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, claims auth.SSOCl
 		slog.Warn("sso login: deactivated account", "user_id", user.ID, "sub", sub)
 		return "", "", false, auth.ErrSSONotProvisioned
 	case err == nil:
-		return u.linkExistingSSOUser(ctx, user, issuer, sub)
+		return u.linkExistingSSOUser(ctx, user, issuer, sub, claims.EmailVerified)
 	case errors.Is(err, port.ErrNotFound):
 		return u.provisionSSOUser(ctx, claims, email, allowedDomains, adminGroups)
 	default:
@@ -279,7 +280,7 @@ func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, claims auth.SSOCl
 // email matched. An account that already has an identity at this provider is
 // refused: a second subject presenting the same email is exactly how a
 // reassigned or spoofed address would take the account over.
-func (u *Usecases) linkExistingSSOUser(ctx context.Context, user port.User, issuer, sub string) (string, string, bool, error) {
+func (u *Usecases) linkExistingSSOUser(ctx context.Context, user port.User, issuer, sub string, emailVerified bool) (string, string, bool, error) {
 	_, err := u.deps.Stores.Identities.GetForUser(ctx, user.ID, issuer)
 	switch {
 	case err == nil:
@@ -306,7 +307,7 @@ func (u *Usecases) linkExistingSSOUser(ctx context.Context, user port.User, issu
 	if err := u.deps.Stores.Users.BumpTokenVersion(ctx, user.ID); err != nil {
 		return "", "", false, fmt.Errorf("revoke access tokens for sso link: %w", err)
 	}
-	if err := u.linkSSOIdentity(ctx, user.ID, issuer, sub); err != nil {
+	if err := u.linkSSOIdentity(ctx, user.ID, issuer, sub, emailVerified); err != nil {
 		return "", "", false, err
 	}
 	slog.Info("sso login: linked existing account", "user_id", user.ID, "sub", sub, "password_disabled", user.PasswordHash != "")
@@ -342,7 +343,7 @@ func (u *Usecases) provisionSSOUser(ctx context.Context, claims auth.SSOClaims, 
 	if err != nil {
 		return "", "", false, fmt.Errorf("provision sso user: %w", err)
 	}
-	if err := u.linkSSOIdentity(ctx, created.ID, claims.Issuer, claims.Subject); err != nil {
+	if err := u.linkSSOIdentity(ctx, created.ID, claims.Issuer, claims.Subject, claims.EmailVerified); err != nil {
 		return "", "", false, err
 	}
 	slog.Info("sso login: provisioned account", "user_id", created.ID, "sub", claims.Subject)
@@ -359,8 +360,11 @@ func (u *Usecases) provisionSSOUser(ctx context.Context, claims auth.SSOClaims, 
 
 // linkSSOIdentity records the binding, mapping a lost race (the subject or the
 // account got linked in between) to the same refusal as any other conflict.
-func (u *Usecases) linkSSOIdentity(ctx context.Context, userID, issuer, sub string) error {
-	if _, err := u.deps.Stores.Identities.Link(ctx, userID, issuer, sub); err != nil {
+// emailVerified says whether the provider vouched for the account's email; the
+// store marks the address as proven in the same write, and a login that got
+// through only on SSO_ALLOW_UNVERIFIED_EMAIL leaves it unproven.
+func (u *Usecases) linkSSOIdentity(ctx context.Context, userID, issuer, sub string, emailVerified bool) error {
+	if _, err := u.deps.Stores.Identities.Link(ctx, userID, issuer, sub, emailVerified); err != nil {
 		if errors.Is(err, port.ErrIdentityLinked) {
 			slog.Warn("sso login: identity linked concurrently", "user_id", userID, "sub", sub)
 			return auth.ErrSSONotProvisioned
