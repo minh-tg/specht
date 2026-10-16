@@ -335,6 +335,28 @@ func (q *Queries) LockActiveAdmins(ctx context.Context) ([]pgtype.UUID, error) {
 	return items, nil
 }
 
+const lockUserForLogin = `-- name: LockUserForLogin :one
+SELECT password_hash, disabled_at, token_version FROM users WHERE id = $1 FOR SHARE
+`
+
+type LockUserForLoginRow struct {
+	PasswordHash pgtype.Text        `json:"password_hash"`
+	DisabledAt   pgtype.Timestamptz `json:"disabled_at"`
+	TokenVersion int32              `json:"token_version"`
+}
+
+// Takes a share lock on the account for the rest of the transaction and returns
+// what a password login has to confirm before it hands out a session. An SSO
+// link, a password change and a deactivation all update this row, so each one
+// either committed before this read (the login sees the change and is refused)
+// or waits until the session is stored and then ends it with the rest.
+func (q *Queries) LockUserForLogin(ctx context.Context, id pgtype.UUID) (LockUserForLoginRow, error) {
+	row := q.db.QueryRow(ctx, lockUserForLogin, id)
+	var i LockUserForLoginRow
+	err := row.Scan(&i.PasswordHash, &i.DisabledAt, &i.TokenVersion)
+	return i, err
+}
+
 const setUserDisabled = `-- name: SetUserDisabled :one
 UPDATE users SET
     disabled_at = CASE WHEN $1::boolean THEN COALESCE(disabled_at, NOW()) ELSE NULL END,

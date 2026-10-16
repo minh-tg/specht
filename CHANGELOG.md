@@ -464,3 +464,11 @@ releases.
   key may use at most half of the ingest slots and half of the ingest memory budget at once;
   its further requests wait in their own queue and get `503 ingest_busy` with `Retry-After`,
   and other callers are not delayed.
+- A password sign-in whose password check was still running when the account changed no
+  longer gets a session. Signing in through SSO for the first time into an account
+  (which clears its password), changing the password, and deactivating the account each
+  used to be able to commit inside the check, and the sign-in then returned a working
+  access token and a refresh token that the change never saw. The server now confirms
+  under a row lock that the account is active, has the same password hash and the same
+  token generation, and otherwise answers the same "invalid email or password" as a wrong
+  password.
