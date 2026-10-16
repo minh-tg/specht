@@ -195,10 +195,11 @@ paths:
       operationId: setup
       summary: Create the first administrator
       description: |
-        First-run setup for a server with no accounts. The caller proves access
+        First-run setup for a server with no global admin. Accounts that
+        registered earlier do not close it. The caller proves access
         to the server with the setup token it logs at startup (or the value of
         `SETUP_TOKEN`). The account is created as a global admin and signed in.
-        Two requests at once create one account. Once an account exists the
+        Two requests at once create one admin. Once a global admin exists the
         route answers 404, the same as a server that offers no setup.
         Shares the credential rate limit with login and registration.
 
@@ -227,6 +228,12 @@ paths:
               schema: { $ref: "#/components/schemas/Error" }
               example: { error: { code: invalid_setup_token, message: invalid setup token } }
         "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: The address already belongs to an account, for example one registered before setup. Use another address.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+              example: { error: { code: email_in_use, message: that email address already belongs to an account } }
         "413": { $ref: "#/components/responses/BodyTooLarge" }
         "429": { $ref: "#/components/responses/RateLimited" }
 
@@ -3509,7 +3516,7 @@ components:
           properties:
             required:
               type: boolean
-              description: True while the server has no accounts and waits for its first administrator. The client shows the setup screen instead of sign-in.
+              description: True while the server has no global admin and waits for its first administrator. The client shows the setup screen instead of sign-in.
         registration:
           type: object
           required: [enabled]

@@ -944,6 +944,7 @@ type mockUserRepo struct {
 	tokenVersionFn      func(context.Context, string) (int32, error)
 	bumpTokenVersionFn  func(context.Context, string) error
 	countFn             func(context.Context) (int64, error)
+	countAdminsFn       func(context.Context) (int64, error)
 	createFirstAdminFn  func(context.Context, string, *string, string) (port.User, error)
 }
 
@@ -959,6 +960,13 @@ func (m *mockUserRepo) Count(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("unexpected call to Count")
 	}
 	return m.countFn(ctx)
+}
+
+func (m *mockUserRepo) CountAdmins(ctx context.Context) (int64, error) {
+	if m.countAdminsFn == nil {
+		return 0, fmt.Errorf("unexpected call to CountAdmins")
+	}
+	return m.countAdminsFn(ctx)
 }
 
 func (m *mockUserRepo) CreateFirstAdmin(ctx context.Context, email string, displayName *string, passwordHash string) (port.User, error) {

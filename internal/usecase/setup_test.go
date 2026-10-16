@@ -19,16 +19,16 @@ type setupFixture struct {
 	created []port.User
 }
 
-func newSetupFixture(t *testing.T, existingUsers int64) *setupFixture {
+func newSetupFixture(t *testing.T, existingAdmins int64) *setupFixture {
 	t.Helper()
 	f := &setupFixture{users: &mockUserRepo{}}
 	var err error
 	f.token, err = NewSetupToken("s3cret-token-0123456789")
 	require.NoError(t, err)
 
-	f.users.countFn = func(context.Context) (int64, error) { return existingUsers + int64(len(f.created)), nil }
+	f.users.countAdminsFn = func(context.Context) (int64, error) { return existingAdmins + int64(len(f.created)), nil }
 	f.users.createFirstAdminFn = func(_ context.Context, email string, name *string, hash string) (port.User, error) {
-		if existingUsers+int64(len(f.created)) > 0 {
+		if existingAdmins+int64(len(f.created)) > 0 {
 			return port.User{}, port.ErrSetupClosed
 		}
 		u := makeUser("00000000-0000-0000-0000-0000000000f1")
@@ -85,7 +85,7 @@ func TestSetup_WorksOnlyOnce(t *testing.T) {
 	assert.Empty(t, f.token.Value(), "the token is forgotten once it has done its job")
 }
 
-func TestSetup_ClosedWhenAnAccountAlreadyExists(t *testing.T) {
+func TestSetup_ClosedWhenAnAdminAlreadyExists(t *testing.T) {
 	f := newSetupFixture(t, 1)
 
 	required, err := f.uc.SetupRequired(context.Background())
@@ -97,8 +97,35 @@ func TestSetup_ClosedWhenAnAccountAlreadyExists(t *testing.T) {
 	assert.Empty(t, f.created)
 }
 
+func TestSetup_StaysOpenWhileOnlyNonAdminsExist(t *testing.T) {
+	f := newSetupFixture(t, 0)
+	// A stranger registered before the operator: accounts exist, none is an admin.
+	f.users.countFn = func(context.Context) (int64, error) { return 3, nil }
+
+	required, err := f.uc.SetupRequired(context.Background())
+	require.NoError(t, err)
+	assert.True(t, required, "registered non-admin accounts must not close setup")
+
+	_, err = f.uc.Setup(context.Background(), validSetup())
+	require.NoError(t, err)
+	require.Len(t, f.created, 1)
+	assert.Equal(t, auth.RoleAdmin, f.created[0].Role)
+}
+
+func TestSetup_ReportsAnEmailThatIsAlreadyRegistered(t *testing.T) {
+	f := newSetupFixture(t, 0)
+	f.users.createFirstAdminFn = func(context.Context, string, *string, string) (port.User, error) {
+		return port.User{}, port.ErrEmailTaken
+	}
+
+	_, err := f.uc.Setup(context.Background(), validSetup())
+
+	assert.ErrorIs(t, err, ErrSetupEmailTaken)
+	assert.Equal(t, "s3cret-token-0123456789", f.token.Value(), "a taken email does not burn the token")
+}
+
 func TestSetup_ClosedWhenTheServerOffersNoToken(t *testing.T) {
-	users := &mockUserRepo{countFn: func(context.Context) (int64, error) { return 0, nil }}
+	users := &mockUserRepo{countAdminsFn: func(context.Context) (int64, error) { return 0, nil }}
 	uc := New(Deps{Stores: &port.Stores{Users: users}})
 
 	required, err := uc.SetupRequired(context.Background())

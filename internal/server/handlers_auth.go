@@ -515,7 +515,7 @@ func (h *Handler) setUserActive(w http.ResponseWriter, r *http.Request, active b
 }
 
 // Setup creates the first admin on a fresh server. It is public, so it works
-// only while no account exists and only with the token the server showed at
+// only while no admin exists and only with the token the server showed at
 // startup; afterwards the route answers 404 as if it were not there.
 func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -537,6 +537,9 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.Is(err, usecase.ErrInvalidSetupToken):
 		respondError(w, http.StatusForbidden, "invalid_setup_token", "the setup token is wrong")
+		return
+	case errors.Is(err, usecase.ErrSetupEmailTaken):
+		respondError(w, http.StatusConflict, "email_in_use", err.Error())
 		return
 	case errors.Is(err, usecase.ErrPasswordTooCommon):
 		respondError(w, http.StatusBadRequest, "password_too_common", err.Error())

@@ -246,3 +246,6 @@ releases.
   password. A successful sign-in resets the count, and it clears on its own
   after 15 minutes without a failure. There is no lockout, and unknown emails
   are counted the same way so the wait does not reveal which accounts exist.
+- First-run setup stays available until a global admin exists. A stranger who
+  registers before you no longer closes it. If the address you enter at setup
+  already belongs to an account, setup answers 409 and you pick another one.

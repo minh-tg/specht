@@ -128,8 +128,9 @@ scripted install. In another terminal, check the API:
 curl --fail http://localhost:8080/api/v1/health
 ```
 
-The setup screen is available only until the first account exists. After that
-`POST /api/v1/setup` answers 404. To promote further accounts to global admin,
+The setup screen is available until the first global admin exists. Accounts
+that registered earlier do not close it. After that `POST /api/v1/setup`
+answers 404. To promote further accounts to global admin,
 restart the server with their emails in `ADMIN_EMAILS`.
 
 Create a project in the UI, then follow its CI setup page to create an API key and connect a scanner. Pipeline

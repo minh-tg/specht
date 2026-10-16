@@ -16,15 +16,18 @@ import (
 )
 
 var (
-	// ErrSetupClosed is returned when setup is attempted after an account
+	// ErrSetupClosed is returned when setup is attempted after an admin
 	// exists, or on a server that offers no setup. Handlers answer 404.
 	ErrSetupClosed = port.ErrSetupClosed
+	// ErrSetupEmailTaken is returned when the setup address already belongs to
+	// an account, for example one a stranger registered before the operator.
+	ErrSetupEmailTaken = errors.New("that email address already belongs to an account")
 	// ErrInvalidSetupToken is returned for a missing or wrong setup token.
 	ErrInvalidSetupToken = errors.New("invalid setup token")
 )
 
 // SetupToken proves that whoever sets up a fresh server can read its logs or
-// its environment. It is created at startup while no account exists, shown
+// its environment. It is created at startup while no admin exists, shown
 // once in the log, and forgotten when setup completes.
 type SetupToken struct {
 	mu    sync.Mutex
@@ -76,14 +79,15 @@ func (t *SetupToken) Clear() {
 }
 
 // SetupRequired reports whether the server is waiting for its first admin: no
-// account exists and a setup token is offered.
+// active admin exists and a setup token is offered. Accounts that registered
+// earlier do not count, so a stranger who signs up first cannot close setup.
 func (u *Usecases) SetupRequired(ctx context.Context) (bool, error) {
 	if u.deps.SetupToken == nil || u.deps.SetupToken.Value() == "" {
 		return false, nil
 	}
-	count, err := u.deps.Stores.Users.Count(ctx)
+	count, err := u.deps.Stores.Users.CountAdmins(ctx)
 	if err != nil {
-		return false, fmt.Errorf("count users: %w", err)
+		return false, fmt.Errorf("count admins: %w", err)
 	}
 	return count == 0, nil
 }
@@ -97,7 +101,7 @@ type SetupInput struct {
 }
 
 // Setup creates the first account as a global admin and signs it in. It works
-// once: while no account exists and with the token the server showed at
+// once: while no admin exists and with the token the server showed at
 // startup. Two requests at once create one account.
 func (u *Usecases) Setup(ctx context.Context, input SetupInput) (*AuthResponse, error) {
 	required, err := u.SetupRequired(ctx)
@@ -125,6 +129,9 @@ func (u *Usecases) Setup(ctx context.Context, input SetupInput) (*AuthResponse, 
 		name = &trimmedName
 	}
 	user, err := u.deps.Stores.Users.CreateFirstAdmin(ctx, email, name, hash)
+	if errors.Is(err, port.ErrEmailTaken) {
+		return nil, ErrSetupEmailTaken
+	}
 	if err != nil {
 		return nil, err
 	}

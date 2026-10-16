@@ -69,6 +69,20 @@ func (q *Queries) ClearUserPassword(ctx context.Context, id pgtype.UUID) error {
 	return err
 }
 
+const countAdmins = `-- name: CountAdmins :one
+SELECT COUNT(*) FROM users
+WHERE role = 'admin' AND disabled_at IS NULL AND email <> 'system@specht.local'
+`
+
+// Counts the active global admins. First-run setup stays open while this is
+// zero, whatever other accounts exist.
+func (q *Queries) CountAdmins(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countAdmins)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const countUsers = `-- name: CountUsers :one
 SELECT COUNT(*) FROM users WHERE email <> 'system@specht.local'
 `
@@ -85,7 +99,10 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 const createFirstAdmin = `-- name: CreateFirstAdmin :one
 INSERT INTO users (email, display_name, password_hash, role)
 SELECT lower($1::text), $2, $3::text, 'admin'
-WHERE NOT EXISTS (SELECT 1 FROM users WHERE email <> 'system@specht.local')
+WHERE NOT EXISTS (
+    SELECT 1 FROM users
+    WHERE role = 'admin' AND disabled_at IS NULL AND email <> 'system@specht.local'
+)
 RETURNING id, email, display_name, password_hash, avatar_url, role, created_at, updated_at, token_version, disabled_at
 `
 
@@ -95,10 +112,10 @@ type CreateFirstAdminParams struct {
 	PasswordHash string      `json:"password_hash"`
 }
 
-// Creates the first account as a global admin, and only while no real account
-// exists (the seeded system account does not count). No row comes back when one
-// does, so two racing setups cannot both win; the caller serialises them with
-// an advisory lock.
+// Creates the first admin, and only while no active global admin exists (the
+// seeded system account does not count). Members who registered earlier do not
+// close it. No row comes back when an admin exists, so two racing setups cannot
+// both win; the caller serialises them with an advisory lock.
 func (q *Queries) CreateFirstAdmin(ctx context.Context, arg CreateFirstAdminParams) (User, error) {
 	row := q.db.QueryRow(ctx, createFirstAdmin, arg.Email, arg.DisplayName, arg.PasswordHash)
 	var i User
