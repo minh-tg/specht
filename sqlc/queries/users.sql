@@ -52,14 +52,23 @@ SELECT pg_advisory_xact_lock($1::bigint);
 -- install is not a person and does not count.
 SELECT COUNT(*) FROM users WHERE email <> 'system@specht.local';
 
+-- name: CountAdmins :one
+-- Counts the active global admins. First-run setup stays open while this is
+-- zero, whatever other accounts exist.
+SELECT COUNT(*) FROM users
+WHERE role = 'admin' AND disabled_at IS NULL AND email <> 'system@specht.local';
+
 -- name: CreateFirstAdmin :one
--- Creates the first account as a global admin, and only while no real account
--- exists (the seeded system account does not count). No row comes back when one
--- does, so two racing setups cannot both win; the caller serialises them with
--- an advisory lock.
+-- Creates the first admin, and only while no active global admin exists (the
+-- seeded system account does not count). Members who registered earlier do not
+-- close it. No row comes back when an admin exists, so two racing setups cannot
+-- both win; the caller serialises them with an advisory lock.
 INSERT INTO users (email, display_name, password_hash, role)
 SELECT lower(sqlc.arg(email)::text), sqlc.narg(display_name), sqlc.arg(password_hash)::text, 'admin'
-WHERE NOT EXISTS (SELECT 1 FROM users WHERE email <> 'system@specht.local')
+WHERE NOT EXISTS (
+    SELECT 1 FROM users
+    WHERE role = 'admin' AND disabled_at IS NULL AND email <> 'system@specht.local'
+)
 RETURNING *;
 
 -- name: ListUsers :many

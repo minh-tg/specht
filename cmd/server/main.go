@@ -592,13 +592,14 @@ func apiKeyScopes(raw []byte) ([]string, error) {
 }
 
 // offerFirstRunSetup returns the token that guards first-run setup, or nil
-// when the server already has an account. The token comes from SETUP_TOKEN
+// when the server already has an active admin. Accounts that are not admins do
+// not count, so a stranger who registered first cannot close setup. The token comes from SETUP_TOKEN
 // when it is set and is otherwise random; it is written to the log once, so
 // whoever can read the server's logs can set the server up, and nobody else.
 func offerFirstRunSetup(ctx context.Context, stores *port.Stores) *usecase.SetupToken {
-	count, err := stores.Users.Count(ctx)
+	count, err := stores.Users.CountAdmins(ctx)
 	if err != nil {
-		slog.Error("setup: could not count accounts", "error", err)
+		slog.Error("setup: could not count admins", "error", err)
 		return nil
 	}
 	if count > 0 {
@@ -610,9 +611,9 @@ func offerFirstRunSetup(ctx context.Context, stores *port.Stores) *usecase.Setup
 		return nil
 	}
 	if os.Getenv("SETUP_TOKEN") != "" {
-		slog.Info("first run: the server has no accounts; open the app and set it up with the token in SETUP_TOKEN")
+		slog.Info("first run: the server has no admin; open the app and set it up with the token in SETUP_TOKEN")
 	} else {
-		slog.Info("first run: the server has no accounts; open the app and set it up with this token", "setup_token", token.Value())
+		slog.Info("first run: the server has no admin; open the app and set it up with this token", "setup_token", token.Value())
 	}
 	return token
 }

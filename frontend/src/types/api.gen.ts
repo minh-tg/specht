@@ -105,10 +105,11 @@ export interface paths {
     put?: never;
     /**
      * Create the first administrator
-     * @description First-run setup for a server with no accounts. The caller proves access
+     * @description First-run setup for a server with no global admin. Accounts that
+     *     registered earlier do not close it. The caller proves access
      *     to the server with the setup token it logs at startup (or the value of
      *     `SETUP_TOKEN`). The account is created as a global admin and signed in.
-     *     Two requests at once create one account. Once an account exists the
+     *     Two requests at once create one admin. Once a global admin exists the
      *     route answers 404, the same as a server that offers no setup.
      *     Shares the credential rate limit with login and registration.
      *
@@ -2019,7 +2020,7 @@ export interface components {
     };
     Capabilities: {
       setup: {
-        /** @description True while the server has no accounts and waits for its first administrator. The client shows the setup screen instead of sign-in. */
+        /** @description True while the server has no global admin and waits for its first administrator. The client shows the setup screen instead of sign-in. */
         required: boolean;
       };
       registration: {
@@ -3765,6 +3766,23 @@ export interface operations {
         };
       };
       404: components["responses"]["NotFound"];
+      /** @description The address already belongs to an account, for example one registered before setup. Use another address. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "error": {
+           *         "code": "email_in_use",
+           *         "message": "that email address already belongs to an account"
+           *       }
+           *     }
+           */
+          "application/json": components["schemas"]["Error"];
+        };
+      };
       413: components["responses"]["BodyTooLarge"];
       429: components["responses"]["RateLimited"];
     };

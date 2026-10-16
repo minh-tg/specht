@@ -49,7 +49,7 @@ var ErrWaiverLapsed = errors.New("the waiver has expired; extend its expiry firs
 var ErrLastAdmin = errors.New("last project admin")
 
 // ErrSetupClosed is returned when first-run setup is attempted after an
-// account exists.
+// admin exists.
 var ErrSetupClosed = errors.New("setup is closed")
 
 // ErrInviteEmailMismatch is returned when an invite is bound to another address.
@@ -177,9 +177,13 @@ type UserStore interface {
 	List(ctx context.Context, filter string, limit, offset int32) ([]User, error)
 	// Count returns the number of accounts.
 	Count(ctx context.Context) (int64, error)
+	// CountAdmins returns the number of active global admins.
+	CountAdmins(ctx context.Context) (int64, error)
 	// CreateFirstAdmin creates the first account as a global admin. It returns
-	// ErrSetupClosed when any account already exists, including when another
-	// request created it a moment earlier.
+	// ErrSetupClosed when an active admin already exists, including when
+	// another request created it a moment earlier, and ErrEmailTaken when the
+	// address already belongs to an account. Accounts that are not admins do
+	// not close it.
 	CreateFirstAdmin(ctx context.Context, email string, displayName *string, passwordHash string) (User, error)
 	// SetRole changes a user's global role. Role must be a valid users.role value.
 	SetRole(ctx context.Context, userID, role string) (User, error)

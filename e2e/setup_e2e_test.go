@@ -161,7 +161,7 @@ func TestE2E_FirstRunSetup(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, status, string(raw))
 
 	required, header := srv.setupRequired(t)
-	require.True(t, required, "a server with no accounts asks for setup")
+	require.True(t, required, "a server with no admin asks for setup")
 	require.Equal(t, "no-store", header.Get("Cache-Control"))
 
 	match := setupTokenInLog.FindStringSubmatch(srv.readLog())
@@ -224,6 +224,42 @@ func TestE2E_FirstRunSetupWithOperatorToken(t *testing.T) {
 		"token": token, "email": "ops@example.com", "password": "correct-horse-battery",
 	})
 	require.Equal(t, http.StatusCreated, status, string(raw))
+}
+
+// TestE2E_SetupSurvivesAStrangerRegisteringFirst covers a fresh server with
+// registration open: someone signs up before the operator. That account is a
+// normal user, so it must not close setup, and the operator can still create
+// the first admin with the token. A registered address cannot be reused.
+func TestE2E_SetupSurvivesAStrangerRegisteringFirst(t *testing.T) {
+	const token = "squatter-race-token-0001"
+	srv := startFreshServer(t, "specht_setup_squat", "SETUP_TOKEN="+token, "REGISTRATION_ENABLED=true")
+
+	status, _, raw := srv.do(t, http.MethodPost, "/api/v1/auth/register", "", map[string]any{
+		"email": "stranger@example.com", "password": "correct-horse-battery",
+	})
+	require.Equal(t, http.StatusCreated, status, string(raw))
+
+	required, _ := srv.setupRequired(t)
+	require.True(t, required, "a registered non-admin must not close setup")
+
+	status, _, raw = srv.do(t, http.MethodPost, "/api/v1/setup", "", map[string]any{
+		"token": token, "email": "stranger@example.com", "password": "correct-horse-battery",
+	})
+	require.Equal(t, http.StatusConflict, status, "the address is taken: "+string(raw))
+	required, _ = srv.setupRequired(t)
+	require.True(t, required, "a refused setup leaves setup open")
+
+	status, _, raw = srv.do(t, http.MethodPost, "/api/v1/setup", "", map[string]any{
+		"token": token, "email": "ops@example.com", "password": "correct-horse-battery",
+	})
+	require.Equal(t, http.StatusCreated, status, string(raw))
+
+	required, _ = srv.setupRequired(t)
+	require.False(t, required, "the first admin closes setup")
+	status, _, _ = srv.do(t, http.MethodPost, "/api/v1/setup", "", map[string]any{
+		"token": token, "email": "again@example.com", "password": "correct-horse-battery",
+	})
+	require.Equal(t, http.StatusNotFound, status)
 }
 
 // TestE2E_SetupIsClosedOnAnEstablishedServer checks the shared server, which

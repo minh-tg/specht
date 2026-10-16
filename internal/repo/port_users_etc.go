@@ -91,12 +91,18 @@ func (r *pgUserPort) Count(ctx context.Context) (int64, error) {
 	return r.q.CountUsers(ctx)
 }
 
+// CountAdmins returns the number of active global admins.
+func (r *pgUserPort) CountAdmins(ctx context.Context) (int64, error) {
+	return r.q.CountAdmins(ctx)
+}
+
 // setupLockKey is the advisory-lock key that serialises first-run setup.
 const setupLockKey int64 = 0x53706563687453 // "SpechtS"
 
-// CreateFirstAdmin creates the first account as a global admin. The advisory
-// lock makes two racing setups take turns, so the second sees the account the
-// first created and is refused.
+// CreateFirstAdmin creates the first account as a global admin while no active
+// admin exists. The advisory lock makes two racing setups take turns, so the
+// second sees the admin the first created and is refused. An address that is
+// already registered is refused with ErrEmailTaken.
 func (r *pgUserPort) CreateFirstAdmin(ctx context.Context, email string, displayName *string, passwordHash string) (port.User, error) {
 	var out port.User
 	err := r.withTx(ctx, func(q *sqlc.Queries) error {
@@ -112,6 +118,9 @@ func (r *pgUserPort) CreateFirstAdmin(ctx context.Context, email string, display
 			return port.ErrSetupClosed
 		}
 		if err != nil {
+			if isUniqueViolation(err) {
+				return port.ErrEmailTaken
+			}
 			return err
 		}
 		out = userToPort(row)

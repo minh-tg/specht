@@ -80,7 +80,7 @@ compose defaults differ, which is noted.
 | `LOG_LEVEL` | `info` | `debug`, `info`, `warn`, or `error`. |
 | `CORS_ORIGINS` | *(empty)* | Comma/space-separated origins allowed to call the API from a browser. Empty allows none: the bundled UI is same-origin and needs no entry. Set it only when the UI is hosted elsewhere (use exact `https://` origins). |
 | `ADMIN_EMAILS` | *(empty)* | Comma-separated emails promoted to global admin at startup. Idempotent; unknown addresses are skipped with a warning. Matching ignores case. While `REGISTRATION_ENABLED` is on, an address not yet registered can be claimed by anyone before promotion; keep signup closed during admin bootstrapping or create accounts only after restricting registration. |
-| `SETUP_TOKEN` | *(random)* | Proof of access for first-run setup. While the database has no accounts the server logs a random token at startup (`setup_token=...`); set this variable to choose it instead (at least 16 characters, never logged). Ignored once an account exists. |
+| `SETUP_TOKEN` | *(random)* | Proof of access for first-run setup. While the database has no global admin the server logs a random token at startup (`setup_token=...`); set this variable to choose it instead (at least 16 characters, never logged). Ignored once a global admin exists. |
 | `REGISTRATION_ENABLED` | `false` | Allow self-service `POST /api/v1/auth/register`. Unset or empty is closed; set `true` only when open signup is intended. The endpoint answers `403 registration_disabled` while closed. First-run setup and invite links keep working, and invalid values fail startup. |
 | `TRUSTED_PROXIES` | *(empty)* | Comma/space-separated CIDRs of proxy hops allowed to set `X-Forwarded-For` / `X-Real-IP` / `X-Forwarded-Proto`. Empty trusts nobody. |
 | `INVENTORY_TTL` | `2160h` | How long a scanned package stays in the watcher's active inventory. |
@@ -309,7 +309,12 @@ administration needs a global admin.
 1. On the first start, read the setup token from the server log
    (`docker compose logs server | grep setup_token`), open the app and create
    the first administrator with it. Or set `SETUP_TOKEN` in `deploy/.env.prod`
-   and use that value. Setup closes as soon as the account exists.
+   and use that value. Setup stays open until a global admin exists, so a
+   stranger who registers before you does not close it; setup closes as soon
+   as the first admin is created. If the address you enter already belongs to
+   an account, setup answers `409 email_in_use`; use another address. An
+   existing server that has accounts but no admin offers a new token in the
+   log at the next start.
 2. To promote more accounts, add their emails to `ADMIN_EMAILS` in
    `deploy/.env.prod` and restart (`up -d` again — promotion is idempotent).
 3. Create projects in the UI, then add members from the project's Access page
