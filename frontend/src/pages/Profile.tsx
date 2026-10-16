@@ -142,6 +142,10 @@ function PasswordSection({ displayName }: { readonly displayName: string | null 
         setNextError(err.message);
       } else if (err instanceof APIError && err.code === "no_local_password") {
         setNoLocalPassword(true);
+      } else if (err instanceof APIError && err.code === "account_changed") {
+        setFormError(
+          "Your account changed while the password was being updated. Sign in again with your new password.",
+        );
       } else if (err instanceof APIError && err.status === 429) {
         setFormError("Too many attempts. Wait a minute and try again.");
       } else {

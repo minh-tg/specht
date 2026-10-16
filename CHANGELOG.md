@@ -523,3 +523,15 @@ releases.
   admins still see every team. A project manager now links a team from the ones
   they can see; a global admin can link any team. See "Who sees which teams" in
   `deploy/README.md`.
+- Changing a password, and resetting one from the server's recovery command, now write the
+  new hash, start a new token generation and revoke the refresh tokens and pending reset
+  links in one transaction under the account row lock. They used to revoke first and write
+  second as separate statements, so a password sign-in that stored its session between the
+  two kept a refresh token that the new password never ended. A password change also
+  refuses to write if the account was linked to SSO (which clears its password) after the
+  current password was checked, instead of giving the account a password again.
+- A password change now stores the caller's own new session against the hash and token
+  generation the change wrote, the way a password sign-in stores its session. An SSO link
+  that committed right after the change used to leave that session alive under a
+  generation the link never expected. The change now answers 409 `account_changed`, issues
+  no session, and the caller signs in again.

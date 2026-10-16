@@ -927,12 +927,22 @@ var ErrWrongPassword = errors.New("current password is incorrect")
 // through an identity provider, so there is nothing to change.
 var ErrNoLocalPassword = errors.New("this account has no local password")
 
+// ErrAccountChanged means the password change committed but the account changed
+// again (an SSO link, another change, a deactivation) before the caller's new
+// session was stored, so no session was issued. The caller signs in again.
+var ErrAccountChanged = errors.New("account changed after the password change")
+
 // ChangePassword replaces the caller's password after checking the current one.
-// The write replaces the hash, starts a new token generation that ends every
-// open access token and revokes every refresh token in one transaction, so a
-// failure never leaves an old session alive beside a new password and a refresh
-// in flight cannot store a successor. The caller gets a fresh session back and
-// stays signed in.
+// The store writes the hash, starts a new token generation (which ends every
+// open access token) and revokes every refresh token in one transaction under
+// the account row lock, so a failure never leaves an old session alive beside a
+// new password and a login in flight cannot keep a session. If the hash changed
+// since the check, nothing is written and the current password counts as wrong.
+// The caller gets a fresh session back and stays signed in. That session is
+// stored against the hash and token generation the change wrote, the way a
+// password login stores its own, so an account change that commits right after
+// the password change refuses it with ErrAccountChanged instead of leaving a
+// session under a generation that change did not expect.
 func (u *Usecases) ChangePassword(ctx context.Context, userID, current, next string) (*AuthResponse, error) {
 	id, err := validID(userID)
 	if err != nil {
@@ -960,17 +970,26 @@ func (u *Usecases) ChangePassword(ctx context.Context, userID, current, next str
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
 	}
-	if err := u.deps.Stores.Users.SetPassword(ctx, id, hash); err != nil {
-		return nil, fmt.Errorf("set password: %w", err)
+	version, err := u.deps.Stores.Users.ChangePasswordAndRevoke(ctx, id, hash, user.PasswordHash)
+	if errors.Is(err, port.ErrPasswordStale) {
+		return nil, ErrWrongPassword
+	}
+	if err != nil {
+		return nil, fmt.Errorf("change password: %w", err)
 	}
 
-	token, err := u.issueAccessToken(ctx, id, user.Email, auth.TokenRole(user.Role))
-	if err != nil {
-		return nil, fmt.Errorf("create token: %w", err)
+	changed := port.User{ID: id, Email: user.Email, PasswordHash: hash, TokenVersion: version}
+	resp, version, err := u.createLoginSession(ctx, changed)
+	if errors.Is(err, port.ErrLoginStale) {
+		slog.Warn("change password: account changed after the password change", "user_id", id)
+		return nil, ErrAccountChanged
 	}
-	resp, err := u.createSession(ctx, id, user.Email)
 	if err != nil {
 		return nil, err
+	}
+	token, err := u.deps.Tokens.CreateToken(id, user.Email, auth.TokenRole(user.Role), version)
+	if err != nil {
+		return nil, fmt.Errorf("create token: %w", err)
 	}
 	resp.Token = token
 	return resp, nil

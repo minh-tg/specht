@@ -78,6 +78,11 @@ var ErrLoginStale = errors.New("account changed during login")
 // an SSO link all do). The refresh stores nothing.
 var ErrSessionStale = errors.New("account changed during refresh")
 
+// ErrPasswordStale is returned by ChangePasswordAndRevoke when the account no
+// longer holds the password hash the caller verified: another change, a reset
+// or an SSO link replaced or cleared it first. Nothing was written.
+var ErrPasswordStale = errors.New("password changed since it was verified")
+
 // ErrAccountDeactivated is returned when an SSO link finds the account
 // deactivated under its row lock, so it neither links nor proves the address.
 var ErrAccountDeactivated = errors.New("account is deactivated")
@@ -266,6 +271,19 @@ type UserStore interface {
 	// transaction, so every open access token and every session stops working
 	// and no refresh that started earlier can store a successor.
 	SetPassword(ctx context.Context, userID, passwordHash string) error
+	// ChangePasswordAndRevoke replaces the account's password hash, starts a
+	// new token generation, revokes every refresh token and every pending reset
+	// link, all in one transaction that holds the account row lock
+	// (FOR NO KEY UPDATE) from the first statement. A password login stores its
+	// session under a share lock on the same row, so a login that started
+	// earlier either stored its token before this call, and the revoke ends it,
+	// or reads the new row afterwards and is refused. When verifiedHash is not
+	// empty the row must still hold it, or the call writes nothing and returns
+	// ErrPasswordStale; an empty verifiedHash skips the check (the host-side
+	// recovery path, which has no password to verify). It returns the token
+	// generation the change started, so the caller's own session can be stored
+	// against it with CreateForLogin and refused if the account changed again.
+	ChangePasswordAndRevoke(ctx context.Context, userID, passwordHash, verifiedHash string) (int32, error)
 	// TokenVersion returns the account's current access-token generation.
 	TokenVersion(ctx context.Context, userID string) (int32, error)
 	// BumpTokenVersion invalidates every access token issued before the call.

@@ -105,6 +105,20 @@ func TestChangePassword_SSOOnlyAccountGetsAConflict(t *testing.T) {
 	assert.Equal(t, "no_local_password", code)
 }
 
+func TestChangePassword_AnAccountChangeAfterTheWriteAsksForANewSignIn(t *testing.T) {
+	mock := &mockUsecases{
+		changePasswordFn: func(ctx context.Context, userID, current, next string) (*usecase.AuthResponse, error) {
+			return nil, usecase.ErrAccountChanged
+		},
+	}
+
+	w := putPassword(t, mock, `{"current_password":"old-password","new_password":"new-password"}`, true)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+	code, _ := errorBody(t, w)
+	assert.Equal(t, "account_changed", code)
+}
+
 func TestChangePassword_InternalErrorsStayGeneric(t *testing.T) {
 	mock := &mockUsecases{
 		changePasswordFn: func(ctx context.Context, userID, current, next string) (*usecase.AuthResponse, error) {

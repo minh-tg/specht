@@ -597,10 +597,14 @@ paths:
       operationId: changePassword
       summary: Change the signed-in account's password
       description: |
-        Checks the current password, then replaces it. Every refresh token for
-        the account is revoked first, and the write starts a new token
-        generation, so every other open session ends. The response is a fresh
-        session for the caller, who stays signed in.
+        Checks the current password, then replaces it. The new hash, a new
+        token generation and the revocation of every refresh token and pending
+        reset link are one transaction under a lock on the account, so every
+        other open session ends and a sign-in in flight cannot keep one. The
+        response is a fresh session for the caller, who stays signed in. If
+        the account changes again (an SSO link, for one) after the password was
+        written and before that session is stored, the password stays changed,
+        no session is issued and the call answers 409 `account_changed`.
 
         Password rules: at least 8 characters and at most 72 bytes of UTF-8 (some characters, such as emoji, take more than one), at least one visible character, and not on a list of about 2,000 commonly used passwords (`400 password_too_common`). It must also differ from the account's email address, the part before the @, and its display name (`400 password_matches_account`). The new password must also differ from the current one.
         An account that signs in through SSO and has no password is told so
@@ -637,7 +641,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/SessionRequired" }
         "409":
-          description: The account has no local password (`no_local_password`).
+          description: The account has no local password (`no_local_password`), or it changed right after the password was written and the caller must sign in again (`account_changed`).
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }

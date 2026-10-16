@@ -128,3 +128,11 @@ FOR NO KEY UPDATE;
 -- updates the same row, so the link sees its result instead of a read taken
 -- earlier.
 SELECT disabled_at FROM users WHERE id = $1 FOR NO KEY UPDATE;
+
+-- name: LockUserPasswordHash :one
+-- Locks the account row for the rest of the transaction before a password is
+-- replaced, and returns the hash it holds now. A login, an SSO link and a
+-- deactivation touch the same row, so the change sees their result instead of
+-- a read taken earlier, and a login that stored its session under the share
+-- lock is revoked by the change that waited for it.
+SELECT password_hash FROM users WHERE id = $1 FOR NO KEY UPDATE;
