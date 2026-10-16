@@ -454,20 +454,42 @@ func (r *pgRefreshTokenPort) Revoke(ctx context.Context, id string) (port.Refres
 	return refreshTokenToPort(row), nil
 }
 
+// RevokeAllForUser revokes every live token of the account. It takes the
+// account row lock first, so a refresh in flight has committed its successor by
+// the time the revoke statement runs and the successor is revoked with the rest.
 func (r *pgRefreshTokenPort) RevokeAllForUser(ctx context.Context, userID string) error {
 	uid, err := parseID(userID)
 	if err != nil {
 		return err
 	}
-	return r.q.RevokeUserRefreshTokens(ctx, uid)
+	return r.withTx(ctx, func(q *sqlc.Queries) error {
+		if _, err := q.LockUserForRevoke(ctx, uid); errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		return q.RevokeUserRefreshTokens(ctx, uid)
+	})
 }
 
+// RevokeFamily revokes every live token of one sign-in chain under the same
+// account lock as RevokeAllForUser. Without it the revoke can run between a
+// thief's compare-and-swap and the insert of its successor: the statement
+// waits on the spent row, skips it once it commits, and never sees the
+// successor, so the chain the victim just reported survives.
 func (r *pgRefreshTokenPort) RevokeFamily(ctx context.Context, familyID string) error {
 	fid, err := parseID(familyID)
 	if err != nil {
 		return err
 	}
-	return r.q.RevokeRefreshTokenFamily(ctx, fid)
+	return r.withTx(ctx, func(q *sqlc.Queries) error {
+		if _, err := q.LockFamilyOwner(ctx, fid); errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		} else if err != nil {
+			return err
+		}
+		return q.RevokeRefreshTokenFamily(ctx, fid)
+	})
 }
 
 func (r *pgRefreshTokenPort) Prune(ctx context.Context, expiredBefore, revokedBefore time.Time, limit int) (int64, error) {

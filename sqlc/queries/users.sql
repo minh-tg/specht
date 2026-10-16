@@ -107,6 +107,21 @@ SELECT password_hash, disabled_at, token_version FROM users WHERE id = $1 FOR SH
 -- waits until the successor is stored and then revokes it with the rest.
 SELECT disabled_at, token_version FROM users WHERE id = $1 FOR SHARE;
 
+-- name: LockUserForRevoke :one
+-- Takes a lock on the account for the rest of the transaction that conflicts
+-- with the share lock a refresh holds from its read until its successor is
+-- stored. A revoke that starts while a refresh is in flight waits for it to
+-- commit and then sees the successor; without the lock the revoke could finish
+-- first and leave the successor alive.
+SELECT id FROM users WHERE id = $1 FOR NO KEY UPDATE;
+
+-- name: LockFamilyOwner :one
+-- LockUserForRevoke for the owner of one sign-in chain. Returns no row when the
+-- chain has no tokens.
+SELECT id FROM users
+WHERE id = (SELECT user_id FROM refresh_tokens WHERE family_id = $1 LIMIT 1)
+FOR NO KEY UPDATE;
+
 -- name: LockUserForLink :one
 -- Locks the account row for the rest of the transaction before an SSO link
 -- changes it, and returns whether the account is deactivated. A deactivation
