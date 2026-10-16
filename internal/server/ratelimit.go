@@ -14,8 +14,9 @@ import (
 )
 
 // rateLimitBucketTTL bounds memory: per-key token buckets idle longer than
-// this are evicted on the next request. In-memory buckets reset on restart,
-// which is acceptable for single-instance self-host deployments (no Redis).
+// this are evicted on the next request, and a limiter never holds more than
+// maxLiveBuckets of them. In-memory buckets reset on restart, which is
+// acceptable for single-instance self-host deployments (no Redis).
 const rateLimitBucketTTL = 3 * time.Minute
 
 // rateLimitExempt are paths that must never be rate limited: orchestration
@@ -47,21 +48,21 @@ const (
 	defaultLoginBurst     = 5
 )
 
-type rateLimitVisitor struct {
-	limiter  *rate.Limiter
-	lastSeen time.Time
-}
-
 // RateLimiter is a per-key token-bucket limiter. A zero value is unusable;
 // build one with NewRateLimiter. It is safe for concurrent use.
 type RateLimiter struct {
 	mu          sync.Mutex
-	visitors    map[string]*rateLimitVisitor
+	store       *keyedStore[*rate.Limiter]
 	limit       rate.Limit
 	limitHeader string // X-RateLimit-Limit value; empty omits the header
 	burst       int
-	lastSweep   time.Time
 	now         func() time.Time
+}
+
+func newBucketStore(limit rate.Limit, burst int) *keyedStore[*rate.Limiter] {
+	return newKeyedStore(maxLiveBuckets, rateLimitBucketTTL, func() *rate.Limiter {
+		return rate.NewLimiter(limit, burst)
+	})
 }
 
 // NewRateLimiter builds a limiter allowing rps requests per second with the
@@ -74,7 +75,7 @@ func NewRateLimiter(rps, burst int) *RateLimiter {
 		burst = 1
 	}
 	return &RateLimiter{
-		visitors:    make(map[string]*rateLimitVisitor),
+		store:       newBucketStore(rate.Limit(rps), burst),
 		limit:       rate.Limit(rps),
 		limitHeader: strconv.Itoa(rps),
 		burst:       burst,
@@ -93,11 +94,12 @@ func NewLoginRateLimiter(perMinute, burst int) *RateLimiter {
 	if burst <= 0 {
 		burst = 1
 	}
+	limit := rate.Limit(float64(perMinute) / 60)
 	return &RateLimiter{
-		visitors: make(map[string]*rateLimitVisitor),
-		limit:    rate.Limit(float64(perMinute) / 60),
-		burst:    burst,
-		now:      time.Now,
+		store: newBucketStore(limit, burst),
+		limit: limit,
+		burst: burst,
+		now:   time.Now,
 	}
 }
 
@@ -106,27 +108,14 @@ func NewLoginRateLimiter(perMinute, burst int) *RateLimiter {
 func (l *RateLimiter) BucketCount() int {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return len(l.visitors)
+	return l.store.len()
 }
 
 func (l *RateLimiter) limiterFor(key string, now time.Time) *rate.Limiter {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if now.Sub(l.lastSweep) >= rateLimitBucketTTL {
-		for k, v := range l.visitors {
-			if now.Sub(v.lastSeen) > rateLimitBucketTTL {
-				delete(l.visitors, k)
-			}
-		}
-		l.lastSweep = now
-	}
-	v, ok := l.visitors[key]
-	if !ok {
-		v = &rateLimitVisitor{limiter: rate.NewLimiter(l.limit, l.burst)}
-		l.visitors[key] = v
-	}
-	v.lastSeen = now
-	return v.limiter
+	limiter, _ := l.store.acquire(key, now)
+	return limiter
 }
 
 // Middleware enforces the bucket for each request. When useIdentity is set,
