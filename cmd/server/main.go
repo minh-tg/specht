@@ -225,6 +225,7 @@ func main() {
 		RegistrationDisabled:    cfg.RegistrationDisabled,
 		SSOAllowUnverifiedEmail: cfg.SSO.AllowUnverifiedEmail,
 		IngestConcurrency:       cfg.IngestConcurrency,
+		IngestMemoryBudget:      cfg.IngestMemoryBudget,
 		Ready:                   pool.Ping,
 		TrustedProxies:          cfg.TrustedProxies,
 		RateLimit: server.RateLimitConfig{
