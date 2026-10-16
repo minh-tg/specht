@@ -66,6 +66,10 @@ var ErrEmailTaken = errors.New("email already registered")
 // leave the instance without an active global admin.
 var ErrLastGlobalAdmin = errors.New("last global admin")
 
+// ErrCreatorInactive is returned when an API key would be created by an account
+// that is deactivated or does not exist.
+var ErrCreatorInactive = errors.New("key creator is not an active account")
+
 // ErrDuplicateReport is returned when a report with the same raw-content
 // hash has already been ingested for the project.
 var ErrDuplicateReport = errors.New("duplicate report")
@@ -341,6 +345,10 @@ type CreateAPIKeyInput struct {
 
 // APIKeyStore persists project API keys.
 type APIKeyStore interface {
+	// Create stores a key under a lock on its creator's account row, which a
+	// deactivation also takes. It returns ErrCreatorInactive when the creator
+	// is deactivated or missing, so no key is stored after the deactivation
+	// revoked the account's keys.
 	Create(ctx context.Context, input CreateAPIKeyInput) (APIKey, error)
 	ListByProject(ctx context.Context, projectID string) ([]APIKey, error)
 	GetByHash(ctx context.Context, keyHash string) (APIKey, error)

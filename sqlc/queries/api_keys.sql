@@ -1,3 +1,13 @@
+-- name: LockKeyCreator :one
+-- Takes a share lock on an active account for the rest of the transaction. A
+-- deactivation updates the same row, and that update conflicts with the lock,
+-- so a key insert and a deactivation run one after the other: the key is
+-- either refused (the account is already deactivated) or in place before the
+-- deactivation revokes the account's keys. A foreign key check alone does not
+-- conflict with that update, so it cannot do this. No row means the account is
+-- deactivated or does not exist.
+SELECT id FROM users WHERE id = $1 AND disabled_at IS NULL FOR SHARE;
+
 -- name: CreateAPIKey :one
 INSERT INTO api_keys (project_id, name, key_prefix, key_hash, last_four, scopes, created_by, expires_at)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
