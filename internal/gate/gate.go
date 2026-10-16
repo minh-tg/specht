@@ -7,6 +7,7 @@ package gate
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -71,8 +72,13 @@ type Finding struct {
 	Fingerprint         string
 	CurrentTitle        string
 	EnvironmentID       string
-	TargetID            string
-	ArtifactID          string
+	// EnvironmentIDs lists every environment whose scans observed the finding
+	// (an empty string stands for a scan with no environment). A waiver scoped
+	// to an environment covers the finding only when it covers all of them.
+	// Empty means the caller knows only EnvironmentID.
+	EnvironmentIDs []string
+	TargetID       string
+	ArtifactID     string
 	// AnalysisState is the finding's current analysis state ("" when none
 	// has been recorded — the untriaged marker). Source policies that admit
 	// findings only after triage consult it.
@@ -346,10 +352,30 @@ func (g *gate) evaluateFindings(ctx context.Context, projectID string, findings 
 	}, nil
 }
 
-// contextMatchesContexts reports whether any of the waiver's contexts accepts
-// the finding's newest scan context. A context that names no environment,
-// target or artifact is a leftover row and accepts nothing.
+// contextMatchesContexts reports whether the waiver's contexts accept the
+// finding. The newest scan's environment, target and artifact must fit one
+// context, and every other environment that observed the finding must fit
+// some context too, so a waiver scoped to dev cannot cover a finding that a
+// production scan also reported.
 func contextMatchesContexts(f Finding, contexts []WaiverContext) bool {
+	return latestContextMatches(f, contexts) && observedEnvironmentsCovered(f, contexts)
+}
+
+// observedEnvironmentsCovered reports whether each environment that observed
+// the finding is accepted by at least one context. A context with no
+// environment accepts any of them.
+func observedEnvironmentsCovered(f Finding, contexts []WaiverContext) bool {
+	for _, env := range f.EnvironmentIDs {
+		if !slices.ContainsFunc(contexts, func(cx WaiverContext) bool {
+			return cx.EnvironmentID == "" || cx.EnvironmentID == env
+		}) {
+			return false
+		}
+	}
+	return true
+}
+
+func latestContextMatches(f Finding, contexts []WaiverContext) bool {
 	for _, cx := range contexts {
 		if cx.EnvironmentID == "" && cx.TargetID == "" && cx.ArtifactID == "" {
 			continue // names nothing: a leftover row, never a wildcard

@@ -127,11 +127,58 @@ func TestEvaluate_ContextWaiver_Matching(t *testing.T) {
 	assert.Equal(t, 3, d.TotalBlocking)
 }
 
+// A waiver scoped to one environment covers a finding only while every
+// environment that observed the finding is inside the waiver's scope. The
+// newest scan alone must not decide it: a dev scan after a production scan of
+// the same code leaves the finding present in production.
+func TestEvaluate_EnvironmentWaiverDoesNotCoverOtherEnvironmentOccurrences(t *testing.T) {
+	findings := []Finding{
+		{ID: "dev-only", CurrentSeverityRank: 4, EnvironmentID: "env-dev", EnvironmentIDs: []string{"env-dev"}},
+		{ID: "dev-latest", CurrentSeverityRank: 4, EnvironmentID: "env-dev", EnvironmentIDs: []string{"env-dev", "env-prod"}},
+		{ID: "prod-latest", CurrentSeverityRank: 4, EnvironmentID: "env-prod", EnvironmentIDs: []string{"env-dev", "env-prod"}},
+		{ID: "unscoped", CurrentSeverityRank: 4, EnvironmentID: "env-dev", EnvironmentIDs: []string{"", "env-dev"}},
+	}
+	g := New(
+		&mockFindingsRepo{findings: findings},
+		&mockWaiversRepo{waivers: []Waiver{
+			{ID: "w1", Contexts: []WaiverContext{{EnvironmentID: "env-dev"}}},
+		}},
+	)
+	d, err := g.Evaluate(context.Background(), "proj-1", 3)
+	require.NoError(t, err)
+	assert.Equal(t, StatusFail, d.Status)
+	assert.Equal(t, []string{"dev-latest", "prod-latest", "unscoped"}, d.BlockedBy)
+	assert.Equal(t, []string{"dev-only"}, d.WaivedFindingIDs)
+}
+
+func TestIsFindingWaived_NeedsEveryObservedEnvironmentCovered(t *testing.T) {
+	f := Finding{
+		ID: "f1", CurrentSeverityRank: 4, TargetID: "app-api",
+		EnvironmentID: "env-dev", EnvironmentIDs: []string{"env-dev", "env-prod"},
+	}
+	cases := map[string]struct {
+		contexts []WaiverContext
+		waived   bool
+	}{
+		"contexts naming both environments":   {[]WaiverContext{{EnvironmentID: "env-dev"}, {EnvironmentID: "env-prod"}}, true},
+		"a context that names no environment": {[]WaiverContext{{TargetID: "app-api"}}, true},
+		"the newest environment only":         {[]WaiverContext{{EnvironmentID: "env-dev"}}, false},
+		"the older environment only":          {[]WaiverContext{{EnvironmentID: "env-prod"}}, false},
+		"one environment and a wildcard":      {[]WaiverContext{{EnvironmentID: "env-dev"}, {}}, true},
+		"both environments of another target": {[]WaiverContext{{EnvironmentID: "env-dev", TargetID: "x"}, {EnvironmentID: "env-prod", TargetID: "x"}}, false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			assert.Equal(t, tc.waived, IsFindingWaived(f, []Waiver{{ID: "w1", Contexts: tc.contexts}}))
+		})
+	}
+}
+
 // A context row that names no environment, target or artifact matches no
 // finding. A deleted environment leaves such a row behind, and it must not
 // widen the waiver to every finding.
 func TestIsFindingWaived_EmptyContextMatchesNothing(t *testing.T) {
-	f := Finding{ID: "f1", CurrentSeverityRank: 4, EnvironmentID: "env-dev"}
+	f := Finding{ID: "f1", CurrentSeverityRank: 4, EnvironmentID: "env-dev", EnvironmentIDs: []string{"env-dev"}}
 	assert.False(t, IsFindingWaived(f, []Waiver{{ID: "w1", Contexts: []WaiverContext{{}}}}))
 	assert.True(t, IsFindingWaived(f, []Waiver{{ID: "w1", Contexts: []WaiverContext{{}, {EnvironmentID: "env-dev"}}}}),
 		"a second, real context still applies")
@@ -141,13 +188,13 @@ func TestIsFindingWaived_EmptyContextMatchesNothing(t *testing.T) {
 func TestIsFindingWaived_TargetOnlyContextApplyInEveryEnvironment(t *testing.T) {
 	w := []Waiver{{ID: "w1", Contexts: []WaiverContext{{TargetID: "app-api"}}}}
 	for _, env := range []string{"", "env-dev", "env-prod"} {
-		f := Finding{ID: "f1", CurrentSeverityRank: 4, TargetID: "app-api", EnvironmentID: env}
+		f := Finding{ID: "f1", CurrentSeverityRank: 4, TargetID: "app-api", EnvironmentID: env, EnvironmentIDs: []string{env}}
 		assert.Truef(t, IsFindingWaived(f, w), "environment %q", env)
 	}
 }
 
 func TestIsFindingWaived_ScopeAllAndEnvironmentlessWaiversApplyEverywhere(t *testing.T) {
-	f := Finding{ID: "f1", CurrentSeverityRank: 4, EnvironmentID: "env-dev"}
+	f := Finding{ID: "f1", CurrentSeverityRank: 4, EnvironmentID: "env-dev", EnvironmentIDs: []string{"env-dev", "env-prod"}}
 	assert.True(t, IsFindingWaived(f, []Waiver{{ID: "all", ScopeAll: true}}))
 	assert.True(t, IsFindingWaived(f, []Waiver{{ID: "target", Targets: []WaiverTarget{{FindingID: "f1"}}}}))
 }

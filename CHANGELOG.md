@@ -420,3 +420,7 @@ releases.
   that names no environment, target or artifact is now refused, and an old one stops matching
   instead of applying to every finding. A waiver with no environment in its contexts applies
   in every environment.
+- A waiver scoped to one environment no longer covers a finding that another environment
+  also reported. The gate used the environment of the newest scan, so a dev scan after a
+  production scan of the same code let a dev waiver cover the production finding. The waiver
+  now has to cover every environment that reported the finding.

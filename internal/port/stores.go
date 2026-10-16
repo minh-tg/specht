@@ -893,11 +893,16 @@ type IntroducedFindingEntry struct {
 	ChangeType string // "new" | "regression"
 }
 
-// FindingContext is the environment/target/artifact context of a finding.
+// FindingContext is the environment/target/artifact context of a finding's
+// newest scan, with "" for a column the scan left empty.
 type FindingContext struct {
 	EnvironmentID string
 	TargetID      string
 	ArtifactID    string
+	// EnvironmentIDs lists every environment whose reports observed the
+	// finding, "" standing for a report with no environment. An
+	// environment-scoped waiver has to cover all of them.
+	EnvironmentIDs []string
 }
 
 // FindingDisplayContext is the human-readable deployment context of a

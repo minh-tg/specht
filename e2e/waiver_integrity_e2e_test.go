@@ -104,3 +104,51 @@ func TestE2E_WaiverContextReadsTheDocumentedKeys(t *testing.T) {
 		require.Equalf(t, http.StatusBadRequest, status, "%s: %s", name, body)
 	}
 }
+
+// TestE2E_EnvironmentWaiverDoesNotCoverTheProductionFinding: a waiver scoped to
+// dev covers a finding that only dev scans reported. Once a production scan
+// has reported a finding, a later dev scan of the same code does not let the
+// dev waiver cover it.
+func TestE2E_EnvironmentWaiverDoesNotCoverTheProductionFinding(t *testing.T) {
+	slug := newProject(t, "waiver-env")
+	key := mintKey(t, slug)
+	scan := func(fixture, environment, commit string) {
+		request[ingestResponse](t, http.MethodPost, "/api/v1/reports", key,
+			ingestBodyWith(t, slug, fixture, map[string]any{
+				"environment": environment, "branch": "main", "commit_sha": commit,
+			}), http.StatusCreated)
+	}
+	const sha = "cccccccccccccccccccccccccccccccccccccccc"
+
+	// A dev-only scan creates the environment and the dev-only finding.
+	scan("high-new.sarif.json", "dev", sha)
+	dev := findEnvironment(t, slug, "dev")
+	request[waiverScopeDetail](t, http.MethodPost, "/api/v1/projects/"+slug+"/waivers", adminToken,
+		map[string]any{
+			"name":     "dev noise",
+			"contexts": []map[string]string{{"environment_id": dev.ID}},
+		}, http.StatusCreated)
+	require.False(t, getGate(t, slug, "").ThresholdBreached, "the dev waiver covers the finding only dev has seen")
+
+	// Production reports another finding: the dev waiver does not cover it.
+	scan("high.sarif.json", "production", sha)
+	before := getGate(t, slug, "")
+	require.True(t, before.ThresholdBreached, "the production finding is not waived")
+	require.EqualValues(t, 1, before.BlockingCount)
+	require.Equal(t, 1, before.WaivedCount)
+
+	// The same code scanned in dev afterwards makes dev the newest scan of the
+	// finding, but production still reports it.
+	scan("high.sarif.json", "dev", sha)
+	after := getGate(t, slug, "")
+	require.True(t, after.ThresholdBreached, "a newer dev scan must not let the dev waiver cover the production finding")
+	require.EqualValues(t, 1, after.BlockingCount)
+	require.Equal(t, 1, after.WaivedCount)
+
+	// The per-finding check agrees with the gate.
+	production := after.BlockedBy[0]
+	matched := request[checkMatchResponse](t, http.MethodPost,
+		"/api/v1/projects/"+slug+"/waivers/check-match", adminToken,
+		map[string]string{"finding_id": production}, http.StatusOK)
+	require.False(t, matched.Matched)
+}
