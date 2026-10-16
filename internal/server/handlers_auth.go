@@ -39,7 +39,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.usecase.Register(r.Context(), req.Email, req.Password)
 	if err != nil {
-		h.audit.HTTP(r, audit.EventRegister, audit.OutcomeFailure, "", req.Email, err)
+		h.audit.HTTP(r, audit.EventRegister, audit.OutcomeFailure, "", auth.MaskEmail(req.Email), err)
 		// The two password policy refusals get their own codes. Register
 		// checks the password before it looks the address up, so these
 		// answers are the same for a registered address and a new one.
@@ -60,7 +60,7 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusCreated, result)
-	h.audit.HTTP(r, audit.EventRegister, audit.OutcomeSuccess, "", req.Email, nil)
+	h.audit.HTTP(r, audit.EventRegister, audit.OutcomeSuccess, "", auth.MaskEmail(req.Email), nil)
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
@@ -84,7 +84,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			secs := max(int(math.Ceil(retryAfter.Seconds())), 1)
 			w.Header().Set("Retry-After", strconv.Itoa(secs))
 			respondError(w, http.StatusTooManyRequests, "too_many_attempts", "too many failed sign-in attempts, retry later")
-			h.audit.HTTP(r, audit.EventLogin, audit.OutcomeFailure, "", req.Email, errLoginDelayed)
+			h.audit.HTTP(r, audit.EventLogin, audit.OutcomeFailure, "", auth.MaskEmail(req.Email), errLoginDelayed)
 			return
 		}
 	}
@@ -92,14 +92,14 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	result, err := h.usecase.Login(r.Context(), req.Email, req.Password)
 	if err != nil {
 		respondError(w, http.StatusUnauthorized, "login_failed", "invalid email or password")
-		h.audit.HTTP(r, audit.EventLogin, audit.OutcomeFailure, "", req.Email, err)
+		h.audit.HTTP(r, audit.EventLogin, audit.OutcomeFailure, "", auth.MaskEmail(req.Email), err)
 		return
 	}
 	if h.loginDelay != nil && ticket.key != "" {
 		h.loginDelay.succeed(ticket)
 	}
 	respondJSON(w, http.StatusOK, result)
-	h.audit.HTTP(r, audit.EventLogin, audit.OutcomeSuccess, "", req.Email, nil)
+	h.audit.HTTP(r, audit.EventLogin, audit.OutcomeSuccess, "", auth.MaskEmail(req.Email), nil)
 }
 
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
