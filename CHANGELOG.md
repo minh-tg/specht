@@ -256,3 +256,8 @@ releases.
   registering a listed address and restarting, create the admin with first-run
   setup, sign in with SSO, or run `specht grant-admin`. At startup the server
   logs one warning for each listed address whose account is not promoted.
+- An API key whose stored scopes include anything other than `ingest` and
+  `read` is refused with 401, like an unknown key. The API never mints an
+  `admin` scope, and a key given one directly in the database used to pass the
+  route check and then fail with 500 on most reads. Project management routes
+  are for people with a role on the project, and every API key gets 403 there.

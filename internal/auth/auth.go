@@ -43,26 +43,24 @@ func RoleRank(role string) int {
 	}
 }
 
-// API-key permission scopes (project-scoped keys, ADR 019). A key is granted
-// one or more of these at creation; authorization checks a key's scope list
-// against the scope the accessed operation demands.
+// API-key permission scopes (project-scoped keys). The API mints keys with
+// ingest and read; the key authenticator refuses any other stored scope.
+// Authorization checks a key's scope list against the scope the accessed
+// operation demands.
 const (
 	ScopeIngest = "ingest" // ingest scan reports for the key's project
 	ScopeRead   = "read"   // read findings, reports, gate state, waivers
-	ScopeAdmin  = "admin"  // project mutations: API keys, waivers, triage, evidence, reachability, sign-offs
 )
 
 // RoleScope maps a role demanded by RequireRole onto the API-key scope that
 // satisfies it. Role gates express human RBAC; an API key satisfies a gate
 // only when it holds the corresponding permission scope. Keys never map to
-// session roles — they are a parallel, project-scoped mechanism — so the
-// role → scope mapping is the only bridge between the two vocabularies.
+// session roles, they are a parallel, project-scoped mechanism, so the
+// role to scope mapping is the only bridge between the two vocabularies.
+// Roles that manage a project (admin, manager, editor) map to no scope: a
+// key cannot do project management.
 func RoleScope(role string) (string, bool) {
 	switch role {
-	case RoleAdmin:
-		return ScopeAdmin, true
-	case RoleManager, RoleEditor:
-		return ScopeAdmin, true // mutations beyond plain ingest are admin-level
 	case RoleMember, RoleViewer:
 		return ScopeRead, true
 	default:
@@ -116,7 +114,7 @@ func TokenRole(role string) string {
 // Identity is the authenticated principal attached to a request context.
 // Role is populated from the JWT token claim (for session auth) or from the
 // user's global role (for API key auth). Scopes holds the permission scopes
-// granted to an API-key principal (e.g. "ingest", "read", "admin"); it is
+// granted to an API-key principal ("ingest" and "read"); it is
 // empty for session principals, whose permissions come from Role.
 type Identity struct {
 	UserID    string

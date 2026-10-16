@@ -426,8 +426,7 @@ func (u *Usecases) Login(ctx context.Context, email, password string) (*AuthResp
 }
 
 // requireProjectKeyManager lets a project manager or admin manage the
-// project's API keys. A key with the admin scope for the same project may too,
-// as it could before keys were opened to project managers.
+// project's API keys. A key never manages keys.
 func (u *Usecases) requireProjectKeyManager(ctx context.Context, projectID string) error {
 	return u.requireProjectManager(ctx, projectID)
 }

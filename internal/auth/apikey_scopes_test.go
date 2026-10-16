@@ -73,3 +73,45 @@ func TestAPIKeyAuthenticator_UnexpiredKeyAccepted(t *testing.T) {
 		})
 	}
 }
+
+// TestAPIKeyAuthenticator_RefusesScopesTheAPIDoesNotMint: the API mints only
+// ingest and read. A stored scope outside that set, whether the retired admin
+// scope or something unknown, must not authenticate, and the refusal must look
+// like an unknown key so a probe learns nothing.
+func TestAPIKeyAuthenticator_RefusesScopesTheAPIDoesNotMint(t *testing.T) {
+	unknown := NewAPIKeyAuthenticator(func(context.Context, string) (string, string, []string, time.Time, error) {
+		return "", "", nil, time.Time{}, assert.AnError
+	})
+	_, unknownErr := unknown.Authenticate(context.Background(), "vuln_nosuchkey")
+	require.Error(t, unknownErr)
+
+	tests := []struct {
+		name   string
+		scopes []string
+	}{
+		{name: "admin alone", scopes: []string{"admin"}},
+		{name: "admin next to valid scopes", scopes: []string{"ingest", "read", "admin"}},
+		{name: "unknown scope", scopes: []string{"read", "write"}},
+		{name: "empty scope name", scopes: []string{""}},
+		{name: "wrong case", scopes: []string{"Read"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := NewAPIKeyAuthenticator(func(context.Context, string) (string, string, []string, time.Time, error) {
+				return "key-1", "project-1", tt.scopes, time.Time{}, nil
+			})
+			ident, err := a.Authenticate(context.Background(), "vuln_badscopes")
+			require.Error(t, err)
+			assert.Nil(t, ident)
+			assert.Equal(t, unknownErr.Error(), err.Error(), "same message as an unknown key")
+		})
+	}
+
+	for _, scopes := range [][]string{{"ingest"}, {"read"}, {"ingest", "read"}, {}} {
+		a := NewAPIKeyAuthenticator(func(context.Context, string) (string, string, []string, time.Time, error) {
+			return "key-1", "project-1", scopes, time.Time{}, nil
+		})
+		_, err := a.Authenticate(context.Background(), "vuln_goodscopes")
+		require.NoErrorf(t, err, "scopes %v", scopes)
+	}
+}

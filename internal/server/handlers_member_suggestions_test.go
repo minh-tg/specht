@@ -195,7 +195,7 @@ func TestSuggestProjectMembers_SessionOnly(t *testing.T) {
 		Usecases: mock,
 		JWTAuth:  testJWTAuth,
 		APIKeyLookup: func(context.Context, string) (string, string, []string, time.Time, error) {
-			return "key-owner", "00000000-0000-0000-0000-000000000001", []string{auth.ScopeRead, auth.ScopeAdmin}, time.Time{}, nil
+			return "key-owner", "00000000-0000-0000-0000-000000000001", []string{auth.ScopeIngest, auth.ScopeRead}, time.Time{}, nil
 		},
 		RegistrationDisabled: true,
 	})

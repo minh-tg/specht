@@ -83,7 +83,8 @@ func TestRequireRole_APIKeyRequiresScope(t *testing.T) {
 		{name: "ingest key denied on admin-gated route", scopes: []string{"ingest"}, demands: []string{auth.RoleAdmin}, want: http.StatusForbidden},
 		{name: "read key denied on admin-gated route", scopes: []string{"read"}, demands: []string{auth.RoleAdmin}, want: http.StatusForbidden},
 		{name: "ingest+read key denied on admin-gated route", scopes: []string{"ingest", "read"}, demands: []string{auth.RoleAdmin}, want: http.StatusForbidden},
-		{name: "admin-scoped key allowed on admin-gated route", scopes: []string{"admin"}, demands: []string{auth.RoleAdmin}, want: http.StatusOK},
+		{name: "no key scope covers an admin-gated route", scopes: []string{"ingest", "read", "admin"}, demands: []string{auth.RoleAdmin}, want: http.StatusForbidden},
+		{name: "read key allowed on a viewer-gated route", scopes: []string{"read"}, demands: []string{auth.RoleViewer}, want: http.StatusOK},
 		{name: "key without required scope denied", scopes: []string{"ingest"}, demands: []string{"editor", "viewer"}, want: http.StatusForbidden},
 	}
 	for _, tt := range tests {
@@ -107,12 +108,12 @@ func TestRequireRole_APIKeyRequiresScope(t *testing.T) {
 // read-role gates that map to an explicit key scope, while documenting that
 // an API key is never admitted to a role gate it has no scope for.
 func TestRequireRole_APIKeyScopesNotRequiredForReadRole(t *testing.T) {
-	roleMw := RequireRole(auth.RoleAdmin)
+	roleMw := RequireRole(auth.RoleViewer)
 	handler := roleMw(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
-	req := httptest.NewRequest("POST", "/api/v1/projects", nil)
-	ctx := auth.ContextWithIdentity(context.Background(), apiKeyIdentity("key-1", "proj-1", "read", "admin"))
+	req := httptest.NewRequest("GET", "/api/v1/projects", nil)
+	ctx := auth.ContextWithIdentity(context.Background(), apiKeyIdentity("key-1", "proj-1", "read"))
 	req = req.WithContext(ctx)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
@@ -200,7 +201,7 @@ func TestRoutes_APIKeyScopeEnforcement(t *testing.T) {
 	})
 }
 
-func TestRoutes_APIKeyScopesSeparateReadIngestAndAdmin(t *testing.T) {
+func TestRoutes_APIKeyScopesSeparateReadAndIngest(t *testing.T) {
 	const projectID = "00000000-0000-0000-0000-000000000001"
 	request := func(scopes []string, method, path, body string) *httptest.ResponseRecorder {
 		router := apiKeyRouter(t, "key-1", projectID, scopes, time.Time{})
@@ -228,46 +229,64 @@ func TestRoutes_APIKeyScopesSeparateReadIngestAndAdmin(t *testing.T) {
 		w := request([]string{auth.ScopeIngest}, http.MethodPost, "/api/v1/projects/my-app/waivers", `{"name":"temporary"}`)
 		assert.Equal(t, http.StatusForbidden, w.Code)
 	})
-	t.Run("admin key can create a project waiver", func(t *testing.T) {
-		w := request([]string{auth.ScopeAdmin}, http.MethodPost, "/api/v1/projects/my-app/waivers", `{"name":"temporary"}`)
-		assert.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+	t.Run("ingest and read key cannot create a project waiver", func(t *testing.T) {
+		w := request([]string{auth.ScopeIngest, auth.ScopeRead}, http.MethodPost, "/api/v1/projects/my-app/waivers", `{"name":"temporary"}`)
+		assert.Equal(t, http.StatusForbidden, w.Code, w.Body.String())
 	})
 }
 
-// TestRoutes_AdminScopedKeyAllowedOnAdminRoutes is the positive control:
-// a key carrying the admin scope is admitted to the project-scoped admin
-// routes (the RequireRole admin gates a project API key can legitimately
-// exercise). Platform-wide endpoints remain session-admin-only by design.
-func TestRoutes_AdminScopedKeyAllowedOnAdminRoutes(t *testing.T) {
-	router := apiKeyRouter(t, "key-1", "00000000-0000-0000-0000-000000000001", []string{"admin", "ingest"}, time.Time{})
+// TestRoutes_AdminScopedKeyRefusedEverywhere: the API mints only ingest and
+// read keys, so a key whose stored scopes include admin (settable only in
+// the database) must fail authentication on every route, with the same
+// answer as an unknown key, instead of passing a route guard and failing
+// deeper down.
+func TestRoutes_AdminScopedKeyRefusedEverywhere(t *testing.T) {
+	const projectID = "00000000-0000-0000-0000-000000000001"
+	router := apiKeyRouter(t, "key-1", projectID, []string{"admin", "ingest", "read"}, time.Time{})
 
-	keyed := func(method, path string) *httptest.ResponseRecorder {
-		req := httptest.NewRequest(method, path, nil)
-		req.Header.Set("Authorization", "Bearer vuln_admin_key")
+	for _, tc := range []struct{ method, path string }{
+		{"GET", "/api/v1/projects/my-app/findings"},
+		{"GET", "/api/v1/projects/my-app/gate"},
+		{"GET", "/api/v1/findings/00000000-0000-0000-0000-000000000099"},
+		{"GET", "/api/v1/auth/apikeys?project=my-app"},
+		{"POST", "/api/v1/reports"},
+		{"POST", "/api/v1/projects/my-app/waivers"},
+	} {
+		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{}`))
+		req.Header.Set("Authorization", "Bearer vuln_admin_scope_key")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusUnauthorized, w.Code, "%s %s: %s", tc.method, tc.path, w.Body.String())
+		assert.Contains(t, w.Body.String(), `"invalid_token"`, "same shape as an unknown key")
+	}
+}
+
+// TestRoutes_KeyRefusedOnProjectManagementRoutes: no key scope covers project
+// management, so even a key holding every scope the API mints gets 403 there.
+func TestRoutes_KeyRefusedOnProjectManagementRoutes(t *testing.T) {
+	router := apiKeyRouter(t, "key-1", "00000000-0000-0000-0000-000000000001", []string{"ingest", "read"}, time.Time{})
+	keyed := func(method, path, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer vuln_ci_key")
 		w := httptest.NewRecorder()
 		router.ServeHTTP(w, req)
 		return w
 	}
-
-	t.Run("admin key allowed on list api keys", func(t *testing.T) {
-		assert.Equal(t, http.StatusOK, keyed("GET", "/api/v1/auth/apikeys?project=my-app").Code)
+	t.Run("list api keys", func(t *testing.T) {
+		assert.Equal(t, http.StatusForbidden, keyed("GET", "/api/v1/auth/apikeys?project=my-app", "").Code)
 	})
-	t.Run("admin key allowed on create api key", func(t *testing.T) {
-		req := httptest.NewRequest("POST", "/api/v1/auth/apikeys", strings.NewReader(`{"project":"my-app","name":"x"}`))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer vuln_admin_key")
-		w := httptest.NewRecorder()
-		router.ServeHTTP(w, req)
-		assert.Equal(t, http.StatusCreated, w.Code)
+	t.Run("create api key", func(t *testing.T) {
+		assert.Equal(t, http.StatusForbidden, keyed("POST", "/api/v1/auth/apikeys", `{"project":"my-app","name":"x"}`).Code)
 	})
-	t.Run("admin key cannot create a platform project", func(t *testing.T) {
-		assert.Equal(t, http.StatusForbidden, keyed("POST", "/api/v1/projects").Code)
+	t.Run("create a platform project", func(t *testing.T) {
+		assert.Equal(t, http.StatusForbidden, keyed("POST", "/api/v1/projects", `{"name":"x","slug":"x"}`).Code)
 	})
-	t.Run("admin key cannot inspect global retention state", func(t *testing.T) {
-		assert.Equal(t, http.StatusForbidden, keyed("GET", "/api/v1/admin/retention/preview?days=30").Code)
+	t.Run("inspect global retention state", func(t *testing.T) {
+		assert.Equal(t, http.StatusForbidden, keyed("GET", "/api/v1/admin/retention/preview?days=30", "").Code)
 	})
-	t.Run("admin key cannot modify global policy templates", func(t *testing.T) {
-		assert.Equal(t, http.StatusForbidden, keyed("DELETE", "/api/v1/policy-templates/00000000-0000-0000-0000-000000000099").Code)
+	t.Run("modify global policy templates", func(t *testing.T) {
+		assert.Equal(t, http.StatusForbidden, keyed("DELETE", "/api/v1/policy-templates/00000000-0000-0000-0000-000000000099", "").Code)
 	})
 }
 
@@ -275,7 +294,7 @@ func TestRoutes_AdminScopedKeyAllowedOnAdminRoutes(t *testing.T) {
 // expired key: authentication fails and the request never reaches the
 // protected handler.
 func TestRoutes_ExpiredAPIKeyRejected_401(t *testing.T) {
-	router := apiKeyRouter(t, "key-1", "00000000-0000-0000-0000-000000000001", []string{"admin"}, time.Now().Add(-time.Minute))
+	router := apiKeyRouter(t, "key-1", "00000000-0000-0000-0000-000000000001", []string{"ingest", "read"}, time.Now().Add(-time.Minute))
 
 	req := httptest.NewRequest("GET", "/api/v1/auth/apikeys?project=my-app", nil)
 	req.Header.Set("Authorization", "Bearer vuln_expired_key")

@@ -47,7 +47,7 @@ func apiKeyCtx(userID, projectID string) context.Context {
 	return auth.ContextWithIdentity(context.Background(), &auth.Identity{
 		UserID:    userID,
 		ProjectID: projectID,
-		Scopes:    []string{auth.ScopeRead, auth.ScopeAdmin},
+		Scopes:    []string{auth.ScopeRead},
 		IsAPIKey:  true,
 	})
 }
@@ -147,11 +147,12 @@ func TestRequireProjectAdminForWaiver_EnforcesRoleAndKeyScope(t *testing.T) {
 	assert.NoError(t, uc.requireProjectAdminForWaiver(sessionCtx("u1", auth.RoleMember), findingFixtureProjectID),
 		"project managers manage waivers")
 
-	adminKey := auth.ContextWithIdentity(context.Background(), &auth.Identity{
+	fullKey := auth.ContextWithIdentity(context.Background(), &auth.Identity{
 		UserID: "key-1", ProjectID: findingFixtureProjectID, IsAPIKey: true,
-		Scopes: []string{auth.ScopeAdmin},
+		Scopes: []string{auth.ScopeIngest, auth.ScopeRead},
 	})
-	assert.NoError(t, uc.requireProjectAdminForWaiver(adminKey, findingFixtureProjectID))
+	assert.ErrorIs(t, uc.requireProjectAdminForWaiver(fullKey, findingFixtureProjectID), ErrProjectAccessDenied,
+		"no key scope covers project management")
 
 	readKey := auth.ContextWithIdentity(context.Background(), &auth.Identity{
 		UserID: "key-1", ProjectID: findingFixtureProjectID, IsAPIKey: true,

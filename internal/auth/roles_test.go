@@ -20,21 +20,15 @@ func TestRoleRank(t *testing.T) {
 }
 
 func TestRoleScope(t *testing.T) {
-	scope, ok := RoleScope(RoleAdmin)
-	assert.True(t, ok)
-	assert.Equal(t, ScopeAdmin, scope)
+	for _, role := range []string{RoleAdmin, RoleManager, "editor"} {
+		scope, ok := RoleScope(role)
+		assert.False(t, ok, "%s gates manage a project, which no key scope covers", role)
+		assert.Empty(t, scope)
+	}
 
-	scope, ok = RoleScope(RoleManager)
-	assert.True(t, ok)
-	assert.Equal(t, ScopeAdmin, scope)
-
-	scope, ok = RoleScope(RoleMember)
+	scope, ok := RoleScope(RoleMember)
 	assert.True(t, ok)
 	assert.Equal(t, ScopeRead, scope)
-
-	scope, ok = RoleScope("editor")
-	assert.True(t, ok)
-	assert.Equal(t, ScopeAdmin, scope)
 
 	scope, ok = RoleScope("viewer")
 	assert.True(t, ok)

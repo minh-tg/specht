@@ -398,9 +398,8 @@ export interface paths {
      *     in `raw_key`, and never again — later reads expose only the prefix and
      *     the last four characters.
      *
-     *     Needs the manager or admin role on the project, or an API key that
-     *     itself holds the `admin` scope for it. A person with no role on the
-     *     project, or with the member role, gets 403.
+     *     Needs the manager or admin role on the project. An API key, or a person
+     *     with no role on the project or with the member role, gets 403.
      */
     post: operations["createApiKey"];
     delete?: never;
