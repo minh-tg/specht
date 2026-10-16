@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Release-image verification: boots a Specht container image against a
 # throwaway PostgreSQL and exercises the API end to end — migrations,
-# SPA delivery, registration, the two-phase admin promotion (same as the
-# dev harness), project creation, and a real report ingest.
+# SPA delivery, first-run setup of the admin (same as the dev harness),
+# project creation, and a real report ingest.
 #
 # Usage: scripts/verify-image.sh <image-ref>
 #   scripts/verify-image.sh ghcr.io/minh-tg/specht:v0.1.0-rc.1
@@ -22,6 +22,7 @@ DB_CONTAINER="specht-verify-db"
 APP_CONTAINER="specht-verify-app"
 ADMIN_EMAIL="release-check@example.com"
 ADMIN_PASSWORD="release-check-password-123"
+SETUP_TOKEN="release-check-setup-token"
 FIXTURE="e2e/testdata/high.sarif.json"
 
 cleanup() {
@@ -49,7 +50,7 @@ api() {
   body=$(cat /tmp/verify-body.txt)
 }
 
-start_app() { # optional NAME=VALUE env args (e.g. ADMIN_EMAILS=...)
+start_app() { # optional NAME=VALUE env args (e.g. SETUP_TOKEN=...)
   local extra=()
   local kv
   for kv in "$@"; do extra+=(-e "$kv"); done
@@ -93,19 +94,12 @@ for _ in $(seq 1 60); do
 done
 docker exec "$DB_CONTAINER" pg_isready -U specht >/dev/null 2>&1 || fail "postgres did not become ready"
 
-echo "== boot (phase 1: register) ==" >&2
-# This fixture tests public signup, so it opts in rather than relying on the
-# server's closed-by-default setting.
-start_app REGISTRATION_ENABLED=true
+echo "== boot (first-run setup) ==" >&2
+start_app "SETUP_TOKEN=$SETUP_TOKEN"
 wait_healthy
-api POST /api/v1/auth/register \
-  "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" || fail "register request failed"
-[ "$CODE" = "201" ] || fail "register expected 201, got $CODE: $body"
-docker rm -f "$APP_CONTAINER" >/dev/null 2>&1 || true
-
-echo "== boot (phase 2: ADMIN_EMAILS promotion) ==" >&2
-start_app "ADMIN_EMAILS=$ADMIN_EMAIL"
-wait_healthy
+api POST /api/v1/setup \
+  "{\"token\":\"$SETUP_TOKEN\",\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" || fail "setup request failed"
+[ "$CODE" = "201" ] || fail "setup expected 201, got $CODE: $body"
 
 echo "== SPA ==" >&2
 curl -fsS "http://127.0.0.1:$PORT/" | grep -q '<div id="root"' || fail "embedded SPA did not serve the app shell"
@@ -117,7 +111,7 @@ TOKEN=$(echo "$body" | jq -r '.token // empty')
 [ -n "$TOKEN" ] || fail "login returned no token"
 api GET /api/v1/me "" "$TOKEN" || fail "me request failed"
 [ "$(echo "$body" | jq -r .email)" = "$ADMIN_EMAIL" ] || fail "me returned wrong identity: $body"
-[ "$(echo "$body" | jq -r .role)" = "admin" ] || fail "ADMIN_EMAILS did not promote the account: $body"
+[ "$(echo "$body" | jq -r .role)" = "admin" ] || fail "first-run setup did not create an admin: $body"
 
 echo "== project + ingest round trip ==" >&2
 api POST /api/v1/projects '{"name":"release-verify","slug":"release-verify"}' "$TOKEN" \

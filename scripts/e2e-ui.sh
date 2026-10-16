@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Browser journeys: boots the real release artifact — Go server with the
-# embedded React build — against a throwaway PostgreSQL, bootstraps the
-# journey admin (two phases, like the Go harness: explicitly enable signup
-# to register first, then restart with ADMIN_EMAILS so bootstrap promotes it), then
-# drives the page journeys in Chromium via Playwright.
+# Browser journeys: boots the real release artifact (Go server with the
+# embedded React build) against a throwaway PostgreSQL, creates the journey
+# admin through first-run setup (like the Go harness: ADMIN_EMAILS no longer
+# promotes a password-registered account), then drives the page journeys in
+# Chromium via Playwright.
 #
 # Requirements: Docker, Go, pnpm, curl, and a Playwright Chromium
 #   pnpm --dir frontend exec playwright install chromium
@@ -24,6 +24,7 @@ SERVER_PID=""
 # default to the same account).
 ADMIN_EMAIL="${E2E_UI_ADMIN_EMAIL:-journey-admin@specht.local}"
 ADMIN_PASSWORD="${E2E_UI_ADMIN_PASSWORD:-journey-admin-123}"
+SETUP_TOKEN="e2e-ui-setup-token-0001"
 
 cleanup() {
   if [ -n "$SERVER_PID" ]; then
@@ -70,14 +71,15 @@ echo "== build server ==" >&2
 go build -o "$BIN_DIR/specht-server" ./cmd/server
 
 start_server() {
-  # env makes the extra NAME=VALUE arguments (like ADMIN_EMAILS) portable —
-  # a bare "$@" in command position would be parsed as a command.
+  # env makes the extra NAME=VALUE arguments portable: a bare "$@" in
+  # command position would be parsed as a command.
   env \
     DATABASE_URL="postgres://specht:specht@127.0.0.1:$DB_PORT/$DB_NAME?sslmode=disable" \
     JWT_SECRET="$(head -c 48 /dev/urandom | base64)" \
     SERVER_ADDR="127.0.0.1:$PORT" \
     DB_MIGRATE=true \
     REGISTRATION_ENABLED=true \
+    SETUP_TOKEN="$SETUP_TOKEN" \
     LOG_LEVEL=warn \
     RATE_LIMIT_LOGIN_PER_MINUTE=100000 \
     RATE_LIMIT_LOGIN_BURST=100000 \
@@ -112,24 +114,19 @@ stop_server() {
   SERVER_PID=""
 }
 
-echo "== bootstrap journey admin (phase 1) ==" >&2
+echo "== start server and create the journey admin (first-run setup) ==" >&2
 start_server
 wait_healthy
-code=$(curl -s -o "$BIN_DIR/register.out" -w '%{http_code}' \
+code=$(curl -s -o "$BIN_DIR/setup.out" -w '%{http_code}' \
   -H 'Content-Type: application/json' \
-  -d "{\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" \
-  http://127.0.0.1:$PORT/api/v1/auth/register)
+  -d "{\"token\":\"$SETUP_TOKEN\",\"email\":\"$ADMIN_EMAIL\",\"password\":\"$ADMIN_PASSWORD\"}" \
+  http://127.0.0.1:$PORT/api/v1/setup)
 if [ "$code" != "201" ]; then
-  echo "register failed: HTTP $code" >&2
-  cat "$BIN_DIR/register.out" >&2
+  echo "setup failed: HTTP $code" >&2
+  cat "$BIN_DIR/setup.out" >&2
   cat "$BIN_DIR/server.log" >&2
   exit 1
 fi
-stop_server
-
-echo "== restart with ADMIN_EMAILS (phase 2) ==" >&2
-start_server "ADMIN_EMAILS=$ADMIN_EMAIL"
-wait_healthy
 
 echo "== browser journeys ==" >&2
 E2E_BASE_URL="http://127.0.0.1:$PORT" \

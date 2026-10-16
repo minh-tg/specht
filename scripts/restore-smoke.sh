@@ -21,6 +21,7 @@ BIN_DIR="$(mktemp -d)"
 SERVER_PID=""
 EMAIL="restore@example.test"
 PASSWORD="restore-smoke-123"
+SETUP_TOKEN="restore-smoke-setup-token"
 PROJECT_SLUG="restore-me"
 BASE="http://127.0.0.1:$PORT/api/v1"
 
@@ -124,18 +125,13 @@ login_token() {
 }
 
 echo "== seed source database ==" >&2
-start_server "$SRC_DB" true
+start_server "$SRC_DB" true "SETUP_TOKEN=$SETUP_TOKEN"
 wait_healthy
-code=$(curl -s -o "$BIN_DIR/register.out" -w '%{http_code}' \
+code=$(curl -s -o "$BIN_DIR/setup.out" -w '%{http_code}' \
   -H 'Content-Type: application/json' \
-  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" \
-  "$BASE/auth/register")
-[ "$code" = "201" ] || fail "register returned HTTP $code"
-stop_server
-
-echo "== restart with ADMIN_EMAILS ==" >&2
-start_server "$SRC_DB" true "ADMIN_EMAILS=$EMAIL"
-wait_healthy
+  -d "{\"token\":\"$SETUP_TOKEN\",\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" \
+  "$BASE/setup")
+[ "$code" = "201" ] || fail "first-run setup returned HTTP $code"
 TOKEN=$(login_token)
 code=$(curl -s -o "$BIN_DIR/project.out" -w '%{http_code}' \
   -H 'Content-Type: application/json' \
