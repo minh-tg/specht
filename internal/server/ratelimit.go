@@ -4,6 +4,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"sync"
 	"time"
@@ -202,13 +203,25 @@ func writeRateLimited(w http.ResponseWriter, limiter *rate.Limiter) {
 	respondError(w, http.StatusTooManyRequests, "rate_limited", "rate limit exceeded, retry later")
 }
 
-// clientHost returns the remote host without port. realIPMiddleware (which
-// runs before this middleware) has already resolved trusted-proxy headers,
-// so RemoteAddr is the best available client address here.
+// clientHost returns the address a client is counted under: the remote host
+// without port, with an IPv6 address reduced to its /64 prefix and an
+// IPv4-mapped IPv6 address read as the IPv4 address. A /64 is the smallest
+// block an ISP hands to one subscriber, so keying on the full address lets a
+// single client rotate through 2^64 buckets. realIPMiddleware (which runs
+// before this middleware) has already resolved trusted-proxy headers, so
+// RemoteAddr is the best available client address here.
 func clientHost(r *http.Request) string {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
-		return r.RemoteAddr
+		host = r.RemoteAddr
 	}
-	return host
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return host
+	}
+	addr = addr.WithZone("").Unmap()
+	if addr.Is6() {
+		return netip.PrefixFrom(addr, 64).Masked().String()
+	}
+	return addr.String()
 }

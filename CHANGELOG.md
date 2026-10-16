@@ -235,3 +235,7 @@ releases.
 - The rate limiters hold at most 100,000 client buckets each. When that is
   full, clients without a bucket share one, so a flood of new addresses is
   throttled without evicting anyone already tracked.
+- Every per-IP rate limit counts an IPv6 client by its /64 prefix instead of
+  its full address, so rotating through addresses in one network no longer
+  gives a fresh login budget each time. IPv4 stays per address, and an
+  IPv4-mapped IPv6 address counts as the IPv4 address.
