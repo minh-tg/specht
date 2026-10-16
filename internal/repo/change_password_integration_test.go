@@ -79,6 +79,13 @@ func waitForLockWaitersUnlessDone(t *testing.T, repos *Repos, n int, done <-chan
 	t.Fatalf("timed out waiting for %d lock waiters", n)
 }
 
+// changeAndRevoke is ChangePasswordAndRevoke for the tests that only look at
+// its error.
+func changeAndRevoke(ctx context.Context, users port.UserStore, userID, passwordHash, verifiedHash string) error {
+	_, err := users.ChangePasswordAndRevoke(ctx, userID, passwordHash, verifiedHash)
+	return err
+}
+
 func tokenVersionOf(t *testing.T, stores *port.Stores, userID string) int32 {
 	t.Helper()
 	v, err := stores.Users.TokenVersion(context.Background(), userID)
@@ -108,7 +115,7 @@ func TestChangePasswordRevokesALoginThatWasParkedBeforeItsSessionCommitted(t *te
 
 	changeDone := make(chan error, 1)
 	go func() {
-		changeDone <- stores.Users.ChangePasswordAndRevoke(ctx, user.ID, "$2a$10$changed", user.PasswordHash)
+		changeDone <- changeAndRevoke(ctx, stores.Users, user.ID, "$2a$10$changed", user.PasswordHash)
 	}()
 	waitForLockWaitersUnlessDone(t, repos, 2, changeDone)
 
@@ -140,7 +147,7 @@ func TestChangePasswordWaitsForALoginHoldingItsShareLock(t *testing.T) {
 
 	done := make(chan error, 1)
 	go func() {
-		done <- stores.Users.ChangePasswordAndRevoke(ctx, user.ID, "$2a$10$changed", user.PasswordHash)
+		done <- changeAndRevoke(ctx, stores.Users, user.ID, "$2a$10$changed", user.PasswordHash)
 	}()
 	mustBlock(t, done, "the password change")
 	require.NoError(t, tx.Commit(ctx))
@@ -158,7 +165,7 @@ func TestLoginAfterAPasswordChangeIsRefused(t *testing.T) {
 	stores := NewPortStores(repos.pool)
 	user := newUser(t, repos, "change-then-login@test.com", "member")
 
-	require.NoError(t, stores.Users.ChangePasswordAndRevoke(ctx, user.ID, "$2a$10$changed", user.PasswordHash))
+	require.NoError(t, changeAndRevoke(ctx, stores.Users, user.ID, "$2a$10$changed", user.PasswordHash))
 
 	_, err := loginAttempt(t, stores, user)
 	require.ErrorIs(t, err, port.ErrLoginStale)
@@ -178,8 +185,10 @@ func TestChangePasswordAndRevokeWritesTheHashTheGenerationAndTheRevokes(t *testi
 	require.Equal(t, 1, f.pendingLinks(t))
 	before := tokenVersionOf(t, f.stores, f.user.ID)
 
-	require.NoError(t, f.stores.Users.ChangePasswordAndRevoke(ctx, f.user.ID, "$2a$10$changed", f.user.PasswordHash))
+	version, err := f.stores.Users.ChangePasswordAndRevoke(ctx, f.user.ID, "$2a$10$changed", f.user.PasswordHash)
+	require.NoError(t, err)
 
+	assert.Equal(t, before+1, version, "the call returns the generation it started")
 	require.NotNil(t, f.passwordHash(t))
 	assert.Equal(t, "$2a$10$changed", *f.passwordHash(t))
 	assert.Equal(t, before+1, tokenVersionOf(t, f.stores, f.user.ID), "a successful change starts a new token generation")
@@ -198,7 +207,7 @@ func TestChangePasswordAndRevokeWritesNothingWhenTheVerifiedHashIsStale(t *testi
 	_, err := loginAttempt(t, stores, user)
 	require.NoError(t, err)
 
-	err = stores.Users.ChangePasswordAndRevoke(ctx, user.ID, "$2a$10$changed", "$2a$10$not-the-stored-hash")
+	err = changeAndRevoke(ctx, stores.Users, user.ID, "$2a$10$changed", "$2a$10$not-the-stored-hash")
 	require.ErrorIs(t, err, port.ErrPasswordStale)
 
 	got, err := stores.Users.GetByID(ctx, user.ID)
@@ -218,13 +227,13 @@ func TestChangePasswordAndRevokeWithoutAVerifiedHashSetsAPasswordOnAnyAccount(t 
 	user := newUser(t, repos, "change-recovery@test.com", "member")
 	require.NoError(t, stores.Users.ClearPassword(ctx, user.ID))
 
-	require.NoError(t, stores.Users.ChangePasswordAndRevoke(ctx, user.ID, "$2a$10$recovered", ""))
+	require.NoError(t, changeAndRevoke(ctx, stores.Users, user.ID, "$2a$10$recovered", ""))
 
 	got, err := stores.Users.GetByID(ctx, user.ID)
 	require.NoError(t, err)
 	assert.Equal(t, "$2a$10$recovered", got.PasswordHash)
 
-	err = stores.Users.ChangePasswordAndRevoke(ctx, uuid.NewString(), "$2a$10$recovered", "")
+	err = changeAndRevoke(ctx, stores.Users, uuid.NewString(), "$2a$10$recovered", "")
 	assert.ErrorIs(t, err, port.ErrNotFound)
 }
 
@@ -242,7 +251,7 @@ func TestChangePasswordDuringAnOpenSSOLinkLeavesTheAccountPasswordless(t *testin
 
 	done := make(chan error, 1)
 	go func() {
-		done <- stores.Users.ChangePasswordAndRevoke(ctx, user.ID, "$2a$10$changed", user.PasswordHash)
+		done <- changeAndRevoke(ctx, stores.Users, user.ID, "$2a$10$changed", user.PasswordHash)
 	}()
 	mustBlock(t, done, "the password change")
 	require.NoError(t, tx.Commit(ctx))

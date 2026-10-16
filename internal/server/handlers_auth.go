@@ -282,6 +282,8 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusBadRequest, "invalid_password", err.Error())
 		case errors.Is(err, usecase.ErrNoLocalPassword):
 			respondError(w, http.StatusConflict, "no_local_password", "this account signs in through your identity provider and has no password to change")
+		case errors.Is(err, usecase.ErrAccountChanged):
+			respondError(w, http.StatusConflict, "account_changed", "the password was changed, but the account changed right after, so you were signed out; sign in again")
 		case errors.Is(err, usecase.ErrInvalidID):
 			respondError(w, http.StatusBadRequest, "invalid_id", "invalid user id")
 		default:

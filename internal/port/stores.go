@@ -280,8 +280,10 @@ type UserStore interface {
 	// or reads the new row afterwards and is refused. When verifiedHash is not
 	// empty the row must still hold it, or the call writes nothing and returns
 	// ErrPasswordStale; an empty verifiedHash skips the check (the host-side
-	// recovery path, which has no password to verify).
-	ChangePasswordAndRevoke(ctx context.Context, userID, passwordHash, verifiedHash string) error
+	// recovery path, which has no password to verify). It returns the token
+	// generation the change started, so the caller's own session can be stored
+	// against it with CreateForLogin and refused if the account changed again.
+	ChangePasswordAndRevoke(ctx context.Context, userID, passwordHash, verifiedHash string) (int32, error)
 	// TokenVersion returns the account's current access-token generation.
 	TokenVersion(ctx context.Context, userID string) (int32, error)
 	// BumpTokenVersion invalidates every access token issued before the call.
