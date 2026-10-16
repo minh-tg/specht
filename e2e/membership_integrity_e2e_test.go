@@ -5,6 +5,7 @@ package e2e
 import (
 	"encoding/json"
 	"net/http"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -237,4 +238,58 @@ func TestMembershipIntegrity_UnlinkEndsTeamAccessWithoutALeftover(t *testing.T) 
 	require.Equal(t, http.StatusNoContent, status)
 	require.Equal(t, "", miRole(t, x, ta.Token), "leaving the team ends access")
 	require.Equal(t, "", miDirectRole(t, x, ta.ID))
+}
+
+// A manager's write on a person runs while an admin promotes that person. The
+// peer rule (a manager may not touch an admin) is judged on the role the person
+// holds when the write lands, so the manager never undoes the promotion.
+func TestMembershipIntegrity_ManagerCannotOverwriteAConcurrentPromotion(t *testing.T) {
+	slug := newProject(t, "mi-peer")
+	mgr := miNewPerson(t, "peer-mgr")
+	target := miNewPerson(t, "peer-t")
+	status, _ := miAddMember(t, adminToken, slug, mgr.ID, "manager")
+	require.Equal(t, http.StatusCreated, status)
+
+	const rounds = 100
+	demoted, removed := 0, 0
+	for i := 0; i < rounds; i++ {
+		// Reset: the global admin (still a direct admin) sets the target to member.
+		status, _ := miAddMember(t, adminToken, slug, target.ID, "member")
+		require.Equal(t, http.StatusCreated, status)
+
+		remove := i%2 == 1
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		var adminStatus, mgrStatus int
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			<-start
+			adminStatus, _ = miAddMember(t, adminToken, slug, target.ID, "admin")
+		}()
+		go func() {
+			defer wg.Done()
+			<-start
+			if remove {
+				mgrStatus, _ = miRemoveMember(t, mgr.Token, slug, target.ID)
+			} else {
+				mgrStatus, _ = miAddMember(t, mgr.Token, slug, target.ID, "manager")
+			}
+		}()
+		close(start)
+		wg.Wait()
+		require.Equal(t, http.StatusCreated, adminStatus, "the promotion itself always lands")
+		// The manager's write may win before the promotion (then the admin
+		// promotes the result) or lose to it (then it is refused), never both.
+		final := miDirectRole(t, slug, target.ID)
+		require.Equal(t, "admin", final, "round %d: the promotion must be the last word (manager status %d)", i, mgrStatus)
+		if mgrStatus < 300 && final != "admin" {
+			if remove {
+				removed++
+			} else {
+				demoted++
+			}
+		}
+	}
+	require.Zero(t, demoted+removed, "the manager overwrote a fresh admin")
 }
