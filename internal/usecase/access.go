@@ -153,6 +153,23 @@ func (u *Usecases) callerProjectRole(ctx context.Context, projectID string) (str
 	return role, nil
 }
 
+// projectBySlugOrDenied resolves a slug on a route that must not reveal whether
+// a project exists. A missing project is ErrProjectAccessDenied, the answer a
+// project the caller cannot see gets from the role check that follows. Global
+// admins, who can see every project, get the lookup error.
+func (u *Usecases) projectBySlugOrDenied(ctx context.Context, slug string) (port.Project, error) {
+	p, err := u.deps.Stores.Projects.GetBySlug(ctx, slug)
+	if err != nil {
+		// A global admin may list every project, so for them a missing one is
+		// plainly not found.
+		if ident := auth.ContextIdentity(ctx); errors.Is(err, port.ErrNotFound) && (ident == nil || ident.IsAPIKey || ident.Role != auth.RoleAdmin) {
+			return port.Project{}, ErrProjectAccessDenied
+		}
+		return port.Project{}, fmt.Errorf(errLookupProjectFormat, slug, err)
+	}
+	return p, nil
+}
+
 // requireDirectGrantCeiling keeps a role that comes from a team link from
 // being copied into rows that outlive the link. Handing out manager or admin,
 // by a member row, a team link or an invite, needs a direct project role at or

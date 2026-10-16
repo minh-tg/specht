@@ -135,9 +135,9 @@ func (u *Usecases) DeletePolicyTemplate(ctx context.Context, id string) error {
 // an empty name. Project admins own the assignment (same gate as member
 // management).
 func (u *Usecases) SetProjectPolicy(ctx context.Context, projectSlug, templateName string) (*PolicyEffectiveResponse, error) {
-	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.projectBySlugOrDenied(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
+		return nil, err
 	}
 	if err := u.requireProjectAdmin(ctx, project.ID); err != nil {
 		return nil, err
@@ -160,9 +160,9 @@ func (u *Usecases) SetProjectPolicy(ctx context.Context, projectSlug, templateNa
 // SetProjectPolicyOverrides replaces a project's per-key overrides. An
 // empty map clears overrides. Keys and values validate like templates.
 func (u *Usecases) SetProjectPolicyOverrides(ctx context.Context, projectSlug string, overrides map[string]string) (*PolicyEffectiveResponse, error) {
-	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.projectBySlugOrDenied(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
+		return nil, err
 	}
 	if err := u.requireProjectAdmin(ctx, project.ID); err != nil {
 		return nil, err

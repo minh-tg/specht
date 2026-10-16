@@ -497,3 +497,9 @@ releases.
   removing the same person at the same moment. The rule that a manager may not
   touch an admin is now checked on the person's role as it is when the change
   is saved, not on an earlier read.
+- Updating or deleting a project, listing, linking and unlinking its teams, and
+  setting its policy or policy overrides answered differently for a project that
+  exists and one that does not, which let any signed-in account find out which
+  project slugs exist. They now answer 403 `project_access_denied` in both
+  cases (a global admin still gets 404 for a missing project). A missing slug
+  no longer answers 400 or 500 on these routes.

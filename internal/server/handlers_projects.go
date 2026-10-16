@@ -96,6 +96,10 @@ func (h *Handler) GetProject(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		h.respondProjectAccessError(w, r, err)
+		return
+	}
 	var req struct {
 		Name        *string `json:"name"`
 		Description *string `json:"description"`
@@ -122,6 +126,10 @@ func (h *Handler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) DeleteProject(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		h.respondProjectAccessError(w, r, err)
+		return
+	}
 	project, err := h.usecase.DeleteProject(r.Context(), slug)
 	if err != nil {
 		if errors.Is(err, usecase.ErrProjectAccessDenied) {

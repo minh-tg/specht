@@ -297,9 +297,9 @@ func (u *Usecases) RemoveTeamMember(ctx context.Context, teamID, userID string) 
 // the conferred role to the caller's own rank. Relinking is an upsert, so
 // non-admins may not rewrite an existing link at or above their own rank.
 func (u *Usecases) LinkProjectTeam(ctx context.Context, projectSlug, teamID, role string) (*ProjectTeamResponse, error) {
-	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.projectBySlugOrDenied(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
+		return nil, err
 	}
 	callerRole, err := u.callerProjectRole(ctx, project.ID)
 	if err != nil {
@@ -364,9 +364,9 @@ func (u *Usecases) UnlinkProjectTeam(ctx context.Context, projectSlug, teamID st
 	if _, err := validID(teamID); err != nil {
 		return err
 	}
-	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.projectBySlugOrDenied(ctx, projectSlug)
 	if err != nil {
-		return fmt.Errorf(errLookupProjectFormat, projectSlug, err)
+		return err
 	}
 	callerRole, err := u.callerProjectRole(ctx, project.ID)
 	if err != nil {
@@ -387,9 +387,9 @@ func (u *Usecases) UnlinkProjectTeam(ctx context.Context, projectSlug, teamID st
 // ListProjectTeams returns every team linked to a project.
 // Accessible to project members, managers, and admins.
 func (u *Usecases) ListProjectTeams(ctx context.Context, projectSlug string) ([]ProjectTeamResponse, error) {
-	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
+	project, err := u.projectBySlugOrDenied(ctx, projectSlug)
 	if err != nil {
-		return nil, fmt.Errorf(errLookupProjectFormat, projectSlug, err)
+		return nil, err
 	}
 	if err := u.requireProjectMember(ctx, project.ID); err != nil {
 		return nil, err

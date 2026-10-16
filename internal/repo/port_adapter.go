@@ -179,7 +179,7 @@ func (r *pgProjectPort) ListByIDs(ctx context.Context, ids []string) ([]port.Pro
 func (r *pgProjectPort) GetBySlug(ctx context.Context, slug string) (port.Project, error) {
 	row, err := r.q.GetProjectBySlug(ctx, slug)
 	if err != nil {
-		return port.Project{}, err
+		return port.Project{}, mappingErr(err)
 	}
 	return projectToPort(row), nil
 }
