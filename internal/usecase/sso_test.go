@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/minh-tg/specht/internal/auth"
@@ -193,4 +194,57 @@ func TestFindOrProvisionSSOUser_ElevationFailureFailsClosed(t *testing.T) {
 		[]string{"example.com"}, []string{"idp-admins"},
 	)
 	require.Error(t, err, "failed elevation must fail the login, not mint an admin token")
+}
+
+// An address the provider sends is held to the rules a person's address meets
+// at registration. These are refused before any lookup, link or insert.
+func TestFindOrProvisionSSOUser_RefusesAnInvalidProviderEmail(t *testing.T) {
+	tooLong := strings.Repeat("a", 5010) + "@example.com"
+	require.Len(t, tooLong, 5022)
+
+	for name, email := range map[string]string{
+		"5022 bytes":            tooLong,
+		"newline inside":        "ada@example.com\nbcc: eve@evil.example",
+		"newline in local part": "ada\n@example.com",
+		"trailing newline":      "ada@example.com\n",
+		"tab":                   "ada\t@example.com",
+		"nul":                   "ada\x00@example.com",
+		"display name":          "Ada <ada@example.com>",
+		"no at sign":            "ada.example.com",
+	} {
+		t.Run(name, func(t *testing.T) {
+			ur := &mockUserRepo{}
+			var touched []string
+			ur.getByEmailFn = func(context.Context, string) (port.User, error) {
+				touched = append(touched, "lookup")
+				return port.User{}, port.ErrNotFound
+			}
+			ur.createFn = func(_ context.Context, email string, _, _ *string) (port.User, error) {
+				touched = append(touched, "create")
+				return makeUser("user-new"), nil
+			}
+			ids := newMockIdentityRepo()
+			deps := ssoDepsWith(ur, ids)
+			claims := auth.SSOClaims{Issuer: ssoTestIssuer, EmailVerified: true, Subject: "sub-bad", Email: email}
+
+			_, _, _, err := New(deps).FindOrProvisionSSOUser(context.Background(), claims, []string{"example.com"}, nil)
+
+			require.ErrorIs(t, err, auth.ErrSSOInvalidEmail)
+			assert.NotErrorIs(t, err, auth.ErrSSONotProvisioned)
+			assert.Empty(t, touched, "no lookup and no user row for an address that was refused")
+		})
+	}
+}
+
+func TestFindOrProvisionSSOUser_InvalidEmailIsNotLogged(t *testing.T) {
+	logs := captureLogs(t)
+	ur := &mockUserRepo{}
+
+	_, _, _, err := New(ssoTestDeps(ur)).FindOrProvisionSSOUser(context.Background(),
+		auth.SSOClaims{Issuer: ssoTestIssuer, EmailVerified: true, Subject: "sub-bad", Email: "ada@example.com\nforged log line"},
+		[]string{"example.com"}, nil)
+
+	require.ErrorIs(t, err, auth.ErrSSOInvalidEmail)
+	assert.NotContains(t, logs.String(), "forged log line", "a provider value must not reach the log")
+	assert.Contains(t, logs.String(), "sub-bad")
 }

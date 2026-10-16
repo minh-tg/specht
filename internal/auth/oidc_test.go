@@ -502,3 +502,25 @@ func TestOIDC_Callback_NotProvisionedIsForbidden(t *testing.T) {
 	assert.Equal(t, http.StatusForbidden, w.Code)
 	assert.Contains(t, w.Body.String(), "sso account not provisioned")
 }
+
+func TestOIDC_Callback_InvalidProviderEmailIsForbiddenAndNamed(t *testing.T) {
+	// The issuer refuses an address the server cannot accept. The callback
+	// answers 403 and says the provider's address is the problem, which
+	// discloses nothing about local accounts.
+	key := newOIDCTestKey(t)
+	prov := newFakeOIDCProvider(t, key)
+	prov.userSub = "odd-sub"
+	a := mustOIDC(t, prov.srv.URL)
+	login := startTestLogin(t, a, "")
+	prov.idToken = signOIDCIDToken(t, key, prov.srv.URL, "test-client", "odd-sub", "ada@example.com", login.nonce)
+
+	h := a.CallbackHandler(func(ctx context.Context, claims SSOClaims) (string, error) {
+		return "", ErrSSOInvalidEmail
+	})
+	w := httptest.NewRecorder()
+	h(w, login.callbackRequest("test-code"))
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Contains(t, w.Body.String(), "email address this server cannot accept")
+	assert.NotContains(t, w.Body.String(), "sso account not provisioned")
+}

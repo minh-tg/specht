@@ -595,6 +595,10 @@ func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ct
 			http.Error(w, "sso account not provisioned", http.StatusForbidden)
 			return
 		}
+		if errors.Is(err, ErrSSOInvalidEmail) {
+			http.Error(w, "the identity provider sent an email address this server cannot accept", http.StatusForbidden)
+			return
+		}
 		http.Error(w, "token issuance failed", http.StatusInternalServerError)
 		return
 	}
@@ -617,7 +621,8 @@ func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ct
 // It receives the request context so it can resolve or provision the local
 // account, plus the IdP group membership for enterprise role mapping. If it
 // returns ErrSSONotProvisioned the callback answers 403 without disclosing
-// whether the account exists.
+// whether the account exists; ErrSSOInvalidEmail is a 403 that names the
+// provider's address as the problem.
 func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, claims SSOClaims) (token string, err error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		verifier, wantNonce, returnTo, ok := a.verifySSOCallbackState(w, r)
