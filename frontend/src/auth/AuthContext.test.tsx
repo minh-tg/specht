@@ -337,51 +337,21 @@ describe("AuthProvider SSO fragment", () => {
     localStorage.clear();
   });
 
-  it("installs the session when this browser started the SSO login", async () => {
-    const token = ssoToken();
+  it("never installs a session token from the URL, even for a login started here", async () => {
+    // The server used to put a session token in the fragment. Accepting one
+    // would let a crafted link sign the visitor into the sender's account.
+    const fetchSpy = fetchMock(() => response(404, {}));
     markSsoAttempt();
-    window.history.replaceState(null, "", `/#sso_token=${encodeURIComponent(token)}`);
-
-    renderAuth();
-
-    expect(screen.getByTestId("token")).toHaveTextContent(token);
-    expect(screen.getByTestId("email")).toHaveTextContent("sso@example.com");
-    await waitFor(() => expect(window.location.hash).toBe(""));
-    expect(hasPendingSsoAttempt()).toBe(false);
-  });
-
-  it("ignores a token in the URL that no login started here asked for", async () => {
     window.history.replaceState(null, "", `/#sso_token=${encodeURIComponent(ssoToken())}`);
 
     renderAuth();
 
     expect(screen.getByTestId("token")).toHaveTextContent("none");
+    expect(screen.getByTestId("email")).not.toHaveTextContent("sso@example.com");
     expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
-    // The refused token is still removed from the address bar.
-    await waitFor(() => expect(window.location.hash).toBe(""));
-  });
-
-  it("ignores a token once the login attempt has gone stale", () => {
-    markSsoAttempt(Date.now() - 11 * 60 * 1000);
-    window.history.replaceState(null, "", `/#sso_token=${encodeURIComponent(ssoToken())}`);
-
-    renderAuth();
-
-    expect(screen.getByTestId("token")).toHaveTextContent("none");
-  });
-
-  it("uses a started login only once", async () => {
-    markSsoAttempt();
-    window.history.replaceState(null, "", `/#sso_token=${encodeURIComponent(ssoToken())}`);
-    const first = renderAuth();
+    // The pending attempt is still consumed on mount, and no request is made.
     await waitFor(() => expect(hasPendingSsoAttempt()).toBe(false));
-    first.unmount();
-    sessionStorage.clear();
-
-    window.history.replaceState(null, "", `/#sso_token=${encodeURIComponent(ssoToken())}`);
-    renderAuth();
-
-    expect(screen.getByTestId("token")).toHaveTextContent("none");
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("exchanges sso_code and installs session and refresh tokens", async () => {
