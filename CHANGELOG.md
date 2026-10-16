@@ -147,6 +147,12 @@ releases.
   and response in `reports.raw_data`. Redaction now reads any valid JSON. When it still
   cannot read a report, the stored evidence is `{"redaction":"failed"}` and the server logs
   a warning with the scanner and size. The report's findings are still ingested.
+- A NUL character (`\u0000`) in a report no longer fails the whole ingest with a generic
+  `ingest_failed`. The database cannot store it, so it is dropped from the strings of the
+  report and its stored evidence, and the report is ingested. A NUL in a field name is
+  refused with `malformed_report`, because dropping it would rename the field. A NUL in a
+  request field such as `branch`, `commit_sha` or `environment` is refused with
+  `400 invalid_field` naming the field.
 - Undo after a triage change works for every earlier state. The server keeps a snapshot of
   the analysis it replaced (state, reason, expiry, source, manual and review flags) in the
   triage event, and `POST /api/v1/findings/{id}/analysis/undo` puts it back as a new event.
