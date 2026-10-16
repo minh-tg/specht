@@ -15,11 +15,18 @@ const claimPasswordReset = `-- name: ClaimPasswordReset :one
 UPDATE password_resets SET used_at = NOW()
 WHERE token_hash = $1
   AND used_at IS NULL AND revoked_at IS NULL AND expires_at > NOW()
+  AND EXISTS (
+      SELECT 1 FROM users u
+      WHERE u.id = password_resets.user_id
+        AND u.disabled_at IS NULL AND u.password_hash IS NOT NULL
+  )
 RETURNING id, token_hash, user_id, created_by, created_at, expires_at, used_at, revoked_at
 `
 
 // Marks the link used. Of two requests with the same link only one gets a row
-// back; the other waits for the first to commit and then finds it used.
+// back; the other waits for the first to commit and then finds it used. A link
+// of a deactivated or password-less account is refused here as well, so the
+// rule does not depend on the caller having locked the account first.
 func (q *Queries) ClaimPasswordReset(ctx context.Context, tokenHash string) (PasswordReset, error) {
 	row := q.db.QueryRow(ctx, claimPasswordReset, tokenHash)
 	var i PasswordReset
@@ -68,6 +75,37 @@ func (q *Queries) CreatePasswordReset(ctx context.Context, arg CreatePasswordRes
 		&i.RevokedAt,
 	)
 	return i, err
+}
+
+const getPasswordResetUserID = `-- name: GetPasswordResetUserID :one
+SELECT user_id FROM password_resets WHERE token_hash = $1
+`
+
+// Names the account a link belongs to without spending the link, so the
+// redeem can lock that account before it touches the link.
+func (q *Queries) GetPasswordResetUserID(ctx context.Context, tokenHash string) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, getPasswordResetUserID, tokenHash)
+	var user_id pgtype.UUID
+	err := row.Scan(&user_id)
+	return user_id, err
+}
+
+const lockResettableUser = `-- name: LockResettableUser :one
+SELECT id FROM users
+WHERE id = $1 AND disabled_at IS NULL AND password_hash IS NOT NULL
+FOR NO KEY UPDATE
+`
+
+// Locks an account that can take a password through a link: active and with a
+// local password. An account that signs in through an identity provider has no
+// password hash and a reset must not give it one. A concurrent deactivation,
+// password change or SSO link holds the same row lock, so this waits for it and
+// then re-reads the row; an account it turned ineligible returns no row.
+func (q *Queries) LockResettableUser(ctx context.Context, id pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, lockResettableUser, id)
+	var id_2 pgtype.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
 }
 
 const revokePendingPasswordResets = `-- name: RevokePendingPasswordResets :exec
