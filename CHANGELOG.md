@@ -488,3 +488,8 @@ releases.
   Deactivating an account that is the only active admin of a project now
   answers 409 `sole_project_admin` and lists the projects; send `{"force":
   true}` (or `specht users deactivate --force`) to go ahead.
+- A person whose manager or admin rank on a project comes only from a linked
+  team can no longer grant manager or admin through a member row, a team link
+  or an invite. Before, they could write a direct admin row for themselves and
+  keep admin after the team was unlinked. Granting member level is unchanged,
+  and a direct manager or admin keeps their own role as the limit.

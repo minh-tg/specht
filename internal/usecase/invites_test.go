@@ -119,6 +119,8 @@ type inviteFixture struct {
 	uc      *Usecases
 	invites *fakeInvites
 	role    string
+	// teamOnly makes the caller's role come from a team link: no direct row.
+	teamOnly bool
 }
 
 // newInviteTestFixture builds the use cases with a caller whose project role is role.
@@ -133,6 +135,13 @@ func newInviteTestFixture(t *testing.T, role string) *inviteFixture {
 			return port.Project{}, port.ErrNotFound
 		},
 		effectiveRoleFn: func(context.Context, string, string) (string, error) { return f.role, nil },
+		// The caller holds the role directly, not through a team link.
+		getMemberFn: func(_ context.Context, projectID, userID string) (port.ProjectMember, error) {
+			if f.role == "" || f.teamOnly {
+				return port.ProjectMember{}, port.ErrNotFound
+			}
+			return port.ProjectMember{ProjectID: projectID, UserID: userID, Role: f.role}, nil
+		},
 	}
 	refresh := &mockRefreshTokenRepo{createFn: func(context.Context, port.NewRefreshToken) (port.RefreshToken, error) {
 		return makeRefreshToken(false), nil
@@ -209,6 +218,18 @@ func TestCreateInvite_WhoMayInviteWhom(t *testing.T) {
 			assert.Empty(t, f.invites.byHash, "nothing is stored for a refused invite")
 		})
 	}
+}
+
+func TestCreateInvite_TeamOnlyCallerCannotInviteAboveMember(t *testing.T) {
+	f := newInviteTestFixture(t, auth.RoleAdmin)
+	f.teamOnly = true
+
+	_, err := f.uc.CreateInvite(callerCtx(), "payments", CreateInviteInput{Role: "manager"})
+	assert.ErrorIs(t, err, ErrProjectAccessDenied, "a team link cannot vouch for a manager invite")
+	assert.Empty(t, f.invites.byHash)
+
+	_, err = f.uc.CreateInvite(callerCtx(), "payments", CreateInviteInput{Role: "member"})
+	assert.NoError(t, err, "member-level invites follow the effective role")
 }
 
 func TestCreateInvite_UnknownProjectLooksLikeNoAccess(t *testing.T) {

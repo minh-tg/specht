@@ -153,6 +153,37 @@ func (u *Usecases) callerProjectRole(ctx context.Context, projectID string) (str
 	return role, nil
 }
 
+// requireDirectGrantCeiling keeps a role that comes from a team link from
+// being copied into rows that outlive the link. Handing out manager or admin,
+// by a member row, a team link or an invite, needs a direct project role at or
+// above the role handed out: the caller's effective role may include team
+// links, which the project's admins can revoke, and a row written on its
+// strength would stay after they do. Member-level grants follow the effective
+// role. Global admins are exempt.
+func (u *Usecases) requireDirectGrantCeiling(ctx context.Context, projectID, role string) error {
+	if auth.RoleRank(role) <= auth.RoleRank(auth.RoleMember) {
+		return nil
+	}
+	ident := auth.ContextIdentity(ctx)
+	if ident == nil || ident.IsAPIKey {
+		return ErrProjectAccessDenied
+	}
+	if ident.Role == auth.RoleAdmin {
+		return nil
+	}
+	direct, err := u.deps.Stores.Projects.GetMember(ctx, projectID, ident.UserID)
+	switch {
+	case errors.Is(err, port.ErrNotFound):
+		return ErrProjectAccessDenied
+	case err != nil:
+		return fmt.Errorf("resolve direct project role: %w", err)
+	}
+	if auth.RoleRank(normalizeMemberRole(direct.Role)) < auth.RoleRank(role) {
+		return ErrProjectAccessDenied
+	}
+	return nil
+}
+
 func (u *Usecases) requireProjectManager(ctx context.Context, projectID string) error {
 	return u.requireProjectRole(ctx, projectID, "", auth.RoleAdmin, auth.RoleManager, auth.RoleEditor)
 }

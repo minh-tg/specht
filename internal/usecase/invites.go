@@ -181,6 +181,9 @@ func (u *Usecases) CreateInvite(ctx context.Context, projectSlug string, in Crea
 	if auth.RoleRank(role) > auth.RoleRank(callerRole) {
 		return nil, ErrProjectAccessDenied
 	}
+	if err := u.requireDirectGrantCeiling(ctx, p.ID, role); err != nil {
+		return nil, err
+	}
 	pending, err := u.deps.Stores.Invites.CountPending(ctx, p.ID)
 	if err != nil {
 		return nil, fmt.Errorf("count invites: %w", err)

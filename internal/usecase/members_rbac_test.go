@@ -51,6 +51,12 @@ func TestAddProjectMember_DelegationCeiling(t *testing.T) {
 		return "", port.ErrNotFound
 	}
 
+	pr.getMemberFn = func(ctx context.Context, projectID, userID string) (port.ProjectMember, error) {
+		if userID == "mgr-1" {
+			return port.ProjectMember{ProjectID: projectID, UserID: userID, Role: auth.RoleManager}, nil
+		}
+		return port.ProjectMember{}, port.ErrNotFound
+	}
 	pr.upsertMemberFn = func(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
 		return port.ProjectMember{ProjectID: projectID, UserID: userID, Role: role, CreatedAt: time.Now()}, nil
 	}
@@ -75,6 +81,45 @@ func TestAddProjectMember_DelegationCeiling(t *testing.T) {
 	}
 	_, err = uc.AddProjectMember(projectRoleCtx("00000000-0000-4000-8000-000000000001", auth.RoleMember), "rbac-test", "00000000-0000-4000-8000-000000000004", auth.RoleMember)
 	assert.ErrorIs(t, err, ErrProjectAccessDenied)
+}
+
+// A caller whose manager or admin rank comes only from a team link has no
+// direct row to vouch for it, so it may hand out nothing above member. A direct
+// row is the ceiling even when a team link lifts the caller's effective role.
+func TestAddProjectMember_TeamOnlyCallerIsCappedAtMember(t *testing.T) {
+	uc, pr := setupMembersRBACTest()
+	pr.effectiveRoleFn = func(context.Context, string, string) (string, error) { return auth.RoleAdmin, nil }
+	const caller = "00000000-0000-4000-8000-0000000000c1"
+	direct := ""
+	pr.getMemberFn = func(_ context.Context, projectID, userID string) (port.ProjectMember, error) {
+		if userID == caller && direct != "" {
+			return port.ProjectMember{ProjectID: projectID, UserID: userID, Role: direct}, nil
+		}
+		return port.ProjectMember{}, port.ErrNotFound
+	}
+	written := 0
+	pr.upsertMemberFn = func(_ context.Context, projectID, userID, role string) (port.ProjectMember, error) {
+		written++
+		return port.ProjectMember{ProjectID: projectID, UserID: userID, Role: role, CreatedAt: time.Now()}, nil
+	}
+	ctx := projectRoleCtx(caller, auth.RoleViewer)
+	const other = "00000000-0000-4000-8000-000000000009"
+
+	for _, role := range []string{auth.RoleAdmin, auth.RoleManager} {
+		_, err := uc.AddProjectMember(ctx, "rbac-test", caller, role)
+		assert.ErrorIs(t, err, ErrProjectAccessDenied, "self as %s through a team link", role)
+		_, err = uc.AddProjectMember(ctx, "rbac-test", other, role)
+		assert.ErrorIs(t, err, ErrProjectAccessDenied, "another person as %s through a team link", role)
+	}
+	assert.Zero(t, written, "nothing reaches the store")
+	_, err := uc.AddProjectMember(ctx, "rbac-test", other, auth.RoleMember)
+	require.NoError(t, err, "member-level grants follow the effective role")
+
+	direct = auth.RoleManager
+	_, err = uc.AddProjectMember(ctx, "rbac-test", other, auth.RoleAdmin)
+	assert.ErrorIs(t, err, ErrProjectAccessDenied, "the direct manager row is the ceiling, not the linked admin role")
+	_, err = uc.AddProjectMember(ctx, "rbac-test", other, auth.RoleManager)
+	require.NoError(t, err)
 }
 
 func TestAddProjectMember_PeerProtection(t *testing.T) {
