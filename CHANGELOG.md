@@ -312,3 +312,11 @@ releases.
   worked again once the account was reactivated. The request now gets `403` when
   the creator is deactivated, and a key stored a moment earlier is revoked with
   the rest.
+- Email addresses are now lower-cased for ASCII letters only, and an address
+  with another character that has a different lower case (for example the Kelvin
+  sign U+212A, which Go and some PostgreSQL locales fold to a plain `k`) is
+  refused as an invalid address at registration, invites, member lookups and
+  recovery commands, and matches no account at sign-in or SSO. Before, an
+  identity provider that vouched for `Kate@corp` spelled with the Kelvin sign
+  could link to the account `kate@corp`. An `ADMIN_EMAILS` entry written that
+  way is skipped with a warning.

@@ -165,6 +165,9 @@ func (u *Usecases) CreateInvite(ctx context.Context, projectSlug string, in Crea
 			return nil, fmt.Errorf("%w: invalid email address", ErrInvalidInviteInput)
 		}
 		normalized := auth.NormalizeEmail(addr.Address)
+		if normalized == "" {
+			return nil, fmt.Errorf("%w: invalid email address", ErrInvalidInviteInput)
+		}
 		email = &normalized
 	}
 

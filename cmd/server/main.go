@@ -395,7 +395,14 @@ func bootstrapAdmins(ctx context.Context, stores *port.Stores) {
 	}
 	seen := map[string]bool{}
 	for _, email := range strings.FieldsFunc(raw, func(c rune) bool { return c == ',' || c == ' ' }) {
+		raw := email
 		email = auth.NormalizeEmail(email)
+		if email == "" && !auth.FoldsConsistently(raw) {
+			// No canonical form, so no account can be matched safely.
+			slog.Warn("admin bootstrap: an ADMIN_EMAILS entry has a character whose lower case differs between " +
+				"the server and the database, skipped; write the address with its plain ASCII letters")
+			continue
+		}
 		if email == "" || seen[email] {
 			continue
 		}

@@ -168,7 +168,11 @@ func memberEmail(email string) (string, error) {
 	if err != nil || addr.Address != email {
 		return "", ErrInvalidMemberEmail
 	}
-	return auth.NormalizeEmail(email), nil
+	normalized := auth.NormalizeEmail(email)
+	if normalized == "" {
+		return "", ErrInvalidMemberEmail
+	}
+	return normalized, nil
 }
 
 // userByEmail finds the account behind an address. A missing account is
