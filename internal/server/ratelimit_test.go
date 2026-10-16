@@ -265,3 +265,29 @@ func TestRouter_AuthEndpointsRateLimitedByDefault(t *testing.T) {
 	assert.NotEqual(t, http.StatusTooManyRequests, sendLogin())
 	assert.Equal(t, http.StatusTooManyRequests, sendLogin())
 }
+
+// The per-address bucket on refresh, logout and the SSO exchange is always
+// mounted, with or without RATE_LIMIT_ENABLED, and takes its size from
+// RATE_LIMIT_RPS and RATE_LIMIT_BURST rather than a fixed value.
+func TestRouter_AnonymousAuthBucketFollowsConfiguredValues(t *testing.T) {
+	refreshUntilLimited := func(cfg RateLimitConfig, max int) int {
+		router := NewRouter(RouterConfig{Usecases: &mockUsecases{}, JWTAuth: testJWTAuth, RateLimit: cfg})
+		for i := range max {
+			req := httptest.NewRequest("POST", "/api/v1/auth/refresh", strings.NewReader(`{"refresh_token":"x"}`))
+			req.Header.Set("Content-Type", "application/json")
+			req.RemoteAddr = "192.0.2.90:1234"
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			if w.Code == http.StatusTooManyRequests {
+				return i
+			}
+		}
+		return -1
+	}
+
+	assert.Equal(t, 2, refreshUntilLimited(RateLimitConfig{Enabled: false, RPS: 1, Burst: 2}, 10),
+		"a smaller configured burst applies with the global limiter off")
+	assert.Equal(t, 50, refreshUntilLimited(RateLimitConfig{Enabled: false, RPS: 1, Burst: 50}, 100),
+		"a larger configured burst raises the bucket past the 20 default")
+	assert.Equal(t, 20, refreshUntilLimited(RateLimitConfig{}, 100), "unset values fall back to 10 per second, burst 20")
+}
