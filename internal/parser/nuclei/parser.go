@@ -120,7 +120,7 @@ func splitNucleiLines(trimmed []byte) ([][]byte, error) {
 		}
 	}
 	if err := sc.Err(); err != nil {
-		return nil, fmt.Errorf("nuclei: scan lines: %w", err)
+		return nil, scanner.Malformed("nuclei", fmt.Errorf("scan lines: %w", err))
 	}
 	return lines, nil
 }
@@ -189,20 +189,15 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	return parseutil.HardenReport(nr), nil
 }
 
+// redactedFields are the keys of a Nuclei event that hold request and response
+// bodies or extracted values. They are matched without regard to case and at
+// any depth.
+var redactedFields = []string{"request", "response", "extracted-results", "extracted_results"}
+
 // redactNucleiFields replaces sensitive embedded payloads in one decoded
 // Nuclei event with the redaction marker.
 func redactNucleiFields(m map[string]any) {
-	for _, k := range []string{"request", "response", "extracted-results", "extracted_results"} {
-		v, ok := m[k]
-		if !ok {
-			continue
-		}
-		if str, ok := v.(string); ok && str != "" {
-			m[k] = "[REDACTED]"
-		} else if arr, ok := v.([]any); ok && len(arr) > 0 {
-			m[k] = "[REDACTED]"
-		}
-	}
+	parseutil.RedactKeys(m, "[REDACTED]", redactedFields...)
 }
 
 // redactNucleiArray redacts a JSON-array Nuclei payload, reporting whether
@@ -245,6 +240,11 @@ func redactNucleiLines(trimmed []byte) ([]byte, bool) {
 			continue
 		}
 		arr = append(arr, out)
+	}
+	if err := sc.Err(); err != nil {
+		// A line over the scanner buffer ended the scan; storing what was read
+		// would drop the rest of the evidence without a word.
+		return nil, false
 	}
 	out, err := json.Marshal(arr)
 	if err != nil {

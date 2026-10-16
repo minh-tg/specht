@@ -104,3 +104,41 @@ func TestDetectFormat(t *testing.T) {
 	assert.True(t, NewScanner().DetectFormat(data))
 	assert.False(t, NewScanner().DetectFormat([]byte(`[{"Target":"x"}]`)))
 }
+
+// encoding/json matches struct fields without regard to case, so the parser
+// reads (and hashes) a key like "secret" that the redactor used to leave alone.
+func TestRedactRawIsCaseInsensitive(t *testing.T) {
+	const secret = "hunter2-super-secret"
+	for _, key := range []string{"Secret", "secret", "sEcReT", "SECRET"} {
+		for _, matchKey := range []string{"Match", "match", "MATCH"} {
+			doc := `[{"RuleID":"generic","File":"a.env","` + key + `":"` + secret + `","` + matchKey + `":"token=` + secret + `","StartLine":1}]`
+			redacted := string(NewScanner().RedactRaw([]byte(doc)))
+			assert.NotContains(t, redacted, secret, "keys %s and %s", key, matchKey)
+			assert.Contains(t, redacted, "generic", "provenance survives")
+		}
+	}
+}
+
+func TestRedactRawCoversEveryCaseVariantOfTheSameKey(t *testing.T) {
+	doc := `[{"RuleID":"r","File":"f","Secret":"first-secret","secret":"second-secret"}]`
+	redacted := string(NewScanner().RedactRaw([]byte(doc)))
+	assert.NotContains(t, redacted, "first-secret")
+	assert.NotContains(t, redacted, "second-secret")
+}
+
+func TestRedactRawCoversNestedObjectsAndLists(t *testing.T) {
+	doc := `[{"RuleID":"r","File":"f","Secret":"top","extra":{"secret":"nested-secret","deeper":[{"MATCH":"list-secret"}]}}]`
+	redacted := string(NewScanner().RedactRaw([]byte(doc)))
+	for _, leaked := range []string{"nested-secret", "list-secret"} {
+		assert.NotContains(t, redacted, leaked)
+	}
+}
+
+func TestRedactRawKeepsTheIdentityBasisOfACaseVariantReport(t *testing.T) {
+	doc := []byte(`[{"RuleID":"generic","File":"a.env","secret":"hunter2-super-secret","StartLine":1}]`)
+	redacted := NewScanner().RedactRaw(doc)
+	rep, err := NewScanner().Parse(keyedContext(), redacted)
+	require.NoError(t, err)
+	require.Len(t, rep.Findings, 1)
+	assert.NotEqual(t, "secret", rep.Findings[0].Extensions["identity_basis"], "no credential is left to hash")
+}
