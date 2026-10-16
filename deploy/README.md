@@ -100,19 +100,28 @@ its creator typed, so keep `REGISTRATION_ENABLED` closed unless you accept that.
 | `RATE_LIMIT_BURST` | `20` | Burst for the unauthenticated bucket. |
 | `RATE_LIMIT_AUTH_RPS` | `1000` | Per-caller rate behind authentication. |
 | `RATE_LIMIT_AUTH_BURST` | `2000` | Burst for the authenticated bucket. |
-| `RATE_LIMIT_LOGIN_PER_MINUTE` | `5` | Per-client refill rate for login and register, the endpoints that accept guessable credentials. |
-| `RATE_LIMIT_LOGIN_BURST` | `5` | Burst for that bucket: attempts allowed before the per-minute refill applies. |
+| `RATE_LIMIT_LOGIN_PER_MINUTE` | `5` | Per-client refill rate for the login tier: login, register, first-run setup, password reset, invite lookup and invite accept. `PUT /api/v1/me/password` has a separate bucket of the same size. |
+| `RATE_LIMIT_LOGIN_BURST` | `5` | Burst for those buckets: attempts allowed before the per-minute refill applies. |
 
 Several limiters stack. All of them count in memory, per server process, and
 start empty after a restart.
 
 | Tier | Routes | Counted per | Size | Active |
 |------|--------|-------------|------|--------|
-| Global | Every route except `/api/v1/health` and `/api/v1/version`. A request carrying an `Authorization` header skips it and is judged by the authenticated tier. | Client address | `RATE_LIMIT_RPS`, `RATE_LIMIT_BURST` | Only with `RATE_LIMIT_ENABLED=true`. |
+| Global | Every route except `/api/v1/health` and `/api/v1/version`. A request carrying an `Authorization` header skips it, whatever the header holds. On a route behind authentication the authenticated tier judges it instead, but only when the token is valid (see below). | Client address | `RATE_LIMIT_RPS`, `RATE_LIMIT_BURST` | Only with `RATE_LIMIT_ENABLED=true`. |
 | Anonymous auth routes | Token refresh, logout, the SSO exchange, and every route in the login tier below. Sending an `Authorization` header does not skip it. | Client address | `RATE_LIMIT_RPS`, `RATE_LIMIT_BURST` (10 per second, burst 20 when unset) | Always, also with `RATE_LIMIT_ENABLED=false`. |
 | Login | Login, register, first-run setup, password reset, invite lookup and invite accept share one bucket. `PUT /api/v1/me/password` has a bucket of its own. | Client address | `RATE_LIMIT_LOGIN_PER_MINUTE`, `RATE_LIMIT_LOGIN_BURST` | Always. |
-| Authenticated | Routes behind a session or API key. | Caller (user or key identity) | `RATE_LIMIT_AUTH_RPS`, `RATE_LIMIT_AUTH_BURST` | Only with `RATE_LIMIT_ENABLED=true`. |
+| Authenticated | Routes behind a session or API key. | The signed-in user: all of a user's sessions and API keys share one budget | `RATE_LIMIT_AUTH_RPS`, `RATE_LIMIT_AUTH_BURST` | Only with `RATE_LIMIT_ENABLED=true`. |
 | Account delay | `POST /api/v1/auth/login` and `PUT /api/v1/me/password` (the current-password check). | Normalized email (trimmed, lower-cased) | Fixed, see below | Always. |
+
+**Invalid credentials.** The authenticated tier runs after the token is
+checked. A request with an invalid or expired bearer token or API key is
+answered `401` before any limiter counts it, so wrong tokens are not limited
+per address. The same applies to anonymous routes outside the authentication
+group (`/api/v1/capabilities`, `/api/v1/ready`, SSO login and callback): a
+request with any `Authorization` header, valid or not, skips every tier there.
+The cost of guessing a key is one database lookup per attempt. Keys and tokens
+carry 256 bits of randomness, so this is load, not a way to guess one.
 
 Member suggestions have one more fixed bucket of 30 requests a minute (burst
 10) per caller, also always on.
@@ -158,7 +167,15 @@ current one) never judged the current password and is not counted.
 delay holds at most 100,000 emails. When the per-IP limiter is full, expired
 entries are dropped first. If it is still full, clients without an entry yet
 share one overflow entry, which is limited as a group, and entries that already
-exist are never evicted.
+exist are never evicted. While a flood keeps a per-IP store full, every
+client without an entry in it shares that store's one overflow bucket. Login
+requests also pass through the anonymous auth bucket, so the same flood fills
+that store as well, and clients without a live entry there (for example a
+browser refreshing its token) share a single bucket of 10 requests a second at
+the defaults. To keep a store full an attacker needs about 100,000 distinct IPv4
+addresses or IPv6 /64 prefixes, each seen again at least every 3 minutes (the
+idle time after which a bucket expires), which is around 550 requests a second.
+The effect ends within 3 minutes after the flood stops.
 
 The account delay never shares a counter between emails. When its map is full,
 entries whose count has expired are dropped first. If it is still full, the
