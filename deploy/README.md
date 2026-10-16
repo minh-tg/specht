@@ -146,12 +146,20 @@ minutes without a failed login. There is no lockout: the wait never exceeds 60
 seconds. Someone who keeps failing against an email can keep that account
 waiting. Refused attempts are written to the audit log as failed logins.
 
-**Bucket cap.** Each limiter holds at most 100,000 buckets (the account delay
-holds at most 100,000 accounts). When it is full, expired entries are dropped
-first. If it is still full, clients (or emails) without an entry yet share one
-overflow entry, which is limited as a group, and entries that already exist are
-never evicted. During such a flood, new clients can be throttled until the
-flood ends.
+**Bucket cap.** Each limiter holds at most 100,000 buckets, and the account
+delay holds at most 100,000 emails. When the per-IP limiter is full, expired
+entries are dropped first. If it is still full, clients without an entry yet
+share one overflow entry, which is limited as a group, and entries that already
+exist are never evicted.
+
+The account delay never shares a counter between emails. When its map is full,
+entries whose count has expired are dropped first. If it is still full, the
+stalest entry that has not reached a wait yet (fewer than three failures and not
+waiting) makes room for the new email; the oldest of a sample of entries is
+chosen, so the lookup stays cheap. If every entry is waiting, the new email is
+not tracked at all and only the per-IP login bucket limits it. A flood of
+made-up emails therefore cannot lock real users out: it can push out other
+accounts' small failure counts, but never a wait that has started.
 
 ### SSO / OIDC
 

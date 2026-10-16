@@ -187,27 +187,120 @@ func TestLoginDelay_ManyAccountsInParallel(t *testing.T) {
 	assert.Equal(t, 10, f.h.loginDelay.accountCount())
 }
 
-func TestLoginDelay_StateIsBoundedAndFailsClosedWhenFull(t *testing.T) {
+// setLoginDelayCap shrinks the account store so a test can fill it without
+// 100,000 requests. TestNewLoginDelay_UsesTheSharedCap pins the real value.
+func setLoginDelayCap(d *loginDelay, n int) { d.max = n }
+
+func TestNewLoginDelay_UsesTheSharedCap(t *testing.T) {
+	assert.Equal(t, maxLiveBuckets, newLoginDelay().max)
+}
+
+func TestLoginDelay_FullStoreOfSingleFailuresStillServesFreshAccounts(t *testing.T) {
 	f := newLoginDelayFixture(t)
-	f.h.loginDelay.store.max = 20
+	setLoginDelayCap(f.h.loginDelay, 20)
 
 	for i := range 500 {
 		f.login(fmt.Sprintf("flood%d@example.com", i))
 	}
 	assert.LessOrEqual(t, f.h.loginDelay.accountCount(), 20)
 
-	// New accounts now share the overflow counter, which the flood has
-	// already pushed into a wait.
-	assert.Equal(t, http.StatusTooManyRequests, f.login("late-arrival@example.com").Code)
-
-	// An account that already has state keeps its own counter.
-	f2 := newLoginDelayFixture(t)
-	f2.h.loginDelay.store.max = 20
-	f2.login("victim@example.com")
-	for i := range 500 {
-		f2.login(fmt.Sprintf("flood%d@example.com", i))
+	// A fresh account has its own counter: its first three guesses are
+	// evaluated, and the right password signs in.
+	for i := range 3 {
+		require.Equal(t, http.StatusUnauthorized, f.login("late-arrival@example.com").Code, "guess %d is evaluated", i+1)
 	}
-	assert.Equal(t, http.StatusUnauthorized, f2.login("victim@example.com").Code, "its second failure is still evaluated")
+	f.success.Store(true)
+	f.advance(time.Minute)
+	assert.Equal(t, http.StatusOK, f.login("late-arrival@example.com").Code)
+}
+
+func TestLoginDelay_FloodCannotRaiseAWaitOnAFreshAccount(t *testing.T) {
+	f := newLoginDelayFixture(t)
+	setLoginDelayCap(f.h.loginDelay, 20)
+	for i := range 2000 {
+		f.login(fmt.Sprintf("flood%d@example.com", i%700))
+		f.advance(10 * time.Millisecond)
+	}
+	f.success.Store(true)
+	for i := range 40 {
+		email := fmt.Sprintf("fresh%d@example.com", i)
+		assert.Equal(t, http.StatusOK, f.login(email).Code, "%s signs in with the right password", email)
+	}
+}
+
+func TestLoginDelay_AccountThatHasStateKeepsItsCounterUnderFlood(t *testing.T) {
+	f := newLoginDelayFixture(t)
+	setLoginDelayCap(f.h.loginDelay, 20)
+	f.login("victim@example.com")
+	f.login("victim@example.com")
+	f.login("victim@example.com")
+	for i := range 500 {
+		f.login(fmt.Sprintf("flood%d@example.com", i))
+	}
+	assert.Equal(t, http.StatusTooManyRequests, f.login("victim@example.com").Code,
+		"the victim's wait survives a flood of single failures")
+}
+
+func TestLoginDelay_BlockedEntriesAreNeverEvictedForANewcomer(t *testing.T) {
+	f := newLoginDelayFixture(t)
+	setLoginDelayCap(f.h.loginDelay, 20)
+	for i := range 10 {
+		for range 3 {
+			f.login(fmt.Sprintf("blocked%d@example.com", i))
+		}
+	}
+	for i := range 10 {
+		f.login(fmt.Sprintf("single%d@example.com", i))
+	}
+	require.Equal(t, 20, f.h.loginDelay.accountCount())
+
+	for i := range 500 {
+		f.login(fmt.Sprintf("newcomer%d@example.com", i))
+	}
+	for i := range 10 {
+		assert.Equal(t, http.StatusTooManyRequests, f.login(fmt.Sprintf("blocked%d@example.com", i)).Code,
+			"blocked%d keeps its wait", i)
+	}
+}
+
+func TestLoginDelay_WhenEveryEntryIsBlockedANewEmailIsNotTracked(t *testing.T) {
+	f := newLoginDelayFixture(t)
+	setLoginDelayCap(f.h.loginDelay, 20)
+	for i := range 20 {
+		for range 3 {
+			f.login(fmt.Sprintf("blocked%d@example.com", i))
+		}
+	}
+	require.Equal(t, 20, f.h.loginDelay.accountCount())
+
+	// The newcomer is neither refused nor remembered: the per-IP login
+	// bucket is the only limit left on it.
+	for range 10 {
+		require.Equal(t, http.StatusUnauthorized, f.login("newcomer@example.com").Code)
+	}
+	assert.Equal(t, 20, f.h.loginDelay.accountCount())
+	f.success.Store(true)
+	assert.Equal(t, http.StatusOK, f.login("newcomer@example.com").Code)
+	assert.Equal(t, 20, f.h.loginDelay.accountCount())
+}
+
+func TestLoginDelay_ExpiredEntriesAreSweptWhenTheStoreIsFull(t *testing.T) {
+	f := newLoginDelayFixture(t)
+	setLoginDelayCap(f.h.loginDelay, 20)
+	for i := range 20 {
+		for range 3 {
+			f.login(fmt.Sprintf("old%d@example.com", i))
+		}
+	}
+	f.advance(loginDelayDecay + time.Second)
+	f.success.Store(true)
+	assert.Equal(t, http.StatusOK, f.login("newcomer@example.com").Code)
+	f.success.Store(false)
+	f.login("newcomer@example.com")
+	f.login("newcomer@example.com")
+	f.login("newcomer@example.com")
+	assert.Equal(t, http.StatusTooManyRequests, f.login("newcomer@example.com").Code,
+		"the newcomer got a slot once the old waits had expired, so its own counter works")
 }
 
 func TestRouter_LoginDelayAppliesAcrossAddressesAndPrefixes(t *testing.T) {

@@ -250,6 +250,12 @@ releases.
   password. A successful sign-in resets the count, and it clears on its own
   after 15 minutes without a failure. There is no lockout, and unknown emails
   are counted the same way so the wait does not reveal which accounts exist.
+- The per-account sign-in delay no longer shares one counter between emails
+  when its table is full. Before, a flood of made-up emails could push every
+  other account onto one shared counter and refuse real users' sign-ins with
+  `429`. Now a new email takes the place of the stalest entry that has not
+  started waiting yet, and if every entry is waiting the new email is only
+  limited by the per-IP login bucket.
 - First-run setup stays available until a global admin exists. A stranger who
   registers before you no longer closes it. If the address you enter at setup
   already belongs to an account, setup answers 409 and you pick another one.
