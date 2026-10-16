@@ -381,6 +381,7 @@ type mockReportRepo struct {
 	deleteReportFn             func(context.Context, string, string) error
 	deleteDuplicateReportFn    func(context.Context, string, string, string) error
 	hasCommitFn                func(context.Context, string, string) (bool, error)
+	settleFailedFn             func(context.Context, string, string) error
 }
 
 func (m *mockReportRepo) Create(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
@@ -388,6 +389,13 @@ func (m *mockReportRepo) Create(ctx context.Context, arg port.CreateReportInput)
 		return port.Report{}, fmt.Errorf("unexpected call to Create")
 	}
 	return m.createFn(ctx, arg)
+}
+
+func (m *mockReportRepo) SettleFailedReport(ctx context.Context, reportID, projectID string) error {
+	if m.settleFailedFn == nil {
+		return nil
+	}
+	return m.settleFailedFn(ctx, reportID, projectID)
 }
 
 func (m *mockReportRepo) HasCompletedForCommit(ctx context.Context, projectID, commit string) (bool, error) {

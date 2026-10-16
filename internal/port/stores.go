@@ -1104,8 +1104,16 @@ type ReportStore interface {
 	CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error)
 	// FailStale settles reports still processing since before the cutoff as
 	// failed, with the reason as their error message, and returns how many it
-	// changed. It is the recovery for an ingest the server stopped under.
+	// changed. It also settles the findings each one left half written (see
+	// SettleFailedReport). It is the recovery for an ingest the server stopped
+	// under.
 	FailStale(ctx context.Context, cutoff time.Time, reason string) (int64, error)
+	// SettleFailedReport cleans up the findings an ingest left when it stopped
+	// before writing their occurrences: findings the failed report created and
+	// nothing supports are deleted, and ones it only brought back or that were
+	// triaged are archived. Findings with an occurrence are never touched, and
+	// a report that is not failed is ignored. It is safe to call twice.
+	SettleFailedReport(ctx context.Context, reportID, projectID string) error
 	// DeleteStaleReports deletes settled reports older than the cutoff,
 	// returning their ids. Each goes through DeleteReportAndSettle, so a
 	// retention purge and an explicit delete leave the same state behind.

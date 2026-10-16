@@ -104,16 +104,66 @@ WHERE r.project_id = $1
 ORDER BY r.created_at DESC, r.id DESC
 LIMIT 1;
 
--- name: FailStaleReports :execrows
+-- name: FailStaleReports :many
 -- A report stays in processing only while its ingest request runs. One that
 -- is still there well after the ingest window means the server stopped under
--- it, so it is settled as failed and a retry can ingest the same content.
+-- it, so it is settled as failed and a retry can ingest the same content. The
+-- ids come back so the findings it left half written can be settled too.
 UPDATE reports SET
     status = 'failed',
     completed_at = NOW(),
     error_message = $2
 WHERE status = 'processing'
-  AND created_at < $1;
+  AND created_at < $1
+RETURNING id, project_id;
+
+-- name: DeleteFindingsOfFailedReport :many
+-- An ingest upserts a finding row and attributes it to its report before it
+-- writes the occurrences, so one that stops midway leaves findings no
+-- occurrence supports. This removes the ones the failed report created itself
+-- (born after the report, never triaged) and still has no occurrence. A
+-- finding any other report has an occurrence for is not touched.
+DELETE FROM findings f
+USING reports r
+WHERE r.id = sqlc.arg(report_id) AND r.project_id = sqlc.arg(project_id)
+  AND r.status = 'failed'
+  AND f.project_id = r.project_id
+  AND f.introduced_by_report_id = r.id
+  AND f.created_at >= r.created_at
+  AND f.triage_status = 'untriaged'
+  AND NOT EXISTS (SELECT 1 FROM finding_occurrences fo WHERE fo.finding_id = f.id)
+RETURNING f.id;
+
+-- name: ArchiveFindingsOfFailedReport :many
+-- The other half of the cleanup: findings the failed report attributed to
+-- itself and that have no occurrence, but that it did not create (it brought
+-- an archived one back) or that someone already triaged. They are archived
+-- like findings that lost their report, with an event naming the report.
+WITH orphaned AS (
+    SELECT f.id, f.state
+    FROM findings f
+    JOIN reports r ON r.id = f.introduced_by_report_id
+    WHERE r.id = sqlc.arg(report_id) AND r.project_id = sqlc.arg(project_id)
+      AND r.status = 'failed'
+      AND f.project_id = r.project_id
+      AND f.state IN ('open', 'reopened')
+      AND NOT EXISTS (SELECT 1 FROM finding_occurrences fo WHERE fo.finding_id = f.id)
+    FOR UPDATE OF f
+), archived AS (
+    UPDATE findings f
+    SET state = 'archived', updated_at = NOW()
+    FROM orphaned o
+    WHERE f.id = o.id
+    RETURNING f.id
+), logged AS (
+    INSERT INTO finding_events (finding_id, event_type, old_value, new_value, changes)
+    SELECT o.id, 'state_changed', o.state, 'archived',
+           jsonb_build_object('report_id', sqlc.arg(report_id)::text, 'reason', 'report_failed')
+    FROM orphaned o
+    JOIN archived a ON a.id = o.id
+    RETURNING finding_id
+)
+SELECT finding_id FROM logged;
 
 -- name: CountStaleReports :one
 -- Retention preview: settled (completed/failed) reports older

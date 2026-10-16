@@ -140,8 +140,8 @@ func buildLifecycleStores(pool *pgxpool.Pool) (port.AnalysisExpiryStore, port.Wa
 }
 
 // staleReportAge is how long a report may stay in processing before the reaper settles it. An
-// ingest request is cut off after two minutes, so anything this old was stranded.
-const staleReportAge = 15 * time.Minute
+// ingest request is cut off after two and a half minutes, so anything this old was stranded.
+const staleReportAge = 10 * time.Minute
 
 func startLifecycle(ctx context.Context, stores *port.Stores, analysisStore port.AnalysisExpiryStore, waiverStore port.WaiverExpiryStore, cfg *config.Server) {
 	exitOnError("start waiver expiry daemon", lifecycle.RunWaiverExpiry(ctx, waiverStore, cfg.SweepInterval, slog.Default()))

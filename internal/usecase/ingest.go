@@ -1143,6 +1143,9 @@ const (
 	reportFailureFindings  = "Internal error: could not store findings."
 	reportFailureInventory = "Internal error: could not persist package inventory."
 	reportFailureAutoFix   = "Internal error: could not close findings absent from this scan."
+	// reportFailureCompletion is stored when every finding was written but the
+	// report could not be marked completed.
+	reportFailureCompletion = "Internal error: could not finish the report."
 	// reportFailureGeneric is what a response shows for a stored failure
 	// reason that is not one of the fixed reasons above. Rows written before
 	// the fixed reasons existed hold raw store errors.
@@ -1159,7 +1162,7 @@ func reportFailureReasonForResponse(stored *string) *string {
 		return stored
 	}
 	switch *stored {
-	case reportFailureFindings, reportFailureInventory, reportFailureAutoFix:
+	case reportFailureFindings, reportFailureInventory, reportFailureAutoFix, reportFailureCompletion:
 		return stored
 	default:
 		generic := reportFailureGeneric
@@ -1178,6 +1181,12 @@ func (u *Usecases) markReportFailed(ctx context.Context, input IngestReportInput
 	if cause == nil {
 		return
 	}
+	// The failure is often the context itself: a client that hung up, or the
+	// request deadline. The final step must not die with it, or the report
+	// stays in processing, so it runs on a context that keeps the request's
+	// values but not its cancellation, under its own short deadline.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), failedReportTimeout)
+	defer cancel()
 	msg := reason
 	_, err := u.deps.Stores.Reports.UpdateStatus(ctx, report.ID, report.ProjectID, "failed", 0, &msg)
 	if err != nil {
@@ -1185,7 +1194,17 @@ func (u *Usecases) markReportFailed(ctx context.Context, input IngestReportInput
 		return
 	}
 	slog.Error("ingest failed; report marked failed", "scanner", input.Scanner, "report_id", report.ID, "error", cause)
+	// Findings the ingest upserted before it stopped have no occurrence yet and
+	// no later scan could close them. Settling is best-effort: the stale
+	// report sweep does not revisit a report that is already failed, but a
+	// retry of the same scan finds and writes them again.
+	if err := u.deps.Stores.Reports.SettleFailedReport(ctx, report.ID, report.ProjectID); err != nil {
+		slog.Error("settle findings of failed report errored", "scanner", input.Scanner, "report_id", report.ID, "error", err)
+	}
 }
+
+// failedReportTimeout bounds the last step of a failed ingest.
+const failedReportTimeout = 15 * time.Second
 
 // persistInventory writes the report's package references when any exist.
 func (u *Usecases) persistInventory(ctx context.Context, input IngestReportInput, report port.Report, nr *domain.NormalizedReport) error {
@@ -1216,6 +1235,7 @@ func (u *Usecases) checkGateAfterIngest(ctx context.Context, project port.Projec
 			return u.replayRaceWinner(ctx, project, input, report.ID, scopeHash, rawHash)
 		}
 		slog.Error("update report status failed", "scanner", input.Scanner, "report_id", report.ID, "error", err)
+		u.markReportFailed(ctx, input, report, reportFailureCompletion, err)
 		return false, nil, fmt.Errorf("scanner %s: update report status: %w", input.Scanner, err)
 	}
 

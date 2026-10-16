@@ -445,3 +445,11 @@ releases.
 - A failed ingest no longer leaves environment, target or artifact rows behind. Before, a
   report that failed after those rows were created kept them, and made-up names piled up in
   the environment list and the waiver pickers.
+- An ingest no longer stops halfway when the client hangs up. The write phase now runs to
+  its end, still bounded by the server's own time limit, and a report that fails is marked
+  failed even if the request was cancelled. Before, a CI job that timed out left a report
+  stuck in `processing` and findings with no occurrence that no later scan could close.
+- The stale-report sweep now marks a report that has been `processing` for more than 10
+  minutes (it was 15) as failed and removes the findings that report created and no
+  occurrence supports. Findings it only brought back from archive, or that someone had
+  already triaged, are archived instead.

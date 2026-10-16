@@ -119,7 +119,12 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		gateStatus = strings.Split(req.GateStatus, ",")
 	}
 
-	result, err := h.usecase.IngestReport(r.Context(), usecase.IngestReportInput{
+	// The write phase runs on a context a hang-up cannot cancel (see
+	// detachedContext), so the report ends completed or failed, never half
+	// written. Waiting for memory above still stops when the client leaves.
+	ingestCtx, cancelIngest := detachedContext(r.Context())
+	defer cancelIngest()
+	result, err := h.usecase.IngestReport(ingestCtx, usecase.IngestReportInput{
 		ProjectSlug:        req.Project,
 		Scanner:            req.Scanner,
 		ScannerVersion:     req.ScannerVersion,
