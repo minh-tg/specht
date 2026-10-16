@@ -326,6 +326,44 @@ type ingestRequest struct {
 	ArtifactVersion    string `json:"artifact_version,omitempty"`
 	ArtifactType       string `json:"artifact_type,omitempty"`
 }
+
+// fieldWithNUL returns the JSON name of the first text field of the request
+// that holds a NUL character, or "" when none does. PostgreSQL refuses a NUL in
+// text, and the fields name projects, revisions, environments and artifacts, so
+// dropping the character could make one name another: the request is refused
+// instead, and the caller is told which field to fix. raw_data is handled on
+// its own, because scanners can legitimately quote a NUL.
+func (r ingestRequest) fieldWithNUL() string {
+	for _, f := range []struct{ name, value string }{
+		{"project", r.Project},
+		{"scanner", r.Scanner},
+		{"scanner_version", r.ScannerVersion},
+		{"parser_version", r.ParserVersion},
+		{"branch", r.Branch},
+		{"commit_sha", r.CommitSha},
+		{"base_revision", r.BaseRevision},
+		{"scan_mode", r.ScanMode},
+		{"gate_severity", r.GateSeverity},
+		{"gate_status", r.GateStatus},
+		{"environment", r.Environment},
+		{"owner", r.Owner},
+		{"digest", r.Digest},
+		{"artifact_name", r.ArtifactName},
+		{"artifact_version", r.ArtifactVersion},
+		{"artifact_type", r.ArtifactType},
+	} {
+		if strings.ContainsRune(f.value, 0) {
+			return f.name
+		}
+	}
+	for _, file := range r.ChangedFiles {
+		if strings.ContainsRune(file, 0) {
+			return "changed_files"
+		}
+	}
+	return ""
+}
+
 type ingestResponse struct {
 	ReportID          string `json:"report_id"`
 	TotalFindings     int    `json:"total_findings"`

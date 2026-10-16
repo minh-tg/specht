@@ -153,6 +153,18 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	}
 	ctx = scanner.WithMaxFindings(ctx, limit)
 
+	// PostgreSQL refuses a NUL in the stored evidence, so the escape is dropped
+	// from the strings of the document before anything reads it. The format
+	// check, the parser, the redactor and the stored evidence then all see the
+	// same text. A NUL in a field name is refused: dropping it would rename the
+	// field.
+	rawData, err := scanner.SanitizeNUL(input.RawData)
+	if err != nil {
+		slog.Warn("ingest refused: NUL character in a field name", "scanner", input.Scanner, "bytes", len(input.RawData))
+		return nil, fmt.Errorf("scanner %s: %w", input.Scanner, err)
+	}
+	input.RawData = rawData
+
 	// A document that is not the named scanner's output is refused before it
 	// can be recorded as a clean scan with no findings.
 	if err := u.deps.Registry.CheckFormat(input.Scanner, input.RawData); err != nil {

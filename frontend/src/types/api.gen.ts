@@ -656,6 +656,18 @@ export interface paths {
      *     against a baseline; `gate_introduced_only: true` then scopes the verdict
      *     to what the change introduced. When a baseline cannot be resolved the
      *     scan falls back to full and explains itself in `fallback_reason`.
+     *
+     *     A NUL character (the JSON escape `\u0000`) in a string of `raw_data` is
+     *     dropped before the report is read, because the database cannot store it.
+     *     In a field name it refuses the report with `malformed_report`, since
+     *     dropping it would rename the field. A NUL in any other text field of the
+     *     request is refused with `400 invalid_field`, and the message names the
+     *     field.
+     *
+     *     Ingests share a memory budget (`INGEST_MEMORY_BUDGET`, 2 GiB by default):
+     *     each reserves 64 bytes per byte of `raw_data` while it runs. An ingest
+     *     that cannot get its share, or a free slot, within 15 seconds is answered
+     *     `503 ingest_busy` with `Retry-After`.
      */
     post: operations["ingestReport"];
     delete?: never;
@@ -4703,7 +4715,8 @@ export interface operations {
        *
        *     - `unrecognized_format`: the file is not the named scanner's output.
        *       The message names the scanner it looks like when one fits.
-       *     - `malformed_report`: the file is that scanner's format but cannot be read.
+       *     - `malformed_report`: the file is that scanner's format but cannot be read,
+       *       or a field name in it holds a NUL character.
        *     - `unknown_scanner`: no scanner has that name. `GET /api/v1/scanners` lists them.
        *     - `too_many_findings`: the report holds more findings and packages than
        *       one report may (the server's `INGEST_MAX_FINDINGS`, 100000 by default).
@@ -4715,6 +4728,28 @@ export interface operations {
           [name: string]: unknown;
         };
         content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /**
+       * @description Too many ingests are running, or the memory budget stays taken, for
+       *     15 seconds. Nothing was stored. Retry after `Retry-After` seconds.
+       */
+      503: {
+        headers: {
+          /** @description Seconds to wait before retrying. */
+          "Retry-After"?: number;
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "error": {
+           *         "code": "ingest_busy",
+           *         "message": "too many ingests in progress, retry shortly"
+           *       }
+           *     }
+           */
           "application/json": components["schemas"]["Error"];
         };
       };
