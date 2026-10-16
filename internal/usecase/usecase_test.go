@@ -33,6 +33,8 @@ type mockProjectRepo struct {
 	getMemberFn         func(context.Context, string, string) (port.ProjectMember, error)
 	deleteMemberFn      func(context.Context, string, string) error
 	countAdminsFn       func(context.Context, string) (int, error)
+	countOtherAdminsFn  func(context.Context, string, string) (int, error)
+	soleAdminProjectsFn func(context.Context, string) ([]string, error)
 	listMembersFn       func(context.Context, string) ([]port.ProjectMember, error)
 	isMemberFn          func(context.Context, string, string) (bool, error)
 	listMemberIDsFn     func(context.Context, string) ([]string, error)
@@ -123,6 +125,33 @@ func (m *mockProjectRepo) CountAdmins(ctx context.Context, projectID string) (in
 		return count, nil
 	}
 	return 1, nil
+}
+
+func (m *mockProjectRepo) CountOtherAdmins(ctx context.Context, projectID, userID string) (int, error) {
+	if m.countOtherAdminsFn != nil {
+		return m.countOtherAdminsFn(ctx, projectID, userID)
+	}
+	if m.listMembersFn != nil {
+		members, err := m.listMembersFn(ctx, projectID)
+		if err != nil {
+			return 0, err
+		}
+		count := 0
+		for _, member := range members {
+			if member.Role == auth.RoleAdmin && member.UserID != userID {
+				count++
+			}
+		}
+		return count, nil
+	}
+	return 0, nil
+}
+
+func (m *mockProjectRepo) ListSoleAdminProjects(ctx context.Context, userID string) ([]string, error) {
+	if m.soleAdminProjectsFn != nil {
+		return m.soleAdminProjectsFn(ctx, userID)
+	}
+	return nil, nil
 }
 
 func (m *mockProjectRepo) ListMembers(ctx context.Context, projectID string) ([]port.ProjectMember, error) {

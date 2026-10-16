@@ -123,10 +123,16 @@ func TestPasswordResetLinkAndAccountSwitches(t *testing.T) {
 	assert.Equal(t, "2026-10-16T10:00:00Z", link.ExpiresAt)
 
 	cl, seen = serve(t, 200, `{"id":"u1","email":"a@b.c","role":"member","disabled":true}`)
-	u, err := cl.DeactivateUser("u1")
+	u, err := cl.DeactivateUser("u1", false)
 	require.NoError(t, err)
 	assert.Equal(t, "/api/v1/users/u1/deactivate", seen.path)
 	assert.True(t, u.Disabled)
+	assert.Nil(t, seen.body, "no confirmation is sent unless asked for")
+
+	cl, seen = serve(t, 200, `{"id":"u1","email":"a@b.c","role":"member","disabled":true}`)
+	_, err = cl.DeactivateUser("u1", true)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]any{"force": true}, seen.body)
 
 	cl, seen = serve(t, 200, `{"id":"u1","email":"a@b.c","role":"member","disabled":false}`)
 	u, err = cl.ReactivateUser("u1")

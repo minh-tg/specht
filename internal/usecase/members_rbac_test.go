@@ -129,8 +129,8 @@ func TestAddProjectMember_LastAdminInvariant(t *testing.T) {
 	}
 
 	// Only 1 admin remains
-	pr.countAdminsFn = func(ctx context.Context, projectID string) (int, error) {
-		return 1, nil
+	pr.countOtherAdminsFn = func(ctx context.Context, projectID, userID string) (int, error) {
+		return 0, nil
 	}
 
 	// Demoting the last admin must fail
@@ -138,8 +138,8 @@ func TestAddProjectMember_LastAdminInvariant(t *testing.T) {
 	assert.ErrorIs(t, err, ErrLastAdminForbidden)
 
 	// If 2 admins exist, demotion succeeds
-	pr.countAdminsFn = func(ctx context.Context, projectID string) (int, error) {
-		return 2, nil
+	pr.countOtherAdminsFn = func(ctx context.Context, projectID, userID string) (int, error) {
+		return 1, nil
 	}
 	pr.upsertMemberFn = func(ctx context.Context, projectID, userID, role string) (port.ProjectMember, error) {
 		return port.ProjectMember{ProjectID: projectID, UserID: userID, Role: role}, nil
@@ -170,15 +170,15 @@ func TestRemoveProjectMember_SelfExitAndLastAdmin(t *testing.T) {
 	require.NoError(t, err)
 
 	// 2. Sole admin cannot leave
-	pr.countAdminsFn = func(ctx context.Context, projectID string) (int, error) {
-		return 1, nil
+	pr.countOtherAdminsFn = func(ctx context.Context, projectID, userID string) (int, error) {
+		return 0, nil
 	}
 	err = uc.RemoveProjectMember(projectRoleCtx("00000000-0000-4000-8000-000000000008", auth.RoleAdmin), "rbac-test", "00000000-0000-4000-8000-000000000008")
 	assert.ErrorIs(t, err, ErrLastAdminForbidden)
 
 	// 3. Admin can leave if another admin exists
-	pr.countAdminsFn = func(ctx context.Context, projectID string) (int, error) {
-		return 2, nil
+	pr.countOtherAdminsFn = func(ctx context.Context, projectID, userID string) (int, error) {
+		return 1, nil
 	}
 	err = uc.RemoveProjectMember(projectRoleCtx("00000000-0000-4000-8000-000000000008", auth.RoleAdmin), "rbac-test", "00000000-0000-4000-8000-000000000008")
 	require.NoError(t, err)
@@ -191,8 +191,8 @@ func TestMemberWrites_LostLastAdminRaceIsReportedAsLastAdmin(t *testing.T) {
 	}
 	// The pre-check sees a second admin, but another request removes it before
 	// this write runs, so the store refuses under its project lock.
-	pr.countAdminsFn = func(ctx context.Context, projectID string) (int, error) {
-		return 2, nil
+	pr.countOtherAdminsFn = func(ctx context.Context, projectID, userID string) (int, error) {
+		return 1, nil
 	}
 	pr.deleteMemberFn = func(ctx context.Context, projectID, userID string) error {
 		return port.ErrLastAdmin

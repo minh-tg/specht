@@ -23,6 +23,17 @@ var (
 	ErrSystemAccount = errors.New("the system account cannot be changed")
 )
 
+// SoleProjectAdminError is returned when a deactivation would leave projects
+// without an admin who can sign in, and the caller did not confirm it.
+type SoleProjectAdminError struct {
+	// Projects holds the slugs of the affected projects, in name order.
+	Projects []string
+}
+
+func (e *SoleProjectAdminError) Error() string {
+	return "the account is the only active admin of " + strings.Join(e.Projects, ", ")
+}
+
 // SystemAccountEmail is the account the server seeds to act for things with no person behind
 // them, such as an API key created before keys recorded their owner. Deactivating it would stop
 // those keys, and it is nobody's login, so its role and state are not an admin's to change.
@@ -84,7 +95,9 @@ type RevokedAPIKey = port.RevokedAPIKey
 // caller can record each one; reactivating the account does not bring them
 // back. An admin cannot deactivate themselves, the last active admin cannot
 // be deactivated, and the seeded system account cannot be deactivated at all.
-func (u *Usecases) DeactivateUser(ctx context.Context, userID string) (*UserProfile, []RevokedAPIKey, error) {
+// An account that is the only active admin of a project is refused with a
+// SoleProjectAdminError naming the projects, unless force confirms it.
+func (u *Usecases) DeactivateUser(ctx context.Context, userID string, force bool) (*UserProfile, []RevokedAPIKey, error) {
 	ident, err := requireInstanceAdmin(ctx)
 	if err != nil {
 		return nil, nil, err
@@ -102,6 +115,15 @@ func (u *Usecases) DeactivateUser(ctx context.Context, userID string) (*UserProf
 	}
 	if isSystemAccount(target.Email) {
 		return nil, nil, ErrSystemAccount
+	}
+	if !force {
+		slugs, err := u.deps.Stores.Projects.ListSoleAdminProjects(ctx, id)
+		if err != nil {
+			return nil, nil, fmt.Errorf("list projects the account administers alone: %w", err)
+		}
+		if len(slugs) > 0 {
+			return nil, nil, &SoleProjectAdminError{Projects: slugs}
+		}
 	}
 	user, revokedKeys, err := u.deps.Stores.Users.Deactivate(ctx, id)
 	if err != nil {

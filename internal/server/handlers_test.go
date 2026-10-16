@@ -41,6 +41,7 @@ type mockUsecases struct {
 	reportFilter            usecase.ReportFilter
 	changeUserRoleFn        func(ctx context.Context, userID, role string) (*usecase.UserProfile, error)
 	deactivateUserFn        func(ctx context.Context, userID string) (*usecase.UserProfile, []usecase.RevokedAPIKey, error)
+	deactivateForce         bool
 	reactivateUserFn        func(ctx context.Context, userID string) (*usecase.UserProfile, error)
 	createProjectFn         func(ctx context.Context, name, slug, description, creatorID string) (*usecase.ProjectResponse, error)
 	listProjectMembersFn    func(ctx context.Context, projectSlug string) ([]usecase.ProjectMemberResponse, error)
@@ -770,10 +771,11 @@ func (m *mockUsecases) ChangeUserRole(ctx context.Context, userID, role string) 
 	return m.changeUserRoleFn(ctx, userID, role)
 }
 
-func (m *mockUsecases) DeactivateUser(ctx context.Context, userID string) (*usecase.UserProfile, []usecase.RevokedAPIKey, error) {
+func (m *mockUsecases) DeactivateUser(ctx context.Context, userID string, force bool) (*usecase.UserProfile, []usecase.RevokedAPIKey, error) {
 	if m.deactivateUserFn == nil {
 		return nil, nil, fmt.Errorf("unexpected call to DeactivateUser")
 	}
+	m.deactivateForce = force
 	return m.deactivateUserFn(ctx, userID)
 }
 

@@ -251,13 +251,14 @@ func (r *pgProjectPort) inMembershipTx(ctx context.Context, pid pgtype.UUID, fn 
 }
 
 // requireOtherAdmin fails with port.ErrLastAdmin when the project has no admin
-// besides the one about to be removed or demoted.
-func requireOtherAdmin(ctx context.Context, q *sqlc.Queries, pid pgtype.UUID) error {
-	admins, err := q.CountProjectAdmins(ctx, pid)
+// who can sign in besides the one about to be removed or demoted. A deactivated
+// admin neither counts as the other one nor blocks being removed itself.
+func requireOtherAdmin(ctx context.Context, q *sqlc.Queries, pid, uid pgtype.UUID) error {
+	others, err := q.CountOtherProjectAdmins(ctx, sqlc.CountOtherProjectAdminsParams{ProjectID: pid, UserID: uid})
 	if err != nil {
 		return err
 	}
-	if admins <= 1 {
+	if others == 0 {
 		return port.ErrLastAdmin
 	}
 	return nil
@@ -280,7 +281,7 @@ func (r *pgProjectPort) UpsertMember(ctx context.Context, projectID, userID, rol
 		switch {
 		case err == nil:
 			if existing.Role == "admin" && role != "admin" {
-				if err := requireOtherAdmin(ctx, q, pid); err != nil {
+				if err := requireOtherAdmin(ctx, q, pid, uid); err != nil {
 					return err
 				}
 			}
@@ -343,7 +344,7 @@ func (r *pgProjectPort) DeleteMember(ctx context.Context, projectID, userID stri
 		switch {
 		case err == nil:
 			if existing.Role == "admin" {
-				if err := requireOtherAdmin(ctx, q, pid); err != nil {
+				if err := requireOtherAdmin(ctx, q, pid, uid); err != nil {
 					return err
 				}
 			}
@@ -367,6 +368,30 @@ func (r *pgProjectPort) CountAdmins(ctx context.Context, projectID string) (int,
 		return 0, err
 	}
 	return int(count), nil
+}
+
+func (r *pgProjectPort) CountOtherAdmins(ctx context.Context, projectID, userID string) (int, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return 0, err
+	}
+	uid, err := parseID(userID)
+	if err != nil {
+		return 0, err
+	}
+	count, err := r.q.CountOtherProjectAdmins(ctx, sqlc.CountOtherProjectAdminsParams{ProjectID: pid, UserID: uid})
+	if err != nil {
+		return 0, err
+	}
+	return int(count), nil
+}
+
+func (r *pgProjectPort) ListSoleAdminProjects(ctx context.Context, userID string) ([]string, error) {
+	uid, err := parseID(userID)
+	if err != nil {
+		return nil, err
+	}
+	return r.q.ListProjectsSoleAdminedBy(ctx, uid)
 }
 
 func (r *pgProjectPort) ListMembers(ctx context.Context, projectID string) ([]port.ProjectMember, error) {

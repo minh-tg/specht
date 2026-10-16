@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"math"
 	"net/http"
@@ -425,7 +426,11 @@ func (h *Handler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 // respondUserAdminError maps the user admin errors to responses. It returns
 // false for an error it does not recognise.
 func respondUserAdminError(w http.ResponseWriter, err error) bool {
+	var soleAdmin *usecase.SoleProjectAdminError
 	switch {
+	case errors.As(err, &soleAdmin):
+		respondError(w, http.StatusConflict, "sole_project_admin",
+			fmt.Sprintf("this account is the only active admin of: %s; add another admin to those projects first, or send force to deactivate anyway", strings.Join(soleAdmin.Projects, ", ")))
 	case errors.Is(err, usecase.ErrProjectAccessDenied):
 		respondError(w, http.StatusForbidden, "insufficient_role", "requires admin role")
 	case errors.Is(err, usecase.ErrInvalidID):
@@ -535,6 +540,15 @@ func (h *Handler) ReactivateUser(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) setUserActive(w http.ResponseWriter, r *http.Request, active bool) {
 	id := chi.URLParam(r, "id")
+	var req struct {
+		Force bool `json:"force"`
+	}
+	// The body is optional: only a deactivation reads it, for the confirmation.
+	if !active && r.ContentLength != 0 {
+		if !decodeJSONBody(w, r, &req, maxJSONBodyBytes, "invalid_json", authMsgInvalidBody) {
+			return
+		}
+	}
 	var (
 		profile     *usecase.UserProfile
 		revokedKeys []usecase.RevokedAPIKey
@@ -545,7 +559,7 @@ func (h *Handler) setUserActive(w http.ResponseWriter, r *http.Request, active b
 		profile, err = h.usecase.ReactivateUser(r.Context(), id)
 	} else {
 		event = audit.EventDeactivateUser
-		profile, revokedKeys, err = h.usecase.DeactivateUser(r.Context(), id)
+		profile, revokedKeys, err = h.usecase.DeactivateUser(r.Context(), id, req.Force)
 	}
 	if err != nil {
 		if respondUserAdminError(w, err) {
