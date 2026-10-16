@@ -125,7 +125,7 @@ type mockUsecases struct {
 	listScannersFn          func() []usecase.ScannerDescriptorResponse
 	createEvidenceFn        func(ctx context.Context, findingID, userID, typ, url, description string) (usecase.EvidenceResponse, error)
 	listEvidenceFn          func(ctx context.Context, findingID string) ([]usecase.EvidenceResponse, error)
-	deleteEvidenceFn        func(ctx context.Context, evidenceID string) error
+	deleteEvidenceFn        func(ctx context.Context, findingID, evidenceID string) error
 	upsertReachabilityFn    func(ctx context.Context, findingID, userID, state, evidence string) (*usecase.ReachabilityResponse, error)
 	listReachabilityFn      func(ctx context.Context, findingID string) ([]usecase.ReachabilityResponse, error)
 	upsertSignoffFn         func(ctx context.Context, findingID, userID, status, comment string) (*usecase.SignoffResponse, error)
@@ -825,11 +825,11 @@ func (m *mockUsecases) ListEvidence(ctx context.Context, findingID string) ([]us
 	return m.listEvidenceFn(ctx, findingID)
 }
 
-func (m *mockUsecases) DeleteEvidence(ctx context.Context, evidenceID string) error {
+func (m *mockUsecases) DeleteEvidence(ctx context.Context, findingID, evidenceID string) error {
 	if m.deleteEvidenceFn == nil {
 		return fmt.Errorf("unexpected call to DeleteEvidence")
 	}
-	return m.deleteEvidenceFn(ctx, evidenceID)
+	return m.deleteEvidenceFn(ctx, findingID, evidenceID)
 }
 
 func (m *mockUsecases) UpsertReachability(ctx context.Context, findingID, userID, state, evidence string) (*usecase.ReachabilityResponse, error) {
@@ -3696,8 +3696,13 @@ func TestCheckWaiverMatch_Success(t *testing.T) {
 	assert.True(t, resp["matched"])
 }
 
+// addChiURLParam attaches a chi URL param to a request. Repeated calls merge
+// into the same route context, so a handler that reads two params sees both.
 func addChiURLParam(r *http.Request, key, value string) *http.Request {
-	chiCtx := chi.NewRouteContext()
+	chiCtx := chi.RouteContext(r.Context())
+	if chiCtx == nil {
+		chiCtx = chi.NewRouteContext()
+	}
 	chiCtx.URLParams.Add(key, value)
 	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, chiCtx))
 }

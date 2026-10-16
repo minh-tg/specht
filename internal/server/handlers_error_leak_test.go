@@ -239,9 +239,9 @@ func TestHandlerErrors_DoNotLeakStoreDetail(t *testing.T) {
 		{
 			name:   "delete evidence store error",
 			method: "DELETE", target: "/api/v1/evidence/e1",
-			params: map[string]string{"evidenceID": "e1"},
+			params: map[string]string{"findingID": "e1", "evidenceID": "e1"},
 			setup: func(m *mockUsecases) {
-				m.deleteEvidenceFn = func(_ context.Context, _ string) error { return dbErr }
+				m.deleteEvidenceFn = func(_ context.Context, _, _ string) error { return dbErr }
 			},
 			invoke:     func(h *Handler, w http.ResponseWriter, r *http.Request) { h.DeleteEvidence(w, r) },
 			wantStatus: http.StatusInternalServerError, wantCode: "internal_error",

@@ -84,19 +84,24 @@ func (h *Handler) ListEvidence(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) DeleteEvidence(w http.ResponseWriter, r *http.Request) {
+	findingID := chi.URLParam(r, "findingID")
+	if findingID == "" {
+		respondError(w, http.StatusBadRequest, "missing_id", assessMsgFindingIDRequired)
+		return
+	}
 	evidenceID := chi.URLParam(r, "evidenceID")
 	if evidenceID == "" {
 		respondError(w, http.StatusBadRequest, "missing_id", "evidence id is required")
 		return
 	}
-	if err := h.usecase.DeleteEvidence(r.Context(), evidenceID); err != nil {
+	if err := h.usecase.DeleteEvidence(r.Context(), findingID, evidenceID); err != nil {
 		switch {
+		case errors.Is(err, usecase.ErrFindingNotFound), errors.Is(err, usecase.ErrEvidenceNotFound):
+			respondError(w, http.StatusNotFound, "not_found", "evidence not found")
 		case errors.Is(err, usecase.ErrProjectAccessDenied):
 			respondAccessDenied(w, r, "finding")
 		case errors.Is(err, usecase.ErrInvalidID):
-			respondError(w, http.StatusBadRequest, "invalid_id", "invalid evidence id format")
-		case errors.Is(err, usecase.ErrEvidenceNotFound):
-			respondError(w, http.StatusNotFound, "not_found", "evidence not found")
+			respondError(w, http.StatusBadRequest, "invalid_id", "invalid id format")
 		default:
 			slog.Error("delete evidence", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not delete evidence")
