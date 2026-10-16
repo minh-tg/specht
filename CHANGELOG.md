@@ -232,3 +232,6 @@ releases.
 - Request bodies are size-capped, and ingest rejects oversized reports with
   413.
 - The MCP bridge hides state-changing tools unless `MCP_ALLOW_MUTATIONS=true`.
+- The rate limiters hold at most 100,000 client buckets each. When that is
+  full, clients without a bucket share one, so a flood of new addresses is
+  throttled without evicting anyone already tracked.
