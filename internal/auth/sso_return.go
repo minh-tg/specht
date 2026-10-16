@@ -31,9 +31,14 @@ func decodeSSOReturnCookieValue(value, state string) string {
 	return safeSSOReturnPath(string(path))
 }
 
+// safeSSOReturnPath returns raw when it is a same-origin path, or "/" when it
+// is anything else. The result is checked after url.Parse has cleaned it, not
+// only before: parsing decodes escapes and String() re-encodes them, so a
+// string that passed the raw checks could come back as "//host/..." (for
+// example "/%2Fevil.example/ "). Validating the output makes the function
+// safe on its own and idempotent.
 func safeSSOReturnPath(raw string) string {
-	if raw == "" || len(raw) > maxSSOReturnPathBytes || !strings.HasPrefix(raw, "/") ||
-		strings.ContainsAny(raw, "\\\r\n\x00") || (len(raw) > 1 && (raw[1] == '/' || raw[1] == '\\')) {
+	if !isLocalPath(raw) {
 		return "/"
 	}
 
@@ -45,5 +50,27 @@ func safeSSOReturnPath(raw string) string {
 	// survive the login round-trip.
 	target.Fragment = ""
 	target.RawFragment = ""
-	return target.String()
+	out := target.String()
+	if !isLocalPath(out) {
+		return "/"
+	}
+	return out
+}
+
+// isLocalPath reports whether s is "/" or starts with exactly one slash
+// followed by a character that cannot begin a host: not another slash, not a
+// backslash (browsers read both as a separator), and not an escaped form of
+// either.
+func isLocalPath(s string) bool {
+	if s == "" || len(s) > maxSSOReturnPathBytes || s[0] != '/' || strings.ContainsAny(s, "\\\r\n\x00") {
+		return false
+	}
+	if len(s) == 1 {
+		return true
+	}
+	if s[1] == '/' {
+		return false
+	}
+	rest := strings.ToLower(s[1:])
+	return !strings.HasPrefix(rest, "%2f") && !strings.HasPrefix(rest, "%5c")
 }
