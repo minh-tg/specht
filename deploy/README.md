@@ -112,7 +112,7 @@ start empty after a restart.
 | Anonymous auth routes | Token refresh, logout, the SSO exchange, and every route in the login tier below. Sending an `Authorization` header does not skip it. | Client address | `RATE_LIMIT_RPS`, `RATE_LIMIT_BURST` (10 per second, burst 20 when unset) | Always, also with `RATE_LIMIT_ENABLED=false`. |
 | Login | Login, register, first-run setup, password reset, invite lookup and invite accept share one bucket. `PUT /api/v1/me/password` has a bucket of its own. | Client address | `RATE_LIMIT_LOGIN_PER_MINUTE`, `RATE_LIMIT_LOGIN_BURST` | Always. |
 | Authenticated | Routes behind a session or API key. | Caller (user or key identity) | `RATE_LIMIT_AUTH_RPS`, `RATE_LIMIT_AUTH_BURST` | Only with `RATE_LIMIT_ENABLED=true`. |
-| Account delay | `POST /api/v1/auth/login` only. | Normalized email (trimmed, lower-cased) | Fixed, see below | Always. |
+| Account delay | `POST /api/v1/auth/login` and `PUT /api/v1/me/password` (the current-password check). | Normalized email (trimmed, lower-cased) | Fixed, see below | Always. |
 
 Member suggestions have one more fixed bucket of 30 requests a minute (burst
 10) per caller, also always on.
@@ -145,6 +145,14 @@ successful login resets the count, and the count drops to zero after 15
 minutes without a failed login. There is no lockout: the wait never exceeds 60
 seconds. Someone who keeps failing against an email can keep that account
 waiting. Refused attempts are written to the audit log as failed logins.
+
+`PUT /api/v1/me/password` draws on the same count, keyed by the signed-in
+account's email, so sign-in failures and wrong current passwords add up
+together. A wrong current password is charged before it is checked and a
+correct one resets the count. During the wait the route answers `429` with code
+`too_many_attempts` and a `Retry-After` header, and does not check the
+password. A request rejected for its new password (too common, same as the
+current one) never judged the current password and is not counted.
 
 **Bucket cap.** Each limiter holds at most 100,000 buckets, and the account
 delay holds at most 100,000 emails. When the per-IP limiter is full, expired
