@@ -5,35 +5,56 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"time"
 )
 
+// blockedPrefixes lists the special-purpose ranges that IsBlockedIP refuses on
+// top of what net.IP already classifies (loopback, private, link-local,
+// multicast, unspecified). IPv4 entries are matched after an IPv4-mapped IPv6
+// address has been unmapped.
+var blockedPrefixes = []netip.Prefix{
+	// IPv4.
+	netip.MustParsePrefix("0.0.0.0/8"),       // "this network"
+	netip.MustParsePrefix("100.64.0.0/10"),   // carrier-grade NAT
+	netip.MustParsePrefix("192.0.0.0/24"),    // IETF protocol assignments
+	netip.MustParsePrefix("192.0.2.0/24"),    // documentation
+	netip.MustParsePrefix("198.18.0.0/15"),   // benchmarking
+	netip.MustParsePrefix("198.51.100.0/24"), // documentation
+	netip.MustParsePrefix("203.0.113.0/24"),  // documentation
+	netip.MustParsePrefix("240.0.0.0/4"),     // reserved
+	// IPv6. Several of these carry an IPv4 address inside, so a hostname that
+	// resolves into them can reach an internal IPv4 host through a relay, a
+	// Teredo server or a DNS64 gateway.
+	netip.MustParsePrefix("::/96"),         // IPv4-compatible (deprecated)
+	netip.MustParsePrefix("64:ff9b::/32"),  // NAT64, also covers 64:ff9b:1::/48
+	netip.MustParsePrefix("100::/64"),      // discard-only
+	netip.MustParsePrefix("2001::/32"),     // Teredo
+	netip.MustParsePrefix("2001:10::/28"),  // ORCHID (deprecated)
+	netip.MustParsePrefix("2001:20::/28"),  // ORCHIDv2
+	netip.MustParsePrefix("2001:db8::/32"), // documentation
+	netip.MustParsePrefix("2002::/16"),     // 6to4
+	netip.MustParsePrefix("fec0::/10"),     // site-local (deprecated)
+}
+
 // IsBlockedIP reports whether ip is a non-public address range (loopback, private,
-// link-local, carrier-grade NAT, documentation, benchmarking, multicast, or NAT64).
+// link-local, site-local, carrier-grade NAT, documentation, benchmarking,
+// multicast, NAT64, 6to4, Teredo, ORCHID, or an IPv4-compatible address).
 func IsBlockedIP(ip net.IP) bool {
 	if ip == nil || ip.IsUnspecified() || ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() {
 		return true
 	}
-	v4 := ip.To4()
-	if v4 != nil {
-		// Carrier-grade NAT, benchmarking, and documentation ranges are not
-		// routable public service addresses and must not be SSRF targets.
-		return (v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127) ||
-			(v4[0] == 198 && v4[1] >= 18 && v4[1] <= 19) ||
-			(v4[0] == 192 && v4[1] == 0 && v4[2] == 0) ||
-			(v4[0] >= 240) ||
-			(v4[0] == 192 && v4[1] == 0 && v4[2] == 2) ||
-			(v4[0] == 198 && v4[1] == 51 && v4[2] == 100) ||
-			(v4[0] == 203 && v4[1] == 0 && v4[2] == 113)
-	}
-	// IPv6 documentation range (2001:db8::/32).
-	if len(ip) == net.IPv6len && ip[0] == 0x20 && ip[1] == 0x01 && ip[2] == 0x0d && ip[3] == 0xb8 {
+	addr, ok := netip.AddrFromSlice(ip)
+	if !ok {
+		// Neither 4 nor 16 bytes: not an address worth dialing.
 		return true
 	}
-	// IPv6 NAT64 well-known prefix (64:ff9b::/96).
-	if len(ip) == net.IPv6len && ip[0] == 0x00 && ip[1] == 0x64 && ip[2] == 0xff && ip[3] == 0x9b {
-		return true
+	addr = addr.Unmap()
+	for _, p := range blockedPrefixes {
+		if p.Contains(addr) {
+			return true
+		}
 	}
 	return false
 }

@@ -31,6 +31,24 @@ func TestIsBlockedIP(t *testing.T) {
 		"203.0.113.1",  // Documentation
 		"240.0.0.1",    // Reserved
 		"0.0.0.0",      // Unspecified
+		"0.1.2.3",      // "This network" 0.0.0.0/8, not only the unspecified address
+		"0.255.255.255",
+		"2002:a9fe:a9fe::1", // 6to4 embedding 169.254.169.254
+		"2002:808:808::1",   // 6to4 embedding a public IPv4: still a relay path
+		"::a9fe:a9fe",       // IPv4-compatible (::/96) embedding 169.254.169.254
+		"::7f00:1",          // IPv4-compatible embedding 127.0.0.1
+		"::2",
+		"2001::1", // Teredo
+		"2001:0:4136:e378:8000:63bf:3fff:fdd2",
+		"fec0::1", // Site-local
+		"feff::1", // Top of fec0::/10
+		"100::1",  // Discard-only 100::/64
+		"100::ffff:ffff:ffff:ffff",
+		"2001:10::1",      // ORCHID
+		"2001:1f::1",      // Top of 2001:10::/28
+		"2001:20::1",      // ORCHIDv2
+		"::ffff:10.0.0.1", // IPv4-mapped private
+		"::ffff:0.1.2.3",  // IPv4-mapped 0.0.0.0/8
 	}
 	for _, ipStr := range blocked {
 		t.Run(ipStr, func(t *testing.T) {
@@ -43,6 +61,14 @@ func TestIsBlockedIP(t *testing.T) {
 		"1.1.1.1",
 		"93.184.216.34",
 		"2606:4700:4700::1111",
+		"2001:4860:4860::8888", // 2001::/16 outside Teredo and ORCHID
+		"2001:30::1",           // Just above 2001:20::/28
+		"2003::1",              // Just above 6to4
+		"2a00:1450:4001::200e",
+		"100:0:0:1::1",   // Just outside 100::/64
+		"fe7f::1",        // Below fec0::/10 and not link-local
+		"1.0.0.1",        // Just above 0.0.0.0/8
+		"::ffff:8.8.8.8", // IPv4-mapped public
 	}
 	for _, ipStr := range public {
 		t.Run(ipStr, func(t *testing.T) {
