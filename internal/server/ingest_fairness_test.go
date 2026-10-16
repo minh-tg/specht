@@ -71,6 +71,10 @@ func fairnessCaller(token string) *auth.Identity {
 		return &auth.Identity{UserID: "creator", ProjectID: fairnessProjectID, KeyHash: "hash-b", IsAPIKey: true, Scopes: []string{auth.ScopeIngest}}
 	case "key-c":
 		return &auth.Identity{UserID: "creator", ProjectID: fairnessProjectID, KeyHash: "hash-c", IsAPIKey: true, Scopes: []string{auth.ScopeIngest}}
+	case "key-d":
+		return &auth.Identity{UserID: "creator-d", ProjectID: "id-other-app", KeyHash: "hash-d", IsAPIKey: true, Scopes: []string{auth.ScopeIngest}}
+	case "key-e":
+		return &auth.Identity{UserID: "creator-e", ProjectID: "id-third-app", KeyHash: "hash-e", IsAPIKey: true, Scopes: []string{auth.ScopeIngest}}
 	case "outsider":
 		return &auth.Identity{UserID: "outsider", Role: auth.RoleMember}
 	}
@@ -84,6 +88,16 @@ func fairnessServer(t *testing.T, concurrency int, queueWait time.Duration, mock
 	t.Helper()
 	if mock.isProjectMemberFn == nil {
 		mock.isProjectMemberFn = func(context.Context, string, string) (bool, error) { return false, nil }
+	}
+	if mock.getProjectFn == nil {
+		// "my-app" is the default project; other slugs are projects of their
+		// own, for tests that need callers who share nothing.
+		mock.getProjectFn = func(_ context.Context, slug string) (*usecase.ProjectResponse, error) {
+			if slug == "my-app" {
+				return &usecase.ProjectResponse{ID: fairnessProjectID, Slug: slug}, nil
+			}
+			return &usecase.ProjectResponse{ID: "id-" + slug, Slug: slug}, nil
+		}
 	}
 	h := NewHandler(mock)
 	h.ingest = newIngestAdmission(concurrency, 0, queueWait)
@@ -205,21 +219,25 @@ func TestIngestFairness_ASlowBodyHoldsNoGlobalSlot(t *testing.T) {
 	srv, h := fairnessServer(t, 2, 400*time.Millisecond, mock) // two global slots, one place each
 	defer once.Do(func() { close(release) })
 
+	// Two projects, so that the project limit is not what holds the slots.
 	var wg sync.WaitGroup
-	for _, token := range []string{"key-a", "key-b"} {
+	for token, project := range map[string]string{"key-a": "my-app", "key-d": "other-app"} {
 		wg.Add(1)
-		go func() { defer wg.Done(); postIngest(t, srv, token, validIngest) }()
+		go func() {
+			defer wg.Done()
+			postIngest(t, srv, token, strings.ReplaceAll(validIngest, "my-app", project))
+		}()
 	}
 	<-entered
 	<-entered // both global slots are taken by running ingests
 
-	// A third caller sends the start of a 1 MiB body and waits. (The body is
+	// A third caller, of a third project, sends the start of a 1 MiB body and waits. (The body is
 	// big on purpose: for a small one the server holds its answer back until
 	// the body has arrived, which would hide a refusal.)
-	const prefix, suffix = `{"project":"my-app","scanner":"trivy","raw_data":"`, `"}`
+	const prefix, suffix = `{"project":"third-app","scanner":"trivy","raw_data":"`, `"}`
 	full := prefix + strings.Repeat("a", 1<<20-len(prefix)-len(suffix)) + suffix
 	half := 4096
-	conn := trickleBody(t, srv, "key-c", full[:half], len(full))
+	conn := trickleBody(t, srv, "key-e", full[:half], len(full))
 	got := make(chan *http.Response, 1)
 	go func() {
 		resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
@@ -410,7 +428,7 @@ func TestIngestReport_AnOverCapCallerIsToldToRetry(t *testing.T) {
 	}
 	h := NewHandler(mock)
 	h.ingest = newIngestAdmission(2, 0, 20*time.Millisecond) // one place per caller
-	hold, err := h.ingest.enter(context.Background(), "user:u-admin")
+	hold, err := h.ingest.enter(context.Background(), "user:u-admin", "user:u-admin")
 	require.NoError(t, err)
 	defer hold.release()
 

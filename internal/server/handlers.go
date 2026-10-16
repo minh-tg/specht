@@ -568,38 +568,46 @@ func respondAccessDenied(w http.ResponseWriter, r *http.Request, resource string
 // users must hold a membership row. The GetProject lookup itself enforces the
 // same rule, so this stays consistent if either layer is reached first.
 func (h *Handler) enforceProjectAccess(r *http.Request, projectSlug string) error {
+	_, err := h.projectAccess(r, projectSlug)
+	return err
+}
+
+// projectAccess is enforceProjectAccess that also returns the id of the
+// project it resolved, for callers that keep per-project state. The id is
+// empty only when the handler has no use cases and the caller is an admin.
+func (h *Handler) projectAccess(r *http.Request, projectSlug string) (string, error) {
 	ident := auth.ContextIdentity(r.Context())
 	if ident == nil {
-		return errProjectAccessDenied
+		return "", errProjectAccessDenied
 	}
 	if ident.Role == auth.RoleAdmin {
 		if h.usecase == nil {
-			return nil
+			return "", nil
 		}
 		project, err := h.usecase.GetProject(r.Context(), projectSlug)
 		if err != nil || project == nil {
-			return errProjectNotFound
+			return "", errProjectNotFound
 		}
-		return nil
+		return project.ID, nil
 	}
 	if h.usecase == nil {
-		return errProjectAccessDenied
+		return "", errProjectAccessDenied
 	}
 	project, err := h.usecase.GetProject(r.Context(), projectSlug)
 	if err != nil || project == nil {
-		return errProjectAccessDenied
+		return "", errProjectAccessDenied
 	}
 	if ident.IsAPIKey {
 		if project.ID != ident.ProjectID {
-			return errProjectAccessDenied
+			return "", errProjectAccessDenied
 		}
-		return nil
+		return project.ID, nil
 	}
 	ok, err := h.usecase.IsProjectMember(r.Context(), project.ID, ident.UserID)
 	if err != nil || !ok {
-		return errProjectAccessDenied
+		return "", errProjectAccessDenied
 	}
-	return nil
+	return project.ID, nil
 }
 
 // RequireRole is a middleware that enforces a role for session-authenticated

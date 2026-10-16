@@ -61,7 +61,7 @@ func enterAll(t *testing.T, a *ingestAdmission, principal string, n int) []*inge
 	t.Helper()
 	var out []*ingestTicket
 	for range n {
-		tk, err := a.enter(context.Background(), principal)
+		tk, err := a.enter(context.Background(), principal, principal)
 		require.NoError(t, err, "%s should get a place", principal)
 		out = append(out, tk)
 	}
@@ -76,10 +76,10 @@ func TestIngestAdmission_ACallerHoldsAtMostHalfTheConcurrency(t *testing.T) {
 	assert.Equal(t, 1, newIngestAdmission(3, 0, time.Second).perPrincipal)
 
 	mine := enterAll(t, a, "key:a", 4)
-	_, err := a.enter(context.Background(), "key:a")
+	_, err := a.enter(context.Background(), "key:a", "key:a")
 	require.ErrorIs(t, err, errIngestBusy, "the fifth ingest of one caller waits its turn and is told to retry")
 
-	other, err := a.enter(context.Background(), "key:b")
+	other, err := a.enter(context.Background(), "key:b", "key:b")
 	require.NoError(t, err, "another caller is not delayed by the first")
 	other.release()
 	for _, tk := range mine {
@@ -90,18 +90,18 @@ func TestIngestAdmission_ACallerHoldsAtMostHalfTheConcurrency(t *testing.T) {
 
 func TestIngestAdmission_ACallerWaitingInItsOwnQueueDoesNotBlockOthers(t *testing.T) {
 	a := newIngestAdmission(2, 0, time.Minute) // one place each
-	first, err := a.enter(context.Background(), "user:a")
+	first, err := a.enter(context.Background(), "user:a", "user:a")
 	require.NoError(t, err)
 
 	waiter := make(chan error, 1)
 	go func() {
-		_, err := a.enter(context.Background(), "user:a")
+		_, err := a.enter(context.Background(), "user:a", "user:a")
 		waiter <- err
 	}()
 	time.Sleep(20 * time.Millisecond)
 
 	start := time.Now()
-	other, err := a.enter(context.Background(), "user:b")
+	other, err := a.enter(context.Background(), "user:b", "user:b")
 	require.NoError(t, err)
 	assert.Less(t, time.Since(start), time.Second)
 	require.NoError(t, other.admit(context.Background(), 10), "and takes a global slot while the first caller's second ingest waits")
@@ -116,20 +116,20 @@ func TestIngestAdmission_TheGlobalSlotIsTakenOnlyAfterTheBody(t *testing.T) {
 	// Two callers fill every global slot.
 	var admitted []*ingestTicket
 	for _, p := range []string{"user:a", "user:b"} {
-		tk, err := a.enter(context.Background(), p)
+		tk, err := a.enter(context.Background(), p, p)
 		require.NoError(t, err)
 		require.NoError(t, tk.admit(context.Background(), 10))
 		admitted = append(admitted, tk)
 	}
 	// A third caller can still enter and read its body: that holds no slot.
-	third, err := a.enter(context.Background(), "user:c")
+	third, err := a.enter(context.Background(), "user:c", "user:c")
 	require.NoError(t, err, "reading a body does not need a global slot")
 	// It waits for a slot only when its body is in.
 	require.ErrorIs(t, third.admit(context.Background(), 10), errIngestBusy)
 	third.release()
 
 	admitted[0].release()
-	again, err := a.enter(context.Background(), "user:c")
+	again, err := a.enter(context.Background(), "user:c", "user:c")
 	require.NoError(t, err)
 	require.NoError(t, again.admit(context.Background(), 10), "a freed slot goes to the next caller")
 	again.release()
@@ -141,11 +141,11 @@ func TestIngestAdmission_ACallerGetsAProportionalShareOfTheMemory(t *testing.T) 
 	a := newIngestAdmission(8, 64*8000, time.Second) // budget for 8000 raw bytes
 	assert.EqualValues(t, 64*4000, a.memoryShare, "half the budget for half the slots")
 
-	big, err := a.enter(context.Background(), "user:a")
+	big, err := a.enter(context.Background(), "user:a", "user:a")
 	require.NoError(t, err)
 	require.NoError(t, big.admit(context.Background(), 4000), "one caller may use its whole share")
 
-	more, err := a.enter(context.Background(), "user:a")
+	more, err := a.enter(context.Background(), "user:a", "user:a")
 	require.NoError(t, err)
 	short := newIngestAdmission(8, 64*8000, 30*time.Millisecond)
 	_ = short
@@ -154,7 +154,7 @@ func TestIngestAdmission_ACallerGetsAProportionalShareOfTheMemory(t *testing.T) 
 	assert.Error(t, more.admit(waitCtx, 100), "the same caller cannot exceed its share")
 	more.release()
 
-	rival, err := a.enter(context.Background(), "user:b")
+	rival, err := a.enter(context.Background(), "user:b", "user:b")
 	require.NoError(t, err)
 	require.NoError(t, rival.admit(context.Background(), 3000), "another caller still has its own share of the budget")
 	rival.release()
@@ -164,11 +164,11 @@ func TestIngestAdmission_ACallerGetsAProportionalShareOfTheMemory(t *testing.T) 
 
 func TestIngestAdmission_ReleaseIsSafeToRepeatAndAfterAFailedAdmit(t *testing.T) {
 	a := newIngestAdmission(2, 64*100, 20*time.Millisecond)
-	hold, err := a.enter(context.Background(), "user:a")
+	hold, err := a.enter(context.Background(), "user:a", "user:a")
 	require.NoError(t, err)
 	require.NoError(t, hold.admit(context.Background(), 100))
 
-	blocked, err := a.enter(context.Background(), "user:b")
+	blocked, err := a.enter(context.Background(), "user:b", "user:b")
 	require.NoError(t, err)
 	require.ErrorIs(t, blocked.admit(context.Background(), 100), errIngestBusy)
 	blocked.release()
@@ -177,7 +177,7 @@ func TestIngestAdmission_ReleaseIsSafeToRepeatAndAfterAFailedAdmit(t *testing.T)
 	hold.release()
 	hold.release()
 	assert.True(t, a.idle(), "a double release must not hand out anything twice")
-	tk, err := a.enter(context.Background(), "user:c")
+	tk, err := a.enter(context.Background(), "user:c", "user:c")
 	require.NoError(t, err)
 	require.NoError(t, tk.admit(context.Background(), 100))
 	tk.release()
@@ -185,12 +185,12 @@ func TestIngestAdmission_ReleaseIsSafeToRepeatAndAfterAFailedAdmit(t *testing.T)
 
 func TestIngestAdmission_AClientThatLeavesWhileQueuedLeavesNothingBehind(t *testing.T) {
 	a := newIngestAdmission(2, 0, time.Minute)
-	first, err := a.enter(context.Background(), "user:a")
+	first, err := a.enter(context.Background(), "user:a", "user:a")
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { _, err := a.enter(ctx, "user:a"); done <- err }()
+	go func() { _, err := a.enter(ctx, "user:a", "user:a"); done <- err }()
 	time.Sleep(20 * time.Millisecond)
 	cancel()
 	require.ErrorIs(t, <-done, context.Canceled)
@@ -210,7 +210,7 @@ func TestIngestReport_AbandonedWaitDoesNotRunTheUseCase(t *testing.T) {
 	}}
 	h := NewHandler(mock)
 	h.ingest = newIngestAdmission(1, 0, time.Minute)
-	hold, err := h.ingest.enter(context.Background(), "user:other")
+	hold, err := h.ingest.enter(context.Background(), "user:other", "user:other")
 	require.NoError(t, err)
 	require.NoError(t, hold.admit(context.Background(), 10))
 	defer hold.release()
