@@ -896,6 +896,37 @@ func (q *Queries) ListFindingDisplayContextsByIDs(ctx context.Context, dollar_1 
 	return items, nil
 }
 
+const listFindingEnvironmentIDs = `-- name: ListFindingEnvironmentIDs :many
+SELECT DISTINCT COALESCE(r.environment_id::text, '')::text AS environment_id
+FROM finding_occurrences fo
+JOIN reports r ON fo.report_id = r.id
+WHERE fo.finding_id = $1
+ORDER BY 1
+`
+
+// Every environment whose reports observed the finding; ” stands for a report
+// with no environment. The per-finding counterpart of environment_ids in
+// ListGateCandidates.
+func (q *Queries) ListFindingEnvironmentIDs(ctx context.Context, findingID pgtype.UUID) ([]string, error) {
+	rows, err := q.db.Query(ctx, listFindingEnvironmentIDs, findingID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []string
+	for rows.Next() {
+		var environment_id string
+		if err := rows.Scan(&environment_id); err != nil {
+			return nil, err
+		}
+		items = append(items, environment_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listFindingEvents = `-- name: ListFindingEvents :many
 SELECT id, finding_id, user_id, event_type, old_value, new_value, comment, changes, created_at FROM finding_events
 WHERE finding_id = $1
@@ -1344,7 +1375,13 @@ SELECT
     COALESCE(ra.state, 'unknown'::reachability_state) AS reachability_state,
     ctx.environment_id,
     ctx.target_id,
-    ctx.artifact_id
+    ctx.artifact_id,
+    ARRAY(
+        SELECT DISTINCT COALESCE(er.environment_id::text, '')
+        FROM finding_occurrences eo
+        JOIN reports er ON eo.report_id = er.id
+        WHERE eo.finding_id = f.id
+    )::text[] AS environment_ids
 FROM open_findings f
 LEFT JOIN LATERAL (
     SELECT r.environment_id, r.target_id, r.artifact_id
@@ -1386,6 +1423,7 @@ type ListGateCandidatesRow struct {
 	EnvironmentID        pgtype.UUID       `json:"environment_id"`
 	TargetID             pgtype.UUID       `json:"target_id"`
 	ArtifactID           pgtype.UUID       `json:"artifact_id"`
+	EnvironmentIds       []string          `json:"environment_ids"`
 }
 
 // Batch gate-candidate loader: one round trip returns every finding that may
@@ -1393,7 +1431,10 @@ type ListGateCandidatesRow struct {
 // context and latest reachability assessment. The query is a performance
 // prefilter only — gate.Gate.Evaluate is the authoritative policy. Context
 // comes from the most recent occurrence's report; NULL report_id (watcher
-// findings) has no context and joins as NULL.
+// findings) has no context and joins as NULL. environment_ids lists every
+// environment whose reports observed the finding (” for a report with no
+// environment), so an environment-scoped waiver can be checked against all of
+// them and not only the newest scan.
 func (q *Queries) ListGateCandidates(ctx context.Context, arg ListGateCandidatesParams) ([]ListGateCandidatesRow, error) {
 	rows, err := q.db.Query(ctx, listGateCandidates, arg.ProjectID, arg.CurrentSeverityRank)
 	if err != nil {
@@ -1417,6 +1458,7 @@ func (q *Queries) ListGateCandidates(ctx context.Context, arg ListGateCandidates
 			&i.EnvironmentID,
 			&i.TargetID,
 			&i.ArtifactID,
+			&i.EnvironmentIds,
 		); err != nil {
 			return nil, err
 		}
@@ -1443,6 +1485,12 @@ SELECT
     ctx.environment_id,
     ctx.target_id,
     ctx.artifact_id,
+    ARRAY(
+        SELECT DISTINCT COALESCE(er.environment_id::text, '')
+        FROM finding_occurrences eo
+        JOIN reports er ON eo.report_id = er.id
+        WHERE eo.finding_id = f.id
+    )::text[] AS environment_ids,
     rif.change_type
 FROM report_introduced_findings rif
 JOIN open_findings f ON rif.finding_id = f.id
@@ -1488,6 +1536,7 @@ type ListIntroducedGateCandidatesRow struct {
 	EnvironmentID        pgtype.UUID       `json:"environment_id"`
 	TargetID             pgtype.UUID       `json:"target_id"`
 	ArtifactID           pgtype.UUID       `json:"artifact_id"`
+	EnvironmentIds       []string          `json:"environment_ids"`
 	ChangeType           string            `json:"change_type"`
 }
 
@@ -1514,6 +1563,7 @@ func (q *Queries) ListIntroducedGateCandidates(ctx context.Context, arg ListIntr
 			&i.EnvironmentID,
 			&i.TargetID,
 			&i.ArtifactID,
+			&i.EnvironmentIds,
 			&i.ChangeType,
 		); err != nil {
 			return nil, err

@@ -79,3 +79,31 @@ func TestGateWaiverRepoCarriesScopeAll(t *testing.T) {
 	assert.True(t, got[0].ScopeAll)
 	assert.False(t, got[1].ScopeAll)
 }
+
+// The gate needs every environment that observed a finding, not just the
+// newest scan's, to keep an environment-scoped waiver from covering it.
+func TestGateFindingRepoCarriesObservedEnvironments(t *testing.T) {
+	candidate := port.GateCandidate{
+		Finding: port.Finding{ID: "f1"},
+		Context: port.FindingContext{EnvironmentID: "env-dev", EnvironmentIDs: []string{"env-dev", "env-prod"}},
+	}
+	fr := &mockFindingRepo{
+		listGateCandidatesFn: func(context.Context, string, int16) ([]port.GateCandidate, error) {
+			return []port.GateCandidate{candidate}, nil
+		},
+		listIntroducedGateCandidatesFn: func(context.Context, string, string, int16) ([]port.GateCandidate, error) {
+			return []port.GateCandidate{candidate}, nil
+		},
+	}
+	repo := &gateFindingRepo{stores: &port.Stores{Findings: fr}}
+
+	all, err := repo.ListBlockingFindings(context.Background(), "project-1", 3)
+	require.NoError(t, err)
+	require.Len(t, all, 1)
+	assert.Equal(t, []string{"env-dev", "env-prod"}, all[0].EnvironmentIDs)
+
+	introduced, err := repo.ListIntroducedGateCandidates(context.Background(), "project-1", "report-1", 3)
+	require.NoError(t, err)
+	require.Len(t, introduced, 1)
+	assert.Equal(t, []string{"env-dev", "env-prod"}, introduced[0].EnvironmentIDs)
+}

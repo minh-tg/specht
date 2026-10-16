@@ -208,7 +208,10 @@ LIMIT $3 OFFSET $4;
 -- context and latest reachability assessment. The query is a performance
 -- prefilter only — gate.Gate.Evaluate is the authoritative policy. Context
 -- comes from the most recent occurrence's report; NULL report_id (watcher
--- findings) has no context and joins as NULL.
+-- findings) has no context and joins as NULL. environment_ids lists every
+-- environment whose reports observed the finding ('' for a report with no
+-- environment), so an environment-scoped waiver can be checked against all of
+-- them and not only the newest scan.
 SELECT
     f.id,
     f.project_id,
@@ -222,7 +225,13 @@ SELECT
     COALESCE(ra.state, 'unknown'::reachability_state) AS reachability_state,
     ctx.environment_id,
     ctx.target_id,
-    ctx.artifact_id
+    ctx.artifact_id,
+    ARRAY(
+        SELECT DISTINCT COALESCE(er.environment_id::text, '')
+        FROM finding_occurrences eo
+        JOIN reports er ON eo.report_id = er.id
+        WHERE eo.finding_id = f.id
+    )::text[] AS environment_ids
 FROM open_findings f
 LEFT JOIN LATERAL (
     SELECT r.environment_id, r.target_id, r.artifact_id
@@ -243,6 +252,16 @@ WHERE f.project_id = $1
   AND f.current_severity_rank >= $2
   AND f.gate_effect = 'block'
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC;
+
+-- name: ListFindingEnvironmentIDs :many
+-- Every environment whose reports observed the finding; '' stands for a report
+-- with no environment. The per-finding counterpart of environment_ids in
+-- ListGateCandidates.
+SELECT DISTINCT COALESCE(r.environment_id::text, '')::text AS environment_id
+FROM finding_occurrences fo
+JOIN reports r ON fo.report_id = r.id
+WHERE fo.finding_id = $1
+ORDER BY 1;
 
 -- name: GetFindingContext :one
 SELECT r.environment_id, r.target_id, r.artifact_id
@@ -508,6 +527,12 @@ SELECT
     ctx.environment_id,
     ctx.target_id,
     ctx.artifact_id,
+    ARRAY(
+        SELECT DISTINCT COALESCE(er.environment_id::text, '')
+        FROM finding_occurrences eo
+        JOIN reports er ON eo.report_id = er.id
+        WHERE eo.finding_id = f.id
+    )::text[] AS environment_ids,
     rif.change_type
 FROM report_introduced_findings rif
 JOIN open_findings f ON rif.finding_id = f.id
