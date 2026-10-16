@@ -304,9 +304,9 @@ func (r *pgWaiverPort) ListContexts(ctx context.Context, waiverID string) ([]por
 		out[i] = port.WaiverContext{
 			ID:            toUUID(row.ID),
 			WaiverID:      toUUID(row.WaiverID),
-			EnvironmentID: toUUID(row.EnvironmentID),
-			TargetID:      toUUID(row.TargetID),
-			ArtifactID:    toUUID(row.ArtifactID),
+			EnvironmentID: optionalUUID(row.EnvironmentID),
+			TargetID:      optionalUUID(row.TargetID),
+			ArtifactID:    optionalUUID(row.ArtifactID),
 		}
 	}
 	return out, nil
@@ -330,9 +330,9 @@ func (r *pgWaiverPort) ListContextsByWaiverIDs(ctx context.Context, waiverIDs []
 		out[i] = port.WaiverContext{
 			ID:            toUUID(row.ID),
 			WaiverID:      toUUID(row.WaiverID),
-			EnvironmentID: toUUID(row.EnvironmentID),
-			TargetID:      toUUID(row.TargetID),
-			ArtifactID:    toUUID(row.ArtifactID),
+			EnvironmentID: optionalUUID(row.EnvironmentID),
+			TargetID:      optionalUUID(row.TargetID),
+			ArtifactID:    optionalUUID(row.ArtifactID),
 		}
 	}
 	return out, nil

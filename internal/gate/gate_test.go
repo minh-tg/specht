@@ -127,6 +127,31 @@ func TestEvaluate_ContextWaiver_Matching(t *testing.T) {
 	assert.Equal(t, 3, d.TotalBlocking)
 }
 
+// A context row that names no environment, target or artifact matches no
+// finding. A deleted environment leaves such a row behind, and it must not
+// widen the waiver to every finding.
+func TestIsFindingWaived_EmptyContextMatchesNothing(t *testing.T) {
+	f := Finding{ID: "f1", CurrentSeverityRank: 4, EnvironmentID: "env-dev"}
+	assert.False(t, IsFindingWaived(f, []Waiver{{ID: "w1", Contexts: []WaiverContext{{}}}}))
+	assert.True(t, IsFindingWaived(f, []Waiver{{ID: "w1", Contexts: []WaiverContext{{}, {EnvironmentID: "env-dev"}}}}),
+		"a second, real context still applies")
+}
+
+// A waiver that names a target and no environment applies in every environment.
+func TestIsFindingWaived_TargetOnlyContextApplyInEveryEnvironment(t *testing.T) {
+	w := []Waiver{{ID: "w1", Contexts: []WaiverContext{{TargetID: "app-api"}}}}
+	for _, env := range []string{"", "env-dev", "env-prod"} {
+		f := Finding{ID: "f1", CurrentSeverityRank: 4, TargetID: "app-api", EnvironmentID: env}
+		assert.Truef(t, IsFindingWaived(f, w), "environment %q", env)
+	}
+}
+
+func TestIsFindingWaived_ScopeAllAndEnvironmentlessWaiversApplyEverywhere(t *testing.T) {
+	f := Finding{ID: "f1", CurrentSeverityRank: 4, EnvironmentID: "env-dev"}
+	assert.True(t, IsFindingWaived(f, []Waiver{{ID: "all", ScopeAll: true}}))
+	assert.True(t, IsFindingWaived(f, []Waiver{{ID: "target", Targets: []WaiverTarget{{FindingID: "f1"}}}}))
+}
+
 func TestEvaluate_ContextOR_MultipleRows(t *testing.T) {
 	g := New(
 		&mockFindingsRepo{findings: []Finding{

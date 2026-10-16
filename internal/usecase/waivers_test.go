@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -561,4 +562,28 @@ func TestDeleteWaiverIsScopedToProject(t *testing.T) {
 	err := uc.DeleteWaiver(sessionCtx("admin", auth.RoleAdmin), "my-app", waiverID)
 
 	require.NoError(t, err)
+}
+
+func TestWaiverContextReadsTheDocumentedKeys(t *testing.T) {
+	var ctx CreateWaiverContextInput
+	require.NoError(t, json.Unmarshal([]byte(
+		`{"environment_id":"e1","target_id":"t1","artifact_id":"a1"}`), &ctx))
+	assert.Equal(t, CreateWaiverContextInput{EnvironmentID: "e1", TargetID: "t1", ArtifactID: "a1"}, ctx)
+}
+
+func TestWaiverRefusesAContextThatNamesNothing(t *testing.T) {
+	project := makeProject(true)
+	admin := sessionCtx("admin", auth.RoleAdmin)
+	uc := waiverUsecaseForProject(project, &mockWaiverRepo{}, "")
+
+	_, err := uc.CreateWaiver(admin, CreateWaiverInput{
+		ProjectSlug: "my-app", Name: "everything", Contexts: []CreateWaiverContextInput{{}},
+	})
+	require.ErrorIs(t, err, ErrInvalidWaiverRequest)
+
+	_, err = uc.UpdateWaiver(admin, UpdateWaiverInput{
+		ProjectSlug: "my-app", WaiverID: "00000000-0000-0000-0000-0000000000b1",
+		Contexts: []CreateWaiverContextInput{{EnvironmentID: "00000000-0000-0000-0000-0000000000e1"}, {}},
+	})
+	require.ErrorIs(t, err, ErrInvalidWaiverRequest)
 }

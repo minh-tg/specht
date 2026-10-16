@@ -36,6 +36,16 @@ func toUUID(id pgtype.UUID) string {
 	return uuid.UUID(id.Bytes).String()
 }
 
+// optionalUUID renders a nullable UUID column, with "" for NULL. toUUID would
+// turn NULL into the all-zero UUID, which reads as a real id to a caller that
+// compares or tests for "".
+func optionalUUID(id pgtype.UUID) string {
+	if !id.Valid {
+		return ""
+	}
+	return toUUID(id)
+}
+
 func uuidFromTime(t time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: t, Valid: true}
 }

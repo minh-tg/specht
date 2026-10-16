@@ -346,8 +346,14 @@ func (g *gate) evaluateFindings(ctx context.Context, projectID string, findings 
 	}, nil
 }
 
+// contextMatchesContexts reports whether any of the waiver's contexts accepts
+// the finding's newest scan context. A context that names no environment,
+// target or artifact is a leftover row and accepts nothing.
 func contextMatchesContexts(f Finding, contexts []WaiverContext) bool {
 	for _, cx := range contexts {
+		if cx.EnvironmentID == "" && cx.TargetID == "" && cx.ArtifactID == "" {
+			continue // names nothing: a leftover row, never a wildcard
+		}
 		if cx.EnvironmentID != "" && cx.EnvironmentID != f.EnvironmentID {
 			continue
 		}
