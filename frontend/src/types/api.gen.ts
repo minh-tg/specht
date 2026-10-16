@@ -701,10 +701,11 @@ export interface paths {
      *     (`INGEST_MEMORY_BUDGET`, 2 GiB by default): each reserves 64 bytes per
      *     byte of `raw_data` while it runs. One caller (a user, or an API key) may
      *     have at most half of `INGEST_MAX_CONCURRENCY` ingests, and half of the
-     *     budget, at once. An ingest that cannot get its place, a free slot or its
-     *     share of the memory within 15 seconds is answered `503 ingest_busy` with
-     *     `Retry-After`; a caller who is over its own limit never delays another
-     *     caller. Once started, an ingest finishes even if the client hangs up.
+     *     budget, at once; so may one project, however many callers it has. An
+     *     ingest that cannot get its place, a free slot or its share of the memory
+     *     within 15 seconds is answered `503 ingest_busy` with `Retry-After`; a
+     *     caller or project that is over its own limit never delays another.
+     *     Once started, an ingest finishes even if the client hangs up.
      */
     post: operations["ingestReport"];
     delete?: never;
