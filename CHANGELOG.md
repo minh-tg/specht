@@ -503,3 +503,11 @@ releases.
   project slugs exist. They now answer 403 `project_access_denied` in both
   cases (a global admin still gets 404 for a missing project). A missing slug
   no longer answers 400 or 500 on these routes.
+- Behavior change: the team directory is limited to the teams a person belongs to
+  and the teams linked to a project they can reach. `GET /api/v1/teams` no
+  longer lists every team of the instance to anyone with one project, and a
+  team outside that set answers 404 on `GET /api/v1/teams/{id}/members` and on
+  adding or removing members, the same as a team that does not exist. Global
+  admins still see every team. A project manager now links a team from the ones
+  they can see; a global admin can link any team. See "Who sees which teams" in
+  `deploy/README.md`.

@@ -263,6 +263,24 @@ type mockTeamRepo struct {
 	unlinkFn       func(context.Context, string, string) error
 	listLinksFn    func(context.Context, string) ([]port.ProjectTeam, error)
 	teamLinksFn    func(context.Context, string) ([]port.ProjectTeam, error)
+	listVisibleFn  func(context.Context, string) ([]port.Team, error)
+	isVisibleFn    func(context.Context, string, string) (bool, error)
+}
+
+func (m *mockTeamRepo) ListTeamsVisibleTo(ctx context.Context, userID string) ([]port.Team, error) {
+	if m.listVisibleFn == nil {
+		return nil, fmt.Errorf("unexpected call to ListTeamsVisibleTo")
+	}
+	return m.listVisibleFn(ctx, userID)
+}
+
+// IsTeamVisibleTo defaults to visible, so a test that is not about visibility
+// reads the team it names.
+func (m *mockTeamRepo) IsTeamVisibleTo(ctx context.Context, teamID, userID string) (bool, error) {
+	if m.isVisibleFn == nil {
+		return true, nil
+	}
+	return m.isVisibleFn(ctx, teamID, userID)
 }
 
 func (m *mockTeamRepo) ListTeamProjectLinks(ctx context.Context, teamID string) ([]port.ProjectTeam, error) {

@@ -170,6 +170,40 @@ func (q *Queries) IsTeamMember(ctx context.Context, arg IsTeamMemberParams) (boo
 	return is_member, err
 }
 
+const isTeamVisibleTo = `-- name: IsTeamVisibleTo :one
+SELECT EXISTS (
+    SELECT 1 FROM teams t
+    WHERE t.id = $1 AND (
+        EXISTS (
+            SELECT 1 FROM team_members tm WHERE tm.team_id = t.id AND tm.user_id = $2
+        ) OR EXISTS (
+            SELECT 1 FROM project_teams pt
+            WHERE pt.team_id = t.id AND (
+                EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = pt.project_id AND pm.user_id = $2)
+                OR EXISTS (
+                    SELECT 1 FROM project_teams mine
+                    JOIN team_members tm2 ON tm2.team_id = mine.team_id
+                    WHERE mine.project_id = pt.project_id AND tm2.user_id = $2
+                )
+            )
+        )
+    )
+) AS visible
+`
+
+type IsTeamVisibleToParams struct {
+	ID     pgtype.UUID `json:"id"`
+	UserID pgtype.UUID `json:"user_id"`
+}
+
+// Whether ListTeamsVisibleTo would list the team for the user.
+func (q *Queries) IsTeamVisibleTo(ctx context.Context, arg IsTeamVisibleToParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isTeamVisibleTo, arg.ID, arg.UserID)
+	var visible bool
+	err := row.Scan(&visible)
+	return visible, err
+}
+
 const linkProjectTeam = `-- name: LinkProjectTeam :one
 INSERT INTO project_teams (project_id, team_id, role)
 VALUES ($1, $2, $3)
@@ -360,6 +394,52 @@ ORDER BY name ASC
 
 func (q *Queries) ListTeams(ctx context.Context) ([]Team, error) {
 	rows, err := q.db.Query(ctx, listTeams)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Team
+	for rows.Next() {
+		var i Team
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Description,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTeamsVisibleTo = `-- name: ListTeamsVisibleTo :many
+SELECT t.id, t.name, t.description, t.created_at, t.updated_at FROM teams t
+WHERE EXISTS (
+    SELECT 1 FROM team_members tm WHERE tm.team_id = t.id AND tm.user_id = $1
+) OR EXISTS (
+    SELECT 1 FROM project_teams pt
+    WHERE pt.team_id = t.id AND (
+        EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = pt.project_id AND pm.user_id = $1)
+        OR EXISTS (
+            SELECT 1 FROM project_teams mine
+            JOIN team_members tm2 ON tm2.team_id = mine.team_id
+            WHERE mine.project_id = pt.project_id AND tm2.user_id = $1
+        )
+    )
+)
+ORDER BY t.name ASC
+`
+
+// The teams a user may see: the ones they belong to and the ones linked to a
+// project they reach, directly or through a team of their own.
+func (q *Queries) ListTeamsVisibleTo(ctx context.Context, userID pgtype.UUID) ([]Team, error) {
+	rows, err := q.db.Query(ctx, listTeamsVisibleTo, userID)
 	if err != nil {
 		return nil, err
 	}

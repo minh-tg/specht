@@ -90,3 +90,34 @@ func TestListTeamMembers_UnknownTeamIsNotFound(t *testing.T) {
 	_, err := uc.ListTeamMembers(teamMemberCtx(), rosterTeamID)
 	assert.ErrorIs(t, err, ErrTeamNotFound)
 }
+
+// A team the caller cannot see answers like a team that does not exist, on
+// reads and on roster writes, so team ids cannot be probed.
+func TestTeamRoster_InvisibleTeamLooksMissing(t *testing.T) {
+	uc, tr := rosterHarness()
+	tr.isVisibleFn = func(context.Context, string, string) (bool, error) { return false, nil }
+	tr.upsertMemberFn = func(context.Context, string, string, string) (port.TeamMember, error) {
+		t.Fatal("nothing is written to a team the caller cannot see")
+		return port.TeamMember{}, nil
+	}
+	const other = "22222222-2222-2222-2222-222222222222"
+
+	_, err := uc.ListTeamMembers(teamMemberCtx(), rosterTeamID)
+	assert.ErrorIs(t, err, ErrTeamNotFound)
+	_, err = uc.AddTeamMember(teamMemberCtx(), rosterTeamID, other, "member")
+	assert.ErrorIs(t, err, ErrTeamNotFound)
+	assert.ErrorIs(t, uc.RemoveTeamMember(teamMemberCtx(), rosterTeamID, other), ErrTeamNotFound)
+
+	// A global admin sees every team.
+	_, err = uc.ListTeamMembers(adminCtx(), rosterTeamID)
+	require.NoError(t, err)
+
+	// A team the caller can see but does not administer is a plain refusal.
+	tr.isVisibleFn = func(context.Context, string, string) (bool, error) { return true, nil }
+	_, err = uc.AddTeamMember(teamMemberCtx(), rosterTeamID, other, "member")
+	assert.ErrorIs(t, err, ErrProjectAccessDenied)
+
+	tr.getByIDFn = func(context.Context, string) (port.Team, error) { return port.Team{}, port.ErrNotFound }
+	_, err = uc.ListTeamMembers(teamMemberCtx(), rosterTeamID)
+	assert.ErrorIs(t, err, ErrTeamNotFound, "a missing team gives the same answer")
+}

@@ -418,6 +418,17 @@ the seeded `system@specht.local` account cannot be demoted or deactivated;
 those requests answer 409. Specht has no endpoint that deletes an account.
 Removing someone from a project or a team takes effect on their next request.
 
+### Who sees which teams
+
+A team is visible to a person who belongs to it and to anyone who can reach a
+project it is linked to, directly or through a team of their own. `GET
+/api/v1/teams` lists only those teams, and a team outside that set answers 404
+on `GET /api/v1/teams/{id}/members` and on the roster writes, the same as a team
+that does not exist. Global admins see every team. Plan for this when several
+organizations share one instance: a project manager picks teams to link from
+the teams they can see, so a global admin links a team that is new to their
+project, or adds the manager to it first.
+
 ## 6. Reverse proxy
 
 Terminate TLS at the proxy and forward plain HTTP. Set `TRUSTED_PROXIES` to

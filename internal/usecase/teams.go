@@ -72,26 +72,27 @@ func (u *Usecases) CreateTeam(ctx context.Context, name, description string) (*T
 	return &TeamResponse{ID: team.ID, Name: team.Name, Description: team.Description}, nil
 }
 
-// ListTeams returns every team in name order to callers who belong to the
-// organisation: global admins and users with access to at least one project,
-// directly or through a team. Self-registered accounts with no access get an
-// empty directory instead of the company's team names, and API keys, which
-// authenticate a project and not a person, are refused.
+// ListTeams returns the teams a person may see, in name order: the teams they
+// belong to and the teams linked to a project they can reach, directly or
+// through a team. A team linked only to projects they cannot reach stays out of
+// the list, so one tenant's team names do not show up in another's. Global
+// admins see every team. Accounts with no project and no team get an empty
+// directory, and API keys, which authenticate a project and not a person, are
+// refused.
 func (u *Usecases) ListTeams(ctx context.Context) ([]TeamResponse, error) {
 	ident := auth.ContextIdentity(ctx)
 	if ident == nil || ident.IsAPIKey {
 		return nil, ErrProjectAccessDenied
 	}
-	if ident.Role != auth.RoleAdmin {
-		accessible, err := u.deps.Stores.Projects.ListAccessibleProjectIDs(ctx, ident.UserID)
-		if err != nil {
-			return nil, fmt.Errorf("check directory access: %w", err)
-		}
-		if len(accessible) == 0 {
-			return []TeamResponse{}, nil
-		}
+	var (
+		teams []port.Team
+		err   error
+	)
+	if ident.Role == auth.RoleAdmin {
+		teams, err = u.deps.Stores.Teams.ListTeams(ctx)
+	} else {
+		teams, err = u.deps.Stores.Teams.ListTeamsVisibleTo(ctx, ident.UserID)
 	}
-	teams, err := u.deps.Stores.Teams.ListTeams(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list teams: %w", err)
 	}
@@ -139,6 +140,14 @@ func (u *Usecases) requireTeamAdmin(ctx context.Context, teamID string) error {
 		return fmt.Errorf("check team admin: %w", err)
 	}
 	if !ok {
+		// A team the caller cannot see answers like a missing one.
+		visible, err := u.deps.Stores.Teams.IsTeamVisibleTo(ctx, teamID, ident.UserID)
+		if err != nil {
+			return fmt.Errorf("check team visibility: %w", err)
+		}
+		if !visible {
+			return ErrTeamNotFound
+		}
 		return ErrProjectAccessDenied
 	}
 	return nil
@@ -237,10 +246,11 @@ func (u *Usecases) addTeamMember(ctx context.Context, teamID, role string, resol
 	return &TeamMemberResponse{TeamID: m.TeamID, UserID: m.UserID, Role: m.Role}, nil
 }
 
-// ListTeamMembers returns a team's roster. Any signed-in person sees who is on
-// a team by display name; the team directory is already open to them. Email
-// addresses go only to global admins and the team's own admins. API keys get
-// nothing: a pipeline has no use for the people behind a team.
+// ListTeamMembers returns a team's roster to a person who can see the team (see
+// ListTeams), by display name. A team they cannot see is ErrTeamNotFound, the
+// same answer as a team that does not exist. Email addresses go only to global
+// admins and the team's own admins. API keys get nothing: a pipeline has no use
+// for the people behind a team.
 func (u *Usecases) ListTeamMembers(ctx context.Context, teamID string) ([]TeamMemberResponse, error) {
 	if _, err := validID(teamID); err != nil {
 		return nil, err
@@ -251,6 +261,15 @@ func (u *Usecases) ListTeamMembers(ctx context.Context, teamID string) ([]TeamMe
 	}
 	if _, err := u.deps.Stores.Teams.GetTeamByID(ctx, teamID); err != nil {
 		return nil, notFoundAsTeam(err)
+	}
+	if ident.Role != auth.RoleAdmin {
+		visible, err := u.deps.Stores.Teams.IsTeamVisibleTo(ctx, teamID, ident.UserID)
+		if err != nil {
+			return nil, fmt.Errorf("check team visibility: %w", err)
+		}
+		if !visible {
+			return nil, ErrTeamNotFound
+		}
 	}
 	withEmails := ident.Role == auth.RoleAdmin
 	if !withEmails {

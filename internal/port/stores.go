@@ -1397,6 +1397,11 @@ type TeamStore interface {
 	GetTeamByID(ctx context.Context, id string) (Team, error)
 	GetTeamByName(ctx context.Context, name string) (Team, error)
 	ListTeams(ctx context.Context) ([]Team, error)
+	// ListTeamsVisibleTo returns the teams a user belongs to and the teams
+	// linked to a project the user reaches directly or through a team.
+	ListTeamsVisibleTo(ctx context.Context, userID string) ([]Team, error)
+	// IsTeamVisibleTo reports whether ListTeamsVisibleTo would list the team.
+	IsTeamVisibleTo(ctx context.Context, teamID, userID string) (bool, error)
 	DeleteTeam(ctx context.Context, id string) error
 	UpsertTeamMember(ctx context.Context, teamID, userID, role string) (TeamMember, error)
 	ListTeamMembers(ctx context.Context, teamID string) ([]TeamMember, error)
