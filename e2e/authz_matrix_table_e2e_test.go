@@ -383,7 +383,7 @@ func authzRows() []authzRow {
 			// A key sees its own project; a session sees its memberships. The
 			// ingest-only key fails the read scope.
 			Method: "GET", Pattern: "/api/v1/projects", Path: api("/projects"),
-			Want: allowOnly(append([]authzCaller{callerKeyRead, callerKeyAdmin}, sessions...)...), Tenants: onlyX,
+			Want: allowOnly(append([]authzCaller{callerKeyRead}, sessions...)...), Tenants: onlyX,
 		},
 		{
 			Method: "POST", Pattern: "/api/v1/projects", Path: api("/projects"),

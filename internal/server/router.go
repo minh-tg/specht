@@ -187,8 +187,10 @@ func NewRouter(cfg RouterConfig) http.Handler {
 
 	r.Group(func(r chi.Router) {
 		r.Use(AuthMiddleware(cfg.JWTAuth, apiKeyAuth))
-		readScope := RequireAPIKeyScopes(auth.ScopeRead, auth.ScopeAdmin)
-		adminScope := RequireAPIKeyScopes(auth.ScopeAdmin)
+		readScope := RequireAPIKeyScopes(auth.ScopeRead)
+		// No key scope covers project management, so this refuses every key
+		// and leaves the routes to people with a role on the project.
+		adminScope := RequireAPIKeyScopes()
 		ingestScope := RequireAPIKeyScopes(auth.ScopeIngest)
 		ingestGate := ingestLimits(cfg.IngestConcurrency, ingestQueueWait, ingestWindow, ingestWriteSlack)
 		session := RequireSession()
@@ -218,8 +220,8 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(readScope).Get("/api/v1/reports/{id}", h.GetReport)
 		r.With(ingestScope, ingestGate).Post(ingestPath, h.IngestReport)
 		// Key management belongs to project managers and admins. The route lets
-		// any signed-in person through and asks an API key for the admin scope;
-		// the use case checks the project role.
+		// any signed-in person through and refuses every API key; the use case
+		// checks the project role.
 		r.With(adminScope).Post("/api/v1/auth/apikeys", h.CreateAPIKey)
 		r.With(adminScope).Get("/api/v1/auth/apikeys", h.ListAPIKeys)
 		r.With(adminScope).Delete("/api/v1/auth/apikeys/{id}", h.RevokeAPIKey)

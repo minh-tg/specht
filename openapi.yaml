@@ -21,9 +21,10 @@ info:
        entirely (`x-auth: session`), because a project key cannot represent the
        authority they carry.
     2. **Role or scope** — session roles are `admin`, `manager`, `member`
-       (`x-required-role`); API key scopes are `ingest`, `read`, `admin`
-       (`x-required-scope`). Sessions pass scope checks and are then subject to
-       project membership instead.
+       (`x-required-role`); API key scopes are `ingest` and `read`
+       (`x-required-scope`). No key scope covers project management, so routes
+       that need a manager or admin role are session only. Sessions pass scope
+       checks and are then subject to project membership instead.
     3. **Project access** — the caller must be a member of the project (session)
        or the key must be bound to it (API key), otherwise the request fails
        with `403 project_access_denied`, or `404 not_found` when an admin asks
@@ -629,14 +630,12 @@ paths:
         in `raw_key`, and never again — later reads expose only the prefix and
         the last four characters.
 
-        Needs the manager or admin role on the project, or an API key that
-        itself holds the `admin` scope for it. A person with no role on the
-        project, or with the member role, gets 403.
+        Needs the manager or admin role on the project. An API key, or a person
+        with no role on the project or with the member role, gets 403.
       x-required-role: manager
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -658,10 +657,9 @@ paths:
       summary: List API keys
       description: Lists a project's keys with the secret masked. Needs the manager or admin role on the project.
       x-required-role: manager
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - name: project
           in: query
@@ -686,10 +684,9 @@ paths:
       summary: Revoke an API key
       description: Needs the manager or admin role on the project.
       x-required-role: manager
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Id"
         - name: project
@@ -783,10 +780,9 @@ paths:
       operationId: updateProject
       summary: Update a project
       description: Both fields are pointers; omit one to leave it unchanged.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
       requestBody:
@@ -808,10 +804,9 @@ paths:
       operationId: deleteProject
       summary: Delete a project
       description: Deletes the project and everything hanging off it. Returns the deleted project.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
       responses:
@@ -1317,10 +1312,9 @@ paths:
         `expected_state` makes the write conditional on the finding's current
         analysis state; the write is also refused with `analysis_conflict` when
         the finding changed while the request was being handled.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Id"
       requestBody:
@@ -1364,10 +1358,9 @@ paths:
 
         Events written by bulk triage, by a scan's review flag or before this
         endpoint existed carry no snapshot and answer `undo_unavailable`.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Id"
       requestBody:
@@ -1407,10 +1400,9 @@ paths:
         path, applied atomically across up to 1000 findings. Partial success is
         not reported: any invalid id, unknown finding, or missing reason fails
         the whole batch.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       requestBody:
         required: true
         content:
@@ -1573,10 +1565,9 @@ paths:
         scope. Returns `still_present`, `inconclusive` when the newest evidence
         cannot vouch for completeness, or `verified_fixed`, which also moves the
         scan-derived state to `fixed` while leaving any analyst decision intact.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Id"
       responses:
@@ -1656,10 +1647,9 @@ paths:
       tags: [Evidence]
       operationId: createEvidence
       summary: Attach evidence
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/FindingID"
       requestBody:
@@ -1703,10 +1693,9 @@ paths:
       tags: [Evidence]
       operationId: deleteEvidence
       summary: Detach evidence
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/FindingID"
         - name: evidenceID
@@ -1729,10 +1718,9 @@ paths:
         `not_reachable` claim exempts the finding from the gate — including the
         ingress gate and the watcher's `require_triage` mode — until the
         assessment is lifted.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/FindingID"
       requestBody:
@@ -1776,10 +1764,9 @@ paths:
       tags: [Signoff]
       operationId: upsertSignoff
       summary: Record a reviewer decision
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/FindingID"
       requestBody:
@@ -2031,10 +2018,9 @@ paths:
       operationId: setProjectPolicy
       summary: Link a policy template
       description: Precedence is override > template > default.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
       requestBody:
@@ -2058,10 +2044,9 @@ paths:
       operationId: setProjectPolicyOverrides
       summary: Set per-project overrides
       description: Overrides win over the linked template. An invalid key or value is rejected.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
       requestBody:
@@ -2125,10 +2110,9 @@ paths:
         approved on creation. It must say what it covers: at least one
         condition, context or target, or `scope: "all"` with none of those.
         To ask for a waiver without that role, use `POST /waivers/requests`.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
       requestBody:
@@ -2290,10 +2274,9 @@ paths:
       description: |
         `expires_at` is a tri-state: omitting it keeps the stored expiry, `""`
         clears it, and an RFC 3339 value sets it.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
         - $ref: "#/components/parameters/Id"
@@ -2316,10 +2299,9 @@ paths:
       operationId: deleteWaiver
       summary: Delete a waiver
       description: The gate re-blocks the findings it was suppressing.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
         - $ref: "#/components/parameters/Id"
@@ -2339,10 +2321,9 @@ paths:
         The flip is blind: two callers can undo each other. Use `revoke` and `restore`,
         which name the wanted state. Only an approved waiver flips (`waiver_not_approved`),
         and a disabled waiver whose expiry has passed stays off (`waiver_expired`).
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
         - $ref: "#/components/parameters/Id"
@@ -2369,10 +2350,9 @@ paths:
 
         Send `expected_updated_at` with the `updated_at` you last saw to make the call
         conditional. A waiver written since then answers `waiver_changed`.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
         - $ref: "#/components/parameters/Id"
@@ -2405,10 +2385,9 @@ paths:
 
         A waiver whose expiry has passed cannot be restored (`waiver_expired`); extend its
         expiry first. `expected_updated_at` works as it does for `revoke`.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
         - $ref: "#/components/parameters/Id"
@@ -2643,10 +2622,9 @@ paths:
       operationId: linkProjectTeam
       summary: Link a team to a project
       description: Confers the team's membership as project access for as long as the link lasts.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
       requestBody:
@@ -2669,10 +2647,9 @@ paths:
       tags: [Teams]
       operationId: unlinkProjectTeam
       summary: Unlink a team from a project
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
         - name: teamID
@@ -2715,10 +2692,9 @@ paths:
         `user_id` is `400 invalid_id`, a role outside the project vocabulary is
         `400 invalid_role`, demoting the only project admin is `400 last_admin`,
         and a user that does not exist is `404 user_not_found`.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
       requestBody:
@@ -2796,10 +2772,9 @@ paths:
       operationId: removeProjectMember
       summary: Remove a project member
       description: Revokes direct membership. Managers may remove members; removing admins requires project admin authority. The last project admin cannot be removed.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
-        - apiKeyAuth: []
       parameters:
         - $ref: "#/components/parameters/Slug"
         - name: userID
@@ -3081,7 +3056,7 @@ paths:
         that a scan created. A scan names an environment and Specht creates it
         with defaults; later scans never overwrite what is set here. Requires a
         project admin or a global admin, and works for a signed-in person only.
-      x-required-scope: admin
+      x-auth: session
       security:
         - sessionAuth: []
       parameters:
@@ -3328,7 +3303,8 @@ components:
       scheme: bearer
       description: |
         Project-scoped API key from `/auth/apikeys`, always prefixed `vuln_`.
-        Carries any of the scopes `ingest`, `read`, `admin`, and is bound to one
+        Carries the scopes `ingest` and `read` (the API mints no other scope, and
+        a key stored with any other scope is refused with 401), and is bound to one
         project, so it can never read another. Routes marked `x-auth: session`
         refuse it outright.
 

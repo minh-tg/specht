@@ -34,6 +34,14 @@ func (a *APIKeyAuthenticator) Authenticate(ctx context.Context, token string) (*
 	if !expiresAt.IsZero() && !expiresAt.After(time.Now()) {
 		return nil, fmt.Errorf("API key expired")
 	}
+	// The API mints only ingest and read keys. A stored scope outside that
+	// set (the database accepts any JSON) is not a key this server issued, so
+	// it fails closed with the answer an unknown key gets.
+	for _, scope := range scopes {
+		if scope != ScopeIngest && scope != ScopeRead {
+			return nil, fmt.Errorf("invalid API key")
+		}
+	}
 
 	return &Identity{
 		UserID:    userID,

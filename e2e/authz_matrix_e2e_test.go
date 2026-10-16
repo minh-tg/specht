@@ -70,10 +70,11 @@ var authzCallers = []authzCaller{
 
 // deadCredential reports whether the class holds a credential the server must
 // refuse outright: none at all, a JWT of a deactivated or re-roled account,
-// or a key that is revoked, expired or outlived its creator's access.
+// or a key that is revoked, expired, outlived its creator's access or carries
+// the retired admin scope, which key authentication refuses.
 func (c authzCaller) deadCredential() bool {
 	switch c {
-	case callerAnonymous, callerDeactivated, callerDemoted, callerKeyCreatorRemoved,
+	case callerAnonymous, callerKeyAdmin, callerDeactivated, callerDemoted, callerKeyCreatorRemoved,
 		callerKeyCreatorDeactivated, callerRevokedKey, callerExpiredKey:
 		return true
 	}
@@ -274,12 +275,12 @@ func sameFor(o authzOutcome) map[authzCaller]authzOutcome {
 var (
 	// projectSessions are the signed-in people with a role on tenant X.
 	projectSessions = []authzCaller{callerMember, callerManager, callerInstanceAdmin, callerProjectAdmin, callerTeamMember}
-	// projectReaders adds the read and admin scoped keys (admin implies read).
-	projectReaders = append([]authzCaller{callerKeyRead, callerKeyAdmin}, projectSessions...)
+	// projectReaders adds the read scoped key.
+	projectReaders = append([]authzCaller{callerKeyRead}, projectSessions...)
 	// managers hold manager rights on tenant X through a session.
 	managers = []authzCaller{callerManager, callerInstanceAdmin, callerProjectAdmin}
-	// projectWriters are managers plus the admin-scoped key.
-	projectWriters = append([]authzCaller{callerKeyAdmin}, managers...)
+	// projectWriters are the managers: no key scope covers project management.
+	projectWriters = managers
 	// projectAdmins hold the project admin role.
 	projectAdmins = []authzCaller{callerInstanceAdmin, callerProjectAdmin}
 	// sessions are every working signed-in caller, with or without a project.
@@ -314,24 +315,10 @@ var authzKnownFindings = slices.Concat(
 		{"PUT /api/v1/projects/{slug}/waivers/{id}||*|*|Allow", "waiver-update-delete-unaudited"},
 		{"DELETE /api/v1/projects/{slug}/waivers/{id}||*|*|Allow", "waiver-update-delete-unaudited"},
 	},
-	// admin-scope-key-broken: the admin scope passes the route's read guard but fails the use
-	// case's read check, which most handlers answer with 500.
-	authzCells("GET %s||C4-key-admin|X", "admin-scope-key-broken",
-		"/api/v1/projects/{slug}/aging", "/api/v1/projects/{slug}/artifacts",
-		"/api/v1/projects/{slug}/environments", "/api/v1/projects/{slug}/findings",
-		"/api/v1/projects/{slug}/gate", "/api/v1/projects/{slug}/members",
-		"/api/v1/projects/{slug}/policy", "/api/v1/projects/{slug}/pr-check",
-		"/api/v1/projects/{slug}/reports", "/api/v1/projects/{slug}/stats",
-		"/api/v1/projects/{slug}/targets", "/api/v1/projects/{slug}/teams",
-		"/api/v1/projects/{slug}/watcher", "/api/v1/projects/{slug}/waivers",
-		"/api/v1/projects/{slug}/waivers/{id}", "/api/v1/projects/{slug}/waivers/{id}/events"),
-	authzCells("GET %s|introduced-own-report|C4-key-admin|X", "admin-scope-key-broken", "/api/v1/projects/{slug}/gate"),
-	authzCells("GET %s|x-slug-y-waiver|C4-key-admin|X", "admin-scope-key-broken",
-		"/api/v1/projects/{slug}/waivers/{id}", "/api/v1/projects/{slug}/waivers/{id}/events"),
 	// foreign-object-404-vs-403: id-addressed routes that answer 404 where policy pins 403.
 	authzCells("GET /api/v1/reports/{id}||%s|*", "foreign-object-404-vs-403", callerNoProject, callerTeamAdmin),
 	authzCells("GET /api/v1/reports/{id}||%s|Y", "foreign-object-404-vs-403",
-		callerKeyRead, callerKeyAdmin, callerMember, callerManager, callerProjectAdmin, callerTeamMember),
+		callerKeyRead, callerMember, callerManager, callerProjectAdmin, callerTeamMember),
 	authzCells("POST /api/v1/projects/{slug}/waivers/{id}/approve|x-slug-y-waiver|%s|X", "foreign-object-404-vs-403",
 		callerMember, callerTeamMember),
 )

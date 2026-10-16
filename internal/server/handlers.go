@@ -580,12 +580,12 @@ func (h *Handler) enforceProjectAccess(r *http.Request, projectSlug string) erro
 //
 // API keys are project-scoped and never carry session roles, so they cannot
 // satisfy a role gate by identity: the demanded roles are mapped to the
-// equivalent API-key permission scopes (admin routes → the "admin" scope),
-// and a key is admitted only when it holds that scope. An authentic key with
-// no matching scope is denied 403. Platform-wide operations such as project
-// creation and global administration use RequireSessionRole instead, so a
-// project-scoped key cannot gain platform authority from its admin scope.
-// Unauthenticated requests fall through to 401.
+// equivalent API-key permission scopes (viewer routes map to the "read"
+// scope; admin, manager and editor routes map to none), and a key is admitted
+// only when it holds a mapped scope. An authentic key with no matching scope
+// is denied 403. Platform-wide operations such as project creation and global
+// administration use RequireSessionRole instead. Unauthenticated requests
+// fall through to 401.
 // apiKeyRoleAdmitted reports whether an API-key identity holds one of the
 // permission scopes the role gate demands.
 func hasAnyScope(ident *auth.Identity, scopes map[string]bool) bool {

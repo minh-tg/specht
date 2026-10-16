@@ -102,14 +102,15 @@ func (u *Usecases) checkFindingProjectIDAccess(ctx context.Context, findingProje
 
 // requireProjectRole checks a minimum project permission using the effective
 // membership role, including team-conferred membership. API keys must match the
-// project and carry the operation's explicit scope.
+// project and carry the operation's explicit scope. An empty apiKeyScope means
+// no key scope covers the operation, so every key is refused.
 func (u *Usecases) requireProjectRole(ctx context.Context, projectID, apiKeyScope string, allowedRoles ...string) error {
 	ident := auth.ContextIdentity(ctx)
 	if ident == nil {
 		return ErrProjectAccessDenied
 	}
 	if ident.IsAPIKey {
-		if ident.ProjectID != projectID || !ident.HasScope(apiKeyScope) {
+		if apiKeyScope == "" || ident.ProjectID != projectID || !ident.HasScope(apiKeyScope) {
 			return ErrProjectAccessDenied
 		}
 		return nil
@@ -153,7 +154,7 @@ func (u *Usecases) callerProjectRole(ctx context.Context, projectID string) (str
 }
 
 func (u *Usecases) requireProjectManager(ctx context.Context, projectID string) error {
-	return u.requireProjectRole(ctx, projectID, auth.ScopeAdmin, auth.RoleAdmin, auth.RoleManager, auth.RoleEditor)
+	return u.requireProjectRole(ctx, projectID, "", auth.RoleAdmin, auth.RoleManager, auth.RoleEditor)
 }
 
 func (u *Usecases) requireProjectMember(ctx context.Context, projectID string) error {
