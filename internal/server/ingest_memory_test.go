@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -139,12 +140,29 @@ func TestIngestMemory_ANilBudgetAdmitsEverything(t *testing.T) {
 // router and reports the response.
 func ingestRoute(t *testing.T, router http.Handler, ctx context.Context, rawLen int) *httptest.ResponseRecorder {
 	t.Helper()
+	return ingestRouteAs(t, router, ctx, rawLen, testToken(t))
+}
+
+// ingestRouteAs is ingestRoute for the caller that token stands for.
+func ingestRouteAs(t *testing.T, router http.Handler, ctx context.Context, rawLen int, token string) *httptest.ResponseRecorder {
+	t.Helper()
 	req := httptest.NewRequest("POST", "/api/v1/reports", ingestBody(rawLen)).WithContext(ctx)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+testToken(t))
+	req.Header.Set("Authorization", "Bearer "+token)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	return w
+}
+
+// userToken is a session token for the admin user with the given id, so tests
+// can tell callers apart.
+func userToken(t *testing.T, id string) string {
+	t.Helper()
+	a, err := auth.NewJWTAuthenticator(testJWTSecret)
+	require.NoError(t, err)
+	tok, err := a.CreateToken(id, id+"@example.com", auth.RoleAdmin, 0)
+	require.NoError(t, err)
+	return tok
 }
 
 // The budget is mounted on the real route: while one ingest holds the whole
@@ -209,11 +227,11 @@ func TestIngestRoute_ManySmallIngestsShareTheBudget(t *testing.T) {
 		IngestMemoryBudget: 64 * 100_000, IngestQueueWait: time.Second,
 	})
 	var wg sync.WaitGroup
-	for range 8 {
+	for i := range 8 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			w := ingestRoute(t, router, context.Background(), 100)
+			w := ingestRouteAs(t, router, context.Background(), 100, userToken(t, fmt.Sprintf("caller-%d", i)))
 			assert.Equal(t, http.StatusCreated, w.Code)
 		}()
 	}
@@ -300,14 +318,15 @@ func TestIngestReport_ReleasesTheChargeWhenTheUseCasePanics(t *testing.T) {
 		},
 	}
 	h := NewHandler(mock)
-	h.ingestMemory = newIngestMemory(6400, 20*time.Millisecond)
+	h.ingest = newIngestAdmission(4, 6400, 20*time.Millisecond)
 	req := httptest.NewRequest("POST", "/api/v1/reports", ingestBody(100))
 	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "u-admin", Role: auth.RoleAdmin}))
 
 	require.Panics(t, func() { h.IngestReport(httptest.NewRecorder(), req) })
 
-	rel, ok := acquireWithin(h.ingestMemory, 100, time.Second)
+	rel, ok := acquireWithin(h.ingest.memory, 100, time.Second)
 	require.True(t, ok, "the panicked ingest must give its whole charge back")
 	rel()
+	assert.True(t, h.ingest.idle(), "and every slot and gate with it")
 }

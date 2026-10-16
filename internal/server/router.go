@@ -127,7 +127,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	}
 	r.Use(LoggerMiddleware)
 	r.Use(middleware.Recoverer)
-	r.Use(requestTimeout(defaultRequestTimeout, ingestWindow+ingestWriteSlack))
+	r.Use(requestTimeout(defaultRequestTimeout, ingestBodyWindow+ingestWindow+ingestWriteSlack))
 	var revoker auth.TokenRevoker = cfg.Revoker
 	if revoker == nil {
 		revoker, _ = cfg.JWTAuth.(auth.TokenRevoker)
@@ -135,7 +135,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	h := NewHandler(cfg.Usecases, revoker)
 	h.loginDelay = newLoginDelay()
 	ingestQueueWait := cmp.Or(max(cfg.IngestQueueWait, 0), defaultIngestQueueWait)
-	h.ingestMemory = newIngestMemory(cfg.IngestMemoryBudget, ingestQueueWait)
+	h.ingest = newIngestAdmission(cfg.IngestConcurrency, cfg.IngestMemoryBudget, ingestQueueWait)
 
 	r.Get("/api/v1/health", healthHandler)
 	ready := cfg.Ready
@@ -207,7 +207,6 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		// and leaves the routes to people with a role on the project.
 		adminScope := RequireAPIKeyScopes()
 		ingestScope := RequireAPIKeyScopes(auth.ScopeIngest)
-		ingestGate := ingestLimits(cfg.IngestConcurrency, ingestQueueWait, ingestWindow, ingestWriteSlack)
 		session := RequireSession()
 		sessionAdmin := RequireSessionRole(auth.RoleAdmin)
 		if cfg.RateLimit.Enabled {
@@ -233,7 +232,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 		r.With(readScope).Get("/api/v1/projects/{slug}/findings", h.ListFindings)
 		r.With(readScope).Get("/api/v1/projects/{slug}/reports", h.ListReports)
 		r.With(readScope).Get("/api/v1/reports/{id}", h.GetReport)
-		r.With(ingestScope, ingestGate).Post(ingestPath, h.IngestReport)
+		r.With(ingestScope).Post(ingestPath, h.IngestReport)
 		// Key management belongs to project managers and admins. The route lets
 		// any signed-in person through and refuses every API key; the use case
 		// checks the project role.

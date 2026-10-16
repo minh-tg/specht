@@ -453,3 +453,14 @@ releases.
   minutes (it was 15) as failed and removes the findings that report created and no
   occurrence supports. Findings it only brought back from archive, or that someone had
   already triaged, are archived instead.
+- A signed-in user with no access to a project can no longer hold every ingest slot and make
+  every tenant's CI get `503 ingest_busy`. Report ingest now reads only the start of the body
+  (64 KiB) to find `project`, checks that the caller may ingest into it, and answers `403`
+  before it reads or decodes the rest. Put `project` before `raw_data` in the JSON body: a
+  body that names its project later is refused with `400 missing_field`. A body that repeats
+  `project` with another value is refused with `400 invalid_field`.
+- A slow upload no longer holds an ingest slot. The slot is taken only after the whole body
+  has arrived, and the body has 30 seconds (`408 request_timeout` otherwise). One user or API
+  key may use at most half of the ingest slots and half of the ingest memory budget at once;
+  its further requests wait in their own queue and get `503 ingest_busy` with `Retry-After`,
+  and other callers are not delayed.

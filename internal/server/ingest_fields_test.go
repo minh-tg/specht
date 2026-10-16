@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -82,9 +83,12 @@ func TestIngestReport_RefusesBadMetadataByName(t *testing.T) {
 					return &usecase.IngestReportOutput{ReportID: "rep-1"}, nil
 				},
 			}
-			raw, err := json.Marshal(map[string]any{"project": "my-app", "scanner": "trivy", "raw_data": json.RawMessage(`{"a":1}`), field: value})
+			// The project comes first: a body that buries it behind a megabyte of
+			// metadata is refused before its fields are read.
+			val, err := json.Marshal(value)
 			require.NoError(t, err)
-			req := httptest.NewRequest("POST", "/api/v1/reports", strings.NewReader(string(raw)))
+			raw := fmt.Sprintf(`{"project":"my-app","scanner":"trivy","raw_data":{"a":1},%q:%s}`, field, val)
+			req := httptest.NewRequest("POST", "/api/v1/reports", strings.NewReader(raw))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("Authorization", "Bearer "+testToken(t))
 			w := httptest.NewRecorder()

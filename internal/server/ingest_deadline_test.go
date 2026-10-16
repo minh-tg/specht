@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -9,9 +10,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/usecase"
 )
 
-// slowUpload posts a body that trickles in over about 600ms against a server
+// slowUpload posts a body that trickles in over about 400ms against a server
 // whose ReadTimeout and WriteTimeout are far shorter, which is the situation
 // of a large report arriving over a slow CI link.
 func slowUpload(t *testing.T, handler http.Handler) (status int, body string, err error) {
@@ -24,8 +28,8 @@ func slowUpload(t *testing.T, handler http.Handler) (status int, body string, er
 
 	pr, pw := io.Pipe()
 	go func() {
-		for i := 0; i < 3; i++ {
-			_, _ = pw.Write([]byte("chunk"))
+		for _, chunk := range []string{`{"project":"my-app",`, `"scanner":"trivy",`, `"raw_data":{"a":1}}`} {
+			_, _ = pw.Write([]byte(chunk))
 			time.Sleep(200 * time.Millisecond)
 		}
 		_ = pw.Close()
@@ -53,17 +57,25 @@ func drainAndAnswer() http.Handler {
 	})
 }
 
-func TestIngestLimits_SlowUploadSurvivesTheServerTimeouts(t *testing.T) {
+func TestIngestReport_SlowUploadSurvivesTheServerTimeouts(t *testing.T) {
 	// Control: without the extended deadlines the server cuts the upload off.
 	status, _, err := slowUpload(t, drainAndAnswer())
 	if err == nil {
 		assert.NotEqual(t, http.StatusOK, status, "the control must fail, or this test proves nothing")
 	}
 
-	gated := ingestLimits(1, time.Second, 5*time.Second, 5*time.Second)(drainAndAnswer())
-	status, body, err := slowUpload(t, gated)
+	h := NewHandler(&mockUsecases{
+		ingestReportFn: func(context.Context, usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
+			time.Sleep(200 * time.Millisecond) // processing that outlasts WriteTimeout
+			return &usecase.IngestReportOutput{ReportID: "rep-1"}, nil
+		},
+	})
+	asAdmin := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h.IngestReport(w, r.WithContext(auth.ContextWithIdentity(r.Context(), &auth.Identity{UserID: "u-admin", Role: auth.RoleAdmin})))
+	})
+	status, body, err := slowUpload(t, asAdmin)
 
 	require.NoError(t, err)
-	assert.Equal(t, http.StatusOK, status)
-	assert.Equal(t, "chunkchunkchunk", body, "the whole upload arrived and the response was written")
+	assert.Equal(t, http.StatusCreated, status)
+	assert.Contains(t, body, "rep-1", "the whole upload arrived and the response was written")
 }

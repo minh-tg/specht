@@ -1,15 +1,19 @@
 package server
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/minh-tg/specht/internal/audit"
+	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/scanner"
 	"github.com/minh-tg/specht/internal/usecase"
 )
@@ -72,14 +76,81 @@ func unrecognizedMessage(e *scanner.UnrecognizedFormatError) string {
 	}
 }
 
+// IngestReport takes a report in four steps, so that a caller pays for each
+// only after passing the one before:
+//
+//  1. Authorize. Only the head of the body is read, to find the project; the
+//     caller is checked against it before anything is held. A caller with no
+//     access gets a 403 and costs a few KiB of reading, nothing else.
+//  2. Enter the caller's own gate and read the rest of the body. Each caller
+//     (user or API key) has a few places, so a slow or numerous caller fills
+//     its own queue and nobody else's.
+//  3. Admit: with the whole body in memory, take a global slot and a share of
+//     the memory budget. A slow upload never holds these.
+//  4. Decode and ingest, on a context a hang-up cannot cancel.
 func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
-	var req ingestRequest
-	if !decodeJSONBody(w, r, &req, maxIngestBodyBytes, "invalid_json", "invalid request body") {
+	adm := h.ingestAdmission()
+	deadlines := ingestDeadlines{body: ingestBodyWindow, window: ingestWindow, writeSlack: ingestWriteSlack}
+	deadlines.armBody(w)
+	if r.Body == nil {
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+		return
+	}
+	if r.ContentLength > maxIngestBodyBytes {
+		respondError(w, http.StatusRequestEntityTooLarge, "body_too_large", "request body too large")
+		return
+	}
+	body := http.MaxBytesReader(w, r.Body, maxIngestBodyBytes)
+
+	project, rest, err := scanIngestProject(body, ingestHeadBytes)
+	if err != nil {
+		h.respondIngestBodyError(w, err, "invalid_json", "invalid request body")
+		return
+	}
+	if project == "" {
+		respondError(w, http.StatusBadRequest, "missing_field", "project is required")
+		return
+	}
+	if problem := textProblem(project, maxTextFieldBytes); problem != "" {
+		respondError(w, http.StatusBadRequest, "invalid_field", "project "+problem)
+		return
+	}
+	if err := h.authorizeIngest(r, project); err != nil {
+		h.respondIngestAuthError(w, r, project, err)
 		return
 	}
 
-	if req.Project == "" {
-		respondError(w, http.StatusBadRequest, "missing_field", "project is required")
+	ident := auth.ContextIdentity(r.Context())
+	ticket, err := adm.enter(r.Context(), principalKey(ident))
+	if err != nil {
+		if errors.Is(err, errIngestBusy) {
+			respondIngestBusy(w, adm.queueWait)
+		}
+		return
+	}
+	defer ticket.release()
+
+	deadlines.armBody(w)
+	data, err := io.ReadAll(rest)
+	if err != nil {
+		h.respondIngestBodyError(w, err, "invalid_json", "invalid request body")
+		return
+	}
+	if err := ticket.admit(r.Context(), len(data)); err != nil {
+		if errors.Is(err, errIngestBusy) {
+			respondIngestBusy(w, adm.queueWait)
+		}
+		return
+	}
+	deadlines.armProcessing(w)
+
+	var req ingestRequest
+	if err := json.Unmarshal(data, &req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid_json", "invalid request body")
+		return
+	}
+	if req.Project != project {
+		respondError(w, http.StatusBadRequest, "invalid_field", "project must be named once, or with the same value each time")
 		return
 	}
 	if req.Scanner == "" {
@@ -94,22 +165,6 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing_field", "raw_data is required")
 		return
 	}
-	if err := h.enforceProjectAccess(r, req.Project); err != nil {
-		h.respondProjectAccessError(w, r, err)
-		return
-	}
-
-	// The report is in memory but not decoded yet. Charge the memory the decode
-	// will need before the use case starts, so a few large reports cannot
-	// decode side by side.
-	release, err := h.ingestMemory.acquire(r.Context(), len(req.RawData))
-	if err != nil {
-		if errors.Is(err, errIngestBusy) {
-			respondIngestBusy(w, h.ingestMemory.queueWait)
-		}
-		return
-	}
-	defer release()
 
 	var gateSeverity, gateStatus []string
 	if req.GateSeverity != "" {
@@ -177,4 +232,42 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		PreExistingCount:  result.PreExistingCount,
 		Replayed:          result.Replayed,
 	})
+}
+
+// authorizeIngest checks, from the project slug alone, that the caller may
+// ingest into the project: membership or key match first (the same check every
+// project route makes), then the role or scope that allows ingest.
+func (h *Handler) authorizeIngest(r *http.Request, project string) error {
+	if err := h.enforceProjectAccess(r, project); err != nil {
+		return err
+	}
+	return h.usecase.AuthorizeIngest(r.Context(), project)
+}
+
+// respondIngestAuthError answers a caller refused before its body was read.
+func (h *Handler) respondIngestAuthError(w http.ResponseWriter, r *http.Request, project string, err error) {
+	if errors.Is(err, usecase.ErrProjectAccessDenied) {
+		respondError(w, http.StatusForbidden, "project_access_denied", "project role cannot ingest reports")
+		h.audit.HTTP(r, audit.EventIngestReport, audit.OutcomeFailure, project, "", err)
+		return
+	}
+	h.respondProjectAccessError(w, r, err)
+}
+
+// respondIngestBodyError answers a failure to read the body. A caller that went
+// away gets no answer.
+func (h *Handler) respondIngestBodyError(w http.ResponseWriter, err error, invalidCode, invalidMsg string) {
+	var tooLarge *http.MaxBytesError
+	var syntax *json.SyntaxError
+	var typed *json.UnmarshalTypeError
+	switch {
+	case errors.As(err, &tooLarge):
+		respondError(w, http.StatusRequestEntityTooLarge, "body_too_large", "request body too large")
+	case errors.Is(err, errProjectNotInHead):
+		respondError(w, http.StatusBadRequest, "missing_field", fmt.Sprintf("project must be named in the first %d bytes of the body, before raw_data", ingestHeadBytes))
+	case errors.As(err, &syntax), errors.As(err, &typed), errors.Is(err, errNotAnObject), errors.Is(err, io.ErrUnexpectedEOF):
+		respondError(w, http.StatusBadRequest, invalidCode, invalidMsg)
+	case errors.Is(err, os.ErrDeadlineExceeded):
+		respondError(w, http.StatusRequestTimeout, "request_timeout", "the request body did not arrive in time")
+	}
 }

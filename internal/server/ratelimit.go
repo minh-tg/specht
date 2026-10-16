@@ -182,13 +182,7 @@ func (l *RateLimiter) middleware(keyFor func(*http.Request) (string, bool)) func
 func (l *RateLimiter) rateLimitKey(r *http.Request, useIdentity bool) (string, bool) {
 	if useIdentity {
 		if ident := auth.ContextIdentity(r.Context()); ident != nil {
-			// A key's creator may have minted keys for many projects and
-			// holds a session of their own: each key and each session gets
-			// its own budget.
-			if ident.IsAPIKey && ident.KeyHash != "" {
-				return "key:" + ident.KeyHash, true
-			}
-			return "user:" + ident.UserID, true
+			return principalKey(ident), true
 		}
 	} else if r.Header.Get("Authorization") != "" {
 		return "", false
@@ -232,4 +226,18 @@ func clientHost(r *http.Request) string {
 		return netip.PrefixFrom(addr, 64).Masked().String()
 	}
 	return addr.String()
+}
+
+// principalKey names the caller an authenticated identity stands for, for the
+// limits that are kept per caller. A key's creator may have minted keys for
+// many projects and holds a session of their own: each key and each session is
+// its own caller.
+func principalKey(ident *auth.Identity) string {
+	if ident == nil {
+		return "anonymous"
+	}
+	if ident.IsAPIKey && ident.KeyHash != "" {
+		return "key:" + ident.KeyHash
+	}
+	return "user:" + ident.UserID
 }
