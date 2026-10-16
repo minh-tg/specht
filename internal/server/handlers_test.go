@@ -3226,6 +3226,24 @@ func TestUpdateMe_Success(t *testing.T) {
 	assert.Equal(t, "Alice", resp.DisplayName)
 }
 
+func TestUpdateMe_TooLongNameIsABadRequest(t *testing.T) {
+	mock := &mockUsecases{
+		updateProfileFn: func(ctx context.Context, userID string, displayName *string) (*usecase.UserProfile, error) {
+			return nil, fmt.Errorf("%w: display name must be at most 100 characters", usecase.ErrInvalidProfileInput)
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("PUT", "/api/v1/me", strings.NewReader(`{"display_name":"x"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "test-user"}))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+	assert.Contains(t, w.Body.String(), `"invalid_display_name"`)
+	assert.Contains(t, w.Body.String(), "100 characters")
+}
+
 func TestUpdateMe_NoIdentity(t *testing.T) {
 	router := NewRouter(RouterConfig{Usecases: &mockUsecases{}, JWTAuth: testJWTAuth})
 	req := httptest.NewRequest("PUT", "/api/v1/me", strings.NewReader(`{"display_name":"Alice"}`))

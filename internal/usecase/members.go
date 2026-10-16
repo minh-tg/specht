@@ -164,6 +164,9 @@ func (u *Usecases) canRemoveMember(ctx context.Context, projectID, callerRole, t
 // memberEmail checks and normalizes an address typed into an add-member form.
 func memberEmail(email string) (string, error) {
 	email = strings.TrimSpace(email)
+	if checkEmailLength(email) != nil {
+		return "", ErrInvalidMemberEmail
+	}
 	addr, err := mail.ParseAddress(email)
 	if err != nil || addr.Address != email {
 		return "", ErrInvalidMemberEmail

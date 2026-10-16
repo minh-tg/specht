@@ -160,6 +160,9 @@ func (u *Usecases) CreateInvite(ctx context.Context, projectSlug string, in Crea
 	}
 	var email *string
 	if trimmed := strings.TrimSpace(in.Email); trimmed != "" {
+		if err := checkEmailLength(trimmed); err != nil {
+			return nil, fmt.Errorf("%w: %s", ErrInvalidInviteInput, err)
+		}
 		addr, err := mail.ParseAddress(trimmed)
 		if err != nil || addr.Address != trimmed {
 			return nil, fmt.Errorf("%w: invalid email address", ErrInvalidInviteInput)

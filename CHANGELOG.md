@@ -351,3 +351,8 @@ releases.
   deleted. The `refresh_tokens` table used to grow by a row on every sign-in
   and every refresh, forever. The sweep runs at startup and then every
   `LIFECYCLE_SWEEP_INTERVAL`, and deletes at most 50,000 rows per run.
+- Email addresses are capped at 254 bytes and display names at 100 characters
+  on registration, first-run setup, invite links, adding a member by email and
+  the profile update. Before, only the 1 MiB request body limited them. A name
+  over the cap is refused with `400` `invalid_display_name` on the profile
+  update, and with the usual credential error on setup and invite acceptance.

@@ -107,6 +107,12 @@ func validateCredentials(email, password, displayName string) (string, error) {
 	if email == "" || password == "" {
 		return "", badCredentials("email and password are required")
 	}
+	if err := checkEmailLength(email); err != nil {
+		return "", badCredentials(err.Error())
+	}
+	if err := checkDisplayNameLength(displayName); err != nil {
+		return "", badCredentials(err.Error())
+	}
 	addr, err := mail.ParseAddress(email)
 	if err != nil || addr.Address != email || !strings.Contains(addr.Address, "@") {
 		return "", badCredentials("invalid email address")
@@ -778,6 +784,9 @@ func (u *Usecases) UpdateProfile(ctx context.Context, userID string, displayName
 		if trimmed == "" {
 			displayName = nil
 		} else {
+			if err := checkDisplayNameLength(trimmed); err != nil {
+				return nil, fmt.Errorf("%w: %s", ErrInvalidProfileInput, err)
+			}
 			displayName = &trimmed
 		}
 	}

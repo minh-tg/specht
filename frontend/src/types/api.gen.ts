@@ -2055,6 +2055,7 @@ export interface components {
       email: string;
       /** Format: password */
       password: string;
+      /** @description At most 100 characters after trimming. */
       display_name?: string;
     };
     Invite: {
@@ -2105,6 +2106,7 @@ export interface components {
       email: string;
       /** Format: password */
       password: string;
+      /** @description At most 100 characters after trimming. */
       display_name?: string;
     };
     AcceptInviteResponse: components["schemas"]["AuthResponse"] & {
@@ -2223,7 +2225,7 @@ export interface components {
       new_password: string;
     };
     ProfileUpdateRequest: {
-      /** @description Omit to leave unchanged; `""` clears it. */
+      /** @description Omit to leave unchanged; `""` clears it. At most 100 characters after trimming; a longer name is refused with 400 `invalid_display_name`. */
       display_name?: string | null;
     };
     ApiKey: {
