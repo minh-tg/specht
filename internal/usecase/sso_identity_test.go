@@ -29,6 +29,11 @@ type mockIdentityRepo struct {
 	// verified records, per link, whether the provider vouched for the email.
 	verified []bool
 	onLink   func(userID string)
+	// keysByUser holds the live API keys each account created. A successful
+	// LinkRevokingKeys revokes them, a refused one leaves them.
+	keysByUser map[string][]port.RevokedAPIKey
+	// revokedAtLink records the keys each LinkRevokingKeys call revoked.
+	revokedAtLink []port.RevokedAPIKey
 }
 
 func newMockIdentityRepo() *mockIdentityRepo {
@@ -71,6 +76,17 @@ func (m *mockIdentityRepo) Link(ctx context.Context, userID, issuer, subject str
 		m.onLink(userID)
 	}
 	return id, nil
+}
+
+func (m *mockIdentityRepo) LinkRevokingKeys(ctx context.Context, userID, issuer, subject string, emailVerified bool) (port.UserIdentity, []port.RevokedAPIKey, error) {
+	id, err := m.Link(ctx, userID, issuer, subject, emailVerified)
+	if err != nil {
+		return port.UserIdentity{}, nil, err
+	}
+	keys := m.keysByUser[userID]
+	delete(m.keysByUser, userID)
+	m.revokedAtLink = append(m.revokedAtLink, keys...)
+	return id, keys, nil
 }
 
 func ssoDepsWith(ur *mockUserRepo, ids *mockIdentityRepo) Deps {

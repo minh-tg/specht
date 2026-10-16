@@ -107,3 +107,29 @@ func TestE2E_KeyOfADeactivatedCreatorIsRefusedEvenIfNotRevoked(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, keyReads(t, key.Token, slug), "the check follows the account's current state")
 }
+
+// TestE2E_SSOLinkRevokesTheKeysOfTheSquattedAccount: someone registers an
+// address they do not own, mints a key, and the real owner then signs in
+// through the provider for the first time. The link hands the account to the
+// owner, so the key the squatter minted stops working.
+func TestE2E_SSOLinkRevokesTheKeysOfTheSquattedAccount(t *testing.T) {
+	defer fakes.idp.setEmail(e2eSSOEmail)
+	slug := newProject(t, "squatted")
+	email := "e2e-sso-squat-" + randomHex(3) + "@example.com"
+	squatter := request[authResponse](t, http.MethodPost, "/api/v1/auth/register", "",
+		map[string]string{"email": email, "password": adminPass}, http.StatusCreated)
+	azAddMember(t, slug, squatter.UserID, "manager")
+	key := azKeyBy(t, squatter.Token, slug)
+	bystander := request[apiKeyResponse](t, http.MethodPost, "/api/v1/auth/apikeys", adminToken,
+		map[string]string{"project": slug, "name": "bystander"}, http.StatusCreated)
+	require.Equal(t, http.StatusOK, keyReads(t, key.Token, slug))
+
+	fakes.idp.setEmail(email)
+	status, location, _ := ssoExchange(t, "")
+	owner := request[profileEnvelope](t, http.MethodGet, "/api/v1/me", ssoToken(t, status, location), nil, http.StatusOK)
+	require.Equal(t, squatter.UserID, owner.ID, "the provider login took over the squatted account")
+
+	require.Equal(t, http.StatusUnauthorized, keyReads(t, key.Token, slug), "the squatter's key died with the link")
+	require.Equal(t, http.StatusOK, keyReads(t, bystander.RawKey, slug), "another person's key is untouched")
+	require.NotContains(t, liveKeyIDs(t, slug), key.KeyID)
+}
