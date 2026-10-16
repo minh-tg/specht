@@ -272,6 +272,10 @@ func (h *Handler) GetGateStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		result, err := h.usecase.GetIntroducedGateStatus(r.Context(), slug, minRank, reportID)
 		if err != nil {
+			if errors.Is(err, usecase.ErrProjectAccessDenied) {
+				respondAccessDenied(w, r, "report")
+				return
+			}
 			slog.Error("get introduced gate status", "project", slug, "error", err)
 			respondError(w, http.StatusInternalServerError, "gate_failed", "could not evaluate gate status")
 			return

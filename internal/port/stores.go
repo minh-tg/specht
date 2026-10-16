@@ -794,7 +794,10 @@ type FindingStore interface {
 	// latest reachability in one batch (kills the per-finding N+1 context
 	// lookups). Reachability is empty when no assessment exists.
 	ListGateCandidates(ctx context.Context, projectID string, minSeverityRank int16) ([]GateCandidate, error)
-	ListIntroducedGateCandidates(ctx context.Context, reportID string, minSeverityRank int16) ([]GateCandidate, error)
+	// ListIntroducedGateCandidates returns the findings one report introduced,
+	// filtered by the report's project so a foreign report id can never pull
+	// another tenant's rows into a gate evaluation.
+	ListIntroducedGateCandidates(ctx context.Context, projectID, reportID string, minSeverityRank int16) ([]GateCandidate, error)
 	ListFindingsByFingerprints(ctx context.Context, projectID, findingKind string, fingerprints []string) ([]Finding, error)
 	ListFindingIDsPresentInReport(ctx context.Context, reportID string, findingIDs []string) ([]string, error)
 	RecordReportIntroducedFindings(ctx context.Context, reportID string, baselineReportID *string, entries []IntroducedFindingEntry) error

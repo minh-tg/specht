@@ -627,10 +627,11 @@ func (r *pgFindingRepo) ListGateCandidates(ctx context.Context, projectID pgtype
 	})
 }
 
-func (r *pgFindingRepo) ListIntroducedGateCandidates(ctx context.Context, reportID pgtype.UUID, minSeverityRank int16) ([]sqlc.ListIntroducedGateCandidatesRow, error) {
+func (r *pgFindingRepo) ListIntroducedGateCandidates(ctx context.Context, projectID, reportID pgtype.UUID, minSeverityRank int16) ([]sqlc.ListIntroducedGateCandidatesRow, error) {
 	return r.q.ListIntroducedGateCandidates(ctx, sqlc.ListIntroducedGateCandidatesParams{
 		ReportID:            reportID,
 		CurrentSeverityRank: minSeverityRank,
+		ProjectID:           projectID,
 	})
 }
 

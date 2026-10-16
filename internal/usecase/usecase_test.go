@@ -582,7 +582,7 @@ type mockFindingRepo struct {
 	listEventsFn                      func(context.Context, string, []string, int32, int32) ([]port.FindingEvent, error)
 	listBlockingFindingsFn            func(context.Context, string, int16) ([]port.Finding, error)
 	listGateCandidatesFn              func(context.Context, string, int16) ([]port.GateCandidate, error)
-	listIntroducedGateCandidatesFn    func(context.Context, string, int16) ([]port.GateCandidate, error)
+	listIntroducedGateCandidatesFn    func(context.Context, string, string, int16) ([]port.GateCandidate, error)
 	listFindingsByFingerprintsFn      func(context.Context, string, string, []string) ([]port.Finding, error)
 	listFindingIDsPresentInReportFn   func(context.Context, string, []string) ([]string, error)
 	recordReportIntroducedFindingsFn  func(context.Context, string, *string, []port.IntroducedFindingEntry) error
@@ -710,10 +710,10 @@ func (m *mockFindingRepo) ListGateCandidates(ctx context.Context, projectID stri
 	return m.listGateCandidatesFn(ctx, projectID, minSeverityRank)
 }
 
-func (m *mockFindingRepo) ListIntroducedGateCandidates(ctx context.Context, reportID string, minSeverityRank int16) ([]port.GateCandidate, error) {
+func (m *mockFindingRepo) ListIntroducedGateCandidates(ctx context.Context, projectID, reportID string, minSeverityRank int16) ([]port.GateCandidate, error) {
 	if m.listIntroducedGateCandidatesFn == nil {
 		if m.listGateCandidatesFn != nil {
-			all, err := m.listGateCandidatesFn(ctx, "", minSeverityRank)
+			all, err := m.listGateCandidatesFn(ctx, projectID, minSeverityRank)
 			if err != nil {
 				return nil, err
 			}
@@ -727,7 +727,7 @@ func (m *mockFindingRepo) ListIntroducedGateCandidates(ctx context.Context, repo
 		}
 		return []port.GateCandidate{}, nil
 	}
-	return m.listIntroducedGateCandidatesFn(ctx, reportID, minSeverityRank)
+	return m.listIntroducedGateCandidatesFn(ctx, projectID, reportID, minSeverityRank)
 }
 
 func (m *mockFindingRepo) ListFindingsByFingerprints(ctx context.Context, projectID, findingKind string, fingerprints []string) ([]port.Finding, error) {

@@ -480,8 +480,10 @@ func (u *Usecases) GetGateStatus(ctx context.Context, projectSlug string, minSev
 
 // GetIntroducedGateStatus evaluates the gate over findings one report
 // introduced: change-scoped CI feedback that targets new risk
-// while the full gate keeps covering existing debt. An empty reportID
-// matches nothing and passes.
+// while the full gate keeps covering existing debt. The report must belong
+// to the project in the URL; a missing and a foreign report are refused with
+// the same error so report ids cannot be probed. An empty reportID matches
+// nothing and passes.
 func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug string, minSeverityRank int16, reportID string) (*GateStatusOutput, error) {
 	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
 	if err != nil {
@@ -489,6 +491,24 @@ func (u *Usecases) GetIntroducedGateStatus(ctx context.Context, projectSlug stri
 	}
 	if err := u.requireProjectMember(ctx, project.ID); err != nil {
 		return nil, err
+	}
+
+	if reportID != "" {
+		// The report is the scope of the evaluation, so it must live in the
+		// authorized project. A missing report answers exactly like a foreign
+		// one (ErrProjectAccessDenied, which the handler maps to 403
+		// project_access_denied, the same answer pr-check gives) so a caller
+		// cannot tell "not yours" from "does not exist".
+		report, err := u.deps.Stores.Reports.GetByID(ctx, reportID)
+		if err != nil {
+			if errors.Is(err, port.ErrNotFound) {
+				return nil, ErrProjectAccessDenied
+			}
+			return nil, fmt.Errorf("lookup report %q: %w", reportID, err)
+		}
+		if report.ProjectID != project.ID {
+			return nil, ErrProjectAccessDenied
+		}
 	}
 
 	// The project policy sets the floor; a positive requested rank can only

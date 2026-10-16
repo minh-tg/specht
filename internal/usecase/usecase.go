@@ -245,11 +245,11 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 	return result, nil
 }
 
-func (a *gateFindingRepo) ListIntroducedGateCandidates(ctx context.Context, reportID string, minSeverityRank int16) ([]gate.Finding, error) {
+func (a *gateFindingRepo) ListIntroducedGateCandidates(ctx context.Context, projectID, reportID string, minSeverityRank int16) ([]gate.Finding, error) {
 	if a.stores == nil || a.stores.Findings == nil {
 		return nil, fmt.Errorf("finding store unavailable")
 	}
-	candidates, err := a.stores.Findings.ListIntroducedGateCandidates(ctx, reportID, minSeverityRank)
+	candidates, err := a.stores.Findings.ListIntroducedGateCandidates(ctx, projectID, reportID, minSeverityRank)
 	if err != nil {
 		return nil, err
 	}

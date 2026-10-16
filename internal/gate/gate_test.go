@@ -18,7 +18,7 @@ func (m *mockFindingsRepo) ListBlockingFindings(ctx context.Context, projectID s
 	return m.findings, m.err
 }
 
-func (m *mockFindingsRepo) ListIntroducedGateCandidates(ctx context.Context, reportID string, minSeverityRank int16) ([]Finding, error) {
+func (m *mockFindingsRepo) ListIntroducedGateCandidates(ctx context.Context, projectID, reportID string, minSeverityRank int16) ([]Finding, error) {
 	if m.err != nil {
 		return nil, m.err
 	}

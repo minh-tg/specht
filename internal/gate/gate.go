@@ -137,7 +137,9 @@ type FindingsRepo interface {
 	ListBlockingFindings(ctx context.Context, projectID string, minSeverityRank int16) ([]Finding, error)
 	// ListIntroducedGateCandidates returns findings introduced by reportID
 	// at or above minSeverityRank that are candidates for blocking the gate.
-	ListIntroducedGateCandidates(ctx context.Context, reportID string, minSeverityRank int16) ([]Finding, error)
+	// The project id is part of the lookup so a report of another project can
+	// never contribute findings.
+	ListIntroducedGateCandidates(ctx context.Context, projectID, reportID string, minSeverityRank int16) ([]Finding, error)
 }
 
 // WaiversRepo supplies the active waivers for a project.
@@ -241,7 +243,7 @@ func (g *gate) EvaluateIntroducedOnly(ctx context.Context, projectID string, min
 	if reportID == "" {
 		return Decision{Status: StatusPass, WaivedFindingIDs: []string{}}, nil
 	}
-	findings, err := g.findings.ListIntroducedGateCandidates(ctx, reportID, minSeverityRank)
+	findings, err := g.findings.ListIntroducedGateCandidates(ctx, projectID, reportID, minSeverityRank)
 	if err != nil {
 		return Decision{Status: StatusError}, fmt.Errorf("list introduced gate candidates: %w", err)
 	}
