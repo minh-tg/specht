@@ -64,6 +64,34 @@ func (r *pgTeamPort) ListTeams(ctx context.Context) ([]port.Team, error) {
 	return out, nil
 }
 
+func (r *pgTeamPort) ListTeamsVisibleTo(ctx context.Context, userID string) ([]port.Team, error) {
+	uid, err := parseID(userID)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := r.q.ListTeamsVisibleTo(ctx, uid)
+	if err != nil {
+		return nil, mappingErr(err)
+	}
+	out := make([]port.Team, len(rows))
+	for i, row := range rows {
+		out[i] = teamRowToPort(row)
+	}
+	return out, nil
+}
+
+func (r *pgTeamPort) IsTeamVisibleTo(ctx context.Context, teamID, userID string) (bool, error) {
+	tid, err := parseID(teamID)
+	if err != nil {
+		return false, err
+	}
+	uid, err := parseID(userID)
+	if err != nil {
+		return false, err
+	}
+	return r.q.IsTeamVisibleTo(ctx, sqlc.IsTeamVisibleToParams{ID: tid, UserID: uid})
+}
+
 func (r *pgTeamPort) DeleteTeam(ctx context.Context, id string) error {
 	tid, err := parseID(id)
 	if err != nil {

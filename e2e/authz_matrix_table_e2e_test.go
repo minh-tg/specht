@@ -221,6 +221,13 @@ func authzRows() []authzRow {
 	sessionAdmins := allowOnly(projectAdmins...)
 	signedIn := allowOnly(sessions...)
 	instanceAdmin := allowOnly(callerInstanceAdmin)
+	// teamRosterWriters is the policy for changing the roster of TeamOwned,
+	// which is linked to no project: its admin and instance admins may; every
+	// other session cannot see the team and gets the answer for a missing one.
+	teamRosterWriters := with(allowOnly(callerTeamAdmin, callerInstanceAdmin), outcomeDeny404,
+		callerNoProject, callerMember, callerManager, callerProjectAdmin, callerTeamMember)
+	teamRosterWritersForeign := with(instanceAdmin, outcomeDeny404,
+		callerNoProject, callerMember, callerManager, callerProjectAdmin, callerTeamMember, callerTeamAdmin)
 	// mixedPair is the policy for an X slug carrying a Y id in the path: a
 	// caller who passes X's guard learns only that the object is not in X.
 	mixedPair := func(base map[authzCaller]authzOutcome, passers ...authzCaller) map[authzCaller]authzOutcome {
@@ -481,8 +488,10 @@ func authzRows() []authzRow {
 		},
 		{Method: "GET", Pattern: "/api/v1/projects/{slug}/policy", Path: inProject("/policy"), Want: readers},
 
-		// Teams. The directory and rosters are open to any session (C5 gets
-		// an empty directory); team rosters change by team admins only.
+		// Teams. The directory lists the teams a caller belongs to or that are
+		// linked to a project they reach (C5 gets an empty one). A team outside
+		// that set answers 404, like a missing team, on reads and on roster
+		// writes; team rosters change by team admins only.
 		{Method: "GET", Pattern: "/api/v1/teams", Path: api("/teams"), Want: signedIn, Tenants: onlyX},
 		{
 			Method: "POST", Pattern: "/api/v1/teams", Path: api("/teams"),
@@ -497,7 +506,9 @@ func authzRows() []authzRow {
 		{
 			Method: "GET", Pattern: "/api/v1/teams/{id}/members",
 			Path: func(_ *authzFixtures, a *authzAttempt) string { return "/api/v1/teams/" + a.T.TeamOwned + "/members" },
-			Want: signedIn, Foreign: signedIn,
+			// TeamOwned is linked to no project and C11 is its only non-admin member.
+			Want:    with(allowOnly(callerTeamAdmin, callerInstanceAdmin), outcomeDeny404, callerNoProject, callerMember, callerManager, callerProjectAdmin, callerTeamMember),
+			Foreign: with(allowOnly(callerInstanceAdmin), outcomeDeny404, callerNoProject, callerMember, callerManager, callerProjectAdmin, callerTeamMember, callerTeamAdmin),
 		},
 		{
 			Method: "POST", Pattern: "/api/v1/teams/{id}/members",
@@ -505,8 +516,8 @@ func authzRows() []authzRow {
 			Body: func(f *authzFixtures, _ *authzAttempt) any {
 				return map[string]string{"user_id": f.spare.UserID, "role": "member"}
 			},
-			Want:    allowOnly(callerTeamAdmin, callerInstanceAdmin),
-			Foreign: instanceAdmin, Audit: audit.EventAddTeamMember,
+			Want:    teamRosterWriters,
+			Foreign: teamRosterWritersForeign, Audit: audit.EventAddTeamMember,
 		},
 		{
 			Method: "DELETE", Pattern: "/api/v1/teams/{id}/members/{userID}",
@@ -514,8 +525,8 @@ func authzRows() []authzRow {
 				return "/api/v1/teams/" + a.Obj["team"] + "/members/" + a.Obj["user"]
 			},
 			Prepare: freshTeamMember(func(tn *authzTenant) string { return tn.TeamOwned }),
-			Want:    allowOnly(callerTeamAdmin, callerInstanceAdmin),
-			Foreign: instanceAdmin, Audit: audit.EventRemoveTeamMember,
+			Want:    teamRosterWriters,
+			Foreign: teamRosterWritersForeign, Audit: audit.EventRemoveTeamMember,
 		},
 		{
 			// A project admin of X does not administer the team linked to X.
@@ -524,7 +535,10 @@ func authzRows() []authzRow {
 				return "/api/v1/teams/" + a.Obj["team"] + "/members/" + a.Obj["user"]
 			},
 			Prepare: freshTeamMember(func(tn *authzTenant) string { return tn.TeamLinked }),
-			Want:    instanceAdmin, Tenants: onlyX, Audit: audit.EventRemoveTeamMember,
+			// C5 and C11 reach no project, so the team linked to X is invisible
+			// to them and answers like a missing team.
+			Want:    with(instanceAdmin, outcomeDeny404, callerNoProject, callerTeamAdmin),
+			Tenants: onlyX, Audit: audit.EventRemoveTeamMember,
 		},
 		{Method: "GET", Pattern: "/api/v1/projects/{slug}/teams", Path: inProject("/teams"), Want: readers},
 		{

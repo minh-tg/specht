@@ -13,6 +13,46 @@ SELECT * FROM teams WHERE name = $1;
 SELECT * FROM teams
 ORDER BY name ASC;
 
+-- name: ListTeamsVisibleTo :many
+-- The teams a user may see: the ones they belong to and the ones linked to a
+-- project they reach, directly or through a team of their own.
+SELECT t.* FROM teams t
+WHERE EXISTS (
+    SELECT 1 FROM team_members tm WHERE tm.team_id = t.id AND tm.user_id = $1
+) OR EXISTS (
+    SELECT 1 FROM project_teams pt
+    WHERE pt.team_id = t.id AND (
+        EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = pt.project_id AND pm.user_id = $1)
+        OR EXISTS (
+            SELECT 1 FROM project_teams mine
+            JOIN team_members tm2 ON tm2.team_id = mine.team_id
+            WHERE mine.project_id = pt.project_id AND tm2.user_id = $1
+        )
+    )
+)
+ORDER BY t.name ASC;
+
+-- name: IsTeamVisibleTo :one
+-- Whether ListTeamsVisibleTo would list the team for the user.
+SELECT EXISTS (
+    SELECT 1 FROM teams t
+    WHERE t.id = $1 AND (
+        EXISTS (
+            SELECT 1 FROM team_members tm WHERE tm.team_id = t.id AND tm.user_id = $2
+        ) OR EXISTS (
+            SELECT 1 FROM project_teams pt
+            WHERE pt.team_id = t.id AND (
+                EXISTS (SELECT 1 FROM project_members pm WHERE pm.project_id = pt.project_id AND pm.user_id = $2)
+                OR EXISTS (
+                    SELECT 1 FROM project_teams mine
+                    JOIN team_members tm2 ON tm2.team_id = mine.team_id
+                    WHERE mine.project_id = pt.project_id AND tm2.user_id = $2
+                )
+            )
+        )
+    )
+) AS visible;
+
 -- name: DeleteTeam :exec
 DELETE FROM teams WHERE id = $1;
 

@@ -330,3 +330,85 @@ func TestMembershipIntegrity_MissingAndForeignProjectsAnswerAlike(t *testing.T) 
 		}
 	}
 }
+
+func miTeamIDs(t *testing.T, token string) map[string]bool {
+	t.Helper()
+	ids := map[string]bool{}
+	for _, tm := range request[[]teamResponse](t, http.MethodGet, "/api/v1/teams", token, nil, http.StatusOK) {
+		ids[tm.ID] = true
+	}
+	return ids
+}
+
+// The team directory shows a person the teams linked to a project they can
+// reach and the teams they belong to, and nothing else. A team they cannot see
+// answers like a team that does not exist, so ids cannot be probed.
+func TestMembershipIntegrity_TeamDirectoryStaysInsideTheCallersProjects(t *testing.T) {
+	x := newProject(t, "mi-dirx")
+	y := newProject(t, "mi-diry")
+	memberX := miNewPerson(t, "dir-x")
+	status, _ := miAddMember(t, adminToken, x, memberX.ID, "member")
+	require.Equal(t, http.StatusCreated, status)
+	stranger := miNewPerson(t, "dir-c5")
+	yOnly := miNewPerson(t, "dir-y")
+	viaTeam := miNewPerson(t, "dir-viateam")
+	belongs := miNewPerson(t, "dir-belongs")
+
+	tx := miTeam(t, "dir-x")       // linked to X
+	ty := miTeam(t, "dir-y")       // linked to Y only
+	tfree := miTeam(t, "dir-free") // linked nowhere
+	tlinkedX := miTeam(t, "dir-viateam")
+	require.Equal(t, http.StatusCreated, miLink(t, adminToken, x, tx, "member"))
+	require.Equal(t, http.StatusCreated, miLink(t, adminToken, y, ty, "admin"))
+	require.Equal(t, http.StatusCreated, miTeamAdd(t, adminToken, ty, yOnly.ID, "member"))
+	require.Equal(t, http.StatusCreated, miTeamAdd(t, adminToken, tx, memberX.ID, "member"))
+	require.Equal(t, http.StatusCreated, miLink(t, adminToken, x, tlinkedX, "member"))
+	require.Equal(t, http.StatusCreated, miTeamAdd(t, adminToken, tlinkedX, viaTeam.ID, "member"))
+	require.Equal(t, http.StatusCreated, miTeamAdd(t, adminToken, tfree, belongs.ID, "member"))
+
+	// A member of X: the teams linked to X, not the team that administers Y,
+	// not a team linked nowhere.
+	ids := miTeamIDs(t, memberX.Token)
+	require.True(t, ids[tx], "a team linked to the caller's project")
+	require.True(t, ids[tlinkedX])
+	require.False(t, ids[ty], "a team linked only to a project the caller cannot reach")
+	require.False(t, ids[tfree])
+
+	// Access through a team counts the same as a direct row.
+	ids = miTeamIDs(t, viaTeam.Token)
+	require.True(t, ids[tx] && ids[tlinkedX])
+	require.False(t, ids[ty])
+
+	// A team the caller belongs to is visible even when it is linked nowhere.
+	ids = miTeamIDs(t, belongs.Token)
+	require.True(t, ids[tfree])
+	require.False(t, ids[tx] || ids[ty])
+
+	require.Empty(t, miTeamIDs(t, stranger.Token), "an account with no project and no team sees no team")
+	all := miTeamIDs(t, adminToken)
+	require.True(t, all[tx] && all[ty] && all[tfree], "a global admin still sees every team")
+
+	// Rosters follow the same rule, and an invisible team answers exactly like
+	// a team that does not exist.
+	missing := "00000000-0000-4000-8000-000000000000"
+	for _, who := range []miPerson{memberX, stranger, belongs} {
+		sMissing, bMissing := doJSON(t, http.MethodGet, "/api/v1/teams/"+missing+"/members", who.Token, nil)
+		require.Equal(t, http.StatusNotFound, sMissing)
+		sInvisible, bInvisible := doJSON(t, http.MethodGet, "/api/v1/teams/"+ty+"/members", who.Token, nil)
+		require.Equal(t, sMissing, sInvisible, "status of a team the caller cannot see")
+		require.Equal(t, string(bMissing), string(bInvisible), "body of a team the caller cannot see")
+	}
+	roster := request[[]teamMemberResponse](t, http.MethodGet, "/api/v1/teams/"+tx+"/members", memberX.Token, nil, http.StatusOK)
+	require.Len(t, roster, 2, "the creating admin and memberX")
+	request[[]teamMemberResponse](t, http.MethodGet, "/api/v1/teams/"+tfree+"/members", belongs.Token, nil, http.StatusOK)
+	request[[]teamMemberResponse](t, http.MethodGet, "/api/v1/teams/"+ty+"/members", adminToken, nil, http.StatusOK)
+
+	// Writes to a roster do not tell a missing team from one the caller cannot
+	// see either.
+	sMissing, bMissing := doJSON(t, http.MethodPost, "/api/v1/teams/"+missing+"/members", memberX.Token,
+		map[string]string{"user_id": stranger.ID, "role": "member"})
+	sInvisible, bInvisible := doJSON(t, http.MethodPost, "/api/v1/teams/"+ty+"/members", memberX.Token,
+		map[string]string{"user_id": stranger.ID, "role": "member"})
+	require.Equal(t, sMissing, sInvisible)
+	require.Equal(t, string(bMissing), string(bInvisible))
+}

@@ -1525,7 +1525,10 @@ export interface paths {
       path?: never;
       cookie?: never;
     };
-    /** List teams */
+    /**
+     * List teams
+     * @description Returns the teams the caller belongs to and the teams linked to a project the caller can reach, directly or through a team. A team linked only to projects the caller cannot reach is left out, so one tenant's team names are not visible to another. Global admins see every team. An account with no project and no team gets an empty list.
+     */
     get: operations["listTeams"];
     put?: never;
     /**
@@ -1568,15 +1571,20 @@ export interface paths {
     };
     /**
      * List a team's roster
-     * @description Any signed-in account can read a roster; the team directory is already
-     *     open to them. Every member carries a `display_name` (omitted when the
-     *     person never set one). `user_email` is returned only to global admins
-     *     and to admins of this team. A project-scoped API key is refused with
-     *     403.
+     * @description A signed-in account can read the roster of a team it can see: one it
+     *     belongs to, or one linked to a project it can reach (see `listTeams`).
+     *     A team it cannot see answers `404 not_found`, exactly like a team that
+     *     does not exist, so team ids cannot be probed. Global admins see every
+     *     team. Every member carries a `display_name` (omitted when the person
+     *     never set one). `user_email` is returned only to global admins and to
+     *     admins of this team. A project-scoped API key is refused with 403.
      */
     get: operations["listTeamMembers"];
     put?: never;
-    /** Add or re-role a team member */
+    /**
+     * Add or re-role a team member
+     * @description Needs team admin or global admin. A caller who cannot see the team gets `404 not_found`, the answer for a team that does not exist; a caller who can see it but does not administer it gets 403.
+     */
     post: operations["addTeamMember"];
     delete?: never;
     options?: never;
@@ -1594,7 +1602,10 @@ export interface paths {
     get?: never;
     put?: never;
     post?: never;
-    /** Remove a team member */
+    /**
+     * Remove a team member
+     * @description Needs team admin or global admin. A caller who cannot see the team gets `404 not_found`, the answer for a team that does not exist; a caller who can see it but does not administer it gets 403.
+     */
     delete: operations["removeTeamMember"];
     options?: never;
     head?: never;
