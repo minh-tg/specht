@@ -677,10 +677,23 @@ export interface paths {
      *     refused request writes nothing, and a failed ingest leaves no
      *     environment, target or artifact row behind.
      *
-     *     Ingests share a memory budget (`INGEST_MEMORY_BUDGET`, 2 GiB by default):
-     *     each reserves 64 bytes per byte of `raw_data` while it runs. An ingest
-     *     that cannot get its share, or a free slot, within 15 seconds is answered
-     *     `503 ingest_busy` with `Retry-After`.
+     *     Name the project first. The server reads only the start of the body (64
+     *     KiB) to find `project`, and checks that the caller may ingest into it
+     *     before it reads or decodes the rest, so a caller without access gets
+     *     `403` at once. A body that does not name its project within that start
+     *     is refused with `400 missing_field`; put `project` before `raw_data`.
+     *     The project must have one value: a body that repeats the key with
+     *     another value is refused with `400 invalid_field`.
+     *
+     *     The whole body must arrive within 30 seconds, otherwise the answer is
+     *     `408 request_timeout`. Ingests share a memory budget
+     *     (`INGEST_MEMORY_BUDGET`, 2 GiB by default): each reserves 64 bytes per
+     *     byte of `raw_data` while it runs. One caller (a user, or an API key) may
+     *     have at most half of `INGEST_MAX_CONCURRENCY` ingests, and half of the
+     *     budget, at once. An ingest that cannot get its place, a free slot or its
+     *     share of the memory within 15 seconds is answered `503 ingest_busy` with
+     *     `Retry-After`; a caller who is over its own limit never delays another
+     *     caller. Once started, an ingest finishes even if the client hangs up.
      */
     post: operations["ingestReport"];
     delete?: never;
@@ -4713,6 +4726,23 @@ export interface operations {
       401: components["responses"]["Unauthorized"];
       403: components["responses"]["ProjectAccessDenied"];
       404: components["responses"]["NotFound"];
+      /** @description The request body did not arrive within 30 seconds. Nothing was stored. */
+      408: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          /**
+           * @example {
+           *       "error": {
+           *         "code": "request_timeout",
+           *         "message": "the request body did not arrive in time"
+           *       }
+           *     }
+           */
+          "application/json": components["schemas"]["Error"];
+        };
+      };
       /**
        * @description Identical report bytes for the same commit, but the stored report
        *     could not be found for a replay (for example, a concurrent retention
@@ -4757,8 +4787,9 @@ export interface operations {
         };
       };
       /**
-       * @description Too many ingests are running, or the memory budget stays taken, for
-       *     15 seconds. Nothing was stored. Retry after `Retry-After` seconds.
+       * @description Too many ingests are running, or the memory budget stays taken, or the
+       *     caller already has its share of both in use, for 15 seconds. Nothing
+       *     was stored. Retry after `Retry-After` seconds.
        */
       503: {
         headers: {

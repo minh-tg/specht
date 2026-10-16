@@ -120,6 +120,20 @@ func validateIngestInput(input IngestReportInput) (IngestReportInput, error) {
 	return input, nil
 }
 
+// AuthorizeIngest checks that the caller may ingest reports into the project,
+// before any of the report is read or parsed. A missing project answers like a
+// project the caller has no access to, so the answer is no oracle for slugs.
+func (u *Usecases) AuthorizeIngest(ctx context.Context, projectSlug string) error {
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return ErrProjectAccessDenied
+		}
+		return fmt.Errorf(errLookupProjectFormat, projectSlug, err)
+	}
+	return u.requireProjectIngest(ctx, project.ID)
+}
+
 func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*IngestReportOutput, error) {
 	input, err := validateIngestInput(input)
 	if err != nil {

@@ -10,6 +10,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/minh-tg/specht/internal/auth"
+	"github.com/minh-tg/specht/internal/usecase"
 )
 
 // deadlineRecorder is a ResponseWriter that, like the real connection
@@ -35,99 +38,192 @@ func (d *deadlineRecorder) SetWriteDeadline(t time.Time) error {
 	return nil
 }
 
-func TestIngestLimits_ExtendsTheDeadlinesForTheRequest(t *testing.T) {
-	gate := ingestLimits(2, time.Second, time.Minute, 10*time.Second)
+func TestIngestDeadlines_BodyWindowThenProcessingWindow(t *testing.T) {
+	d := ingestDeadlines{body: 30 * time.Second, window: time.Minute, writeSlack: 10 * time.Second}
 	w := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
 	before := time.Now()
 
-	gate(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {})).
-		ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/reports", nil))
+	d.armBody(w)
+	assert.WithinDuration(t, before.Add(30*time.Second), w.read, 2*time.Second, "the body has its own, shorter window")
+	assert.WithinDuration(t, before.Add(100*time.Second), w.write, 2*time.Second, "the response can still be written after upload and processing")
 
-	assert.WithinDuration(t, before.Add(time.Minute), w.read, 2*time.Second, "an upload may take the full window")
-	assert.WithinDuration(t, before.Add(70*time.Second), w.write, 2*time.Second, "the response is written after the upload window")
+	d.armProcessing(w)
+	assert.WithinDuration(t, before.Add(70*time.Second), w.write, 2*time.Second, "processing gets its whole window from the moment it starts")
 }
 
-func TestIngestLimits_WorksWhenTheWriterCannotSetDeadlines(t *testing.T) {
-	gate := ingestLimits(1, time.Second, time.Minute, time.Second)
+func TestIngestDeadlines_WorkWhenTheWriterCannotSetDeadlines(t *testing.T) {
+	d := ingestDeadlines{body: time.Second, window: time.Minute, writeSlack: time.Second}
 	w := httptest.NewRecorder() // no deadline support
-
-	gate(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) { rw.WriteHeader(http.StatusNoContent) })).
-		ServeHTTP(w, httptest.NewRequest("POST", "/api/v1/reports", nil))
-
-	assert.Equal(t, http.StatusNoContent, w.Code, "missing deadline support must not break ingest")
+	assert.NotPanics(t, func() { d.armBody(w); d.armProcessing(w) })
 }
 
-func TestIngestLimits_LimitsConcurrencyAndShedsTheRest(t *testing.T) {
-	gate := ingestLimits(1, 30*time.Millisecond, time.Minute, time.Second)
-	release := make(chan struct{})
-	entered := make(chan struct{})
-	slow := gate(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) {
-		close(entered)
-		<-release
-		rw.WriteHeader(http.StatusAccepted)
-	}))
-
-	first := httptest.NewRecorder()
-	done := make(chan struct{})
-	go func() {
-		slow.ServeHTTP(first, httptest.NewRequest("POST", "/api/v1/reports", nil))
-		close(done)
-	}()
-	<-entered
-
-	second := httptest.NewRecorder()
-	slow.ServeHTTP(second, httptest.NewRequest("POST", "/api/v1/reports", nil))
-
-	requireAPIError(t, second, http.StatusServiceUnavailable, "ingest_busy")
-	assert.NotEmpty(t, second.Header().Get("Retry-After"), "clients are told when to come back")
-
-	close(release)
-	<-done
-	assert.Equal(t, http.StatusAccepted, first.Code, "the request that held the slot completes normally")
-}
-
-func TestIngestLimits_ReleasesTheSlotAfterEachRequest(t *testing.T) {
-	gate := ingestLimits(1, 20*time.Millisecond, time.Minute, time.Second)
-	ok := gate(http.HandlerFunc(func(rw http.ResponseWriter, _ *http.Request) { rw.WriteHeader(http.StatusOK) }))
-	panics := gate(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic("boom") }))
-
-	require.Panics(t, func() {
-		panics.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/", nil))
-	})
-	for i := 0; i < 3; i++ {
-		w := httptest.NewRecorder()
-		ok.ServeHTTP(w, httptest.NewRequest("POST", "/", nil))
-		require.Equal(t, http.StatusOK, w.Code, "request %d: a finished or panicked request frees its slot", i)
+func enterAll(t *testing.T, a *ingestAdmission, principal string, n int) []*ingestTicket {
+	t.Helper()
+	var out []*ingestTicket
+	for range n {
+		tk, err := a.enter(context.Background(), principal)
+		require.NoError(t, err, "%s should get a place", principal)
+		out = append(out, tk)
 	}
+	return out
 }
 
-func TestIngestLimits_AbandonedWaitDoesNotRunTheHandler(t *testing.T) {
-	gate := ingestLimits(1, time.Minute, time.Minute, time.Second)
-	hold := make(chan struct{})
-	entered := make(chan struct{})
+func TestIngestAdmission_ACallerHoldsAtMostHalfTheConcurrency(t *testing.T) {
+	a := newIngestAdmission(8, 0, 30*time.Millisecond)
+	assert.Equal(t, 4, a.perPrincipal)
+	assert.Equal(t, 1, newIngestAdmission(1, 0, time.Second).perPrincipal, "a single slot is still usable")
+	assert.Equal(t, 1, newIngestAdmission(2, 0, time.Second).perPrincipal)
+	assert.Equal(t, 1, newIngestAdmission(3, 0, time.Second).perPrincipal)
+
+	mine := enterAll(t, a, "key:a", 4)
+	_, err := a.enter(context.Background(), "key:a")
+	require.ErrorIs(t, err, errIngestBusy, "the fifth ingest of one caller waits its turn and is told to retry")
+
+	other, err := a.enter(context.Background(), "key:b")
+	require.NoError(t, err, "another caller is not delayed by the first")
+	other.release()
+	for _, tk := range mine {
+		tk.release()
+	}
+	assert.True(t, a.idle())
+}
+
+func TestIngestAdmission_ACallerWaitingInItsOwnQueueDoesNotBlockOthers(t *testing.T) {
+	a := newIngestAdmission(2, 0, time.Minute) // one place each
+	first, err := a.enter(context.Background(), "user:a")
+	require.NoError(t, err)
+
+	waiter := make(chan error, 1)
+	go func() {
+		_, err := a.enter(context.Background(), "user:a")
+		waiter <- err
+	}()
+	time.Sleep(20 * time.Millisecond)
+
+	start := time.Now()
+	other, err := a.enter(context.Background(), "user:b")
+	require.NoError(t, err)
+	assert.Less(t, time.Since(start), time.Second)
+	require.NoError(t, other.admit(context.Background(), 10), "and takes a global slot while the first caller's second ingest waits")
+	other.release()
+
+	first.release()
+	require.NoError(t, <-waiter, "the waiting ingest gets the place when the first leaves")
+}
+
+func TestIngestAdmission_TheGlobalSlotIsTakenOnlyAfterTheBody(t *testing.T) {
+	a := newIngestAdmission(2, 0, 30*time.Millisecond) // two global slots, one place per caller
+	// Two callers fill every global slot.
+	var admitted []*ingestTicket
+	for _, p := range []string{"user:a", "user:b"} {
+		tk, err := a.enter(context.Background(), p)
+		require.NoError(t, err)
+		require.NoError(t, tk.admit(context.Background(), 10))
+		admitted = append(admitted, tk)
+	}
+	// A third caller can still enter and read its body: that holds no slot.
+	third, err := a.enter(context.Background(), "user:c")
+	require.NoError(t, err, "reading a body does not need a global slot")
+	// It waits for a slot only when its body is in.
+	require.ErrorIs(t, third.admit(context.Background(), 10), errIngestBusy)
+	third.release()
+
+	admitted[0].release()
+	again, err := a.enter(context.Background(), "user:c")
+	require.NoError(t, err)
+	require.NoError(t, again.admit(context.Background(), 10), "a freed slot goes to the next caller")
+	again.release()
+	admitted[1].release()
+	assert.True(t, a.idle())
+}
+
+func TestIngestAdmission_ACallerGetsAProportionalShareOfTheMemory(t *testing.T) {
+	a := newIngestAdmission(8, 64*8000, time.Second) // budget for 8000 raw bytes
+	assert.EqualValues(t, 64*4000, a.memoryShare, "half the budget for half the slots")
+
+	big, err := a.enter(context.Background(), "user:a")
+	require.NoError(t, err)
+	require.NoError(t, big.admit(context.Background(), 4000), "one caller may use its whole share")
+
+	more, err := a.enter(context.Background(), "user:a")
+	require.NoError(t, err)
+	short := newIngestAdmission(8, 64*8000, 30*time.Millisecond)
+	_ = short
+	waitCtx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	assert.Error(t, more.admit(waitCtx, 100), "the same caller cannot exceed its share")
+	more.release()
+
+	rival, err := a.enter(context.Background(), "user:b")
+	require.NoError(t, err)
+	require.NoError(t, rival.admit(context.Background(), 3000), "another caller still has its own share of the budget")
+	rival.release()
+	big.release()
+	assert.True(t, a.idle())
+}
+
+func TestIngestAdmission_ReleaseIsSafeToRepeatAndAfterAFailedAdmit(t *testing.T) {
+	a := newIngestAdmission(2, 64*100, 20*time.Millisecond)
+	hold, err := a.enter(context.Background(), "user:a")
+	require.NoError(t, err)
+	require.NoError(t, hold.admit(context.Background(), 100))
+
+	blocked, err := a.enter(context.Background(), "user:b")
+	require.NoError(t, err)
+	require.ErrorIs(t, blocked.admit(context.Background(), 100), errIngestBusy)
+	blocked.release()
+	blocked.release()
+
+	hold.release()
+	hold.release()
+	assert.True(t, a.idle(), "a double release must not hand out anything twice")
+	tk, err := a.enter(context.Background(), "user:c")
+	require.NoError(t, err)
+	require.NoError(t, tk.admit(context.Background(), 100))
+	tk.release()
+}
+
+func TestIngestAdmission_AClientThatLeavesWhileQueuedLeavesNothingBehind(t *testing.T) {
+	a := newIngestAdmission(2, 0, time.Minute)
+	first, err := a.enter(context.Background(), "user:a")
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { _, err := a.enter(ctx, "user:a"); done <- err }()
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	require.ErrorIs(t, <-done, context.Canceled)
+	first.release()
+	assert.True(t, a.idle())
+}
+
+// An ingest that the client abandoned while it waited for a slot never starts.
+func TestIngestReport_AbandonedWaitDoesNotRunTheUseCase(t *testing.T) {
 	var runs int
 	var mu sync.Mutex
-	h := gate(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+	mock := &mockUsecases{ingestReportFn: func(context.Context, usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
 		mu.Lock()
 		runs++
 		mu.Unlock()
-		select {
-		case entered <- struct{}{}:
-		default:
-		}
-		<-hold
-	}))
-	go h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/", nil))
-	<-entered
+		return &usecase.IngestReportOutput{ReportID: "r"}, nil
+	}}
+	h := NewHandler(mock)
+	h.ingest = newIngestAdmission(1, 0, time.Minute)
+	hold, err := h.ingest.enter(context.Background(), "user:other")
+	require.NoError(t, err)
+	require.NoError(t, hold.admit(context.Background(), 10))
+	defer hold.release()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
 	defer cancel()
-	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/", nil).WithContext(ctx))
-	close(hold)
+	req := httptest.NewRequest("POST", "/api/v1/reports", ingestBody(100)).WithContext(ctx)
+	req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "u-admin", Role: auth.RoleAdmin}))
+	h.IngestReport(httptest.NewRecorder(), req)
 
 	mu.Lock()
 	defer mu.Unlock()
-	assert.Equal(t, 1, runs, "a client that gave up while queued must not start an ingest")
+	assert.Zero(t, runs, "a client that gave up while queued must not start an ingest")
 }
 
 func TestRequestTimeout_IngestGetsALongerBudgetThanOtherRoutes(t *testing.T) {

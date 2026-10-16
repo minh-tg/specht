@@ -5,6 +5,7 @@ package e2e
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -45,11 +46,11 @@ func TestE2E_RefusedIngestMetadataLeavesNoContextRows(t *testing.T) {
 		{"owner", "own\x1ber"},
 		{"changed_files", make([]string, 5001)},
 	} {
-		body := map[string]any{
-			"project": slug, "scanner": "trivy", "raw_data": json.RawMessage(report),
-			"environment": "meta-env", "artifact_name": "meta-artifact",
-			tc.field: tc.value,
-		}
+		// Ordered by hand: the project comes first, the metadata after the report.
+		val, err := json.Marshal(tc.value)
+		require.NoError(t, err)
+		body := json.RawMessage(fmt.Sprintf(`{"project":%q,"scanner":"trivy","raw_data":%s,"environment":"meta-env","artifact_name":"meta-artifact",%q:%s}`,
+			slug, report, tc.field, val))
 		status, raw := doJSON(t, http.MethodPost, "/api/v1/reports", adminToken, body)
 		require.Equal(t, http.StatusBadRequest, status, "%s: %s", tc.field, raw)
 		require.Contains(t, string(raw), "invalid_field")

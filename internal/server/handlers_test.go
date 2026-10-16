@@ -25,6 +25,7 @@ import (
 )
 
 type mockUsecases struct {
+	authorizeIngestFn       func(ctx context.Context, projectSlug string) error
 	getFindingCVEFn         func(ctx context.Context, findingID string) (*usecase.CVEDetailResponse, error)
 	getProjectWatcherFn     func(ctx context.Context, slug string) (*usecase.ProjectWatcherResponse, error)
 	updateProjectWatcherFn  func(ctx context.Context, slug string, in usecase.WatcherSettingsInput) (*usecase.ProjectWatcherResponse, error)
@@ -244,6 +245,13 @@ func (m *mockUsecases) GetReport(ctx context.Context, reportID string) (*usecase
 		return nil, fmt.Errorf("unexpected call to GetReport")
 	}
 	return m.getReportFn(ctx, reportID)
+}
+
+func (m *mockUsecases) AuthorizeIngest(ctx context.Context, projectSlug string) error {
+	if m.authorizeIngestFn == nil {
+		return nil
+	}
+	return m.authorizeIngestFn(ctx, projectSlug)
 }
 
 func (m *mockUsecases) IngestReport(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error) {
@@ -951,7 +959,7 @@ func TestIngestReport_InvalidJSON(t *testing.T) {
 }
 
 func TestIngestReport_MissingFields(t *testing.T) {
-	handler := &Handler{}
+	handler := NewHandler(&mockUsecases{})
 
 	tests := []struct {
 		name       string
@@ -968,6 +976,7 @@ func TestIngestReport_MissingFields(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("POST", "/api/v1/reports", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
+			req = req.WithContext(auth.ContextWithIdentity(req.Context(), &auth.Identity{UserID: "u-admin", Role: auth.RoleAdmin}))
 			w := httptest.NewRecorder()
 
 			handler.IngestReport(w, req)

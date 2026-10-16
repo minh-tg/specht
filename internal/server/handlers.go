@@ -193,6 +193,7 @@ type (
 	}
 
 	ReportUsecases interface {
+		AuthorizeIngest(ctx context.Context, projectSlug string) error
 		IngestReport(ctx context.Context, input usecase.IngestReportInput) (*usecase.IngestReportOutput, error)
 		ListReports(ctx context.Context, projectSlug string, filter usecase.ReportFilter, limit, offset int32) ([]usecase.ReportResponse, error)
 		GetReport(ctx context.Context, reportID string) (*usecase.ReportResponse, error)
@@ -289,9 +290,10 @@ type Handler struct {
 	// loginDelay slows repeated failed password logins per account. Nil
 	// disables it.
 	loginDelay *loginDelay
-	// ingestMemory is the memory admission control for report ingests. Nil
-	// admits everything, which suits tests that build a Handler directly.
-	ingestMemory *ingestMemory
+	// ingest is the admission control for report ingests: concurrency slots,
+	// the memory budget and the per-caller gates. NewHandler installs the
+	// defaults and NewRouter replaces them with the configured limits.
+	ingest *ingestAdmission
 }
 
 type usecaseInterface interface {
@@ -320,7 +322,12 @@ func NewHandler(uc usecaseInterface, revokers ...auth.TokenRevoker) *Handler {
 	if len(revokers) > 0 {
 		revoker = revokers[0]
 	}
-	return &Handler{usecase: uc, audit: audit.NewLogger(nil), revoker: revoker}
+	return &Handler{
+		usecase: uc,
+		audit:   audit.NewLogger(nil),
+		revoker: revoker,
+		ingest:  newIngestAdmission(0, 0, defaultIngestQueueWait),
+	}
 }
 
 type ingestRequest struct {
