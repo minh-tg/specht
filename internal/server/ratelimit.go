@@ -122,8 +122,10 @@ func (l *RateLimiter) limiterFor(key string, now time.Time) *rate.Limiter {
 // Middleware enforces the bucket for each request. When useIdentity is set,
 // an authenticated identity selects the key (one budget per caller,
 // regardless of IP); otherwise the client IP selects the key, except that
-// requests carrying an Authorization header pass through — they are judged
-// by the post-auth instance, so one request never spends two budgets.
+// requests carrying an Authorization header pass through. A bearer that
+// authenticates is judged by the post-auth instance, and one that does not is
+// counted against the IP bucket by AuthMiddlewareLimited, so one request never
+// spends two budgets.
 func (l *RateLimiter) Middleware(useIdentity bool) func(http.Handler) http.Handler {
 	return l.middleware(func(r *http.Request) (string, bool) {
 		return l.rateLimitKey(r, useIdentity)
@@ -180,6 +182,12 @@ func (l *RateLimiter) middleware(keyFor func(*http.Request) (string, bool)) func
 func (l *RateLimiter) rateLimitKey(r *http.Request, useIdentity bool) (string, bool) {
 	if useIdentity {
 		if ident := auth.ContextIdentity(r.Context()); ident != nil {
+			// A key's creator may have minted keys for many projects and
+			// holds a session of their own: each key and each session gets
+			// its own budget.
+			if ident.IsAPIKey && ident.KeyHash != "" {
+				return "key:" + ident.KeyHash, true
+			}
 			return "user:" + ident.UserID, true
 		}
 	} else if r.Header.Get("Authorization") != "" {

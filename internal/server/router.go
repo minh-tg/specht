@@ -115,10 +115,15 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	r.Use(RequestIDMiddleware)
 	r.Use(realIPMiddleware(cfg.TrustedProxies))
 	r.Use(SecurityHeaders)
+	// failedAuthLimiter is the pre-auth IP bucket, which also counts bearers
+	// that fail to authenticate; nil when rate limiting is off.
+	var failedAuthLimiter *RateLimiter
 	if cfg.RateLimit.Enabled {
 		// Shed unauthenticated floods before logging/auth: bearer requests
-		// pass through here and spend from the post-auth budget instead.
-		r.Use(NewRateLimiter(cfg.RateLimit.RPS, cfg.RateLimit.Burst).Middleware(false))
+		// pass through here, and spend from the post-auth budget when they
+		// authenticate or from this bucket when they do not.
+		failedAuthLimiter = NewRateLimiter(cfg.RateLimit.RPS, cfg.RateLimit.Burst)
+		r.Use(failedAuthLimiter.Middleware(false))
 	}
 	r.Use(LoggerMiddleware)
 	r.Use(middleware.Recoverer)
@@ -196,7 +201,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	})
 
 	r.Group(func(r chi.Router) {
-		r.Use(AuthMiddleware(cfg.JWTAuth, apiKeyAuth))
+		r.Use(AuthMiddlewareLimited(failedAuthLimiter, cfg.JWTAuth, apiKeyAuth))
 		readScope := RequireAPIKeyScopes(auth.ScopeRead)
 		// No key scope covers project management, so this refuses every key
 		// and leaves the routes to people with a role on the project.

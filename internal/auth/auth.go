@@ -123,6 +123,10 @@ type Identity struct {
 	Role      string
 	Scopes    []string
 	IsAPIKey  bool
+	// KeyHash is the SHA-256 of the presented API key, set for API-key
+	// principals only. It names one key without exposing it, so per-key
+	// limits can tell two keys of the same creator apart.
+	KeyHash string
 	// Groups carries IdP group membership for SSO principals:
 	// enterprise role mapping consumes it at provisioning time. Empty
 	// for password and API-key principals.

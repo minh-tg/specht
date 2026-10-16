@@ -431,3 +431,9 @@ releases.
   that belongs to another project, which let a caller probe for report ids. Both now answer
   403 `project_access_denied`. A malformed `report_id` on the pull-request check and on the
   introduced-only gate answers 400 `invalid_id` instead of 500.
+- With rate limiting on, an API key now has its own request budget. Before, all keys
+  made by one person and that person's browser session shared one, so a busy CI key could
+  lock out other projects' keys and the web UI.
+- With rate limiting on, requests with an invalid or non-bearer `Authorization` header
+  now count against the per-address limit and get `429` once it is used up. Before, any
+  such header skipped the per-address limit, so made-up keys could be tried without limit.
