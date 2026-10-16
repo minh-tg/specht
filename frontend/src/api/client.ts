@@ -169,14 +169,20 @@ export async function revokeRefreshToken(refreshToken: string): Promise<void> {
   }
 }
 
-/** Tears the session down, bounces to the sign-in page, and rethrows. */
-function endSession(err: unknown): never {
+/** The `reason` the sign-in page is sent with after the server revoked the
+ * session because a refresh token was used twice. */
+export const SESSION_REUSED_REASON = "session_reused";
+
+/** Tears the session down, bounces to the sign-in page, and rethrows. A reason
+ * rides along so the page can tell the user why they are signed out. */
+function endSession(err: unknown, reason?: string): never {
   setAuthToken(null);
   clearStoredSession();
   onUnauthorized?.();
   onRefreshFailed?.();
   const redirect = encodeURIComponent(window.location.pathname + window.location.search);
-  window.location.href = `/login?redirect=${redirect}`;
+  const why = reason ? `&reason=${reason}` : "";
+  window.location.href = `/login?redirect=${redirect}${why}`;
   throw err;
 }
 
@@ -201,6 +207,12 @@ async function startRefresh(): Promise<Session> {
     setAuthToken(session.token);
     return session;
   } catch (err) {
+    // `refresh_reused` means the server saw this token used twice and revoked
+    // the sign-in. Nothing the client holds works any more, so it signs out
+    // and says why instead of retrying.
+    if (err instanceof APIError && err.status === 401 && err.code === "refresh_reused") {
+      endSession(err, SESSION_REUSED_REASON);
+    }
     if (unauthorized(err)) endSession(err);
     throw err;
   }

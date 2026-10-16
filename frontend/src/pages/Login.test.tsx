@@ -120,6 +120,18 @@ describe("Login", () => {
     expect(screen.getByRole("button", { name: /sign in/i })).toBeInTheDocument();
   });
 
+  it("tells the user why they were signed out after a reused refresh token", () => {
+    renderLoginWithAuth("/login?redirect=%2Fdashboard&reason=session_reused");
+
+    expect(screen.getByRole("status")).toHaveTextContent(/signed out/i);
+  });
+
+  it("shows no sign-out notice on a plain visit", () => {
+    renderLoginWithAuth("/login");
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("exposes autocomplete hints so password managers can fill the form", () => {
     renderLogin();
 
