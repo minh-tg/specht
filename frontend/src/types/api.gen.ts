@@ -1238,6 +1238,11 @@ export interface paths {
      *     approved on creation. It must say what it covers: at least one
      *     condition, context or target, or `scope: "all"` with none of those.
      *     To ask for a waiver without that role, use `POST /waivers/requests`.
+     *
+     *     Every finding, environment, target and artifact id must belong to the
+     *     project. An id that is missing and an id of another project both answer
+     *     404, and a malformed id answers 400. A context names at least one of
+     *     `environment_id`, `target_id` and `artifact_id`.
      */
     post: operations["createWaiver"];
     delete?: never;
@@ -1348,6 +1353,9 @@ export interface paths {
      * Update a waiver
      * @description `expires_at` is a tri-state: omitting it keeps the stored expiry, `""`
      *     clears it, and an RFC 3339 value sets it.
+     *
+     *     Scope ids follow the same rules as on create: an id outside the project
+     *     answers 404, whether it is missing or belongs to another project.
      */
     put: operations["updateWaiver"];
     post?: never;
@@ -5895,6 +5903,7 @@ export interface operations {
       };
       400: components["responses"]["BadRequest"];
       403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
       500: components["responses"]["InternalError"];
     };
   };

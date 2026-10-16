@@ -220,7 +220,24 @@ func waiverUsecaseForProject(project port.Project, waivers *mockWaiverRepo, effe
 			return effectiveRole, nil
 		},
 	}
-	return New(Deps{Stores: &port.Stores{Projects: projects, Waivers: waivers}})
+	// Every finding, environment, target and artifact id belongs to the
+	// project here. Tests of the ownership check build their own stores.
+	findings := &mockFindingRepo{getByIDFn: func(_ context.Context, id string) (port.Finding, error) {
+		return port.Finding{ID: id, ProjectID: project.ID}, nil
+	}}
+	environments := &mockEnvironmentRepo{getByIDFn: func(_ context.Context, id, _ string) (port.Environment, error) {
+		return port.Environment{ID: id}, nil
+	}}
+	targets := &mockTargetRepo{getByIDFn: func(_ context.Context, id, _ string) (port.Target, error) {
+		return port.Target{ID: id}, nil
+	}}
+	artifacts := &mockArtifactRepo{getByIDFn: func(_ context.Context, id, _ string) (port.Artifact, error) {
+		return port.Artifact{ID: id}, nil
+	}}
+	return New(Deps{Stores: &port.Stores{
+		Projects: projects, Waivers: waivers, Findings: findings,
+		Environments: environments, Targets: targets, Artifacts: artifacts,
+	}})
 }
 
 // TestCreateWaiverForwardsExpiryToStoreAndResponse pins the expiry contract

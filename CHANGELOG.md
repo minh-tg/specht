@@ -424,3 +424,6 @@ releases.
   also reported. The gate used the environment of the newest scan, so a dev scan after a
   production scan of the same code let a dev waiver cover the production finding. The waiver
   now has to cover every environment that reported the finding.
+- Creating or updating a waiver checks that every finding, environment, target and artifact
+  it names belongs to the project. An id from another project used to be accepted and a
+  missing id answered 500. Both now answer the same 404, and a malformed id answers 400.

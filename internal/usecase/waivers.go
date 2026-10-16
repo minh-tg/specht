@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -270,9 +271,12 @@ func (u *Usecases) CreateWaiver(ctx context.Context, input CreateWaiverInput) (*
 	for i, targetID := range input.TargetIDs {
 		id, err := uuid.Parse(targetID)
 		if err != nil {
-			return nil, fmt.Errorf("invalid target finding id %q: %w", targetID, err)
+			return nil, invalidWaiverRequest("invalid target finding id %q", targetID)
 		}
 		targets[i] = port.WaiverFindingTarget{FindingID: id.String()}
+	}
+	if err := u.requireWaiverScopeInProject(ctx, project.ID, contexts, targets); err != nil {
+		return nil, err
 	}
 
 	actorID := stringPtr(input.ActorID)
@@ -455,11 +459,14 @@ func (u *Usecases) UpdateWaiver(ctx context.Context, input UpdateWaiverInput) (*
 		for i, targetID := range input.TargetIDs {
 			uid, err := uuid.Parse(targetID)
 			if err != nil {
-				return nil, fmt.Errorf("invalid target finding id %q: %w", targetID, err)
+				return nil, invalidWaiverRequest("invalid target finding id %q", targetID)
 			}
 			tgts[i] = port.WaiverFindingTarget{FindingID: uid.String()}
 		}
 		targets = &tgts
+	}
+	if err := u.requireWaiverScopeInProject(ctx, project.ID, derefSlice(contexts), derefSlice(targets)); err != nil {
+		return nil, err
 	}
 
 	if err := u.validateWaiverUpdateScope(ctx, id.String(), input); err != nil {
@@ -526,9 +533,73 @@ func parseOptionalUUID(value, field string) (string, error) {
 	}
 	id, err := uuid.Parse(value)
 	if err != nil {
-		return "", fmt.Errorf("invalid %s %q: %w", field, value, err)
+		return "", invalidWaiverRequest("invalid %s %q", field, value)
 	}
 	return id.String(), nil
+}
+
+// derefSlice returns the slice a pointer holds, or nil for a nil pointer.
+func derefSlice[T any](p *[]T) []T {
+	if p == nil {
+		return nil
+	}
+	return *p
+}
+
+// requireWaiverScopeInProject checks that every finding, environment, target
+// and artifact a waiver names belongs to the project. It answers
+// ErrWaiverScopeNotFound for an id that is missing and for one that belongs to
+// another project alike, so the answer does not reveal which ids exist
+// elsewhere. Each distinct id is looked up once.
+func (u *Usecases) requireWaiverScopeInProject(ctx context.Context, projectID string, contexts []port.WaiverContext, targets []port.WaiverFindingTarget) error {
+	checked := make(map[string]bool)
+	once := func(kind, id string) bool {
+		key := kind + ":" + id
+		if id == "" || checked[key] {
+			return false
+		}
+		checked[key] = true
+		return true
+	}
+	notFound := func(kind string) error {
+		return &waiverScopeError{message: kind + " not found in this project"}
+	}
+	for _, t := range targets {
+		if !once("finding", t.FindingID) {
+			continue
+		}
+		finding, err := u.deps.Stores.Findings.GetByID(ctx, t.FindingID)
+		if errors.Is(err, port.ErrNotFound) || (err == nil && finding.ProjectID != projectID) {
+			return notFound("finding")
+		}
+		if err != nil {
+			return fmt.Errorf("get finding: %w", err)
+		}
+	}
+	for _, c := range contexts {
+		if once("environment", c.EnvironmentID) {
+			if _, err := u.deps.Stores.Environments.GetByID(ctx, c.EnvironmentID, projectID); errors.Is(err, port.ErrNotFound) {
+				return notFound("environment")
+			} else if err != nil {
+				return fmt.Errorf("get environment: %w", err)
+			}
+		}
+		if once("target", c.TargetID) {
+			if _, err := u.deps.Stores.Targets.GetByID(ctx, c.TargetID, projectID); errors.Is(err, port.ErrNotFound) {
+				return notFound("target")
+			} else if err != nil {
+				return fmt.Errorf("get target: %w", err)
+			}
+		}
+		if once("artifact", c.ArtifactID) {
+			if _, err := u.deps.Stores.Artifacts.GetByID(ctx, c.ArtifactID, projectID); errors.Is(err, port.ErrNotFound) {
+				return notFound("artifact")
+			} else if err != nil {
+				return fmt.Errorf("get artifact: %w", err)
+			}
+		}
+	}
+	return nil
 }
 
 func (u *Usecases) DeleteWaiver(ctx context.Context, projectSlug, waiverID string) error {

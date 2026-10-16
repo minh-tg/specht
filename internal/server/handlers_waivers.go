@@ -387,6 +387,8 @@ func (h *Handler) respondWaiverError(w http.ResponseWriter, r *http.Request, err
 		h.respondProjectAccessError(w, r, errProjectAccessDenied)
 	case errors.Is(err, usecase.ErrInvalidWaiverRequest):
 		respondError(w, http.StatusBadRequest, "invalid_body", err.Error())
+	case errors.Is(err, usecase.ErrWaiverScopeNotFound):
+		respondError(w, http.StatusNotFound, "not_found", err.Error())
 	case errors.Is(err, usecase.ErrWaiverScopeRequired):
 		respondError(w, http.StatusBadRequest, "waiver_scope_required", err.Error())
 	case errors.Is(err, usecase.ErrWaiverNotPending):
