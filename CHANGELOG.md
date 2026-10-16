@@ -320,3 +320,18 @@ releases.
   identity provider that vouched for `Kate@corp` spelled with the Kelvin sign
   could link to the account `kate@corp`. An `ADMIN_EMAILS` entry written that
   way is skipped with a warning.
+- A password reset link stops working when the account is deactivated, when its password
+  changes, and when a single sign-on link removes the password. It is also refused for a
+  deactivated account and for an account that signs in through single sign-on. A link a
+  previous owner of the address kept can no longer set a password after the real owner
+  signed in.
+- Linking an existing password account to single sign-on now ends the previous owner's
+  password, sessions, refresh tokens, reset links and API keys in one step, so a failure
+  halfway cannot leave a linked account with the old credentials.
+- Creating an API key checks that its creator is still active and holds the creator's row
+  while it does, so a key created while the account is being deactivated no longer
+  survives it.
+- Email addresses are matched with ASCII case folding only. An address that contains a
+  non-ASCII letter with a lower-case form (for example an upper-case accented letter or the
+  Kelvin sign) is refused at registration and sign-in, because it could match a different
+  account than the one shown. Type such an address in lower case.
