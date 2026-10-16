@@ -356,3 +356,9 @@ releases.
   the profile update. Before, only the 1 MiB request body limited them. A name
   over the cap is refused with `400` `invalid_display_name` on the profile
   update, and with the usual credential error on setup and invite acceptance.
+- Audit lines for sign-in and registration now carry the masked email
+  (`a***@example.com`) instead of the address as typed, on success and on
+  failure. The audit logger also escapes control characters, such as a newline
+  or an ANSI escape sequence, in the project, target, request id and error
+  fields, and cuts those fields at 512 bytes, so a crafted value cannot forge a
+  second event or repaint an operator's terminal.

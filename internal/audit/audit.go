@@ -9,9 +9,13 @@ package audit
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/reqctx"
@@ -124,13 +128,13 @@ func (a *Logger) Log(ctx context.Context, event Event) {
 		"outcome", outcomeString(event.Outcome),
 		"principal_id", principalID(event.Principal),
 		"is_api_key", isAPIKey(event.Principal),
-		"project", event.Project,
-		"target", event.Target,
-		"request_id", event.RequestID,
+		"project", clean(event.Project),
+		"target", clean(event.Target),
+		"request_id", clean(event.RequestID),
 		"duration_ms", time.Since(event.StartedAt).Milliseconds(),
 	}
 	if event.Error != "" {
-		fields = append(fields, "error", event.Error)
+		fields = append(fields, "error", clean(event.Error))
 	}
 	a.logger.InfoContext(ctx, "audit", fields...)
 }
@@ -153,6 +157,58 @@ func (a *Logger) HTTP(r *http.Request, name string, outcome Outcome, project, ta
 		StartedAt: started,
 		Error:     errMsg(err),
 	})
+}
+
+// maxFieldBytes bounds one text field of an audit line. Longer values are cut,
+// so a request cannot turn one event into a megabyte of log.
+const maxFieldBytes = 512
+
+// clean makes a value that came from a request safe to write on one log line.
+// Control characters, DEL and the Unicode line and paragraph separators are
+// replaced with visible escapes (\n, \x1b, \u2028), so a newline or an ANSI
+// sequence in an email or a project name cannot forge a second event or
+// repaint a terminal. Everything else is kept, and the result is cut to
+// maxFieldBytes. The escaping does not depend on how the sink quotes values.
+func clean(s string) string {
+	if len(s) <= maxFieldBytes && !needsEscape(s) {
+		return s
+	}
+	var b strings.Builder
+	for i, r := range s {
+		if b.Len() >= maxFieldBytes {
+			b.WriteString("...")
+			_ = i
+			break
+		}
+		switch {
+		case r == '\n':
+			b.WriteString(`\n`)
+		case r == '\r':
+			b.WriteString(`\r`)
+		case r == '\t':
+			b.WriteString(`\t`)
+		case r == utf8.RuneError || !isEscaped(r):
+			b.WriteRune(r)
+		case r < 0x100:
+			fmt.Fprintf(&b, `\x%02x`, r)
+		default:
+			fmt.Fprintf(&b, `\u%04x`, r)
+		}
+	}
+	return b.String()
+}
+
+func isEscaped(r rune) bool {
+	return unicode.IsControl(r) || r == '\u2028' || r == '\u2029'
+}
+
+func needsEscape(s string) bool {
+	for _, r := range s {
+		if isEscaped(r) {
+			return true
+		}
+	}
+	return false
 }
 
 func outcomeString(o Outcome) string {
