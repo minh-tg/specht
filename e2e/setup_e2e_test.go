@@ -21,10 +21,16 @@ import (
 )
 
 // freshServer is a second server process on its own empty database, the state
-// a self-hoster is in right after the first docker compose up.
+// a self-hoster is in right after the first docker compose up. It can be
+// restarted on the same database, as an operator does after editing the
+// environment.
 type freshServer struct {
-	url string
-	log string
+	url     string
+	log     string
+	dsn     string
+	cmd     *exec.Cmd
+	done    chan error
+	logFile *os.File
 }
 
 func startFreshServer(t *testing.T, dbName string, extraEnv ...string) *freshServer {
@@ -40,16 +46,27 @@ func startFreshServer(t *testing.T, dbName string, extraEnv ...string) *freshSer
 	freshDSN := strings.Replace(dsn, "/specht_e2e?", "/"+dbName+"?", 1)
 	require.NotEqual(t, dsn, freshDSN)
 
-	port, err := freePort()
-	require.NoError(t, err)
-	addr := fmt.Sprintf("127.0.0.1:%d", port)
 	logPath := filepath.Join(t.TempDir(), "server.log")
 	logFile, err := os.Create(logPath)
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = logFile.Close() })
 
+	srv := &freshServer{log: logPath, dsn: freshDSN, logFile: logFile}
+	t.Cleanup(srv.stop)
+	srv.start(t, extraEnv...)
+	return srv
+}
+
+// start launches the server binary against the server's database and waits
+// until it is healthy.
+func (s *freshServer) start(t *testing.T, extraEnv ...string) {
+	t.Helper()
+	port, err := freePort()
+	require.NoError(t, err)
+	addr := fmt.Sprintf("127.0.0.1:%d", port)
+
 	env := cleanEnv(append([]string{
-		"DATABASE_URL=" + freshDSN,
+		"DATABASE_URL=" + s.dsn,
 		"JWT_SECRET=" + randomHex(48),
 		"SERVER_ADDR=" + addr,
 		"LOG_LEVEL=info",
@@ -64,31 +81,44 @@ func startFreshServer(t *testing.T, dbName string, extraEnv ...string) *freshSer
 	cmd := exec.Command(serverBin)
 	cmd.Dir = repoRoot
 	cmd.Env = env
-	cmd.Stdout = logFile
-	cmd.Stderr = logFile
+	cmd.Stdout = s.logFile
+	cmd.Stderr = s.logFile
 	require.NoError(t, cmd.Start())
 	done := make(chan error, 1)
 	go func() { done <- cmd.Wait() }()
-	t.Cleanup(func() {
-		_ = cmd.Process.Signal(os.Interrupt)
-		select {
-		case <-done:
-		case <-time.After(10 * time.Second):
-			_ = cmd.Process.Kill()
-			<-done
-		}
-	})
+	s.cmd, s.done, s.url = cmd, done, "http://"+addr
 
-	srv := &freshServer{url: "http://" + addr, log: logPath}
 	require.Eventually(t, func() bool {
-		resp, err := http.Get(srv.url + "/api/v1/health")
+		resp, err := http.Get(s.url + "/api/v1/health")
 		if err != nil {
 			return false
 		}
 		_ = resp.Body.Close()
 		return resp.StatusCode == http.StatusOK
-	}, 60*time.Second, 150*time.Millisecond, "fresh server never became healthy:\n%s", srv.readLog())
-	return srv
+	}, 60*time.Second, 150*time.Millisecond, "fresh server never became healthy:\n%s", s.readLog())
+}
+
+// stop ends the server process and waits for it. It is safe to call twice.
+func (s *freshServer) stop() {
+	if s.cmd == nil {
+		return
+	}
+	_ = s.cmd.Process.Signal(os.Interrupt)
+	select {
+	case <-s.done:
+	case <-time.After(10 * time.Second):
+		_ = s.cmd.Process.Kill()
+		<-s.done
+	}
+	s.cmd = nil
+}
+
+// restart stops the server and starts it again on the same database with a
+// new environment.
+func (s *freshServer) restart(t *testing.T, extraEnv ...string) {
+	t.Helper()
+	s.stop()
+	s.start(t, extraEnv...)
 }
 
 func (s *freshServer) readLog() string {
