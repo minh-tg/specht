@@ -310,21 +310,10 @@ var authzKnownFindings = slices.Concat(
 		// key-outlives-removed-creator: a key keeps working after its creator leaves the project
 		// (owner decision).
 		{"*|*|C14-key-creator-removed|*|Deny401", "key-outlives-removed-creator"},
-		// admin-scope-key-broken before gate-foreign-report-leak: the admin-scoped key fails with 500 before the
-		// foreign report is ever read.
-		{"GET /api/v1/projects/{slug}/gate|introduced-foreign-report|C4-key-admin|X", "admin-scope-key-broken"},
 		// waiver-update-delete-unaudited: waiver update and delete write no audit line.
 		{"PUT /api/v1/projects/{slug}/waivers/{id}||*|*|Allow", "waiver-update-delete-unaudited"},
 		{"DELETE /api/v1/projects/{slug}/waivers/{id}||*|*|Allow", "waiver-update-delete-unaudited"},
 	},
-	// gate-foreign-report-leak: the introduced-only gate of X evaluates Y's report for anyone
-	// who may read X's gate.
-	authzCells("GET /api/v1/projects/{slug}/gate|introduced-foreign-report|%s|X", "gate-foreign-report-leak",
-		callerKeyRead, callerMember, callerManager, callerInstanceAdmin, callerProjectAdmin, callerTeamMember),
-	// evidence-delete-ignores-finding: evidence delete ignores the finding id in its path, so the
-	// pair answers by Y's guard instead of 404.
-	authzCells("DELETE /api/v1/findings/{findingID}/evidence/{evidenceID}|x-finding-y-evidence|%s|X", "evidence-delete-ignores-finding",
-		callerKeyAdmin, callerManager, callerInstanceAdmin, callerProjectAdmin),
 	// admin-scope-key-broken: the admin scope passes the route's read guard but fails the use
 	// case's read check, which most handlers answer with 500.
 	authzCells("GET %s||C4-key-admin|X", "admin-scope-key-broken",

@@ -97,6 +97,11 @@ releases.
   copy button, EPSS as a percentage, KEV dates, CWE links and references. Each
   value says whether the scan report, the CVE watcher, a provider or a feed
   supplied it. The section is folded to a one-line summary until opened.
+- A scan report only scopes the gate of the project it belongs to: asking for
+  another project's report answers 403 and never evaluates its findings.
+  Deleting a finding's evidence now requires the evidence to belong to that
+  finding, so a mismatched pair, a missing finding and a missing evidence id
+  all answer 404.
 
 ### Changed
 
