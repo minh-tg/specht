@@ -86,8 +86,8 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing_field", "scanner is required")
 		return
 	}
-	if field := req.fieldWithNUL(); field != "" {
-		respondError(w, http.StatusBadRequest, "invalid_field", field+" must not contain a NUL character")
+	if field, problem := req.invalidField(); field != "" {
+		respondError(w, http.StatusBadRequest, "invalid_field", field+" "+problem)
 		return
 	}
 	if len(req.RawData) == 0 {

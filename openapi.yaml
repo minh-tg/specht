@@ -1067,6 +1067,15 @@ paths:
         request is refused with `400 invalid_field`, and the message names the
         field.
 
+        The metadata fields have limits, and a value over one, or one that holds
+        a control character (a newline, a tab, an escape), is refused the same
+        way: `commit_sha` at most 64 characters from letters, digits, `.`, `_` and
+        `-`; `branch` at most 255 bytes; `environment` at most 64; `owner`,
+        `digest`, `base_revision` and the `artifact_*` fields at most 255;
+        `changed_files` at most 5000 entries of at most 1024 bytes each. A
+        refused request writes nothing, and a failed ingest leaves no
+        environment, target or artifact row behind.
+
         Ingests share a memory budget (`INGEST_MEMORY_BUDGET`, 2 GiB by default):
         each reserves 64 bytes per byte of `raw_data` while it runs. An ingest
         that cannot get its share, or a free slot, within 15 seconds is answered
@@ -3926,26 +3935,31 @@ components:
           oneOf:
             - type: object
             - type: array
-        branch: { type: string }
-        commit_sha: { type: string }
+        branch: { type: string, maxLength: 255 }
+        commit_sha:
+          type: string
+          maxLength: 64
+          pattern: "^[0-9A-Za-z._-]*$"
         base_revision:
           type: string
+          maxLength: 255
           description: Required when `scan_mode` is `incremental`; the revision to compare against.
         changed_files:
           type: array
-          items: { type: string }
+          maxItems: 5000
+          items: { type: string, maxLength: 1024 }
         scan_mode: { type: string, enum: [full, incremental], default: full }
         gate_severity: { type: string, description: Comma-separated override for the post-ingest threshold check. }
         gate_status: { type: string, description: Comma-separated status override for the post-ingest threshold check. }
         gate_introduced_only:
           type: boolean
           description: Scope the post-ingest threshold check to what this report introduced.
-        environment: { type: string, description: Deployment environment. Derived from the report when empty. }
-        owner: { type: string, description: "Repository identity as `provider://owner/repo`." }
-        digest: { type: string, description: "Content digest of the scanned artifact, e.g. `sha256:...`." }
-        artifact_name: { type: string }
-        artifact_version: { type: string }
-        artifact_type: { type: string, example: container-image }
+        environment: { type: string, maxLength: 64, description: Deployment environment. Derived from the report when empty. }
+        owner: { type: string, maxLength: 255, description: "Repository identity as `provider://owner/repo`." }
+        digest: { type: string, maxLength: 255, description: "Content digest of the scanned artifact, e.g. `sha256:...`." }
+        artifact_name: { type: string, maxLength: 255 }
+        artifact_version: { type: string, maxLength: 255 }
+        artifact_type: { type: string, maxLength: 255, example: container-image }
 
     IngestResponse:
       type: object

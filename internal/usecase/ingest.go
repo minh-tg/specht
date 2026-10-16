@@ -209,11 +209,6 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return u.replayReport(ctx, project, input, replayID)
 	}
 
-	ctxInfo, err := u.resolveReportContext(ctx, project, input, nr)
-	if err != nil {
-		return nil, err
-	}
-
 	// Incremental scans resolve an effective mode before any
 	// row is written: unsupported scanners and missing baselines fall
 	// back to full with an explicit reason instead of recording partial
@@ -224,6 +219,14 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	}
 	input.ScanMode = effectiveMode
 	baselineID, err = u.resolveBaseRevision(ctx, project, input, baselineID)
+	if err != nil {
+		return nil, err
+	}
+
+	// The environment, target and artifact rows are written last, right before
+	// the report that names them, so an ingest that fails on anything above
+	// leaves none behind.
+	ctxInfo, err := u.resolveReportContext(ctx, project, input, nr)
 	if err != nil {
 		return nil, err
 	}
