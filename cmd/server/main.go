@@ -146,6 +146,7 @@ const staleReportAge = 15 * time.Minute
 func startLifecycle(ctx context.Context, stores *port.Stores, analysisStore port.AnalysisExpiryStore, waiverStore port.WaiverExpiryStore, cfg *config.Server) {
 	exitOnError("start waiver expiry daemon", lifecycle.RunWaiverExpiry(ctx, waiverStore, cfg.SweepInterval, slog.Default()))
 	exitOnError("start analysis expiry daemon", lifecycle.RunAnalysisExpiry(ctx, analysisStore, cfg.SweepInterval, slog.Default()))
+	exitOnError("start refresh token prune", lifecycle.RunRefreshTokenPrune(ctx, stores.RefreshTokens, cfg.SweepInterval, slog.Default()))
 	exitOnError("start stale report reaper", lifecycle.RunStaleReportReaper(ctx, stores.Reports, cfg.SweepInterval, staleReportAge, slog.Default()))
 	if cfg.Watcher.Enable {
 		exitOnError("start watcher daemon", runWatcherDaemon(ctx, stores, cfg))
