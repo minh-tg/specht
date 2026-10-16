@@ -391,6 +391,11 @@ func (u *Usecases) linkSSOIdentityRevokingKeys(ctx context.Context, userID, issu
 			slog.Warn("sso login: identity linked concurrently", "user_id", userID, "sub", sub)
 			return nil, auth.ErrSSONotProvisioned
 		}
+		if errors.Is(err, port.ErrAccountDeactivated) {
+			// Deactivated after the read that said otherwise.
+			slog.Warn("sso login: account deactivated before the link", "user_id", userID, "sub", sub)
+			return nil, auth.ErrSSONotProvisioned
+		}
 		return nil, fmt.Errorf("link sso identity: %w", err)
 	}
 	return revoked, nil

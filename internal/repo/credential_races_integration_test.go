@@ -311,3 +311,105 @@ func TestKeyInsertComparesTheCreatorGeneration(t *testing.T) {
 	_, err = stores.APIKeys.Create(ctx, newKeyInput(toUUID(project.ID), creator.ID, "race-hash-none"))
 	require.NoError(t, err)
 }
+
+// Keys keep failing after deactivate -> reactivate, also for a key that the
+// revocation statement missed (written with revoked_at NULL directly).
+func TestReactivationRevivesOnlyKeysTheRevocationMissed(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(repos.pool)
+	newUser(t, repos, "race-admin2@test.com", "admin")
+	creator := newUser(t, repos, "race-react@test.com", "member")
+	project := createTestProject(t, repos)
+	_, err := stores.APIKeys.Create(ctx, newKeyInput(toUUID(project.ID), creator.ID, "race-hash-react"))
+	require.NoError(t, err)
+	_, _, err = stores.Users.Deactivate(ctx, creator.ID)
+	require.NoError(t, err)
+	_, err = stores.APIKeys.GetByHash(ctx, "race-hash-react")
+	t.Logf("lookup while deactivated: %v", err)
+	_, err = stores.Users.SetDisabled(ctx, creator.ID, false)
+	require.NoError(t, err)
+	k, err := stores.APIKeys.GetByHash(ctx, "race-hash-react")
+	if err == nil {
+		assert.NotNil(t, k.RevokedAt, "the key must stay revoked after reactivation")
+	}
+}
+
+// The usecase checked DisabledAt on a read from before the link transaction.
+// The store looks again under the account's row lock, so an account that was
+// deactivated in the meantime takes no identity and is not marked proven.
+func TestLinkRevokingKeysRefusesADeactivatedAccount(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(repos.pool)
+	newUser(t, repos, "race-admin3@test.com", "admin")
+	user := newUser(t, repos, "race-link-deact@test.com", "member")
+	_, _, err := stores.Users.Deactivate(ctx, user.ID)
+	require.NoError(t, err)
+
+	_, _, err = stores.Identities.LinkRevokingKeys(ctx, user.ID, "https://idp.example.com", "race-sub", true)
+
+	require.ErrorIs(t, err, port.ErrAccountDeactivated)
+	assertNotLinked(t, repos, user.ID)
+}
+
+// A deactivation that is still open when the link starts: the link waits for it
+// and then refuses, instead of proving the account and clearing its password
+// after the deactivation.
+func TestLinkRevokingKeysWaitsForAnOpenDeactivationAndRefuses(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(repos.pool)
+	newUser(t, repos, "race-admin4@test.com", "admin")
+	user := newUser(t, repos, "race-link-open-deact@test.com", "member")
+	tx, err := repos.pool.Begin(ctx)
+	require.NoError(t, err)
+	defer func() { _ = tx.Rollback(ctx) }()
+	_, err = tx.Exec(ctx, "UPDATE users SET disabled_at = now(), token_version = token_version + 1 WHERE id = $1", user.ID)
+	require.NoError(t, err)
+
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := stores.Identities.LinkRevokingKeys(ctx, user.ID, "https://idp.example.com", "race-sub-open", true)
+		done <- err
+	}()
+	mustBlock(t, done, "the link")
+	require.NoError(t, tx.Commit(ctx))
+
+	require.ErrorIs(t, <-done, port.ErrAccountDeactivated)
+	assertNotLinked(t, repos, user.ID)
+}
+
+// An active account still links, is proven and keeps working as before.
+func TestLinkRevokingKeysStillLinksAnActiveAccount(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(repos.pool)
+	newUser(t, repos, "race-admin5@test.com", "admin")
+	user := newUser(t, repos, "race-link-active@test.com", "member")
+
+	_, _, err := stores.Identities.LinkRevokingKeys(ctx, user.ID, "https://idp.example.com", "race-sub-active", true)
+	require.NoError(t, err)
+	var proven bool
+	require.NoError(t, repos.pool.QueryRow(ctx, "SELECT email_proven FROM users WHERE id = $1", user.ID).Scan(&proven))
+	assert.True(t, proven)
+}
+
+func assertNotLinked(t *testing.T, repos *Repos, userID string) {
+	t.Helper()
+	var proven bool
+	var hasPassword bool
+	var identities int
+	ctx := context.Background()
+	require.NoError(t, repos.pool.QueryRow(ctx,
+		"SELECT email_proven, password_hash IS NOT NULL FROM users WHERE id = $1", userID).Scan(&proven, &hasPassword))
+	require.NoError(t, repos.pool.QueryRow(ctx,
+		"SELECT count(*) FROM user_identities WHERE user_id = $1", userID).Scan(&identities))
+	assert.False(t, proven, "a refused link must not prove the address")
+	assert.True(t, hasPassword, "a refused link changes nothing")
+	assert.Zero(t, identities)
+}
