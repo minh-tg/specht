@@ -463,7 +463,10 @@ So the nearest proxy has to append the address it saw to `X-Forwarded-For`
 `X-Real-IP` and passes the client's `X-Forwarded-For` through unchanged lets the
 client choose its address, because a well-formed client-supplied entry wins over
 `X-Real-IP`. Setting `X-Forwarded-Proto` makes the server mark the connection
-secure; the proxy must overwrite it.
+secure; the proxy must overwrite it. A peer outside `TRUSTED_PROXIES` never
+makes the connection secure, so with `TRUSTED_PROXIES` empty behind a proxy the
+SSO sign-in state cookies are sent without the `Secure` attribute and no
+`Strict-Transport-Security` header is set, even on an HTTPS site.
 
 nginx:
 

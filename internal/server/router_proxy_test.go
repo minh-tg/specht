@@ -181,6 +181,27 @@ func TestSSOLogin_SecureCookieRequiresTrustedProxy(t *testing.T) {
 			"a TLS-terminating proxy inside the trusted ranges must set a Secure cookie")
 	})
 
+	t.Run("HTTPS proxy outside TRUSTED_PROXIES yields a cookie without Secure", func(t *testing.T) {
+		// The default deployment: TLS ends at a proxy and TRUSTED_PROXIES is
+		// empty. The server cannot tell the request was HTTPS, so the cookie
+		// is not Secure. The ssoCookie comment and deploy/README.md state this.
+		router := NewRouter(RouterConfig{
+			Usecases:    &mockUsecases{},
+			JWTAuth:     testJWTAuth,
+			OIDC:        testOIDC(t),
+			OIDCEnabled: true,
+		})
+		req := httptest.NewRequest("GET", "/api/v1/auth/sso/login", nil)
+		req.RemoteAddr = "10.1.2.3:443"
+		req.Header.Set("X-Forwarded-Proto", "https")
+		w := httptest.NewRecorder()
+
+		router.ServeHTTP(w, req)
+
+		assert.Equal(t, http.StatusFound, w.Code)
+		assert.False(t, ssoStateCookie(t, w).Secure)
+	})
+
 	t.Run("direct plain HTTP stays non-secure even behind trusted proxy", func(t *testing.T) {
 		// A trusted proxy that did not terminate TLS (no X-Forwarded-Proto)
 		// must not yield a Secure cookie the browser would then refuse to send.

@@ -77,6 +77,65 @@ func TestIsBlockedIP(t *testing.T) {
 	}
 }
 
+// TestIsBlockedIP_TranslationAndSpecialRanges pins the ranges added after the
+// first blocklist: SIIT (which embeds an IPv4 address like NAT64 does) and four
+// special-purpose blocks. Each row names its first and last address, one
+// address inside, and the nearest public address on either side, so removing a
+// prefix or widening it past its edge fails here.
+func TestIsBlockedIP_TranslationAndSpecialRanges(t *testing.T) {
+	tests := []struct {
+		name    string
+		blocked []string
+		below   string
+		above   string
+	}{
+		{
+			name:    "SIIT IPv4-translated ::ffff:0:0:0/96",
+			blocked: []string{"::ffff:0:0:0", "::ffff:0:a9fe:a9fe", "::ffff:0:a00:1", "::ffff:0:ffff:ffff"},
+			below:   "0:0:0:0:fffe:ffff:ffff:ffff",
+			above:   "0:0:0:0:ffff:1:0:0",
+		},
+		{
+			name:    "6to4 relay anycast 192.88.99.0/24",
+			blocked: []string{"192.88.99.0", "192.88.99.1", "192.88.99.255", "::ffff:192.88.99.1"},
+			below:   "192.88.98.255",
+			above:   "192.88.100.0",
+		},
+		{
+			name:    "benchmarking 2001:2::/48",
+			blocked: []string{"2001:2::", "2001:2::1", "2001:2:0:ffff:ffff:ffff:ffff:ffff"},
+			below:   "2001:1:ffff:ffff:ffff:ffff:ffff:ffff",
+			above:   "2001:2:1::",
+		},
+		{
+			name:    "documentation 3fff::/20",
+			blocked: []string{"3fff::", "3fff::1", "3fff:fff:ffff:ffff:ffff:ffff:ffff:ffff"},
+			below:   "3ffe:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+			above:   "3fff:1000::",
+		},
+		{
+			name:    "SRv6 SIDs 5f00::/16",
+			blocked: []string{"5f00::", "5f00::1", "5f00:ffff:ffff:ffff:ffff:ffff:ffff:ffff"},
+			below:   "5eff:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+			above:   "5f01::",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, s := range tt.blocked {
+				ip := net.ParseIP(s)
+				require.NotNil(t, ip, s)
+				assert.True(t, IsBlockedIP(ip), "%s should be blocked", s)
+			}
+			for _, s := range []string{tt.below, tt.above} {
+				ip := net.ParseIP(s)
+				require.NotNil(t, ip, s)
+				assert.False(t, IsBlockedIP(ip), "%s is public and should be allowed", s)
+			}
+		})
+	}
+}
+
 func TestIsLoopbackHost(t *testing.T) {
 	assert.True(t, IsLoopbackHost("localhost"))
 	assert.True(t, IsLoopbackHost("127.0.0.1"))
