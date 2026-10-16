@@ -263,6 +263,11 @@ type IdentityStore interface {
 	// When emailVerified is true the provider vouched for the account's email,
 	// and the same write marks the account's email as proven.
 	Link(ctx context.Context, userID, issuer, subject string, emailVerified bool) (UserIdentity, error)
+	// LinkRevokingKeys is Link for an account that existed before its owner
+	// signed in through the provider. It also revokes, in the same
+	// transaction, every API key the account created before the link, and
+	// returns them. A refused link revokes nothing.
+	LinkRevokingKeys(ctx context.Context, userID, issuer, subject string, emailVerified bool) (UserIdentity, []RevokedAPIKey, error)
 }
 
 // ---------- SSO exchange codes ----------

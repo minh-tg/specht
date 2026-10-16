@@ -135,3 +135,44 @@ func TestKeyOfADeactivatedCreatorDoesNotResolve(t *testing.T) {
 	_, err = stores.APIKeys.GetByHash(ctx, hash)
 	require.NoError(t, err, "the check follows the account's current state")
 }
+
+func TestLinkRevokingKeysRevokesTheAccountsKeysWithTheLink(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(repos.pool)
+	squatter := newUser(t, repos, "victim@test.com", "member")
+	bystander := newUser(t, repos, "bystander@test.com", "member")
+	project := createTestProject(t, repos)
+	mine, _ := newKeyBy(t, repos, project, squatter.ID, "squatter-key")
+	theirs, _ := newKeyBy(t, repos, project, bystander.ID, "bystander-key")
+
+	identity, revoked, err := stores.Identities.LinkRevokingKeys(ctx, squatter.ID, "https://idp.example.com", "sub-victim", true)
+	require.NoError(t, err)
+	assert.Equal(t, squatter.ID, identity.UserID)
+	assert.Equal(t, []port.RevokedAPIKey{{ID: mine, ProjectSlug: project.Slug, Name: "squatter-key"}}, revoked)
+	assert.True(t, keyRevoked(t, repos, mine))
+	assert.False(t, keyRevoked(t, repos, theirs), "another account's key is untouched")
+
+	found, err := stores.Identities.GetBySubject(ctx, "https://idp.example.com", "sub-victim")
+	require.NoError(t, err)
+	assert.Equal(t, squatter.ID, found.UserID)
+}
+
+func TestLinkRevokingKeysRefusedLinkRevokesNothing(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(repos.pool)
+	const issuer = "https://idp.example.com"
+	owner := newUser(t, repos, "owner@test.com", "member")
+	squatter := newUser(t, repos, "squatter@test.com", "member")
+	key, _ := newKeyBy(t, repos, createTestProject(t, repos), squatter.ID, "ci")
+	_, err := stores.Identities.Link(ctx, owner.ID, issuer, "sub-taken", false)
+	require.NoError(t, err)
+
+	_, _, err = stores.Identities.LinkRevokingKeys(ctx, squatter.ID, issuer, "sub-taken", true)
+
+	require.ErrorIs(t, err, port.ErrIdentityLinked, "the subject already belongs to another account")
+	assert.False(t, keyRevoked(t, repos, key), "the revocation rolls back with the refused link")
+}

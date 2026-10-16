@@ -10,7 +10,10 @@ import (
 )
 
 // pgIdentityPort adapts IdentityStore.
-type pgIdentityPort struct{ q *sqlc.Queries }
+type pgIdentityPort struct {
+	q      *sqlc.Queries
+	withTx func(ctx context.Context, fn func(q *sqlc.Queries) error) error
+}
 
 func (r *pgIdentityPort) GetBySubject(ctx context.Context, issuer, subject string) (port.UserIdentity, error) {
 	row, err := r.q.GetUserIdentity(ctx, sqlc.GetUserIdentityParams{Issuer: issuer, Subject: subject})
@@ -45,6 +48,37 @@ func (r *pgIdentityPort) Link(ctx context.Context, userID, issuer, subject strin
 		return port.UserIdentity{}, err
 	}
 	return identityToPort(row), nil
+}
+
+func (r *pgIdentityPort) LinkRevokingKeys(ctx context.Context, userID, issuer, subject string, emailVerified bool) (port.UserIdentity, []port.RevokedAPIKey, error) {
+	uid, err := parseID(userID)
+	if err != nil {
+		return port.UserIdentity{}, nil, err
+	}
+	var linked port.UserIdentity
+	var revoked []port.RevokedAPIKey
+	err = r.withTx(ctx, func(q *sqlc.Queries) error {
+		row, err := q.CreateUserIdentity(ctx, sqlc.CreateUserIdentityParams{UserID: uid, Issuer: issuer, Subject: subject, EmailVerified: emailVerified})
+		if err != nil {
+			return err
+		}
+		linked = identityToPort(row)
+		keys, err := q.RevokeAPIKeysByCreator(ctx, uid)
+		if err != nil {
+			return err
+		}
+		for _, k := range keys {
+			revoked = append(revoked, port.RevokedAPIKey{ID: toUUID(k.ID), ProjectSlug: k.ProjectSlug, Name: k.Name})
+		}
+		return nil
+	})
+	if err != nil {
+		if isUniqueViolation(err) {
+			return port.UserIdentity{}, nil, port.ErrIdentityLinked
+		}
+		return port.UserIdentity{}, nil, err
+	}
+	return linked, revoked, nil
 }
 
 func identityToPort(i sqlc.UserIdentity) port.UserIdentity {

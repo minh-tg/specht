@@ -307,10 +307,17 @@ func (u *Usecases) linkExistingSSOUser(ctx context.Context, user port.User, issu
 	if err := u.deps.Stores.Users.BumpTokenVersion(ctx, user.ID); err != nil {
 		return "", "", false, fmt.Errorf("revoke access tokens for sso link: %w", err)
 	}
-	if err := u.linkSSOIdentity(ctx, user.ID, issuer, sub, emailVerified); err != nil {
+	// The keys the previous owner minted go with the link, in the same
+	// transaction: an account that changes hands must not leave a credential
+	// behind that the new owner never saw.
+	revoked, err := u.linkSSOIdentityRevokingKeys(ctx, user.ID, issuer, sub, emailVerified)
+	if err != nil {
 		return "", "", false, err
 	}
-	slog.Info("sso login: linked existing account", "user_id", user.ID, "sub", sub, "password_disabled", user.PasswordHash != "")
+	for _, key := range revoked {
+		slog.Warn("sso login: revoked api key created before the link", "user_id", user.ID, "key_id", key.ID, "project", key.ProjectSlug)
+	}
+	slog.Info("sso login: linked existing account", "user_id", user.ID, "sub", sub, "password_disabled", user.PasswordHash != "", "api_keys_revoked", len(revoked))
 	return user.ID, auth.TokenRole(user.Role), false, nil
 }
 
@@ -372,6 +379,21 @@ func (u *Usecases) linkSSOIdentity(ctx context.Context, userID, issuer, sub stri
 		return fmt.Errorf("link sso identity: %w", err)
 	}
 	return nil
+}
+
+// linkSSOIdentityRevokingKeys links like linkSSOIdentity and also revokes the
+// API keys the account created before the link. emailVerified is passed on to
+// the store, which marks the address as proven in the same write.
+func (u *Usecases) linkSSOIdentityRevokingKeys(ctx context.Context, userID, issuer, sub string, emailVerified bool) ([]port.RevokedAPIKey, error) {
+	_, revoked, err := u.deps.Stores.Identities.LinkRevokingKeys(ctx, userID, issuer, sub, emailVerified)
+	if err != nil {
+		if errors.Is(err, port.ErrIdentityLinked) {
+			slog.Warn("sso login: identity linked concurrently", "user_id", userID, "sub", sub)
+			return nil, auth.ErrSSONotProvisioned
+		}
+		return nil, fmt.Errorf("link sso identity: %w", err)
+	}
+	return revoked, nil
 }
 
 // ssoEmailDomain returns the lowercased domain part of an email address,

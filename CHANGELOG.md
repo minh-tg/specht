@@ -265,3 +265,7 @@ releases.
   and writes one audit line per key. Reactivating the account does not bring
   the keys back. A key whose creator is deactivated is also refused at
   authentication, with the answer an unknown key gets.
+- Signing in through SSO for the first time into an account that already
+  existed revokes every API key that account created before the link, in the
+  same transaction as the link. Someone who registered the address first can
+  no longer keep a key to the account the owner then takes over.
