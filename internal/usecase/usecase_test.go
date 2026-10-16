@@ -1146,7 +1146,7 @@ type mockWaiverRepo struct {
 	listFn                          func(context.Context, string) ([]port.Waiver, error)
 	getByIDFn                       func(context.Context, string, string) (port.Waiver, error)
 	updateWithDetailsFn             func(context.Context, port.Waiver, *port.WaiverExpiry, *[]port.WaiverCondition, *[]port.WaiverContext, *[]port.WaiverFindingTarget, port.WaiverEventInput) (port.Waiver, error)
-	deleteFn                        func(context.Context, string, string) error
+	deleteFn                        func(context.Context, string, string, string) error
 	toggleWithEventFn               func(context.Context, string, string, string) (port.Waiver, error)
 	setEnabledFn                    func(context.Context, string, string, port.WaiverEnabledChange) (port.Waiver, error)
 	listActiveFn                    func(context.Context, string) ([]port.Waiver, error)
@@ -1194,11 +1194,11 @@ func (m *mockWaiverRepo) UpdateWithDetails(ctx context.Context, waiver port.Waiv
 	return m.updateWithDetailsFn(ctx, waiver, expiry, conditions, contexts, targets, event)
 }
 
-func (m *mockWaiverRepo) Delete(ctx context.Context, id, projectID string) error {
+func (m *mockWaiverRepo) Delete(ctx context.Context, id, projectID, actorID string) error {
 	if m.deleteFn == nil {
 		return fmt.Errorf("unexpected call to Delete")
 	}
-	return m.deleteFn(ctx, id, projectID)
+	return m.deleteFn(ctx, id, projectID, actorID)
 }
 
 func (m *mockWaiverRepo) ListEvents(ctx context.Context, waiverID string) ([]port.WaiverEvent, error) {

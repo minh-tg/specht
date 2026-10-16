@@ -169,7 +169,7 @@ func (r *pgWaiverPort) UpdateWithDetails(ctx context.Context, waiver port.Waiver
 	return waiverRowToPort(row), nil
 }
 
-func (r *pgWaiverPort) Delete(ctx context.Context, id, projectID string) error {
+func (r *pgWaiverPort) Delete(ctx context.Context, id, projectID, actorID string) error {
 	wid, err := parseID(id)
 	if err != nil {
 		return err
@@ -178,7 +178,7 @@ func (r *pgWaiverPort) Delete(ctx context.Context, id, projectID string) error {
 	if err != nil {
 		return err
 	}
-	if _, err := r.inner.Delete(ctx, wid, pid); err != nil {
+	if _, err := r.inner.Delete(ctx, wid, pid, actorID); err != nil {
 		return mappingErr(err)
 	}
 	return nil

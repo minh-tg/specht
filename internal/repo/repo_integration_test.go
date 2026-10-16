@@ -619,7 +619,7 @@ func TestWaiverTableRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, active, 0)
 
-	_, err = repos.Waivers.Delete(context.Background(), w.ID, project.ID)
+	_, err = repos.Waivers.Delete(context.Background(), w.ID, project.ID, "")
 	require.NoError(t, err)
 
 	_, err = repos.Waivers.GetByID(context.Background(), w.ID, project.ID)

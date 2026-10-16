@@ -757,8 +757,6 @@ func authzRows() []authzRow {
 			Want: mixedPair(readers, projectReaders...), Tenants: onlyX,
 		},
 		{
-			// waiver.update is the event the audit package defines; the route
-			// writes no audit line (waiver-update-delete-unaudited).
 			Method: "PUT", Pattern: "/api/v1/projects/{slug}/waivers/{id}",
 			Path: func(_ *authzFixtures, a *authzAttempt) string {
 				return "/api/v1/projects/" + a.T.Slug + "/waivers/" + a.T.WaiverID
@@ -773,11 +771,8 @@ func authzRows() []authzRow {
 			Want: mixedPair(writers, projectWriters...), Tenants: onlyX,
 		},
 		{
-			// No audit event exists for a waiver deletion and the waiver's
-			// events are deleted with it (waiver-update-delete-unaudited); a gate-affecting change needs one for
-			// every mutating route.
 			Method: "DELETE", Pattern: "/api/v1/projects/{slug}/waivers/{id}", Path: projectObj("/waivers/", "waiver", ""),
-			Prepare: freshWaiver, Want: writers, Audit: "waiver.delete",
+			Prepare: freshWaiver, Want: writers, Audit: audit.EventDeleteWaiver,
 		},
 		{
 			Method: "DELETE", Pattern: "/api/v1/projects/{slug}/waivers/{id}", Variant: "x-slug-y-waiver",

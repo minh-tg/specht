@@ -34,8 +34,36 @@ func (r *pgWaiverRepo) Update(ctx context.Context, arg sqlc.UpdateWaiverParams) 
 	return r.q.UpdateWaiver(ctx, arg)
 }
 
-func (r *pgWaiverRepo) Delete(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Waiver, error) {
-	return r.q.DeleteWaiver(ctx, sqlc.DeleteWaiverParams{ID: id, ProjectID: projectID})
+// Delete removes a waiver. Its scope rows and events cascade away with it, so
+// the delete first copies them, with the actor and the time, into
+// waiver_deletions in the same transaction. A missing waiver returns
+// pgx.ErrNoRows and writes nothing.
+func (r *pgWaiverRepo) Delete(ctx context.Context, id, projectID pgtype.UUID, actorID string) (sqlc.Waiver, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("begin tx: %w", err)
+	}
+	// Rollback is best-effort; after Commit the transaction is already closed.
+	defer func() {
+		_ = tx.Rollback(ctx)
+	}()
+
+	q := sqlc.New(tx)
+	if err := q.ArchiveWaiverDeletion(ctx, sqlc.ArchiveWaiverDeletionParams{
+		ID:        id,
+		ProjectID: projectID,
+		DeletedBy: textPtrFromString(&actorID),
+	}); err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("archive waiver: %w", err)
+	}
+	w, err := q.DeleteWaiver(ctx, sqlc.DeleteWaiverParams{ID: id, ProjectID: projectID})
+	if err != nil {
+		return sqlc.Waiver{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return sqlc.Waiver{}, fmt.Errorf("commit tx: %w", err)
+	}
+	return w, nil
 }
 
 func (r *pgWaiverRepo) Toggle(ctx context.Context, id, projectID pgtype.UUID) (sqlc.Waiver, error) {

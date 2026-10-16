@@ -312,9 +312,6 @@ var authzKnownFindings = slices.Concat(
 		// for such a key (TestE2E_KeyListSaysWhenTheCreatorLeftTheProject), and a manager can
 		// revoke the key with one call.
 		{"*|*|C14-key-creator-removed|*|Deny401", "key-outlives-removed-creator"},
-		// waiver-update-delete-unaudited: waiver update and delete write no audit line.
-		{"PUT /api/v1/projects/{slug}/waivers/{id}||*|*|Allow", "waiver-update-delete-unaudited"},
-		{"DELETE /api/v1/projects/{slug}/waivers/{id}||*|*|Allow", "waiver-update-delete-unaudited"},
 	},
 	// foreign-object-404-vs-403: id-addressed routes that answer 404 where policy pins 403.
 	authzCells("GET /api/v1/reports/{id}||%s|*", "foreign-object-404-vs-403", callerNoProject, callerTeamAdmin),

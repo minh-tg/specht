@@ -205,7 +205,7 @@ func TestWaiverOperationsPreserveStoreFailures(t *testing.T) {
 	})
 
 	t.Run("delete", func(t *testing.T) {
-		wr := &mockWaiverRepo{deleteFn: func(context.Context, string, string) error { return storeErr }}
+		wr := &mockWaiverRepo{deleteFn: func(context.Context, string, string, string) error { return storeErr }}
 		err := waiverUsecaseForProject(project, wr, "").DeleteWaiver(admin, "my-app", waiverID)
 		require.ErrorIs(t, err, storeErr)
 	})

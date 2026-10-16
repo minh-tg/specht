@@ -411,3 +411,6 @@ releases.
   when no client secret is configured, and the `redirect` return path is limited to 1024 bytes.
   The cookie is signed with a key derived from `JWT_SECRET`. Sign-ins in flight during the
   upgrade fail once and succeed on retry.
+- Updating or deleting a waiver now writes an audit line with the person, the project and
+  the waiver. Deleting a waiver keeps a copy of the waiver, its scope and its event history
+  in an append-only record, so a change that lets findings through the gate cannot be erased.

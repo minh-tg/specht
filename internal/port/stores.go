@@ -611,7 +611,9 @@ type WaiverStore interface {
 	List(ctx context.Context, projectID string) ([]Waiver, error)
 	GetByID(ctx context.Context, id, projectID string) (Waiver, error)
 	UpdateWithDetails(ctx context.Context, waiver Waiver, expiry *WaiverExpiry, conditions *[]WaiverCondition, contexts *[]WaiverContext, targets *[]WaiverFindingTarget, event WaiverEventInput) (Waiver, error)
-	Delete(ctx context.Context, id, projectID string) error
+	// Delete removes a waiver. The waiver, its scope and its events are copied
+	// into an append-only record first, with actorID as the deleter.
+	Delete(ctx context.Context, id, projectID, actorID string) error
 	// ToggleWithEvent flips an approved waiver and records the event. It is
 	// deprecated in favour of SetEnabled and returns ErrWaiverNotApproved or
 	// ErrWaiverLapsed when the flip is refused.
