@@ -75,7 +75,9 @@ func TestUpdateProject_NotFound(t *testing.T) {
 	}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
 	_, err := uc.UpdateProject(sessionCtx("admin-1", auth.RoleAdmin), "missing", strptr("Renamed"), nil)
-	assert.ErrorContains(t, err, "project not found")
+	assert.ErrorIs(t, err, port.ErrNotFound, "a global admin sees every project, so a missing one is not found")
+	_, err = uc.UpdateProject(sessionCtx("u1", auth.RoleMember), "missing", strptr("Renamed"), nil)
+	assert.ErrorIs(t, err, ErrProjectAccessDenied, "anyone else cannot tell it from a project they cannot see")
 }
 
 func TestDeleteProject_GlobalAdminAllowed(t *testing.T) {
@@ -109,7 +111,29 @@ func TestDeleteProject_NotFound(t *testing.T) {
 	}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
 	_, err := uc.DeleteProject(sessionCtx("admin-1", auth.RoleAdmin), "missing")
-	assert.ErrorContains(t, err, "project not found")
+	assert.ErrorIs(t, err, port.ErrNotFound)
+	_, err = uc.DeleteProject(sessionCtx("u1", auth.RoleMember), "missing")
+	assert.ErrorIs(t, err, ErrProjectAccessDenied)
+}
+
+// The routes that must not reveal which slugs exist answer a missing project
+// the way they answer one the caller cannot see.
+func TestProjectRoutes_MissingProjectLooksLikeNoAccess(t *testing.T) {
+	pr := &mockProjectRepo{}
+	pr.getBySlugFn = func(context.Context, string) (port.Project, error) { return port.Project{}, port.ErrNotFound }
+	uc := New(Deps{Stores: &port.Stores{Projects: pr}})
+	ctx := sessionCtx("u1", auth.RoleMember)
+	const team = "11111111-1111-1111-1111-111111111111"
+
+	_, err := uc.LinkProjectTeam(ctx, "missing", team, auth.RoleMember)
+	assert.ErrorIs(t, err, ErrProjectAccessDenied, "link team")
+	assert.ErrorIs(t, uc.UnlinkProjectTeam(ctx, "missing", team), ErrProjectAccessDenied, "unlink team")
+	_, err = uc.ListProjectTeams(ctx, "missing")
+	assert.ErrorIs(t, err, ErrProjectAccessDenied, "list teams")
+	_, err = uc.SetProjectPolicy(ctx, "missing", "")
+	assert.ErrorIs(t, err, ErrProjectAccessDenied, "set policy")
+	_, err = uc.SetProjectPolicyOverrides(ctx, "missing", nil)
+	assert.ErrorIs(t, err, ErrProjectAccessDenied, "set overrides")
 }
 
 func TestListProjects_NoIdentityDenied(t *testing.T) {

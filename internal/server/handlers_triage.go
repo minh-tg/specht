@@ -589,6 +589,10 @@ func (h *Handler) SetProjectPolicy(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
 		return
 	}
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		h.respondProjectAccessError(w, r, err)
+		return
+	}
 	var req struct {
 		TemplateName string `json:"template_name"`
 	}
@@ -617,6 +621,10 @@ func (h *Handler) SetProjectPolicyOverrides(w http.ResponseWriter, r *http.Reque
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
 		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
+		return
+	}
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	var req struct {
@@ -835,6 +843,10 @@ func (h *Handler) ListProjectTeams(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
 		return
 	}
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		h.respondProjectAccessError(w, r, err)
+		return
+	}
 
 	result, err := h.usecase.ListProjectTeams(r.Context(), slug)
 	if err != nil {
@@ -855,6 +867,10 @@ func (h *Handler) LinkProjectTeam(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	if slug == "" {
 		respondError(w, http.StatusBadRequest, "missing_slug", triageMsgSlugRequired)
+		return
+	}
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 	var req struct {
@@ -887,6 +903,10 @@ func (h *Handler) UnlinkProjectTeam(w http.ResponseWriter, r *http.Request) {
 	teamID := chi.URLParam(r, "teamID")
 	if slug == "" || teamID == "" {
 		respondError(w, http.StatusBadRequest, "missing_id", "project slug and team id are required")
+		return
+	}
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		h.respondProjectAccessError(w, r, err)
 		return
 	}
 

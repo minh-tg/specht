@@ -327,9 +327,9 @@ func (u *Usecases) CreateProject(ctx context.Context, name, slug, description, c
 // name unchanged; a nil description leaves the description unchanged while
 // a blank description clears it.
 func (u *Usecases) UpdateProject(ctx context.Context, slug string, name, description *string) (*ProjectResponse, error) {
-	p, err := u.deps.Stores.Projects.GetBySlug(ctx, slug)
+	p, err := u.projectBySlugOrDenied(ctx, slug)
 	if err != nil {
-		return nil, fmt.Errorf("project not found: %w", err)
+		return nil, err
 	}
 	if err := u.requireProjectAdmin(ctx, p.ID); err != nil {
 		return nil, err
@@ -359,9 +359,9 @@ func (u *Usecases) UpdateProject(ctx context.Context, slug string, name, descrip
 // waivers, members, API keys cascade via ON DELETE CASCADE). Gated like
 // UpdateProject. Returns the deleted project for audit purposes.
 func (u *Usecases) DeleteProject(ctx context.Context, slug string) (*ProjectResponse, error) {
-	p, err := u.deps.Stores.Projects.GetBySlug(ctx, slug)
+	p, err := u.projectBySlugOrDenied(ctx, slug)
 	if err != nil {
-		return nil, fmt.Errorf("project not found: %w", err)
+		return nil, err
 	}
 	if err := u.requireProjectAdmin(ctx, p.ID); err != nil {
 		return nil, err

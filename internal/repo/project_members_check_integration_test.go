@@ -121,3 +121,14 @@ func TestProjectMembers_CheckSeesNilForAMissingRow(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "member", m.Role)
 }
+
+// A slug with no project is port.ErrNotFound, not the driver's no-rows error,
+// so the use cases' not-found handling matches the real store.
+func TestProjectGetBySlug_MissingIsNotFound(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ports := &pgProjectPort{q: sqlc.New(repos.pool), withTx: repos.WithTx}
+
+	_, err := ports.GetBySlug(context.Background(), "no-such-project")
+	assert.ErrorIs(t, err, port.ErrNotFound)
+}

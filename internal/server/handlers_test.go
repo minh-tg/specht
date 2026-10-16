@@ -1307,12 +1307,11 @@ func TestUpdateProject_Success(t *testing.T) {
 }
 
 func TestUpdateProject_MissingFields(t *testing.T) {
-	mock := &mockUsecases{}
-	h := &Handler{usecase: mock}
+	router := testRouter(&mockUsecases{})
 	req := httptest.NewRequest("PUT", "/api/v1/projects/my-app", strings.NewReader(`{}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
-	h.UpdateProject(w, req)
+	router.ServeHTTP(w, req)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 }

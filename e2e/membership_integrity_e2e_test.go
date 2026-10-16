@@ -293,3 +293,40 @@ func TestMembershipIntegrity_ManagerCannotOverwriteAConcurrentPromotion(t *testi
 	}
 	require.Zero(t, demoted+removed, "the manager overwrote a fresh admin")
 }
+
+// A project the caller cannot see and a project that does not exist answer
+// alike on every project route, with the same status and body, so a signed-in
+// account or a foreign key cannot learn which slugs exist.
+func TestMembershipIntegrity_MissingAndForeignProjectsAnswerAlike(t *testing.T) {
+	existing := newProject(t, "mi-oracle")
+	missing := "mi-none-" + randomHex(6)
+	outsider := miNewPerson(t, "oracle")
+	foreignKey := mintKey(t, newProject(t, "mi-oracle-key"))
+	zero := "00000000-0000-4000-8000-000000000000"
+
+	routes := []struct {
+		method, suffix string
+		body           any
+	}{
+		{http.MethodPut, "", map[string]string{"description": "x"}},
+		{http.MethodDelete, "", nil},
+		{http.MethodGet, "/teams", nil},
+		{http.MethodPost, "/teams", map[string]string{"team_id": zero, "role": "member"}},
+		{http.MethodDelete, "/teams/" + zero, nil},
+		{http.MethodPut, "/policy", map[string]string{"template_name": ""}},
+		{http.MethodPut, "/policy/overrides", map[string]any{"overrides": map[string]string{}}},
+		// Routes that already checked access first stay alike.
+		{http.MethodGet, "", nil},
+		{http.MethodGet, "/members", nil},
+		{http.MethodPost, "/members", map[string]string{"user_id": outsider.ID, "role": "member"}},
+	}
+	for _, who := range []struct{ name, token string }{{"session without access", outsider.Token}, {"foreign project key", foreignKey}} {
+		for _, rt := range routes {
+			sExist, bExist := doJSON(t, rt.method, "/api/v1/projects/"+existing+rt.suffix, who.token, rt.body)
+			sMissing, bMissing := doJSON(t, rt.method, "/api/v1/projects/"+missing+rt.suffix, who.token, rt.body)
+			require.Equalf(t, sExist, sMissing, "%s %s%s: status differs (existing %s, missing %s)", who.name, rt.method, rt.suffix, bExist, bMissing)
+			require.Equalf(t, string(bExist), string(bMissing), "%s %s%s: body differs", who.name, rt.method, rt.suffix)
+			require.Containsf(t, []int{http.StatusForbidden, http.StatusUnauthorized}, sMissing, "%s %s%s: want a refusal, got %d %s", who.name, rt.method, rt.suffix, sMissing, bMissing)
+		}
+	}
+}
