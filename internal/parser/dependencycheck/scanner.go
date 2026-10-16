@@ -112,7 +112,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		return nil, scanner.Malformed("dependency-check", err)
 	}
 
-	return convert(budget, report)
+	return parseutil.Hardened(convert(budget, report))
 }
 
 // dcComponentDims builds the component identity dimensions for one

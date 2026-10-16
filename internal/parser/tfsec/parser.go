@@ -113,7 +113,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		}
 		nr.Findings = append(nr.Findings, parseutil.HardenFinding(convert(r)))
 	}
-	return nr, nil
+	return parseutil.HardenReport(nr), nil
 }
 
 type tfsecReport struct {

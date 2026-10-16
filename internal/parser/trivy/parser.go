@@ -203,7 +203,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		return nil, scanner.Malformed("trivy", err)
 	}
 
-	return convert(budget, report)
+	return parseutil.Hardened(convert(budget, report))
 }
 
 func decode(data []byte) (trivyReport, error) {

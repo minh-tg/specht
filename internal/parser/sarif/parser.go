@@ -110,7 +110,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	if log.Version != "" && !strings.HasPrefix(log.Version, "2.1") {
 		return nil, scanner.Malformed("sarif", fmt.Errorf("unsupported version %q (want 2.1.x)", log.Version))
 	}
-	return convert(budget, log)
+	return parseutil.Hardened(convert(budget, log))
 }
 
 type sarifLog struct {

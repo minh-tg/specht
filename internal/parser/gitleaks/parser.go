@@ -126,7 +126,7 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		}
 		nr.Findings = append(nr.Findings, parseutil.HardenFinding(f))
 	}
-	return nr, nil
+	return parseutil.HardenReport(nr), nil
 }
 
 // RedactRaw scrubs secret material from raw Gitleaks evidence, preserving

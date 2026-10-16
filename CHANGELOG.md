@@ -105,6 +105,12 @@ releases.
 
 ### Changed
 
+- A report can no longer copy megabytes of scanner text into the database through a target
+  name, scan scope value, artifact metadata or a finding's extra data. Target names are cut
+  at 1024 bytes and kinds at 64, scope values at 1024 bytes, and one finding's extra data at
+  16 KiB (whole keys are dropped, largest first, and `_truncated` is set). NUL bytes in extra
+  data, which PostgreSQL refuses, are removed. An oversized target name used to make the
+  target record fail without an error.
 - A Semgrep report with an extremely long rule id no longer fails the whole ingest. The
   finding's fingerprint is now capped at 512 bytes like every other scanner's, and NUL
   bytes are removed. Fingerprints of normal findings do not change.
