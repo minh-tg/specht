@@ -60,6 +60,18 @@ var (
 	ErrWaiverLapsed = port.ErrWaiverLapsed
 )
 
+// ErrWaiverScopeNotFound is returned when a waiver names a finding,
+// environment, target or artifact that is not in the project. A missing id and
+// an id of another project give the same error.
+var ErrWaiverScopeNotFound = errors.New("waiver scope not found")
+
+// waiverScopeError carries the user-facing message and matches
+// ErrWaiverScopeNotFound.
+type waiverScopeError struct{ message string }
+
+func (e *waiverScopeError) Error() string        { return e.message }
+func (e *waiverScopeError) Is(target error) bool { return target == ErrWaiverScopeNotFound }
+
 // waiverRequestError carries a user-facing validation message and matches
 // ErrInvalidWaiverRequest.
 type waiverRequestError struct{ message string }

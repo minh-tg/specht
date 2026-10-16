@@ -2178,6 +2178,11 @@ paths:
         approved on creation. It must say what it covers: at least one
         condition, context or target, or `scope: "all"` with none of those.
         To ask for a waiver without that role, use `POST /waivers/requests`.
+
+        Every finding, environment, target and artifact id must belong to the
+        project. An id that is missing and an id of another project both answer
+        404, and a malformed id answers 400. A context names at least one of
+        `environment_id`, `target_id` and `artifact_id`.
       x-auth: session
       security:
         - sessionAuth: []
@@ -2196,6 +2201,7 @@ paths:
               schema: { $ref: "#/components/schemas/Waiver" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
         "500": { $ref: "#/components/responses/InternalError" }
 
   /api/v1/projects/{slug}/waivers/requests:
@@ -2342,6 +2348,9 @@ paths:
       description: |
         `expires_at` is a tri-state: omitting it keeps the stored expiry, `""`
         clears it, and an RFC 3339 value sets it.
+
+        Scope ids follow the same rules as on create: an id outside the project
+        answers 404, whether it is missing or belongs to another project.
       x-auth: session
       security:
         - sessionAuth: []
