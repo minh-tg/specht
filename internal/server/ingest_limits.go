@@ -85,8 +85,11 @@ const ingestPath = "/api/v1/reports"
 // The project gate is what keeps one tenant from filling every global slot:
 // principals are cheap to add (a manager's session plus any number of keys),
 // so a per-principal limit alone does not bound a project. A project holds at
-// most perTenant slots and the same fraction of the memory budget, whatever
-// the number of principals behind it.
+// most perTenant slots, whatever the number of principals behind it, and its
+// ingests share an allowance of the same fraction of the memory budget. The
+// allowance caps what a project can queue. It does not lower one ingest's
+// charge against the whole budget, which is capped only at the whole budget, so
+// one large report can hold more than that fraction of it.
 //
 // Authorization happens before enter, so a caller with no access to the project
 // holds nothing. The body is read before the global slot is taken, so a slow
@@ -115,9 +118,9 @@ type gate struct {
 }
 
 // newIngestAdmission builds the admission control. A caller, and separately a
-// project, may hold at most max(1, concurrency/2) places and the same fraction
-// of the memory budget, so two callers of different projects can always run
-// side by side when concurrency allows it.
+// project, may hold at most max(1, concurrency/2) places and has a memory
+// allowance of the same fraction of the budget, so two callers of different
+// projects can always run side by side when concurrency allows it.
 func newIngestAdmission(concurrency int, memoryBudget int64, queueWait time.Duration) *ingestAdmission {
 	if concurrency < 1 {
 		concurrency = DefaultIngestConcurrency
