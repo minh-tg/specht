@@ -22,6 +22,9 @@ type memRefreshStore struct {
 	mu   sync.Mutex
 	now  func() time.Time
 	rows []*port.RefreshToken
+	// rotateMu makes Rotate atomic against another Rotate.
+	rotateMu sync.Mutex
+	guard    func(userID string, tokenVersion int32) error
 }
 
 func (m *memRefreshStore) Create(_ context.Context, in port.NewRefreshToken) (port.RefreshToken, error) {
@@ -33,6 +36,24 @@ func (m *memRefreshStore) Create(_ context.Context, in port.NewRefreshToken) (po
 	}
 	m.rows = append(m.rows, row)
 	return *row, nil
+}
+
+// Rotate is Revoke and Create under one lock, as the store does in one
+// transaction. guard, when set, stands in for the account checks the store makes
+// under the row lock.
+func (m *memRefreshStore) Rotate(ctx context.Context, oldID string, in port.NewRefreshToken, tokenVersion int32) error {
+	if m.guard != nil {
+		if err := m.guard(in.UserID, tokenVersion); err != nil {
+			return err
+		}
+	}
+	m.rotateMu.Lock()
+	defer m.rotateMu.Unlock()
+	if _, err := m.Revoke(ctx, oldID); err != nil {
+		return err
+	}
+	_, err := m.Create(ctx, in)
+	return err
 }
 
 func (m *memRefreshStore) GetByHash(_ context.Context, hash string) (port.RefreshToken, error) {
@@ -93,6 +114,7 @@ func (m *memRefreshStore) live(raw string) bool {
 type reuseHarness struct {
 	uc    *Usecases
 	store *memRefreshStore
+	users *mockUserRepo
 	now   time.Time
 }
 
@@ -103,6 +125,7 @@ func newReuseHarness(t *testing.T) *reuseHarness {
 	ur := &mockUserRepo{getByIDFn: func(context.Context, string) (port.User, error) {
 		return makeUser(lifetimeUserID), nil
 	}}
+	h.users = ur
 	h.uc = New(Deps{
 		Stores:    &port.Stores{RefreshTokens: h.store, Users: ur},
 		Tokens:    testJWT(t),
@@ -195,4 +218,44 @@ func TestRefreshReuse_ReplayAfterTheWindowRevokesOnlyThatFamily(t *testing.T) {
 			assert.NoError(t, err, "the phone keeps refreshing")
 		})
 	}
+}
+
+// A refresh rotates under the token generation it read before it spent the old
+// token, so a credential change that commits afterwards makes the store refuse
+// the successor.
+func TestRefresh_RotatesUnderTheGenerationItRead(t *testing.T) {
+	h := newReuseHarness(t)
+	first := h.signIn(t)
+	h.users.getByIDFn = func(context.Context, string) (port.User, error) {
+		u := makeUser(lifetimeUserID)
+		u.TokenVersion = 7
+		return u, nil
+	}
+	var seen int32
+	h.store.guard = func(_ string, version int32) error {
+		seen = version
+		return nil
+	}
+
+	resp, err := h.refresh(first)
+
+	require.NoError(t, err)
+	assert.Equal(t, int32(7), seen, "the store checks the generation the refresh read")
+	ident, err := h.uc.deps.Tokens.(*auth.JWTAuthenticator).Authenticate(context.Background(), resp.Token)
+	require.NoError(t, err)
+	require.NotNil(t, ident.TokenVersion)
+	assert.Equal(t, int32(7), *ident.TokenVersion, "the access token carries that same generation")
+}
+
+func TestRefresh_AStaleGenerationStoresNoSuccessor(t *testing.T) {
+	h := newReuseHarness(t)
+	first := h.signIn(t)
+	h.store.guard = func(string, int32) error { return port.ErrSessionStale }
+
+	_, err := h.refresh(first)
+
+	require.EqualError(t, err, "refresh token has been revoked")
+	require.NotErrorIs(t, err, ErrRefreshReused)
+	assert.Len(t, h.store.rows, 1, "no successor token is stored")
+	assert.True(t, h.store.live(first), "the refused refresh left the old token alone")
 }

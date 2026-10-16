@@ -283,6 +283,13 @@ func (r *pgUserPort) SetPassword(ctx context.Context, userID, passwordHash strin
 		}); err != nil {
 			return err
 		}
+		// The sessions end in the transaction that starts the new token
+		// generation. A refresh in flight holds a share lock on this row until
+		// it stores its successor, so the update above waits for it and the
+		// statement below revokes the successor too.
+		if err := q.RevokeUserRefreshTokens(ctx, uid); err != nil {
+			return err
+		}
 		// A link issued before this password was set would overwrite it.
 		return q.RevokePendingPasswordResets(ctx, uid)
 	})
@@ -393,6 +400,38 @@ func (r *pgRefreshTokenPort) CreateForLogin(ctx context.Context, in port.NewRefr
 		return 0, err
 	}
 	return version, nil
+}
+
+// Rotate spends oldID and stores its successor in one transaction. The account
+// row is share-locked first, so a password change, a reset, an SSO link or a
+// deactivation, which all update it, cannot commit between the checks below and
+// the insert: it either lands first (the checks refuse) or waits and then
+// revokes the successor with the account's other tokens.
+func (r *pgRefreshTokenPort) Rotate(ctx context.Context, oldID string, in port.NewRefreshToken, tokenVersion int32) error {
+	uid, err := parseID(in.UserID)
+	if err != nil {
+		return err
+	}
+	oid, err := parseID(oldID)
+	if err != nil {
+		return err
+	}
+	return r.withTx(ctx, func(q *sqlc.Queries) error {
+		row, err := q.LockUserForRefresh(ctx, uid)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return port.ErrSessionStale
+		} else if err != nil {
+			return err
+		}
+		if row.DisabledAt.Valid || row.TokenVersion != tokenVersion {
+			return port.ErrSessionStale
+		}
+		if _, err := q.RevokeRefreshToken(ctx, oid); err != nil {
+			return mappingErr(err)
+		}
+		_, err = insertRefreshToken(ctx, q, in)
+		return err
+	})
 }
 
 func (r *pgRefreshTokenPort) GetByHash(ctx context.Context, tokenHash string) (port.RefreshToken, error) {

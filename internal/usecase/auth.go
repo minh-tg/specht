@@ -727,20 +727,11 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 		return nil, fmt.Errorf("refresh token has expired")
 	}
 
-	// M3: rotation must be atomic. RevokeRefreshToken is a compare-and-swap
-	// (UPDATE ... WHERE id = $1 AND revoked_at IS NULL RETURNING); a second,
-	// concurrent rotation of the same token revokes zero rows and surfaces
-	// as ErrNotFound. Only the single winner proceeds to mint a new session.
-	if _, err := u.deps.Stores.RefreshTokens.Revoke(ctx, stored.ID); err != nil {
-		if errors.Is(err, port.ErrNotFound) {
-			// M3: another request rotated this token between our read and
-			// our revoke. That happened moments ago, so it is the benign
-			// race, not theft.
-			return nil, ErrRefreshReused
-		}
-		return nil, fmt.Errorf("revoke old token: %w", err)
-	}
-
+	// The account is read before the token is spent, so the generation the
+	// store checks at rotation is one that predates this refresh. A password
+	// change, a reset or an SSO link that commits after the read bumps it and
+	// the store refuses the successor; one that committed before the read has
+	// already revoked this token.
 	userID := stored.UserID
 	user, err := u.deps.Stores.Users.GetByID(ctx, userID)
 	if err != nil {
@@ -750,14 +741,30 @@ func (u *Usecases) Refresh(ctx context.Context, refreshToken string) (*AuthRespo
 		return nil, errors.New(authMsgUserNotFound)
 	}
 
-	token, err := u.issueAccessToken(ctx, userID, user.Email, auth.TokenRole(user.Role))
-	if err != nil {
-		return nil, fmt.Errorf("create token: %w", err)
+	// Rotation is atomic: the store spends the old token (a compare-and-swap
+	// on revoked_at) and stores the successor in one transaction. A second,
+	// concurrent rotation of the same token matches zero rows and surfaces as
+	// ErrNotFound; only the single winner proceeds.
+	resp, err := u.newSession(userID, user.Email, stored.FamilyID, stored.FamilyStartedAt, func(in port.NewRefreshToken) error {
+		return u.deps.Stores.RefreshTokens.Rotate(ctx, stored.ID, in, user.TokenVersion)
+	})
+	if errors.Is(err, port.ErrNotFound) {
+		// Another request rotated this token between our read and our
+		// rotation. That happened moments ago, so it is the benign race, not
+		// theft.
+		return nil, ErrRefreshReused
 	}
-
-	resp, err := u.storeSession(ctx, userID, user.Email, stored.FamilyID, stored.FamilyStartedAt)
+	if errors.Is(err, port.ErrSessionStale) {
+		slog.Warn("refresh: account changed during the refresh", "user_id", userID)
+		return nil, errors.New("refresh token has been revoked")
+	}
 	if err != nil {
 		return nil, err
+	}
+
+	token, err := u.deps.Tokens.CreateToken(userID, user.Email, auth.TokenRole(user.Role), user.TokenVersion)
+	if err != nil {
+		return nil, fmt.Errorf("create token: %w", err)
 	}
 	resp.Token = token
 	return resp, nil
@@ -864,10 +871,11 @@ var ErrWrongPassword = errors.New("current password is incorrect")
 var ErrNoLocalPassword = errors.New("this account has no local password")
 
 // ChangePassword replaces the caller's password after checking the current one.
-// Every refresh token is revoked before the new hash is written, so a failure
-// never leaves an old session alive beside a new password, and the write starts
-// a new token generation that ends every open access token. The caller gets a
-// fresh session back and stays signed in.
+// The write replaces the hash, starts a new token generation that ends every
+// open access token and revokes every refresh token in one transaction, so a
+// failure never leaves an old session alive beside a new password and a refresh
+// in flight cannot store a successor. The caller gets a fresh session back and
+// stays signed in.
 func (u *Usecases) ChangePassword(ctx context.Context, userID, current, next string) (*AuthResponse, error) {
 	id, err := validID(userID)
 	if err != nil {
@@ -894,9 +902,6 @@ func (u *Usecases) ChangePassword(ctx context.Context, userID, current, next str
 	hash, err := u.deps.Passwords.Hash(next)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
-	}
-	if err := u.deps.Stores.RefreshTokens.RevokeAllForUser(ctx, id); err != nil {
-		return nil, fmt.Errorf("revoke refresh tokens: %w", err)
 	}
 	if err := u.deps.Stores.Users.SetPassword(ctx, id, hash); err != nil {
 		return nil, fmt.Errorf("set password: %w", err)

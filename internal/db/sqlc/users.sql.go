@@ -372,6 +372,27 @@ func (q *Queries) LockUserForLogin(ctx context.Context, id pgtype.UUID) (LockUse
 	return i, err
 }
 
+const lockUserForRefresh = `-- name: LockUserForRefresh :one
+SELECT disabled_at, token_version FROM users WHERE id = $1 FOR SHARE
+`
+
+type LockUserForRefreshRow struct {
+	DisabledAt   pgtype.Timestamptz `json:"disabled_at"`
+	TokenVersion int32              `json:"token_version"`
+}
+
+// Takes a share lock on the account for the rest of the transaction and returns
+// what a refresh has to confirm before it stores the rotated token. A password
+// change, a reset, an SSO link and a deactivation all update this row, so each
+// one either committed before this read (the refresh sees it and is refused) or
+// waits until the successor is stored and then revokes it with the rest.
+func (q *Queries) LockUserForRefresh(ctx context.Context, id pgtype.UUID) (LockUserForRefreshRow, error) {
+	row := q.db.QueryRow(ctx, lockUserForRefresh, id)
+	var i LockUserForRefreshRow
+	err := row.Scan(&i.DisabledAt, &i.TokenVersion)
+	return i, err
+}
+
 const setUserDisabled = `-- name: SetUserDisabled :one
 UPDATE users SET
     disabled_at = CASE WHEN $1::boolean THEN COALESCE(disabled_at, NOW()) ELSE NULL END,

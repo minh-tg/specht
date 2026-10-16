@@ -19,7 +19,6 @@ type recoveryHarness struct {
 	tokens   *mockRefreshTokenRepo
 	lookedUp string
 	stored   string
-	revoked  []string
 	promoted []string
 }
 
@@ -40,10 +39,6 @@ func newRecoveryHarness(user port.User) *recoveryHarness {
 		h.promoted = append(h.promoted, userID+":"+role)
 		user.Role = role
 		return user, nil
-	}
-	h.tokens.revokeAllFn = func(ctx context.Context, userID string) error {
-		h.revoked = append(h.revoked, userID)
-		return nil
 	}
 	h.uc = New(Deps{
 		Stores:    &port.Stores{Users: h.users, RefreshTokens: h.tokens},
@@ -67,7 +62,6 @@ func TestResetPasswordByEmail_SetsAHashAndEndsEverySession(t *testing.T) {
 
 	assert.Equal(t, "ada@acme.example", h.lookedUp, "the address is matched the way sign-in matches it")
 	assert.True(t, auth.NewPasswordHasher().Verify("a-recovered-password", h.stored))
-	assert.Equal(t, []string{"00000000-0000-0000-0000-000000000051"}, h.revoked)
 	assert.Equal(t, "ada@acme.example", profile.Email)
 }
 
@@ -88,7 +82,6 @@ func TestResetPasswordByEmail_UnknownAccountChangesNothing(t *testing.T) {
 	_, err := h.uc.ResetPasswordByEmail(context.Background(), "nobody@acme.example", "a-recovered-password")
 	assert.ErrorIs(t, err, ErrAccountNotFound)
 	assert.Empty(t, h.stored)
-	assert.Empty(t, h.revoked)
 }
 
 func TestResetPasswordByEmail_TheSystemAccountIsOffLimits(t *testing.T) {
@@ -113,13 +106,13 @@ func TestResetPasswordByEmail_FollowsThePasswordRules(t *testing.T) {
 	assert.Empty(t, h.lookedUp)
 }
 
-func TestResetPasswordByEmail_FailsClosedWhenSessionsCannotBeRevoked(t *testing.T) {
+func TestResetPasswordByEmail_ReportsAFailedWrite(t *testing.T) {
 	h := newRecoveryHarness(recoveryUser("ada@acme.example", "member"))
-	h.tokens.revokeAllFn = func(ctx context.Context, userID string) error { return errors.New("db down") }
+	h.users.setPasswordFn = func(ctx context.Context, userID, hash string) error { return errors.New("db down") }
 
 	_, err := h.uc.ResetPasswordByEmail(context.Background(), "ada@acme.example", "a-recovered-password")
 	require.Error(t, err)
-	assert.Empty(t, h.stored, "no new password while old sessions might survive")
+	assert.Empty(t, h.stored)
 }
 
 func TestGrantAdminByEmail_PromotesAMember(t *testing.T) {

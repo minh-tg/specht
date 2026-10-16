@@ -193,7 +193,6 @@ func TestResetPasswordByEmail_RefusesAListedOrAccountPassword(t *testing.T) {
 			_, err := h.uc.ResetPasswordByEmail(context.Background(), "ada.lovelace@acme.example", tc.password)
 			assert.ErrorIs(t, err, tc.want)
 			assert.Empty(t, h.stored)
-			assert.Empty(t, h.revoked)
 		})
 	}
 }

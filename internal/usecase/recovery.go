@@ -35,8 +35,8 @@ func recoveryEmail(raw string) (string, error) {
 }
 
 // ResetPasswordByEmail sets a new password for the account and ends every
-// session it has. Refresh tokens are revoked before the write, as in
-// ChangePassword, and the write starts a new token generation. A deactivated
+// session it has. As in ChangePassword, the write revokes the refresh tokens
+// and starts a new token generation in one transaction. A deactivated
 // account stays deactivated; the returned profile says so.
 func (u *Usecases) ResetPasswordByEmail(ctx context.Context, email, password string) (*UserProfile, error) {
 	email, err := recoveryEmail(email)
@@ -53,9 +53,6 @@ func (u *Usecases) ResetPasswordByEmail(ctx context.Context, email, password str
 	hash, err := u.deps.Passwords.Hash(password)
 	if err != nil {
 		return nil, fmt.Errorf("hash password: %w", err)
-	}
-	if err := u.deps.Stores.RefreshTokens.RevokeAllForUser(ctx, user.ID); err != nil {
-		return nil, fmt.Errorf("revoke refresh tokens: %w", err)
 	}
 	if err := u.deps.Stores.Users.SetPassword(ctx, user.ID, hash); err != nil {
 		return nil, fmt.Errorf("set password: %w", err)
