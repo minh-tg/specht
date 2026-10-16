@@ -256,6 +256,12 @@ releases.
   `429`. Now a new email takes the place of the stalest entry that has not
   started waiting yet, and if every entry is waiting the new email is only
   limited by the per-IP login bucket.
+- Behind a trusted proxy, every `X-Forwarded-For` line is read, not just the
+  first. A proxy that adds its own line (HAProxy `option forwardfor`) used to
+  leave the client's line first, which let a client pick the address its rate
+  limit bucket was keyed on. The client is now the rightmost entry that is not
+  a trusted proxy, and `X-Real-IP` is used only when `X-Forwarded-For` gives no
+  usable address.
 - First-run setup stays available until a global admin exists. A stranger who
   registers before you no longer closes it. If the address you enter at setup
   already belongs to an account, setup answers 409 and you pick another one.

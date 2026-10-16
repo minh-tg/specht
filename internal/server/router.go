@@ -340,14 +340,15 @@ func realIPMiddleware(trusted []netip.Prefix) func(http.Handler) http.Handler {
 }
 
 // applyTrustedProxyHeaders rewrites the peer address from forwarding
-// headers and stamps the trusted transport verdict onto the context. XFF is
-// walked right-to-left, skipping configured proxies, so a client-supplied
-// prefix cannot override the address appended by the nearest trusted proxy.
+// headers and stamps the trusted transport verdict onto the context. Every
+// X-Forwarded-For line counts as one comma list (a proxy that adds its own
+// line leaves the client's line first), and the list is walked right-to-left,
+// skipping configured proxies, so a client-supplied prefix cannot override the
+// address appended by the nearest trusted proxy. X-Real-IP is read only when
+// the list yields no client address.
 func applyTrustedProxyHeaders(r *http.Request, trusted []netip.Prefix) *http.Request {
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		if ip := forwardedClientIP(fwd, trusted); ip != "" {
-			r.RemoteAddr = ip
-		}
+	if ip := forwardedClientIP(r.Header.Values("X-Forwarded-For"), trusted); ip != "" {
+		r.RemoteAddr = ip
 	} else if rip := r.Header.Get("X-Real-IP"); rip != "" {
 		if addr, err := netip.ParseAddr(strings.TrimSpace(rip)); err == nil && addr.Zone() == "" && !isTrustedProxyAddr(addr, trusted) {
 			r.RemoteAddr = addr.Unmap().String()
@@ -357,10 +358,20 @@ func applyTrustedProxyHeaders(r *http.Request, trusted []netip.Prefix) *http.Req
 	return r.WithContext(auth.ContextWithSecureTransport(r.Context(), secure))
 }
 
-func forwardedClientIP(forwardedFor string, trusted []netip.Prefix) string {
-	hops := strings.Split(forwardedFor, ",")
+// forwardedClientIP resolves the client from X-Forwarded-For lines: the
+// rightmost entry that is not a trusted proxy. Empty list elements are
+// skipped. A malformed entry ends the walk with no answer rather than falling
+// back to an earlier entry, which a client could have written.
+func forwardedClientIP(lines []string, trusted []netip.Prefix) string {
+	var hops []string
+	for _, line := range lines {
+		hops = append(hops, strings.Split(line, ",")...)
+	}
 	for i := len(hops) - 1; i >= 0; i-- {
 		hop := strings.TrimSpace(hops[i])
+		if hop == "" {
+			continue
+		}
 		addr, err := netip.ParseAddr(hop)
 		if err != nil || addr.Zone() != "" {
 			return ""

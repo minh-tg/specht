@@ -386,12 +386,55 @@ Removing someone from a project or a team takes effect on their next request.
 ## 6. Reverse proxy
 
 Terminate TLS at the proxy and forward plain HTTP. Set `TRUSTED_PROXIES` to
-only the proxy-hop CIDRs. Configure the nearest proxy to append the observed
-client address to `X-Forwarded-For` and overwrite `X-Real-IP` and
-`X-Forwarded-Proto`; the server walks the forwarded chain from the right and
-skips trusted proxy hops. Otherwise, forwarding headers are ignored and
-`Secure` cookies follow the direct connection. `CORS_ORIGINS` stays empty
-unless the UI is served from a different origin than the API.
+only the proxy-hop CIDRs. `CORS_ORIGINS` stays empty unless the UI is served
+from a different origin than the API.
+
+The server reads `X-Forwarded-For`, `X-Real-IP` and `X-Forwarded-Proto` only
+when the direct peer is inside `TRUSTED_PROXIES`. A request from any other peer
+keeps its connection address and its forwarding headers are never read. For a
+trusted peer the client address is resolved like this:
+
+1. Every `X-Forwarded-For` line is joined into one comma-separated list, so a
+   proxy that adds its own line next to the client's line (HAProxy
+   `option forwardfor`) is read the same as one that appends to a single line.
+2. The list is walked from the right. Entries inside `TRUSTED_PROXIES` are
+   skipped, and the first entry outside them is the client. Entries to its
+   left are client-supplied and ignored.
+3. An entry that is not an IP address (including a bracketed or zoned IPv6
+   address) stops the walk with no answer. Nothing to its left is used.
+4. `X-Real-IP` is read only when step 2 found no client, for example when the
+   header is absent, holds only trusted hops, or was stopped by a malformed
+   entry. A value that is not an IP address or is itself a trusted proxy is
+   ignored.
+5. With no answer from either header the client is counted under the proxy's
+   address.
+
+So the nearest proxy has to append the address it saw to `X-Forwarded-For`
+(its own line or the end of the existing one). A proxy that only sets
+`X-Real-IP` and passes the client's `X-Forwarded-For` through unchanged lets the
+client choose its address, because a well-formed client-supplied entry wins over
+`X-Real-IP`. Setting `X-Forwarded-Proto` makes the server mark the connection
+secure; the proxy must overwrite it.
+
+nginx:
+
+```nginx
+proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+proxy_set_header X-Real-IP         $remote_addr;
+proxy_set_header X-Forwarded-Proto $scheme;
+```
+
+HAProxy (frontend or `defaults`):
+
+```haproxy
+option forwardfor
+http-request set-header X-Real-IP %[src]
+http-request set-header X-Forwarded-Proto https if { ssl_fc }
+http-request set-header X-Forwarded-Proto http  if !{ ssl_fc }
+```
+
+In both cases `TRUSTED_PROXIES` lists the proxy's address (or the network that
+holds it), not the clients' networks. With a proxy chain, list every hop.
 
 ## SSO ID-token requirement
 
