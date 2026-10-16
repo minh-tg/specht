@@ -479,8 +479,10 @@ releases.
 - One project can no longer hold every ingest slot. The limit was per caller, so a project
   manager's session plus one API key (or two keys) could together fill all 8 slots and the
   whole memory budget, and another project's CI got `503 ingest_busy`. A project is now held
-  to half of `INGEST_MAX_CONCURRENCY` (4 at the default, at least 1) and half of
-  `INGEST_MEMORY_BUDGET`, whatever the number of callers behind it. A single-project install
+  to half of `INGEST_MAX_CONCURRENCY` (4 at the default, at least 1), whatever the number of
+  callers behind it, and its ingests share an allowance of half of `INGEST_MEMORY_BUDGET`.
+  The allowance does not lower one ingest's charge against the whole budget, so a single
+  large report can still hold more than half of it. A single-project install
   runs at most 4 ingests at once at the default; raise `INGEST_MAX_CONCURRENCY` if its CI
   needs more.
 - A password sign-in whose password check was still running when the account changed no
