@@ -13,6 +13,11 @@ var (
 	// auto-provisioning. Callers must map it to a generic 403 without
 	// distinguishing unknown accounts from disallowed domains.
 	ErrSSONotProvisioned = errors.New("sso account not provisioned")
+	// ErrSSOInvalidEmail is returned when the identity provider sends an email
+	// claim that is not a usable address: too long, malformed, or holding a
+	// control character. It says nothing about any local account, so the
+	// callback may report it.
+	ErrSSOInvalidEmail = errors.New("sso provider sent an invalid email address")
 )
 
 // Roles for the RBAC model. These are the canonical role strings that may

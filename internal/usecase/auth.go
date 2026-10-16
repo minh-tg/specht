@@ -13,6 +13,7 @@ import (
 	"net/mail"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -113,6 +114,34 @@ func validateCredentials(email, password, displayName string) (string, error) {
 	if err := checkDisplayNameLength(displayName); err != nil {
 		return "", badCredentials(err.Error())
 	}
+	normalized, err := normalizeAddress(email)
+	if err != nil {
+		return "", err
+	}
+	if err := checkPassword(password, normalized, displayName); err != nil {
+		return "", err
+	}
+	return normalized, nil
+}
+
+// validateEmail checks one email address the way every way of creating an
+// account does and returns it in its normal form: within the length limit, a
+// bare address with no display name, no control character, and spelled in runes
+// that fold the same way in Go and in the database. Callers trim first when the
+// source may pad the value.
+func validateEmail(email string) (string, error) {
+	if err := checkEmailLength(email); err != nil {
+		return "", badCredentials(err.Error())
+	}
+	return normalizeAddress(email)
+}
+
+// normalizeAddress is validateEmail after the length check, for callers that
+// order their other input checks around it.
+func normalizeAddress(email string) (string, error) {
+	if strings.ContainsFunc(email, unicode.IsControl) {
+		return "", badCredentials("invalid email address")
+	}
 	addr, err := mail.ParseAddress(email)
 	if err != nil || addr.Address != email || !strings.Contains(addr.Address, "@") {
 		return "", badCredentials("invalid email address")
@@ -121,9 +150,6 @@ func validateCredentials(email, password, displayName string) (string, error) {
 	if normalized == "" {
 		// A rune that lower-cases differently in Go and in the database.
 		return "", badCredentials("invalid email address")
-	}
-	if err := checkPassword(password, normalized, displayName); err != nil {
-		return "", err
 	}
 	return normalized, nil
 }
@@ -270,7 +296,26 @@ func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, claims auth.SSOCl
 		return "", "", false, fmt.Errorf("lookup sso identity: %w", err)
 	}
 
-	email := auth.NormalizeEmail(claims.Email)
+	// A first login is matched, linked or provisioned by the provider's email
+	// claim, so it has to be an address this server would accept from a person.
+	// An empty claim is "no email", handled below; anything else that fails
+	// the checks is refused before it reaches a lookup or a stored row.
+	var email string
+	if raw := strings.TrimSpace(claims.Email); raw != "" || strings.ContainsFunc(claims.Email, unicode.IsControl) {
+		// Control characters are checked before the trim, which would hide a
+		// trailing newline. An address with no canonical form keeps the answer
+		// it always had: it matches no account and is not offered a new one.
+		if raw != "" && auth.NormalizeEmail(raw) == "" {
+			slog.Warn("sso login: first login with an address that has no canonical form", "sub", sub)
+			return "", "", false, auth.ErrSSONotProvisioned
+		}
+		valid, err := validateEmail(raw)
+		if err != nil || strings.ContainsFunc(claims.Email, unicode.IsControl) {
+			slog.Warn("sso login: provider sent an invalid email", "sub", sub, "email_bytes", len(claims.Email))
+			return "", "", false, auth.ErrSSOInvalidEmail
+		}
+		email = valid
+	}
 	if email == "" || (!claims.EmailVerified && !u.deps.SSOAllowUnverifiedEmail) {
 		slog.Warn("sso login: first login without a verified email", "email", auth.MaskEmail(email), "sub", sub)
 		return "", "", false, auth.ErrSSONotProvisioned
