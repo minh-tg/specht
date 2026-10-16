@@ -475,6 +475,12 @@ func (u *Usecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdB
 		ExpiresAt: expiresAt,
 	})
 	if err != nil {
+		if errors.Is(err, port.ErrCreatorInactive) {
+			// The creator was deactivated after authentication. The store
+			// refuses under a row lock that a deactivation also takes, so no
+			// key outlives the account.
+			return nil, ErrProjectAccessDenied
+		}
 		return nil, fmt.Errorf("store key: %w", err)
 	}
 

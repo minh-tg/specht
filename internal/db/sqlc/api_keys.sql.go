@@ -177,6 +177,24 @@ func (q *Queries) ListAPIKeysByProject(ctx context.Context, projectID pgtype.UUI
 	return items, nil
 }
 
+const lockKeyCreator = `-- name: LockKeyCreator :one
+SELECT id FROM users WHERE id = $1 AND disabled_at IS NULL FOR SHARE
+`
+
+// Takes a share lock on an active account for the rest of the transaction. A
+// deactivation updates the same row, and that update conflicts with the lock,
+// so a key insert and a deactivation run one after the other: the key is
+// either refused (the account is already deactivated) or in place before the
+// deactivation revokes the account's keys. A foreign key check alone does not
+// conflict with that update, so it cannot do this. No row means the account is
+// deactivated or does not exist.
+func (q *Queries) LockKeyCreator(ctx context.Context, id pgtype.UUID) (pgtype.UUID, error) {
+	row := q.db.QueryRow(ctx, lockKeyCreator, id)
+	var id_2 pgtype.UUID
+	err := row.Scan(&id_2)
+	return id_2, err
+}
+
 const revokeAPIKey = `-- name: RevokeAPIKey :one
 UPDATE api_keys SET revoked_at = NOW() WHERE id = $1 AND project_id = $2
 RETURNING id, project_id, name, key_prefix, key_hash, last_four, scopes, expires_at, last_used_at, created_at, revoked_at, created_by

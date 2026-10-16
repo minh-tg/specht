@@ -306,3 +306,9 @@ releases.
   link. Before, a failure between those steps could leave a linked account that
   still had the previous holder's password and refresh tokens, and an old reset
   link could give that holder a password again.
+- Creating an API key now serialises with the deactivation of its creator. A
+  key request that had passed sign-in just before the deactivation used to be
+  able to commit after the deactivation revoked the account's keys, and that key
+  worked again once the account was reactivated. The request now gets `403` when
+  the creator is deactivated, and a key stored a moment earlier is revoked with
+  the rest.

@@ -390,14 +390,22 @@ func refreshTokenToPort(t sqlc.RefreshToken) port.RefreshToken {
 }
 
 // pgAPIKeyPort adapts APIKeyStore.
-type pgAPIKeyPort struct{ q *sqlc.Queries }
+type pgAPIKeyPort struct {
+	q      *sqlc.Queries
+	withTx func(ctx context.Context, fn func(q *sqlc.Queries) error) error
+}
 
+// Create stores a key. The creator's row is locked first and the lock is held
+// until the insert commits, so a deactivation of the creator either finishes
+// before (the key is refused) or waits and then revokes this key with the rest.
+// Without the lock a key could commit after the deactivation's revocation and
+// come back to life when the account is reactivated.
 func (r *pgAPIKeyPort) Create(ctx context.Context, input port.CreateAPIKeyInput) (port.APIKey, error) {
 	pid, err := parseID(input.ProjectID)
 	if err != nil {
 		return port.APIKey{}, err
 	}
-	row, err := r.q.CreateAPIKey(ctx, sqlc.CreateAPIKeyParams{
+	params := sqlc.CreateAPIKeyParams{
 		ProjectID: pid,
 		Name:      input.Name,
 		KeyPrefix: input.KeyPrefix,
@@ -406,6 +414,19 @@ func (r *pgAPIKeyPort) Create(ctx context.Context, input port.CreateAPIKeyInput)
 		Scopes:    input.Scopes,
 		CreatedBy: uuidPtrFromString(&input.CreatedBy),
 		ExpiresAt: timestamptzPtrFromTime(input.ExpiresAt),
+	}
+	var row sqlc.ApiKey
+	err = r.withTx(ctx, func(q *sqlc.Queries) error {
+		if params.CreatedBy.Valid {
+			if _, err := q.LockKeyCreator(ctx, params.CreatedBy); errors.Is(err, pgx.ErrNoRows) {
+				return port.ErrCreatorInactive
+			} else if err != nil {
+				return err
+			}
+		}
+		var err error
+		row, err = q.CreateAPIKey(ctx, params)
+		return err
 	})
 	if err != nil {
 		return port.APIKey{}, err
