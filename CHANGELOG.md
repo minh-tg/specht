@@ -390,3 +390,9 @@ releases.
   (2001::/32), site-local (fec0::/10), 100::/64 and the ORCHID ranges. A hostname that
   resolved into one of them could reach an internal IPv4 host through a relay or a DNS64
   gateway.
+- With `SSO_ENABLE=true` the server now checks the SSO settings at startup and refuses to
+  start, naming every problem, when the issuer, client id or redirect URI is missing, when
+  the issuer or redirect URI is not an absolute `https` URL (`http` is accepted for a
+  loopback host only), or when the client secret is empty. A public identity provider
+  client can set `SSO_PUBLIC_CLIENT=true` to allow the empty secret. Before, an empty
+  secret was accepted and silently switched PKCE off.

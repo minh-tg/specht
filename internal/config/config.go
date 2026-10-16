@@ -10,10 +10,13 @@ import (
 	"fmt"
 	"math"
 	"net/netip"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/minh-tg/specht/internal/netutil"
 )
 
 // Defaults shared by the server, watcher, and CLI.
@@ -125,6 +128,10 @@ type SSOConfig struct {
 	Enabled      bool
 	ClientID     string
 	ClientSecret string
+	// PublicClient allows an empty ClientSecret, for an IdP client registered
+	// as public. Without it an empty secret is refused at startup: a
+	// confidential client with no secret is almost always a missing variable.
+	PublicClient bool
 	IssuerURL    string
 	RedirectURI  string
 	// AllowedDomains gates SSO auto-provisioning: when an IdP subject has
@@ -225,6 +232,7 @@ func loadSSO() SSOConfig {
 		Enabled:           os.Getenv("SSO_ENABLE") == "true",
 		ClientID:          os.Getenv("SSO_CLIENT_ID"),
 		ClientSecret:      os.Getenv("SSO_CLIENT_SECRET"),
+		PublicClient:      os.Getenv("SSO_PUBLIC_CLIENT") == "true",
 		IssuerURL:         os.Getenv("SSO_ISSUER_URL"),
 		RedirectURI:       os.Getenv("SSO_REDIRECT_URI"),
 		AllowedDomains:    parseDomainAllowlist(os.Getenv("SSO_ALLOWED_DOMAINS")),
@@ -580,7 +588,60 @@ func (s *Server) Validate() error {
 	if s.ShutdownTimeout <= 0 {
 		problems = append(problems, errors.New("SHUTDOWN_TIMEOUT must be a positive duration"))
 	}
+	problems = append(problems, s.SSO.validate()...)
 	return errors.Join(problems...)
+}
+
+// validate checks the SSO settings an enabled login cannot work without. A
+// disabled SSO block is never checked, so stray variables cannot stop a
+// server that does not use them.
+func (c SSOConfig) validate() []error {
+	if !c.Enabled {
+		return nil
+	}
+	var problems []error
+	if err := requireURL("SSO_ISSUER_URL", c.IssuerURL); err != nil {
+		problems = append(problems, err)
+	}
+	if strings.TrimSpace(c.ClientID) == "" {
+		problems = append(problems, errors.New("SSO_CLIENT_ID is required when SSO_ENABLE=true"))
+	}
+	if err := requireURL("SSO_REDIRECT_URI", c.RedirectURI); err != nil {
+		problems = append(problems, err)
+	} else if u, _ := url.Parse(c.RedirectURI); u.Fragment != "" || u.RawFragment != "" {
+		problems = append(problems, errors.New("SSO_REDIRECT_URI must not contain a fragment"))
+	}
+	if c.ClientSecret == "" && !c.PublicClient {
+		problems = append(problems, errors.New("SSO_CLIENT_SECRET is required when SSO_ENABLE=true; "+
+			"set SSO_PUBLIC_CLIENT=true only if the identity provider client is registered as public"))
+	}
+	return problems
+}
+
+// requireURL checks that raw is an absolute URL with a host that uses https,
+// or http when the host is loopback (a local identity provider or a dev
+// server). name is the environment variable, used in the error.
+func requireURL(name, raw string) error {
+	if raw == "" {
+		return fmt.Errorf("%s is required when SSO_ENABLE=true", name)
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("%s is not a valid URL: %w", name, err)
+	}
+	if u.Host == "" || u.Hostname() == "" {
+		return fmt.Errorf("%s must be an absolute URL with a host, got %q", name, raw)
+	}
+	switch u.Scheme {
+	case "https":
+	case "http":
+		if !netutil.IsLoopbackHost(u.Hostname()) {
+			return fmt.Errorf("%s must use https unless the host is loopback, got %q", name, raw)
+		}
+	default:
+		return fmt.Errorf("%s must use https, got %q", name, raw)
+	}
+	return nil
 }
 
 // WatcherConfig validates watcher settings standalone (the CLI backfill path,
