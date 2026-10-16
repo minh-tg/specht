@@ -105,6 +105,9 @@ releases.
 
 ### Changed
 
+- A Semgrep report with an extremely long rule id no longer fails the whole ingest. The
+  finding's fingerprint is now capped at 512 bytes like every other scanner's, and NUL
+  bytes are removed. Fingerprints of normal findings do not change.
 - Semgrep SARIF reports parse in linear time. Looking up the rule of each result scanned every
   rule, so a report with 40,000 rules and 40,000 results took several seconds and a larger one
   held an ingest slot for minutes.

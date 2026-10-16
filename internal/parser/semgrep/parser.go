@@ -553,7 +553,9 @@ func identify(seen []sighting) []domain.NormalizedFinding {
 		if n > 0 {
 			identity += "#" + strconv.Itoa(n)
 		}
-		fingerprints[i] = identity
+		// The rule id is scanner output of any length, and the finding was
+		// hardened before it had a fingerprint, so bound it here.
+		fingerprints[i] = parseutil.BoundFingerprint(identity)
 	}
 
 	out := make([]domain.NormalizedFinding, len(seen))
