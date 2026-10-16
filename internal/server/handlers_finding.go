@@ -85,8 +85,10 @@ func unrecognizedMessage(e *scanner.UnrecognizedFormatError) string {
 //  2. Enter the caller's own gate and read the rest of the body. Each caller
 //     (user or API key) has a few places, so a slow or numerous caller fills
 //     its own queue and nobody else's.
-//  3. Admit: with the whole body in memory, take a global slot and a share of
-//     the memory budget. A slow upload never holds these.
+//  3. Admit: with the whole body in memory, take a share of the caller's and
+//     the project's memory allowance, a global slot and the global memory
+//     charge. A project holds at most half the slots whoever calls for it. A
+//     slow upload never holds these.
 //  4. Decode and ingest, on a context a hang-up cannot cancel.
 func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 	adm := h.ingestAdmission()
@@ -115,13 +117,17 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid_field", "project "+problem)
 		return
 	}
-	if err := h.authorizeIngest(r, project); err != nil {
+	tenant, err := h.authorizeIngest(r, project)
+	if err != nil {
 		h.respondIngestAuthError(w, r, project, err)
 		return
 	}
+	if tenant == "" {
+		tenant = project
+	}
 
 	ident := auth.ContextIdentity(r.Context())
-	ticket, err := adm.enter(r.Context(), principalKey(ident))
+	ticket, err := adm.enter(r.Context(), principalKey(ident), tenant)
 	if err != nil {
 		if errors.Is(err, errIngestBusy) {
 			respondIngestBusy(w, adm.queueWait)
@@ -237,11 +243,12 @@ func (h *Handler) IngestReport(w http.ResponseWriter, r *http.Request) {
 // authorizeIngest checks, from the project slug alone, that the caller may
 // ingest into the project: membership or key match first (the same check every
 // project route makes), then the role or scope that allows ingest.
-func (h *Handler) authorizeIngest(r *http.Request, project string) error {
-	if err := h.enforceProjectAccess(r, project); err != nil {
-		return err
+func (h *Handler) authorizeIngest(r *http.Request, project string) (string, error) {
+	projectID, err := h.projectAccess(r, project)
+	if err != nil {
+		return "", err
 	}
-	return h.usecase.AuthorizeIngest(r.Context(), project)
+	return projectID, h.usecase.AuthorizeIngest(r.Context(), project)
 }
 
 // respondIngestAuthError answers a caller refused before its body was read.

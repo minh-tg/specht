@@ -223,7 +223,8 @@ func TestIngestRoute_ManySmallIngestsShareTheBudget(t *testing.T) {
 		},
 	}
 	router := NewRouter(RouterConfig{
-		Usecases: mock, JWTAuth: testJWTAuth, IngestConcurrency: 8,
+		// 16 slots, so the one project the eight callers share may hold eight.
+		Usecases: mock, JWTAuth: testJWTAuth, IngestConcurrency: 16,
 		IngestMemoryBudget: 64 * 100_000, IngestQueueWait: time.Second,
 	})
 	var wg sync.WaitGroup

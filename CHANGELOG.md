@@ -481,6 +481,13 @@ releases.
   key may use at most half of the ingest slots and half of the ingest memory budget at once;
   its further requests wait in their own queue and get `503 ingest_busy` with `Retry-After`,
   and other callers are not delayed.
+- One project can no longer hold every ingest slot. The limit was per caller, so a project
+  manager's session plus one API key (or two keys) could together fill all 8 slots and the
+  whole memory budget, and another project's CI got `503 ingest_busy`. A project is now held
+  to half of `INGEST_MAX_CONCURRENCY` (4 at the default, at least 1) and half of
+  `INGEST_MEMORY_BUDGET`, whatever the number of callers behind it. A single-project install
+  runs at most 4 ingests at once at the default; raise `INGEST_MAX_CONCURRENCY` if its CI
+  needs more.
 - A password sign-in whose password check was still running when the account changed no
   longer gets a session. Signing in through SSO for the first time into an account
   (which clears its password), changing the password, and deactivating the account each
