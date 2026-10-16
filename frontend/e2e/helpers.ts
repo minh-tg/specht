@@ -3,7 +3,7 @@ import { expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-// Shared by the browser suites. The script bootstraps an admin account (two-phase ADMIN_EMAILS);
+// Shared by the browser suites. The script creates an admin account through first-run setup;
 // these defaults mirror it, and E2E_UI_ADMIN_* overrides keep both sides in sync.
 
 export const ADMIN_EMAIL = process.env.E2E_UI_ADMIN_EMAIL ?? "journey-admin@specht.local";

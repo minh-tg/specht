@@ -607,24 +607,17 @@ jobs:
           export JWT_SECRET
           echo "JWT_SECRET=$JWT_SECRET" >> "$GITHUB_ENV"
           go build -o /tmp/specht-ci ./cmd/server
-          DB_MIGRATE=true REGISTRATION_ENABLED=true /tmp/specht-ci >> /tmp/specht-ci.log 2>&1 &
+          DB_MIGRATE=true SETUP_TOKEN=ci-dogfood-setup-token /tmp/specht-ci >> /tmp/specht-ci.log 2>&1 &
           for _ in $(seq 1 30); do
             curl -sf http://127.0.0.1:8080/api/v1/health && break
             sleep 2
           done
 
-      - name: Register admin and restart with bootstrap
+      - name: Create the admin with first-run setup
         run: |
-          curl -sf -X POST http://127.0.0.1:8080/api/v1/auth/register \
+          curl -sf -X POST http://127.0.0.1:8080/api/v1/setup \
             -H 'Content-Type: application/json' \
-            -d '{"email":"ci-dogfood@example.com","password":"ci-dogfood-password-123"}'
-          pkill -f specht-ci
-          sleep 2
-          ADMIN_EMAILS=ci-dogfood@example.com DB_MIGRATE=true /tmp/specht-ci >> /tmp/specht-ci.log 2>&1 &
-          for _ in $(seq 1 30); do
-            curl -sf http://127.0.0.1:8080/api/v1/health && break
-            sleep 2
-          done
+            -d '{"token":"ci-dogfood-setup-token","email":"ci-dogfood@example.com","password":"ci-dogfood-password-123"}'
 
       - name: Ingest scanner reports into Specht
         env:

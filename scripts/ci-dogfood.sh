@@ -3,15 +3,14 @@
 # so the product tracks its own vulnerabilities. Introduced-by-change,
 # gates, and verified-fixed closure then run on real data every pipeline.
 #
-# The server must be running with DB_MIGRATE=true and ADMIN_EMAILS
-# including SPECHT_ADMIN_EMAIL. Signup is closed by default. If bootstrapping
-# through public registration, explicitly enable it for account creation, then
-# restart with ADMIN_EMAILS:
+# The server must be running with DB_MIGRATE=true, and SPECHT_ADMIN_EMAIL must
+# be a global admin. ADMIN_EMAILS promotes only accounts that proved the
+# address (first-run setup, or SSO with a verified email), never a
+# password-registered one, so create the admin with first-run setup:
 #
-#   1. start server (DB_MIGRATE=true REGISTRATION_ENABLED=true)
-#   2. POST /api/v1/auth/register {email, password}
-#   3. restart server with ADMIN_EMAILS=<email>
-#   4. run this script
+#   1. start server (DB_MIGRATE=true SETUP_TOKEN=<16+ characters>)
+#   2. POST /api/v1/setup {token, email, password}
+#   3. run this script
 #
 # Required env: SPECHT_API_URL, SPECHT_ADMIN_EMAIL, SPECHT_ADMIN_PASSWORD,
 #   SPECHT_PROJECT (slug; created when missing), SARIF_FILES (paths).
@@ -63,7 +62,7 @@ if [ "$CODE" != "201" ] && [ "$CODE" != "200" ]; then
   split_body "$out"
   if [ "$CODE" != "200" ]; then
     echo "project create failed (HTTP $CODE): $BODY" >&2
-    echo "hint: the login account needs global admin (ADMIN_EMAILS + restart after register)" >&2
+    echo "hint: the login account needs global admin (create it with first-run setup)" >&2
     exit 1
   fi
   echo "project exists, reusing" >&2
