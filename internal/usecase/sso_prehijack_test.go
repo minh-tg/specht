@@ -12,15 +12,15 @@ import (
 	"github.com/minh-tg/specht/internal/port"
 )
 
-// linkScenario wires an account found by email plus a shared call log, so a
-// test can assert the order in which the defence steps happen.
+// linkScenario wires an account found by email plus a shared call log. The
+// user and refresh-token mocks fail any call that is not stubbed, so a test
+// also proves the use case no longer reaches for those stores on a link: the
+// identity store ends every credential in the link's own transaction.
 type linkScenario struct {
-	calls   []string
-	users   *mockUserRepo
-	ids     *mockIdentityRepo
-	tokens  *mockRefreshTokenRepo
-	clearFn func(context.Context, string) error
-	revokeF func(context.Context, string) error
+	calls  []string
+	users  *mockUserRepo
+	ids    *mockIdentityRepo
+	tokens *mockRefreshTokenRepo
 }
 
 func newLinkScenario(passwordHash string) *linkScenario {
@@ -35,16 +35,14 @@ func newLinkScenario(passwordHash string) *linkScenario {
 	}
 	s.users.clearPasswordFn = func(ctx context.Context, id string) error {
 		s.calls = append(s.calls, "clear:"+id)
-		if s.clearFn != nil {
-			return s.clearFn(ctx, id)
-		}
+		return nil
+	}
+	s.users.bumpTokenVersionFn = func(ctx context.Context, id string) error {
+		s.calls = append(s.calls, "bump:"+id)
 		return nil
 	}
 	s.tokens = &mockRefreshTokenRepo{revokeAllFn: func(ctx context.Context, id string) error {
 		s.calls = append(s.calls, "revoke:"+id)
-		if s.revokeF != nil {
-			return s.revokeF(ctx, id)
-		}
 		return nil
 	}}
 	return s
@@ -57,45 +55,30 @@ func (s *linkScenario) login(t *testing.T, claims auth.SSOClaims) error {
 	return err
 }
 
-func TestSSOLink_DisablesThePasswordAndRevokesSessionsBeforeLinking(t *testing.T) {
-	s := newLinkScenario("hash-set-by-whoever-registered-first")
+func TestSSOLink_EndsTheOldCredentialsInTheLinkTransactionOnly(t *testing.T) {
+	for name, hash := range map[string]string{
+		"an account with a password":    "hash-set-by-whoever-registered-first",
+		"an account without a password": "",
+	} {
+		s := newLinkScenario(hash)
 
-	err := s.login(t, verifiedClaims("sub-1", "victim@example.com"))
+		err := s.login(t, verifiedClaims("sub-1", "victim@example.com"))
 
-	require.NoError(t, err)
-	assert.Equal(t, []string{"clear:user-1", "revoke:user-1", "link:user-1"}, s.calls,
-		"stop password logins first, then kill existing sessions, then link")
+		require.NoError(t, err, name)
+		assert.Equal(t, []string{"link:user-1"}, s.calls,
+			name+": one store call does the whole takeover; separate calls could be left half done")
+	}
 }
 
-func TestSSOLink_AccountWithoutAPasswordStillRevokesSessions(t *testing.T) {
-	s := newLinkScenario("")
-
-	err := s.login(t, verifiedClaims("sub-1", "victim@example.com"))
-
-	require.NoError(t, err)
-	assert.Equal(t, []string{"revoke:user-1", "link:user-1"}, s.calls,
-		"nothing to clear, but a retry after a partial failure must still revoke")
-}
-
-func TestSSOLink_FailingToClearThePasswordFailsTheLogin(t *testing.T) {
+func TestSSOLink_AFailedLinkFailsTheLoginAsAFault(t *testing.T) {
 	s := newLinkScenario("hash")
-	s.clearFn = func(context.Context, string) error { return errors.New("db down") }
+	s.ids.linkErr = errors.New("db down")
 
 	err := s.login(t, verifiedClaims("sub-1", "victim@example.com"))
 
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, auth.ErrSSONotProvisioned, "an infrastructure fault is not a policy refusal")
-	assert.Equal(t, []string{"clear:user-1"}, s.calls, "no revoke and no link after a failed clear")
-}
-
-func TestSSOLink_FailingToRevokeSessionsFailsTheLogin(t *testing.T) {
-	s := newLinkScenario("hash")
-	s.revokeF = func(context.Context, string) error { return errors.New("db down") }
-
-	err := s.login(t, verifiedClaims("sub-1", "victim@example.com"))
-
-	require.Error(t, err)
-	assert.Equal(t, []string{"clear:user-1", "revoke:user-1"}, s.calls, "the account must not be linked while old sessions live")
+	assert.Empty(t, s.calls, "nothing else was touched, so the next login starts over")
 }
 
 func TestSSOLink_ProvisioningANewAccountTouchesNoPasswordOrSessions(t *testing.T) {

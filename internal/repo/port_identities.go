@@ -58,6 +58,23 @@ func (r *pgIdentityPort) LinkRevokingKeys(ctx context.Context, userID, issuer, s
 	var linked port.UserIdentity
 	var revoked []port.RevokedAPIKey
 	err = r.withTx(ctx, func(q *sqlc.Queries) error {
+		// Everything the previous holder of the address could still use ends
+		// in this transaction. The account row is written first, the lock
+		// order every retiring event and every redeem uses, so none of them
+		// can slip a credential in between. The statements are idempotent, so
+		// an account that never had a password goes through the same path.
+		if err := q.ClearUserPassword(ctx, uid); err != nil {
+			return err
+		}
+		if err := q.BumpUserTokenVersion(ctx, uid); err != nil {
+			return err
+		}
+		if err := q.RevokeUserRefreshTokens(ctx, uid); err != nil {
+			return err
+		}
+		if err := q.RevokePendingPasswordResets(ctx, uid); err != nil {
+			return err
+		}
 		row, err := q.CreateUserIdentity(ctx, sqlc.CreateUserIdentityParams{UserID: uid, Issuer: issuer, Subject: subject, EmailVerified: emailVerified})
 		if err != nil {
 			return err
