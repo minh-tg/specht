@@ -364,16 +364,28 @@ releases.
   stolen session never expired. A refresh after the limit answers `401`
   `refresh_failed`, like an expired token, and the user signs in again.
   Sessions that already exist get 30 days counted from their latest token.
-- A replayed refresh token no longer signs the user out of every device. A
-  token rotated less than 10 seconds ago answers `401` `refresh_reused` and
-  leaves the session alone, so two tabs refreshing together keep working (the
-  loser gets the new token from the winner). Replaying a rotated token after
-  that revokes only the sign-in it belongs to; the user's other devices stay
-  signed in.
+- A refresh token is single-use, and reusing one only ends the sign-in it
+  belongs to, not the user's other devices. Any second use of a rotated token,
+  however soon after the first, answers `401` `refresh_reused` and revokes that
+  sign-in's tokens, successor included. Logging out with a rotated token does
+  the same. The web client keeps one refresh in flight at a time and shows a
+  message on the sign-in page when the server ended its session this way. A
+  script that refreshes the same token from two processes at once now loses
+  its session and has to sign in again.
+- A password change and the host `reset-password` command now end the
+  account's refresh tokens in the same transaction that starts the new token
+  generation, and a refresh locks the account row when it stores its
+  successor. Before, a refresh that was in flight during the change could
+  store a token that the change had already passed over, and that token kept
+  the old session alive.
 - Expired refresh tokens, and ones revoked more than 7 days ago, are now
   deleted. The `refresh_tokens` table used to grow by a row on every sign-in
   and every refresh, forever. The sweep runs at startup and then every
   `LIFECYCLE_SWEEP_INTERVAL`, and deletes at most 50,000 rows per run.
+- The email address an SSO provider sends on a first login now has to pass the
+  checks registration applies: at most 254 bytes, no control characters and a
+  bare address. A claim that fails is refused with `403` and a message that
+  names the provider's address, and no account is looked up or created.
 - Email addresses are capped at 254 bytes and display names at 100 characters
   on registration, first-run setup, invite links, adding a member by email and
   the profile update. Before, only the 1 MiB request body limited them. A name
