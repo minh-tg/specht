@@ -212,6 +212,10 @@ func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	profile, err := h.usecase.UpdateProfile(r.Context(), ident.UserID, req.DisplayName)
+	if errors.Is(err, usecase.ErrInvalidProfileInput) {
+		respondError(w, http.StatusBadRequest, "invalid_display_name", err.Error())
+		return
+	}
 	if err != nil {
 		respondError(w, http.StatusNotFound, "not_found", "user not found")
 		return
