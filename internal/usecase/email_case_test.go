@@ -86,3 +86,30 @@ func TestRecovery_AnAmbiguousAddressIsRefused(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidCredentialInput)
 	assert.EqualError(t, err, "invalid email address")
 }
+
+// Registration, invites and setup reach normalizeAddress through validateEmail
+// or validateCredentials. A control character is refused before the address is
+// parsed, so U+0085 (NEL), which mail.ParseAddress accepts, never reaches an
+// account.
+func TestNormalizeAddress_RefusesAControlCharacter(t *testing.T) {
+	for name, email := range map[string]string{
+		"NEL in the local part": "ada\u0085@example.com",
+		"NEL after the domain":  "ada@example.com\u0085",
+		"NUL":                   "ada\x00@example.com",
+		"DEL":                   "ada\x7f@example.com",
+		"tab":                   "ada\t@example.com",
+		"newline":               "ada@example.com\n",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := normalizeAddress(email)
+			assert.ErrorIs(t, err, ErrInvalidCredentialInput)
+			assert.EqualError(t, err, "invalid email address")
+			_, err = validateCredentials(email, "a long enough password", "")
+			assert.ErrorIs(t, err, ErrInvalidCredentialInput)
+		})
+	}
+
+	got, err := normalizeAddress("Ada@Example.com")
+	require.NoError(t, err)
+	assert.Equal(t, "ada@example.com", got)
+}
