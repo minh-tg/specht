@@ -385,3 +385,8 @@ releases.
   or an ANSI escape sequence, in the project, target, request id and error
   fields, and cuts those fields at 512 bytes, so a crafted value cannot forge a
   second event or repaint an operator's terminal.
+- Outbound requests (the SSO provider, CVE detail providers, tracker and watcher webhooks)
+  now also refuse addresses in 0.0.0.0/8, 6to4 (2002::/16), IPv4-compatible (::/96), Teredo
+  (2001::/32), site-local (fec0::/10), 100::/64 and the ORCHID ranges. A hostname that
+  resolved into one of them could reach an internal IPv4 host through a relay or a DNS64
+  gateway.
