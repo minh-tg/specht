@@ -67,6 +67,30 @@ func (q *Queries) GetRefreshTokenByHash(ctx context.Context, tokenHash string) (
 	return i, err
 }
 
+const pruneRefreshTokens = `-- name: PruneRefreshTokens :execrows
+DELETE FROM refresh_tokens
+WHERE id IN (
+    SELECT r.id FROM refresh_tokens AS r
+    WHERE r.expires_at < $1::timestamptz
+       OR (r.revoked_at IS NOT NULL AND r.revoked_at < $2::timestamptz)
+    LIMIT $3::int
+)
+`
+
+type PruneRefreshTokensParams struct {
+	ExpiredBefore pgtype.Timestamptz `json:"expired_before"`
+	RevokedBefore pgtype.Timestamptz `json:"revoked_before"`
+	BatchSize     int32              `json:"batch_size"`
+}
+
+func (q *Queries) PruneRefreshTokens(ctx context.Context, arg PruneRefreshTokensParams) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneRefreshTokens, arg.ExpiredBefore, arg.RevokedBefore, arg.BatchSize)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const revokeRefreshToken = `-- name: RevokeRefreshToken :one
 UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1 AND revoked_at IS NULL RETURNING id, user_id, token_hash, expires_at, revoked_at, created_at, family_id, family_started_at
 `

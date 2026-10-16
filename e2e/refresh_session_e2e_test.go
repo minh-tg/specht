@@ -144,3 +144,30 @@ func TestE2E_RefreshReuse(t *testing.T) {
 		require.Equal(t, http.StatusOK, status, "the phone's sign-in is a separate family and survives: %s", raw)
 	})
 }
+
+// TestE2E_DeadRefreshTokensArePruned ages rows in the database and waits for
+// the sweeper (every second in this suite) to delete them.
+func TestE2E_DeadRefreshTokensArePruned(t *testing.T) {
+	conn := refreshConn(t)
+	ctx := context.Background()
+	exists := func(raw string) bool {
+		var n int
+		require.NoError(t, conn.QueryRow(ctx, "SELECT count(*) FROM refresh_tokens WHERE token_hash = $1", tokenHashOf(raw)).Scan(&n))
+		return n == 1
+	}
+	expired, revokedOld, revokedNew, live := registerPerson(t, "prune-a"), registerPerson(t, "prune-b"),
+		registerPerson(t, "prune-c"), registerPerson(t, "prune-d")
+	set := func(column string, raw string, ago string) {
+		_, err := conn.Exec(ctx, "UPDATE refresh_tokens SET "+column+" = now() - $2::interval WHERE token_hash = $1", tokenHashOf(raw), ago)
+		require.NoError(t, err)
+	}
+	set("expires_at", expired.RefreshToken, "1 minute")
+	set("revoked_at", revokedOld.RefreshToken, "8 days")
+	set("revoked_at", revokedNew.RefreshToken, "1 day")
+
+	require.Eventually(t, func() bool {
+		return !exists(expired.RefreshToken) && !exists(revokedOld.RefreshToken)
+	}, 15*time.Second, 250*time.Millisecond, "expired and long-revoked rows are deleted")
+	require.True(t, exists(revokedNew.RefreshToken), "a token revoked a day ago is kept for reuse detection")
+	require.True(t, exists(live.RefreshToken), "a live token is never pruned")
+}

@@ -328,6 +328,9 @@ type RefreshTokenStore interface {
 	// RevokeFamily revokes every unrevoked token of one sign-in chain and
 	// leaves the user's other sign-ins alone.
 	RevokeFamily(ctx context.Context, familyID string) error
+	// Prune deletes up to limit rows that expired before expiredBefore or
+	// were revoked before revokedBefore, and returns how many it deleted.
+	Prune(ctx context.Context, expiredBefore, revokedBefore time.Time, limit int) (int64, error)
 }
 
 // ---------- API keys ----------

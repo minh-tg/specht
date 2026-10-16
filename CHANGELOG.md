@@ -347,3 +347,7 @@ releases.
   loser gets the new token from the winner). Replaying a rotated token after
   that revokes only the sign-in it belongs to; the user's other devices stay
   signed in.
+- Expired refresh tokens, and ones revoked more than 7 days ago, are now
+  deleted. The `refresh_tokens` table used to grow by a row on every sign-in
+  and every refresh, forever. The sweep runs at startup and then every
+  `LIFECYCLE_SWEEP_INTERVAL`, and deletes at most 50,000 rows per run.

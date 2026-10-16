@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
@@ -390,6 +391,14 @@ func (r *pgRefreshTokenPort) RevokeFamily(ctx context.Context, familyID string) 
 		return err
 	}
 	return r.q.RevokeRefreshTokenFamily(ctx, fid)
+}
+
+func (r *pgRefreshTokenPort) Prune(ctx context.Context, expiredBefore, revokedBefore time.Time, limit int) (int64, error) {
+	return r.q.PruneRefreshTokens(ctx, sqlc.PruneRefreshTokensParams{
+		ExpiredBefore: uuidFromTime(expiredBefore),
+		RevokedBefore: uuidFromTime(revokedBefore),
+		BatchSize:     int32(limit),
+	})
 }
 
 func refreshTokenToPort(t sqlc.RefreshToken) port.RefreshToken {

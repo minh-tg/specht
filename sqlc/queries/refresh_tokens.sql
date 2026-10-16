@@ -14,3 +14,12 @@ UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at I
 
 -- name: RevokeRefreshTokenFamily :exec
 UPDATE refresh_tokens SET revoked_at = NOW() WHERE family_id = $1 AND revoked_at IS NULL;
+
+-- name: PruneRefreshTokens :execrows
+DELETE FROM refresh_tokens
+WHERE id IN (
+    SELECT r.id FROM refresh_tokens AS r
+    WHERE r.expires_at < sqlc.arg(expired_before)::timestamptz
+       OR (r.revoked_at IS NOT NULL AND r.revoked_at < sqlc.arg(revoked_before)::timestamptz)
+    LIMIT sqlc.arg(batch_size)::int
+);

@@ -214,3 +214,61 @@ func TestRefreshTokenStore_RevokeFamilyLeavesOtherSignInsAlone(t *testing.T) {
 	assert.True(t, revoked(laptopOld.TokenHash))
 	assert.False(t, revoked(phoneRow.TokenHash), "another sign-in of the same user is untouched")
 }
+
+// TestRefreshTokenStore_PruneDeletesDeadRowsInBoundedBatches checks which rows
+// the sweep removes (expired, or revoked a week ago) and that the limit caps
+// one call.
+func TestRefreshTokenStore_PruneDeletesDeadRowsInBoundedBatches(t *testing.T) {
+	pool, cleanup := setupIngestPool(t)
+	defer cleanup()
+	ctx := context.Background()
+	stores := NewPortStores(pool)
+
+	name, hash := "Ada", "hash"
+	user, err := stores.Users.Create(ctx, "prune@example.test", &name, &hash)
+	require.NoError(t, err)
+
+	now := time.Now()
+	type seed struct {
+		hash    string
+		expires time.Time
+		revoked *time.Time
+		pruned  bool
+	}
+	ago := func(d time.Duration) *time.Time { v := now.Add(-d); return &v }
+	seeds := []seed{
+		{"live", now.Add(time.Hour), nil, false},
+		{"expired", now.Add(-time.Minute), nil, true},
+		{"revoked-yesterday", now.Add(time.Hour), ago(24 * time.Hour), false},
+		{"revoked-last-week", now.Add(time.Hour), ago(8 * 24 * time.Hour), true},
+		{"expired-and-revoked-yesterday", now.Add(-time.Minute), ago(24 * time.Hour), true},
+	}
+	for _, s := range seeds {
+		_, err := stores.RefreshTokens.Create(ctx, port.NewRefreshToken{
+			UserID: user.ID, TokenHash: s.hash, ExpiresAt: s.expires,
+			FamilyID: uuid.NewString(), FamilyStartedAt: now,
+		})
+		require.NoError(t, err)
+		if s.revoked != nil {
+			_, err = pool.Exec(ctx, "UPDATE refresh_tokens SET revoked_at = $2 WHERE token_hash = $1", s.hash, *s.revoked)
+			require.NoError(t, err)
+		}
+	}
+	exists := func(hash string) bool {
+		var n int
+		require.NoError(t, pool.QueryRow(ctx, "SELECT count(*) FROM refresh_tokens WHERE token_hash = $1", hash).Scan(&n))
+		return n == 1
+	}
+
+	deleted, err := stores.RefreshTokens.Prune(ctx, now, now.Add(-7*24*time.Hour), 2)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, deleted, "one call deletes at most the limit")
+
+	deleted, err = stores.RefreshTokens.Prune(ctx, now, now.Add(-7*24*time.Hour), 1000)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, deleted, "the rest of the dead rows go on the next call")
+
+	for _, s := range seeds {
+		assert.Equal(t, !s.pruned, exists(s.hash), s.hash)
+	}
+}
