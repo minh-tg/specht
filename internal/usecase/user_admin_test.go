@@ -174,7 +174,7 @@ func TestDeactivatedAccountCannotSignIn(t *testing.T) {
 	t.Run("sso exchange", func(t *testing.T) {
 		users := &mockUserRepo{getByIDFn: func(context.Context, string) (port.User, error) { return disabled(), nil }}
 		codes := newMemorySSOCodeStore()
-		require.NoError(t, codes.Create(context.Background(), codeHashOf("code"), targetUserID, time.Now().Add(time.Minute)))
+		require.NoError(t, codes.Create(context.Background(), codeHashOf("code"), targetUserID, auth.BrowserBinding("login-secret"), time.Now().Add(time.Minute)))
 		uc := New(Deps{Stores: &port.Stores{Users: users, SSOCodes: codes}, Tokens: testJWT(t)})
 		_, err := uc.ExchangeSSOCode(context.Background(), "code")
 		require.ErrorIs(t, err, auth.ErrInvalidCredential)

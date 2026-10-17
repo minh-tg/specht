@@ -444,9 +444,10 @@ type Signoff struct {
 }
 
 type SsoExchangeCode struct {
-	CodeHash  string             `json:"code_hash"`
-	UserID    pgtype.UUID        `json:"user_id"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	CodeHash       string             `json:"code_hash"`
+	UserID         pgtype.UUID        `json:"user_id"`
+	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
+	BrowserBinding string             `json:"browser_binding"`
 }
 
 type Target struct {

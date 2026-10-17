@@ -14,7 +14,7 @@ import (
 const consumeSSOCode = `-- name: ConsumeSSOCode :one
 DELETE FROM sso_exchange_codes
 WHERE code_hash = $1 AND expires_at > $2
-RETURNING code_hash, user_id, expires_at
+RETURNING code_hash, user_id, expires_at, browser_binding
 `
 
 type ConsumeSSOCodeParams struct {
@@ -25,23 +25,34 @@ type ConsumeSSOCodeParams struct {
 func (q *Queries) ConsumeSSOCode(ctx context.Context, arg ConsumeSSOCodeParams) (SsoExchangeCode, error) {
 	row := q.db.QueryRow(ctx, consumeSSOCode, arg.CodeHash, arg.ExpiresAt)
 	var i SsoExchangeCode
-	err := row.Scan(&i.CodeHash, &i.UserID, &i.ExpiresAt)
+	err := row.Scan(
+		&i.CodeHash,
+		&i.UserID,
+		&i.ExpiresAt,
+		&i.BrowserBinding,
+	)
 	return i, err
 }
 
 const createSSOCode = `-- name: CreateSSOCode :exec
-INSERT INTO sso_exchange_codes (code_hash, user_id, expires_at)
-VALUES ($1, $2, $3)
+INSERT INTO sso_exchange_codes (code_hash, user_id, expires_at, browser_binding)
+VALUES ($1, $2, $3, $4)
 `
 
 type CreateSSOCodeParams struct {
-	CodeHash  string             `json:"code_hash"`
-	UserID    pgtype.UUID        `json:"user_id"`
-	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	CodeHash       string             `json:"code_hash"`
+	UserID         pgtype.UUID        `json:"user_id"`
+	ExpiresAt      pgtype.Timestamptz `json:"expires_at"`
+	BrowserBinding string             `json:"browser_binding"`
 }
 
 func (q *Queries) CreateSSOCode(ctx context.Context, arg CreateSSOCodeParams) error {
-	_, err := q.db.Exec(ctx, createSSOCode, arg.CodeHash, arg.UserID, arg.ExpiresAt)
+	_, err := q.db.Exec(ctx, createSSOCode,
+		arg.CodeHash,
+		arg.UserID,
+		arg.ExpiresAt,
+		arg.BrowserBinding,
+	)
 	return err
 }
 

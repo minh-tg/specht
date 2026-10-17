@@ -189,6 +189,27 @@ func TestCallback_ReplayedFromAnotherBrowserIsRefused(t *testing.T) {
 	})
 }
 
+// The code the callback mints is handed the browser binding of the login, so
+// the exchange can later tell which browser may redeem it.
+func TestCallback_IssuesTheCodeWithTheLoginsBrowserBinding(t *testing.T) {
+	idp := newStrictIdP(t)
+	a := idp.authFor(t)
+	login := startTestLogin(t, a, "")
+	code := idp.authorize(t, login, "user-1")
+
+	var issued SSOClaims
+	h := a.CallbackHandler(func(_ context.Context, c SSOClaims) (string, error) {
+		issued = c
+		return "exchange-code", nil
+	})
+	w := httptest.NewRecorder()
+	h(w, login.callbackRequestWith(code, login.cookies...))
+
+	require.Equal(t, http.StatusFound, w.Code)
+	assert.Equal(t, BrowserBinding(loginSecret(t, a, login)), issued.BrowserBinding)
+	assert.NotContains(t, issued.BrowserBinding, loginSecret(t, a, login), "the binding is a hash, not the secret")
+}
+
 func TestCallback_NormalFlowWorksWithAndWithoutAClientSecret(t *testing.T) {
 	for name, mutate := range map[string]func(*OIDCConfig){
 		"confidential client": func(*OIDCConfig) {},

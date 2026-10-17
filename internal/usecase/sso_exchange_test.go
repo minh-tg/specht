@@ -23,13 +23,14 @@ func newMemorySSOCodeStore() *memorySSOCodeStore {
 	return &memorySSOCodeStore{codes: make(map[string]port.SSOCode)}
 }
 
-func (m *memorySSOCodeStore) Create(ctx context.Context, codeHash, userID string, expiresAt time.Time) error {
+func (m *memorySSOCodeStore) Create(ctx context.Context, codeHash, userID, browserBinding string, expiresAt time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.codes[codeHash] = port.SSOCode{
-		CodeHash:  codeHash,
-		UserID:    userID,
-		ExpiresAt: expiresAt,
+		CodeHash:       codeHash,
+		UserID:         userID,
+		BrowserBinding: browserBinding,
+		ExpiresAt:      expiresAt,
 	}
 	return nil
 }
@@ -80,8 +81,10 @@ func TestSSOExchangeCode_Flow(t *testing.T) {
 		Tokens: jwtAuth,
 	})
 
+	browser := auth.BrowserBinding("secret-of-the-login-cookie")
+
 	t.Run("creates and exchanges code for access and refresh tokens", func(t *testing.T) {
-		code, err := uc.CreateSSOExchangeCode(ctx, user.ID)
+		code, err := uc.CreateSSOExchangeCode(ctx, user.ID, browser)
 		require.NoError(t, err)
 		require.NotEmpty(t, code)
 
@@ -91,6 +94,7 @@ func TestSSOExchangeCode_Flow(t *testing.T) {
 		stored, ok := ssoStore.codes[hashStr]
 		require.True(t, ok)
 		assert.Equal(t, user.ID, stored.UserID)
+		assert.Equal(t, browser, stored.BrowserBinding, "the code keeps the browser it was issued to")
 
 		// Exchange code
 		resp, err := uc.ExchangeSSOCode(ctx, code)
@@ -114,7 +118,7 @@ func TestSSOExchangeCode_Flow(t *testing.T) {
 	})
 
 	t.Run("fails on expired code", func(t *testing.T) {
-		code, err := uc.CreateSSOExchangeCode(ctx, user.ID)
+		code, err := uc.CreateSSOExchangeCode(ctx, user.ID, browser)
 		require.NoError(t, err)
 
 		// Manually expire code

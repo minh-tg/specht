@@ -40,16 +40,17 @@ func (r *pgSSOCodePort) pruneExpired(ctx context.Context) {
 	}
 }
 
-func (r *pgSSOCodePort) Create(ctx context.Context, codeHash, userID string, expiresAt time.Time) error {
+func (r *pgSSOCodePort) Create(ctx context.Context, codeHash, userID, browserBinding string, expiresAt time.Time) error {
 	r.pruneExpired(ctx)
 	uid, err := parseID(userID)
 	if err != nil {
 		return err
 	}
 	return r.q.CreateSSOCode(ctx, sqlc.CreateSSOCodeParams{
-		CodeHash:  codeHash,
-		UserID:    uid,
-		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
+		CodeHash:       codeHash,
+		UserID:         uid,
+		ExpiresAt:      pgtype.Timestamptz{Time: expiresAt, Valid: true},
+		BrowserBinding: browserBinding,
 	})
 }
 
@@ -63,8 +64,9 @@ func (r *pgSSOCodePort) Consume(ctx context.Context, codeHash string, now time.T
 		return port.SSOCode{}, mappingErr(err)
 	}
 	return port.SSOCode{
-		CodeHash:  row.CodeHash,
-		UserID:    toUUID(row.UserID),
-		ExpiresAt: row.ExpiresAt.Time,
+		CodeHash:       row.CodeHash,
+		UserID:         toUUID(row.UserID),
+		BrowserBinding: row.BrowserBinding,
+		ExpiresAt:      row.ExpiresAt.Time,
 	}, nil
 }
