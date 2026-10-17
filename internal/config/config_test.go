@@ -103,6 +103,36 @@ func TestLoad_MalformedSweepIntervalFails(t *testing.T) {
 	}
 }
 
+func TestLoad_RawRetentionDaysDefaultsToThirty(t *testing.T) {
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.Equal(t, 30, cfg.RawRetentionDays)
+}
+
+func TestLoad_RawRetentionDaysZeroKeepsEverything(t *testing.T) {
+	t.Setenv("RAW_RETENTION_DAYS", "0")
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.Equal(t, 0, cfg.RawRetentionDays)
+}
+
+func TestLoad_RawRetentionDaysOverride(t *testing.T) {
+	t.Setenv("RAW_RETENTION_DAYS", "90")
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.Equal(t, 90, cfg.RawRetentionDays)
+}
+
+func TestLoad_InvalidRawRetentionDaysFails(t *testing.T) {
+	for _, bad := range []string{"-1", "30d", "1.5", "forever"} {
+		t.Run(bad, func(t *testing.T) {
+			t.Setenv("RAW_RETENTION_DAYS", bad)
+			_, err := Load()
+			assert.ErrorContains(t, err, "RAW_RETENTION_DAYS")
+		})
+	}
+}
+
 func TestLoad_SessionMaxAgeOverride(t *testing.T) {
 	t.Setenv("WATCHER_ENABLE", "")
 	t.Setenv("SESSION_MAX_AGE", "168h")
@@ -492,6 +522,7 @@ func TestServerValidate_NamesEachProblemByItsVariable(t *testing.T) {
 		"negative min":         {func(s *Server) { s.DBMinConns = -1 }, "DB_MIN_CONNS"},
 		"min above max":        {func(s *Server) { s.DBMinConns, s.DBMaxConns = 30, 20 }, "DB_MIN_CONNS"},
 		"zero session age":     {func(s *Server) { s.SessionMaxAge = 0 }, "SESSION_MAX_AGE"},
+		"negative raw window":  {func(s *Server) { s.RawRetentionDays = -1 }, "RAW_RETENTION_DAYS"},
 		"zero shutdown window": {func(s *Server) { s.ShutdownTimeout = 0 }, "SHUTDOWN_TIMEOUT"},
 	}
 	for name, tc := range cases {

@@ -54,7 +54,11 @@ const (
 	// tokens rotate for this long after the original login, then the user
 	// signs in again.
 	DefaultSessionMaxAge = 30 * 24 * time.Hour
-	DefaultStalenessMult = 2
+	// DefaultRawRetentionDays is how long a report keeps its raw_data
+	// payload. The sweep clears older payloads; the report row and its
+	// findings stay. Zero keeps every payload.
+	DefaultRawRetentionDays = 30
+	DefaultStalenessMult    = 2
 	// Rate limiting defaults (token bucket per key): strict for
 	// unauthenticated entry points, generous for authenticated callers, and
 	// tightest for login and register, which accept guessable credentials.
@@ -89,7 +93,10 @@ type Server struct {
 	// SessionMaxAge is the absolute session lifetime (SESSION_MAX_AGE).
 	// Must be positive.
 	SessionMaxAge time.Duration
-	SSO           SSOConfig
+	// RawRetentionDays is how many days a report keeps its raw_data
+	// (RAW_RETENTION_DAYS). Zero disables the sweep. Never negative.
+	RawRetentionDays int
+	SSO              SSOConfig
 	// TrustedProxies lists only reverse-proxy hop CIDRs. The nearest trusted
 	// proxy must append its observed peer to X-Forwarded-For and overwrite
 	// X-Real-IP / X-Forwarded-Proto. Empty (the default) means forwarding
@@ -412,6 +419,7 @@ func Load() (*Server, error) {
 		InventoryTTL:         DefaultInventoryTTL,
 		SweepInterval:        DefaultSweepInterval,
 		SessionMaxAge:        DefaultSessionMaxAge,
+		RawRetentionDays:     DefaultRawRetentionDays,
 		SSO:                  loadSSO(),
 		RegistrationDisabled: true,
 	}
@@ -446,6 +454,14 @@ func Load() (*Server, error) {
 			return nil, fmt.Errorf("SESSION_MAX_AGE must be a positive duration such as 720h, got %q", v)
 		}
 		s.SessionMaxAge = d
+	}
+
+	if v := os.Getenv("RAW_RETENTION_DAYS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("RAW_RETENTION_DAYS must be a whole number of days, 0 or more (0 keeps every raw report), got %q", v)
+		}
+		s.RawRetentionDays = n
 	}
 
 	if v := os.Getenv("DB_CONNECT_TIMEOUT"); v != "" {
@@ -575,6 +591,9 @@ func (s *Server) Validate() error {
 	}
 	if s.SessionMaxAge <= 0 {
 		problems = append(problems, errors.New("SESSION_MAX_AGE must be a positive duration"))
+	}
+	if s.RawRetentionDays < 0 {
+		problems = append(problems, fmt.Errorf("RAW_RETENTION_DAYS must be 0 or more, got %d", s.RawRetentionDays))
 	}
 	if s.Intel.TTL <= 0 {
 		problems = append(problems, errors.New("INTEL_TTL must be a positive duration"))
