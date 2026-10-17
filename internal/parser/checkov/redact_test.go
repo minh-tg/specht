@@ -113,3 +113,17 @@ func TestRedactRawRedactsCredentialKeysAtDepthOneAndFive(t *testing.T) {
 	_, err = s.Parse(context.Background(), redacted)
 	require.NoError(t, err, "redacted evidence still parses")
 }
+
+// TestParseKeepsTheMatchedSourceOutOfFindingExtensions checks that code_block,
+// which carries the source of a failed check, is not copied into the finding
+// extensions that occurrence stores.
+func TestParseKeepsTheMatchedSourceOutOfFindingExtensions(t *testing.T) {
+	report, err := checkov.NewScanner().Parse(context.Background(), checkovSecretDocs["object"])
+	require.NoError(t, err)
+	require.Len(t, report.Findings, 1)
+
+	ext, err := json.Marshal(report.Findings[0].Extensions)
+	require.NoError(t, err)
+	assert.NotContains(t, string(ext), checkovSecret)
+	assert.NotContains(t, report.Findings[0].Extensions, "code_block")
+}

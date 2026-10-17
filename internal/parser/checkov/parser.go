@@ -270,9 +270,9 @@ func convertCheck(f checkovFinding, checkType string) domain.NormalizedFinding {
 	if f.Guideline != "" {
 		ext["guideline"] = f.Guideline
 	}
-	if len(f.CodeBlock) > 0 {
-		ext["code_block"] = string(f.CodeBlock)
-	}
+	// code_block is not copied into the extensions. It is the matched source,
+	// and the parser cannot find a credential inside its text. The raw evidence
+	// keeps it, redacted by RedactRaw.
 
 	var fix *domain.FixInfo
 	if f.Guideline != "" {
