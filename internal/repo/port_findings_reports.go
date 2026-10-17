@@ -617,6 +617,107 @@ func (r *pgFindingPort) CreateEvent(ctx context.Context, input port.FindingEvent
 	return findingEventRowToPort(row), nil
 }
 
+// ListScopeSeverities returns the last severity each scope reported for the
+// given findings. An empty list returns nothing without a query.
+func (r *pgFindingPort) ListScopeSeverities(ctx context.Context, findingIDs []string) ([]port.FindingScopeSeverity, error) {
+	if len(findingIDs) == 0 {
+		return nil, nil
+	}
+	uids := make([]pgtype.UUID, len(findingIDs))
+	for i, id := range findingIDs {
+		uid, err := parseID(id)
+		if err != nil {
+			return nil, err
+		}
+		uids[i] = uid
+	}
+	rows, err := r.inner.q.ListFindingScopeSeverities(ctx, uids)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]port.FindingScopeSeverity, len(rows))
+	for i, row := range rows {
+		out[i] = port.FindingScopeSeverity{
+			FindingID:    toUUID(row.FindingID),
+			ScopeHash:    row.ScopeHash,
+			Severity:     row.Severity,
+			SeverityRank: row.SeverityRank,
+			ObservedAt:   row.ObservedAt.Time,
+		}
+	}
+	return out, nil
+}
+
+// UpsertScopeSeverity records the severity one scan scope reported for a
+// finding.
+func (r *pgFindingPort) UpsertScopeSeverity(ctx context.Context, input port.FindingScopeSeverityInput) error {
+	fid, err := parseID(input.FindingID)
+	if err != nil {
+		return err
+	}
+	rid := pgtype.UUID{}
+	if input.ReportID != "" {
+		if rid, err = parseID(input.ReportID); err != nil {
+			return err
+		}
+	}
+	return r.inner.q.UpsertFindingScopeSeverity(ctx, sqlc.UpsertFindingScopeSeverityParams{
+		FindingID:    fid,
+		ScopeHash:    input.ScopeHash,
+		Severity:     input.Severity,
+		SeverityRank: input.SeverityRank,
+		ReportID:     rid,
+		ObservedAt:   uuidFromTime(input.ObservedAt),
+	})
+}
+
+// BulkUpsertScopeSeverities writes the scope rows of one ingest in one
+// statement. The statement cannot upsert one key twice, so when a finding
+// appears more than once the last row wins.
+func (r *pgFindingPort) BulkUpsertScopeSeverities(ctx context.Context, rows []port.FindingScopeSeverityInput) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	position := make(map[string]int, len(rows))
+	unique := make([]port.FindingScopeSeverityInput, 0, len(rows))
+	for _, row := range rows {
+		if i, ok := position[row.FindingID]; ok {
+			unique[i] = row
+			continue
+		}
+		position[row.FindingID] = len(unique)
+		unique = append(unique, row)
+	}
+
+	params := sqlc.BulkUpsertFindingScopeSeveritiesParams{
+		Column1: make([]pgtype.UUID, len(unique)),
+		Column2: make([]string, len(unique)),
+		Column3: make([]string, len(unique)),
+		Column4: make([]int16, len(unique)),
+		Column5: make([]pgtype.UUID, len(unique)),
+		Column6: make([]pgtype.Timestamptz, len(unique)),
+	}
+	for i, row := range unique {
+		fid, err := parseID(row.FindingID)
+		if err != nil {
+			return err
+		}
+		rid := pgtype.UUID{}
+		if row.ReportID != "" {
+			if rid, err = parseID(row.ReportID); err != nil {
+				return err
+			}
+		}
+		params.Column1[i] = fid
+		params.Column2[i] = row.ScopeHash
+		params.Column3[i] = row.Severity
+		params.Column4[i] = row.SeverityRank
+		params.Column5[i] = rid
+		params.Column6[i] = uuidFromTime(row.ObservedAt)
+	}
+	return r.inner.q.BulkUpsertFindingScopeSeverities(ctx, params)
+}
+
 // BulkCreateEvents writes one event shape for many findings in a single
 // statement (FindingID is unused — every listed finding gets the event).
 func (r *pgFindingPort) BulkCreateEvents(ctx context.Context, findingIDs []string, input port.FindingEventInput) error {

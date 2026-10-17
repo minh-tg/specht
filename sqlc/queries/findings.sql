@@ -598,3 +598,44 @@ WHERE findings.project_id = $1
         )
   )
 RETURNING *;
+
+-- name: ListFindingScopeSeverities :many
+-- One row per (finding, scope) for the given findings. Ingest reads them to
+-- find what each other scope last reported before it writes the project-wide
+-- severity.
+SELECT finding_id, scope_hash, severity, severity_rank, observed_at
+FROM finding_scope_severities
+WHERE finding_id = ANY($1::uuid[]);
+
+-- name: UpsertFindingScopeSeverity :exec
+-- Records the severity one scan scope reported for a finding. A repeat from
+-- the same scope replaces the row.
+INSERT INTO finding_scope_severities (
+    finding_id, scope_hash, severity, severity_rank, report_id, observed_at
+) VALUES (
+    $1, $2, $3, $4, $5, $6
+) ON CONFLICT (finding_id, scope_hash) DO UPDATE SET
+    severity = EXCLUDED.severity,
+    severity_rank = EXCLUDED.severity_rank,
+    report_id = EXCLUDED.report_id,
+    observed_at = EXCLUDED.observed_at;
+
+-- name: BulkUpsertFindingScopeSeverities :exec
+-- One scope row per finding for a whole ingest, in one statement. The caller
+-- passes each (finding, scope) pair at most once, because a statement cannot
+-- upsert the same key twice.
+INSERT INTO finding_scope_severities (
+    finding_id, scope_hash, severity, severity_rank, report_id, observed_at
+)
+SELECT fid.val, sh.val, sv.val, sr.val, rid.val, oa.val
+FROM unnest($1::uuid[]) WITH ORDINALITY AS fid(val, ord)
+JOIN unnest($2::text[]) WITH ORDINALITY AS sh(val, ord) ON fid.ord = sh.ord
+JOIN unnest($3::text[]) WITH ORDINALITY AS sv(val, ord) ON fid.ord = sv.ord
+JOIN unnest($4::smallint[]) WITH ORDINALITY AS sr(val, ord) ON fid.ord = sr.ord
+JOIN unnest($5::uuid[]) WITH ORDINALITY AS rid(val, ord) ON fid.ord = rid.ord
+JOIN unnest($6::timestamptz[]) WITH ORDINALITY AS oa(val, ord) ON fid.ord = oa.ord
+ON CONFLICT (finding_id, scope_hash) DO UPDATE SET
+    severity = EXCLUDED.severity,
+    severity_rank = EXCLUDED.severity_rank,
+    report_id = EXCLUDED.report_id,
+    observed_at = EXCLUDED.observed_at;

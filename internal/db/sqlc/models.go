@@ -243,6 +243,15 @@ type FindingOccurrence struct {
 	ObservedAt      pgtype.Timestamptz `json:"observed_at"`
 }
 
+type FindingScopeSeverity struct {
+	FindingID    pgtype.UUID        `json:"finding_id"`
+	ScopeHash    string             `json:"scope_hash"`
+	Severity     string             `json:"severity"`
+	SeverityRank int16              `json:"severity_rank"`
+	ReportID     pgtype.UUID        `json:"report_id"`
+	ObservedAt   pgtype.Timestamptz `json:"observed_at"`
+}
+
 type InstanceSecret struct {
 	Name      string             `json:"name"`
 	Value     []byte             `json:"value"`
