@@ -6,6 +6,7 @@ import { AuthLayout } from "@/components/AuthLayout";
 import { FormField } from "@/components/FormField";
 import { PasswordField } from "@/components/PasswordField";
 import { Button } from "@/components/ui/button";
+import { hiddenEmailCharactersMessage } from "@/lib/emailCharacters";
 import { isPasswordValid, passwordPolicyMessage, passwordUserInputs } from "@/lib/passwordRules";
 import { type SubmitEvent, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
@@ -46,8 +47,11 @@ export function Register() {
       navigate("/login", { replace: true });
     } catch (err) {
       const policy = passwordPolicyMessage(err);
+      const hidden = hiddenEmailCharactersMessage(err);
       if (policy) {
         setPasswordError(policy);
+      } else if (hidden) {
+        setError(hidden);
       } else if (err instanceof APIError) {
         setError(err.message);
       } else {

@@ -175,6 +175,23 @@ describe("Setup", () => {
     expect(adopt).not.toHaveBeenCalled();
   });
 
+  it("tells the person to retype an address with hidden characters", async () => {
+    setupAnswer = () =>
+      jsonResponse(
+        { error: { code: "invalid_email_characters", message: "invalid email address" } },
+        400,
+      );
+    renderSetup();
+    const user = userEvent.setup();
+    await fillIn(user);
+    await user.click(screen.getByRole("button", { name: "Create administrator" }));
+
+    expect(
+      await screen.findByText("This email has hidden characters. Retype it instead of pasting it."),
+    ).toBeInTheDocument();
+    expect(adopt).not.toHaveBeenCalled();
+  });
+
   it("shows the server's message for a bad email, and a plain one for anything else", async () => {
     setupAnswer = () =>
       jsonResponse(

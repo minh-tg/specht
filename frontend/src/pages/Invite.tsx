@@ -9,6 +9,7 @@ import { INLINE_LINK } from "@/components/inlineLink";
 import { PasswordField } from "@/components/PasswordField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { Button } from "@/components/ui/button";
+import { hiddenEmailCharactersMessage } from "@/lib/emailCharacters";
 import { isPasswordValid, passwordPolicyMessage, passwordUserInputs } from "@/lib/passwordRules";
 import type { InviteLookup, InviteRole } from "@/types/api";
 import { useQueryClient } from "@tanstack/react-query";
@@ -116,8 +117,11 @@ export function Invite() {
 
   function explain(err: unknown) {
     const policy = passwordPolicyMessage(err);
+    const hidden = hiddenEmailCharactersMessage(err);
     if (policy) {
       setPasswordError(policy);
+    } else if (hidden) {
+      setFormError(hidden);
     } else if (err instanceof APIError && err.status === 404) {
       setDead(true);
     } else if (err instanceof APIError && err.code === "invite_email_mismatch") {

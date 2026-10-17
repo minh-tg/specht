@@ -155,6 +155,46 @@ describe("Register", () => {
     expect(screen.getByRole("button", { name: "Create account" })).toBeEnabled();
   });
 
+  it("tells the person to retype an address with hidden characters", async () => {
+    mockServer(() =>
+      jsonResponse(
+        { error: { code: "invalid_email_characters", message: "invalid email address" } },
+        422,
+      )
+    );
+    renderRegister();
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText("Email"), "new@example.com");
+    await user.type(screen.getByLabelText("Password"), "correct-horse-battery");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(
+      await screen.findByText("This email has hidden characters. Retype it instead of pasting it."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("invalid email address")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create account" })).toBeEnabled();
+  });
+
+  it("keeps the server's message for any other refused address", async () => {
+    mockServer(() =>
+      jsonResponse(
+        { error: { code: "invalid_credentials", message: "invalid email address" } },
+        400,
+      )
+    );
+    renderRegister();
+    const user = userEvent.setup();
+
+    await user.type(screen.getByLabelText("Email"), "new@example.com");
+    await user.type(screen.getByLabelText("Password"), "correct-horse-battery");
+    await user.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(await screen.findByText("invalid email address")).toBeInTheDocument();
+    expect(screen.queryByText("This email has hidden characters. Retype it instead of pasting it."))
+      .not.toBeInTheDocument();
+  });
+
   it.each([
     [
       "password_too_common",
