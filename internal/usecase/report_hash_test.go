@@ -25,11 +25,11 @@ func TestReportHash_UnkeyedScannersKeepTheirPlainHash(t *testing.T) {
 	plain := &mockScanner{name: "plain"}
 
 	assert.Equal(t, hex.EncodeToString(sum[:]), reportHash(plain, raw, reportWith("a", "b"), false),
-		"existing reports keep the hash they were stored with")
+		"a scanner without a fingerprint key hashes the body alone")
 }
 
 func TestReportHash_ReportsThatDifferOnlyInASecretStayDistinct(t *testing.T) {
-	// Redaction removes the secrets, so the stored bytes are the same. The identities are not.
+	// A keyed scanner folds the identities in, so the same body under a rotated key is not a replay.
 	redacted := []byte(`[{"RuleID":"generic-api-key","Secret":"[REDACTED]"}]`)
 	keyed := &keyedMockScanner{mockScanner{name: "keyed"}}
 
