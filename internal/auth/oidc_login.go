@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -121,6 +122,15 @@ func (a *OIDCAuthenticator) nonce(state, secret string) string {
 func pkceChallenge(verifier string) string {
 	sum := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
+
+// BrowserBinding is what an SSO exchange code keeps about the browser that
+// started its login: the SHA-256 of that login's cookie secret, hex encoded.
+// The secret is only in the cookie, so the binding identifies that browser
+// without storing anything a stolen code could reuse.
+func BrowserBinding(secret string) string {
+	sum := sha256.Sum256([]byte(secret))
+	return hex.EncodeToString(sum[:])
 }
 
 // sealLogin encodes a pending login as a cookie value:

@@ -157,7 +157,7 @@ func NewRouter(cfg RouterConfig) http.Handler {
 			if err != nil {
 				return "", err
 			}
-			return cfg.Usecases.CreateSSOExchangeCode(ctx, userID)
+			return cfg.Usecases.CreateSSOExchangeCode(ctx, userID, claims.BrowserBinding)
 		}))
 	}
 	r.Group(func(r chi.Router) {

@@ -519,19 +519,19 @@ func idTokenSubject(idToken string) (string, error) {
 // login it belongs to and clears that cookie. The cookie is named after the
 // state and signed for it, so a callback URL replayed from another browser
 // finds no cookie, or one that does not verify, and is refused before the code
-// goes anywhere. It returns the PKCE verifier and the nonce derived from the
-// cookie's secret, and the validated return path.
-func (a *OIDCAuthenticator) verifySSOCallbackState(w http.ResponseWriter, r *http.Request) (verifier, wantNonce, returnTo string, ok bool) {
+// goes anywhere. It returns the PKCE verifier, the nonce and the browser
+// binding derived from the cookie's secret, and the validated return path.
+func (a *OIDCAuthenticator) verifySSOCallbackState(w http.ResponseWriter, r *http.Request) (verifier, wantNonce, returnTo, binding string, ok bool) {
 	state := r.URL.Query().Get("state")
 	if state == "" {
 		http.Error(w, "missing state", http.StatusBadRequest)
-		return "", "", "", false
+		return "", "", "", "", false
 	}
 	name := ssoStateCookieName(state)
 	cookie, err := r.Cookie(name)
 	if err != nil {
 		http.Error(w, "state mismatch: sso login not found or expired, start sign-in again", http.StatusBadRequest)
-		return "", "", "", false
+		return "", "", "", "", false
 	}
 	login, err := a.openLogin(state, cookie.Value)
 	if err != nil {
@@ -540,7 +540,7 @@ func (a *OIDCAuthenticator) verifySSOCallbackState(w http.ResponseWriter, r *htt
 			msg = "state mismatch: sso login expired, start sign-in again"
 		}
 		http.Error(w, msg, http.StatusBadRequest)
-		return "", "", "", false
+		return "", "", "", "", false
 	}
 
 	// The cookie is single-use: clear it before any further work so a
@@ -549,7 +549,7 @@ func (a *OIDCAuthenticator) verifySSOCallbackState(w http.ResponseWriter, r *htt
 	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
 	http.SetCookie(w, ssoCookie(name, "", -1, SecureTransport(r)))
 
-	return a.pkceVerifier(state, login.secret), a.nonce(state, login.secret), login.returnPath, true
+	return a.pkceVerifier(state, login.secret), a.nonce(state, login.secret), login.returnPath, BrowserBinding(login.secret), true
 }
 
 // extractCallbackIdentity resolves the callback identity from the token
@@ -582,13 +582,14 @@ func (a *OIDCAuthenticator) extractCallbackIdentity(ctx context.Context, tokenRe
 
 // issueCallbackSession mints the session token for the validated identity
 // and delivers it in the redirect URL fragment.
-func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ctx context.Context, claims SSOClaims) (token string, err error), providerIssuer string, ident *Identity, returnTo string) {
+func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ctx context.Context, claims SSOClaims) (token string, err error), providerIssuer string, ident *Identity, returnTo, binding string) {
 	tok, err := issuer(r.Context(), SSOClaims{
-		Issuer:        providerIssuer,
-		Subject:       ident.UserID,
-		Email:         ident.Email,
-		EmailVerified: ident.EmailVerified,
-		Groups:        ident.Groups,
+		Issuer:         providerIssuer,
+		Subject:        ident.UserID,
+		Email:          ident.Email,
+		EmailVerified:  ident.EmailVerified,
+		Groups:         ident.Groups,
+		BrowserBinding: binding,
 	})
 	if err != nil {
 		if errors.Is(err, ErrSSONotProvisioned) {
@@ -625,7 +626,7 @@ func issueCallbackSession(w http.ResponseWriter, r *http.Request, issuer func(ct
 // provider's address as the problem.
 func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, claims SSOClaims) (token string, err error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		verifier, wantNonce, returnTo, ok := a.verifySSOCallbackState(w, r)
+		verifier, wantNonce, returnTo, binding, ok := a.verifySSOCallbackState(w, r)
 		if !ok {
 			return
 		}
@@ -651,7 +652,7 @@ func (a *OIDCAuthenticator) CallbackHandler(issuer func(ctx context.Context, cla
 			return
 		}
 
-		issueCallbackSession(w, r, issuer, strings.TrimSuffix(a.cfg.IssuerURL, "/"), ident, returnTo)
+		issueCallbackSession(w, r, issuer, strings.TrimSuffix(a.cfg.IssuerURL, "/"), ident, returnTo, binding)
 	}
 }
 

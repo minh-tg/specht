@@ -280,7 +280,7 @@ func (m *mockUsecases) FindOrProvisionSSOUser(ctx context.Context, claims auth.S
 	return "", "", false, fmt.Errorf("unexpected call to FindOrProvisionSSOUser")
 }
 
-func (m *mockUsecases) CreateSSOExchangeCode(ctx context.Context, userID string) (string, error) {
+func (m *mockUsecases) CreateSSOExchangeCode(ctx context.Context, userID, browserBinding string) (string, error) {
 	if m.createSSOExchangeCodeFn != nil {
 		return m.createSSOExchangeCodeFn(ctx, userID)
 	}

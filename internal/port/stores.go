@@ -341,15 +341,17 @@ type IdentityStore interface {
 
 // SSOCode is a short-lived authorization code minted after successful OIDC login
 // and consumed by the SPA in exchange for session and refresh tokens.
+// BrowserBinding identifies the browser that started the login.
 type SSOCode struct {
-	CodeHash  string
-	UserID    string
-	ExpiresAt time.Time
+	CodeHash       string
+	UserID         string
+	BrowserBinding string
+	ExpiresAt      time.Time
 }
 
 // SSOCodeStore persists single-use SSO exchange codes.
 type SSOCodeStore interface {
-	Create(ctx context.Context, codeHash, userID string, expiresAt time.Time) error
+	Create(ctx context.Context, codeHash, userID, browserBinding string, expiresAt time.Time) error
 	Consume(ctx context.Context, codeHash string, now time.Time) (SSOCode, error)
 }
 

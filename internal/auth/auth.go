@@ -157,6 +157,8 @@ type SSOClaims struct {
 	Email         string
 	EmailVerified bool
 	Groups        []string
+	// BrowserBinding identifies the browser that started the login (see BrowserBinding).
+	BrowserBinding string
 }
 
 // Authenticator authenticates a bearer token (JWT or API key) into an Identity.
