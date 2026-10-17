@@ -91,3 +91,25 @@ func TestRedactRawCapsAReportOf200KiB(t *testing.T) {
 	assert.Equal(t, len(data), stored.OriginalBytes)
 	assert.Len(t, stored.Prefix, scanner.RawEvidenceCap)
 }
+
+// credentialKeysAtDepth puts a credential at the root object (depth 1) and
+// under four nested objects (depth 5). Each value is unique, so NotContains
+// fails if any of them survives.
+const credentialKeysAtDepth = `"password":"pw-depth-1","token":"tok-depth-1","api_key":"key-depth-1","nest":{"a":{"b":{"c":{"password":"pw-depth-5","token":"tok-depth-5","api_key":"key-depth-5"}}}},`
+
+var credentialValuesAtDepth = []string{"pw-depth-1", "tok-depth-1", "key-depth-1", "pw-depth-5", "tok-depth-5", "key-depth-5"}
+
+func TestRedactRawRedactsCredentialKeysAtDepthOneAndFive(t *testing.T) {
+	data := []byte(strings.Replace(string(checkovSecretDocs["object"]), "{", "{"+credentialKeysAtDepth, 1))
+	s := checkov.NewScanner()
+	redacted, err := s.RedactRaw(data)
+	require.NoError(t, err)
+
+	for _, v := range append(credentialValuesAtDepth, checkovSecret) {
+		assert.NotContains(t, string(redacted), v)
+	}
+	assert.Contains(t, string(redacted), `"api_key":"[REDACTED]"`)
+
+	_, err = s.Parse(context.Background(), redacted)
+	require.NoError(t, err, "redacted evidence still parses")
+}
