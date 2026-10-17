@@ -756,6 +756,12 @@ type ingestFindingsState struct {
 	known        map[string]port.Finding
 	knownIDs     []string
 	baselineSeen map[string]bool
+	// scopeHash is the scan scope of this ingest (see scanScopeHash).
+	scopeHash string
+	// scopeSev holds the per-scope severities of the known findings.
+	scopeSev scopeSeverities
+	// scopeRows are the scope severities staged for the batched flush.
+	scopeRows []port.FindingScopeSeverityInput
 
 	seenIntroduced    map[string]bool
 	introducedEntries []port.IntroducedFindingEntry
@@ -784,8 +790,12 @@ func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Projec
 		baselineSeen:   make(map[string]bool),
 		seenIntroduced: make(map[string]bool),
 		batchStore:     batchStore,
+		scopeHash:      scanScopeHash(input, nr),
 	}
 	if err := u.prefetchKnownFindings(ctx, st, nr); err != nil {
+		return ingestOutcome{}, err
+	}
+	if err := u.prefetchScopeSeverities(ctx, st); err != nil {
 		return ingestOutcome{}, err
 	}
 	if err := u.prefetchBaselineOccurrences(ctx, st); err != nil {
@@ -877,8 +887,16 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 	// again is a new finding as far as this report is concerned.
 	known := exists && existing.State != string(finding.TechArchived)
 
-	upserted, err := u.upsertFindingRow(ctx, st, f, newRank)
+	incoming := severityValue{text: severityStr(f.Severity), rank: newRank}
+	project := incoming
+	if exists {
+		project = st.projectSeverity(existing.ID, incoming)
+	}
+	upserted, err := u.upsertFindingRow(ctx, st, f, project)
 	if err != nil {
+		return err
+	}
+	if err := u.recordScopeSeverity(ctx, st, upserted, existing, exists, incoming, project); err != nil {
 		return err
 	}
 	if err := u.attributeFinding(ctx, st, upserted, exists, existing); err != nil {
@@ -910,7 +928,7 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 
 	if exists && (existing.AnalysisState != string(finding.StateUnanalyzed) || existing.GateEffect == string(finding.EffectIgnore)) {
 		return u.applyMaterialChange(ctx, st.input, upserted, f,
-			existing.CurrentSeverityRank, existing.GateEffect, existing.AnalysisState)
+			existing.CurrentSeverityRank, project.rank, existing.GateEffect, existing.AnalysisState)
 	}
 	return nil
 }
@@ -934,15 +952,16 @@ func (s *ingestFindingsState) tallyIngest(introduced bool, changeType, upsertedI
 	s.outcome.total++
 }
 
-// upsertFindingRow writes the finding row and returns what was written.
-func (u *Usecases) upsertFindingRow(ctx context.Context, st *ingestFindingsState, f domain.NormalizedFinding, newRank int16) (port.Finding, error) {
+// upsertFindingRow writes the finding row with the project-wide severity and
+// returns what was written.
+func (u *Usecases) upsertFindingRow(ctx context.Context, st *ingestFindingsState, f domain.NormalizedFinding, project severityValue) (port.Finding, error) {
 	upserted, err := u.deps.Stores.Findings.Upsert(ctx, port.UpsertFindingInput{
 		ProjectID:    st.project.ID,
 		FindingKind:  f.FindingKind,
 		Fingerprint:  f.Fingerprint,
 		Title:        f.Title,
-		Severity:     severityStr(f.Severity),
-		SeverityRank: newRank,
+		Severity:     project.text,
+		SeverityRank: project.rank,
 		Score:        scoreToFloat(f.Score),
 		FirstSeen:    st.nowTime,
 		LastSeen:     st.nowTime,
@@ -1072,6 +1091,12 @@ func (u *Usecases) flushIngestBatches(ctx context.Context, st *ingestFindingsSta
 			return fmt.Errorf("scanner %s: bulk upsert dimensions: %w", st.input.Scanner, err)
 		}
 	}
+	if len(st.scopeRows) > 0 {
+		if err := st.batchStore.BulkUpsertScopeSeverities(ctx, st.scopeRows); err != nil {
+			slog.Error("bulk upsert scope severities failed", "scanner", st.input.Scanner, "error", err)
+			return fmt.Errorf("scanner %s: bulk upsert scope severities: %w", st.input.Scanner, err)
+		}
+	}
 	return nil
 }
 
@@ -1094,7 +1119,7 @@ func (u *Usecases) recordIntroducedFindings(ctx context.Context, st *ingestFindi
 // applyMaterialChange runs finding.EvaluateChange on a previously-known
 // finding and, when the change demands review, marks review_required and logs
 // the material-change event.
-func (u *Usecases) applyMaterialChange(ctx context.Context, input IngestReportInput, upserted port.Finding, f domain.NormalizedFinding, oldRank int16, oldGateEffect, oldAnalysisState string) error {
+func (u *Usecases) applyMaterialChange(ctx context.Context, input IngestReportInput, upserted port.Finding, f domain.NormalizedFinding, oldRank, newRank int16, oldGateEffect, oldAnalysisState string) error {
 	hasNewFix := false
 	for _, d := range f.Dimensions {
 		if d.Key == domain.DimFixedVersion && d.Value != "" {
@@ -1118,7 +1143,7 @@ func (u *Usecases) applyMaterialChange(ctx context.Context, input IngestReportIn
 		Analysis:      finding.AnalysisState(oldAnalysisState),
 		HadFixVersion: hadOldFix,
 	}, finding.CurrentFinding{
-		SeverityRank: severityRank(f.Severity),
+		SeverityRank: newRank,
 		HasNewFix:    hasNewFix,
 	})
 
