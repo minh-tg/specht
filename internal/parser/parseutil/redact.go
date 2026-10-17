@@ -14,18 +14,26 @@ import (
 // RedactedMarker replaces the content of a key that RedactRawJSON redacts.
 const RedactedMarker = "[REDACTED]"
 
+// credentialKeys are the keys that hold a credential in any scanner's raw
+// output. RedactRawJSON redacts them for every scanner, on top of the keys a
+// parser passes. Gitleaks uses the same matching (RedactKeys) with its own
+// keys, Secret and Match.
+var credentialKeys = []string{"secret", "password", "passwd", "token", "api_key", "apikey", "access_key", "private_key", "client_secret"}
+
 // RedactRawJSON is the RedactRaw of a scanner whose evidence is one JSON
-// document. It decodes data, replaces the content of every key in keys with
-// RedactedMarker (see RedactKeys), encodes the document again and caps the
-// result at scanner.RawEvidenceCap (see scanner.CapRawEvidence). Data it cannot
-// decode is an error wrapping scanner.ErrRedactionFailed, and no output comes
-// back, because the input may still hold a secret.
+// document. It decodes data, replaces the content of every key in keys and of
+// every credential key (see credentialKeys) with RedactedMarker (see
+// RedactKeys), encodes the document again and caps the result at
+// scanner.RawEvidenceCap (see scanner.CapRawEvidence). Data it cannot decode is
+// an error wrapping scanner.ErrRedactionFailed, and no output comes back,
+// because the input may still hold a secret.
 func RedactRawJSON(name string, data []byte, keys ...string) ([]byte, error) {
 	var doc any
 	if err := DecodeJSON(data, &doc); err != nil {
 		return nil, fmt.Errorf("%w: %s evidence: %w", scanner.ErrRedactionFailed, name, err)
 	}
 	RedactKeys(doc, RedactedMarker, keys...)
+	RedactKeys(doc, RedactedMarker, credentialKeys...)
 	out, err := json.Marshal(doc)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s evidence: %w", scanner.ErrRedactionFailed, name, err)
