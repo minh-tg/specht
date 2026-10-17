@@ -121,6 +121,10 @@ releases.
   `{"truncated":true,"original_bytes":N,"prefix":"..."}`. Findings, severities and fingerprints
   are unchanged. Gitleaks and Nuclei evidence is not capped. The keys and the cap are in
   `deploy/README.md`.
+- Stored raw evidence for Trivy, Semgrep and Checkov also loses the content of any key named
+  `secret`, `password`, `passwd`, `token`, `api_key` or a similar credential name, at any depth.
+- Checkov findings no longer copy a failed check's `code_block`, the matched source, into the
+  finding extensions that occurrence stores.
 - Stored Gitleaks and Nuclei evidence no longer keeps a secret under a key written in another
   case (`secret`, `sEcReT`, `Request`, `RESPONSE`) or inside a nested object. Both scanners'
   redaction now matches key names without regard to case, at any depth. A Nuclei JSON Lines
