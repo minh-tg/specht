@@ -123,6 +123,22 @@ func TestLoad_RawRetentionDaysOverride(t *testing.T) {
 	assert.Equal(t, 90, cfg.RawRetentionDays)
 }
 
+func TestLoad_RawRetentionDaysAtTheMaximumIsAccepted(t *testing.T) {
+	t.Setenv("RAW_RETENTION_DAYS", "36500")
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.Equal(t, 36500, cfg.RawRetentionDays)
+}
+
+// 106752 days is the first value whose Duration product overflows, so Load must refuse it at
+// startup. Without the maximum the value reaches the sweep and its cutoff wraps into the future.
+func TestLoad_RawRetentionDaysOverflowingWindowIsRefused(t *testing.T) {
+	t.Setenv("RAW_RETENTION_DAYS", "106752")
+	_, err := Load()
+	assert.ErrorContains(t, err, "RAW_RETENTION_DAYS")
+	assert.ErrorContains(t, err, "36500")
+}
+
 func TestLoad_InvalidRawRetentionDaysFails(t *testing.T) {
 	for _, bad := range []string{"-1", "30d", "1.5", "forever"} {
 		t.Run(bad, func(t *testing.T) {
@@ -514,16 +530,17 @@ func TestServerValidate_NamesEachProblemByItsVariable(t *testing.T) {
 		mutate func(*Server)
 		want   string
 	}{
-		"no database":          {func(s *Server) { s.DBURL = "" }, "DATABASE_URL"},
-		"unknown log level":    {func(s *Server) { s.LogLevel = "verbose" }, "LOG_LEVEL"},
-		"zero inventory ttl":   {func(s *Server) { s.InventoryTTL = 0 }, "INVENTORY_TTL"},
-		"negative intel ttl":   {func(s *Server) { s.Intel.TTL = -time.Second }, "INTEL_TTL"},
-		"no connections":       {func(s *Server) { s.DBMaxConns = 0 }, "DB_MAX_CONNS"},
-		"negative min":         {func(s *Server) { s.DBMinConns = -1 }, "DB_MIN_CONNS"},
-		"min above max":        {func(s *Server) { s.DBMinConns, s.DBMaxConns = 30, 20 }, "DB_MIN_CONNS"},
-		"zero session age":     {func(s *Server) { s.SessionMaxAge = 0 }, "SESSION_MAX_AGE"},
-		"negative raw window":  {func(s *Server) { s.RawRetentionDays = -1 }, "RAW_RETENTION_DAYS"},
-		"zero shutdown window": {func(s *Server) { s.ShutdownTimeout = 0 }, "SHUTDOWN_TIMEOUT"},
+		"no database":            {func(s *Server) { s.DBURL = "" }, "DATABASE_URL"},
+		"unknown log level":      {func(s *Server) { s.LogLevel = "verbose" }, "LOG_LEVEL"},
+		"zero inventory ttl":     {func(s *Server) { s.InventoryTTL = 0 }, "INVENTORY_TTL"},
+		"negative intel ttl":     {func(s *Server) { s.Intel.TTL = -time.Second }, "INTEL_TTL"},
+		"no connections":         {func(s *Server) { s.DBMaxConns = 0 }, "DB_MAX_CONNS"},
+		"negative min":           {func(s *Server) { s.DBMinConns = -1 }, "DB_MIN_CONNS"},
+		"min above max":          {func(s *Server) { s.DBMinConns, s.DBMaxConns = 30, 20 }, "DB_MIN_CONNS"},
+		"zero session age":       {func(s *Server) { s.SessionMaxAge = 0 }, "SESSION_MAX_AGE"},
+		"negative raw window":    {func(s *Server) { s.RawRetentionDays = -1 }, "RAW_RETENTION_DAYS"},
+		"overflowing raw window": {func(s *Server) { s.RawRetentionDays = 106752 }, "RAW_RETENTION_DAYS"},
+		"zero shutdown window":   {func(s *Server) { s.ShutdownTimeout = 0 }, "SHUTDOWN_TIMEOUT"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
