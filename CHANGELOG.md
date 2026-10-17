@@ -123,9 +123,10 @@ releases.
   `deploy/README.md`.
 - Stored raw evidence for Trivy, Semgrep and Checkov also loses the content of any key named
   `secret`, `password`, `passwd`, `token`, `api_key`, `apikey`, `access_key` or `private_key`, and
-  the scalar value of any key whose name contains `password`, `passwd`, `secret`, `token`,
-  `api_key`, `apikey` or `authorization` (`db_password`, `auth_token`, `Authorization`), at any
-  depth. The fragment match also removes `tokenizer_version`, a known false positive.
+  the value of any key whose name contains `password`, `passwd`, `secret`, `token`, `api_key`,
+  `apikey` or `authorization` (`db_password`, `auth_token`, `Authorization`), at any depth, a scalar
+  or an object. The fragment match also removes any key containing `token`, `tokenizer_version`
+  included, a known false positive.
 - Checkov findings no longer copy a failed check's `code_block`, the matched source, into the
   finding extensions that occurrence stores.
 - Semgrep findings no longer copy the rule's `fix` template into the finding extensions, and stored
