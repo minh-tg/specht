@@ -41,9 +41,12 @@ const (
 	// allows for any report with real findings in it.
 	ValuesPerFinding = 64
 
-	// maxScanDepth is the nesting depth encoding/json accepts. Past it the
-	// decoder reports the error, so the scan stops following containers.
-	maxScanDepth = 10000
+	// MaxNestingDepth is the deepest a report body may nest JSON objects and
+	// arrays. A 200-level document reaches 67x its size in peak memory while a
+	// parser decodes it, above the 64x the field bounds charge, so anything
+	// deeper is refused before a parser runs. The deepest real scanner fixture
+	// under e2e/testdata or internal/parser/testdata nests 14 levels.
+	MaxNestingDepth = 64
 )
 
 // ErrTooManyFindings is returned when a report would produce more findings
@@ -82,7 +85,7 @@ func MaxFindings(ctx context.Context) int {
 // CheckDocument refuses a JSON document that would decode into more than the
 // limit allows. It reads the bytes once and allocates nothing per value, so it
 // can run before any decoder sees the document. Input that is not valid JSON
-// passes: reporting that is the decoder's job.
+// passes unless it nests too deep: reporting a syntax error is the decoder's job.
 //
 // Three counts apply. Every document may hold at most limit*ObjectsPerFinding
 // objects and limit*ValuesPerFinding values of any kind. When arrayKeys name the
@@ -96,6 +99,10 @@ func MaxFindings(ctx context.Context) int {
 // and after JSON escapes are decoded, so "Results", "RESULTS" and a spelling
 // that uses a unicode escape all name the same array. A key whose decoded form
 // is longer than maxKeyLen bytes never matches.
+//
+// A document that nests deeper than MaxNestingDepth is refused whatever its
+// counts, with the same TooManyFindingsError. Only the containers the scan opens
+// count toward the depth, so brackets inside strings do not.
 func CheckDocument(data []byte, limit int, arrayKeys ...string) error {
 	if limit <= 0 {
 		limit = DefaultMaxFindings
@@ -111,7 +118,7 @@ func CheckDocument(data []byte, limit int, arrayKeys ...string) error {
 	for _, k := range arrayKeys {
 		s.keys = append(s.keys, []byte(k))
 	}
-	var frames [64]byte
+	var frames [MaxNestingDepth]byte
 	s.stack = frames[:0]
 
 	for i := 0; i < len(data); i++ {
@@ -157,8 +164,8 @@ func CheckDocument(data []byte, limit int, arrayKeys ...string) error {
 		if err != nil {
 			return err
 		}
-		if len(s.stack) > maxScanDepth {
-			return nil
+		if len(s.stack) > MaxNestingDepth {
+			return TooManyFindings(MaxNestingDepth)
 		}
 	}
 	return nil

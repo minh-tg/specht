@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -52,10 +55,77 @@ func TestCheckDocumentCountsJSONLinesAndMapValues(t *testing.T) {
 }
 
 func TestCheckDocumentLeavesBrokenInputToTheDecoder(t *testing.T) {
-	for _, doc := range []string{"", "not json", `{"unterminated":"`, strings.Repeat("[", 50000), strings.Repeat("}", 100)} {
-		// 1000 allows 64000 values, more than the nesting depth the scan follows.
+	for _, doc := range []string{"", "not json", `{"unterminated":"`, strings.Repeat("[", 64), strings.Repeat("}", 100)} {
+		// 1000 allows 64000 values, and 64 open containers is within the depth cap.
 		assert.NoError(t, scanner.CheckDocument([]byte(doc), 1000), "%.20q", doc)
 	}
+}
+
+// nestedDoc returns a document with depth containers open at its deepest point.
+// It alternates objects and arrays, so both kinds count toward the depth.
+func nestedDoc(depth int) []byte {
+	var b strings.Builder
+	for i := range depth {
+		if i%2 == 0 {
+			b.WriteString(`{"k":`)
+		} else {
+			b.WriteString(`[`)
+		}
+	}
+	b.WriteString(`null`)
+	for i := depth - 1; i >= 0; i-- {
+		if i%2 == 0 {
+			b.WriteString(`}`)
+		} else {
+			b.WriteString(`]`)
+		}
+	}
+	return []byte(b.String())
+}
+
+func TestCheckDocumentAcceptsNestingAtTheDepthCap(t *testing.T) {
+	require.Equal(t, 64, scanner.MaxNestingDepth)
+	require.NoError(t, scanner.CheckDocument(nestedDoc(64), scanner.DefaultMaxFindings))
+	require.NoError(t, scanner.CheckDocument([]byte(strings.Repeat("[", 64)+strings.Repeat("]", 64)), scanner.DefaultMaxFindings))
+}
+
+func TestCheckDocumentRefusesNestingPastTheDepthCapWithTheFindingsError(t *testing.T) {
+	err := scanner.CheckDocument(nestedDoc(65), scanner.DefaultMaxFindings)
+	require.ErrorIs(t, err, scanner.ErrTooManyFindings)
+	var tooMany *scanner.TooManyFindingsError
+	require.ErrorAs(t, err, &tooMany)
+	assert.Equal(t, 64, tooMany.Limit)
+
+	// The refusal holds for broken input too, since the scan reads it before any decoder.
+	require.ErrorIs(t, scanner.CheckDocument([]byte(strings.Repeat("[", 65)), scanner.DefaultMaxFindings), scanner.ErrTooManyFindings)
+	// And for a deep document under a limit that its counts would pass.
+	require.ErrorIs(t, scanner.CheckDocument(nestedDoc(200), 1000), scanner.ErrTooManyFindings)
+}
+
+func TestCheckDocumentDoesNotCountBracketsInsideStrings(t *testing.T) {
+	doc := `{"s":"` + strings.Repeat("[", 500) + `"}`
+	require.NoError(t, scanner.CheckDocument([]byte(doc), 1))
+}
+
+// TestCheckDocumentAcceptsEveryCapturedFixture runs the default check over every
+// captured report under the e2e and parser fixtures. A real scanner report must
+// stay under the depth cap, so a fixture that goes past it fails here.
+func TestCheckDocumentAcceptsEveryCapturedFixture(t *testing.T) {
+	var files int
+	for _, root := range []string{"../../e2e/testdata", "../../internal/parser/testdata"} {
+		err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			data, err := os.ReadFile(path)
+			require.NoError(t, err)
+			files++
+			assert.NoError(t, scanner.CheckDocument(data, scanner.DefaultMaxFindings), path)
+			return nil
+		})
+		require.NoError(t, err)
+	}
+	require.NotZero(t, files, "the fixture directories are empty or moved")
 }
 
 func objects(n int) string {
