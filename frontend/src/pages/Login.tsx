@@ -7,6 +7,7 @@ import { FormField } from "@/components/FormField";
 import { INLINE_LINK } from "@/components/inlineLink";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
+import { tooManyAttemptsMessage, tooManyAttemptsWait, useRetryWait } from "@/lib/retryWait";
 import { playCue } from "@/lib/sound";
 import { cn } from "@/lib/utils";
 import { InfoIcon } from "lucide-react";
@@ -29,6 +30,7 @@ export function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const retry = useRetryWait(() => setError(null));
 
   if (auth.token) {
     return <Navigate to="/" replace />;
@@ -48,6 +50,7 @@ export function Login() {
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
+    if (retry.waiting) return;
     setError(null);
     setSubmitting(true);
     try {
@@ -55,7 +58,11 @@ export function Login() {
       navigate(redirect, { replace: true });
     } catch (err) {
       playCue("error");
-      if (err instanceof APIError && err.status === 401) {
+      const waitSeconds = tooManyAttemptsWait(err);
+      if (waitSeconds !== null) {
+        setError(tooManyAttemptsMessage(waitSeconds));
+        retry.start(waitSeconds);
+      } else if (err instanceof APIError && err.status === 401) {
         setError("Invalid email or password");
       } else {
         setError("Sign in failed. Please try again.");
@@ -107,7 +114,12 @@ export function Login() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <Button type="submit" size="lg" disabled={submitting} className="h-10 w-full text-base">
+        <Button
+          type="submit"
+          size="lg"
+          disabled={submitting || retry.waiting}
+          className="h-10 w-full text-base"
+        >
           {submitting ? "Signing in..." : "Sign in"}
         </Button>
         {ssoOffered && (
