@@ -122,6 +122,49 @@ func (q *Queries) ArchiveOrphanedFindings(ctx context.Context, arg ArchiveOrphan
 	return items, nil
 }
 
+const clearRawDataBefore = `-- name: ClearRawDataBefore :many
+UPDATE reports SET raw_data = 'null'::jsonb
+WHERE id IN (
+    SELECT rr.id FROM reports rr
+    WHERE rr.created_at < $1
+      AND rr.status <> 'processing'
+      AND rr.raw_data IS NOT NULL
+      AND rr.raw_data <> 'null'::jsonb
+    LIMIT $2
+)
+RETURNING id
+`
+
+type ClearRawDataBeforeParams struct {
+	Cutoff    pgtype.Timestamptz `json:"cutoff"`
+	BatchSize int32              `json:"batch_size"`
+}
+
+// The raw retention sweep. It clears the raw_data payload of up to limit settled
+// reports created before the cutoff and returns their ids. The cleared value is
+// JSON null, not SQL NULL: reports stored before raw_data existed (migration
+// 000012) hold SQL NULL, and only a payload the sweep cleared reads as expired.
+// Processing reports are left alone because an ingest may still write them.
+func (q *Queries) ClearRawDataBefore(ctx context.Context, arg ClearRawDataBeforeParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, clearRawDataBefore, arg.Cutoff, arg.BatchSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const countStaleReports = `-- name: CountStaleReports :one
 SELECT COUNT(*) FROM reports
 WHERE status IN ('completed', 'failed')

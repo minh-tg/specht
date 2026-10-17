@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -259,6 +260,14 @@ func (r *pgReportPort) SettleFailedReport(ctx context.Context, reportID, project
 
 func (r *pgReportPort) CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error) {
 	return r.inner.CountStaleReports(ctx, cutoff)
+}
+
+func (r *pgReportPort) ClearRawData(ctx context.Context, cutoff time.Time, batchSize int32) (int64, error) {
+	ids, err := r.inner.ClearRawDataBefore(ctx, cutoff, batchSize)
+	if err != nil {
+		return 0, err
+	}
+	return int64(len(ids)), nil
 }
 
 func (r *pgReportPort) DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]string, error) {
@@ -1390,23 +1399,30 @@ func floatPtrFromNumeric(n pgtype.Numeric) *float64 {
 
 func reportRowToPort(re sqlc.Report) port.Report {
 	return port.Report{
-		ID:            toUUID(re.ID),
-		ProjectID:     toUUID(re.ProjectID),
-		ToolName:      re.ToolName,
-		ToolVersion:   stringFromTextPtr(re.ToolVersion),
-		ScanType:      re.ScanType,
-		ScanTarget:    stringFromTextPtr(re.ScanTarget),
-		Status:        re.Status,
-		TotalFindings: int32PtrFromInt4(re.TotalFindings),
-		Branch:        stringFromTextPtr(re.Branch),
-		CommitSha:     stringFromTextPtr(re.CommitSha),
-		BaseRevision:  stringFromTextPtr(re.BaseRevision),
-		ChangedFiles:  changedFilesToPort(re.ChangedFiles),
-		ScanMode:      re.ScanMode,
-		ErrorMessage:  stringFromTextPtr(re.ErrorMessage),
-		CreatedAt:     re.CreatedAt.Time,
-		CompletedAt:   timePtrFromTimestamptz(re.CompletedAt),
+		ID:             toUUID(re.ID),
+		ProjectID:      toUUID(re.ProjectID),
+		ToolName:       re.ToolName,
+		ToolVersion:    stringFromTextPtr(re.ToolVersion),
+		ScanType:       re.ScanType,
+		ScanTarget:     stringFromTextPtr(re.ScanTarget),
+		Status:         re.Status,
+		TotalFindings:  int32PtrFromInt4(re.TotalFindings),
+		Branch:         stringFromTextPtr(re.Branch),
+		CommitSha:      stringFromTextPtr(re.CommitSha),
+		BaseRevision:   stringFromTextPtr(re.BaseRevision),
+		ChangedFiles:   changedFilesToPort(re.ChangedFiles),
+		ScanMode:       re.ScanMode,
+		ErrorMessage:   stringFromTextPtr(re.ErrorMessage),
+		RawDataExpired: rawDataExpired(re.RawData),
+		CreatedAt:      re.CreatedAt.Time,
+		CompletedAt:    timePtrFromTimestamptz(re.CompletedAt),
 	}
+}
+
+// rawDataExpired reports whether a raw_data column holds the JSON null the retention sweep writes.
+// SQL NULL, which reports stored before migration 000012 hold, is not expired.
+func rawDataExpired(raw []byte) bool {
+	return string(bytes.TrimSpace(raw)) == "null"
 }
 
 // changedFilesToPort decodes the JSONB path list; nil/empty decodes as nil
