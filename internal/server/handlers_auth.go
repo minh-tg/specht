@@ -41,15 +41,19 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	result, err := h.usecase.Register(r.Context(), req.Email, req.Password)
 	if err != nil {
 		h.audit.HTTP(r, audit.EventRegister, audit.OutcomeFailure, "", auth.MaskEmail(req.Email), err)
-		// The two password policy refusals get their own codes. Register
-		// checks the password before it looks the address up, so these
-		// answers are the same for a registered address and a new one.
+		// The password policy refusals and the hidden-character address get
+		// their own codes. Register checks the password and the address
+		// before it looks the address up, so these answers are the same for
+		// a registered address and a new one.
 		switch {
 		case errors.Is(err, usecase.ErrPasswordTooCommon):
 			respondError(w, http.StatusBadRequest, "password_too_common", err.Error())
 			return
 		case errors.Is(err, usecase.ErrPasswordMatchesAccount):
 			respondError(w, http.StatusBadRequest, "password_matches_account", err.Error())
+			return
+		case errors.Is(err, usecase.ErrInvalidEmailCharacters):
+			respondError(w, http.StatusUnprocessableEntity, "invalid_email_characters", err.Error())
 			return
 		}
 		// M8: never echo the underlying error — a duplicate email must be
@@ -611,6 +615,9 @@ func (h *Handler) Setup(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.Is(err, usecase.ErrPasswordMatchesAccount):
 		respondError(w, http.StatusBadRequest, "password_matches_account", err.Error())
+		return
+	case errors.Is(err, usecase.ErrInvalidEmailCharacters):
+		respondError(w, http.StatusBadRequest, "invalid_email_characters", err.Error())
 		return
 	case errors.Is(err, usecase.ErrInvalidCredentialInput):
 		respondError(w, http.StatusBadRequest, "invalid_credentials", err.Error())

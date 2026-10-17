@@ -35,6 +35,8 @@ func (h *Handler) respondInviteError(w http.ResponseWriter, r *http.Request, op 
 		respondError(w, http.StatusBadRequest, "password_too_common", err.Error())
 	case errors.Is(err, usecase.ErrPasswordMatchesAccount):
 		respondError(w, http.StatusBadRequest, "password_matches_account", err.Error())
+	case errors.Is(err, usecase.ErrInvalidEmailCharacters):
+		respondError(w, http.StatusBadRequest, "invalid_email_characters", err.Error())
 	case errors.Is(err, usecase.ErrInvalidCredentialInput):
 		respondError(w, http.StatusBadRequest, "invalid_credentials", err.Error())
 	case errors.Is(err, usecase.ErrRegistrationFailed):

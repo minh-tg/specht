@@ -150,10 +150,19 @@ func containsFormatRune(s string) bool {
 	})
 }
 
+// ErrInvalidEmailCharacters means the address holds a line or paragraph
+// separator or a format character, such as U+200B or U+202E, that the person
+// cannot see. It matches ErrInvalidCredentialInput like every other credential
+// refusal, and handlers match it first to give it the code invalid_email_characters.
+var ErrInvalidEmailCharacters = badCredentials("invalid email address")
+
 // normalizeAddress is validateEmail after the length check, for callers that
 // order their other input checks around it.
 func normalizeAddress(email string) (string, error) {
-	if strings.ContainsFunc(email, unicode.IsControl) || containsFormatRune(email) {
+	if containsFormatRune(email) {
+		return "", ErrInvalidEmailCharacters
+	}
+	if strings.ContainsFunc(email, unicode.IsControl) {
 		return "", badCredentials("invalid email address")
 	}
 	addr, err := mail.ParseAddress(email)
