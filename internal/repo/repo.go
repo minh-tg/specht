@@ -107,6 +107,7 @@ type ReportRepo interface {
 	FailStaleReports(ctx context.Context, cutoff time.Time, reason string) (int64, error)
 	SettleFailedReport(ctx context.Context, id, projectID pgtype.UUID) error
 	DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]pgtype.UUID, error)
+	ClearRawDataBefore(ctx context.Context, cutoff time.Time, batchSize int32) ([]pgtype.UUID, error)
 	FindCompletedByReplayKey(ctx context.Context, projectID pgtype.UUID, rawHash, commitSha, scopeHash pgtype.Text) (pgtype.UUID, error)
 	DeleteReport(ctx context.Context, id, projectID pgtype.UUID) error
 	DeleteDuplicateReport(ctx context.Context, id, projectID, winnerID pgtype.UUID) error

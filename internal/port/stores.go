@@ -1139,8 +1139,12 @@ type Report struct {
 	// ErrorMessage is the sanitized reason a failed report failed. It is
 	// never the raw store error.
 	ErrorMessage *string
-	CreatedAt    time.Time
-	CompletedAt  *time.Time
+	// RawDataExpired is true once the retention sweep has cleared the raw_data
+	// payload (RAW_RETENTION_DAYS). A report stored before raw_data existed
+	// reads false: its payload was never kept, so there is nothing to expire.
+	RawDataExpired bool
+	CreatedAt      time.Time
+	CompletedAt    *time.Time
 }
 
 // CreateReportInput carries report create fields.
@@ -1212,6 +1216,10 @@ type ReportStore interface {
 	// returning their ids. Each goes through DeleteReportAndSettle, so a
 	// retention purge and an explicit delete leave the same state behind.
 	DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]string, error)
+	// ClearRawData clears the raw_data payload of up to batchSize settled
+	// reports created before the cutoff and returns how many it cleared. The
+	// report rows and their findings are untouched.
+	ClearRawData(ctx context.Context, cutoff time.Time, batchSize int32) (int64, error)
 	// DeleteReportAndSettle deletes one report in a transaction and settles
 	// the findings it was evidence for: open findings with no occurrence left
 	// become archived (with a report_deleted event naming actorID, nil for the

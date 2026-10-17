@@ -259,3 +259,20 @@ LIMIT 1;
 -- rows, and inventory cascade; finding attribution nulls; findings
 -- themselves survive.
 DELETE FROM reports WHERE id = $1 AND project_id = $2;
+
+-- name: ClearRawDataBefore :many
+-- The raw retention sweep. It clears the raw_data payload of up to limit settled
+-- reports created before the cutoff and returns their ids. The cleared value is
+-- JSON null, not SQL NULL: reports stored before raw_data existed (migration
+-- 000012) hold SQL NULL, and only a payload the sweep cleared reads as expired.
+-- Processing reports are left alone because an ingest may still write them.
+UPDATE reports SET raw_data = 'null'::jsonb
+WHERE id IN (
+    SELECT rr.id FROM reports rr
+    WHERE rr.created_at < sqlc.arg(cutoff)
+      AND rr.status <> 'processing'
+      AND rr.raw_data IS NOT NULL
+      AND rr.raw_data <> 'null'::jsonb
+    LIMIT sqlc.arg(batch_size)
+)
+RETURNING id;

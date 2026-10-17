@@ -193,6 +193,19 @@ func (r *pgReportRepo) SettleFailedReport(ctx context.Context, id, projectID pgt
 	return nil
 }
 
+// ClearRawDataBefore clears the raw_data payload of up to batchSize settled reports created before
+// the cutoff and returns the ids it cleared.
+func (r *pgReportRepo) ClearRawDataBefore(ctx context.Context, cutoff time.Time, batchSize int32) ([]pgtype.UUID, error) {
+	ids, err := r.q.ClearRawDataBefore(ctx, sqlc.ClearRawDataBeforeParams{
+		Cutoff:    uuidFromTime(cutoff),
+		BatchSize: batchSize,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
 // DeleteStaleReports removes the settled reports older than the cutoff, one
 // transaction each, and returns the ids it removed. A report that a scan took
 // back or someone else already deleted is skipped.

@@ -148,6 +148,7 @@ func startLifecycle(ctx context.Context, stores *port.Stores, analysisStore port
 	exitOnError("start analysis expiry daemon", lifecycle.RunAnalysisExpiry(ctx, analysisStore, cfg.SweepInterval, slog.Default()))
 	exitOnError("start refresh token prune", lifecycle.RunRefreshTokenPrune(ctx, stores.RefreshTokens, cfg.SweepInterval, slog.Default()))
 	exitOnError("start stale report reaper", lifecycle.RunStaleReportReaper(ctx, stores.Reports, cfg.SweepInterval, staleReportAge, slog.Default()))
+	exitOnError("start raw retention sweeper", lifecycle.RunRawRetention(ctx, stores.Reports, cfg.SweepInterval, cfg.RawRetentionDays, slog.Default()))
 	if cfg.Watcher.Enable {
 		exitOnError("start watcher daemon", runWatcherDaemon(ctx, stores, cfg))
 	}
