@@ -142,6 +142,16 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	return parseutil.Hardened(convertAll(budget, reports))
 }
 
+// RedactRaw scrubs source and variable values from raw Checkov evidence and
+// caps the result at scanner.RawEvidenceCap. A failed check carries the source
+// it matched in code_block, and its evaluations hold the values of the
+// variables it evaluated, which can be a literal credential. Both keys are
+// redacted at any depth. Data that cannot be decoded is an error and no output
+// comes back.
+func (s *Scanner) RedactRaw(data []byte) ([]byte, error) {
+	return parseutil.RedactRawJSON("checkov", data, "code_block", "evaluations")
+}
+
 // decodeReports reads either one framework's report (an object) or the array
 // Checkov writes for several frameworks.
 func decodeReports(data []byte) ([]checkovReport, error) {
