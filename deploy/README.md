@@ -100,9 +100,9 @@ Semgrep's SARIF `snippet` and native `lines` and `metavars`, and its `fix` templ
 fills with the matched values, and Checkov's `code_block` and `evaluations`. They also remove the content of any key named `secret`, `password`, `passwd`,
 `token`, `api_key`, `apikey`, `access_key`, `private_key` or `client_secret`, at any depth and in
 any case. A key whose lowercased name contains `password`, `passwd`, `secret`, `token`, `api_key`,
-`apikey` or `authorization` loses its scalar value at any depth, so `db_password`, `auth_token`
-and `Authorization` are removed although the scanner did not name them. The match is by fragment,
-so `tokenizer_version` is removed too. A list or object under such a key keeps its shape, so the
+`apikey` or `authorization` loses its value at any depth, a scalar or an object, so `db_password`,
+`auth_token` and `Authorization` are removed although the scanner did not name them. The match is by fragment,
+so any key containing `token` is removed, `tokenizer_version` included (a known false positive). A list or object under such a key keeps its shape, so the
 parser can still read it, and a credential inside that object under a name without a fragment is
 not removed. If redaction fails for a report, the stored payload is `{"redaction":"failed"}`,
 and the report and its findings are still ingested. For these three scanners a payload over

@@ -52,6 +52,18 @@ func TestRedactRawJSONRedactsCredentialNameFragmentsAtAnyDepth(t *testing.T) {
 		`"a":{"b":{"c":{"d":{"DB_PASSWORD":"[REDACTED]","auth_token":"[REDACTED]","Authorization":"[REDACTED]","client_secret":"[REDACTED]","tokenizer_version":"[REDACTED]"}}}}}`, string(out))
 }
 
+// TestRedactRawJSONRedactsAnObjectUnderACredentialName pins that an object under
+// a credential fragment is replaced whole. Its inner value has a neutral name,
+// so a walk into the object would store it.
+func TestRedactRawJSONRedactsAnObjectUnderACredentialName(t *testing.T) {
+	data := []byte(`{"db_password":{"value":"x"},"keep":{"value":"ok"},` +
+		`"a":{"b":{"c":{"d":{"auth_token":{"value":"y","nested":{"z":"w"}}}}}}}`)
+	out, err := parseutil.RedactRawJSON("test", data)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"db_password":"[REDACTED]","keep":{"value":"ok"},`+
+		`"a":{"b":{"c":{"d":{"auth_token":"[REDACTED]"}}}}}`, string(out))
+}
+
 // TestRedactRawJSONKeepsAListUnderACredentialName pins that a list under a
 // credential fragment keeps its shape. The objects inside keep RuleID and
 // StartLine, and only the parser's own Match key is replaced.

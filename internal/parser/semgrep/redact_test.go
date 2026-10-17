@@ -163,3 +163,30 @@ func TestRedactRawRedactsCredentialKeysAtDepthOneAndFive(t *testing.T) {
 		})
 	}
 }
+
+// dbPasswordAtDepth puts db_password at the root object (depth 1) and under four
+// nested objects (depth 5). shallow and deep are the JSON values at each depth.
+func dbPasswordAtDepth(doc []byte, shallow, deep string) []byte {
+	return []byte(strings.Replace(string(doc), "{", `{"db_password":`+shallow+`,"nest":{"a":{"b":{"c":{"db_password":`+deep+`}}}},`, 1))
+}
+
+// TestRedactRawRedactsDbPasswordHoldingAStringOrAnObject checks that the whole
+// db_password value is gone at both depths, in both output formats. The
+// sentinel "dbpass-" appears in every value.
+func TestRedactRawRedactsDbPasswordHoldingAStringOrAnObject(t *testing.T) {
+	shapes := map[string][2]string{
+		"string": {`"dbpass-str-1"`, `"dbpass-str-5"`},
+		"object": {`{"value":"dbpass-obj-1","inner":{"deeper":"dbpass-obj-1b"}}`, `{"value":"dbpass-obj-5"}`},
+	}
+	for format, doc := range semgrepSecretDocs {
+		for shape, v := range shapes {
+			t.Run(format+"/"+shape, func(t *testing.T) {
+				redacted, err := semgrep.NewScanner().RedactRaw(dbPasswordAtDepth(doc.data, v[0], v[1]))
+				require.NoError(t, err)
+
+				assert.NotContains(t, string(redacted), "dbpass-")
+				assert.Equal(t, 2, strings.Count(string(redacted), `"db_password":"[REDACTED]"`))
+			})
+		}
+	}
+}
