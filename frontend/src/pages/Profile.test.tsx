@@ -1,7 +1,7 @@
 import { AuthContext, type AuthContextValue } from "@/auth/context";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -334,6 +334,87 @@ describe("Profile", () => {
 
       expect(await screen.findByText("Too many attempts. Wait a minute and try again."))
         .toBeInTheDocument();
+    });
+
+    describe("while the server asks for a wait", () => {
+      /** A 429 for an account locked by wrong current passwords, with `Retry-After` when given. */
+      function tooManyAttempts(retryAfter?: string): Response {
+        const headers: Record<string, string> = { "Content-Type": "application/json" };
+        if (retryAfter !== undefined) headers["Retry-After"] = retryAfter;
+        return new Response(
+          JSON.stringify({
+            error: { code: "too_many_attempts", message: "too many failed password attempts" },
+          }),
+          { status: 429, headers },
+        );
+      }
+
+      function passwordCalls(): number {
+        return calls.filter((c) => c.url.endsWith("/api/v1/me/password")).length;
+      }
+
+      it("shows the seconds from Retry-After and disables the button", async () => {
+        passwordReply = () => tooManyAttempts("45");
+        const user = userEvent.setup();
+        renderProfile();
+
+        await fillPasswords(user, "old-password-1", "new-password-1", "new-password-1");
+        await user.click(screen.getByRole("button", { name: "Change password" }));
+
+        expect(await screen.findByText("Too many attempts. Try again in 45 seconds."))
+          .toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Change password" })).toBeDisabled();
+      });
+
+      it("shows whole minutes from 60 seconds up", async () => {
+        passwordReply = () => tooManyAttempts("120");
+        const user = userEvent.setup();
+        renderProfile();
+
+        await fillPasswords(user, "old-password-1", "new-password-1", "new-password-1");
+        await user.click(screen.getByRole("button", { name: "Change password" }));
+
+        expect(await screen.findByText("Too many attempts. Try again in 2 minutes."))
+          .toBeInTheDocument();
+      });
+
+      it("keeps the existing message when the response has no Retry-After", async () => {
+        passwordReply = () => tooManyAttempts();
+        const user = userEvent.setup();
+        renderProfile();
+
+        await fillPasswords(user, "old-password-1", "new-password-1", "new-password-1");
+        await user.click(screen.getByRole("button", { name: "Change password" }));
+
+        expect(await screen.findByText("Too many attempts. Wait a minute and try again."))
+          .toBeInTheDocument();
+        expect(screen.getByRole("button", { name: "Change password" })).toBeEnabled();
+      });
+
+      it("re-enables the button at zero without sending the request again", async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+          passwordReply = () => tooManyAttempts("45");
+          const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+          renderProfile();
+
+          await fillPasswords(user, "old-password-1", "new-password-1", "new-password-1");
+          await user.click(screen.getByRole("button", { name: "Change password" }));
+          expect(await screen.findByText("Too many attempts. Try again in 45 seconds."))
+            .toBeInTheDocument();
+
+          act(() => {
+            vi.advanceTimersByTime(45_000);
+          });
+
+          expect(screen.getByRole("button", { name: "Change password" })).toBeEnabled();
+          expect(screen.queryByText("Too many attempts. Try again in 45 seconds.")).not
+            .toBeInTheDocument();
+          expect(passwordCalls()).toBe(1);
+        } finally {
+          vi.useRealTimers();
+        }
+      });
     });
 
     it("tells the person to sign in again when the account changed during the update", async () => {

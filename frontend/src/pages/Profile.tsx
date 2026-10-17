@@ -7,6 +7,7 @@ import { PasswordField } from "@/components/PasswordField";
 import { SkeletonLines } from "@/components/SkeletonLines";
 import { Button } from "@/components/ui/button";
 import { isPasswordValid, passwordPolicyMessage, passwordUserInputs } from "@/lib/passwordRules";
+import { tooManyAttemptsMessage, tooManyAttemptsWait, useRetryWait } from "@/lib/retryWait";
 import type { UserProfile } from "@/types/api";
 import { type SubmitEvent, useState } from "react";
 
@@ -99,6 +100,7 @@ function PasswordSection({ displayName }: { readonly displayName: string | null 
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [noLocalPassword, setNoLocalPassword] = useState(false);
+  const retry = useRetryWait(() => setFormError(null));
 
   function clearMessages() {
     setCurrentError(null);
@@ -110,6 +112,7 @@ function PasswordSection({ displayName }: { readonly displayName: string | null 
 
   async function handleSubmit(e: SubmitEvent) {
     e.preventDefault();
+    if (retry.waiting) return;
     clearMessages();
     if (!isPasswordValid(next)) {
       setNextError("Choose a password that meets the requirements.");
@@ -133,6 +136,7 @@ function PasswordSection({ displayName }: { readonly displayName: string | null 
       setNotice("Password changed. Your other sessions were signed out.");
     } catch (err) {
       const policy = passwordPolicyMessage(err);
+      const waitSeconds = tooManyAttemptsWait(err);
       if (policy) {
         setNextError(policy);
       } else if (err instanceof APIError && err.code === "wrong_password") {
@@ -146,6 +150,9 @@ function PasswordSection({ displayName }: { readonly displayName: string | null 
         setFormError(
           "Your account changed while the password was being updated. Sign in again with your new password.",
         );
+      } else if (waitSeconds !== null) {
+        setFormError(tooManyAttemptsMessage(waitSeconds));
+        retry.start(waitSeconds);
       } else if (err instanceof APIError && err.status === 429) {
         setFormError("Too many attempts. Wait a minute and try again.");
       } else {
@@ -218,7 +225,7 @@ function PasswordSection({ displayName }: { readonly displayName: string | null 
           error={confirmError}
         />
         <div className="flex flex-wrap items-center gap-3">
-          <Button type="submit" disabled={change.isPending}>
+          <Button type="submit" disabled={change.isPending || retry.waiting}>
             {change.isPending ? "Changing…" : "Change password"}
           </Button>
           <p role="status" className="text-sev-success-fg text-sm">{notice}</p>
