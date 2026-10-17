@@ -95,9 +95,9 @@ func TestRedactRawCapsAReportOf200KiB(t *testing.T) {
 // credentialKeysAtDepth puts a credential at the root object (depth 1) and
 // under four nested objects (depth 5). Each value is unique, so NotContains
 // fails if any of them survives.
-const credentialKeysAtDepth = `"password":"pw-depth-1","token":"tok-depth-1","api_key":"key-depth-1","nest":{"a":{"b":{"c":{"password":"pw-depth-5","token":"tok-depth-5","api_key":"key-depth-5"}}}},`
+const credentialKeysAtDepth = `"password":"pw-depth-1","token":"tok-depth-1","api_key":"key-depth-1","db_password":"dbpass-depth-1","auth_token":"auth-depth-1","Authorization":"authz-depth-1","client_secret":"cs-depth-1","tokenizer_version":"tokenizer-depth-1","nest":{"a":{"b":{"c":{"password":"pw-depth-5","token":"tok-depth-5","api_key":"key-depth-5","db_password":"dbpass-depth-5","auth_token":"auth-depth-5","Authorization":"authz-depth-5","client_secret":"cs-depth-5","tokenizer_version":"tokenizer-depth-5"}}}},`
 
-var credentialValuesAtDepth = []string{"pw-depth-1", "tok-depth-1", "key-depth-1", "pw-depth-5", "tok-depth-5", "key-depth-5"}
+var credentialValuesAtDepth = []string{"pw-depth-1", "tok-depth-1", "key-depth-1", "dbpass-depth-1", "auth-depth-1", "authz-depth-1", "cs-depth-1", "tokenizer-depth-1", "pw-depth-5", "tok-depth-5", "key-depth-5", "dbpass-depth-5", "auth-depth-5", "authz-depth-5", "cs-depth-5", "tokenizer-depth-5"}
 
 func TestRedactRawRedactsCredentialKeysAtDepthOneAndFive(t *testing.T) {
 	data := []byte(strings.Replace(string(checkovSecretDocs["object"]), "{", "{"+credentialKeysAtDepth, 1))

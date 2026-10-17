@@ -122,7 +122,10 @@ releases.
   are unchanged. Gitleaks and Nuclei evidence is not capped. The keys and the cap are in
   `deploy/README.md`.
 - Stored raw evidence for Trivy, Semgrep and Checkov also loses the content of any key named
-  `secret`, `password`, `passwd`, `token`, `api_key` or a similar credential name, at any depth.
+  `secret`, `password`, `passwd`, `token`, `api_key`, `apikey`, `access_key` or `private_key`, and
+  the scalar value of any key whose name contains `password`, `passwd`, `secret`, `token`,
+  `api_key`, `apikey` or `authorization` (`db_password`, `auth_token`, `Authorization`), at any
+  depth. The fragment match also removes `tokenizer_version`, a known false positive.
 - Checkov findings no longer copy a failed check's `code_block`, the matched source, into the
   finding extensions that occurrence stores.
 - Stored Gitleaks and Nuclei evidence no longer keeps a secret under a key written in another

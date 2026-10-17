@@ -14,19 +14,25 @@ import (
 // RedactedMarker replaces the content of a key that RedactRawJSON redacts.
 const RedactedMarker = "[REDACTED]"
 
-// credentialKeys are the keys that hold a credential in any scanner's raw
-// output. RedactRawJSON redacts them for every scanner, on top of the keys a
-// parser passes. Gitleaks uses the same matching (RedactKeys) with its own
-// keys, Secret and Match.
-var credentialKeys = []string{"secret", "password", "passwd", "token", "api_key", "apikey", "access_key", "private_key", "client_secret"}
+// credentialKeys are exact key names that hold a credential in any scanner's
+// raw output. credentialFragments match by name: a key whose lowercased name
+// contains one of them holds a credential too (db_password, auth_token,
+// Authorization). RedactRawJSON applies both to every scanner, on top of the
+// keys a parser passes. Gitleaks does not use them: it matches its own keys
+// (Secret and Match) with RedactKeys.
+var (
+	credentialKeys      = []string{"secret", "password", "passwd", "token", "api_key", "apikey", "access_key", "private_key", "client_secret"}
+	credentialFragments = []string{"password", "passwd", "secret", "token", "api_key", "apikey", "authorization"}
+)
 
 // RedactRawJSON is the RedactRaw of a scanner whose evidence is one JSON
 // document. It decodes data, replaces the content of every key in keys and of
 // every credential key (see credentialKeys) with RedactedMarker (see
-// RedactKeys), encodes the document again and caps the result at
-// scanner.RawEvidenceCap (see scanner.CapRawEvidence). Data it cannot decode is
-// an error wrapping scanner.ErrRedactionFailed, and no output comes back,
-// because the input may still hold a secret.
+// RedactKeys), replaces the scalar content of every key that holds a credential
+// fragment (see redactCredentialFragments), encodes the document again and caps
+// the result at scanner.RawEvidenceCap (see scanner.CapRawEvidence). Data it
+// cannot decode is an error wrapping scanner.ErrRedactionFailed, and no output
+// comes back, because the input may still hold a secret.
 func RedactRawJSON(name string, data []byte, keys ...string) ([]byte, error) {
 	var doc any
 	if err := DecodeJSON(data, &doc); err != nil {
@@ -34,6 +40,7 @@ func RedactRawJSON(name string, data []byte, keys ...string) ([]byte, error) {
 	}
 	RedactKeys(doc, RedactedMarker, keys...)
 	RedactKeys(doc, RedactedMarker, credentialKeys...)
+	redactCredentialFragments(doc, RedactedMarker)
 	out, err := json.Marshal(doc)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s evidence: %w", scanner.ErrRedactionFailed, name, err)
@@ -83,6 +90,51 @@ func RedactKeys(v any, marker string, keys ...string) {
 			RedactKeys(item, marker, keys...)
 		}
 	}
+}
+
+// redactCredentialFragments replaces the content of each key whose lowercased
+// name contains a credential fragment, at any depth, when that content is a
+// scalar. A list or object under such a key is walked instead of replaced, so
+// the keys inside it keep their own rules. Trivy's Secrets list stays a list
+// with its RuleID, Title and Severity, which the parser reads back for the
+// fingerprint, while the parser's Match and Code keys still remove the value.
+// A credential inside such an object under a neutral name, such as
+// auth_token: {"value": "..."}, is not redacted.
+func redactCredentialFragments(v any, marker string) {
+	switch x := v.(type) {
+	case map[string]any:
+		for k, item := range x {
+			if hasCredentialFragment(k) && !isContainer(item) && hasContent(item) {
+				x[k] = marker
+				continue
+			}
+			redactCredentialFragments(item, marker)
+		}
+	case []any:
+		for _, item := range x {
+			redactCredentialFragments(item, marker)
+		}
+	}
+}
+
+// hasCredentialFragment reports whether key, lowercased, contains one of
+// credentialFragments.
+func hasCredentialFragment(key string) bool {
+	lower := strings.ToLower(key)
+	for _, fragment := range credentialFragments {
+		if strings.Contains(lower, fragment) {
+			return true
+		}
+	}
+	return false
+}
+
+func isContainer(v any) bool {
+	switch v.(type) {
+	case map[string]any, []any:
+		return true
+	}
+	return false
 }
 
 func matchesKey(key string, keys []string) bool {

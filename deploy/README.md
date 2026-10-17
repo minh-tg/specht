@@ -99,7 +99,12 @@ remove the matched secret and the source around it, at any depth: Trivy's `Match
 Semgrep's SARIF `snippet` and native `lines` and `metavars`, and Checkov's `code_block` and
 `evaluations`. They also remove the content of any key named `secret`, `password`, `passwd`,
 `token`, `api_key`, `apikey`, `access_key`, `private_key` or `client_secret`, at any depth and in
-any case, so a credential the scanner did not name is still removed. If redaction fails for a report, the stored payload is `{"redaction":"failed"}`,
+any case. A key whose lowercased name contains `password`, `passwd`, `secret`, `token`, `api_key`,
+`apikey` or `authorization` loses its scalar value at any depth, so `db_password`, `auth_token`
+and `Authorization` are removed although the scanner did not name them. The match is by fragment,
+so `tokenizer_version` is removed too. A list or object under such a key keeps its shape, so the
+parser can still read it, and a credential inside that object under a name without a fragment is
+not removed. If redaction fails for a report, the stored payload is `{"redaction":"failed"}`,
 and the report and its findings are still ingested. For these three scanners a payload over
 64 KiB (65536 bytes) keeps only its first 64 KiB of redacted output, stored as
 `{"truncated":true,"original_bytes":N,"prefix":"..."}`, where `N` is the size of the raw output
