@@ -211,6 +211,7 @@ func main() {
 		Passwords:               auth.NewPasswordHasher(),
 		InventoryTTL:            cfg.InventoryTTL,
 		SessionMaxAge:           cfg.SessionMaxAge,
+		RawRetentionDays:        cfg.RawRetentionDays,
 		SSOAllowUnverifiedEmail: cfg.SSO.AllowUnverifiedEmail,
 		Watcher:                 usecase.WatcherSettings{Enabled: cfg.Watcher.Enable, PollInterval: cfg.Watcher.PollInterval},
 		Tracker:                 buildTrackerDispatcher(),

@@ -152,6 +152,9 @@ type Deps struct {
 	// chain stops rotating this long after the original login, however
 	// recently it was used. Zero or less means DefaultSessionMaxAge.
 	SessionMaxAge time.Duration
+	// RawRetentionDays is the raw_data retention window (RAW_RETENTION_DAYS). Responses use it to
+	// date an expired payload: created_at plus the window. Zero means no window is set.
+	RawRetentionDays int
 	// Now reports the current time for session lifetimes. Nil means
 	// time.Now; tests inject a fake clock.
 	Now     func() time.Time

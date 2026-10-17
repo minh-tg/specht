@@ -231,6 +231,9 @@ func startServer() error {
 			// Sweep every second so expiry business processes are
 			// observable in tests instead of waiting out 5 minutes.
 			"LIFECYCLE_SWEEP_INTERVAL=1s",
+			// A one-day window lets a test age a report past it, so the sweep clears
+			// its payload while the suite runs.
+			"RAW_RETENTION_DAYS=1",
 			"RATE_LIMIT_ENABLED=false",
 			// The suites register and log in far more than the default
 			// per-IP credential budget allows from one address.
@@ -328,7 +331,7 @@ func cleanEnv(overrides ...string) []string {
 	managed := map[string]bool{
 		"DATABASE_URL": true, "JWT_SECRET": true, "SERVER_ADDR": true,
 		"ADMIN_EMAILS": true, "LOG_LEVEL": true, "DB_MIGRATE": true,
-		"LIFECYCLE_SWEEP_INTERVAL": true, "RATE_LIMIT_ENABLED": true,
+		"LIFECYCLE_SWEEP_INTERVAL": true, "RAW_RETENTION_DAYS": true, "RATE_LIMIT_ENABLED": true,
 		"RATE_LIMIT_LOGIN_PER_MINUTE": true, "RATE_LIMIT_LOGIN_BURST": true,
 		"WATCHER_ENABLE": true, "API_URL": true, "API_KEY": true,
 		"MCP_ALLOW_MUTATIONS": true, "SETUP_TOKEN": true,

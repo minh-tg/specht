@@ -992,6 +992,8 @@ func (r *pgFindingPort) GetFindingDisplayContext(ctx context.Context, findingID 
 		return port.FindingDisplayContext{}, mappingErr(err)
 	}
 	return port.FindingDisplayContext{
+		RawDataExpired:  row.RawDataExpired,
+		ReportCreatedAt: row.ReportCreatedAt.Time,
 		FindingID:       findingID,
 		TargetName:      strVal(row.TargetName),
 		TargetKind:      strVal(row.TargetKind),

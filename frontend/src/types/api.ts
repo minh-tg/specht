@@ -196,6 +196,8 @@ export interface Finding {
   /** Deployment context of the finding's latest observation. Absent when
    * the finding has no linked scan occurrence. */
   context?: FindingContext;
+  raw_data_expired?: boolean;
+  raw_data_expires_at?: string;
   /** Source-aware fix guidance from the latest observation. */
   remediation?: FindingRemediation;
   /** Exact package, rule, resource, file, or URL when supplied. */
@@ -441,6 +443,8 @@ export interface Report {
   error_message?: string;
   created_at: string;
   completed_at?: string | null;
+  raw_data_expired: boolean;
+  raw_data_expires_at?: string | null;
 }
 
 // The server stores an unfinished report as `processing`; openapi.yaml documents the

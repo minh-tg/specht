@@ -1011,6 +1011,10 @@ type FindingDisplayContext struct {
 	CommitSha       string
 	// ToolName is the scanner that produced the latest observation.
 	ToolName string
+	// RawDataExpired and ReportCreatedAt describe the report of that observation: whether the
+	// retention sweep cleared its raw_data, and when the report was created.
+	RawDataExpired  bool
+	ReportCreatedAt time.Time
 	// LocationSummary is the latest observed location string.
 	LocationSummary string
 	// Metadata is the latest occurrence metadata document (specht

@@ -79,18 +79,20 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 		slog.Warn("get latest report for stats", "project", projectSlug, "error", err)
 	} else if latestRow.ID != "" {
 		r := ReportResponse{
-			ID:            uuidStr(latestRow.ID),
-			ProjectID:     uuidStr(latestRow.ProjectID),
-			ToolName:      latestRow.ToolName,
-			ToolVersion:   strOpt(latestRow.ToolVersion),
-			ScanType:      latestRow.ScanType,
-			ScanTarget:    strOpt(latestRow.ScanTarget),
-			Status:        latestRow.Status,
-			TotalFindings: intOpt(latestRow.TotalFindings),
-			Branch:        strOpt(latestRow.Branch),
-			CommitSha:     strOpt(latestRow.CommitSha),
-			CreatedAt:     timePtr(latestRow.CreatedAt),
-			CompletedAt:   timeOpt(latestRow.CompletedAt),
+			ID:               uuidStr(latestRow.ID),
+			ProjectID:        uuidStr(latestRow.ProjectID),
+			ToolName:         latestRow.ToolName,
+			ToolVersion:      strOpt(latestRow.ToolVersion),
+			ScanType:         latestRow.ScanType,
+			ScanTarget:       strOpt(latestRow.ScanTarget),
+			Status:           latestRow.Status,
+			TotalFindings:    intOpt(latestRow.TotalFindings),
+			Branch:           strOpt(latestRow.Branch),
+			CommitSha:        strOpt(latestRow.CommitSha),
+			CreatedAt:        timePtr(latestRow.CreatedAt),
+			CompletedAt:      timeOpt(latestRow.CompletedAt),
+			RawDataExpired:   latestRow.RawDataExpired,
+			RawDataExpiresAt: rawExpiresAt(latestRow.CreatedAt, latestRow.RawDataExpired, u.deps.RawRetentionDays),
 		}
 		latest = &r
 	}

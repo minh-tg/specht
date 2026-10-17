@@ -241,7 +241,7 @@ func TestToReport_MapsRevisionContext(t *testing.T) {
 	r.ScanMode = "incremental"
 	r.ChangedFiles = json.RawMessage(`["app/main.go"]`)
 
-	resp := toReport(r)
+	resp := toReport(r, 0)
 	require.NotNil(t, resp.BaseRevision)
 	assert.Equal(t, base, *resp.BaseRevision)
 	assert.Equal(t, "incremental", resp.ScanMode)
@@ -254,11 +254,11 @@ func TestToReport_MapsErrorMessage(t *testing.T) {
 	r.Status = "failed"
 	r.ErrorMessage = &reason
 
-	resp := toReport(r)
+	resp := toReport(r, 0)
 	require.NotNil(t, resp.ErrorMessage)
 	assert.Equal(t, reason, *resp.ErrorMessage)
 
-	completed := toReport(makeReport())
+	completed := toReport(makeReport(), 0)
 	assert.Nil(t, completed.ErrorMessage)
 }
 
@@ -269,7 +269,7 @@ func TestToReport_FailureReasonIsSanitized(t *testing.T) {
 		r := makeReport()
 		r.Status = "failed"
 		r.ErrorMessage = strPtr(reportFailureInventory)
-		resp := toReport(r)
+		resp := toReport(r, 0)
 		require.NotNil(t, resp.ErrorMessage)
 		assert.Equal(t, reportFailureInventory, *resp.ErrorMessage)
 	})
@@ -278,7 +278,7 @@ func TestToReport_FailureReasonIsSanitized(t *testing.T) {
 		r := makeReport()
 		r.Status = "failed"
 		r.ErrorMessage = strPtr("dial postgres://specht:hunter2@db:5432/specht: connection refused")
-		resp := toReport(r)
+		resp := toReport(r, 0)
 		require.NotNil(t, resp.ErrorMessage)
 		assert.Equal(t, reportFailureGeneric, *resp.ErrorMessage)
 		assert.NotContains(t, *resp.ErrorMessage, "hunter2")
@@ -288,13 +288,13 @@ func TestToReport_FailureReasonIsSanitized(t *testing.T) {
 		r := makeReport()
 		r.Status = "failed"
 		r.ErrorMessage = strPtr("")
-		resp := toReport(r)
+		resp := toReport(r, 0)
 		require.NotNil(t, resp.ErrorMessage)
 		assert.Equal(t, "", *resp.ErrorMessage)
 	})
 
 	t.Run("absent stays absent", func(t *testing.T) {
-		resp := toReport(makeReport())
+		resp := toReport(makeReport(), 0)
 		assert.Nil(t, resp.ErrorMessage)
 	})
 }

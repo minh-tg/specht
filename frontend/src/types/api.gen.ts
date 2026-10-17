@@ -2525,6 +2525,13 @@ export interface components {
       created_at: string;
       /** Format: date-time */
       completed_at?: string | null;
+      /** @description True once the retention sweep cleared the raw report payload (`raw_data`, kept for RAW_RETENTION_DAYS). The report row, its findings and their summaries are kept. */
+      raw_data_expired: boolean;
+      /**
+       * Format: date-time
+       * @description The date the retention window ended for the payload, which is created_at plus RAW_RETENTION_DAYS. Null while the payload is kept and when no window is set.
+       */
+      raw_data_expires_at?: string | null;
     };
     Finding: {
       /** Format: uuid */
@@ -2596,6 +2603,13 @@ export interface components {
       introduced_by_report_id?: string;
       introduced_commit_sha?: string;
       context?: components["schemas"]["FindingContext"];
+      /** @description Set on GET /findings/{id} and absent from list responses. True when the report of the finding's latest observation has had its raw payload cleared by the retention sweep. */
+      raw_data_expired?: boolean;
+      /**
+       * Format: date-time
+       * @description Set on GET /findings/{id} when raw_data_expired is true and a retention window is set: the date the window ended for that report. Absent otherwise.
+       */
+      raw_data_expires_at?: string;
       remediation?: components["schemas"]["Remediation"];
       location?: components["schemas"]["Location"];
       suggestion?: components["schemas"]["Suggestion"];
