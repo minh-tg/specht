@@ -141,7 +141,9 @@ export interface paths {
      *     A duplicate email is indistinguishable from any other failure, by
      *     design, so this cannot enumerate accounts. The password is judged
      *     before the address is looked up, so a refused password answers the same
-     *     way for a taken address and a free one.
+     *     way for a taken address and a free one. An address with a character the
+     *     reader cannot see is refused before the lookup too, with
+     *     `422 invalid_email_characters`.
      *
      *     Password rules: at least 8 characters and at most 72 bytes of UTF-8 (some characters, such as emoji, take more than one), at least one visible character, and not on a list of about 2,000 commonly used passwords (`400 password_too_common`). It must also differ from the account's email address, the part before the @, and its display name (`400 password_matches_account`). Any other password
      *     problem, such as one with no visible character, answers the generic 422
@@ -1801,7 +1803,7 @@ export interface paths {
     /**
      * Create an account through an invite link
      * @description Public, and it works while self-service registration is closed. Creates the account (global role `member`), adds it to the project with the invited role, marks the link used and signs the account in, all in one transaction. A failed attempt leaves the link usable. If the invite is bound to an address, a different one is `403 invite_email_mismatch`. An address that already has an account answers `422 registration_failed`, the same as registration, so the link cannot reveal who is registered. People who already have an account use `/join`.
-     *     Password rules: at least 8 characters and at most 72 bytes of UTF-8 (some characters, such as emoji, take more than one), at least one visible character, and not on a list of about 2,000 commonly used passwords (`400 password_too_common`). It must also differ from the account's email address, the part before the @, and its display name (`400 password_matches_account`). The password is judged before the link is spent.
+     *     Password rules: at least 8 characters and at most 72 bytes of UTF-8 (some characters, such as emoji, take more than one), at least one visible character, and not on a list of about 2,000 commonly used passwords (`400 password_too_common`). It must also differ from the account's email address, the part before the @, and its display name (`400 password_matches_account`). The password is judged before the link is spent. An address with a character the reader cannot see answers `400 invalid_email_characters`, and the link stays usable.
      */
     post: operations["acceptInvite"];
     delete?: never;
@@ -3839,7 +3841,7 @@ export interface operations {
           "application/json": components["schemas"]["AuthResponse"];
         };
       };
-      /** @description The request is malformed, or the password is refused (`password_too_common`, `password_matches_account`). */
+      /** @description The request is malformed, the password is refused (`password_too_common`, `password_matches_account`), or the address holds a character the reader cannot see (`invalid_email_characters`). */
       400: {
         headers: {
           [name: string]: unknown;
@@ -3919,7 +3921,7 @@ export interface operations {
         };
       };
       413: components["responses"]["BodyTooLarge"];
-      /** @description Registration failed (generic). */
+      /** @description Registration failed (generic), or the address holds a character the reader cannot see (`invalid_email_characters`). */
       422: {
         headers: {
           [name: string]: unknown;
@@ -6813,7 +6815,7 @@ export interface operations {
           "application/json": components["schemas"]["AcceptInviteResponse"];
         };
       };
-      /** @description The request is malformed, or the password is refused (`password_too_common`, `password_matches_account`). */
+      /** @description The request is malformed, the password is refused (`password_too_common`, `password_matches_account`), or the address holds a character the reader cannot see (`invalid_email_characters`). */
       400: {
         headers: {
           [name: string]: unknown;
