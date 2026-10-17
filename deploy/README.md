@@ -546,6 +546,21 @@ fragment, valid for 60 seconds, and trades it for an access and a refresh token
 at `POST /api/v1/auth/sso/exchange`. The fragment is never sent to the server
 or in a `Referer` header, and a replayed or expired code answers 401.
 
+The code is bound to the browser that started the login. The callback leaves
+the `sso_state_<id>` cookie in place, and the exchange spends the code only
+from a request that carries that cookie. The code stores a hash of the
+cookie's secret. Anyone who holds the code without the cookie, from a shared
+link, a copied URL or a log, gets `403` with `sso_browser_mismatch`, and the
+code stays valid for the rest of its 60 seconds. A missing or expired cookie
+gets the same answer. A successful exchange deletes the cookie.
+
+A login must finish on the device that started it. If the callback link opens
+on another device, the login page says "Start sign-in again from this browser."
+and its button starts a new login there. Codes issued before this version carry
+no binding and are refused the same way, so a login still waiting at the upgrade
+starts again. A replica that still runs the previous release redeems codes
+without this check, so finish the rollout quickly.
+
 ## SSO account linking
 
 An SSO login is matched to an account by the provider's stable identity, the
@@ -662,6 +677,11 @@ rows are re-checked. It does not rewrite `findings.current_severity`. A finding 
 scan from another branch or scanner lowered before the upgrade keeps the lower value
 until the next scan reports it again. That scan sets the highest severity across
 scopes, so the gate can start blocking on the finding at that point.
+
+Migration 59 (`sso_exchange_codes.browser_binding`) adds a column with a
+constant default. PostgreSQL 11 and later add such a column without rewriting
+the table, and the table holds only codes that expire within 60 seconds, so
+there is nothing to back up. The down migration drops that column.
 
 Every change is checked in CI by letting an earlier build fill a database through
 its own API and starting the current build on it (`scripts/upgrade-smoke.sh`):
