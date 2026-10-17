@@ -148,6 +148,36 @@ func TestCreateInvite_RefusesAnAddressThatIsEmptyAfterTheTrim(t *testing.T) {
 	}
 }
 
+// mail.ParseAddress accepts every rune from U+0080 up as part of an address, so
+// the C1 controls (Cc) reach the stored invite unless CreateInvite checks them
+// as normalizeAddress does.
+func TestCreateInvite_RefusesControlCharacters(t *testing.T) {
+	for name, r := range map[string]string{
+		"next line U+0085":             "\u0085",
+		"padding character U+0080":     "\u0080",
+		"control sequence U+009B":      "\u009b",
+		"line feed":                    "\n",
+		"horizontal tab":               "\t",
+		"device control string U+0090": "\u0090",
+	} {
+		for place, email := range map[string]string{
+			"inside":   "ad" + r + "a@example.com",
+			"trailing": "ada@example.com" + r,
+			"leading":  r + "ada@example.com",
+		} {
+			t.Run(name+"/"+place, func(t *testing.T) {
+				f := newInviteTestFixture(t, auth.RoleManager)
+
+				_, err := f.uc.CreateInvite(callerCtx(), "payments", CreateInviteInput{Role: "member", Email: email})
+
+				assert.ErrorIs(t, err, ErrInvalidInviteInput)
+				assert.EqualError(t, err, ErrInvalidInviteInput.Error()+": invalid email address")
+				assert.Empty(t, f.invites.byHash)
+			})
+		}
+	}
+}
+
 func TestCreateInvite_AValidAddressStillBindsTheEmail(t *testing.T) {
 	f := newInviteTestFixture(t, auth.RoleManager)
 
