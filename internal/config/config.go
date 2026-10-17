@@ -58,7 +58,10 @@ const (
 	// payload. The sweep clears older payloads; the report row and its
 	// findings stay. Zero keeps every payload.
 	DefaultRawRetentionDays = 30
-	DefaultStalenessMult    = 2
+	// MaxRawRetentionDays caps RAW_RETENTION_DAYS at 100 years. Past about 106751 days a
+	// time.Duration product overflows, which would push the sweep cutoff into the future.
+	MaxRawRetentionDays  = 36500
+	DefaultStalenessMult = 2
 	// Rate limiting defaults (token bucket per key): strict for
 	// unauthenticated entry points, generous for authenticated callers, and
 	// tightest for login and register, which accept guessable credentials.
@@ -461,6 +464,9 @@ func Load() (*Server, error) {
 		if err != nil || n < 0 {
 			return nil, fmt.Errorf("RAW_RETENTION_DAYS must be a whole number of days, 0 or more (0 keeps every raw report), got %q", v)
 		}
+		if n > MaxRawRetentionDays {
+			return nil, fmt.Errorf("RAW_RETENTION_DAYS must be at most %d days (100 years), got %q", MaxRawRetentionDays, v)
+		}
 		s.RawRetentionDays = n
 	}
 
@@ -594,6 +600,9 @@ func (s *Server) Validate() error {
 	}
 	if s.RawRetentionDays < 0 {
 		problems = append(problems, fmt.Errorf("RAW_RETENTION_DAYS must be 0 or more, got %d", s.RawRetentionDays))
+	}
+	if s.RawRetentionDays > MaxRawRetentionDays {
+		problems = append(problems, fmt.Errorf("RAW_RETENTION_DAYS must be at most %d, got %d", MaxRawRetentionDays, s.RawRetentionDays))
 	}
 	if s.Intel.TTL <= 0 {
 		problems = append(problems, errors.New("INTEL_TTL must be a positive duration"))
