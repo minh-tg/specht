@@ -4,9 +4,34 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
+
+	"github.com/minh-tg/specht/internal/scanner"
 )
+
+// RedactedMarker replaces the content of a key that RedactRawJSON redacts.
+const RedactedMarker = "[REDACTED]"
+
+// RedactRawJSON is the RedactRaw of a scanner whose evidence is one JSON
+// document. It decodes data, replaces the content of every key in keys with
+// RedactedMarker (see RedactKeys), encodes the document again and caps the
+// result at scanner.RawEvidenceCap (see scanner.CapRawEvidence). Data it cannot
+// decode is an error wrapping scanner.ErrRedactionFailed, and no output comes
+// back, because the input may still hold a secret.
+func RedactRawJSON(name string, data []byte, keys ...string) ([]byte, error) {
+	var doc any
+	if err := DecodeJSON(data, &doc); err != nil {
+		return nil, fmt.Errorf("%w: %s evidence: %w", scanner.ErrRedactionFailed, name, err)
+	}
+	RedactKeys(doc, RedactedMarker, keys...)
+	out, err := json.Marshal(doc)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s evidence: %w", scanner.ErrRedactionFailed, name, err)
+	}
+	return scanner.CapRawEvidence(out, len(data)), nil
+}
 
 // DecodeJSON decodes data, which must hold exactly one JSON value, into v. It
 // keeps numbers as json.Number, so a number that does not fit a float64 (such as
