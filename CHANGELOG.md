@@ -296,6 +296,10 @@ releases.
 ### Security
 
 - Self-service registration is closed unless `REGISTRATION_ENABLED=true`.
+- An SSO exchange code works only in the browser that started the login. The
+  exchange refuses a code from a browser without that login's `sso_state_<id>`
+  cookie with `403 sso_browser_mismatch`, and the code stays valid. A login
+  started on one device must finish on that device.
 - Forwarding headers are trusted only from the CIDRs in `TRUSTED_PROXIES`.
 - Request bodies are size-capped, and ingest rejects oversized reports with
   413.
