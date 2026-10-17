@@ -478,9 +478,10 @@ releases.
   `project` with another value is refused with `400 invalid_field`.
 - A slow upload no longer holds an ingest slot. The slot is taken only after the whole body
   has arrived, and the body has 30 seconds (`408 request_timeout` otherwise). One user or API
-  key may use at most half of the ingest slots and half of the ingest memory budget at once;
-  its further requests wait in their own queue and get `503 ingest_busy` with `Retry-After`,
-  and other callers are not delayed.
+  key may hold at most half of the ingest slots at once, and its ingests share half of the
+  ingest memory budget. A single large report is charged against the whole budget, so it can
+  hold more than half of it. Its further requests wait in their own queue and get
+  `503 ingest_busy` with `Retry-After`, and other callers are not delayed.
 - One project can no longer hold every ingest slot. The limit was per caller, so a project
   manager's session plus one API key (or two keys) could together fill all 8 slots and the
   whole memory budget, and another project's CI got `503 ingest_busy`. A project is now held
