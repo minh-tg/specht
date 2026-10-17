@@ -266,7 +266,7 @@ func rawExpiresAt(created time.Time, expired bool, retentionDays int) *time.Time
 	if !expired || retentionDays <= 0 {
 		return nil
 	}
-	t := created.Add(time.Duration(retentionDays) * 24 * time.Hour)
+	t := created.AddDate(0, 0, retentionDays)
 	return &t
 }
 

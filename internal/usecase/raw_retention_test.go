@@ -114,3 +114,15 @@ func TestGetFinding_WithoutAnObservationIsNotExpired(t *testing.T) {
 	assert.False(t, *resp.RawDataExpired)
 	assert.Nil(t, resp.RawDataExpiresAt)
 }
+
+// A Duration product wraps past about 106751 days. The expiry date must still land after the
+// report was created, so the helper adds calendar days instead of multiplying a Duration.
+func TestRawExpiresAt_LargeWindowDoesNotWrap(t *testing.T) {
+	created := time.Date(2026, 9, 1, 8, 0, 0, 0, time.UTC)
+	for _, days := range []int{36500, 106752} {
+		got := rawExpiresAt(created, true, days)
+		require.NotNil(t, got, "days=%d", days)
+		assert.Equal(t, created.AddDate(0, 0, days), *got, "days=%d", days)
+		assert.True(t, got.After(created), "days=%d: expiry must come after creation", days)
+	}
+}
