@@ -96,8 +96,8 @@ its creator typed, so keep `REGISTRATION_ENABLED` closed unless you accept that.
 
 Raw scanner output (`raw_data`) is redacted before it is stored. Trivy, Semgrep and Checkov
 remove the matched secret and the source around it, at any depth: Trivy's `Match` and `Code`,
-Semgrep's SARIF `snippet` and native `lines` and `metavars`, and Checkov's `code_block` and
-`evaluations`. They also remove the content of any key named `secret`, `password`, `passwd`,
+Semgrep's SARIF `snippet` and native `lines` and `metavars`, and its `fix` template, which Semgrep
+fills with the matched values, and Checkov's `code_block` and `evaluations`. They also remove the content of any key named `secret`, `password`, `passwd`,
 `token`, `api_key`, `apikey`, `access_key`, `private_key` or `client_secret`, at any depth and in
 any case. A key whose lowercased name contains `password`, `passwd`, `secret`, `token`, `api_key`,
 `apikey` or `authorization` loses its scalar value at any depth, so `db_password`, `auth_token`

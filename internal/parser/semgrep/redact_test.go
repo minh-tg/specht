@@ -55,6 +55,50 @@ func TestRedactRawRemovesTheMatchedSourceAndTheFindingStillIngests(t *testing.T)
 	}
 }
 
+// semgrepFixSecret is a value that a rule's fix template reuses. Semgrep fills
+// the template with the captured value, so the fix text holds it.
+const semgrepFixSecret = "hunter2-fix-value"
+
+// semgrepFixMember is the fix key of a native result, and of a SARIF result's
+// properties, carrying the captured password.
+const semgrepFixMember = `"fix":"load_config(password=\"` + semgrepFixSecret + `\")"`
+
+// semgrepFixDocs holds a native and a SARIF report whose only finding has a fix
+// template that reuses the captured password.
+var semgrepFixDocs = map[string][]byte{
+	"native": []byte(`{"version":"1.100.0","results":[{"check_id":"python.password","path":"app.py","start":{"line":3,"col":1},"extra":{"message":"hardcoded password","severity":"ERROR","fingerprint":"fp-3",` + semgrepFixMember + `}}],"errors":[],"paths":{"scanned":["app.py"]}}`),
+	"sarif":  []byte(`{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"Semgrep OSS","version":"1.100.0","rules":[{"id":"python.password","shortDescription":{"text":"hardcoded password"},"defaultConfiguration":{"level":"error"}}]}},"results":[{"ruleId":"python.password","level":"error","message":{"text":"hardcoded password"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"app.py"},"region":{"startLine":3,"startColumn":1}}}],"fingerprints":{"matchBasedId/v1":"fp-4"},"properties":{` + semgrepFixMember + `}}]}]}`),
+}
+
+func TestRedactRawRemovesASecretInAFixTemplate(t *testing.T) {
+	for format, data := range semgrepFixDocs {
+		t.Run(format, func(t *testing.T) {
+			redacted, err := semgrep.NewScanner().RedactRaw(data)
+			require.NoError(t, err)
+
+			assert.NotContains(t, string(redacted), semgrepFixSecret)
+			assert.Contains(t, string(redacted), `"fix":"[REDACTED]"`)
+		})
+	}
+}
+
+// The finding stores the rule's extensions, and the fix template is not among
+// them: it carries the same secret the raw evidence loses.
+func TestParseKeepsAFixTemplateOutOfFindingExtensions(t *testing.T) {
+	for format, data := range semgrepFixDocs {
+		t.Run(format, func(t *testing.T) {
+			report, err := semgrep.NewScanner().Parse(context.Background(), data)
+			require.NoError(t, err)
+			require.Len(t, report.Findings, 1)
+
+			ext, err := json.Marshal(report.Findings[0].Extensions)
+			require.NoError(t, err)
+			assert.NotContains(t, string(ext), semgrepFixSecret)
+			assert.NotContains(t, report.Findings[0].Extensions, "fix")
+		})
+	}
+}
+
 // Each of these is a document the parser's decoder cannot read as one JSON
 // value. The redactor must refuse them and return nothing, so the caller stores
 // the failed marker instead of the input.
