@@ -137,6 +137,15 @@ releases.
   shared a replay key, and the second was answered with the first report, so its findings were
   never recorded. A report stored before this change keeps its old key, so re-posting an unchanged
   report whose body was redacted ingests it once more.
+- A finding's severity is kept per scan scope, and the project-wide severity is the highest
+  one any scope reports. Before, the last scan to ingest set the severity, so a scan from
+  another branch or scanner could lower a finding for the whole project, and the gate could
+  pass while main still reported it as high. The scope is the scan's scanner, target,
+  artifact, branch and environment, the same key auto-fix uses. The gate reads the
+  project-wide severity. Each change of a scope's severity, or of the project-wide severity,
+  writes one `severity_changed` finding event with the old and new values, the scope hash and
+  the scan's report id. A repeat at the same severity writes no event. Existing findings keep
+  their stored severity until a scan reports them again (see `deploy/README.md`, section 8).
 - Stored Gitleaks and Nuclei evidence no longer keeps a secret under a key written in another
   case (`secret`, `sEcReT`, `Request`, `RESPONSE`) or inside a nested object. Both scanners'
   redaction now matches key names without regard to case, at any depth. A Nuclei JSON Lines
