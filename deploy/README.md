@@ -653,6 +653,16 @@ seconds in a test, and the pause grows with the number of SSO users, so operator
 with many SSO accounts should expect a short pause on the first start of this
 version or later.
 
+Migration 58 (`finding_scope_severities`) adds a table that holds the severity each
+scan scope last reported for a finding. It backfills the table in one pass over
+`finding_occurrences`, so the first start after this version takes longer on installs
+with many occurrences. The migration also rebuilds the check on `finding_events` to
+allow the `severity_changed` event, which locks `finding_events` while the existing
+rows are re-checked. It does not rewrite `findings.current_severity`. A finding that a
+scan from another branch or scanner lowered before the upgrade keeps the lower value
+until the next scan reports it again. That scan sets the highest severity across
+scopes, so the gate can start blocking on the finding at that point.
+
 Every change is checked in CI by letting an earlier build fill a database through
 its own API and starting the current build on it (`scripts/upgrade-smoke.sh`):
 the account, project, scan, triage decision and API key must survive the
