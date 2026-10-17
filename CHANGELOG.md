@@ -128,6 +128,9 @@ releases.
   depth. The fragment match also removes `tokenizer_version`, a known false positive.
 - Checkov findings no longer copy a failed check's `code_block`, the matched source, into the
   finding extensions that occurrence stores.
+- Semgrep findings no longer copy the rule's `fix` template into the finding extensions, and stored
+  raw evidence removes it. Semgrep fills the template with the matched values, so a fix that reuses
+  a captured password carried the password.
 - A report is a replay only when its body matches a stored one byte for byte, before redaction.
   Before, two bodies that differed only in whitespace, or only in a secret that redaction removes,
   shared a replay key, and the second was answered with the first report, so its findings were

@@ -222,10 +222,12 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 // result at scanner.RawEvidenceCap. Both formats carry the matched code: SARIF
 // in a region's snippet, and the native JSON format in extra.lines and in the
 // metavars map (captured values such as an abstract_content). Those keys are
-// redacted at any depth. Data that cannot be decoded is an error and no output
-// comes back.
+// redacted at any depth, and so is the fix key (extra.fix, and the SARIF
+// properties.fix): Semgrep fills a rule's fix template with the matched values,
+// so a fix that reuses a captured value carries the secret. Data that cannot be
+// decoded is an error and no output comes back.
 func (s *Scanner) RedactRaw(data []byte) ([]byte, error) {
-	return parseutil.RedactRawJSON("semgrep", data, "snippet", "lines", "metavars")
+	return parseutil.RedactRawJSON("semgrep", data, "snippet", "lines", "metavars", "fix")
 }
 
 func convert(budget *parseutil.Budget, report sarifReport) (*domain.NormalizedReport, error) {
@@ -299,9 +301,6 @@ func resultMeta(result sarifResult, rule sarifRule, hasRule bool) map[string]any
 	if result.Properties != nil {
 		if sv, ok := result.Properties["severity"]; ok {
 			meta["semgrep_severity"] = sv
-		}
-		if fix, ok := result.Properties["fix"]; ok {
-			meta["fix"] = fix
 		}
 		addResultCWE(meta, result, hasRule)
 	}
@@ -410,7 +409,6 @@ type nativeResult struct {
 	Extra struct {
 		Message     string         `json:"message"`
 		Severity    string         `json:"severity"`
-		Fix         string         `json:"fix"`
 		Fingerprint string         `json:"fingerprint"`
 		Metadata    map[string]any `json:"metadata"`
 	} `json:"extra"`
@@ -474,7 +472,9 @@ func mapNativeSeverity(level string) domain.Severity {
 }
 
 // nativeMeta keeps what the rule says about the finding: the CWE and OWASP
-// classes, the category, and how likely, how bad and how sure it is.
+// classes, the category, and how likely, how bad and how sure it is. The fix
+// template is left out, for the reason RedactRaw gives: Semgrep fills it with the
+// matched values, so it can carry a secret.
 func nativeMeta(r nativeResult) map[string]any {
 	meta := map[string]any{}
 	for _, key := range []string{"cwe", "owasp", "category", "confidence", "impact", "likelihood"} {
@@ -484,9 +484,6 @@ func nativeMeta(r nativeResult) map[string]any {
 	}
 	if r.Extra.Severity != "" {
 		meta["semgrep_severity"] = r.Extra.Severity
-	}
-	if r.Extra.Fix != "" {
-		meta["fix"] = r.Extra.Fix
 	}
 	return meta
 }
