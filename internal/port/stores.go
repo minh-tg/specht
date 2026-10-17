@@ -352,6 +352,8 @@ type SSOCode struct {
 // SSOCodeStore persists single-use SSO exchange codes.
 type SSOCodeStore interface {
 	Create(ctx context.Context, codeHash, userID, browserBinding string, expiresAt time.Time) error
+	// Lookup returns an unexpired code without consuming it.
+	Lookup(ctx context.Context, codeHash string, now time.Time) (SSOCode, error)
 	Consume(ctx context.Context, codeHash string, now time.Time) (SSOCode, error)
 }
 

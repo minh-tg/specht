@@ -18,6 +18,9 @@ var (
 	// control character. It says nothing about any local account, so the
 	// callback may report it.
 	ErrSSOInvalidEmail = errors.New("sso provider sent an invalid email address")
+	// ErrSSOBrowserMismatch is returned when an SSO exchange code is redeemed
+	// from a browser that does not hold the login cookie it was issued for.
+	ErrSSOBrowserMismatch = errors.New("sso login was started in another browser")
 )
 
 // Roles for the RBAC model. These are the canonical role strings that may

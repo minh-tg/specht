@@ -516,11 +516,13 @@ func idTokenSubject(idToken string) (string, error) {
 }
 
 // verifySSOCallbackState checks the callback against the state cookie of the
-// login it belongs to and clears that cookie. The cookie is named after the
-// state and signed for it, so a callback URL replayed from another browser
-// finds no cookie, or one that does not verify, and is refused before the code
-// goes anywhere. It returns the PKCE verifier, the nonce and the browser
-// binding derived from the cookie's secret, and the validated return path.
+// login it belongs to. The cookie is named after the state and signed for it,
+// so a callback URL replayed from another browser finds no cookie, or one that
+// does not verify, and is refused before the code goes anywhere. The cookie
+// stays in the browser after a successful callback: redeeming the code it
+// issues needs the cookie and clears it (see ExchangeSSOCode). It returns the
+// PKCE verifier, the nonce and the browser binding derived from the cookie's
+// secret, and the validated return path.
 func (a *OIDCAuthenticator) verifySSOCallbackState(w http.ResponseWriter, r *http.Request) (verifier, wantNonce, returnTo, binding string, ok bool) {
 	state := r.URL.Query().Get("state")
 	if state == "" {
@@ -542,12 +544,6 @@ func (a *OIDCAuthenticator) verifySSOCallbackState(w http.ResponseWriter, r *htt
 		http.Error(w, msg, http.StatusBadRequest)
 		return "", "", "", "", false
 	}
-
-	// The cookie is single-use: clear it before any further work so a
-	// replayed callback cannot pass this check again.
-	// Secure comes from the proxy-aware transport verdict.
-	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
-	http.SetCookie(w, ssoCookie(name, "", -1, SecureTransport(r)))
 
 	return a.pkceVerifier(state, login.secret), a.nonce(state, login.secret), login.returnPath, BrowserBinding(login.secret), true
 }

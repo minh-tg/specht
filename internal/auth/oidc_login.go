@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
@@ -131,6 +132,52 @@ func pkceChallenge(verifier string) string {
 func BrowserBinding(secret string) string {
 	sum := sha256.Sum256([]byte(secret))
 	return hex.EncodeToString(sum[:])
+}
+
+// PresentedLogin is one login cookie that a request carried: its name and the
+// browser binding its secret gives.
+type PresentedLogin struct {
+	Name    string
+	Binding string
+}
+
+// PresentedLogins returns the login cookies in cookies that had not expired at
+// now. The cookie signature is not checked here, because it covers the state
+// and the redeeming request does not carry the state. The secret is the proof
+// instead: only the browser that started the login holds it, and the code
+// stores only its hash.
+func PresentedLogins(cookies []*http.Cookie, now time.Time) []PresentedLogin {
+	var out []PresentedLogin
+	for _, c := range cookies {
+		if !strings.HasPrefix(c.Name, ssoStateCookiePrefix) {
+			continue
+		}
+		parts := strings.Split(c.Value, ".")
+		if len(parts) != 5 || parts[0] != ssoCookieVersion || parts[1] == "" {
+			continue
+		}
+		unix, err := strconv.ParseInt(parts[2], 10, 64)
+		if err != nil || !now.Before(time.Unix(unix, 0)) {
+			continue
+		}
+		out = append(out, PresentedLogin{Name: c.Name, Binding: BrowserBinding(parts[1])})
+	}
+	return out
+}
+
+// MatchPresentedLogin returns the presented login whose binding equals binding.
+// It reports false when binding is empty, which is what a code issued before
+// the binding existed carries, or when no presented login matches.
+func MatchPresentedLogin(presented []PresentedLogin, binding string) (PresentedLogin, bool) {
+	if binding == "" {
+		return PresentedLogin{}, false
+	}
+	for _, p := range presented {
+		if subtle.ConstantTimeCompare([]byte(p.Binding), []byte(binding)) == 1 {
+			return p, true
+		}
+	}
+	return PresentedLogin{}, false
 }
 
 // sealLogin encodes a pending login as a cookie value:
@@ -262,6 +309,13 @@ func (a *OIDCAuthenticator) retireOldLogins(w http.ResponseWriter, r *http.Reque
 		// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
 		http.SetCookie(w, ssoCookie(live[i].name, "", -1, secure))
 	}
+}
+
+// ClearLoginCookie deletes the named login cookie from the browser behind r.
+func ClearLoginCookie(w http.ResponseWriter, r *http.Request, name string) {
+	// Secure comes from the proxy-aware transport verdict.
+	// nosemgrep: go.lang.security.audit.net.cookie-missing-secure.cookie-missing-secure
+	http.SetCookie(w, ssoCookie(name, "", -1, SecureTransport(r)))
 }
 
 func partAt(parts []string, i int) string {

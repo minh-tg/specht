@@ -195,13 +195,15 @@ func ssoCallbackPrepare(t *testing.T, _ *authzFixtures, a *authzAttempt) {
 }
 
 func ssoCodePrepare(t *testing.T, _ *authzFixtures, a *authzAttempt) {
-	status, location, _ := ssoExchange(t, "")
+	status, location, cookies := ssoExchange(t, "")
 	require.Equal(t, http.StatusFound, status)
 	parsed, err := url.Parse(location)
 	require.NoError(t, err)
 	code, err := url.PathUnescape(strings.TrimPrefix(parsed.Fragment, "sso_code="))
 	require.NoError(t, err)
 	a.Obj["code"] = code
+	// The exchange only accepts the code from the browser that started the login.
+	a.Cookies = cookies
 }
 
 func requestBody(_ *authzFixtures, a *authzAttempt) any {

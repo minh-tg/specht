@@ -125,8 +125,8 @@ func TestE2E_SSOLinkRevokesTheKeysOfTheSquattedAccount(t *testing.T) {
 	require.Equal(t, http.StatusOK, keyReads(t, key.Token, slug))
 
 	fakes.idp.setEmail(email)
-	status, location, _ := ssoExchange(t, "")
-	owner := request[profileEnvelope](t, http.MethodGet, "/api/v1/me", ssoToken(t, status, location), nil, http.StatusOK)
+	status, location, cookies := ssoExchange(t, "")
+	owner := request[profileEnvelope](t, http.MethodGet, "/api/v1/me", ssoToken(t, status, location, cookies), nil, http.StatusOK)
 	require.Equal(t, squatter.UserID, owner.ID, "the provider login took over the squatted account")
 
 	require.Equal(t, http.StatusUnauthorized, keyReads(t, key.Token, slug), "the squatter's key died with the link")

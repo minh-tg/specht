@@ -3,8 +3,10 @@
 package e2e
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -60,8 +62,9 @@ func ssoStateCookie(cookies []*http.Cookie) *http.Cookie {
 // ssoExchange drives login → IdP authorize → callback without a cookie jar:
 // the state cookies travel as explicit headers (a jar would refuse a Secure
 // cookie over plain http, exactly as a browser behind TLS termination would
-// hand them back over the https leg).
-func ssoExchange(t *testing.T, forwardedProto string, returnPath ...string) (int, string, http.Header) {
+// hand them back over the https leg). It returns the callback's status and
+// location, and the login cookies the browser holds for the exchange.
+func ssoExchange(t *testing.T, forwardedProto string, returnPath ...string) (int, string, []*http.Cookie) {
 	t.Helper()
 	authorize, cookies, _ := ssoLoginLeg(t, forwardedProto, returnPath...)
 
@@ -92,14 +95,26 @@ func ssoExchange(t *testing.T, forwardedProto string, returnPath ...string) (int
 	require.NoError(t, err)
 	defer cbResp.Body.Close()
 
-	var body strings.Builder
-	_, _ = body.WriteString(cbResp.Header.Get("Location"))
-	return cbResp.StatusCode, cbResp.Header.Get("Location"), cbResp.Header
+	return cbResp.StatusCode, cbResp.Header.Get("Location"), cookies
 }
 
-// ssoToken pulls the exchange code out of a successful callback redirect
-// and exchanges it via /api/v1/auth/sso/exchange for the session token.
-func ssoToken(t *testing.T, status int, location string) string {
+// ssoToken exchanges the code of a successful callback redirect, from the
+// browser that started the login, and returns the session token.
+func ssoToken(t *testing.T, status int, location string, cookies []*http.Cookie) string {
+	t.Helper()
+	st, body, _ := exchangeCode(t, ssoCodeFrom(t, status, location), cookies...)
+	require.Equal(t, http.StatusOK, st, "sso exchange must succeed: %s", string(body))
+	type exchangeResp struct {
+		Token string `json:"token"`
+	}
+	var resp exchangeResp
+	require.NoError(t, json.Unmarshal(body, &resp))
+	require.NotEmpty(t, resp.Token)
+	return resp.Token
+}
+
+// ssoCodeFrom reads the exchange code out of a successful callback redirect.
+func ssoCodeFrom(t *testing.T, status int, location string) string {
 	t.Helper()
 	require.Equal(t, http.StatusFound, status)
 	parsed, err := url.Parse(location)
@@ -109,18 +124,27 @@ func ssoToken(t *testing.T, status int, location string) string {
 	code, err := url.PathUnescape(strings.TrimPrefix(parsed.Fragment, "sso_code="))
 	require.NoError(t, err)
 	require.NotEmpty(t, code)
+	return code
+}
 
-	type exchangeResp struct {
-		Token string `json:"token"`
+// exchangeCode posts an SSO exchange code from a browser that holds cookies.
+// It returns the status, the body and the cookies the response set.
+func exchangeCode(t *testing.T, code string, cookies ...*http.Cookie) (int, []byte, []*http.Cookie) {
+	t.Helper()
+	raw, err := json.Marshal(map[string]string{"code": code})
+	require.NoError(t, err)
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/api/v1/auth/sso/exchange", bytes.NewReader(raw))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+	for _, c := range cookies {
+		req.AddCookie(c)
 	}
-	st, body := doJSON(t, http.MethodPost, "/api/v1/auth/sso/exchange", "", map[string]string{
-		"code": code,
-	})
-	require.Equal(t, http.StatusOK, st, "sso exchange must succeed: %s", string(body))
-	var resp exchangeResp
-	require.NoError(t, json.Unmarshal(body, &resp))
-	require.NotEmpty(t, resp.Token)
-	return resp.Token
+	resp, err := noRedirectClient().Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return resp.StatusCode, body, resp.Cookies()
 }
 
 // TestE2E_SSOLoginAndProvisioning closes the SSO API-side journey: redirect
@@ -129,8 +153,8 @@ func ssoToken(t *testing.T, status int, location string) string {
 func TestE2E_SSOLoginAndProvisioning(t *testing.T) {
 	t.Run("first login provisions an allowlisted admin-group user and preserves the deep link", func(t *testing.T) {
 		fakes.idp.setEmail("e2e-sso-full@example.com")
-		status, location, _ := ssoExchange(t, "", "/projects/demo?tab=members")
-		token := ssoToken(t, status, location)
+		status, location, cookies := ssoExchange(t, "", "/projects/demo?tab=members")
+		token := ssoToken(t, status, location, cookies)
 
 		returned, err := url.Parse(location)
 		require.NoError(t, err)
@@ -173,17 +197,17 @@ func TestE2E_SSOLoginAndProvisioning(t *testing.T) {
 		defer fakes.idp.setEmail(e2eSSOEmail)
 
 		fakes.idp.setEmail("e2e-sso-bound@example.com")
-		status, location, _ := ssoExchange(t, "")
-		owner := request[profileEnvelope](t, http.MethodGet, "/api/v1/me", ssoToken(t, status, location), nil, http.StatusOK)
+		status, location, cookies := ssoExchange(t, "")
+		owner := request[profileEnvelope](t, http.MethodGet, "/api/v1/me", ssoToken(t, status, location, cookies), nil, http.StatusOK)
 
 		fakes.idp.setSubject("some-other-subject")
-		status, location, _ = ssoExchange(t, "")
+		status, location, cookies = ssoExchange(t, "")
 		require.Equal(t, http.StatusForbidden, status,
 			"the same email under a different subject is refused: %s", location)
 
 		fakes.idp.setSubject("")
-		status, location, _ = ssoExchange(t, "")
-		again := request[profileEnvelope](t, http.MethodGet, "/api/v1/me", ssoToken(t, status, location), nil, http.StatusOK)
+		status, location, cookies = ssoExchange(t, "")
+		again := request[profileEnvelope](t, http.MethodGet, "/api/v1/me", ssoToken(t, status, location, cookies), nil, http.StatusOK)
 		require.Equal(t, owner.ID, again.ID, "the rightful subject still signs in")
 	})
 
@@ -199,8 +223,8 @@ func TestE2E_SSOLoginAndProvisioning(t *testing.T) {
 			"registration never mints admins — the assertion cannot be vacuous")
 
 		fakes.idp.setEmail(email)
-		status, location, _ := ssoExchange(t, "")
-		token := ssoToken(t, status, location)
+		status, location, cookies := ssoExchange(t, "")
+		token := ssoToken(t, status, location, cookies)
 		ssoMe := request[profileEnvelope](t, http.MethodGet, "/api/v1/me", token, nil, http.StatusOK)
 		require.Equal(t, passwordMe.ID, ssoMe.ID, "same account, two transports")
 		require.Equal(t, passwordMe.Role, ssoMe.Role,
@@ -232,14 +256,14 @@ func TestE2E_SSOLoginAndProvisioning(t *testing.T) {
 		require.False(t, proven(registered), "registering with a password proves nothing")
 
 		fakes.idp.setEmail(registered)
-		status, location, _ := ssoExchange(t, "")
-		ssoToken(t, status, location)
+		status, location, cookies := ssoExchange(t, "")
+		ssoToken(t, status, location, cookies)
 		require.True(t, proven(registered), "the provider vouched for the address when the account was linked")
 
 		provisioned := "e2e-sso-proof-new@example.com"
 		fakes.idp.setEmail(provisioned)
-		status, location, _ = ssoExchange(t, "")
-		ssoToken(t, status, location)
+		status, location, cookies = ssoExchange(t, "")
+		ssoToken(t, status, location, cookies)
 		require.True(t, proven(provisioned), "a provisioned account arrives with a vouched address")
 	})
 }
@@ -269,8 +293,8 @@ func TestE2E_TrustedProxySecureTransport(t *testing.T) {
 
 	t.Run("the secure journey completes end to end", func(t *testing.T) {
 		fakes.idp.setEmail("e2e-sso-proxy@example.com")
-		status, location, _ := ssoExchange(t, "https")
-		token := ssoToken(t, status, location)
+		status, location, cookies := ssoExchange(t, "https")
+		token := ssoToken(t, status, location, cookies)
 		me := request[profileEnvelope](t, http.MethodGet, "/api/v1/me", token, nil, http.StatusOK)
 		require.Equal(t, "e2e-sso-proxy@example.com", me.Email)
 	})

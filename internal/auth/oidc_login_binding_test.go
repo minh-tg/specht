@@ -230,7 +230,10 @@ func TestCallback_NormalFlowWorksWithAndWithoutAClientSecret(t *testing.T) {
 	}
 }
 
-func TestCallback_TheLoginCookieIsSingleUse(t *testing.T) {
+// The login cookie outlives the callback, because redeeming the code the
+// callback issues needs it. A replayed callback still issues nothing: the
+// provider spends its code once and refuses the second use.
+func TestCallback_AReplayedCallbackIssuesNoSecondCode(t *testing.T) {
 	idp := newStrictIdP(t)
 	a := idp.authFor(t)
 	login := startTestLogin(t, a, "")
@@ -241,11 +244,12 @@ func TestCallback_TheLoginCookieIsSingleUse(t *testing.T) {
 	jar := browserJar{}
 	jar.apply(login.cookies)
 	jar.apply(first.Result().Cookies())
+	require.Len(t, jar, 1, "the callback leaves the login cookie for the exchange")
 
 	second, subjects := finish(t, a, login, code, jar.list()...)
-
-	assert.Equal(t, http.StatusBadRequest, second.Code, "the cookie was cleared with the first callback")
+	assert.Equal(t, http.StatusInternalServerError, second.Code, "the provider refuses the spent code")
 	assert.Empty(t, subjects)
+	assert.Equal(t, 1, idp.redeemed())
 }
 
 func TestCallback_RefusesAnExpiredOrTamperedCookie(t *testing.T) {
@@ -431,4 +435,45 @@ func TestDeriveSSOStateKey_IsStableAndSecretDependent(t *testing.T) {
 	assert.NotEqual(t, DeriveSSOStateKey("s"), DeriveSSOStateKey("t"))
 	assert.GreaterOrEqual(t, len(DeriveSSOStateKey("s")), ssoStateKeyMinBytes)
 	assert.NotContains(t, string(DeriveSSOStateKey("hunter2")), "hunter2")
+}
+
+// PresentedLogins keeps the login cookies whose expiry has not passed, with the
+// binding of each secret, and skips everything else a browser might send.
+func TestPresentedLogins_ReadsOnlyUnexpiredLoginCookies(t *testing.T) {
+	a := mustOIDC(t, "https://idp.example.com")
+	login := startTestLogin(t, a, "")
+	live := login.cookies[0]
+	secret := loginSecret(t, a, login)
+	now := time.Now()
+
+	expired := &http.Cookie{Name: live.Name, Value: a.sealLogin(login.state, ssoLogin{
+		secret: secret, expires: now.Add(-time.Second), returnPath: "/",
+	})}
+	junk := &http.Cookie{Name: ssoStateCookiePrefix + "junk", Value: "not-a-cookie"}
+	other := &http.Cookie{Name: "session", Value: "keep"}
+
+	got := PresentedLogins([]*http.Cookie{expired, junk, other, live}, now)
+	require.Len(t, got, 1)
+	assert.Equal(t, live.Name, got[0].Name)
+	assert.Equal(t, BrowserBinding(secret), got[0].Binding)
+
+	assert.Empty(t, PresentedLogins([]*http.Cookie{expired}, now), "an expired cookie is not presented")
+}
+
+func TestMatchPresentedLogin_NeedsAnEqualNonEmptyBinding(t *testing.T) {
+	bound := PresentedLogin{Name: "sso_state_a", Binding: BrowserBinding("one")}
+	other := PresentedLogin{Name: "sso_state_b", Binding: BrowserBinding("two")}
+
+	got, ok := MatchPresentedLogin([]PresentedLogin{other, bound}, bound.Binding)
+	require.True(t, ok)
+	assert.Equal(t, bound.Name, got.Name)
+
+	_, ok = MatchPresentedLogin([]PresentedLogin{other}, bound.Binding)
+	assert.False(t, ok, "another browser's login does not match")
+
+	_, ok = MatchPresentedLogin(nil, bound.Binding)
+	assert.False(t, ok, "no cookie presented")
+
+	_, ok = MatchPresentedLogin([]PresentedLogin{{Name: "sso_state_c"}}, "")
+	assert.False(t, ok, "a code issued without a binding matches nothing")
 }
