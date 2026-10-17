@@ -140,6 +140,10 @@ releases.
   spelled in another case or with a JSON escape (`"RESULTS"`), or whose fields hold millions
   of scalar entries is refused with `422 too_many_findings` before it is decoded. Such a
   20 MB upload used to be accepted and cost the server about 1.5 GiB of memory.
+- A report nested more than 64 levels deep is refused with the same `422 too_many_findings`.
+  A 200-level document reached 67x to 70x its size in memory while a parser decoded it, above
+  the 64x the memory budget charges. The captured reports for the supported scanners nest at
+  most 14 levels, so the cap leaves them unaffected.
 - Report ingests share a memory budget. Before it decodes a report, an ingest reserves 64
   bytes per byte of the report out of `INGEST_MEMORY_BUDGET` (default 2 GiB, for example
   `512MiB`). A report that does not fit waits up to 15 seconds and then gets
