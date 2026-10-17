@@ -174,6 +174,25 @@ describe("Invite", () => {
     expect(adopt).not.toHaveBeenCalled();
   });
 
+  it("tells the person to retype an address with hidden characters and keeps the form", async () => {
+    routes["/api/v1/invites/tok-abc/accept"] = () =>
+      jsonResponse(
+        { error: { code: "invalid_email_characters", message: "invalid email address" } },
+        400,
+      );
+    renderInvite();
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Email"), "ada@acme.example");
+    await user.type(screen.getByLabelText("Choose a password"), "correct-horse-battery");
+    await user.click(screen.getByRole("button", { name: "Create account and join" }));
+
+    expect(
+      await screen.findByText("This email has hidden characters. Retype it instead of pasting it."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create account and join" })).toBeEnabled();
+    expect(adopt).not.toHaveBeenCalled();
+  });
+
   it.each([
     [
       "password_too_common",
