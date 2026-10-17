@@ -206,6 +206,14 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	return parseutil.Hardened(convert(budget, report))
 }
 
+// RedactRaw scrubs secret material from raw Trivy evidence and caps the result
+// at scanner.RawEvidenceCap. A secret finding carries the matched text in Match
+// and the surrounding source in Code, so both keys are redacted at any depth.
+// Data that cannot be decoded is an error and no output comes back.
+func (s *Scanner) RedactRaw(data []byte) ([]byte, error) {
+	return parseutil.RedactRawJSON("trivy", data, "Match", "Code")
+}
+
 func decode(data []byte) (trivyReport, error) {
 	var report trivyReport
 	trimmed := bytes.TrimSpace(data)
