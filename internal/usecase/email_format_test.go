@@ -2,6 +2,7 @@ package usecase
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -32,11 +33,30 @@ func TestNormalizeAddress_RefusesFormatAndSeparatorRunes(t *testing.T) {
 			t.Run(name+"/"+place, func(t *testing.T) {
 				_, err := normalizeAddress(email)
 				assert.ErrorIs(t, err, ErrInvalidCredentialInput)
-				assert.EqualError(t, err, "invalid email address", "the answer every other bad address gets")
+				assert.ErrorIs(t, err, ErrInvalidEmailCharacters, "the hidden-character answer, with its own code")
+				assert.EqualError(t, err, "invalid email address", "the same message every other bad address gets")
 				_, err = validateEmail(email)
 				assert.ErrorIs(t, err, ErrInvalidCredentialInput)
+				assert.ErrorIs(t, err, ErrInvalidEmailCharacters)
 			})
 		}
+	}
+}
+
+// The other refusals keep the generic answer: the C0 and C1 controls that
+// normalizeAddress also refuses, and a plain bad address.
+func TestNormalizeAddress_OtherRefusalsKeepTheGenericError(t *testing.T) {
+	for name, email := range map[string]string{
+		"next line U+0085":  "ad\u0085a@example.com",
+		"line feed":         "ada@example.com\n",
+		"plain bad address": "ada@",
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := normalizeAddress(email)
+			assert.NotErrorIs(t, err, ErrInvalidEmailCharacters)
+			assert.ErrorIs(t, err, ErrInvalidCredentialInput)
+			assert.EqualError(t, err, "invalid email address")
+		})
 	}
 }
 
@@ -73,7 +93,39 @@ func TestRegister_RefusesFormatAndSeparatorRunesAndCreatesNoUser(t *testing.T) {
 			_, err := uc.Register(context.Background(), "ad"+r+"a@example.com", "a-long-unrelated-phrase")
 
 			assert.ErrorIs(t, err, ErrInvalidCredentialInput)
+			assert.ErrorIs(t, err, ErrInvalidEmailCharacters)
 			assert.EqualError(t, err, "invalid email address")
+		})
+	}
+}
+
+// Setup and invite acceptance run the address check through validateCredentials
+// before they spend the token or the link, so a refused address leaves both usable.
+func TestSetupAndAcceptInvite_RefuseFormatAndSeparatorRunesAndKeepTheirToken(t *testing.T) {
+	for name, r := range formatRunes {
+		email := "ad" + r + "a@example.com"
+		t.Run("setup/"+name, func(t *testing.T) {
+			f := newSetupFixture(t, 0)
+
+			_, err := f.uc.Setup(context.Background(), SetupInput{
+				Token: "s3cret-token-0123456789", Email: email, Password: "a-long-unrelated-phrase",
+			})
+
+			assert.ErrorIs(t, err, ErrInvalidEmailCharacters)
+			assert.Empty(t, f.created)
+			assert.Equal(t, "s3cret-token-0123456789", f.token.Value(), "a refused address does not burn the token")
+		})
+		t.Run("invite/"+name, func(t *testing.T) {
+			f := newInviteTestFixture(t, "manager")
+			created, err := f.uc.CreateInvite(callerCtx(), "payments", CreateInviteInput{Role: "member"})
+			require.NoError(t, err)
+			token := strings.TrimPrefix(created.Link, "/invite/")
+
+			_, err = f.uc.AcceptInvite(context.Background(), token, AcceptInviteInput{Email: email, Password: "a-long-unrelated-phrase"})
+
+			assert.ErrorIs(t, err, ErrInvalidEmailCharacters)
+			_, err = f.uc.LookupInvite(context.Background(), token)
+			assert.NoError(t, err, "a refused address does not use up the link")
 		})
 	}
 }

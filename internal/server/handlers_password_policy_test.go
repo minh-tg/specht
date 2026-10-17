@@ -65,7 +65,8 @@ func TestPasswordPolicyErrors_HaveTheirOwnCodes(t *testing.T) {
 }
 
 // Register keeps every other failure generic, a wrapped duplicate included,
-// so the two policy codes are the only specific answers it gives.
+// so the two policy codes and invalid_email_characters are the only specific
+// answers it gives.
 func TestRegister_PolicyCodesDoNotOpenOtherFailures(t *testing.T) {
 	for name, cause := range map[string]error{
 		"duplicate":         usecase.ErrRegistrationFailed,
