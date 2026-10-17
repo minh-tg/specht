@@ -1,5 +1,6 @@
 import type { Finding } from "@/types/api";
 import { locationLineRange, locationSubjectLabel } from "./format";
+import { RawEvidenceNote } from "./RawEvidenceNote";
 
 /** The file, resource or URL the scanner observed the finding at. */
 export function WhereItOccurs({ finding }: { readonly finding: Finding; }) {
@@ -32,6 +33,7 @@ export function WhereItOccurs({ finding }: { readonly finding: Finding; }) {
             No location reported. The scanner gave no file, resource, or URL.
           </p>
         )}
+      <RawEvidenceNote expired={finding.raw_data_expired} expiresAt={finding.raw_data_expires_at} />
     </div>
   );
 }
