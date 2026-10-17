@@ -1066,35 +1066,54 @@ func (u *Usecases) CreateSSOExchangeCode(ctx context.Context, userID, browserBin
 // ExchangeSSOCode atomically consumes an SSO exchange code and returns an AuthResponse
 // containing both an access token and a refresh token with rotation. Replayed, expired,
 // or non-existent codes fail closed.
-func (u *Usecases) ExchangeSSOCode(ctx context.Context, code string) (*AuthResponse, error) {
+//
+// Only the browser that started the login may spend the code. presented holds the login
+// cookies the request carried; one of them must match the binding the code was issued
+// for. Otherwise the call returns auth.ErrSSOBrowserMismatch and the code stays
+// redeemable. On success it also returns the login cookie that matched, for the caller
+// to clear.
+func (u *Usecases) ExchangeSSOCode(ctx context.Context, code string, presented []auth.PresentedLogin) (*AuthResponse, auth.PresentedLogin, error) {
 	if code == "" {
-		return nil, auth.ErrInvalidCredential
+		return nil, auth.PresentedLogin{}, auth.ErrInvalidCredential
 	}
 	hash := sha256.Sum256([]byte(code))
 	codeHash := hex.EncodeToString(hash[:])
 
-	ssoCode, err := u.deps.Stores.SSOCodes.Consume(ctx, codeHash, time.Now())
+	now := time.Now()
+	pending, err := u.deps.Stores.SSOCodes.Lookup(ctx, codeHash, now)
 	if err != nil {
 		if errors.Is(err, port.ErrNotFound) {
-			return nil, auth.ErrInvalidCredential
+			return nil, auth.PresentedLogin{}, auth.ErrInvalidCredential
 		}
-		return nil, fmt.Errorf("consume sso exchange code: %w", err)
+		return nil, auth.PresentedLogin{}, fmt.Errorf("look up sso exchange code: %w", err)
+	}
+	matched, ok := auth.MatchPresentedLogin(presented, pending.BrowserBinding)
+	if !ok {
+		return nil, auth.PresentedLogin{}, auth.ErrSSOBrowserMismatch
+	}
+
+	ssoCode, err := u.deps.Stores.SSOCodes.Consume(ctx, codeHash, now)
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return nil, auth.PresentedLogin{}, auth.ErrInvalidCredential
+		}
+		return nil, auth.PresentedLogin{}, fmt.Errorf("consume sso exchange code: %w", err)
 	}
 
 	user, err := u.deps.Stores.Users.GetByID(ctx, ssoCode.UserID)
 	if err != nil || user.DisabledAt != nil {
-		return nil, auth.ErrInvalidCredential
+		return nil, auth.PresentedLogin{}, auth.ErrInvalidCredential
 	}
 
 	token, err := u.issueAccessToken(ctx, user.ID, user.Email, auth.TokenRole(user.Role))
 	if err != nil {
-		return nil, fmt.Errorf("create token: %w", err)
+		return nil, auth.PresentedLogin{}, fmt.Errorf("create token: %w", err)
 	}
 
 	resp, err := u.createSession(ctx, user.ID, user.Email)
 	if err != nil {
-		return nil, err
+		return nil, auth.PresentedLogin{}, err
 	}
 	resp.Token = token
-	return resp, nil
+	return resp, matched, nil
 }

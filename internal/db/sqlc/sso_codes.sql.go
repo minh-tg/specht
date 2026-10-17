@@ -56,6 +56,29 @@ func (q *Queries) CreateSSOCode(ctx context.Context, arg CreateSSOCodeParams) er
 	return err
 }
 
+const getSSOCode = `-- name: GetSSOCode :one
+SELECT code_hash, user_id, expires_at, browser_binding
+FROM sso_exchange_codes
+WHERE code_hash = $1 AND expires_at > $2
+`
+
+type GetSSOCodeParams struct {
+	CodeHash  string             `json:"code_hash"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) GetSSOCode(ctx context.Context, arg GetSSOCodeParams) (SsoExchangeCode, error) {
+	row := q.db.QueryRow(ctx, getSSOCode, arg.CodeHash, arg.ExpiresAt)
+	var i SsoExchangeCode
+	err := row.Scan(
+		&i.CodeHash,
+		&i.UserID,
+		&i.ExpiresAt,
+		&i.BrowserBinding,
+	)
+	return i, err
+}
+
 const pruneSSOCodes = `-- name: PruneSSOCodes :exec
 DELETE FROM sso_exchange_codes
 WHERE ctid IN (

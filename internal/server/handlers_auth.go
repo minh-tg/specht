@@ -145,8 +145,12 @@ func (h *Handler) SSOExchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.usecase.ExchangeSSOCode(r.Context(), req.Code)
+	result, login, err := h.usecase.ExchangeSSOCode(r.Context(), req.Code, auth.PresentedLogins(r.Cookies(), time.Now()))
 	if err != nil {
+		if errors.Is(err, auth.ErrSSOBrowserMismatch) {
+			respondError(w, http.StatusForbidden, "sso_browser_mismatch", "start sign-in again from this browser")
+			return
+		}
 		if errors.Is(err, auth.ErrInvalidCredential) {
 			respondError(w, http.StatusUnauthorized, "invalid_code", "invalid or expired exchange code")
 			return
@@ -155,6 +159,8 @@ func (h *Handler) SSOExchange(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "exchange_failed", "code exchange failed")
 		return
 	}
+	// The code is spent, so the login cookie that proved this browser is done too.
+	auth.ClearLoginCookie(w, r, login.Name)
 	respondJSON(w, http.StatusOK, result)
 }
 

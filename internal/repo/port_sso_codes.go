@@ -54,6 +54,22 @@ func (r *pgSSOCodePort) Create(ctx context.Context, codeHash, userID, browserBin
 	})
 }
 
+func (r *pgSSOCodePort) Lookup(ctx context.Context, codeHash string, now time.Time) (port.SSOCode, error) {
+	row, err := r.q.GetSSOCode(ctx, sqlc.GetSSOCodeParams{
+		CodeHash:  codeHash,
+		ExpiresAt: pgtype.Timestamptz{Time: now, Valid: true},
+	})
+	if err != nil {
+		return port.SSOCode{}, mappingErr(err)
+	}
+	return port.SSOCode{
+		CodeHash:       row.CodeHash,
+		UserID:         toUUID(row.UserID),
+		BrowserBinding: row.BrowserBinding,
+		ExpiresAt:      row.ExpiresAt.Time,
+	}, nil
+}
+
 func (r *pgSSOCodePort) Consume(ctx context.Context, codeHash string, now time.Time) (port.SSOCode, error) {
 	r.pruneExpired(ctx)
 	row, err := r.q.ConsumeSSOCode(ctx, sqlc.ConsumeSSOCodeParams{

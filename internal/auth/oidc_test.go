@@ -413,13 +413,10 @@ func TestOIDC_Callback_PreservesValidatedReturnPath(t *testing.T) {
 	w, _, _ := callbackResponse(t, a, login)
 	assert.Equal(t, http.StatusFound, w.Code)
 	assert.Equal(t, "/projects/demo?tab=members#sso_code=test-session-token", w.Header().Get("Location"))
-	var cleared bool
 	for _, cookie := range w.Result().Cookies() {
-		if cookie.Name == ssoStateCookieName(login.state) {
-			cleared = cookie.MaxAge < 0
-		}
+		assert.False(t, cookie.Name == ssoStateCookieName(login.state) && cookie.MaxAge < 0,
+			"the login cookie, which holds the return path, stays until the exchange redeems the code")
 	}
-	assert.True(t, cleared, "the login cookie, which holds the return path, is single-use")
 }
 
 func TestOIDC_Callback_RefusesAnUnsafeReturnPath(t *testing.T) {

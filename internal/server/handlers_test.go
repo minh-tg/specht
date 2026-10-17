@@ -61,7 +61,7 @@ type mockUsecases struct {
 	registerFn              func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
 	loginFn                 func(ctx context.Context, email, password string) (*usecase.AuthResponse, error)
 	createSSOExchangeCodeFn func(ctx context.Context, userID string) (string, error)
-	exchangeSSOCodeFn       func(ctx context.Context, code string) (*usecase.AuthResponse, error)
+	exchangeSSOCodeFn       func(ctx context.Context, code string, presented []auth.PresentedLogin) (*usecase.AuthResponse, auth.PresentedLogin, error)
 	createAPIKeyFn          func(ctx context.Context, projectSlug, name string, expiresAt *time.Time) (*usecase.APIKeyResponse, error)
 	listAPIKeysFn           func(ctx context.Context, projectSlug string) ([]usecase.APIKeyResponse, error)
 	revokeAPIKeyFn          func(ctx context.Context, projectSlug, keyID string) error
@@ -287,11 +287,11 @@ func (m *mockUsecases) CreateSSOExchangeCode(ctx context.Context, userID, browse
 	return "", fmt.Errorf("unexpected call to CreateSSOExchangeCode")
 }
 
-func (m *mockUsecases) ExchangeSSOCode(ctx context.Context, code string) (*usecase.AuthResponse, error) {
+func (m *mockUsecases) ExchangeSSOCode(ctx context.Context, code string, presented []auth.PresentedLogin) (*usecase.AuthResponse, auth.PresentedLogin, error) {
 	if m.exchangeSSOCodeFn != nil {
-		return m.exchangeSSOCodeFn(ctx, code)
+		return m.exchangeSSOCodeFn(ctx, code, presented)
 	}
-	return nil, fmt.Errorf("unexpected call to ExchangeSSOCode")
+	return nil, auth.PresentedLogin{}, fmt.Errorf("unexpected call to ExchangeSSOCode")
 }
 
 func (m *mockUsecases) CreateAPIKey(ctx context.Context, projectSlug, name, createdBy string, expiresAt *time.Time) (*usecase.APIKeyResponse, error) {
@@ -2979,9 +2979,9 @@ func TestRefresh_ReusedTokenHasItsOwnCode(t *testing.T) {
 
 func TestSSOExchange_Success(t *testing.T) {
 	mock := &mockUsecases{
-		exchangeSSOCodeFn: func(ctx context.Context, code string) (*usecase.AuthResponse, error) {
+		exchangeSSOCodeFn: func(ctx context.Context, code string, presented []auth.PresentedLogin) (*usecase.AuthResponse, auth.PresentedLogin, error) {
 			assert.Equal(t, "valid-sso-code", code)
-			return &usecase.AuthResponse{Token: "jwt-token", RefreshToken: "ref-token", UserID: "u1", Email: "alice@example.com"}, nil
+			return &usecase.AuthResponse{Token: "jwt-token", RefreshToken: "ref-token", UserID: "u1", Email: "alice@example.com"}, auth.PresentedLogin{}, nil
 		},
 	}
 	router := testRouter(mock)
@@ -3023,8 +3023,8 @@ func TestSSOExchange_EmptyCode(t *testing.T) {
 
 func TestSSOExchange_InvalidCode(t *testing.T) {
 	mock := &mockUsecases{
-		exchangeSSOCodeFn: func(ctx context.Context, code string) (*usecase.AuthResponse, error) {
-			return nil, auth.ErrInvalidCredential
+		exchangeSSOCodeFn: func(ctx context.Context, code string, presented []auth.PresentedLogin) (*usecase.AuthResponse, auth.PresentedLogin, error) {
+			return nil, auth.PresentedLogin{}, auth.ErrInvalidCredential
 		},
 	}
 	router := testRouter(mock)
@@ -3037,10 +3037,63 @@ func TestSSOExchange_InvalidCode(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
+// A login cookie as the server seals it: version, secret, expiry, return path
+// and signature. The exchange reads the secret and the expiry only.
+const sealedLoginCookieValue = "v1.c2VjcmV0LW9mLXRoZS1sb2dpbg.4102444800.L3Byb2plY3Rz.c2lnbmF0dXJl"
+
+func TestSSOExchange_BrowserMismatchIsForbiddenAndLeavesTheCookie(t *testing.T) {
+	mock := &mockUsecases{
+		exchangeSSOCodeFn: func(ctx context.Context, code string, presented []auth.PresentedLogin) (*usecase.AuthResponse, auth.PresentedLogin, error) {
+			return nil, auth.PresentedLogin{}, auth.ErrSSOBrowserMismatch
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("POST", "/api/v1/auth/sso/exchange", strings.NewReader(`{"code":"stolen-code"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+	assert.Contains(t, w.Body.String(), "sso_browser_mismatch")
+	for _, c := range w.Result().Cookies() {
+		assert.False(t, strings.HasPrefix(c.Name, "sso_state_"), "a refused exchange leaves the login cookie alone")
+	}
+}
+
+func TestSSOExchange_PassesTheLoginCookiesAndClearsTheMatchedOne(t *testing.T) {
+	const name = "sso_state_abc"
+	var seen []auth.PresentedLogin
+	mock := &mockUsecases{
+		exchangeSSOCodeFn: func(ctx context.Context, code string, presented []auth.PresentedLogin) (*usecase.AuthResponse, auth.PresentedLogin, error) {
+			seen = presented
+			return &usecase.AuthResponse{Token: "jwt-token"}, presented[0], nil
+		},
+	}
+	router := testRouter(mock)
+	req := httptest.NewRequest("POST", "/api/v1/auth/sso/exchange", strings.NewReader(`{"code":"valid-code"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(&http.Cookie{Name: name, Value: sealedLoginCookieValue})
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Len(t, seen, 1)
+	assert.Equal(t, name, seen[0].Name)
+	assert.Equal(t, auth.BrowserBinding("c2VjcmV0LW9mLXRoZS1sb2dpbg"), seen[0].Binding)
+
+	var cleared bool
+	for _, c := range w.Result().Cookies() {
+		if c.Name == name && c.MaxAge < 0 {
+			cleared = true
+		}
+	}
+	assert.True(t, cleared, "the redeemed login cookie is deleted")
+}
+
 func TestSSOExchange_InternalError(t *testing.T) {
 	mock := &mockUsecases{
-		exchangeSSOCodeFn: func(ctx context.Context, code string) (*usecase.AuthResponse, error) {
-			return nil, fmt.Errorf("database failure")
+		exchangeSSOCodeFn: func(ctx context.Context, code string, presented []auth.PresentedLogin) (*usecase.AuthResponse, auth.PresentedLogin, error) {
+			return nil, auth.PresentedLogin{}, fmt.Errorf("database failure")
 		},
 	}
 	router := testRouter(mock)
