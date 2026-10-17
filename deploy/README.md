@@ -94,6 +94,17 @@ compose defaults differ, which is noted.
 Registration does not verify email addresses: an account holds whatever address
 its creator typed, so keep `REGISTRATION_ENABLED` closed unless you accept that.
 
+Raw scanner output (`raw_data`) is redacted before it is stored. Trivy, Semgrep and Checkov
+remove the matched secret and the source around it, at any depth: Trivy's `Match` and `Code`,
+Semgrep's SARIF `snippet` and native `lines` and `metavars`, and Checkov's `code_block` and
+`evaluations`. If redaction fails for a report, the stored payload is `{"redaction":"failed"}`,
+and the report and its findings are still ingested. For these three scanners a payload over
+64 KiB (65536 bytes) keeps only its first 64 KiB of redacted output, stored as
+`{"truncated":true,"original_bytes":N,"prefix":"..."}`, where `N` is the size of the raw output
+before redaction. Gitleaks and Nuclei already redacted their payloads and are not capped by this.
+Findings, severities and fingerprints are computed from the full report, so redaction and the
+cap change only the stored payload.
+
 ### Rate limiting
 
 | Variable | Default | Purpose |
