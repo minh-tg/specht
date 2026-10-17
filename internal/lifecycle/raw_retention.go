@@ -23,7 +23,9 @@ func ClearExpiredRaw(ctx context.Context, store RawPayloadClearer, days int, now
 	if days == 0 {
 		return 0, nil
 	}
-	cutoff := now.Add(-time.Duration(days) * 24 * time.Hour)
+	// AddDate, not a Duration product: time.Duration tops out near 292 years, so multiplying
+	// days by 24h wraps for large windows and moves the cutoff into the future.
+	cutoff := now.AddDate(0, 0, -days)
 	var total int64
 	for {
 		n, err := store.ClearRawData(ctx, cutoff, rawRetentionBatch)

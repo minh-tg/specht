@@ -1,6 +1,7 @@
 package lifecycle
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -50,6 +51,30 @@ func TestClearExpiredRaw_CutoffIsTheWindowBeforeNow(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, f.cutoffs, 1)
 	assert.Equal(t, now.AddDate(0, 0, -30), f.cutoffs[0])
+}
+
+// time.Duration overflows past about 106751 days. A cutoff that wrapped into the future would
+// clear every settled payload on the next sweep, so the cutoff must stay in the past.
+func TestClearExpiredRaw_CutoffStaysInThePastForLargeWindows(t *testing.T) {
+	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
+	for _, days := range []int{36500, 106752} {
+		f := &fakeClearer{counts: []int64{0}}
+		_, err := ClearExpiredRaw(context.Background(), f, days, now, discard)
+		require.NoError(t, err)
+		require.Len(t, f.cutoffs, 1)
+		assert.Equal(t, now.AddDate(0, 0, -days), f.cutoffs[0], "days=%d", days)
+		assert.True(t, f.cutoffs[0].Before(now), "days=%d: cutoff must be in the past", days)
+	}
+}
+
+func TestClearExpiredRaw_LogsNothingWhenNothingIsCleared(t *testing.T) {
+	var buf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&buf, nil))
+	f := &fakeClearer{counts: []int64{0}}
+	n, err := ClearExpiredRaw(context.Background(), f, 30, time.Now(), logger)
+	require.NoError(t, err)
+	assert.Zero(t, n)
+	assert.Empty(t, buf.String(), "a sweep that clears no payload must not log")
 }
 
 func TestClearExpiredRaw_DrainsBatchesUntilAShortOne(t *testing.T) {
