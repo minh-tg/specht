@@ -14,6 +14,11 @@ export interface AuthContextValue extends AuthState {
   /** Signs in with a session the server just issued, for pages that create the account (setup, invite). */
   adopt: (session: LoginResponse) => void;
   loading: boolean;
+  /**
+   * True when the SSO exchange was refused because this browser did not start the login. The
+   * login has to be started again from here.
+   */
+  ssoBrowserMismatch: boolean;
 }
 
 export const AuthContext = createContext<AuthContextValue | null>(null);

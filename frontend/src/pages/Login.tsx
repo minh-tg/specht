@@ -122,7 +122,25 @@ export function Login() {
         >
           {submitting ? "Signing in..." : "Sign in"}
         </Button>
-        {ssoOffered && (
+        {auth.ssoBrowserMismatch && (
+          <div
+            role="alert"
+            className="bg-destructive/10 text-destructive grid gap-3 rounded-md px-3 py-2 text-sm"
+          >
+            <p>Start sign-in again from this browser.</p>
+            <a
+              href={ssoHref}
+              onClick={() => markSsoAttempt()}
+              className={cn(
+                buttonVariants({ variant: "outline" }),
+                "justify-self-start",
+              )}
+            >
+              Sign in with SSO
+            </a>
+          </div>
+        )}
+        {ssoOffered && !auth.ssoBrowserMismatch && (
           <>
             <div
               aria-hidden="true"

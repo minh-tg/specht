@@ -27,7 +27,11 @@ function renderLogin() {
   );
 }
 
-let authState: { token: string | null; login: (email: string, password: string) => Promise<void>; };
+let authState: {
+  token: string | null;
+  login: (email: string, password: string) => Promise<void>;
+  ssoBrowserMismatch?: boolean;
+};
 
 function authContext(): AuthContextValue {
   return {
@@ -38,6 +42,7 @@ function authContext(): AuthContextValue {
     logout: () => {},
     adopt: () => {},
     loading: false,
+    ssoBrowserMismatch: authState.ssoBrowserMismatch ?? false,
   };
 }
 
@@ -108,7 +113,7 @@ describe("safeRedirect", () => {
 
 describe("Login", () => {
   beforeEach(() => {
-    authState = { token: null, login: async () => {} };
+    authState = { token: null, login: async () => {}, ssoBrowserMismatch: false };
     globalThis.fetch = vi.fn();
     playCue.mockClear();
   });
@@ -341,6 +346,39 @@ describe("Login", () => {
       "/api/v1/auth/sso/login?redirect=%2Fdashboard%3Ftab%3Dfindings",
     );
   });
+  it("asks for a fresh sign-in from this browser after a browser mismatch, with one SSO button", async () => {
+    authState.ssoBrowserMismatch = true;
+    renderLoginWithAuth("/login?redirect=%2Fdashboard");
+
+    expect(await screen.findByText("Start sign-in again from this browser.")).toBeInTheDocument();
+    const links = screen.getAllByRole("link", { name: /sign in with sso/i });
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute("href", "/api/v1/auth/sso/login?redirect=%2Fdashboard");
+  });
+
+  it("restarts the login from the mismatch notice and records the attempt", async () => {
+    localStorage.clear();
+    authState.ssoBrowserMismatch = true;
+    authState.login = async () => {};
+    renderLoginWithAuth("/login");
+
+    const restart = await screen.findByRole("link", { name: /sign in with sso/i });
+    restart.addEventListener("click", (event) => event.preventDefault());
+    expect(hasPendingSsoAttempt()).toBe(false);
+
+    await userEvent.setup().click(restart);
+
+    expect(hasPendingSsoAttempt()).toBe(true);
+  });
+
+  it("shows no mismatch notice for other reasons", async () => {
+    authState.login = async () => {};
+    renderLoginWithAuth("/login");
+
+    await screen.findByRole("link", { name: /sign in with sso/i });
+    expect(screen.queryByText("Start sign-in again from this browser.")).not.toBeInTheDocument();
+  });
+
   it("records the SSO attempt when the SSO link is used, so the return can be accepted", async () => {
     localStorage.clear();
     authState.login = async () => {};

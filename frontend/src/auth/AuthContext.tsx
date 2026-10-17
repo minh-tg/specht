@@ -1,4 +1,5 @@
 import {
+  APIError,
   apiFetch,
   clearStoredSession,
   getStoredSession,
@@ -35,6 +36,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
   const [loading, setLoading] = useState(() => {
     return hasPendingSsoAttempt() && Boolean(ssoCodeFromHash(window.location.hash));
   });
+  const [ssoBrowserMismatch, setSsoBrowserMismatch] = useState(false);
 
   useEffect(() => {
     const isPending = hasPendingSsoAttempt();
@@ -64,6 +66,7 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
             userId: res.user_id,
             email: res.email,
           });
+          setSsoBrowserMismatch(false);
           setState({
             token: res.token,
             refreshToken: res.refresh_token,
@@ -71,9 +74,10 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
             email: res.email,
           });
         })
-        .catch(() => {
+        .catch((err: unknown) => {
           setAuthToken(null);
           clearStoredSession();
+          setSsoBrowserMismatch(err instanceof APIError && err.code === "sso_browser_mismatch");
           setState({ token: null, refreshToken: null, userId: null, email: null });
         })
         .finally(() => {
@@ -138,8 +142,8 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
   }, []);
 
   const value = useMemo(
-    () => ({ ...state, login, logout, adopt, loading }),
-    [state, login, logout, adopt, loading],
+    () => ({ ...state, login, logout, adopt, loading, ssoBrowserMismatch }),
+    [state, login, logout, adopt, loading, ssoBrowserMismatch],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
