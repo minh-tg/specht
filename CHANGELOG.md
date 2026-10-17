@@ -114,6 +114,13 @@ releases.
 
 ### Changed
 
+- Stored raw evidence for Trivy, Semgrep and Checkov reports is redacted before it is stored.
+  Secret matches and the source around them are removed at any depth, and a payload that cannot
+  be redacted is stored as `{"redaction":"failed"}` while its findings still ingest. A payload
+  over 64 KiB keeps its first 64 KiB of redacted output, stored as
+  `{"truncated":true,"original_bytes":N,"prefix":"..."}`. Findings, severities and fingerprints
+  are unchanged. Gitleaks and Nuclei evidence is not capped. The keys and the cap are in
+  `deploy/README.md`.
 - Stored Gitleaks and Nuclei evidence no longer keeps a secret under a key written in another
   case (`secret`, `sEcReT`, `Request`, `RESPONSE`) or inside a nested object. Both scanners'
   redaction now matches key names without regard to case, at any depth. A Nuclei JSON Lines
