@@ -159,7 +159,11 @@ func (u *Usecases) CreateInvite(ctx context.Context, projectSlug string, in Crea
 		return nil, fmt.Errorf("%w: expires_in_days must be between 1 and %d", ErrInvalidInviteInput, maxInviteDays)
 	}
 	var email *string
-	if trimmed := strings.TrimSpace(in.Email); trimmed != "" {
+	// Only an empty string means "no address". One that trims to nothing (spaces,
+	// U+2028, U+2029) goes through the checks and fails to parse, because
+	// reading it as "no address" would make an open link.
+	if in.Email != "" {
+		trimmed := strings.TrimSpace(in.Email)
 		if err := checkEmailLength(trimmed); err != nil {
 			return nil, fmt.Errorf("%w: %s", ErrInvalidInviteInput, err)
 		}

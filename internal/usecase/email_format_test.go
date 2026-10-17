@@ -125,6 +125,43 @@ func TestCreateInvite_RefusesFormatAndSeparatorRunes(t *testing.T) {
 	}
 }
 
+// TrimSpace removes U+2028 and U+2029, so an address made only of them is empty
+// after the trim. It must not become an invite with no email binding, which
+// anyone holding the link can accept.
+func TestCreateInvite_RefusesAnAddressThatIsEmptyAfterTheTrim(t *testing.T) {
+	for name, email := range map[string]string{
+		"line separator U+2028":      " ",
+		"paragraph separator U+2029": " ",
+		"both, repeated":             "   ",
+		"separators and spaces":      "     ",
+		"spaces only":                "   ",
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newInviteTestFixture(t, auth.RoleManager)
+
+			_, err := f.uc.CreateInvite(callerCtx(), "payments", CreateInviteInput{Role: "member", Email: email})
+
+			assert.ErrorIs(t, err, ErrInvalidInviteInput)
+			assert.EqualError(t, err, ErrInvalidInviteInput.Error()+": invalid email address")
+			assert.Empty(t, f.invites.byHash, "no invite, bound or open, may be stored")
+		})
+	}
+}
+
+func TestCreateInvite_AValidAddressStillBindsTheEmail(t *testing.T) {
+	f := newInviteTestFixture(t, auth.RoleManager)
+
+	resp, err := f.uc.CreateInvite(callerCtx(), "payments", CreateInviteInput{Role: "member", Email: "  Ada@Example.com "})
+
+	require.NoError(t, err)
+	assert.Equal(t, "ada@example.com", resp.Email)
+	require.Len(t, f.invites.byHash, 1)
+	for _, inv := range f.invites.byHash {
+		require.NotNil(t, inv.Email)
+		assert.Equal(t, "ada@example.com", *inv.Email)
+	}
+}
+
 // Login does not run the address rules. An account stored before they existed
 // keeps signing in under the address it has.
 func TestLogin_AnAccountWithAFormatRuneStillSignsIn(t *testing.T) {
