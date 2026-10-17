@@ -126,9 +126,11 @@ func validateCredentials(email, password, displayName string) (string, error) {
 
 // validateEmail checks one email address the way every way of creating an
 // account does and returns it in its normal form: within the length limit, a
-// bare address with no display name, no control character, and spelled in runes
-// that fold the same way in Go and in the database. Callers trim first when the
-// source may pad the value.
+// bare address with no display name, no control, format or line separator
+// character, and spelled in runes that fold the same way in Go and in the
+// database. Callers trim first when the source may pad the value; those that
+// do must also run containsFormatRune on the untrimmed value, because
+// strings.TrimSpace removes U+2028 and U+2029 from either end.
 func validateEmail(email string) (string, error) {
 	if err := checkEmailLength(email); err != nil {
 		return "", badCredentials(err.Error())
@@ -136,10 +138,22 @@ func validateEmail(email string) (string, error) {
 	return normalizeAddress(email)
 }
 
+// containsFormatRune reports whether s holds a rune that draws nothing or moves
+// text: the line separator U+2028 (Zl), the paragraph separator U+2029 (Zp), or
+// a format character (Cf) such as the zero-width space U+200B, the byte order
+// mark U+FEFF or the right-to-left override U+202E. mail.ParseAddress accepts
+// all of them, and a stored address that holds one reads as a different
+// address, or hides text, wherever it is shown.
+func containsFormatRune(s string) bool {
+	return strings.ContainsFunc(s, func(r rune) bool {
+		return unicode.Is(unicode.Zl, r) || unicode.Is(unicode.Zp, r) || unicode.Is(unicode.Cf, r)
+	})
+}
+
 // normalizeAddress is validateEmail after the length check, for callers that
 // order their other input checks around it.
 func normalizeAddress(email string) (string, error) {
-	if strings.ContainsFunc(email, unicode.IsControl) {
+	if strings.ContainsFunc(email, unicode.IsControl) || containsFormatRune(email) {
 		return "", badCredentials("invalid email address")
 	}
 	addr, err := mail.ParseAddress(email)
@@ -301,16 +315,17 @@ func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, claims auth.SSOCl
 	// An empty claim is "no email", handled below; anything else that fails
 	// the checks is refused before it reaches a lookup or a stored row.
 	var email string
-	if raw := strings.TrimSpace(claims.Email); raw != "" || strings.ContainsFunc(claims.Email, unicode.IsControl) {
-		// Control characters are checked before the trim, which would hide a
-		// trailing newline. An address with no canonical form keeps the answer
+	hidden := strings.ContainsFunc(claims.Email, unicode.IsControl) || containsFormatRune(claims.Email)
+	if raw := strings.TrimSpace(claims.Email); raw != "" || hidden {
+		// Control and format characters are checked before the trim, which
+		// would hide a trailing newline or U+2028. An address with no canonical form keeps the answer
 		// it always had: it matches no account and is not offered a new one.
 		if raw != "" && auth.NormalizeEmail(raw) == "" {
 			slog.Warn("sso login: first login with an address that has no canonical form", "sub", sub)
 			return "", "", false, auth.ErrSSONotProvisioned
 		}
 		valid, err := validateEmail(raw)
-		if err != nil || strings.ContainsFunc(claims.Email, unicode.IsControl) {
+		if err != nil || hidden {
 			slog.Warn("sso login: provider sent an invalid email", "sub", sub, "email_bytes", len(claims.Email))
 			return "", "", false, auth.ErrSSOInvalidEmail
 		}
