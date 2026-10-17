@@ -3,7 +3,7 @@ import { AuthContext, type AuthContextValue } from "@/auth/context";
 import { hasPendingSsoAttempt } from "@/auth/sso";
 import { createTestQueryClient } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
@@ -186,6 +186,102 @@ describe("Login", () => {
       expect(screen.getByText("Sign in failed. Please try again.")).toBeInTheDocument();
     });
     expect(playCue).toHaveBeenCalledExactlyOnceWith("error");
+  });
+
+  describe("while the server asks for a wait", () => {
+    /** A 429 for a locked account, with the wait in its `Retry-After` header when given. */
+    function tooManyAttempts(retryAfter?: string): Response {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (retryAfter !== undefined) headers["Retry-After"] = retryAfter;
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: "too_many_attempts",
+            message: "too many failed sign-in attempts, retry later",
+          },
+        }),
+        { status: 429, headers },
+      );
+    }
+
+    /** Answers the sign-in call with a fresh `loginResponse` each time. The page's capabilities
+     * query shares `fetch`, so it gets a 404 instead of a body the sign-in call already read. */
+    function mockSignIn(loginResponse: () => Response) {
+      vi.mocked(globalThis.fetch).mockImplementation(async (input) =>
+        String(input).endsWith("/api/v1/auth/login")
+          ? loginResponse()
+          : new Response("{}", { status: 404 })
+      );
+    }
+
+    function signInCalls(): number {
+      return vi.mocked(globalThis.fetch).mock.calls
+        .filter(([input]) => String(input).endsWith("/api/v1/auth/login")).length;
+    }
+
+    async function submitOnce(user: ReturnType<typeof userEvent.setup>) {
+      await user.type(screen.getByLabelText("Email"), "test@test.com");
+      await user.type(screen.getByLabelText("Password"), "test");
+      await user.click(screen.getByRole("button", { name: /sign in/i }));
+    }
+
+    it("shows the seconds from Retry-After and disables the button", async () => {
+      mockSignIn(() => tooManyAttempts("45"));
+
+      renderLogin();
+      const user = userEvent.setup();
+      await submitOnce(user);
+
+      expect(await screen.findByText("Too many attempts. Try again in 45 seconds."))
+        .toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /sign in/i })).toBeDisabled();
+    });
+
+    it("shows whole minutes from 60 seconds up", async () => {
+      mockSignIn(() => tooManyAttempts("120"));
+
+      renderLogin();
+      const user = userEvent.setup();
+      await submitOnce(user);
+
+      expect(await screen.findByText("Too many attempts. Try again in 2 minutes."))
+        .toBeInTheDocument();
+    });
+
+    it("keeps the generic message when the response has no Retry-After", async () => {
+      mockSignIn(() => tooManyAttempts());
+
+      renderLogin();
+      const user = userEvent.setup();
+      await submitOnce(user);
+
+      expect(await screen.findByText("Sign in failed. Please try again.")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /sign in/i })).toBeEnabled();
+    });
+
+    it("re-enables the button at zero without sending the request again", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        mockSignIn(() => tooManyAttempts("45"));
+
+        renderLogin();
+        const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+        await submitOnce(user);
+        expect(await screen.findByText("Too many attempts. Try again in 45 seconds."))
+          .toBeInTheDocument();
+
+        act(() => {
+          vi.advanceTimersByTime(45_000);
+        });
+
+        expect(screen.getByRole("button", { name: /sign in/i })).toBeEnabled();
+        expect(screen.queryByText("Too many attempts. Try again in 45 seconds.")).not
+          .toBeInTheDocument();
+        expect(signInCalls()).toBe(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it("navigates to an internal redirect after login", async () => {
