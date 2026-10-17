@@ -12,9 +12,9 @@ releases.
 
 - Raw report payloads expire. The lifecycle sweep clears `raw_data` for reports
   older than `RAW_RETENTION_DAYS` (default 30; `0` keeps every payload). Report
-  rows, findings and their summaries stay. Report and finding responses carry
-  `raw_data_expired` and `raw_data_expires_at`, and the finding detail page says
-  when the raw evidence expired.
+  rows, findings and their summaries stay. Report responses and the finding detail
+  response carry `raw_data_expired` and `raw_data_expires_at`, and the finding detail
+  page says when the raw evidence expired.
 - Report ingestion for Trivy, OSV-Scanner, Grype, OWASP Dependency-Check,
   Semgrep, SARIF 2.1.0 (CodeQL and others), Checkov, tfsec, Gitleaks, Nuclei,
   and CycloneDX or SPDX SBOMs.
