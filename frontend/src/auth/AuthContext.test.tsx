@@ -26,6 +26,7 @@ function Probe() {
       <span data-testid="refresh">{auth.refreshToken ?? "none"}</span>
       <span data-testid="user-id">{auth.userId ?? "none"}</span>
       <span data-testid="email">{auth.email ?? "none"}</span>
+      <span data-testid="sso-mismatch">{auth.ssoBrowserMismatch ? "mismatch" : "none"}</span>
       <button onClick={() => void auth.login("a@b.c", "password")}>login</button>
       <button onClick={auth.logout}>logout</button>
     </div>
@@ -393,7 +394,7 @@ describe("AuthProvider SSO fragment", () => {
   });
 
   it("clears state when sso_code exchange fails", async () => {
-    fetchMock(() => response(401, { error: "invalid_code" }));
+    fetchMock(() => response(401, { error: { code: "invalid_code", message: "invalid" } }));
 
     markSsoAttempt();
     window.history.replaceState(null, "", "/#sso_code=invalid-code");
@@ -406,5 +407,25 @@ describe("AuthProvider SSO fragment", () => {
     expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
     await waitFor(() => expect(window.location.hash).toBe(""));
     expect(hasPendingSsoAttempt()).toBe(false);
+    expect(screen.getByTestId("sso-mismatch")).toHaveTextContent("none");
+  });
+
+  it("reports a code redeemed from another browser as a browser mismatch", async () => {
+    fetchMock(() =>
+      response(403, {
+        error: { code: "sso_browser_mismatch", message: "start sign-in again from this browser" },
+      })
+    );
+
+    markSsoAttempt();
+    window.history.replaceState(null, "", "/#sso_code=stolen-code");
+
+    renderAuth();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("sso-mismatch")).toHaveTextContent("mismatch");
+    });
+    expect(screen.getByTestId("token")).toHaveTextContent("none");
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull();
   });
 });
