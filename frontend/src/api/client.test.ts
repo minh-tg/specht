@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  APIError,
   apiFetch,
   apiFetchWithTotal,
   clearStoredSession,
@@ -113,6 +114,57 @@ function responseWithHeaders(
     headers: { "Content-Type": "application/json", ...headers },
   });
 }
+
+describe("Retry-After on error responses", () => {
+  it("carries the header's seconds on the APIError", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        responseWithHeaders(
+          { error: { code: "too_many_attempts", message: "wait" } },
+          { "Retry-After": "45" },
+          429,
+        ),
+      ),
+    );
+
+    const err = await apiFetch("/api/v1/auth/login").catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(APIError);
+    expect(err).toMatchObject({ status: 429, code: "too_many_attempts", retryAfter: 45 });
+  });
+
+  it("leaves retryAfter undefined when the header is missing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        responseWithHeaders({ error: { code: "rate_limited", message: "slow" } }, {}, 429),
+      ),
+    );
+
+    const err = await apiFetch("/api/v1/auth/login").catch((e: unknown) => e);
+
+    expect(err).toBeInstanceOf(APIError);
+    expect((err as APIError).retryAfter).toBeUndefined();
+  });
+
+  it("treats an HTTP-date Retry-After as absent", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        responseWithHeaders(
+          { error: { code: "too_many_attempts", message: "wait" } },
+          { "Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT" },
+          429,
+        ),
+      ),
+    );
+
+    const err = await apiFetch("/api/v1/auth/login").catch((e: unknown) => e);
+
+    expect((err as APIError).retryAfter).toBeUndefined();
+  });
+});
 
 describe("apiFetchWithTotal", () => {
   it("returns the body and the parsed X-Total-Count", async () => {

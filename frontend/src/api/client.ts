@@ -5,12 +5,15 @@ const SESSION_STORAGE_KEY = "specht.session";
 export class APIError extends Error {
   status: number;
   code: string;
+  /** Seconds from the `Retry-After` header, or undefined when the response has none. */
+  retryAfter: number | undefined;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, retryAfter?: number) {
     super(message);
     this.name = "APIError";
     this.status = status;
     this.code = code;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -100,6 +103,14 @@ interface SendResult<T> {
   response: Response;
 }
 
+/** Reads a `Retry-After` value in seconds. The HTTP-date form and anything that is not a
+ * positive number count as absent, so the caller shows no wait instead of a wrong one. */
+function parseRetryAfter(value: string | null): number | undefined {
+  if (value === null) return undefined;
+  const seconds = Number(value);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : undefined;
+}
+
 async function send<T>(
   path: string,
   options: ApiFetchOptions,
@@ -125,7 +136,12 @@ async function send<T>(
       code = body.error?.code ?? code;
       message = body.error?.message ?? message;
     } catch {}
-    throw new APIError(res.status, code, message);
+    throw new APIError(
+      res.status,
+      code,
+      message,
+      parseRetryAfter(res.headers?.get("Retry-After") ?? null),
+    );
   }
 
   if (res.status === 204) {
