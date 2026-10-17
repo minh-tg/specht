@@ -4,12 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/parser"
+	"github.com/minh-tg/specht/internal/parser/trivy"
 	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/scanner"
 )
@@ -105,4 +109,42 @@ func TestIngestReport_StoresThePlaceholderWhenRedactionFails(t *testing.T) {
 			assert.NotContains(t, string(created.RawData), "AKIA-STORED-SECRET")
 		})
 	}
+}
+
+// trivyWithFailingRedaction is the real Trivy parser whose redaction hook
+// refuses its input, as it does for a document it cannot decode.
+type trivyWithFailingRedaction struct{ *trivy.Scanner }
+
+func (trivyWithFailingRedaction) RedactRaw([]byte) ([]byte, error) {
+	return nil, fmt.Errorf("%w: hook refused", scanner.ErrRedactionFailed)
+}
+
+// The finding comes from the real Trivy parser, so the report keeps it even
+// though its evidence is stored as the failed marker.
+func TestIngestReport_RealTrivyKeepsTheFindingWhenRedactionFails(t *testing.T) {
+	const secret = "AKIATESTSECRETVALUE01"
+	doc := `{"SchemaVersion":2,"ArtifactName":"repo","ArtifactType":"filesystem","Results":[{"Target":"./app/.env","Class":"secret","Secrets":[{"RuleID":"aws-access-key-id","Category":"AWS","Severity":"CRITICAL","Title":"AWS Access Key ID","Match":"AWS_KEY=` + secret + `"}]}]}`
+	uc, _, rr := autofixHarness(t, domain.CompletenessUnknown)
+	reg := scanner.NewRegistry()
+	for _, s := range parser.Builtins() {
+		if s.Descriptor().Name == "trivy" {
+			s = trivyWithFailingRedaction{trivy.NewScanner()}
+		}
+		require.NoError(t, reg.Register(s))
+	}
+	uc.deps.Registry = reg
+	var created port.CreateReportInput
+	rr.createFn = func(ctx context.Context, arg port.CreateReportInput) (port.Report, error) {
+		created = arg
+		return makeReport(), nil
+	}
+
+	out, err := uc.IngestReport(context.Background(), IngestReportInput{
+		ProjectSlug: "my-app", Scanner: "trivy", RawData: json.RawMessage(doc),
+	})
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, out.TotalFindings)
+	assert.JSONEq(t, scanner.RedactionFailedEvidence, string(created.RawData))
+	assert.False(t, strings.Contains(string(created.RawData), secret))
 }
