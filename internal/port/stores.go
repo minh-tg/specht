@@ -831,6 +831,27 @@ type FindingEventInput struct {
 	Changes   json.RawMessage
 }
 
+// FindingScopeSeverity is the severity one scan scope last reported for a
+// finding. ScopeHash is the scan-scope hash of the reports in that scope.
+type FindingScopeSeverity struct {
+	FindingID    string
+	ScopeHash    string
+	Severity     string
+	SeverityRank int16
+	ObservedAt   time.Time
+}
+
+// FindingScopeSeverityInput records the severity a scan scope reported for a
+// finding, and the report that reported it.
+type FindingScopeSeverityInput struct {
+	FindingID    string
+	ScopeHash    string
+	Severity     string
+	SeverityRank int16
+	ReportID     string
+	ObservedAt   time.Time
+}
+
 // UpdateAnalysisInput carries the analysis-state update fields.
 type UpdateAnalysisInput struct {
 	ID                string
@@ -935,6 +956,12 @@ type FindingStore interface {
 	// single statement, keeping large closures (the auto-fix writer)
 	// O(1) in queries instead of O(findings).
 	BulkCreateEvents(ctx context.Context, findingIDs []string, input FindingEventInput) error
+	// ListScopeSeverities returns the severity each scan scope last reported
+	// for the findings, one row per (finding, scope).
+	ListScopeSeverities(ctx context.Context, findingIDs []string) ([]FindingScopeSeverity, error)
+	// UpsertScopeSeverity records the severity one scan scope reported for a
+	// finding. A repeat from the same scope replaces the earlier row.
+	UpsertScopeSeverity(ctx context.Context, input FindingScopeSeverityInput) error
 	// SetFindingIntroducedBy materializes introduced-by-change attribution.
 	SetFindingIntroducedBy(ctx context.Context, findingID, reportID string, commitSha *string) (Finding, error)
 	// ListIntroducedByReport returns findings one report introduced.
@@ -979,6 +1006,9 @@ type FindingStore interface {
 type FindingIngestBatchStore interface {
 	BulkCreateOccurrences(ctx context.Context, occurrences []OccurrenceInput) error
 	BulkUpsertDimensions(ctx context.Context, source string, dimensions []DimensionInput) error
+	// BulkUpsertScopeSeverities writes the scope rows of one ingest in one
+	// statement. A later row for the same finding replaces an earlier one.
+	BulkUpsertScopeSeverities(ctx context.Context, rows []FindingScopeSeverityInput) error
 }
 
 // IntroducedFindingEntry associates a finding with a report that introduced or regressed it.

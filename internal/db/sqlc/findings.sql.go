@@ -202,6 +202,48 @@ func (q *Queries) BulkUpsertDimensions(ctx context.Context, arg BulkUpsertDimens
 	return err
 }
 
+const bulkUpsertFindingScopeSeverities = `-- name: BulkUpsertFindingScopeSeverities :exec
+INSERT INTO finding_scope_severities (
+    finding_id, scope_hash, severity, severity_rank, report_id, observed_at
+)
+SELECT fid.val, sh.val, sv.val, sr.val, rid.val, oa.val
+FROM unnest($1::uuid[]) WITH ORDINALITY AS fid(val, ord)
+JOIN unnest($2::text[]) WITH ORDINALITY AS sh(val, ord) ON fid.ord = sh.ord
+JOIN unnest($3::text[]) WITH ORDINALITY AS sv(val, ord) ON fid.ord = sv.ord
+JOIN unnest($4::smallint[]) WITH ORDINALITY AS sr(val, ord) ON fid.ord = sr.ord
+JOIN unnest($5::uuid[]) WITH ORDINALITY AS rid(val, ord) ON fid.ord = rid.ord
+JOIN unnest($6::timestamptz[]) WITH ORDINALITY AS oa(val, ord) ON fid.ord = oa.ord
+ON CONFLICT (finding_id, scope_hash) DO UPDATE SET
+    severity = EXCLUDED.severity,
+    severity_rank = EXCLUDED.severity_rank,
+    report_id = EXCLUDED.report_id,
+    observed_at = EXCLUDED.observed_at
+`
+
+type BulkUpsertFindingScopeSeveritiesParams struct {
+	Column1 []pgtype.UUID        `json:"column_1"`
+	Column2 []string             `json:"column_2"`
+	Column3 []string             `json:"column_3"`
+	Column4 []int16              `json:"column_4"`
+	Column5 []pgtype.UUID        `json:"column_5"`
+	Column6 []pgtype.Timestamptz `json:"column_6"`
+}
+
+// One scope row per finding for a whole ingest, in one statement. The caller
+// passes each (finding, scope) pair at most once, because a statement cannot
+// upsert the same key twice.
+func (q *Queries) BulkUpsertFindingScopeSeverities(ctx context.Context, arg BulkUpsertFindingScopeSeveritiesParams) error {
+	_, err := q.db.Exec(ctx, bulkUpsertFindingScopeSeverities,
+		arg.Column1,
+		arg.Column2,
+		arg.Column3,
+		arg.Column4,
+		arg.Column5,
+		arg.Column6,
+	)
+	return err
+}
+
 const bulkUpsertFindings = `-- name: BulkUpsertFindings :many
 WITH input_rows AS (
     SELECT
@@ -1007,6 +1049,49 @@ func (q *Queries) ListFindingIDsPresentInReport(ctx context.Context, arg ListFin
 			return nil, err
 		}
 		items = append(items, finding_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listFindingScopeSeverities = `-- name: ListFindingScopeSeverities :many
+SELECT finding_id, scope_hash, severity, severity_rank, observed_at
+FROM finding_scope_severities
+WHERE finding_id = ANY($1::uuid[])
+`
+
+type ListFindingScopeSeveritiesRow struct {
+	FindingID    pgtype.UUID        `json:"finding_id"`
+	ScopeHash    string             `json:"scope_hash"`
+	Severity     string             `json:"severity"`
+	SeverityRank int16              `json:"severity_rank"`
+	ObservedAt   pgtype.Timestamptz `json:"observed_at"`
+}
+
+// One row per (finding, scope) for the given findings. Ingest reads them to
+// find what each other scope last reported before it writes the project-wide
+// severity.
+func (q *Queries) ListFindingScopeSeverities(ctx context.Context, dollar_1 []pgtype.UUID) ([]ListFindingScopeSeveritiesRow, error) {
+	rows, err := q.db.Query(ctx, listFindingScopeSeverities, dollar_1)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListFindingScopeSeveritiesRow
+	for rows.Next() {
+		var i ListFindingScopeSeveritiesRow
+		if err := rows.Scan(
+			&i.FindingID,
+			&i.ScopeHash,
+			&i.Severity,
+			&i.SeverityRank,
+			&i.ObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -2080,4 +2165,39 @@ func (q *Queries) UpsertFinding(ctx context.Context, arg UpsertFindingParams) (F
 		&i.IntroducedCommitSha,
 	)
 	return i, err
+}
+
+const upsertFindingScopeSeverity = `-- name: UpsertFindingScopeSeverity :exec
+INSERT INTO finding_scope_severities (
+    finding_id, scope_hash, severity, severity_rank, report_id, observed_at
+) VALUES (
+    $1, $2, $3, $4, $5, $6
+) ON CONFLICT (finding_id, scope_hash) DO UPDATE SET
+    severity = EXCLUDED.severity,
+    severity_rank = EXCLUDED.severity_rank,
+    report_id = EXCLUDED.report_id,
+    observed_at = EXCLUDED.observed_at
+`
+
+type UpsertFindingScopeSeverityParams struct {
+	FindingID    pgtype.UUID        `json:"finding_id"`
+	ScopeHash    string             `json:"scope_hash"`
+	Severity     string             `json:"severity"`
+	SeverityRank int16              `json:"severity_rank"`
+	ReportID     pgtype.UUID        `json:"report_id"`
+	ObservedAt   pgtype.Timestamptz `json:"observed_at"`
+}
+
+// Records the severity one scan scope reported for a finding. A repeat from
+// the same scope replaces the row.
+func (q *Queries) UpsertFindingScopeSeverity(ctx context.Context, arg UpsertFindingScopeSeverityParams) error {
+	_, err := q.db.Exec(ctx, upsertFindingScopeSeverity,
+		arg.FindingID,
+		arg.ScopeHash,
+		arg.Severity,
+		arg.SeverityRank,
+		arg.ReportID,
+		arg.ObservedAt,
+	)
+	return err
 }
