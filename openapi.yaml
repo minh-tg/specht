@@ -4058,7 +4058,7 @@ components:
 
     Report:
       type: object
-      required: [id, project_id, tool_name, scan_type, status, created_at]
+      required: [id, project_id, tool_name, scan_type, status, created_at, raw_data_expired]
       properties:
         id: { type: string, format: uuid }
         project_id: { type: string, format: uuid }
@@ -4080,6 +4080,13 @@ components:
           description: Fixed, sanitized reason a failed report failed. Absent unless status is failed.
         created_at: { type: string, format: date-time }
         completed_at: { type: [string, "null"], format: date-time }
+        raw_data_expired:
+          type: boolean
+          description: True once the retention sweep cleared the raw report payload (`raw_data`, kept for RAW_RETENTION_DAYS). The report row, its findings and their summaries are kept.
+        raw_data_expires_at:
+          type: [string, "null"]
+          format: date-time
+          description: The date the retention window ended for the payload, which is created_at plus RAW_RETENTION_DAYS. Null while the payload is kept and when no window is set.
 
     Finding:
       type: object
@@ -4124,6 +4131,13 @@ components:
         introduced_by_report_id: { type: string, format: uuid }
         introduced_commit_sha: { type: string }
         context: { $ref: "#/components/schemas/FindingContext" }
+        raw_data_expired:
+          type: boolean
+          description: "Set on GET /findings/{id} and absent from list responses. True when the report of the finding's latest observation has had its raw payload cleared by the retention sweep."
+        raw_data_expires_at:
+          type: string
+          format: date-time
+          description: "Set on GET /findings/{id} when raw_data_expired is true and a retention window is set: the date the window ended for that report. Absent otherwise."
         remediation: { $ref: "#/components/schemas/Remediation" }
         location: { $ref: "#/components/schemas/Location" }
         suggestion: { $ref: "#/components/schemas/Suggestion" }

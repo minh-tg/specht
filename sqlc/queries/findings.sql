@@ -274,7 +274,9 @@ LIMIT 1;
 SELECT t.name AS target_name, t.kind AS target_kind, t.owner AS target_owner,
     e.name AS environment_name, r.branch AS branch, r.commit_sha AS commit_sha,
     fo.tool_name AS tool_name, fo.location_summary AS location_summary,
-    fo.metadata AS metadata
+    fo.metadata AS metadata,
+    CAST((r.raw_data = 'null'::jsonb) IS TRUE AS boolean) AS raw_data_expired,
+    r.created_at AS report_created_at
 FROM finding_occurrences fo
 JOIN reports r ON fo.report_id = r.id
 LEFT JOIN targets t ON r.target_id = t.id

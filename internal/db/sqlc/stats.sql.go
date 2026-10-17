@@ -158,7 +158,8 @@ const getProjectLatestReport = `-- name: GetProjectLatestReport :one
 SELECT
     id, project_id, tool_name, tool_version, scan_type,
     scan_target, status, total_findings, branch, commit_sha,
-    created_at, completed_at
+    created_at, completed_at,
+    CAST((raw_data = 'null'::jsonb) IS TRUE AS boolean) AS raw_data_expired
 FROM reports
 WHERE project_id = $1
 ORDER BY created_at DESC, id DESC
@@ -166,18 +167,19 @@ LIMIT 1
 `
 
 type GetProjectLatestReportRow struct {
-	ID            pgtype.UUID        `json:"id"`
-	ProjectID     pgtype.UUID        `json:"project_id"`
-	ToolName      string             `json:"tool_name"`
-	ToolVersion   pgtype.Text        `json:"tool_version"`
-	ScanType      string             `json:"scan_type"`
-	ScanTarget    pgtype.Text        `json:"scan_target"`
-	Status        string             `json:"status"`
-	TotalFindings pgtype.Int4        `json:"total_findings"`
-	Branch        pgtype.Text        `json:"branch"`
-	CommitSha     pgtype.Text        `json:"commit_sha"`
-	CreatedAt     pgtype.Timestamptz `json:"created_at"`
-	CompletedAt   pgtype.Timestamptz `json:"completed_at"`
+	ID             pgtype.UUID        `json:"id"`
+	ProjectID      pgtype.UUID        `json:"project_id"`
+	ToolName       string             `json:"tool_name"`
+	ToolVersion    pgtype.Text        `json:"tool_version"`
+	ScanType       string             `json:"scan_type"`
+	ScanTarget     pgtype.Text        `json:"scan_target"`
+	Status         string             `json:"status"`
+	TotalFindings  pgtype.Int4        `json:"total_findings"`
+	Branch         pgtype.Text        `json:"branch"`
+	CommitSha      pgtype.Text        `json:"commit_sha"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	CompletedAt    pgtype.Timestamptz `json:"completed_at"`
+	RawDataExpired bool               `json:"raw_data_expired"`
 }
 
 func (q *Queries) GetProjectLatestReport(ctx context.Context, projectID pgtype.UUID) (GetProjectLatestReportRow, error) {
@@ -196,6 +198,7 @@ func (q *Queries) GetProjectLatestReport(ctx context.Context, projectID pgtype.U
 		&i.CommitSha,
 		&i.CreatedAt,
 		&i.CompletedAt,
+		&i.RawDataExpired,
 	)
 	return i, err
 }

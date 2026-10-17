@@ -67,6 +67,11 @@ type FindingResponse struct {
 	// Context is the latest observed deployment context. Nil when the
 	// finding has no linked scan occurrence — missing context is explicit.
 	Context *FindingContextResponse `json:"context,omitempty"`
+	// RawDataExpired and RawDataExpiresAt describe the report of the latest observation, the
+	// evidence a finding was last seen in. Only the detail view computes them, so the list leaves
+	// both out.
+	RawDataExpired   *bool      `json:"raw_data_expired,omitempty"`
+	RawDataExpiresAt *time.Time `json:"raw_data_expires_at,omitempty"`
 	// Remediation is the source-aware fix guidance from the latest
 	// observation. Nil only when the finding has no linked occurrence;
 	// a present-but-empty guidance section means the source supplied
@@ -172,6 +177,10 @@ type ReportResponse struct {
 	ErrorMessage *string    `json:"error_message,omitempty"`
 	CreatedAt    time.Time  `json:"created_at"`
 	CompletedAt  *time.Time `json:"completed_at"`
+	// RawDataExpired is true once the retention sweep cleared the raw_data payload. Then
+	// RawDataExpiresAt is the date the window ended for it; it is null while the payload is kept.
+	RawDataExpired   bool       `json:"raw_data_expired"`
+	RawDataExpiresAt *time.Time `json:"raw_data_expires_at"`
 }
 
 // FindingEvent is the API representation of a finding audit event.
@@ -250,24 +259,37 @@ func toFinding(f port.Finding) FindingResponse {
 	}
 }
 
-func toReport(r port.Report) ReportResponse {
+// rawExpiresAt dates an expired raw payload: the report's creation plus the retention window,
+// which is when the sweep became due to clear it. It is nil while the payload is kept and when no
+// window is set, because then there is no date to give.
+func rawExpiresAt(created time.Time, expired bool, retentionDays int) *time.Time {
+	if !expired || retentionDays <= 0 {
+		return nil
+	}
+	t := created.Add(time.Duration(retentionDays) * 24 * time.Hour)
+	return &t
+}
+
+func toReport(r port.Report, retentionDays int) ReportResponse {
 	return ReportResponse{
-		ID:            uuidStr(r.ID),
-		ProjectID:     uuidStr(r.ProjectID),
-		ToolName:      r.ToolName,
-		ToolVersion:   strOpt(r.ToolVersion),
-		ScanType:      r.ScanType,
-		ScanTarget:    strOpt(r.ScanTarget),
-		Status:        r.Status,
-		TotalFindings: intOpt(r.TotalFindings),
-		Branch:        strOpt(r.Branch),
-		CommitSha:     strOpt(r.CommitSha),
-		BaseRevision:  strOpt(r.BaseRevision),
-		ScanMode:      r.ScanMode,
-		ChangedFiles:  changedFilesOpt(r.ChangedFiles),
-		ErrorMessage:  reportFailureReasonForResponse(r.ErrorMessage),
-		CreatedAt:     timePtr(r.CreatedAt),
-		CompletedAt:   timeOpt(r.CompletedAt),
+		ID:               uuidStr(r.ID),
+		ProjectID:        uuidStr(r.ProjectID),
+		ToolName:         r.ToolName,
+		ToolVersion:      strOpt(r.ToolVersion),
+		ScanType:         r.ScanType,
+		ScanTarget:       strOpt(r.ScanTarget),
+		Status:           r.Status,
+		TotalFindings:    intOpt(r.TotalFindings),
+		Branch:           strOpt(r.Branch),
+		CommitSha:        strOpt(r.CommitSha),
+		BaseRevision:     strOpt(r.BaseRevision),
+		ScanMode:         r.ScanMode,
+		ChangedFiles:     changedFilesOpt(r.ChangedFiles),
+		ErrorMessage:     reportFailureReasonForResponse(r.ErrorMessage),
+		CreatedAt:        timePtr(r.CreatedAt),
+		CompletedAt:      timeOpt(r.CompletedAt),
+		RawDataExpired:   r.RawDataExpired,
+		RawDataExpiresAt: rawExpiresAt(r.CreatedAt, r.RawDataExpired, retentionDays),
 	}
 }
 
@@ -561,6 +583,8 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 	if err != nil && !errors.Is(err, port.ErrNotFound) {
 		return nil, fmt.Errorf("get finding context: %w", err)
 	}
+	notExpired := false
+	resp.RawDataExpired = &notExpired
 	if err == nil {
 		resp.Context = &FindingContextResponse{
 			TargetName:      dc.TargetName,
@@ -570,6 +594,8 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 			Branch:          dc.Branch,
 			CommitSha:       dc.CommitSha,
 		}
+		resp.RawDataExpired = &dc.RawDataExpired
+		resp.RawDataExpiresAt = rawExpiresAt(dc.ReportCreatedAt, dc.RawDataExpired, u.deps.RawRetentionDays)
 		dims, err := u.deps.Stores.Findings.ListDimensions(ctx, id.String())
 		if err != nil {
 			return nil, fmt.Errorf("get finding dimensions: %w", err)
@@ -762,7 +788,7 @@ func (u *Usecases) ListReports(ctx context.Context, projectSlug string, filter R
 
 	resp := make([]ReportResponse, len(reports))
 	for i, r := range reports {
-		resp[i] = toReport(r)
+		resp[i] = toReport(r, u.deps.RawRetentionDays)
 	}
 	return resp, nil
 }
@@ -775,7 +801,7 @@ func (u *Usecases) GetReport(ctx context.Context, reportID string) (*ReportRespo
 	if err := u.checkFindingProjectIDAccess(ctx, r.ProjectID); err != nil {
 		return nil, err
 	}
-	resp := toReport(r)
+	resp := toReport(r, u.deps.RawRetentionDays)
 	return &resp, nil
 }
 

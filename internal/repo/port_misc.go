@@ -183,18 +183,19 @@ func (r *pgStatsPort) GetProjectLatestReport(ctx context.Context, projectID stri
 		return port.Report{}, mappingErr(err)
 	}
 	return port.Report{
-		ID:            toUUID(row.ID),
-		ProjectID:     toUUID(row.ProjectID),
-		ToolName:      row.ToolName,
-		ToolVersion:   stringFromTextPtr(row.ToolVersion),
-		ScanType:      row.ScanType,
-		ScanTarget:    stringFromTextPtr(row.ScanTarget),
-		Status:        row.Status,
-		TotalFindings: int32PtrFromInt4(row.TotalFindings),
-		Branch:        stringFromTextPtr(row.Branch),
-		CommitSha:     stringFromTextPtr(row.CommitSha),
-		CreatedAt:     row.CreatedAt.Time,
-		CompletedAt:   timePtrFromTimestamptz(row.CompletedAt),
+		ID:             toUUID(row.ID),
+		ProjectID:      toUUID(row.ProjectID),
+		ToolName:       row.ToolName,
+		ToolVersion:    stringFromTextPtr(row.ToolVersion),
+		ScanType:       row.ScanType,
+		ScanTarget:     stringFromTextPtr(row.ScanTarget),
+		Status:         row.Status,
+		TotalFindings:  int32PtrFromInt4(row.TotalFindings),
+		Branch:         stringFromTextPtr(row.Branch),
+		CommitSha:      stringFromTextPtr(row.CommitSha),
+		CreatedAt:      row.CreatedAt.Time,
+		CompletedAt:    timePtrFromTimestamptz(row.CompletedAt),
+		RawDataExpired: row.RawDataExpired,
 	}, nil
 }
 
