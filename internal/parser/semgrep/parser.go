@@ -218,6 +218,16 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 	return parseutil.Hardened(convert(budget, report))
 }
 
+// RedactRaw scrubs matched source from raw Semgrep evidence and caps the
+// result at scanner.RawEvidenceCap. Both formats carry the matched code: SARIF
+// in a region's snippet, and the native JSON format in extra.lines and in the
+// metavars map (captured values such as an abstract_content). Those keys are
+// redacted at any depth. Data that cannot be decoded is an error and no output
+// comes back.
+func (s *Scanner) RedactRaw(data []byte) ([]byte, error) {
+	return parseutil.RedactRawJSON("semgrep", data, "snippet", "lines", "metavars")
+}
+
 func convert(budget *parseutil.Budget, report sarifReport) (*domain.NormalizedReport, error) {
 	nr := &domain.NormalizedReport{
 		ContractVersion:    1,
