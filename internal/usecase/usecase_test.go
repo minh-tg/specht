@@ -662,6 +662,8 @@ type mockFindingRepo struct {
 	getFindingContextFn               func(context.Context, string) (port.FindingContext, error)
 	setIntroducedByFn                 func(context.Context, string, string, *string) (port.Finding, error)
 	listIntroducedByFn                func(context.Context, string, string) ([]port.Finding, error)
+	listScopeSeveritiesFn             func(context.Context, []string) ([]port.FindingScopeSeverity, error)
+	upsertScopeSeverityFn             func(context.Context, port.FindingScopeSeverityInput) error
 	knownFpByID                       map[string]string
 }
 
@@ -670,6 +672,20 @@ func (m *mockFindingRepo) Upsert(ctx context.Context, input port.UpsertFindingIn
 		return port.Finding{}, fmt.Errorf("unexpected call to Upsert")
 	}
 	return m.upsertFn(ctx, input)
+}
+
+func (m *mockFindingRepo) ListScopeSeverities(ctx context.Context, findingIDs []string) ([]port.FindingScopeSeverity, error) {
+	if m.listScopeSeveritiesFn == nil {
+		return nil, nil
+	}
+	return m.listScopeSeveritiesFn(ctx, findingIDs)
+}
+
+func (m *mockFindingRepo) UpsertScopeSeverity(ctx context.Context, input port.FindingScopeSeverityInput) error {
+	if m.upsertScopeSeverityFn == nil {
+		return nil
+	}
+	return m.upsertScopeSeverityFn(ctx, input)
 }
 
 func (m *mockFindingRepo) CreateOccurrence(ctx context.Context, arg port.OccurrenceInput) (port.Occurrence, error) {
