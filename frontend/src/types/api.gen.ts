@@ -298,7 +298,8 @@ export interface paths {
      *     IdP subject to a local account, and redirects to the validated SPA path
      *     with a short-lived single-use code in the URL **fragment** so it never
      *     reaches a server log or `Referer` header. The SPA trades the code for
-     *     tokens at `/api/v1/auth/sso/exchange`.
+     *     tokens at `/api/v1/auth/sso/exchange`. The login's state cookie stays in
+     *     the browser until that exchange redeems the code.
      *
      *     Unknown IdP subjects are provisioned only when their email domain is in
      *     `SSO_ALLOWED_DOMAINS`; otherwise the request is refused. An existing
@@ -328,6 +329,12 @@ export interface paths {
      *     fragment upon completing the OIDC callback. Returns both a 15-minute
      *     access token and a 7-day refresh token. Replayed or expired codes fail
      *     closed with 401.
+     *
+     *     The code is spent only by the browser that started the login. The request
+     *     must carry that login's `sso_state_<id>` cookie, which the exchange clears
+     *     on success. A request without the matching cookie, or with an expired one,
+     *     gets 403 `sso_browser_mismatch` and the code stays redeemable, so a
+     *     login started on one device must finish on that device.
      */
     post: operations["ssoExchange"];
     delete?: never;
@@ -4213,6 +4220,19 @@ export interface operations {
       400: components["responses"]["BadRequest"];
       /** @description Invalid, replayed, or expired authorization code. */
       401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /**
+       * @description `sso_browser_mismatch`: the request does not carry the login cookie of
+       *     the browser that started this login. The code is not spent. Start the
+       *     sign-in again from this browser.
+       */
+      403: {
         headers: {
           [name: string]: unknown;
         };
