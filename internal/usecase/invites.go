@@ -12,6 +12,7 @@ import (
 	"net/mail"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/minh-tg/specht/internal/auth"
 	"github.com/minh-tg/specht/internal/port"
@@ -167,8 +168,10 @@ func (u *Usecases) CreateInvite(ctx context.Context, projectSlug string, in Crea
 		if err := checkEmailLength(trimmed); err != nil {
 			return nil, fmt.Errorf("%w: %s", ErrInvalidInviteInput, err)
 		}
-		// Checked on the untrimmed value: TrimSpace removes U+2028 and U+2029.
-		if containsFormatRune(in.Email) {
+		// Checked on the untrimmed value: TrimSpace removes U+2028, U+2029 and
+		// U+0085. Control characters are refused as normalizeAddress refuses them,
+		// because mail.ParseAddress accepts the C1 controls.
+		if strings.ContainsFunc(in.Email, unicode.IsControl) || containsFormatRune(in.Email) {
 			return nil, fmt.Errorf("%w: invalid email address", ErrInvalidInviteInput)
 		}
 		addr, err := mail.ParseAddress(trimmed)
