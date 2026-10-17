@@ -199,6 +199,8 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		slog.Error("scanner parse failed", "scanner", input.Scanner, "error", err)
 		return nil, fmt.Errorf("scanner %s: parse output: %w", input.Scanner, err)
 	}
+	// The replay hash is taken over the body before redaction. See reportHash.
+	originalData := input.RawData
 	var redactionFailed bool
 	input.RawData, redactionFailed = redactRaw(sc, input.RawData)
 
@@ -211,10 +213,12 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 
 	// Replay guard: identical input for the same project, commit, and scope
 	// that already completed answers with the stored report instead of
-	// writing a second one. The hash covers the redacted bytes (the stored
-	// form). A different commit or scope with the same bytes ingests
-	// normally: scanner output is often byte-identical when nothing changed.
-	rawHash := reportHash(sc, input.RawData, nr, redactionFailed)
+	// writing a second one. The hash covers the original body, so two bodies
+	// that differ in any byte are two reports, even when redaction gives them
+	// the same stored form. A different commit or scope with the same bytes
+	// ingests normally: scanner output is often byte-identical when nothing
+	// changed.
+	rawHash := reportHash(sc, originalData, nr, redactionFailed)
 	replayID, err := u.findReplayReport(ctx, project.ID, rawHash, input.CommitSha, scopeHash)
 	if err != nil {
 		return nil, err
@@ -1367,14 +1371,15 @@ var severityLabelRank = map[string]int16{
 }
 
 // reportHash identifies the content of a report for the replay and duplicate checks.
-// It covers the stored form, which has secrets removed, so two reports that differ
-// only in a secret would hash alike and the second would be dropped as a replay. For
-// a scanner that identifies findings by a keyed hash of the secret, the finding
-// identities are folded in, which keeps those reports apart. The identities are keyed
-// digests, so they reveal nothing about the secrets. The same holds when redaction
-// failed: every such report is stored as the same placeholder, so the finding
-// identities keep different reports apart. Every other scanner keeps the plain hash
-// its reports were stored with.
+// The caller passes the body as the parser read it, before redaction. Redaction
+// re-encodes the JSON and removes values, so a hash of the stored form gave two
+// bodies that differ only in whitespace, or only in a removed value, the same key,
+// and the second was dropped as a replay. For a scanner that identifies findings by
+// a keyed hash of the secret, the finding identities are folded in too, so a report
+// under a rotated key stays apart. The identities are keyed digests, so they reveal
+// nothing about the secrets. When redaction failed, every such report is stored as
+// the same placeholder, so the identities are folded in for that case as well. Every
+// other scanner's hash is the plain SHA-256 of the body.
 func reportHash(sc scanner.Scanner, raw []byte, nr *domain.NormalizedReport, redactionFailed bool) string {
 	h := sha256.New()
 	h.Write(raw)

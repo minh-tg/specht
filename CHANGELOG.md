@@ -128,6 +128,11 @@ releases.
   depth. The fragment match also removes `tokenizer_version`, a known false positive.
 - Checkov findings no longer copy a failed check's `code_block`, the matched source, into the
   finding extensions that occurrence stores.
+- A report is a replay only when its body matches a stored one byte for byte, before redaction.
+  Before, two bodies that differed only in whitespace, or only in a secret that redaction removes,
+  shared a replay key, and the second was answered with the first report, so its findings were
+  never recorded. A report stored before this change keeps its old key, so re-posting an unchanged
+  report whose body was redacted ingests it once more.
 - Stored Gitleaks and Nuclei evidence no longer keeps a secret under a key written in another
   case (`secret`, `sEcReT`, `Request`, `RESPONSE`) or inside a nested object. Both scanners'
   redaction now matches key names without regard to case, at any depth. A Nuclei JSON Lines

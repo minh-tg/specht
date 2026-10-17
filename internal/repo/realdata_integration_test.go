@@ -115,10 +115,8 @@ func TestRealDataDoubleIngest_Idempotent(t *testing.T) {
 
 	raw1, err := os.ReadFile("../parser/trivy/testdata/multi-type-scan.json")
 	require.NoError(t, err)
-	// Distinct raw bytes that survive redaction (new report row) with identical
-	// findings. A trailing newline would not do: redaction re-encodes the JSON,
-	// so both copies would redact to the same bytes and replay the same report.
-	raw2 := []byte(strings.Replace(string(raw1), "{", `{"IngestNote":"second delivery",`, 1))
+	// Distinct raw bytes (new report row) with identical findings.
+	raw2 := append(append([]byte{}, raw1...), '\n')
 
 	out1, err := uc.IngestReport(ctx, usecase.IngestReportInput{
 		ProjectSlug: "my-app", Scanner: "trivy", RawData: raw1,
