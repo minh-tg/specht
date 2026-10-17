@@ -163,6 +163,10 @@ func (u *Usecases) CreateInvite(ctx context.Context, projectSlug string, in Crea
 		if err := checkEmailLength(trimmed); err != nil {
 			return nil, fmt.Errorf("%w: %s", ErrInvalidInviteInput, err)
 		}
+		// Checked on the untrimmed value: TrimSpace removes U+2028 and U+2029.
+		if containsFormatRune(in.Email) {
+			return nil, fmt.Errorf("%w: invalid email address", ErrInvalidInviteInput)
+		}
 		addr, err := mail.ParseAddress(trimmed)
 		if err != nil || addr.Address != trimmed {
 			return nil, fmt.Errorf("%w: invalid email address", ErrInvalidInviteInput)
