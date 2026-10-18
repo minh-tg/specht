@@ -10,6 +10,10 @@ releases.
 
 ### Added
 
+- `FINGERPRINT_KEY` keeps the key that Gitleaks secret identities are hashed with
+  out of the database. Unset, the key is still made on first use and stored in
+  `instance_secrets`. `deploy/README.md` explains what each choice protects and how
+  to move an existing instance without changing any identity.
 - Raw report payloads expire. The lifecycle sweep clears `raw_data` for reports
   older than `RAW_RETENTION_DAYS` (default 30; `0` keeps every payload). Report
   rows, findings and their summaries stay. Report responses and the finding detail

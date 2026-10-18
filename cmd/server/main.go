@@ -212,6 +212,7 @@ func main() {
 		InventoryTTL:            cfg.InventoryTTL,
 		SessionMaxAge:           cfg.SessionMaxAge,
 		RawRetentionDays:        cfg.RawRetentionDays,
+		FingerprintKey:          cfg.FingerprintKey,
 		SSOAllowUnverifiedEmail: cfg.SSO.AllowUnverifiedEmail,
 		Watcher:                 usecase.WatcherSettings{Enabled: cfg.Watcher.Enable, PollInterval: cfg.Watcher.PollInterval},
 		Tracker:                 buildTrackerDispatcher(),

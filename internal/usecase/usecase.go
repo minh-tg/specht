@@ -155,6 +155,9 @@ type Deps struct {
 	// RawRetentionDays is the raw_data retention window (RAW_RETENTION_DAYS). Responses use it to
 	// date an expired payload: created_at plus the window. Zero means no window is set.
 	RawRetentionDays int
+	// FingerprintKey is the key scanners hash secrets with, from FINGERPRINT_KEY.
+	// Empty means the key is made on first use and kept in the database.
+	FingerprintKey []byte
 	// Now reports the current time for session lifetimes. Nil means
 	// time.Now; tests inject a fake clock.
 	Now     func() time.Time

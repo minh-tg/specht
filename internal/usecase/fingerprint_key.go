@@ -17,10 +17,16 @@ const (
 	minFingerprintKeyBytes = 16
 )
 
-// instanceFingerprintKey returns the key scanners hash secrets with, making and
-// storing one the first time. It lives in the database so a restart or a restore
-// keeps it: a different key would give every secret finding a new identity.
+// instanceFingerprintKey returns the key scanners hash secrets with. A key from
+// FINGERPRINT_KEY is used as given and nothing is stored, so a database backup
+// or read does not carry it. Without one, the first call makes a key and stores
+// it in the database, so a restart or a restore keeps it (a different key would
+// give every secret finding a new identity); anyone who can read that table can
+// then test guesses against the stored digests.
 func (u *Usecases) instanceFingerprintKey(ctx context.Context) ([]byte, error) {
+	if len(u.deps.FingerprintKey) > 0 {
+		return u.deps.FingerprintKey, nil
+	}
 	u.keyMu.Lock()
 	defer u.keyMu.Unlock()
 	if len(u.fingerprintKey) > 0 {
