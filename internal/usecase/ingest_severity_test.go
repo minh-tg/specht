@@ -58,6 +58,14 @@ func severityKnownFinding(severity string, rank int16) port.Finding {
 // severities already stored for it.
 func runSeverityIngest(t *testing.T, branch string, severity domain.Severity, known *port.Finding, rows []port.FindingScopeSeverity) *severityCapture {
 	t.Helper()
+	return runSeverityIngestSeq(t, branch, []domain.Severity{severity}, known, rows)
+}
+
+// runSeverityIngestSeq ingests one scan whose report lists the same finding
+// once per severity, in order. A report that names a finding twice exercises
+// the coalescing of that finding's severity_changed event.
+func runSeverityIngestSeq(t *testing.T, branch string, severities []domain.Severity, known *port.Finding, rows []port.FindingScopeSeverity) *severityCapture {
+	t.Helper()
 	pr, rr, fr := makeTestRepos()
 	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
@@ -105,6 +113,16 @@ func runSeverityIngest(t *testing.T, branch string, severity domain.Severity, kn
 	}
 
 	reg := scanner.NewRegistry()
+	findings := make([]domain.NormalizedFinding, 0, len(severities))
+	for _, sev := range severities {
+		findings = append(findings, domain.NormalizedFinding{
+			Fingerprint: "fp-sev",
+			FindingKind: "sca",
+			Title:       "CVE-2026-0042",
+			Severity:    sev,
+			Score:       5.0,
+		})
+	}
 	require.NoError(t, reg.Register(&mockScanner{
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
@@ -114,13 +132,7 @@ func runSeverityIngest(t *testing.T, branch string, severity domain.Severity, kn
 				Completeness:       domain.CompletenessComplete,
 				ScanType:           domain.ScanTypeImage,
 				Target:             &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
-				Findings: []domain.NormalizedFinding{{
-					Fingerprint: "fp-sev",
-					FindingKind: "sca",
-					Title:       "CVE-2026-0042",
-					Severity:    severity,
-					Score:       5.0,
-				}},
+				Findings:           findings,
 			}, nil
 		},
 	}))
@@ -241,4 +253,38 @@ func TestIngestSeverityScope_NewFindingWritesNoEvent(t *testing.T) {
 	assert.Equal(t, severityScopeHash("main"), c.scopeRows[0].ScopeHash)
 	assert.Equal(t, int16(3), c.upserts[0].SeverityRank)
 	assert.Empty(t, c.severityEvents())
+}
+
+// A report that names the same finding twice writes one event for it. The old
+// value is the severity before the report and the new value is the last one
+// the report sets, so the intermediate value leaves no stale event behind.
+func TestIngestSeverityScope_DuplicateFindingWritesOneEvent(t *testing.T) {
+	known := severityKnownFinding("medium", 2)
+	rows := []port.FindingScopeSeverity{
+		{FindingID: known.ID, ScopeHash: severityScopeHash("main"), Severity: "medium", SeverityRank: 2},
+	}
+
+	c := runSeverityIngestSeq(t, "main", []domain.Severity{domain.SeverityLow, domain.SeverityHigh}, &known, rows)
+
+	events := c.severityEvents()
+	require.Len(t, events, 1, "one report writes one severity_changed event per finding")
+	assert.Equal(t, "medium", *events[0].OldValue, "the old value is the severity before the report")
+	assert.Equal(t, "high", *events[0].NewValue, "the new value is the last severity the report sets")
+	var changes map[string]any
+	require.NoError(t, json.Unmarshal(events[0].Changes, &changes))
+	assert.Equal(t, "medium", changes["project_severity_before"])
+	assert.Equal(t, "high", changes["project_severity_after"])
+}
+
+// A report that names the same finding twice but ends on the value it started
+// with writes no event. The transient lower value is not recorded.
+func TestIngestSeverityScope_DuplicateFindingRestoresStartWritesNoEvent(t *testing.T) {
+	known := severityKnownFinding("medium", 2)
+	rows := []port.FindingScopeSeverity{
+		{FindingID: known.ID, ScopeHash: severityScopeHash("main"), Severity: "medium", SeverityRank: 2},
+	}
+
+	c := runSeverityIngestSeq(t, "main", []domain.Severity{domain.SeverityLow, domain.SeverityMedium}, &known, rows)
+
+	assert.Empty(t, c.severityEvents(), "the report ends where it started, so it writes no event")
 }
