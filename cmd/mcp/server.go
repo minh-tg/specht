@@ -144,6 +144,7 @@ func loadToolOptions(apiKey string, getenv func(string) string) (toolOptions, er
 
 func newMCPServer(api API, opts toolOptions) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "specht-mcp", Version: version.String()}, nil)
+	server.AddReceivingMiddleware(sanitizeCallErrors)
 	registerReadTools(server, api)
 	registerInventoryTools(server, api)
 	if opts.SessionCredential {
@@ -232,6 +233,24 @@ func addTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHa
 		result, output, err := handler(ctx, req, input)
 		return result, output, sanitizeToolError(err)
 	})
+}
+
+// sanitizeCallErrors cleans the error results the SDK builds before a handler
+// runs. An argument that fails schema validation is echoed back verbatim in
+// the result text, which addTool never sees. An unknown tool name needs no
+// cleaning: the SDK quotes it with %q, which escapes control characters.
+func sanitizeCallErrors(next mcp.MethodHandler) mcp.MethodHandler {
+	return func(ctx context.Context, method string, req mcp.Request) (mcp.Result, error) {
+		result, err := next(ctx, method, req)
+		if call, ok := result.(*mcp.CallToolResult); ok && call != nil && call.IsError {
+			for _, content := range call.Content {
+				if text, ok := content.(*mcp.TextContent); ok {
+					text.Text = sanitize.Text(text.Text)
+				}
+			}
+		}
+		return result, err
+	}
 }
 
 // sanitizeToolError strips terminal control characters from an error message
