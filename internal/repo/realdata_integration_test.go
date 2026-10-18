@@ -19,11 +19,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/minh-tg/specht/internal/auth"
-	"github.com/minh-tg/specht/internal/db"
 	"github.com/minh-tg/specht/internal/parser"
 	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/scanner"
@@ -58,41 +55,14 @@ func globalAdminCtx(userID string) context.Context {
 
 func setupIngestPool(t *testing.T) (*pgxpool.Pool, func()) {
 	t.Helper()
-	ctx := context.Background()
+	dsn, dropDB := newTestDatabase(t)
 
-	req := testcontainers.ContainerRequest{
-		Image:        "postgres:17-alpine",
-		ExposedPorts: []string{"5432/tcp"},
-		Env: map[string]string{
-			"POSTGRES_USER":     "specht",
-			"POSTGRES_PASSWORD": "specht",
-			"POSTGRES_DB":       "specht_test",
-		},
-		WaitingFor: wait.ForLog("database system is ready to accept connections").
-			WithOccurrence(2).
-			WithStartupTimeout(60 * time.Second),
-	}
-
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	require.NoError(t, err)
-
-	host, err := container.Host(ctx)
-	require.NoError(t, err)
-	mappedPort, err := container.MappedPort(ctx, "5432")
-	require.NoError(t, err)
-
-	dsn := "postgres://specht:specht@" + host + ":" + mappedPort.Port() + "/specht_test?sslmode=disable"
-	require.NoError(t, db.RunMigrations(dsn, "../../migrations"))
-
-	pool, err := pgxpool.New(ctx, dsn)
+	pool, err := pgxpool.New(context.Background(), dsn)
 	require.NoError(t, err)
 
 	return pool, func() {
 		pool.Close()
-		_ = container.Terminate(ctx)
+		dropDB()
 	}
 }
 
