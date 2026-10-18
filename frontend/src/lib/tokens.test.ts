@@ -26,7 +26,7 @@ const source = css.replace(/\/\*[\s\S]*?\*\//g, "");
 
 function declarations(selector: string): Map<string, string> {
   const out = new Map<string, string>();
-  const escaped = selector.replace(/[.]/g, "\\.");
+  const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const block = new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`, "g");
   for (const match of source.matchAll(block)) {
     for (const decl of match[1].matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
