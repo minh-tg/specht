@@ -1,74 +1,109 @@
 # Specht
 
-[![CI](https://github.com/minh-tg/specht/actions/workflows/ci.yml/badge.svg)](https://github.com/minh-tg/specht/actions/workflows/ci.yml) [![CodeQL](https://github.com/minh-tg/specht/actions/workflows/codeql.yml/badge.svg)](https://github.com/minh-tg/specht/actions/workflows/codeql.yml) [![Go 1.26](https://img.shields.io/badge/Go-1.26.0-00ADD8?logo=go&logoColor=white)](go.mod) [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
+[![CI](https://github.com/minh-tg/specht/actions/workflows/ci.yml/badge.svg)](https://github.com/minh-tg/specht/actions/workflows/ci.yml) [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
-Self-hosted vulnerability management for security scanner reports.
-
-Specht brings software composition analysis (SCA), static application security
-testing (SAST), infrastructure-as-code (IaC), and secret findings into one
-place. Track findings across scans, triage them in the dashboard, and apply
-project policies in CI to decide whether a change should pass.
+Specht collects the reports your security scanners already produce, tracks each
+finding across scans, and tells your CI whether a change should merge. It is one
+Go server with a Postgres database and a web UI, and you host it yourself.
 
 > [!WARNING]
-> **Experimental preview.** Specht is not production-ready; APIs, database
-> schemas, and settings may change. Do not use it as your only security control.
-
-## What it looks like
-
-A project's findings, with the gate verdict and the triage state of each one:
-
-![The findings list of a blocked project](docs/screenshots/findings.png)
-
-The page a CI link opens: what a change introduced, where, and what to do about it.
+> **Experimental preview.** There is no tagged release yet, and APIs, database
+> schemas and settings can change. Do not make Specht your only security control.
 
 ![The change view of a blocked commit](docs/screenshots/change-view.png)
 
-| Projects and their verdicts | A waiver request waiting for a decision |
+The page a CI link opens: what the change introduced, where, and what to do about it.
+
+| Findings and their triage state | Projects and their verdicts | A waiver waiting for a decision |
+| --- | --- | --- |
+| ![The findings list of a blocked project](docs/screenshots/findings.png) | ![The projects list](docs/screenshots/projects.png) | ![The waivers page](docs/screenshots/waivers.png) |
+
+## What it does
+
+- **Keeps findings across scans.** A finding is open, fixed, returned or waived,
+  and keeps its history. Scanning again updates findings instead of duplicating them.
+- **Gates changes in CI.** `specht-adapter` and the GitHub Action fail a build when
+  the project policy blocks it, print annotations, and can publish a check run.
+- **Explains a block.** The failing check links to a page that shows what the change
+  introduced and how to fix it.
+- **Handles triage and exceptions.** Bulk triage, reachability decisions, per-project
+  policy with shared templates, and waivers with an expiry date and an approval step.
+- **Watches for new advisories.** A background job checks tracked packages against OSV
+  and notifies Slack or a webhook.
+- **Fits your sign-in.** Local accounts or OIDC single sign-on, teams, and API keys
+  with scopes.
+- **Talks to AI assistants.** `specht-mcp` is an MCP bridge that is read-only unless
+  you opt in. See [`docs/mcp.md`](docs/mcp.md).
+
+## Quick start
+
+You need Docker with the compose plugin. There is no published image until the first
+release, so this builds the server from source.
+
+```bash
+git clone https://github.com/minh-tg/specht.git
+cd specht
+cp deploy/.env.prod.example deploy/.env.prod
+```
+
+Edit `deploy/.env.prod`. Set `POSTGRES_PASSWORD` and `JWT_SECRET` (at least 32 random
+bytes, for example `head -c 48 /dev/urandom | base64`), and uncomment `SETUP_TOKEN` with a
+value of your choice, at least 16 characters. Then start the stack:
+
+```bash
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml \
+  --env-file deploy/.env.prod up -d --build
+```
+
+Open <http://localhost:8080>, enter the setup token, and create the first administrator.
+Create a project, then follow its CI setup page to make an API key and connect a scanner.
+
+[`deploy/README.md`](deploy/README.md) covers TLS, backups, upgrades and every setting.
+The defaults above suit an evaluation, not an internet-facing deployment.
+
+## Connect your CI
+
+Store the project's API key as the `SPECHT_API_KEY` repository secret, then add the
+gate after your scan:
+
+```yaml
+- name: Gate with Specht
+  uses: minh-tg/specht@vX.Y.Z
+  with:
+    api-url: https://specht.example.com
+    api-key: ${{ secrets.SPECHT_API_KEY }}
+    project: my-app
+    file: trivy-results.json
+    tool: trivy
+```
+
+The action downloads the `specht-adapter` for the release tag you pin, verifies its
+signature, and runs it to upload the report and evaluate the gate. The adapter and the
+server must be the same release, so pin the tag that matches your server. The step exits `0` when the
+gate passes, `1` when a severity threshold is breached, and `2` on a runtime error.
+
+Complete pipelines for GitHub Actions and GitLab are in [`examples/ci/`](examples/ci/).
+
+## Supported scanners
+
+| Kind | Tools |
 | --- | --- |
-| ![The projects list](docs/screenshots/projects.png) | ![The waivers page](docs/screenshots/waivers.png) |
+| Dependencies and container images | Trivy, OSV-Scanner, Grype, OWASP Dependency-Check |
+| Source code | Semgrep (JSON or SARIF), any SARIF 2.1.0 tool such as CodeQL, Gosec or Hadolint |
+| Infrastructure as code | Checkov, tfsec, Trivy |
+| Secrets | Gitleaks, Trivy |
+| Web applications | Nuclei |
+| Software bills of materials | CycloneDX 1.x JSON, SPDX 2.x JSON |
 
-## What you can do
+Choose the scanner that matches the tool that wrote the file, on the upload page or with
+`-tool` in the adapter. A file from another tool is refused, and the message names the
+scanner it looks like. The SBOM scanner records package identity but does not yet
+normalize dependency graphs, licenses, hashes or signatures.
 
-- Filter findings, review report history, triage issues, upload reports, and
-  manage project access and API keys in the web UI.
-- Track findings as they appear, are fixed, return, or are waived, alongside
-  package inventory and remediation details.
-- Use the HTTP API, `specht` CLI, or `specht-adapter` for CI. The adapter
-  can fail a build when policy blocks a change, print annotations, and publish
-  GitHub check runs. On GitHub, the `minh-tg/specht` action downloads the
-  adapter for a release tag, verifies its signature, and runs the gate.
-  Pipeline examples for GitHub Actions and GitLab are in
-  [`examples/ci/`](examples/ci/).
-- Let an AI assistant read findings and check the gate through `specht-mcp`,
-  an MCP bridge that is read-only unless you opt in. See
-  [`docs/mcp.md`](docs/mcp.md).
-- Check tracked packages against OSV for newly published advisories and send
-  notifications to Slack or a webhook.
-- Set up single sign-on, teams, shared organization policies, and waivers with
-  conditions and expiry dates.
+<details>
+<summary>The command that produces each file</summary>
 
-## Supported inputs
-
-| Report category | Supported tools and formats |
-| --- | --- |
-| **Dependencies & container images** | Trivy · OSV-Scanner · Grype · OWASP Dependency-Check |
-| **Source-code findings** | Semgrep (`--json` or `--sarif`) · SARIF 2.1.0 (for example, CodeQL) |
-| **Infrastructure checks** | Trivy · Checkov · tfsec |
-| **Secrets** | Trivy · Gitleaks |
-| **Web application checks** | Nuclei |
-| **Software bills of materials** | CycloneDX 1.x JSON · SPDX 2.x JSON |
-
-> [!NOTE]
-> **SARIF is classified as source-code findings.** The SBOM adapter records
-> package identity, but does not currently normalize every SBOM field—for
-> example, dependency graphs, licenses, hashes, or signatures.
-
-### Producing each file
-
-Pick the scanner that matches the tool that wrote the file, on the upload page or
-with `-tool` in the adapter. A file from another tool is refused, and the message
-names the scanner it looks like. The table is generated from the parsers, so it
-lists exactly what they read.
+The table is generated from the parsers, so it lists exactly what they read.
 
 <!-- scanners:start -->
 | Scanner | Files it reads | How to produce one | Checked with |
@@ -95,158 +130,24 @@ lists exactly what they read.
 - **Nuclei**: One finding per template and URL.
 <!-- scanners:end -->
 
-Tools that emit compatible SARIF or SBOM JSON can use the shared adapters.
-Other formats need a Go parser with fixtures and tests under
+</details>
+
+A format that is not listed needs a Go parser with fixtures and tests under
 [`internal/parser/`](internal/parser/).
 
-## Try it locally
+## Documentation
 
-You need Go 1.26, Node.js 26, pnpm, Make, and Docker. The optional
-`nix develop` shell supplies the build tools; Docker still needs to be running.
-Run these commands from the repository root in Bash:
+- [`deploy/README.md`](deploy/README.md): Docker Compose, secrets, TLS, backups, upgrades and the configuration reference.
+- [`openapi.yaml`](openapi.yaml): every HTTP route with its required role, API key scope, parameters and responses.
+- [`docs/mcp.md`](docs/mcp.md): connecting an AI assistant.
+- [`CHANGELOG.md`](CHANGELOG.md): what changed in each release.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md): building from source, running the tests and sending a change.
 
-```bash
-cp .env.example .env
-set -a
-source .env
-set +a
-# The example secret is a placeholder and is rejected by the server.
-export JWT_SECRET="$(head -c 48 /dev/urandom | base64 | tr -d '\n')"
-docker compose --env-file .env -f deploy/docker-compose.yml up -d db
-pnpm --dir frontend install --frozen-lockfile
-make build
-./bin/server
-```
+## Feedback and security
 
-The server applies database migrations on startup. On a database with no
-accounts it logs a one-time setup token (`setup_token=...`). Open
-<http://localhost:8080>, enter that token and create the first administrator.
-Set `SETUP_TOKEN` (at least 16 characters) to choose the token yourself for a
-scripted install. In another terminal, check the API:
-
-```bash
-curl --fail http://localhost:8080/api/v1/health
-```
-
-The setup screen is available until the first global admin exists. Accounts
-that registered earlier do not close it. After that `POST /api/v1/setup`
-answers 404. To make further admins, change an account's role in the Admin
-area, or list the email of an account that signed in through SSO with a
-verified address in `ADMIN_EMAILS` and restart. A password-registered account
-is never promoted that way.
-
-Create a project in the UI, then follow its CI setup page to create an API key and connect a scanner. Pipeline
-examples are also available in [`examples/ci/`](examples/ci/).
-
-For API-only development, skip the frontend installation and build, and run
-`go run ./cmd/server` instead. Without a frontend build, `/` shows a placeholder.
-
-[`openapi.yaml`](openapi.yaml) documents the HTTP routes, required roles and API
-key scopes, parameters, and responses.
-
-## Self-host
-
-For evaluation deployments, follow [`deploy/README.md`](deploy/README.md).
-It covers Docker Compose, persistent secrets, TLS, backups, and upgrades.
-The local defaults above are not suitable for an internet-facing deployment.
-
-## Project layout
-
-```
-cmd/server/      API server (chi router, embedded SPA, watcher daemon)
-cmd/specht/      CLI client (specht)
-cmd/adapter/     CI/CD gate-check CLI (specht-adapter)
-cmd/mcp/         MCP bridge
-internal/        Go packages (handlers, usecases, repos, auth, scanners)
-frontend/        React SPA (Vite, shadcn/ui)
-migrations/      SQL migrations (golang-migrate)
-openapi.yaml     HTTP API description (all routes, scopes, and shapes)
-sqlc/            Type-safe SQL queries
-deploy/          Docker Compose deployment files
-examples/ci/     Ready-made GitHub Actions / GitLab CI pipelines
-```
-
-## Development
-
-```bash
-nix develop            # enter the dev shell (Go 1.26, gopls, SonarQube scanner, frontend toolchain)
-prek install           # commit hooks: format/lint/vet/secrets + conventional commits
-```
-
-After that every commit you make gets checked: gofumpt, staticcheck,
-`go vet`, `go mod tidy`, dprint/oxlint (frontend), hadolint, gitleaks, and
-conventional-commit validation. Useful commands:
-
-### Tests
-
-```bash
-go test ./... -count=1 -short  # Go unit tests
-pnpm --dir frontend test      # frontend unit tests
-
-# Integration and full-stack tests (Docker required)
-go test -tags integration ./... -count=1 -timeout 20m
-make e2e     # API, adapter, and CLI
-make e2e-ui  # browser journeys and accessibility
-
-make coverage  # coverage report; Docker required
-```
-
-Browser tests need Chromium. Install it with
-`pnpm --dir frontend exec playwright install chromium`, or set
-`CHROMIUM_BIN` to a system Chromium executable. The harness builds the UI and
-server, starts a temporary database, and tests sign-in, findings, triage,
-report uploads, project setup, and more. If its default port is occupied, use
-`E2E_UI_PORT=18082 make e2e-ui`.
-
-For Docker-compatible runtimes that cannot run the testcontainers cleanup
-helper, prefix Go integration and E2E commands with
-`TESTCONTAINERS_RYUK_DISABLED=true`.
-
-### Other checks
-
-```bash
-make lsp-check
-pnpm --dir frontend exec tsc -b
-pnpm --dir frontend exec dprint check
-pnpm --dir frontend lint
-SONAR_ADMIN_PASSWORD=admin make sonar  # disposable local SonarQube scan; needs Docker/Podman
-```
-
-## Contribute
-
-- Changes to supported scanner kinds, the finding format, database schemas, or
-  CI policy need an approved RFC first (see [`rfcs/`](rfcs/)). This adds a
-  review step, but helps avoid breaking report ingestion.
-- CI runs test/lint/frontend checks on pull requests and pushes to `main`
-  ([ci.yml](.github/workflows/ci.yml)), CodeQL runs separately
-  ([codeql.yml](.github/workflows/codeql.yml)), and Dependabot opens dependency
-  PRs with a cooldown window
-  ([dependabot.yml](.github/dependabot.yml)).
-- Include tests for code changes. The suites cover Go packages, PostgreSQL
-  integration, the API and command-line tools, and browser journeys.
-- Contributions follow the
-  [Developer Certificate of Origin](CONTRIBUTING.md#developer-certificate-of-origin).
-- Pushing a `vMAJOR.MINOR.PATCH` tag runs [release.yml](.github/workflows/release.yml).
-  It builds the server and adapter images, signs them with cosign, boots the
-  server image before tagging it, cross-compiles the `specht`,
-  `specht-adapter` and `specht-mcp` binaries, and publishes a GitHub Release with a signed
-  `SHA256SUMS`. A tag with a suffix (`v1.2.0-rc.1`) is marked as a prerelease.
-
-## Project status
-
-Specht is an experimental preview. The web UI covers project setup, the change
-view that explains a blocked build, findings and report history, triage and
-bulk triage, reachability decisions, waivers, policy and templates, insights,
-API keys, access management, the CVE watcher, and administration. The API and
-CLI cover the same workflows plus a few that have no screen yet.
-
-Releases publish version-tagged images and binaries only, with no mutable
-`latest` image. Expect breaking changes before 1.0.
-
-Bug reports and general feedback are welcome via
-[GitHub issues](https://github.com/minh-tg/specht/issues); security reports
-should follow [SECURITY.md](SECURITY.md).
+Bug reports and ideas go to [GitHub issues](https://github.com/minh-tg/specht/issues).
+Report vulnerabilities as [`SECURITY.md`](SECURITY.md) describes.
 
 ## License
 
-[GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0).
+[GNU Affero General Public License v3.0](LICENSE).
