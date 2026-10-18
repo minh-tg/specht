@@ -76,10 +76,13 @@ func (st *ingestFindingsState) projectSeverity(findingID string, incoming severi
 // value moved. A finding seen for the first time has nothing to compare, so it
 // writes no event.
 //
-// The event's old and new values are this scope's: its previous report, or the
-// project-wide value when the scope had not reported the finding before. The
-// changes document carries the project-wide value before and after the scan.
-func (u *Usecases) recordScopeSeverity(ctx context.Context, st *ingestFindingsState, upserted, prior port.Finding, exists bool, incoming, project severityValue) error {
+// A report can name the same finding more than once. Only the finding's last
+// occurrence writes the event, so the report leaves one event per finding. Its
+// old value is this scope's value before the report, its previous report or the
+// project-wide value when the scope had not reported before, and its new value
+// is the last severity the report sets. The changes document carries the
+// project-wide value before and after the scan.
+func (u *Usecases) recordScopeSeverity(ctx context.Context, st *ingestFindingsState, upserted, prior port.Finding, exists, final bool, incoming, project severityValue) error {
 	previous, hadScope := st.ownScopeSeverity(upserted.ID)
 	row := port.FindingScopeSeverityInput{
 		FindingID:    upserted.ID,
@@ -98,7 +101,7 @@ func (u *Usecases) recordScopeSeverity(ctx context.Context, st *ingestFindingsSt
 		slog.Error("record scope severity failed", "scanner", st.input.Scanner, "finding", upserted.ID, "error", err)
 		return fmt.Errorf("scanner %s: record scope severity for finding %q: %w", st.input.Scanner, upserted.ID, err)
 	}
-	if !exists {
+	if !exists || !final {
 		return nil
 	}
 

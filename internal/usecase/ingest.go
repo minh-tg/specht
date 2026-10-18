@@ -802,8 +802,16 @@ func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Projec
 		return ingestOutcome{}, err
 	}
 
-	for _, f := range nr.Findings {
-		if err := u.ingestOneFinding(ctx, st, f); err != nil {
+	// A report can name the same finding more than once. Only the last
+	// occurrence writes that finding's severity_changed event, so the event
+	// carries the last severity the report sets and does not repeat.
+	lastOccurrence := make(map[string]int, len(nr.Findings))
+	for i, f := range nr.Findings {
+		lastOccurrence[f.FindingKind+"\x00"+f.Fingerprint] = i
+	}
+	for i, f := range nr.Findings {
+		final := lastOccurrence[f.FindingKind+"\x00"+f.Fingerprint] == i
+		if err := u.ingestOneFinding(ctx, st, f, final); err != nil {
 			return ingestOutcome{}, err
 		}
 	}
@@ -879,8 +887,9 @@ func classifyIngestChange(exists, regression bool, baselineID string, baselineSe
 }
 
 // ingestOneFinding upserts one normalized finding plus its attribution,
-// occurrence, dimensions, events, and material-change evaluation.
-func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState, f domain.NormalizedFinding) error {
+// occurrence, dimensions, events, and material-change evaluation. final marks
+// the last time the report names this finding.
+func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState, f domain.NormalizedFinding, final bool) error {
 	existing, exists := st.known[f.FindingKind+"\x00"+f.Fingerprint]
 	newRank := severityRank(f.Severity)
 	// An archived finding lost its evidence with a deleted report. Seeing it
@@ -896,7 +905,7 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 	if err != nil {
 		return err
 	}
-	if err := u.recordScopeSeverity(ctx, st, upserted, existing, exists, incoming, project); err != nil {
+	if err := u.recordScopeSeverity(ctx, st, upserted, existing, exists, final, incoming, project); err != nil {
 		return err
 	}
 	if err := u.attributeFinding(ctx, st, upserted, exists, existing); err != nil {
