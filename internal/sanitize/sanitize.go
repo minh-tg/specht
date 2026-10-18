@@ -18,9 +18,12 @@ import (
 var ansiEscape = regexp.MustCompile(`\x1b\[[0-?]*[ -/]*[@-~]|\x9b[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-Z\\-_]`)
 
 // Text returns s with ANSI escape sequences removed and with Unicode control
-// characters stripped: category Cc except tab and newline, and category Cf,
-// which holds the bidirectional overrides U+202A to U+202E and U+2066 to
-// U+2069. Everything else, including plain text, tabs and newlines, is kept.
+// characters stripped: category Cc except tab and newline, and the
+// bidirectional formatting controls U+202A to U+202E and U+2066 to U+2069.
+// Other format characters (Cf) such as the zero-width joiner U+200D, the soft
+// hyphen U+00AD and the byte-order mark U+FEFF are kept, because stripping
+// them garbles emoji sequences and legitimate text. Everything else, including
+// plain text, tabs and newlines, is kept.
 func Text(s string) string {
 	if !needsStripping(s) {
 		return s
@@ -33,12 +36,18 @@ func Text(s string) string {
 			b.WriteRune(r)
 			continue
 		}
-		if unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r) {
+		if unicode.Is(unicode.Cc, r) || isBidiControl(r) {
 			continue
 		}
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+// isBidiControl reports whether r is a Unicode bidirectional formatting
+// control. In a terminal these can reorder or hide the surrounding text.
+func isBidiControl(r rune) bool {
+	return (r >= '\u202a' && r <= '\u202e') || (r >= '\u2066' && r <= '\u2069')
 }
 
 // needsStripping reports whether s holds a control character or the start of
@@ -48,7 +57,7 @@ func needsStripping(s string) bool {
 		if r == '\t' || r == '\n' {
 			continue
 		}
-		if unicode.Is(unicode.Cc, r) || unicode.Is(unicode.Cf, r) {
+		if unicode.Is(unicode.Cc, r) || isBidiControl(r) {
 			return true
 		}
 	}
