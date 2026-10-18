@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/minh-tg/specht/internal/client"
+	"github.com/minh-tg/specht/internal/sanitize"
 	"github.com/minh-tg/specht/internal/version"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -223,7 +224,9 @@ func registerMutationTools(server *mcp.Server, api API) {
 }
 
 func textToolResult(text string) (*mcp.CallToolResult, any, error) {
-	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: text}}}, nil, nil
+	// Findings and reports carry scanner-supplied titles, paths and names; strip
+	// control characters before the assistant or terminal sees them.
+	return &mcp.CallToolResult{Content: []mcp.Content{&mcp.TextContent{Text: sanitize.Text(text)}}}, nil, nil
 }
 
 func handleFindingsList(api API, input findingsListInput) (*mcp.CallToolResult, any, error) {

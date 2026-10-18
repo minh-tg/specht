@@ -1,0 +1,83 @@
+package main
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/minh-tg/specht/internal/client"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
+)
+
+func TestMCPFindingsGetStripsTerminalControls(t *testing.T) {
+	mc := &mockClient{findings: []client.Finding{{
+		ID:              "f1",
+		CurrentTitle:    "safe\x1b[31m\u202egnihs",
+		CurrentSeverity: "high",
+	}}}
+	session := connectMCPServer(t, mc)
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "findings_get",
+		Arguments: map[string]any{"finding_id": "f1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected tool error: %+v", result.Content)
+	}
+	text := result.Content[0].(*mcp.TextContent).Text
+	if strings.ContainsAny(text, "\x1b\u202e") {
+		t.Fatalf("result still holds terminal controls: %q", text)
+	}
+	if !strings.Contains(text, "safegnihs") {
+		t.Fatalf("result lost the title text: %q", text)
+	}
+}
+
+func TestMCPReportsListStripsTerminalControls(t *testing.T) {
+	tool := "trivy\x1b[2J\u202e-extra"
+	mc := &mockClient{reports: []client.Report{{ID: "r1", ToolName: tool, Status: "completed"}}}
+	session := connectMCPServer(t, mc)
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "reports_list",
+		Arguments: map[string]any{"project": "demo"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected tool error: %+v", result.Content)
+	}
+	text := result.Content[0].(*mcp.TextContent).Text
+	if strings.ContainsAny(text, "\x1b\u202e") {
+		t.Fatalf("result still holds terminal controls: %q", text)
+	}
+	if !strings.Contains(text, "trivy-extra") {
+		t.Fatalf("result lost the tool name: %q", text)
+	}
+}
+
+// Plain text, tabs and newlines must survive the sanitizer.
+func TestMCPFindingsListKeepsPlainTextTabsAndNewlines(t *testing.T) {
+	mc := &mockClient{findings: []client.Finding{{
+		ID:              "f1",
+		CurrentTitle:    "plain title",
+		CurrentSeverity: "high",
+	}}}
+	session := connectMCPServer(t, mc)
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "findings_list",
+		Arguments: map[string]any{"project": "demo"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.IsError {
+		t.Fatalf("unexpected tool error: %+v", result.Content)
+	}
+	text := result.Content[0].(*mcp.TextContent).Text
+	if want := "Found 1 finding(s):\n- f1 [high] plain title (state: , gate: )\n"; text != want {
+		t.Fatalf("text = %q, want %q", text, want)
+	}
+}
