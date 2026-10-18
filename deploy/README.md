@@ -102,9 +102,10 @@ fills with the matched values, and Checkov's `code_block` and `evaluations`. The
 any case. A key whose lowercased name contains `password`, `passwd`, `secret`, `token`, `api_key`,
 `apikey` or `authorization` loses its value at any depth, a scalar or an object, so `db_password`,
 `auth_token` and `Authorization` are removed although the scanner did not name them. The match is by fragment,
-so any key containing `token` is removed, `tokenizer_version` included (a known false positive). A list or object under such a key keeps its shape, so the
-parser can still read it, and a credential inside that object under a name without a fragment is
-not removed. If redaction fails for a report, the stored payload is `{"redaction":"failed"}`,
+so any key containing `token` is removed, `tokenizer_version` included (a known false positive). A list under such a key keeps its shape, so the
+parser can still read it, but each of its scalar elements loses its value, and an object directly
+under such a key is replaced whole. Only an object element with a neutral key inside that list
+keeps its value. If redaction fails for a report, the stored payload is `{"redaction":"failed"}`,
 and the report and its findings are still ingested. For these three scanners a payload over
 64 KiB (65536 bytes) keeps only its first 64 KiB of redacted output, stored as
 `{"truncated":true,"original_bytes":N,"prefix":"..."}`, where `N` is the size of the raw output
