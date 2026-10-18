@@ -93,4 +93,20 @@ func TestIngestReport_TooManyFindingsNamesTheLimit(t *testing.T) {
 	assert.Equal(t, "too_many_findings", got.Code)
 	assert.Contains(t, got.Message, "100000", "the message names the limit")
 	assert.Contains(t, got.Message, "Split", "and tells the user what to do")
+	assert.Contains(t, got.Message, "findings", "the finding-count refusal still names findings")
+	assert.NotContains(t, got.Message, "nests deeper", "and never claims a depth refusal")
+}
+
+func TestIngestReport_DepthRefusalSaysNestingNotFindings(t *testing.T) {
+	// A real 65-level document, through the same CheckDocument the usecase runs.
+	depth := scanner.MaxNestingDepth + 1
+	doc := strings.Repeat(`{"k":`, depth) + "null" + strings.Repeat("}", depth)
+	err := fmt.Errorf("scanner trivy: %w", scanner.CheckDocument([]byte(doc), scanner.DefaultMaxFindings))
+
+	status, got := ingestWithError(t, "trivy", err)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, status, "the status stays 422")
+	assert.Equal(t, "too_many_findings", got.Code, "the code stays too_many_findings")
+	assert.Contains(t, got.Message, "nests deeper than 64 levels")
+	assert.NotContains(t, got.Message, "findings", "a depth refusal must not talk about findings")
 }

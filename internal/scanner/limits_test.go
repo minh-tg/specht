@@ -30,6 +30,7 @@ func TestTooManyFindingsNamesTheLimitAndStaysMatchable(t *testing.T) {
 	var tooMany *scanner.TooManyFindingsError
 	require.True(t, errors.As(err, &tooMany))
 	assert.Equal(t, 1234, tooMany.Limit)
+	assert.False(t, tooMany.Depth, "a finding-count refusal is not a depth refusal")
 	assert.Contains(t, err.Error(), "1234")
 }
 
@@ -95,6 +96,7 @@ func TestCheckDocumentRefusesNestingPastTheDepthCapWithTheFindingsError(t *testi
 	var tooMany *scanner.TooManyFindingsError
 	require.ErrorAs(t, err, &tooMany)
 	assert.Equal(t, 64, tooMany.Limit)
+	assert.True(t, tooMany.Depth, "the depth refusal is marked so the handler can name nesting, not findings")
 
 	// The refusal holds for broken input too, since the scan reads it before any decoder.
 	require.ErrorIs(t, scanner.CheckDocument([]byte(strings.Repeat("[", 65)), scanner.DefaultMaxFindings), scanner.ErrTooManyFindings)

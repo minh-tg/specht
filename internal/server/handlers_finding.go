@@ -45,9 +45,9 @@ func (h *Handler) GetFinding(w http.ResponseWriter, r *http.Request) {
 
 // ingestFailure turns an ingest error into the code and message the caller
 // sees. A file that is not the chosen scanner's output, a report that cannot be
-// read, a report with too many findings, and an unknown scanner each say what
-// to do next. Anything else stays
-// generic so parser and store internals never reach the response.
+// read, a report with too many findings, a report nested deeper than the cap,
+// and an unknown scanner each say what to do next. Anything else stays generic
+// so parser and store internals never reach the response.
 func ingestFailure(scannerName string, err error) (code, message string) {
 	var unrecognized *scanner.UnrecognizedFormatError
 	var tooMany *scanner.TooManyFindingsError
@@ -55,6 +55,9 @@ func ingestFailure(scannerName string, err error) (code, message string) {
 	case errors.As(err, &unrecognized):
 		return "unrecognized_format", unrecognizedMessage(unrecognized)
 	case errors.As(err, &tooMany):
+		if tooMany.Depth {
+			return "too_many_findings", fmt.Sprintf("The %s report nests deeper than %d levels, the most this instance accepts. Split it into smaller reports and ingest each.", scannerName, tooMany.Limit)
+		}
 		return "too_many_findings", fmt.Sprintf("The %s report has more than %d findings, the most one report may hold. Split it into smaller reports (for example one per module or directory) and ingest each.", scannerName, tooMany.Limit)
 	case errors.Is(err, scanner.ErrMalformedReport):
 		return "malformed_report", fmt.Sprintf("The %s report could not be read. Check that the file is complete and came from a current version of the tool.", scannerName)
