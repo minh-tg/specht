@@ -558,8 +558,9 @@ A login must finish on the device that started it. If the callback link opens
 on another device, the login page says "Start sign-in again from this browser."
 and its button starts a new login there. Codes issued before this version carry
 no binding and are refused the same way, so a login still waiting at the upgrade
-starts again. A replica that still runs the previous release redeems codes
-without this check, so finish the rollout quickly.
+starts again. Upgrade every server to this version in one step: stop the old
+version, then start the new one, and do not run old and new servers side by
+side.
 
 ## SSO account linking
 
