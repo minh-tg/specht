@@ -9,8 +9,32 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    name: test (unit + integration + migrations)
+  # The unit and integration suites run as separate jobs so they overlap. The
+  # `test` job below keeps the original check name that branch protection
+  # requires and passes only when both of them pass.
+  unit:
+    name: unit tests (race)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: ./.github/actions/setup-go
+        with:
+          scope: test
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Unit tests (offline)
+        run: go test -race ./... -count=1 -short
+
+      - if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/save-go-cache
+        with:
+          scope: test
+
+  integration:
+    name: integration + migrations
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -45,16 +69,10 @@ jobs:
 
       - uses: ./.github/actions/setup-go
         with:
-          scope: test
-
-      - name: Verify dependencies
-        run: go mod verify
+          scope: build
 
       - name: Vet
         run: go vet ./...
-
-      - name: Unit tests (offline)
-        run: go test -race ./... -count=1 -short
 
       - name: Integration tests (real Postgres via testcontainers)
         run: go test -tags integration ./internal/repo/ -count=1 -timeout 15m
@@ -84,7 +102,21 @@ jobs:
       - if: github.ref == 'refs/heads/main'
         uses: ./.github/actions/save-go-cache
         with:
-          scope: test
+          scope: build
+
+  test:
+    name: test (unit + integration + migrations)
+    needs: [unit, integration]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the unit and integration jobs
+        env:
+          UNIT: ${{ needs.unit.result }}
+          INTEGRATION: ${{ needs.integration.result }}
+        run: |
+          echo "unit=$UNIT integration=$INTEGRATION"
+          [ "$UNIT" = success ] && [ "$INTEGRATION" = success ]
 
   e2e:
     name: "e2e (full stack: API + adapter + CLI)"
@@ -93,7 +125,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # Optional authenticated Docker Hub pulls; see the test job.
+      # Optional authenticated Docker Hub pulls; see the integration job.
       - name: Log in to Docker Hub
         if: ${{ vars.DOCKERHUB_USERNAME != '' }}
         continue-on-error: true
@@ -125,7 +157,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # Optional authenticated Docker Hub pulls; see the test job.
+      # Optional authenticated Docker Hub pulls; see the integration job.
       - name: Log in to Docker Hub
         if: ${{ vars.DOCKERHUB_USERNAME != '' }}
         continue-on-error: true
@@ -175,7 +207,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # Optional authenticated Docker Hub pulls; see the test job.
+      # Optional authenticated Docker Hub pulls; see the integration job.
       - name: Log in to Docker Hub
         if: ${{ vars.DOCKERHUB_USERNAME != '' }}
         continue-on-error: true
@@ -207,7 +239,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # Optional authenticated Docker Hub pulls; see the test job.
+      # Optional authenticated Docker Hub pulls; see the integration job.
       - name: Log in to Docker Hub
         if: ${{ vars.DOCKERHUB_USERNAME != '' }}
         continue-on-error: true
@@ -231,7 +263,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Optional authenticated Docker Hub pulls; see the test job.
+      # Optional authenticated Docker Hub pulls; see the integration job.
       - name: Log in to Docker Hub
         if: ${{ vars.DOCKERHUB_USERNAME != '' }}
         continue-on-error: true
@@ -338,7 +370,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # Optional authenticated Docker Hub pulls; see the test job.
+      # Optional authenticated Docker Hub pulls; see the integration job.
       - name: Log in to Docker Hub
         if: ${{ vars.DOCKERHUB_USERNAME != '' }}
         continue-on-error: true
@@ -367,7 +399,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      # Optional authenticated Docker Hub pulls; see the test job.
+      # Optional authenticated Docker Hub pulls; see the integration job.
       - name: Log in to Docker Hub
         if: ${{ vars.DOCKERHUB_USERNAME != '' }}
         continue-on-error: true
