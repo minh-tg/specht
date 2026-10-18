@@ -1,4 +1,4 @@
-.PHONY: dev-api dev-web db-up db-down migrate-up migrate-down sqlc test test-race e2e e2e-ui lsp-check sonar coverage build clean
+.PHONY: dev-api dev-web db-up db-down migrate-up migrate-down sqlc test test-race e2e e2e-split e2e-ui lsp-check sonar coverage build clean
 
 dev-api:
 	go run ./cmd/server
@@ -31,6 +31,11 @@ test-race:
 # binaries, HTTP + exit-code contracts. Needs Docker; ~1-3 minutes.
 e2e:
 	TESTCONTAINERS_RYUK_DISABLED=true go test -tags e2e ./e2e/ -count=1 -timeout 15m
+
+# The same suite as two processes at once (the authorization matrix and the
+# rest), which CI uses. Needs Docker; about a quarter faster than `make e2e`.
+e2e-split:
+	./scripts/e2e-split.sh
 
 # Browser smoke: boots the real server (embedded React build) against a
 # throwaway PostgreSQL, then drives register → login → dashboard in
