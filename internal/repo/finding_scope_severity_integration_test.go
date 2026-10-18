@@ -13,7 +13,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/minh-tg/specht/internal/db"
 	"github.com/minh-tg/specht/internal/port"
 )
 
@@ -100,12 +99,13 @@ func TestMigration000058_BackfillsScopeSeverities(t *testing.T) {
 	c := pool.Config().ConnConfig
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable", c.User, c.Password, c.Host, c.Port, c.Database)
 
-	// RollbackMigrations unwinds the whole chain, so step one migration back
-	// with golang-migrate directly.
+	// Roll back to the version before 000058, then re-apply 000058 alone so its
+	// backfill runs. Stepping back once would unwind only the newest migration
+	// (000059 on this branch), leaving 000058 in place and skipping the backfill.
 	m, err := migrate.New("file://../../migrations", dsn)
 	require.NoError(t, err)
-	require.NoError(t, m.Steps(-1))
-	_, _ = m.Close()
+	defer func() { _, _ = m.Close() }()
+	require.NoError(t, m.Migrate(57))
 
 	project := createTestProject(t, repos)
 	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
@@ -142,7 +142,7 @@ func TestMigration000058_BackfillsScopeSeverities(t *testing.T) {
 	observe(pgtype.Text{String: "h-feature", Valid: true}, "low", 1)
 	observe(pgtype.Text{Valid: false}, "critical", 4)
 
-	require.NoError(t, db.RunMigrations(dsn, "../../migrations"))
+	require.NoError(t, m.Steps(1))
 
 	rows, err := pool.Query(ctx, `SELECT scope_hash, severity, severity_rank FROM finding_scope_severities
 		WHERE finding_id = $1 ORDER BY scope_hash`, finding.ID)
