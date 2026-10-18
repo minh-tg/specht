@@ -115,6 +115,26 @@ func dbPasswordAtDepth(doc []byte, shallow, deep string) []byte {
 	return []byte(strings.Replace(string(doc), "{", `{"db_password":`+shallow+`,"nest":{"a":{"b":{"c":{"db_password":`+deep+`}}}},`, 1))
 }
 
+// TestRedactRawRedactsScalarElementsOfADbPasswordList covers a credential name
+// whose value is a list of scalars at depth 1 and depth 5. Each scalar has no
+// key, so the walk must replace it directly. The Secrets objects keep RuleID
+// and Title, and the stored evidence still decodes to one finding.
+func TestRedactRawRedactsScalarElementsOfADbPasswordList(t *testing.T) {
+	data := dbPasswordAtDepth(trivySecretDoc, `["dbpass-list-1"]`, `["dbpass-list-5"]`)
+	s := trivy.NewScanner()
+	redacted, err := s.RedactRaw(data)
+	require.NoError(t, err)
+
+	assert.NotContains(t, string(redacted), "dbpass-")
+	assert.Equal(t, 2, strings.Count(string(redacted), `"db_password":["[REDACTED]"]`))
+	assert.Contains(t, string(redacted), `"RuleID":"aws-access-key-id"`)
+	assert.Contains(t, string(redacted), `"Title":"AWS Access Key ID"`)
+
+	report, err := s.Parse(context.Background(), redacted)
+	require.NoError(t, err, "redacted evidence still parses")
+	require.Len(t, report.Findings, 1)
+}
+
 // TestRedactRawRedactsDbPasswordHoldingAStringOrAnObject checks that the whole
 // db_password value is gone at both depths. The sentinel "dbpass-" appears in
 // every value, so NotContains fails if any part of one survives.

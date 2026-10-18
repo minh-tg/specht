@@ -74,6 +74,18 @@ func TestRedactRawJSONKeepsAListUnderACredentialName(t *testing.T) {
 	assert.JSONEq(t, `{"Secrets":[{"RuleID":"aws-access-key-id","StartLine":3,"Match":"[REDACTED]"}]}`, string(out))
 }
 
+// TestRedactRawJSONRedactsScalarElementsOfACredentialList covers a credential
+// name whose value is a list of scalars. A scalar element has no key, so the
+// walk must replace it directly; otherwise the value survives redaction.
+func TestRedactRawJSONRedactsScalarElementsOfACredentialList(t *testing.T) {
+	data := []byte(`{"db_password":["x"],` +
+		`"a":{"b":{"c":{"d":{"db_password":["y"]}}}}}`)
+	out, err := parseutil.RedactRawJSON("test", data)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"db_password":["[REDACTED]"],`+
+		`"a":{"b":{"c":{"d":{"db_password":["[REDACTED]"]}}}}}`, string(out))
+}
+
 func TestRedactRawJSONRedactsParserKeysInAdditionToCredentialKeys(t *testing.T) {
 	data := []byte(`{"snippet":"s","Match":"m","password":"p","keep":"ok"}`)
 	out, err := parseutil.RedactRawJSON("test", data, "snippet", "Match")
