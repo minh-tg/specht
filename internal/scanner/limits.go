@@ -53,8 +53,14 @@ const (
 // than the instance allows. Handlers map it to a 422.
 var ErrTooManyFindings = errors.New("report has too many findings")
 
-// TooManyFindingsError carries the limit that was exceeded.
-type TooManyFindingsError struct{ Limit int }
+// TooManyFindingsError carries the limit that was exceeded. Depth marks a
+// refusal for nesting past MaxNestingDepth instead of holding too many findings,
+// so a caller that renders the reason can tell the two apart. Both keep the
+// same error identity and the same too_many_findings mapping.
+type TooManyFindingsError struct {
+	Limit int
+	Depth bool
+}
 
 func (e *TooManyFindingsError) Error() string {
 	return fmt.Sprintf("%v: the limit is %d", ErrTooManyFindings, e.Limit)
@@ -165,7 +171,7 @@ func CheckDocument(data []byte, limit int, arrayKeys ...string) error {
 			return err
 		}
 		if len(s.stack) > MaxNestingDepth {
-			return TooManyFindings(MaxNestingDepth)
+			return &TooManyFindingsError{Limit: MaxNestingDepth, Depth: true}
 		}
 	}
 	return nil
