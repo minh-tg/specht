@@ -96,23 +96,50 @@ func RedactKeys(v any, marker string, keys ...string) {
 // lowercased name contains a credential fragment, at any depth, when that
 // content is a scalar or an object. An object under such a key is not walked:
 // db_password: {"value": "..."} loses the object, so no value inside it is
-// stored. A list under such a key is walked instead of replaced, so the keys
-// inside it keep their own rules. Trivy's Secrets list stays a list with its
-// RuleID, Title and Severity, which the parser reads back for the fingerprint,
-// while the parser's Match and Code keys still remove the value.
+// stored. A list under such a key is walked instead of replaced: its scalar
+// elements are redacted by redactCredentialList, and the objects inside keep
+// their own rules. Trivy's Secrets list stays a list with its RuleID, Title
+// and Severity, which the parser reads back for the fingerprint, while the
+// parser's Match and Code keys still remove the value.
 func redactCredentialFragments(v any, marker string) {
 	switch x := v.(type) {
 	case map[string]any:
 		for k, item := range x {
-			if hasCredentialFragment(k) && !isList(item) && hasContent(item) {
-				x[k] = marker
-				continue
+			if hasCredentialFragment(k) {
+				if list, ok := item.([]any); ok {
+					redactCredentialList(list, marker)
+					continue
+				}
+				if hasContent(item) {
+					x[k] = marker
+					continue
+				}
 			}
 			redactCredentialFragments(item, marker)
 		}
 	case []any:
 		for _, item := range x {
 			redactCredentialFragments(item, marker)
+		}
+	}
+}
+
+// redactCredentialList replaces every scalar element of a list that sits under a
+// credential-named key with marker, because a scalar element has no key for
+// redactCredentialFragments to match. It walks an object element with
+// redactCredentialFragments and a nested list the same way, so an object keeps
+// its structure and only its credential-named leaves change.
+func redactCredentialList(list []any, marker string) {
+	for i, item := range list {
+		switch x := item.(type) {
+		case map[string]any:
+			redactCredentialFragments(x, marker)
+		case []any:
+			redactCredentialList(x, marker)
+		default:
+			if hasContent(item) {
+				list[i] = marker
+			}
 		}
 	}
 }
@@ -127,11 +154,6 @@ func hasCredentialFragment(key string) bool {
 		}
 	}
 	return false
-}
-
-func isList(v any) bool {
-	_, ok := v.([]any)
-	return ok
 }
 
 func matchesKey(key string, keys []string) bool {
