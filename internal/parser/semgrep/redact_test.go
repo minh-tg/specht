@@ -170,6 +170,21 @@ func dbPasswordAtDepth(doc []byte, shallow, deep string) []byte {
 	return []byte(strings.Replace(string(doc), "{", `{"db_password":`+shallow+`,"nest":{"a":{"b":{"c":{"db_password":`+deep+`}}}},`, 1))
 }
 
+// TestRedactRawRedactsAScalarInADbPasswordList checks that each scalar element
+// of a db_password list is gone at depth 1 and depth 5, in both output formats.
+// The sentinel "dbpass-list-" appears in both values.
+func TestRedactRawRedactsAScalarInADbPasswordList(t *testing.T) {
+	for format, doc := range semgrepSecretDocs {
+		t.Run(format, func(t *testing.T) {
+			redacted, err := semgrep.NewScanner().RedactRaw(dbPasswordAtDepth(doc.data, `["dbpass-list-1"]`, `["dbpass-list-5"]`))
+			require.NoError(t, err)
+
+			assert.NotContains(t, string(redacted), "dbpass-list-")
+			assert.Equal(t, 2, strings.Count(string(redacted), `"db_password":["[REDACTED]"]`))
+		})
+	}
+}
+
 // TestRedactRawRedactsDbPasswordHoldingAStringOrAnObject checks that the whole
 // db_password value is gone at both depths, in both output formats. The
 // sentinel "dbpass-" appears in every value.
