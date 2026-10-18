@@ -43,10 +43,9 @@ jobs:
           docker logs postgres
           exit 1
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: ./.github/actions/setup-go
         with:
-          go-version-file: go.mod
-          cache: true
+          scope: test
 
       - name: Verify dependencies
         run: go mod verify
@@ -82,6 +81,11 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/specht?sslmode=disable
 
+      - if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/save-go-cache
+        with:
+          scope: test
+
   e2e:
     name: "e2e (full stack: API + adapter + CLI)"
     runs-on: ubuntu-latest
@@ -98,10 +102,9 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: ./.github/actions/setup-go
         with:
-          go-version-file: go.mod
-          cache: true
+          scope: build
 
       # Real PostgreSQL (testcontainers), real server/adapter/CLI
       # binaries, HTTP contracts and documented exit codes end to end.
@@ -109,6 +112,11 @@ jobs:
         run: make e2e
         env:
           DOCKER_HOST: unix:///var/run/docker.sock
+
+      - if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/save-go-cache
+        with:
+          scope: build
 
   ui-e2e:
     name: "ui e2e (browser smoke)"
@@ -126,10 +134,9 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: ./.github/actions/setup-go
         with:
-          go-version-file: go.mod
-          cache: true
+          scope: build
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
         with:
@@ -156,6 +163,11 @@ jobs:
         env:
           DOCKER_HOST: unix:///var/run/docker.sock
 
+      - if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/save-go-cache
+        with:
+          scope: build
+
   restore-smoke:
     name: "restore smoke (backup and restore procedure)"
     runs-on: ubuntu-latest
@@ -172,10 +184,9 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: ./.github/actions/setup-go
         with:
-          go-version-file: go.mod
-          cache: true
+          scope: build
 
       # Dumps a seeded database, restores it into an empty one and boots the
       # server on it, following deploy/README.md "Backup and restore".
@@ -183,6 +194,11 @@ jobs:
         run: ./scripts/restore-smoke.sh
         env:
           DOCKER_HOST: unix:///var/run/docker.sock
+
+      - if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/save-go-cache
+        with:
+          scope: build
 
   compose-smoke:
     name: "compose smoke (documented first start)"
@@ -224,15 +240,19 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: ./.github/actions/setup-go
         with:
-          go-version-file: go.mod
-          cache: true
+          scope: build
 
       # Lets an older release fill a database through its own API, then starts this build on it:
       # the account, project, scan, triage decision and API key must all survive the migrations.
       - name: Upgrade smoke
         run: ./scripts/upgrade-smoke.sh
+
+      - if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/save-go-cache
+        with:
+          scope: build
 
   lint:
     name: lint + format
@@ -240,10 +260,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: ./.github/actions/setup-go
         with:
-          go-version-file: go.mod
-          cache: true
+          scope: lint
 
       - name: Resolve module graph
         run: go mod tidy
@@ -267,6 +286,11 @@ jobs:
 
       - name: Build
         run: go build ./...
+
+      - if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/save-go-cache
+        with:
+          scope: lint
 
   frontend:
     name: frontend (vitest + tsc + dprint + oxlint)
@@ -352,10 +376,9 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: ./.github/actions/setup-go
         with:
-          go-version-file: go.mod
-          cache: true
+          scope: release
 
       # The same script the tag release runs, with a synthetic version so the
       # packaging path is covered before any tag exists.
@@ -438,6 +461,11 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/save-go-cache
+        with:
+          scope: release
+
   security-scan:
     name: security scan (Semgrep)
     runs-on: ubuntu-latest
@@ -485,10 +513,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: ./.github/actions/setup-go
         with:
-          go-version-file: go.mod
-          cache: true
+          scope: build
 
       # go.mod pins the toolchain floor (go1.26.9); setup-go plus
       # GOTOOLCHAIN=auto resolves a patched toolchain, so the scan runs
@@ -496,6 +523,11 @@ jobs:
       - name: govulncheck
         run: |
           go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
+      - if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/save-go-cache
+        with:
+          scope: build
 
   dco:
     name: dco (sign-off)
@@ -587,10 +619,9 @@ jobs:
           docker logs postgres
           exit 1
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      - uses: ./.github/actions/setup-go
         with:
-          go-version-file: go.mod
-          cache: true
+          scope: build
 
       - name: Download scanner SARIF
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -628,3 +659,8 @@ jobs:
           SARIF_FILES: sarif-reports/semgrep-results.sarif sarif-reports/trivy-results.sarif
           GATE_MODE: advisory
         run: bash scripts/ci-dogfood.sh
+
+      - if: github.ref == 'refs/heads/main'
+        uses: ./.github/actions/save-go-cache
+        with:
+          scope: build

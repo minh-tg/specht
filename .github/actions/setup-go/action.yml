@@ -1,0 +1,35 @@
+name: setup-go with a per-scope build cache
+description: >
+  Installs Go and restores the module and build caches saved by the last run on
+  main for the same scope. actions/setup-go keys its cache on go.sum alone, so
+  every Go job shares one entry and the first job to finish decides what the
+  others get. A scope (test, build, lint, release) keeps race builds, plain
+  builds, the golangci-lint build and the cross-compiled release binaries apart.
+
+inputs:
+  scope:
+    description: Cache scope, one of the groups named in the description.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+      with:
+        go-version-file: go.mod
+        cache: false
+
+    - id: paths
+      shell: bash
+      run: |
+        echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+        echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ${{ steps.paths.outputs.build }}
+          ${{ steps.paths.outputs.mod }}
+        key: go-${{ inputs.scope }}-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+        restore-keys: |
+          go-${{ inputs.scope }}-${{ runner.os }}-
