@@ -14,6 +14,7 @@ import (
 	"reflect"
 
 	"github.com/minh-tg/specht/internal/client"
+	"github.com/minh-tg/specht/internal/sanitize"
 	"github.com/minh-tg/specht/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -113,6 +114,10 @@ func DefaultDeps() Deps {
 // NewRootCmd builds the command tree. Groups are registered in their own
 // files (projects.go, findings.go, ...).
 func NewRootCmd(d Deps) *cobra.Command {
+	// Every command writes through Deps.Out, so stripping control characters
+	// here covers finding and report fields from the server and scan output.
+	d.Out = sanitize.Writer(d.Out)
+	d.ErrW = sanitize.Writer(d.ErrW)
 	s := &settings{}
 	root := &cobra.Command{
 		Use:           "specht",
@@ -173,6 +178,9 @@ func ExecuteContext(ctx context.Context, args []string, d Deps) int {
 	root := NewRootCmd(d)
 	root.SetContext(ctx)
 	root.SetArgs(args)
+	// NewRootCmd wraps the writer it hands to commands; the error path below
+	// writes through the Deps this function was given, so wrap that too.
+	d.ErrW = sanitize.Writer(d.ErrW)
 	if err := root.Execute(); err != nil {
 		if errors.Is(err, ErrThresholdBreached) {
 			return exitBreach
