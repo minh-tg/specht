@@ -1,0 +1,38 @@
+name: Save the Go build cache
+description: >
+  Saves the module and build caches under a key derived from go.mod and go.sum,
+  unless an entry for that key already exists. The compiled dependencies and
+  standard library are most of a cold build and only change with those two
+  files, so one entry per scope and dependency set is enough. Run it as the
+  last step of a job, and only on main: a pull request restores what main saved
+  and never writes, so branches cannot fill the repository's cache quota or
+  seed a cache that main reads.
+
+inputs:
+  scope:
+    description: Cache scope, the same value the job passed to the setup-go action.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - id: paths
+      shell: bash
+      run: |
+        echo "build=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+        echo "mod=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+
+    - id: existing
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ steps.paths.outputs.mod }}
+        key: go-${{ inputs.scope }}-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
+        lookup-only: true
+
+    - if: steps.existing.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: |
+          ${{ steps.paths.outputs.build }}
+          ${{ steps.paths.outputs.mod }}
+        key: go-${{ inputs.scope }}-${{ runner.os }}-${{ hashFiles('go.mod', 'go.sum') }}
