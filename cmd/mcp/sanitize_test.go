@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -55,6 +56,30 @@ func TestMCPReportsListStripsTerminalControls(t *testing.T) {
 	}
 	if !strings.Contains(text, "trivy-extra") {
 		t.Fatalf("result lost the tool name: %q", text)
+	}
+}
+
+// An API error carries server- and scanner-supplied strings, so an error
+// result must be stripped the same way as a success result.
+func TestMCPErrorResultStripsTerminalControls(t *testing.T) {
+	mc := &mockClient{err: errors.New("lookup failed: \x1b[31mred\u202egnihs")}
+	session := connectMCPServer(t, mc)
+	result, err := session.CallTool(context.Background(), &mcp.CallToolParams{
+		Name:      "findings_get",
+		Arguments: map[string]any{"finding_id": "f1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.IsError {
+		t.Fatalf("want an error result, got %+v", result.Content)
+	}
+	text := result.Content[0].(*mcp.TextContent).Text
+	if strings.ContainsAny(text, "\x1b\u202e") {
+		t.Fatalf("error result still holds terminal controls: %q", text)
+	}
+	if !strings.Contains(text, "redgnihs") {
+		t.Fatalf("error result lost the message text: %q", text)
 	}
 }
 

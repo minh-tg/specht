@@ -159,69 +159,102 @@ func newMCPServer(api API, opts toolOptions) *mcp.Server {
 
 // registerReadTools adds the read-only tools every credential can use.
 func registerReadTools(server *mcp.Server, api API) {
-	mcp.AddTool(server, &mcp.Tool{Name: "findings_list", Description: "List findings for a project"}, func(_ context.Context, _ *mcp.CallToolRequest, input findingsListInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "findings_list", Description: "List findings for a project"}, func(_ context.Context, _ *mcp.CallToolRequest, input findingsListInput) (*mcp.CallToolResult, any, error) {
 		return handleFindingsList(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "findings_get", Description: "Get finding details by ID"}, func(_ context.Context, _ *mcp.CallToolRequest, input findingInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "findings_get", Description: "Get finding details by ID"}, func(_ context.Context, _ *mcp.CallToolRequest, input findingInput) (*mcp.CallToolResult, any, error) {
 		return handleFindingsGet(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "gate_check", Description: "Check gate status for a project"}, func(_ context.Context, _ *mcp.CallToolRequest, input gateCheckInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "gate_check", Description: "Check gate status for a project"}, func(_ context.Context, _ *mcp.CallToolRequest, input gateCheckInput) (*mcp.CallToolResult, any, error) {
 		return handleGateCheck(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "pr_preview", Description: "Preview the pull-request check for a commit"}, func(_ context.Context, _ *mcp.CallToolRequest, input prPreviewInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "pr_preview", Description: "Preview the pull-request check for a commit"}, func(_ context.Context, _ *mcp.CallToolRequest, input prPreviewInput) (*mcp.CallToolResult, any, error) {
 		return handlePRPreview(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "patch_preview", Description: "Preview the safe patch for a finding"}, func(_ context.Context, _ *mcp.CallToolRequest, input findingInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "patch_preview", Description: "Preview the safe patch for a finding"}, func(_ context.Context, _ *mcp.CallToolRequest, input findingInput) (*mcp.CallToolResult, any, error) {
 		return handlePatchPreview(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "notify_preview", Description: "Preview the tracker or messaging action for a finding"}, func(_ context.Context, _ *mcp.CallToolRequest, input notifyPreviewInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "notify_preview", Description: "Preview the tracker or messaging action for a finding"}, func(_ context.Context, _ *mcp.CallToolRequest, input notifyPreviewInput) (*mcp.CallToolResult, any, error) {
 		return handleNotifyPreview(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "policy_effective", Description: "Show a project's resolved policy with provenance"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "policy_effective", Description: "Show a project's resolved policy with provenance"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
 		return handlePolicyEffective(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "project_teams", Description: "List teams linked to a project"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "project_teams", Description: "List teams linked to a project"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
 		return handleProjectTeams(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "waivers_list", Description: "List waivers for a project"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "waivers_list", Description: "List waivers for a project"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
 		return handleWaiversList(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "waivers_get", Description: "Get waiver details"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "waivers_get", Description: "Get waiver details"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverInput) (*mcp.CallToolResult, any, error) {
 		return handleWaiversGet(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "waiver_events", Description: "List events for a waiver"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "waiver_events", Description: "List events for a waiver"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverInput) (*mcp.CallToolResult, any, error) {
 		return handleWaiverEvents(api, input)
 	})
 }
 
 // registerSessionTools adds the tools whose routes reject API keys.
 func registerSessionTools(server *mcp.Server, api API) {
-	mcp.AddTool(server, &mcp.Tool{Name: "admin_status", Description: "Platform observability snapshot"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "admin_status", Description: "Platform observability snapshot"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 		return handleAdminStatus(api)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "admin_retention_preview", Description: "Count settled reports a purge would delete"}, func(_ context.Context, _ *mcp.CallToolRequest, input retentionPreviewInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "admin_retention_preview", Description: "Count settled reports a purge would delete"}, func(_ context.Context, _ *mcp.CallToolRequest, input retentionPreviewInput) (*mcp.CallToolResult, any, error) {
 		return handleAdminRetentionPreview(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "teams_list", Description: "List all teams"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "teams_list", Description: "List all teams"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 		return handleTeamsList(api)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "watcher_status", Description: "Check CVE watcher daemon health"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "watcher_status", Description: "Check CVE watcher daemon health"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 		return handleWatcherStatus(api)
 	})
 }
 
 // registerMutationTools adds the tools that change state.
 func registerMutationTools(server *mcp.Server, api API) {
-	mcp.AddTool(server, &mcp.Tool{Name: "reachability_set", Description: "Set a finding's reachability assessment"}, func(_ context.Context, _ *mcp.CallToolRequest, input reachabilitySetInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "reachability_set", Description: "Set a finding's reachability assessment"}, func(_ context.Context, _ *mcp.CallToolRequest, input reachabilitySetInput) (*mcp.CallToolResult, any, error) {
 		return handleReachabilitySet(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "waivers_create", Description: "Create an approved waiver for specific findings (finding_ids). Needs the project manager or admin role."}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverCreateInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "waivers_create", Description: "Create an approved waiver for specific findings (finding_ids). Needs the project manager or admin role."}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverCreateInput) (*mcp.CallToolResult, any, error) {
 		return handleWaiversCreate(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "waivers_toggle", Description: "Enable or disable a waiver"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "waivers_toggle", Description: "Enable or disable a waiver"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverInput) (*mcp.CallToolResult, any, error) {
 		return handleWaiversToggle(api, input)
 	})
 }
+
+// addTool registers a typed tool handler whose error text is sanitized before
+// the MCP SDK copies it into the tool result. A handler error can carry the
+// same server- and scanner-supplied strings as a success result, so it needs
+// the same treatment.
+func addTool[In, Out any](server *mcp.Server, tool *mcp.Tool, handler mcp.ToolHandlerFor[In, Out]) {
+	mcp.AddTool(server, tool, func(ctx context.Context, req *mcp.CallToolRequest, input In) (*mcp.CallToolResult, Out, error) {
+		result, output, err := handler(ctx, req, input)
+		return result, output, sanitizeToolError(err)
+	})
+}
+
+// sanitizeToolError strips terminal control characters from an error message
+// while keeping the original error reachable for errors.Is and errors.As. An
+// error with nothing to strip is returned unchanged.
+func sanitizeToolError(err error) error {
+	if err == nil {
+		return nil
+	}
+	message := err.Error()
+	if clean := sanitize.Text(message); clean != message {
+		return sanitizedError{err: err}
+	}
+	return err
+}
+
+type sanitizedError struct {
+	err error
+}
+
+func (e sanitizedError) Error() string { return sanitize.Text(e.err.Error()) }
+
+func (e sanitizedError) Unwrap() error { return e.err }
 
 func textToolResult(text string) (*mcp.CallToolResult, any, error) {
 	// Findings and reports carry scanner-supplied titles, paths and names; strip

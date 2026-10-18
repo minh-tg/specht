@@ -42,41 +42,41 @@ type waiverRequestInput struct {
 
 // registerInventoryTools adds the read-only project, report and history tools.
 func registerInventoryTools(server *mcp.Server, api API) {
-	mcp.AddTool(server, &mcp.Tool{Name: "projects_list", Description: "List the projects this credential can see"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "projects_list", Description: "List the projects this credential can see"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 		return handleProjectsList(api)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "project_get", Description: "Show a project, and the caller's role in it"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "project_get", Description: "Show a project, and the caller's role in it"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
 		return handleProjectGet(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "project_stats", Description: "Count a project's findings by severity and analysis state, with blocking findings and pending waiver requests"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "project_stats", Description: "Count a project's findings by severity and analysis state, with blocking findings and pending waiver requests"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
 		return handleProjectStats(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "project_aging", Description: "Show how long a project's open findings have been open and which are past their SLA"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "project_aging", Description: "Show how long a project's open findings have been open and which are past their SLA"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
 		return handleProjectAging(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "reports_list", Description: "List a project's uploaded reports, newest first"}, func(_ context.Context, _ *mcp.CallToolRequest, input reportsListInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "reports_list", Description: "List a project's uploaded reports, newest first"}, func(_ context.Context, _ *mcp.CallToolRequest, input reportsListInput) (*mcp.CallToolResult, any, error) {
 		return handleReportsList(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "report_get", Description: "Show one uploaded report"}, func(_ context.Context, _ *mcp.CallToolRequest, input reportInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "report_get", Description: "Show one uploaded report"}, func(_ context.Context, _ *mcp.CallToolRequest, input reportInput) (*mcp.CallToolResult, any, error) {
 		return handleReportGet(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "environments_list", Description: "List a project's environments with their tier, exposure and data sensitivity"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "environments_list", Description: "List a project's environments with their tier, exposure and data sensitivity"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
 		return handleEnvironmentsList(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "targets_list", Description: "List what a project's scans were run against"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "targets_list", Description: "List what a project's scans were run against"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
 		return handleTargetsList(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "artifacts_list", Description: "List the images, packages and other artifacts a project's scans found"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "artifacts_list", Description: "List the images, packages and other artifacts a project's scans found"}, func(_ context.Context, _ *mcp.CallToolRequest, input projectInput) (*mcp.CallToolResult, any, error) {
 		return handleArtifactsList(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "finding_events", Description: "Show a finding's history: who decided what, and when"}, func(_ context.Context, _ *mcp.CallToolRequest, input findingEventsInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "finding_events", Description: "Show a finding's history: who decided what, and when"}, func(_ context.Context, _ *mcp.CallToolRequest, input findingEventsInput) (*mcp.CallToolResult, any, error) {
 		return handleFindingEvents(api, input)
 	})
 }
 
 // registerSessionInventoryTools adds the read tools whose routes reject API keys.
 func registerSessionInventoryTools(server *mcp.Server, api API) {
-	mcp.AddTool(server, &mcp.Tool{Name: "scanners_list", Description: "List the scanners Specht reads, the file formats each accepts and the command that produces them"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "scanners_list", Description: "List the scanners Specht reads, the file formats each accepts and the command that produces them"}, func(_ context.Context, _ *mcp.CallToolRequest, _ struct{}) (*mcp.CallToolResult, any, error) {
 		return handleScannersList(api)
 	})
 }
@@ -92,16 +92,16 @@ type environmentUpdateInput struct {
 // registerTriageTools adds the tools that decide findings and ask for waivers. Approving or
 // rejecting a waiver request is left out on purpose: that is the second person's decision.
 func registerTriageTools(server *mcp.Server, api API) {
-	mcp.AddTool(server, &mcp.Tool{Name: "findings_triage", Description: "Record an analysis decision on a finding. A state such as false_positive or not_affected stops it blocking the gate, so only use it on a person's say-so. Needs the project admin role."}, func(_ context.Context, _ *mcp.CallToolRequest, input triageInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "findings_triage", Description: "Record an analysis decision on a finding. A state such as false_positive or not_affected stops it blocking the gate, so only use it on a person's say-so. Needs the project admin role."}, func(_ context.Context, _ *mcp.CallToolRequest, input triageInput) (*mcp.CallToolResult, any, error) {
 		return handleFindingsTriage(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "waivers_request", Description: "Ask for a waiver on specific findings. It waits for a project manager or admin to approve it."}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverRequestInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "waivers_request", Description: "Ask for a waiver on specific findings. It waits for a project manager or admin to approve it."}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverRequestInput) (*mcp.CallToolResult, any, error) {
 		return handleWaiversRequest(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "environments_update", Description: "Change an environment's tier, internet exposure or data sensitivity. These feed the risk score, so only change them on a person's say-so. Needs the project admin role."}, func(_ context.Context, _ *mcp.CallToolRequest, input environmentUpdateInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "environments_update", Description: "Change an environment's tier, internet exposure or data sensitivity. These feed the risk score, so only change them on a person's say-so. Needs the project admin role."}, func(_ context.Context, _ *mcp.CallToolRequest, input environmentUpdateInput) (*mcp.CallToolResult, any, error) {
 		return handleEnvironmentsUpdate(api, input)
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "waivers_withdraw", Description: "Withdraw a waiver request that has not been decided"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverInput) (*mcp.CallToolResult, any, error) {
+	addTool(server, &mcp.Tool{Name: "waivers_withdraw", Description: "Withdraw a waiver request that has not been decided"}, func(_ context.Context, _ *mcp.CallToolRequest, input waiverInput) (*mcp.CallToolResult, any, error) {
 		return handleWaiversWithdraw(api, input)
 	})
 }
