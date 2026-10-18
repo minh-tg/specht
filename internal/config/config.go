@@ -6,6 +6,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -60,8 +61,10 @@ const (
 	DefaultRawRetentionDays = 30
 	// MaxRawRetentionDays caps RAW_RETENTION_DAYS at 100 years. Past about 106751 days a
 	// time.Duration product overflows, which would push the sweep cutoff into the future.
-	MaxRawRetentionDays  = 36500
-	DefaultStalenessMult = 2
+	MaxRawRetentionDays = 36500
+	// MinFingerprintKeyBytes is the shortest FINGERPRINT_KEY accepted.
+	MinFingerprintKeyBytes = 16
+	DefaultStalenessMult   = 2
 	// Rate limiting defaults (token bucket per key): strict for
 	// unauthenticated entry points, generous for authenticated callers, and
 	// tightest for login and register, which accept guessable credentials.
@@ -88,8 +91,12 @@ type Server struct {
 	ShutdownTimeout time.Duration
 	CORSOrigins     string
 	JWTSecret       string
-	LogLevel        string
-	InventoryTTL    time.Duration
+	// FingerprintKey is FINGERPRINT_KEY decoded from hex. When set, scanners hash
+	// secrets with it and the server never stores a key in the database. Empty
+	// means the key is made on first use and kept in instance_secrets.
+	FingerprintKey []byte
+	LogLevel       string
+	InventoryTTL   time.Duration
 	// SweepInterval is the period of the analysis-expiry and waiver-expiry
 	// background sweepers. Must be positive.
 	SweepInterval time.Duration
@@ -457,6 +464,14 @@ func Load() (*Server, error) {
 			return nil, fmt.Errorf("SESSION_MAX_AGE must be a positive duration such as 720h, got %q", v)
 		}
 		s.SessionMaxAge = d
+	}
+
+	if v := strings.TrimSpace(os.Getenv("FINGERPRINT_KEY")); v != "" {
+		key, err := hex.DecodeString(v)
+		if err != nil || len(key) < MinFingerprintKeyBytes {
+			return nil, fmt.Errorf("FINGERPRINT_KEY must be hex that decodes to at least %d bytes (for example the output of openssl rand -hex 32)", MinFingerprintKeyBytes)
+		}
+		s.FingerprintKey = key
 	}
 
 	if v := os.Getenv("RAW_RETENTION_DAYS"); v != "" {

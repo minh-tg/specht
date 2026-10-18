@@ -749,3 +749,29 @@ func TestLoad_SSOPublicClient(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, cfg.SSO.PublicClient)
 }
+
+func TestLoad_FingerprintKeyIsDecodedFromHex(t *testing.T) {
+	t.Setenv("FINGERPRINT_KEY", " 000102030405060708090a0b0c0d0e0f ")
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.Equal(t, []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}, cfg.FingerprintKey)
+}
+
+func TestLoad_FingerprintKeyUnsetLeavesTheKeyToTheDatabase(t *testing.T) {
+	t.Setenv("FINGERPRINT_KEY", "")
+	cfg, err := Load()
+	assert.NoError(t, err)
+	assert.Empty(t, cfg.FingerprintKey)
+}
+
+// The error must not repeat the value, which is a secret.
+func TestLoad_InvalidFingerprintKeyFailsWithoutEchoingIt(t *testing.T) {
+	for _, bad := range []string{"not-hex-at-all-not-hex-at-all-xx", "00ff", "abc"} {
+		t.Run(bad, func(t *testing.T) {
+			t.Setenv("FINGERPRINT_KEY", bad)
+			_, err := Load()
+			assert.ErrorContains(t, err, "FINGERPRINT_KEY")
+			assert.NotContains(t, err.Error(), bad)
+		})
+	}
+}

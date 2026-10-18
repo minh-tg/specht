@@ -246,9 +246,11 @@ func (s *Scanner) UsesFingerprintKey() bool { return true }
 // found. The identity is the rule, the file and a digest of the credential, so
 // two different keys in one file are two findings, the same key stays one
 // finding when its line moves or when many commits contain it, and a rotated key
-// is a new one. The digest is keyed (HMAC-SHA-256 with the instance key), so
-// someone who can read the database cannot test guesses against it, and the
-// credential itself is never stored.
+// is a new one. The digest is keyed (HMAC-SHA-256 with the instance key), and the
+// credential itself is never stored. Where the key lives decides what the key
+// protects: with FINGERPRINT_KEY set it is outside the database, so a database
+// reader cannot test guesses against the digests; without it the key is a row in
+// instance_secrets next to them, and a reader who can see both can.
 //
 // A report written with --redact has no credential to hash. Gitleaks' own
 // fingerprint (commit, file, rule, line) then tells findings apart, and failing

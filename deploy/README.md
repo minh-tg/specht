@@ -90,6 +90,27 @@ compose defaults differ, which is noted.
 | `SESSION_MAX_AGE` | `720h` | Absolute lifetime of a sign-in. Each refresh renews the token for a week, but never past this long after the original login; the next refresh then answers `401 refresh_failed` and the user signs in again. Must be a positive duration. |
 | `RAW_RETENTION_DAYS` | `30` | Days a report keeps its `raw_data` payload. Each sweep on `LIFECYCLE_SWEEP_INTERVAL` clears the payload of every report older than this and keeps the report row, its findings and their summaries. Responses then carry `raw_data_expired: true` on the report and on the finding detail, with `raw_data_expires_at` as the date the window ended, and the finding detail page says when the raw evidence expired. `0` keeps every payload. Must be a whole number of days from 0 to 36500 (100 years); a negative, non-numeric or larger value fails startup. |
 | `LIFECYCLE_SWEEP_INTERVAL` | `5m` | Period of the analysis-expiry, waiver-expiry, stale-report and dead-refresh-token sweeps; must be a positive duration. The stale-report sweep marks a report that has been `processing` for more than 10 minutes as `failed` and removes the findings it created that no occurrence supports (it archives ones that already had triage). The refresh token sweep deletes tokens that expired or were revoked more than 7 days ago, at most 50,000 rows per run. |
+| `FINGERPRINT_KEY` | *(empty)* | Hex key, at least 16 bytes (for example `openssl rand -hex 32`), that Gitleaks secret identities are hashed with. Empty: the server makes a key on first use and stores it in the `instance_secrets` table. Set: the key stays out of the database. A value that is not hex or decodes to fewer than 16 bytes fails startup. See "Fingerprint key" below. |
+
+### Fingerprint key
+
+Gitleaks findings are identified by a keyed digest of the secret (HMAC-SHA-256), and the secret
+itself is never stored. By default the key is a row in `instance_secrets`, next to the digests.
+That row travels with every database backup, and anyone who can read it and the digests can test
+a guessed secret against them. Set `FINGERPRINT_KEY` to keep the key outside the database.
+
+Keep the key as long as the data: a different key gives every secret finding a new identity, so the
+old ones stop matching and are not closed by a later scan. To move an instance that already has
+a stored key, set `FINGERPRINT_KEY` to the stored value before the first restart, so the
+identities stay the same:
+
+```sh
+psql "$DATABASE_URL" -Atc "SELECT encode(value, 'hex') FROM instance_secrets WHERE name = 'fingerprint-key'"
+```
+
+Once the server runs with that value, delete the row with
+`DELETE FROM instance_secrets WHERE name = 'fingerprint-key'`. Back the key up with your other
+secrets, because a restore of the database alone no longer carries it.
 
 Registration does not verify email addresses: an account holds whatever address
 its creator typed, so keep `REGISTRATION_ENABLED` closed unless you accept that.
