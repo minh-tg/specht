@@ -79,8 +79,9 @@ gate after your scan:
 
 The action downloads the `specht-adapter` for the release tag you pin, verifies its
 signature, and runs it to upload the report and evaluate the gate. The adapter and the
-server must be the same release, so pin the tag that matches your server. The step exits `0` when the
-gate passes, `1` when a severity threshold is breached, and `2` on a runtime error.
+server must be the same release, so pin the tag that matches your server. The step exits
+`0` when the gate passes, `1` when a severity threshold is breached, and `2` on a runtime
+error.
 
 Complete pipelines for GitHub Actions and GitLab are in [`examples/ci/`](examples/ci/).
 
