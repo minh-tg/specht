@@ -14,7 +14,7 @@ SONAR_PORT="${SONAR_PORT:-9001}"
 PROJECT_KEY="${SONAR_PROJECT_KEY:-specht}"
 # Disable JGit blame by default; it fails on this checkout's local object store.
 SONAR_SCM_DISABLED="${SONAR_SCM_DISABLED:-true}"
-SONAR_EXCLUSIONS="${SONAR_EXCLUSIONS:-node_modules/**,frontend/dist/**,frontend/node_modules/**,.git/**,.codeql-results/**,.direnv/**,.agents/**,.opencode/**,.claude/**,.superpowers/**,openspec/**,plannotator/**,local-docs/**,static_analysis/**,static_analysis_codeql_1/**,AGENTS.md,Handoff.md,CLAUDE.md,.env*,bin/**,cmd/server/dist/dist/**}"
+SONAR_EXCLUSIONS="${SONAR_EXCLUSIONS:-node_modules/**,frontend/dist/**,frontend/node_modules/**,.git/**,.codeql-results/**,.direnv/**,.env*,bin/**,cmd/server/dist/dist/**}"
 
 : "${SONAR_ADMIN_PASSWORD:?set SONAR_ADMIN_PASSWORD, usually admin for a fresh local instance}"
 
