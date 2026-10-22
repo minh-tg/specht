@@ -1,11 +1,10 @@
 import { APIError } from "@/api/client";
 import {
-  MAX_PAGE_SIZE,
   queryKeys,
   useChangeGate,
+  useChangeReports,
   useGateStatus,
   useProject,
-  useReports,
   useScanSignal,
 } from "@/api/hooks";
 import { ErrorState } from "@/components/ErrorState";
@@ -92,8 +91,7 @@ export function ChangeView() {
   useDocumentTitle(`${slug} · Change ${short}`);
 
   const projectQuery = useProject(slug);
-  // The report for a commit can be older than the newest 20, so ask for the longest list.
-  const reportsQuery = useReports(slug, MAX_PAGE_SIZE);
+  const reportsQuery = useChangeReports(slug, commit, reportParam);
   const report = resolveReport(reportsQuery.data, commit, reportParam);
   const degraded = report !== null
     && (isReportInProgress(report.status) || report.status === "failed");

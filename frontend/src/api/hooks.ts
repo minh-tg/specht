@@ -419,6 +419,30 @@ export function useReports(projectSlug: string, limit?: number) {
   });
 }
 
+/** Resolves exact scan evidence without a capped walk through project history. */
+export function useChangeReports(projectSlug: string, commit: string, reportId: string | null) {
+  return useQuery({
+    queryKey: [...queryKeys.reports(projectSlug), "change", commit, reportId ?? ""],
+    queryFn: async () => {
+      if (!reportId) {
+        return apiFetch<Report[]>(
+          `/api/v1/projects/${encodeURIComponent(projectSlug)}/reports?commit=${
+            encodeURIComponent(commit)
+          }`,
+        );
+      }
+      try {
+        const report = await apiFetch<Report>(`/api/v1/reports/${encodeURIComponent(reportId)}`);
+        return [report];
+      } catch (error) {
+        if (error instanceof APIError && error.status === 404) return [];
+        throw error;
+      }
+    },
+    enabled: !!projectSlug && !!commit,
+  });
+}
+
 export function useGateStatus(projectSlug: string) {
   return useQuery({
     queryKey: queryKeys.gate(projectSlug),
