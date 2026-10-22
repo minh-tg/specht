@@ -480,6 +480,14 @@ Terminate TLS at the proxy and forward plain HTTP. Set `TRUSTED_PROXIES` to
 only the proxy-hop CIDRs. `CORS_ORIGINS` stays empty unless the UI is served
 from a different origin than the API.
 
+Duplicated browser tabs coordinate refresh through a same-origin SharedWorker.
+Browsers without SharedWorker use Web Locks and BroadcastChannel instead; this
+fallback requires HTTPS (localhost also qualifies as a secure context). Browsers
+with neither mechanism support single-tab sessions only. Credentials remain in
+sessionStorage and browser memory. The fallback stores only spent-token SHA-256
+digests and expiry times in localStorage; a missing peer response never causes a
+spent token to be submitted again. Server-side replay rejection is unchanged.
+
 The server reads `X-Forwarded-For`, `X-Real-IP` and `X-Forwarded-Proto` only
 when the direct peer is inside `TRUSTED_PROXIES`. A request from any other peer
 keeps its connection address and its forwarding headers are never read. For a

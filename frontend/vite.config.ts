@@ -36,6 +36,12 @@ export default defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
+  // A stable worker URL keeps old and new tabs on the same rotation owner
+  // across deployments. The server serves this entry with revalidation.
+  worker: {
+    format: "es",
+    rolldownOptions: { output: { entryFileNames: "session-refresh.js" } },
+  },
   build: {
     outDir: "dist",
     // The server's Content-Security-Policy allows fonts only from its own origin, so a small font
