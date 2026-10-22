@@ -6,6 +6,7 @@ import {
   clearStoredSession,
   getStoredRefreshToken,
   getStoredSession,
+  refreshAccessToken,
   setAuthToken,
   setRefreshFailedHandler,
   setStoredSession,
@@ -70,6 +71,43 @@ describe("session persistence", () => {
     expect(getStoredSession()).toBeNull();
     expect(getStoredRefreshToken()).toBeNull();
   });
+});
+
+describe("refresh session ownership", () => {
+  it.each(["logout", "new-login"])(
+    "does not overwrite a %s while refresh is pending",
+    async (change) => {
+      let finish!: (value: Response) => void;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(() =>
+          new Promise<Response>((resolve) => {
+            finish = resolve;
+          })
+        ),
+      );
+      setStoredSession("old-access", "old-refresh", { userId: "u1", email: "u1@example.com" });
+      const pending = refreshAccessToken("old-refresh");
+      if (change === "logout") clearStoredSession();
+      else {setStoredSession("other-access", "other-refresh", {
+          userId: "u2",
+          email: "u2@example.com",
+        });}
+      finish(
+        new Response(
+          JSON.stringify({
+            token: "rotated",
+            refresh_token: "rotated-refresh",
+            user_id: "u1",
+            email: "u1@example.com",
+          }),
+          { status: 200 },
+        ),
+      );
+      await expect(pending).rejects.toMatchObject({ status: 409, code: "session_changed" });
+      expect(getStoredRefreshToken()).toBe(change === "logout" ? null : "other-refresh");
+    },
+  );
 });
 
 describe("apiFetch auth header", () => {

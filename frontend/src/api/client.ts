@@ -1,3 +1,5 @@
+import { forgetSharedRefresh, sharedRefresh, SharedRefreshError } from "./sharedRefresh";
+
 const BASE_URL = "";
 
 const SESSION_STORAGE_KEY = "specht.session";
@@ -152,16 +154,33 @@ async function send<T>(
 }
 
 export async function refreshAccessToken(refreshToken: string): Promise<Session> {
-  const { data: { token, refresh_token: newRefresh, user_id, email } } = await send<{
-    token: string;
-    refresh_token: string;
-    user_id: string;
-    email: string;
-  }>(
-    "/api/v1/auth/refresh",
-    { method: "POST", body: JSON.stringify({ refresh_token: refreshToken }) },
-    null,
-  );
+  const original = getStoredRefreshToken();
+  const load = async (token: string) =>
+    (await send<{
+      token: string;
+      refresh_token: string;
+      user_id: string;
+      email: string;
+    }>(
+      "/api/v1/auth/refresh",
+      { method: "POST", body: JSON.stringify({ refresh_token: token }) },
+      null,
+    )).data;
+  let response;
+  try {
+    const coordinated = sharedRefresh(refreshToken, load);
+    response = coordinated ? await coordinated : await load(refreshToken);
+  } catch (error) {
+    if (error instanceof SharedRefreshError) {
+      throw new APIError(error.status, error.code, error.message, error.retryAfter);
+    }
+    throw error;
+  }
+  const { token, refresh_token: newRefresh, user_id, email } = response;
+  const current = getStoredRefreshToken();
+  if (original === refreshToken && current !== refreshToken && current !== newRefresh) {
+    throw new APIError(409, "session_changed", "The active session changed during refresh");
+  }
   const session: Session = {
     token,
     refreshToken: newRefresh,
@@ -174,6 +193,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<Session>
 
 /** Revokes the refresh token server-side so the session cannot be resumed. */
 export async function revokeRefreshToken(refreshToken: string): Promise<void> {
+  forgetSharedRefresh(refreshToken);
   try {
     await send<void>(
       "/api/v1/auth/logout",
