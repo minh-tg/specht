@@ -297,6 +297,31 @@ func (a *gateFindingRepo) ListIntroducedGateCandidates(ctx context.Context, proj
 	return result, nil
 }
 
+func (a *gateFindingRepo) ListIntroducedCommitCandidates(ctx context.Context, projectID, commit string, minSeverityRank int16) ([]gate.Finding, error) {
+	if a.stores == nil || a.stores.Findings == nil {
+		return nil, fmt.Errorf("finding store unavailable")
+	}
+	introduced, err := a.stores.Findings.ListFindingsIntroducedByCommit(ctx, projectID, commit)
+	if err != nil {
+		return nil, err
+	}
+	ids := make(map[string]bool, len(introduced))
+	for _, f := range introduced {
+		ids[f.ID] = true
+	}
+	candidates, err := a.ListBlockingFindings(ctx, projectID, minSeverityRank)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]gate.Finding, 0, len(introduced))
+	for _, f := range candidates {
+		if ids[f.ID] {
+			result = append(result, f)
+		}
+	}
+	return result, nil
+}
+
 type gateWaiverRepo struct {
 	stores *port.Stores
 }

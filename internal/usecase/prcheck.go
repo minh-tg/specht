@@ -55,10 +55,6 @@ func (u *Usecases) requireReportInProject(ctx context.Context, projectID, report
 // defaultProvider is the adapter used when callers name none.
 const defaultProvider = "github"
 
-// previewListPageSize bounds one finding-list page; listIntroducedAtCommit
-// walks pages so large projects never silently drop findings from a check.
-const previewListPageSize = 1000
-
 // normalizeRevision canonicalizes a commit SHA for storage and comparison:
 // surrounding whitespace dropped, hex lowercased. SHAs are
 // case-insensitive; branch names are not (and never pass through here).
@@ -341,27 +337,10 @@ func (u *Usecases) providers() ProviderRegistry {
 	return reg
 }
 
-// listIntroducedAtCommit returns every finding a revision introduced,
-// walking list pages so large projects never silently drop findings from
-// a check. Stored commits are normalized at ingest; the input commit is
-// normalized by the caller.
+// listIntroducedAtCommit reads the union of completed reports' introduced
+// sets at the revision. First-ever attribution does not define a change.
 func (u *Usecases) listIntroducedAtCommit(ctx context.Context, projectID, commit string) ([]port.Finding, error) {
-	var out []port.Finding
-	for offset := int32(0); ; {
-		page, err := u.deps.Stores.Findings.ListByProject(ctx, projectID, port.ListFindingsParams{Limit: previewListPageSize, Offset: offset})
-		if err != nil {
-			return nil, err
-		}
-		for _, f := range page {
-			if f.IntroducedCommitSha != nil && normalizeRevision(*f.IntroducedCommitSha) == commit {
-				out = append(out, f)
-			}
-		}
-		if len(page) < previewListPageSize {
-			return out, nil
-		}
-		offset += int32(len(page))
-	}
+	return u.deps.Stores.Findings.ListFindingsIntroducedByCommit(ctx, projectID, commit)
 }
 
 // blockedSet indexes gate blockers for membership tests.
