@@ -34,6 +34,19 @@ func (m *mockFindingsRepo) ListIntroducedGateCandidates(ctx context.Context, pro
 	return res, nil
 }
 
+func (m *mockFindingsRepo) ListIntroducedCommitCandidates(ctx context.Context, projectID, commit string, minSeverityRank int16) ([]Finding, error) {
+	if m.err != nil {
+		return nil, m.err
+	}
+	var res []Finding
+	for _, f := range m.findings {
+		if f.IntroducedCommitSha == commit && f.CurrentSeverityRank >= minSeverityRank {
+			res = append(res, f)
+		}
+	}
+	return res, nil
+}
+
 type mockWaiversRepo struct {
 	WaiversRepo
 	waivers []Waiver

@@ -670,7 +670,7 @@ func (r *pgFindingRepo) RecordReportIntroducedFindings(ctx context.Context, repo
 
 func (r *pgFindingRepo) ListFindingsIntroducedByCommit(ctx context.Context, projectID pgtype.UUID, commit pgtype.Text) ([]sqlc.Finding, error) {
 	return r.q.ListFindingsIntroducedByCommit(ctx, sqlc.ListFindingsIntroducedByCommitParams{
-		ProjectID:           projectID,
-		IntroducedCommitSha: commit,
+		ProjectID: projectID,
+		CommitSha: commit,
 	})
 }

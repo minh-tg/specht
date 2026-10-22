@@ -95,8 +95,8 @@ type Finding struct {
 	// IntroducedByReportID is the report that first observed the finding
 	// (empty when unattributed). Introduced-only evaluations match on it.
 	IntroducedByReportID string
-	// IntroducedCommitSha is the revision the introducing report scanned
-	// (empty when unattributed). Commit-scoped evaluations match on it.
+	// IntroducedCommitSha is legacy first-observation metadata, not the
+	// candidate source for commit-scoped evaluations.
 	IntroducedCommitSha string
 }
 
@@ -146,6 +146,9 @@ type FindingsRepo interface {
 	// The project id is part of the lookup so a report of another project can
 	// never contribute findings.
 	ListIntroducedGateCandidates(ctx context.Context, projectID, reportID string, minSeverityRank int16) ([]Finding, error)
+	// ListIntroducedCommitCandidates uses completed reports' introduced sets,
+	// not the finding's first global attribution.
+	ListIntroducedCommitCandidates(ctx context.Context, projectID, commit string, minSeverityRank int16) ([]Finding, error)
 }
 
 // WaiversRepo supplies the active waivers for a project.
@@ -211,8 +214,8 @@ type Gate interface {
 	// exemptions, and source policies apply unchanged.
 	EvaluateIntroducedOnly(ctx context.Context, projectID string, minSeverityRank int16, reportID string, policies []GatePolicy) (Decision, error)
 	// EvaluateIntroducedAtCommit evaluates the gate over findings one
-	// revision introduced (change-scoped pull-request feedback). Findings
-	// without commit attribution never match.
+	// revision introduced, using the union of completed reports at that
+	// revision (change-scoped pull-request feedback).
 	EvaluateIntroducedAtCommit(ctx context.Context, projectID string, minSeverityRank int16, commit string, policies []GatePolicy) (Decision, error)
 }
 
@@ -257,9 +260,14 @@ func (g *gate) EvaluateIntroducedOnly(ctx context.Context, projectID string, min
 }
 
 func (g *gate) EvaluateIntroducedAtCommit(ctx context.Context, projectID string, minSeverityRank int16, commit string, policies []GatePolicy) (Decision, error) {
-	return g.evaluate(ctx, projectID, minSeverityRank, policies, func(f Finding) bool {
-		return commit != "" && f.IntroducedCommitSha == commit
-	})
+	if commit == "" {
+		return Decision{Status: StatusPass, WaivedFindingIDs: []string{}}, nil
+	}
+	findings, err := g.findings.ListIntroducedCommitCandidates(ctx, projectID, commit, minSeverityRank)
+	if err != nil {
+		return Decision{Status: StatusError}, fmt.Errorf("list commit gate candidates: %w", err)
+	}
+	return g.evaluateFindings(ctx, projectID, findings, policies, nil)
 }
 
 func (g *gate) evaluate(ctx context.Context, projectID string, minSeverityRank int16, policies []GatePolicy, keep func(Finding) bool) (Decision, error) {

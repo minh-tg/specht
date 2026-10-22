@@ -44,8 +44,11 @@ func prcheckHarness(t *testing.T) (*Usecases, *mockFindingRepo) {
 		CurrentSeverity: "medium", CurrentSeverityRank: 2,
 		State: "open", IntroducedCommitSha: &older,
 	}
-	fr.listByProjectFn = func(ctx context.Context, projectID string, params port.ListFindingsParams) ([]port.Finding, error) {
-		return []port.Finding{f1, f2}, nil
+	fr.listFindingsIntroducedByCommitFn = func(ctx context.Context, projectID, commit string) ([]port.Finding, error) {
+		if commit != prcheckCommit {
+			return nil, nil
+		}
+		return []port.Finding{f1}, nil
 	}
 	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
 		if id == f1.ID {
@@ -232,26 +235,24 @@ func TestPreviewPRCheck_ForeignReportDenied(t *testing.T) {
 	assert.ErrorIs(t, err, ErrProjectAccessDenied)
 }
 
-func TestPreviewPRCheck_PaginatesLargeProjects(t *testing.T) {
+func TestPreviewPRCheck_UsesMaterializedCommitSet(t *testing.T) {
 	pr, rr, fr := makeTestRepos()
 	pr.getBySlugFn = func(ctx context.Context, slug string) (port.Project, error) {
 		return makeProject(true), nil
 	}
-	commit := prcheckCommit
+	commit := "earlier-commit"
 	target := port.Finding{
 		ID: "00000000-0000-0000-0000-000000000021", ProjectID: makeProject(true).ID,
 		FindingKind: "sast", Fingerprint: "fp-target", CurrentTitle: "Deep cut",
 		CurrentSeverity: "high", CurrentSeverityRank: 4,
 		State: "open", IntroducedCommitSha: &commit,
 	}
-	fr.listByProjectFn = func(ctx context.Context, projectID string, params port.ListFindingsParams) ([]port.Finding, error) {
-		if params.Offset == 0 {
-			page := make([]port.Finding, 0, params.Limit)
-			for i := int32(0); i < params.Limit; i++ {
-				page = append(page, port.Finding{ID: "pad", ProjectID: projectID})
-			}
-			return page, nil
-		}
+	fr.listByProjectFn = func(context.Context, string, port.ListFindingsParams) ([]port.Finding, error) {
+		t.Fatal("a commit check must not walk unrelated project findings")
+		return nil, nil
+	}
+	fr.listFindingsIntroducedByCommitFn = func(_ context.Context, projectID, commit string) ([]port.Finding, error) {
+		assert.Equal(t, prcheckCommit, commit)
 		return []port.Finding{target}, nil
 	}
 	fr.getByIDFn = func(ctx context.Context, id string) (port.Finding, error) {
@@ -271,7 +272,7 @@ func TestPreviewPRCheck_PaginatesLargeProjects(t *testing.T) {
 		ProjectSlug: "my-app", CommitSha: prcheckCommit,
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "failure", out.Conclusion, "findings past the first page must not be silently dropped")
+	assert.Equal(t, "failure", out.Conclusion, "a finding introduced by this report must block even if first seen at another commit")
 }
 
 func TestPreviewPRCheck_CommitCaseInsensitive(t *testing.T) {

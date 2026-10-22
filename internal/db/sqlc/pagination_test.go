@@ -24,7 +24,7 @@ func TestPaginatedQueriesUseStableTieBreakers(t *testing.T) {
 		{"introduced gate latest occurrence", listIntroducedGateCandidates, "ORDER BY fo.observed_at DESC, fo.id DESC"},
 		{"introduced gate latest reachability", listIntroducedGateCandidates, "ORDER BY ra.updated_at DESC, ra.id DESC"},
 		{"findings introduced by report", listFindingsIntroducedByReport, "ORDER BY current_severity_rank DESC, created_at DESC, id DESC"},
-		{"findings introduced by commit", listFindingsIntroducedByCommit, "ORDER BY current_severity_rank DESC, created_at DESC, id DESC"},
+		{"findings introduced by commit", listFindingsIntroducedByCommit, "ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC"},
 		{"reports", listReportsByProject, "ORDER BY created_at DESC, id DESC"},
 		{"finding events", listFindingEvents, "ORDER BY created_at DESC, id DESC"},
 		{"evidence", listEvidenceByFinding, "ORDER BY created_at DESC, id DESC"},

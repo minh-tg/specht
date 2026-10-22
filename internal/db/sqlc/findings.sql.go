@@ -1328,20 +1328,28 @@ func (q *Queries) ListFindingsByProject(ctx context.Context, arg ListFindingsByP
 }
 
 const listFindingsIntroducedByCommit = `-- name: ListFindingsIntroducedByCommit :many
-SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version, introduced_by_report_id, introduced_commit_sha FROM findings
-WHERE project_id = $1
-  AND introduced_commit_sha = $2
-  AND state <> 'archived'
-ORDER BY current_severity_rank DESC, created_at DESC, id DESC
+SELECT f.id, f.project_id, f.finding_kind, f.fingerprint, f.current_title, f.current_severity, f.current_severity_rank, f.current_score, f.state, f.triage_status, f.assignee_id, f.first_seen_at, f.last_seen_at, f.fixed_at, f.created_at, f.updated_at, f.analysis_state, f.gate_effect, f.analysis_expires_at, f.analysis_reason, f.analysis_source, f.analysis_updated_at, f.analysis_updated_by, f.manual_override, f.review_required, f.fingerprint_version, f.introduced_by_report_id, f.introduced_commit_sha FROM findings f
+WHERE f.project_id = $1
+  AND f.state <> 'archived'
+  AND EXISTS (
+      SELECT 1
+      FROM report_introduced_findings rif
+      JOIN reports r ON r.id = rif.report_id
+      WHERE rif.finding_id = f.id
+        AND r.project_id = $1
+        AND r.commit_sha = $2
+        AND r.status = 'completed'
+  )
+ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 `
 
 type ListFindingsIntroducedByCommitParams struct {
-	ProjectID           pgtype.UUID `json:"project_id"`
-	IntroducedCommitSha pgtype.Text `json:"introduced_commit_sha"`
+	ProjectID pgtype.UUID `json:"project_id"`
+	CommitSha pgtype.Text `json:"commit_sha"`
 }
 
 func (q *Queries) ListFindingsIntroducedByCommit(ctx context.Context, arg ListFindingsIntroducedByCommitParams) ([]Finding, error) {
-	rows, err := q.db.Query(ctx, listFindingsIntroducedByCommit, arg.ProjectID, arg.IntroducedCommitSha)
+	rows, err := q.db.Query(ctx, listFindingsIntroducedByCommit, arg.ProjectID, arg.CommitSha)
 	if err != nil {
 		return nil, err
 	}
