@@ -20,7 +20,7 @@ const (
 // given project, so tests of the introduced-only gate reach the evaluation.
 func stubReportOwnedBy(rr *mockReportRepo, projectID string) {
 	rr.getByIDFn = func(_ context.Context, id string) (port.Report, error) {
-		return port.Report{ID: id, ProjectID: projectID}, nil
+		return port.Report{ID: id, ProjectID: projectID, Status: "completed"}, nil
 	}
 }
 
@@ -82,7 +82,7 @@ func TestGetIntroducedGateStatus_OwnReportEvaluates(t *testing.T) {
 		return project, nil
 	}
 	rr.getByIDFn = func(_ context.Context, id string) (port.Report, error) {
-		return port.Report{ID: id, ProjectID: project.ID}, nil
+		return port.Report{ID: id, ProjectID: project.ID, Status: "completed"}, nil
 	}
 	var gotReport string
 	fr.listIntroducedGateCandidatesFn = func(_ context.Context, projectID, reportID string, minRank int16) ([]port.GateCandidate, error) {
