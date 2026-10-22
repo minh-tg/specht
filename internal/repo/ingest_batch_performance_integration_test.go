@@ -71,14 +71,17 @@ func TestIngestBatchQueryCountRegression(t *testing.T) {
 		queries := counter.count.Load()
 		samples = append(samples, sample{findings: size, queries: queries})
 		t.Logf("findings=%d queries=%d elapsed=%s queries/finding=%.2f", size, queries, elapsed, float64(queries)/float64(size))
-		require.LessOrEqual(t, float64(queries)/float64(size), 3.5, "bulk ingestion should stay near three per-finding writes plus fixed report overhead")
+		// Each finding now commits its row and scope maximum together: BEGIN,
+		// finding upsert, scope upsert, aggregate refresh and COMMIT, plus
+		// attribution/fix-dimension writes. Keep that cost bounded.
+		require.LessOrEqual(t, float64(queries)/float64(size), 7.5, "atomic scope persistence plus report overhead must remain bounded")
 	}
 
 	for i := 1; i < len(samples); i++ {
 		additionalFindings := samples[i].findings - samples[i-1].findings
 		additionalQueries := samples[i].queries - samples[i-1].queries
 		queriesPerAdditionalFinding := float64(additionalQueries) / float64(additionalFindings)
-		require.LessOrEqual(t, queriesPerAdditionalFinding, 3.5, "query growth should remain bounded as the report grows")
+		require.LessOrEqual(t, queriesPerAdditionalFinding, 7.5, "query growth should remain bounded as the report grows")
 	}
 }
 

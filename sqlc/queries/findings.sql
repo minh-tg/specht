@@ -23,6 +23,21 @@ INSERT INTO findings (
     updated_at = NOW()
 RETURNING *;
 
+-- name: RefreshFindingScopeSeverity :one
+-- The caller holds the finding row lock before changing its scope rows.
+UPDATE findings f
+SET current_severity = highest.severity,
+    current_severity_rank = highest.severity_rank
+FROM (
+    SELECT severity, severity_rank
+    FROM finding_scope_severities
+    WHERE finding_id = $1
+    ORDER BY severity_rank DESC, scope_hash
+    LIMIT 1
+) highest
+WHERE f.id = $1
+RETURNING f.*;
+
 -- name: CreateFindingIfAbsent :one
 -- Watcher persist path: insert the finding only when absent. Returns
 -- pgx.ErrNoRows when a row with the same (project_id, finding_kind,
