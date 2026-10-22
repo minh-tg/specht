@@ -560,11 +560,19 @@ WHERE rif.report_id = $1
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC;
 
 -- name: ListFindingsIntroducedByCommit :many
-SELECT * FROM findings
-WHERE project_id = $1
-  AND introduced_commit_sha = $2
-  AND state <> 'archived'
-ORDER BY current_severity_rank DESC, created_at DESC, id DESC;
+SELECT f.* FROM findings f
+WHERE f.project_id = $1
+  AND f.state <> 'archived'
+  AND EXISTS (
+      SELECT 1
+      FROM report_introduced_findings rif
+      JOIN reports r ON r.id = rif.report_id
+      WHERE rif.finding_id = f.id
+        AND r.project_id = $1
+        AND r.commit_sha = sqlc.narg(commit_sha)
+        AND r.status = 'completed'
+  )
+ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC;
 
 -- name: MarkAbsentScopedFindingsFixed :many
 -- Scan-equivalence auto-fix: closes findings whose most recent observation
