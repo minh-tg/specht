@@ -274,7 +274,7 @@ describe("ChangeView", () => {
     renderPage();
     await screen.findByRole("heading", { level: 1 });
     expect(globalThis.fetch).toHaveBeenCalledWith(
-      `/api/v1/projects/acme/reports?commit=${FULL_SHA}`,
+      `/api/v1/projects/acme/reports?commit=${FULL_SHA}&commit_prefix=true`,
       expect.anything(),
     );
   });

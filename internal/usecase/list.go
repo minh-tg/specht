@@ -764,8 +764,9 @@ func fixFallback(kind string) string {
 // ReportFilter narrows the report list to one branch or one commit. Empty
 // fields match every report.
 type ReportFilter struct {
-	Branch    string
-	CommitSha string
+	Branch       string
+	CommitSha    string
+	CommitPrefix bool
 }
 
 // ListReports returns the project's reports, newest first.
@@ -779,8 +780,9 @@ func (u *Usecases) ListReports(ctx context.Context, projectSlug string, filter R
 	}
 
 	reports, err := u.deps.Stores.Reports.ListByProject(ctx, project.ID, port.ReportFilter{
-		Branch:    filter.Branch,
-		CommitSha: filter.CommitSha,
+		Branch:       filter.Branch,
+		CommitSha:    filter.CommitSha,
+		CommitPrefix: filter.CommitPrefix,
 	}, limit, offset)
 	if err != nil {
 		return nil, fmt.Errorf("list reports: %w", err)

@@ -1156,8 +1156,10 @@ type SignoffStore interface {
 type ReportFilter struct {
 	// Branch is an exact branch name.
 	Branch string
-	// CommitSha is an exact commit id.
+	// CommitSha is an exact commit id unless CommitPrefix is set.
 	CommitSha string
+	// CommitPrefix matches a case-insensitive commit prefix.
+	CommitPrefix bool
 }
 
 // Report is an ingested scan report row.

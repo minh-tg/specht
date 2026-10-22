@@ -95,11 +95,12 @@ func (r *pgReportRepo) GetByID(ctx context.Context, id pgtype.UUID) (sqlc.Report
 
 func (r *pgReportRepo) ListByProject(ctx context.Context, projectID pgtype.UUID, filter port.ReportFilter, limit, offset int32) ([]sqlc.Report, error) {
 	return r.q.ListReportsByProject(ctx, sqlc.ListReportsByProjectParams{
-		ProjectID: projectID,
-		Branch:    filter.Branch,
-		CommitSha: filter.CommitSha,
-		Limit:     limit,
-		Offset:    offset,
+		ProjectID:    projectID,
+		Branch:       filter.Branch,
+		CommitSha:    filter.CommitSha,
+		CommitPrefix: filter.CommitPrefix,
+		Limit:        limit,
+		Offset:       offset,
 	})
 }
 

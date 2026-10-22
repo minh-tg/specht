@@ -76,6 +76,15 @@ func TestE2E_ReportListBranchCommitAndETag(t *testing.T) {
 		require.Empty(t, list("commit=ccccccc3333"))
 	})
 
+	t.Run("explicit abbreviated commit", func(t *testing.T) {
+		require.Empty(t, list("commit=bbbbbbb"), "the exact-match default is unchanged")
+		got := list("commit=BBBBBBB&commit_prefix=true")
+		require.Len(t, got, 1)
+		require.Equal(t, onFeature.ReportID, got[0].ID)
+		require.Empty(t, list("commit=bbbbbbb&commit_prefix=true&branch=main"))
+		require.Empty(t, list("commit=ccccccc&commit_prefix=true"))
+	})
+
 	t.Run("malformed filters are refused", func(t *testing.T) {
 		status, _, raw := getReports(t, slug, "commit=zzz", "")
 		require.Equal(t, http.StatusBadRequest, status, string(raw))

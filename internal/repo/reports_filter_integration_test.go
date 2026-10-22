@@ -54,4 +54,8 @@ func TestReportListFilters(t *testing.T) {
 	assert.Equal(t, []string{third}, list(port.ReportFilter{Branch: "feature/refund-retry", CommitSha: "ccccccc3"}))
 	assert.Empty(t, list(port.ReportFilter{Branch: "main", CommitSha: "bbbbbbb2"}), "both filters have to match")
 	assert.Empty(t, list(port.ReportFilter{Branch: "no-such-branch"}))
+	assert.Empty(t, list(port.ReportFilter{CommitSha: "bbbbbbb"}), "abbreviations stay exact unless requested")
+	assert.Equal(t, []string{second}, list(port.ReportFilter{CommitSha: "BBBBBBB", CommitPrefix: true}), "prefixes are case-insensitive and project-scoped")
+	assert.Empty(t, list(port.ReportFilter{Branch: "main", CommitSha: "bbbbbbb", CommitPrefix: true}), "prefix and branch filters both apply")
+	assert.Empty(t, list(port.ReportFilter{CommitSha: "0000000", CommitPrefix: true}))
 }

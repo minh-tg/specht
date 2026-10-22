@@ -1244,8 +1244,12 @@ paths:
           schema: { type: string, maxLength: 255, example: feature/refund-retry }
         - name: commit
           in: query
-          description: Exact commit id, 7 to 64 hexadecimal characters. An abbreviation only finds reports stored with that same abbreviation.
+          description: Commit id, 7 to 64 hexadecimal characters. Exact match unless commit_prefix is true.
           schema: { type: string, pattern: "^[0-9a-fA-F]{7,64}$", example: 3f9a1c2 }
+        - name: commit_prefix
+          in: query
+          description: Match commit as a case-insensitive prefix. Requires commit when true.
+          schema: { type: boolean, default: false }
         - $ref: "#/components/parameters/Limit"
         - $ref: "#/components/parameters/Offset"
       responses:

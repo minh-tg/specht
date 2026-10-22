@@ -428,7 +428,7 @@ export function useChangeReports(projectSlug: string, commit: string, reportId: 
         return apiFetch<Report[]>(
           `/api/v1/projects/${encodeURIComponent(projectSlug)}/reports?commit=${
             encodeURIComponent(commit)
-          }`,
+          }&commit_prefix=true`,
         );
       }
       try {

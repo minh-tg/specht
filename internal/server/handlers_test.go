@@ -4854,11 +4854,24 @@ func TestListReports_FilterParams(t *testing.T) {
 	assert.Equal(t, usecase.ReportFilter{Branch: "feature/refund-retry", CommitSha: "3f9a1c2"}, mock.reportFilter)
 }
 
+func TestListReports_CommitPrefix(t *testing.T) {
+	mock := &mockUsecases{listReportsFn: func(context.Context, string, int32, int32) ([]usecase.ReportResponse, error) {
+		return []usecase.ReportResponse{}, nil
+	}}
+	router := testRouter(mock)
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/projects/my-app/reports?commit=ABCDEF0&commit_prefix=true", nil))
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, usecase.ReportFilter{CommitSha: "ABCDEF0", CommitPrefix: true}, mock.reportFilter)
+}
+
 func TestListReports_RejectsMalformedFilters(t *testing.T) {
 	router := testRouter(&mockUsecases{})
 	for query, code := range map[string]string{
-		"commit=nothex": "invalid_commit",
-		"commit=abc":    "invalid_commit",
+		"commit=nothex":                      "invalid_commit",
+		"commit=abc":                         "invalid_commit",
+		"commit_prefix=true":                 "invalid_commit_prefix",
+		"commit=abcdef0&commit_prefix=maybe": "invalid_commit_prefix",
 		"branch=" + strings.Repeat("b", maxReportBranchLen+1): "invalid_branch",
 	} {
 		req := httptest.NewRequest("GET", "/api/v1/projects/my-app/reports?"+query, nil)
