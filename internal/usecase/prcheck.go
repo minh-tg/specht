@@ -24,10 +24,14 @@ var ErrNoReportForCommit = errors.New("no completed report for commit")
 // ErrInvalidReportID is returned when a report id is not a UUID.
 var ErrInvalidReportID = errors.New("invalid report id")
 
+// ErrReportNotCompleted refuses a verdict from failed or unfinished evidence.
+var ErrReportNotCompleted = errors.New("report has not completed")
+
 // requireReportInProject loads the report a gate or pull-request check is
 // scoped to. A report that does not exist and a report of another project give
 // the same ErrProjectAccessDenied, so a caller cannot tell "not yours" from
-// "does not exist". A malformed id is ErrInvalidReportID.
+// "does not exist". A malformed id is ErrInvalidReportID. Only completed reports
+// can supply verdict evidence.
 func (u *Usecases) requireReportInProject(ctx context.Context, projectID, reportID string) (port.Report, error) {
 	if _, err := uuid.Parse(reportID); err != nil {
 		return port.Report{}, ErrInvalidReportID
@@ -41,6 +45,9 @@ func (u *Usecases) requireReportInProject(ctx context.Context, projectID, report
 	}
 	if report.ProjectID != projectID {
 		return port.Report{}, ErrProjectAccessDenied
+	}
+	if report.Status != "completed" {
+		return port.Report{}, ErrReportNotCompleted
 	}
 	return report, nil
 }
