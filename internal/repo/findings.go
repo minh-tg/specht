@@ -194,7 +194,7 @@ func (r *pgFindingRepo) MarkFixedWithEvent(ctx context.Context, findingID pgtype
 }
 
 func (r *pgFindingRepo) MarkAbsentScopedFindingsFixed(ctx context.Context, arg sqlc.MarkAbsentScopedFindingsFixedParams) ([]sqlc.Finding, error) {
-	return r.q.MarkAbsentScopedFindingsFixed(ctx, arg)
+	return r.retireAbsentScopeAndFix(ctx, arg)
 }
 
 func (r *pgFindingRepo) BulkCreateFindingEvents(ctx context.Context, arg sqlc.BulkCreateFindingEventsParams) error {
