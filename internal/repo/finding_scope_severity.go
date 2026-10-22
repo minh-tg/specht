@@ -47,3 +47,38 @@ func (r *pgFindingRepo) upsertInScope(ctx context.Context, input UpsertFindingPa
 	}
 	return row, nil
 }
+
+// retireAbsentScopeAndFix removes superseded scope values and refreshes their
+// aggregate before closing findings. All scope writers lock the finding first.
+func (r *pgFindingRepo) retireAbsentScopeAndFix(ctx context.Context, input sqlc.MarkAbsentScopedFindingsFixedParams) ([]sqlc.Finding, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	q := sqlc.New(tx)
+	ids, err := q.LockAbsentScopeFindings(ctx, sqlc.LockAbsentScopeFindingsParams{
+		ReportID: input.ReportID, ProjectID: input.ProjectID, ScopeHash: input.ScanScopeHash.String,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(ids) > 0 {
+		if err := q.RetireAbsentScopeSeverities(ctx, sqlc.RetireAbsentScopeSeveritiesParams{
+			FindingIds: ids, ScopeHash: input.ScanScopeHash.String, ReportID: input.ReportID,
+		}); err != nil {
+			return nil, err
+		}
+		if err := q.RefreshFindingScopeSeverities(ctx, ids); err != nil {
+			return nil, err
+		}
+	}
+	fixed, err := q.MarkAbsentScopedFindingsFixed(ctx, input)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return nil, err
+	}
+	return fixed, nil
+}

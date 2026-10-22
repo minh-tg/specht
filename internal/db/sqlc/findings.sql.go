@@ -1675,6 +1675,50 @@ func (q *Queries) ListIntroducedGateCandidates(ctx context.Context, arg ListIntr
 	return items, nil
 }
 
+const lockAbsentScopeFindings = `-- name: LockAbsentScopeFindings :many
+SELECT f.id
+FROM findings f
+JOIN finding_scope_severities s ON s.finding_id = f.id
+JOIN reports prior ON prior.id = s.report_id
+JOIN reports current ON current.id = $1
+WHERE f.project_id = $2
+  AND s.scope_hash = $3
+  AND (prior.created_at, prior.id) < (current.created_at, current.id)
+  AND NOT EXISTS (
+      SELECT 1 FROM finding_occurrences o
+      WHERE o.finding_id = f.id AND o.report_id = current.id
+  )
+ORDER BY f.id
+FOR UPDATE OF f
+`
+
+type LockAbsentScopeFindingsParams struct {
+	ReportID  pgtype.UUID `json:"report_id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+	ScopeHash string      `json:"scope_hash"`
+}
+
+// Lock before retiring scope rows so concurrent scoped upserts cannot be lost.
+func (q *Queries) LockAbsentScopeFindings(ctx context.Context, arg LockAbsentScopeFindingsParams) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, lockAbsentScopeFindings, arg.ReportID, arg.ProjectID, arg.ScopeHash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockFindingForUpdate = `-- name: LockFindingForUpdate :one
 SELECT id, project_id, finding_kind, fingerprint, current_title, current_severity, current_severity_rank, current_score, state, triage_status, assignee_id, first_seen_at, last_seen_at, fixed_at, created_at, updated_at, analysis_state, gate_effect, analysis_expires_at, analysis_reason, analysis_source, analysis_updated_at, analysis_updated_by, manual_override, review_required, fingerprint_version, introduced_by_report_id, introduced_commit_sha FROM findings WHERE id = $1 FOR UPDATE
 `
@@ -1916,6 +1960,25 @@ func (q *Queries) RecordReportIntroducedFindings(ctx context.Context, arg Record
 	return err
 }
 
+const refreshFindingScopeSeverities = `-- name: RefreshFindingScopeSeverities :exec
+UPDATE findings f
+SET current_severity = highest.severity,
+    current_severity_rank = highest.severity_rank
+FROM (
+    SELECT DISTINCT ON (finding_id) finding_id, severity, severity_rank
+    FROM finding_scope_severities
+    WHERE finding_id = ANY($1::uuid[])
+    ORDER BY finding_id, severity_rank DESC, scope_hash
+) highest
+WHERE f.id = highest.finding_id
+`
+
+// A finding with no remaining scope keeps its historical severity.
+func (q *Queries) RefreshFindingScopeSeverities(ctx context.Context, dollar_1 []pgtype.UUID) error {
+	_, err := q.db.Exec(ctx, refreshFindingScopeSeverities, dollar_1)
+	return err
+}
+
 const refreshFindingScopeSeverity = `-- name: RefreshFindingScopeSeverity :one
 UPDATE findings f
 SET current_severity = highest.severity,
@@ -1966,6 +2029,29 @@ func (q *Queries) RefreshFindingScopeSeverity(ctx context.Context, id pgtype.UUI
 		&i.IntroducedCommitSha,
 	)
 	return i, err
+}
+
+const retireAbsentScopeSeverities = `-- name: RetireAbsentScopeSeverities :exec
+DELETE FROM finding_scope_severities s
+WHERE s.finding_id = ANY($1::uuid[])
+  AND s.scope_hash = $2
+  AND EXISTS (
+      SELECT 1 FROM reports prior
+      JOIN reports current ON current.id = $3
+      WHERE prior.id = s.report_id
+        AND (prior.created_at, prior.id) < (current.created_at, current.id)
+  )
+`
+
+type RetireAbsentScopeSeveritiesParams struct {
+	FindingIds []pgtype.UUID `json:"finding_ids"`
+	ScopeHash  string        `json:"scope_hash"`
+	ReportID   pgtype.UUID   `json:"report_id"`
+}
+
+func (q *Queries) RetireAbsentScopeSeverities(ctx context.Context, arg RetireAbsentScopeSeveritiesParams) error {
+	_, err := q.db.Exec(ctx, retireAbsentScopeSeverities, arg.FindingIds, arg.ScopeHash, arg.ReportID)
+	return err
 }
 
 const setFindingIntroducedBy = `-- name: SetFindingIntroducedBy :one

@@ -490,6 +490,7 @@ type apiError struct {
 }
 
 type findingResponse struct {
+	State           string `json:"state"`
 	ID              string `json:"id"`
 	CurrentSeverity string `json:"current_severity"`
 	CurrentTitle    string `json:"current_title"`
