@@ -29,5 +29,9 @@ expected = {
 for name, value in expected.items():
     if str(env.get(name)) != value:
         raise SystemExit(f'{name} did not reach the server configuration')
-print('compose environment settings: ok')
+if env['INGEST_MEMORY_BUDGET'] != '2GiB':
+    raise SystemExit('update the memory-default check for the configured ingest budget')
+if int(server['mem_limit']) < 3 * 1024**3:
+    raise SystemExit('the container needs the 2 GiB ingest budget plus 1 GiB')
+print('compose environment settings and memory defaults: ok')
 PY
