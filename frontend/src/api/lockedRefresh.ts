@@ -1,5 +1,6 @@
 import type { LoginResponse } from "@/types/api";
 import { createRefreshBroker } from "./refreshBroker";
+import { tokenExpiry } from "./tokenExpiry";
 
 const PREFIX = "specht.refresh.used.";
 let channel: BroadcastChannel | undefined;
@@ -27,15 +28,7 @@ const broker = createRefreshBroker(async (token) => {
         localStorage.removeItem(old);
       }
     }
-    let expires = now + 86_400_000;
-    try {
-      const claims = JSON.parse(
-        atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")),
-      ) as { exp?: number; };
-      if (typeof claims.exp === "number" && Number.isFinite(claims.exp)) {
-        expires = claims.exp * 1000;
-      }
-    } catch { /* Invalid tokens are rejected by the server. */ }
+    const expires = tokenExpiry(token) ?? now + 86_400_000;
     // Only a one-way digest and its expiry persist. Tokens stay in memory and
     // sessionStorage. Mark before sending, including an uncertain transport.
     localStorage.setItem(key, String(expires));

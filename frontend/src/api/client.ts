@@ -1,4 +1,5 @@
 import { forgetSharedRefresh, sharedRefresh, SharedRefreshError } from "./sharedRefresh";
+import { tokenExpiry } from "./tokenExpiry";
 
 const BASE_URL = "";
 
@@ -155,6 +156,12 @@ async function send<T>(
 
 export async function refreshAccessToken(refreshToken: string): Promise<Session> {
   const original = getStoredRefreshToken();
+  const assertOwner = (successor: string) => {
+    const current = getStoredRefreshToken();
+    if (original === refreshToken && current !== refreshToken && current !== successor) {
+      throw new APIError(409, "session_changed", "The active session changed during refresh");
+    }
+  };
   const load = async (token: string) =>
     (await send<{
       token: string;
@@ -170,6 +177,15 @@ export async function refreshAccessToken(refreshToken: string): Promise<Session>
   try {
     const coordinated = sharedRefresh(refreshToken, load);
     response = coordinated ? await coordinated : await load(refreshToken);
+    assertOwner(response.refresh_token);
+    // A suspended tab can receive an old completed rotation. Advance its
+    // successor once if that access token has also expired, never its ancestor.
+    const expires = tokenExpiry(response.token);
+    if (expires !== null && expires <= Date.now() + 5_000) {
+      const next = sharedRefresh(response.refresh_token, load);
+      response = next ? await next : await load(response.refresh_token);
+      assertOwner(response.refresh_token);
+    }
   } catch (error) {
     if (error instanceof SharedRefreshError) {
       throw new APIError(error.status, error.code, error.message, error.retryAfter);
@@ -177,10 +193,6 @@ export async function refreshAccessToken(refreshToken: string): Promise<Session>
     throw error;
   }
   const { token, refresh_token: newRefresh, user_id, email } = response;
-  const current = getStoredRefreshToken();
-  if (original === refreshToken && current !== refreshToken && current !== newRefresh) {
-    throw new APIError(409, "session_changed", "The active session changed during refresh");
-  }
   const session: Session = {
     token,
     refreshToken: newRefresh,
