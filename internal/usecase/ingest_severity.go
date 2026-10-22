@@ -15,14 +15,6 @@ type severityValue struct {
 	rank int16
 }
 
-// higherSeverity returns the more severe of a and b. A tie keeps a.
-func higherSeverity(a, b severityValue) severityValue {
-	if b.rank > a.rank {
-		return b
-	}
-	return a
-}
-
 // scopeSeverities indexes the per-scope severities of the known findings by
 // finding ID. prefetchScopeSeverities fills it once per ingest.
 type scopeSeverities map[string][]port.FindingScopeSeverity
@@ -56,24 +48,8 @@ func (st *ingestFindingsState) ownScopeSeverity(findingID string) (port.FindingS
 	return port.FindingScopeSeverity{}, false
 }
 
-// projectSeverity returns the severity the finding row holds after this scan:
-// the highest of the scan's own severity and what every other scope last
-// reported. A scan writes only its own scope, so a lower value here cannot hide
-// a higher one that another branch or scanner reported.
-func (st *ingestFindingsState) projectSeverity(findingID string, incoming severityValue) severityValue {
-	project := incoming
-	for _, s := range st.scopeSev[findingID] {
-		if s.ScopeHash == st.scopeHash {
-			continue
-		}
-		project = higherSeverity(project, severityValue{text: s.Severity, rank: s.SeverityRank})
-	}
-	return project
-}
-
-// recordScopeSeverity stores the severity this scan's scope reported. It writes
-// one severity_changed event when that scope's value moved or the project-wide
-// value moved. A finding seen for the first time has nothing to compare, so it
+// recordScopeSeverity records one severity_changed event when this scope's
+// value or the project-wide value moved. A new finding has nothing to compare, so it
 // writes no event.
 //
 // A report can name the same finding more than once. Only the finding's last
@@ -84,23 +60,6 @@ func (st *ingestFindingsState) projectSeverity(findingID string, incoming severi
 // project-wide value before and after the scan.
 func (u *Usecases) recordScopeSeverity(ctx context.Context, st *ingestFindingsState, upserted, prior port.Finding, exists, final bool, incoming, project severityValue) error {
 	previous, hadScope := st.ownScopeSeverity(upserted.ID)
-	row := port.FindingScopeSeverityInput{
-		FindingID:    upserted.ID,
-		ScopeHash:    st.scopeHash,
-		Severity:     incoming.text,
-		SeverityRank: incoming.rank,
-		ReportID:     st.report.ID,
-		ObservedAt:   st.nowTime,
-	}
-	// A batch-capable store takes the row with the ingest's other batched
-	// writes, in one statement at the end. The comparison above reads only
-	// the prefetched rows, so the deferred write does not change the outcome.
-	if st.batchStore != nil {
-		st.scopeRows = append(st.scopeRows, row)
-	} else if err := u.deps.Stores.Findings.UpsertScopeSeverity(ctx, row); err != nil {
-		slog.Error("record scope severity failed", "scanner", st.input.Scanner, "finding", upserted.ID, "error", err)
-		return fmt.Errorf("scanner %s: record scope severity for finding %q: %w", st.input.Scanner, upserted.ID, err)
-	}
 	if !exists || !final {
 		return nil
 	}

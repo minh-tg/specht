@@ -353,7 +353,7 @@ func (r *pgFindingPort) Upsert(ctx context.Context, input port.UpsertFindingInpu
 	if err != nil {
 		return port.Finding{}, err
 	}
-	row, err := r.inner.Upsert(ctx, UpsertFindingParams{
+	args := UpsertFindingParams{
 		ProjectID:    pid,
 		FindingKind:  input.FindingKind,
 		Fingerprint:  input.Fingerprint,
@@ -363,7 +363,13 @@ func (r *pgFindingPort) Upsert(ctx context.Context, input port.UpsertFindingInpu
 		Score:        floatToNumeric(input.Score),
 		FirstSeenAt:  uuidFromTime(input.FirstSeen),
 		LastSeenAt:   uuidFromTime(input.LastSeen),
-	})
+	}
+	var row sqlc.Finding
+	if input.Scope != nil {
+		row, err = r.inner.upsertInScope(ctx, args, *input.Scope)
+	} else {
+		row, err = r.inner.Upsert(ctx, args)
+	}
 	if err != nil {
 		return port.Finding{}, err
 	}

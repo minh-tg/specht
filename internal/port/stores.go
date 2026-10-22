@@ -881,6 +881,10 @@ type AnalysisUndoDecider func(current Finding, newest *FindingEvent) (UpdateAnal
 
 // UpsertFindingInput carries the fields of one finding upsert.
 type UpsertFindingInput struct {
+	// Scope, when set, is persisted with the finding under the same row lock.
+	// The returned severity is the maximum of persisted scopes. FindingID is
+	// filled by the store, including for a finding first seen by this upsert.
+	Scope        *FindingScopeSeverityInput
 	ProjectID    string
 	FindingKind  string
 	Fingerprint  string

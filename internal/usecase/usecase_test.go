@@ -671,7 +671,28 @@ func (m *mockFindingRepo) Upsert(ctx context.Context, input port.UpsertFindingIn
 	if m.upsertFn == nil {
 		return port.Finding{}, fmt.Errorf("unexpected call to Upsert")
 	}
-	return m.upsertFn(ctx, input)
+	if input.Scope != nil {
+		rows, err := m.ListScopeSeverities(ctx, nil)
+		if err != nil {
+			return port.Finding{}, err
+		}
+		for _, row := range rows {
+			if row.ScopeHash != input.Scope.ScopeHash && row.SeverityRank > input.SeverityRank {
+				input.Severity, input.SeverityRank = row.Severity, row.SeverityRank
+			}
+		}
+	}
+	row, err := m.upsertFn(ctx, input)
+	if err != nil || input.Scope == nil {
+		return row, err
+	}
+	row.CurrentSeverity, row.CurrentSeverityRank = input.Severity, input.SeverityRank
+	scope := *input.Scope
+	scope.FindingID = row.ID
+	if err := m.UpsertScopeSeverity(ctx, scope); err != nil {
+		return port.Finding{}, err
+	}
+	return row, nil
 }
 
 func (m *mockFindingRepo) ListScopeSeverities(ctx context.Context, findingIDs []string) ([]port.FindingScopeSeverity, error) {
