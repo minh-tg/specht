@@ -1957,6 +1957,8 @@ paths:
         never fails a pull request. A `report_id` that is missing and one that
         belongs to another project both answer 403 `project_access_denied`, so
         report ids cannot be probed. A malformed one answers 400 `invalid_id`.
+        A report that is processing or failed answers 409 `report_not_completed`;
+        it cannot supply a passing verdict.
       x-required-scope: read
       security:
         - sessionAuth: []
@@ -1981,6 +1983,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/GateStatus" }
+        "409":
+          description: The report is not completed, so no verdict is available.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
@@ -1995,7 +2002,8 @@ paths:
         Returns the conclusion and annotations a provider check would publish,
         with no side effects — nothing is created, updated, or posted.
         A commit that no completed scan carries is refused with 404 rather than
-        planned as a passing check. A `report_id` that is missing and one that
+        planned as a passing check. An explicit report that is processing or failed
+        answers 409 `report_not_completed`. A `report_id` that is missing and one that
         belongs to another project both answer 403 `project_access_denied`, so
         report ids cannot be probed. A malformed one answers 400 `invalid_id`.
       x-required-scope: read
@@ -2036,6 +2044,11 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Error" }
               example: { error: { code: no_report_for_commit, message: no completed scan report carries this commit; scan it before requesting a check } }
+        "409":
+          description: The report is not completed, so no verdict is available.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
 
   /api/v1/policy-templates:
     get:

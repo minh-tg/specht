@@ -272,6 +272,10 @@ func (h *Handler) GetGateStatus(w http.ResponseWriter, r *http.Request) {
 		}
 		result, err := h.usecase.GetIntroducedGateStatus(r.Context(), slug, minRank, reportID)
 		if err != nil {
+			if errors.Is(err, usecase.ErrReportNotCompleted) {
+				respondError(w, http.StatusConflict, "report_not_completed", "the report has not completed; no verdict is available")
+				return
+			}
 			if errors.Is(err, usecase.ErrInvalidReportID) {
 				respondError(w, http.StatusBadRequest, "invalid_id", "invalid report id format")
 				return
@@ -329,6 +333,10 @@ func (h *Handler) PreviewPRCheck(w http.ResponseWriter, r *http.Request) {
 		MinSeverityRank: minRank,
 	})
 	if err != nil {
+		if errors.Is(err, usecase.ErrReportNotCompleted) {
+			respondError(w, http.StatusConflict, "report_not_completed", "the report has not completed; no verdict is available")
+			return
+		}
 		if errors.Is(err, usecase.ErrUnknownProvider) {
 			respondError(w, http.StatusBadRequest, "unknown_provider", "unknown provider")
 			return

@@ -1137,6 +1137,8 @@ export interface paths {
      *     never fails a pull request. A `report_id` that is missing and one that
      *     belongs to another project both answer 403 `project_access_denied`, so
      *     report ids cannot be probed. A malformed one answers 400 `invalid_id`.
+     *     A report that is processing or failed answers 409 `report_not_completed`;
+     *     it cannot supply a passing verdict.
      */
     get: operations["getGateStatus"];
     put?: never;
@@ -1159,7 +1161,8 @@ export interface paths {
      * @description Returns the conclusion and annotations a provider check would publish,
      *     with no side effects — nothing is created, updated, or posted.
      *     A commit that no completed scan carries is refused with 404 rather than
-     *     planned as a passing check. A `report_id` that is missing and one that
+     *     planned as a passing check. An explicit report that is processing or failed
+     *     answers 409 `report_not_completed`. A `report_id` that is missing and one that
      *     belongs to another project both answer 403 `project_access_denied`, so
      *     report ids cannot be probed. A malformed one answers 400 `invalid_id`.
      */
@@ -5701,6 +5704,15 @@ export interface operations {
       401: components["responses"]["Unauthorized"];
       403: components["responses"]["Forbidden"];
       404: components["responses"]["NotFound"];
+      /** @description The report is not completed, so no verdict is available. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
     };
   };
   previewPRCheck: {
@@ -5750,6 +5762,15 @@ export interface operations {
            *       }
            *     }
            */
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description The report is not completed, so no verdict is available. */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
           "application/json": components["schemas"]["Error"];
         };
       };
