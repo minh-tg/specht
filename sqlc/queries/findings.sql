@@ -589,6 +589,47 @@ WHERE f.project_id = $1
   )
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC;
 
+-- name: LockAbsentScopeFindings :many
+-- Lock before retiring scope rows so concurrent scoped upserts cannot be lost.
+SELECT f.id
+FROM findings f
+JOIN finding_scope_severities s ON s.finding_id = f.id
+JOIN reports prior ON prior.id = s.report_id
+JOIN reports current ON current.id = sqlc.arg(report_id)
+WHERE f.project_id = sqlc.arg(project_id)
+  AND s.scope_hash = sqlc.arg(scope_hash)
+  AND (prior.created_at, prior.id) < (current.created_at, current.id)
+  AND NOT EXISTS (
+      SELECT 1 FROM finding_occurrences o
+      WHERE o.finding_id = f.id AND o.report_id = current.id
+  )
+ORDER BY f.id
+FOR UPDATE OF f;
+
+-- name: RetireAbsentScopeSeverities :exec
+DELETE FROM finding_scope_severities s
+WHERE s.finding_id = ANY(sqlc.arg(finding_ids)::uuid[])
+  AND s.scope_hash = sqlc.arg(scope_hash)
+  AND EXISTS (
+      SELECT 1 FROM reports prior
+      JOIN reports current ON current.id = sqlc.arg(report_id)
+      WHERE prior.id = s.report_id
+        AND (prior.created_at, prior.id) < (current.created_at, current.id)
+  );
+
+-- name: RefreshFindingScopeSeverities :exec
+-- A finding with no remaining scope keeps its historical severity.
+UPDATE findings f
+SET current_severity = highest.severity,
+    current_severity_rank = highest.severity_rank
+FROM (
+    SELECT DISTINCT ON (finding_id) finding_id, severity, severity_rank
+    FROM finding_scope_severities
+    WHERE finding_id = ANY($1::uuid[])
+    ORDER BY finding_id, severity_rank DESC, scope_hash
+) highest
+WHERE f.id = highest.finding_id;
+
 -- name: MarkAbsentScopedFindingsFixed :many
 -- Scan-equivalence auto-fix: closes findings whose most recent observation
 -- came from an equivalent complete scan of the same scope and that the
