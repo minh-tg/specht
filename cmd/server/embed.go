@@ -57,7 +57,7 @@ func setSPAHeaders(w http.ResponseWriter, cleanPath string) {
 	} else if mimeType := mime.TypeByExtension(ext); mimeType != "" {
 		w.Header().Set("Content-Type", mimeType)
 	}
-	if ext != "" && ext != ".html" {
+	if ext != "" && ext != ".html" && cleanPath != "session-refresh.js" {
 		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	} else {
 		w.Header().Set("Cache-Control", "no-cache")
