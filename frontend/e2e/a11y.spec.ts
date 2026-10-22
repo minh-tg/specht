@@ -51,6 +51,10 @@ async function settle(page: Page): Promise<void> {
 
 async function audit(page: Page, name: string): Promise<void> {
   await page.waitForLoadState("networkidle");
+  // Previous interactions can leave a target cut by the viewport edge and
+  // sticky header. Start document scans at the top so axe measures the whole
+  // target, rather than its scroll-dependent visible fragment.
+  await page.evaluate(() => window.scrollTo({ top: 0, left: 0, behavior: "instant" }));
   await settle(page);
   // Evaluated through the devtools protocol, which the page CSP does not
   // govern; an inline <script> tag would be blocked by script-src 'self'.
@@ -184,6 +188,9 @@ test("every page passes axe in the light and the dark theme", async ({ page, req
   await page.getByRole("button", { name: "Assess" }).click();
   await expect(page.getByText("Reachability saved")).toBeVisible();
   await audit(page, "finding detail with a success toast");
+  await expect(page.getByRole("button", { name: "Copy fix", exact: true })).toBeInViewport({
+    ratio: 1,
+  });
 
   await page.goto(`/${slug}/reports`);
   await expect(page.getByRole("heading").first()).toBeVisible();
