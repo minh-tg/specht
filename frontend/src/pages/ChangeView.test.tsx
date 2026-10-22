@@ -164,7 +164,7 @@ beforeEach(() => {
     if (url.startsWith("/api/v1/projects/acme/waivers")) {
       return Promise.resolve(jsonResponse(waivers));
     }
-    if (url.startsWith("/api/v1/projects/acme/gate?")) {
+    if (url.startsWith("/api/v1/projects/acme/gate?introduced_only=")) {
       if (changeGateStatus >= 400) {
         return Promise.resolve(
           jsonResponse({ error: { code: "boom", message: "gate failed" } }, changeGateStatus),
@@ -172,7 +172,7 @@ beforeEach(() => {
       }
       return Promise.resolve(jsonResponse(changeGate ?? {}));
     }
-    if (url === "/api/v1/projects/acme/gate") {
+    if (url.startsWith("/api/v1/projects/acme/gate")) {
       return Promise.resolve(jsonResponse(projectGate));
     }
     const match = /^\/api\/v1\/findings\/(.+)$/.exec(url);
@@ -240,6 +240,26 @@ function openEntry() {
 }
 
 describe("ChangeView", () => {
+  it("explains the project-wide gate and preserves a tightened severity floor", async () => {
+    changeGate = gate({ threshold_breached: false, blocked_by: [] });
+    projectGate = gate({
+      blocked_by: ["f1"],
+      policy: { severity_floor: "medium", severity_source: "override" },
+    });
+    renderPage(`/acme/changes/${FULL_SHA}?report=r1&scope=project&severity=medium`);
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+      "1 finding blocks this project.",
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      "/api/v1/projects/acme/gate?severity=medium",
+      expect.anything(),
+    );
+    expect(screen.queryByText("Nothing in it stops the merge. Only a scan can change that.")).not
+      .toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Findings blocking this project" }))
+      .toBeInTheDocument();
+  });
+
   it("loads an exact report even when it is outside the report list", async () => {
     reports = [];
     exactReports = { old: report({ id: "old" }) };

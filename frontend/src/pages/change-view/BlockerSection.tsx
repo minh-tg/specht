@@ -18,6 +18,7 @@ export interface BlockerSectionProps {
   /** The policy severity floor, in words. */
   readonly floor?: string;
   readonly canRequestWaiver: boolean;
+  readonly projectWide?: boolean;
   readonly waiting: boolean;
   readonly stalled: boolean;
   readonly onStartWaiting: () => void;
@@ -30,8 +31,17 @@ export interface BlockerSectionProps {
  * all live here, so the ledger and the note stay in step.
  */
 export function BlockerSection(
-  { slug, ids, floor, canRequestWaiver, waiting, stalled, onStartWaiting, onCheckAgain }:
-    BlockerSectionProps,
+  {
+    slug,
+    ids,
+    floor,
+    canRequestWaiver,
+    projectWide = false,
+    waiting,
+    stalled,
+    onStartWaiting,
+    onCheckAgain,
+  }: BlockerSectionProps,
 ) {
   const [showAll, setShowAll] = useState(false);
   const shown = showAll ? ids : ids.slice(0, MAX_BLOCKER_ROWS);
@@ -83,7 +93,11 @@ export function BlockerSection(
   return (
     <>
       <div className="mt-8 grid items-start gap-x-10 gap-y-8 lg:grid-cols-[minmax(0,1fr)_280px]">
-        <section aria-label="Findings introduced by this change">
+        <section
+          aria-label={projectWide
+            ? "Findings blocking this project"
+            : "Findings introduced by this change"}
+        >
           <div className="mb-2.5 flex items-baseline justify-between">
             <h2 className="text-lg leading-tight font-semibold">What is in the way</h2>
             <span className="text-muted-foreground text-[13px]">Worst first</span>

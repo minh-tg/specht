@@ -84,6 +84,8 @@ export function ChangeView() {
   const { slug = "", commit = "" } = useParams<{ slug: string; commit: string; }>();
   const [searchParams] = useSearchParams();
   const reportParam = searchParams.get("report");
+  const projectWide = searchParams.get("scope") === "project";
+  const severity = searchParams.get("severity") || undefined;
   const short = shortCommit(commit);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -96,8 +98,13 @@ export function ChangeView() {
   const degraded = report !== null
     && (isReportInProgress(report.status) || report.status === "failed");
   // A scan without a verdict must not be scoped through the gate.
-  const changeGateQuery = useChangeGate(slug, degraded ? undefined : report?.id);
-  const projectGateQuery = useGateStatus(slug);
+  const changeGateQuery = useChangeGate(
+    slug,
+    degraded ? undefined : report?.id,
+    projectWide,
+    severity,
+  );
+  const projectGateQuery = useGateStatus(slug, severity);
   // Refetches every query the page reads. The change gate stays out while it is disabled
   // (no report, or a scan still running), since refetching it would request a gate for nothing.
   const retryLoad = () => {
@@ -135,9 +142,14 @@ export function ChangeView() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.reports(slug) });
     void queryClient.invalidateQueries({ queryKey: queryKeys.gate() });
     if (landed.commit_sha) {
-      navigate(`/${slug}/changes/${shortCommit(landed.commit_sha)}`, { replace: true });
+      const query = new URLSearchParams({
+        report: landed.id,
+        scope: projectWide ? "project" : "introduced",
+      });
+      if (severity) query.set("severity", severity);
+      navigate(`/${slug}/changes/${shortCommit(landed.commit_sha)}?${query}`, { replace: true });
     }
-  }, [landed, navigate, queryClient, slug]);
+  }, [landed, navigate, queryClient, slug, projectWide, severity]);
 
   if (
     projectQuery.isError && projectQuery.error instanceof APIError
@@ -231,6 +243,7 @@ export function ChangeView() {
         existing={existing.length}
         waived={gate.waived_count ?? 0}
         policy={gate.policy}
+        projectWide={projectWide}
       />
       {gate.threshold_breached && (
         <BlockerSection
@@ -239,6 +252,7 @@ export function ChangeView() {
           ids={blockedBy}
           floor={gate.policy?.severity_floor}
           canRequestWaiver={projectQuery.data?.permissions?.request_waiver ?? false}
+          projectWide={projectWide}
           waiting={waiting}
           stalled={signal.stalled}
           onStartWaiting={startWaiting}

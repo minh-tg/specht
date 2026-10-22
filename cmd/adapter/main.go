@@ -280,7 +280,7 @@ func publishPreview(ctx context.Context, f *adapterFlags, payload client.IngestP
 	if preview == nil {
 		return
 	}
-	changeLink := changeURL(apiURL, payload.Project, payload.CommitSha)
+	changeLink := gateChangeURL(apiURL, payload, preview.ReportID, f.severity)
 	if f.annotations && len(preview.Annotations) > 0 {
 		emitGitHubWorkflowAnnotations(stderr, preview.Annotations)
 	}
@@ -454,8 +454,8 @@ func retryAfterDelay(value string) time.Duration {
 // and local users see it too, not only GitHub step summaries and check runs.
 // The report id, when known, tells the change page which report to open. A
 // missing project or commit omits the line entirely.
-func printChangeLink(w io.Writer, apiURL, project, commit, reportID string) {
-	if link := changeURLWithReport(apiURL, project, commit, reportID); link != "" {
+func printChangeLink(w io.Writer, link string) {
+	if link != "" {
 		writeDiagnosticLine(w, "View this change in Specht: "+link)
 	}
 }
@@ -572,7 +572,7 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 		writeDiagnostic(stderr, "error: ingest failed: %v\n", err)
 		return 2
 	}
-	printChangeLink(stdout, apiURL, payload.Project, payload.CommitSha, resp.ReportID)
+	printChangeLink(stdout, gateChangeURL(apiURL, payload, resp.ReportID, f.severity))
 	if resp.FallbackReason != "" {
 		writeDiagnostic(stderr, "⚠️  BASELINE WARNING: %s\n", resp.FallbackReason)
 		if strings.EqualFold(f.baselinePolicy, "fail") {
@@ -581,12 +581,32 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 		}
 	}
 
-	// Fetch PR Check Preview for detailed annotations and summary if commit SHA is present.
+	// Resolve the project-wide decision before publishing any check. A preview
+	// of introduced findings alone cannot decide a whole-project gate.
+	var projectGate *client.GateStatus
+	if !payload.GateIntroducedOnly {
+		projectGate, err = cl.GetGateStatus(payload.Project, f.severity)
+		if err != nil {
+			writeDiagnostic(stderr, "error: gate check failed: %v\n", err)
+			return 2
+		}
+	}
+
+	// Fetch introduced annotations for the exact report. In project mode they
+	// are explanatory detail, not the check's verdict.
 	var preview *client.PRCheckPreview
 	if payload.CommitSha != "" {
 		preview, err = cl.PreviewPRCheck(payload.Project, payload.CommitSha, "github", resp.ReportID, f.severity)
 		if err != nil {
 			writeDiagnostic(stderr, "⚠️  could not fetch PR check preview: %v\n", err)
+		}
+	}
+	if preview != nil {
+		preview.ReportID = resp.ReportID
+		if projectGate != nil {
+			applyProjectVerdict(preview, projectGate)
+		} else {
+			resp.ThresholdBreached = preview.Conclusion == "failure"
 		}
 	}
 	publishPreview(ctx, f, payload, preview, apiURL, stderr, hc)
@@ -596,17 +616,29 @@ func runReportWorkflow(ctx context.Context, cl *client.Client, f *adapterFlags, 
 	}
 
 	writeDiagnostic(stderr, "report %s ingested, %d finding(s)\n", resp.ReportID, resp.TotalFindings)
-	gateResp, err := cl.GetGateStatus(payload.Project, f.severity)
-	if err != nil {
-		writeDiagnostic(stderr, "error: gate check failed: %v\n", err)
-		return 2
-	}
-	if gateResp.ThresholdBreached {
-		writeDiagnostic(stderr, "gate FAILED: %d blocking finding(s)\n", gateResp.BlockingCount)
+	if projectGate.ThresholdBreached {
+		writeDiagnostic(stderr, "gate FAILED: %d blocking finding(s)\n", projectGate.BlockingCount)
 		return 1
 	}
 	writeDiagnosticLine(stderr, "gate PASSED: no blocking findings")
 	return 0
+}
+
+// applyProjectVerdict uses the same decision for publication and process exit.
+// Inline annotations remain a subset: the exact report's introduced findings.
+func applyProjectVerdict(preview *client.PRCheckPreview, decision *client.GateStatus) {
+	preview.Conclusion = "success"
+	preview.Title = "Specht: project gate passed"
+	if decision.ThresholdBreached {
+		preview.Conclusion = "failure"
+		preview.Title = fmt.Sprintf("Specht: %d blocking finding(s) in project", decision.BlockingCount)
+	} else {
+		preview.Annotations = nil
+		preview.SummaryCounts = map[string]int{}
+	}
+	preview.WaivedCount = decision.WaivedCount
+	preview.Summary = fmt.Sprintf("Project-wide gate: %s. %d blocking finding(s), including pre-existing debt. Inline annotations cover only findings introduced by this report.\n\n%s",
+		preview.Conclusion, decision.BlockingCount, preview.Summary)
 }
 
 // resolveAPIURL returns the Specht base URL. A CI run must configure it: the
