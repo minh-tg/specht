@@ -74,6 +74,90 @@ describe("session persistence", () => {
 });
 
 describe("refresh session ownership", () => {
+  it.each([-1, 2, 3600])(
+    "advances only an expired or near-expiry cached successor (%s seconds)",
+    async (seconds) => {
+      const cached = `header.${
+        btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + seconds }))
+      }.signature`;
+      const fresh = `header.${
+        btoa(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 3600 }))
+      }.signature`;
+      const fetchMock = vi.fn()
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              token: cached,
+              refresh_token: "refresh-2",
+              user_id: "u1",
+              email: "u1@example.com",
+            }),
+            { status: 200 },
+          ),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              token: fresh,
+              refresh_token: "refresh-3",
+              user_id: "u1",
+              email: "u1@example.com",
+            }),
+            { status: 200 },
+          ),
+        );
+      vi.stubGlobal("fetch", fetchMock);
+      setStoredSession("old-access", "refresh-1", { userId: "u1", email: "u1@example.com" });
+      const result = await refreshAccessToken("refresh-1");
+      const bodies = fetchMock.mock.calls.map((call) =>
+        JSON.parse(String(call[1]?.body)).refresh_token
+      );
+      expect(bodies).toEqual(seconds <= 5 ? ["refresh-1", "refresh-2"] : ["refresh-1"]);
+      expect(result.refreshToken).toBe(seconds <= 5 ? "refresh-3" : "refresh-2");
+      expect(getStoredRefreshToken()).toBe(result.refreshToken);
+    },
+  );
+
+  it("keeps logout in effect while an expired successor is advancing", async () => {
+    const expired = `header.${btoa(JSON.stringify({ exp: 1 }))}.signature`;
+    let finish!: (value: Response) => void;
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            token: expired,
+            refresh_token: "refresh-2",
+            user_id: "u1",
+            email: "u1@example.com",
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockImplementationOnce(() =>
+        new Promise<Response>((resolve) => {
+          finish = resolve;
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    setStoredSession("old-access", "refresh-1", { userId: "u1", email: "u1@example.com" });
+    const pending = refreshAccessToken("refresh-1");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    clearStoredSession();
+    finish(
+      new Response(
+        JSON.stringify({
+          token: "fresh-access",
+          refresh_token: "refresh-3",
+          user_id: "u1",
+          email: "u1@example.com",
+        }),
+        { status: 200 },
+      ),
+    );
+    await expect(pending).rejects.toMatchObject({ status: 409, code: "session_changed" });
+    expect(getStoredRefreshToken()).toBeNull();
+  });
+
   it.each(["logout", "new-login"])(
     "does not overwrite a %s while refresh is pending",
     async (change) => {
