@@ -1916,6 +1916,58 @@ func (q *Queries) RecordReportIntroducedFindings(ctx context.Context, arg Record
 	return err
 }
 
+const refreshFindingScopeSeverity = `-- name: RefreshFindingScopeSeverity :one
+UPDATE findings f
+SET current_severity = highest.severity,
+    current_severity_rank = highest.severity_rank
+FROM (
+    SELECT severity, severity_rank
+    FROM finding_scope_severities
+    WHERE finding_id = $1
+    ORDER BY severity_rank DESC, scope_hash
+    LIMIT 1
+) highest
+WHERE f.id = $1
+RETURNING f.id, f.project_id, f.finding_kind, f.fingerprint, f.current_title, f.current_severity, f.current_severity_rank, f.current_score, f.state, f.triage_status, f.assignee_id, f.first_seen_at, f.last_seen_at, f.fixed_at, f.created_at, f.updated_at, f.analysis_state, f.gate_effect, f.analysis_expires_at, f.analysis_reason, f.analysis_source, f.analysis_updated_at, f.analysis_updated_by, f.manual_override, f.review_required, f.fingerprint_version, f.introduced_by_report_id, f.introduced_commit_sha
+`
+
+// The caller holds the finding row lock before changing its scope rows.
+func (q *Queries) RefreshFindingScopeSeverity(ctx context.Context, id pgtype.UUID) (Finding, error) {
+	row := q.db.QueryRow(ctx, refreshFindingScopeSeverity, id)
+	var i Finding
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.FindingKind,
+		&i.Fingerprint,
+		&i.CurrentTitle,
+		&i.CurrentSeverity,
+		&i.CurrentSeverityRank,
+		&i.CurrentScore,
+		&i.State,
+		&i.TriageStatus,
+		&i.AssigneeID,
+		&i.FirstSeenAt,
+		&i.LastSeenAt,
+		&i.FixedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AnalysisState,
+		&i.GateEffect,
+		&i.AnalysisExpiresAt,
+		&i.AnalysisReason,
+		&i.AnalysisSource,
+		&i.AnalysisUpdatedAt,
+		&i.AnalysisUpdatedBy,
+		&i.ManualOverride,
+		&i.ReviewRequired,
+		&i.FingerprintVersion,
+		&i.IntroducedByReportID,
+		&i.IntroducedCommitSha,
+	)
+	return i, err
+}
+
 const setFindingIntroducedBy = `-- name: SetFindingIntroducedBy :one
 UPDATE findings SET
     introduced_by_report_id = $2,

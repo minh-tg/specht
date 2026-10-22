@@ -759,10 +759,7 @@ type ingestFindingsState struct {
 	// scopeHash is the scan scope of this ingest (see scanScopeHash).
 	scopeHash string
 	// scopeSev holds the per-scope severities of the known findings.
-	scopeSev scopeSeverities
-	// scopeRows are the scope severities staged for the batched flush.
-	scopeRows []port.FindingScopeSeverityInput
-
+	scopeSev          scopeSeverities
 	seenIntroduced    map[string]bool
 	introducedEntries []port.IntroducedFindingEntry
 	batchStore        port.FindingIngestBatchStore
@@ -897,14 +894,11 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 	known := exists && existing.State != string(finding.TechArchived)
 
 	incoming := severityValue{text: severityStr(f.Severity), rank: newRank}
-	project := incoming
-	if exists {
-		project = st.projectSeverity(existing.ID, incoming)
-	}
-	upserted, err := u.upsertFindingRow(ctx, st, f, project)
+	upserted, err := u.upsertFindingRow(ctx, st, f, incoming)
 	if err != nil {
 		return err
 	}
+	project := severityValue{text: upserted.CurrentSeverity, rank: upserted.CurrentSeverityRank}
 	if err := u.recordScopeSeverity(ctx, st, upserted, existing, exists, final, incoming, project); err != nil {
 		return err
 	}
@@ -961,16 +955,20 @@ func (s *ingestFindingsState) tallyIngest(introduced bool, changeType, upsertedI
 	s.outcome.total++
 }
 
-// upsertFindingRow writes the finding row with the project-wide severity and
-// returns what was written.
-func (u *Usecases) upsertFindingRow(ctx context.Context, st *ingestFindingsState, f domain.NormalizedFinding, project severityValue) (port.Finding, error) {
+// upsertFindingRow persists the observation and returns the aggregate severity
+// computed by the store under the finding's row lock.
+func (u *Usecases) upsertFindingRow(ctx context.Context, st *ingestFindingsState, f domain.NormalizedFinding, incoming severityValue) (port.Finding, error) {
 	upserted, err := u.deps.Stores.Findings.Upsert(ctx, port.UpsertFindingInput{
+		Scope: &port.FindingScopeSeverityInput{
+			ScopeHash: st.scopeHash, ReportID: st.report.ID,
+			Severity: incoming.text, SeverityRank: incoming.rank, ObservedAt: st.nowTime,
+		},
 		ProjectID:    st.project.ID,
 		FindingKind:  f.FindingKind,
 		Fingerprint:  f.Fingerprint,
 		Title:        f.Title,
-		Severity:     project.text,
-		SeverityRank: project.rank,
+		Severity:     incoming.text,
+		SeverityRank: incoming.rank,
 		Score:        scoreToFloat(f.Score),
 		FirstSeen:    st.nowTime,
 		LastSeen:     st.nowTime,
@@ -1098,12 +1096,6 @@ func (u *Usecases) flushIngestBatches(ctx context.Context, st *ingestFindingsSta
 		if err := st.batchStore.BulkUpsertDimensions(ctx, st.input.Scanner, st.dimensions); err != nil {
 			slog.Error("bulk upsert dimensions failed", "scanner", st.input.Scanner, "error", err)
 			return fmt.Errorf("scanner %s: bulk upsert dimensions: %w", st.input.Scanner, err)
-		}
-	}
-	if len(st.scopeRows) > 0 {
-		if err := st.batchStore.BulkUpsertScopeSeverities(ctx, st.scopeRows); err != nil {
-			slog.Error("bulk upsert scope severities failed", "scanner", st.input.Scanner, "error", err)
-			return fmt.Errorf("scanner %s: bulk upsert scope severities: %w", st.input.Scanner, err)
 		}
 	}
 	return nil
