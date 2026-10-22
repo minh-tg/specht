@@ -9,6 +9,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+./scripts/compose-config-test.sh
+
 PORT="${COMPOSE_SMOKE_PORT:-18083}"
 PROJECT="specht-smoke"
 WORK="$(mktemp -d)"
