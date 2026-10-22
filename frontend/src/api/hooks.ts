@@ -443,27 +443,41 @@ export function useChangeReports(projectSlug: string, commit: string, reportId: 
   });
 }
 
-export function useGateStatus(projectSlug: string) {
+export function useGateStatus(projectSlug: string, severity?: string) {
+  const suffix = severity ? `?severity=${encodeURIComponent(severity)}` : "";
   return useQuery({
-    queryKey: queryKeys.gate(projectSlug),
-    queryFn: () => apiFetch<GateStatus>(`/api/v1/projects/${encodeURIComponent(projectSlug)}/gate`),
+    queryKey: severity
+      ? [...queryKeys.gate(projectSlug), "severity", severity]
+      : queryKeys.gate(projectSlug),
+    queryFn: () =>
+      apiFetch<GateStatus>(`/api/v1/projects/${encodeURIComponent(projectSlug)}/gate${suffix}`),
     enabled: !!projectSlug,
   });
 }
 
 /**
- * Gate verdict scoped to one report, i.e. only the findings that change
- * introduced. Requires a report: without one there is nothing to scope to, so
- * the query stays disabled rather than falling back to the project-wide gate.
+ * Evaluates the scope and severity carried by a CI link. The default covers
+ * only findings the report introduced. Explicit project-wide links include
+ * existing debt. Both require completed report evidence before querying.
  */
-export function useChangeGate(projectSlug: string, reportId: string | undefined) {
+export function useChangeGate(
+  projectSlug: string,
+  reportId: string | undefined,
+  projectWide = false,
+  severity?: string,
+) {
+  const query = new URLSearchParams();
+  if (!projectWide) {
+    query.set("introduced_only", "true");
+    query.set("report_id", reportId ?? "");
+  }
+  if (severity) query.set("severity", severity);
+  const suffix = query.size ? `?${query.toString()}` : "";
   return useQuery({
-    queryKey: queryKeys.changeGate(projectSlug, reportId),
+    queryKey: [...queryKeys.changeGate(projectSlug, reportId), projectWide, severity ?? ""],
     queryFn: () =>
       apiFetch<GateStatus>(
-        `/api/v1/projects/${encodeURIComponent(projectSlug)}/gate?introduced_only=true&report_id=${
-          encodeURIComponent(reportId ?? "")
-        }`,
+        `/api/v1/projects/${encodeURIComponent(projectSlug)}/gate${suffix}`,
       ),
     enabled: !!projectSlug && !!reportId,
   });
