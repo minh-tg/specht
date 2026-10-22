@@ -13,6 +13,7 @@ const NEWER_SHA = "2222222222222222222222222222222222222222";
 let projectStatus: number;
 let permissions: Record<string, boolean> | undefined;
 let reports: unknown[];
+let exactReports: Record<string, unknown>;
 let reportsStatus: number;
 let reportsPending: boolean;
 let signalReports: unknown[];
@@ -95,6 +96,7 @@ beforeEach(() => {
   projectStatus = 200;
   permissions = { request_waiver: true };
   reports = [report()];
+  exactReports = {};
   reportsStatus = 200;
   reportsPending = false;
   signalReports = [];
@@ -127,11 +129,22 @@ beforeEach(() => {
         }),
       );
     }
-    if (url.startsWith("/api/v1/projects/acme/reports?") && !url.endsWith("?limit=500")) {
+    if (url.startsWith("/api/v1/reports/")) {
+      const id = decodeURIComponent(url.slice("/api/v1/reports/".length));
+      const found = exactReports[id] ?? reports.find((r) => (r as { id: string; }).id === id);
+      return Promise.resolve(
+        found ? jsonResponse(found) : jsonResponse({ error: { code: "not_found" } }, 404),
+      );
+    }
+    if (
+      url.startsWith("/api/v1/projects/acme/reports?") && !url.includes("commit=")
+      && !url.endsWith("?limit=500")
+    ) {
       return Promise.resolve(jsonResponse(signalReports));
     }
     if (
       url === "/api/v1/projects/acme/reports" || url === "/api/v1/projects/acme/reports?limit=500"
+      || url.includes("/api/v1/projects/acme/reports?commit=")
     ) {
       if (reportsPending) return new Promise<Response>(() => {});
       if (reportsStatus >= 400) {
@@ -227,6 +240,25 @@ function openEntry() {
 }
 
 describe("ChangeView", () => {
+  it("loads an exact report even when it is outside the report list", async () => {
+    reports = [];
+    exactReports = { old: report({ id: "old" }) };
+    renderPage(`/acme/changes/${FULL_SHA}?report=old`);
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
+      "2 findings block this change.",
+    );
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/v1/reports/old", expect.anything());
+  });
+
+  it("queries the commit on the server instead of walking project history", async () => {
+    renderPage();
+    await screen.findByRole("heading", { level: 1 });
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      `/api/v1/projects/acme/reports?commit=${FULL_SHA}`,
+      expect.anything(),
+    );
+  });
+
   it("shows a skeleton header while the reports load", () => {
     reportsPending = true;
     const { container } = renderPage();

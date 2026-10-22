@@ -4,6 +4,7 @@ import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { setAuthToken } from "./client";
 import {
+  useChangeReports,
   useFinding,
   useFindingEvents,
   useFindings,
@@ -47,6 +48,16 @@ describe("API paths built from route params", () => {
     ["project stats", () => useProjectStats(HOSTILE), `/api/v1/projects/${ENCODED}/stats`],
     ["gate", () => useGateStatus(HOSTILE), `/api/v1/projects/${ENCODED}/gate`],
     ["reports", () => useReports(HOSTILE), `/api/v1/projects/${ENCODED}/reports`],
+    [
+      "change reports",
+      () => useChangeReports(HOSTILE, "abcdef1", null),
+      `/api/v1/projects/${ENCODED}/reports?commit=abcdef1`,
+    ],
+    [
+      "exact report",
+      () => useChangeReports("demo", "abcdef1", HOSTILE),
+      `/api/v1/reports/${ENCODED}`,
+    ],
     ["finding", () => useFinding(HOSTILE), `/api/v1/findings/${ENCODED}`],
     [
       "reachability",
