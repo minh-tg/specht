@@ -44,6 +44,8 @@ services:
       # values fail fast: postgres refuses an empty password and the server
       # refuses a missing/short JWT secret at startup.
       JWT_SECRET: ${JWT_SECRET}
+      FINGERPRINT_KEY: ${FINGERPRINT_KEY:-}
+      RAW_RETENTION_DAYS: ${RAW_RETENTION_DAYS:-30}
       SERVER_ADDR: :8080
       LOG_LEVEL: ${LOG_LEVEL:-info}
       # Keep migrations enabled for the local compose development loop. A
@@ -108,6 +110,7 @@ services:
       TRACKER_API_TOKEN: ${TRACKER_API_TOKEN:-}
       WATCHER_WEBHOOK_URLS: ${WATCHER_WEBHOOK_URLS:-}
       # Threat intel (EPSS + CISA KEV) on the finding detail read path.
+      INTEL_ENABLED: ${INTEL_ENABLED:-true}
       INTEL_TTL: ${INTEL_TTL:-1h}
       INTEL_EPSS_ENDPOINT: >-
         ${INTEL_EPSS_ENDPOINT:-https://api.first.org/data/v1/epss}

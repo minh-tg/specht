@@ -287,6 +287,7 @@ an external issue tracker. Disabled by default.
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
+| `INTEL_ENABLED` | `true` | Set `false` to disable the EPSS and KEV feeds. No intelligence feed is built or called while disabled. |
 | `INTEL_TTL` | `1h` | Cache lifetime for both feeds. A feed outage serves the last record, flagged stale. |
 | `INTEL_EPSS_ENDPOINT` | `https://api.first.org/data/v1/epss` | EPSS feed. |
 | `INTEL_KEV_ENDPOINT` | `https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json` | CISA KEV catalog. |
