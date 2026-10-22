@@ -24,16 +24,17 @@ export interface ChangeHeroProps {
   readonly existing: number;
   readonly waived: number;
   readonly policy?: PolicyEffective;
+  readonly projectWide?: boolean;
 }
 
-function headline(state: ChangeState, blockers: number): string {
+function headline(state: ChangeState, blockers: number, projectWide: boolean): string {
   switch (state) {
     case "blocked":
-      return `${pluralize(blockers, "finding")} ${
-        blockers === 1 ? "blocks" : "block"
-      } this change.`;
+      return `${pluralize(blockers, "finding")} ${blockers === 1 ? "blocks" : "block"} this ${
+        projectWide ? "project" : "change"
+      }.`;
     case "passing":
-      return "This change introduces no blocking findings.";
+      return projectWide ? "Project gate passed." : "This change introduces no blocking findings.";
     case "scanning":
       return "Scanning your push.";
     case "processing":
@@ -43,12 +44,14 @@ function headline(state: ChangeState, blockers: number): string {
   }
 }
 
-function subline(state: ChangeState, report: Report | null): string {
+function subline(state: ChangeState, report: Report | null, projectWide: boolean): string {
   switch (state) {
     case "blocked":
       return "Fix them or request a waiver, then push. Specht re-scans on its own.";
     case "passing":
-      return "Nothing in it stops the merge. Only a scan can change that.";
+      return projectWide
+        ? "No project findings block this gate at the selected severity floor."
+        : "Nothing in it stops the merge. Only a scan can change that.";
     case "scanning":
       return "The verdict updates when the scan finishes.";
     case "processing":
@@ -80,7 +83,8 @@ function stampFor(
  * the page rule. The stamp is the only solid block on the page, so the verdict is the first thing seen.
  */
 export function ChangeHero(
-  { commit, report, state, blockers, existing, waived, policy }: ChangeHeroProps,
+  { commit, report, state, blockers, existing, waived, policy, projectWide = false }:
+    ChangeHeroProps,
 ) {
   const stamp = stampFor(state);
   const branch = report?.branch;
@@ -100,9 +104,9 @@ export function ChangeHero(
         <VerdictBadge verdict={stamp.verdict} scanning={stamp.scanning} size="lg" />
         <div className="grid min-w-0 gap-1.5">
           <h1 className="text-[1.625rem] leading-[1.1] font-bold tracking-tight text-balance sm:text-3xl">
-            {headline(state, blockers)}
+            {headline(state, blockers, projectWide)}
           </h1>
-          <p className="max-w-[58ch] text-lg leading-snug">{subline(state, report)}</p>
+          <p className="max-w-[58ch] text-lg leading-snug">{subline(state, report, projectWide)}</p>
         </div>
       </div>
       <p className="text-muted-foreground mt-4 flex flex-wrap items-center gap-x-0 gap-y-1 text-[13px] tabular-nums max-sm:grid max-sm:gap-0.5">

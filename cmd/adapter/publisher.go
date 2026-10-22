@@ -173,6 +173,29 @@ func changeURLWithReport(apiURL, project, commit, reportID string) string {
 	return link + "?report=" + url.QueryEscape(reportID)
 }
 
+// gateChangeURL preserves the evidence and policy scope used by this CI run.
+func gateChangeURL(apiURL string, payload client.IngestPayload, reportID, severity string) string {
+	link := changeURLWithReport(apiURL, payload.Project, payload.CommitSha, reportID)
+	if link == "" {
+		return ""
+	}
+	u, err := url.Parse(link)
+	if err != nil {
+		return ""
+	}
+	q := u.Query()
+	scope := "project"
+	if payload.GateIntroducedOnly {
+		scope = "introduced"
+	}
+	q.Set("scope", scope)
+	if severity != "" {
+		q.Set("severity", severity)
+	}
+	u.RawQuery = q.Encode()
+	return u.String()
+}
+
 // withChangeLink appends a link back to the Specht change page to a check
 // summary. It returns the summary unchanged when link is empty.
 func withChangeLink(summary, link string) string {

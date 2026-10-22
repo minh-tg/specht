@@ -924,7 +924,7 @@ func TestRun_IntroducedOnly_Fail_WithAnnotations_And_Summary(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(summaryBytes), "### Vulnerability Report")
 	assert.Contains(t, string(summaryBytes), "CVE-2023-45853 in zlib")
-	assert.Contains(t, string(summaryBytes), "[View this change in Specht]("+srv.URL+"/my-app/changes/abc12345)")
+	assert.Contains(t, string(summaryBytes), "[View this change in Specht]("+srv.URL+"/my-app/changes/abc12345?report=rep-fail&scope=introduced)")
 }
 
 func TestRun_BaselinePolicy_Warn_And_Fail(t *testing.T) {

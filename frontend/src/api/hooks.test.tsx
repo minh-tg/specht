@@ -570,7 +570,7 @@ describe("useChangeGate", () => {
     const { result } = renderHook(() => useChangeGate("p/1", "r 1/2"), { wrapper });
 
     await waitFor(() => expect(result.current.data?.threshold_breached).toBe(true));
-    expect(urls[0]).toBe("/api/v1/projects/p%2F1/gate?introduced_only=true&report_id=r%201%2F2");
+    expect(urls[0]).toBe("/api/v1/projects/p%2F1/gate?introduced_only=true&report_id=r+1%2F2");
   });
 
   it("stays disabled without a report", async () => {
