@@ -26,8 +26,7 @@ const (
 )
 
 // commitFilterPattern accepts a full or abbreviated commit id for the report
-// list filter. The match is exact, so an abbreviation only finds reports
-// stored with that same abbreviation.
+// list filter. Matching is exact unless commit_prefix is explicitly enabled.
 var commitFilterPattern = regexp.MustCompile(`^[0-9a-fA-F]{7,64}$`)
 
 func (h *Handler) CreateProject(w http.ResponseWriter, r *http.Request) {
@@ -155,6 +154,14 @@ func (h *Handler) ListReports(w http.ResponseWriter, r *http.Request) {
 	filter := usecase.ReportFilter{
 		Branch:    r.URL.Query().Get("branch"),
 		CommitSha: r.URL.Query().Get("commit"),
+	}
+	if raw := r.URL.Query().Get("commit_prefix"); raw != "" {
+		prefix, err := strconv.ParseBool(raw)
+		if err != nil || (prefix && filter.CommitSha == "") {
+			respondError(w, http.StatusBadRequest, "invalid_commit_prefix", "commit_prefix must be a boolean and requires commit when true")
+			return
+		}
+		filter.CommitPrefix = prefix
 	}
 	if len(filter.Branch) > maxReportBranchLen {
 		respondError(w, http.StatusBadRequest, "invalid_branch", "branch is too long")

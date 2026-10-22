@@ -4892,8 +4892,10 @@ export interface operations {
       query?: {
         /** @description Exact branch name. Omit for every branch. */
         branch?: string;
-        /** @description Exact commit id, 7 to 64 hexadecimal characters. An abbreviation only finds reports stored with that same abbreviation. */
+        /** @description Commit id, 7 to 64 hexadecimal characters. Exact match unless commit_prefix is true. */
         commit?: string;
+        /** @description Match commit as a case-insensitive prefix. Requires commit when true. */
+        commit_prefix?: boolean;
         /** @description Page size. Default 20, maximum 500. A malformed, negative, or oversized value falls back to the default. */
         limit?: components["parameters"]["Limit"];
         /** @description Items to skip. A malformed, negative, or out-of-range value falls back to 0. */

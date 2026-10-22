@@ -51,7 +51,7 @@ describe("API paths built from route params", () => {
     [
       "change reports",
       () => useChangeReports(HOSTILE, "abcdef1", null),
-      `/api/v1/projects/${ENCODED}/reports?commit=abcdef1`,
+      `/api/v1/projects/${ENCODED}/reports?commit=abcdef1&commit_prefix=true`,
     ],
     [
       "exact report",

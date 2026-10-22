@@ -4332,8 +4332,8 @@ func TestListReports_PassesFilterToStore(t *testing.T) {
 	}}
 	uc := New(Deps{Stores: &port.Stores{Projects: pr, Reports: rr}})
 
-	_, err := uc.ListReports(adminCtx(), "my-app", ReportFilter{Branch: "main", CommitSha: "abcdef0"}, 1, 0)
+	_, err := uc.ListReports(adminCtx(), "my-app", ReportFilter{Branch: "main", CommitSha: "abcdef0", CommitPrefix: true}, 1, 0)
 
 	require.NoError(t, err)
-	assert.Equal(t, port.ReportFilter{Branch: "main", CommitSha: "abcdef0"}, got)
+	assert.Equal(t, port.ReportFilter{Branch: "main", CommitSha: "abcdef0", CommitPrefix: true}, got)
 }

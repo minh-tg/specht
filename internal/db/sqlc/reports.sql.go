@@ -719,21 +719,26 @@ const listReportsByProject = `-- name: ListReportsByProject :many
 SELECT id, project_id, tool_name, tool_version, scan_type, target_id, artifact_id, environment_id, scan_target, scan_scope, scan_scope_hash, scan_completeness, scanner_config_hash, branch, commit_sha, status, total_findings, parser_version, started_at, completed_at, error_message, raw_report_hash, created_at, raw_data, base_revision, changed_files, scan_mode FROM reports
 WHERE project_id = $1
   AND ($4::text = '' OR branch = $4::text)
-  AND ($5::text = '' OR commit_sha = $5::text)
+  AND ($5::text = '' OR
+    CASE WHEN $6::boolean
+      THEN starts_with(lower(commit_sha), lower($5::text))
+      ELSE commit_sha = $5::text
+    END)
 ORDER BY created_at DESC, id DESC
 LIMIT $2 OFFSET $3
 `
 
 type ListReportsByProjectParams struct {
-	ProjectID pgtype.UUID `json:"project_id"`
-	Limit     int32       `json:"limit"`
-	Offset    int32       `json:"offset"`
-	Branch    string      `json:"branch"`
-	CommitSha string      `json:"commit_sha"`
+	ProjectID    pgtype.UUID `json:"project_id"`
+	Limit        int32       `json:"limit"`
+	Offset       int32       `json:"offset"`
+	Branch       string      `json:"branch"`
+	CommitSha    string      `json:"commit_sha"`
+	CommitPrefix bool        `json:"commit_prefix"`
 }
 
-// An empty branch or commit_sha selects every report. commit_sha is an exact
-// match served by the (project_id, commit_sha) index.
+// An empty branch or commit_sha selects every report. The default commit
+// match is exact; change pages explicitly request case-insensitive prefixes.
 func (q *Queries) ListReportsByProject(ctx context.Context, arg ListReportsByProjectParams) ([]Report, error) {
 	rows, err := q.db.Query(ctx, listReportsByProject,
 		arg.ProjectID,
@@ -741,6 +746,7 @@ func (q *Queries) ListReportsByProject(ctx context.Context, arg ListReportsByPro
 		arg.Offset,
 		arg.Branch,
 		arg.CommitSha,
+		arg.CommitPrefix,
 	)
 	if err != nil {
 		return nil, err

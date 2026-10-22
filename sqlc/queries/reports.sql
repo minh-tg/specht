@@ -25,12 +25,16 @@ INSERT INTO reports (
 SELECT * FROM reports WHERE id = $1;
 
 -- name: ListReportsByProject :many
--- An empty branch or commit_sha selects every report. commit_sha is an exact
--- match served by the (project_id, commit_sha) index.
+-- An empty branch or commit_sha selects every report. The default commit
+-- match is exact; change pages explicitly request case-insensitive prefixes.
 SELECT * FROM reports
 WHERE project_id = $1
   AND (sqlc.arg(branch)::text = '' OR branch = sqlc.arg(branch)::text)
-  AND (sqlc.arg(commit_sha)::text = '' OR commit_sha = sqlc.arg(commit_sha)::text)
+  AND (sqlc.arg(commit_sha)::text = '' OR
+    CASE WHEN sqlc.arg(commit_prefix)::boolean
+      THEN starts_with(lower(commit_sha), lower(sqlc.arg(commit_sha)::text))
+      ELSE commit_sha = sqlc.arg(commit_sha)::text
+    END)
 ORDER BY created_at DESC, id DESC
 LIMIT $2 OFFSET $3;
 
