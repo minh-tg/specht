@@ -10,6 +10,10 @@ frontend/dist/
 frontend/coverage/
 frontend/test-results/
 frontend/playwright-report/
+website/dist/
+website/.astro/
+website/test-results/
+website/playwright-report/
 cmd/server/dist/dist/
 
 # Coverage profiles and reports

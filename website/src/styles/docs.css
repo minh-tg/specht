@@ -1,0 +1,71 @@
+@import "@fontsource-variable/archivo/wdth.css";
+@import "@fontsource-variable/jetbrains-mono";
+
+:root {
+  --sl-font: "Archivo Variable", sans-serif;
+  --sl-font-mono: "JetBrains Mono Variable", monospace;
+  --sl-color-accent-low: #34302a;
+  --sl-color-accent: #c8beb0;
+  --sl-color-accent-high: #f4f2ec;
+  --sl-color-white: #f4f2ec;
+  --sl-color-gray-1: #e0dbd2;
+  --sl-color-gray-2: #c4beb3;
+  --sl-color-gray-3: #968d80;
+  --sl-color-gray-4: #5b554c;
+  --sl-color-gray-5: #35312b;
+  --sl-color-gray-6: #24211d;
+  --sl-color-black: #191817;
+  --sl-color-bg-nav: #1e1c19;
+  --sl-color-bg-sidebar: #1e1c19;
+}
+:root[data-theme="light"] {
+  --sl-color-accent-low: #e6e0d4;
+  --sl-color-accent: #51483a;
+  --sl-color-accent-high: #24211d;
+  --sl-color-white: #24211d;
+  --sl-color-gray-1: #35312b;
+  --sl-color-gray-2: #514b42;
+  --sl-color-gray-3: #736a5c;
+  --sl-color-gray-4: #a69b89;
+  --sl-color-gray-5: #d7cebf;
+  --sl-color-gray-6: #ebe5da;
+  --sl-color-gray-7: #f4f2ec;
+  --sl-color-black: #fffdf8;
+  --sl-color-bg-nav: #f4f2ec;
+  --sl-color-bg-sidebar: #f4f2ec;
+}
+.site-title {
+  font-weight: 650;
+  letter-spacing: -0.05em;
+  text-transform: lowercase;
+}
+h1,
+h2,
+h3 {
+  letter-spacing: -0.035em;
+}
+h1 {
+  font-weight: 600;
+}
+.sl-markdown-content {
+  line-height: 1.8;
+}
+.sl-markdown-content a {
+  text-underline-offset: 0.2em;
+}
+:focus-visible {
+  outline-offset: 4px;
+}
+.expressive-code pre:focus-visible {
+  outline: 2px solid var(--sl-color-text-accent);
+  outline-offset: -2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}

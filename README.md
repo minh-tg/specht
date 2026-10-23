@@ -138,6 +138,7 @@ A format that is not listed needs a Go parser with fixtures and tests under
 
 ## Documentation
 
+- [`website/`](website/README.md): standalone product site and evaluator guides, built with Astro and Starlight.
 - [`deploy/README.md`](deploy/README.md): Docker Compose, secrets, TLS, backups, upgrades and the configuration reference.
 - [`openapi.yaml`](openapi.yaml): every HTTP route with its required role, API key scope, parameters and responses.
 - [`docs/mcp.md`](docs/mcp.md): connecting an AI assistant.
