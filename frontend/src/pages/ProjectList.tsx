@@ -15,7 +15,7 @@ import { useQueries } from "@tanstack/react-query";
 import { type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
-const COLUMNS = ["Project", "Verdict", "Blocking", "Findings", "Last scan"] as const;
+const COLUMNS = ["Project", "Verdict", "Blocking", "Findings", "Report received"] as const;
 const SKELETON_ROW_COUNT = 3;
 
 const VERDICT_PRIORITY: Record<Verdict, number> = {

@@ -37,8 +37,10 @@ export function FindingsDashboard() {
   );
   const findings = data?.findings;
   const total = data?.total ?? null;
-  const { data: gate } = useGateStatus(slug ?? "");
-  const { data: stats } = useProjectStats(slug ?? "");
+  const gateQuery = useGateStatus(slug ?? "");
+  const statsQuery = useProjectStats(slug ?? "");
+  const gate = gateQuery.data;
+  const stats = statsQuery.data;
   const { data: project } = useProject(slug ?? "");
   // The server says what this person may do; until it has, nothing is offered.
   const canTriage = project?.permissions?.triage === true;
@@ -125,8 +127,12 @@ export function FindingsDashboard() {
         className="text-muted-foreground flex items-center justify-end gap-2 text-xs"
         updatedAt={dataUpdatedAt}
         watch={[data]}
-        isFetching={isFetching}
-        onRefresh={() => void refetch()}
+        isFetching={isFetching || gateQuery.isFetching || statsQuery.isFetching}
+        onRefresh={() => {
+          void refetch();
+          void gateQuery.refetch();
+          void statsQuery.refetch();
+        }}
       />
 
       <div

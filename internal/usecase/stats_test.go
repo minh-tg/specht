@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -14,11 +15,15 @@ import (
 
 type mockStatsStore struct {
 	port.StatsStore
-	severity    []port.SeverityStat
-	analysis    []port.AnalysisStateStat
-	severityErr error
-	analysisErr error
-	pending     int32
+	severity     []port.SeverityStat
+	analysis     []port.AnalysisStateStat
+	severityErr  error
+	analysisErr  error
+	pending      int32
+	latest       port.Report
+	latestErr    error
+	completed    port.Report
+	completedErr error
 }
 
 // gateRows is what the fake finding store offers the gate as blocking
@@ -73,7 +78,23 @@ func (m *mockStatsStore) GetProjectPendingWaiverCount(context.Context, string) (
 func (m *mockStatsStore) GetProjectReportCount(context.Context, string) (int32, error) { return 0, nil }
 
 func (m *mockStatsStore) GetProjectLatestReport(context.Context, string) (port.Report, error) {
-	return port.Report{}, port.ErrNotFound
+	if m.latestErr != nil {
+		return port.Report{}, m.latestErr
+	}
+	if m.latest.ID == "" {
+		return port.Report{}, port.ErrNotFound
+	}
+	return m.latest, nil
+}
+
+func (m *mockStatsStore) GetProjectLatestCompletedReport(context.Context, string) (port.Report, error) {
+	if m.completedErr != nil {
+		return port.Report{}, m.completedErr
+	}
+	if m.completed.ID == "" {
+		return port.Report{}, port.ErrNotFound
+	}
+	return m.completed, nil
 }
 
 func statsUsecase(store *mockStatsStore) *Usecases {
@@ -116,6 +137,32 @@ func TestGetProjectStats_EmptyProjectMarshalAnalysisStates(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(raw), `"by_analysis_state":[]`)
 	assert.NotContains(t, string(raw), `"by_analysis_state":null`)
+	assert.NotContains(t, string(raw), `"latest_completed_report"`)
+}
+
+func TestGetProjectStats_CompletedReportDoesNotBecomeTheLatestFailedAttempt(t *testing.T) {
+	completedAt := time.Date(2026, 10, 20, 12, 0, 0, 0, time.UTC)
+	store := &mockStatsStore{
+		latest:    port.Report{ID: "20000000-0000-4000-8000-000000000002", Status: "failed", CreatedAt: completedAt.Add(time.Hour)},
+		completed: port.Report{ID: "10000000-0000-4000-8000-000000000001", Status: "completed", CreatedAt: completedAt.Add(-time.Minute), CompletedAt: &completedAt},
+	}
+	stats, err := statsUsecase(store).GetProjectStats(adminCtx(), "my-app")
+	require.NoError(t, err)
+	require.NotNil(t, stats.LatestReport)
+	require.NotNil(t, stats.LatestCompletedReport)
+	assert.Equal(t, "failed", stats.LatestReport.Status)
+	assert.Equal(t, store.completed.ID, stats.LatestCompletedReport.ID)
+	assert.Equal(t, &completedAt, stats.LatestCompletedReport.CompletedAt)
+}
+
+func TestGetProjectStats_LatestAttemptLookupFailureIsNotNoHistory(t *testing.T) {
+	_, err := statsUsecase(&mockStatsStore{latestErr: errors.New("database unavailable")}).GetProjectStats(adminCtx(), "my-app")
+	require.ErrorContains(t, err, "get latest report")
+}
+
+func TestGetProjectStats_CompletedReportLookupFailureIsNotNoHistory(t *testing.T) {
+	_, err := statsUsecase(&mockStatsStore{completedErr: errors.New("database unavailable")}).GetProjectStats(adminCtx(), "my-app")
+	require.ErrorContains(t, err, "get latest completed report")
 }
 
 func TestGetProjectStats_AnalysisStateError(t *testing.T) {

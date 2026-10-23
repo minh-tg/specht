@@ -16,7 +16,7 @@ function updatedAgo(elapsedMs: number): string {
 }
 
 /**
- * "Updated 40 seconds ago" with a Refresh button, for a page that polls. The text is not a live
+ * "Page data fetched 40 seconds ago" with a Refresh button, for a page that polls. The text is not a live
  * region: a counter that changes every few seconds would be read out continuously. A separate polite
  * status says "New changes" the first time a refetch brings data that differs from what was shown,
  * and then stays quiet for as long as the page is open. A change that follows the person's own save
@@ -94,7 +94,7 @@ export function UpdatedHint({ updatedAt, watch, isFetching, onRefresh, className
   if (updatedAt === 0) return null;
   return (
     <div className={className ?? "text-muted-foreground flex items-center gap-2 text-xs"}>
-      <span>Updated {updatedAgo(now - updatedAt)}</span>
+      <span>Page data fetched {updatedAgo(now - updatedAt)}</span>
       {/* aria-disabled, not disabled: a disabled button drops the focus the person just put on it. */}
       <Button
         variant="ghost"

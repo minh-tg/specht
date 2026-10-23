@@ -154,7 +154,7 @@ describe("ProjectList", () => {
 
     await screen.findByRole("link", { name: "Alpha" });
     expect(screen.getByRole("table", { name: "Projects" })).toBeInTheDocument();
-    for (const column of ["Project", "Verdict", "Blocking", "Findings", "Last scan"]) {
+    for (const column of ["Project", "Verdict", "Blocking", "Findings", "Report received"]) {
       expect(screen.getByRole("columnheader", { name: column })).toBeInTheDocument();
     }
     await waitFor(() => {

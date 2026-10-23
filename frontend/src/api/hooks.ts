@@ -443,7 +443,7 @@ export function useChangeReports(projectSlug: string, commit: string, reportId: 
   });
 }
 
-export function useGateStatus(projectSlug: string, severity?: string) {
+export function useGateStatus(projectSlug: string, severity?: string, poll?: PollOptions) {
   const suffix = severity ? `?severity=${encodeURIComponent(severity)}` : "";
   return useQuery({
     queryKey: severity
@@ -452,6 +452,8 @@ export function useGateStatus(projectSlug: string, severity?: string) {
     queryFn: () =>
       apiFetch<GateStatus>(`/api/v1/projects/${encodeURIComponent(projectSlug)}/gate${suffix}`),
     enabled: !!projectSlug,
+    refetchInterval: poll?.refetchInterval,
+    refetchIntervalInBackground: false,
   });
 }
 

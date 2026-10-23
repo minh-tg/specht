@@ -4,6 +4,7 @@ import {
   PREFETCH_STALE_MS,
   useFinding,
 } from "@/api/hooks";
+import { VerdictBand } from "@/components/VerdictBand";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
@@ -178,20 +179,45 @@ describe("fresher findings", () => {
   it("shows when the page was updated, outside any live region, and a Refresh button", async () => {
     renderList();
     await screen.findByText("Test Vuln");
-    const hint = screen.getByText(/^Updated /);
-    expect(hint).toHaveTextContent("Updated just now");
+    const hint = screen.getByText(/^Page data fetched /);
+    expect(hint).toHaveTextContent("Page data fetched just now");
     expect(hint.closest("[aria-live], [role=status], [role=alert]")).toBeNull();
 
     await advance(10_000);
-    expect(screen.getByText(/^Updated /)).toHaveTextContent(/Updated \d+ seconds? ago/);
+    expect(screen.getByText(/^Page data fetched /)).toHaveTextContent(
+      /Page data fetched \d+ seconds? ago/,
+    );
   });
 
-  it("Refresh asks again at once", async () => {
+  it("Refresh asks for findings, gate and report metadata together", async () => {
     renderList();
     await screen.findByText("Test Vuln");
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     await advance(0);
     expect(count("/api/v1/projects/payments/findings")).toBe(2);
+    expect(count("/api/v1/projects/payments/gate")).toBe(2);
+    expect(count("/api/v1/projects/payments/stats")).toBe(2);
+  });
+
+  it("polls the project's report metadata and gate only while visible", async () => {
+    renderAt(
+      "/payments/findings",
+      "/:slug/findings",
+      <>
+        <VerdictBand slug="payments" />
+        <FindingsDashboard />
+      </>,
+    );
+    await screen.findByText("Test Vuln");
+    expect(count("/api/v1/projects/payments/stats")).toBe(1);
+    expect(count("/api/v1/projects/payments/gate")).toBe(1);
+    await advance(30_000);
+    expect(count("/api/v1/projects/payments/stats")).toBe(2);
+    expect(count("/api/v1/projects/payments/gate")).toBe(2);
+    setVisible(false);
+    await advance(60_000);
+    expect(count("/api/v1/projects/payments/stats")).toBe(2);
+    expect(count("/api/v1/projects/payments/gate")).toBe(2);
   });
 
   it("ignores a Refresh click while a request is already in flight", async () => {

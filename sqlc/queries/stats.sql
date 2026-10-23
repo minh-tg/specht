@@ -46,6 +46,18 @@ FROM reports
 WHERE project_id = $1
 ORDER BY created_at DESC, id DESC
 LIMIT 1;
+-- name: GetProjectLatestCompletedReport :one
+-- Completion order can differ from receipt order when ingests overlap.
+SELECT
+    id, project_id, tool_name, tool_version, scan_type,
+    scan_target, status, total_findings, branch, commit_sha,
+    created_at, completed_at,
+    CAST((raw_data = 'null'::jsonb) IS TRUE AS boolean) AS raw_data_expired
+FROM reports
+WHERE project_id = $1 AND status = 'completed'
+ORDER BY COALESCE(completed_at, created_at) DESC, created_at DESC, id DESC
+LIMIT 1;
+
 -- name: GetAgingRows :many
 -- Open findings, oldest first, for the aging report. The caller asks for one
 -- row more than it will use, so that it can tell when the project has more than

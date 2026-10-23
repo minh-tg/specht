@@ -472,6 +472,8 @@ export interface ProjectStats {
   by_severity: SeverityCount[];
   by_analysis_state?: AnalysisStateCount[];
   latest_report?: Report;
+  /** Latest by completion time, independent of the most recently received attempt. */
+  latest_completed_report?: Report;
 }
 
 export interface IngestResponse {

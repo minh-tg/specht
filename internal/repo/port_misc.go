@@ -182,6 +182,22 @@ func (r *pgStatsPort) GetProjectLatestReport(ctx context.Context, projectID stri
 	if err != nil {
 		return port.Report{}, mappingErr(err)
 	}
+	return statsReportToPort(row), nil
+}
+
+func (r *pgStatsPort) GetProjectLatestCompletedReport(ctx context.Context, projectID string) (port.Report, error) {
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.Report{}, err
+	}
+	row, err := r.inner.GetProjectLatestCompletedReport(ctx, pid)
+	if err != nil {
+		return port.Report{}, mappingErr(err)
+	}
+	return statsReportToPort(sqlc.GetProjectLatestReportRow(row)), nil
+}
+
+func statsReportToPort(row sqlc.GetProjectLatestReportRow) port.Report {
 	return port.Report{
 		ID:             toUUID(row.ID),
 		ProjectID:      toUUID(row.ProjectID),
@@ -196,7 +212,7 @@ func (r *pgStatsPort) GetProjectLatestReport(ctx context.Context, projectID stri
 		CreatedAt:      row.CreatedAt.Time,
 		CompletedAt:    timePtrFromTimestamptz(row.CompletedAt),
 		RawDataExpired: row.RawDataExpired,
-	}, nil
+	}
 }
 
 // ---------- Watcher ----------
