@@ -92,4 +92,13 @@ test("the project access page fits a 360px phone and passes axe", async ({ page,
   await page.goto(`/${slug}/access`);
   await expect(page.getByRole("heading", { name: /Direct Members/ })).toBeVisible();
   await auditPhone(page, "project access");
+  const configuration = page.getByRole("button", { name: /^Configuration/ });
+  await configuration.click();
+  await expect(page.getByRole("menuitem", { name: "Access & Members" })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await auditPhone(page, "project configuration menu");
+  await page.keyboard.press("Escape");
+  await expect(configuration).toBeFocused();
 });

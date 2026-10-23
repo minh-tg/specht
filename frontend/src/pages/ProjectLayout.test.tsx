@@ -2,6 +2,7 @@ import { queryKeys } from "@/api/hooks";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { ProjectLayout } from "./ProjectLayout";
@@ -117,16 +118,21 @@ describe("ProjectLayout", () => {
     client.setQueryData(queryKeys.me(), { id: "u1", email: "a@b.c", role: "admin" });
     renderLayoutIn(client, "/alpha/findings");
 
-    expect(await screen.findByRole("link", { name: "Settings" })).toHaveAttribute(
+    await userEvent.setup().click(screen.getByRole("button", { name: "Configuration" }));
+    expect(await screen.findByRole("menuitem", { name: "Settings" })).toHaveAttribute(
       "href",
       "/alpha/settings",
     );
   });
 
-  it("hides the settings tab from a member", () => {
+  it("hides settings from a member without hiding configuration read access", async () => {
     renderLayout();
+    await userEvent.setup().click(screen.getByRole("button", { name: "Configuration" }));
 
-    expect(screen.queryByRole("link", { name: "Settings" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Settings" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("menuitem", { name: "Policy" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Watcher" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Access & Members" })).toBeInTheDocument();
   });
 
   it.each([403, 404])(

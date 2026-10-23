@@ -1,6 +1,7 @@
 import { APIError } from "@/api/client";
 import { useProject, useProjectRole } from "@/api/hooks";
 import { INLINE_LINK } from "@/components/inlineLink";
+import { ProjectNavigation } from "@/components/ProjectNavigation";
 import { VerdictBand } from "@/components/VerdictBand";
 import { useDocumentTitle } from "@/lib/useDocumentTitle";
 import { FindingsDashboard } from "@/pages/FindingsDashboard";
@@ -91,101 +92,7 @@ export function ProjectLayout() {
         <VerdictBand slug={slug ?? ""} />
       </div>
 
-      <nav
-        aria-label="Project sections"
-        className="mb-6 flex gap-4 overflow-x-auto border-b whitespace-nowrap"
-      >
-        <Link
-          to={`/${slug}/findings`}
-          aria-current={currentTab === "findings" ? "page" : undefined}
-          className={`pb-2 text-sm font-medium ${
-            currentTab === "findings"
-              ? "border-primary text-foreground border-b-2"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Findings
-        </Link>
-        <Link
-          to={`/${slug}/reports`}
-          aria-current={currentTab === "reports" ? "page" : undefined}
-          className={`pb-2 text-sm font-medium ${
-            currentTab === "reports"
-              ? "border-primary text-foreground border-b-2"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Reports
-        </Link>
-        <Link
-          to={`/${slug}/access`}
-          aria-current={currentTab === "access" ? "page" : undefined}
-          className={`pb-2 text-sm font-medium ${
-            currentTab === "access"
-              ? "border-primary text-foreground border-b-2"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Access & Members
-        </Link>
-        <Link
-          to={`/${slug}/policy`}
-          aria-current={currentTab === "policy" ? "page" : undefined}
-          className={`pb-2 text-sm font-medium ${
-            currentTab === "policy"
-              ? "border-primary text-foreground border-b-2"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Policy
-        </Link>
-        <Link
-          to={`/${slug}/waivers`}
-          aria-current={currentTab === "waivers" ? "page" : undefined}
-          className={`pb-2 text-sm font-medium ${
-            currentTab === "waivers"
-              ? "border-primary text-foreground border-b-2"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Waivers
-        </Link>
-        <Link
-          to={`/${slug}/insights`}
-          aria-current={currentTab === "insights" ? "page" : undefined}
-          className={`pb-2 text-sm font-medium ${
-            currentTab === "insights"
-              ? "border-primary text-foreground border-b-2"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Insights
-        </Link>
-        <Link
-          to={`/${slug}/watcher`}
-          aria-current={currentTab === "watcher" ? "page" : undefined}
-          className={`pb-2 text-sm font-medium ${
-            currentTab === "watcher"
-              ? "border-primary text-foreground border-b-2"
-              : "text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          Watcher
-        </Link>
-        {isAdmin && (
-          <Link
-            to={`/${slug}/settings`}
-            aria-current={currentTab === "settings" ? "page" : undefined}
-            className={`pb-2 text-sm font-medium ${
-              currentTab === "settings"
-                ? "border-primary text-foreground border-b-2"
-                : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            Settings
-          </Link>
-        )}
-      </nav>
+      <ProjectNavigation slug={slug ?? ""} currentTab={currentTab} isAdmin={isAdmin} />
       {currentTab === "findings"
         ? <FindingsDashboard />
         : currentTab === "reports"
