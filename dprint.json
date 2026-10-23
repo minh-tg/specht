@@ -10,9 +10,11 @@
   },
   "includes": [
     "frontend/src/**/*.{ts,tsx,js,jsx,json}",
-    "frontend/scripts/**/*.ts",
+    "frontend/scripts/**/*.{ts,mjs}",
     "frontend/e2e/**/*.ts",
-    "frontend/playwright.config.ts",
+    "frontend/demo-tests/**/*.ts",
+    "frontend/playwright*.config.ts",
+    "frontend/vite.demo.config.ts",
     "frontend/*.{json}"
   ],
   "excludes": [
