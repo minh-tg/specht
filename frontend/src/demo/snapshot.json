@@ -1,0 +1,578 @@
+{
+  "slug": "checkout-api",
+  "commit": "2222222222222222222222222222222222222222",
+  "fixtures": {
+    "/api/v1/projects/checkout-api/findings": {
+      "data": [
+        {
+          "id": "bf0cc73b-7223-494f-af84-15fb4d52c738",
+          "project_id": "d5463b30-4072-4c60-8a93-bece554aa5d6",
+          "finding_kind": "sast",
+          "fingerprint": "sast:E2E-NEW-003:src/repository.go",
+          "current_title": "SQL injection in user query",
+          "current_severity": "high",
+          "current_score": null,
+          "state": "open",
+          "triage_status": "untriaged",
+          "analysis_state": "unanalyzed",
+          "gate_effect": "block",
+          "analysis_source": "system",
+          "manual_override": false,
+          "review_required": false,
+          "first_seen_at": "2026-10-23T18:33:01.156796-03:00",
+          "last_seen_at": "2026-10-23T18:33:01.156796-03:00",
+          "created_at": "2026-10-23T18:33:01.159001-03:00",
+          "updated_at": "2026-10-23T18:33:01.160426-03:00",
+          "introduced_by_report_id": "46208316-31e6-40c2-a42d-6708c453dbb5",
+          "introduced_commit_sha": "2222222222222222222222222222222222222222"
+        },
+        {
+          "id": "451e5b32-5efa-4a6a-9ab8-3b14d70c9f78",
+          "project_id": "d5463b30-4072-4c60-8a93-bece554aa5d6",
+          "finding_kind": "sast",
+          "fingerprint": "sast:E2E-HIGH-001:src/config.go",
+          "current_title": "Hardcoded credentials in app config",
+          "current_severity": "high",
+          "current_score": null,
+          "state": "open",
+          "triage_status": "untriaged",
+          "analysis_state": "unanalyzed",
+          "gate_effect": "block",
+          "analysis_source": "system",
+          "manual_override": false,
+          "review_required": false,
+          "first_seen_at": "2026-10-23T18:33:01.130999-03:00",
+          "last_seen_at": "2026-10-23T18:33:01.156796-03:00",
+          "created_at": "2026-10-23T18:33:01.132712-03:00",
+          "updated_at": "2026-10-23T18:33:01.157485-03:00",
+          "introduced_by_report_id": "a0301e0e-aaa2-45ad-af28-d1d57bda885e",
+          "introduced_commit_sha": "1111111111111111111111111111111111111111"
+        },
+        {
+          "id": "ea5a7328-13c9-4c57-b924-62d657211db3",
+          "project_id": "d5463b30-4072-4c60-8a93-bece554aa5d6",
+          "finding_kind": "sast",
+          "fingerprint": "sast:E2E-MED-002:requirements.txt",
+          "current_title": "Outdated dependency urllib3",
+          "current_severity": "medium",
+          "current_score": null,
+          "state": "open",
+          "triage_status": "untriaged",
+          "analysis_state": "unanalyzed",
+          "gate_effect": "block",
+          "analysis_source": "system",
+          "manual_override": false,
+          "review_required": false,
+          "first_seen_at": "2026-10-23T18:33:01.130999-03:00",
+          "last_seen_at": "2026-10-23T18:33:01.130999-03:00",
+          "created_at": "2026-10-23T18:33:01.138466-03:00",
+          "updated_at": "2026-10-23T18:33:01.140113-03:00",
+          "introduced_by_report_id": "a0301e0e-aaa2-45ad-af28-d1d57bda885e",
+          "introduced_commit_sha": "1111111111111111111111111111111111111111"
+        }
+      ],
+      "total": 3
+    },
+    "/api/v1/me": {
+      "data": {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "email": "observer@specht.example",
+        "role": "member",
+        "disabled": false,
+        "created_at": "2026-10-23T18:33:00-03:00",
+        "display_name": "Demo observer"
+      },
+      "total": null
+    },
+    "/api/v1/projects": {
+      "data": [
+        {
+          "id": "d5463b30-4072-4c60-8a93-bece554aa5d6",
+          "slug": "checkout-api",
+          "name": "checkout-api",
+          "description": null,
+          "created_at": "2026-10-23T18:33:01.121254-03:00",
+          "updated_at": "2026-10-23T18:33:01.121254-03:00"
+        }
+      ],
+      "total": null
+    },
+    "/api/v1/capabilities": {
+      "data": {
+        "registration": {
+          "enabled": true
+        },
+        "sso": {
+          "enabled": false
+        },
+        "setup": {
+          "required": false
+        },
+        "version": "dev",
+        "commit": "unknown"
+      },
+      "total": null
+    },
+    "/api/v1/version": {
+      "data": {
+        "version": "dev",
+        "commit": "unknown"
+      },
+      "total": null
+    },
+    "/api/v1/projects/checkout-api": {
+      "data": {
+        "id": "d5463b30-4072-4c60-8a93-bece554aa5d6",
+        "slug": "checkout-api",
+        "name": "checkout-api",
+        "description": null,
+        "created_at": "2026-10-23T18:33:01.121254-03:00",
+        "updated_at": "2026-10-23T18:33:01.121254-03:00",
+        "role": "member",
+        "permissions": {
+          "request_waiver": false,
+          "manage_waivers": false,
+          "approve_waivers": false,
+          "manage_members": false,
+          "manage_ci": false,
+          "triage": false
+        }
+      },
+      "total": null
+    },
+    "/api/v1/projects/checkout-api/stats": {
+      "data": {
+        "total_findings": 3,
+        "blocking_count": 2,
+        "waiver_count": 0,
+        "pending_waiver_count": 1,
+        "report_count": 2,
+        "by_severity": [
+          {
+            "severity": "medium",
+            "count": 1,
+            "blocking_count": 0
+          },
+          {
+            "severity": "high",
+            "count": 2,
+            "blocking_count": 2
+          }
+        ],
+        "by_analysis_state": [
+          {
+            "state": "unanalyzed",
+            "count": 3
+          }
+        ],
+        "latest_report": {
+          "id": "46208316-31e6-40c2-a42d-6708c453dbb5",
+          "project_id": "d5463b30-4072-4c60-8a93-bece554aa5d6",
+          "tool_name": "sarif",
+          "tool_version": null,
+          "scan_type": "filesystem",
+          "scan_target": null,
+          "status": "completed",
+          "total_findings": 2,
+          "branch": "main",
+          "commit_sha": "2222222222222222222222222222222222222222",
+          "created_at": "2026-10-23T18:33:01.155948-03:00",
+          "completed_at": "2026-10-23T18:33:01.163655-03:00",
+          "raw_data_expired": false,
+          "raw_data_expires_at": null
+        },
+        "latest_completed_report": {
+          "id": "46208316-31e6-40c2-a42d-6708c453dbb5",
+          "project_id": "d5463b30-4072-4c60-8a93-bece554aa5d6",
+          "tool_name": "sarif",
+          "tool_version": null,
+          "scan_type": "filesystem",
+          "scan_target": null,
+          "status": "completed",
+          "total_findings": 2,
+          "branch": "main",
+          "commit_sha": "2222222222222222222222222222222222222222",
+          "created_at": "2026-10-23T18:33:01.155948-03:00",
+          "completed_at": "2026-10-23T18:33:01.163655-03:00",
+          "raw_data_expired": false,
+          "raw_data_expires_at": null
+        }
+      },
+      "total": null
+    },
+    "/api/v1/projects/checkout-api/gate": {
+      "data": {
+        "threshold_breached": true,
+        "blocking_count": 2,
+        "blocked_by": [
+          "bf0cc73b-7223-494f-af84-15fb4d52c738",
+          "451e5b32-5efa-4a6a-9ab8-3b14d70c9f78"
+        ],
+        "blocked_by_reachability": {
+          "451e5b32-5efa-4a6a-9ab8-3b14d70c9f78": "unknown",
+          "bf0cc73b-7223-494f-af84-15fb4d52c738": "unknown"
+        },
+        "waived_finding_ids": [],
+        "policy": {
+          "template_name": null,
+          "template_version": 0,
+          "severity_floor": "high",
+          "severity_source": "default",
+          "watcher_gate": "require_triage",
+          "watcher_source": "default"
+        }
+      },
+      "total": null
+    },
+    "/api/v1/projects/checkout-api/policy": {
+      "data": {
+        "template_name": null,
+        "template_version": 0,
+        "severity_floor": "high",
+        "severity_source": "default",
+        "watcher_gate": "require_triage",
+        "watcher_source": "default"
+      },
+      "total": null
+    },
+    "/api/v1/projects/checkout-api/waivers": {
+      "data": [
+        {
+          "id": "d6f54878-e8ad-4da9-867e-6a9a88eef4c7",
+          "project_id": "d5463b30-4072-4c60-8a93-bece554aa5d6",
+          "name": "Waiver request: Outdated dependency urllib3",
+          "description": "",
+          "enabled": true,
+          "status": "pending",
+          "scope_all": false,
+          "reason": "Sample exception awaiting a separate approval decision.",
+          "requested_by": "9822ec94-b1a7-4e0a-a195-8127df084f67",
+          "requested_by_name": "journey-admin@specht.local",
+          "requested_at": "2026-10-23T18:33:01-03:00",
+          "decision_note": "",
+          "expires_at": "2026-11-22T17:33:01-04:00",
+          "conditions": [],
+          "contexts": [],
+          "targets": [
+            {
+              "id": "1bb2c0bf-0255-48c6-a4a5-f0ddae1d8374",
+              "finding_id": "ea5a7328-13c9-4c57-b924-62d657211db3"
+            }
+          ],
+          "created_at": "2026-10-23T18:33:01-03:00",
+          "updated_at": "2026-10-23T18:33:01.175964-03:00"
+        }
+      ],
+      "total": null
+    },
+    "/api/v1/projects/checkout-api/waivers/d6f54878-e8ad-4da9-867e-6a9a88eef4c7/events": {
+      "data": [
+        {
+          "id": "81fb7418-ed37-4adc-b643-a7689da50d74",
+          "waiver_id": "d6f54878-e8ad-4da9-867e-6a9a88eef4c7",
+          "event_type": "requested",
+          "actor_id": "9822ec94-b1a7-4e0a-a195-8127df084f67",
+          "actor_name": "journey-admin@specht.local",
+          "metadata": {
+            "reason": "Sample exception awaiting a separate approval decision."
+          },
+          "created_at": "2026-10-23T18:33:01-03:00"
+        }
+      ],
+      "total": null
+    },
+    "/api/v1/projects/checkout-api/reports": {
+      "data": [
+        {
+          "id": "46208316-31e6-40c2-a42d-6708c453dbb5",
+          "project_id": "d5463b30-4072-4c60-8a93-bece554aa5d6",
+          "tool_name": "sarif",
+          "tool_version": null,
+          "scan_type": "filesystem",
+          "scan_target": null,
+          "status": "completed",
+          "total_findings": 2,
+          "branch": "main",
+          "commit_sha": "2222222222222222222222222222222222222222",
+          "base_revision": "1111111111111111111111111111111111111111",
+          "scan_mode": "full",
+          "created_at": "2026-10-23T18:33:01.155948-03:00",
+          "completed_at": "2026-10-23T18:33:01.163655-03:00",
+          "raw_data_expired": false,
+          "raw_data_expires_at": null
+        },
+        {
+          "id": "a0301e0e-aaa2-45ad-af28-d1d57bda885e",
+          "project_id": "d5463b30-4072-4c60-8a93-bece554aa5d6",
+          "tool_name": "sarif",
+          "tool_version": null,
+          "scan_type": "filesystem",
+          "scan_target": null,
+          "status": "completed",
+          "total_findings": 2,
+          "branch": "main",
+          "commit_sha": "1111111111111111111111111111111111111111",
+          "scan_mode": "full",
+          "created_at": "2026-10-23T18:33:01.129952-03:00",
+          "completed_at": "2026-10-23T18:33:01.147139-03:00",
+          "raw_data_expired": false,
+          "raw_data_expires_at": null
+        }
+      ],
+      "total": null
+    },
+    "/api/v1/reports/46208316-31e6-40c2-a42d-6708c453dbb5": {
+      "data": {
+        "id": "46208316-31e6-40c2-a42d-6708c453dbb5",
+        "project_id": "d5463b30-4072-4c60-8a93-bece554aa5d6",
+        "tool_name": "sarif",
+        "tool_version": null,
+        "scan_type": "filesystem",
+        "scan_target": null,
+        "status": "completed",
+        "total_findings": 2,
+        "branch": "main",
+        "commit_sha": "2222222222222222222222222222222222222222",
+        "base_revision": "1111111111111111111111111111111111111111",
+        "scan_mode": "full",
+        "created_at": "2026-10-23T18:33:01.155948-03:00",
+        "completed_at": "2026-10-23T18:33:01.163655-03:00",
+        "raw_data_expired": false,
+        "raw_data_expires_at": null
+      },
+      "total": null
+    },
+    "/api/v1/projects/checkout-api/gate?introduced_only=true&report_id=46208316-31e6-40c2-a42d-6708c453dbb5": {
+      "data": {
+        "threshold_breached": true,
+        "blocking_count": 1,
+        "blocked_by": [
+          "bf0cc73b-7223-494f-af84-15fb4d52c738"
+        ],
+        "blocked_by_reachability": {
+          "bf0cc73b-7223-494f-af84-15fb4d52c738": "unknown"
+        },
+        "waived_finding_ids": [],
+        "policy": {
+          "template_name": null,
+          "template_version": 0,
+          "severity_floor": "high",
+          "severity_source": "default",
+          "watcher_gate": "require_triage",
+          "watcher_source": "default"
+        }
+      },
+      "total": null
+    },
+    "/api/v1/reports/a0301e0e-aaa2-45ad-af28-d1d57bda885e": {
+      "data": {
+        "id": "a0301e0e-aaa2-45ad-af28-d1d57bda885e",
+        "project_id": "d5463b30-4072-4c60-8a93-bece554aa5d6",
+        "tool_name": "sarif",
+        "tool_version": null,
+        "scan_type": "filesystem",
+        "scan_target": null,
+        "status": "completed",
+        "total_findings": 2,
+        "branch": "main",
+        "commit_sha": "1111111111111111111111111111111111111111",
+        "scan_mode": "full",
+        "created_at": "2026-10-23T18:33:01.129952-03:00",
+        "completed_at": "2026-10-23T18:33:01.147139-03:00",
+        "raw_data_expired": false,
+        "raw_data_expires_at": null
+      },
+      "total": null
+    },
+    "/api/v1/projects/checkout-api/gate?introduced_only=true&report_id=a0301e0e-aaa2-45ad-af28-d1d57bda885e": {
+      "data": {
+        "threshold_breached": true,
+        "blocking_count": 1,
+        "blocked_by": [
+          "451e5b32-5efa-4a6a-9ab8-3b14d70c9f78"
+        ],
+        "blocked_by_reachability": {
+          "451e5b32-5efa-4a6a-9ab8-3b14d70c9f78": "unknown"
+        },
+        "waived_finding_ids": [],
+        "policy": {
+          "template_name": null,
+          "template_version": 0,
+          "severity_floor": "high",
+          "severity_source": "default",
+          "watcher_gate": "require_triage",
+          "watcher_source": "default"
+        }
+      },
+      "total": null
+    },
+    "/api/v1/findings/bf0cc73b-7223-494f-af84-15fb4d52c738": {
+      "data": {
+        "id": "bf0cc73b-7223-494f-af84-15fb4d52c738",
+        "project_id": "d5463b30-4072-4c60-8a93-bece554aa5d6",
+        "finding_kind": "sast",
+        "fingerprint": "sast:E2E-NEW-003:src/repository.go",
+        "current_title": "SQL injection in user query",
+        "current_severity": "high",
+        "current_score": null,
+        "state": "open",
+        "triage_status": "untriaged",
+        "analysis_state": "unanalyzed",
+        "gate_effect": "block",
+        "analysis_source": "system",
+        "manual_override": false,
+        "review_required": false,
+        "first_seen_at": "2026-10-23T18:33:01.156796-03:00",
+        "last_seen_at": "2026-10-23T18:33:01.156796-03:00",
+        "created_at": "2026-10-23T18:33:01.159001-03:00",
+        "updated_at": "2026-10-23T18:33:01.160426-03:00",
+        "introduced_by_report_id": "46208316-31e6-40c2-a42d-6708c453dbb5",
+        "introduced_commit_sha": "2222222222222222222222222222222222222222",
+        "context": {
+          "branch": "main",
+          "commit_sha": "2222222222222222222222222222222222222222"
+        },
+        "raw_data_expired": false,
+        "remediation": {
+          "summary": "No fix description reported — follow the rule documentation for the secure coding pattern.",
+          "source": "sarif",
+          "fallback": true
+        },
+        "location": {
+          "file": "src/repository.go",
+          "start_line": 88,
+          "end_line": 88,
+          "summary": "src/repository.go:88"
+        },
+        "suggestion": {
+          "action": "review",
+          "target": "src/repository.go",
+          "detail": "No fix description reported — follow the rule documentation for the secure pattern.",
+          "confidence": "low",
+          "source": "sarif"
+        }
+      },
+      "total": null
+    },
+    "/api/v1/findings/bf0cc73b-7223-494f-af84-15fb4d52c738/events": {
+      "data": [],
+      "total": null
+    },
+    "/api/v1/findings/bf0cc73b-7223-494f-af84-15fb4d52c738/reachability": {
+      "data": [],
+      "total": null
+    },
+    "/api/v1/findings/451e5b32-5efa-4a6a-9ab8-3b14d70c9f78": {
+      "data": {
+        "id": "451e5b32-5efa-4a6a-9ab8-3b14d70c9f78",
+        "project_id": "d5463b30-4072-4c60-8a93-bece554aa5d6",
+        "finding_kind": "sast",
+        "fingerprint": "sast:E2E-HIGH-001:src/config.go",
+        "current_title": "Hardcoded credentials in app config",
+        "current_severity": "high",
+        "current_score": null,
+        "state": "open",
+        "triage_status": "untriaged",
+        "analysis_state": "unanalyzed",
+        "gate_effect": "block",
+        "analysis_source": "system",
+        "manual_override": false,
+        "review_required": false,
+        "first_seen_at": "2026-10-23T18:33:01.130999-03:00",
+        "last_seen_at": "2026-10-23T18:33:01.156796-03:00",
+        "created_at": "2026-10-23T18:33:01.132712-03:00",
+        "updated_at": "2026-10-23T18:33:01.157485-03:00",
+        "introduced_by_report_id": "a0301e0e-aaa2-45ad-af28-d1d57bda885e",
+        "introduced_commit_sha": "1111111111111111111111111111111111111111",
+        "context": {
+          "branch": "main",
+          "commit_sha": "2222222222222222222222222222222222222222"
+        },
+        "raw_data_expired": false,
+        "remediation": {
+          "summary": "No fix description reported — follow the rule documentation for the secure coding pattern.",
+          "source": "sarif",
+          "fallback": true
+        },
+        "location": {
+          "file": "src/config.go",
+          "start_line": 12,
+          "end_line": 12,
+          "summary": "src/config.go:12"
+        },
+        "suggestion": {
+          "action": "review",
+          "target": "src/config.go",
+          "detail": "No fix description reported — follow the rule documentation for the secure pattern.",
+          "confidence": "low",
+          "source": "sarif"
+        }
+      },
+      "total": null
+    },
+    "/api/v1/findings/451e5b32-5efa-4a6a-9ab8-3b14d70c9f78/events": {
+      "data": [],
+      "total": null
+    },
+    "/api/v1/findings/451e5b32-5efa-4a6a-9ab8-3b14d70c9f78/reachability": {
+      "data": [],
+      "total": null
+    },
+    "/api/v1/findings/ea5a7328-13c9-4c57-b924-62d657211db3": {
+      "data": {
+        "id": "ea5a7328-13c9-4c57-b924-62d657211db3",
+        "project_id": "d5463b30-4072-4c60-8a93-bece554aa5d6",
+        "finding_kind": "sast",
+        "fingerprint": "sast:E2E-MED-002:requirements.txt",
+        "current_title": "Outdated dependency urllib3",
+        "current_severity": "medium",
+        "current_score": null,
+        "state": "open",
+        "triage_status": "untriaged",
+        "analysis_state": "unanalyzed",
+        "gate_effect": "block",
+        "analysis_source": "system",
+        "manual_override": false,
+        "review_required": false,
+        "first_seen_at": "2026-10-23T18:33:01.130999-03:00",
+        "last_seen_at": "2026-10-23T18:33:01.130999-03:00",
+        "created_at": "2026-10-23T18:33:01.138466-03:00",
+        "updated_at": "2026-10-23T18:33:01.140113-03:00",
+        "introduced_by_report_id": "a0301e0e-aaa2-45ad-af28-d1d57bda885e",
+        "introduced_commit_sha": "1111111111111111111111111111111111111111",
+        "context": {
+          "branch": "main",
+          "commit_sha": "1111111111111111111111111111111111111111"
+        },
+        "raw_data_expired": false,
+        "remediation": {
+          "summary": "No fix description reported — follow the rule documentation for the secure coding pattern.",
+          "source": "sarif",
+          "fallback": true
+        },
+        "location": {
+          "file": "requirements.txt",
+          "start_line": 3,
+          "end_line": 3,
+          "summary": "requirements.txt:3"
+        },
+        "suggestion": {
+          "action": "review",
+          "target": "requirements.txt",
+          "detail": "No fix description reported — follow the rule documentation for the secure pattern.",
+          "confidence": "low",
+          "source": "sarif"
+        }
+      },
+      "total": null
+    },
+    "/api/v1/findings/ea5a7328-13c9-4c57-b924-62d657211db3/events": {
+      "data": [],
+      "total": null
+    },
+    "/api/v1/findings/ea5a7328-13c9-4c57-b924-62d657211db3/reachability": {
+      "data": [],
+      "total": null
+    }
+  }
+}

@@ -2,5 +2,6 @@
 bin
 frontend/node_modules
 frontend/dist
+frontend/demo-dist
 cmd/server/dist/dist
 website
