@@ -594,11 +594,11 @@ describe("ChangeView waivers", () => {
 });
 
 describe("ChangeView waiting for the next scan", () => {
-  it("starts waiting when the reader says they pushed", async () => {
+  it("starts waiting when the reader asks for a new report", async () => {
     renderPage();
     await screen.findByRole("list", { name: "Blocking findings" });
 
-    await userEvent.setup().click(screen.getByRole("button", { name: "I pushed a fix" }));
+    await userEvent.setup().click(screen.getByRole("button", { name: "Wait for a new report" }));
 
     expect(await screen.findByText("Waiting for the next scan")).toBeInTheDocument();
     expect(screen.getByText("BLOCKED")).toBeInTheDocument();
@@ -622,7 +622,7 @@ describe("ChangeView waiting for the next scan", () => {
     await screen.findByRole("list", { name: "Blocking findings" });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 
-    await user.click(screen.getByRole("button", { name: "I pushed a fix" }));
+    await user.click(screen.getByRole("button", { name: "Wait for a new report" }));
     signalReports = [
       report({
         id: "r2",
@@ -668,7 +668,7 @@ describe("ChangeView waiting for the next scan", () => {
     await screen.findByRole("list", { name: "Blocking findings" });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 
-    await user.click(screen.getByRole("button", { name: "I pushed a fix" }));
+    await user.click(screen.getByRole("button", { name: "Wait for a new report" }));
     signalReports = [
       report({ id: "r0", commit_sha: NEWER_SHA, created_at: "2024-12-01T00:00:00Z" }),
     ];
@@ -686,12 +686,16 @@ describe("ChangeView waiting for the next scan", () => {
     await screen.findByRole("list", { name: "Blocking findings" });
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
 
-    await user.click(screen.getByRole("button", { name: "I pushed a fix" }));
+    await user.click(screen.getByRole("button", { name: "Wait for a new report" }));
     await act(async () => {
       await vi.advanceTimersByTimeAsync(600_500);
     });
 
-    expect(await screen.findByText("Nothing yet after ten minutes. Check the CI job."))
+    expect(
+      await screen.findByText(
+        "Nothing yet after ten minutes. Check your CI job, watcher or report upload.",
+      ),
+    )
       .toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Check again" })).toBeInTheDocument();
   });
