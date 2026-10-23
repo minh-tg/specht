@@ -17,6 +17,7 @@ on:
       - ".github/action-selftest/**"
       - ".github/workflows/action-selftest.yml"
       - "cmd/adapter/**"
+      - "internal/scanner/**"
       - "scripts/build-release.sh"
   workflow_dispatch:
 

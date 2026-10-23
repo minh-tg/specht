@@ -3,6 +3,8 @@ package scanner_test
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -13,6 +15,15 @@ import (
 )
 
 var nulEscape = fmt.Sprintf("%cu0000", 92)
+
+func TestSourceNamesAvoidWindowsDevices(t *testing.T) {
+	entries, err := os.ReadDir(".")
+	require.NoError(t, err)
+	reserved := regexp.MustCompile(`(?i)^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(\.|$)`)
+	for _, entry := range entries {
+		assert.NotRegexp(t, reserved, entry.Name(), "scanner source must check out on Windows")
+	}
+}
 
 func TestSanitizeNULDropsTheEscapeFromStringValues(t *testing.T) {
 	cases := map[string]struct{ in, want string }{
