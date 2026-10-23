@@ -549,7 +549,7 @@ jobs:
         with:
           scope: build
 
-      # go.mod pins the toolchain floor (go1.26.9); setup-go plus
+      # go.mod pins the patched toolchain; setup-go plus
       # GOTOOLCHAIN=auto resolves a patched toolchain, so the scan runs
       # against fixed stdlib.
       - name: govulncheck
