@@ -696,7 +696,8 @@ test("an admin overrides the severity floor and the project verdict follows", as
   await page.goto(`/${slug}/findings`);
   await expect(page.getByText("BLOCKED", { exact: true })).toBeVisible();
 
-  await page.getByRole("link", { name: "Policy", exact: true }).click();
+  await page.getByRole("button", { name: /^Configuration/ }).click();
+  await page.getByRole("menuitem", { name: "Policy", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/${slug}/policy$`));
   const floor = page.getByRole("group", { name: "Severity floor" });
   await expect(floor).toContainText("Default");
@@ -798,7 +799,8 @@ test("a project admin switches the watcher off and sets how often it polls", asy
   await uiLogin(page);
 
   await page.goto(`/${slug}/findings`);
-  await page.getByRole("link", { name: "Watcher", exact: true }).click();
+  await page.getByRole("button", { name: /^Configuration/ }).click();
+  await page.getByRole("menuitem", { name: "Watcher", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/${slug}/watcher$`));
   const watch = page.getByRole("switch", { name: "Watch this project" });
   const interval = page.getByRole("combobox", { name: "Interval" });
