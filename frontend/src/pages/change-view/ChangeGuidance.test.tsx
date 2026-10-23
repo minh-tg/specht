@@ -35,7 +35,7 @@ describe("report-source guidance", () => {
       />,
     );
 
-    expect(screen.getByText(/Send a fresh scanner report through CI or upload it/))
+    expect(screen.getByText(/upload a report through the API with matching scan metadata/))
       .toBeInTheDocument();
     expect(screen.getByText(/If a watcher is configured/)).toBeInTheDocument();
     expect(screen.getByText(/This checklist only tracks your progress/)).toBeInTheDocument();
