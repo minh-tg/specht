@@ -636,7 +636,9 @@ describe("ChangeView waiting for the next scan", () => {
     });
 
     expect(await screen.findByText("SCANNING")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Scanning your push.");
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+      "A newer report is processing.",
+    );
     expect(screen.getByTestId("where")).toHaveTextContent(FULL_SHA);
 
     signalReports = [

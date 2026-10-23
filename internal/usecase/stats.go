@@ -2,8 +2,8 @@ package usecase
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"log/slog"
 	"sort"
 	"time"
 
@@ -32,11 +32,12 @@ type ProjectStats struct {
 	WaiverCount   int32 `json:"waiver_count"`
 	// PendingWaiverCount is the number of waiver requests waiting for a
 	// decision. They do not count in the gate until approved.
-	PendingWaiverCount int32                `json:"pending_waiver_count"`
-	ReportCount        int32                `json:"report_count"`
-	BySeverity         []SeverityCount      `json:"by_severity"`
-	ByAnalysisState    []AnalysisStateCount `json:"by_analysis_state"`
-	LatestReport       *ReportResponse      `json:"latest_report,omitempty"`
+	PendingWaiverCount    int32                `json:"pending_waiver_count"`
+	ReportCount           int32                `json:"report_count"`
+	BySeverity            []SeverityCount      `json:"by_severity"`
+	ByAnalysisState       []AnalysisStateCount `json:"by_analysis_state"`
+	LatestReport          *ReportResponse      `json:"latest_report,omitempty"`
+	LatestCompletedReport *ReportResponse      `json:"latest_completed_report,omitempty"`
 }
 
 func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*ProjectStats, error) {
@@ -75,26 +76,22 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 
 	var latest *ReportResponse
 	latestRow, err := u.deps.Stores.Stats.GetProjectLatestReport(ctx, project.ID)
-	if err != nil {
-		slog.Warn("get latest report for stats", "project", projectSlug, "error", err)
-	} else if latestRow.ID != "" {
-		r := ReportResponse{
-			ID:               uuidStr(latestRow.ID),
-			ProjectID:        uuidStr(latestRow.ProjectID),
-			ToolName:         latestRow.ToolName,
-			ToolVersion:      strOpt(latestRow.ToolVersion),
-			ScanType:         latestRow.ScanType,
-			ScanTarget:       strOpt(latestRow.ScanTarget),
-			Status:           latestRow.Status,
-			TotalFindings:    intOpt(latestRow.TotalFindings),
-			Branch:           strOpt(latestRow.Branch),
-			CommitSha:        strOpt(latestRow.CommitSha),
-			CreatedAt:        timePtr(latestRow.CreatedAt),
-			CompletedAt:      timeOpt(latestRow.CompletedAt),
-			RawDataExpired:   latestRow.RawDataExpired,
-			RawDataExpiresAt: rawExpiresAt(latestRow.CreatedAt, latestRow.RawDataExpired, u.deps.RawRetentionDays),
-		}
+	if err != nil && !errors.Is(err, port.ErrNotFound) {
+		return nil, fmt.Errorf("get latest report: %w", err)
+	}
+	if err == nil && latestRow.ID != "" {
+		r := toReport(latestRow, u.deps.RawRetentionDays)
 		latest = &r
+	}
+
+	var latestCompleted *ReportResponse
+	completedRow, err := u.deps.Stores.Stats.GetProjectLatestCompletedReport(ctx, project.ID)
+	if err != nil && !errors.Is(err, port.ErrNotFound) {
+		return nil, fmt.Errorf("get latest completed report: %w", err)
+	}
+	if err == nil && completedRow.ID != "" {
+		r := toReport(completedRow, u.deps.RawRetentionDays)
+		latestCompleted = &r
 	}
 
 	// Blocking comes from the gate itself: the policy floor, source policy,
@@ -128,14 +125,15 @@ func (u *Usecases) GetProjectStats(ctx context.Context, projectSlug string) (*Pr
 	}
 
 	return &ProjectStats{
-		TotalFindings:      totalFindings,
-		BlockingCount:      totalBlocking,
-		WaiverCount:        waiverCount,
-		PendingWaiverCount: pendingWaiverCount,
-		ReportCount:        reportCount,
-		BySeverity:         sevCounts,
-		ByAnalysisState:    stateCounts,
-		LatestReport:       latest,
+		TotalFindings:         totalFindings,
+		BlockingCount:         totalBlocking,
+		WaiverCount:           waiverCount,
+		PendingWaiverCount:    pendingWaiverCount,
+		ReportCount:           reportCount,
+		BySeverity:            sevCounts,
+		ByAnalysisState:       stateCounts,
+		LatestReport:          latest,
+		LatestCompletedReport: latestCompleted,
 	}, nil
 }
 

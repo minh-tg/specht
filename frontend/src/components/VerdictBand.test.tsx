@@ -2,7 +2,7 @@ import { queryKeys } from "@/api/hooks";
 import { formatDateTime } from "@/lib/format";
 import { createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
@@ -307,7 +307,7 @@ describe("VerdictBand", () => {
     expect(screen.queryByText(/Dismissed/)).not.toBeInTheDocument();
   });
 
-  it("shows the policy floor and the last scan with an absolute-time tooltip", () => {
+  it("shows the policy floor and known report receipt time with an absolute-time tooltip", () => {
     renderBand({
       gate: {
         threshold_breached: false,
@@ -336,11 +336,116 @@ describe("VerdictBand", () => {
     });
 
     expect(screen.getByText("Floor: medium (default)")).toBeInTheDocument();
-    const scan = screen.getByText(/Last scan/);
+    const scan = screen.getByText(/Latest completed report/);
     expect(scan).toHaveTextContent("trivy");
     const when = within(scan).getByRole("time");
     expect(when).toHaveAttribute("datetime", "2025-01-01T00:00:00Z");
     expect(when).toHaveAttribute("title", formatDateTime("2025-01-01T00:00:00Z"));
+  });
+
+  it.each(["failed", "processing"])(
+    "keeps old completed evidence separate from a newer %s attempt",
+    (status) => {
+      renderBand({
+        gate: { threshold_breached: false, blocked_by: [] },
+        stats: {
+          report_count: 2,
+          latest_completed_report: {
+            id: "old",
+            status: "completed",
+            tool_name: "trivy",
+            created_at: "2025-01-01T00:00:00Z",
+            completed_at: "2025-01-01T00:02:00Z",
+          },
+          latest_report: {
+            id: "new",
+            status,
+            tool_name: "sarif",
+            created_at: "2025-02-01T00:00:00Z",
+            completed_at: "2025-02-01T00:02:00Z",
+          },
+        },
+      });
+      const completed = screen.getByText(/Latest completed report/);
+      expect(within(completed).getByRole("time")).toHaveAttribute(
+        "datetime",
+        "2025-01-01T00:02:00Z",
+      );
+      expect(completed).toHaveTextContent("trivy");
+      const attempt = screen.getByText(/Latest attempt/);
+      expect(attempt).toHaveTextContent(status === "failed" ? "Failed" : "Processing");
+      expect(within(attempt).getByRole("time")).toHaveAttribute("datetime", "2025-02-01T00:00:00Z");
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        status === "failed" ? "latest scan failed" : "latest scan is still processing",
+      );
+    },
+  );
+
+  it("does not invent completion time for a legacy completed report", () => {
+    renderBand({
+      gate: {},
+      stats: {
+        report_count: 1,
+        latest_report: {
+          id: "legacy",
+          status: "completed",
+          tool_name: "trivy",
+          created_at: "2025-01-01T00:00:00Z",
+        },
+      },
+    });
+    const completed = screen.getByText(/Latest completed report/);
+    expect(completed).toHaveTextContent("received");
+    expect(completed).toHaveTextContent("completion time unavailable");
+    expect(within(completed).getByRole("time")).toHaveAttribute("datetime", "2025-01-01T00:00:00Z");
+  });
+
+  it("shows a failed-only history without claiming completed evidence", () => {
+    renderBand({
+      gate: {},
+      stats: {
+        report_count: 1,
+        latest_report: { id: "failed", status: "failed", created_at: "2025-01-01T00:00:00Z" },
+      },
+    });
+    expect(screen.getByText("No completed report available.")).toBeInTheDocument();
+    expect(screen.getByText(/Latest attempt/)).toHaveTextContent("Failed");
+  });
+
+  it("warns when a background refresh fails without relabelling old evidence as current", async () => {
+    const fixtures = {
+      gate: { threshold_breached: false, blocked_by: [] },
+      stats: {
+        report_count: 1,
+        latest_report: {
+          id: "old",
+          status: "completed",
+          tool_name: "trivy",
+          created_at: "2025-01-01T00:00:00Z",
+        },
+      },
+    };
+    mockApi(fixtures);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    client.setQueryData(queryKeys.gate("alpha"), fixtures.gate);
+    client.setQueryData(queryKeys.projectStats("alpha"), fixtures.stats);
+    renderBandIn(client, "alpha");
+    globalThis.fetch = vi.fn().mockResolvedValue(new Response(null, { status: 500 }));
+    await act(async () => {
+      await client.refetchQueries({ queryKey: queryKeys.projectStats("alpha") });
+    });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Showing the last fetched data");
+    expect(within(screen.getByText(/Latest completed report/)).getByRole("time")).toHaveAttribute(
+      "datetime",
+      "2025-01-01T00:00:00Z",
+    );
+    mockApi(fixtures);
+    await userEvent.setup().click(screen.getByRole("button", { name: "Retry project data" }));
+    expect(await screen.findByText("Nothing blocks this project")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("reserves height with skeletons while loading", () => {

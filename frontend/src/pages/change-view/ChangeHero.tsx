@@ -36,7 +36,7 @@ function headline(state: ChangeState, blockers: number, projectWide: boolean): s
     case "passing":
       return projectWide ? "Project gate passed." : "This change introduces no blocking findings.";
     case "scanning":
-      return "Scanning your push.";
+      return "A newer report is processing.";
     case "processing":
       return "This scan is still processing.";
     case "failed":
@@ -130,7 +130,7 @@ export function ChangeHero(
         {report && (
           <FactItem>
             <span>
-              Scanned <RelativeTime iso={report.created_at} frozen />
+              Report received <RelativeTime iso={report.created_at} frozen />
             </span>
             {report.tool_name ? ` from a ${report.tool_name} report` : ""}
           </FactItem>

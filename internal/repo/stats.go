@@ -15,6 +15,7 @@ type StatsRepo interface {
 	GetProjectPendingWaiverCount(ctx context.Context, projectID pgtype.UUID) (int32, error)
 	GetProjectReportCount(ctx context.Context, projectID pgtype.UUID) (int32, error)
 	GetProjectLatestReport(ctx context.Context, projectID pgtype.UUID) (sqlc.GetProjectLatestReportRow, error)
+	GetProjectLatestCompletedReport(ctx context.Context, projectID pgtype.UUID) (sqlc.GetProjectLatestCompletedReportRow, error)
 	GetAgingRows(ctx context.Context, arg sqlc.GetAgingRowsParams) ([]sqlc.GetAgingRowsRow, error)
 	GetNewFindingCounts(ctx context.Context, arg sqlc.GetNewFindingCountsParams) ([]sqlc.GetNewFindingCountsRow, error)
 }
@@ -49,6 +50,10 @@ func (r *pgStatsRepo) GetProjectReportCount(ctx context.Context, projectID pgtyp
 
 func (r *pgStatsRepo) GetProjectLatestReport(ctx context.Context, projectID pgtype.UUID) (sqlc.GetProjectLatestReportRow, error) {
 	return r.q.GetProjectLatestReport(ctx, projectID)
+}
+
+func (r *pgStatsRepo) GetProjectLatestCompletedReport(ctx context.Context, projectID pgtype.UUID) (sqlc.GetProjectLatestCompletedReportRow, error) {
+	return r.q.GetProjectLatestCompletedReport(ctx, projectID)
 }
 
 func (r *pgStatsRepo) GetAgingRows(ctx context.Context, arg sqlc.GetAgingRowsParams) ([]sqlc.GetAgingRowsRow, error) {

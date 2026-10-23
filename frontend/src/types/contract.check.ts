@@ -4,6 +4,7 @@ import type {
   Finding,
   FindingEvent,
   IngestResponse,
+  ProjectStats,
   Report,
   RetentionResult,
   Team,
@@ -57,6 +58,14 @@ type Schemas = components["schemas"];
   type Keys = "status";
   expectTypeOf<Omit<Report, Keys>>().toMatchTypeOf<Omit<Schemas["Report"], Keys>>();
   expectTypeOf<Omit<Schemas["Report"], Keys>>().toMatchTypeOf<Omit<Report, Keys>>();
+}
+
+// keeps the completed-report stats field in step with the schema
+{
+  type Completed = NonNullable<ProjectStats["latest_completed_report"]>;
+  type SchemaCompleted = NonNullable<Schemas["ProjectStats"]["latest_completed_report"]>;
+  expectTypeOf<Omit<Completed, "status">>().toMatchTypeOf<Omit<SchemaCompleted, "status">>();
+  expectTypeOf<Omit<SchemaCompleted, "status">>().toMatchTypeOf<Omit<Completed, "status">>();
 }
 
 // keeps IngestResponse in step with the schema

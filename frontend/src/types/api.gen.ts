@@ -3305,6 +3305,8 @@ export interface components {
       /** @description Counts per analysis state among the project's open and reopened findings (findings already fixed are not counted), ordered by state name; empty when there are none. A missing analysis state counts as unanalyzed. */
       by_analysis_state: components["schemas"]["AnalysisStateCount"][];
       latest_report?: components["schemas"]["Report"];
+      /** @description Most recently completed report, ordered by completion time (receipt time when unavailable). Omitted when none exists. Report receipt and processing timestamps do not establish when the scanner ran. */
+      latest_completed_report?: components["schemas"]["Report"];
     };
     SeverityCount: {
       severity: string;

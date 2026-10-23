@@ -1,7 +1,7 @@
-import { useGateStatus, useMe, useProjectStats } from "@/api/hooks";
+import { POLL_MS, useGateStatus, useMe, useProjectStats } from "@/api/hooks";
 import { InfoTip } from "@/components/InfoTip";
 import { INLINE_LINK } from "@/components/inlineLink";
-import { RelativeTime } from "@/components/RelativeTime";
+import { ReportFreshness } from "@/components/ReportFreshness";
 import { SeverityBadge } from "@/components/ui/severity-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
@@ -41,8 +41,8 @@ function verdictSentence(verdict: Verdict, blockers: number): string {
  * load, so the tab nav below never jumps when the verdict resolves.
  */
 export function VerdictBand({ slug }: { readonly slug: string; }) {
-  const gateQuery = useGateStatus(slug);
-  const statsQuery = useProjectStats(slug);
+  const gateQuery = useGateStatus(slug, undefined, { refetchInterval: POLL_MS });
+  const statsQuery = useProjectStats(slug, { refetchInterval: POLL_MS });
   const { data: me } = useMe();
 
   const gate = gateQuery.data;
@@ -52,7 +52,6 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
   const blockers = blockerCount(gate);
   const waived = gate?.waived_count ?? 0;
   const policy = gate?.policy;
-  const latest = stats?.latest_report;
 
   // A failed request never delivers data, so `unknown` must not animate a
   // skeleton forever: an errored, still-empty query is the error state.
@@ -115,9 +114,6 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
     : [];
   const hasCounters = severityChips.length > 0 || triageCounts.length > 0;
 
-  const showFloor = policy !== undefined;
-  const showScan = latest !== undefined;
-
   return (
     <section aria-label="Gate verdict" className="rounded-lg border p-4">
       {isDegraded(stats) && (
@@ -126,6 +122,22 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
           className="border-destructive text-destructive mb-3 rounded border px-3 py-2 text-sm"
         >
           {degradedMessage(stats)}
+        </p>
+      )}
+
+      {(gateQuery.isRefetchError || statsQuery.isRefetchError) && (
+        <p role="alert" className="text-destructive mb-3 text-sm">
+          Could not refresh project data. Showing the last fetched data.{" "}
+          <button
+            type="button"
+            className={INLINE_LINK}
+            onClick={() => {
+              void gateQuery.refetch();
+              void statsQuery.refetch();
+            }}
+          >
+            Retry project data
+          </button>
         </p>
       )}
 
@@ -145,23 +157,16 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
         )}
       </div>
 
-      {(showFloor || showScan) && (
+      {policy && (
         <p className="text-muted-foreground mt-1 text-sm">
-          {policy && (
-            <span>
-              Floor: {policy.severity_floor} ({policy.severity_source})
-              <InfoTip term="severityFloor" className="ml-1" />
-            </span>
-          )}
-          {policy && showScan && " · "}
-          {latest && (
-            <span>
-              Last scan <RelativeTime iso={latest.created_at} />
-              {latest.tool_name ? ` · ${latest.tool_name}` : ""}
-            </span>
-          )}
+          Floor: {policy.severity_floor} ({policy.severity_source})
+          <InfoTip term="severityFloor" className="ml-1" />
         </p>
       )}
+      <ReportFreshness
+        latest={stats?.latest_report}
+        latestCompleted={stats?.latest_completed_report}
+      />
 
       {verdict === "no_scans" && (
         <p className="text-muted-foreground mt-2 text-sm">

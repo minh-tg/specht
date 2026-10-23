@@ -1367,6 +1367,9 @@ type StatsStore interface {
 	GetProjectPendingWaiverCount(ctx context.Context, projectID string) (int32, error)
 	GetProjectReportCount(ctx context.Context, projectID string) (int32, error)
 	GetProjectLatestReport(ctx context.Context, projectID string) (Report, error)
+	// GetProjectLatestCompletedReport returns the most recently completed
+	// report, even when newer attempts failed or are still processing.
+	GetProjectLatestCompletedReport(ctx context.Context, projectID string) (Report, error)
 	// GetAgingRows loads the aging input of a project's open findings, oldest
 	// first, up to MaxAgingRows. truncated is true when the project has more.
 	GetAgingRows(ctx context.Context, projectID string) (rows []AgingRow, truncated bool, err error)
