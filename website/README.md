@@ -1,16 +1,19 @@
 # Specht website
 
-Standalone Astro and Starlight site. It does not call the Specht API or ship
-inside the server image. The homepage uses product screenshots with synthetic
-data; documentation describes the current evaluator build.
+Static Astro and Starlight site with a separate read-only build of the real
+frontend under `/demo/`. Neither calls a Specht API or ships inside the server
+image. Screenshots and the interactive demo use synthetic data; documentation
+describes the current evaluator build.
 
 ## Develop
 
 Use Node 22.23.4 or newer and pnpm 11.
 
 ```bash
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir website install --frozen-lockfile
 cd website
-pnpm install --frozen-lockfile
+pnpm build
 pnpm dev
 ```
 
@@ -27,7 +30,10 @@ pnpm audit --audit-level=high
 
 Set `CHROMIUM_BIN` to use an installed Chromium instead of Playwright's download.
 Browser tests serve the static build and do not need Postgres or a running Specht
-instance. To disable Astro's build-tool telemetry, set
+instance. The build compiles the isolated frontend demo, copies it to the ignored
+`public/demo/` directory and builds the site. Rebuild after changing frontend demo
+code. The frontend package also provides `pnpm test:demo` and the production
+artifact isolation check described in `frontend/demo/README.md`. To disable Astro's build-tool telemetry, set
 `ASTRO_TELEMETRY_DISABLED=1` in the build environment.
 
 ## Build for a static host

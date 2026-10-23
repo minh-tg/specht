@@ -17,6 +17,7 @@ const scanners = [
   "CycloneDX / SPDX",
 ];
 const guide = local("docs/getting-started/");
+const demo = local("demo/");
 const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : undefined;
 ---
 
@@ -61,8 +62,8 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
           <a href={repository}>
             GitHub <Arrow />
           </a>
-          <a class="header-start" href={guide}>
-            Evaluate locally <Arrow />
+          <a class="header-start" href={demo}>
+            Try browser demo <Arrow />
           </a>
         </nav>
       </header>
@@ -79,13 +80,16 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
                 policy and shows the evidence behind a blocked change.
               </p>
               <div class="hero-actions">
-                <a class="button button-light" href={guide}>
+                <a class="button button-light" href={demo} aria-describedby="demo-note">
+                  Try the demo <Arrow />
+                </a>
+                <a class="button button-outline" href={guide}>
                   Evaluate locally <Arrow />
                 </a>
-                <a class="button button-outline" href="#product">
-                  See the product <Arrow down />
-                </a>
               </div>
+              <p class="demo-note" id="demo-note">
+                Read-only sample data. No signup.
+              </p>
               <p class="hero-footnote">
                 Self-hosted · Open source · AGPL-3.0 · Experimental preview
               </p>

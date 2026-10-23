@@ -32,7 +32,10 @@ cannot activate the demo in a normal production build.
 Snapshots were captured from an ephemeral test installation seeded with the
 repository's synthetic SARIF fixtures. Authentication responses and API keys
 are not part of the data. Do not replace this dataset with customer reports.
-The sample is fixed, so dates and pending requests do not represent a live system.
+The records are fixed and do not represent a live system. Operational timestamps
+shift together at startup so relative ages and waiver expiry remain useful as the
+sample gets older. The browser clock and vulnerability publication dates do not
+change.
 
 After building both the normal app and the demo, verify artifact separation:
 

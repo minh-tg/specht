@@ -9,7 +9,7 @@
   "packageManager": "pnpm@11.21.0",
   "scripts": {
     "dev": "astro dev",
-    "build": "astro sync --force && astro build",
+    "build": "node scripts/build.mjs",
     "preview": "astro preview",
     "check": "astro check",
     "format": "prettier --write .",

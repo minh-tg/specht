@@ -80,6 +80,21 @@ describe("read-only sample transport", () => {
     expect(observer.role).toBe("member");
     expect(waivers.every((waiver) => waiver.requested_by !== observer.id)).toBe(true);
   });
+  it("keeps sample ages and waiver expiry coherent even years after the snapshot", async () => {
+    vi.resetModules();
+    const now = Date.parse("2030-05-01T12:00:00Z");
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    const future = await import("./client");
+    const project = await future.apiFetch<Project>(root);
+    expect(Date.parse(project.created_at)).toBe(now);
+    const waivers = await future.apiFetch<Waiver[]>(`${root}/waivers`);
+    const remaining = Date.parse(waivers[0].expires_at!) - now;
+    expect(remaining).toBeGreaterThan(29 * 86400000);
+    expect(remaining).toBeLessThan(31 * 86400000);
+    expect(future.copySample({ published_at: "2020-01-01T00:00:00Z" }).published_at).toBe(
+      "2020-01-01T00:00:00Z",
+    );
+  });
   it("exposes a real total header and normalizes empty lists as arrays", async () => {
     const result = await apiFetchResponse<Finding[]>(`${root}/findings?limit=1`);
     expect(result.response.headers.get("X-Total-Count")).toBe("3");
