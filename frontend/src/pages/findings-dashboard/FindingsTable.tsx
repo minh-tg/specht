@@ -5,6 +5,7 @@ import { SeverityBadge } from "@/components/ui/severity-badge";
 import { findingKindLabel } from "@/lib/enums";
 import { findingWorkflowState } from "@/lib/findingState";
 import { EMPTY_VALUE, formatAge, formatDate } from "@/lib/format";
+import { blocksGate } from "@/lib/gate";
 import type { Finding, GateStatus } from "@/types/api";
 import { ChevronRightIcon } from "lucide-react";
 import { type MouseEvent, useEffect, useRef } from "react";
@@ -31,15 +32,6 @@ interface FindingsTableProps {
   onToggleSort: (column: string) => void;
   /** Absent when the person can do nothing to a selection, so there is nothing to select. */
   selection?: FindingsSelection;
-}
-
-/** Blocking severities carry a bar of their colour on the row's left edge. */
-function edgeClass(finding: Finding): string | undefined {
-  if (finding.state !== "open" && finding.state !== "reopened") return undefined;
-  const edge = "[&>td:first-child]:shadow-[inset_4px_0_0_var(--edge)]";
-  if (finding.current_severity === "critical") return `[--edge:var(--sev-critical)] ${edge}`;
-  if (finding.current_severity === "high") return `[--edge:var(--sev-high)] ${edge}`;
-  return undefined;
 }
 
 function SelectAll({ findings, selection }: {
@@ -114,6 +106,9 @@ export function FindingsTable(
           >
             {f.current_title}
           </PrefetchLink>
+          {blocksGate(f, gate)?.blocks && (
+            <span className="text-destructive ml-2 text-xs font-medium">Blocks gate</span>
+          )}
           <p className="text-muted-foreground mt-0.5 hidden font-mono text-xs md:block">
             {findingKindLabel(f.finding_kind) ?? EMPTY_VALUE}
           </p>
@@ -198,7 +193,12 @@ export function FindingsTable(
         columns={columns}
         rowKey={(f) => f.id}
         proportionalFont
-        rowClassName={(f) => `cursor-pointer ${edgeClass(f) ?? ""}`}
+        rowClassName={(f) =>
+          `cursor-pointer ${
+            blocksGate(f, gate)?.blocks
+              ? "[&>td:first-child]:shadow-[inset_4px_0_0_var(--destructive)]"
+              : ""
+          }`}
         sort={{
           columnId: sort.by,
           direction: sort.dir === "asc" ? "ascending" : "descending",

@@ -64,8 +64,6 @@ const FINDINGS: Finding[] = [
   },
 ];
 
-const GATE: GateStatus = { threshold_breached: false, blocking_count: 0, blocked_by: [] };
-
 const NO_SELECTION = { keys: new Set<string>(), onToggle: vi.fn(), onToggleAll: vi.fn() };
 
 /** Exact token match, because "overflow-hidden" is a different class to "hidden". */
@@ -87,6 +85,8 @@ function renderTable(
     readonly initialPath?: string;
     readonly sort?: FindingsSort;
     readonly selection?: Parameters<typeof FindingsTable>[0]["selection"];
+    readonly gate?: GateStatus;
+    readonly findings?: Finding[];
   } = {},
 ) {
   const sort: FindingsSort = options.sort ?? { by: "severity", dir: "desc" };
@@ -99,8 +99,8 @@ function renderTable(
             element={
               <FindingsTable
                 slug="test-project"
-                findings={FINDINGS}
-                gate={GATE}
+                findings={options.findings ?? FINDINGS}
+                gate={options.gate}
                 sort={sort}
                 onToggleSort={vi.fn()}
                 selection={options.selection}
@@ -240,14 +240,60 @@ describe("FindingsTable on the data grid", () => {
     expect(locationText({})).toBe("None");
   });
 
-  it("marks a critical or high finding that is still open with its colour on the row's edge", () => {
-    renderTable();
+  it("marks only the server's blockers and names their gate impact", () => {
+    renderTable({
+      gate: { threshold_breached: true, blocking_count: 1, blocked_by: ["f2"] },
+    });
     const rows = gridRows();
 
-    expect(rows[0].className).toContain("--edge:var(--sev-critical)");
-    expect(rows[1].className).toContain("--edge:var(--sev-high)");
-    // A fixed finding, whatever its severity, is no longer a thing in the way.
-    expect(rows[2].className).not.toContain("--edge");
+    expect(rows[0].className).not.toContain("shadow-[inset_4px");
+    expect(rows[1].className).toContain("shadow-[inset_4px");
+    expect(within(rows[1]).getByText("Blocks gate")).toBeInTheDocument();
+    expect(within(rows[0]).queryByText("Blocks gate")).not.toBeInTheDocument();
+    expect(rows[2].className).not.toContain("shadow-[inset_4px");
+    expect(within(rows[0]).getByText("Critical")).toBeInTheDocument();
+  });
+
+  it.each<GateStatus | undefined>([
+    undefined,
+    { threshold_breached: false, blocking_count: 0, blocked_by: [] },
+    {
+      threshold_breached: false,
+      blocking_count: 0,
+      blocked_by: [],
+      waived_finding_ids: ["f1"],
+    },
+    {
+      threshold_breached: false,
+      blocking_count: 0,
+      blocked_by: [],
+      policy: {
+        severity_floor: "critical",
+        severity_source: "override",
+        template_version: 0,
+        watcher_gate: "immediate",
+        watcher_source: "default",
+      },
+    },
+  ])(
+    "does not invent blockers for an unavailable, passing, waived or higher-floor gate: %j",
+    (gate) => {
+      renderTable({ gate });
+
+      for (const row of gridRows()) expect(row.className).not.toContain("shadow-[inset_4px");
+      expect(screen.queryByText("Blocks gate")).not.toBeInTheDocument();
+    },
+  );
+
+  it("marks a low-severity server blocker instead of assuming only high and critical can block", () => {
+    renderTable({
+      findings: [{ ...FINDINGS[0], current_severity: "low" }],
+      gate: { threshold_breached: true, blocking_count: 1, blocked_by: ["f1"] },
+    });
+
+    expect(gridRows()[0].className).toContain("shadow-[inset_4px");
+    expect(screen.getByText("Blocks gate")).toBeInTheDocument();
+    expect(screen.getByText("Low")).toBeInTheDocument();
   });
 
   it("reports the sort state on the sorted header and none on the others", () => {
