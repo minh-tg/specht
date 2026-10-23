@@ -33,6 +33,14 @@ test("docs sidebar navigation remains usable on narrow screens", async ({ page }
   if (info.project.name === "plain-360") {
     await menu.click();
     await expect(page.locator("#starlight__sidebar:popover-open")).toHaveCount(1);
+    await page.addScriptTag({ content: axe.source });
+    const violations = await page.evaluate(async () => {
+      const result = await window.axe.run(document, {
+        runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"] },
+      });
+      return result.violations.map((violation) => violation.id);
+    });
+    expect(violations).toEqual([]);
   }
   await page.getByRole("link", { name: "Scanner reports", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Scanner reports");

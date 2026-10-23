@@ -130,8 +130,14 @@ test("homepage uses local assets and contains honest preview guidance", async ({
   await expect(page.getByText("Experimental preview.", { exact: true })).toBeVisible();
   await expect(page.getByText(/No tagged release yet/)).toBeVisible();
   await page.locator(".site-footer").scrollIntoViewIfNeeded();
-  expect(external).toEqual([]);
   expect(await page.locator("img").count()).toBe(2);
+  for (const image of await page.locator("img").all()) {
+    await image.scrollIntoViewIfNeeded();
+    await expect
+      .poll(() => image.evaluate((el) => (el as HTMLImageElement).naturalWidth))
+      .toBeGreaterThan(0);
+  }
+  expect(external).toEqual([]);
   await page.screenshot({
     path: info.outputPath("homepage.png"),
     fullPage: true,

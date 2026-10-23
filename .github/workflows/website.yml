@@ -1,0 +1,47 @@
+name: website
+
+on:
+  pull_request:
+    paths:
+      - "website/**"
+      - ".github/workflows/website.yml"
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - ".github/workflows/website.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  website:
+    name: website (build, links and accessibility)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      ASTRO_TELEMETRY_DISABLED: "1"
+      SITE_URL: https://specht.example.com
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+        with:
+          version: 11
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v6
+        with:
+          node-version: 26
+          cache: pnpm
+          cache-dependency-path: website/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm check && pnpm format:check
+      - run: pnpm audit --audit-level=high
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Build and test root hosting
+        run: pnpm build && pnpm test
+      - name: Build and test subdirectory hosting
+        run: pnpm build && pnpm test
+        env:
+          SITE_BASE: /specht/
