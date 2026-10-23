@@ -24,7 +24,7 @@ export interface ChangeAsideProps {
 
 /**
  * The margin note beside the ledger: the reader's own progress (holes and a checklist), one primary
- * action, and what happens after a push. Ticking an item tracks the reader's progress and nothing
+ * action, and how to send fresh evidence. Ticking an item tracks the reader's progress and nothing
  * else; the verdict changes only when a scan lands.
  */
 export function ChangeAside(
@@ -68,17 +68,17 @@ export function ChangeAside(
         </Button>
       )}
       <div className="border-border border-t pt-3.5 text-[13px]">
-        <p className="font-semibold">After you push</p>
+        <p className="font-semibold">After a fix</p>
         <p className="text-muted-foreground mt-1">
-          Specht re-scans on its own and this page updates. Only a scan changes the verdict; ticking
-          an item only tracks your progress.
+          Send a fresh scanner report through CI or upload it. If a watcher is configured, wait for
+          its next scan. This checklist only tracks your progress.
         </p>
         {waiting
           ? (
             <p role="status" className="mt-3 flex items-center gap-2">
               <Drum />
               {stalled
-                ? "Nothing yet after ten minutes. Check the CI job."
+                ? "Nothing yet after ten minutes. Check your CI job, watcher or report upload."
                 : "Waiting for the next scan"}
             </p>
           )
@@ -88,7 +88,7 @@ export function ChangeAside(
               onClick={onStartWaiting}
               className={`${INLINE_LINK} mt-3`}
             >
-              I pushed a fix
+              Wait for a new report
             </button>
           )}
         {waiting && stalled && (

@@ -8,7 +8,7 @@ import type { PolicyEffective, Report } from "@/types/api";
 import type { ReactNode } from "react";
 
 /**
- * What the header says about the change. `scanning` is a newer push being scanned while the page
+ * What the header says about the change. `scanning` is a newer report being processed while the page
  * waits; `processing` and `failed` describe the scan this page is about. None of them claims a
  * verdict the evidence does not support.
  */
@@ -47,17 +47,17 @@ function headline(state: ChangeState, blockers: number, projectWide: boolean): s
 function subline(state: ChangeState, report: Report | null, projectWide: boolean): string {
   switch (state) {
     case "blocked":
-      return "Fix them or request a waiver, then push. Specht re-scans on its own.";
+      return "Fix the findings and send a fresh scanner report, or request a waiver.";
     case "passing":
       return projectWide
         ? "No project findings block this gate at the selected severity floor."
-        : "Nothing in it stops the merge. Only a scan can change that.";
+        : "No introduced findings block this gate at the selected severity floor.";
     case "scanning":
       return "The verdict updates when the scan finishes.";
     case "processing":
       return "There is no verdict until it finishes.";
     case "failed":
-      return report?.error_message ?? "Check the CI job, then push again.";
+      return report?.error_message ?? "Check your scanner or CI job, then send a fresh report.";
   }
 }
 
