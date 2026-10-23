@@ -13,6 +13,7 @@ const requests = new WeakMap<Page, string[]>();
 test.beforeEach(async ({ page }) => {
   const calls: string[] = [];
   requests.set(page, calls);
+  page.on("websocket", (socket) => calls.push(socket.url()));
   page.on("request", (request) => {
     if (
       ["fetch", "xhr", "websocket"].includes(request.resourceType())
@@ -31,29 +32,38 @@ for (
     ["waiver history", `${project}/waivers`],
   ] as const
 ) {
-  test(`${name} uses real UI, fits and passes axe without an API`, async ({ page }) => {
-    await page.goto(`./#${path}`);
-    await expect(page.getByText("Read-only demo · Sample data", { exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    await expect(page.getByText(/Could not load|Couldn't load|Loading findings|Loading reports/))
-      .toHaveCount(0);
-    await page.evaluate(() => document.fonts.ready);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
-      page.viewportSize()!.width,
-    );
-    const axeURL = new URL("test-axe.js", page.url()).href.split("#")[0];
-    await page.route(
-      axeURL,
-      (route) => route.fulfill({ contentType: "text/javascript", body: axe.source }),
-    );
-    await page.addScriptTag({ url: axeURL });
-    const errors = await page.evaluate(async () =>
-      (await window.axe.run(document, {
-        runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"] },
-      })).violations.map((v) => ({ id: v.id, targets: v.nodes.map((n) => n.target) }))
-    );
-    expect(errors).toEqual([]);
-  });
+  for (const theme of ["light", "dark"] as const) {
+    test(`${name} ${theme} uses real UI, fits and passes axe without an API`, async ({ page }) => {
+      await page.goto(`./#${path}`);
+      await expect(page.getByText("Read-only demo · Sample data", { exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+      if (theme === "light") {
+        await page.getByRole("button", { name: "Dark theme", exact: true }).click();
+      }
+      await expect(page.getByRole("button", { name: "Dark theme", exact: true })).toHaveAttribute(
+        "aria-pressed",
+        String(theme === "dark"),
+      );
+      await expect(page.getByText(/Could not load|Couldn't load|Loading findings|Loading reports/))
+        .toHaveCount(0);
+      await page.evaluate(() => document.fonts.ready);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+        page.viewportSize()!.width,
+      );
+      const axeURL = new URL("test-axe.js", page.url()).href.split("#")[0];
+      await page.route(
+        axeURL,
+        (route) => route.fulfill({ contentType: "text/javascript", body: axe.source }),
+      );
+      await page.addScriptTag({ url: axeURL });
+      const errors = await page.evaluate(async () =>
+        (await window.axe.run(document, {
+          runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"] },
+        })).violations.map((v) => ({ id: v.id, targets: v.nodes.map((n) => n.target) }))
+      );
+      expect(errors).toEqual([]);
+    });
+  }
 }
 
 test("browse a finding and retain deep links on refresh", async ({ page }) => {

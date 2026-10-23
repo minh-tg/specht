@@ -1,4 +1,4 @@
-import type { Finding, Report, Waiver } from "@/types/api";
+import type { Finding, Project, Report, Waiver } from "@/types/api";
 import snapshot from "./snapshot.json";
 
 export class APIError extends Error {
@@ -26,6 +26,35 @@ export interface ApiResponseWithTotal<T> {
 }
 const fixtures = snapshot.fixtures as Record<string, Fixture>;
 const project = `/api/v1/projects/${snapshot.slug}`;
+const clockOffset = Date.now() - Date.parse((fixtures[project].data as Project).created_at);
+const relativeDates = new Set([
+  "created_at",
+  "updated_at",
+  "first_seen_at",
+  "last_seen_at",
+  "completed_at",
+  "expires_at",
+  "requested_at",
+  "decided_at",
+  "analysis_expires_at",
+  "raw_data_expires_at",
+]);
+
+/** Keeps synthetic relative ages consistent without changing the browser's clock. */
+export function copySample<T>(value: T): T {
+  const copy = structuredClone(value);
+  function visit(node: unknown) {
+    if (!node || typeof node !== "object") return;
+    for (const [key, item] of Object.entries(node)) {
+      if (relativeDates.has(key) && typeof item === "string" && Number.isFinite(Date.parse(item))) {
+        (node as Record<string, unknown>)[key] = new Date(Date.parse(item) + clockOffset)
+          .toISOString();
+      } else visit(item);
+    }
+  }
+  visit(copy);
+  return copy;
+}
 const severityRank: Record<string, number> = {
   unknown: 0,
   info: 1,
@@ -170,7 +199,7 @@ export async function apiFetchWithTotal<T>(
   options: Options = {},
 ): Promise<ApiResponseWithTotal<T>> {
   const result = resolve(path, options);
-  return { data: structuredClone(result.data) as T, total: result.total };
+  return { data: copySample(result.data) as T, total: result.total };
 }
 export async function apiFetch<T>(path: string, options: Options = {}): Promise<T> {
   return (await apiFetchWithTotal<T>(path, options)).data;

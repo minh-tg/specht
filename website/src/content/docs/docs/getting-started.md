@@ -8,6 +8,12 @@ There is no tagged release yet. APIs, database schemas and settings may change.
 Use an evaluation installation and do not make Specht your only security control.
 :::
 
+## Explore before installing
+
+[Open the browser demo](../../demo/) to browse the real interface with read-only
+sample data. It does not connect to a server, accept uploads or save changes.
+JavaScript is required for the demo; this guide works without it.
+
 ## Requirements
 
 Install Git, Docker and the Docker Compose plugin. The server has a default

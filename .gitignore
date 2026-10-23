@@ -12,6 +12,7 @@ frontend/coverage/
 frontend/test-results/
 frontend/playwright-report/
 website/dist/
+website/public/demo/
 website/.astro/
 website/test-results/
 website/playwright-report/

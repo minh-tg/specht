@@ -198,6 +198,12 @@ h1 {
     background: #3c3730;
   }
 }
+.demo-note {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
+  margin-top: 10px;
+}
 .hero-footnote {
   color: var(--muted);
   font-size: 12px;
