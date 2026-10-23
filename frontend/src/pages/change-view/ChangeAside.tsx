@@ -70,8 +70,8 @@ export function ChangeAside(
       <div className="border-border border-t pt-3.5 text-[13px]">
         <p className="font-semibold">After a fix</p>
         <p className="text-muted-foreground mt-1">
-          Send a fresh scanner report through CI or upload it. If a watcher is configured, wait for
-          its next scan. This checklist only tracks your progress.
+          Run your CI scan again, or upload a report through the API with matching scan metadata. If
+          a watcher is configured, wait for its next scan. This checklist only tracks your progress.
         </p>
         {waiting
           ? (
