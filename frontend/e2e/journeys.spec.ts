@@ -55,6 +55,61 @@ test("findings dashboard filters live rows", async ({ page, request }) => {
   await expect(rows).toHaveCount(2);
 });
 
+test("quick views match open triage counters and clear previous filters", async ({ page, request }) => {
+  const token = await apiToken(request);
+  const headers = { Authorization: `Bearer ${token}` };
+  const slug = uniq("quick-views");
+  await seedProject(request, token, slug);
+  const raw = JSON.parse(
+    readFileSync(new URL("../../e2e/testdata/trivy-alpine-scan.json", import.meta.url), "utf8"),
+  ) as {
+    Results: Array<{ Vulnerabilities: Array<{ Severity: string; }>; }>;
+  };
+  const ingest = async () => {
+    const response = await request.post("/api/v1/reports", {
+      headers,
+      data: { project: slug, scanner: "trivy", branch: "main", scan_mode: "full", raw_data: raw },
+    });
+    expect(response.ok(), await response.text()).toBeTruthy();
+  };
+  await ingest();
+  const list = await request.get(`/api/v1/projects/${slug}/findings`, { headers });
+  expect(list.ok()).toBeTruthy();
+  const findings = await list.json() as Array<{ id: string; current_severity: string; }>;
+  const high = findings.find((finding) => finding.current_severity === "high")!;
+  const low = findings.find((finding) => finding.current_severity === "low")!;
+  const triage = await request.patch(`/api/v1/findings/${high.id}`, {
+    headers,
+    data: { analysis_state: "in_triage" },
+  });
+  expect(triage.ok(), await triage.text()).toBeTruthy();
+
+  await uiLogin(page);
+  await page.goto(`/${slug}/findings?q=no-match&status=fixed&offset=40`);
+  await page.getByRole("link", { name: "Needs triage 2", exact: true }).click();
+  const titles = page.locator("tbody tr a[href*=\"/findings/\"]");
+  await expect(titles).toHaveCount(2);
+  await expect(page.getByLabel("Filter by status")).toHaveText("Open or reopened");
+  await expect(page.getByLabel("Filter by triage state")).toHaveText("Needs triage");
+  expect(new URL(page.url()).searchParams.has("q")).toBe(false);
+  expect(new URL(page.url()).searchParams.has("offset")).toBe(false);
+
+  await page.getByRole("link", { name: "Open critical/high", exact: true }).click();
+  await expect(titles).toHaveCount(1);
+  await expect(titles.first()).toHaveAttribute("href", `/${slug}/findings/${high.id}`);
+
+  // A complete scan closes the high finding while preserving its triage state.
+  // It must no longer inflate the counter or remain in the linked view.
+  raw.Results[0].Vulnerabilities = raw.Results[0].Vulnerabilities.filter((v) =>
+    v.Severity === "LOW"
+  );
+  await ingest();
+  await page.reload();
+  await page.getByRole("link", { name: "Needs triage 1", exact: true }).click();
+  await expect(titles).toHaveCount(1);
+  await expect(titles.first()).toHaveAttribute("href", `/${slug}/findings/${low.id}`);
+});
+
 test("the findings list searches, filters by triage state and sorts on the server", async ({ page, request }) => {
   const token = await apiToken(request);
   const slug = uniq("findings-server");

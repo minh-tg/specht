@@ -273,6 +273,25 @@ describe("VerdictBand", () => {
     expect(screen.getByText("Dismissed 1")).toBeInTheDocument();
   });
 
+  it("links the needs-triage count to both analysis states and only open or reopened findings", () => {
+    renderBand({
+      gate: { threshold_breached: false, blocking_count: 0, blocked_by: [] },
+      stats: {
+        report_count: 1,
+        by_analysis_state: [{ state: "unanalyzed", count: 3 }, { state: "in_triage", count: 2 }, {
+          state: "exploitable",
+          count: 7,
+        }],
+      },
+    });
+    const link = screen.getByRole("link", { name: "Needs triage 5" });
+    const target = new URL(link.getAttribute("href")!, "http://localhost");
+    expect(target.pathname).toBe("/alpha/findings");
+    expect(target.searchParams.get("analysis_state")).toBe("unanalyzed,in_triage");
+    expect(target.searchParams.get("status")).toBe("open,reopened");
+    expect(target.searchParams.has("severity")).toBe(false);
+  });
+
   it("hides the triage counters when the breakdown is absent", () => {
     renderBand({
       gate: { threshold_breached: false, blocking_count: 0, blocked_by: [] },

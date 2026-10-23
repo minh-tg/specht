@@ -6,6 +6,7 @@ import { SeverityBadge } from "@/components/ui/severity-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { VerdictBadge } from "@/components/VerdictBadge";
 import { SEVERITIES, severityLabel } from "@/lib/enums";
+import { NEEDS_TRIAGE_QUERY } from "@/lib/findingViews";
 import { pluralize } from "@/lib/format";
 import {
   blockerCount,
@@ -198,11 +199,23 @@ export function VerdictBand({ slug }: { readonly slug: string; }) {
               <span className="text-sm">{count}</span>
             </Link>
           ))}
-          {triageCounts.map(({ label, count }) => (
-            <span key={label} className="text-muted-foreground text-sm">
-              {label} {count}
-            </span>
-          ))}
+          {triageCounts.map(({ label, count }) =>
+            label === "Needs triage"
+              ? (
+                <Link
+                  key={label}
+                  to={`/${slug}/findings?${NEEDS_TRIAGE_QUERY}`}
+                  className={`${INLINE_LINK} inline-flex min-h-8 items-center text-sm`}
+                >
+                  {label} {count}
+                </Link>
+              )
+              : (
+                <span key={label} className="text-muted-foreground text-sm">
+                  {label} {count}
+                </span>
+              )
+          )}
         </div>
       )}
     </section>
