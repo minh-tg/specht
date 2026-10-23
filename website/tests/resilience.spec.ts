@@ -32,20 +32,11 @@ test("missing pages return 404 and link back within the site base", async ({ pag
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Know what blocks/);
 });
 
-test("decorative motion finishes within five seconds", async ({ page }) => {
+test("the homepage does not simulate live processing with decorative motion", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   await page.goto("./");
-  const timings = await page.locator(".signal-dot").evaluateAll((dots) =>
-    dots.map((dot) => {
-      const style = getComputedStyle(dot);
-      return (
-        parseFloat(style.animationDuration) * Number(style.animationIterationCount) +
-        parseFloat(style.animationDelay)
-      );
-    }),
-  );
-  expect(timings).toHaveLength(3);
-  for (const seconds of timings) expect(seconds).toBeLessThanOrEqual(5);
+  await expect(page.locator(".hero-aside")).toHaveCount(0);
+  expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
 });
 
 test("homepage controls are not horizontally clipped", async ({ page }) => {

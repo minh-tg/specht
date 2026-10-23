@@ -1,0 +1,166 @@
+---
+import { local } from "../lib/site";
+import Arrow from "./Arrow.astro";
+const views = [
+  {
+    id: "change",
+    label: "CI decision",
+    image: "change-view.webp",
+    heading: "The check failed. Now you know why.",
+    description:
+      "CI links to the exact report and gate decision. See what was introduced, where it appears and which policy makes it block.",
+    alt: "Specht change view separates findings introduced by this change from existing debt and links each blocker to its evidence.",
+  },
+  {
+    id: "findings",
+    label: "Finding triage",
+    image: "findings.webp",
+    heading: "Start with what needs a decision.",
+    description:
+      "Jump into open findings that need triage, filter critical and high exposure, and distinguish severity from the issues that actually block your gate.",
+    alt: "Specht findings list with triage shortcuts, filters, severity badges and explicit Blocks gate markers.",
+  },
+];
+---
+
+<section class="product shell" id="product" aria-label="Product screenshots" data-product-preview>
+  <div class="product-toolbar">
+    <div class="product-tabs" role="tablist" aria-label="Product views" hidden>
+      {views.map((view, i) => (
+        <button
+          id={`product-tab-${view.id}`}
+          role="tab"
+          aria-controls={`product-panel-${view.id}`}
+          aria-selected={i === 0 ? "true" : "false"}
+          tabindex={i === 0 ? 0 : -1}
+        >
+          {view.label}
+        </button>
+      ))}
+    </div>
+    <span class="sample-label">Actual application · Sample data</span>
+  </div>
+  {views.map((view, i) => (
+    <section
+      class="product-panel"
+      id={`product-panel-${view.id}`}
+      aria-labelledby={`product-heading-${view.id}`}
+    >
+      <div class="product-frame">
+        <div class="window-bar" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+          <span class="window-label">specht / checkout-api</span>
+        </div>
+        <img
+          data-product-image
+          src={local(`images/${view.image}`)}
+          alt={view.alt}
+          width="1440"
+          height="1050"
+          loading={i === 0 ? "eager" : "lazy"}
+          fetchpriority={i === 0 ? "high" : "auto"}
+        />
+      </div>
+      <div class="product-caption">
+        <div>
+          <h2 id={`product-heading-${view.id}`}>{view.heading}</h2>
+          <p>{view.description}</p>
+        </div>
+        <a
+          class="image-open"
+          href={local(`images/${view.image}`)}
+          data-image-open
+          data-image-alt={view.alt}
+          aria-label={`Open full-size Specht ${view.id === "change" ? "change view" : "findings"} screenshot`}
+        >
+          View full size <Arrow />
+        </a>
+      </div>
+    </section>
+  ))}
+  <p class="image-caption">Actual Specht UI with sample scanner reports. No customer data.</p>
+  <dialog class="image-viewer" aria-labelledby="viewer-title">
+    <div class="viewer-header">
+      <h2 id="viewer-title">Product screenshot · Sample data</h2>
+      <form method="dialog">
+        <button class="viewer-close">Close</button>
+      </form>
+    </div>
+    <p class="viewer-help">Scroll to inspect the original image. Press Escape to return.</p>
+    <div class="viewer-scroll" tabindex="0" role="region" aria-label="Full-size screenshot">
+      <img
+        data-viewer-image
+        src={local("images/change-view.webp")}
+        alt={views[0].alt}
+        width="1440"
+        height="1050"
+        loading="lazy"
+      />
+    </div>
+  </dialog>
+</section>
+<script>
+  for (const root of document.querySelectorAll<HTMLElement>("[data-product-preview]")) {
+    const tabs = Array.from(root.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+    const panels = Array.from(root.querySelectorAll<HTMLElement>(".product-panel"));
+    const list = root.querySelector<HTMLElement>('[role="tablist"]')!;
+    function select(index: number, focus = false) {
+      tabs.forEach((tab, i) => {
+        tab.setAttribute("aria-selected", String(i === index));
+        tab.tabIndex = i === index ? 0 : -1;
+        panels[i].hidden = i !== index;
+      });
+      if (focus) tabs[index].focus();
+    }
+    tabs.forEach((tab, index) => {
+      tab.addEventListener("click", () => select(index));
+      tab.addEventListener("keydown", (event) => {
+        const target =
+          event.key === "ArrowRight"
+            ? (index + 1) % tabs.length
+            : event.key === "ArrowLeft"
+              ? (index - 1 + tabs.length) % tabs.length
+              : event.key === "Home"
+                ? 0
+                : event.key === "End"
+                  ? tabs.length - 1
+                  : null;
+        if (target !== null) {
+          event.preventDefault();
+          select(target, true);
+        }
+      });
+    });
+    panels.forEach((panel, i) => {
+      panel.setAttribute("role", "tabpanel");
+      panel.setAttribute("aria-labelledby", tabs[i].id);
+    });
+    select(0);
+    root.classList.add("preview-ready");
+    list.hidden = false;
+    const viewer = root.querySelector<HTMLDialogElement>("dialog")!;
+    const image = viewer.querySelector<HTMLImageElement>("[data-viewer-image]")!;
+    let opener: HTMLAnchorElement | null = null;
+    for (const link of root.querySelectorAll<HTMLAnchorElement>("[data-image-open]")) {
+      link.addEventListener("click", (event) => {
+        if (
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey ||
+          typeof viewer.showModal !== "function"
+        )
+          return;
+        event.preventDefault();
+        opener = link;
+        image.src = link.href;
+        image.alt = link.dataset.imageAlt ?? "Product screenshot";
+        viewer.showModal();
+      });
+    }
+    viewer.addEventListener("close", () => opener?.focus());
+  }
+</script>
