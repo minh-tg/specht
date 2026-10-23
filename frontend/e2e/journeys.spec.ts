@@ -93,6 +93,16 @@ test("quick views match open triage counters and clear previous filters", async 
   await expect(page.getByLabel("Filter by triage state")).toHaveText("Needs triage");
   expect(new URL(page.url()).searchParams.has("q")).toBe(false);
   expect(new URL(page.url()).searchParams.has("offset")).toBe(false);
+  const highRow = page.locator("tbody tr").filter({
+    has: page.locator(`a[href="/${slug}/findings/${high.id}"]`),
+  });
+  const lowRow = page.locator("tbody tr").filter({
+    has: page.locator(`a[href="/${slug}/findings/${low.id}"]`),
+  });
+  await expect(highRow.getByText("Blocks gate", { exact: true })).toBeVisible();
+  await expect(highRow.locator("td").first()).toHaveCSS("box-shadow", /inset/);
+  await expect(lowRow.getByText("Blocks gate", { exact: true })).toHaveCount(0);
+  await expect(lowRow.locator("td").first()).toHaveCSS("box-shadow", "none");
 
   await page.getByRole("link", { name: "Open critical/high", exact: true }).click();
   await expect(titles).toHaveCount(1);
