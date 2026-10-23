@@ -172,6 +172,35 @@ describe("FindingsDashboard", () => {
     expect(lastFindingsRequest().searchParams.get("offset")).toBe("0");
   });
 
+  it.each([
+    { name: "Needs triage", analysis: "unanalyzed,in_triage", severity: null },
+    { name: "Open critical/high", analysis: null, severity: "critical,high" },
+  ])(
+    "opens the $name view with one complete request and no old filters or offset",
+    async ({ name, analysis, severity }) => {
+      renderWithProviders(
+        <FindingsDashboard />,
+        "/test-project/findings?status=fixed&kind=secret&q=old&analysis_state=accepted_risk&severity=low&offset=40",
+      );
+      await screen.findByText("Test Vuln");
+      const before = findingsRequests().length;
+      await userEvent.setup().click(screen.getByRole("link", { name, exact: true }));
+      await waitFor(() =>
+        expect(lastFindingsRequest().searchParams.get("status")).toBe("open,reopened")
+      );
+      const query = lastFindingsRequest().searchParams;
+      expect(query.get("analysis_state")).toBe(analysis);
+      expect(query.get("severity")).toBe(severity);
+      expect(query.get("q")).toBeNull();
+      expect(query.get("kind")).toBeNull();
+      expect(query.get("offset")).toBe("0");
+      expect(findingsRequests().length).toBe(before + 1);
+      expect(screen.getByRole("combobox", { name: "Filter by status" })).toHaveTextContent(
+        "Open or reopened",
+      );
+    },
+  );
+
   it("combines severity chips into one comma list, in severity order", async () => {
     renderWithProviders(<FindingsDashboard />);
     const user = userEvent.setup();

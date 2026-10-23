@@ -9,8 +9,9 @@ import {
 import { INLINE_LINK } from "@/components/inlineLink";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UpdatedHint } from "@/components/UpdatedHint";
+import { NEEDS_TRIAGE_QUERY, OPEN_CRITICAL_HIGH_QUERY } from "@/lib/findingViews";
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { WaiverRequestDialog } from "./change-view/WaiverRequestDialog";
 import { BulkBar } from "./findings-dashboard/BulkBar";
 import { BulkTriageDialog } from "./findings-dashboard/BulkTriageDialog";
@@ -94,6 +95,24 @@ export function FindingsDashboard() {
 
   return (
     <div className="space-y-4">
+      <nav
+        aria-label="Finding quick views"
+        className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm"
+      >
+        <span className="text-muted-foreground">Quick views</span>
+        <Link
+          to={`/${slug}/findings?${NEEDS_TRIAGE_QUERY}`}
+          className={`${INLINE_LINK} inline-flex min-h-8 items-center`}
+        >
+          Needs triage
+        </Link>
+        <Link
+          to={`/${slug}/findings?${OPEN_CRITICAL_HIGH_QUERY}`}
+          className={`${INLINE_LINK} inline-flex min-h-8 items-center`}
+        >
+          Open critical/high
+        </Link>
+      </nav>
       <FindingsFilters
         filters={filters}
         sort={sort}

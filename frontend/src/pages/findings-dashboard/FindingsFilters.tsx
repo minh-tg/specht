@@ -9,6 +9,7 @@ import {
   TECHNICAL_STATES,
   technicalStateLabel,
 } from "@/lib/enums";
+import { NEEDS_TRIAGE_STATES, OPEN_FINDING_STATES } from "@/lib/findingViews";
 import type { SeverityCount } from "@/types/api";
 import { SearchIcon } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -18,9 +19,6 @@ import type { FindingsFilters as FindingsFilterState, FindingsSort } from "./use
 
 /** What the person is still typing, until they pause. */
 const SEARCH_PAUSE_MS = 300;
-
-/** The triage states that mean "someone should look at this". */
-const NEEDS_TRIAGE = "unanalyzed,in_triage";
 
 interface FindingsFiltersProps {
   filters: FindingsFilterState;
@@ -94,7 +92,7 @@ export function FindingsFilters(
         onValueChange={(v) => onFilterChange("analysis_state", v)}
         options={[
           { value: "", label: "All triage states" },
-          { value: NEEDS_TRIAGE, label: "Needs triage" },
+          { value: NEEDS_TRIAGE_STATES, label: "Needs triage" },
           ...ANALYSIS_STATES.map((value) => ({
             value,
             label: analysisStateLabel(value) ?? value,
@@ -107,6 +105,7 @@ export function FindingsFilters(
         onValueChange={(v) => onFilterChange("status", v)}
         options={[
           { value: "", label: "All statuses" },
+          { value: OPEN_FINDING_STATES, label: "Open or reopened" },
           ...TECHNICAL_STATES.map((value) => ({
             value,
             label: technicalStateLabel(value) ?? value,
