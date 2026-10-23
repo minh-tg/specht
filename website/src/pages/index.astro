@@ -1,7 +1,8 @@
 ---
 import { local, repository } from "../lib/site";
+import Arrow from "../components/Arrow.astro";
+import ProductPreview from "../components/ProductPreview.astro";
 import "../styles/home.css";
-
 const scanners = [
   "Trivy",
   "Semgrep",
@@ -56,91 +57,47 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
           <span>specht</span>
         </a>
         <nav aria-label="Main navigation">
-          <a href={local("docs/getting-started/")}>Docs</a>
+          <a href={guide}>Docs</a>
           <a href={repository}>
-            GitHub <span aria-hidden="true">↗</span>
+            GitHub <Arrow />
           </a>
           <a class="header-start" href={guide}>
-            Evaluate locally <span aria-hidden="true">↗</span>
+            Evaluate locally <Arrow />
           </a>
         </nav>
       </header>
-      <main id="main">
+      <main id="main" tabindex="-1">
         <section class="hero shell" aria-labelledby="hero-title">
           <div class="hero-copy">
-            <p class="eyebrow">
-              <span class="small-mark" aria-hidden="true"></span> SELF-HOSTED VULNERABILITY
-              MANAGEMENT
-            </p>
             <h1 id="hero-title">
               Know what blocks
               <br class="desktop-break" /> the next merge<span class="period">.</span>
             </h1>
-            <p class="hero-description">
-              Your scanners produce the reports. Specht keeps the finding history, applies your
-              policy and shows the evidence behind a blocked change.
-            </p>
-            <div class="hero-actions">
-              <a class="button button-light" href={guide}>
-                Evaluate locally <span aria-hidden="true">↗</span>
-              </a>
-              <a class="button button-outline" href="#product">
-                See the product <span aria-hidden="true">↓</span>
-              </a>
+            <div class="hero-intro">
+              <p class="hero-description">
+                Your scanners produce the reports. Specht keeps the finding history, applies your
+                policy and shows the evidence behind a blocked change.
+              </p>
+              <div class="hero-actions">
+                <a class="button button-light" href={guide}>
+                  Evaluate locally <Arrow />
+                </a>
+                <a class="button button-outline" href="#product">
+                  See the product <Arrow down />
+                </a>
+              </div>
+              <p class="hero-footnote">
+                Self-hosted · Open source · AGPL-3.0 · Experimental preview
+              </p>
             </div>
-            <p class="hero-footnote">Open source · AGPL-3.0 · Experimental preview</p>
-          </div>
-          <div class="hero-aside" aria-hidden="true">
-            <div class="signal-rule"></div>
-            <div class="signal-label">REPORT IN. DECISION OUT.</div>
-            <div class="signal-line">
-              <span class="signal-dot"></span> Scanner report received
-            </div>
-            <div class="signal-line">
-              <span class="signal-dot"></span> Findings matched to history
-            </div>
-            <div class="signal-line">
-              <span class="signal-dot"></span> Change checked against policy
-            </div>
-            <div class="signal-result">
-              <span class="gate-symbol">!</span> Blocked <span>Evidence attached</span>
-            </div>
-            <div class="signal-caption">Illustrative gate workflow</div>
           </div>
         </section>
-        <section class="product shell" id="product" aria-labelledby="product-title">
-          <div class="preview-topline">
-            <h2 id="product-title">The check failed. Now you know why.</h2>
-            <span class="mono">CHANGE VIEW / DEMO DATA</span>
-          </div>
-          <a
-            class="product-frame"
-            href={local("images/change-view.webp")}
-            aria-label="Open full-size Specht change view screenshot"
-          >
-            <div class="window-bar" aria-hidden="true">
-              <span></span>
-              <span></span>
-              <span></span>
-              <span class="window-label">specht / checkout-api / change</span>
-            </div>
-            <img
-              src={local("images/change-view.webp")}
-              alt="Specht change view separates findings introduced by this change from existing debt and links each blocker to its evidence."
-              width="1440"
-              height="1050"
-              fetchpriority="high"
-            />
-          </a>
-          <p class="image-caption">
-            Actual Specht UI with sample scanner reports. No customer data.
-          </p>
-        </section>
+        <ProductPreview />
         <section class="scanner-strip shell" aria-labelledby="scanners-title">
           <div class="section-kicker">
             <h2 id="scanners-title">Keep the scanners you already run.</h2>
             <a href={local("docs/scanners/")}>
-              Formats & limits <span aria-hidden="true">↗</span>
+              Formats & limits <Arrow />
             </a>
           </div>
           <ul>
@@ -152,7 +109,6 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
         <section class="workflow-section" aria-labelledby="workflow-title">
           <div class="shell">
             <div class="section-heading">
-              <p class="eyebrow">FROM A SCAN TO A DECISION</p>
               <h2 id="workflow-title">
                 A finding has a history.
                 <br />A gate needs a reason.
@@ -164,7 +120,6 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
             </div>
             <div class="feature-grid">
               <article class="feature-card feature-large">
-                <span class="feature-index mono">01 / UNDERSTAND THE CHANGE</span>
                 <h3>
                   Open the failing check.
                   <br />
@@ -178,14 +133,13 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
                   <span class="blocked-tag">Blocks gate</span>
                   <span>Introduced by this change</span>
                   <strong>A high-severity finding meets this gate’s severity floor.</strong>
-                  <span class="evidence-source mono">REPORT EVIDENCE · GATE POLICY</span>
+                  <span class="evidence-source">Report evidence · Gate policy</span>
                 </div>
                 <a href={local("docs/ci-gates/")}>
-                  How CI gates work <span aria-hidden="true">↗</span>
+                  How CI gates work <Arrow />
                 </a>
               </article>
               <article class="feature-card">
-                <span class="feature-index mono">02 / KEEP THE CONTEXT</span>
                 <h3>
                   Scan again.
                   <br />
@@ -196,11 +150,10 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
                   triage and reachability decisions.
                 </p>
                 <a href={local("docs/triage-and-waivers/")}>
-                  Finding lifecycle <span aria-hidden="true">↗</span>
+                  Finding lifecycle <Arrow />
                 </a>
               </article>
               <article class="feature-card">
-                <span class="feature-index mono">03 / MAKE EXCEPTIONS EXPLICIT</span>
                 <h3>
                   A waiver has
                   <br />
@@ -211,12 +164,11 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
                   record when the exception ends.
                 </p>
                 <a href={local("docs/triage-and-waivers/#waivers")}>
-                  Waiver approvals <span aria-hidden="true">↗</span>
+                  Waiver approvals <Arrow />
                 </a>
               </article>
               <article class="feature-card feature-wide">
                 <div>
-                  <span class="feature-index mono">04 / OWN THE INSTALLATION</span>
                   <h3>
                     One Go server.
                     <br />
@@ -229,47 +181,16 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
                     and per-project permissions. Configure the advisory watcher when you need it.
                   </p>
                   <a href={local("docs/self-hosting/")}>
-                    Self-hosting details <span aria-hidden="true">↗</span>
+                    Self-hosting details <Arrow />
                   </a>
                 </div>
               </article>
             </div>
           </div>
         </section>
-        <section class="findings-section shell" aria-labelledby="findings-title">
-          <div class="section-heading">
-            <p class="eyebrow">WORK THE FINDINGS</p>
-            <h2 id="findings-title">
-              Start with what
-              <br />
-              needs a decision.
-            </h2>
-            <p>
-              Jump into open findings that need triage, filter critical and high exposure, and
-              distinguish severity from the issues that actually block your gate.
-            </p>
-          </div>
-          <a
-            class="secondary-frame"
-            href={local("images/findings.webp")}
-            aria-label="Open full-size Specht findings screenshot"
-          >
-            <img
-              src={local("images/findings.webp")}
-              alt="Specht findings list with triage shortcuts, filters, severity badges and explicit Blocks gate markers."
-              width="1440"
-              height="1050"
-              loading="lazy"
-            />
-          </a>
-          <p class="image-caption">
-            The findings view in the current application, with synthetic scan data.
-          </p>
-        </section>
         <section class="start-section" aria-labelledby="start-title">
           <div class="shell start-grid">
             <div>
-              <p class="eyebrow">RUN IT YOURSELF</p>
               <h2 id="start-title">
                 Run Specht.
                 <br />
@@ -280,12 +201,15 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
                 server and database on your infrastructure.
               </p>
               <a class="button button-dark" href={guide}>
-                Start the evaluation <span aria-hidden="true">↗</span>
+                Start the evaluation <Arrow />
               </a>
             </div>
             <div class="terminal">
-              <div class="terminal-heading mono">SOURCE BUILD / DOCKER COMPOSE</div>
-              <pre><code>git clone https://github.com/minh-tg/specht.git
+              <div class="terminal-heading">Source build / Docker Compose</div>
+              <pre
+                tabindex="0"
+                aria-label="Get the Specht source"
+              ><code>git clone https://github.com/minh-tg/specht.git
 cd specht
 cp deploy/.env.prod.example deploy/.env.prod</code></pre>
               <p>
@@ -293,7 +217,7 @@ cp deploy/.env.prod.example deploy/.env.prod</code></pre>
                 stack.
               </p>
               <a href={guide}>
-                Open the complete commands <span aria-hidden="true">↗</span>
+                Open the complete commands <Arrow />
               </a>
             </div>
           </div>
@@ -309,7 +233,7 @@ cp deploy/.env.prod.example deploy/.env.prod</code></pre>
         </a>
         <p>Self-hosted vulnerability management.</p>
         <nav aria-label="Footer">
-          <a href={local("docs/getting-started/")}>Documentation</a>
+          <a href={guide}>Documentation</a>
           <a href={`${repository}/issues`}>Feedback</a>
           <a href={`${repository}/blob/main/SECURITY.md`}>Security</a>
           <a href={`${repository}/blob/main/LICENSE`}>AGPL-3.0</a>
