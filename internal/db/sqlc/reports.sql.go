@@ -680,7 +680,10 @@ WHERE f.project_id = $2
   AND (f.introduced_by_report_id = $1::uuid
        OR EXISTS (
            SELECT 1 FROM finding_occurrences fo
-           WHERE fo.finding_id = f.id AND fo.report_id = $1::uuid))
+           WHERE fo.finding_id = f.id AND fo.report_id = $1::uuid)
+       OR EXISTS (
+           SELECT 1 FROM finding_scope_severities s
+           WHERE s.finding_id = f.id AND s.report_id = $1::uuid))
 `
 
 type ListFindingsTouchedByReportParams struct {
@@ -887,6 +890,30 @@ func (q *Queries) LockReportForDelete(ctx context.Context, arg LockReportForDele
 	var status string
 	err := row.Scan(&status)
 	return status, err
+}
+
+const repointDuplicateScopeSeverity = `-- name: RepointDuplicateScopeSeverity :exec
+UPDATE finding_scope_severities s
+SET report_id = winner.id
+FROM reports loser, reports winner
+WHERE s.report_id = loser.id
+  AND loser.id = $1::uuid
+  AND winner.id = $2::uuid
+  AND loser.project_id = $3::uuid
+  AND winner.project_id = loser.project_id
+  AND winner.status = 'completed'
+  AND COALESCE(winner.scan_scope_hash, '') = COALESCE(loser.scan_scope_hash, '')
+`
+
+type RepointDuplicateScopeSeverityParams struct {
+	LoserID   pgtype.UUID `json:"loser_id"`
+	WinnerID  pgtype.UUID `json:"winner_id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+func (q *Queries) RepointDuplicateScopeSeverity(ctx context.Context, arg RepointDuplicateScopeSeverityParams) error {
+	_, err := q.db.Exec(ctx, repointDuplicateScopeSeverity, arg.LoserID, arg.WinnerID, arg.ProjectID)
+	return err
 }
 
 const repointIntroducedBy = `-- name: RepointIntroducedBy :execrows

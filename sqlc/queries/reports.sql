@@ -245,7 +245,22 @@ WHERE f.project_id = sqlc.arg(project_id)
   AND (f.introduced_by_report_id = sqlc.arg(report_id)::uuid
        OR EXISTS (
            SELECT 1 FROM finding_occurrences fo
-           WHERE fo.finding_id = f.id AND fo.report_id = sqlc.arg(report_id)::uuid));
+           WHERE fo.finding_id = f.id AND fo.report_id = sqlc.arg(report_id)::uuid)
+       OR EXISTS (
+           SELECT 1 FROM finding_scope_severities s
+           WHERE s.finding_id = f.id AND s.report_id = sqlc.arg(report_id)::uuid));
+
+-- name: RepointDuplicateScopeSeverity :exec
+UPDATE finding_scope_severities s
+SET report_id = winner.id
+FROM reports loser, reports winner
+WHERE s.report_id = loser.id
+  AND loser.id = sqlc.arg(loser_id)::uuid
+  AND winner.id = sqlc.arg(winner_id)::uuid
+  AND loser.project_id = sqlc.arg(project_id)::uuid
+  AND winner.project_id = loser.project_id
+  AND winner.status = 'completed'
+  AND COALESCE(winner.scan_scope_hash, '') = COALESCE(loser.scan_scope_hash, '');
 
 -- name: ArchiveOrphanedFindings :many
 -- Archives the open findings among the given ones that no occurrence supports
