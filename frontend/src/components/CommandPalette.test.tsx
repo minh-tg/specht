@@ -96,6 +96,25 @@ describe("CommandPalette", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 
+  it.each(["button", "field"] as const)(
+    "returns focus to the originating %s on Escape",
+    async (kind) => {
+      const user = userEvent.setup();
+      if (kind === "field") render(<input aria-label="Find something" />);
+      renderPalette();
+      const origin = kind === "button"
+        ? screen.getByRole("button", { name: "Open command palette" })
+        : screen.getByRole("textbox", { name: "Find something" });
+      origin.focus();
+      if (kind === "button") await user.keyboard("{Enter}");
+      else await openWithShortcut(user);
+      await screen.findByRole("dialog", { name: "Command palette" });
+      await user.keyboard("{Escape}");
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+      expect(origin).toHaveFocus();
+    },
+  );
+
   it("also opens from its button, and the shortcut toggles it", async () => {
     const user = userEvent.setup();
     renderPalette();

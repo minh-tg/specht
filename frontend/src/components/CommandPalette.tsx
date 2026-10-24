@@ -59,8 +59,10 @@ export function CommandPalette() {
 
   function run(command: Command | undefined) {
     if (!command) return;
+    const origin = originRef.current;
+    originRef.current = null;
     changeOpen(false);
-    command.run(originRef.current);
+    command.run(origin);
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -98,6 +100,7 @@ export function CommandPalette() {
       <Dialog open={open} onOpenChange={changeOpen}>
         <DialogContent
           showCloseButton={false}
+          finalFocus={() => originRef.current?.isConnected ? originRef.current : false}
           className="top-[16%] w-full max-w-[calc(100%-2rem)] -translate-y-0 gap-0 overflow-hidden p-0 data-closed:animate-none data-open:animate-none sm:max-w-lg"
         >
           <DialogTitle className="sr-only">Command palette</DialogTitle>

@@ -994,11 +994,20 @@ test("the command palette jumps between pages from the keyboard", async ({ page,
   const other = uniq("palette-other");
   await seedProject(request, token, slug);
   await seedProject(request, token, other);
+  await ingestFixture(request, token, slug, FIXTURE_HIGH);
   await uiLogin(page);
 
   await page.goto(`/${slug}/findings`);
+  const search = page.getByRole("searchbox", { name: "Search findings" });
+  await expect(search).toBeVisible();
+  await search.focus();
   await page.keyboard.press("Control+k");
   const input = page.getByRole("combobox", { name: "Search commands" });
+  await expect(input).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(search).toBeFocused();
+  await page.keyboard.press("Control+k");
   await expect(input).toBeFocused();
 
   // A page of this project, found by a word and reached with Enter.
@@ -1007,6 +1016,7 @@ test("the command palette jumps between pages from the keyboard", async ({ page,
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(new RegExp(`/${slug}/policy$`));
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator("main#main-content")).toBeFocused();
 
   // Another project, picked with the arrow keys and Enter.
   await page.keyboard.press("Control+k");
@@ -1023,9 +1033,32 @@ test("the command palette jumps between pages from the keyboard", async ({ page,
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page).toHaveURL(/\/teams$/);
 
-  // The button opens it too.
-  await page.getByRole("button", { name: "Open command palette" }).click();
+  // Dismissal returns to the opener; a nested shortcut sheet keeps its own focus.
+  const opener = page.getByRole("button", { name: "Open command palette" });
+  await opener.focus();
+  await opener.press("Enter");
   await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(opener).toBeFocused();
+  await page.keyboard.press("Control+k");
+  await input.fill("shortcuts");
+  await page.keyboard.press("Enter");
+  const sheet = page.getByRole("dialog", { name: "Keyboard shortcuts", exact: true });
+  await expect(sheet).toBeVisible();
+  await expect(sheet).toContainText("Keys marked with a place only work while focus is there.");
+  expect(await sheet.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(opener).toBeFocused();
+
+  // A navigation command must leave focus at the new page, not the persistent header button.
+  await opener.click();
+  await input.fill("all projects");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator("main#main-content")).toBeFocused();
 });
 
 test("a global admin creates a team, rosters a person and deletes the team", async ({ page, request }) => {
