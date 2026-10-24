@@ -67,6 +67,17 @@ func TestIngestReport_MalformedReport(t *testing.T) {
 	assert.NotContains(t, got.Message, "Go struct", "parser internals stay out of the response")
 }
 
+func TestIngestReport_MalformedReportNamesTheSafeReason(t *testing.T) {
+	err := fmt.Errorf("scanner sarif: parse output: %w", scanner.Malformed("sarif",
+		scanner.Detail(`the file declares SARIF version "2.0.0"; this reader accepts 2.1.x`,
+			errors.New("unsupported version"))))
+	status, got := ingestWithError(t, "sarif", err)
+
+	assert.Equal(t, http.StatusUnprocessableEntity, status)
+	assert.Equal(t, "malformed_report", got.Code)
+	assert.Equal(t, `The sarif report could not be read: the file declares SARIF version "2.0.0"; this reader accepts 2.1.x.`, got.Message)
+}
+
 func TestIngestReport_UnknownScanner(t *testing.T) {
 	status, got := ingestWithError(t, "no-such-tool", fmt.Errorf("%w: %q", usecase.ErrUnknownScanner, "no-such-tool"))
 

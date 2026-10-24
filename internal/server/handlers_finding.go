@@ -60,6 +60,9 @@ func ingestFailure(scannerName string, err error) (code, message string) {
 		}
 		return "too_many_findings", fmt.Sprintf("The %s report has more than %d findings, the most one report may hold. Split it into smaller reports (for example one per module or directory) and ingest each.", scannerName, tooMany.Limit)
 	case errors.Is(err, scanner.ErrMalformedReport):
+		if detail, ok := scanner.MalformedDetail(err); ok {
+			return "malformed_report", fmt.Sprintf("The %s report could not be read: %s.", scannerName, detail)
+		}
 		return "malformed_report", fmt.Sprintf("The %s report could not be read. Check that the file is complete and came from a current version of the tool.", scannerName)
 	case errors.Is(err, usecase.ErrUnknownScanner):
 		return "unknown_scanner", fmt.Sprintf("The scanner %q is not supported. List the supported scanners with GET /api/v1/scanners.", scannerName)
