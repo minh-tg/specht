@@ -62,7 +62,7 @@ function SearchBox({ value, onSearch }: { value: string; onSearch: (value: strin
         aria-label="Search findings"
         placeholder="Search title or package"
         maxLength={100}
-        className="pl-8"
+        className="pl-8 pointer-coarse:min-h-11"
         value={draft ?? value}
         onChange={(e) => change(e.target.value)}
       />
