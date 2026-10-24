@@ -800,6 +800,7 @@ type ingestFindingsState struct {
 	known        map[string]port.Finding
 	knownIDs     []string
 	baselineSeen map[string]bool
+	createdSeen  map[string]bool
 	// scopeHash is the scan scope of this ingest (see scanScopeHash).
 	scopeHash string
 	// scopeSev holds the per-scope severities of the known findings.
@@ -829,6 +830,7 @@ func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Projec
 		nowTime:        now(),
 		known:          make(map[string]port.Finding),
 		baselineSeen:   make(map[string]bool),
+		createdSeen:    make(map[string]bool),
 		seenIntroduced: make(map[string]bool),
 		batchStore:     batchStore,
 		scopeHash:      scanScopeHash(input, nr),
@@ -931,7 +933,8 @@ func classifyIngestChange(exists, regression bool, baselineID string, baselineSe
 // occurrence, dimensions, events, and material-change evaluation. final marks
 // the last time the report names this finding.
 func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState, f domain.NormalizedFinding, final bool) error {
-	existing, exists := st.known[f.FindingKind+"\x00"+f.Fingerprint]
+	key := f.FindingKind + "\x00" + f.Fingerprint
+	existing, exists := st.known[key]
 	newRank := severityRank(f.Severity)
 	// An archived finding lost its evidence with a deleted report. Seeing it
 	// again is a new finding as far as this report is concerned.
@@ -941,6 +944,12 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 	upserted, err := u.upsertFindingRow(ctx, st, f, incoming)
 	if err != nil {
 		return err
+	}
+	// A report may name one finding more than once. Keep the map current for
+	// a newly created finding; createdSeen below suppresses a second event
+	// for an archived finding that already dispatched one in this report.
+	if !exists {
+		st.known[key] = upserted
 	}
 	project := severityValue{text: upserted.CurrentSeverity, rank: upserted.CurrentSeverityRank}
 	if err := u.recordScopeSeverity(ctx, st, upserted, existing, exists, final, incoming, project); err != nil {
@@ -960,7 +969,11 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 	if regression {
 		u.logRegressionEvent(ctx, st, upserted, f, newRank, existing.State)
 	}
-	u.dispatchCreatedEvent(ctx, st, upserted, f, newRank, !known)
+	created := !known && !st.createdSeen[key]
+	u.dispatchCreatedEvent(ctx, st, upserted, f, newRank, created)
+	if created {
+		st.createdSeen[key] = true
+	}
 
 	if st.batchStore == nil {
 		if err := u.createFindingOccurrence(ctx, st, upserted, f); err != nil {
