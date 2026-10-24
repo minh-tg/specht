@@ -51,11 +51,12 @@ func revisionHarness(t *testing.T, getByFingerprint func(context.Context, string
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
 			return &domain.NormalizedReport{
-				ContractVersion:    1,
-				FingerprintVersion: 1,
-				Completeness:       domain.CompletenessComplete,
-				ScanType:           domain.ScanTypeImage,
-				Target:             &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				ContractVersion:     1,
+				FingerprintVersion:  1,
+				Completeness:        domain.CompletenessComplete,
+				CoveredFindingKinds: []string{"sca", "sast", "iac", "secret", "dast"},
+				ScanType:            domain.ScanTypeImage,
+				Target:              &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
 				Findings: []domain.NormalizedFinding{
 					{
 						Fingerprint: "fp-revision",
@@ -354,11 +355,12 @@ func incrementalHarness(t *testing.T, hasBase bool) *Usecases {
 		incremental: true,
 		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
 			return &domain.NormalizedReport{
-				ContractVersion:    1,
-				FingerprintVersion: 1,
-				Completeness:       domain.CompletenessComplete,
-				ScanType:           domain.ScanTypeFilesystem,
-				Target:             &domain.TargetInfo{Kind: "repo", Identifier: "myapp"},
+				ContractVersion:     1,
+				FingerprintVersion:  1,
+				Completeness:        domain.CompletenessComplete,
+				CoveredFindingKinds: []string{"sca", "sast", "iac", "secret", "dast"},
+				ScanType:            domain.ScanTypeFilesystem,
+				Target:              &domain.TargetInfo{Kind: "repo", Identifier: "myapp"},
 				Findings: []domain.NormalizedFinding{
 					{Fingerprint: "fp-new", FindingKind: "sast", Title: "rule-a", Severity: domain.SeverityHigh, Score: 7.5},
 					{Fingerprint: "fp-old", FindingKind: "sast", Title: "rule-b", Severity: domain.SeverityMedium, Score: 5.0},
@@ -481,7 +483,8 @@ func TestIngestReport_GateIntroducedOnly(t *testing.T) {
 				return &domain.NormalizedReport{
 					ContractVersion: 1, FingerprintVersion: 1,
 					Completeness: domain.CompletenessComplete, ScanType: domain.ScanTypeImage,
-					Target: &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+					CoveredFindingKinds: []string{"sca", "sast", "iac", "secret", "dast"},
+					Target:              &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
 					Findings: []domain.NormalizedFinding{
 						{Fingerprint: "fp-new", FindingKind: "sca", Title: "CVE-2024-1234", Severity: domain.SeverityHigh, Score: 7.5},
 					},
@@ -673,7 +676,7 @@ func TestIngestReport_SameBytesCommitDifferentBranchIngestsTwoReports(t *testing
 	}
 
 	var fixedScopes []string
-	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
+	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]port.Finding, error) {
 		fixedScopes = append(fixedScopes, scopeHash)
 		return nil, nil
 	}
@@ -855,7 +858,8 @@ func TestIngestReport_MaterializesIntroducedFindings(t *testing.T) {
 			return &domain.NormalizedReport{
 				ContractVersion: 1, FingerprintVersion: 1,
 				Completeness: domain.CompletenessComplete, ScanType: domain.ScanTypeImage,
-				Target: &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				CoveredFindingKinds: []string{"sca", "sast", "iac", "secret", "dast"},
+				Target:              &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
 				Findings: []domain.NormalizedFinding{
 					{Fingerprint: "fp-new", FindingKind: "sca", Title: "New Flaw", Severity: domain.SeverityHigh, Score: 7.5},
 					{Fingerprint: "fp-regressed", FindingKind: "sca", Title: "Regressed Flaw", Severity: domain.SeverityCritical, Score: 9.8},
@@ -955,7 +959,8 @@ func TestIngestReport_RegressionFailsIntroducedGate(t *testing.T) {
 			return &domain.NormalizedReport{
 				ContractVersion: 1, FingerprintVersion: 1,
 				Completeness: domain.CompletenessComplete, ScanType: domain.ScanTypeImage,
-				Target: &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				CoveredFindingKinds: []string{"sca", "sast", "iac", "secret", "dast"},
+				Target:              &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
 				Findings: []domain.NormalizedFinding{
 					{Fingerprint: "fp-regressed", FindingKind: "sca", Title: "Regressed Flaw", Severity: domain.SeverityCritical, Score: 9.8},
 				},

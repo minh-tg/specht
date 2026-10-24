@@ -63,11 +63,12 @@ func TestIngestRegression_LogsEvent(t *testing.T) {
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
 			return &domain.NormalizedReport{
-				ContractVersion:    1,
-				FingerprintVersion: 1,
-				Completeness:       domain.CompletenessComplete,
-				ScanType:           domain.ScanTypeImage,
-				Target:             &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				ContractVersion:     1,
+				FingerprintVersion:  1,
+				Completeness:        domain.CompletenessComplete,
+				CoveredFindingKinds: []string{"sca", "sast", "iac", "secret", "dast"},
+				ScanType:            domain.ScanTypeImage,
+				Target:              &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
 				Findings: []domain.NormalizedFinding{
 					{
 						Fingerprint: "fp-regressed",
@@ -159,11 +160,12 @@ func TestIngestRegression_NoEventForOpenFinding(t *testing.T) {
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
 			return &domain.NormalizedReport{
-				ContractVersion:    1,
-				FingerprintVersion: 1,
-				Completeness:       domain.CompletenessComplete,
-				ScanType:           domain.ScanTypeImage,
-				Target:             &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				ContractVersion:     1,
+				FingerprintVersion:  1,
+				Completeness:        domain.CompletenessComplete,
+				CoveredFindingKinds: []string{"sca", "sast", "iac", "secret", "dast"},
+				ScanType:            domain.ScanTypeImage,
+				Target:              &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
 				Findings: []domain.NormalizedFinding{
 					{Fingerprint: "fp1", FindingKind: "sca", Title: "CVE-2024-1234", Severity: domain.SeverityHigh, Score: 7.5},
 				},

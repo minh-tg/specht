@@ -246,7 +246,25 @@ func convert(budget *parseutil.Budget, report trivyReport) (*domain.NormalizedRe
 
 	nr.Target = reportTarget(report)
 
+	covered := map[string]bool{}
 	for _, result := range report.Results {
+		switch result.Class {
+		case "os-pkgs", "lang-pkgs":
+			covered["sca"] = true
+		case "config":
+			covered["iac"] = true
+		case "secret":
+			covered["secret"] = true
+		}
+		if len(result.Vulnerabilities) > 0 {
+			covered["sca"] = true
+		}
+		if len(result.Secrets) > 0 {
+			covered["secret"] = true
+		}
+		if len(result.Misconfigs) > 0 {
+			covered["iac"] = true
+		}
 		// full package inventory, vulnerable or not
 		for _, add := range []func(*parseutil.Budget, *domain.NormalizedReport, trivyResult) error{addPackages, addVulns, addSecrets, addMisconfigs} {
 			if err := add(budget, nr, result); err != nil {
@@ -254,6 +272,9 @@ func convert(budget *parseutil.Budget, report trivyReport) (*domain.NormalizedRe
 			}
 		}
 	}
+	// A result class is the only evidence Trivy gives that a category was
+	// scanned. Without one, an empty report proves no category is clean.
+	nr.CoveredFindingKinds = trivyCoveredKinds(covered)
 
 	return nr, nil
 }
@@ -523,6 +544,20 @@ func addMisconfigs(budget *parseutil.Budget, nr *domain.NormalizedReport, result
 		}))
 	}
 	return nil
+}
+
+// trivyCoveredKinds returns the covered kinds in a stable order.
+func trivyCoveredKinds(covered map[string]bool) []string {
+	out := make([]string, 0, len(covered))
+	for _, kind := range []string{"sca", "sast", "iac", "secret", "dast"} {
+		if covered[kind] {
+			out = append(out, kind)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 func normalizeSeverity(s string) domain.Severity {
