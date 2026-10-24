@@ -191,10 +191,26 @@ ORDER BY COALESCE(completed_at, created_at), id;
 -- it to processing cannot slip in between the check and the delete.
 SELECT status FROM reports WHERE id = $1 AND project_id = $2 FOR UPDATE;
 
+-- name: LockFindingsByIDs :many
+-- Locks the findings a delete is about to settle, in id order, so a
+-- concurrent scoped upsert waits instead of writing a severity that the
+-- delete then recomputes away.
+SELECT id FROM findings
+WHERE id = ANY(sqlc.arg(finding_ids)::uuid[])
+ORDER BY id
+FOR UPDATE;
+
+-- name: ReportScanScopeHash :one
+-- The scope a report last observed; a row with no scope is the empty hash.
+SELECT COALESCE(scan_scope_hash, '') FROM reports WHERE id = $1 AND project_id = $2;
+
 -- name: ListFindingsTouchedByReport :many
 -- The findings a report is evidence for, and whether it is the one that
 -- introduced them. Read before the delete, which nulls the attribution.
-SELECT f.id, (f.introduced_by_report_id = sqlc.arg(report_id)::uuid) AS introduced
+-- A finding with no attribution yet (created by the advisory watcher, or
+-- left behind by a partly failed ingest) makes the comparison NULL, which
+-- pgx cannot scan into a bool. It is not introduced by this report.
+SELECT f.id, COALESCE(f.introduced_by_report_id = sqlc.arg(report_id)::uuid, false)::boolean AS introduced
 FROM findings f
 WHERE f.project_id = sqlc.arg(project_id)
   AND (f.introduced_by_report_id = sqlc.arg(report_id)::uuid

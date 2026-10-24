@@ -674,7 +674,7 @@ func (q *Queries) LatestCompletedReportByScanner(ctx context.Context, arg Latest
 }
 
 const listFindingsTouchedByReport = `-- name: ListFindingsTouchedByReport :many
-SELECT f.id, (f.introduced_by_report_id = $1::uuid) AS introduced
+SELECT f.id, COALESCE(f.introduced_by_report_id = $1::uuid, false)::boolean AS introduced
 FROM findings f
 WHERE f.project_id = $2
   AND (f.introduced_by_report_id = $1::uuid
@@ -695,6 +695,9 @@ type ListFindingsTouchedByReportRow struct {
 
 // The findings a report is evidence for, and whether it is the one that
 // introduced them. Read before the delete, which nulls the attribution.
+// A finding with no attribution yet (created by the advisory watcher, or
+// left behind by a partly failed ingest) makes the comparison NULL, which
+// pgx cannot scan into a bool. It is not introduced by this report.
 func (q *Queries) ListFindingsTouchedByReport(ctx context.Context, arg ListFindingsTouchedByReportParams) ([]ListFindingsTouchedByReportRow, error) {
 	rows, err := q.db.Query(ctx, listFindingsTouchedByReport, arg.ReportID, arg.ProjectID)
 	if err != nil {
@@ -829,6 +832,36 @@ func (q *Queries) ListStaleReports(ctx context.Context, completedAt pgtype.Times
 	return items, nil
 }
 
+const lockFindingsByIDs = `-- name: LockFindingsByIDs :many
+SELECT id FROM findings
+WHERE id = ANY($1::uuid[])
+ORDER BY id
+FOR UPDATE
+`
+
+// Locks the findings a delete is about to settle, in id order, so a
+// concurrent scoped upsert waits instead of writing a severity that the
+// delete then recomputes away.
+func (q *Queries) LockFindingsByIDs(ctx context.Context, findingIds []pgtype.UUID) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, lockFindingsByIDs, findingIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var id pgtype.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const lockReportForDelete = `-- name: LockReportForDelete :one
 SELECT status FROM reports WHERE id = $1 AND project_id = $2 FOR UPDATE
 `
@@ -870,6 +903,23 @@ func (q *Queries) RepointIntroducedBy(ctx context.Context, findingIds []pgtype.U
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const reportScanScopeHash = `-- name: ReportScanScopeHash :one
+SELECT COALESCE(scan_scope_hash, '') FROM reports WHERE id = $1 AND project_id = $2
+`
+
+type ReportScanScopeHashParams struct {
+	ID        pgtype.UUID `json:"id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+// The scope a report last observed; a row with no scope is the empty hash.
+func (q *Queries) ReportScanScopeHash(ctx context.Context, arg ReportScanScopeHashParams) (string, error) {
+	row := q.db.QueryRow(ctx, reportScanScopeHash, arg.ID, arg.ProjectID)
+	var scan_scope_hash string
+	err := row.Scan(&scan_scope_hash)
+	return scan_scope_hash, err
 }
 
 const updateReportStatus = `-- name: UpdateReportStatus :one
