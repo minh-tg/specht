@@ -8,7 +8,29 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/minh-tg/specht/internal/db/sqlc"
 )
+
+func TestRevocationLookupDoesNotWrite(t *testing.T) {
+	repos, cleanup := setupTestDB(t)
+	defer cleanup()
+	ctx := context.Background()
+	r := NewPostgresRevoker(repos.pool)
+	require.NoError(t, r.Revoke(ctx, "active", time.Now().Add(time.Hour)))
+	require.NoError(t, r.Revoke(ctx, "expired", time.Now().Add(-time.Hour)))
+	tx, err := repos.pool.Begin(ctx)
+	require.NoError(t, err)
+	defer tx.Rollback(ctx)
+	_, err = tx.Exec(ctx, "SET TRANSACTION READ ONLY")
+	require.NoError(t, err)
+	readOnly := &PostgresRevoker{q: sqlc.New(tx)}
+	for jti, want := range map[string]bool{"active": true, "expired": false, "missing": false} {
+		got, err := readOnly.IsRevoked(ctx, jti)
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+	}
+}
 
 func TestPostgresRevoker_SharedAcrossInstancesAndPrunesBoundedBatch(t *testing.T) {
 	repos, cleanup := setupTestDB(t)
@@ -26,6 +48,9 @@ func TestPostgresRevoker_SharedAcrossInstancesAndPrunesBoundedBatch(t *testing.T
 	revoked, err = second.IsRevoked(ctx, "already-expired")
 	require.NoError(t, err)
 	require.False(t, revoked, "expired revocations must not be considered active")
+	pruned, err := second.PruneExpired(ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, pruned)
 
 	_, err = repos.pool.Exec(ctx, `
 		INSERT INTO revoked_access_tokens (jti, expires_at)
@@ -33,8 +58,9 @@ func TestPostgresRevoker_SharedAcrossInstancesAndPrunesBoundedBatch(t *testing.T
 		FROM generate_series(1, 1005) AS n`)
 	require.NoError(t, err)
 
-	_, err = second.IsRevoked(ctx, "not-present")
+	pruned, err = second.PruneExpired(ctx)
 	require.NoError(t, err)
+	require.EqualValues(t, 1000, pruned)
 
 	var remaining int
 	err = repos.pool.QueryRow(ctx, `
