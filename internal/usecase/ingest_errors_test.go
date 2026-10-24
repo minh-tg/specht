@@ -39,7 +39,7 @@ func TestApplyMaterialChangePropagatesPreviousFixLookupError(t *testing.T) {
 				Key: domain.DimFixedVersion, Value: "2.0.0",
 			}},
 		},
-		int16(domain.SeverityMedium), int16(domain.SeverityMedium), "block", "in_triage",
+		int16(domain.SeverityMedium), int16(domain.SeverityMedium), "block", "in_triage", nil,
 	)
 
 	require.ErrorIs(t, err, lookupErr)
