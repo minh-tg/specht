@@ -938,15 +938,36 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 	} else {
 		st.occurrences = append(st.occurrences, findingOccurrenceInput(st, upserted, f))
 	}
+	// Read whether the fix already existed before the new dimensions are
+	// written. applyMaterialChange compares against this to report a fix that
+	// became available for the first time.
+	var priorFix *bool
+	if exists && hasFixDimension(f) {
+		hadFix, err := u.deps.Stores.Findings.HasDimension(ctx, existing.ID, domain.DimFixedVersion)
+		if err != nil {
+			return fmt.Errorf("check previous fixed version for finding %q: %w", upserted.ID, err)
+		}
+		priorFix = &hadFix
+	}
 	if err := u.upsertFindingDimensions(ctx, st, upserted, f); err != nil {
 		return err
 	}
 
 	if exists && (existing.AnalysisState != string(finding.StateUnanalyzed) || existing.GateEffect == string(finding.EffectIgnore)) {
 		return u.applyMaterialChange(ctx, st.input, upserted, f,
-			existing.CurrentSeverityRank, project.rank, existing.GateEffect, existing.AnalysisState)
+			existing.CurrentSeverityRank, project.rank, existing.GateEffect, existing.AnalysisState, priorFix)
 	}
 	return nil
+}
+
+// hasFixDimension reports whether the scan reported a non-empty fixed version.
+func hasFixDimension(f domain.NormalizedFinding) bool {
+	for _, d := range f.Dimensions {
+		if d.Key == domain.DimFixedVersion && d.Value != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // tallyIngest records the introduced/pre-existing counters, deduplicating
@@ -1133,21 +1154,19 @@ func (u *Usecases) recordIntroducedFindings(ctx context.Context, st *ingestFindi
 // applyMaterialChange runs finding.EvaluateChange on a previously-known
 // finding and, when the change demands review, marks review_required and logs
 // the material-change event.
-func (u *Usecases) applyMaterialChange(ctx context.Context, input IngestReportInput, upserted port.Finding, f domain.NormalizedFinding, oldRank, newRank int16, oldGateEffect, oldAnalysisState string) error {
-	hasNewFix := false
-	for _, d := range f.Dimensions {
-		if d.Key == domain.DimFixedVersion && d.Value != "" {
-			hasNewFix = true
-			break
-		}
-	}
+func (u *Usecases) applyMaterialChange(ctx context.Context, input IngestReportInput, upserted port.Finding, f domain.NormalizedFinding, oldRank, newRank int16, oldGateEffect, oldAnalysisState string, priorFix *bool) error {
+	hasNewFix := hasFixDimension(f)
 
 	var hadOldFix bool
 	if hasNewFix {
-		var err error
-		hadOldFix, err = u.deps.Stores.Findings.HasDimension(ctx, upserted.ID, domain.DimFixedVersion)
-		if err != nil {
-			return fmt.Errorf("check previous fixed version for finding %q: %w", upserted.ID, err)
+		if priorFix != nil {
+			hadOldFix = *priorFix
+		} else {
+			var err error
+			hadOldFix, err = u.deps.Stores.Findings.HasDimension(ctx, upserted.ID, domain.DimFixedVersion)
+			if err != nil {
+				return fmt.Errorf("check previous fixed version for finding %q: %w", upserted.ID, err)
+			}
 		}
 	}
 
