@@ -69,6 +69,10 @@ test("the findings list fits a 360px phone and passes axe", async ({ page, reque
   await uiLogin(page);
   await page.goto(`/${slug}/findings`);
   await expect(page.locator("tbody tr").first()).toBeVisible();
+  const search = page.getByRole("searchbox", { name: "Search findings" });
+  await expect(search).toBeVisible();
+  expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+  expect((await search.boundingBox())!.height).toBeGreaterThanOrEqual(44);
   await auditPhone(page, "findings list");
 });
 

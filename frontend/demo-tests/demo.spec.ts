@@ -44,6 +44,11 @@ for (
         "aria-pressed",
         String(theme === "dark"),
       );
+      if (name === "findings") {
+        expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(false);
+        const search = page.getByRole("searchbox", { name: "Search findings" });
+        expect((await search.boundingBox())!.height).toBe(32);
+      }
       if (name === "reports") {
         await expect(page.getByText(/Uploads require a local installation/)).toBeVisible();
         await expect(page.getByRole("link", { name: "Evaluate locally", exact: true }))
@@ -99,6 +104,29 @@ test("configuration and uploads have an explicit unavailable state", async ({ pa
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Not included in this demo");
   await page.getByRole("link", { name: "Back to sample findings" }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(snapshot.slug);
+});
+
+test.describe("coarse-pointer findings controls", () => {
+  test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+
+  test("search and filters have comfortable touch targets", async ({ page }) => {
+    await page.goto(`./#${project}/findings`);
+    const search = page.getByRole("searchbox", { name: "Search findings" });
+    await expect(search).toBeVisible();
+    expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+    expect((await search.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    for (
+      const label of [
+        "Filter by triage state",
+        "Filter by status",
+        "Filter by finding type",
+        "Sort findings",
+      ]
+    ) {
+      expect((await page.getByRole("combobox", { name: label }).boundingBox())!.height)
+        .toBeGreaterThanOrEqual(44);
+    }
+  });
 });
 
 test("no session or service worker is created", async ({ page }) => {
