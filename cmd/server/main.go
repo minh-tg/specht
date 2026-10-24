@@ -203,6 +203,12 @@ func main() {
 	cveDetailStore := repo.NewCVEDetailStore(pool)
 	cveDetail, cveResolver := buildCVEDetail(cfg.CVEDetail, cveDetailStore, intelStore)
 
+	dispatcher := buildTrackerDispatcher()
+	defer func() {
+		if err := dispatcher.Close(); err != nil {
+			slog.Error("close tracker", "error", err)
+		}
+	}()
 	uc := usecase.New(usecase.Deps{
 		SetupToken:              setupToken,
 		Stores:                  stores,
@@ -216,7 +222,7 @@ func main() {
 		FingerprintKey:          cfg.FingerprintKey,
 		SSOAllowUnverifiedEmail: cfg.SSO.AllowUnverifiedEmail,
 		Watcher:                 usecase.WatcherSettings{Enabled: cfg.Watcher.Enable, PollInterval: cfg.Watcher.PollInterval},
-		Tracker:                 buildTrackerDispatcher(),
+		Tracker:                 dispatcher,
 		Intel:                   intelStore,
 		CVEDetail:               cveDetail,
 		IngestMaxFindings:       cfg.IngestMaxFindings,
