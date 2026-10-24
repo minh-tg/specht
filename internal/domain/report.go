@@ -17,6 +17,10 @@ type NormalizedReport struct {
 	Artifact           *ArtifactInfo
 	Findings           []NormalizedFinding
 	Packages           []PackageRef
+	// CoveredFindingKinds names the finding kinds this report actually
+	// examined. Absence of any other kind proves nothing, so auto-fix never
+	// closes it. Empty means the report vouches for no kind.
+	CoveredFindingKinds []string
 	// ScanScope holds typed scan scope attributes: the target and artifact
 	// identifiers plus branch, commit SHA, and stable extension attributes.
 	// Ingest hashes the full typed scope so identical content scanned at a

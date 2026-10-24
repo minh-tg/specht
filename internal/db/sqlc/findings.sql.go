@@ -1696,6 +1696,7 @@ LEFT JOIN reports prior ON prior.id = s.report_id
 JOIN reports current ON current.id = $1
 WHERE f.project_id = $2
   AND s.scope_hash = $3
+  AND f.finding_kind = ANY($4::text[])
   AND ((s.report_id IS NULL AND s.observed_at <= current.created_at)
        OR (prior.created_at, prior.id) < (current.created_at, current.id))
   AND NOT EXISTS (
@@ -1707,14 +1708,20 @@ FOR UPDATE OF f
 `
 
 type LockAbsentScopeFindingsParams struct {
-	ReportID  pgtype.UUID `json:"report_id"`
-	ProjectID pgtype.UUID `json:"project_id"`
-	ScopeHash string      `json:"scope_hash"`
+	ReportID     pgtype.UUID `json:"report_id"`
+	ProjectID    pgtype.UUID `json:"project_id"`
+	ScopeHash    string      `json:"scope_hash"`
+	FindingKinds []string    `json:"finding_kinds"`
 }
 
 // Lock before retiring scope rows so concurrent scoped upserts cannot be lost.
 func (q *Queries) LockAbsentScopeFindings(ctx context.Context, arg LockAbsentScopeFindingsParams) ([]pgtype.UUID, error) {
-	rows, err := q.db.Query(ctx, lockAbsentScopeFindings, arg.ReportID, arg.ProjectID, arg.ScopeHash)
+	rows, err := q.db.Query(ctx, lockAbsentScopeFindings,
+		arg.ReportID,
+		arg.ProjectID,
+		arg.ScopeHash,
+		arg.FindingKinds,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1778,6 +1785,7 @@ UPDATE findings
 SET state = 'fixed', updated_at = NOW()
 WHERE findings.project_id = $1
   AND findings.state IN ('open', 'reopened')
+  AND findings.finding_kind = ANY($4::text[])
   AND NOT EXISTS (SELECT 1 FROM finding_scope_severities s WHERE s.finding_id = findings.id)
   AND NOT EXISTS (
       SELECT 1 FROM finding_occurrences occ
@@ -1805,6 +1813,7 @@ type MarkAbsentScopedFindingsFixedParams struct {
 	ProjectID     pgtype.UUID `json:"project_id"`
 	ScanScopeHash pgtype.Text `json:"scan_scope_hash"`
 	ReportID      pgtype.UUID `json:"report_id"`
+	FindingKinds  []string    `json:"finding_kinds"`
 }
 
 // Scan-equivalence auto-fix: closes findings whose most recent observation
@@ -1815,7 +1824,12 @@ type MarkAbsentScopedFindingsFixedParams struct {
 // incomplete scans never reach this query — the caller only invokes it
 // for full scans whose parsed completeness is 'complete'.
 func (q *Queries) MarkAbsentScopedFindingsFixed(ctx context.Context, arg MarkAbsentScopedFindingsFixedParams) ([]Finding, error) {
-	rows, err := q.db.Query(ctx, markAbsentScopedFindingsFixed, arg.ProjectID, arg.ScanScopeHash, arg.ReportID)
+	rows, err := q.db.Query(ctx, markAbsentScopedFindingsFixed,
+		arg.ProjectID,
+		arg.ScanScopeHash,
+		arg.ReportID,
+		arg.FindingKinds,
+	)
 	if err != nil {
 		return nil, err
 	}

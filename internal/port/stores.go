@@ -968,12 +968,12 @@ type FindingStore interface {
 	// under the finding lock. Other active evidence returns ErrFindingStillObserved.
 	MarkFixedWithEvent(ctx context.Context, findingID, reportID string, event FindingEventInput) (Finding, error)
 	// MarkAbsentFindingsFixed is the ingest-time auto-fix writer: it closes
-	// open or reopened findings whose most recent observation came from an
-	// equivalent complete scan (same project and scope hash) and that
-	// reportID does not observe, returning the closed findings. Callers gate
-	// it to full scans whose parsed
-	// completeness is "complete".
-	MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string) ([]Finding, error)
+	// open or reopened findings of the covered kinds whose most recent
+	// observation came from an equivalent complete scan (same project and
+	// scope hash) and that reportID does not observe, returning the closed
+	// findings. Callers gate it to full scans whose parsed completeness is
+	// "complete".
+	MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]Finding, error)
 	// BulkCreateEvents records one event shape for many findings in a
 	// single statement, keeping large closures (the auto-fix writer)
 	// O(1) in queries instead of O(findings).

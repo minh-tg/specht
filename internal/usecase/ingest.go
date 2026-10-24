@@ -318,7 +318,13 @@ func (u *Usecases) autoFixAbsentFindings(ctx context.Context, project port.Proje
 	if input.ScanMode != ScanModeFull || nr.Completeness != domain.CompletenessComplete {
 		return nil
 	}
-	fixed, err := u.deps.Stores.Findings.MarkAbsentFindingsFixed(ctx, project.ID, scopeHash, report.ID)
+	if len(nr.CoveredFindingKinds) == 0 {
+		// The report does not vouch for any finding kind. An empty Trivy
+		// report, an SBOM inventory or a partial scan must not close rows it
+		// never examined.
+		return nil
+	}
+	fixed, err := u.deps.Stores.Findings.MarkAbsentFindingsFixed(ctx, project.ID, scopeHash, report.ID, nr.CoveredFindingKinds)
 	if err != nil {
 		return fmt.Errorf("auto-fix absent findings: %w", err)
 	}

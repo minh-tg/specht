@@ -50,7 +50,7 @@ func TestScopeClosureKeepsOtherScopesActive(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, usecase.VerifyPresent, result.Outcome)
 			} else {
-				fixed, err := s.stores.Findings.MarkAbsentFindingsFixed(s.ctx, s.projectID, "main", clean.ID)
+				fixed, err := s.stores.Findings.MarkAbsentFindingsFixed(s.ctx, s.projectID, "main", clean.ID, []string{"sca"})
 				require.NoError(t, err)
 				require.Empty(t, fixed)
 			}
