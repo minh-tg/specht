@@ -575,7 +575,7 @@ func (u *Usecases) GetFinding(ctx context.Context, findingID string) (*FindingRe
 		}
 		return nil, fmt.Errorf("get finding: %w", err)
 	}
-	if err := u.checkFindingProjectIDAccess(ctx, f.ProjectID); err != nil {
+	if err := u.checkFindingVisibility(ctx, f.ProjectID); err != nil {
 		return nil, err
 	}
 	resp := toFinding(f)
