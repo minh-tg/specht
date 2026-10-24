@@ -14,6 +14,8 @@ import { type KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from 
  */
 export function CommandPalette() {
   const commands = useCommands();
+  const paletteShortcut = comboLabel(shortcut("palette").combos[0]!);
+  const visibleShortcut = paletteShortcut.replace("+", " ");
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(0);
@@ -87,13 +89,13 @@ export function CommandPalette() {
         variant="outline"
         size="sm"
         onClick={(event) => openPalette(event.currentTarget)}
-        aria-label="Open command palette"
-        title={`Search and jump (${comboLabel(shortcut("palette").combos[0]!)})`}
+        aria-label={`Open command palette, ${visibleShortcut}`}
+        title={`Search and jump (${paletteShortcut})`}
         className="shrink-0"
       >
         <SearchIcon aria-hidden="true" />
         <kbd className="bg-muted text-muted-foreground rounded px-1 font-mono text-[0.6875rem] max-sm:hidden">
-          {comboLabel(shortcut("palette").combos[0]!).replace("+", " ")}
+          {visibleShortcut}
         </kbd>
       </Button>
 

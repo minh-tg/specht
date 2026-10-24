@@ -248,7 +248,7 @@ describe("Navbar", () => {
     expect(names).toEqual([
       "Specht",
       expect.stringMatching(/^Theme/),
-      "Open command palette",
+      "Open command palette, Ctrl K",
       "Projects",
       "Teams",
       "API keys",

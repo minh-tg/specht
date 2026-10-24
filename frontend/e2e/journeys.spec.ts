@@ -1034,7 +1034,9 @@ test("the command palette jumps between pages from the keyboard", async ({ page,
   await expect(page).toHaveURL(/\/teams$/);
 
   // Dismissal returns to the opener; a nested shortcut sheet keeps its own focus.
-  const opener = page.getByRole("button", { name: "Open command palette" });
+  const opener = page.getByRole("button", { name: /^Open command palette/ });
+  const visibleShortcut = await opener.locator("kbd").innerText();
+  await expect(opener).toHaveAccessibleName(`Open command palette, ${visibleShortcut}`);
   await opener.focus();
   await opener.press("Enter");
   await expect(page.getByRole("dialog", { name: "Command palette" })).toBeVisible();
