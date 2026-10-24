@@ -9,6 +9,7 @@ package tracker
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 	"time"
@@ -137,6 +138,14 @@ func NewDispatcher(tracker Tracker, logger *slog.Logger) *Dispatcher {
 		tracker = NoopTracker{}
 	}
 	return &Dispatcher{tracker: tracker, logger: logger}
+}
+
+// Close releases resources owned by the configured tracker, when any.
+func (d *Dispatcher) Close() error {
+	if closer, ok := d.tracker.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
 }
 
 // Dispatch sends a finding lifecycle event to the tracker. It is
