@@ -2031,6 +2031,38 @@ func (q *Queries) RefreshFindingScopeSeverity(ctx context.Context, id pgtype.UUI
 	return i, err
 }
 
+const restoreScopeSeverityFromNewestEvidence = `-- name: RestoreScopeSeverityFromNewestEvidence :exec
+UPDATE finding_scope_severities s
+SET severity = newest.severity,
+    severity_rank = newest.severity_rank,
+    report_id = newest.report_id,
+    observed_at = newest.observed_at
+FROM (
+    SELECT DISTINCT ON (o.finding_id) o.finding_id, o.severity,
+           o.severity_rank, o.report_id, o.observed_at
+    FROM finding_occurrences o
+    JOIN reports r ON r.id = o.report_id
+    WHERE o.finding_id = ANY($2::uuid[])
+      AND COALESCE(r.scan_scope_hash, '') = $1
+    ORDER BY o.finding_id, o.observed_at DESC, o.id DESC
+) newest
+WHERE s.finding_id = newest.finding_id
+  AND s.scope_hash = $1
+`
+
+type RestoreScopeSeverityFromNewestEvidenceParams struct {
+	ScopeHash  string        `json:"scope_hash"`
+	FindingIds []pgtype.UUID `json:"finding_ids"`
+}
+
+// A report delete that leaves other reports in the same scope puts the
+// newest remaining observation back into the scope row, so the aggregate
+// reflects live evidence rather than the deleted report.
+func (q *Queries) RestoreScopeSeverityFromNewestEvidence(ctx context.Context, arg RestoreScopeSeverityFromNewestEvidenceParams) error {
+	_, err := q.db.Exec(ctx, restoreScopeSeverityFromNewestEvidence, arg.ScopeHash, arg.FindingIds)
+	return err
+}
+
 const retireAbsentScopeSeverities = `-- name: RetireAbsentScopeSeverities :exec
 DELETE FROM finding_scope_severities s
 WHERE s.finding_id = ANY($1::uuid[])
@@ -2051,6 +2083,31 @@ type RetireAbsentScopeSeveritiesParams struct {
 
 func (q *Queries) RetireAbsentScopeSeverities(ctx context.Context, arg RetireAbsentScopeSeveritiesParams) error {
 	_, err := q.db.Exec(ctx, retireAbsentScopeSeverities, arg.FindingIds, arg.ScopeHash, arg.ReportID)
+	return err
+}
+
+const retireScopeSeverityWithoutEvidence = `-- name: RetireScopeSeverityWithoutEvidence :exec
+DELETE FROM finding_scope_severities s
+WHERE s.finding_id = ANY($1::uuid[])
+  AND s.scope_hash = $2
+  AND NOT EXISTS (
+      SELECT 1 FROM finding_occurrences o
+      JOIN reports r ON r.id = o.report_id
+      WHERE o.finding_id = s.finding_id
+        AND COALESCE(r.scan_scope_hash, '') = s.scope_hash
+  )
+`
+
+type RetireScopeSeverityWithoutEvidenceParams struct {
+	FindingIds []pgtype.UUID `json:"finding_ids"`
+	ScopeHash  string        `json:"scope_hash"`
+}
+
+// A report delete removes the scope row it supplied when no remaining report
+// in that scope observed the finding. Findings with other scopes keep those
+// rows; a finding with no scope at all keeps its historical severity.
+func (q *Queries) RetireScopeSeverityWithoutEvidence(ctx context.Context, arg RetireScopeSeverityWithoutEvidenceParams) error {
+	_, err := q.db.Exec(ctx, retireScopeSeverityWithoutEvidence, arg.FindingIds, arg.ScopeHash)
 	return err
 }
 
