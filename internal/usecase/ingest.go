@@ -110,11 +110,14 @@ func validateIngestInput(input IngestReportInput) (IngestReportInput, error) {
 	// everywhere, so store them canonical. Branches are case-sensitive and
 	// untouched.
 	input.CommitSha = normalizeRevision(input.CommitSha)
-	input.BaseRevision = normalizeRevision(input.BaseRevision)
+	// BaseRevision is either a commit or a branch name. A branch is
+	// case-sensitive, so only trim it here; commit comparison normalizes the
+	// SHA at the lookup.
+	input.BaseRevision = strings.TrimSpace(input.BaseRevision)
 	if scanMode == ScanModeIncremental && input.BaseRevision == "" {
 		return input, fmt.Errorf("incremental scan requires base_revision")
 	}
-	if scanMode == ScanModeIncremental && input.CommitSha != "" && input.BaseRevision == input.CommitSha {
+	if scanMode == ScanModeIncremental && input.CommitSha != "" && sameRevision(input.BaseRevision, input.CommitSha) {
 		return input, fmt.Errorf("incremental scan requires base_revision to differ from commit_sha")
 	}
 	return input, nil
@@ -425,11 +428,33 @@ func reportTotalFindings(report port.Report) int {
 // passes a branch name for pull requests, so when no commit matches, the
 // newest full report on that branch is the baseline.
 func (u *Usecases) findBaselineReport(ctx context.Context, projectID, scanner, revision string) (port.CompletedReport, error) {
-	base, err := u.deps.Stores.Reports.GetCompletedByCommit(ctx, projectID, scanner, revision)
+	// Commits are stored lowercase; a branch name keeps its case.
+	base, err := u.deps.Stores.Reports.GetCompletedByCommit(ctx, projectID, scanner, normalizeRevision(revision))
 	if !errors.Is(err, port.ErrNotFound) {
 		return base, err
 	}
 	return u.deps.Stores.Reports.GetLatestFullByBranch(ctx, projectID, scanner, revision)
+}
+
+// sameRevision reports whether two revision strings name the same SHA. A
+// branch name is not a SHA, so it compares exactly.
+func sameRevision(a, b string) bool {
+	if looksLikeCommit(a) && looksLikeCommit(b) {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
+func looksLikeCommit(s string) bool {
+	if len(s) < 7 || len(s) > 64 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 // resolveBaseRevision fills the baseline from the base revision when scan
