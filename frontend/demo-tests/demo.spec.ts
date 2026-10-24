@@ -44,6 +44,12 @@ for (
         "aria-pressed",
         String(theme === "dark"),
       );
+      if (name === "reports") {
+        await expect(page.getByText(/Uploads require a local installation/)).toBeVisible();
+        await expect(page.getByRole("link", { name: "Evaluate locally", exact: true }))
+          .toHaveAttribute("href", "../docs/getting-started/");
+        await expect(page.getByRole("link", { name: /^Upload (a )?report$/ })).toHaveCount(0);
+      }
       await expect(page.getByText(/Could not load|Couldn't load|Loading findings|Loading reports/))
         .toHaveCount(0);
       await page.evaluate(() => document.fonts.ready);
