@@ -132,9 +132,9 @@ export function AuthProvider({ children }: { readonly children: ReactNode; }) {
   }, []);
 
   const logout = useCallback(() => {
-    const { refreshToken } = getStoredSession() ?? {};
+    const { refreshToken, token } = getStoredSession() ?? {};
     if (refreshToken) {
-      void revokeRefreshToken(refreshToken);
+      void revokeRefreshToken(refreshToken, token);
     }
     setAuthToken(null);
     clearStoredSession();
