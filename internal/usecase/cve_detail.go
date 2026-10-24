@@ -198,6 +198,17 @@ func (u *Usecases) GetFindingCVE(ctx context.Context, findingID string) (*CVEDet
 		}
 	}
 	if cve == "" {
+		// A scanner can use a GHSA as the primary id and carry the CVE as an
+		// alias. The alias is a valid identity for the provider and intel
+		// lookups, so use it when the primary id is not a CVE.
+		for _, d := range dims {
+			if d.Key == "alias" && cvedetail.ValidCVEID(d.Value) {
+				cve = d.Value
+				break
+			}
+		}
+	}
+	if cve == "" {
 		return nil, ErrNotCVE
 	}
 	if u.deps.CVEDetail.Occurrences == nil {

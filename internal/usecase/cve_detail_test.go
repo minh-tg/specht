@@ -89,6 +89,20 @@ func TestGetFindingCVE_NotCVE(t *testing.T) {
 	require.ErrorIs(t, err, ErrNotCVE)
 }
 
+func TestGetFindingCVE_UsesACVEAliasOnAGHSAPrimaryFinding(t *testing.T) {
+	uc := newCVETestUsecases("GHSA-xxxx-yyyy-zzzz", nil, nil, nil)
+	fr := uc.deps.Stores.Findings.(*mockFindingRepo)
+	fr.listDimensionsFn = func(context.Context, string) ([]port.FindingDimension, error) {
+		return []port.FindingDimension{
+			{Key: "vulnerability_id", Value: "GHSA-xxxx-yyyy-zzzz"},
+			{Key: "alias", Value: "CVE-2030-1234"},
+		}, nil
+	}
+	out, err := uc.GetFindingCVE(memberSessionCtx(), cveTestFindingID)
+	require.NoError(t, err)
+	require.Equal(t, "CVE-2030-1234", out.CVEID)
+}
+
 func TestGetFindingCVE_RequiresProjectAccess(t *testing.T) {
 	fr := &mockFindingRepo{}
 	fr.getByIDFn = func(context.Context, string) (port.Finding, error) { return makeFindingRow(1), nil }
