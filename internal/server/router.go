@@ -137,29 +137,43 @@ func NewRouter(cfg RouterConfig) http.Handler {
 	ingestQueueWait := cmp.Or(max(cfg.IngestQueueWait, 0), defaultIngestQueueWait)
 	h.ingest = newIngestAdmission(cfg.IngestConcurrency, cfg.IngestMemoryBudget, ingestQueueWait)
 
-	r.Get("/api/v1/health", healthHandler)
-	ready := cfg.Ready
-	if ready == nil {
-		ready = func(context.Context) error { return nil }
+	limitPublic := func(next http.Handler) http.Handler { return next }
+	if cfg.RateLimit.Enabled {
+		// Public routes have no downstream authenticator to charge arbitrary
+		// bearer headers. This separate IP bucket keeps the same burst for
+		// requests already counted by the pre-auth bucket.
+		limitPublic = NewRateLimiter(cfg.RateLimit.RPS, cfg.RateLimit.Burst).MiddlewareByIP()
 	}
-	r.Get("/api/v1/ready", newReadiness(ready).handler)
-	r.Get("/api/v1/version", versionHandler)
-	r.Get("/api/v1/capabilities", capabilitiesHandler(cfg.RegistrationDisabled, cfg.OIDCEnabled && cfg.OIDC != nil, h.setupRequired))
-	// SSO/OIDC entry point: redirect to the provider's authorization URL.
-	if cfg.OIDCEnabled && cfg.OIDC != nil {
-		r.Get("/api/v1/auth/sso/login", ssoLoginHandler(cfg.OIDC))
-		r.Get("/api/v1/auth/sso/callback", cfg.OIDC.CallbackHandler(func(ctx context.Context, claims auth.SSOClaims) (string, error) {
-			// Resolve the IdP subject to a local account: existing users
-			// keep their local role; unknown subjects are provisioned only
-			// for allowlisted domains, otherwise rejected. IdP admin
-			// groups elevate provisioned accounts.
-			userID, _, _, err := cfg.Usecases.FindOrProvisionSSOUser(ctx, claims, cfg.SSOAllowedDomains, cfg.SSOAdminGroups)
-			if err != nil {
-				return "", err
-			}
-			return cfg.Usecases.CreateSSOExchangeCode(ctx, userID, claims.BrowserBinding)
-		}))
-	}
+	r.NotFound(limitPublic(http.HandlerFunc(http.NotFound)).ServeHTTP)
+	r.MethodNotAllowed(limitPublic(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+	})).ServeHTTP)
+	r.Group(func(r chi.Router) {
+		r.Use(limitPublic)
+		r.Get("/api/v1/health", healthHandler)
+		ready := cfg.Ready
+		if ready == nil {
+			ready = func(context.Context) error { return nil }
+		}
+		r.Get("/api/v1/ready", newReadiness(ready).handler)
+		r.Get("/api/v1/version", versionHandler)
+		r.Get("/api/v1/capabilities", capabilitiesHandler(cfg.RegistrationDisabled, cfg.OIDCEnabled && cfg.OIDC != nil, h.setupRequired))
+		// SSO/OIDC entry point: redirect to the provider's authorization URL.
+		if cfg.OIDCEnabled && cfg.OIDC != nil {
+			r.Get("/api/v1/auth/sso/login", ssoLoginHandler(cfg.OIDC))
+			r.Get("/api/v1/auth/sso/callback", cfg.OIDC.CallbackHandler(func(ctx context.Context, claims auth.SSOClaims) (string, error) {
+				// Resolve the IdP subject to a local account: existing users
+				// keep their local role; unknown subjects are provisioned only
+				// for allowlisted domains, otherwise rejected. IdP admin
+				// groups elevate provisioned accounts.
+				userID, _, _, err := cfg.Usecases.FindOrProvisionSSOUser(ctx, claims, cfg.SSOAllowedDomains, cfg.SSOAdminGroups)
+				if err != nil {
+					return "", err
+				}
+				return cfg.Usecases.CreateSSOExchangeCode(ctx, userID, claims.BrowserBinding)
+			}))
+		}
+	})
 	r.Group(func(r chi.Router) {
 		// No post-auth limiter covers these routes, and an Authorization
 		// header is client-controlled, so they are limited by IP alone rather
