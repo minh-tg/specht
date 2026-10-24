@@ -246,7 +246,10 @@ SELECT
         FROM finding_occurrences eo
         JOIN reports er ON eo.report_id = er.id
         WHERE eo.finding_id = f.id
-    )::text[] AS environment_ids
+    )::text[] AS environment_ids,
+    ARRAY(SELECT DISTINCT d.dim_value FROM finding_dimensions d
+          WHERE d.finding_id = f.id AND d.dim_key = 'alias'
+          ORDER BY d.dim_value)::text[] AS aliases
 FROM open_findings f
 LEFT JOIN LATERAL (
     SELECT r.environment_id, r.target_id, r.artifact_id
@@ -550,6 +553,9 @@ SELECT
         JOIN reports er ON eo.report_id = er.id
         WHERE eo.finding_id = f.id
     )::text[] AS environment_ids,
+    ARRAY(SELECT DISTINCT d.dim_value FROM finding_dimensions d
+          WHERE d.finding_id = f.id AND d.dim_key = 'alias'
+          ORDER BY d.dim_value)::text[] AS aliases,
     rif.change_type
 FROM report_introduced_findings rif
 JOIN open_findings f ON rif.finding_id = f.id

@@ -1222,6 +1222,7 @@ func (r *pgFindingPort) ListGateCandidates(ctx context.Context, projectID string
 				EnvironmentIDs: row.EnvironmentIds,
 			},
 			Reachability: string(row.ReachabilityState),
+			Aliases:      row.Aliases,
 		}
 	}
 	return out, nil
@@ -1261,6 +1262,7 @@ func (r *pgFindingPort) ListIntroducedGateCandidates(ctx context.Context, projec
 				EnvironmentIDs: row.EnvironmentIds,
 			},
 			Reachability: string(row.ReachabilityState),
+			Aliases:      row.Aliases,
 		}
 	}
 	return out, nil

@@ -769,6 +769,16 @@ func (u *Usecases) CheckWaiverMatch(ctx context.Context, projectSlug, findingID 
 		gf.ArtifactID = fc.ArtifactID
 	}
 
+	dimensions, err := u.deps.Stores.Findings.ListDimensions(ctx, fid.String())
+	if err != nil {
+		return false, fmt.Errorf("load finding aliases: %w", err)
+	}
+	for _, d := range dimensions {
+		if d.Key == "alias" {
+			gf.Aliases = append(gf.Aliases, d.Value)
+		}
+	}
+
 	waivers, err := (&gateWaiverRepo{stores: u.deps.Stores}).ListActiveWaivers(ctx, project.ID)
 	if err != nil {
 		return false, fmt.Errorf("list active waivers: %w", err)

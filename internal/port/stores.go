@@ -1080,6 +1080,7 @@ type FindingDisplayContext struct {
 // gate.Gate.Evaluate is authoritative.
 type GateCandidate struct {
 	Finding
+	Aliases      []string
 	Context      FindingContext
 	Reachability string
 }
