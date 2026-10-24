@@ -263,6 +263,22 @@ func TestDeleteReportAndSettle_ASecondScanRevivesAnArchivedFinding(t *testing.T)
 	assert.Equal(t, "open", s.get(t, s.onlyA).State, "seeing it again opens it, as a new finding rather than a regression")
 }
 
+func TestReportDeletionImpact_CountsWhatTheDeleteWouldSettle(t *testing.T) {
+	s, cleanup := newDeleteScenario(t)
+	defer cleanup()
+
+	impact, err := s.stores.Reports.ReportDeletionImpact(s.ctx, s.reportA, s.projectID)
+	require.NoError(t, err)
+	assert.Equal(t, 4, impact.AffectedFindings, "onlyA, reopened, fixed and shared cite report A")
+	assert.Equal(t, 2, impact.ArchivedFindings, "onlyA and reopened lose their only evidence")
+
+	_, err = s.stores.Reports.GetByID(s.ctx, s.reportA)
+	require.NoError(t, err, "a preview changes nothing")
+
+	_, err = s.stores.Reports.ReportDeletionImpact(s.ctx, s.reportA, "00000000-0000-4000-8000-0000000000ff")
+	assert.ErrorIs(t, err, port.ErrNotFound, "a foreign project cannot preview another report")
+}
+
 func TestDeleteStaleReports_SettlesFindingsLikeAnExplicitDelete(t *testing.T) {
 	s, cleanup := newDeleteScenario(t)
 	defer cleanup()

@@ -17,6 +17,7 @@ type settlingReports struct {
 	port.ReportStore
 	err       error
 	archived  int
+	affected  int
 	gotID     string
 	gotActor  *string
 	gotProj   string
@@ -83,6 +84,53 @@ func TestDeleteReport_ProjectAdminAndGlobalAdminMayDelete(t *testing.T) {
 			assert.NotEmpty(t, *reports.gotActor, "the event names who deleted it")
 		})
 	}
+}
+
+func (s *settlingReports) ReportDeletionImpact(_ context.Context, id, projectID string) (port.ReportDeletionImpact, error) {
+	s.callCount++
+	s.gotID, s.gotProj = id, projectID
+	if s.err != nil {
+		return port.ReportDeletionImpact{}, s.err
+	}
+	return port.ReportDeletionImpact{AffectedFindings: s.affected, ArchivedFindings: s.archived}, nil
+}
+
+func TestPreviewDeleteReport_NeedsProjectAdmin(t *testing.T) {
+	reports := &settlingReports{}
+	_, err := reportDeleteUsecase(auth.RoleManager, reports).PreviewDeleteReport(
+		sessionCtx("u1", auth.RoleViewer), "payments", deleteReportID)
+
+	assert.ErrorIs(t, err, ErrProjectAccessDenied)
+	assert.Zero(t, reports.callCount)
+}
+
+func TestPreviewDeleteReport_ReturnsTheImpactWithoutDeleting(t *testing.T) {
+	reports := &settlingReports{affected: 5, archived: 2}
+	preview, err := reportDeleteUsecase(auth.RoleAdmin, reports).PreviewDeleteReport(
+		sessionCtx("g1", auth.RoleAdmin), "payments", deleteReportID)
+
+	require.NoError(t, err)
+	assert.Equal(t, 5, preview.AffectedFindings)
+	assert.Equal(t, 2, preview.ArchivedFindings)
+	assert.Equal(t, deleteReportID, reports.gotID)
+	assert.Equal(t, "00000000-0000-0000-0000-000000000001", reports.gotProj)
+}
+
+func TestPreviewDeleteReport_ErrorMapping(t *testing.T) {
+	admin := sessionCtx("g1", auth.RoleAdmin)
+
+	_, err := reportDeleteUsecase(auth.RoleAdmin, &settlingReports{}).PreviewDeleteReport(admin, "payments", "not-a-uuid")
+	assert.ErrorIs(t, err, ErrInvalidID)
+
+	_, err = reportDeleteUsecase(auth.RoleAdmin, &settlingReports{}).PreviewDeleteReport(admin, "nope", deleteReportID)
+	assert.ErrorIs(t, err, ErrProjectAccessDenied)
+
+	_, err = reportDeleteUsecase(auth.RoleAdmin, &settlingReports{err: port.ErrNotFound}).PreviewDeleteReport(admin, "payments", deleteReportID)
+	assert.ErrorIs(t, err, ErrReportNotFound)
+
+	_, err = reportDeleteUsecase(auth.RoleAdmin, &settlingReports{err: errors.New("db down")}).PreviewDeleteReport(admin, "payments", deleteReportID)
+	require.Error(t, err)
+	assert.NotErrorIs(t, err, ErrReportNotFound)
 }
 
 func TestDeleteReport_ErrorMapping(t *testing.T) {

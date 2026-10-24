@@ -149,6 +149,7 @@ type (
 		AcceptInvite(ctx context.Context, token string, in usecase.AcceptInviteInput) (*usecase.AcceptInviteResponse, error)
 		JoinInvite(ctx context.Context, token string) (*usecase.JoinInviteResponse, error)
 		DeleteReport(ctx context.Context, projectSlug, reportID string) (*usecase.ReportDeleteResponse, error)
+		PreviewDeleteReport(ctx context.Context, projectSlug, reportID string) (*usecase.ReportDeletionPreview, error)
 		GetProjectWatcher(ctx context.Context, projectSlug string) (*usecase.ProjectWatcherResponse, error)
 		UpdateProjectWatcher(ctx context.Context, projectSlug string, in usecase.WatcherSettingsInput) (*usecase.ProjectWatcherResponse, error)
 		ChangeUserRole(ctx context.Context, userID, role string) (*usecase.UserProfile, error)

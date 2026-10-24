@@ -24,6 +24,48 @@ type ReportDeleteResponse struct {
 	ArchivedFindings int `json:"archived_findings"`
 }
 
+// ReportDeletionPreview says what deleting a report would change, without
+// changing anything.
+type ReportDeletionPreview struct {
+	// AffectedFindings is how many findings cite the report.
+	AffectedFindings int `json:"affected_findings"`
+	// ArchivedFindings is how many open findings would lose their only evidence.
+	ArchivedFindings int `json:"archived_findings"`
+}
+
+// PreviewDeleteReport reports what DeleteReport would settle. Needs the project
+// admin role, like the delete it describes.
+func (u *Usecases) PreviewDeleteReport(ctx context.Context, projectSlug, reportID string) (*ReportDeletionPreview, error) {
+	id, err := validID(reportID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := u.deps.Stores.Projects.GetBySlug(ctx, projectSlug)
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return nil, ErrProjectAccessDenied
+		}
+		return nil, fmt.Errorf("lookup project: %w", err)
+	}
+	if err := u.requireProjectAdmin(ctx, project.ID); err != nil {
+		return nil, err
+	}
+	impact, err := u.deps.Stores.Reports.ReportDeletionImpact(ctx, id, project.ID)
+	if err != nil {
+		if errors.Is(err, port.ErrNotFound) {
+			return nil, ErrReportNotFound
+		}
+		if errors.Is(err, port.ErrReportProcessing) {
+			return nil, ErrReportProcessing
+		}
+		return nil, fmt.Errorf("read report deletion impact: %w", err)
+	}
+	return &ReportDeletionPreview{
+		AffectedFindings: impact.AffectedFindings,
+		ArchivedFindings: impact.ArchivedFindings,
+	}, nil
+}
+
 // DeleteReport removes a report from a project. Findings that only that
 // report showed are archived, so they stop blocking with nothing left to
 // explain them; findings it introduced are attributed to the earliest report

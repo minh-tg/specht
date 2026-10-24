@@ -204,6 +204,32 @@ FOR UPDATE;
 -- The scope a report last observed; a row with no scope is the empty hash.
 SELECT COALESCE(scan_scope_hash, '') FROM reports WHERE id = $1 AND project_id = $2;
 
+-- name: ReportDeletionImpact :one
+-- What deleting this report would settle, without changing anything. A
+-- finding counts as archived when it is open or reopened and no occurrence
+-- outside this report (including watcher-only ones) survives the delete.
+WITH target AS (
+    SELECT id FROM reports
+    WHERE id = sqlc.arg(report_id)::uuid AND project_id = sqlc.arg(project_id)::uuid
+), touched AS (
+    SELECT f.id, f.state
+    FROM findings f
+    WHERE f.project_id = sqlc.arg(project_id)::uuid
+      AND (f.introduced_by_report_id = sqlc.arg(report_id)::uuid
+           OR EXISTS (
+               SELECT 1 FROM finding_occurrences fo
+               WHERE fo.finding_id = f.id AND fo.report_id = sqlc.arg(report_id)::uuid))
+)
+SELECT
+    (SELECT COUNT(*) FROM target)::bigint AS found,
+    (SELECT COUNT(*) FROM touched)::bigint AS affected_findings,
+    (SELECT COUNT(*) FROM touched t
+     WHERE t.state IN ('open', 'reopened')
+       AND NOT EXISTS (
+           SELECT 1 FROM finding_occurrences fo
+           WHERE fo.finding_id = t.id
+             AND (fo.report_id IS NULL OR fo.report_id <> sqlc.arg(report_id)::uuid)))::bigint AS archived_findings;
+
 -- name: ListFindingsTouchedByReport :many
 -- The findings a report is evidence for, and whether it is the one that
 -- introduced them. Read before the delete, which nulls the attribution.

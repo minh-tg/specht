@@ -282,6 +282,18 @@ func (r *pgReportPort) DeleteStaleReports(ctx context.Context, cutoff time.Time)
 	return out, nil
 }
 
+func (r *pgReportPort) ReportDeletionImpact(ctx context.Context, id, projectID string) (port.ReportDeletionImpact, error) {
+	rid, err := parseID(id)
+	if err != nil {
+		return port.ReportDeletionImpact{}, err
+	}
+	pid, err := parseID(projectID)
+	if err != nil {
+		return port.ReportDeletionImpact{}, err
+	}
+	return r.inner.ReportDeletionImpact(ctx, rid, pid)
+}
+
 func (r *pgReportPort) FindCompletedByReplayKey(ctx context.Context, projectID, rawHash, commit, scopeHash string) (string, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
