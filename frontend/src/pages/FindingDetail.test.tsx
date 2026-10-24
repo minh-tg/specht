@@ -208,7 +208,7 @@ describe("FindingDetail triage validation", () => {
 
     const dateInput = document.querySelector("input[type=\"date\"]");
     expect(dateInput).not.toBeNull();
-    await user.type(dateInput as HTMLInputElement, "2025-06-01");
+    await user.type(dateInput as HTMLInputElement, "2099-06-01");
     // Still disabled because reason is required
     expect(apply).toBeDisabled();
 
@@ -223,7 +223,7 @@ describe("FindingDetail triage validation", () => {
     expect(JSON.parse(triageCalls[0].body)).toEqual({
       analysis_state: "accepted_risk",
       reason: "risk accepted for Q3",
-      analysis_expires_at: "2025-06-01T23:59:59.999Z",
+      analysis_expires_at: "2099-06-01T23:59:59.999Z",
     });
   });
 
