@@ -36,7 +36,7 @@ WHERE project_id = $1
   AND (sqlc.arg(commit_sha)::text = '' OR
     CASE WHEN sqlc.arg(commit_prefix)::boolean
       THEN starts_with(lower(commit_sha), lower(sqlc.arg(commit_sha)::text))
-      ELSE commit_sha = sqlc.arg(commit_sha)::text
+      ELSE commit_sha = lower(sqlc.arg(commit_sha)::text)
     END)
 ORDER BY created_at DESC, id DESC
 LIMIT $2 OFFSET $3;

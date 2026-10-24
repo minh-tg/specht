@@ -728,7 +728,7 @@ WHERE project_id = $1
   AND ($5::text = '' OR
     CASE WHEN $6::boolean
       THEN starts_with(lower(commit_sha), lower($5::text))
-      ELSE commit_sha = $5::text
+      ELSE commit_sha = lower($5::text)
     END)
 ORDER BY created_at DESC, id DESC
 LIMIT $2 OFFSET $3
