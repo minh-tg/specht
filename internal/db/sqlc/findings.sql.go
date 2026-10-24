@@ -1468,7 +1468,7 @@ SELECT
     f.fingerprint,
     f.current_title,
     f.current_severity_rank,
-    f.analysis_state,
+    (CASE WHEN f.analysis_expires_at <= NOW() THEN 'unanalyzed' ELSE f.analysis_state END)::text AS analysis_state,
     f.introduced_by_report_id,
     f.introduced_commit_sha,
     COALESCE(ra.state, 'unknown'::reachability_state) AS reachability_state,
@@ -1499,7 +1499,7 @@ LEFT JOIN LATERAL (
 ) ra ON true
 WHERE f.project_id = $1
   AND f.current_severity_rank >= $2
-  AND f.gate_effect = 'block'
+  AND (f.gate_effect = 'block' OR f.analysis_expires_at <= NOW())
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 `
 
@@ -1577,7 +1577,7 @@ SELECT
     f.fingerprint,
     f.current_title,
     f.current_severity_rank,
-    f.analysis_state,
+    (CASE WHEN f.analysis_expires_at <= NOW() THEN 'unanalyzed' ELSE f.analysis_state END)::text AS analysis_state,
     f.introduced_by_report_id,
     f.introduced_commit_sha,
     COALESCE(ra.state, 'unknown'::reachability_state) AS reachability_state,
@@ -1611,7 +1611,7 @@ LEFT JOIN LATERAL (
 WHERE rif.report_id = $1
   AND f.current_severity_rank >= $2
   AND f.project_id = $3
-  AND f.gate_effect = 'block'
+  AND (f.gate_effect = 'block' OR f.analysis_expires_at <= NOW())
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 `
 

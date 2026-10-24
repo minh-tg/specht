@@ -88,6 +88,8 @@ func (h *Handler) TriageFinding(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusUnprocessableEntity, "reason_required", "reason is required for this analysis state")
 		case errors.Is(err, usecase.ErrReasonTooLong):
 			respondError(w, http.StatusBadRequest, "reason_too_long", reasonTooLongMessage)
+		case errors.Is(err, usecase.ErrExpiryPassed):
+			respondError(w, http.StatusUnprocessableEntity, "expiry_passed", "expiry must be in the future")
 		case errors.Is(err, usecase.ErrExpiryRequired):
 			respondError(w, http.StatusUnprocessableEntity, "expiry_required", "expiry is required for accepted_risk and wont_fix")
 		case errors.Is(err, usecase.ErrInvalidState):
@@ -232,6 +234,8 @@ func (h *Handler) BulkTriage(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusBadRequest, "reason_too_long", reasonTooLongMessage)
 		case errors.Is(err, usecase.ErrTooManyFindings):
 			respondError(w, http.StatusBadRequest, "too_many_ids", tooManyIDsMessage)
+		case errors.Is(err, usecase.ErrExpiryPassed):
+			respondError(w, http.StatusUnprocessableEntity, "expiry_passed", "expiry must be in the future")
 		case errors.Is(err, usecase.ErrExpiryRequired):
 			respondError(w, http.StatusUnprocessableEntity, "expiry_required", "expiry is required for accepted_risk and wont_fix")
 		case errors.Is(err, usecase.ErrInvalidState):

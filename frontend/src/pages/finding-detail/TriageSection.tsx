@@ -51,9 +51,10 @@ export function TriageSection({
     } catch {}
   }
 
+  const minExpiryDate = new Date().toISOString().slice(0, 10);
   const triageReady = canTriage
     && selectedState !== ""
-    && (!selectedOption?.requiresExpiry || expiresAt !== "")
+    && (!selectedOption?.requiresExpiry || expiresAt >= minExpiryDate)
     && (!selectedOption?.requiresReason || reason.trim() !== "");
 
   return (
@@ -89,6 +90,7 @@ export function TriageSection({
           <Input
             aria-label="Expiry date"
             type="date"
+            min={minExpiryDate}
             disabled={!canTriage}
             className="w-auto"
             value={expiresAt}

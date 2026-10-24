@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/sonner";
 import type { AnalysisState } from "@/lib/enums";
 import { chooseOption, createTestQueryClient, jsonResponse } from "@/test/utils";
 import { QueryClientProvider } from "@tanstack/react-query";
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -107,6 +107,22 @@ describe("TriageSection RBAC permissions", () => {
     expect(screen.getByLabelText("Triage action")).not.toBeDisabled();
     expect(screen.queryByText(/Requires Project Manager role to triage findings/))
       .not.toBeInTheDocument();
+  });
+
+  it("does not submit a past expiry", async () => {
+    const calls = mockApi("manager");
+    const user = userEvent.setup();
+    renderTriageSection();
+    await waitFor(() => expect(screen.getByLabelText("Triage action")).not.toBeDisabled());
+    await chooseOption(user, screen.getByLabelText("Triage action"), "Accepted risk");
+    await user.type(screen.getByLabelText("Reason"), "Temporary exception");
+    const expiry = screen.getByLabelText("Expiry date");
+    expect(expiry).toHaveAttribute("min", new Date().toISOString().slice(0, 10));
+    fireEvent.change(expiry, { target: { value: "2000-01-01" } });
+    expect(screen.getByRole("button", { name: "Apply" })).toBeDisabled();
+    expect(calls.some((c) => c.method === "PATCH")).toBe(false);
+    fireEvent.change(expiry, { target: { value: "2099-01-01" } });
+    expect(screen.getByRole("button", { name: "Apply" })).not.toBeDisabled();
   });
 
   it("disables triage controls and shows notice for project member", async () => {
