@@ -1,6 +1,10 @@
 import { APIError } from "@/api/client";
 import { MAX_PAGE_SIZE, useProjectRole, useReports } from "@/api/hooks";
-import { useDeleteReport } from "@/api/reportActions";
+import {
+  deletionImpactMessage,
+  useDeleteReport,
+  useReportDeletionPreview,
+} from "@/api/reportActions";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { INLINE_LINK } from "@/components/inlineLink";
@@ -62,6 +66,7 @@ export function ReportHistory() {
   const { isAdmin } = useProjectRole(slug ?? "");
   const deleteMutation = useDeleteReport(slug ?? "");
   const [pendingDelete, setPendingDelete] = useState<Report | null>(null);
+  const deletionPreview = useReportDeletionPreview(slug ?? "", pendingDelete?.id ?? null);
 
   let deleteError: string | null = null;
   if (deleteMutation.isError) {
@@ -211,8 +216,15 @@ export function ReportHistory() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this report?</AlertDialogTitle>
             <AlertDialogDescription>
-              This removes the report's occurrences and package list. Findings that only this report
-              showed are archived, so they stop blocking the gate. This cannot be undone.
+              {deletionPreview.data
+                ? deletionImpactMessage(deletionPreview.data)
+                : (
+                  <>
+                    This removes the report's occurrences and package list. Findings that only this
+                    report showed are archived, so they stop blocking the gate. This cannot be
+                    undone.
+                  </>
+                )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           {deleteError && <p role="alert" className="text-destructive text-sm">{deleteError}</p>}

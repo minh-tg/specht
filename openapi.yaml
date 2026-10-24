@@ -1313,6 +1313,37 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/projects/{slug}/reports/{id}/deletion-preview:
+    get:
+      tags: [Reports]
+      operationId: previewReportDeletion
+      summary: Preview deleting a report
+      description: |
+        Reports what `DELETE /api/v1/projects/{slug}/reports/{id}` would settle,
+        without changing anything: how many findings cite the report and how
+        many open findings would lose their only evidence and be archived.
+        Uses the same authorization as the delete: project admin role and a
+        session (API keys are refused). A report that is still processing
+        answers `409 report_processing`.
+      security:
+        - sessionAuth: []
+      parameters:
+        - $ref: "#/components/parameters/Slug"
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: What the delete would change.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReportDeletionPreview" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
   /api/v1/reports/{id}:
     get:
       tags: [Reports]
@@ -4088,6 +4119,19 @@ components:
           type: boolean
           description: True when identical bytes for the same commit returned an existing report instead of ingesting again.
 
+    ReportDeletionPreview:
+      type: object
+      additionalProperties: false
+      required: [affected_findings, archived_findings]
+      properties:
+        affected_findings:
+          type: integer
+          minimum: 0
+          description: Findings that cite this report.
+        archived_findings:
+          type: integer
+          minimum: 0
+          description: Open findings that would lose their only evidence and be archived.
     Report:
       type: object
       required: [id, project_id, tool_name, scan_type, status, created_at, raw_data_expired]

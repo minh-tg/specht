@@ -786,6 +786,31 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/projects/{slug}/reports/{id}/deletion-preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /**
+     * Preview deleting a report
+     * @description Reports what `DELETE /api/v1/projects/{slug}/reports/{id}` would settle,
+     *     without changing anything: how many findings cite the report and how
+     *     many open findings would lose their only evidence and be archived.
+     *     Uses the same authorization as the delete: project admin role and a
+     *     session (API keys are refused). A report that is still processing
+     *     answers `409 report_processing`.
+     */
+    get: operations["previewReportDeletion"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/reports/{id}": {
     parameters: {
       query?: never;
@@ -2508,6 +2533,12 @@ export interface components {
       pre_existing_count: number;
       /** @description True when identical bytes for the same commit returned an existing report instead of ingesting again. */
       replayed: boolean;
+    };
+    ReportDeletionPreview: {
+      /** @description Findings that cite this report. */
+      affected_findings: number;
+      /** @description Open findings that would lose their only evidence and be archived. */
+      archived_findings: number;
     };
     Report: {
       /** Format: uuid */
@@ -4957,6 +4988,35 @@ export interface operations {
           [name: string]: unknown;
         };
         content?: never;
+      };
+      400: components["responses"]["BadRequest"];
+      401: components["responses"]["Unauthorized"];
+      403: components["responses"]["Forbidden"];
+      404: components["responses"]["NotFound"];
+      409: components["responses"]["Conflict"];
+    };
+  };
+  previewReportDeletion: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        /** @description Project slug. Chosen by the caller and unique across the platform; lowercase with hyphens is the convention, but the server only requires it to be non-empty. */
+        slug: components["parameters"]["Slug"];
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description What the delete would change. */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ReportDeletionPreview"];
+        };
       };
       400: components["responses"]["BadRequest"];
       401: components["responses"]["Unauthorized"];

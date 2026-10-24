@@ -235,6 +235,7 @@ interface RouteOptions {
   members?: unknown[];
   reports?: unknown[];
   onDelete?: () => Response;
+  onPreview?: () => Response;
 }
 
 let requests: Array<{ path: string; method: string; }>;
@@ -251,6 +252,10 @@ function routeFetch(options: RouteOptions = {}) {
           status: 204,
           headers: { "X-Archived-Findings": "3" },
         });
+      }
+      if (url.pathname.endsWith("/deletion-preview")) {
+        return options.onPreview?.()
+          ?? jsonResponse({ affected_findings: 5, archived_findings: 2 });
       }
       if (url.pathname === "/api/v1/me") {
         return jsonResponse(options.me ?? { id: "u-mem", email: "m@example.corp", role: "member" });
@@ -345,15 +350,63 @@ describe("ReportHistory delete action", () => {
     const dialog = await screen.findByRole("alertdialog");
     expect(within(dialog).getByText("Delete this report?")).toBeInTheDocument();
     expect(
-      within(dialog).getByText(
-        "This removes the report's occurrences and package list. Findings that only this report showed are archived, so they stop blocking the gate. This cannot be undone.",
+      await within(dialog).findByText(
+        "This archives 2 findings that no other report shows. Gate results can change for the 5 findings this report observed. This cannot be undone.",
       ),
     ).toBeInTheDocument();
+    expect(requests).toContainEqual({
+      path: "/api/v1/projects/test-project/reports/r1/deletion-preview",
+      method: "GET",
+    });
     expect(requests.some((r) => r.method === "DELETE")).toBe(false);
 
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument());
     expect(requests.some((r) => r.method === "DELETE")).toBe(false);
+  });
+
+  it("uses the singular and the zero wording from the preview", async () => {
+    routeFetch({
+      ...PROJECT_ADMIN,
+      onPreview: () => jsonResponse({ affected_findings: 1, archived_findings: 1 }),
+    });
+    renderAsProject();
+    const user = userEvent.setup();
+
+    await user.click(
+      await within(await cardForAsync("trivy")).findByRole("button", {
+        name: /^Delete .+ report from /,
+      }),
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    expect(
+      await within(dialog).findByText(
+        "This archives 1 finding that no other report shows. Gate results can change for the 1 finding this report observed. This cannot be undone.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("falls back to the plain explanation when the preview fails, and still deletes", async () => {
+    routeFetch({
+      ...PROJECT_ADMIN,
+      onPreview: () => jsonResponse({ error: { code: "internal", message: "boom" } }, 500),
+    });
+    renderAsProject();
+    const user = userEvent.setup();
+
+    await user.click(
+      await within(await cardForAsync("trivy")).findByRole("button", {
+        name: /^Delete .+ report from /,
+      }),
+    );
+    const dialog = await screen.findByRole("alertdialog");
+    expect(
+      within(dialog).getByText(
+        "This removes the report's occurrences and package list. Findings that only this report showed are archived, so they stop blocking the gate. This cannot be undone.",
+      ),
+    ).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Delete report" }));
+    expect(await screen.findByText("Report deleted. 3 findings archived.")).toBeInTheDocument();
   });
 
   it("sends the delete after confirmation and toasts the archived count", async () => {

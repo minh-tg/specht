@@ -30,6 +30,7 @@ type mockUsecases struct {
 	getProjectWatcherFn     func(ctx context.Context, slug string) (*usecase.ProjectWatcherResponse, error)
 	updateProjectWatcherFn  func(ctx context.Context, slug string, in usecase.WatcherSettingsInput) (*usecase.ProjectWatcherResponse, error)
 	deleteReportFn          func(ctx context.Context, slug, id string) (*usecase.ReportDeleteResponse, error)
+	previewDeleteReportFn   func(ctx context.Context, slug, id string) (*usecase.ReportDeletionPreview, error)
 	createInviteFn          func(ctx context.Context, slug string, in usecase.CreateInviteInput) (*usecase.InviteResponse, error)
 	listInvitesFn           func(ctx context.Context, slug string) ([]usecase.InviteResponse, error)
 	revokeInviteFn          func(ctx context.Context, slug, id string) (*usecase.InviteResponse, error)
@@ -699,6 +700,13 @@ func (m *mockUsecases) UpdateProjectWatcher(ctx context.Context, slug string, in
 		return nil, fmt.Errorf("unexpected call to UpdateProjectWatcher")
 	}
 	return m.updateProjectWatcherFn(ctx, slug, in)
+}
+
+func (m *mockUsecases) PreviewDeleteReport(ctx context.Context, slug, id string) (*usecase.ReportDeletionPreview, error) {
+	if m.previewDeleteReportFn == nil {
+		return nil, fmt.Errorf("unexpected call to PreviewDeleteReport")
+	}
+	return m.previewDeleteReportFn(ctx, slug, id)
 }
 
 func (m *mockUsecases) DeleteReport(ctx context.Context, slug, id string) (*usecase.ReportDeleteResponse, error) {

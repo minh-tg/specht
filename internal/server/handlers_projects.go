@@ -295,6 +295,35 @@ func (h *Handler) RemoveProjectMember(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// PreviewReportDeletion reports what deleting one report would settle, without
+// changing anything. Project admin only, like the delete it describes.
+func (h *Handler) PreviewReportDeletion(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	id := chi.URLParam(r, "id")
+	if err := h.enforceProjectAccess(r, slug); err != nil {
+		h.respondProjectAccessError(w, r, err)
+		return
+	}
+	preview, err := h.usecase.PreviewDeleteReport(r.Context(), slug, id)
+	switch {
+	case err == nil:
+	case errors.Is(err, usecase.ErrProjectAccessDenied):
+		h.respondProjectAccessError(w, r, errProjectAccessDenied)
+		return
+	case errors.Is(err, usecase.ErrInvalidID):
+		respondError(w, http.StatusBadRequest, "invalid_id", "invalid report id format")
+		return
+	case errors.Is(err, usecase.ErrReportNotFound):
+		respondError(w, http.StatusNotFound, "not_found", "report not found")
+		return
+	default:
+		log.Printf("preview report deletion: %v", err)
+		respondError(w, http.StatusInternalServerError, "internal_error", "internal server error")
+		return
+	}
+	respondJSON(w, http.StatusOK, preview)
+}
+
 // DeleteReport removes one report and settles the findings it was evidence
 // for. Project admin only.
 func (h *Handler) DeleteReport(w http.ResponseWriter, r *http.Request) {

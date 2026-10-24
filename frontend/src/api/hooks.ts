@@ -97,6 +97,8 @@ export const queryKeys = {
       : (["findings", projectSlug, filters ?? {}] as const),
   finding: (findingId?: string) =>
     findingId === undefined ? (["finding"] as const) : (["finding", findingId] as const),
+  reportDeletionPreview: (slug: string, id: string) =>
+    ["report-deletion-preview", slug, id] as const,
   reports: (projectSlug?: string) =>
     projectSlug === undefined ? (["reports"] as const) : (["reports", projectSlug] as const),
   gate: (projectSlug?: string) =>

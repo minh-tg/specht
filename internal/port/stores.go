@@ -1272,6 +1272,10 @@ type ReportStore interface {
 	// that is not in the project and ErrReportProcessing while a scan is
 	// writing it.
 	DeleteReportAndSettle(ctx context.Context, id, projectID string, actorID *string) (ReportDeletion, error)
+	// ReportDeletionImpact reads what DeleteReportAndSettle would settle,
+	// without changing anything. Returns ErrNotFound for a report outside the
+	// project and ErrReportProcessing while a scan is still writing it.
+	ReportDeletionImpact(ctx context.Context, id, projectID string) (ReportDeletionImpact, error)
 	// FindCompletedByReplayKey returns a completed report's id for identical
 	// raw content at the same commit and scan scope, or ErrNotFound. The replay
 	// guard: a NULL commit_sha or scan_scope_hash and an empty one compare
@@ -1341,6 +1345,14 @@ type WeeklyCount struct {
 	// WeekStart is the Monday of the week, as 2006-01-02 (UTC).
 	WeekStart string
 	Count     int32
+}
+
+// ReportDeletionImpact is the preview of a report delete: how many findings
+// cite the report and how many would be archived because this report is their
+// only remaining evidence.
+type ReportDeletionImpact struct {
+	AffectedFindings int
+	ArchivedFindings int
 }
 
 // ReportDeletion reports what deleting a report changed.

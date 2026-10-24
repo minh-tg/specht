@@ -905,6 +905,51 @@ func (q *Queries) RepointIntroducedBy(ctx context.Context, findingIds []pgtype.U
 	return result.RowsAffected(), nil
 }
 
+const reportDeletionImpact = `-- name: ReportDeletionImpact :one
+WITH target AS (
+    SELECT id FROM reports
+    WHERE id = $1::uuid AND project_id = $2::uuid
+), touched AS (
+    SELECT f.id, f.state
+    FROM findings f
+    WHERE f.project_id = $2::uuid
+      AND (f.introduced_by_report_id = $1::uuid
+           OR EXISTS (
+               SELECT 1 FROM finding_occurrences fo
+               WHERE fo.finding_id = f.id AND fo.report_id = $1::uuid))
+)
+SELECT
+    (SELECT COUNT(*) FROM target)::bigint AS found,
+    (SELECT COUNT(*) FROM touched)::bigint AS affected_findings,
+    (SELECT COUNT(*) FROM touched t
+     WHERE t.state IN ('open', 'reopened')
+       AND NOT EXISTS (
+           SELECT 1 FROM finding_occurrences fo
+           WHERE fo.finding_id = t.id
+             AND (fo.report_id IS NULL OR fo.report_id <> $1::uuid)))::bigint AS archived_findings
+`
+
+type ReportDeletionImpactParams struct {
+	ReportID  pgtype.UUID `json:"report_id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+type ReportDeletionImpactRow struct {
+	Found            int64 `json:"found"`
+	AffectedFindings int64 `json:"affected_findings"`
+	ArchivedFindings int64 `json:"archived_findings"`
+}
+
+// What deleting this report would settle, without changing anything. A
+// finding counts as archived when it is open or reopened and no occurrence
+// outside this report (including watcher-only ones) survives the delete.
+func (q *Queries) ReportDeletionImpact(ctx context.Context, arg ReportDeletionImpactParams) (ReportDeletionImpactRow, error) {
+	row := q.db.QueryRow(ctx, reportDeletionImpact, arg.ReportID, arg.ProjectID)
+	var i ReportDeletionImpactRow
+	err := row.Scan(&i.Found, &i.AffectedFindings, &i.ArchivedFindings)
+	return i, err
+}
+
 const reportScanScopeHash = `-- name: ReportScanScopeHash :one
 SELECT COALESCE(scan_scope_hash, '') FROM reports WHERE id = $1 AND project_id = $2
 `

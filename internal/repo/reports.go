@@ -309,6 +309,21 @@ func (r *pgReportRepo) DeleteReportAndSettle(ctx context.Context, id, projectID,
 	return port.ReportDeletion{ArchivedFindings: len(archived)}, nil
 }
 
+// ReportDeletionImpact reads what DeleteReportAndSettle would settle.
+func (r *pgReportRepo) ReportDeletionImpact(ctx context.Context, id, projectID pgtype.UUID) (port.ReportDeletionImpact, error) {
+	row, err := r.q.ReportDeletionImpact(ctx, sqlc.ReportDeletionImpactParams{ReportID: id, ProjectID: projectID})
+	if err != nil {
+		return port.ReportDeletionImpact{}, fmt.Errorf("read report deletion impact: %w", err)
+	}
+	if row.Found == 0 {
+		return port.ReportDeletionImpact{}, port.ErrNotFound
+	}
+	return port.ReportDeletionImpact{
+		AffectedFindings: int(row.AffectedFindings),
+		ArchivedFindings: int(row.ArchivedFindings),
+	}, nil
+}
+
 func (r *pgReportRepo) FindCompletedByReplayKey(ctx context.Context, projectID pgtype.UUID, rawHash, commitSha, scopeHash pgtype.Text) (pgtype.UUID, error) {
 	return r.q.FindCompletedByReplayKey(ctx, sqlc.FindCompletedByReplayKeyParams{
 		ProjectID:     projectID,

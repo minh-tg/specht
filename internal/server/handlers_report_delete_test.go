@@ -28,6 +28,48 @@ func TestDeleteReport_Success(t *testing.T) {
 	assert.Empty(t, w.Body.String())
 }
 
+func TestPreviewReportDeletion_ReturnsTheImpact(t *testing.T) {
+	mock := &mockUsecases{previewDeleteReportFn: func(_ context.Context, slug, id string) (*usecase.ReportDeletionPreview, error) {
+		assert.Equal(t, "payments", slug)
+		assert.Equal(t, "r1", id)
+		return &usecase.ReportDeletionPreview{AffectedFindings: 5, ArchivedFindings: 2}, nil
+	}}
+
+	w := inviteRequest(t, mock, "GET", "/api/v1/projects/payments/reports/r1/deletion-preview", testToken(t), "")
+
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+	assert.JSONEq(t, `{"affected_findings":5,"archived_findings":2}`, w.Body.String())
+}
+
+func TestPreviewReportDeletion_NeedsASession(t *testing.T) {
+	w := inviteRequest(t, &mockUsecases{}, "GET", "/api/v1/projects/payments/reports/r1/deletion-preview", "", "")
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestPreviewReportDeletion_ErrorMapping(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{"no access", usecase.ErrProjectAccessDenied, http.StatusForbidden, "project_access_denied"},
+		{"bad id", usecase.ErrInvalidID, http.StatusBadRequest, "invalid_id"},
+		{"unknown report", usecase.ErrReportNotFound, http.StatusNotFound, "not_found"},
+		{"internal detail stays internal", errors.New("pq: deadlock at 10.0.0.7"), http.StatusInternalServerError, "internal_error"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := &mockUsecases{previewDeleteReportFn: func(context.Context, string, string) (*usecase.ReportDeletionPreview, error) {
+				return nil, tc.err
+			}}
+			w := inviteRequest(t, mock, "GET", "/api/v1/projects/payments/reports/r1/deletion-preview", testToken(t), "")
+			assert.Equal(t, tc.status, w.Code)
+			assert.Contains(t, w.Body.String(), tc.code)
+			assert.NotContains(t, w.Body.String(), "10.0.0.7")
+		})
+	}
+}
+
 func TestDeleteReport_NeedsASession(t *testing.T) {
 	w := inviteRequest(t, &mockUsecases{}, "DELETE", "/api/v1/projects/payments/reports/r1", "", "")
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
