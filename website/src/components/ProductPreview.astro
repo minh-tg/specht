@@ -6,18 +6,18 @@ const views = [
     id: "change",
     label: "CI decision",
     image: "change-view.webp",
-    heading: "The check failed. Now you know why.",
+    heading: "See why the CI gate failed.",
     description:
-      "CI links to the exact report and gate decision. See what was introduced, where it appears and which policy makes it block.",
+      "Open the report linked from CI to see which findings block the change and which policy applies.",
     alt: "Specht change view separates findings introduced by this change from existing debt and links each blocker to its evidence.",
   },
   {
     id: "findings",
     label: "Finding triage",
     image: "findings.webp",
-    heading: "Start with what needs a decision.",
+    heading: "Filter findings by triage state.",
     description:
-      "Jump into open findings that need triage, filter critical and high exposure, and distinguish severity from the issues that actually block your gate.",
+      "Use triage and severity filters, then check the Blocks gate markers before deciding what to fix.",
     alt: "Specht findings list with triage shortcuts, filters, severity badges and explicit Blocks gate markers.",
   },
 ];
