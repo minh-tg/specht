@@ -3,7 +3,7 @@ INSERT INTO revoked_access_tokens (jti, expires_at)
 VALUES ($1, $2)
 ON CONFLICT (jti) DO UPDATE SET expires_at = EXCLUDED.expires_at;
 
--- name: PruneRevokedAccessTokens :exec
+-- name: PruneRevokedAccessTokens :execrows
 DELETE FROM revoked_access_tokens
 WHERE ctid IN (
     SELECT ctid FROM revoked_access_tokens

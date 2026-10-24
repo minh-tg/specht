@@ -143,10 +143,11 @@ func buildLifecycleStores(pool *pgxpool.Pool) (port.AnalysisExpiryStore, port.Wa
 // ingest request is cut off after two and a half minutes, so anything this old was stranded.
 const staleReportAge = 10 * time.Minute
 
-func startLifecycle(ctx context.Context, stores *port.Stores, analysisStore port.AnalysisExpiryStore, waiverStore port.WaiverExpiryStore, cfg *config.Server) {
+func startLifecycle(ctx context.Context, stores *port.Stores, analysisStore port.AnalysisExpiryStore, waiverStore port.WaiverExpiryStore, revocations lifecycle.AccessTokenPruner, cfg *config.Server) {
 	exitOnError("start waiver expiry daemon", lifecycle.RunWaiverExpiry(ctx, waiverStore, cfg.SweepInterval, slog.Default()))
 	exitOnError("start analysis expiry daemon", lifecycle.RunAnalysisExpiry(ctx, analysisStore, cfg.SweepInterval, slog.Default()))
 	exitOnError("start refresh token prune", lifecycle.RunRefreshTokenPrune(ctx, stores.RefreshTokens, cfg.SweepInterval, slog.Default()))
+	exitOnError("start access token prune", lifecycle.RunAccessTokenPrune(ctx, revocations, cfg.SweepInterval, slog.Default()))
 	exitOnError("start stale report reaper", lifecycle.RunStaleReportReaper(ctx, stores.Reports, cfg.SweepInterval, staleReportAge, slog.Default()))
 	exitOnError("start raw retention sweeper", lifecycle.RunRawRetention(ctx, stores.Reports, cfg.SweepInterval, cfg.RawRetentionDays, slog.Default()))
 	if cfg.Watcher.Enable {
@@ -266,7 +267,7 @@ func main() {
 	defer stop()
 
 	analysisExpiryStore, waiverExpiryStore := buildLifecycleStores(pool)
-	startLifecycle(ctx, stores, analysisExpiryStore, waiverExpiryStore, cfg)
+	startLifecycle(ctx, stores, analysisExpiryStore, waiverExpiryStore, revoker, cfg)
 	startCVEDetail(ctx, cveResolver, cveDetailStore, cfg)
 
 	go func() {
