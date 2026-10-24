@@ -160,10 +160,10 @@ type SSOConfig struct {
 	// GroupsClaim names the IdP claim carrying group membership for
 	// enterprise role mapping. Empty means "groups".
 	GroupsClaim string
-	// AdminGroups elevates provisioned SSO accounts to admin when IdP
+	// AdminGroups elevates passwordless SSO accounts to admin when IdP
 	// group membership matches (exact, case-sensitive). Empty disables
-	// elevation — everyone provisions as member. Existing accounts never
-	// change role from IdP groups.
+	// elevation — everyone provisions as member. An account with a local
+	// password keeps its local role.
 	AdminGroups []string
 	// AllowUserInfoOnly enables userinfo-only identity when a provider omits
 	// id_token. This insecure downgrade defaults to false; present ID tokens

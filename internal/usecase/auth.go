@@ -313,6 +313,10 @@ func (u *Usecases) FindOrProvisionSSOUser(ctx context.Context, claims auth.SSOCl
 			slog.Warn("sso login: deactivated account", "user_id", user.ID, "sub", sub)
 			return "", "", false, auth.ErrSSONotProvisioned
 		}
+		user, err = u.elevatePasswordlessSSOAdmin(ctx, user, claims.Groups, adminGroups)
+		if err != nil {
+			return "", "", false, err
+		}
 		slog.Info("sso login: linked account", "user_id", user.ID, "sub", sub)
 		return user.ID, auth.TokenRole(user.Role), false, nil
 	case !errors.Is(err, port.ErrNotFound):
@@ -387,6 +391,21 @@ func (u *Usecases) linkExistingSSOUser(ctx context.Context, user port.User, issu
 	}
 	slog.Info("sso login: linked existing account", "user_id", user.ID, "sub", sub, "password_disabled", user.PasswordHash != "", "api_keys_revoked", len(revoked))
 	return user.ID, auth.TokenRole(user.Role), false, nil
+}
+
+// elevatePasswordlessSSOAdmin repairs a first provisioning whose role write
+// failed after the account was linked, and applies group changes to accounts
+// that have no local password. Accounts with a password keep their local role.
+func (u *Usecases) elevatePasswordlessSSOAdmin(ctx context.Context, user port.User, groups, adminGroups []string) (port.User, error) {
+	if user.PasswordHash != "" || user.Role == auth.RoleAdmin || !auth.IsSSOAdmin(groups, adminGroups) {
+		return user, nil
+	}
+	elevated, err := u.deps.Stores.Users.SetRole(ctx, user.ID, auth.RoleAdmin)
+	if err != nil {
+		return port.User{}, fmt.Errorf("elevate sso admin: %w", err)
+	}
+	slog.Info("sso login: elevated to admin by IdP group", "user_id", user.ID)
+	return elevated, nil
 }
 
 // issueAccessToken mints an access token bound to the account's current token
