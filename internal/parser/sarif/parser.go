@@ -108,7 +108,13 @@ func (s *Scanner) Parse(ctx context.Context, data []byte) (*domain.NormalizedRep
 		return nil, scanner.Malformed("sarif", err)
 	}
 	if log.Version != "" && !strings.HasPrefix(log.Version, "2.1") {
-		return nil, scanner.Malformed("sarif", fmt.Errorf("unsupported version %q (want 2.1.x)", log.Version))
+		version := log.Version
+		if len(version) > 40 {
+			version = version[:40] + "..."
+		}
+		cause := fmt.Errorf("unsupported version %q (want 2.1.x)", version)
+		return nil, scanner.Malformed("sarif", scanner.Detail(
+			fmt.Sprintf("the file declares SARIF version %q; this reader accepts 2.1.x", version), cause))
 	}
 	return parseutil.Hardened(convert(budget, log))
 }

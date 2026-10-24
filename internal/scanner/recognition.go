@@ -90,6 +90,33 @@ func Malformed(scanner string, cause error) error {
 	return fmt.Errorf("%s: %w: %w", scanner, ErrMalformedReport, cause)
 }
 
+// MalformedDetailError carries an optional explanation a caller can act on,
+// such as the version a file declares or a NUL in a field name. The detail must
+// never carry report content beyond a short value the producer wrote.
+type MalformedDetailError struct {
+	Detail string
+	cause  error
+}
+
+func (e *MalformedDetailError) Error() string { return e.Detail }
+
+// Unwrap keeps the underlying cause reachable.
+func (e *MalformedDetailError) Unwrap() error { return e.cause }
+
+// Detail wraps cause with a caller-safe explanation of why a report is malformed.
+func Detail(detail string, cause error) error {
+	return &MalformedDetailError{Detail: detail, cause: cause}
+}
+
+// MalformedDetail returns the caller-safe explanation in err, if one was given.
+func MalformedDetail(err error) (string, bool) {
+	var detail *MalformedDetailError
+	if errors.As(err, &detail) {
+		return detail.Detail, true
+	}
+	return "", false
+}
+
 // CheckFormat decides whether data may be parsed as the named scanner's
 // output. A definite match always passes. A possible match (an empty report)
 // passes unless another scanner is positively sure the document is its own,

@@ -122,6 +122,21 @@ func TestUnrecognizedErrorMessageIsSafeToShow(t *testing.T) {
 	assert.Equal(t, "the data is not trivy output", (&scanner.UnrecognizedFormatError{Scanner: "trivy"}).Error())
 }
 
+func TestMalformedDetailStaysAttachedAndReachable(t *testing.T) {
+	cause := errors.New("bad field")
+	err := scanner.Malformed("trivy", scanner.Detail("the file declares version 9", cause))
+
+	assert.ErrorIs(t, err, scanner.ErrMalformedReport)
+	assert.ErrorIs(t, err, cause)
+	detail, ok := scanner.MalformedDetail(err)
+	require.True(t, ok)
+	assert.Equal(t, "the file declares version 9", detail)
+
+	without := scanner.Malformed("trivy", cause)
+	_, ok = scanner.MalformedDetail(without)
+	assert.False(t, ok, "an unexplained malformed report keeps the generic message")
+}
+
 func TestMalformedKeepsBothCauses(t *testing.T) {
 	cause := errors.New("bad field")
 	err := scanner.Malformed("trivy", cause)

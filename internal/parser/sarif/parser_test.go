@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/minh-tg/specht/internal/domain"
+	"github.com/minh-tg/specht/internal/scanner"
 )
 
 func TestDescriptor_Universal(t *testing.T) {
@@ -86,7 +87,10 @@ func TestParse_Errors(t *testing.T) {
 	_, err := s.Parse(context.Background(), []byte(`{invalid`))
 	require.Error(t, err)
 	_, err = s.Parse(context.Background(), []byte(`{"version":"2.0.0","runs":[]}`))
-	require.ErrorContains(t, err, "unsupported version")
+	require.ErrorIs(t, err, scanner.ErrMalformedReport)
+	detail, ok := scanner.MalformedDetail(err)
+	require.True(t, ok)
+	assert.Equal(t, `the file declares SARIF version "2.0.0"; this reader accepts 2.1.x`, detail)
 }
 
 func dimValue(f domain.NormalizedFinding, key string) string {

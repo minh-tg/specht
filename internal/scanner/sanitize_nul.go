@@ -48,7 +48,7 @@ func SanitizeNUL(data []byte) ([]byte, error) {
 			i += 2 // a backslash and the character it escapes
 		}
 		if hadNUL && isKey(data, i) {
-			return nil, Malformed("report", errNULInFieldName)
+			return nil, Malformed("report", Detail(errNULInFieldName.Error(), errNULInFieldName))
 		}
 	}
 	if out == nil {
