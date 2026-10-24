@@ -3,8 +3,10 @@ package watcher
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -73,6 +75,33 @@ func TestWebhookNotify_DisabledAndEmptyAreNoOps(t *testing.T) {
 	require.NoError(t, NewWebhookNotifier(srv.URL, "s", nil).
 		Notify(context.Background(), nil))
 	assert.Equal(t, int32(0), calls.Load())
+}
+
+func TestWebhookRetryReplaysPayloadAfterConnectionClose(t *testing.T) {
+	var calls atomic.Int32
+	var mu sync.Mutex
+	var first []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		assert.NoError(t, err)
+		assert.Equal(t, SignSlackBody(body, "signing-key"), r.Header.Get(SlackSignatureHeader))
+		mu.Lock()
+		defer mu.Unlock()
+		if calls.Add(1) == 1 {
+			first = body
+			w.Header().Set("Connection", "close")
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		assert.Equal(t, first, body)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+	n := NewWebhookNotifier(srv.URL, "signing-key", nil)
+	n.client = srv.Client()
+	n.sleeper = func(context.Context, time.Duration) error { return nil }
+	require.NoError(t, n.Notify(context.Background(), []Notification{{Title: "retry payload"}}))
+	require.EqualValues(t, 2, calls.Load())
 }
 
 func TestWebhookNotify_RetryThenSwallow(t *testing.T) {
