@@ -274,8 +274,10 @@ func convertMatch(match grypeMatch) domain.NormalizedFinding {
 		{Key: "installed_version", Value: artifact.Version},
 		{Key: "purl", Value: purl},
 	}
-	if fix != nil {
-		dims = append(dims, domain.Dimension{Key: "fixed_version", Value: fix.Summary})
+	if fix != nil && len(vuln.Fix.Versions) > 0 {
+		// The dimension is one concrete version for the patch proposal; the
+		// human-readable Fix.Summary keeps the scanner's full list.
+		dims = append(dims, domain.Dimension{Key: "fixed_version", Value: vuln.Fix.Versions[0]})
 	}
 
 	location := ""
