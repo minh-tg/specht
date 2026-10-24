@@ -34,7 +34,7 @@ func TestCleanScanRetiresAnOlderUnlinkedScope(t *testing.T) {
 	require.NoError(t, err)
 	clean, err := s.stores.Reports.Create(s.ctx, port.CreateReportInput{ProjectID: s.projectID, ToolName: "trivy", ScanType: "image", ScanScopeHash: "main", ScanScope: []byte(`{}`), RawReportHash: "clean-null", ScanMode: "full", ScanCompleteness: "complete"})
 	require.NoError(t, err)
-	fixed, err := s.stores.Findings.MarkAbsentFindingsFixed(s.ctx, s.projectID, "main", clean.ID)
+	fixed, err := s.stores.Findings.MarkAbsentFindingsFixed(s.ctx, s.projectID, "main", clean.ID, []string{"sca"})
 	require.NoError(t, err)
 	require.Len(t, fixed, 1)
 	require.Empty(t, s.scopes(t))

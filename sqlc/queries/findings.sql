@@ -607,6 +607,7 @@ LEFT JOIN reports prior ON prior.id = s.report_id
 JOIN reports current ON current.id = sqlc.arg(report_id)
 WHERE f.project_id = sqlc.arg(project_id)
   AND s.scope_hash = sqlc.arg(scope_hash)
+  AND f.finding_kind = ANY(sqlc.arg(finding_kinds)::text[])
   AND ((s.report_id IS NULL AND s.observed_at <= current.created_at)
        OR (prior.created_at, prior.id) < (current.created_at, current.id))
   AND NOT EXISTS (
@@ -688,6 +689,7 @@ UPDATE findings
 SET state = 'fixed', updated_at = NOW()
 WHERE findings.project_id = $1
   AND findings.state IN ('open', 'reopened')
+  AND findings.finding_kind = ANY(sqlc.arg(finding_kinds)::text[])
   AND NOT EXISTS (SELECT 1 FROM finding_scope_severities s WHERE s.finding_id = findings.id)
   AND NOT EXISTS (
       SELECT 1 FROM finding_occurrences occ

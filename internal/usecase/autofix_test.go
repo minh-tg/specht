@@ -60,7 +60,8 @@ func autofixHarness(t *testing.T, completeness domain.ScanCompleteness) (*Usecas
 					Fingerprint: "fp-new", FindingKind: "sca",
 					Title: "CVE-new", Severity: domain.SeverityHigh,
 				}},
-				ScanScope: &domain.ScanScope{},
+				ScanScope:           &domain.ScanScope{},
+				CoveredFindingKinds: []string{"sca"},
 			}, nil
 		},
 	}))
@@ -87,7 +88,7 @@ func TestIngestReport_AutoFixClosesAbsentFindings(t *testing.T) {
 		projectID, scopeHash, reportID string
 	}
 	var call *writerCall
-	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
+	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]port.Finding, error) {
 		call = &writerCall{projectID, scopeHash, reportID}
 		return []port.Finding{{
 			ID: "find-fixed", ProjectID: projectID, FindingKind: "sca",
@@ -131,7 +132,7 @@ func TestIngestReport_AutoFixClosesAbsentFindings(t *testing.T) {
 // writer, so an unseen fingerprint stays open.
 func TestIngestReport_AutoFixSkipsUnknownCompleteness(t *testing.T) {
 	uc, fr, _ := autofixHarness(t, domain.CompletenessUnknown)
-	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
+	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]port.Finding, error) {
 		t.Error("writer must not run for an unknown-completeness scan")
 		return nil, nil
 	}
@@ -150,7 +151,7 @@ func TestIngestReport_AutoFixSkipsUnknownCompleteness(t *testing.T) {
 // completeness-complete parser never reaches the writer.
 func TestAutoFixAbsentFindings_SkipsIncrementalScans(t *testing.T) {
 	_, fr, _ := autofixHarness(t, domain.CompletenessComplete)
-	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
+	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]port.Finding, error) {
 		t.Error("writer must not run for an incremental scan")
 		return nil, nil
 	}
@@ -159,7 +160,7 @@ func TestAutoFixAbsentFindings_SkipsIncrementalScans(t *testing.T) {
 	err := uc.autoFixAbsentFindings(context.Background(), makeProject(true),
 		IngestReportInput{ProjectSlug: "my-app", Scanner: "trivy", ScanMode: ScanModeIncremental},
 		port.Report{ID: "rep-1"},
-		&domain.NormalizedReport{Completeness: domain.CompletenessComplete},
+		&domain.NormalizedReport{Completeness: domain.CompletenessComplete, CoveredFindingKinds: []string{"sca"}},
 		"scope-hash")
 	require.NoError(t, err)
 }
@@ -169,7 +170,7 @@ func TestAutoFixAbsentFindings_SkipsIncrementalScans(t *testing.T) {
 // failed and surfaces, instead of silently skipping the closure.
 func TestIngestReport_AutoFixStoreErrorFailsIngest(t *testing.T) {
 	uc, fr, rr := autofixHarness(t, domain.CompletenessComplete)
-	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
+	fr.markAbsentFixedFn = func(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]port.Finding, error) {
 		return nil, assert.AnError
 	}
 	var failedStatus string
