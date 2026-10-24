@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -39,6 +40,11 @@ type WebHookTracker struct {
 	logger     func(string, ...any)
 	jobs       chan webhookJob
 	queueDepth atomic.Int64
+	mu         sync.RWMutex
+	closed     bool
+	ctx        context.Context
+	cancel     context.CancelFunc
+	workers    sync.WaitGroup
 }
 
 type webhookJob struct {
@@ -67,7 +73,9 @@ func NewWebHookTracker(cfg WebHookTrackerConfig, logger func(string, ...any)) *W
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = 10 * time.Second
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	t := &WebHookTracker{
+		ctx: ctx, cancel: cancel,
 		endpoints: cfg.Endpoints,
 		secret:    cfg.Secret,
 		client:    netutil.NewSafeHTTPClient(cfg.Timeout),
@@ -76,7 +84,7 @@ func NewWebHookTracker(cfg WebHookTrackerConfig, logger func(string, ...any)) *W
 	}
 	if len(t.endpoints) > 0 {
 		for i := 0; i < webhookWorkers; i++ {
-			go t.worker()
+			t.workers.Go(t.worker)
 		}
 	}
 	return t
@@ -129,12 +137,18 @@ func (t *WebHookTracker) dispatch(ctx context.Context, event Event) {
 	// daemon's notifyCreated). Endpoints are POSTed concurrently so N dead
 	// endpoints cost one timeout, not N sequential ones.
 	deliveryCtx := context.WithoutCancel(ctx)
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	if t.closed {
+		return
+	}
 	for _, url := range t.endpoints {
 		job := webhookJob{ctx: deliveryCtx, url: url, eventType: event.Type, payload: payload}
+		t.queueDepth.Add(1)
 		select {
 		case t.jobs <- job:
-			t.queueDepth.Add(1)
 		default:
+			t.queueDepth.Add(-1)
 			if t.logger != nil {
 				t.logger("webhook queue full; delivery dropped", "url", url)
 			}
@@ -143,10 +157,47 @@ func (t *WebHookTracker) dispatch(ctx context.Context, event Event) {
 }
 
 func (t *WebHookTracker) worker() {
-	for job := range t.jobs {
-		t.queueDepth.Add(-1)
-		t.post(job.ctx, job.url, job.eventType, job.payload)
+	for {
+		if t.ctx.Err() != nil {
+			return
+		}
+		select {
+		case <-t.ctx.Done():
+			return
+		case job, ok := <-t.jobs:
+			if !ok {
+				return
+			}
+			t.queueDepth.Add(-1)
+			t.deliver(job)
+		}
 	}
+}
+
+func (t *WebHookTracker) deliver(job webhookJob) {
+	ctx, cancel := context.WithCancel(job.ctx)
+	stop := context.AfterFunc(t.ctx, cancel)
+	defer stop()
+	defer cancel()
+	t.post(ctx, job.url, job.eventType, job.payload)
+}
+
+// Close cancels best-effort deliveries, stops workers and drops queued jobs.
+// It is safe to call more than once or alongside dispatch.
+func (t *WebHookTracker) Close() error {
+	t.mu.Lock()
+	if !t.closed {
+		t.closed = true
+		t.cancel()
+		close(t.jobs)
+	}
+	t.mu.Unlock()
+	t.workers.Wait()
+	for range t.jobs {
+		t.queueDepth.Add(-1)
+	}
+	t.client.CloseIdleConnections()
+	return nil
 }
 
 // QueueDepth reports the number of queued or active deliveries.
