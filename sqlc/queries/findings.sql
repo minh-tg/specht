@@ -594,11 +594,12 @@ ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC;
 SELECT f.id
 FROM findings f
 JOIN finding_scope_severities s ON s.finding_id = f.id
-JOIN reports prior ON prior.id = s.report_id
+LEFT JOIN reports prior ON prior.id = s.report_id
 JOIN reports current ON current.id = sqlc.arg(report_id)
 WHERE f.project_id = sqlc.arg(project_id)
   AND s.scope_hash = sqlc.arg(scope_hash)
-  AND (prior.created_at, prior.id) < (current.created_at, current.id)
+  AND ((s.report_id IS NULL AND s.observed_at <= current.created_at)
+       OR (prior.created_at, prior.id) < (current.created_at, current.id))
   AND NOT EXISTS (
       SELECT 1 FROM finding_occurrences o
       WHERE o.finding_id = f.id AND o.report_id = current.id
@@ -611,10 +612,11 @@ DELETE FROM finding_scope_severities s
 WHERE s.finding_id = ANY(sqlc.arg(finding_ids)::uuid[])
   AND s.scope_hash = sqlc.arg(scope_hash)
   AND EXISTS (
-      SELECT 1 FROM reports prior
-      JOIN reports current ON current.id = sqlc.arg(report_id)
-      WHERE prior.id = s.report_id
-        AND (prior.created_at, prior.id) < (current.created_at, current.id)
+      SELECT 1 FROM reports current
+      LEFT JOIN reports prior ON prior.id = s.report_id
+      WHERE current.id = sqlc.arg(report_id)
+        AND ((s.report_id IS NULL AND s.observed_at <= current.created_at)
+             OR (prior.created_at, prior.id) < (current.created_at, current.id))
   );
 
 -- name: RetireScopeSeverityWithoutEvidence :exec

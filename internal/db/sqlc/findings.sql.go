@@ -1679,11 +1679,12 @@ const lockAbsentScopeFindings = `-- name: LockAbsentScopeFindings :many
 SELECT f.id
 FROM findings f
 JOIN finding_scope_severities s ON s.finding_id = f.id
-JOIN reports prior ON prior.id = s.report_id
+LEFT JOIN reports prior ON prior.id = s.report_id
 JOIN reports current ON current.id = $1
 WHERE f.project_id = $2
   AND s.scope_hash = $3
-  AND (prior.created_at, prior.id) < (current.created_at, current.id)
+  AND ((s.report_id IS NULL AND s.observed_at <= current.created_at)
+       OR (prior.created_at, prior.id) < (current.created_at, current.id))
   AND NOT EXISTS (
       SELECT 1 FROM finding_occurrences o
       WHERE o.finding_id = f.id AND o.report_id = current.id
@@ -2069,10 +2070,11 @@ DELETE FROM finding_scope_severities s
 WHERE s.finding_id = ANY($1::uuid[])
   AND s.scope_hash = $2
   AND EXISTS (
-      SELECT 1 FROM reports prior
-      JOIN reports current ON current.id = $3
-      WHERE prior.id = s.report_id
-        AND (prior.created_at, prior.id) < (current.created_at, current.id)
+      SELECT 1 FROM reports current
+      LEFT JOIN reports prior ON prior.id = s.report_id
+      WHERE current.id = $3
+        AND ((s.report_id IS NULL AND s.observed_at <= current.created_at)
+             OR (prior.created_at, prior.id) < (current.created_at, current.id))
   )
 `
 

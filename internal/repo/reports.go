@@ -354,6 +354,20 @@ func (r *pgReportRepo) DeleteDuplicateReport(ctx context.Context, id, projectID,
 	}()
 
 	q := sqlc.New(tx)
+	touched, err := q.ListFindingsTouchedByReport(ctx, sqlc.ListFindingsTouchedByReportParams{ReportID: id, ProjectID: projectID})
+	if err != nil {
+		return err
+	}
+	ids := make([]pgtype.UUID, len(touched))
+	for i, f := range touched {
+		ids[i] = f.ID
+	}
+	if _, err := q.LockFindingsByIDs(ctx, ids); err != nil {
+		return err
+	}
+	if err := q.RepointDuplicateScopeSeverity(ctx, sqlc.RepointDuplicateScopeSeverityParams{LoserID: id, WinnerID: winnerID, ProjectID: projectID}); err != nil {
+		return fmt.Errorf("repoint duplicate scope: %w", err)
+	}
 	if err := q.ReassignFindingIntroducedBy(ctx, sqlc.ReassignFindingIntroducedByParams{
 		ProjectID:              projectID,
 		IntroducedByReportID:   id,
