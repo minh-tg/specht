@@ -94,7 +94,7 @@ func TestCheckFindingRowsProjectAccess_NonMemberDenied(t *testing.T) {
 		sessionCtx("u1", auth.RoleViewer),
 		[]port.Finding{makeFindingRow(1)},
 	)
-	assert.ErrorIs(t, err, ErrProjectAccessDenied)
+	assert.ErrorIs(t, err, ErrFindingNotFound)
 }
 
 func TestCheckFindingRowsProjectAccess_NoIdentityDenied(t *testing.T) {

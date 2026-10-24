@@ -183,7 +183,7 @@ func (u *Usecases) GetFindingCVE(ctx context.Context, findingID string) (*CVEDet
 		}
 		return nil, fmt.Errorf("get finding: %w", err)
 	}
-	if err := u.checkFindingProjectIDAccess(ctx, f.ProjectID); err != nil {
+	if err := u.checkFindingVisibility(ctx, f.ProjectID); err != nil {
 		return nil, err
 	}
 	dims, err := u.deps.Stores.Findings.ListDimensions(ctx, id.String())

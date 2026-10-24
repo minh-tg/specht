@@ -144,6 +144,7 @@ func TestDeleteEvidence_MemberDeniedBeforeEvidenceRead(t *testing.T) {
 	f.findings.getByIDFn = func(context.Context, string) (port.Finding, error) {
 		return finding, nil
 	}
+	f.projects.isMemberFn = func(context.Context, string, string) (bool, error) { return true, nil }
 	f.projects.effectiveRoleFn = func(context.Context, string, string) (string, error) {
 		return auth.RoleMember, nil
 	}
