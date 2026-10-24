@@ -215,8 +215,10 @@ func (u *Usecases) resolveReportScope(
 	if err != nil {
 		return scope, err
 	}
-	if report.CommitSha != nil && normalizeRevision(*report.CommitSha) != "" &&
-		normalizeRevision(*report.CommitSha) != input.CommitSha {
+	if report.CommitSha == nil || normalizeRevision(*report.CommitSha) == "" {
+		return scope, fmt.Errorf("%w: report %q did not record a commit", ErrNoReportForCommit, input.ReportID)
+	}
+	if normalizeRevision(*report.CommitSha) != input.CommitSha {
 		return scope, fmt.Errorf("report %q scanned commit %q, not %q", input.ReportID, *report.CommitSha, input.CommitSha)
 	}
 	if report.Branch != nil {
