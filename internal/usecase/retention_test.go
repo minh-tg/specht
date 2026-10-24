@@ -18,7 +18,8 @@ func retentionHarness(t *testing.T, count int64, deleted []string) (*Usecases, *
 		assert.WithinDuration(t, time.Now().AddDate(0, 0, -30), cutoff, time.Minute)
 		return count, nil
 	}
-	rr.deleteStaleFn = func(ctx context.Context, cutoff time.Time) ([]string, error) {
+	rr.deleteStaleFn = func(ctx context.Context, cutoff time.Time, limit int) ([]string, error) {
+		assert.Equal(t, maxPurgeReportsPerRun, limit)
 		return deleted, nil
 	}
 	ar := &mockAdminRepo{}

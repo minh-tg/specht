@@ -270,8 +270,8 @@ func (r *pgReportPort) ClearRawData(ctx context.Context, cutoff time.Time, batch
 	return int64(len(ids)), nil
 }
 
-func (r *pgReportPort) DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]string, error) {
-	ids, err := r.inner.DeleteStaleReports(ctx, cutoff)
+func (r *pgReportPort) DeleteStaleReports(ctx context.Context, cutoff time.Time, limit int) ([]string, error) {
+	ids, err := r.inner.DeleteStaleReports(ctx, cutoff, limit)
 	if err != nil {
 		return nil, mappingErr(err)
 	}

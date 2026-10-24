@@ -283,7 +283,7 @@ func TestDeleteStaleReports_SettlesFindingsLikeAnExplicitDelete(t *testing.T) {
 	s, cleanup := newDeleteScenario(t)
 	defer cleanup()
 
-	ids, err := s.stores.Reports.DeleteStaleReports(s.ctx, time.Now().Add(-36*time.Hour))
+	ids, err := s.stores.Reports.DeleteStaleReports(s.ctx, time.Now().Add(-36*time.Hour), 100)
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{s.reportA}, ids, "only the older report is stale")

@@ -92,8 +92,14 @@ export function usePurgeRetention() {
   const queryClient = useQueryClient();
   return useMutation({
     meta: {
-      success: (data: RetentionResult) =>
-        `Removed ${data.deleted_reports} ${data.deleted_reports === 1 ? "report" : "reports"}`,
+      success: (data: RetentionResult) => {
+        const removed = `Removed ${data.deleted_reports} ${
+          data.deleted_reports === 1 ? "report" : "reports"
+        }`;
+        return data.remaining
+          ? `${removed}. ${data.remaining} still past the cutoff; run it again to continue.`
+          : removed;
+      },
       sound: "none",
     },
     mutationFn: (days: number) =>

@@ -5227,6 +5227,10 @@ components:
           type: array
           items: { type: string, format: uuid }
         truncated: { type: boolean }
+        remaining:
+          type: integer
+          format: int64
+          description: Stale reports still past the cutoff after this run reached its per-request limit.
 
     WatcherStatus:
       type: object

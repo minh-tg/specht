@@ -187,7 +187,8 @@ WHERE status IN ('completed', 'failed')
 SELECT id, project_id FROM reports
 WHERE status IN ('completed', 'failed')
   AND COALESCE(completed_at, created_at) < $1
-ORDER BY COALESCE(completed_at, created_at), id;
+ORDER BY COALESCE(completed_at, created_at), id
+LIMIT sqlc.arg(batch_size)::integer;
 
 -- name: LockReportForDelete :one
 -- Takes the report row for the rest of the transaction, so a scan that moves
