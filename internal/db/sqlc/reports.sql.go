@@ -862,6 +862,15 @@ func (q *Queries) LockFindingsByIDs(ctx context.Context, findingIds []pgtype.UUI
 	return items, nil
 }
 
+const lockProjectIngest = `-- name: LockProjectIngest :exec
+SELECT pg_advisory_xact_lock(hashtextextended('ingest:' || $1::text, 0))
+`
+
+func (q *Queries) LockProjectIngest(ctx context.Context, projectID string) error {
+	_, err := q.db.Exec(ctx, lockProjectIngest, projectID)
+	return err
+}
+
 const lockReportForDelete = `-- name: LockReportForDelete :one
 SELECT status FROM reports WHERE id = $1 AND project_id = $2 FOR UPDATE
 `
