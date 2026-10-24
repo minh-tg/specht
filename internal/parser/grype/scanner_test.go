@@ -24,6 +24,21 @@ func TestDetect_ValidInput(t *testing.T) {
 	assert.True(t, s.DetectFormat(data))
 }
 
+func TestParse_GrypeFixedVersionDimensionIsOneVersion(t *testing.T) {
+	raw, err := os.ReadFile("testdata/grype-report.json")
+	require.NoError(t, err)
+	report, err := grype.NewScanner().Parse(context.Background(), raw)
+	require.NoError(t, err)
+	f := grypeFindingByFingerprint(t, report.Findings, "CVE-2023-25165:pkg:golang/helm.sh/helm/v3@v3.11.1")
+	for _, dim := range f.Dimensions {
+		if dim.Key == "fixed_version" {
+			require.Equal(t, "v3.11.3", dim.Value)
+			return
+		}
+	}
+	t.Fatal("fixed_version dimension missing")
+}
+
 func TestDetect_InvalidInput(t *testing.T) {
 	s := grype.NewScanner()
 	assert.False(t, s.DetectFormat([]byte(`{}`)))
