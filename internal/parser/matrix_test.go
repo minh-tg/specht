@@ -90,12 +90,13 @@ func collectFixtures(t *testing.T) []fixture {
 			}
 		}
 	}
-	// multi-tool.sarif.json starts with a Semgrep run, so Semgrep reads it too. The native
-	// Semgrep file is not SARIF, so only Semgrep owns it.
+	// A log that mixes tools belongs to the generic SARIF adapter; the Semgrep
+	// adapter only claims logs whose every run is Semgrep. The native Semgrep
+	// file is not SARIF, so only Semgrep owns it.
 	for i := range out {
 		switch filepath.Base(out[i].path) {
 		case "multi-tool.sarif.json":
-			out[i].owners = []string{"sarif", "semgrep"}
+			out[i].owners = []string{"sarif"}
 		case "semgrep-native.json":
 			out[i].owners = []string{"semgrep"}
 		}

@@ -168,11 +168,15 @@ func recognizeSARIF(data []byte) scanner.Recognition {
 	if err := json.Unmarshal(data, &probe); err != nil || len(probe.Runs) == 0 {
 		return scanner.NotRecognized
 	}
-	name := probe.Runs[0].Tool.Driver.Name
-	if strings.EqualFold(name, "semgrep") || strings.EqualFold(name, "semgrep oss") {
-		return scanner.Definite
+	for _, run := range probe.Runs {
+		name := run.Tool.Driver.Name
+		if !strings.EqualFold(name, "semgrep") && !strings.EqualFold(name, "semgrep oss") {
+			// A mixed log belongs to the generic SARIF adapter, which reads
+			// every run without attributing another tool's results to Semgrep.
+			return scanner.NotRecognized
+		}
 	}
-	return scanner.NotRecognized
+	return scanner.Definite
 }
 
 // recognizeNative is definite for results that carry a check id and a path,
@@ -243,28 +247,28 @@ func convert(budget *parseutil.Budget, report sarifReport) (*domain.NormalizedRe
 		return nr, nil
 	}
 
-	run := report.Runs[0]
-
-	rules := indexRules(run.Tool.Driver.Rules)
 	var seen []sighting
-	for _, result := range run.Results {
-		if err := budget.Add(1); err != nil {
-			return nil, err
-		}
-		rule, hasRule := rules[result.RuleID]
-		file := extractFile(result)
-		line := extractLine(result)
-		message := extractTitle(result, rule)
+	for _, run := range report.Runs {
+		rules := indexRules(run.Tool.Driver.Rules)
+		for _, result := range run.Results {
+			if err := budget.Add(1); err != nil {
+				return nil, err
+			}
+			rule, hasRule := rules[result.RuleID]
+			file := extractFile(result)
+			line := extractLine(result)
+			message := extractTitle(result, rule)
 
-		seen = append(seen, sighting{
-			finding: sastFinding(
-				result.RuleID, file, line, message, extractDescription(result, rule),
-				mapSarifLevel(result.Level, rule), resultMeta(result, rule, hasRule),
-			),
-			rule: result.RuleID, file: file, message: message,
-			line: line, col: extractColumn(result),
-			matchID: matchBasedID(result.Fingerprints["matchBasedId/v1"], result.Fingerprints["matchBasedFingerprint/v1"]),
-		})
+			seen = append(seen, sighting{
+				finding: sastFinding(
+					result.RuleID, file, line, message, extractDescription(result, rule),
+					mapSarifLevel(result.Level, rule), resultMeta(result, rule, hasRule),
+				),
+				rule: result.RuleID, file: file, message: message,
+				line: line, col: extractColumn(result),
+				matchID: matchBasedID(result.Fingerprints["matchBasedId/v1"], result.Fingerprints["matchBasedFingerprint/v1"]),
+			})
+		}
 	}
 	nr.Findings = identify(seen)
 
