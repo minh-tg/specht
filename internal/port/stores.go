@@ -1274,7 +1274,7 @@ type ReportStore interface {
 	// DeleteStaleReports deletes settled reports older than the cutoff,
 	// returning their ids. Each goes through DeleteReportAndSettle, so a
 	// retention purge and an explicit delete leave the same state behind.
-	DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]string, error)
+	DeleteStaleReports(ctx context.Context, cutoff time.Time, limit int) ([]string, error)
 	// ClearRawData clears the raw_data payload of up to batchSize settled
 	// reports created before the cutoff and returns how many it cleared. The
 	// report rows and their findings are untouched.

@@ -3560,6 +3560,11 @@ export interface components {
       deleted_reports: number;
       deleted_report_ids?: string[];
       truncated?: boolean;
+      /**
+       * Format: int64
+       * @description Stale reports still past the cutoff after this run reached its per-request limit.
+       */
+      remaining?: number;
     };
     WatcherStatus: {
       /** Format: date-time */
