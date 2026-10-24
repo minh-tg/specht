@@ -696,6 +696,15 @@ func authzRows() []authzRow {
 			Path:    xSlugObj("/reports/", "report", ""),
 			Prepare: freshYReport, Want: mixedPair(sessionAdmins, projectAdmins...), Tenants: onlyX, Destructive: true,
 		},
+		{
+			Method: "GET", Pattern: "/api/v1/projects/{slug}/reports/{id}/deletion-preview",
+			Path: projectObj("/reports/", "report", "/deletion-preview"), Prepare: freshReport, Want: sessionAdmins,
+		},
+		{
+			Method: "GET", Pattern: "/api/v1/projects/{slug}/reports/{id}/deletion-preview", Variant: "x-slug-y-report",
+			Path: xSlugObj("/reports/", "report", "/deletion-preview"), Prepare: freshYReport,
+			Want: mixedPair(sessionAdmins, projectAdmins...), Tenants: onlyX,
+		},
 		{Method: "GET", Pattern: "/api/v1/projects/{slug}/watcher", Path: inProject("/watcher"), Want: readers},
 		{
 			Method: "PUT", Pattern: "/api/v1/projects/{slug}/watcher", Path: inProject("/watcher"),
