@@ -145,20 +145,19 @@ type postRequest struct {
 // sign, POST up to notifierMaxAttempts times with doubling backoff, log and
 // swallow everything. 2xx stops the loop.
 func postNotifications(ctx context.Context, p postRequest, body []byte, count int) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.webhookURL, bytes.NewReader(body))
-	if err != nil {
-		p.logger.Error(p.channel+" notification request build failed", "error", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if p.secret != "" {
-		req.Header.Set(SlackSignatureHeader, SignSlackBody(body, p.secret))
-	}
-
 	logger := p.logger
 	channel := p.channel
 	backoff := notifierBaseBackoff
 	for attempt := 1; attempt <= notifierMaxAttempts; attempt++ {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.webhookURL, bytes.NewReader(body))
+		if err != nil {
+			logger.Error(channel+" notification request build failed", "error", err)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if p.secret != "" {
+			req.Header.Set(SlackSignatureHeader, SignSlackBody(body, p.secret))
+		}
 		resp, err := p.client.Do(req)
 		switch {
 		case err == nil && resp.StatusCode >= 200 && resp.StatusCode < 300:
