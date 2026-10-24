@@ -173,6 +173,33 @@ func TestFindOrProvisionSSOUser_AccountBoundToAnotherSubjectIsRefused(t *testing
 	assert.Empty(t, ids.links)
 }
 
+func TestFindOrProvisionSSOUser_AProvisioningRoleFailureIsRetried(t *testing.T) {
+	ids := newMockIdentityRepo()
+	ids.seed("user-9", ssoTestIssuer, "sub-9")
+	ur := &mockUserRepo{}
+	ur.getByIDFn = func(context.Context, string) (port.User, error) {
+		u := makeUser("user-9")
+		u.Role = auth.RoleMember
+		return u, nil
+	}
+	ur.setRoleFn = func(_ context.Context, id, role string) (port.User, error) {
+		require.Equal(t, "user-9", id)
+		require.Equal(t, auth.RoleAdmin, role)
+		u := makeUser("user-9")
+		u.Role = auth.RoleAdmin
+		return u, nil
+	}
+	claims := auth.SSOClaims{Issuer: ssoTestIssuer, Subject: "sub-9", Groups: []string{"specht-admins"}}
+
+	userID, role, provisioned, err := New(ssoDepsWith(ur, ids)).FindOrProvisionSSOUser(
+		context.Background(), claims, nil, []string{"specht-admins"})
+
+	require.NoError(t, err)
+	assert.Equal(t, "user-9", userID)
+	assert.Equal(t, auth.RoleAdmin, role)
+	assert.False(t, provisioned)
+}
+
 func TestFindOrProvisionSSOUser_ProvisionedAccountIsLinked(t *testing.T) {
 	ids := newMockIdentityRepo()
 	ur := &mockUserRepo{}
