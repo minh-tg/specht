@@ -605,7 +605,10 @@ JOIN finding_dimensions dv
  AND dv.dim_value != ''
 WHERE f.project_id = $1
   AND f.finding_kind = 'sca'
-  AND COALESCE(substring(dp.dim_value from '^(.*)@'), dp.dim_value) = $2
+  AND CASE WHEN starts_with(dp.dim_value, 'pkg:')
+        THEN regexp_replace(dp.dim_value, '@[^/]*$', '')
+        ELSE COALESCE(substring(dp.dim_value from '^(.*)@'), dp.dim_value)
+      END = $2
   AND dv.dim_value = ANY($3::text[])
 LIMIT 1
 `
@@ -626,8 +629,8 @@ type FindScaFindingIdForPurlAndCveParams struct {
 //
 // Matching rules (gap-fill join keys):
 //   - purl dimension matches at NAME-LEVEL: the stored dimension value is
-//     truncated at the LAST '@' version separator, aligned with the Go
-//     purlNameLevel helper (findings.go), so version-less osv-scanner purls
+//     truncated at the last '@' after the final namespace separator,
+//     aligned with the Go purlNameLevel helper, so version-less osv-scanner purls
 //     still dedupe against versioned watcher candidates. A non-purl fallback
 //     containing '@' in its name (e.g. "corp@vendor/pkg@1.0.0") resolves to
 //     "corp@vendor/pkg" — the same name-level identity Go computes. Values

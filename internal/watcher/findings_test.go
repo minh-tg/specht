@@ -552,6 +552,8 @@ func TestPurlNameLevel(t *testing.T) {
 	}{
 		{"versioned npm purl", "pkg:npm/lodash@4.17.19", "pkg:npm/lodash"},
 		{"versionless purl passes through", "pkg:npm/lodash", "pkg:npm/lodash"},
+		{"versionless raw npm scope", "pkg:npm/@angular/core", "pkg:npm/@angular/core"},
+		{"versioned raw npm scope", "pkg:npm/@angular/core@14.0.0", "pkg:npm/@angular/core"},
 		{"maven namespace purl", "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1", "pkg:maven/org.apache.logging.log4j/log4j-core"},
 		{"golang module purl", "pkg:golang/github.com/gin-gonic/gin@v1.6.3", "pkg:golang/github.com/gin-gonic/gin"},
 		{"qualifiers stripped by caller, version kept", "pkg:apk/alpine/libcrypto3@3.3.2-r0", "pkg:apk/alpine/libcrypto3"},
