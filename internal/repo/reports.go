@@ -206,11 +206,14 @@ func (r *pgReportRepo) ClearRawDataBefore(ctx context.Context, cutoff time.Time,
 	return ids, nil
 }
 
-// DeleteStaleReports removes the settled reports older than the cutoff, one
-// transaction each, and returns the ids it removed. A report that a scan took
-// back or someone else already deleted is skipped.
-func (r *pgReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]pgtype.UUID, error) {
-	stale, err := r.q.ListStaleReports(ctx, uuidFromTime(cutoff))
+// DeleteStaleReports removes at most limit settled reports older than the
+// cutoff, one transaction each, and returns the ids it removed. A report that
+// a scan took back or someone else already deleted is skipped.
+func (r *pgReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Time, limit int) ([]pgtype.UUID, error) {
+	if limit <= 0 {
+		return nil, fmt.Errorf("stale report limit must be positive, got %d", limit)
+	}
+	stale, err := r.q.ListStaleReports(ctx, sqlc.ListStaleReportsParams{CompletedAt: uuidFromTime(cutoff), BatchSize: int32(limit)})
 	if err != nil {
 		return nil, err
 	}

@@ -805,7 +805,13 @@ SELECT id, project_id FROM reports
 WHERE status IN ('completed', 'failed')
   AND COALESCE(completed_at, created_at) < $1
 ORDER BY COALESCE(completed_at, created_at), id
+LIMIT $2::integer
 `
+
+type ListStaleReportsParams struct {
+	CompletedAt pgtype.Timestamptz `json:"completed_at"`
+	BatchSize   int32              `json:"batch_size"`
+}
 
 type ListStaleReportsRow struct {
 	ID        pgtype.UUID `json:"id"`
@@ -815,8 +821,8 @@ type ListStaleReportsRow struct {
 // Retention purge: the settled reports older than the cutoff, oldest first.
 // Each one is removed with the same routine as an explicit delete, so both
 // paths leave the same state behind.
-func (q *Queries) ListStaleReports(ctx context.Context, completedAt pgtype.Timestamptz) ([]ListStaleReportsRow, error) {
-	rows, err := q.db.Query(ctx, listStaleReports, completedAt)
+func (q *Queries) ListStaleReports(ctx context.Context, arg ListStaleReportsParams) ([]ListStaleReportsRow, error) {
+	rows, err := q.db.Query(ctx, listStaleReports, arg.CompletedAt, arg.BatchSize)
 	if err != nil {
 		return nil, err
 	}

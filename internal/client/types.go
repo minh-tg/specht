@@ -128,6 +128,8 @@ type RetentionResult struct {
 	DeletedReports   int64     `json:"deleted_reports"`
 	DeletedReportIDs []string  `json:"deleted_report_ids,omitempty"`
 	Truncated        bool      `json:"truncated,omitempty"`
+	// Remaining is nonzero when the run hit its per-request limit.
+	Remaining int64 `json:"remaining,omitempty"`
 }
 
 // PolicyTemplate is a reusable organization-wide policy baseline.

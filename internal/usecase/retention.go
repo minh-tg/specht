@@ -18,6 +18,10 @@ const maxRetentionDays = 3650
 // one. Callers that need the full set re-query by cutoff.
 const maxPurgeIDs = 1000
 
+// maxPurgeReportsPerRun bounds finding locks and connection time one purge
+// request holds. The rest waits for the next run, which the response reports.
+const maxPurgeReportsPerRun = 500
+
 // RetentionPreview counts settled reports a purge would delete, without
 // deleting anything.
 type RetentionPreview struct {
@@ -35,6 +39,9 @@ type RetentionResult struct {
 	// Truncated is true when the id list hit maxPurgeIDs; the count stays
 	// exact.
 	Truncated bool `json:"truncated,omitempty"`
+	// Remaining is the number of stale reports still past the cutoff when a
+	// run reached its per-request limit. Omitted when the run cleared them.
+	Remaining int64 `json:"remaining,omitempty"`
 }
 
 // AdminStatus is the platform observability snapshot for admins.
@@ -83,9 +90,16 @@ func (u *Usecases) PurgeRetention(ctx context.Context, olderThanDays int) (*Rete
 		return nil, err
 	}
 	cutoff := now().AddDate(0, 0, -olderThanDays)
-	ids, err := u.deps.Stores.Reports.DeleteStaleReports(ctx, cutoff)
+	ids, err := u.deps.Stores.Reports.DeleteStaleReports(ctx, cutoff, maxPurgeReportsPerRun)
 	if err != nil {
 		return nil, fmt.Errorf("purge stale reports: %w", err)
+	}
+	var remaining int64
+	if len(ids) == maxPurgeReportsPerRun {
+		remaining, err = u.deps.Stores.Reports.CountStaleReports(ctx, cutoff)
+		if err != nil {
+			return nil, fmt.Errorf("count remaining stale reports: %w", err)
+		}
 	}
 	total := len(ids)
 	truncated := total > maxPurgeIDs
@@ -94,7 +108,7 @@ func (u *Usecases) PurgeRetention(ctx context.Context, olderThanDays int) (*Rete
 	}
 	return &RetentionResult{
 		OlderThanDays: olderThanDays, Cutoff: cutoff,
-		DeletedReports: int64(total), DeletedReportIDs: ids, Truncated: truncated,
+		DeletedReports: int64(total), DeletedReportIDs: ids, Truncated: truncated, Remaining: remaining,
 	}, nil
 }
 

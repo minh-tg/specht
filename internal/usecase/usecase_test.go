@@ -441,7 +441,7 @@ type mockReportRepo struct {
 	byBranchFn                 func(context.Context, string, string, string) (port.CompletedReport, error)
 	findingScopeFn             func(context.Context, string, string) (port.CompletedReport, error)
 	countStaleFn               func(context.Context, time.Time) (int64, error)
-	deleteStaleFn              func(context.Context, time.Time) ([]string, error)
+	deleteStaleFn              func(context.Context, time.Time, int) ([]string, error)
 	findCompletedByReplayKeyFn func(context.Context, string, string, string, string) (string, error)
 	deleteReportFn             func(context.Context, string, string) error
 	deleteDuplicateReportFn    func(context.Context, string, string, string) error
@@ -526,11 +526,11 @@ func (m *mockReportRepo) CountStaleReports(ctx context.Context, cutoff time.Time
 	return m.countStaleFn(ctx, cutoff)
 }
 
-func (m *mockReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]string, error) {
+func (m *mockReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Time, limit int) ([]string, error) {
 	if m.deleteStaleFn == nil {
 		return nil, fmt.Errorf("unexpected call to DeleteStaleReports")
 	}
-	return m.deleteStaleFn(ctx, cutoff)
+	return m.deleteStaleFn(ctx, cutoff, limit)
 }
 
 func (m *mockReportRepo) FindCompletedByReplayKey(ctx context.Context, projectID, rawHash, commit, scopeHash string) (string, error) {
