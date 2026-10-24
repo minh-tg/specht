@@ -204,13 +204,16 @@ export async function refreshAccessToken(refreshToken: string): Promise<Session>
 }
 
 /** Revokes the refresh token server-side so the session cannot be resumed. */
-export async function revokeRefreshToken(refreshToken: string): Promise<void> {
+export async function revokeRefreshToken(
+  refreshToken: string,
+  accessToken: string | null = null,
+): Promise<void> {
   forgetSharedRefresh(refreshToken);
   try {
     await send<void>(
       "/api/v1/auth/logout",
       { method: "POST", body: JSON.stringify({ refresh_token: refreshToken }) },
-      null,
+      accessToken,
     );
   } catch {
     // Local sign-out must always succeed; the server also expires sessions.
