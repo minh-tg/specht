@@ -118,6 +118,19 @@ test("internal links and fragments resolve within the configured base", async ({
   }
 });
 
+test("homepage explains report uploads and gate behavior in plain language", async ({ page }) => {
+  await page.goto("./");
+  await expect(page.locator(".hero-description")).toHaveText(
+    "Upload reports from the scanners you already run. Specht tracks findings across scans and checks them against your CI gate policy.",
+  );
+  await expect(
+    page.getByRole("heading", { name: "Finding history and CI gates", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Review waiver requests.", exact: true }),
+  ).toBeVisible();
+});
+
 test("homepage uses local assets and contains honest preview guidance", async ({
   page,
   baseURL,

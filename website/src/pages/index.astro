@@ -84,8 +84,8 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
             </h1>
             <div class="hero-intro">
               <p class="hero-description">
-                Your scanners produce the reports. Specht keeps the finding history, applies your
-                policy and shows the evidence behind a blocked change.
+                Upload reports from the scanners you already run. Specht tracks findings across
+                scans and checks them against your CI gate policy.
               </p>
               <div class="hero-actions">
                 <a class="button button-light" href={demo} aria-describedby="demo-note">
@@ -121,25 +121,18 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
         <section class="workflow-section" aria-labelledby="workflow-title">
           <div class="shell">
             <div class="section-heading">
-              <h2 id="workflow-title">
-                A finding has a history.
-                <br />A gate needs a reason.
-              </h2>
+              <h2 id="workflow-title">Finding history and CI gates</h2>
               <p>
-                New exposure and existing debt need different responses. Specht keeps them visible
-                without treating every old finding as something your change introduced.
+                Specht tracks whether findings are open, fixed or reopened. In a change view, new
+                findings and existing project findings are shown separately.
               </p>
             </div>
             <div class="feature-grid">
               <article class="feature-card feature-large">
-                <h3>
-                  Open the failing check.
-                  <br />
-                  Get the actual blockers.
-                </h3>
+                <h3>See what blocked the CI gate.</h3>
                 <p>
-                  CI links to the exact report and gate decision. See what was introduced, where it
-                  appears and which policy makes it block.
+                  Open the report linked from CI. Check each blocker's evidence and the policy that
+                  made it block.
                 </p>
                 <div class="evidence-example" aria-label="Illustrative gate explanation">
                   <span class="blocked-tag">Blocks gate</span>
@@ -152,11 +145,7 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
                 </a>
               </article>
               <article class="feature-card">
-                <h3>
-                  Scan again.
-                  <br />
-                  Keep the history.
-                </h3>
+                <h3>Track fixes and reopened findings.</h3>
                 <p>
                   Match findings across reports. Track open, fixed and reopened issues alongside
                   triage and reachability decisions.
@@ -166,11 +155,7 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
                 </a>
               </article>
               <article class="feature-card">
-                <h3>
-                  A waiver has
-                  <br />
-                  an expiry date.
-                </h3>
+                <h3>Review waiver requests.</h3>
                 <p>
                   Request an exception with a reason. Keep approval separate from the request and
                   record when the exception ends.
@@ -181,11 +166,7 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
               </article>
               <article class="feature-card feature-wide">
                 <div>
-                  <h3>
-                    One Go server.
-                    <br />
-                    Your Postgres database.
-                  </h3>
+                  <h3>Run Specht with Postgres.</h3>
                 </div>
                 <div>
                   <p>
@@ -203,17 +184,13 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
         <section class="start-section" aria-labelledby="start-title">
           <div class="shell start-grid">
             <div>
-              <h2 id="start-title">
-                Run Specht.
-                <br />
-                Upload a report.
-              </h2>
+              <h2 id="start-title">Run it locally</h2>
               <p>
-                Build from source with Docker Compose, create a project and upload a report. Run the
-                server and database on your infrastructure.
+                Clone the repo and build the stack with Docker Compose. Then create a project and
+                upload a report from a scanner you already run.
               </p>
               <a class="button button-dark" href={guide}>
-                Start the evaluation <Arrow />
+                Follow the setup guide <Arrow />
               </a>
             </div>
             <div class="terminal">
