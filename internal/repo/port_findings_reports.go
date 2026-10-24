@@ -999,7 +999,7 @@ func (r *pgFindingPort) MarkFixed(ctx context.Context, findingID string) (port.F
 	return findingRowToPort(row), nil
 }
 
-func (r *pgFindingPort) MarkFixedWithEvent(ctx context.Context, findingID string, event port.FindingEventInput) (port.Finding, error) {
+func (r *pgFindingPort) MarkFixedWithEvent(ctx context.Context, findingID, reportID string, event port.FindingEventInput) (port.Finding, error) {
 	fid, err := parseID(findingID)
 	if err != nil {
 		return port.Finding{}, err
@@ -1008,7 +1008,11 @@ func (r *pgFindingPort) MarkFixedWithEvent(ctx context.Context, findingID string
 	if err != nil {
 		return port.Finding{}, err
 	}
-	row, err := r.inner.MarkFixedWithEvent(ctx, fid, CreateEventParams{
+	rid, err := parseID(reportID)
+	if err != nil {
+		return port.Finding{}, err
+	}
+	row, err := r.inner.MarkFixedWithEvent(ctx, fid, rid, CreateEventParams{
 		FindingID: eventID, UserID: uuidPtrFromString(event.UserID), EventType: event.EventType,
 		OldValue: textPtrFromString(event.OldValue), NewValue: textPtrFromString(event.NewValue), Comment: textPtrFromString(event.Comment), Changes: event.Changes,
 	})

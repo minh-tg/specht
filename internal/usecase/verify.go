@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -105,9 +106,15 @@ func (u *Usecases) VerifyFix(ctx context.Context, findingID string) (*VerifyResp
 		"branch":     strOrEmpty(report.Branch),
 		"commit_sha": strOrEmpty(report.CommitSha),
 	})
-	if _, err := u.deps.Stores.Findings.MarkFixedWithEvent(ctx, fid.String(), port.FindingEventInput{
+	if _, err := u.deps.Stores.Findings.MarkFixedWithEvent(ctx, fid.String(), report.ID, port.FindingEventInput{
 		FindingID: fid.String(), EventType: "verified_fixed", Changes: changes,
 	}); err != nil {
+		if errors.Is(err, port.ErrFindingStillObserved) {
+			return &VerifyResponse{
+				FindingID: fid.String(), Outcome: VerifyPresent, ReportID: &reportID,
+				Detail: "finding remains observed in another scan scope or a newer scan",
+			}, nil
+		}
 		return nil, fmt.Errorf("mark fixed and log event: %w", err)
 	}
 	if u.deps.Tracker != nil {
