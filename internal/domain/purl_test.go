@@ -67,6 +67,18 @@ func TestSplitPURL(t *testing.T) {
 			wantVersion: "2.17.0",
 		},
 		{
+			name: "unversioned raw npm scope", in: "pkg:npm/@angular/core",
+			wantType: "npm", wantName: "@angular/core",
+		},
+		{
+			name: "versioned raw npm scope", in: "pkg:npm/@angular/core@14.0.0",
+			wantType: "npm", wantName: "@angular/core", wantVersion: "14.0.0",
+		},
+		{
+			name: "unversioned encoded npm scope", in: "pkg:npm/%40angular/core",
+			wantType: "npm", wantName: "%40angular/core",
+		},
+		{
 			name:        "go module",
 			in:          "pkg:golang/github.com/gogo/protobuf@v1.3.1",
 			wantType:    "golang",
