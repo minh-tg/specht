@@ -226,7 +226,7 @@ func TestUndoTriage_RequiresProjectEditor(t *testing.T) {
 	})
 
 	_, err := fx.uc.UndoTriage(ctx, UndoTriageInput{FindingID: snapshotFindingID, EventID: undoEventID, UserID: snapshotUserID})
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 	assert.Nil(t, fx.applied)
 }
 

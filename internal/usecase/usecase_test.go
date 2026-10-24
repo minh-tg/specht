@@ -3949,11 +3949,11 @@ func TestReachability_APIKeyCannotCrossProject(t *testing.T) {
 		"00000000-0000-0000-0000-000000000021",
 		"00000000-0000-0000-0000-000000000040",
 		"reachable", "evidence")
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.ListReachability(ctx,
 		"00000000-0000-0000-0000-000000000021")
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 }
 
 func TestFindingWrites_APIKeyCannotCrossProject(t *testing.T) {
@@ -3982,23 +3982,23 @@ func TestFindingWrites_APIKeyCannotCrossProject(t *testing.T) {
 		AnalysisState: "exploitable",
 		UserID:        userID,
 	})
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.CreateEvidence(ctx, findingID, userID, "url", "https://example.test", "evidence")
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.UpsertSignoff(ctx, findingID, userID, "approved", "reviewed")
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	err = uc.DeleteEvidence(ctx, findingID, "00000000-0000-0000-0000-000000000031")
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.BulkTriage(ctx, BulkTriageInput{
 		FindingIDs:    []string{findingID},
 		AnalysisState: "exploitable",
 		UserID:        userID,
 	})
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 }
 
 func TestFindingReads_APIKeyCannotCrossProject(t *testing.T) {
@@ -4029,16 +4029,16 @@ func TestFindingReads_APIKeyCannotCrossProject(t *testing.T) {
 	findingID := "00000000-0000-0000-0000-000000000021"
 
 	_, err := uc.GetFinding(ctx, findingID)
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.GetFindingEvents(ctx, findingID, nil, 10, 0)
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.ListEvidence(ctx, findingID)
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.GetSignoff(ctx, findingID)
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 }
 
 func TestCreateAPIKey_RecordsCreator(t *testing.T) {

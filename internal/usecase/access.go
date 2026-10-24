@@ -43,7 +43,7 @@ func (u *Usecases) findingWithProjectAccess(ctx context.Context, findingID uuid.
 		// it to a 500 instead of a misleading 404.
 		return port.Finding{}, fmt.Errorf("check finding project: %w", err)
 	}
-	if err := u.checkFindingProjectIDAccess(ctx, finding.ProjectID); err != nil {
+	if err := u.checkFindingVisibility(ctx, finding.ProjectID); err != nil {
 		return port.Finding{}, err
 	}
 	return finding, nil
@@ -61,11 +61,21 @@ func (u *Usecases) checkFindingRowsProjectAccess(ctx context.Context, findings [
 			continue
 		}
 		seen[finding.ProjectID] = true
-		if err := u.checkFindingProjectIDAccess(ctx, finding.ProjectID); err != nil {
+		if err := u.checkFindingVisibility(ctx, finding.ProjectID); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// checkFindingVisibility masks inaccessible ID-addressed findings as missing.
+// Role checks on a visible finding still return ErrProjectAccessDenied.
+func (u *Usecases) checkFindingVisibility(ctx context.Context, projectID string) error {
+	err := u.checkFindingProjectIDAccess(ctx, projectID)
+	if auth.ContextIdentity(ctx) != nil && errors.Is(err, ErrProjectAccessDenied) {
+		return ErrFindingNotFound
+	}
+	return err
 }
 
 // checkFindingProjectIDAccess enforces tenant isolation on finding-scoped
@@ -230,6 +240,9 @@ func (u *Usecases) findingWithProjectEditor(ctx context.Context, findingID uuid.
 		}
 		return port.Finding{}, fmt.Errorf("check finding project role: %w", err)
 	}
+	if err := u.checkFindingVisibility(ctx, finding.ProjectID); err != nil {
+		return port.Finding{}, err
+	}
 	if err := u.requireProjectManager(ctx, finding.ProjectID); err != nil {
 		return port.Finding{}, err
 	}
@@ -242,6 +255,9 @@ func (u *Usecases) checkFindingProjectEditor(ctx context.Context, findingID uuid
 }
 
 func (u *Usecases) checkFindingRowsProjectEditor(ctx context.Context, findings []port.Finding) error {
+	if err := u.checkFindingRowsProjectAccess(ctx, findings); err != nil {
+		return err
+	}
 	seen := make(map[string]bool, 2)
 	for _, finding := range findings {
 		if seen[finding.ProjectID] {

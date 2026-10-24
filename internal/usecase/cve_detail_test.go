@@ -96,7 +96,7 @@ func TestGetFindingCVE_RequiresProjectAccess(t *testing.T) {
 	pr.isMemberFn = func(context.Context, string, string) (bool, error) { return false, nil }
 	uc := New(Deps{Stores: &port.Stores{Findings: fr, Projects: pr}, CVEDetail: CVEDetailDeps{Occurrences: &fakeOccurrenceReader{}}})
 	_, err := uc.GetFindingCVE(memberSessionCtx(), cveTestFindingID)
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.GetFindingCVE(context.Background(), cveTestFindingID)
 	require.ErrorIs(t, err, ErrProjectAccessDenied, "no identity, no access")
