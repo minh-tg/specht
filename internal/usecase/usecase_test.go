@@ -956,7 +956,7 @@ func (m *mockFindingRepo) HasOccurrence(ctx context.Context, findingID, reportID
 	return m.hasOccurrenceFn(ctx, findingID, reportID)
 }
 
-func (m *mockFindingRepo) MarkFixedWithEvent(ctx context.Context, findingID string, event port.FindingEventInput) (port.Finding, error) {
+func (m *mockFindingRepo) MarkFixedWithEvent(ctx context.Context, findingID, reportID string, event port.FindingEventInput) (port.Finding, error) {
 	if m.markFixedWithEventFn != nil {
 		return m.markFixedWithEventFn(ctx, findingID, event)
 	}

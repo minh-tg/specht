@@ -1764,6 +1764,7 @@ UPDATE findings
 SET state = 'fixed', updated_at = NOW()
 WHERE findings.project_id = $1
   AND findings.state IN ('open', 'reopened')
+  AND NOT EXISTS (SELECT 1 FROM finding_scope_severities s WHERE s.finding_id = findings.id)
   AND NOT EXISTS (
       SELECT 1 FROM finding_occurrences occ
       WHERE occ.finding_id = findings.id

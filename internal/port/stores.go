@@ -27,6 +27,10 @@ var ErrNotFound = errors.New("not found")
 // the finding no longer matches the state the caller based it on.
 var ErrAnalysisConflict = errors.New("analysis state changed")
 
+// ErrFindingStillObserved means a verification basis is stale or another scope
+// still observes the finding. No fixed event is recorded.
+var ErrFindingStillObserved = errors.New("finding is still observed")
+
 // ErrWaiverNotPending is returned when a waiver decision targets a waiver
 // that already has a final status.
 var ErrWaiverNotPending = errors.New("waiver is not pending")
@@ -951,8 +955,10 @@ type FindingStore interface {
 	// never sets it: VerifyFix is the analyst-facing path, backed by a
 	// rescan that no longer observes the finding.
 	MarkFixed(ctx context.Context, findingID string) (Finding, error)
-	// MarkFixedWithEvent atomically marks a finding fixed and records its audit event.
-	MarkFixedWithEvent(ctx context.Context, findingID string, event FindingEventInput) (Finding, error)
+	// MarkFixedWithEvent retires the verifying report's scope and only marks
+	// the finding fixed when no active scopes remain. The basis is rechecked
+	// under the finding lock. Other active evidence returns ErrFindingStillObserved.
+	MarkFixedWithEvent(ctx context.Context, findingID, reportID string, event FindingEventInput) (Finding, error)
 	// MarkAbsentFindingsFixed is the ingest-time auto-fix writer: it closes
 	// open or reopened findings whose most recent observation came from an
 	// equivalent complete scan (same project and scope hash) and that
