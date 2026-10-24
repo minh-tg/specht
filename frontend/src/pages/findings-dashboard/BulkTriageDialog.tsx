@@ -37,9 +37,10 @@ export function BulkTriageDialog({ findingIds, open, onOpenChange, onApplied }: 
   const option = TRIAGE_OPTIONS.find((o) => o.value === state);
   const hintKey = state ? TRIAGE_GLOSSARY[state] : undefined;
   const hint = hintKey ? GLOSSARY[hintKey].short : null;
+  const minExpiryDate = new Date().toISOString().slice(0, 10);
   const ready = state !== ""
     && (!option?.requiresReason || reason.trim() !== "")
-    && (!option?.requiresExpiry || expiresAt !== "");
+    && (!option?.requiresExpiry || expiresAt >= minExpiryDate);
   const count = findingIds.length;
   const noun = count === 1 ? "finding" : "findings";
 
@@ -123,6 +124,7 @@ export function BulkTriageDialog({ findingIds, open, onOpenChange, onApplied }: 
               <Input
                 id="bulk-triage-expiry"
                 type="date"
+                min={minExpiryDate}
                 value={expiresAt}
                 onChange={(event) => setExpiresAt(event.target.value)}
               />
