@@ -1480,7 +1480,10 @@ SELECT
         FROM finding_occurrences eo
         JOIN reports er ON eo.report_id = er.id
         WHERE eo.finding_id = f.id
-    )::text[] AS environment_ids
+    )::text[] AS environment_ids,
+    ARRAY(SELECT DISTINCT d.dim_value FROM finding_dimensions d
+          WHERE d.finding_id = f.id AND d.dim_key = 'alias'
+          ORDER BY d.dim_value)::text[] AS aliases
 FROM open_findings f
 LEFT JOIN LATERAL (
     SELECT r.environment_id, r.target_id, r.artifact_id
@@ -1523,6 +1526,7 @@ type ListGateCandidatesRow struct {
 	TargetID             pgtype.UUID       `json:"target_id"`
 	ArtifactID           pgtype.UUID       `json:"artifact_id"`
 	EnvironmentIds       []string          `json:"environment_ids"`
+	Aliases              []string          `json:"aliases"`
 }
 
 // Batch gate-candidate loader: one round trip returns every finding that may
@@ -1558,6 +1562,7 @@ func (q *Queries) ListGateCandidates(ctx context.Context, arg ListGateCandidates
 			&i.TargetID,
 			&i.ArtifactID,
 			&i.EnvironmentIds,
+			&i.Aliases,
 		); err != nil {
 			return nil, err
 		}
@@ -1590,6 +1595,9 @@ SELECT
         JOIN reports er ON eo.report_id = er.id
         WHERE eo.finding_id = f.id
     )::text[] AS environment_ids,
+    ARRAY(SELECT DISTINCT d.dim_value FROM finding_dimensions d
+          WHERE d.finding_id = f.id AND d.dim_key = 'alias'
+          ORDER BY d.dim_value)::text[] AS aliases,
     rif.change_type
 FROM report_introduced_findings rif
 JOIN open_findings f ON rif.finding_id = f.id
@@ -1636,6 +1644,7 @@ type ListIntroducedGateCandidatesRow struct {
 	TargetID             pgtype.UUID       `json:"target_id"`
 	ArtifactID           pgtype.UUID       `json:"artifact_id"`
 	EnvironmentIds       []string          `json:"environment_ids"`
+	Aliases              []string          `json:"aliases"`
 	ChangeType           string            `json:"change_type"`
 }
 
@@ -1663,6 +1672,7 @@ func (q *Queries) ListIntroducedGateCandidates(ctx context.Context, arg ListIntr
 			&i.TargetID,
 			&i.ArtifactID,
 			&i.EnvironmentIds,
+			&i.Aliases,
 			&i.ChangeType,
 		); err != nil {
 			return nil, err
