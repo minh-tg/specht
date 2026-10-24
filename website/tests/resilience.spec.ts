@@ -44,7 +44,7 @@ test("homepage controls are not horizontally clipped", async ({ page }) => {
   await page.evaluate(() => document.fonts.ready);
   const width = page.viewportSize()!.width;
   for (const anchor of await page
-    .locator(".site-header a:visible, .hero-actions a, .site-footer a")
+    .locator(".site-header a:visible, .site-header select:visible, .hero-actions a, .site-footer a")
     .all()) {
     const box = await anchor.boundingBox();
     expect(box).not.toBeNull();
