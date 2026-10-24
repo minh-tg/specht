@@ -40,7 +40,7 @@ func SplitPURL(purl string) (pkgType, name, version string) {
 	}
 	pkgType = rest[:typeEnd]
 	nameWithVersion := rest[typeEnd+1:]
-	if at := strings.LastIndexByte(nameWithVersion, '@'); at >= 0 {
+	if at := strings.LastIndexByte(nameWithVersion, '@'); at > strings.LastIndexByte(nameWithVersion, '/') {
 		return pkgType, nameWithVersion[:at], nameWithVersion[at+1:]
 	}
 	return pkgType, nameWithVersion, ""
