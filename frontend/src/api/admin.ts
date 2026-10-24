@@ -88,18 +88,20 @@ export function useRetentionPreview(days: number) {
   });
 }
 
+function purgeRetentionMessage(data: RetentionResult): string {
+  const removed = `Removed ${data.deleted_reports} ${
+    data.deleted_reports === 1 ? "report" : "reports"
+  }`;
+  return data.remaining
+    ? `${removed}. ${data.remaining} still past the cutoff; run it again to continue.`
+    : removed;
+}
+
 export function usePurgeRetention() {
   const queryClient = useQueryClient();
   return useMutation({
     meta: {
-      success: (data: RetentionResult) => {
-        const removed = `Removed ${data.deleted_reports} ${
-          data.deleted_reports === 1 ? "report" : "reports"
-        }`;
-        return data.remaining
-          ? `${removed}. ${data.remaining} still past the cutoff; run it again to continue.`
-          : removed;
-      },
+      success: purgeRetentionMessage,
       sound: "none",
     },
     mutationFn: (days: number) =>

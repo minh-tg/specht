@@ -611,4 +611,6 @@ export interface RetentionResult {
   deleted_report_ids?: string[];
   /** More reports are past the window than one run removes; run it again for the rest. */
   truncated?: boolean;
+  /** Stale reports still past the cutoff when this run reached its limit. */
+  remaining?: number;
 }
