@@ -250,6 +250,11 @@ func (r *pgReportRepo) DeleteReportAndSettle(ctx context.Context, id, projectID,
 		return port.ReportDeletion{}, port.ErrReportProcessing
 	}
 
+	scopeHash, err := q.ReportScanScopeHash(ctx, sqlc.ReportScanScopeHashParams{ID: id, ProjectID: projectID})
+	if err != nil {
+		return port.ReportDeletion{}, fmt.Errorf("read report scope: %w", err)
+	}
+
 	touched, err := q.ListFindingsTouchedByReport(ctx, sqlc.ListFindingsTouchedByReportParams{ReportID: id, ProjectID: projectID})
 	if err != nil {
 		return port.ReportDeletion{}, fmt.Errorf("list findings touched by report: %w", err)
@@ -262,9 +267,30 @@ func (r *pgReportRepo) DeleteReportAndSettle(ctx context.Context, id, projectID,
 			introduced = append(introduced, f.ID)
 		}
 	}
+	// Ingest writes severity while holding the finding's row lock. Taking the
+	// same locks in id order makes a concurrent scoped upsert wait, so the
+	// recompute below cannot delete a scope row it just wrote.
+	if _, err := q.LockFindingsByIDs(ctx, all); err != nil {
+		return port.ReportDeletion{}, fmt.Errorf("lock findings touched by report: %w", err)
+	}
 
 	if err := q.DeleteReport(ctx, sqlc.DeleteReportParams{ID: id, ProjectID: projectID}); err != nil {
 		return port.ReportDeletion{}, fmt.Errorf("delete report: %w", err)
+	}
+	// The deleted report no longer supplies this scope's severity. Remaining
+	// reports in the same scope take over, or the row goes when none is left.
+	retire := sqlc.RetireScopeSeverityWithoutEvidenceParams{FindingIds: all, ScopeHash: scopeHash}
+	if err := q.RetireScopeSeverityWithoutEvidence(ctx, retire); err != nil {
+		return port.ReportDeletion{}, fmt.Errorf("retire deleted report's scope severity: %w", err)
+	}
+	restore := sqlc.RestoreScopeSeverityFromNewestEvidenceParams{FindingIds: all, ScopeHash: scopeHash}
+	if err := q.RestoreScopeSeverityFromNewestEvidence(ctx, restore); err != nil {
+		return port.ReportDeletion{}, fmt.Errorf("restore scope severity from remaining reports: %w", err)
+	}
+	if len(all) > 0 {
+		if err := q.RefreshFindingScopeSeverities(ctx, all); err != nil {
+			return port.ReportDeletion{}, fmt.Errorf("refresh finding severity: %w", err)
+		}
 	}
 	archived, err := q.ArchiveOrphanedFindings(ctx, sqlc.ArchiveOrphanedFindingsParams{
 		FindingIds: all, ActorID: actor, ReportID: toUUID(id),

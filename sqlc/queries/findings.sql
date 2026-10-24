@@ -617,6 +617,41 @@ WHERE s.finding_id = ANY(sqlc.arg(finding_ids)::uuid[])
         AND (prior.created_at, prior.id) < (current.created_at, current.id)
   );
 
+-- name: RetireScopeSeverityWithoutEvidence :exec
+-- A report delete removes the scope row it supplied when no remaining report
+-- in that scope observed the finding. Findings with other scopes keep those
+-- rows; a finding with no scope at all keeps its historical severity.
+DELETE FROM finding_scope_severities s
+WHERE s.finding_id = ANY(sqlc.arg(finding_ids)::uuid[])
+  AND s.scope_hash = sqlc.arg(scope_hash)
+  AND NOT EXISTS (
+      SELECT 1 FROM finding_occurrences o
+      JOIN reports r ON r.id = o.report_id
+      WHERE o.finding_id = s.finding_id
+        AND COALESCE(r.scan_scope_hash, '') = s.scope_hash
+  );
+
+-- name: RestoreScopeSeverityFromNewestEvidence :exec
+-- A report delete that leaves other reports in the same scope puts the
+-- newest remaining observation back into the scope row, so the aggregate
+-- reflects live evidence rather than the deleted report.
+UPDATE finding_scope_severities s
+SET severity = newest.severity,
+    severity_rank = newest.severity_rank,
+    report_id = newest.report_id,
+    observed_at = newest.observed_at
+FROM (
+    SELECT DISTINCT ON (o.finding_id) o.finding_id, o.severity,
+           o.severity_rank, o.report_id, o.observed_at
+    FROM finding_occurrences o
+    JOIN reports r ON r.id = o.report_id
+    WHERE o.finding_id = ANY(sqlc.arg(finding_ids)::uuid[])
+      AND COALESCE(r.scan_scope_hash, '') = sqlc.arg(scope_hash)
+    ORDER BY o.finding_id, o.observed_at DESC, o.id DESC
+) newest
+WHERE s.finding_id = newest.finding_id
+  AND s.scope_hash = sqlc.arg(scope_hash);
+
 -- name: RefreshFindingScopeSeverities :exec
 -- A finding with no remaining scope keeps its historical severity.
 UPDATE findings f
