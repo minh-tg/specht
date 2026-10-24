@@ -364,6 +364,11 @@ func (f *fullRecordFetcher) fetchWorker(ctx context.Context, cancel context.Canc
 			id := f.ids[index]
 			record, err := f.client.fetchVuln(ctx, id)
 			if err != nil {
+				if isAdvisoryGone(err) {
+					// A withdrawn or removed advisory must not stop every
+					// other advisory in the batch from being processed.
+					continue
+				}
 				f.errorOnce.Do(func() {
 					f.firstErr = err
 					cancel()
@@ -420,6 +425,12 @@ func (c *HTTPClient) fetchVuln(ctx context.Context, id string) (Advisory, error)
 	// Persist the verbatim full-record bytes for byte-exact evidence.
 	a.Raw = append([]byte(nil), raw...)
 	return a, nil
+}
+
+// isAdvisoryGone reports a full-record fetch that OSV no longer knows.
+func isAdvisoryGone(err error) bool {
+	var httpErr *HTTPError
+	return errors.As(err, &httpErr) && httpErr.Status == http.StatusNotFound
 }
 
 // validateIDLength enforces a 1:1 correspondence between the queries sent
