@@ -1117,24 +1117,37 @@ func (u *Usecases) createFindingOccurrence(ctx context.Context, st *ingestFindin
 // warning) anything the fingerprint contract does not recognize.
 func (u *Usecases) upsertFindingDimensions(ctx context.Context, st *ingestFindingsState, upserted port.Finding, f domain.NormalizedFinding) error {
 	source := textPtr(st.input.Scanner)
+	write := func(dimension port.DimensionInput) error {
+		if st.batchStore != nil && dimension.Key != domain.DimFixedVersion {
+			st.dimensions = append(st.dimensions, dimension)
+			return nil
+		}
+		if err := u.deps.Stores.Findings.UpsertDimension(ctx, dimension); err != nil {
+			slog.Error("upsert dimension failed", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+			return fmt.Errorf("scanner %s: upsert dimension for %q: %w", st.input.Scanner, f.Fingerprint, err)
+		}
+		return nil
+	}
 	for _, d := range f.Dimensions {
 		if !isCanonicalDimension(d.Key) {
 			slog.Warn("drop non-canonical dimension", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "key", d.Key)
 			continue
 		}
-		dimension := port.DimensionInput{
-			FindingID: upserted.ID,
-			Key:       d.Key,
-			Value:     d.Value,
-			Source:    source,
+		if err := write(port.DimensionInput{FindingID: upserted.ID, Key: d.Key, Value: d.Value, Source: source}); err != nil {
+			return err
 		}
-		if st.batchStore != nil && d.Key != domain.DimFixedVersion {
-			st.dimensions = append(st.dimensions, dimension)
+	}
+	// Aliases are first-class waiver and gate inputs. Parsers carry them on
+	// the finding, not in Dimensions, so persist one row per alias here.
+	seen := make(map[string]bool, len(f.Aliases))
+	for _, alias := range f.Aliases {
+		alias = strings.TrimSpace(alias)
+		if alias == "" || seen[alias] {
 			continue
 		}
-		if err := u.deps.Stores.Findings.UpsertDimension(ctx, dimension); err != nil {
-			slog.Error("upsert dimension failed", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "error", err)
-			return fmt.Errorf("scanner %s: upsert dimension for %q: %w", st.input.Scanner, f.Fingerprint, err)
+		seen[alias] = true
+		if err := write(port.DimensionInput{FindingID: upserted.ID, Key: domain.DimAlias, Value: alias, Source: source}); err != nil {
+			return err
 		}
 	}
 	return nil
