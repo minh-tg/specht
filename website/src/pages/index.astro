@@ -2,6 +2,7 @@
 import { local, repository } from "../lib/site";
 import Arrow from "../components/Arrow.astro";
 import ProductPreview from "../components/ProductPreview.astro";
+import ThemeScript from "../components/ThemeScript.astro";
 import "../styles/home.css";
 const scanners = [
   "Trivy",
@@ -30,7 +31,9 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
       name="description"
       content="Collect scanner reports, track findings across scans and explain what blocks a change. Specht is open-source vulnerability management you host yourself."
     />
-    <meta name="theme-color" content="#191817" />
+    <meta name="theme-color" content="#f4f2ec" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#191817" media="(prefers-color-scheme: dark)" />
+    <ThemeScript />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Specht · Know what blocks the next merge" />
     <meta
@@ -65,6 +68,11 @@ const canonical = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
           <a class="header-start" href={demo}>
             Try browser demo <Arrow />
           </a>
+          <select id="homepage-theme" class="theme-choice" aria-label="Color theme" hidden>
+            <option value="auto">System</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
         </nav>
       </header>
       <main id="main" tabindex="-1">
