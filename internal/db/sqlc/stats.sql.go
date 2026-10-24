@@ -21,7 +21,9 @@ SELECT
     f.state,
     EXISTS (
         SELECT 1 FROM finding_events e
-        WHERE e.finding_id = f.id AND e.event_type LIKE 'reopened%'
+        WHERE e.finding_id = f.id
+          AND (e.event_type = 'regression'
+               OR (e.event_type = 'state_changed' AND e.new_value = 'reopened'))
     ) AS reopened
 FROM open_findings f
 WHERE f.project_id = $1
