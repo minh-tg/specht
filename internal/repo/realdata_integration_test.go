@@ -400,7 +400,7 @@ func TestAgingRows_EndToEnd(t *testing.T) {
 	oldCritical := seed("fp-old-critical", 4, 40)
 	oldLow := seed("fp-old-low", 1, 100)
 	_, err = stores.Findings.CreateEvent(ctx, port.FindingEventInput{
-		FindingID: oldCritical, EventType: "reopened_severity_change",
+		FindingID: oldCritical, EventType: "regression", NewValue: strPtr("reopened"),
 	})
 	require.NoError(t, err)
 

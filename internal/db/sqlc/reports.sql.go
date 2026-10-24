@@ -680,7 +680,10 @@ WHERE f.project_id = $2
   AND (f.introduced_by_report_id = $1::uuid
        OR EXISTS (
            SELECT 1 FROM finding_occurrences fo
-           WHERE fo.finding_id = f.id AND fo.report_id = $1::uuid))
+           WHERE fo.finding_id = f.id AND fo.report_id = $1::uuid)
+       OR EXISTS (
+           SELECT 1 FROM finding_scope_severities s
+           WHERE s.finding_id = f.id AND s.report_id = $1::uuid))
 `
 
 type ListFindingsTouchedByReportParams struct {
@@ -725,7 +728,7 @@ WHERE project_id = $1
   AND ($5::text = '' OR
     CASE WHEN $6::boolean
       THEN starts_with(lower(commit_sha), lower($5::text))
-      ELSE commit_sha = $5::text
+      ELSE commit_sha = lower($5::text)
     END)
 ORDER BY created_at DESC, id DESC
 LIMIT $2 OFFSET $3
@@ -802,7 +805,13 @@ SELECT id, project_id FROM reports
 WHERE status IN ('completed', 'failed')
   AND COALESCE(completed_at, created_at) < $1
 ORDER BY COALESCE(completed_at, created_at), id
+LIMIT $2::integer
 `
+
+type ListStaleReportsParams struct {
+	CompletedAt pgtype.Timestamptz `json:"completed_at"`
+	BatchSize   int32              `json:"batch_size"`
+}
 
 type ListStaleReportsRow struct {
 	ID        pgtype.UUID `json:"id"`
@@ -812,8 +821,8 @@ type ListStaleReportsRow struct {
 // Retention purge: the settled reports older than the cutoff, oldest first.
 // Each one is removed with the same routine as an explicit delete, so both
 // paths leave the same state behind.
-func (q *Queries) ListStaleReports(ctx context.Context, completedAt pgtype.Timestamptz) ([]ListStaleReportsRow, error) {
-	rows, err := q.db.Query(ctx, listStaleReports, completedAt)
+func (q *Queries) ListStaleReports(ctx context.Context, arg ListStaleReportsParams) ([]ListStaleReportsRow, error) {
+	rows, err := q.db.Query(ctx, listStaleReports, arg.CompletedAt, arg.BatchSize)
 	if err != nil {
 		return nil, err
 	}
@@ -862,6 +871,15 @@ func (q *Queries) LockFindingsByIDs(ctx context.Context, findingIds []pgtype.UUI
 	return items, nil
 }
 
+const lockProjectIngest = `-- name: LockProjectIngest :exec
+SELECT pg_advisory_xact_lock(hashtextextended('ingest:' || $1::text, 0))
+`
+
+func (q *Queries) LockProjectIngest(ctx context.Context, projectID string) error {
+	_, err := q.db.Exec(ctx, lockProjectIngest, projectID)
+	return err
+}
+
 const lockReportForDelete = `-- name: LockReportForDelete :one
 SELECT status FROM reports WHERE id = $1 AND project_id = $2 FOR UPDATE
 `
@@ -878,6 +896,30 @@ func (q *Queries) LockReportForDelete(ctx context.Context, arg LockReportForDele
 	var status string
 	err := row.Scan(&status)
 	return status, err
+}
+
+const repointDuplicateScopeSeverity = `-- name: RepointDuplicateScopeSeverity :exec
+UPDATE finding_scope_severities s
+SET report_id = winner.id
+FROM reports loser, reports winner
+WHERE s.report_id = loser.id
+  AND loser.id = $1::uuid
+  AND winner.id = $2::uuid
+  AND loser.project_id = $3::uuid
+  AND winner.project_id = loser.project_id
+  AND winner.status = 'completed'
+  AND COALESCE(winner.scan_scope_hash, '') = COALESCE(loser.scan_scope_hash, '')
+`
+
+type RepointDuplicateScopeSeverityParams struct {
+	LoserID   pgtype.UUID `json:"loser_id"`
+	WinnerID  pgtype.UUID `json:"winner_id"`
+	ProjectID pgtype.UUID `json:"project_id"`
+}
+
+func (q *Queries) RepointDuplicateScopeSeverity(ctx context.Context, arg RepointDuplicateScopeSeverityParams) error {
+	_, err := q.db.Exec(ctx, repointDuplicateScopeSeverity, arg.LoserID, arg.WinnerID, arg.ProjectID)
+	return err
 }
 
 const repointIntroducedBy = `-- name: RepointIntroducedBy :execrows

@@ -27,6 +27,10 @@ var ErrNotFound = errors.New("not found")
 // the finding no longer matches the state the caller based it on.
 var ErrAnalysisConflict = errors.New("analysis state changed")
 
+// ErrFindingStillObserved means a verification basis is stale or another scope
+// still observes the finding. No fixed event is recorded.
+var ErrFindingStillObserved = errors.New("finding is still observed")
+
 // ErrWaiverNotPending is returned when a waiver decision targets a waiver
 // that already has a final status.
 var ErrWaiverNotPending = errors.New("waiver is not pending")
@@ -102,6 +106,14 @@ var ErrSlugTaken = errors.New("slug already taken")
 // ErrFindingSuppressed is returned by the watcher finding persist path when
 // the finding fingerprint already exists (a re-poll hit) and no row changed.
 var ErrFindingSuppressed = errors.New("finding already exists")
+
+// IngestTransaction serializes report ingests for one project and commits
+// finding, occurrence, inventory, audit and completion writes together. The
+// callback receives transaction-bound stores. Processing report rows are
+// created separately so a rolled-back attempt can still be recorded as failed.
+type IngestTransaction interface {
+	Run(ctx context.Context, projectID string, fn func(*Stores) error) error
+}
 
 // ---------- Projects ----------
 
@@ -951,15 +963,17 @@ type FindingStore interface {
 	// never sets it: VerifyFix is the analyst-facing path, backed by a
 	// rescan that no longer observes the finding.
 	MarkFixed(ctx context.Context, findingID string) (Finding, error)
-	// MarkFixedWithEvent atomically marks a finding fixed and records its audit event.
-	MarkFixedWithEvent(ctx context.Context, findingID string, event FindingEventInput) (Finding, error)
+	// MarkFixedWithEvent retires the verifying report's scope and only marks
+	// the finding fixed when no active scopes remain. The basis is rechecked
+	// under the finding lock. Other active evidence returns ErrFindingStillObserved.
+	MarkFixedWithEvent(ctx context.Context, findingID, reportID string, event FindingEventInput) (Finding, error)
 	// MarkAbsentFindingsFixed is the ingest-time auto-fix writer: it closes
-	// open or reopened findings whose most recent observation came from an
-	// equivalent complete scan (same project and scope hash) and that
-	// reportID does not observe, returning the closed findings. Callers gate
-	// it to full scans whose parsed
-	// completeness is "complete".
-	MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string) ([]Finding, error)
+	// open or reopened findings of the covered kinds whose most recent
+	// observation came from an equivalent complete scan (same project and
+	// scope hash) and that reportID does not observe, returning the closed
+	// findings. Callers gate it to full scans whose parsed completeness is
+	// "complete".
+	MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]Finding, error)
 	// BulkCreateEvents records one event shape for many findings in a
 	// single statement, keeping large closures (the auto-fix writer)
 	// O(1) in queries instead of O(findings).
@@ -1066,6 +1080,7 @@ type FindingDisplayContext struct {
 // gate.Gate.Evaluate is authoritative.
 type GateCandidate struct {
 	Finding
+	Aliases      []string
 	Context      FindingContext
 	Reachability string
 }
@@ -1259,7 +1274,7 @@ type ReportStore interface {
 	// DeleteStaleReports deletes settled reports older than the cutoff,
 	// returning their ids. Each goes through DeleteReportAndSettle, so a
 	// retention purge and an explicit delete leave the same state behind.
-	DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]string, error)
+	DeleteStaleReports(ctx context.Context, cutoff time.Time, limit int) ([]string, error)
 	// ClearRawData clears the raw_data payload of up to batchSize settled
 	// reports created before the cutoff and returns how many it cleared. The
 	// report rows and their findings are untouched.
@@ -1439,6 +1454,7 @@ type WatcherStore interface {
 // Stores is the aggregate persistence handle the core depends on. It is the
 // port counterpart of repo.Repos.
 type Stores struct {
+	Ingest          IngestTransaction
 	Projects        ProjectStore
 	Users           UserStore
 	RefreshTokens   RefreshTokenStore

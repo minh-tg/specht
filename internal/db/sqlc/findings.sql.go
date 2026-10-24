@@ -605,7 +605,10 @@ JOIN finding_dimensions dv
  AND dv.dim_value != ''
 WHERE f.project_id = $1
   AND f.finding_kind = 'sca'
-  AND COALESCE(substring(dp.dim_value from '^(.*)@'), dp.dim_value) = $2
+  AND CASE WHEN starts_with(dp.dim_value, 'pkg:')
+        THEN regexp_replace(dp.dim_value, '@[^/]*$', '')
+        ELSE COALESCE(substring(dp.dim_value from '^(.*)@'), dp.dim_value)
+      END = $2
   AND dv.dim_value = ANY($3::text[])
 LIMIT 1
 `
@@ -626,8 +629,8 @@ type FindScaFindingIdForPurlAndCveParams struct {
 //
 // Matching rules (gap-fill join keys):
 //   - purl dimension matches at NAME-LEVEL: the stored dimension value is
-//     truncated at the LAST '@' version separator, aligned with the Go
-//     purlNameLevel helper (findings.go), so version-less osv-scanner purls
+//     truncated at the last '@' after the final namespace separator,
+//     aligned with the Go purlNameLevel helper, so version-less osv-scanner purls
 //     still dedupe against versioned watcher candidates. A non-purl fallback
 //     containing '@' in its name (e.g. "corp@vendor/pkg@1.0.0") resolves to
 //     "corp@vendor/pkg" — the same name-level identity Go computes. Values
@@ -1468,7 +1471,7 @@ SELECT
     f.fingerprint,
     f.current_title,
     f.current_severity_rank,
-    f.analysis_state,
+    (CASE WHEN f.analysis_expires_at <= NOW() THEN 'unanalyzed' ELSE f.analysis_state END)::text AS analysis_state,
     f.introduced_by_report_id,
     f.introduced_commit_sha,
     COALESCE(ra.state, 'unknown'::reachability_state) AS reachability_state,
@@ -1480,7 +1483,10 @@ SELECT
         FROM finding_occurrences eo
         JOIN reports er ON eo.report_id = er.id
         WHERE eo.finding_id = f.id
-    )::text[] AS environment_ids
+    )::text[] AS environment_ids,
+    ARRAY(SELECT DISTINCT d.dim_value FROM finding_dimensions d
+          WHERE d.finding_id = f.id AND d.dim_key = 'alias'
+          ORDER BY d.dim_value)::text[] AS aliases
 FROM open_findings f
 LEFT JOIN LATERAL (
     SELECT r.environment_id, r.target_id, r.artifact_id
@@ -1499,7 +1505,7 @@ LEFT JOIN LATERAL (
 ) ra ON true
 WHERE f.project_id = $1
   AND f.current_severity_rank >= $2
-  AND f.gate_effect = 'block'
+  AND (f.gate_effect = 'block' OR f.analysis_expires_at <= NOW())
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 `
 
@@ -1523,6 +1529,7 @@ type ListGateCandidatesRow struct {
 	TargetID             pgtype.UUID       `json:"target_id"`
 	ArtifactID           pgtype.UUID       `json:"artifact_id"`
 	EnvironmentIds       []string          `json:"environment_ids"`
+	Aliases              []string          `json:"aliases"`
 }
 
 // Batch gate-candidate loader: one round trip returns every finding that may
@@ -1558,6 +1565,7 @@ func (q *Queries) ListGateCandidates(ctx context.Context, arg ListGateCandidates
 			&i.TargetID,
 			&i.ArtifactID,
 			&i.EnvironmentIds,
+			&i.Aliases,
 		); err != nil {
 			return nil, err
 		}
@@ -1577,7 +1585,7 @@ SELECT
     f.fingerprint,
     f.current_title,
     f.current_severity_rank,
-    f.analysis_state,
+    (CASE WHEN f.analysis_expires_at <= NOW() THEN 'unanalyzed' ELSE f.analysis_state END)::text AS analysis_state,
     f.introduced_by_report_id,
     f.introduced_commit_sha,
     COALESCE(ra.state, 'unknown'::reachability_state) AS reachability_state,
@@ -1590,6 +1598,9 @@ SELECT
         JOIN reports er ON eo.report_id = er.id
         WHERE eo.finding_id = f.id
     )::text[] AS environment_ids,
+    ARRAY(SELECT DISTINCT d.dim_value FROM finding_dimensions d
+          WHERE d.finding_id = f.id AND d.dim_key = 'alias'
+          ORDER BY d.dim_value)::text[] AS aliases,
     rif.change_type
 FROM report_introduced_findings rif
 JOIN open_findings f ON rif.finding_id = f.id
@@ -1611,7 +1622,7 @@ LEFT JOIN LATERAL (
 WHERE rif.report_id = $1
   AND f.current_severity_rank >= $2
   AND f.project_id = $3
-  AND f.gate_effect = 'block'
+  AND (f.gate_effect = 'block' OR f.analysis_expires_at <= NOW())
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC
 `
 
@@ -1636,6 +1647,7 @@ type ListIntroducedGateCandidatesRow struct {
 	TargetID             pgtype.UUID       `json:"target_id"`
 	ArtifactID           pgtype.UUID       `json:"artifact_id"`
 	EnvironmentIds       []string          `json:"environment_ids"`
+	Aliases              []string          `json:"aliases"`
 	ChangeType           string            `json:"change_type"`
 }
 
@@ -1663,6 +1675,7 @@ func (q *Queries) ListIntroducedGateCandidates(ctx context.Context, arg ListIntr
 			&i.TargetID,
 			&i.ArtifactID,
 			&i.EnvironmentIds,
+			&i.Aliases,
 			&i.ChangeType,
 		); err != nil {
 			return nil, err
@@ -1679,11 +1692,13 @@ const lockAbsentScopeFindings = `-- name: LockAbsentScopeFindings :many
 SELECT f.id
 FROM findings f
 JOIN finding_scope_severities s ON s.finding_id = f.id
-JOIN reports prior ON prior.id = s.report_id
+LEFT JOIN reports prior ON prior.id = s.report_id
 JOIN reports current ON current.id = $1
 WHERE f.project_id = $2
   AND s.scope_hash = $3
-  AND (prior.created_at, prior.id) < (current.created_at, current.id)
+  AND f.finding_kind = ANY($4::text[])
+  AND ((s.report_id IS NULL AND s.observed_at <= current.created_at)
+       OR (prior.created_at, prior.id) < (current.created_at, current.id))
   AND NOT EXISTS (
       SELECT 1 FROM finding_occurrences o
       WHERE o.finding_id = f.id AND o.report_id = current.id
@@ -1693,14 +1708,20 @@ FOR UPDATE OF f
 `
 
 type LockAbsentScopeFindingsParams struct {
-	ReportID  pgtype.UUID `json:"report_id"`
-	ProjectID pgtype.UUID `json:"project_id"`
-	ScopeHash string      `json:"scope_hash"`
+	ReportID     pgtype.UUID `json:"report_id"`
+	ProjectID    pgtype.UUID `json:"project_id"`
+	ScopeHash    string      `json:"scope_hash"`
+	FindingKinds []string    `json:"finding_kinds"`
 }
 
 // Lock before retiring scope rows so concurrent scoped upserts cannot be lost.
 func (q *Queries) LockAbsentScopeFindings(ctx context.Context, arg LockAbsentScopeFindingsParams) ([]pgtype.UUID, error) {
-	rows, err := q.db.Query(ctx, lockAbsentScopeFindings, arg.ReportID, arg.ProjectID, arg.ScopeHash)
+	rows, err := q.db.Query(ctx, lockAbsentScopeFindings,
+		arg.ReportID,
+		arg.ProjectID,
+		arg.ScopeHash,
+		arg.FindingKinds,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1764,6 +1785,8 @@ UPDATE findings
 SET state = 'fixed', updated_at = NOW()
 WHERE findings.project_id = $1
   AND findings.state IN ('open', 'reopened')
+  AND findings.finding_kind = ANY($4::text[])
+  AND NOT EXISTS (SELECT 1 FROM finding_scope_severities s WHERE s.finding_id = findings.id)
   AND NOT EXISTS (
       SELECT 1 FROM finding_occurrences occ
       WHERE occ.finding_id = findings.id
@@ -1790,6 +1813,7 @@ type MarkAbsentScopedFindingsFixedParams struct {
 	ProjectID     pgtype.UUID `json:"project_id"`
 	ScanScopeHash pgtype.Text `json:"scan_scope_hash"`
 	ReportID      pgtype.UUID `json:"report_id"`
+	FindingKinds  []string    `json:"finding_kinds"`
 }
 
 // Scan-equivalence auto-fix: closes findings whose most recent observation
@@ -1800,7 +1824,12 @@ type MarkAbsentScopedFindingsFixedParams struct {
 // incomplete scans never reach this query — the caller only invokes it
 // for full scans whose parsed completeness is 'complete'.
 func (q *Queries) MarkAbsentScopedFindingsFixed(ctx context.Context, arg MarkAbsentScopedFindingsFixedParams) ([]Finding, error) {
-	rows, err := q.db.Query(ctx, markAbsentScopedFindingsFixed, arg.ProjectID, arg.ScanScopeHash, arg.ReportID)
+	rows, err := q.db.Query(ctx, markAbsentScopedFindingsFixed,
+		arg.ProjectID,
+		arg.ScanScopeHash,
+		arg.ReportID,
+		arg.FindingKinds,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -2068,10 +2097,11 @@ DELETE FROM finding_scope_severities s
 WHERE s.finding_id = ANY($1::uuid[])
   AND s.scope_hash = $2
   AND EXISTS (
-      SELECT 1 FROM reports prior
-      JOIN reports current ON current.id = $3
-      WHERE prior.id = s.report_id
-        AND (prior.created_at, prior.id) < (current.created_at, current.id)
+      SELECT 1 FROM reports current
+      LEFT JOIN reports prior ON prior.id = s.report_id
+      WHERE current.id = $3
+        AND ((s.report_id IS NULL AND s.observed_at <= current.created_at)
+             OR (prior.created_at, prior.id) < (current.created_at, current.id))
   )
 `
 

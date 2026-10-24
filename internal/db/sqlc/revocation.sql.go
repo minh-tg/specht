@@ -25,7 +25,7 @@ func (q *Queries) IsAccessTokenRevoked(ctx context.Context, jti string) (bool, e
 	return revoked, err
 }
 
-const pruneRevokedAccessTokens = `-- name: PruneRevokedAccessTokens :exec
+const pruneRevokedAccessTokens = `-- name: PruneRevokedAccessTokens :execrows
 DELETE FROM revoked_access_tokens
 WHERE ctid IN (
     SELECT ctid FROM revoked_access_tokens
@@ -34,9 +34,12 @@ WHERE ctid IN (
 )
 `
 
-func (q *Queries) PruneRevokedAccessTokens(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, pruneRevokedAccessTokens)
-	return err
+func (q *Queries) PruneRevokedAccessTokens(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, pruneRevokedAccessTokens)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const revokeAccessToken = `-- name: RevokeAccessToken :exec

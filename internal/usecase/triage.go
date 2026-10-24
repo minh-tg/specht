@@ -17,6 +17,7 @@ var (
 	ErrFindingNotFound = errors.New("finding not found")
 	ErrReasonRequired  = errors.New("reason is required for this analysis state")
 	ErrExpiryRequired  = errors.New("expiry is required for accepted_risk and wont_fix")
+	ErrExpiryPassed    = errors.New("expiry must be in the future")
 	ErrInvalidState    = errors.New("invalid analysis state")
 	ErrTooManyFindings = errors.New("too many findings in one request")
 	ErrReasonTooLong   = errors.New("reason is too long")
@@ -152,8 +153,8 @@ func (u *Usecases) TriageFinding(ctx context.Context, input TriageInput) (*Triag
 	if stateRequiresReason(input.AnalysisState) && input.Reason == "" {
 		return nil, ErrReasonRequired
 	}
-	if stateRequiresExpiry(input.AnalysisState) && input.AnalysisExpiresAt == nil {
-		return nil, ErrExpiryRequired
+	if err := validateAnalysisExpiry(input.AnalysisState, input.AnalysisExpiresAt, u.clock()); err != nil {
+		return nil, err
 	}
 
 	gateEffect := stateToGateEffect(input.AnalysisState)
@@ -341,7 +342,7 @@ func (u *Usecases) BulkTriage(ctx context.Context, input BulkTriageInput) ([]Tri
 	if err := u.checkFindingRowsProjectEditor(ctx, findings); err != nil {
 		return nil, err
 	}
-	if err := validateBulkTriageRequirements(input, findings); err != nil {
+	if err := validateBulkTriageRequirements(input, findings, u.clock()); err != nil {
 		return nil, err
 	}
 
@@ -404,14 +405,27 @@ func validateBulkTriage(input BulkTriageInput) error {
 }
 
 // validateBulkTriageRequirements enforces reason/expiry rules per finding.
-func validateBulkTriageRequirements(input BulkTriageInput, findings []port.Finding) error {
+func validateBulkTriageRequirements(input BulkTriageInput, findings []port.Finding, now time.Time) error {
+	if err := validateAnalysisExpiry(input.AnalysisState, input.AnalysisExpiresAt, now); err != nil {
+		return err
+	}
 	for _, f := range findings {
 		if stateRequiresReason(input.AnalysisState) && input.Reason == "" {
 			return fmt.Errorf("finding %s: %w", f.ID, ErrReasonRequired)
 		}
-		if stateRequiresExpiry(input.AnalysisState) && input.AnalysisExpiresAt == nil {
-			return fmt.Errorf("finding %s: %w", f.ID, ErrExpiryRequired)
+	}
+	return nil
+}
+
+func validateAnalysisExpiry(state string, expiry *time.Time, now time.Time) error {
+	if expiry == nil {
+		if stateRequiresExpiry(state) {
+			return ErrExpiryRequired
 		}
+		return nil
+	}
+	if !expiry.After(now) {
+		return ErrExpiryPassed
 	}
 	return nil
 }

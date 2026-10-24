@@ -239,10 +239,10 @@ describe("AuthProvider logout", () => {
       expect(call!.init?.method).toBe("POST");
       expect(call!.init?.body).toBe(JSON.stringify({ refresh_token: "refresh-1" }));
     });
-    // The logout POST must not carry an Authorization header.
+    // The access token goes with the refresh token so the server retires it too.
     const logoutCall = calls.find((c) => c.url === "/api/v1/auth/logout")!;
     expect((logoutCall.init?.headers as Record<string, string> | undefined)?.Authorization)
-      .toBeUndefined();
+      .toBe("Bearer access-1");
 
     expect(screen.getByTestId("token")).toHaveTextContent("none");
     expect(screen.getByTestId("refresh")).toHaveTextContent("none");

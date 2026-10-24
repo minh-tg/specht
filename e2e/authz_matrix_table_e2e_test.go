@@ -236,7 +236,7 @@ func authzRows() []authzRow {
 		return with(base, outcomeDeny404, passers...)
 	}
 
-	return []authzRow{
+	rows := []authzRow{
 		// Meta and sign-in routes are public: the bearer is never read, so
 		// every caller class gets the same answer.
 		{Method: "GET", Pattern: "/api/v1/health", Path: api("/health"), Want: everyone(), Tenants: onlyX},
@@ -873,4 +873,26 @@ func authzRows() []authzRow {
 			Want: allowOnly(), Tenants: onlyX,
 		},
 	}
+	// ID-addressed findings hide inaccessible projects. Scope middleware still
+	// refuses keys on session-only actions, and visible members without the
+	// required action role still get 403.
+	for i := range rows {
+		row := &rows[i]
+		if !strings.HasPrefix(row.Pattern, "/api/v1/findings/") {
+			continue
+		}
+		row.Want = with(row.Want, outcomeDeny404, callerNoProject, callerTeamAdmin)
+		if row.Variant == "mixed-tenants" {
+			row.Want = with(row.Want, outcomeDeny404, callerMember, callerManager, callerProjectAdmin, callerTeamMember)
+		}
+		foreign := make(map[authzCaller]authzOutcome, len(authzCallers))
+		for _, caller := range authzCallers {
+			foreign[caller] = row.want(caller, authzTenantY)
+			if caller.isLiveSession() && caller != callerInstanceAdmin || row.Method == http.MethodGet && caller == callerKeyRead {
+				foreign[caller] = outcomeDeny404
+			}
+		}
+		row.Foreign = foreign
+	}
+	return rows
 }

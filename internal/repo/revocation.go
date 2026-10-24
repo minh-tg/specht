@@ -32,10 +32,12 @@ func (r *PostgresRevoker) Revoke(ctx context.Context, jti string, exp time.Time)
 	return nil
 }
 
+// PruneExpired deletes at most 1000 expired revocations per lifecycle sweep.
+func (r *PostgresRevoker) PruneExpired(ctx context.Context) (int64, error) {
+	return r.q.PruneRevokedAccessTokens(ctx)
+}
+
 func (r *PostgresRevoker) IsRevoked(ctx context.Context, jti string) (bool, error) {
-	if err := r.q.PruneRevokedAccessTokens(ctx); err != nil {
-		return false, fmt.Errorf("prune token revocations: %w", err)
-	}
 	revoked, err := r.q.IsAccessTokenRevoked(ctx, jti)
 	if err != nil {
 		return false, fmt.Errorf("check token revocation: %w", err)

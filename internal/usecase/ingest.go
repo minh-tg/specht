@@ -110,11 +110,14 @@ func validateIngestInput(input IngestReportInput) (IngestReportInput, error) {
 	// everywhere, so store them canonical. Branches are case-sensitive and
 	// untouched.
 	input.CommitSha = normalizeRevision(input.CommitSha)
-	input.BaseRevision = normalizeRevision(input.BaseRevision)
+	// BaseRevision is either a commit or a branch name. A branch is
+	// case-sensitive, so only trim it here; commit comparison normalizes the
+	// SHA at the lookup.
+	input.BaseRevision = strings.TrimSpace(input.BaseRevision)
 	if scanMode == ScanModeIncremental && input.BaseRevision == "" {
 		return input, fmt.Errorf("incremental scan requires base_revision")
 	}
-	if scanMode == ScanModeIncremental && input.CommitSha != "" && input.BaseRevision == input.CommitSha {
+	if scanMode == ScanModeIncremental && input.CommitSha != "" && sameRevision(input.BaseRevision, input.CommitSha) {
 		return input, fmt.Errorf("incremental scan requires base_revision to differ from commit_sha")
 	}
 	return input, nil
@@ -219,6 +222,15 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	// ingests normally: scanner output is often byte-identical when nothing
 	// changed.
 	rawHash := reportHash(sc, originalData, nr, redactionFailed)
+	if u.deps.Stores.Ingest != nil {
+		return u.ingestAtomically(ctx, project, input, nr, scopeHash, rawHash)
+	}
+	return u.ingestParsedReport(ctx, project, input, nr, scopeHash, rawHash, u.createReport)
+}
+
+type reportCreator func(context.Context, port.Project, IngestReportInput, *domain.NormalizedReport, reportContext, string, string) (port.Report, error)
+
+func (u *Usecases) ingestParsedReport(ctx context.Context, project port.Project, input IngestReportInput, nr *domain.NormalizedReport, scopeHash, rawHash string, create reportCreator) (*IngestReportOutput, error) {
 	replayID, err := u.findReplayReport(ctx, project.ID, rawHash, input.CommitSha, scopeHash)
 	if err != nil {
 		return nil, err
@@ -231,6 +243,10 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	// row is written: unsupported scanners and missing baselines fall
 	// back to full with an explicit reason instead of recording partial
 	// coverage as if it were complete.
+	sc, err := u.deps.Registry.Get(input.Scanner)
+	if err != nil {
+		return nil, err
+	}
 	effectiveMode, fallbackReason, baselineID, err := u.resolveScanMode(ctx, project, sc, input)
 	if err != nil {
 		return nil, err
@@ -249,7 +265,7 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, err
 	}
 
-	report, err := u.createReport(ctx, project, input, nr, ctxInfo, scopeHash, rawHash)
+	report, err := create(ctx, project, input, nr, ctxInfo, scopeHash, rawHash)
 	if err != nil {
 		return nil, err
 	}
@@ -302,7 +318,13 @@ func (u *Usecases) autoFixAbsentFindings(ctx context.Context, project port.Proje
 	if input.ScanMode != ScanModeFull || nr.Completeness != domain.CompletenessComplete {
 		return nil
 	}
-	fixed, err := u.deps.Stores.Findings.MarkAbsentFindingsFixed(ctx, project.ID, scopeHash, report.ID)
+	if len(nr.CoveredFindingKinds) == 0 {
+		// The report does not vouch for any finding kind. An empty Trivy
+		// report, an SBOM inventory or a partial scan must not close rows it
+		// never examined.
+		return nil
+	}
+	fixed, err := u.deps.Stores.Findings.MarkAbsentFindingsFixed(ctx, project.ID, scopeHash, report.ID, nr.CoveredFindingKinds)
 	if err != nil {
 		return fmt.Errorf("auto-fix absent findings: %w", err)
 	}
@@ -412,11 +434,33 @@ func reportTotalFindings(report port.Report) int {
 // passes a branch name for pull requests, so when no commit matches, the
 // newest full report on that branch is the baseline.
 func (u *Usecases) findBaselineReport(ctx context.Context, projectID, scanner, revision string) (port.CompletedReport, error) {
-	base, err := u.deps.Stores.Reports.GetCompletedByCommit(ctx, projectID, scanner, revision)
+	// Commits are stored lowercase; a branch name keeps its case.
+	base, err := u.deps.Stores.Reports.GetCompletedByCommit(ctx, projectID, scanner, normalizeRevision(revision))
 	if !errors.Is(err, port.ErrNotFound) {
 		return base, err
 	}
 	return u.deps.Stores.Reports.GetLatestFullByBranch(ctx, projectID, scanner, revision)
+}
+
+// sameRevision reports whether two revision strings name the same SHA. A
+// branch name is not a SHA, so it compares exactly.
+func sameRevision(a, b string) bool {
+	if looksLikeCommit(a) && looksLikeCommit(b) {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
+}
+
+func looksLikeCommit(s string) bool {
+	if len(s) < 7 || len(s) > 64 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 // resolveBaseRevision fills the baseline from the base revision when scan
@@ -756,6 +800,7 @@ type ingestFindingsState struct {
 	known        map[string]port.Finding
 	knownIDs     []string
 	baselineSeen map[string]bool
+	createdSeen  map[string]bool
 	// scopeHash is the scan scope of this ingest (see scanScopeHash).
 	scopeHash string
 	// scopeSev holds the per-scope severities of the known findings.
@@ -785,6 +830,7 @@ func (u *Usecases) ingestReportFindings(ctx context.Context, project port.Projec
 		nowTime:        now(),
 		known:          make(map[string]port.Finding),
 		baselineSeen:   make(map[string]bool),
+		createdSeen:    make(map[string]bool),
 		seenIntroduced: make(map[string]bool),
 		batchStore:     batchStore,
 		scopeHash:      scanScopeHash(input, nr),
@@ -887,7 +933,8 @@ func classifyIngestChange(exists, regression bool, baselineID string, baselineSe
 // occurrence, dimensions, events, and material-change evaluation. final marks
 // the last time the report names this finding.
 func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState, f domain.NormalizedFinding, final bool) error {
-	existing, exists := st.known[f.FindingKind+"\x00"+f.Fingerprint]
+	key := f.FindingKind + "\x00" + f.Fingerprint
+	existing, exists := st.known[key]
 	newRank := severityRank(f.Severity)
 	// An archived finding lost its evidence with a deleted report. Seeing it
 	// again is a new finding as far as this report is concerned.
@@ -897,6 +944,12 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 	upserted, err := u.upsertFindingRow(ctx, st, f, incoming)
 	if err != nil {
 		return err
+	}
+	// A report may name one finding more than once. Keep the map current for
+	// a newly created finding; createdSeen below suppresses a second event
+	// for an archived finding that already dispatched one in this report.
+	if !exists {
+		st.known[key] = upserted
 	}
 	project := severityValue{text: upserted.CurrentSeverity, rank: upserted.CurrentSeverityRank}
 	if err := u.recordScopeSeverity(ctx, st, upserted, existing, exists, final, incoming, project); err != nil {
@@ -916,7 +969,11 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 	if regression {
 		u.logRegressionEvent(ctx, st, upserted, f, newRank, existing.State)
 	}
-	u.dispatchCreatedEvent(ctx, st, upserted, f, newRank, !known)
+	created := !known && !st.createdSeen[key]
+	u.dispatchCreatedEvent(ctx, st, upserted, f, newRank, created)
+	if created {
+		st.createdSeen[key] = true
+	}
 
 	if st.batchStore == nil {
 		if err := u.createFindingOccurrence(ctx, st, upserted, f); err != nil {
@@ -925,15 +982,36 @@ func (u *Usecases) ingestOneFinding(ctx context.Context, st *ingestFindingsState
 	} else {
 		st.occurrences = append(st.occurrences, findingOccurrenceInput(st, upserted, f))
 	}
+	// Read whether the fix already existed before the new dimensions are
+	// written. applyMaterialChange compares against this to report a fix that
+	// became available for the first time.
+	var priorFix *bool
+	if exists && hasFixDimension(f) {
+		hadFix, err := u.deps.Stores.Findings.HasDimension(ctx, existing.ID, domain.DimFixedVersion)
+		if err != nil {
+			return fmt.Errorf("check previous fixed version for finding %q: %w", upserted.ID, err)
+		}
+		priorFix = &hadFix
+	}
 	if err := u.upsertFindingDimensions(ctx, st, upserted, f); err != nil {
 		return err
 	}
 
 	if exists && (existing.AnalysisState != string(finding.StateUnanalyzed) || existing.GateEffect == string(finding.EffectIgnore)) {
 		return u.applyMaterialChange(ctx, st.input, upserted, f,
-			existing.CurrentSeverityRank, project.rank, existing.GateEffect, existing.AnalysisState)
+			existing.CurrentSeverityRank, project.rank, existing.GateEffect, existing.AnalysisState, priorFix)
 	}
 	return nil
+}
+
+// hasFixDimension reports whether the scan reported a non-empty fixed version.
+func hasFixDimension(f domain.NormalizedFinding) bool {
+	for _, d := range f.Dimensions {
+		if d.Key == domain.DimFixedVersion && d.Value != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // tallyIngest records the introduced/pre-existing counters, deduplicating
@@ -1058,24 +1136,37 @@ func (u *Usecases) createFindingOccurrence(ctx context.Context, st *ingestFindin
 // warning) anything the fingerprint contract does not recognize.
 func (u *Usecases) upsertFindingDimensions(ctx context.Context, st *ingestFindingsState, upserted port.Finding, f domain.NormalizedFinding) error {
 	source := textPtr(st.input.Scanner)
+	write := func(dimension port.DimensionInput) error {
+		if st.batchStore != nil && dimension.Key != domain.DimFixedVersion {
+			st.dimensions = append(st.dimensions, dimension)
+			return nil
+		}
+		if err := u.deps.Stores.Findings.UpsertDimension(ctx, dimension); err != nil {
+			slog.Error("upsert dimension failed", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "error", err)
+			return fmt.Errorf("scanner %s: upsert dimension for %q: %w", st.input.Scanner, f.Fingerprint, err)
+		}
+		return nil
+	}
 	for _, d := range f.Dimensions {
 		if !isCanonicalDimension(d.Key) {
 			slog.Warn("drop non-canonical dimension", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "key", d.Key)
 			continue
 		}
-		dimension := port.DimensionInput{
-			FindingID: upserted.ID,
-			Key:       d.Key,
-			Value:     d.Value,
-			Source:    source,
+		if err := write(port.DimensionInput{FindingID: upserted.ID, Key: d.Key, Value: d.Value, Source: source}); err != nil {
+			return err
 		}
-		if st.batchStore != nil && d.Key != domain.DimFixedVersion {
-			st.dimensions = append(st.dimensions, dimension)
+	}
+	// Aliases are first-class waiver and gate inputs. Parsers carry them on
+	// the finding, not in Dimensions, so persist one row per alias here.
+	seen := make(map[string]bool, len(f.Aliases))
+	for _, alias := range f.Aliases {
+		alias = strings.TrimSpace(alias)
+		if alias == "" || seen[alias] {
 			continue
 		}
-		if err := u.deps.Stores.Findings.UpsertDimension(ctx, dimension); err != nil {
-			slog.Error("upsert dimension failed", "scanner", st.input.Scanner, "fingerprint", f.Fingerprint, "error", err)
-			return fmt.Errorf("scanner %s: upsert dimension for %q: %w", st.input.Scanner, f.Fingerprint, err)
+		seen[alias] = true
+		if err := write(port.DimensionInput{FindingID: upserted.ID, Key: domain.DimAlias, Value: alias, Source: source}); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -1120,21 +1211,19 @@ func (u *Usecases) recordIntroducedFindings(ctx context.Context, st *ingestFindi
 // applyMaterialChange runs finding.EvaluateChange on a previously-known
 // finding and, when the change demands review, marks review_required and logs
 // the material-change event.
-func (u *Usecases) applyMaterialChange(ctx context.Context, input IngestReportInput, upserted port.Finding, f domain.NormalizedFinding, oldRank, newRank int16, oldGateEffect, oldAnalysisState string) error {
-	hasNewFix := false
-	for _, d := range f.Dimensions {
-		if d.Key == domain.DimFixedVersion && d.Value != "" {
-			hasNewFix = true
-			break
-		}
-	}
+func (u *Usecases) applyMaterialChange(ctx context.Context, input IngestReportInput, upserted port.Finding, f domain.NormalizedFinding, oldRank, newRank int16, oldGateEffect, oldAnalysisState string, priorFix *bool) error {
+	hasNewFix := hasFixDimension(f)
 
 	var hadOldFix bool
 	if hasNewFix {
-		var err error
-		hadOldFix, err = u.deps.Stores.Findings.HasDimension(ctx, upserted.ID, domain.DimFixedVersion)
-		if err != nil {
-			return fmt.Errorf("check previous fixed version for finding %q: %w", upserted.ID, err)
+		if priorFix != nil {
+			hadOldFix = *priorFix
+		} else {
+			var err error
+			hadOldFix, err = u.deps.Stores.Findings.HasDimension(ctx, upserted.ID, domain.DimFixedVersion)
+			if err != nil {
+				return fmt.Errorf("check previous fixed version for finding %q: %w", upserted.ID, err)
+			}
 		}
 	}
 
@@ -1223,6 +1312,10 @@ func reportFailureReasonForResponse(stored *string) *string {
 // what the caller returns.
 func (u *Usecases) markReportFailed(ctx context.Context, input IngestReportInput, report port.Report, reason string, cause error) {
 	if cause == nil {
+		return
+	}
+	if u.ingestAtomic {
+		u.ingestFailure = reason
 		return
 	}
 	// The failure is often the context itself: a client that hung up, or the

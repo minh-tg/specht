@@ -10,14 +10,13 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minh-tg/specht/internal/db/sqlc"
 	"github.com/minh-tg/specht/internal/port"
 )
 
 type pgReportRepo struct {
 	q    *sqlc.Queries
-	pool *pgxpool.Pool
+	pool transactionStarter
 }
 
 // CreateReportParams is the input to creating a report row.
@@ -207,11 +206,14 @@ func (r *pgReportRepo) ClearRawDataBefore(ctx context.Context, cutoff time.Time,
 	return ids, nil
 }
 
-// DeleteStaleReports removes the settled reports older than the cutoff, one
-// transaction each, and returns the ids it removed. A report that a scan took
-// back or someone else already deleted is skipped.
-func (r *pgReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]pgtype.UUID, error) {
-	stale, err := r.q.ListStaleReports(ctx, uuidFromTime(cutoff))
+// DeleteStaleReports removes at most limit settled reports older than the
+// cutoff, one transaction each, and returns the ids it removed. A report that
+// a scan took back or someone else already deleted is skipped.
+func (r *pgReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Time, limit int) ([]pgtype.UUID, error) {
+	if limit <= 0 {
+		return nil, fmt.Errorf("stale report limit must be positive, got %d", limit)
+	}
+	stale, err := r.q.ListStaleReports(ctx, sqlc.ListStaleReportsParams{CompletedAt: uuidFromTime(cutoff), BatchSize: int32(limit)})
 	if err != nil {
 		return nil, err
 	}
@@ -355,6 +357,20 @@ func (r *pgReportRepo) DeleteDuplicateReport(ctx context.Context, id, projectID,
 	}()
 
 	q := sqlc.New(tx)
+	touched, err := q.ListFindingsTouchedByReport(ctx, sqlc.ListFindingsTouchedByReportParams{ReportID: id, ProjectID: projectID})
+	if err != nil {
+		return err
+	}
+	ids := make([]pgtype.UUID, len(touched))
+	for i, f := range touched {
+		ids[i] = f.ID
+	}
+	if _, err := q.LockFindingsByIDs(ctx, ids); err != nil {
+		return err
+	}
+	if err := q.RepointDuplicateScopeSeverity(ctx, sqlc.RepointDuplicateScopeSeverityParams{LoserID: id, WinnerID: winnerID, ProjectID: projectID}); err != nil {
+		return fmt.Errorf("repoint duplicate scope: %w", err)
+	}
 	if err := q.ReassignFindingIntroducedBy(ctx, sqlc.ReassignFindingIntroducedByParams{
 		ProjectID:              projectID,
 		IntroducedByReportID:   id,

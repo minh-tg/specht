@@ -128,9 +128,10 @@ func TestSetProjectPolicy_OverridesWin(t *testing.T) {
 		return port.PolicyTemplate{}, port.ErrNotFound
 	}
 
-	out, err := uc.SetProjectPolicyOverrides(adminCtx(), "my-app", map[string]string{"severity_floor": "low"})
+	out, err := uc.SetProjectPolicyOverrides(adminCtx(), "my-app", map[string]string{"severity_floor": "LOW", "watcher_gate": "OFF"})
 	require.NoError(t, err)
 	assert.Equal(t, "low", out.SeverityFloor)
+	assert.Equal(t, "off", out.WatcherGate, "accepted values are stored in canonical form")
 	assert.Equal(t, "override", out.SeveritySource)
 	assert.Nil(t, out.TemplateName)
 

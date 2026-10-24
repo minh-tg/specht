@@ -8,14 +8,13 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minh-tg/specht/internal/db/sqlc"
 	"github.com/minh-tg/specht/internal/port"
 )
 
 type pgFindingRepo struct {
 	q    *sqlc.Queries
-	pool *pgxpool.Pool
+	pool transactionStarter
 }
 
 // UpsertFindingParams is the input to upserting a finding row.
@@ -170,13 +169,58 @@ func (r *pgFindingRepo) MarkFixed(ctx context.Context, findingID pgtype.UUID) (s
 	return r.q.MarkFindingFixed(ctx, findingID)
 }
 
-func (r *pgFindingRepo) MarkFixedWithEvent(ctx context.Context, findingID pgtype.UUID, event CreateEventParams) (sqlc.Finding, error) {
+func (r *pgFindingRepo) MarkFixedWithEvent(ctx context.Context, findingID, reportID pgtype.UUID, event CreateEventParams) (sqlc.Finding, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return sqlc.Finding{}, fmt.Errorf("begin tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	q := sqlc.New(tx)
+	ids := []pgtype.UUID{findingID}
+	if _, err := q.LockFindingsByIDs(ctx, ids); err != nil {
+		return sqlc.Finding{}, err
+	}
+	current, err := q.GetFindingByID(ctx, findingID)
+	if err != nil {
+		return sqlc.Finding{}, err
+	}
+	basis, err := q.LatestCompletedFullReportInFindingScope(ctx, sqlc.LatestCompletedFullReportInFindingScopeParams{ProjectID: current.ProjectID, FindingID: findingID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return sqlc.Finding{}, port.ErrFindingStillObserved
+	}
+	if err != nil {
+		return sqlc.Finding{}, err
+	}
+	if basis.ID != reportID || basis.ScanCompleteness != "complete" || !basis.CreatedAt.Time.After(current.LastSeenAt.Time) {
+		return sqlc.Finding{}, port.ErrFindingStillObserved
+	}
+	present, err := q.OccurrenceExists(ctx, sqlc.OccurrenceExistsParams{FindingID: findingID, ReportID: reportID})
+	if err != nil {
+		return sqlc.Finding{}, err
+	}
+	if present {
+		return sqlc.Finding{}, port.ErrFindingStillObserved
+	}
+	scope, err := q.ReportScanScopeHash(ctx, sqlc.ReportScanScopeHashParams{ID: reportID, ProjectID: current.ProjectID})
+	if err != nil {
+		return sqlc.Finding{}, err
+	}
+	if err := q.RetireAbsentScopeSeverities(ctx, sqlc.RetireAbsentScopeSeveritiesParams{FindingIds: ids, ScopeHash: scope, ReportID: reportID}); err != nil {
+		return sqlc.Finding{}, err
+	}
+	if err := q.RefreshFindingScopeSeverities(ctx, ids); err != nil {
+		return sqlc.Finding{}, err
+	}
+	scopes, err := q.ListFindingScopeSeverities(ctx, ids)
+	if err != nil {
+		return sqlc.Finding{}, err
+	}
+	if len(scopes) > 0 {
+		if err := tx.Commit(ctx); err != nil {
+			return sqlc.Finding{}, err
+		}
+		return sqlc.Finding{}, port.ErrFindingStillObserved
+	}
 	updated, err := q.MarkFindingFixed(ctx, findingID)
 	if err != nil {
 		return sqlc.Finding{}, fmt.Errorf("mark fixed: %w", err)

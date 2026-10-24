@@ -183,7 +183,7 @@ func (u *Usecases) GetFindingCVE(ctx context.Context, findingID string) (*CVEDet
 		}
 		return nil, fmt.Errorf("get finding: %w", err)
 	}
-	if err := u.checkFindingProjectIDAccess(ctx, f.ProjectID); err != nil {
+	if err := u.checkFindingVisibility(ctx, f.ProjectID); err != nil {
 		return nil, err
 	}
 	dims, err := u.deps.Stores.Findings.ListDimensions(ctx, id.String())
@@ -195,6 +195,17 @@ func (u *Usecases) GetFindingCVE(ctx context.Context, findingID string) (*CVEDet
 		if d.Key == "vulnerability_id" && cvedetail.ValidCVEID(d.Value) {
 			cve = d.Value
 			break
+		}
+	}
+	if cve == "" {
+		// A scanner can use a GHSA as the primary id and carry the CVE as an
+		// alias. The alias is a valid identity for the provider and intel
+		// lookups, so use it when the primary id is not a CVE.
+		for _, d := range dims {
+			if d.Key == "alias" && cvedetail.ValidCVEID(d.Value) {
+				cve = d.Value
+				break
+			}
 		}
 	}
 	if cve == "" {

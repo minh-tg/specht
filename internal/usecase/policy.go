@@ -167,11 +167,8 @@ func (u *Usecases) SetProjectPolicyOverrides(ctx context.Context, projectSlug st
 	if err := u.requireProjectAdmin(ctx, project.ID); err != nil {
 		return nil, err
 	}
-	normalized := make(map[string]string, len(overrides))
-	for k, v := range overrides {
-		normalized[k] = v
-	}
-	if _, err := policy.ParseDefinition(mustMarshal(normalized)); err != nil {
+	normalized, err := policy.ParseDefinition(mustMarshal(overrides))
+	if err != nil {
 		return nil, err
 	}
 	merged, err := projectSettingsWithPolicy(project.Settings, normalized)

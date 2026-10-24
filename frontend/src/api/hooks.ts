@@ -665,6 +665,7 @@ export function useAddProjectMember(slug: string) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.projectMembers(slug) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.project(slug) });
     },
   });
 }
@@ -673,6 +674,7 @@ export function useRemoveProjectMember(slug: string) {
   const queryClient = useQueryClient();
   const refresh = () => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.projectMembers(slug) });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.project(slug) });
   };
   return useMutation({
     meta: {

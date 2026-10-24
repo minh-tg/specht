@@ -190,6 +190,10 @@ type Usecases struct {
 	gate     gate.Gate
 	gateOnce sync.Once
 
+	// These fields belong only to the per-ingest instance inside a transaction.
+	ingestAtomic  bool
+	ingestFailure string
+
 	// intelRefresh runs EPSS/KEV refreshes for finding reads off the
 	// request path.
 	intelRefresh intelRefresher
@@ -257,6 +261,7 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 			Source:               c.FindingKind,
 			IntroducedByReportID: derefOrEmpty(c.IntroducedByReportID),
 			IntroducedCommitSha:  derefOrEmpty(c.IntroducedCommitSha),
+			Aliases:              c.Aliases,
 		}
 	}
 	return result, nil
@@ -292,6 +297,7 @@ func (a *gateFindingRepo) ListIntroducedGateCandidates(ctx context.Context, proj
 			Source:               c.FindingKind,
 			IntroducedByReportID: derefOrEmpty(c.IntroducedByReportID),
 			IntroducedCommitSha:  derefOrEmpty(c.IntroducedCommitSha),
+			Aliases:              c.Aliases,
 		}
 	}
 	return result, nil

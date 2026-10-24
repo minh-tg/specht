@@ -11,11 +11,16 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minh-tg/specht/internal/db/sqlc"
 	"github.com/minh-tg/specht/internal/port"
 )
+
+type transactionStarter interface {
+	Begin(context.Context) (pgx.Tx, error)
+}
 
 // Repos is the aggregate persistence handle: one field per domain repository,
 // backed by a shared pgx pool. It is the single repo value wired into use
@@ -106,7 +111,7 @@ type ReportRepo interface {
 	CountStaleReports(ctx context.Context, cutoff time.Time) (int64, error)
 	FailStaleReports(ctx context.Context, cutoff time.Time, reason string) (int64, error)
 	SettleFailedReport(ctx context.Context, id, projectID pgtype.UUID) error
-	DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]pgtype.UUID, error)
+	DeleteStaleReports(ctx context.Context, cutoff time.Time, limit int) ([]pgtype.UUID, error)
 	ClearRawDataBefore(ctx context.Context, cutoff time.Time, batchSize int32) ([]pgtype.UUID, error)
 	FindCompletedByReplayKey(ctx context.Context, projectID pgtype.UUID, rawHash, commitSha, scopeHash pgtype.Text) (pgtype.UUID, error)
 	DeleteReport(ctx context.Context, id, projectID pgtype.UUID) error

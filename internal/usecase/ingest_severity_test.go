@@ -127,12 +127,13 @@ func runSeverityIngestSeq(t *testing.T, branch string, severities []domain.Sever
 		name: "trivy",
 		parseFn: func(ctx context.Context, input []byte) (*domain.NormalizedReport, error) {
 			return &domain.NormalizedReport{
-				ContractVersion:    1,
-				FingerprintVersion: 1,
-				Completeness:       domain.CompletenessComplete,
-				ScanType:           domain.ScanTypeImage,
-				Target:             &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
-				Findings:           findings,
+				ContractVersion:     1,
+				FingerprintVersion:  1,
+				Completeness:        domain.CompletenessComplete,
+				CoveredFindingKinds: []string{"sca", "sast", "iac", "secret", "dast"},
+				ScanType:            domain.ScanTypeImage,
+				Target:              &domain.TargetInfo{Kind: "container", Identifier: "myapp:latest"},
+				Findings:            findings,
 			}, nil
 		},
 	}))

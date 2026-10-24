@@ -270,8 +270,8 @@ func (r *pgReportPort) ClearRawData(ctx context.Context, cutoff time.Time, batch
 	return int64(len(ids)), nil
 }
 
-func (r *pgReportPort) DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]string, error) {
-	ids, err := r.inner.DeleteStaleReports(ctx, cutoff)
+func (r *pgReportPort) DeleteStaleReports(ctx context.Context, cutoff time.Time, limit int) ([]string, error) {
+	ids, err := r.inner.DeleteStaleReports(ctx, cutoff, limit)
 	if err != nil {
 		return nil, mappingErr(err)
 	}
@@ -999,7 +999,7 @@ func (r *pgFindingPort) MarkFixed(ctx context.Context, findingID string) (port.F
 	return findingRowToPort(row), nil
 }
 
-func (r *pgFindingPort) MarkFixedWithEvent(ctx context.Context, findingID string, event port.FindingEventInput) (port.Finding, error) {
+func (r *pgFindingPort) MarkFixedWithEvent(ctx context.Context, findingID, reportID string, event port.FindingEventInput) (port.Finding, error) {
 	fid, err := parseID(findingID)
 	if err != nil {
 		return port.Finding{}, err
@@ -1008,7 +1008,11 @@ func (r *pgFindingPort) MarkFixedWithEvent(ctx context.Context, findingID string
 	if err != nil {
 		return port.Finding{}, err
 	}
-	row, err := r.inner.MarkFixedWithEvent(ctx, fid, CreateEventParams{
+	rid, err := parseID(reportID)
+	if err != nil {
+		return port.Finding{}, err
+	}
+	row, err := r.inner.MarkFixedWithEvent(ctx, fid, rid, CreateEventParams{
 		FindingID: eventID, UserID: uuidPtrFromString(event.UserID), EventType: event.EventType,
 		OldValue: textPtrFromString(event.OldValue), NewValue: textPtrFromString(event.NewValue), Comment: textPtrFromString(event.Comment), Changes: event.Changes,
 	})
@@ -1020,7 +1024,7 @@ func (r *pgFindingPort) MarkFixedWithEvent(ctx context.Context, findingID string
 
 // MarkAbsentFindingsFixed implements the scan-equivalence auto-fix writer:
 // the SQL closes qualifying rows and returns them so the caller can log events.
-func (r *pgFindingPort) MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
+func (r *pgFindingPort) MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]port.Finding, error) {
 	pid, err := parseID(projectID)
 	if err != nil {
 		return nil, err
@@ -1033,6 +1037,7 @@ func (r *pgFindingPort) MarkAbsentFindingsFixed(ctx context.Context, projectID, 
 		ProjectID:     pid,
 		ScanScopeHash: textPtrFromString(&scopeHash),
 		ReportID:      rid,
+		FindingKinds:  findingKinds,
 	})
 	if err != nil {
 		return nil, mappingErr(err)
@@ -1218,6 +1223,7 @@ func (r *pgFindingPort) ListGateCandidates(ctx context.Context, projectID string
 				EnvironmentIDs: row.EnvironmentIds,
 			},
 			Reachability: string(row.ReachabilityState),
+			Aliases:      row.Aliases,
 		}
 	}
 	return out, nil
@@ -1257,6 +1263,7 @@ func (r *pgFindingPort) ListIntroducedGateCandidates(ctx context.Context, projec
 				EnvironmentIDs: row.EnvironmentIds,
 			},
 			Reachability: string(row.ReachabilityState),
+			Aliases:      row.Aliases,
 		}
 	}
 	return out, nil

@@ -441,7 +441,7 @@ type mockReportRepo struct {
 	byBranchFn                 func(context.Context, string, string, string) (port.CompletedReport, error)
 	findingScopeFn             func(context.Context, string, string) (port.CompletedReport, error)
 	countStaleFn               func(context.Context, time.Time) (int64, error)
-	deleteStaleFn              func(context.Context, time.Time) ([]string, error)
+	deleteStaleFn              func(context.Context, time.Time, int) ([]string, error)
 	findCompletedByReplayKeyFn func(context.Context, string, string, string, string) (string, error)
 	deleteReportFn             func(context.Context, string, string) error
 	deleteDuplicateReportFn    func(context.Context, string, string, string) error
@@ -526,11 +526,11 @@ func (m *mockReportRepo) CountStaleReports(ctx context.Context, cutoff time.Time
 	return m.countStaleFn(ctx, cutoff)
 }
 
-func (m *mockReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Time) ([]string, error) {
+func (m *mockReportRepo) DeleteStaleReports(ctx context.Context, cutoff time.Time, limit int) ([]string, error) {
 	if m.deleteStaleFn == nil {
 		return nil, fmt.Errorf("unexpected call to DeleteStaleReports")
 	}
-	return m.deleteStaleFn(ctx, cutoff)
+	return m.deleteStaleFn(ctx, cutoff, limit)
 }
 
 func (m *mockReportRepo) FindCompletedByReplayKey(ctx context.Context, projectID, rawHash, commit, scopeHash string) (string, error) {
@@ -630,7 +630,7 @@ type mockFindingRepo struct {
 	port.FindingStore
 	hasOccurrenceFn                   func(context.Context, string, string) (bool, error)
 	markFixedFn                       func(context.Context, string) (port.Finding, error)
-	markAbsentFixedFn                 func(context.Context, string, string, string) ([]port.Finding, error)
+	markAbsentFixedFn                 func(context.Context, string, string, string, []string) ([]port.Finding, error)
 	bulkCreateEventsFn                func(context.Context, []string, port.FindingEventInput) error
 	createOccurrenceFn                func(context.Context, port.OccurrenceInput) (port.Occurrence, error)
 	upsertDimensionFn                 func(context.Context, port.DimensionInput) error
@@ -956,7 +956,7 @@ func (m *mockFindingRepo) HasOccurrence(ctx context.Context, findingID, reportID
 	return m.hasOccurrenceFn(ctx, findingID, reportID)
 }
 
-func (m *mockFindingRepo) MarkFixedWithEvent(ctx context.Context, findingID string, event port.FindingEventInput) (port.Finding, error) {
+func (m *mockFindingRepo) MarkFixedWithEvent(ctx context.Context, findingID, reportID string, event port.FindingEventInput) (port.Finding, error) {
 	if m.markFixedWithEventFn != nil {
 		return m.markFixedWithEventFn(ctx, findingID, event)
 	}
@@ -980,11 +980,11 @@ func (m *mockFindingRepo) MarkFixed(ctx context.Context, findingID string) (port
 // MarkAbsentFindingsFixed defaults to a no-op: every full ingest whose
 // parser vouches for completeness reaches the auto-fix writer, and for
 // most tests nothing qualifies as fixed.
-func (m *mockFindingRepo) MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string) ([]port.Finding, error) {
+func (m *mockFindingRepo) MarkAbsentFindingsFixed(ctx context.Context, projectID, scopeHash, reportID string, findingKinds []string) ([]port.Finding, error) {
 	if m.markAbsentFixedFn == nil {
 		return nil, nil
 	}
-	return m.markAbsentFixedFn(ctx, projectID, scopeHash, reportID)
+	return m.markAbsentFixedFn(ctx, projectID, scopeHash, reportID, findingKinds)
 }
 
 // BulkCreateEvents defaults to a no-op, matching CreateEvent.
@@ -3949,11 +3949,11 @@ func TestReachability_APIKeyCannotCrossProject(t *testing.T) {
 		"00000000-0000-0000-0000-000000000021",
 		"00000000-0000-0000-0000-000000000040",
 		"reachable", "evidence")
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.ListReachability(ctx,
 		"00000000-0000-0000-0000-000000000021")
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 }
 
 func TestFindingWrites_APIKeyCannotCrossProject(t *testing.T) {
@@ -3982,23 +3982,23 @@ func TestFindingWrites_APIKeyCannotCrossProject(t *testing.T) {
 		AnalysisState: "exploitable",
 		UserID:        userID,
 	})
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.CreateEvidence(ctx, findingID, userID, "url", "https://example.test", "evidence")
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.UpsertSignoff(ctx, findingID, userID, "approved", "reviewed")
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	err = uc.DeleteEvidence(ctx, findingID, "00000000-0000-0000-0000-000000000031")
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.BulkTriage(ctx, BulkTriageInput{
 		FindingIDs:    []string{findingID},
 		AnalysisState: "exploitable",
 		UserID:        userID,
 	})
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 }
 
 func TestFindingReads_APIKeyCannotCrossProject(t *testing.T) {
@@ -4029,16 +4029,16 @@ func TestFindingReads_APIKeyCannotCrossProject(t *testing.T) {
 	findingID := "00000000-0000-0000-0000-000000000021"
 
 	_, err := uc.GetFinding(ctx, findingID)
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.GetFindingEvents(ctx, findingID, nil, 10, 0)
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.ListEvidence(ctx, findingID)
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 
 	_, err = uc.GetSignoff(ctx, findingID)
-	require.ErrorIs(t, err, ErrProjectAccessDenied)
+	require.ErrorIs(t, err, ErrFindingNotFound)
 }
 
 func TestCreateAPIKey_RecordsCreator(t *testing.T) {

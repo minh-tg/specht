@@ -19,6 +19,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func newTestWebhookTracker(t *testing.T, cfg WebHookTrackerConfig, logger func(string, ...any)) *WebHookTracker {
+	t.Helper()
+	tr := NewWebHookTracker(cfg, logger)
+	t.Cleanup(func() { require.NoError(t, tr.Close()) })
+	return tr
+}
+
 // waitFor polls until cond reports true. Webhook delivery is asynchronous
 // by design (a dead endpoint must never block the caller), so tests that
 // assert a POST landed must wait for the background delivery rather than
@@ -42,7 +49,7 @@ func TestWebHookTracker_CreateIssue(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	tr := NewWebHookTracker(WebHookTrackerConfig{
+	tr := newTestWebhookTracker(t, WebHookTrackerConfig{
 		Endpoints: []string{srv.URL},
 	}, func(msg string, args ...any) {})
 
@@ -88,7 +95,7 @@ func TestWebHookTracker_FanOutMultiple(t *testing.T) {
 	s2 := httptest.NewServer(mk())
 	defer s2.Close()
 
-	tr := NewWebHookTracker(WebHookTrackerConfig{
+	tr := newTestWebhookTracker(t, WebHookTrackerConfig{
 		Endpoints: []string{s1.URL, s2.URL},
 	}, nil)
 
@@ -104,7 +111,7 @@ func TestWebHookTracker_FanOutMultiple(t *testing.T) {
 }
 
 func TestWebHookTracker_NoEndpoints(t *testing.T) {
-	tr := NewWebHookTracker(WebHookTrackerConfig{Endpoints: nil}, nil)
+	tr := newTestWebhookTracker(t, WebHookTrackerConfig{Endpoints: nil}, nil)
 	id, err := tr.CreateIssue(context.Background(), Event{Type: EventCreated, Fingerprint: "fp"})
 	require.NoError(t, err)
 	assert.Empty(t, id)
@@ -124,7 +131,7 @@ func TestWebHookTracker_UpdateIssue(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	tr := NewWebHookTracker(WebHookTrackerConfig{Endpoints: []string{srv.URL}}, nil)
+	tr := newTestWebhookTracker(t, WebHookTrackerConfig{Endpoints: []string{srv.URL}}, nil)
 	err := tr.UpdateIssue(context.Background(), "issue-1", Event{
 		Type:        EventVerifiedFixed,
 		FindingID:   "find-1",
@@ -144,7 +151,7 @@ func TestWebHookTracker_UpdateIssue(t *testing.T) {
 }
 
 func TestWebHookTracker_EmptyEndpointsOnFailure(t *testing.T) {
-	tr := NewWebHookTracker(WebHookTrackerConfig{Endpoints: nil}, nil)
+	tr := newTestWebhookTracker(t, WebHookTrackerConfig{Endpoints: nil}, nil)
 	// Should not panic and should return nil error
 	err := tr.UpdateIssue(context.Background(), "issue-1", Event{Type: EventRegression})
 	assert.NoError(t, err)
@@ -178,7 +185,7 @@ func TestWebHookTracker_DeadEndpointDoesNotBlockCreateIssue(t *testing.T) {
 		}
 	}()
 
-	tr := NewWebHookTracker(WebHookTrackerConfig{
+	tr := newTestWebhookTracker(t, WebHookTrackerConfig{
 		Endpoints: []string{"http://" + l.Addr().String()},
 	}, nil)
 
@@ -223,7 +230,7 @@ func TestWebHookTracker_SignedPayload(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	tr := NewWebHookTracker(WebHookTrackerConfig{
+	tr := newTestWebhookTracker(t, WebHookTrackerConfig{
 		Endpoints: []string{srv.URL},
 		Secret:    secret,
 	}, func(msg string, args ...any) {})
@@ -270,7 +277,7 @@ func TestWebHookTracker_NoSignatureWithoutSecret(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	tr := NewWebHookTracker(WebHookTrackerConfig{
+	tr := newTestWebhookTracker(t, WebHookTrackerConfig{
 		Endpoints: []string{srv.URL},
 	}, nil)
 
@@ -288,7 +295,7 @@ func TestWebHookTracker_NoSignatureWithoutSecret(t *testing.T) {
 }
 
 func TestWebHookTracker_BlocksSSRF(t *testing.T) {
-	tr := NewWebHookTracker(WebHookTrackerConfig{
+	tr := newTestWebhookTracker(t, WebHookTrackerConfig{
 		Endpoints: []string{"http://169.254.169.254/latest/meta-data/"},
 	}, nil)
 	id, err := tr.CreateIssue(context.Background(), Event{Type: EventCreated, Fingerprint: "fp"})

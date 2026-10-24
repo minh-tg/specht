@@ -52,9 +52,16 @@ func TestRetention_StaleReportsPurgeEndToEnd(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), count, "only settled old reports count (not fresh, not processing)")
 
-	ids, err := repos.Reports.DeleteStaleReports(ctx, cutoff)
+	limited, err := repos.Reports.DeleteStaleReports(ctx, cutoff, 1)
 	require.NoError(t, err)
-	assert.Len(t, ids, 2)
+	require.Len(t, limited, 1, "a run deletes at most its limit")
+	remaining, err := repos.Reports.CountStaleReports(ctx, cutoff)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), remaining)
+
+	ids, err := repos.Reports.DeleteStaleReports(ctx, cutoff, 100)
+	require.NoError(t, err)
+	assert.Len(t, ids, 1)
 
 	for _, id := range []pgtype.UUID{fresh.ID, processing.ID} {
 		_, err := repos.Reports.GetByID(ctx, id)

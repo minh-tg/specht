@@ -52,6 +52,8 @@ func (h *Handler) CreateEvidence(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, usecase.ErrInvalidEvidenceType):
 			respondError(w, http.StatusBadRequest, "invalid_type",
 				"type must be screenshot, log, reference, or automated")
+		case errors.Is(err, usecase.ErrInvalidEvidenceURL):
+			respondError(w, http.StatusUnprocessableEntity, "invalid_url", "url must be an absolute http or https URL")
 		default:
 			slog.Error("create evidence", "error", err)
 			respondError(w, http.StatusInternalServerError, "internal_error", "could not create evidence")

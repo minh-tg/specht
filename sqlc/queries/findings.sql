@@ -234,7 +234,7 @@ SELECT
     f.fingerprint,
     f.current_title,
     f.current_severity_rank,
-    f.analysis_state,
+    (CASE WHEN f.analysis_expires_at <= NOW() THEN 'unanalyzed' ELSE f.analysis_state END)::text AS analysis_state,
     f.introduced_by_report_id,
     f.introduced_commit_sha,
     COALESCE(ra.state, 'unknown'::reachability_state) AS reachability_state,
@@ -246,7 +246,10 @@ SELECT
         FROM finding_occurrences eo
         JOIN reports er ON eo.report_id = er.id
         WHERE eo.finding_id = f.id
-    )::text[] AS environment_ids
+    )::text[] AS environment_ids,
+    ARRAY(SELECT DISTINCT d.dim_value FROM finding_dimensions d
+          WHERE d.finding_id = f.id AND d.dim_key = 'alias'
+          ORDER BY d.dim_value)::text[] AS aliases
 FROM open_findings f
 LEFT JOIN LATERAL (
     SELECT r.environment_id, r.target_id, r.artifact_id
@@ -265,7 +268,7 @@ LEFT JOIN LATERAL (
 ) ra ON true
 WHERE f.project_id = $1
   AND f.current_severity_rank >= $2
-  AND f.gate_effect = 'block'
+  AND (f.gate_effect = 'block' OR f.analysis_expires_at <= NOW())
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC;
 
 -- name: ListFindingEnvironmentIDs :many
@@ -387,8 +390,8 @@ RETURNING *;
 --
 -- Matching rules (gap-fill join keys):
 --   * purl dimension matches at NAME-LEVEL: the stored dimension value is
---     truncated at the LAST '@' version separator, aligned with the Go
---     purlNameLevel helper (findings.go), so version-less osv-scanner purls
+--     truncated at the last '@' after the final namespace separator,
+--     aligned with the Go purlNameLevel helper, so version-less osv-scanner purls
 --     still dedupe against versioned watcher candidates. A non-purl fallback
 --     containing '@' in its name (e.g. "corp@vendor/pkg@1.0.0") resolves to
 --     "corp@vendor/pkg" — the same name-level identity Go computes. Values
@@ -410,7 +413,10 @@ JOIN finding_dimensions dv
  AND dv.dim_value != ''
 WHERE f.project_id = sqlc.arg(project_id)
   AND f.finding_kind = 'sca'
-  AND COALESCE(substring(dp.dim_value from '^(.*)@'), dp.dim_value) = sqlc.arg(purl_name)
+  AND CASE WHEN starts_with(dp.dim_value, 'pkg:')
+        THEN regexp_replace(dp.dim_value, '@[^/]*$', '')
+        ELSE COALESCE(substring(dp.dim_value from '^(.*)@'), dp.dim_value)
+      END = sqlc.arg(purl_name)
   AND dv.dim_value = ANY(sqlc.arg(candidate_ids)::text[])
 LIMIT 1;
 
@@ -537,7 +543,7 @@ SELECT
     f.fingerprint,
     f.current_title,
     f.current_severity_rank,
-    f.analysis_state,
+    (CASE WHEN f.analysis_expires_at <= NOW() THEN 'unanalyzed' ELSE f.analysis_state END)::text AS analysis_state,
     f.introduced_by_report_id,
     f.introduced_commit_sha,
     COALESCE(ra.state, 'unknown'::reachability_state) AS reachability_state,
@@ -550,6 +556,9 @@ SELECT
         JOIN reports er ON eo.report_id = er.id
         WHERE eo.finding_id = f.id
     )::text[] AS environment_ids,
+    ARRAY(SELECT DISTINCT d.dim_value FROM finding_dimensions d
+          WHERE d.finding_id = f.id AND d.dim_key = 'alias'
+          ORDER BY d.dim_value)::text[] AS aliases,
     rif.change_type
 FROM report_introduced_findings rif
 JOIN open_findings f ON rif.finding_id = f.id
@@ -571,7 +580,7 @@ LEFT JOIN LATERAL (
 WHERE rif.report_id = $1
   AND f.current_severity_rank >= $2
   AND f.project_id = $3
-  AND f.gate_effect = 'block'
+  AND (f.gate_effect = 'block' OR f.analysis_expires_at <= NOW())
 ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC;
 
 -- name: ListFindingsIntroducedByCommit :many
@@ -594,11 +603,13 @@ ORDER BY f.current_severity_rank DESC, f.created_at DESC, f.id DESC;
 SELECT f.id
 FROM findings f
 JOIN finding_scope_severities s ON s.finding_id = f.id
-JOIN reports prior ON prior.id = s.report_id
+LEFT JOIN reports prior ON prior.id = s.report_id
 JOIN reports current ON current.id = sqlc.arg(report_id)
 WHERE f.project_id = sqlc.arg(project_id)
   AND s.scope_hash = sqlc.arg(scope_hash)
-  AND (prior.created_at, prior.id) < (current.created_at, current.id)
+  AND f.finding_kind = ANY(sqlc.arg(finding_kinds)::text[])
+  AND ((s.report_id IS NULL AND s.observed_at <= current.created_at)
+       OR (prior.created_at, prior.id) < (current.created_at, current.id))
   AND NOT EXISTS (
       SELECT 1 FROM finding_occurrences o
       WHERE o.finding_id = f.id AND o.report_id = current.id
@@ -611,10 +622,11 @@ DELETE FROM finding_scope_severities s
 WHERE s.finding_id = ANY(sqlc.arg(finding_ids)::uuid[])
   AND s.scope_hash = sqlc.arg(scope_hash)
   AND EXISTS (
-      SELECT 1 FROM reports prior
-      JOIN reports current ON current.id = sqlc.arg(report_id)
-      WHERE prior.id = s.report_id
-        AND (prior.created_at, prior.id) < (current.created_at, current.id)
+      SELECT 1 FROM reports current
+      LEFT JOIN reports prior ON prior.id = s.report_id
+      WHERE current.id = sqlc.arg(report_id)
+        AND ((s.report_id IS NULL AND s.observed_at <= current.created_at)
+             OR (prior.created_at, prior.id) < (current.created_at, current.id))
   );
 
 -- name: RetireScopeSeverityWithoutEvidence :exec
@@ -677,6 +689,8 @@ UPDATE findings
 SET state = 'fixed', updated_at = NOW()
 WHERE findings.project_id = $1
   AND findings.state IN ('open', 'reopened')
+  AND findings.finding_kind = ANY(sqlc.arg(finding_kinds)::text[])
+  AND NOT EXISTS (SELECT 1 FROM finding_scope_severities s WHERE s.finding_id = findings.id)
   AND NOT EXISTS (
       SELECT 1 FROM finding_occurrences occ
       WHERE occ.finding_id = findings.id

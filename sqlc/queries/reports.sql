@@ -1,3 +1,6 @@
+-- name: LockProjectIngest :exec
+SELECT pg_advisory_xact_lock(hashtextextended('ingest:' || sqlc.arg(project_id)::text, 0));
+
 -- name: CreateReport :one
 INSERT INTO reports (
     project_id, tool_name, tool_version, scan_type,
@@ -33,7 +36,7 @@ WHERE project_id = $1
   AND (sqlc.arg(commit_sha)::text = '' OR
     CASE WHEN sqlc.arg(commit_prefix)::boolean
       THEN starts_with(lower(commit_sha), lower(sqlc.arg(commit_sha)::text))
-      ELSE commit_sha = sqlc.arg(commit_sha)::text
+      ELSE commit_sha = lower(sqlc.arg(commit_sha)::text)
     END)
 ORDER BY created_at DESC, id DESC
 LIMIT $2 OFFSET $3;
@@ -184,7 +187,8 @@ WHERE status IN ('completed', 'failed')
 SELECT id, project_id FROM reports
 WHERE status IN ('completed', 'failed')
   AND COALESCE(completed_at, created_at) < $1
-ORDER BY COALESCE(completed_at, created_at), id;
+ORDER BY COALESCE(completed_at, created_at), id
+LIMIT sqlc.arg(batch_size)::integer;
 
 -- name: LockReportForDelete :one
 -- Takes the report row for the rest of the transaction, so a scan that moves
@@ -242,7 +246,22 @@ WHERE f.project_id = sqlc.arg(project_id)
   AND (f.introduced_by_report_id = sqlc.arg(report_id)::uuid
        OR EXISTS (
            SELECT 1 FROM finding_occurrences fo
-           WHERE fo.finding_id = f.id AND fo.report_id = sqlc.arg(report_id)::uuid));
+           WHERE fo.finding_id = f.id AND fo.report_id = sqlc.arg(report_id)::uuid)
+       OR EXISTS (
+           SELECT 1 FROM finding_scope_severities s
+           WHERE s.finding_id = f.id AND s.report_id = sqlc.arg(report_id)::uuid));
+
+-- name: RepointDuplicateScopeSeverity :exec
+UPDATE finding_scope_severities s
+SET report_id = winner.id
+FROM reports loser, reports winner
+WHERE s.report_id = loser.id
+  AND loser.id = sqlc.arg(loser_id)::uuid
+  AND winner.id = sqlc.arg(winner_id)::uuid
+  AND loser.project_id = sqlc.arg(project_id)::uuid
+  AND winner.project_id = loser.project_id
+  AND winner.status = 'completed'
+  AND COALESCE(winner.scan_scope_hash, '') = COALESCE(loser.scan_scope_hash, '');
 
 -- name: ArchiveOrphanedFindings :many
 -- Archives the open findings among the given ones that no occurrence supports
