@@ -261,6 +261,7 @@ func (a *gateFindingRepo) ListBlockingFindings(ctx context.Context, projectID st
 			Source:               c.FindingKind,
 			IntroducedByReportID: derefOrEmpty(c.IntroducedByReportID),
 			IntroducedCommitSha:  derefOrEmpty(c.IntroducedCommitSha),
+			Aliases:              c.Aliases,
 		}
 	}
 	return result, nil
@@ -296,6 +297,7 @@ func (a *gateFindingRepo) ListIntroducedGateCandidates(ctx context.Context, proj
 			Source:               c.FindingKind,
 			IntroducedByReportID: derefOrEmpty(c.IntroducedByReportID),
 			IntroducedCommitSha:  derefOrEmpty(c.IntroducedCommitSha),
+			Aliases:              c.Aliases,
 		}
 	}
 	return result, nil
