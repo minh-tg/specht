@@ -124,6 +124,22 @@ func TestPreviewPRCheck_WaivedIntroducedPasses(t *testing.T) {
 	assert.Equal(t, 1, out.WaivedCount)
 }
 
+func TestPreviewPRCheck_RejectsAReportWithoutACommit(t *testing.T) {
+	uc, fr := prcheckHarness(t)
+	uc.deps.Stores.Reports.(*mockReportRepo).getByIDFn = func(context.Context, string) (port.Report, error) {
+		return port.Report{ID: "11111111-1111-1111-1111-111111111111", ProjectID: makeProject(true).ID, ToolName: "semgrep", Status: "completed"}, nil
+	}
+	fr.listIntroducedByFn = func(context.Context, string, string) ([]port.Finding, error) { return nil, nil }
+	fr.listIntroducedGateCandidatesFn = func(context.Context, string, string, int16) ([]port.GateCandidate, error) { return nil, nil }
+
+	_, err := uc.PreviewPRCheck(adminCtx(), PRCheckPreviewInput{
+		ProjectSlug: "my-app",
+		CommitSha:   prcheckCommit,
+		ReportID:    "11111111-1111-1111-1111-111111111111",
+	})
+	require.ErrorIs(t, err, ErrNoReportForCommit)
+}
+
 func TestPreviewPRCheck_RequiresCommit(t *testing.T) {
 	uc, _ := prcheckHarness(t)
 	_, err := uc.PreviewPRCheck(context.Background(), PRCheckPreviewInput{ProjectSlug: "my-app"})
