@@ -1,3 +1,6 @@
+-- name: LockProjectIngest :exec
+SELECT pg_advisory_xact_lock(hashtextextended('ingest:' || sqlc.arg(project_id)::text, 0));
+
 -- name: CreateReport :one
 INSERT INTO reports (
     project_id, tool_name, tool_version, scan_type,

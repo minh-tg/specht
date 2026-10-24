@@ -11,43 +11,12 @@ import (
 // implementations; the returned stores expose only the port contracts so
 // use cases, lifecycle, and watcher never see pgtype/sqlc types.
 func NewPortStores(pool *pgxpool.Pool) *port.Stores {
-	q := sqlc.New(pool)
-	repos := NewRepos(pool)
-
-	return &port.Stores{
-		Projects:        &pgProjectPort{q: q, withTx: repos.WithTx},
-		Users:           &pgUserPort{q: q, withTx: repos.WithTx},
-		Invites:         &pgInvitePort{q: q, withTx: repos.WithTx},
-		PasswordReset:   &pgPasswordResetPort{withTx: repos.WithTx},
-		InstanceSecrets: &pgInstanceSecretPort{q: q},
-		RefreshTokens:   &pgRefreshTokenPort{q: q, withTx: repos.WithTx},
-		APIKeys:         &pgAPIKeyPort{q: q, withTx: repos.WithTx},
-		Environments:    &pgEnvironmentPort{q: q},
-		Targets:         &pgTargetPort{q: q},
-		Artifacts:       &pgArtifactPort{q: q},
-		Waivers:         &pgWaiverPort{inner: repos.Waivers.(*pgWaiverRepo)},
-		Findings:        newFindingPort(repos.Findings.(*pgFindingRepo)),
-		Evidence:        &pgEvidencePort{q: q},
-		Reachability:    &pgReachabilityPort{q: q},
-		Signoffs:        &pgSignoffPort{q: q},
-		Reports:         newReportPort(repos.Reports.(*pgReportRepo)),
-		Inventory:       &pgInventoryPort{inner: repos.Inventory.(*pgInventoryRepo)},
-		Stats:           &pgStatsPort{inner: repos.Stats},
-		Watcher:         &pgWatcherPort{inner: repos.Watcher},
-		Policy:          &pgPolicyPort{q: q},
-		Teams:           &pgTeamPort{q: q},
-		Admin:           &pgAdminPort{q: q},
-		Identities:      &pgIdentityPort{q: q, withTx: repos.WithTx},
-		SSOCodes:        &pgSSOCodePort{q: q},
-	}
+	return PortStoresFromRepos(NewRepos(pool), sqlc.New(pool))
 }
 
-// PortStoresFromRepos adapts an existing *Repos aggregate to the port
-// Stores, sharing the same underlying pool/queries. Useful for callers that
-// already constructed a *Repos (composition roots) and want the port view
-// without a second pool.
+// PortStoresFromRepos adapts existing repositories without opening another pool.
 func PortStoresFromRepos(repos *Repos, q *sqlc.Queries) *port.Stores {
-	return &port.Stores{
+	stores := &port.Stores{
 		Projects:        &pgProjectPort{q: q, withTx: repos.WithTx},
 		Users:           &pgUserPort{q: q, withTx: repos.WithTx},
 		Invites:         &pgInvitePort{q: q, withTx: repos.WithTx},
@@ -73,4 +42,6 @@ func PortStoresFromRepos(repos *Repos, q *sqlc.Queries) *port.Stores {
 		Identities:      &pgIdentityPort{q: q, withTx: repos.WithTx},
 		SSOCodes:        &pgSSOCodePort{q: q},
 	}
+	stores.Ingest = &pgIngestTransaction{pool: repos.pool, stores: stores}
+	return stores
 }

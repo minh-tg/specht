@@ -8,14 +8,13 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/minh-tg/specht/internal/db/sqlc"
 	"github.com/minh-tg/specht/internal/port"
 )
 
 type pgFindingRepo struct {
 	q    *sqlc.Queries
-	pool *pgxpool.Pool
+	pool transactionStarter
 }
 
 // UpsertFindingParams is the input to upserting a finding row.
