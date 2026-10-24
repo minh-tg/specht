@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	urlpkg "net/url"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +15,10 @@ import (
 // ErrEvidenceNotFound is returned when the evidence row does not exist.
 // Handlers map it to a 404.
 var ErrEvidenceNotFound = errors.New("evidence not found")
+
+// ErrInvalidEvidenceURL is returned for an evidence link that is not an
+// absolute http or https URL. Handlers map it to a 422.
+var ErrInvalidEvidenceURL = errors.New("evidence URL must be an absolute http or https URL")
 
 // ErrInvalidEvidenceType is returned when the evidence type is outside the
 // persistence vocabulary. Handlers map it to a 400.
@@ -49,6 +55,11 @@ func (u *Usecases) CreateEvidence(ctx context.Context, findingID, userID string,
 	}
 	if !evidenceTypes[typ] {
 		return EvidenceResponse{}, ErrInvalidEvidenceType
+	}
+	url = strings.TrimSpace(url)
+	parsed, err := urlpkg.Parse(url)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return EvidenceResponse{}, ErrInvalidEvidenceURL
 	}
 
 	var uploadedBy *string
