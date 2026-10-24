@@ -33,13 +33,20 @@ function mockApi() {
   });
 }
 
-function renderLayoutIn(client: QueryClient, initialEntry: string) {
+function renderLayoutIn(
+  client: QueryClient,
+  initialEntry: string,
+  reportUploadAction?: React.ReactNode,
+) {
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[initialEntry]}>
         <Routes>
           <Route path="/:slug/findings" element={<ProjectLayout />} />
-          <Route path="/:slug/reports" element={<ProjectLayout />} />
+          <Route
+            path="/:slug/reports"
+            element={<ProjectLayout reportUploadAction={reportUploadAction} />}
+          />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
@@ -107,6 +114,18 @@ describe("ProjectLayout", () => {
     renderLayout("/alpha/reports");
 
     expect(screen.getByRole("link", { name: "Reports" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("passes the supplied upload action to reports", async () => {
+    mockApi();
+    renderLayoutIn(
+      createTestQueryClient(),
+      "/alpha/reports",
+      <p>Uploads require a local installation.</p>,
+    );
+
+    expect(await screen.findByText("Uploads require a local installation.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /^Upload (a )?report$/ })).not.toBeInTheDocument();
   });
 
   it("offers the settings tab to a project admin", async () => {

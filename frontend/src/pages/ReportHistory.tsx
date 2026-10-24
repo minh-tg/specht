@@ -25,7 +25,7 @@ import { formatDateTime, pluralize } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { isReportInProgress } from "@/lib/verdict";
 import type { Report, ReportStatus } from "@/types/api";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 const CONFLICT_MESSAGE = "This report is still being processed. Try again when it finishes.";
@@ -56,7 +56,7 @@ function statusMeta(status: string): { label: string; style: string; } {
 
 const PAGE_SIZE = 20;
 
-export function ReportHistory() {
+export function ReportHistory({ uploadAction }: { readonly uploadAction?: ReactNode; } = {}) {
   const { slug } = useParams<{ slug: string; }>();
   const [limit, setLimit] = useState(PAGE_SIZE);
   const { data: reports, isLoading, isError, error, refetch, isFetching } = useReports(
@@ -97,11 +97,11 @@ export function ReportHistory() {
       <EmptyState
         title="No reports yet."
         description="Upload a scanner report and its findings appear here."
-        action={
+        action={uploadAction ?? (
           <Link to={`/${slug}/reports/upload`} className={buttonVariants()}>
             Upload a report
           </Link>
-        }
+        )}
       />
     );
   }
@@ -109,9 +109,11 @@ export function ReportHistory() {
   return (
     <div className="space-y-3">
       <div className="flex justify-end">
-        <Link to={`/${slug}/reports/upload`} className={buttonVariants()}>
-          Upload report
-        </Link>
+        {uploadAction ?? (
+          <Link to={`/${slug}/reports/upload`} className={buttonVariants()}>
+            Upload report
+          </Link>
+        )}
       </div>
 
       {reports.map((r) => {

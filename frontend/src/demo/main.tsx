@@ -17,6 +17,12 @@ import "./demo.css";
 
 const findings = `/${snapshot.slug}/findings`;
 const me = snapshot.fixtures["/api/v1/me"].data;
+const reportUploadAction = (
+  <p className="text-muted-foreground text-sm">
+    Uploads require a local installation.{" "}
+    <a className="underline underline-offset-4" href="../docs/getting-started/">Evaluate locally</a>
+  </p>
+);
 const readOnly = (): never => {
   throw new APIError(403, "demo_read_only", "This demo is read-only. No changes were made.");
 };
@@ -114,7 +120,10 @@ export function Demo() {
           <Route path="/" element={<Navigate to={findings} replace />} />
           <Route path="/:slug/findings" element={<ProjectLayout />} />
           <Route path="/:slug/findings/:findingId" element={<FindingDetail />} />
-          <Route path="/:slug/reports" element={<ProjectLayout />} />
+          <Route
+            path="/:slug/reports"
+            element={<ProjectLayout reportUploadAction={reportUploadAction} />}
+          />
           <Route path="/:slug/waivers" element={<ProjectLayout />} />
           <Route path="/:slug/changes/:commit" element={<ChangeView />} />
           <Route path="*" element={<Unavailable />} />

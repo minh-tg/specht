@@ -206,6 +206,30 @@ describe("ReportHistory", () => {
     );
   });
 
+  it.each([
+    { state: "populated", reports: REPORTS },
+    { state: "empty", reports: [] },
+  ])("uses the supplied upload action for a $state list", async ({ reports }) => {
+    mockReports(reports);
+    renderWithProviders(
+      <ReportHistory
+        uploadAction={
+          <p>
+            Uploads require a local installation.{" "}
+            <a href="/docs/getting-started/">Evaluate locally</a>
+          </p>
+        }
+      />,
+    );
+
+    expect(await screen.findByText(/Uploads require a local installation/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Evaluate locally" })).toHaveAttribute(
+      "href",
+      "/docs/getting-started/",
+    );
+    expect(screen.queryByRole("link", { name: /^Upload (a )?report$/ })).not.toBeInTheDocument();
+  });
+
   it("shows an empty state with an upload link", async () => {
     mockReports([]);
     renderWithProviders(<ReportHistory />);

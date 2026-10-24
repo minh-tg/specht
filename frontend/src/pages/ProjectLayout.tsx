@@ -12,9 +12,12 @@ import { ProjectPolicy } from "@/pages/ProjectPolicy";
 import { ProjectWaivers } from "@/pages/ProjectWaivers";
 import { ProjectWatcher } from "@/pages/ProjectWatcher";
 import { ReportHistory } from "@/pages/ReportHistory";
+import type { ReactNode } from "react";
 import { Link, useLocation, useParams } from "react-router-dom";
 
-export function ProjectLayout() {
+export function ProjectLayout(
+  { reportUploadAction }: { readonly reportUploadAction?: ReactNode; } = {},
+) {
   const { slug } = useParams<{ slug: string; }>();
   const location = useLocation();
   const path = location.pathname;
@@ -96,7 +99,7 @@ export function ProjectLayout() {
       {currentTab === "findings"
         ? <FindingsDashboard />
         : currentTab === "reports"
-        ? <ReportHistory />
+        ? <ReportHistory uploadAction={reportUploadAction} />
         : currentTab === "policy"
         ? <ProjectPolicy />
         : currentTab === "waivers"
