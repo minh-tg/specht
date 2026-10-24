@@ -119,6 +119,7 @@ export function useReportUpload(slug: string): ReportUpload {
       playCue(report.threshold_breached ? "block" : "accepted");
       clearFile();
 
+      queryClient.invalidateQueries({ queryKey: queryKeys.findings(slug) });
       queryClient.invalidateQueries({ queryKey: queryKeys.reports(slug) });
       queryClient.invalidateQueries({ queryKey: queryKeys.gate(slug) });
       queryClient.invalidateQueries({ queryKey: queryKeys.projectStats(slug) });
