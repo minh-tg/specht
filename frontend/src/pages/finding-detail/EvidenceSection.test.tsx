@@ -97,6 +97,16 @@ describe("EvidenceSection", () => {
     expect(screen.getByText(/by You/)).toBeInTheDocument();
   });
 
+  it.each(["javascript:alert(1)", "data:text/html,example", "ftp://example.test/log"])(
+    "renders unsafe legacy evidence as text: %s",
+    async (url) => {
+      mockApi({ evidence: [{ ...EVIDENCE, url }] });
+      renderEvidenceSection();
+      expect(await screen.findByText(url)).toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: url })).not.toBeInTheDocument();
+    },
+  );
+
   it("says so when nothing is attached", async () => {
     mockApi({ evidence: [] });
     renderEvidenceSection();

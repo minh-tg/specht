@@ -122,14 +122,18 @@ export function EvidenceSection({
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-baseline gap-x-2">
                 <span className="font-medium">{evidenceTypeLabel(item.type)}</span>
-                <a
-                  href={item.url}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className={`${INLINE_LINK} break-all`}
-                >
-                  {item.url}
-                </a>
+                {isHttpUrl(item.url)
+                  ? (
+                    <a
+                      href={item.url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className={`${INLINE_LINK} break-all`}
+                    >
+                      {item.url}
+                    </a>
+                  )
+                  : <span className="break-all">{item.url}</span>}
               </div>
               {item.description && (
                 <p className="text-muted-foreground mt-1 break-words text-xs">{item.description}</p>
