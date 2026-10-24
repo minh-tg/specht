@@ -107,6 +107,14 @@ var ErrSlugTaken = errors.New("slug already taken")
 // the finding fingerprint already exists (a re-poll hit) and no row changed.
 var ErrFindingSuppressed = errors.New("finding already exists")
 
+// IngestTransaction serializes report ingests for one project and commits
+// finding, occurrence, inventory, audit and completion writes together. The
+// callback receives transaction-bound stores. Processing report rows are
+// created separately so a rolled-back attempt can still be recorded as failed.
+type IngestTransaction interface {
+	Run(ctx context.Context, projectID string, fn func(*Stores) error) error
+}
+
 // ---------- Projects ----------
 
 // Project is the neutral project row.
@@ -1445,6 +1453,7 @@ type WatcherStore interface {
 // Stores is the aggregate persistence handle the core depends on. It is the
 // port counterpart of repo.Repos.
 type Stores struct {
+	Ingest          IngestTransaction
 	Projects        ProjectStore
 	Users           UserStore
 	RefreshTokens   RefreshTokenStore

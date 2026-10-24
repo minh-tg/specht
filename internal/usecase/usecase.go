@@ -190,6 +190,10 @@ type Usecases struct {
 	gate     gate.Gate
 	gateOnce sync.Once
 
+	// These fields belong only to the per-ingest instance inside a transaction.
+	ingestAtomic  bool
+	ingestFailure string
+
 	// intelRefresh runs EPSS/KEV refreshes for finding reads off the
 	// request path.
 	intelRefresh intelRefresher

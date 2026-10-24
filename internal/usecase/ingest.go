@@ -219,6 +219,15 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	// ingests normally: scanner output is often byte-identical when nothing
 	// changed.
 	rawHash := reportHash(sc, originalData, nr, redactionFailed)
+	if u.deps.Stores.Ingest != nil {
+		return u.ingestAtomically(ctx, project, input, nr, scopeHash, rawHash)
+	}
+	return u.ingestParsedReport(ctx, project, input, nr, scopeHash, rawHash, u.createReport)
+}
+
+type reportCreator func(context.Context, port.Project, IngestReportInput, *domain.NormalizedReport, reportContext, string, string) (port.Report, error)
+
+func (u *Usecases) ingestParsedReport(ctx context.Context, project port.Project, input IngestReportInput, nr *domain.NormalizedReport, scopeHash, rawHash string, create reportCreator) (*IngestReportOutput, error) {
 	replayID, err := u.findReplayReport(ctx, project.ID, rawHash, input.CommitSha, scopeHash)
 	if err != nil {
 		return nil, err
@@ -231,6 +240,10 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 	// row is written: unsupported scanners and missing baselines fall
 	// back to full with an explicit reason instead of recording partial
 	// coverage as if it were complete.
+	sc, err := u.deps.Registry.Get(input.Scanner)
+	if err != nil {
+		return nil, err
+	}
 	effectiveMode, fallbackReason, baselineID, err := u.resolveScanMode(ctx, project, sc, input)
 	if err != nil {
 		return nil, err
@@ -249,7 +262,7 @@ func (u *Usecases) IngestReport(ctx context.Context, input IngestReportInput) (*
 		return nil, err
 	}
 
-	report, err := u.createReport(ctx, project, input, nr, ctxInfo, scopeHash, rawHash)
+	report, err := create(ctx, project, input, nr, ctxInfo, scopeHash, rawHash)
 	if err != nil {
 		return nil, err
 	}
@@ -1223,6 +1236,10 @@ func reportFailureReasonForResponse(stored *string) *string {
 // what the caller returns.
 func (u *Usecases) markReportFailed(ctx context.Context, input IngestReportInput, report port.Report, reason string, cause error) {
 	if cause == nil {
+		return
+	}
+	if u.ingestAtomic {
+		u.ingestFailure = reason
 		return
 	}
 	// The failure is often the context itself: a client that hung up, or the
