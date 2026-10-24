@@ -69,6 +69,21 @@ describe("CommandPalette", () => {
     });
   });
 
+  it.each([
+    { platform: "Linux x86_64", keys: "Ctrl K" },
+    { platform: "MacIntel", keys: "⌘K" },
+  ])("includes the visible shortcut in its accessible name on $platform", ({ platform, keys }) => {
+    const platformSpy = vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+    try {
+      renderPalette();
+      const button = screen.getByRole("button", { name: /^Open command palette/ });
+      expect(within(button).getByText(keys, { exact: true })).toBeInTheDocument();
+      expect(button).toHaveAccessibleName(`Open command palette, ${keys}`);
+    } finally {
+      platformSpy.mockRestore();
+    }
+  });
+
   it("offers project settings in the project group only to admins", async () => {
     const user = userEvent.setup();
     const { unmount } = renderPalette("/payments/findings");
@@ -103,7 +118,7 @@ describe("CommandPalette", () => {
       if (kind === "field") render(<input aria-label="Find something" />);
       renderPalette();
       const origin = kind === "button"
-        ? screen.getByRole("button", { name: "Open command palette" })
+        ? screen.getByRole("button", { name: /^Open command palette/ })
         : screen.getByRole("textbox", { name: "Find something" });
       origin.focus();
       if (kind === "button") await user.keyboard("{Enter}");
@@ -118,7 +133,7 @@ describe("CommandPalette", () => {
   it("also opens from its button, and the shortcut toggles it", async () => {
     const user = userEvent.setup();
     renderPalette();
-    await user.click(screen.getByRole("button", { name: "Open command palette" }));
+    await user.click(screen.getByRole("button", { name: /^Open command palette/ }));
     expect(await screen.findByRole("dialog")).toBeInTheDocument();
     await user.keyboard("{Control>}k{/Control}");
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
@@ -273,7 +288,7 @@ describe("CommandPalette", () => {
   it("opens the shortcut sheet from the Keyboard shortcuts entry and hands focus back", async () => {
     renderPalette();
     const user = userEvent.setup();
-    const opener = screen.getByRole("button", { name: "Open command palette" });
+    const opener = screen.getByRole("button", { name: /^Open command palette/ });
     opener.focus();
     await user.keyboard("{Control>}k{/Control}");
     await user.type(await screen.findByRole("combobox", { name: "Search commands" }), "shortcuts");
