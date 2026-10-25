@@ -100,6 +100,23 @@ func TestParse_Errors(t *testing.T) {
 	require.ErrorIs(t, err, scanner.ErrUnrecognizedFormat)
 }
 
+// Syft writes a package-id qualifier on every purl. Trivy, Grype and the other
+// adapters store the bare pkg:type/name@version, and the inventory is unique on
+// the purl, so an inventory purl keeps no qualifiers or subpath.
+func TestInventoryPURLsAreNormalized(t *testing.T) {
+	cdx, err := NewScanner().Parse(context.Background(), []byte(`{"bomFormat":"CycloneDX","components":[
+		{"name":"lodash","version":"4.17.21","purl":"pkg:npm/lodash@4.17.21?package-id=0c1d2e3f4a5b"}]}`))
+	require.NoError(t, err)
+	require.Len(t, cdx.Packages, 1)
+	assert.Equal(t, "pkg:npm/lodash@4.17.21", cdx.Packages[0].PURL)
+
+	spdx, err := NewScanner().Parse(context.Background(), []byte(`{"spdxVersion":"SPDX-2.3","name":"app","packages":[
+		{"name":"lodash","versionInfo":"4.17.21","externalRefs":[{"referenceType":"purl","referenceLocator":"pkg:npm/lodash@4.17.21?package-id=0c1d#sub"}]}]}`))
+	require.NoError(t, err)
+	require.Len(t, spdx.Packages, 1)
+	assert.Equal(t, "pkg:npm/lodash@4.17.21", spdx.Packages[0].PURL)
+}
+
 func TestParse_EmptyComponents(t *testing.T) {
 	rep, err := NewScanner().Parse(context.Background(),
 		[]byte(`{"bomFormat":"CycloneDX","components":[]}`))
