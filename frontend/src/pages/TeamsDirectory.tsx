@@ -39,18 +39,34 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { looksLikeEmail } from "@/lib/email";
-import type { Team } from "@/types/api";
+import type { Team, TeamMember } from "@/types/api";
 import { useState } from "react";
+
+/**
+ * Whether the caller may add and remove people on a team: a global admin, or an admin of that
+ * team, the same rule the server applies. Deleting a team stays with global admins.
+ */
+function canManageRoster(
+  isGlobalAdmin: boolean,
+  userId: string | undefined,
+  members: readonly TeamMember[] | undefined,
+): boolean {
+  if (isGlobalAdmin) return true;
+  if (!userId || !members) return false;
+  return members.some((m) => m.user_id === userId && m.role === "admin");
+}
 
 function TeamCard({
   team,
   isGlobalAdmin,
+  userId,
   deleteError,
   onOpenRoster,
   onDeleteTeam,
 }: {
   team: Team;
   isGlobalAdmin: boolean;
+  userId: string | undefined;
   deleteError?: string;
   onOpenRoster: (team: Team) => void;
   onDeleteTeam: (team: Team) => void;
@@ -58,6 +74,7 @@ function TeamCard({
   const { data: members, isError: membersError, refetch: refetchMembers } = useTeamMembers(
     team.id,
   );
+  const canManage = canManageRoster(isGlobalAdmin, userId, members);
 
   return (
     <div className="bg-card border border-border rounded-lg p-5 flex flex-col justify-between shadow-xs">
@@ -94,7 +111,7 @@ function TeamCard({
             className="flex-1"
             onClick={() => onOpenRoster(team)}
           >
-            {isGlobalAdmin ? "Manage Roster" : "View Roster"}
+            {canManage ? "Manage Roster" : "View Roster"}
           </Button>
           {isGlobalAdmin && (
             <Button
@@ -148,9 +165,12 @@ export function TeamsDirectory() {
     refetch: refetchRoster,
   } = useTeamMembers(activeRosterTeam?.id ?? "");
 
+  const canManageActiveRoster = canManageRoster(isGlobalAdmin, me.data?.id, activeMembers);
+
   const addMemberMutation = useAddTeamMember(activeRosterTeam?.id ?? "");
-  // Only instance admins add people here, and they have the directory loaded already, so the
-  // suggestions are filtered in the browser with the server's rules instead of asked for per key.
+  // Instance admins have the user directory loaded already, so their suggestions are filtered in
+  // the browser with the server's rules instead of asked for per key. A team admin cannot read
+  // the directory and types the address without suggestions.
   const { data: directory } = useUserDirectory();
   const registrationOpen = useCapabilities().data?.registration?.enabled !== false;
   // Nothing is offered until the members have loaded, or people already on the team would show up.
@@ -222,6 +242,7 @@ export function TeamsDirectory() {
                 key={team.id}
                 team={team}
                 isGlobalAdmin={isGlobalAdmin}
+                userId={me.data?.id}
                 deleteError={deleteTeamMutation.isError && deleteTeamMutation.variables === team.id
                   ? deleteTeamMutation.error?.message ?? "Failed to delete team"
                   : undefined}
@@ -318,7 +339,7 @@ export function TeamsDirectory() {
             </DialogDescription>
           </DialogHeader>
 
-          {isGlobalAdmin && (
+          {canManageActiveRoster && (
             <form onSubmit={handleAddRosterMember} className="space-y-2">
               <div className="flex gap-2">
                 <div className="flex-1">
@@ -384,7 +405,7 @@ export function TeamsDirectory() {
                           </span>
                         )}
                       </span>
-                      {isGlobalAdmin && (
+                      {canManageActiveRoster && (
                         <Button
                           variant="ghost"
                           size="xs"
