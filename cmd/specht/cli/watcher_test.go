@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/minh-tg/specht/internal/port"
 	"github.com/minh-tg/specht/internal/watcher"
 )
 
@@ -60,6 +61,18 @@ func TestWatcherBackfill(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "dry-run: nothing was written") {
 		t.Fatalf("missing dry-run output: %q", out.String())
+	}
+}
+
+func TestWatchedProjectIDsSkipsOptedOutProjects(t *testing.T) {
+	projects := []port.Project{
+		{ID: "on-1", CveWatcherEnabled: true},
+		{ID: "off", CveWatcherEnabled: false},
+		{ID: "on-2", CveWatcherEnabled: true},
+	}
+	got := watchedProjectIDs(projects)
+	if strings.Join(got, ",") != "on-1,on-2" {
+		t.Fatalf("watchedProjectIDs = %v, want [on-1 on-2]", got)
 	}
 }
 

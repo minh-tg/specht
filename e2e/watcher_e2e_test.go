@@ -216,13 +216,13 @@ func TestE2E_WatcherDaemonLifecycle(t *testing.T) {
 		require.Contains(t, stdout, "Status:                healthy")
 	})
 
-	t.Run("backfill dry-run persists nothing and the real run writes", func(t *testing.T) {
+	t.Run("backfill skips opted-out projects and dry-run persists nothing", func(t *testing.T) {
 		slug := newProject(t, "watcher-backfill")
 		created = append(created, slug)
 		// Disable BEFORE ingesting or arming: the live daemon polls every
 		// second, and a project that exists, has inventory, and sees the
 		// armed advisory inside the create to disable window would get its
-		// finding created by the daemon instead of the CLI.
+		// finding from the daemon before the opt-out is in place.
 		setWatcherEnabled(t, slug, false)
 		ingestRaw(t, slug, "trivy", "trivy-npm-packages-scan.json", nil)
 		armLodashAdvisory()
@@ -247,10 +247,20 @@ func TestE2E_WatcherDaemonLifecycle(t *testing.T) {
 		require.True(t, ok)
 		require.Empty(t, mid, "--dry-run writes nothing")
 
-		stdout, stderr, exit = runBin(t, cliBin, backfillEnv,
+		// The real run honors the project's opt-out, like the daemon.
+		_, stderr, exit = runBin(t, cliBin, backfillEnv,
 			"watcher", "backfill")
 		require.Equal(t, 0, exit, "stderr: %s", stderr)
-		require.Contains(t, stdout, "created=1", "the backfill reports the new finding: %s", stdout)
+		optedOut, ok := fetchFindings(slug)
+		require.True(t, ok)
+		require.Empty(t, optedOut, "backfill writes nothing for a project that opted out")
+
+		// Once the project opts back in, a real backfill and the live daemon
+		// race for the same advisory; the fingerprint keeps it to one finding.
+		setWatcherEnabled(t, slug, true)
+		_, stderr, exit = runBin(t, cliBin, backfillEnv,
+			"watcher", "backfill")
+		require.Equal(t, 0, exit, "stderr: %s", stderr)
 
 		var after []scanFinding
 		deadline := time.Now().Add(10 * time.Second)
@@ -261,7 +271,7 @@ func TestE2E_WatcherDaemonLifecycle(t *testing.T) {
 			}
 			time.Sleep(250 * time.Millisecond)
 		}
-		require.Len(t, after, 1, "the real backfill persists the finding")
+		require.Len(t, after, 1, "one watcher finding once the project opts back in")
 		require.Equal(t, "cve_watcher", after[0].FindingKind)
 	})
 }
