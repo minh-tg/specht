@@ -678,12 +678,14 @@ FROM (
 WHERE f.id = highest.finding_id;
 
 -- name: MarkAbsentScopedFindingsFixed :many
--- Scan-equivalence auto-fix: closes findings whose most recent observation
--- came from an equivalent complete scan of the same scope and that the
--- current report ($3) no longer observes. The EXISTS pair below means
--- "some observation is equivalent-complete and nothing is newer", i.e.
--- the latest observation satisfies the scope guard. Incremental and
--- incomplete scans never reach this query — the caller only invokes it
+-- Scan-equivalence auto-fix: closes findings that an equivalent complete
+-- scan of the same scope observed, that no scope still observes, and that
+-- the current report ($3) no longer observes. A scope row is retired only by
+-- a newer complete scan of that scope without the finding, so no rows left
+-- means every scope that saw it has since scanned clean. The observation in
+-- this scope keeps a clean scan of a branch that never saw the finding from
+-- closing it, and nothing may be newer than the current report. Incremental
+-- and incomplete scans never reach this query: the caller only invokes it
 -- for full scans whose parsed completeness is 'complete'.
 UPDATE findings
 SET state = 'fixed', updated_at = NOW()
@@ -703,12 +705,13 @@ WHERE findings.project_id = $1
         AND r.scan_scope_hash = $2
         AND r.scan_completeness = 'complete'
         AND r.status = 'completed'
-        AND NOT EXISTS (
-            SELECT 1 FROM finding_occurrences nf
-            JOIN reports nr ON nr.id = nf.report_id
-            WHERE nf.finding_id = findings.id
-              AND (nf.observed_at, nr.id) > (fo.observed_at, r.id)
-        )
+  )
+  AND NOT EXISTS (
+      SELECT 1 FROM finding_occurrences nf
+      JOIN reports nr ON nr.id = nf.report_id
+      JOIN reports current ON current.id = $3
+      WHERE nf.finding_id = findings.id
+        AND (nr.created_at, nr.id) > (current.created_at, current.id)
   )
 RETURNING *;
 
