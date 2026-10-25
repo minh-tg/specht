@@ -1414,3 +1414,74 @@ func TestEscapeWorkflowCommand(t *testing.T) {
 	assert.Equal(t, "foo%25bar%3Abaz%2Cqux%0Aline", escapeCommandProperty("foo%bar:baz,qux\nline"))
 	assert.Equal(t, "foo%25bar%0Aline", escapeCommandData("foo%bar\nline"))
 }
+
+func TestParseFlags_IntroducedOnlyIsTriState(t *testing.T) {
+	clearCIEnvironment(t)
+	cases := []struct {
+		name    string
+		args    []string
+		baseRef string
+		want    bool
+	}{
+		{"unset without a base ref gates the project", nil, "", false},
+		{"unset with a base ref gates the change", nil, "main", true},
+		{"bare flag gates the change", []string{"-introduced-only"}, "", true},
+		{"explicit true gates the change", []string{"-introduced-only=true"}, "main", true},
+		{"explicit false keeps the project gate with a base ref", []string{"-introduced-only=false"}, "main", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var stderr bytes.Buffer
+			f := parseFlags(tc.args, &stderr, false)
+			require.NotNil(t, f, stderr.String())
+			f.baseRef = tc.baseRef
+			var payload client.IngestPayload
+			applyGateFlags(&payload, f)
+			assert.Equal(t, tc.want, payload.GateIntroducedOnly)
+			assert.Equal(t, tc.baseRef, payload.BaseRevision, "the base ref stays the baseline")
+		})
+	}
+}
+
+func TestParseFlags_IntroducedOnlyRejectsNonBoolean(t *testing.T) {
+	clearCIEnvironment(t)
+	var stderr bytes.Buffer
+	assert.Nil(t, parseFlags([]string{"-introduced-only=maybe"}, &stderr, false))
+}
+
+func TestRun_IntroducedOnlyFalseWithBaseRefUsesProjectGate(t *testing.T) {
+	clearCIEnvironment(t)
+	t.Setenv("API_KEY", "test-key")
+	t.Setenv("GITHUB_BASE_REF", "main")
+
+	var ingested client.IngestPayload
+	gateCalled := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/reports":
+			assert.NoError(t, json.NewDecoder(r.Body).Decode(&ingested))
+			writeTestJSONResponse(t, w, client.IngestResponse{ReportID: "rep-1", TotalFindings: 3})
+		case "/api/v1/projects/my-app/gate":
+			gateCalled = true
+			writeTestJSONResponse(t, w, client.GateStatus{ThresholdBreached: true, BlockingCount: 3})
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	t.Setenv("API_URL", srv.URL)
+
+	var stdout, stderr bytes.Buffer
+	args := []string{
+		"-file=../../internal/parser/trivy/testdata/alpine-scan.json",
+		"-project=my-app",
+		"-tool=trivy",
+		"-introduced-only=false",
+	}
+	code := run(args, bytes.NewReader(nil), &stdout, &stderr, srv.Client())
+	assert.Equal(t, 1, code, stderr.String())
+	assert.True(t, gateCalled, "the project gate decides the verdict")
+	assert.False(t, ingested.GateIntroducedOnly)
+	assert.Equal(t, "main", ingested.BaseRevision)
+	assert.Contains(t, stderr.String(), "gate FAILED: 3 blocking finding(s)")
+}

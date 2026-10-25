@@ -57,6 +57,28 @@ override="https://example.invalid/wf.yml@refs/heads/main"
 got="$(env -u SPECHT_RELEASE_BASE_URL -u SPECHT_COSIGN_PUBLIC_KEY SPECHT_SELFTEST=1 SPECHT_CERTIFICATE_IDENTITY="$override" bash "$script" identity v1.2.3)"
 check "$override" "$got" "certificate identity override with the self-test flag"
 
+# The adapter gets the gate scope as an explicit true or false, so an
+# introduced-only: false input is not overridden by the detected base ref.
+expect_introduced() {
+  local event="$1" input="$2" want="$3" got
+  got="$("${clean_env[@]}" SPECHT_EVENT_NAME="$event" SPECHT_INPUT_INTRODUCED_ONLY="$input" \
+    bash -c 'source "$1"; introduced_only' _ "$script")"
+  check "$want" "$got" "introduced-only for event '${event}' and input '${input}'"
+}
+
+expect_introduced pull_request "" true
+expect_introduced pull_request_target "" true
+expect_introduced push "" false
+expect_introduced pull_request false false
+expect_introduced push true true
+
+if "${clean_env[@]}" SPECHT_INPUT_INTRODUCED_ONLY=yes bash -c 'source "$1"; introduced_only' _ "$script" >/dev/null 2>&1; then
+  echo "FAIL: introduced-only 'yes' was accepted" >&2
+  failures=$((failures + 1))
+else
+  echo "ok: introduced-only 'yes' is refused"
+fi
+
 if [[ "$failures" -ne 0 ]]; then
   echo "::error::${failures} check(s) failed" >&2
   exit 1

@@ -37,7 +37,7 @@ type adapterFlags struct {
 	tool            string
 	excludeTool     string
 	file            string
-	introducedOnly  bool
+	introducedOnly  optionalBool
 	baseRef         string
 	commit          string
 	branch          string
@@ -68,7 +68,7 @@ func parseFlags(args []string, stderr io.Writer, inGitHubActions bool) *adapterF
 	fs.StringVar(&f.tool, "tool", "", "Scanner name (overrides scanner detected in stdin payload)")
 	fs.StringVar(&f.excludeTool, "exclude-tool", "", "Skip if scanner matches this name")
 	fs.StringVar(&f.file, "file", "", "Path to scan result file (default: read from stdin)")
-	fs.BoolVar(&f.introducedOnly, "introduced-only", false, "Gate strictly on introduced vulnerabilities")
+	fs.Var(&f.introducedOnly, "introduced-only", "Gate only on findings this change introduced: true or false (default: true when a base ref is set or detected)")
 	fs.StringVar(&f.baseRef, "base-ref", "", "Baseline git ref/branch/commit (e.g. main)")
 	fs.StringVar(&f.commit, "commit", "", "Current commit SHA")
 	fs.StringVar(&f.branch, "branch", "", "Current branch name")
@@ -269,9 +269,42 @@ func applyGateFlags(payload *client.IngestPayload, f *adapterFlags) {
 	if f.scanMode != "" {
 		payload.ScanMode = f.scanMode
 	}
-	if f.introducedOnly || f.baseRef != "" {
-		payload.GateIntroducedOnly = true
+	payload.GateIntroducedOnly = f.introducedOnly.valueOr(f.baseRef != "")
+}
+
+// optionalBool is a boolean flag that remembers whether it was given, so an
+// explicit -introduced-only=false is told apart from an absent flag. A bare
+// -introduced-only still means true.
+type optionalBool struct {
+	set   bool
+	value bool
+}
+
+func (b *optionalBool) Set(s string) error {
+	v, err := strconv.ParseBool(s)
+	if err != nil {
+		return err
 	}
+	b.set, b.value = true, v
+	return nil
+}
+
+func (b *optionalBool) String() string {
+	if b == nil || !b.set {
+		return ""
+	}
+	return strconv.FormatBool(b.value)
+}
+
+// IsBoolFlag lets the flag package accept the bare form.
+func (b *optionalBool) IsBoolFlag() bool { return true }
+
+// valueOr returns the given value, or def when the flag was absent.
+func (b optionalBool) valueOr(def bool) bool {
+	if b.set {
+		return b.value
+	}
+	return def
 }
 
 // publishPreview emits the CI-side outputs (annotations, step summary,
@@ -788,8 +821,12 @@ Flags:
   -severity string       Severity threshold, comma-separated (the project policy decides; a value here can only tighten it)
   -status string         Deprecated and ignored; the project policy decides
   -file string           Path to scan result file (default: read from stdin)
-  -introduced-only       Gate strictly on introduced vulnerabilities
-  -base-ref string       Baseline git ref/branch/commit (auto-detected in CI)
+  -introduced-only[=bool] Gate only on findings this change introduced. Absent,
+                         it is true when a base ref is set or detected and false
+                         otherwise; -introduced-only=false gates the whole
+                         project even on a pull or merge request
+  -base-ref string       Baseline git ref/branch/commit (auto-detected in CI);
+                         it sets the baseline, -introduced-only sets the scope
   -commit string         Current commit SHA (auto-detected in CI)
   -branch string         Current branch name (auto-detected in CI)
   -scan-mode string      Scan mode: full or incremental

@@ -64,7 +64,7 @@ inputs:
     description: Scanner name, for example trivy or semgrep
     required: true
   introduced-only:
-    description: Gate only on findings introduced by this change. Defaults to true on pull_request events and false otherwise.
+    description: Gate only on findings introduced by this change (true or false). Defaults to true on pull_request events and false otherwise; set false to gate on the whole project in a pull request.
     required: false
     default: ""
   base-ref:
